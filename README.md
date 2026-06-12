@@ -2,7 +2,7 @@
 
 > Single-file HTML specs. The HTML-native alternative to markdown-based spec tooling.
 
-Spectastic runs a structured spec lifecycle — `principles → spec → plan → tasks → propose → apply → triage` — and emits a single self-contained `.html` file per artifact. The file uses a small vocabulary of semantic custom elements styled by a calm typographic system, so a spec reads like a quiet essay yet packs tables, diagrams, diffs, decision matrices, and progressive disclosure that markdown can't.
+Spectastic runs a structured spec lifecycle — `principles → spec → plan → tasks → implement → propose → apply → triage` — and emits a single self-contained `.html` file per artifact. The file uses a small vocabulary of semantic custom elements styled by a calm typographic system, so a spec reads like a quiet essay yet packs tables, diagrams, diffs, decision matrices, and progressive disclosure that markdown can't.
 
 **See it first:** open [`index.html`](./index.html) in a browser for the landing page, then [`examples/spectastic-spec.html`](./examples/spectastic-spec.html) for a worked example — the spec for spectastic itself.
 
@@ -42,6 +42,7 @@ spectastic/
 │   ├── spectastic.spec.md
 │   ├── spectastic.plan.md
 │   ├── spectastic.tasks.md
+│   ├── spectastic.implement.md
 │   ├── spectastic.propose.md
 │   ├── spectastic.apply.md
 │   └── spectastic.triage.md
@@ -52,17 +53,18 @@ spectastic/
 
 ## Lifecycle
 
-Seven Claude Code slash commands. Four cover the core spec lifecycle, two cover ongoing change management, one runs alongside implementation to capture debug sessions.
+Eight Claude Code slash commands. Five cover the core spec lifecycle, two cover ongoing change management, one runs alongside implementation to capture debug sessions.
 
 | Phase | Command | Output |
 | --- | --- | --- |
 | 1. Establish principles     | `/spectastic.principles <project name>`   | `./principles.html` |
-| 2. Spec a feature           | `/spectastic.spec <feature>`               | `specs/<id>/spec.html` |
-| 3. Plan the build           | `/spectastic.plan [spec-id]`                | `specs/<id>/plan.html` |
-| 4. Derive tasks             | `/spectastic.tasks [spec-id]`               | `specs/<id>/tasks.html` |
-| 5. Propose a change         | `/spectastic.propose <change name>`         | `specs/<id>/changes/<date>-<slug>/proposal.html` |
-| 6. Apply an approved change | `/spectastic.apply [<date>-<slug>]`         | live `spec.html` patched, change folder moved to `archive/` |
-| 7. Triage a defect          | `/spectastic.triage <failure>`              | `specs/<id>/triage-log.html` (append) |
+| 2. Spec a feature           | `/spectastic.spec <feature>`              | `specs/<id>/spec.html` |
+| 3. Plan the build           | `/spectastic.plan [spec-id]`              | `specs/<id>/plan.html` |
+| 4. Derive tasks             | `/spectastic.tasks [spec-id]`             | `specs/<id>/tasks.html` |
+| 5. Implement a task         | `/spectastic.implement [T-NNN \| spec-id]`| code edits + ticked checkbox |
+| 6. Propose a change         | `/spectastic.propose <change name>`       | `specs/<id>/changes/<date>-<slug>/proposal.html` |
+| 7. Apply an approved change | `/spectastic.apply [<date>-<slug>]`       | live `spec.html` patched, change folder moved to `archive/` |
+| 8. Triage a defect          | `/spectastic.triage <failure>`            | `specs/<id>/triage-log.html` (append) |
 
 The slash command files live in `commands/`. Install them into your project's `.claude/commands/` (or run them from this directory directly) and Claude Code picks them up.
 

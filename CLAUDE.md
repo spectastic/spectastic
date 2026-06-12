@@ -53,6 +53,7 @@ Seven slash commands. Don't add more without a good reason — OpenSpec's small 
 - `/spectastic.spec` — feature spec; carries the smallest-demoable prompt + INVEST self-check
 - `/spectastic.plan` — implementation plan; refuses to run while blockers exist
 - `/spectastic.tasks` — task breakdown
+- `/spectastic.implement` — implement the next unchecked task; tick the checkbox; loop to drain
 - `/spectastic.propose` — change proposal with typed `<spec-delta op="…">`
 - `/spectastic.apply` — apply approved proposal (moves to changes/archive/ as a side effect)
 - `/spectastic.triage` — single-card defect triage
