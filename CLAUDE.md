@@ -50,7 +50,7 @@ When evaluating any future design influence, capture the *principle* version her
 Seven slash commands. Don't add more without a good reason — OpenSpec's small command surface is one of its wins worth preserving.
 
 - `/spectastic.principles` — non-negotiable principles
-- `/spectastic.specify` — feature spec; carries the smallest-demoable prompt + INVEST self-check
+- `/spectastic.spec` — feature spec; carries the smallest-demoable prompt + INVEST self-check
 - `/spectastic.plan` — implementation plan; refuses to run while blockers exist
 - `/spectastic.tasks` — task breakdown
 - `/spectastic.propose` — change proposal with typed `<spec-delta op="…">`

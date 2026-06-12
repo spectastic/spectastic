@@ -3,7 +3,7 @@ description: Write a feature specification — what to build, for whom, and how 
 argument-hint: <feature name or one-line description>
 ---
 
-# /spectastic.specify
+# /spectastic.spec
 
 You are drafting a **feature specification** as a single-file HTML artifact in the spectastic design system. A spec describes *what* a feature is, *who* it's for, and *how* we'll know it worked. It does **not** describe *how* to build it — that belongs in the plan.
 

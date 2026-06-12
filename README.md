@@ -39,7 +39,7 @@ spectastic/
 │   └── changes/archive/          archived change proposals against the worked spec
 ├── commands/
 │   ├── spectastic.principles.md
-│   ├── spectastic.specify.md
+│   ├── spectastic.spec.md
 │   ├── spectastic.plan.md
 │   ├── spectastic.tasks.md
 │   ├── spectastic.propose.md
@@ -57,7 +57,7 @@ Seven Claude Code slash commands. Four cover the core spec lifecycle, two cover 
 | Phase | Command | Output |
 | --- | --- | --- |
 | 1. Establish principles     | `/spectastic.principles <project name>`   | `./principles.html` |
-| 2. Specify a feature        | `/spectastic.specify <feature>`            | `specs/<id>/spec.html` |
+| 2. Spec a feature           | `/spectastic.spec <feature>`               | `specs/<id>/spec.html` |
 | 3. Plan the build           | `/spectastic.plan [spec-id]`                | `specs/<id>/plan.html` |
 | 4. Derive tasks             | `/spectastic.tasks [spec-id]`               | `specs/<id>/tasks.html` |
 | 5. Propose a change         | `/spectastic.propose <change name>`         | `specs/<id>/changes/<date>-<slug>/proposal.html` |
@@ -98,7 +98,7 @@ Spectastic embeds the discipline that prevents this without adding new verbs:
 When you already have a spec that's grown too large (e.g. a UI spec wiring multiple libraries), the existing verbs do the work:
 
 1. **Identify slice boundaries.** Group the spec's requirements by surface, by user story, or by integration channel. Each group becomes a child slice.
-2. **Scaffold each child** with `/spectastic.specify <slice-name>`. When asked for parent, name the umbrella spec ID — the child carries `<spec-parent specid="<umbrella>">` in the header.
+2. **Scaffold each child** with `/spectastic.spec <slice-name>`. When asked for parent, name the umbrella spec ID — the child carries `<spec-parent specid="<umbrella>">` in the header.
 3. **Copy** the relevant requirements from the umbrella into each child, preserving stable IDs. Reduce or remove the original surrounding prose; the child is shorter than its share of the umbrella.
 4. **File a removal proposal** with `/spectastic.propose "extract <slice-name> from <umbrella>"`. The proposal contains one `<spec-delta op="removed" target="REQ-…">` per requirement now living in the child, with `reason="moved to <child-spec-id>"` and `migration="see <child-spec-id>#REQ-…"`.
 5. **Apply** with `/spectastic.archive`. The umbrella shrinks; the children stand on their own; history sits in the umbrella's `changes/archive/`.

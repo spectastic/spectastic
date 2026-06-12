@@ -116,7 +116,7 @@
     }).join('');
     el.setAttribute('data-overall', worstBand);
     const hint = worstBand === 'red'
-      ? `Over budget. Consider splitting: see the parent spec or extract slices via <code>/spectastic.specify</code>.`
+      ? `Over budget. Consider splitting: see the parent spec or extract slices via <code>/spectastic.spec</code>.`
       : worstBand === 'amber'
         ? `Approaching the slicing threshold (Larson: specs over 1,500 words must be split).`
         : `Healthy size — under the 70% threshold.`;
