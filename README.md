@@ -24,6 +24,7 @@ A directory you copy into your project:
 spectastic/
 ├── index.html                    landing page (this design language, applied)
 ├── principles.html               project's five non-negotiable principles (v1.0.0)
+├── plan.html                     implementation plan for spectastic itself
 ├── inbox.html                    project-root small-batch entry point (live)
 ├── assets/
 │   ├── spec.css                  ~25 KB design system (calm cream palette, serif+sans+mono trio)
