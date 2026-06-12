@@ -1,0 +1,465 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>OpenSpec — Considerations for Spectastic</title>
+<meta name="description" content="A pattern-by-pattern evaluation of OpenSpec for absorption into spectastic, dogfooding the spectastic design language.">
+<link rel="stylesheet" href="../assets/spec.css">
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Considerations · Competitive analysis</p>
+  <h1>OpenSpec</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    What's worth absorbing from OpenSpec — and what isn't — given spectastic's calm-dense, single-file HTML bet.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>     <span><spec-status value="draft">Draft</spec-status></span>
+    <b>Type</b>       <span>Pattern survey</span>
+    <b>Author</b>     <span>Brian Corbin · me@briancorbin.co.uk</span>
+    <b>Created</b>    <span><time datetime="2026-06-12">12 Jun 2026</time></span>
+    <b>Sources</b>    <span>12 primary, verified 12 Jun 2026</span>
+    <b>Subject</b>    <span><a href="https://github.com/Fission-AI/OpenSpec">Fission-AI/OpenSpec</a> v1.4.1</span>
+    <b>Read time</b>  <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-tldr>
+    <p><strong>OpenSpec</strong> is the popular alternative to spec-kit — ~54k stars on GitHub,
+    Node ≥ 20.19, MIT-licensed, YC-launched. It strips ceremony spec-kit imposes and earns its
+    traction from <em>lightness</em>, not <em>structure</em>. Three of its patterns are clean
+    wins for spectastic to absorb (change-as-folder, delta semantics, init-with-tools-flag);
+    two are differentiators worth leaning into the opposite direction (stable IDs, the HTML
+    renderer); two are deliberately out of scope for now (constitution-by-default,
+    action-detecting unified commands). The format we use to capture this analysis is itself
+    an example of the bet: <code>&lt;spec-decision&gt;</code> cards and a
+    <code>&lt;spec-matrix&gt;</code> carry the verdicts more honestly than markdown could.</p>
+  </spec-tldr>
+
+  <spec-audience-map>
+    <dl>
+      <dt>Exec / PM</dt>   <dd>§<a href="#summary">Patterns at a glance</a>, §<a href="#sketches">If we acted</a>, §<a href="#questions">Open questions</a>.</dd>
+      <dt>Reviewer</dt>    <dd>§<a href="#what">What OpenSpec is</a>, §<a href="#deepdives">Pattern deep-dives</a>, §<a href="#questions">Open questions</a>.</dd>
+      <dt>Implementer</dt> <dd>§<a href="#deepdives">Pattern deep-dives</a>, §<a href="#sketches">If we acted</a>.</dd>
+      <dt>In a hurry</dt>  <dd>The TL;DR above, then §<a href="#summary">Patterns at a glance</a>.</dd>
+    </dl>
+  </spec-audience-map>
+</header>
+
+
+<!-- =======================================================
+     §1 What OpenSpec is
+     ======================================================= -->
+<section id="what">
+<h2>1 · What OpenSpec is</h2>
+
+<p>OpenSpec is a spec-driven-development framework for AI coding agents, published by
+<a href="https://github.com/Fission-AI">Fission AI</a> (YC-launched). Its distinctive bet is
+<em>spec-as-deltas</em>: a long-lived <code>specs/</code> folder records what currently exists,
+and each proposed change is a sibling folder containing only the delta. On archive, the delta
+folds into the live spec; the change folder is preserved verbatim under
+<code>changes/archive/</code>.</p>
+
+<dl>
+  <dt>Repo</dt>          <dd><a href="https://github.com/Fission-AI/OpenSpec">github.com/Fission-AI/OpenSpec</a></dd>
+  <dt>Package</dt>       <dd><code>@fission-ai/openspec</code> (npm)</dd>
+  <dt>Install</dt>       <dd><code>npm install -g @fission-ai/openspec@latest</code> · Node ≥ 20.19</dd>
+  <dt>License</dt>       <dd>MIT</dd>
+  <dt>Current version</dt><dd>v1.4.1, released 3 Jun 2026</dd>
+  <dt>Traction</dt>      <dd>~54k stars by mid-2026; v1.0 "OPSX Release" (26 Jan 2026) triggered the recent uptick</dd>
+  <dt>Format</dt>        <dd>All markdown, plus one optional YAML config touchpoint. No HTML, no JSON Schema, no renderer.</dd>
+</dl>
+
+<h3>Directory layout</h3>
+<pre><code>openspec/
+├── specs/&lt;domain&gt;/spec.md             ← long-lived
+├── changes/&lt;change&gt;/
+│   ├── proposal.md                    ← intent / scope / approach
+│   ├── design.md                      ← architecture decisions
+│   ├── tasks.md                       ← hierarchical <code>- [ ]</code> checklist
+│   ├── .openspec.yaml                 ← optional
+│   └── specs/&lt;domain&gt;/spec.md         ← delta (ADDED / MODIFIED / REMOVED / RENAMED)
+├── changes/archive/&lt;YYYY-MM-DD-change&gt;/
+└── config.yaml
+</code></pre>
+
+<h3>Commands</h3>
+<p>Two CLI verbs do real work; everything else is agent-side slash commands. Default action
+profile (v1.0+): <code>/opsx:propose → /opsx:apply → /opsx:sync → /opsx:archive</code>. The
+expanded profile adds <code>/opsx:new</code>, <code>/opsx:ff</code>, <code>/opsx:continue</code>,
+<code>/opsx:verify</code>.</p>
+
+<spec-note>
+<p>OpenSpec ships <strong>no MCP server</strong> ("no API keys, no MCP required") and
+<strong>no hooks</strong> that prevent edits without a proposal. Discipline is conventional.
+Practitioner complaint #1 in the wild is that agents simply ignore the specs when nothing
+forces them to obey — <code>openspec update</code> is the standard remedy when that happens.
+This is a clean opportunity for a competitor to differentiate on enforcement.</p>
+</spec-note>
+</section>
+
+
+<!-- =======================================================
+     §2 Patterns at a glance
+     ======================================================= -->
+<section id="summary">
+<h2>2 · Patterns at a glance</h2>
+
+<p>One row per distinctive pattern. Verdict column is the recommended stance for spectastic;
+rows we should <em>adopt</em> are highlighted.</p>
+
+<spec-matrix>
+<table>
+  <thead>
+    <tr><th>Pattern</th><th>Verdict</th><th>Note</th></tr>
+  </thead>
+  <tbody>
+    <tr data-winner>
+      <td>Change-as-folder</td>
+      <td>Adopt</td>
+      <td>One change = one PR-shaped folder. Reviewer-friendly; matches GitHub workflow.</td>
+    </tr>
+    <tr data-winner>
+      <td>Delta semantics (ADDED/MODIFIED/REMOVED/RENAMED)</td>
+      <td>Adopt &amp; improve</td>
+      <td>Express as <code>&lt;spec-delta op="…"&gt;</code>; tags carry semantics without OpenSpec's silent-fail hash counting.</td>
+    </tr>
+    <tr data-winner>
+      <td><code>init --tools &lt;id&gt;</code> installer</td>
+      <td>Adopt</td>
+      <td>One command drops <code>.claude/skills/</code> + commands into a project. Currently spectastic is "clone the dir."</td>
+    </tr>
+    <tr data-winner>
+      <td><code>validate</code> command</td>
+      <td>Adopt &amp; exceed</td>
+      <td>Queryable HTML &gt; loose markdown. We can check anchors, ID uniqueness, conformance coverage in ways OpenSpec can't.</td>
+    </tr>
+    <tr>
+      <td>No MCP, no enforcement hooks</td>
+      <td>Differentiate</td>
+      <td>Ship a <code>validate --strict</code> CI hook + opt-in Claude Code stop-hook. Practitioner-stated gap.</td>
+    </tr>
+    <tr>
+      <td>No constitution</td>
+      <td>Lean light</td>
+      <td>Make spectastic's constitution truly optional — picked up if present, not required to start.</td>
+    </tr>
+    <tr>
+      <td>No stable requirement IDs (identity = header text)</td>
+      <td>Opposite stance</td>
+      <td>Our <code>id="REQ-AUTH-001"</code> is a contract. Lean in; never adopt OpenSpec's RENAMED escape hatch.</td>
+    </tr>
+    <tr>
+      <td>No renderer / viewer</td>
+      <td>Already differentiated</td>
+      <td>Single-file HTML with a calm typographic system is exactly the gap. Lead with it in copy.</td>
+    </tr>
+    <tr>
+      <td>Action-based commands (no phase gates)</td>
+      <td>Out of scope</td>
+      <td>Spectastic's five-phase commands are pedagogical. Detect-and-pick adds complexity without clear user benefit.</td>
+    </tr>
+  </tbody>
+  <tfoot>
+    <tr><td colspan="3">Adopt = build now if scope allows. Differentiate = ship the gap OpenSpec leaves open. Opposite stance / Already differentiated = continue current direction with confidence. Out of scope = revisit if telemetry justifies.</td></tr>
+  </tfoot>
+</table>
+</spec-matrix>
+</section>
+
+
+<!-- =======================================================
+     §3 Pattern deep-dives
+     ======================================================= -->
+<section id="deepdives">
+<h2>3 · Pattern deep-dives</h2>
+
+<p>One <code>&lt;spec-decision&gt;</code> per pattern, in the order of the matrix above.</p>
+
+
+<spec-decision id="C-001">
+  <h4>C-001 · Change-as-folder</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Adopt</spec-status></dd>
+    <dt>Context</dt>      <dd>OpenSpec's signature move. Each proposed change is a folder
+    (<code>changes/&lt;name&gt;/{proposal,design,tasks}.md</code> + delta specs) mapping 1:1
+    to a PR. On archive, deltas fold into the live spec; the folder moves to
+    <code>changes/archive/&lt;YYYY-MM-DD-name&gt;/</code> preserved verbatim.</dd>
+    <dt>Decision</dt>     <dd>Add <code>specs/&lt;id&gt;/changes/&lt;date&gt;-&lt;name&gt;/proposal.html</code>
+    as a sibling of the existing <code>spec.html</code> / <code>plan.html</code> / <code>tasks.html</code>.
+    The proposal HTML wraps a <code>&lt;spec-change&gt;</code> root element with intent/scope/status
+    and embeds one or more <code>&lt;spec-delta&gt;</code> children.</dd>
+    <dt>Consequences</dt> <dd>+ Review surface matches GitHub PR shape exactly. + Living spec
+    stays compact; history sits in <code>archive/</code>. + Multiple parallel changes can
+    coexist for one feature without merge conflicts on the spec itself.
+    − Authors must learn a new artifact type. − Slash commands grow by two
+    (<code>/spectastic.propose</code>, <code>/spectastic.archive</code>).</dd>
+  </dl>
+</spec-decision>
+
+
+<spec-decision id="C-002">
+  <h4>C-002 · Delta semantics</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Adopt &amp; improve</spec-status></dd>
+    <dt>Context</dt>      <dd>OpenSpec deltas live under fixed markdown headers:
+    <code>## ADDED Requirements</code>, <code>MODIFIED</code>, <code>REMOVED</code>,
+    <code>RENAMED</code>. The parser is strict-by-hash-count; <code>### Requirement:</code> = 3
+    hashes, <code>#### Scenario:</code> = 4. A wrong-level header <em>fails silently</em>.
+    REMOVED requires <code>**Reason**</code> and <code>**Migration**</code> bold-label fields.</dd>
+    <dt>Decision</dt>     <dd>Express deltas as typed custom elements:
+    <code>&lt;spec-delta op="added|modified|removed|renamed" target="REQ-AUTH-007"&gt;</code>.
+    The op is an HTML attribute, machine-readable, parser-trivial. For <code>op="removed"</code>,
+    make <code>reason=""</code> and <code>migration=""</code> required attributes; the validator
+    fails closed if either is missing.</dd>
+    <dt>Consequences</dt> <dd>+ Zero silent-fail surface. + Stronger schema than markdown headers
+    can carry. + Renames are atomic (the <code>target</code> attribute is the rename).
+    − Authors learn one new element family. − The four ops need four distinct visual treatments
+    in CSS — left-border colour + corner pill — to read at a glance.</dd>
+  </dl>
+</spec-decision>
+
+
+<spec-decision id="C-003">
+  <h4>C-003 · <code>init --tools &lt;id&gt;</code> installer</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Adopt</spec-status></dd>
+    <dt>Context</dt>      <dd>OpenSpec ships an <code>init</code> command that writes per-tool
+    skills + slash commands for Claude Code, Cursor, Windsurf, GitHub Copilot, Kimi, ForgeCode,
+    Mistral Vibe, and Trae (25–30 tools by current count). Non-interactive flag:
+    <code>openspec init --tools claude,cursor</code>.</dd>
+    <dt>Decision</dt>     <dd>Add <code>scripts/spectastic</code> (Python 3, single-file, already
+    on every macOS box) with <code>init [--tools claude]</code> that copies <code>assets/</code>,
+    <code>templates/</code>, and <code>commands/</code> into the current project and registers
+    them under <code>.claude/commands/spectastic.*.md</code>. Start with Claude Code; add more
+    tools per concrete user request.</dd>
+    <dt>Consequences</dt> <dd>+ One-command adoption replaces "clone or copy this directory".
+    + No build step to introduce. − Python is a runtime dep, but it's pre-installed on the
+    target user base (Mac/Linux devs).</dd>
+  </dl>
+</spec-decision>
+
+
+<spec-decision id="C-004">
+  <h4>C-004 · <code>validate</code> command</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Adopt &amp; exceed</spec-status></dd>
+    <dt>Context</dt>      <dd>OpenSpec's <code>validate</code> is structural-only: required
+    headers present, correct hash counts, REMOVED carries Reason+Migration, tasks use
+    <code>- [ ]</code>. No broken-link check, no requirement-coverage analysis, no
+    archived-change reference graph. It runs automatically before archive.</dd>
+    <dt>Decision</dt>     <dd>Implement <code>spectastic validate [path] [--strict]</code> over
+    the spectastic HTML tree, checking everything OpenSpec does plus: every anchor resolves;
+    every <code>id</code> is unique across spec + active changes; every
+    <code>&lt;spec-requirement&gt;</code> ID matches the project pattern; every
+    <code>&lt;spec-delta op="modified|removed|renamed"&gt;</code> targets an ID that exists in
+    the live spec; every <code>&lt;spec-delta op="added"&gt;</code> targets an ID that doesn't
+    yet exist; every <code>&lt;spec-triage&gt;</code> has a valid <code>layer=</code> enum.
+    <code>--strict</code> exits non-zero for CI.</dd>
+    <dt>Consequences</dt> <dd>+ Beat OpenSpec on the dimension they're already getting field
+    complaints about. + Single CI hook covers the whole project. − Validator must be kept in
+    lockstep with the component vocabulary; a missed update breaks builds.</dd>
+  </dl>
+</spec-decision>
+
+
+<spec-decision id="C-005">
+  <h4>C-005 · Enforcement (the gap OpenSpec deliberately leaves)</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="review">Differentiate</spec-status></dd>
+    <dt>Context</dt>      <dd>OpenSpec advertises "no MCP required" and ships no hooks. The
+    most-cited limitation in HN and blog write-ups is that agents ignore the specs because
+    nothing forces them to obey. <code>openspec update</code> is the canonical "after the
+    fact" remedy.</dd>
+    <dt>Decision</dt>     <dd>Ship an opt-in Claude Code stop-hook (<code>settings.json</code>
+    snippet) that runs <code>spectastic validate --strict</code> before any commit and refuses
+    edits to <code>spec.html</code> directly when an active <code>changes/&lt;name&gt;/</code>
+    folder exists. Default off; document loudly.</dd>
+    <dt>Consequences</dt> <dd>+ Sharp competitive lever — the gap OpenSpec users explicitly ask
+    for. − Hook setup is a one-time speed bump; some users will not enable it.</dd>
+  </dl>
+</spec-decision>
+
+
+<spec-decision id="C-006">
+  <h4>C-006 · Constitution: light by default</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="review">Lean light</spec-status></dd>
+    <dt>Context</dt>      <dd>OpenSpec has no constitution analogue. Spec-kit requires one as
+    phase 1. Spectastic currently sits closer to spec-kit. Practitioner write-ups consistently
+    cite the constitution as a brownfield friction point.</dd>
+    <dt>Decision</dt>     <dd>Update <code>/spectastic.specify</code> so it does not require
+    <code>constitution.html</code> — it picks one up if present and silently runs without one
+    if not. <code>/spectastic.plan</code>'s Constitution-Check section becomes optional in the
+    template when no constitution exists.</dd>
+    <dt>Consequences</dt> <dd>+ Brownfield-friendly. + Greenfield projects still have the
+    discipline available. − Some users will skip the constitution forever; that's their choice.</dd>
+  </dl>
+</spec-decision>
+
+
+<spec-decision id="C-007">
+  <h4>C-007 · Stable requirement IDs (lean into our advantage)</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Already-have</spec-status></dd>
+    <dt>Context</dt>      <dd>OpenSpec's requirements are identified by header text, e.g.
+    <code>### Requirement: Dark mode toggle</code>. Rename a requirement and every delta
+    referring to it breaks unless you also write a <code>RENAMED</code> section. Identity is
+    fragile; the parser can't help you find references.</dd>
+    <dt>Decision</dt>     <dd>Continue with stable <code>id="REQ-&lt;TOPIC&gt;-&lt;NNN&gt;"</code>
+    attributes per <a href="../examples/spectastic-spec.html#requirements">our spec</a>. Renames
+    are content edits; the ID survives. Document this contrast explicitly in our positioning.</dd>
+    <dt>Consequences</dt> <dd>+ Reliable cross-document linking. + LLMs target IDs, not names.
+    + Validator can enforce uniqueness trivially. − Authors must invent IDs; mitigated by
+    pattern conventions in the template.</dd>
+  </dl>
+</spec-decision>
+
+
+<spec-decision id="C-008">
+  <h4>C-008 · Renderer / viewer</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Already-have</spec-status></dd>
+    <dt>Context</dt>      <dd>OpenSpec ships no renderer. Specs are read raw in editors. There
+    is no web UI, no static-site exporter, no PR-preview integration.</dd>
+    <dt>Decision</dt>     <dd>Lead with this in marketing copy. Spectastic <em>is</em> the
+    renderer. The artifact and the view are the same file. A reviewer opens
+    <code>spec.html</code> in their browser and gets the document the author saw.</dd>
+    <dt>Consequences</dt> <dd>+ Distinctive positioning. + Zero infrastructure to maintain.
+    − Single-file size will grow over time; the inliner script must stay competitive on
+    payload size.</dd>
+  </dl>
+</spec-decision>
+</section>
+
+
+<!-- =======================================================
+     §4 If we acted — sketches
+     ======================================================= -->
+<section id="sketches">
+<h2>4 · If we acted — three sketches</h2>
+
+<p>For each adoption candidate, a 150-word sketch of what implementation would look like. The
+point is that a future session can pick up without re-running the research.</p>
+
+
+<spec-note>
+<p><strong>Change-proposal workflow (C-001 + C-002).</strong> Add
+<code>&lt;spec-change&gt;</code> and <code>&lt;spec-delta op="…"&gt;</code> to
+<code>assets/spec.css</code> — ~80 lines, two new CSS rules per op (left-border colour + corner
+pill). Create <code>templates/proposal.html</code> following the standard spectastic header
+shape, with a <code>&lt;spec-change&gt;</code> root containing scope/intent and one or more
+<code>&lt;spec-delta&gt;</code> children. Add <code>/spectastic.propose &lt;change name&gt;</code>
+that scaffolds <code>specs/&lt;spec-id&gt;/changes/&lt;date&gt;-&lt;name&gt;/proposal.html</code>,
+pre-filled with target IDs the user names. Add <code>/spectastic.archive</code> that applies
+the deltas to <code>spec.html</code>, moves the change folder to <code>archive/</code>, and
+appends a <code>&lt;spec-changelog&gt;</code> entry. Ship a worked
+<code>examples/proposal.html</code> with all four op variants. Estimated effort: half a day.</p>
+</spec-note>
+
+
+<spec-note>
+<p><strong>CLI installer (C-003).</strong> Write <code>scripts/spectastic</code> as a Python 3
+single-file with <code>argparse</code>. Subcommand <code>init</code> accepts <code>--tools</code>
+(default <code>claude</code>; future: <code>cursor,aider,copilot</code>) and copies
+<code>assets/</code>, <code>templates/</code>, <code>commands/</code>, <code>scripts/inline.sh</code>
+into the current working directory. For <code>--tools claude</code>, additionally write
+<code>.claude/commands/spectastic.*.md</code> (copies of the command files at project root) and,
+optionally, a minimal <code>.claude/settings.json</code> snippet enabling the stop-hook. Detect
+existing files and prompt before overwriting. README install instructions reduce to:
+<code>curl -sL .../install.sh | sh && spectastic init</code>. Estimated effort: a half-day,
+including a smoke test on a clean directory.</p>
+</spec-note>
+
+
+<spec-note>
+<p><strong>Validator (C-004 + C-005).</strong> Same Python file, subcommand
+<code>validate [path] [--strict]</code>. Use Python's built-in <code>html.parser</code> (no
+new deps); walk each <code>.html</code> in the tree; collect every element with an
+<code>id</code> attribute; collect every <code>href="#…"</code>; cross-check. For
+<code>&lt;spec-delta&gt;</code>, parse <code>op</code> and <code>target</code> and check
+against the live spec's IDs. Print human-readable errors with file:line. Exit 0 if clean,
+non-zero with <code>--strict</code> if any error. Bundle an example pre-commit hook in the
+README. Estimated effort: one day for full coverage; a half-day for v0.1 (anchors + IDs +
+delta target check).</p>
+</spec-note>
+</section>
+
+
+<!-- =======================================================
+     §5 Open questions
+     ======================================================= -->
+<section id="questions">
+<h2>5 · Open questions</h2>
+<spec-questions>
+<ol>
+  <li><strong>Order.</strong> If we commit to any of the three sketches, which comes first?
+  The change-proposal workflow gives users the most visible new capability; the CLI installer
+  unlocks adoption; the validator is the foundation for the others to be trusted in CI.
+  Reasonable order: validator → CLI → change-proposal, but it's also defensible to start with
+  the change-proposal so we can dogfood the workflow ourselves.</li>
+  <li><strong>Constitution lightness.</strong> Do we want to actively de-emphasise the
+  constitution, or just make it skippable? Spec-kit's brand is partly built on the
+  constitution; spectastic could either claim that lineage or distance itself.</li>
+  <li><strong>CLI distribution.</strong> If we ship a Python CLI, what's the install story?
+  <code>pipx install spectastic</code>? A single-file curl-pipe-bash? A homebrew tap?
+  Decision affects <code>scripts/spectastic</code> structure.</li>
+  <li><strong>Action-based commands.</strong> Out of scope today, but worth a revisit when
+  telemetry shows users getting confused by the five-command lifecycle. The detect-and-pick
+  approach is genuinely OpenSpec's most user-friendly choice.</li>
+  <li><strong>Cross-tool installer scope.</strong> Spectastic's components are HTML — they
+  render in any browser. But the slash commands are Claude-specific. Is the Cursor/Aider/Copilot
+  story worth building before there's a concrete user asking for it?</li>
+</ol>
+</spec-questions>
+</section>
+
+
+<!-- =======================================================
+     §6 Sources
+     ======================================================= -->
+<section id="sources">
+<h2>6 · Sources</h2>
+<p>All checked 12 Jun 2026.</p>
+<ul>
+  <li><a href="https://github.com/Fission-AI/OpenSpec">Fission-AI/OpenSpec on GitHub</a></li>
+  <li><a href="https://github.com/Fission-AI/OpenSpec/blob/main/docs/concepts.md">concepts.md</a> · <a href="https://github.com/Fission-AI/OpenSpec/blob/main/docs/cli.md">cli.md</a> · <a href="https://github.com/Fission-AI/OpenSpec/blob/main/docs/getting-started.md">getting-started.md</a> · <a href="https://github.com/Fission-AI/OpenSpec/blob/main/docs/supported-tools.md">supported-tools.md</a></li>
+  <li><a href="https://github.com/Fission-AI/OpenSpec/blob/main/CHANGELOG.md">CHANGELOG</a></li>
+  <li><a href="https://openspec.dev/">openspec.dev</a> — official site</li>
+  <li><a href="https://www.ycombinator.com/launches/Pdc-openspec-the-spec-framework-for-coding-agents">YC Launch announcement</a></li>
+  <li><a href="https://intent-driven.dev/knowledge/spec-kit-vs-openspec/">intent-driven.dev — spec-kit vs OpenSpec</a></li>
+  <li><a href="https://redreamality.com/garden/notes/openspec-guide/">redreamality.com — deep dive notes</a></li>
+  <li><a href="https://news.ycombinator.com/item?id=47994433">Hacker News thread 47994433</a></li>
+  <li><a href="https://github.com/github/spec-kit/discussions/1536">github/spec-kit#1536 (community comparison)</a></li>
+  <li><a href="https://dabase.com/blog/2026/sdd-framework-comparison/">dabase.com — SDD framework comparison</a></li>
+</ul>
+</section>
+
+
+<!-- =======================================================
+     §7 Change log
+     ======================================================= -->
+<section id="changelog">
+<h2>7 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-06-12">12 Jun 2026</time><span>Initial draft. Twelve patterns surveyed, eight given verdicts.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  Spectastic · OpenSpec considerations · 12 Jun 2026 ·
+  <a href="../index.html">home</a> ·
+  <a href="../examples/spectastic-spec.html">spec</a> ·
+  <button data-theme-toggle style="background:none;border:none;color:var(--c-link);cursor:pointer;font:inherit;padding:0;border-bottom:1px solid currentColor;">toggle theme</button>
+</footer>
+
+</main>
+<script src="../assets/spec.js"></script>
+</body>
+</html>
