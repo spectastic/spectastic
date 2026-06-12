@@ -14,15 +14,29 @@ Before this command, implementation was implicit: "Claude Code is the engine, ju
 ## Inputs
 
 User input (from `$ARGUMENTS`), in order of precedence:
-1. A bare task ID matching `T-\d+` — implement that specific task.
-2. A Spec ID (e.g. `001-auth`) — implement the next unchecked task in `specs/<id>/tasks.html`.
-3. Empty — scan `specs/` for the most recently modified `tasks.html` with unchecked work, and pick the first unchecked task from it.
+1. A bare task ID matching `T-\d+` — implement that specific task from a `tasks.html`.
+2. A bare inbox card ID matching `I-\d+` — implement that specific `<spec-triage layer="just-do">` card from `inbox.html`.
+3. A Spec ID (e.g. `001-auth`) — implement the next unchecked task in `specs/<id>/tasks.html`.
+4. Empty — drain order:
+   a. Project-root `inbox.html`: pick the oldest `<spec-triage layer="just-do">` card *without* `data-status="done"`.
+   b. If no `just-do` cards remain, fall back to the most recently modified `tasks.html` with unchecked work and pick the first unchecked task.
 
 ## Procedure
 
-1. **Locate the tasks file.** Resolve to `specs/<spec-id>/tasks.html`. If you can't unambiguously pick one, list candidates and ask.
+1. **Locate the target.** Two sources, in order:
 
-2. **Pick the target task.** Read the file. Each task is a `<li>` with an `<input type="checkbox">` and a unique `T-NNN` ID-like label in the visible text. Find the first unchecked task (or the one matching `$ARGUMENTS` if a task ID was given). If the user passed a task ID that's already ticked, report it and pick the next unchecked one with confirmation.
+   **A. Inbox `just-do` card** (if `$ARGUMENTS` is `I-NNN`, or empty and `inbox.html` exists with an unfinished `just-do` card):
+   - Open `./inbox.html`.
+   - For `I-NNN`: find the matching `<spec-triage>`. Confirm it has `layer="just-do"` and not `data-status="done"`. If it has `data-status="done"` already, report and ask for the next ID.
+   - For empty arg: scan all `<spec-triage layer="just-do">` cards in document order; pick the first one *without* `data-status="done"`.
+   - Read the card's `<dl>` for the `Target` field — that's the file or directory the work touches.
+
+   **B. Tasks file** (if `$ARGUMENTS` is `T-NNN`, a spec ID, or empty with no inbox cards):
+   - Resolve to `specs/<spec-id>/tasks.html`. If you can't unambiguously pick one, list candidates and ask.
+
+2. **Pick the target task.** Each task is a `<li>` with an `<input type="checkbox">` and a unique `T-NNN` ID-like label in the visible text. Find the first unchecked task (or the one matching `$ARGUMENTS` if a task ID was given). If the user passed a task ID that's already ticked, report it and pick the next unchecked one with confirmation.
+
+   For inbox `just-do` cards: skip this step; the card itself *is* the unit of work. The card's `Target` field is the scope; its title and headline are the spec.
 
 3. **Estimability gate.** Before doing anything else, check the spec and plan for blockers:
    - Any `<spec-question>` still open inside the task's section
@@ -40,7 +54,9 @@ User input (from `$ARGUMENTS`), in order of precedence:
 
 6. **Do the work.** Implement the task using your normal Claude Code capabilities. Write tests first if the task is in a "Tests" phase. Stay scoped — do not drift into adjacent tasks, do not refactor surrounding code unless the task explicitly asks for it.
 
-7. **Tick the checkbox.** In `tasks.html`, find the task's `<input type="checkbox">` and add the `checked` attribute. Do not delete the task; do not reorder. Other tasks stay untouched.
+7. **Mark complete.**
+   - **Tasks file:** find the task's `<input type="checkbox">` and add the `checked` attribute. Do not delete the task; do not reorder. Other tasks stay untouched.
+   - **Inbox `just-do` card:** add `data-status="done"` to the `<spec-triage>` element. Do not remove the card or move it out of inbox.html — it stays as history (faded with a DONE pill). Other cards stay untouched.
 
 8. **Verify.** Run the smallest possible verification the task admits — its scoped tests, a smoke check, a build. Report the result in your reply.
 
@@ -61,9 +77,9 @@ User input (from `$ARGUMENTS`), in order of precedence:
 ## After implementing
 
 Report:
-- Task ID + one-line summary
+- Task or inbox card ID + one-line summary
 - Files changed
 - Verification result
-- The next unchecked task (so the user knows what `/spectastic.implement` will do next)
+- The next unfinished item — the next `just-do` card in inbox.html, or if inbox is drained, the next unchecked task in the active spec.
 
-Suggest `/spectastic.implement` again to pick up the next task — or `/spectastic.triage` if verification surfaced a defect.
+Suggest `/spectastic.implement` again to pick up the next item — or `/spectastic.triage` if verification surfaced a defect or new follow-up items.

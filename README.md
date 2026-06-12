@@ -24,6 +24,7 @@ A directory you copy into your project:
 spectastic/
 ├── index.html                    landing page (this design language, applied)
 ├── principles.html               project's five non-negotiable principles (v1.0.0)
+├── inbox.html                    project-root small-batch entry point (live)
 ├── assets/
 │   ├── spec.css                  ~25 KB design system (calm cream palette, serif+sans+mono trio)
 │   └── spec.js                   ~5 KB progressive enhancement
@@ -32,7 +33,8 @@ spectastic/
 │   ├── spec.html                 feature specification scaffold
 │   ├── plan.html                 implementation plan scaffold
 │   ├── tasks.html                ordered task breakdown scaffold
-│   └── proposal.html             change-proposal scaffold
+│   ├── proposal.html             change-proposal scaffold
+│   └── inbox.html                small-batch inbox scaffold
 ├── examples/
 │   ├── spectastic-spec.html      worked example — the spec for spectastic itself
 │   ├── triage-log.html           worked example — debug triage log
@@ -105,7 +107,28 @@ When you already have a spec that's grown too large (e.g. a UI spec wiring multi
 4. **File a removal proposal** with `/spectastic.propose "extract <slice-name> from <umbrella>"`. The proposal contains one `<spec-delta op="removed" target="REQ-…">` per requirement now living in the child, with `reason="moved to <child-spec-id>"` and `migration="see <child-spec-id>#REQ-…"`.
 5. **Apply** with `/spectastic.apply`. The umbrella shrinks; the children stand on their own; history sits in the umbrella's `changes/archive/`.
 
-No `/spectastic.split` command needed — the workflow is `specify` + `propose` + `archive` composed.
+No `/spectastic.split` command needed — the workflow is `spec` + `propose` + `apply` composed.
+
+### The small-batch loop — `inbox.html`
+
+The structured lifecycle is overkill for "I have three small unrelated things in my head — a typo, a broken anchor, a tiny UI tweak." The small-batch loop closes that gap without adding verbs.
+
+[`inbox.html`](./inbox.html) at project root holds `<spec-triage>` cards in four states:
+
+| State | `layer=` | When |
+| --- | --- | --- |
+| Unrouted | (absent) | Just-captured items waiting for classification. |
+| Just-do | `just-do` | Small enough that a spec wouldn't change the decision; one file, no contract change, revert-safe. |
+| Defer | `defer` | Back-burner with `defer-to=` pointing at a sibling spec, `TBD-<topic>`, or `never`. |
+| Routed | `spec` \| `plan` \| `implementation` \| `cross-spec` \| `principles` \| `platform` | Item became (or needs to become) a real spec change-proposal. |
+
+The flow is three commands at most:
+
+1. Paste your list to `/spectastic.triage "couple things — typo on principles.html line 42, broken anchor in CLAUDE.md, tighten budget gauge spacing"`. One card per item, classified inline, all appended to `inbox.html`.
+2. `/spectastic.implement` with no argument drains the oldest `just-do` card from the inbox first, then falls back to the active spec's `tasks.html`.
+3. Loop step 2 until the inbox is drained or you switch back to feature work.
+
+Cards stay in the inbox after completion (`data-status="done"`, strike-through + DONE pill) so the history is visible without cluttering the active list. This complements the formal lifecycle; it doesn't replace it.
 
 ### `/spectastic.triage` and the triage card
 

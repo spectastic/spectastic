@@ -53,10 +53,21 @@ Seven slash commands. Don't add more without a good reason — OpenSpec's small 
 - `/spectastic.spec` — feature spec; carries the smallest-demoable prompt + INVEST self-check
 - `/spectastic.plan` — implementation plan; refuses to run while blockers exist
 - `/spectastic.tasks` — task breakdown
-- `/spectastic.implement` — implement the next unchecked task; tick the checkbox; loop to drain
+- `/spectastic.implement` — implement the next unchecked task or `just-do` inbox card; mark complete; loop to drain
 - `/spectastic.propose` — change proposal with typed `<spec-delta op="…">`
 - `/spectastic.apply` — apply approved proposal (moves to changes/archive/ as a side effect)
-- `/spectastic.triage` — single-card defect triage
+- `/spectastic.triage` — single-defect classification *or* list-intake mode (paste a list; one card per item; appends to `inbox.html`)
+
+## The small-batch loop
+
+`inbox.html` at project root is the entry point for "I've got a few small things." Two new `<spec-triage>` `layer=` values handle routing:
+
+- `just-do` — implement immediately, no proposal cycle. One file, no contract change, revert-safe.
+- `defer` — back-burner with a `defer-to=` pointing at a sibling spec ID, `TBD-<topic>`, or `never`.
+
+Flow: paste list → `/spectastic.triage` writes classified cards to `inbox.html` → `/spectastic.implement` drains the `just-do` queue. Cards stay in the inbox after completion (`data-status="done"` adds a strike-through and DONE pill) so the history is visible.
+
+The lifecycle's heavy ceremony is still there for items that genuinely need it — `spec`, `plan`, `propose`, `apply`. The small-batch loop is the complement, not the replacement.
 
 ## Sizing discipline (implemented)
 
