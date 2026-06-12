@@ -23,16 +23,20 @@ A directory you copy into your project:
 ```
 spectastic/
 ├── index.html                    landing page (this design language, applied)
+├── constitution.html             project's five non-negotiable principles (v1.0.0)
 ├── assets/
 │   ├── spec.css                  ~25 KB design system (calm cream palette, serif+sans+mono trio)
 │   └── spec.js                   ~5 KB progressive enhancement
 ├── templates/
-│   ├── constitution.html         project principles
-│   ├── spec.html                 feature specification
-│   ├── plan.html                 implementation plan
-│   └── tasks.html                ordered task breakdown
+│   ├── constitution.html         project principles scaffold
+│   ├── spec.html                 feature specification scaffold
+│   ├── plan.html                 implementation plan scaffold
+│   ├── tasks.html                ordered task breakdown scaffold
+│   └── proposal.html             change-proposal scaffold
 ├── examples/
-│   └── spectastic-spec.html      worked example — the spec for spectastic itself
+│   ├── spectastic-spec.html      worked example — the spec for spectastic itself
+│   ├── triage-log.html           worked example — debug triage log
+│   └── changes/archive/          archived change proposals against the worked spec
 ├── commands/
 │   ├── spectastic.constitution.md
 │   ├── spectastic.specify.md
