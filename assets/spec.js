@@ -61,7 +61,7 @@
         const text = document.createElement('a');
         text.href = '#' + r.id;
         const firstP = r.querySelector('p');
-        text.textContent = firstP ? firstP.textContent.trim().slice(0, 140) : r.textContent.trim().slice(0, 140);
+        text.textContent = (firstP ? firstP.textContent : r.textContent).trim().replace(/\s+/g, ' ');
         li.append(id, pri, text);
         ol.appendChild(li);
       });
