@@ -4,7 +4,7 @@ Project-local context for Claude Code. Notes that should *not* appear in shippin
 
 ## What spectastic is
 
-Single-file HTML spec tooling. Mirrors spec-kit's lifecycle (constitution → spec → plan → tasks) and adds proposal-driven evolution (propose → archive) plus single-card triage. Every artifact is a self-contained `.html` file that opens in a browser; the design system lives in `assets/spec.css` and `assets/spec.js`.
+Single-file HTML spec tooling. Lifecycle: principles → spec → plan → tasks → implement → propose → apply → triage. Every artifact is a self-contained `.html` file that opens in a browser; the design system lives in `assets/spec.css` and `assets/spec.js`.
 
 ## Voice and copy
 
@@ -49,7 +49,7 @@ When evaluating any future design influence, capture the *principle* version her
 
 Seven slash commands. Don't add more without a good reason — OpenSpec's small command surface is one of its wins worth preserving.
 
-- `/spectastic.constitution` — non-negotiable principles
+- `/spectastic.principles` — non-negotiable principles
 - `/spectastic.specify` — feature spec; carries the smallest-demoable prompt + INVEST self-check
 - `/spectastic.plan` — implementation plan; refuses to run while blockers exist
 - `/spectastic.tasks` — task breakdown

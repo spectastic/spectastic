@@ -23,11 +23,11 @@ User input (from `$ARGUMENTS`): a Spec ID such as `001-auth-service`, or empty (
    
    If any of these exist, **stop immediately** and report the blockers as a numbered list with file location. The user must resolve them before you plan — guessing past unresolved questions causes the spec inflation that small-batches discipline is meant to prevent.
 
-3. **Locate the constitution** at `./constitution.html` (optional — skip if absent). You will validate against its principles in §1 of the plan when it exists.
+3. **Locate the principles** at `./principles.html` (optional — skip if absent). You will validate against its principles in §1 of the plan when it exists.
 
 4. **Copy** `templates/plan.html` to `specs/<spec-id>/plan.html`.
 
-4. **Run the Constitution check**. Walk every principle. For each, mark `OK`, `EXCEPTION`, or `VIOLATION`. An exception requires a justification logged in §8 Complexity tracking. A violation requires the user either to revise the plan or amend the constitution — stop and ask.
+4. **Run the Principles check**. Walk every principle. For each, mark `OK`, `EXCEPTION`, or `VIOLATION`. An exception requires a justification logged in §8 Complexity tracking. A violation requires the user either to revise the plan or amend the principles — stop and ask.
 
 5. **Interview** the user (skip what's obvious from the spec or the surrounding codebase):
    - Languages, frameworks, versions
@@ -48,7 +48,7 @@ User input (from `$ARGUMENTS`): a Spec ID such as `001-auth-service`, or empty (
    - Alternatives must include a scored matrix with one row marked `data-winner`. The winner must be the one actually chosen.
    - Do not duplicate the spec. Link to its requirement IDs (`<a href="./spec.html#FR-001">FR-001</a>`) rather than restating them.
 
-7. **Validate**. Re-walk Constitution check. Now that the plan is written, does any decision violate a principle you marked OK earlier? If yes, fix the decision or escalate.
+7. **Validate**. Re-walk Principles check. Now that the plan is written, does any decision violate a principle you marked OK earlier? If yes, fix the decision or escalate.
 
 ## Output style
 
@@ -58,4 +58,4 @@ User input (from `$ARGUMENTS`): a Spec ID such as `001-auth-service`, or empty (
 
 ## After writing
 
-Report the path, the constitution version checked against, and propose `/spectastic.tasks` to derive the work list.
+Report the path, the principles version checked against, and propose `/spectastic.tasks` to derive the work list.

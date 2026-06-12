@@ -1,5 +1,5 @@
 ---
-description: Triage a defect against an existing spec/plan/constitution and append a single triage card to the spec's triage log.
+description: Triage a defect against an existing spec/plan/principles and append a single triage card to the spec's triage log.
 argument-hint: <short failure description, or paste the error / stack>
 ---
 
@@ -21,7 +21,7 @@ User input (from `$ARGUMENTS`): a short failure description, an error message, a
 
 2. **Locate the triage log.** Either `specs/<spec-id>/triage-log.html` exists, or copy `examples/triage-log.html` to create one (strip the demo cards; keep header, TL;DR, protocol section, change log).
 
-3. **Load context.** Read constitution, spec, plan, related specs that share a contract, and only the implementation files implicated by the failure. State explicitly what you read; if you skipped a file you should have read, say so.
+3. **Load context.** Read principles, spec, plan, related specs that share a contract, and only the implementation files implicated by the failure. State explicitly what you read; if you skipped a file you should have read, say so.
 
 4. **Reproduce and characterise.** Capture *Expected*, *Actual*, and one-sentence *Diagnosis* (cause, not symptom).
 
@@ -32,7 +32,7 @@ User input (from `$ARGUMENTS`): a short failure description, an error message, a
    - `plan` — spec is correct, technical decision violates a constraint or NFR.
    - `implementation` — spec and plan correct, code drifted.
    - `cross-spec` — two specs disagree on a shared contract.
-   - `constitution` — a project-wide invariant is missing or being violated.
+   - `principles` — a project-wide invariant is missing or being violated.
    - `platform` — defect is upstream of every API the project owns; reproduces with vendor's own tools.
 
 7. **Write the card.** Append a `<spec-triage>` block inside the `<spec-triage-log>` element using this shape:
@@ -64,15 +64,15 @@ User input (from `$ARGUMENTS`): a short failure description, an error message, a
      </spec-diff>
 
      <details>
-       <summary>Deep dive — [none required | cascade required | constitutional]</summary>
-       <!-- Fill only if at least one of: cross-spec, constitutional, scope-deferred, hotfix-now. -->
+       <summary>Deep dive — [none required | cascade required | principles]</summary>
+       <!-- Fill only if at least one of: cross-spec, principles, scope-deferred, hotfix-now. -->
      </details>
    </spec-triage>
    ```
 
 8. **Fill the deep-dive only if at least one trigger fires:**
    - **Cross-spec contract touched.** Name the shared contract and the other spec.
-   - **Constitutional invariant implicated.** Propose the principle and what would cascade.
+   - **Principles invariant implicated.** Propose the principle and what would cascade.
    - **Scope-deferred functionality exposed.** Mark as a separate scope question; do **not** silently promote.
    - **Hotfix-before-amendment sequence required.** State the hotfix and the queued upstream change.
    

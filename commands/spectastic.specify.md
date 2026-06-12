@@ -43,7 +43,7 @@ User input (from `$ARGUMENTS`): a feature name or one-line description.
    - If you would write `[NEEDS CLARIFICATION: …]`, do — leave it in place as a `<spec-question>` admonition; do not invent answers.
    - Success criteria are outcomes, not implementations. "Users complete sign-up in under 90 seconds at the 80th percentile" — not "we use a faster auth library".
 
-7. **Validate** against the constitution at `./constitution.html` (if present — constitution is optional). If any principle would reject this spec, flag it in a `<spec-warning>` and either revise or ask the user to amend the constitution.
+7. **Validate** against the principles at `./principles.html` (if present — principles are optional). If any principle would reject this spec, flag it in a `<spec-warning>` and either revise or ask the user to amend the principles.
 
 8. **Watch the budget gauge.** `<spec-budget>` renders live word/requirement/read-time counts as the file is saved. If your draft hits the amber band (70%+ of budget), stop and ask: *"Should some of this be its own slice?"* Use the **Out-of-scope (deferred)** section as the answer — move items there with `defer-to="TBD"` and consider scaffolding the sibling spec separately.
 

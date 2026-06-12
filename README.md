@@ -2,7 +2,7 @@
 
 > Single-file HTML specs. The HTML-native alternative to markdown-based spec tooling.
 
-Spectastic runs a structured spec lifecycle — `constitution → spec → plan → tasks → propose → archive → triage` — and emits a single self-contained `.html` file per artifact. The file uses a small vocabulary of semantic custom elements styled by a calm typographic system, so a spec reads like a quiet essay yet packs tables, diagrams, diffs, decision matrices, and progressive disclosure that markdown can't.
+Spectastic runs a structured spec lifecycle — `principles → spec → plan → tasks → propose → apply → triage` — and emits a single self-contained `.html` file per artifact. The file uses a small vocabulary of semantic custom elements styled by a calm typographic system, so a spec reads like a quiet essay yet packs tables, diagrams, diffs, decision matrices, and progressive disclosure that markdown can't.
 
 **See it first:** open [`index.html`](./index.html) in a browser for the landing page, then [`examples/spectastic-spec.html`](./examples/spectastic-spec.html) for a worked example — the spec for spectastic itself.
 
@@ -23,12 +23,12 @@ A directory you copy into your project:
 ```
 spectastic/
 ├── index.html                    landing page (this design language, applied)
-├── constitution.html             project's five non-negotiable principles (v1.0.0)
+├── principles.html               project's five non-negotiable principles (v1.0.0)
 ├── assets/
 │   ├── spec.css                  ~25 KB design system (calm cream palette, serif+sans+mono trio)
 │   └── spec.js                   ~5 KB progressive enhancement
 ├── templates/
-│   ├── constitution.html         project principles scaffold
+│   ├── principles.html           project principles scaffold
 │   ├── spec.html                 feature specification scaffold
 │   ├── plan.html                 implementation plan scaffold
 │   ├── tasks.html                ordered task breakdown scaffold
@@ -38,7 +38,7 @@ spectastic/
 │   ├── triage-log.html           worked example — debug triage log
 │   └── changes/archive/          archived change proposals against the worked spec
 ├── commands/
-│   ├── spectastic.constitution.md
+│   ├── spectastic.principles.md
 │   ├── spectastic.specify.md
 │   ├── spectastic.plan.md
 │   ├── spectastic.tasks.md
@@ -56,7 +56,7 @@ Seven Claude Code slash commands. Four cover the core spec lifecycle, two cover 
 
 | Phase | Command | Output |
 | --- | --- | --- |
-| 1. Establish principles     | `/spectastic.constitution <project name>` | `./constitution.html` |
+| 1. Establish principles     | `/spectastic.principles <project name>`   | `./principles.html` |
 | 2. Specify a feature        | `/spectastic.specify <feature>`            | `specs/<id>/spec.html` |
 | 3. Plan the build           | `/spectastic.plan [spec-id]`                | `specs/<id>/plan.html` |
 | 4. Derive tasks             | `/spectastic.tasks [spec-id]`               | `specs/<id>/tasks.html` |
