@@ -94,4 +94,4 @@ Report: the proposal path, the count and breakdown of deltas (e.g. "2 added, 1 m
 1 removed"), and the next step — typically the user opens the file in a browser to review
 before sharing.
 
-Suggest `/spectastic.archive <date>-<slug>` as the follow-up when the proposal is approved.
+Suggest `/spectastic.apply <date>-<slug>` as the follow-up when the proposal is approved.

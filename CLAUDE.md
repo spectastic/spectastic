@@ -54,7 +54,7 @@ Seven slash commands. Don't add more without a good reason — OpenSpec's small 
 - `/spectastic.plan` — implementation plan; refuses to run while blockers exist
 - `/spectastic.tasks` — task breakdown
 - `/spectastic.propose` — change proposal with typed `<spec-delta op="…">`
-- `/spectastic.archive` — apply approved proposal
+- `/spectastic.apply` — apply approved proposal (moves to changes/archive/ as a side effect)
 - `/spectastic.triage` — single-card defect triage
 
 ## Sizing discipline (implemented)

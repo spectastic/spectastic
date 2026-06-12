@@ -3,7 +3,7 @@ description: Apply an approved change proposal — fold deltas into the live spe
 argument-hint: [<date>-<slug>, defaults to most recent approved proposal]
 ---
 
-# /spectastic.archive
+# /spectastic.apply
 
 You are applying an **approved change proposal** to the live spec it targets. Output is
 threefold:
