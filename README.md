@@ -74,7 +74,7 @@ The format makes three load-bearing choices:
 2. **Typed `op` attribute** rather than hash-counted markdown headers. The four ops (`added`, `modified`, `removed`, `renamed`) are machine-readable; mis-typed ops fail loudly with a visible `MISSING OP` label.
 3. **Inline rendered preview.** ADD and MODIFY deltas embed the post-state `<spec-requirement>` exactly as it'll appear when archived. Reviewers see what they're approving without running `git diff`.
 
-See [`examples/proposal.html`](./examples/proposal.html) for a worked example exercising all four delta ops.
+See [`examples/changes/archive/2026-06-12-add-change-proposal/proposal.html`](./examples/changes/archive/2026-06-12-add-change-proposal/proposal.html) for a worked, archived proposal that exercised all four delta ops — applied verbatim against [`examples/spectastic-spec.html`](./examples/spectastic-spec.html).
 
 ### Keeping specs small — INVEST + DORA small-batches
 
