@@ -165,3 +165,27 @@ def test_init_atomic_no_partial_state(project_dir):
     assert result.returncode == 0
     tmps = list(project_dir.rglob("*.tmp"))
     assert tmps == [], f"tmp files leaked: {tmps}"
+
+
+def test_init_force_skips_prompt(project_dir):
+    target = _seed_conflict(project_dir)
+    result = run_cli(["init", "--force"], cwd=project_dir)
+    assert result.returncode == 0
+    assert "Overwrite?" not in result.stdout
+    assert target.read_text() != "STALE\n"
+
+
+def test_init_force_overwrites_all_conflicts(project_dir):
+    t1 = _seed_conflict(project_dir, ".claude/commands/spectastic.principles.md", "A\n")
+    t2 = _seed_conflict(project_dir, ".claude/commands/spectastic.spec.md", "B\n")
+    result = run_cli(["init", "--force"], cwd=project_dir)
+    assert result.returncode == 0
+    assert t1.read_text() != "A\n"
+    assert t2.read_text() != "B\n"
+
+
+def test_init_no_tty_no_force_refuses_exit_2(project_dir):
+    _seed_conflict(project_dir)
+    result = run_cli(["init"], cwd=project_dir)
+    assert result.returncode == 2
+    assert "--force" in result.stderr
