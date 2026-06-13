@@ -79,11 +79,35 @@ User input (from `$ARGUMENTS`): a change name or one-line description ("add OAut
    - Status pill defaults to `proposed`. The user updates it to `under-review` when sharing,
      `approved` when accepted, `applied` after archive, `withdrawn` if abandoned.
 
-8. **Budget-aware splitting nudge.** Before finalising the proposal, count the deltas. If the proposal contains **more than ~5 deltas**, or touches deltas across **more than 2 topic prefixes** (e.g. `REQ-AUTH-*` and `REQ-RENDER-*`), stop and ask the user: *"Would these read better as two or three smaller proposals?"* The cost of a small proposal is one extra archive call; the cost of an oversize proposal is review fatigue and merge ambiguity. The default answer is "yes, split" unless the deltas truly share a single intent.
+8. **Adversarial risk pass.** Before the splitting nudge runs, decide whether the proposal needs an adversarial risk pass per `REQ-CHANGE-004` of the meta-spec.
 
-9. **Check for sibling proposals.** Before emitting, scan `specs/<spec-id>/changes/` for other proposal folders whose deltas target any of the same IDs as this one. If found, report them and ask the user how to sequence — concurrent proposals on the same target are the most common archive-time conflict.
+   **Heuristic — run the pass if any of:**
+   - The proposal touches a `priority="must"` requirement (target ID resolves to `must` in the live spec, OR an ADD/MODIFY post-state declares `priority="must"`).
+   - The proposal has any `op="removed"` delta.
+   - The proposal touches **two or more** distinct topic prefixes (e.g. `REQ-AUTH-*` and `REQ-LIFECYCLE-*`).
 
-10. **Update the proposal's changelog** with today's date and one-line summary of the change
+   The splitting-nudge at step 9 catches multi-delta scope; **do not** stack `>1 delta` on top of this heuristic — it would fire on nearly every proposal and train `--no-adversarial` muscle memory.
+
+   **Flag overrides:** `--no-adversarial` skips even when the heuristic fires; `--adversarial` runs even when it doesn't.
+
+   **Spawn the critic Agent** with these inputs: the drafted proposal HTML, the live spec, `./principles.html`, and (if known) the originating inbox card path. Use this prompt verbatim:
+
+   > Identify exactly three risks in this proposal:
+   > 1. The single change most likely to be regretted in 30 days. Cite the specific `<spec-delta>` target or quote the phrase being objected to.
+   > 2. The single requirement in the live spec this proposal most likely contradicts. Cite the REQ ID.
+   > 3. The single concern about the proposal's scope — too broad, too narrow, or wrong topic group. Cite the `§Scope` item.
+   >
+   > Empty findings are forbidden. If no risk passes the "would I regret this in 30 days?" test for any of the three, return `<spec-risk status="no-value-found">` with a one-sentence justification. Three `no-value-found` in a row escalates to the user before archive.
+
+   **Embed the findings** in the proposal's §5 Risk register as one `<spec-risk target="…" status="identified">` per finding. Every `<spec-risk>` MUST carry a `target=` (delta ID, REQ ID, or `§<n>` anchor); missing renders the visible label `MISSING TARGET`.
+
+   **Author response discipline:** the propose-session LLM MAY draft an initial response into `<div class="response">` per risk, BUT the LLM MUST leave `status="identified"`. Status transitions — to `accepted`, `mitigated`, or `rejected` — are the user's commitment, not the LLM's. The user-authored status field is the gate; LLM drafts are starting points.
+
+9. **Budget-aware splitting nudge.** Before finalising the proposal, count the deltas. If the proposal contains **more than ~5 deltas**, or touches deltas across **more than 2 topic prefixes** (e.g. `REQ-AUTH-*` and `REQ-RENDER-*`), stop and ask the user: *"Would these read better as two or three smaller proposals?"* The cost of a small proposal is one extra archive call; the cost of an oversize proposal is review fatigue and merge ambiguity. The default answer is "yes, split" unless the deltas truly share a single intent.
+
+10. **Check for sibling proposals.** Before emitting, scan `specs/<spec-id>/changes/` for other proposal folders whose deltas target any of the same IDs as this one. If found, report them and ask the user how to sequence — concurrent proposals on the same target are the most common archive-time conflict.
+
+11. **Update the proposal's changelog** with today's date and one-line summary of the change
    intent.
 
 ## Output style
