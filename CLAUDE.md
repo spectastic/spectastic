@@ -56,8 +56,8 @@ Eight slash commands. Don't add more without a good reason — OpenSpec's small 
 - `/spectastic.tasks` — task breakdown
 - `/spectastic.implement` — implement the next unchecked task or `just-do` inbox card; mark complete; loop to drain
 - `/spectastic.propose` — change proposal with typed `<spec-delta op="…">`; runs an adversarial risk pass on non-trivial proposals (must-tier touched, removed op, or ≥2 topic prefixes) — three findings land as `<spec-risk>` blocks under §5 Risk register; opt-out `--no-adversarial`, opt-in `--adversarial`
-- `/spectastic.apply` — apply approved proposal (moves to changes/archive/ as a side effect); refuses if any `<spec-risk status="identified">` remains
-- `/spectastic.triage` — single-defect classification *or* list-intake mode (paste a list; one card per item; appends to `inbox.html`)
+- `/spectastic.apply` — apply approved proposal (moves to changes/archive/ as a side effect); refuses if any `<spec-risk status="identified">` remains. Withdraw mode `--withdraw <YYYY-MM-DD>-<slug> --reason="…"` rejects an authored proposal (moves to changes/withdrawn/, parallel to archive/, with a "Considered, withdrew" entry on the live spec changelog)
+- `/spectastic.triage` — single-defect classification *or* list-intake mode (paste a list; one card per item; appends to `inbox.html`); inbox cards MAY carry `data-status="rejected"` for the pre-propose rejection path
 
 ## Interview discipline in commands
 
