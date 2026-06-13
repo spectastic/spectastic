@@ -126,7 +126,7 @@ The structured lifecycle is overkill for "I have three small unrelated things in
 The flow is three commands at most:
 
 1. Paste your list to `/spectastic.triage "couple things — typo on principles.html line 42, broken anchor in CLAUDE.md, tighten budget gauge spacing"`. One card per item, classified inline, all appended to `inbox.html`.
-2. `/spectastic.implement` with no argument drains the oldest `just-do` card from the inbox first, then falls back to the active spec's `tasks.html`.
+2. `/spectastic.implement` with no argument drains the oldest `just-do` card from the inbox first, then falls back to the active spec's `tasks.html`. Pass `--all`, `--phase=<id>` (`setup` / `foundation` / `us1` / `us2` / `us3` / `polish`), or `--parallel` to drain in a single invocation instead of looping — per `REQ-TOOL-003`.
 3. Loop step 2 until the inbox is drained or you switch back to feature work.
 
 Cards stay in the inbox after completion (`data-status="done"`, strike-through + DONE pill) so the history is visible without cluttering the active list. This complements the formal lifecycle; it doesn't replace it.

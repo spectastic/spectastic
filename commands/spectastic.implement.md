@@ -21,6 +21,16 @@ User input (from `$ARGUMENTS`), in order of precedence:
    a. Project-root `inbox.html`: pick the oldest `<spec-triage layer="just-do">` card *without* `data-status="done"`.
    b. If no `just-do` cards remain, fall back to the most recently modified `tasks.html` with unchecked work and pick the first unchecked task.
 
+### Drain modes (opt-in)
+
+Per `REQ-TOOL-003` of the meta-spec, three flags extend an invocation into a drain. Default scope is the most-recent `tasks.html`; pass a spec ID before the flag to override (`/spectastic.implement 001-cli --all`).
+
+- `--all` — drain every unchecked task in the resolved scope, in document order. Pause on first failure.
+- `--phase=<id>` — drain every unchecked task inside the named phase only. `<id>` is the short form: one of `setup`, `foundation`, `us1`, `us2`, `us3`, `polish`. Resolution prefixes the value with `phase-` and matches the `<section id="phase-…">` in the target `tasks.html` (e.g. `--phase=us1` → `<section id="phase-us1">`).
+- `--parallel` — within the resolved scope (one task / phase / all), spawn one `Agent` tool call per `[P]`-marked task; run non-`[P]` tasks in the main session. Combinable with `--all` or `--phase`. On its own, restricted to the next unchecked task — there is nothing to fan out.
+
+Flags can appear in any order in `$ARGUMENTS`. A non-flag token (`T-NNN`, `I-NNN`, or a spec ID) selects the scope; flags refine how it's drained. `T-NNN` and `I-NNN` are single-task identifiers and ignore drain flags — drain only makes sense for a multi-task scope.
+
 ## Procedure
 
 1. **Locate the target.** Two sources, in order:
@@ -62,11 +72,20 @@ User input (from `$ARGUMENTS`), in order of precedence:
 
 ## Discipline (non-negotiable)
 
-- **One task per invocation.** If the user wants to drain a phase, they invoke the command in a loop; you do not silently chain.
+- **One task per invocation by default.** Drain modes (`--all`, `--phase=<id>`, `--parallel`) are explicit opt-ins; they relax this default only when the user types the flag. In drain mode you still do not silently chain past failure — the first failing task pauses the drain and requires explicit re-invocation. Report progress per task (one line per ticked checkbox) so the user sees the work as it lands.
 - **No scope creep.** A task that names `src/auth/session.ts` does not modify `src/auth/middleware.ts`. If you discover a needed change elsewhere, surface it as a follow-up task suggestion; do not silently make it.
 - **Tick once.** If the task is partially done at end of invocation, do not tick the checkbox. Report what's done and what's left.
 - **No silent test edits.** If you have to modify a test to make it pass, that's a red flag — the test reveals a real failure or the task is wrong. Stop and report.
 - **Verify the spec wasn't lying.** If during implementation you discover the spec is inconsistent with the task (e.g. the task references a behavior the requirement doesn't actually capture), stop and recommend a `/spectastic.propose` to fix the spec — do not "fix" it inline.
+
+## Parallel strategy
+
+`--parallel` partitions the resolved scope by the `[P]` marker on each task. Tasks marked `[P]` are independent of every other in-flight task; tasks without `[P]` have at least one ordering dependency.
+
+- **`[P]` tasks** fork to one `Agent` tool call each. Launch every agent in a phase together — invoke multiple `Agent` tool calls in a single message so they run concurrently. Each agent receives the spec, plan, the task's description, and any source files the task names. The agent reports completion as a structured summary.
+- **Non-`[P]` tasks** run in the main session, sequentially, in document order. They block on each other but not on in-flight `[P]` agents.
+
+The main session collects each agent's result and ticks the task's checkbox only after the agent reports success. A failed agent pauses the drain at that task — no fan-out continues past the failure, and the user re-invokes after fixing.
 
 ## Output style
 
