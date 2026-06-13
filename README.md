@@ -198,6 +198,34 @@ chmod +x scripts/spectastic
 ./scripts/spectastic init     # bootstrap the lifecycle into the current directory
 ```
 
+To put it on your `PATH` instead of running from a clone, copy the directory anywhere and symlink the executable:
+
+```sh
+git clone https://github.com/briancorbin/spectastic ~/.local/share/spectastic
+chmod +x ~/.local/share/spectastic/scripts/spectastic
+ln -s ~/.local/share/spectastic/scripts/spectastic ~/.local/bin/spectastic
+```
+
+### Usage
+
+`spectastic init` runs in two passes: scan for conflicts, then write atomically. In an empty directory:
+
+```text
+$ cd my-new-project && spectastic init
+spectastic init — summary
+  wrote         16
+  overwrote      0
+  skipped        0
+
+Next step:
+  Open the project in Claude Code and run /spectastic.principles
+  to author your project's principles.html.
+```
+
+When existing files conflict, you get a per-file `[y/N/a/s]` prompt (default = `N`, `a` = overwrite all remaining, `s` = skip all remaining). Pass `--force` to overwrite every conflict without prompting. In a non-TTY environment (CI, piped input) with conflicts, the CLI refuses with exit code 2 and a message naming `--force` rather than hanging on a prompt that can never be answered.
+
+### Development
+
 For development on the CLI itself (running the test suite at `scripts/test_spectastic.py`), the only dev-only dependency is `pytest`:
 
 ```sh
