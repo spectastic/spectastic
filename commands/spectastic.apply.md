@@ -29,6 +29,7 @@ Before applying, verify all of these. **Stop and report** if any check fails:
 - For `op="modified | removed | renamed"`: the `target` ID **does** exist in the live spec.
 - For `op="removed"`: both `.reason-block` and `.migration-block` contain substantive content.
 - No two deltas in this proposal target the same ID.
+- The proposal's `<spec-risk-log>` (if present, per `REQ-CHANGE-004`) contains no `<spec-risk>` with `status="identified"`. If any exist, refuse and list them by `target=` value. The user must transition each to `accepted`, `mitigated`, or `rejected` in the proposal artifact before retrying. `no-value-found` is fine — the critic agent self-reported nothing worth gating on.
 
 ## Procedure
 
@@ -78,6 +79,7 @@ Before applying, verify all of these. **Stop and report** if any check fails:
   proposal "as much as you can."
 - **Archive is preserved verbatim.** The folder move is the only mutation to the change
   artifact (and an in-archive `<spec-status>` flip from `approved` → `applied`).
+- **Carry the risk register verbatim.** The `<spec-risk-log>` section archives as-is; never rewrite responses or statuses during apply. The author's status calls are the artifact's record of how each risk was resolved.
 - **Cross-spec drift is out of scope here.** If a change touches a requirement that another
   spec references, flag it as an open question for the user rather than silently propagating.
 
