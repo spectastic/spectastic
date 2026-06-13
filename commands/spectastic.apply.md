@@ -15,10 +15,15 @@ threefold:
 
 ## Inputs
 
-User input (from `$ARGUMENTS`): a change directory name (`<date>-<slug>`), or empty (defaults
-to the most recently modified `changes/<…>/proposal.html` with status `approved`).
+`/spectastic.apply` runs in one of two modes:
+
+**Apply mode (default).** User input is `<date>-<slug>` or empty (defaults to the most recently modified `changes/<…>/proposal.html` with status `approved`). Folds the proposal's deltas into the live spec; folder moves to `examples/changes/archive/<slug>/`.
+
+**Withdraw mode.** `--withdraw <slug> --reason="<one-line>"`. Both `<slug>` and `--reason="…"` are required. The proposal is rejected post-authorship: status flips to `withdrawn`, folder moves to `examples/changes/withdrawn/<slug>/` (parallel to `archive/`), and the live spec's `<spec-changelog>` records "Considered `<slug>`, withdrew on `<date>` because `<reason>`." Withdraw is terminal — to revive a withdrawn proposal, author a new one.
 
 ## Preconditions
+
+### Apply mode
 
 Before applying, verify all of these. **Stop and report** if any check fails:
 
@@ -30,6 +35,14 @@ Before applying, verify all of these. **Stop and report** if any check fails:
 - For `op="removed"`: both `.reason-block` and `.migration-block` contain substantive content.
 - No two deltas in this proposal target the same ID.
 - The proposal's `<spec-risk-log>` (if present, per `REQ-CHANGE-004`) contains no `<spec-risk>` with `status="identified"`. If any exist, refuse and list them by `target=` value. The user must transition each to `accepted`, `mitigated`, or `rejected` in the proposal artifact before retrying. `no-value-found` is fine — the critic agent self-reported nothing worth gating on.
+
+### Withdraw mode
+
+Before withdrawing, verify all of these. **Stop and report** if any check fails:
+
+- The proposal exists at `examples/changes/<slug>/proposal.html` (i.e. is not already archived under `archive/` or withdrawn under `withdrawn/`).
+- The proposal's `<spec-status>` is one of `proposed | under-review | approved` — **not** `applied` and **not** already `withdrawn`. Withdraw is one-way.
+- `--reason="<one-line>"` is non-empty. Empty rejection reason is not substantive; refuse.
 
 ## Procedure
 
@@ -70,6 +83,32 @@ Before applying, verify all of these. **Stop and report** if any check fails:
 
 7. **Update the proposal's status** in the archived copy to `applied`, and add a final entry
    to the proposal's own `<spec-changelog>` recording the apply date.
+
+## Withdraw procedure
+
+When invoked with `--withdraw <slug> --reason="<one-line>"`:
+
+1. **Locate** the proposal at `examples/changes/<slug>/proposal.html`. Refuse if it already lives under `archive/` or `withdrawn/`.
+
+2. **Verify Withdraw-mode preconditions** above. Report any failure; do not partially withdraw.
+
+3. **Flip the proposal status** in place from `proposed | under-review | approved` to `withdrawn`. Both the `<spec-status>` pill and the `<spec-change status="…">` wrapper attribute must agree.
+
+4. **Move the change folder** from `examples/changes/<slug>/` to `examples/changes/withdrawn/<slug>/`. Atomic move; do not copy-then-delete. Create `examples/changes/withdrawn/` if it does not yet exist.
+
+5. **Rewrite the moved proposal's relative paths** for the new depth (same depth as `archive/`, so `../assets/` → `../../../../assets/`, sibling spec link → `../../../spectastic-spec.html`, etc.). The path-rewrite shape mirrors what Apply mode does on archive.
+
+6. **Append a `<spec-changelog>` entry** to the live spec it targeted:
+
+   ```html
+   <li><time datetime="YYYY-MM-DD">DD Mon YYYY</time>
+       <span>Considered <a href="./changes/withdrawn/&lt;slug&gt;/proposal.html">&lt;slug&gt;</a>,
+       withdrew on &lt;DD Mon YYYY&gt; because &lt;reason&gt;.</span></li>
+   ```
+
+   This is the single index of "what was considered" so future-you can find rejected ideas via the live spec without walking `changes/withdrawn/`.
+
+7. **Append a `<spec-changelog>` entry** to the moved proposal itself recording the withdrawal date and the reason verbatim.
 
 ## Discipline
 

@@ -113,6 +113,16 @@ Detection heuristic: if the input contains explicit list markers (commas, semico
 
 10. **Append to the change log** at the bottom of the file: `<li><time datetime="YYYY-MM-DD">DD Mon YYYY</time><span>T-NNN added — [one-line summary].</span></li>`.
 
+## Rejection (Surface A — inbox cards)
+
+Per `REQ-CHANGE-005` of the meta-spec, an inbox card MAY be rejected in place by adding `data-status="rejected"` to the `<spec-triage>` element and a `<dt>Rejected because</dt><dd>…one-line reason…</dd>` row to the card's `<dl>`. This mirrors the `data-status="done"` convention used for completed just-do cards.
+
+- The card stays in `inbox.html` — rejection preserves history; it does not delete.
+- CSS renders a REJECTED pill (sand/grey) + strikethrough on the title + muted body, paralleling the DONE state visually but distinct in label.
+- Add a one-line entry to `inbox.html`'s `<spec-changelog>`: "`I-NNN` rejected — `<reason>`."
+
+This is the **pre-propose rejection path**. For the **post-propose** path (an authored proposal the author decides to withdraw), see `/spectastic.apply --withdraw <slug> --reason="…"` in `commands/spectastic.apply.md`.
+
 ## Discipline (non-negotiable)
 
 - **Fix at the highest layer that needed to change.** A code-only patch resurfaces on the next regen if the upstream gap is real.
