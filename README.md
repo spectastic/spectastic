@@ -173,6 +173,7 @@ Twelve-ish custom elements cover the spec shape. Tag name is schema.
 | `<spec-sidenote>` | Margin note for asides that would interrupt the reading flow. |
 | `<spec-newthought>` | Small-caps section opener. |
 | `<spec-triage>` / `<spec-triage-log>` | Single-card debug triage with Y-statement headline, layer-coloured accent, regen-test pill, and conditional deep-dive. |
+| `<spec-task id="T-NNN" parallel>` | Task entry in a `tasks.html` artifact. `id` is the stable `T-NNN`; boolean `parallel` renders the `[P]` pill via CSS; the inner `<input type="checkbox">` is the completion state, read by `:has(input:checked)` for the strike-through. Required per [`REQ-LIFECYCLE-003`](./examples/spectastic-spec.html#REQ-LIFECYCLE-003). |
 | `<spec-change>` | Change-proposal wrapper. Holds intent / scope / approach / deltas / tasks. Status pill flows the proposal lifecycle (`proposed → under-review → approved → applied → withdrawn`). |
 | `<spec-delta op="…" target="…">` | One change to one requirement. `op` is `added \| modified \| removed \| renamed`; `target` is the requirement ID. Missing/invalid `op` renders the visible label `MISSING OP`. ADD/MODIFY embed a post-state `<spec-requirement>` inline. |
 | `<spec-budget>` | Live size gauge in the header: words / requirements / read-time vs configurable budgets. Green ≤70%, amber 70–100%, red over. Surfaces small-batches discipline at authoring time. |

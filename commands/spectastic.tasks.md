@@ -30,10 +30,19 @@ User input (from `$ARGUMENTS`): a Spec ID such as `001-auth-service`, or empty (
    - **Phase 4 — Polish** (`T-900`+): docs, perf, observability, cleanup. Often `[P]`.
 
 4. **Task discipline**:
-   - One task = one **concrete file or directory**. Show the path inline (`src/auth/session.ts`).
-   - Mark `[P]` only when the task touches a distinct file and has no dependency on another in-flight task. Otherwise leave the parallelism marker blank (the template uses a `data-p="0"` dot).
-   - Task IDs are stable forever. Completed tasks are not deleted; their checkbox is ticked.
-   - Use `<input type="checkbox">` for the checkbox — it's editable in the browser via `contenteditable` is not needed; the checkbox state can be persisted if the user wires it up, but is decoration here.
+   - Each task is a `<spec-task>` element (per `REQ-LIFECYCLE-003` of the meta-spec) with `id="T-NNN"`, the boolean `parallel` attribute when applicable, and an inner `<input type="checkbox">` for completion state. **Never** use `<div class="task">` + class-spans — that form is a `REQ-AUTHOR-001` violation.
+   - One task = one **concrete file or directory**. Show the path inline using `<span class="path">src/auth/session.ts</span>`.
+   - Mark `parallel` only when the task touches a distinct file and has no dependency on another in-flight task. Omit the attribute otherwise — CSS hides the marker column when absent.
+   - Task IDs are stable forever. Completed tasks are not deleted; their inner checkbox gains `checked` and the row strikes through via `:has(input:checked)` in `assets/spec.css`.
+
+   Example task entry:
+
+   ```html
+   <spec-task id="T-001" parallel>
+     <input type="checkbox">
+     <div><strong>Implement session expiry middleware</strong> <span class="path">src/auth/session.ts</span></div>
+   </spec-task>
+   ```
 
 5. **Story → requirement traceability**. Every `FR-NNN` in the spec must be referenced by at least one task. Every `SC-NNN` must be measurable by at least one task's outcome. If a requirement has no task, flag it in a `<spec-warning>` rather than silently dropping it.
 
