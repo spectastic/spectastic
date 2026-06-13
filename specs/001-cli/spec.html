@@ -1,0 +1,278 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Spectastic CLI · spectastic init · Specification</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Specification · 001-cli</p>
+  <h1>Spectastic CLI — <code>spectastic init</code></h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    One command turns any directory into a spec-driven project.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>      <span><spec-status value="draft">Draft</spec-status></span>
+    <b>Spec ID</b>     <span>001-cli</span>
+    <b>Owner</b>       <span>Brian Corbin · brian@example.com</span>
+    <b>Reviewers</b>   <span>—</span>
+    <b>Created</b>     <span><time datetime="2026-06-12">12 Jun 2026</time></span>
+    <b>Principles</b>  <span><a href="../../principles.html">v1.0.0</a></span>
+    <b>Smallest demoable</b><span>Zero-arg <code>spectastic init</code> in an empty directory writes the lifecycle infra: <code>.claude/commands/</code>, <code>assets/</code>, <code>templates/</code>.</span>
+    <b>Read time</b>   <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-budget words="1500" reqs="20" minutes="12"></spec-budget>
+
+  <spec-tldr>
+    <p><strong><code>spectastic init</code></strong> is a Python 3 single-file CLI that
+    bootstraps any directory into a spectastic project. Zero arguments by default; writes
+    <code>.claude/commands/spectastic.*.md</code> (8 slash commands), copies
+    <code>assets/spec.css</code> and <code>assets/spec.js</code>, copies <code>templates/</code>
+    (5 scaffolds). Prompts before overwriting any existing file. Claude Code is the only
+    supported tool in v1; cross-tool installers are deferred to a future slice.</p>
+  </spec-tldr>
+
+  <dl class="invest">
+    <dt><span class="letter">I</span> Independent</dt> <dd>Depends only on the <a href="../../principles.html">principles</a>. No upstream feature specs.</dd>
+    <dt><span class="letter">N</span> Negotiable</dt>  <dd>Outcomes contract; the specific Python idiom (argparse vs click, etc.) belongs in the plan.</dd>
+    <dt><span class="letter">V</span> Valuable</dt>    <dd>Unlocks <a href="#SC-001">SC-001</a> — a new user goes from "I want to try spectastic" to running <code>/spectastic.principles</code> in under 5 minutes.</dd>
+    <dt><span class="letter">E</span> Estimable</dt>   <dd>Plan derivable; no open questions remain after the two-phase interview.</dd>
+    <dt><span class="letter">S</span> Small</dt>       <dd>Default 1,500-word budget. Single Python file (~300–500 lines projected).</dd>
+    <dt><span class="letter">T</span> Testable</dt>    <dd>Every requirement observable. Success criteria quantified.</dd>
+  </dl>
+
+  <spec-audience-map>
+    <dl>
+      <dt>Exec / PM</dt>   <dd>§<a href="#context">Context</a>, §<a href="#scenarios">User scenarios</a>, §<a href="#success">Success criteria</a>.</dd>
+      <dt>Reviewer</dt>    <dd>§<a href="#requirements">Requirements</a>, §<a href="#assumptions">Assumptions</a>, §<a href="#questions">Open questions</a>.</dd>
+      <dt>Implementer</dt> <dd>§<a href="#requirements">Requirements</a>, §<a href="#conformance">Conformance index</a>.</dd>
+    </dl>
+  </spec-audience-map>
+</header>
+
+
+<section id="context">
+<h2>1 · Context</h2>
+<p>Today, adopting spectastic means cloning the repo and copying directories — friction
+enough to lose marginal users. A one-command installer reduces adoption to a single
+gesture, in exchange for owning a Python entry point.</p>
+</section>
+
+
+<section id="scenarios">
+<h2>2 · User scenarios &amp; testing</h2>
+
+<h3>US1 · Bootstrap an empty directory <spec-pill>P1</spec-pill></h3>
+<p>As a <strong>developer adopting spectastic</strong>, I want to <strong>run
+<code>spectastic init</code> in an empty project directory</strong> so that
+<strong>the eight slash commands, the design system, and the templates appear without any
+copy-paste from the repository</strong>.</p>
+<p><em>Acceptance:</em> after <code>spectastic init</code> in an empty directory, the cwd
+contains <code>.claude/commands/spectastic.*.md</code> (8 files), <code>assets/spec.css</code>,
+<code>assets/spec.js</code>, and <code>templates/</code> with all five scaffolds. The exit
+code is 0. A one-paragraph "next step" message points the user at
+<code>/spectastic.principles</code>.</p>
+
+<h3>US2 · Bootstrap a directory with existing assets <spec-pill>P1</spec-pill></h3>
+<p>As a <strong>developer re-running init after a spectastic upgrade</strong>, I want to
+<strong>be prompted before any existing file is overwritten</strong> so that <strong>my
+hand-edits and project state never silently disappear</strong>.</p>
+<p><em>Acceptance:</em> when any target path already exists, the CLI lists all conflicting
+paths and prompts <code>[y/N/a(ll)/s(kip-all)]</code> per file. Default (no input) is
+<em>No</em>. A skipped file is not written; an overwritten file is. The summary report
+breaks out written / skipped / overwritten counts.</p>
+
+<h3>US3 · Force-overwrite all <spec-pill>P2</spec-pill></h3>
+<p>As an <strong>experienced spectastic user</strong>, I want to <strong>run
+<code>spectastic init --force</code></strong> so that <strong>conflicts are silently
+overwritten and the prompt is skipped</strong>.</p>
+<p><em>Acceptance:</em> with <code>--force</code>, no prompts. All target paths written
+unconditionally. Summary still reports the overwritten count.</p>
+
+<h3>US4 · Non-Claude environment <spec-pill>P3</spec-pill></h3>
+<p>As a <strong>non-Claude user</strong>, I want the next-step message to name
+<code>/spectastic.principles</code> as a Claude Code slash command, so I don't expect the
+infra to work in my editor. Folded into <a href="#FR-004">FR-004</a>.</p>
+
+<h3>Edge cases</h3>
+<ul>
+  <li>Read-only filesystem → exit non-zero; no partial state.</li>
+  <li>Python below minimum → exit with a message naming the minimum.</li>
+  <li>cwd is a symlink → resolve it; write to the resolved location.</li>
+  <li>cwd is a git working tree with staged changes → no special handling; user reviews via <code>git status</code>.</li>
+</ul>
+</section>
+
+
+<section id="requirements">
+<h2>3 · Requirements</h2>
+<p>Conformance keywords (<spec-rule>MUST</spec-rule>, <spec-rule level="should">SHOULD</spec-rule>,
+<spec-rule level="may">MAY</spec-rule>) follow <a href="https://datatracker.ietf.org/doc/html/rfc2119">RFC 2119</a>.</p>
+
+<h3>Behaviour</h3>
+
+<spec-requirement id="FR-001" priority="must">
+<p>Zero-argument <code>spectastic init</code> <spec-rule>MUST</spec-rule> write the lifecycle
+infrastructure to the current working directory: <code>.claude/commands/spectastic.*.md</code>
+(all eight slash commands), <code>assets/spec.css</code>, <code>assets/spec.js</code>, and
+<code>templates/</code> (the five scaffolds).</p>
+</spec-requirement>
+
+<spec-requirement id="FR-002" priority="must">
+<p>Before overwriting any existing file, init <spec-rule>MUST</spec-rule> list the conflicting
+paths and prompt the user with <code>[y/N/a(ll)/s(kip-all)]</code>. The default (empty input)
+<spec-rule>MUST</spec-rule> be <em>No</em>.</p>
+<details><summary>Rationale</summary><p>Hand-edits and project state must never silently
+disappear; safe-by-default is the only acceptable posture for a tool that operates on the
+user's filesystem.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-003" priority="may">
+<p>Init <spec-rule level="may">MAY</spec-rule> accept a <code>--force</code> flag that skips
+the conflict prompt and overwrites all conflicting paths.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-004" priority="should">
+<p>On completion, init <spec-rule level="should">SHOULD</spec-rule> print a summary listing
+the count of files written, skipped, and overwritten, plus a next-step suggestion naming
+<code>/spectastic.principles</code> as a Claude Code slash command.</p>
+</spec-requirement>
+
+<h3>Safety</h3>
+
+<spec-requirement id="FR-005" priority="must">
+<p>On any error during execution, init <spec-rule>MUST</spec-rule> exit non-zero and
+<spec-rule>MUST NOT</spec-rule> leave the cwd in a partially-written state. Writes
+<spec-rule>MUST</spec-rule> be all-or-nothing per file: either the file lands fully or it
+does not exist after exit.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-006" priority="must">
+<p>Init <spec-rule>MUST NOT</spec-rule> write outside the cwd. No global config writes, no
+home-directory writes, no parent-directory writes.</p>
+</spec-requirement>
+
+<h3>Non-functional</h3>
+
+<spec-requirement id="NFR-001" priority="must">
+<p>In an empty directory on a modern macOS or Linux machine, init <spec-rule>MUST</spec-rule>
+complete in under 2 seconds wall-clock (file IO dominates; no network calls).</p>
+</spec-requirement>
+
+<spec-requirement id="NFR-002" priority="must">
+<p>The CLI <spec-rule>MUST</spec-rule> run on Python 3.9 or later using standard library
+only — no third-party packages, no <code>pip install</code> step.</p>
+</spec-requirement>
+
+<spec-requirement id="NFR-003" priority="should">
+<p>The CLI binary <spec-rule level="should">SHOULD</spec-rule> ship as a single executable
+file at <code>scripts/spectastic</code> with a <code>#!/usr/bin/env python3</code> shebang
+and no external imports beyond the standard library.</p>
+</spec-requirement>
+
+<h3>Out of scope (deferred to other slices)</h3>
+<spec-out-of-scope>
+  <ul>
+    <li defer-to="TBD">Cross-tool installers for Cursor, Aider, GitHub Copilot. v1 is Claude-only; multi-tool support gets its own spec.</li>
+    <li defer-to="002-validate"><code>spectastic validate</code>. Same Python file; different subcommand; its own spec (002-validate).</li>
+    <li defer-to="TBD">A <code>spectastic doctor</code> diagnostics subcommand.</li>
+    <li defer-to="TBD">Self-update (<code>spectastic update</code>) and version-bumping policy across upstream changes.</li>
+    <li defer-to="TBD">Package-manager publication (homebrew tap, PyPI). v1 installs via <code>chmod +x</code> on a downloaded file.</li>
+    <li defer-to="TBD">Detection of the user's editor (auto-pick Claude vs Cursor vs Aider). Out for v1; user names the tool implicitly by what they install.</li>
+  </ul>
+</spec-out-of-scope>
+</section>
+
+
+<section id="data">
+<h2>4 · Data model</h2>
+<p>None. The CLI is stateless: it reads from a known asset layout in its package, writes to
+the cwd, and exits. No database, no config files, no per-user state.</p>
+</section>
+
+
+<section id="success">
+<h2>5 · Success criteria</h2>
+<p>Technology-agnostic, measurable outcomes. These are how we know it worked.</p>
+
+<spec-requirement id="SC-001" priority="must">
+<p>A new user <spec-rule>MUST</spec-rule> go from "I want to try this" to running
+<code>/spectastic.principles</code> in their own project in under 5 minutes wall-clock.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-002" priority="must">
+<p>Zero silent data losses <spec-rule>MUST</spec-rule> occur. Every overwrite
+<spec-rule>MUST</spec-rule> result from explicit user yes-or-force.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-003" priority="should">
+<p>Init <spec-rule level="should">SHOULD</spec-rule> complete in under 2 seconds for the
+empty-directory case at p95.</p>
+</spec-requirement>
+</section>
+
+
+<section id="assumptions">
+<h2>6 · Assumptions</h2>
+
+<spec-assumption>
+<p>Python 3.9+ is available (macOS ships 3.9+ since 12.3; modern Linux similarly). Windows
+is out of scope for v1.</p>
+</spec-assumption>
+
+<spec-assumption>
+<p>Distribution is by direct download (<code>curl … && chmod +x</code>); no package manager
+in v1.</p>
+</spec-assumption>
+
+<spec-assumption>
+<p>The user runs Claude Code in the cwd. The CLI doesn't detect this; it writes
+<code>.claude/</code> unconditionally.</p>
+</spec-assumption>
+</section>
+
+
+<section id="questions">
+<h2>7 · Open questions</h2>
+<spec-questions>
+<ol>
+  <li>None. All anchored via the decision-phase interview before write-time.</li>
+</ol>
+</spec-questions>
+</section>
+
+
+<section id="conformance">
+<h2>8 · Conformance index</h2>
+<p>Auto-built from every <code>&lt;spec-requirement&gt;</code> in this document.</p>
+<spec-conformance></spec-conformance>
+</section>
+
+
+<section id="changelog">
+<h2>9 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-06-12">12 Jun 2026</time><span>Initial draft. Decisions anchored via <code>AskUserQuestion</code>: zero-arg smallest-demoable, prompt-per-conflict overwrite policy, commands+assets+templates bootstrap, US1/US2 = P1, US3 = P2, US4 = P3.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  001-cli · Spectastic CLI · authored 12 Jun 2026 ·
+  <a href="../../principles.html">principles</a> ·
+  <a href="../../examples/spectastic-spec.html">meta-spec</a> ·
+  <button data-theme-toggle style="background:none;border:none;color:var(--c-link);cursor:pointer;font:inherit;padding:0;border-bottom:1px solid currentColor;">toggle theme</button>
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>
