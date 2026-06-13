@@ -189,3 +189,43 @@ def test_init_no_tty_no_force_refuses_exit_2(project_dir):
     result = run_cli(["init"], cwd=project_dir)
     assert result.returncode == 2
     assert "--force" in result.stderr
+
+
+def test_perf_init_under_2s_empty_dir(tmp_path):
+    import time
+    times = []
+    for i in range(10):
+        d = tmp_path / f"run-{i}"
+        d.mkdir()
+        start = time.monotonic()
+        result = run_cli(["init"], cwd=d)
+        times.append(time.monotonic() - start)
+        assert result.returncode == 0
+    assert times[-1] < 2.0, f"slowest run took {times[-1]:.3f}s; times={times}"
+
+
+def test_no_writes_outside_cwd(tmp_path):
+    cwd = tmp_path / "project"
+    cwd.mkdir()
+    sibling = tmp_path / "sibling.txt"
+    sibling.write_text("untouched")
+    result = run_cli(["init"], cwd=cwd)
+    assert result.returncode == 0
+    assert sibling.read_text() == "untouched"
+    assert {p.name for p in tmp_path.iterdir()} == {"project", "sibling.txt"}
+
+
+def test_runtime_imports_stdlib_only():
+    import ast
+    if not hasattr(sys, "stdlib_module_names"):
+        pytest.skip("sys.stdlib_module_names requires Python 3.10+")
+    tree = ast.parse(CLI.read_text())
+    imports = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                imports.add(alias.name.split(".")[0])
+        elif isinstance(node, ast.ImportFrom) and node.module:
+            imports.add(node.module.split(".")[0])
+    non_stdlib = imports - set(sys.stdlib_module_names)
+    assert not non_stdlib, f"non-stdlib imports: {non_stdlib}"
