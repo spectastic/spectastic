@@ -50,6 +50,28 @@ def _scan_conflicts(targets, dest: Path):
     return new_files, conflicts
 
 
+def _prompt_decisions(conflicts):
+    blanket = None
+    for rel, src in conflicts:
+        if blanket is not None:
+            yield (rel, src, blanket)
+            continue
+        try:
+            answer = input(f"  {rel} exists. Overwrite? [y/N/a/s] (a=all, s=skip-all): ").strip().lower()
+        except EOFError:
+            answer = ""
+        if answer == "y":
+            yield (rel, src, "write")
+        elif answer == "a":
+            blanket = "write"
+            yield (rel, src, "write")
+        elif answer == "s":
+            blanket = "skip"
+            yield (rel, src, "skip")
+        else:
+            yield (rel, src, "skip")
+
+
 def _refuse_if_non_tty(force: bool, conflicts) -> bool:
     if force or not conflicts or sys.stdin.isatty():
         return False
@@ -105,12 +127,17 @@ def _cmd_init(args: argparse.Namespace) -> int:
     targets = list(_enumerate_targets(source))
     new_files, conflicts = _scan_conflicts(targets, dest)
 
-    written = []
+    written, overwritten, skipped = [], [], []
     for rel, src in new_files:
         _atomic_write(src, dest / rel)
         written.append(rel)
-    skipped = [rel for rel, _ in conflicts]
-    _report(written, [], skipped)
+    for rel, src, decision in _prompt_decisions(conflicts):
+        if decision == "write":
+            _atomic_write(src, dest / rel)
+            overwritten.append(rel)
+        else:
+            skipped.append(rel)
+    _report(written, overwritten, skipped)
     return 0
 
 

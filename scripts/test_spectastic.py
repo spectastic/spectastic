@@ -39,13 +39,14 @@ def run_cli_tty(args, cwd, input_text="", timeout=10):
     os.close(slave)
     if input_text:
         os.write(master, input_text.encode())
-    os.close(master)
     try:
         stdout, stderr = proc.communicate(timeout=timeout)
     except subprocess.TimeoutExpired:
         proc.kill()
         proc.wait()
         raise
+    finally:
+        os.close(master)
     return subprocess.CompletedProcess(args, proc.returncode, stdout, stderr)
 
 
