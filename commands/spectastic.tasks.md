@@ -17,6 +17,8 @@ User input (from `$ARGUMENTS`): a Spec ID such as `001-auth-service`, or empty (
 
 2. **Copy** `templates/tasks.html` to `specs/<spec-id>/tasks.html`.
 
+   **Adjust asset paths on copy.** The template's `<link>` and `<script>` use `../assets/spec.css` (one level up — correct for in-place preview from `templates/`). The destination is two levels deep (`specs/<spec-id>/`), so on copy rewrite `../assets/` → `../../assets/` for both the stylesheet and the script.
+
 3. **Generate tasks** in five phases:
 
    - **Phase 1 — Setup** (`T-001`, `T-002`, …): repo wiring, dependency install, scaffolding, CI bootstrapping. Most are `[P]`-parallelizable.

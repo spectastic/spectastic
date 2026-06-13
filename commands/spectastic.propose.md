@@ -42,6 +42,8 @@ User input (from `$ARGUMENTS`): a change name or one-line description ("add OAut
 3. **Create the change folder**: `specs/<spec-id>/changes/<date>-<slug>/`.
 
 4. **Copy** `templates/proposal.html` to `specs/<spec-id>/changes/<date>-<slug>/proposal.html`.
+
+   **Adjust asset paths on copy.** The template's `<link>` and `<script>` use `../assets/spec.css` (one level up — correct for in-place preview from `templates/`). The destination is four levels deep, so on copy rewrite `../assets/` → `../../../../assets/` for both the stylesheet and the script. Adjust any link to the parent spec (`<a href="../spec.html">`) similarly: `../../spec.html`.
    Adjust the relative paths to `../../../assets/spec.css` and `../../../assets/spec.js` if
    the template uses different paths.
 

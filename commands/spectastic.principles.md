@@ -19,6 +19,8 @@ User input (from `$ARGUMENTS`): either the project name to ratify a new principl
 
 1. **Locate** the existing principles at `./principles.html` or, if not present, copy `templates/principles.html` to `./principles.html`. (If the project is itself the dotfiles or a nested project, ask the user where the artifact should live before writing.)
 
+   **Adjust asset paths on copy.** The template's `<link>` and `<script>` use `../assets/spec.css` (one level up — correct for in-place preview from `templates/`). The destination here is the project root (zero levels up), so on copy rewrite `../assets/` → `./assets/` for both the stylesheet and the script.
+
 2. **Interview** the user (only if needed — skip questions whose answers are already in `$ARGUMENTS` or in an existing principles document). Capture:
    - Project name and one-line tagline
    - One-paragraph purpose (the TL;DR)

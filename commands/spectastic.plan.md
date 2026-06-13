@@ -27,6 +27,8 @@ User input (from `$ARGUMENTS`): a Spec ID such as `001-auth-service`, or empty (
 
 4. **Copy** `templates/plan.html` to `specs/<spec-id>/plan.html`.
 
+   **Adjust asset paths on copy.** The template's `<link>` and `<script>` use `../assets/spec.css` (one level up — correct for in-place preview from `templates/`). The destination is two levels deep (`specs/<spec-id>/`), so on copy rewrite `../assets/` → `../../assets/` for both the stylesheet and the script. Adjust any `<a href="../principles.html">` similarly to `../../principles.html`.
+
 4. **Run the Principles check**. Walk every principle. For each, mark `OK`, `EXCEPTION`, or `VIOLATION`. An exception requires a justification logged in §8 Complexity tracking. A violation requires the user either to revise the plan or amend the principles — stop and ask.
 
 5. **Interview** the user (skip what's obvious from the spec or the surrounding codebase):

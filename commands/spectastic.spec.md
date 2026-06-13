@@ -21,6 +21,8 @@ User input (from `$ARGUMENTS`): a feature name or one-line description.
 
 4. **Copy** `templates/spec.html` to `specs/<spec-id>/spec.html`.
 
+   **Adjust asset paths on copy.** The template's `<link>` and `<script>` use `../assets/spec.css` (one level up — correct for in-place preview from `templates/`). The destination is two levels deep (`specs/<spec-id>/`), so on copy rewrite `../assets/` → `../../assets/` for both the stylesheet and the script. Adjust any `<a href="../principles.html">` similarly to `../../principles.html`.
+
 5. **First interview question — always.** Ask the user: *"What is the smallest version of this a user could see and use?"* Capture the answer for the `<b>Smallest demoable</b>` row in `<spec-meta>`. If the answer is "the whole feature" or "all surfaces at once", push back — the answer is the slice boundary, and it tells you the spec is probably too big as scoped.
 
 6. **Interview the rest** with depth proportional to the feature's risk. For a small change, three more questions are enough; for a new subsystem, work through every section. Capture:
