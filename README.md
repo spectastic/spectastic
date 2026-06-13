@@ -189,6 +189,24 @@ A `html.dark` class flips to a warm dark theme without touching individual eleme
 
 Open `assets/spec.css` to tweak. Everything is CSS custom properties at the top.
 
+## Install
+
+The CLI is a single Python 3.9+ file at `scripts/spectastic`. Runtime needs only the standard library — no `pip install` to run it. From a clone:
+
+```sh
+chmod +x scripts/spectastic
+./scripts/spectastic init     # bootstrap the lifecycle into the current directory
+```
+
+For development on the CLI itself (running the test suite at `scripts/test_spectastic.py`), the only dev-only dependency is `pytest`:
+
+```sh
+pip install pytest
+pytest scripts/test_spectastic.py
+```
+
+`pytest` is not used at runtime; the CLI imports nothing third-party.
+
 ## Editing workflow
 
 Source files in `templates/` and `specs/<id>/` link to `assets/spec.css` and `assets/spec.js` so you can iterate on the design system without touching every spec. When you want to ship one as a single attachable file:
