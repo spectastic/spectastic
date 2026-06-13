@@ -19,7 +19,7 @@ threefold:
 
 **Apply mode (default).** User input is `<date>-<slug>` or empty (defaults to the most recently modified `changes/<…>/proposal.html` with status `approved`). Folds the proposal's deltas into the live spec; folder moves to `examples/changes/archive/<slug>/`.
 
-**Withdraw mode.** `--withdraw <slug> --reason="<one-line>"`. Both `<slug>` and `--reason="…"` are required. The proposal is rejected post-authorship: status flips to `withdrawn`, folder moves to `examples/changes/withdrawn/<slug>/` (parallel to `archive/`), and the live spec's `<spec-changelog>` records "Considered `<slug>`, withdrew on `<date>` because `<reason>`." Withdraw is terminal — to revive a withdrawn proposal, author a new one.
+**Withdraw mode.** `--withdraw <YYYY-MM-DD>-<slug> --reason="<one-line>"`. Both `<slug>` and `--reason="…"` are required. The proposal is rejected post-authorship: status flips to `withdrawn`, folder moves to `examples/changes/withdrawn/<YYYY-MM-DD>-<slug>/` (parallel to `archive/`), and the live spec's `<spec-changelog>` records "Considered `<slug>`, withdrew on `<date>` because `<reason>`." Withdraw is terminal — to revive a withdrawn proposal, author a new one.
 
 ## Preconditions
 
@@ -40,7 +40,7 @@ Before applying, verify all of these. **Stop and report** if any check fails:
 
 Before withdrawing, verify all of these. **Stop and report** if any check fails:
 
-- The proposal exists at `examples/changes/<slug>/proposal.html` (i.e. is not already archived under `archive/` or withdrawn under `withdrawn/`).
+- The proposal exists at `examples/changes/<YYYY-MM-DD>-<slug>/proposal.html` (i.e. is not already archived under `archive/` or withdrawn under `withdrawn/`).
 - The proposal's `<spec-status>` is one of `proposed | under-review | approved` — **not** `applied` and **not** already `withdrawn`. Withdraw is one-way.
 - `--reason="<one-line>"` is non-empty. Empty rejection reason is not substantive; refuse.
 
@@ -86,15 +86,15 @@ Before withdrawing, verify all of these. **Stop and report** if any check fails:
 
 ## Withdraw procedure
 
-When invoked with `--withdraw <slug> --reason="<one-line>"`:
+When invoked with `--withdraw <YYYY-MM-DD>-<slug> --reason="<one-line>"`:
 
-1. **Locate** the proposal at `examples/changes/<slug>/proposal.html`. Refuse if it already lives under `archive/` or `withdrawn/`.
+1. **Locate** the proposal at `examples/changes/<YYYY-MM-DD>-<slug>/proposal.html`. Refuse if it already lives under `archive/` or `withdrawn/`.
 
 2. **Verify Withdraw-mode preconditions** above. Report any failure; do not partially withdraw.
 
 3. **Flip the proposal status** in place from `proposed | under-review | approved` to `withdrawn`. Both the `<spec-status>` pill and the `<spec-change status="…">` wrapper attribute must agree.
 
-4. **Move the change folder** from `examples/changes/<slug>/` to `examples/changes/withdrawn/<slug>/`. Atomic move; do not copy-then-delete. Create `examples/changes/withdrawn/` if it does not yet exist.
+4. **Move the change folder** from `examples/changes/<YYYY-MM-DD>-<slug>/` to `examples/changes/withdrawn/<YYYY-MM-DD>-<slug>/`. Atomic move; do not copy-then-delete. Create `examples/changes/withdrawn/` if it does not yet exist. The date-prefixed folder name is preserved per `REQ-CHANGE-001`.
 
 5. **Rewrite the moved proposal's relative paths** for the new depth (same depth as `archive/`, so `../assets/` → `../../../../assets/`, sibling spec link → `../../../spectastic-spec.html`, etc.). The path-rewrite shape mirrors what Apply mode does on archive.
 
@@ -102,13 +102,15 @@ When invoked with `--withdraw <slug> --reason="<one-line>"`:
 
    ```html
    <li><time datetime="YYYY-MM-DD">DD Mon YYYY</time>
-       <span>Considered <a href="./changes/withdrawn/&lt;slug&gt;/proposal.html">&lt;slug&gt;</a>,
+       <span>Considered <a href="./changes/withdrawn/&lt;YYYY-MM-DD&gt;-&lt;slug&gt;/proposal.html">&lt;YYYY-MM-DD&gt;-&lt;slug&gt;</a>,
        withdrew on &lt;DD Mon YYYY&gt; because &lt;reason&gt;.</span></li>
    ```
 
    This is the single index of "what was considered" so future-you can find rejected ideas via the live spec without walking `changes/withdrawn/`.
 
 7. **Append a `<spec-changelog>` entry** to the moved proposal itself recording the withdrawal date and the reason verbatim.
+
+8. **Surface the originating inbox-card nudge.** If the proposal's `<spec-meta>` `Source` row (or its body) references an inbox card by ID (`I-NNN`), report a one-line suggestion that the originating card be transitioned to `data-status="rejected"` with a new `<dt>Rejected because</dt>` row citing the withdrawn proposal and the reason. The card transition itself is the author's gesture, not an apply side effect — the symmetric move to step 6's `<spec-changelog>` entry on the live spec, but for Surface A instead of Surface B.
 
 ## Discipline
 
@@ -131,6 +133,7 @@ Report:
 - The new entry added to the spec's changelog.
 - Any cross-spec references that may need follow-up.
 - The **post-apply routing nudge** (per `REQ-CHANGE-003`): one line naming whether the change is small (drive the proposal's §5 Tasks) or large (re-run `/spectastic.plan` then `/spectastic.tasks`).
+- The **originating inbox-card nudge** (if the proposal's `<spec-meta>` `Source` row points at `inbox.html#I-NNN`, or if the proposal's prose references an inbox card by ID): one line suggesting that the originating card be transitioned to `data-status="done"` with a new `<dt>Closed by</dt>` row pointing at the archived proposal and the requirement that landed. Apply does **not** make this transition automatically; the inbox-card update is the author's gesture (mirrors the Surface-A discipline in `REQ-CHANGE-005`). Without this nudge in the report, the lifecycle's view and the inbox's view drift apart silently.
 
 Suggest opening the live spec in a browser to confirm the apply rendered cleanly.
 
