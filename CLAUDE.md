@@ -58,6 +58,24 @@ Seven slash commands. Don't add more without a good reason — OpenSpec's small 
 - `/spectastic.apply` — apply approved proposal (moves to changes/archive/ as a side effect)
 - `/spectastic.triage` — single-defect classification *or* list-intake mode (paste a list; one card per item; appends to `inbox.html`)
 
+## Interview discipline in commands
+
+Slash commands that gather requirements (`spec`, `plan`, `propose`, `triage`) follow a **two-phase interview**:
+
+- **Chat phase** for narrative answers (intent, context, user-story text, reason/migration prose). Free-form, natural conversation.
+- **Decision phase** uses the `AskUserQuestion` tool to commit the user to bounded choices (priorities, scope splits, quantified targets, layer classification, status pills, op type per delta).
+
+Why both: open-ended capture in chat keeps the conversation natural; `AskUserQuestion` commits the user to discrete decisions that would otherwise leak into `<spec-question>` registers and never get resolved.
+
+**The discipline:** an unresolved `<spec-question>` in a finished artifact signals that the interview failed. Before writing, anchor every decidable question via `AskUserQuestion`. Only genuinely-undecidable items survive into `<spec-questions>`.
+
+**Rules:**
+- `AskUserQuestion` accepts 1–4 questions per call; each question 2–4 options; multiSelect supported.
+- First option is usually the recommendation, labelled `"(Recommended)"`.
+- Use chat (not `AskUserQuestion`) for paragraph-length or genuinely open-ended answers.
+- Loop `AskUserQuestion` calls if a phase has more than 4 decisions to make.
+- Skip questions whose answers are already in `$ARGUMENTS`, the existing file, or upstream artifacts.
+
 ## The small-batch loop
 
 `inbox.html` at project root is the entry point for "I've got a few small things." Two new `<spec-triage>` `layer=` values handle routing:

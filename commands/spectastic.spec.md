@@ -23,33 +23,49 @@ User input (from `$ARGUMENTS`): a feature name or one-line description.
 
    **Adjust asset paths on copy.** The template's `<link>` and `<script>` use `../assets/spec.css` (one level up — correct for in-place preview from `templates/`). The destination is two levels deep (`specs/<spec-id>/`), so on copy rewrite `../assets/` → `../../assets/` for both the stylesheet and the script. Adjust any `<a href="../principles.html">` similarly to `../../principles.html`.
 
-5. **First interview question — always.** Ask the user: *"What is the smallest version of this a user could see and use?"* Capture the answer for the `<b>Smallest demoable</b>` row in `<spec-meta>`. If the answer is "the whole feature" or "all surfaces at once", push back — the answer is the slice boundary, and it tells you the spec is probably too big as scoped.
+5. **Skip what's known.** Before any interview question, check `$ARGUMENTS`, any existing `spec.html` in the directory, and the principles document for answers you already have. Don't re-ask. Only interview for what's genuinely missing.
 
-6. **Interview the rest** with depth proportional to the feature's risk. For a small change, three more questions are enough; for a new subsystem, work through every section. Capture:
-   - One-paragraph TL;DR — what the feature is, who it's for, the single most important outcome
+6. **Two-phase interview.** Discovery in chat (free-form narrative), decisions via `AskUserQuestion` (bounded choice). The goal is to leave no unresolved open question by write-time — open questions in the final artifact signal that the interview failed.
+
+   **Chat phase (free-form narrative answers):**
    - Context: what exists today, why it isn't enough, what triggered this spec
-   - User stories — **each independently testable**. Use the format _As a [ROLE], I want to [DO_THING] so that [OUTCOME]_. Priorities P1/P2/P3.
-   - Edge cases
+   - User stories — each *As a [ROLE], I want to [DO_THING] so that [OUTCOME]*
+   - Edge cases and assumptions
+   - Data model: the entities this feature owns or substantially changes
+   - Out-of-scope items: where each one lives instead (capture as `defer-to=`)
+
+   **Decision phase — use `AskUserQuestion` to anchor each of these before writing:**
+   - **Smallest demoable** — always the first question. If the user reaches for "the whole feature" or "all surfaces at once", push back: the answer is the slice boundary, and it tells you the spec is probably too big as scoped. Offer 2–3 framings.
+   - **Story priorities** (e.g. for each US: P1 / P2 / P3 — one AskUserQuestion call per batch of stories, multiSelect off)
+   - **Critical scope splits** that the chat phase surfaced — e.g. "Offline support? Must / Nice / Out of scope"; "Data model: new entities / extend existing / both"
+   - **Quantified targets** — for any NFR mentioned in chat that wasn't a number, ask for the threshold (e.g. "p95 latency under 200 ms / 500 ms / 1 s")
+   - **Any binary you'd otherwise capture as `<spec-question>`** — promote it to an AskUserQuestion before write-time
+
+   Rules:
+   - Limit each `AskUserQuestion` call to ≤4 questions; each question to 2–4 options. Loop if needed.
+   - Don't use `AskUserQuestion` for narrative answers (TL;DR, user-story text). Those stay in chat.
+   - The first option should usually be the recommendation, labelled accordingly.
+   - If a decision genuinely cannot be answered yet, leave it as a `<spec-question>` — but only after attempting `AskUserQuestion` first.
+
+7. **Author the artifact.** Fill the template's requirements:
    - Functional requirements with stable IDs `FR-001`, `FR-002`, … and a `priority` of `must | should | may`
-   - Non-functional requirements `NFR-001`, … (perf, security, privacy, accessibility — quantified)
-   - **Out of scope (deferred)** — for every item, ask "where does this live instead?" Capture as `<spec-out-of-scope>` with `defer-to="<sibling-spec-id>"` or `defer-to="TBD"` when no slice exists yet. The intent is to convert scope-cutting into deferral — items don't get dropped, they get pointed at.
-   - Data model: only the entities this feature owns or substantially changes
+   - Non-functional requirements `NFR-001`, … (perf, security, privacy, accessibility — quantified per the decision phase)
+   - Out-of-scope items in `<spec-out-of-scope>` with `defer-to="<sibling-spec-id>"` or `defer-to="TBD"`
    - Success criteria `SC-001`, … — **technology-agnostic and measurable**
    - **INVEST self-check**: fill the six `<dl class="invest">` rows. `V` must link to a success-criterion ID; `T` must link to an acceptance scenario or requirement. If any row is honestly `✗`, the spec is not ready to estimate — flag it.
-   - Assumptions
-   - Open questions — anything you'd flag for the user to resolve before plan time
+   - Only the truly-unresolved questions go into `<spec-questions>`. If anything answerable made it here, loop back to step 6.
 
-5. **Discipline**:
+8. **Discipline**:
    - Every requirement must use an RFC 2119 keyword wrapped in `<spec-rule>` (or `<spec-rule level="should">` / `<spec-rule level="may">`).
    - Stable IDs survive forever. If a requirement is dropped, status becomes "Withdrawn" but the ID is never reused.
    - If you would write `[NEEDS CLARIFICATION: …]`, do — leave it in place as a `<spec-question>` admonition; do not invent answers.
    - Success criteria are outcomes, not implementations. "Users complete sign-up in under 90 seconds at the 80th percentile" — not "we use a faster auth library".
 
-7. **Validate** against the principles at `./principles.html` (if present — principles are optional). If any principle would reject this spec, flag it in a `<spec-warning>` and either revise or ask the user to amend the principles.
+9. **Validate** against the principles at `./principles.html` (if present — principles are optional). If any principle would reject this spec, flag it in a `<spec-warning>` and either revise or ask the user to amend the principles.
 
-8. **Watch the budget gauge.** `<spec-budget>` renders live word/requirement/read-time counts as the file is saved. If your draft hits the amber band (70%+ of budget), stop and ask: *"Should some of this be its own slice?"* Use the **Out-of-scope (deferred)** section as the answer — move items there with `defer-to="TBD"` and consider scaffolding the sibling spec separately.
+10. **Watch the budget gauge.** `<spec-budget>` renders live word/requirement/read-time counts as the file is saved. If your draft hits the amber band (70%+ of budget), stop and ask: *"Should some of this be its own slice?"* Use the **Out-of-scope (deferred)** section as the answer — move items there with `defer-to="TBD"` and consider scaffolding the sibling spec separately.
 
-9. **Conformance**. The auto-built conformance index at the end of the document picks up every `<spec-requirement>` automatically — no manual update needed.
+11. **Conformance**. The auto-built conformance index at the end of the document picks up every `<spec-requirement>` automatically — no manual update needed.
 
 ## Output style
 

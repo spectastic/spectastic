@@ -29,28 +29,39 @@ User input (from `$ARGUMENTS`): a Spec ID such as `001-auth-service`, or empty (
 
    **Adjust asset paths on copy.** The template's `<link>` and `<script>` use `../assets/spec.css` (one level up — correct for in-place preview from `templates/`). The destination is two levels deep (`specs/<spec-id>/`), so on copy rewrite `../assets/` → `../../assets/` for both the stylesheet and the script. Adjust any `<a href="../principles.html">` similarly to `../../principles.html`.
 
-4. **Run the Principles check**. Walk every principle. For each, mark `OK`, `EXCEPTION`, or `VIOLATION`. An exception requires a justification logged in §8 Complexity tracking. A violation requires the user either to revise the plan or amend the principles — stop and ask.
+5. **Run the Principles check**. Walk every principle. For each, mark `OK`, `EXCEPTION`, or `VIOLATION`. An exception requires a justification logged in §8 Complexity tracking. A violation requires the user either to revise the plan or amend the principles — stop and ask.
 
-5. **Interview** the user (skip what's obvious from the spec or the surrounding codebase):
-   - Languages, frameworks, versions
-   - Storage and external services
-   - Test stack and style (TDD, integration-first, …)
-   - Quantified perf targets, budgets, constraints
+6. **Skip what's known.** Before any interview question, check `$ARGUMENTS`, the surrounding codebase (file tree, package.json, Cargo.toml, lockfiles), and the spec for answers you already have. Don't re-ask. Only interview for what's genuinely missing.
+
+7. **Two-phase interview.** Discovery in chat (narrative), decisions via `AskUserQuestion` (bounded choice). Unresolved questions in the final plan signal that the interview failed.
+
+   **Chat phase (narrative answers):**
    - High-level approach in one or two paragraphs
-   - The 1–3 alternatives that were seriously considered, scored on the criteria that mattered
-   - Concrete decisions worth recording as ADRs (`D-001`, `D-002`, …)
-   - Project structure — only new or changed paths
+   - The 1–3 alternatives that were seriously considered + the criteria that mattered
+   - Project structure — only the new or changed paths
    - Risks with likelihood, impact, and mitigation
-   - Open questions whose resolution would change the plan
 
-6. **Discipline**:
+   **Decision phase — use `AskUserQuestion` to anchor before writing:**
+   - **Test style** (e.g. TDD / integration-first / smoke-only — pick the one with the strongest defence; recommend first)
+   - **Risk tolerance** for this plan (Low — proven path / Medium — some unknowns / High — experimental)
+   - **Perf budget** for any NFR mentioned in chat — get a quantified number (e.g. "p95 latency under 200 ms / 500 ms / 1 s / not in scope")
+   - **Persistence shape** if storage was discussed (e.g. SQL / KV / object store / in-memory only)
+   - **Each tech-stack pick** that has 2–4 reasonable contenders (language version, async runtime, test framework, etc.)
+   - **Each candidate ADR** the chat surfaced — get a thumbs-up on the framing before scaffolding the decision card
+
+   Rules:
+   - ≤4 questions per `AskUserQuestion` call, 2–4 options each, multiSelect off unless explicitly batch-style.
+   - First option is the recommendation, labelled `"(Recommended)"` in the label.
+   - For >4 alternatives, ask in chat instead and let the user narrate the tradeoff.
+
+8. **Discipline**:
    - Decisions follow the ADR shape: Status / Context / Decision / Consequences (with `+` positives and `−` negatives).
    - Decisions have stable IDs `D-001`, `D-002`, … forever. Superseded decisions keep status `superseded` and link to the replacement.
    - The architecture sketch (inline SVG) is **required** if the feature has more than one moving part. Keep it small — fewer than ~8 boxes; if you need more, sketch the slice, not the system.
    - Alternatives must include a scored matrix with one row marked `data-winner`. The winner must be the one actually chosen.
    - Do not duplicate the spec. Link to its requirement IDs (`<a href="./spec.html#FR-001">FR-001</a>`) rather than restating them.
 
-7. **Validate**. Re-walk Principles check. Now that the plan is written, does any decision violate a principle you marked OK earlier? If yes, fix the decision or escalate.
+9. **Validate**. Re-walk Principles check. Now that the plan is written, does any decision violate a principle you marked OK earlier? If yes, fix the decision or escalate.
 
 ## Output style
 

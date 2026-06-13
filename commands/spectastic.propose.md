@@ -47,25 +47,28 @@ User input (from `$ARGUMENTS`): a change name or one-line description ("add OAut
    Adjust the relative paths to `../../../assets/spec.css` and `../../../assets/spec.js` if
    the template uses different paths.
 
-5. **Interview the user** (only what you can't infer):
-   - **Intent** — why this change, in one or two paragraphs. The reviewer should understand
-     the motivation before reading the deltas.
-   - **In/out of scope** — what's explicitly excluded so reviewers don't ask.
-   - **Approach** — one or two paragraphs. Architectural choices that aren't obvious from the
-     deltas themselves.
-   - **Deltas** — for each requirement touched, choose an op and capture the change:
-     - **added** — new ID, new post-state body. Pre-fill the next available number in the
-       relevant topic prefix (read the live spec to find the highest existing number).
-     - **modified** — existing ID, full new post-state body (not a diff fragment).
-     - **removed** — existing ID, **`reason` and `migration` are required**. Empty or missing
-       renders visibly broken.
-     - **renamed** — old ID → new ID, plus reason. Only for ID changes; renaming the
-       human-readable summary is just a content edit on the requirement body.
-   - **Tasks** — concrete file or directory per task, scoped to this change only. Project-wide
-     tasks live in `tasks.html`.
-   - **Open questions** — anything owed to the reviewer before this lands.
+5. **Skip what's known.** Before any interview, check `$ARGUMENTS`, the live spec, and any sibling proposal folders for context you already have. Don't re-ask. Only interview for what's genuinely missing.
 
-6. **Discipline**:
+6. **Two-phase interview.** Discovery in chat (narrative), decisions via `AskUserQuestion` (bounded choice). The proposal's `<spec-questions>` register should be empty by write-time unless something is genuinely undecidable today.
+
+   **Chat phase (narrative answers):**
+   - **Intent** — why this change, in one or two paragraphs. The reviewer should understand the motivation before reading the deltas.
+   - **Approach** — one or two paragraphs. Architectural choices that aren't obvious from the deltas themselves.
+   - **In-scope items** — what's explicitly included.
+
+   **Decision phase — use `AskUserQuestion` to anchor each of these before writing:**
+   - **Change shape** — Additive (only ADD) / Corrective (MODIFY + REMOVE) / Mixed / Rename-only
+   - **Status to ship at** — `proposed` (more review wanted) / `under-review` (ready to share) / `approved` (apply-ready)
+   - **For each delta candidate** the chat phase surfaced, ask the **op** explicitly: ADD / MODIFY / REMOVE / RENAME — one question per delta or batched multiSelect for several at once
+   - **For each REMOVE** — get both `reason` (one-line) and `migration` (one-line) as separate chat answers (these are free-text, not multiple-choice — use chat). If either is empty, refuse to write the delta.
+   - **Out-of-scope items** — for each, ask `defer-to=` target via `AskUserQuestion` with options: a known sibling spec ID / `TBD-<topic>` / `never`
+
+   Rules:
+   - ≤4 questions per `AskUserQuestion` call; loop as needed.
+   - Use chat (not `AskUserQuestion`) for narrative content: intent paragraphs, requirement bodies, reason/migration text.
+   - Don't write the proposal until the decision phase is complete. An unresolved decision becomes a `<spec-question>` only if it genuinely can't be settled now.
+
+7. **Discipline**:
    - Every `<spec-delta>` MUST carry `op` and `target`. Never emit a delta without both.
    - For `op="added"` and `op="modified"`, embed a full `<spec-requirement>` inside the delta
      showing the post-state. The reviewer's eye lands on what they're approving.
@@ -76,11 +79,11 @@ User input (from `$ARGUMENTS`): a change name or one-line description ("add OAut
    - Status pill defaults to `proposed`. The user updates it to `under-review` when sharing,
      `approved` when accepted, `applied` after archive, `withdrawn` if abandoned.
 
-7. **Budget-aware splitting nudge.** Before finalising the proposal, count the deltas. If the proposal contains **more than ~5 deltas**, or touches deltas across **more than 2 topic prefixes** (e.g. `REQ-AUTH-*` and `REQ-RENDER-*`), stop and ask the user: *"Would these read better as two or three smaller proposals?"* The cost of a small proposal is one extra archive call; the cost of an oversize proposal is review fatigue and merge ambiguity. The default answer is "yes, split" unless the deltas truly share a single intent.
+8. **Budget-aware splitting nudge.** Before finalising the proposal, count the deltas. If the proposal contains **more than ~5 deltas**, or touches deltas across **more than 2 topic prefixes** (e.g. `REQ-AUTH-*` and `REQ-RENDER-*`), stop and ask the user: *"Would these read better as two or three smaller proposals?"* The cost of a small proposal is one extra archive call; the cost of an oversize proposal is review fatigue and merge ambiguity. The default answer is "yes, split" unless the deltas truly share a single intent.
 
-8. **Check for sibling proposals.** Before emitting, scan `specs/<spec-id>/changes/` for other proposal folders whose deltas target any of the same IDs as this one. If found, report them and ask the user how to sequence — concurrent proposals on the same target are the most common archive-time conflict.
+9. **Check for sibling proposals.** Before emitting, scan `specs/<spec-id>/changes/` for other proposal folders whose deltas target any of the same IDs as this one. If found, report them and ask the user how to sequence — concurrent proposals on the same target are the most common archive-time conflict.
 
-7. **Update the proposal's changelog** with today's date and one-line summary of the change
+10. **Update the proposal's changelog** with today's date and one-line summary of the change
    intent.
 
 ## Output style

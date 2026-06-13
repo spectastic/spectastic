@@ -37,9 +37,11 @@ Detection heuristic: if the input contains explicit list markers (commas, semico
 
 3. **Load context.** Read principles, spec, plan, related specs that share a contract, and only the implementation files implicated by the failure. State explicitly what you read; if you skipped a file you should have read, say so.
 
-4. **Reproduce and characterise.** Capture *Expected*, *Actual*, and one-sentence *Diagnosis* (cause, not symptom).
+4. **Reproduce and characterise.** Capture *Expected*, *Actual*, and one-sentence *Diagnosis* (cause, not symptom). These are narrative — gather in chat. Don't use `AskUserQuestion` here.
 
 5. **Apply the regeneration test.** Ask: "Given only the current spec and plan, would another LLM session reproduce this bug?" Result is `pass` (bug would NOT recur — gap is in code) or `fail` (bug WOULD recur — gap is upstream).
+
+   If you reason your way to a confident answer, just write it. If the answer is genuinely ambiguous, use `AskUserQuestion` to commit the user to `pass` / `fail` / `unsure (needs more investigation)` — don't paper over with prose.
 
 6. **Classify the layer.** Pick the *primary* layer that owns the fix — exactly one of:
 
@@ -54,6 +56,8 @@ Detection heuristic: if the input contains explicit list markers (commas, semico
    *Routing exits (for list-intake items that aren't classic defects):*
    - `just-do` — small enough that a spec would not change the decision. One file, no public-contract change, revert-safe. Implement immediately via `/spectastic.implement` — no proposal cycle.
    - `defer` — back-burner; doesn't block any active work. The card carries `defer-to=` pointing at a sibling spec ID, `TBD-<topic>`, or `never`.
+
+   **When to use `AskUserQuestion`:** if your confident classification is `implementation`-or-`spec` or `just-do`-or-`spec`, ask the user explicitly via `AskUserQuestion` — the boundary between "small enough" and "needs a requirement" is exactly the kind of decision a user should commit to rather than have you guess. Eight layers exceeds the 4-option limit, so split: first ask "Diagnostic (defect) or Routing (intake)?", then ask the narrower layer choice.
 
    If an item could plausibly be `just-do` but you're unsure, ask. The cost of mis-routing a `just-do` (a small piece of work done without ceremony) is bounded; the cost of mis-routing a `spec`-level gap (a hidden requirement leak) is not.
 
