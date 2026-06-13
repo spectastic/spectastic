@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Implement drain modes · Change proposal</title>
+<link rel="stylesheet" href="../../../../assets/spec.css">
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Change proposal · spectastic meta-spec</p>
+  <h1>Drain modes for <code>/spectastic.implement</code></h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    Keep one-task-per-invocation as the default. Add <code>--all</code>, <code>--phase</code>, and <code>--parallel</code> as opt-in drains.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>     <span><spec-status value="applied">Applied</spec-status></span>
+    <b>Change ID</b>  <span>2026-06-12-implement-drain-modes</span>
+    <b>Spec</b>       <span><a href="../../../spectastic-spec.html">spectastic meta-spec</a></span>
+    <b>Source</b>     <span><a href="../../../../inbox.html#I-009">I-009</a></span>
+    <b>Author</b>     <span>Brian Corbin · brian@example.com</span>
+    <b>Created</b>    <span><time datetime="2026-06-12">12 Jun 2026</time></span>
+    <b>Targets</b>    <span>1 requirement (added)</span>
+    <b>Read time</b>  <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-tldr>
+    <p>Add <code>REQ-TOOL-003</code> to the meta-spec (skipping <code>REQ-TOOL-002</code>, historically used for the deferred-CLI requirement that was removed in <a href="../2026-06-12-add-change-proposal/proposal.html">2026-06-12-add-change-proposal</a> — stable IDs are not reused) stating that <code>/spectastic.implement</code> defaults to one task per invocation and accepts three opt-in drain modes: <code>--all</code> (drain unchecked sequentially), <code>--phase=&lt;id&gt;</code> (drain a phase block), and <code>--parallel</code> (spawn one <code>Agent</code> per <code>[P]</code>-marked task within the chosen scope). The one-per-invocation default and every existing discipline rule stay unchanged.</p>
+  </spec-tldr>
+</header>
+
+
+<spec-change id="2026-06-12-implement-drain-modes" status="applied">
+
+<header>
+  <h3>Drain modes for <code>/spectastic.implement</code></h3>
+  <span class="meta"><spec-status value="applied">Applied</spec-status></span>
+</header>
+
+
+<section id="intent">
+<h2>1 · Intent</h2>
+<p>One full cycle through 001-cli exposed the cost of the one-task-per-invocation discipline at MVP-first scale: a 33-task drain meant 33 invocations and a <code>/goal</code> session hook to keep them in motion. The current rule is correct for risky, contested, or cross-spec work — silent chaining there hides judgment calls the user should be making. It is the wrong default for the common shape of a solo drain where every task carries the same low risk.</p>
+<p>The fix is not to relax the rule, but to make it opt-in: keep one-per-invocation as the default; add three named modes that explicitly elect the relaxation. The user types the mode; nothing chains silently.</p>
+</section>
+
+
+<section id="scope">
+<h2>2 · Scope</h2>
+
+<spec-goals>
+  <h3>In scope</h3>
+  <ul>
+    <li>One new requirement (<code>REQ-TOOL-003</code>) defining the three drain modes and the default.</li>
+    <li>Behavioural prose in <code>commands/spectastic.implement.md</code> describing each mode and its termination conditions.</li>
+    <li>An <code>Agent</code> spawn convention for <code>--parallel</code>: one agent per <code>[P]</code>-marked task within the resolved scope; sequential tasks remain in the main session.</li>
+  </ul>
+</spec-goals>
+
+<spec-non-goals>
+  <h3>Out of scope</h3>
+  <spec-out-of-scope>
+    <ul>
+      <li defer-to="TBD-other-verb-drain">Drain modes for other verbs (<code>/spectastic.tasks</code>, <code>/spectastic.triage</code>). The shape would be similar but the parallelism semantics differ; capture later.</li>
+      <li defer-to="TBD-parallel-strategy">A formal specification of the <code>Agent</code> spawn strategy beyond the per-<code>[P]</code> convention. Concurrency limits, error aggregation, and partial-failure semantics warrant their own pass.</li>
+      <li defer-to="never">Removing the default. One-per-invocation stays the default precisely because the existing discipline is right for the uncommon case where every invocation deserves a fresh judgment call.</li>
+    </ul>
+  </spec-out-of-scope>
+</spec-non-goals>
+</section>
+
+
+<section id="approach">
+<h2>3 · Approach</h2>
+<p>The drain modes are <em>resolution rules</em> in the same family as the existing no-argument resolution (drain inbox, then most-recent <code>tasks.html</code>). Each mode resolves <code>$ARGUMENTS</code> to a list of one or more target tasks before the implement loop runs. The body of the implement command (load context, do the work, tick the checkbox, verify) is unchanged.</p>
+<p><code>--parallel</code> requires one extra step: after scope resolution, partition the target list by the <code>[P]</code> marker. Sequential tasks run in the main session as today. <code>[P]</code> tasks each fork to an <code>Agent</code> tool call with the same context. The main session collects results and ticks the boxes only when each agent reports success — no silent half-state.</p>
+<spec-note>
+<p>The "no silent chaining" rule still bites: when <code>--all</code> is in flight, the implement loop reports progress per task and pauses on the first failure. The user must re-invoke with <code>--all</code> after fixing the failure; failure does not silently skip.</p>
+</spec-note>
+</section>
+
+
+<section id="deltas">
+<h2>4 · Deltas</h2>
+<p>One <code>&lt;spec-delta&gt;</code>. <code>target=</code> links to the live spec. <code>op=</code> is <code>added</code>; a missing or invalid op renders visibly broken.</p>
+
+<spec-delta op="added" target="REQ-TOOL-003">
+  <spec-requirement id="REQ-TOOL-003" priority="must">
+    <p>The <code>/spectastic.implement</code> command <spec-rule>MUST</spec-rule> default to <em>one task per invocation</em>. It <spec-rule level="may">MAY</spec-rule> accept three opt-in drain modes that the user must type explicitly:</p>
+    <ul>
+      <li><code>--all</code> — drain every unchecked task in the resolved scope sequentially, pausing on first failure.</li>
+      <li><code>--phase=&lt;id&gt;</code> — drain every unchecked task inside the named phase section (<code>setup</code>, <code>foundation</code>, <code>us1</code>, <code>us2</code>, <code>us3</code>, <code>polish</code>).</li>
+      <li><code>--parallel</code> — within the resolved scope (default scope = one task; combinable with <code>--all</code> or <code>--phase</code>), spawn one <code>Agent</code> tool call per <code>[P]</code>-marked task; run non-<code>[P]</code> tasks in the main session.</li>
+    </ul>
+    <p>Drain modes <spec-rule>MUST NOT</spec-rule> silently chain — failure pauses the drain and re-invocation is explicit. Each completed task <spec-rule>MUST</spec-rule> be reported individually (one line per ticked checkbox) so progress is visible mid-drain.</p>
+    <details><summary>Rationale</summary><p>One-per-invocation is the right default for contested or cross-spec work where each step is a judgment call. MVP-first solo drains do not match that shape — the user typed <code>/goal</code> as a workaround on 001-cli's 33-task list because the existing discipline rejected the obvious move. Making the drain opt-in preserves the default while removing the workaround.</p></details>
+  </spec-requirement>
+</spec-delta>
+</section>
+
+
+<section id="tasks">
+<h2>5 · Tasks</h2>
+<p>Scoped to this change only.</p>
+
+<ul style="list-style:none;padding-left:0;">
+  <li><input type="checkbox" checked> Extend <code>commands/spectastic.implement.md</code> §Inputs with the three drain flags and their resolution rules.</li>
+  <li><input type="checkbox" checked> Extend <code>commands/spectastic.implement.md</code> §Discipline to clarify that drain modes are opt-in and that failure pauses the drain.</li>
+  <li><input type="checkbox" checked> Add a §Parallel-strategy subsection naming the per-<code>[P]</code> Agent-spawn convention.</li>
+  <li><input type="checkbox" checked> Verify the <code>--phase=&lt;id&gt;</code> resolution against <code>specs/001-cli/tasks.html</code>'s actual phase IDs (<code>phase-setup</code>, <code>phase-foundation</code>, <code>phase-us1</code>, <code>phase-us2</code>, <code>phase-us3</code>, <code>phase-polish</code>); pick the canonical short forms.</li>
+  <li><input type="checkbox" checked> Update <code>README.md</code>'s small-batch loop section to mention the drain flags in the "drain it" step.</li>
+</ul>
+</section>
+
+
+<section id="questions">
+<h2>6 · Open questions</h2>
+<spec-questions>
+<ol>
+  <li>None. Drain modes are opt-in; default unchanged; scope is the implement command alone.</li>
+</ol>
+</spec-questions>
+</section>
+
+
+<section id="changelog">
+<h2>7 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-06-12">12 Jun 2026</time><span>Proposal authored from <a href="../../../../inbox.html#I-009">inbox I-009</a> after the 001-cli drain surfaced the one-per-invocation friction.</span></li>
+  <li><time datetime="2026-06-12">12 Jun 2026</time><span>Applied: REQ-TOOL-003 folded into <a href="../../../spectastic-spec.html#REQ-TOOL-003">examples/spectastic-spec.html</a>; folder moved to <code>changes/archive/</code>.</span></li>
+  <li><time datetime="2026-06-13">13 Jun 2026</time><span>Tasks drained: all five scoped tasks ticked. <code>commands/spectastic.implement.md</code> gained §Drain modes, the updated §Discipline bullet, and §Parallel strategy; <code>README.md</code>'s small-batch loop step 2 now names the flags. Inbox <a href="../../../../inbox.html#I-009">I-009</a> closes here.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+</spec-change>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  2026-06-12-implement-drain-modes · Drain modes for /spectastic.implement · authored 12 Jun 2026 ·
+  <button data-theme-toggle style="background:none;border:none;color:var(--c-link);cursor:pointer;font:inherit;padding:0;border-bottom:1px solid currentColor;">toggle theme</button>
+</footer>
+
+</main>
+<script src="../../../../assets/spec.js"></script>
+</body>
+</html>

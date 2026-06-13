@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Post-apply routing rule · Change proposal</title>
+<link rel="stylesheet" href="../../../../assets/spec.css">
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Change proposal · spectastic meta-spec</p>
+  <h1>Post-apply routing rule</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    Make the small-vs-large branching rule explicit so <code>/spectastic.apply</code> stops leaving the next-step choice implicit.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>     <span><spec-status value="applied">Applied</spec-status></span>
+    <b>Change ID</b>  <span>2026-06-13-post-apply-routing</span>
+    <b>Spec</b>       <span><a href="../../../spectastic-spec.html">spectastic meta-spec</a></span>
+    <b>Source</b>     <span><a href="../../../../inbox.html#I-010">I-010</a></span>
+    <b>Author</b>     <span>Brian Corbin · brian@example.com</span>
+    <b>Created</b>    <span><time datetime="2026-06-13">13 Jun 2026</time></span>
+    <b>Targets</b>    <span>1 requirement (added)</span>
+    <b>Read time</b>  <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-tldr>
+    <p>Add <code>REQ-CHANGE-003</code> stating that <code>/spectastic.apply</code> must surface the post-apply routing rule — <em>small change</em> drives the inline task list inside the archived proposal; <em>large change</em> re-runs <code>plan</code> + <code>tasks</code> against the updated spec. The rule is currently implicit in the propose-template's design and not named anywhere a reader can find it.</p>
+  </spec-tldr>
+</header>
+
+
+<spec-change id="2026-06-13-post-apply-routing" status="applied">
+
+<header>
+  <h3>Post-apply routing rule</h3>
+  <span class="meta"><spec-status value="applied">Applied</spec-status></span>
+</header>
+
+
+<section id="intent">
+<h2>1 · Intent</h2>
+<p>The propose template puts a scoped task list inside every proposal precisely so small changes don't have to round-trip through <code>/spectastic.plan</code> and <code>/spectastic.tasks</code> to land. <code>/spectastic.apply</code>'s documentation knows this implicitly — it never names it. A fresh reader who applies their first proposal hits an unsignposted fork: are the proposal's inline tasks the breakdown, or do I re-run plan and tasks now?</p>
+<p>Surfaced during the I-009 → REQ-TOOL-003 follow-up. The user asked the question directly: "should I be rerunning plan now since we absorbed our proposal, and then running tasks, and then implement?" The fact that the lifecycle's prose left the answer to chat is exactly the gap.</p>
+</section>
+
+
+<section id="scope">
+<h2>2 · Scope</h2>
+
+<spec-goals>
+  <h3>In scope</h3>
+  <ul>
+    <li>One new requirement (<code>REQ-CHANGE-003</code>) naming the small-vs-large routing rule and the boundary heuristic.</li>
+    <li>A <em>What's next</em> subsection in <code>commands/spectastic.apply.md</code> §Output describing the rule in command-file prose.</li>
+    <li>A one-line nudge in the per-apply console report so the user sees the routing question without re-reading the docs.</li>
+  </ul>
+</spec-goals>
+
+<spec-non-goals>
+  <h3>Out of scope</h3>
+  <spec-out-of-scope>
+    <ul>
+      <li defer-to="TBD-propose-output-prose">Tightening <code>/spectastic.propose</code>'s output prose with a parallel small-vs-large hint. The propose command terminates before the spec moves, so the routing question doesn't bite there — capture separately if it does.</li>
+      <li defer-to="never">A hard automatic switch — the command will not <em>force</em> re-plan for "large" changes. The boundary is fuzzy by design; the user gets the rule, not a guardrail.</li>
+    </ul>
+  </spec-out-of-scope>
+</spec-non-goals>
+</section>
+
+
+<section id="approach">
+<h2>3 · Approach</h2>
+<p>The fix is documentation, but the gap is upstream — a fresh LLM session writing <code>/spectastic.apply</code> from scratch would re-leave the rule implicit because nothing in the meta-spec demands it surface. The requirement closes that loop. Once <code>REQ-CHANGE-003</code> exists, the command file is bound to honor it, and so is any future regeneration.</p>
+<p>The boundary heuristic — "small" vs. "large" — is one sentence: <em>if you'd write more than one new ADR for the change, it's large enough to warrant <code>plan</code> + <code>tasks</code>; otherwise the proposal's inline tasks are the breakdown.</em> Number of deltas is a noisier signal; ADR pressure is the one that tracks the actual decision-cost.</p>
+<spec-note>
+<p>The proposal's task list itself becomes the breadcrumb. When the apply command's console report names the routing, it also points at the archived proposal's §5 Tasks as the small-change path — closing the loop the user just asked about in chat.</p>
+</spec-note>
+</section>
+
+
+<section id="deltas">
+<h2>4 · Deltas</h2>
+<p>One <code>&lt;spec-delta&gt;</code>. <code>target=</code> links to the live spec. <code>op=</code> is <code>added</code>.</p>
+
+<spec-delta op="added" target="REQ-CHANGE-003">
+  <spec-requirement id="REQ-CHANGE-003" priority="should">
+    <p>After <code>/spectastic.apply</code> lands a change, the command <spec-rule level="should">SHOULD</spec-rule> surface the <em>post-apply routing rule</em> — where the user drives the follow-up implementation work — in both its documented output and its per-apply console report:</p>
+    <ul>
+      <li><strong>Small change</strong> (one or two requirements, behavioural addition, no new ADRs): drive the inline task list inside the archived proposal. <code>/spectastic.implement</code> can target those tasks directly.</li>
+      <li><strong>Large change</strong> (multi-requirement, architectural shift, new topic group): re-run <code>/spectastic.plan</code> against the updated spec to revisit ADRs, then <code>/spectastic.tasks</code> to derive a fresh breakdown, then <code>/spectastic.implement</code> to drain it.</li>
+    </ul>
+    <p>The boundary is fuzzy by design: <em>if more than one new ADR would land, the change is large enough to warrant plan + tasks; otherwise the proposal's inline tasks are the breakdown.</em> The rule is guidance, not a guardrail — apply <spec-rule>MUST NOT</spec-rule> refuse or auto-trigger plan/tasks based on its own classification.</p>
+    <details><summary>Rationale</summary><p>The propose template already encodes the small-change shortcut by hosting tasks inside the proposal artifact. The apply command's prose never names the resulting routing rule, so a fresh reader hits the fork unsignposted. Surfacing the rule turns implicit design into explicit guidance and prevents the lifecycle's reading order from leaving a hole between apply and the next implement.</p></details>
+  </spec-requirement>
+</spec-delta>
+</section>
+
+
+<section id="tasks">
+<h2>5 · Tasks</h2>
+<p>Scoped to this change only.</p>
+
+<ul style="list-style:none;padding-left:0;">
+  <li><input type="checkbox" checked> Add a §"What's next" subsection to <code>commands/spectastic.apply.md</code> §Output, naming the small-vs-large routing rule with the one-ADR boundary heuristic.</li>
+  <li><input type="checkbox" checked> Extend the "Report:" bullet list at the bottom of <code>commands/spectastic.apply.md</code> with a one-line routing nudge that the apply summary should emit verbatim.</li>
+  <li><input type="checkbox" checked> Cross-reference the new <code>REQ-CHANGE-003</code> from the README's change-proposal section so the rule is discoverable from the project-wide entry point too.</li>
+</ul>
+</section>
+
+
+<section id="questions">
+<h2>6 · Open questions</h2>
+<spec-questions>
+<ol>
+  <li>None. The boundary heuristic ("more than one new ADR" = large) is the only judgement call, and it's deliberately stated as guidance rather than a guardrail.</li>
+</ol>
+</spec-questions>
+</section>
+
+
+<section id="changelog">
+<h2>7 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-06-13">13 Jun 2026</time><span>Proposal authored from <a href="../../../../inbox.html#I-010">inbox I-010</a> after the user asked the routing question directly during the REQ-TOOL-003 follow-up.</span></li>
+  <li><time datetime="2026-06-13">13 Jun 2026</time><span>Applied: REQ-CHANGE-003 folded into <a href="../../../spectastic-spec.html#REQ-CHANGE-003">examples/spectastic-spec.html</a>; folder moved to <code>changes/archive/</code>.</span></li>
+  <li><time datetime="2026-06-13">13 Jun 2026</time><span>Tasks drained: all three scoped tasks ticked. <code>commands/spectastic.apply.md</code> §Output gained a Report-bullet routing nudge + a new ###What's next subsection; README's change-proposals section gained a #### Post-apply routing subsection linking to REQ-CHANGE-003.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+</spec-change>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  2026-06-13-post-apply-routing · Post-apply routing rule · authored 13 Jun 2026 ·
+  <button data-theme-toggle style="background:none;border:none;color:var(--c-link);cursor:pointer;font:inherit;padding:0;border-bottom:1px solid currentColor;">toggle theme</button>
+</footer>
+
+</main>
+<script src="../../../../assets/spec.js"></script>
+</body>
+</html>

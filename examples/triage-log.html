@@ -1,0 +1,249 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Triage log · 001-stopwatch</title>
+<link rel="stylesheet" href="../assets/spec.css">
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Triage log · 001-stopwatch</p>
+  <h1>Debug sessions</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    One card per session. Tier-1 fills in under 30 seconds; deep-dive only when needed.
+  </p>
+
+  <spec-meta>
+    <b>Spec</b>      <span><a href="#">001-stopwatch · spec</a></span>
+    <b>Plan</b>      <span><a href="#">001-stopwatch · plan</a></span>
+    <b>Last entry</b><span><time datetime="2026-06-12">12 Jun 2026</time></span>
+    <b>Entries</b>   <span>4</span>
+  </spec-meta>
+
+  <spec-tldr>
+    <p>Each card answers five questions in order: <em>what broke</em>, <em>what's the cause</em>,
+    <em>which layer owns the fix</em>, <em>does the regen test pass</em>, <em>what change to make</em>.
+    The deep-dive is only filled when the bug crosses a contract, hits a project-wide invariant,
+    or needs a hotfix-before-amendment sequence.</p>
+  </spec-tldr>
+</header>
+
+
+<section id="log">
+<h2>Sessions</h2>
+
+<spec-triage-log>
+
+<!-- ============================================
+     T-004 · implementation gap (regen passes)
+     ============================================ -->
+<spec-triage id="T-004" layer="implementation">
+  <header>
+    <h4>Timer rolls 59→00 then flickers 59 for one frame</h4>
+    <span class="meta">
+      <span class="layer-pill">Implementation</span>
+      <span class="regen" data-result="pass">code</span>
+    </span>
+  </header>
+
+  <p class="headline">Debugging the minute-roll flicker, root cause was an
+  <strong>implementation</strong> drift; fixed by removing a stray <code>- 1</code>
+  in <code>TimerLabel.swift:14</code>; regeneration passes (spec &amp; plan already
+  capture the correct behavior).</p>
+
+  <dl>
+    <dt>Expected</dt> <dd>Display flips 59 → 00 cleanly at minute roll.</dd>
+    <dt>Actual</dt>   <dd>Briefly displays 59 again for one frame after 00.</dd>
+    <dt>Spec</dt>     <dd><a href="#FR-002">FR-002</a> says "seconds value MUST advance monotonically" — correct as written.</dd>
+    <dt>Fix</dt>      <dd><code>TimerLabel.swift:14</code> — remove <code>- 1</code>, add regression test.</dd>
+  </dl>
+
+  <spec-diff style="margin:var(--s-3) 0 0;font-size:.78rem">
+<del>  let seconds = (totalSeconds % 60) - 1   /* off-by-one drift */</del>
+<ins>  let seconds = totalSeconds % 60</ins>
+  </spec-diff>
+
+  <details>
+    <summary>Deep dive — none required</summary>
+    <p>No cross-spec contract touched; no project-wide invariant; no hotfix-now needed.</p>
+  </details>
+</spec-triage>
+
+
+<!-- ============================================
+     T-003 · spec gap (regen fails)
+     ============================================ -->
+<spec-triage id="T-003" layer="spec">
+  <header>
+    <h4>Times wrong by one hour after spring-forward</h4>
+    <span class="meta">
+      <span class="layer-pill">Spec</span>
+      <span class="regen" data-result="fail">upstream</span>
+    </span>
+  </header>
+
+  <p class="headline">Debugging the DST off-by-one, root cause was a <strong>spec</strong> gap —
+  timezone behavior was never captured as an NFR; regeneration <strong>fails</strong> (the same
+  LLM session would make the same wrong choice from the current spec).</p>
+
+  <dl>
+    <dt>Expected</dt> <dd>Recorded splits show identical wall-clock duration before/after DST roll.</dd>
+    <dt>Actual</dt>   <dd>Splits crossing 02:00 on 9 Mar 2025 are off by exactly 1h.</dd>
+    <dt>Diagnosis</dt><dd>Spec <a href="#FR-005">FR-005</a> stores split times in local wall-clock; nothing forbids it, so the implementer used <code>Date()</code> instead of monotonic clock.</dd>
+    <dt>Fix</dt>      <dd>Amend spec: new NFR-002 — "split timestamps MUST use a monotonic clock; display MUST format in user's locale at render time."</dd>
+  </dl>
+
+  <details>
+    <summary>Deep dive — cascade required</summary>
+    <dl>
+      <dt>Cascade</dt>            <dd>Re-run <code>/spectastic.plan</code> and <code>/spectastic.tasks</code> against amended spec.</dd>
+      <dt>Cross-spec</dt>         <dd>None — DST is local to this feature.</dd>
+      <dt>Principles</dt>         <dd>Maybe. Other time-handling features (export timestamps, scheduled records) likely have the same gap. Worth a separate <code>/spectastic.principles</code> amendment proposing a "monotonic clock" principle.</dd>
+      <dt>Scope</dt>              <dd>In scope — DST handling is implied by FR-005 even if not stated.</dd>
+      <dt>Hotfix now?</dt>        <dd>Yes — ship the code patch this release; the spec amendment lands next cycle to prevent recurrence.</dd>
+    </dl>
+  </details>
+</spec-triage>
+
+
+<!-- ============================================
+     T-002 · plan gap (regen fails)
+     ============================================ -->
+<spec-triage id="T-002" layer="plan">
+  <header>
+    <h4>Offline mode broken — splits never persist</h4>
+    <span class="meta">
+      <span class="layer-pill">Plan</span>
+      <span class="regen" data-result="fail">upstream</span>
+    </span>
+  </header>
+
+  <p class="headline">Debugging the offline persistence loss, root cause was a <strong>plan</strong>
+  gap — spec required offline operation but the plan picked a backend that requires connectivity;
+  regeneration <strong>fails</strong>.</p>
+
+  <dl>
+    <dt>Expected</dt> <dd>Splits taken offline survive app restart.</dd>
+    <dt>Actual</dt>   <dd>Splits taken offline disappear on restart; only online splits persist.</dd>
+    <dt>Diagnosis</dt><dd>Plan §4 chose CloudKit as the only store. Spec <a href="#FR-008">FR-008</a> requires "MUST function with no network." Plan violates spec.</dd>
+    <dt>Fix</dt>      <dd>Amend plan §4 — switch primary store to local SQLite, treat CloudKit as a sync layer. Spec is correct as written.</dd>
+  </dl>
+
+  <details>
+    <summary>Deep dive — cascade required</summary>
+    <dl>
+      <dt>Cascade</dt>            <dd>Re-run <code>/spectastic.tasks</code>; persistence-layer tasks change shape.</dd>
+      <dt>Principles</dt>         <dd>No — this is local to the persistence choice.</dd>
+      <dt>Scope</dt>              <dd>In scope.</dd>
+      <dt>Hotfix now?</dt>        <dd>No — affects a small fraction of users; the plan amendment is the right path.</dd>
+    </dl>
+  </details>
+</spec-triage>
+
+
+<!-- ============================================
+     T-001 · platform defect (regen passes)
+     ============================================ -->
+<spec-triage id="T-001" layer="platform">
+  <header>
+    <h4>Compositor renders glass material with banding</h4>
+    <span class="meta">
+      <span class="layer-pill">Platform</span>
+      <span class="regen" data-result="pass">external</span>
+    </span>
+  </header>
+
+  <p class="headline">Debugging the visual banding on the glass-style toolbar, root cause is a
+  <strong>platform</strong> defect — reproduces in <code>Cmd-Shift-3</code>, in an unmodified
+  Apple SCStream sample, and in QuickTime; regeneration paradoxically passes because no in-stack
+  knob can mitigate it.</p>
+
+  <dl>
+    <dt>Expected</dt> <dd>Toolbar glass renders cleanly under capture.</dd>
+    <dt>Actual</dt>   <dd>Horizontal banding visible in any captured output that touches the glass.</dd>
+    <dt>Diagnosis</dt><dd>macOS WindowServer compositor bug. Project's spec binds us to the platform path (no fallback).</dd>
+    <dt>Fix</dt>      <dd>Release-notes entry + Apple Feedback Assistant filing. <strong>No code patch.</strong></dd>
+  </dl>
+
+  <details>
+    <summary>Deep dive — principles amendment proposed</summary>
+    <p>This is the third platform defect this year. Without a documented protocol, the response
+    is improvised per incident.</p>
+    <dl>
+      <dt>Proposed principle</dt> <dd>"Platform defects: file with vendor, document as known limitation, refuse synthetic substitution, refuse non-platform fallback (forbidden by platform-binding)."</dd>
+      <dt>Cascade</dt>            <dd>Update <a href="../principles.html">principles.html</a>; re-validate all platform-bound specs.</dd>
+      <dt>External tracker</dt>   <dd>Apple FB-92874311 (filed 12 Jun 2026).</dd>
+      <dt>Hotfix now?</dt>        <dd>N/A — no fix exists in our layer.</dd>
+    </dl>
+  </details>
+</spec-triage>
+
+</spec-triage-log>
+</section>
+
+
+<section id="protocol">
+<h2>Protocol</h2>
+
+<p>Five required Tier-1 fields, in order:</p>
+
+<spec-requirement id="TRIAGE-001" priority="must">
+<p>Each card <spec-rule>MUST</spec-rule> include a <strong>headline</strong> in
+Y-statement form: <em>"Debugging X, root cause was Y; fixed by Z; regen pass|fail."</em></p>
+</spec-requirement>
+
+<spec-requirement id="TRIAGE-002" priority="must">
+<p>Each card <spec-rule>MUST</spec-rule> state <strong>Expected</strong>, <strong>Actual</strong>,
+and <strong>Diagnosis</strong> (one sentence — cause, not symptom).</p>
+</spec-requirement>
+
+<spec-requirement id="TRIAGE-003" priority="must">
+<p>Each card <spec-rule>MUST</spec-rule> declare a single <strong>layer</strong> attribute
+(<code>spec | plan | implementation | cross-spec | principles | platform</code>) and a
+<strong>regeneration test result</strong> (pass | fail).</p>
+</spec-requirement>
+
+<spec-requirement id="TRIAGE-004" priority="must">
+<p>Each card <spec-rule>MUST</spec-rule> include a concrete <strong>Fix</strong> — artifact
+path + one-line proposal. For implementation gaps, a <code>&lt;spec-diff&gt;</code> pointing
+at the offending line.</p>
+</spec-requirement>
+
+<spec-requirement id="TRIAGE-005" priority="should">
+<p>The <strong>deep-dive</strong> <code>&lt;details&gt;</code> block
+<spec-rule level="should">SHOULD</spec-rule> be filled only when at least one of:
+cross-spec contract touched, project-wide invariant implicated, deferred scope exposed, or
+hotfix-before-amendment sequence required.</p>
+</spec-requirement>
+
+<spec-requirement id="TRIAGE-006" priority="may">
+<p>Cards <spec-rule level="may">MAY</spec-rule> append a single <code>&lt;spec-question&gt;</code>
+if a decision is owed to the human before the fix lands.</p>
+</spec-requirement>
+</section>
+
+
+<section id="changelog">
+<h2>Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-06-12">12 Jun 2026</time><span>T-004 added — timer flicker, implementation drift.</span></li>
+  <li><time datetime="2026-06-11">11 Jun 2026</time><span>T-003 added — DST off-by-one, spec gap.</span></li>
+  <li><time datetime="2026-06-10">10 Jun 2026</time><span>T-002 added — offline persistence, plan gap.</span></li>
+  <li><time datetime="2026-06-09">09 Jun 2026</time><span>T-001 added — compositor banding, platform defect.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  Triage log for 001-stopwatch ·
+  <button data-theme-toggle style="background:none;border:none;color:var(--c-link);cursor:pointer;font:inherit;padding:0;border-bottom:1px solid currentColor;">toggle theme</button>
+</footer>
+
+</main>
+<script src="../assets/spec.js"></script>
+</body>
+</html>

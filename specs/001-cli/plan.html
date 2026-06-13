@@ -1,0 +1,275 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Spectastic CLI · Plan</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Implementation plan · 001-cli</p>
+  <h1>Spectastic CLI — <code>spectastic init</code></h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    Single Python file, two-pass execution, atomic writes, no runtime dependencies.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>     <span><spec-status value="draft">Draft</spec-status></span>
+    <b>Spec</b>       <span><a href="./spec.html">001-cli</a></span>
+    <b>Principles</b> <span><a href="../../principles.html">v1.0.0</a></span>
+    <b>Owner</b>      <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Branch</b>     <span><code>main</code></span>
+    <b>Created</b>    <span><time datetime="2026-06-12">12 Jun 2026</time></span>
+    <b>Read time</b>  <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-budget words="1500" reqs="20" minutes="12"></spec-budget>
+
+  <spec-tldr>
+    <p>Ship as <code>scripts/spectastic</code> — a single Python 3.9+ file using only the
+    standard library at runtime. Two-pass execution: scan for conflicts, prompt the user (or
+    refuse without <code>--force</code> in non-TTY environments), then write each file
+    atomically via <code>.tmp</code>-then-<code>os.replace</code>. Asset source is discovered
+    via <code>Path(__file__).parent</code>. Tests live in <code>scripts/test_spectastic.py</code>
+    using <code>pytest</code> (dev-only dep). Five load-bearing decisions documented as ADRs.</p>
+  </spec-tldr>
+</header>
+
+
+<section id="principles-check">
+<h2>1 · Principles check</h2>
+
+<table>
+  <thead><tr><th>Principle</th><th>Compliance</th><th>Notes</th></tr></thead>
+  <tbody>
+    <tr><td>P-1 · Source order is reading order</td><td><spec-pill>OK</spec-pill></td><td>Python file reads top-to-bottom: arg parsing → discovery → scan → write → report.</td></tr>
+    <tr><td>P-2 · Semantic tags over class soup</td><td><spec-pill>N/A</spec-pill></td><td>Not an HTML artifact; principle does not apply.</td></tr>
+    <tr><td>P-3 · IDs are contracts</td><td><spec-pill>OK</spec-pill></td><td>Each ADR has a stable <code>D-NNN</code> ID. Subcommand names (<code>init</code>) are user-facing contracts.</td></tr>
+    <tr><td>P-4 · Progressive enhancement, never dependence</td><td><spec-pill>OK</spec-pill></td><td>Runtime needs only Python stdlib. No <code>pip install</code>. Tests use pytest as a dev-only dep.</td></tr>
+    <tr><td>P-5 · Calm density</td><td><spec-pill>OK</spec-pill></td><td>Single file, ~300–500 lines. Each section labelled. No premature abstraction.</td></tr>
+  </tbody>
+</table>
+</section>
+
+
+<section id="technical-context">
+<h2>2 · Technical context</h2>
+
+<dl>
+  <dt>Language</dt>      <dd>Python 3.9+. Standard library only at runtime.</dd>
+  <dt>Test stack</dt>    <dd><code>pytest</code> with <code>tmp_path</code> fixture + <code>subprocess</code>. Dev dep only; not required at install or runtime.</dd>
+  <dt>Distribution</dt>  <dd>User downloads <code>scripts/spectastic</code> (+ the assets it references) and runs <code>chmod +x</code>. No package manager in v1.</dd>
+  <dt>Storage</dt>       <dd>None. The CLI is stateless.</dd>
+  <dt>Perf target</dt>   <dd><a href="./spec.html#NFR-001">NFR-001</a>: under 2 s wall-clock for an empty directory. File IO dominates; no network.</dd>
+  <dt>Constraints</dt>   <dd>No runtime deps; no network; no writes outside cwd; non-TTY refuses without <code>--force</code>.</dd>
+</dl>
+</section>
+
+
+<section id="approach">
+<h2>3 · Approach</h2>
+
+<p>Two-pass execution. The first pass discovers and reports; the second pass writes. Between
+them, the user (or <code>--force</code>) gates progress. Atomic per-file writes
+(<code>.tmp</code> + <code>os.replace</code>) ensure Ctrl-C never leaves a partial file.</p>
+
+<spec-arch>
+<figure>
+<svg viewBox="0 0 760 200" role="img" aria-label="Two-pass execution: parse → discover → scan → prompt → write → report">
+  <defs>
+    <marker id="ah-cli" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="#73706d"/>
+    </marker>
+  </defs>
+  <style>
+    .cbox { fill: #fcfbf7; stroke: #c4c1bb; stroke-width: 1.2; }
+    .cbox.gate { fill: #f1ead1; stroke: #b08a3e; }
+    .clabel { font: 700 11px Lato, sans-serif; fill: #4a4a46; letter-spacing: 0.06em; text-transform: uppercase; }
+    .cbody { font: 400 11px "Source Serif 4", Georgia, serif; fill: #353534; }
+    .carr { stroke: #73706d; stroke-width: 1.2; fill: none; }
+  </style>
+
+  <rect class="cbox" x="20"  y="60" width="100" height="56" rx="4"/>
+  <text class="clabel" x="36" y="80">parse</text>
+  <text class="cbody"  x="36" y="98">argparse</text>
+
+  <rect class="cbox" x="140" y="60" width="110" height="56" rx="4"/>
+  <text class="clabel" x="156" y="80">discover</text>
+  <text class="cbody"  x="156" y="98">Path(__file__)</text>
+
+  <rect class="cbox" x="270" y="60" width="110" height="56" rx="4"/>
+  <text class="clabel" x="286" y="80">scan cwd</text>
+  <text class="cbody"  x="286" y="98">find conflicts</text>
+
+  <rect class="cbox gate" x="400" y="60" width="100" height="56" rx="4"/>
+  <text class="clabel" x="416" y="80">gate</text>
+  <text class="cbody"  x="416" y="98">prompt / --force</text>
+
+  <rect class="cbox" x="520" y="60" width="100" height="56" rx="4"/>
+  <text class="clabel" x="536" y="80">write</text>
+  <text class="cbody"  x="536" y="98">atomic + report</text>
+
+  <rect class="cbox" x="640" y="60" width="100" height="56" rx="4"/>
+  <text class="clabel" x="656" y="80">summary</text>
+  <text class="cbody"  x="656" y="98">stdout · exit 0</text>
+
+  <path class="carr" d="M120 88 L140 88" marker-end="url(#ah-cli)"/>
+  <path class="carr" d="M250 88 L270 88" marker-end="url(#ah-cli)"/>
+  <path class="carr" d="M380 88 L400 88" marker-end="url(#ah-cli)"/>
+  <path class="carr" d="M500 88 L520 88" marker-end="url(#ah-cli)"/>
+  <path class="carr" d="M620 88 L640 88" marker-end="url(#ah-cli)"/>
+
+  <text class="cbody" x="20" y="155" fill="#73706d">Pass 1: parse + discover + scan (read-only)</text>
+  <text class="cbody" x="400" y="155" fill="#73706d">Pass 2: write + report (mutating, atomic per file)</text>
+</svg>
+<figcaption>Two-pass execution. The gate sits between read-only discovery and mutating writes.</figcaption>
+</figure>
+</spec-arch>
+</section>
+
+
+<section id="alternatives">
+<h2>4 · Alternatives considered</h2>
+
+<spec-matrix>
+<table>
+  <thead><tr><th>Concern</th><th>Considered</th><th>Picked</th><th class="score">Why</th></tr></thead>
+  <tbody>
+    <tr><td>CLI library</td><td>argparse · click · typer</td><td>argparse</td><td class="score">Stdlib; no install step; covers the surface.</td></tr>
+    <tr><td>File copy</td><td><code>shutil.copytree</code> · per-file walk + copy</td><td>per-file walk</td><td class="score">We need conflict prompting per file; copytree is all-or-nothing.</td></tr>
+    <tr><td>Test framework</td><td>unittest · pytest · no tests</td><td>pytest</td><td class="score">User chose during decision phase; fixtures + parameterise simplify the assertions.</td></tr>
+    <tr><td>Asset source</td><td><code>__file__</code> relative · base64-embedded · <code>$SPECTASTIC_HOME</code></td><td><code>Path(__file__).parent</code></td><td class="score">Matches the single-file philosophy; works in dev and after download with no env config.</td></tr>
+  </tbody>
+</table>
+</spec-matrix>
+</section>
+
+
+<section id="decisions">
+<h2>5 · Decisions</h2>
+
+<spec-decision id="D-001">
+  <h4>D-001 · <code>argparse</code> over <code>click</code></h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd><a href="./spec.html#NFR-002">NFR-002</a> mandates stdlib-only at runtime. <code>click</code> would force <code>pip install</code>.</dd>
+    <dt>Decision</dt>     <dd>Use <code>argparse</code>. The CLI surface (<code>init</code> + <code>--force</code>) fits argparse's syntax cleanly.</dd>
+    <dt>Consequences</dt> <dd>+ Zero install. + Cross-Python compatibility. − Slightly more verbose subcommand definition than click.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-002">
+  <h4>D-002 · Atomic per-file writes</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd><a href="./spec.html#FR-005">FR-005</a> requires no partial state after error or Ctrl-C.</dd>
+    <dt>Decision</dt>     <dd>For each file: write to <code>&lt;target&gt;.tmp</code>, then <code>os.replace(tmp, target)</code>. POSIX guarantees rename is atomic within a filesystem.</dd>
+    <dt>Consequences</dt> <dd>+ Ctrl-C between files leaves earlier files complete, later files untouched. + Cleanup is delete any leftover <code>.tmp</code>. − Cross-filesystem rename is not atomic; not a concern when writing inside cwd.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-003">
+  <h4>D-003 · Asset source via <code>Path(__file__).parent</code></h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>The CLI needs to find <code>assets/</code>, <code>templates/</code>, and <code>commands/</code> at runtime. In dev: <code>scripts/spectastic</code> is co-located with its source-of-truth assets at <code>../assets/</code>. After download: same layout.</dd>
+    <dt>Decision</dt>     <dd>Resolve the source root from <code>Path(__file__).resolve().parent.parent</code>. No env vars, no embedded base64, no walk-up search.</dd>
+    <dt>Consequences</dt> <dd>+ Self-locating; works in any cwd. + No config. − User must keep the directory layout intact when downloading; if they move <code>spectastic</code> out of <code>scripts/</code>, the resolver breaks.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-004">
+  <h4>D-004 · <code>pytest</code> for tests; CLI runtime stays stdlib-only</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>User chose pytest during the plan-phase interview. NFR-002 still binds the runtime.</dd>
+    <dt>Decision</dt>     <dd>Tests live at <code>scripts/test_spectastic.py</code> using pytest's <code>tmp_path</code> fixture and <code>subprocess.run</code>. <code>pip install pytest</code> is a dev-only step documented in the README. The CLI itself imports nothing third-party.</dd>
+    <dt>Consequences</dt> <dd>+ Expressive parameterised tests. − One dev dep. − Tests skipped if pytest is absent (acceptable; CI installs it).</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-005">
+  <h4>D-005 · Strict non-TTY behaviour</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>The conflict prompt loop reads from stdin. In CI or piped input, that loop hangs.</dd>
+    <dt>Decision</dt>     <dd>At startup, check <code>sys.stdin.isatty()</code>. If false and conflicts exist and <code>--force</code> was not passed, refuse with a clear message naming <code>--force</code> as the remedy. Exit code 2.</dd>
+    <dt>Consequences</dt> <dd>+ Never hangs. + CI failures are loud, not silent. − Adds a small startup check.</dd>
+  </dl>
+</spec-decision>
+</section>
+
+
+<section id="project-structure">
+<h2>6 · Project structure</h2>
+
+<pre><code>scripts/
+  spectastic            ← new: Python entry point, ~300–500 lines
+  test_spectastic.py    ← new: pytest tests
+
+README.md               ← updated: install steps + spectastic init usage
+</code></pre>
+</section>
+
+
+<section id="risks">
+<h2>7 · Risks &amp; mitigations</h2>
+
+<table>
+  <thead><tr><th>Risk</th><th>Likelihood</th><th>Impact</th><th>Mitigation</th></tr></thead>
+  <tbody>
+    <tr><td>Python version drift</td><td>L</td><td>M</td><td><code>sys.version_info</code> check at startup; refuse with a clear message naming 3.9.</td></tr>
+    <tr><td>Asset path divergence (dev vs installed)</td><td>L</td><td>H</td><td>Single resolver (D-003); test on a relocated copy.</td></tr>
+    <tr><td>Prompt loop hangs in CI</td><td>M</td><td>M</td><td>D-005 strict non-TTY refusal.</td></tr>
+    <tr><td>Partial writes on Ctrl-C</td><td>M</td><td>H</td><td>D-002 atomic <code>.tmp</code> + <code>os.replace</code>.</td></tr>
+    <tr><td>Symlinks in cwd cause surprises</td><td>L</td><td>L</td><td><code>Path.resolve()</code> at startup; document.</td></tr>
+  </tbody>
+</table>
+</section>
+
+
+<section id="complexity">
+<h2>8 · Complexity tracking</h2>
+
+<spec-assumption>
+<p>The <code>.tmp</code>-then-<code>os.replace</code> pattern is mildly more complex than a
+naive write. It's justified by <a href="./spec.html#FR-005">FR-005</a>'s "no partial state"
+requirement; nothing simpler meets that bar.</p>
+</spec-assumption>
+</section>
+
+
+<section id="questions">
+<h2>9 · Open questions</h2>
+<spec-questions>
+<ol>
+  <li>None. All decisions anchored via the plan-phase interview.</li>
+</ol>
+</spec-questions>
+</section>
+
+
+<section id="changelog">
+<h2>10 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-06-12">12 Jun 2026</time><span>Initial plan. Five ADRs (argparse, atomic writes, asset discovery, pytest, strict non-TTY). Principles check OK on all four applicable rows; P-2 N/A.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  001-cli · Plan · authored 12 Jun 2026 ·
+  <a href="./spec.html">spec</a> ·
+  <a href="../../principles.html">principles</a> ·
+  <button data-theme-toggle style="background:none;border:none;color:var(--c-link);cursor:pointer;font:inherit;padding:0;border-bottom:1px solid currentColor;">toggle theme</button>
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>
