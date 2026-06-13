@@ -89,5 +89,15 @@ Report:
 - The archived proposal path.
 - The new entry added to the spec's changelog.
 - Any cross-spec references that may need follow-up.
+- The **post-apply routing nudge** (per `REQ-CHANGE-003`): one line naming whether the change is small (drive the proposal's §5 Tasks) or large (re-run `/spectastic.plan` then `/spectastic.tasks`).
 
 Suggest opening the live spec in a browser to confirm the apply rendered cleanly.
+
+### What's next
+
+Per `REQ-CHANGE-003` of the meta-spec, after `/spectastic.apply` lands a change, the user needs to know where the follow-up implementation work lives. Always name the routing rule explicitly in the per-apply console report:
+
+- **Small change** — one or two requirements, behavioural addition, no new ADRs. The implementation breakdown is the archived proposal's §5 Tasks; `/spectastic.implement` can drive those checkboxes directly.
+- **Large change** — multi-requirement, architectural shift, new topic group. Re-run `/spectastic.plan` against the updated spec to revisit ADRs, then `/spectastic.tasks` to derive a fresh breakdown, then `/spectastic.implement` to drain it.
+
+The boundary heuristic: **more than one new ADR would land → large**. Otherwise the proposal's inline tasks are the breakdown. State the rule as guidance, not a guardrail — never auto-trigger plan/tasks based on your own classification, and never refuse an apply based on it.
