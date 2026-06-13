@@ -47,6 +47,14 @@ User input (from `$ARGUMENTS`): a feature name or one-line description.
    - The first option should usually be the recommendation, labelled accordingly.
    - If a decision genuinely cannot be answered yet, leave it as a `<spec-question>` — but only after attempting `AskUserQuestion` first.
 
+   **Interview depth — non-obvious questions only, continue until complete.**
+
+   The interview is bounded by *decision exhaustion*, not by question count. Loop `AskUserQuestion` calls until: every decidable question is anchored to a concrete choice; every genuinely-undecidable question is documented in `<spec-questions>` with reasoning; and no obvious-to-a-careful-reviewer question remains unasked.
+
+   Ask the questions a careful reviewer would surface but that aren't obvious from a first reading — edge cases, failure modes, scope boundaries, tradeoffs the user hasn't named, contradictions between adjacent user stories. **Don't burn `AskUserQuestion` calls on questions whose answers are self-evident** from `$ARGUMENTS`, the user-story text, or upstream artifacts; surfacing the obvious wastes the user's attention and trains them to click through.
+
+   **Re-entry mode.** If `/spectastic.spec <spec-id>` is invoked against an existing `specs/<spec-id>/spec.html`, run the same two-phase interview against the existing artifact. Chat phase surfaces new context or shifted intent; decision phase asks the non-obvious questions the original interview missed (or the new ones that became visible after time away from the spec). Extend existing requirements with `<details>` rationale where appropriate, or add new requirements where a gap is real. **Do not overwrite or remove existing content without explicit confirmation** — re-entry sharpens; it does not redraft.
+
 7. **Author the artifact.** Fill the template's requirements:
    - Functional requirements with stable IDs `FR-001`, `FR-002`, … and a `priority` of `must | should | may`
    - Non-functional requirements `NFR-001`, … (perf, security, privacy, accessibility — quantified per the decision phase)

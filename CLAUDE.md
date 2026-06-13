@@ -45,6 +45,7 @@ When evaluating any future design influence, capture the *principle* version her
 | Michael Nygard | ADR shape (Context / Decision / Consequences) | "ADR" (canonical link); `<spec-decision>` carries the structure |
 | Edward Tufte | Sidenotes, sparklines, marginalia | "Sidenotes", "sparkline-style architecture diagrams" |
 | [ISO 31000](https://www.iso.org/iso-31000-risk-management.html) — risk register | Risks raised at design time become statused artifacts, not chat | `<spec-risk>` + `<spec-risk-log>` populated by the propose-time adversarial pass; gates apply on user-confirmed status |
+| Thariq (Anthropic) — "interview me" pattern | Non-obvious questions only; continue until decision-exhausted; aggressive `AskUserQuestion` coverage as a discrete pass | `/spectastic.spec` decision-phase discipline ("Interview depth"); documented as a standalone invocation pattern in the Interview discipline section below |
 
 ## Commands
 
@@ -76,6 +77,10 @@ Why both: open-ended capture in chat keeps the conversation natural; `AskUserQue
 - Use chat (not `AskUserQuestion`) for paragraph-length or genuinely open-ended answers.
 - Loop `AskUserQuestion` calls if a phase has more than 4 decisions to make.
 - Skip questions whose answers are already in `$ARGUMENTS`, the existing file, or upstream artifacts.
+
+**Interview depth.** The decision phase is bounded by *decision exhaustion*, not by question count. Loop until every decidable question is anchored, every undecidable one is documented with reasoning, and no obvious-to-a-careful-reviewer question remains unasked. Ask the non-obvious ones — edge cases, failure modes, scope boundaries, tradeoffs the user hasn't named. The decision phase replaces what other SDD tools ship as a discrete `/clarify` verb; spectastic's verb count stays at 8 because the work happens inline.
+
+**For aggressive coverage on an existing spec.** Users who want a deeper pass without re-running `/spectastic.spec` can invoke the pattern directly: *"Read this @<path-to-spec.html> and interview me using `AskUserQuestion` about literally anything — technical implementation, UI & UX, concerns, tradeoffs. Non-obvious questions only. Continue until complete, then update the spec."* `/spectastic.spec` honours the same shape when invoked on an existing `spec.html` (re-entry mode); the standalone pattern is the version users reach for when they want the discipline without going through the command.
 
 ## The small-batch loop
 
