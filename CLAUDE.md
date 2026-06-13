@@ -44,18 +44,19 @@ When evaluating any future design influence, capture the *principle* version her
 | Mike Cohn / Gojko Adzic | Vertical slicing, "How would you demo just this?" | "Smallest demoable" prompt |
 | Michael Nygard | ADR shape (Context / Decision / Consequences) | "ADR" (canonical link); `<spec-decision>` carries the structure |
 | Edward Tufte | Sidenotes, sparklines, marginalia | "Sidenotes", "sparkline-style architecture diagrams" |
+| [ISO 31000](https://www.iso.org/iso-31000-risk-management.html) — risk register | Risks raised at design time become statused artifacts, not chat | `<spec-risk>` + `<spec-risk-log>` populated by the propose-time adversarial pass; gates apply on user-confirmed status |
 
 ## Commands
 
-Seven slash commands. Don't add more without a good reason — OpenSpec's small command surface is one of its wins worth preserving.
+Eight slash commands. Don't add more without a good reason — OpenSpec's small command surface is one of its wins worth preserving.
 
 - `/spectastic.principles` — non-negotiable principles
 - `/spectastic.spec` — feature spec; carries the smallest-demoable prompt + INVEST self-check
 - `/spectastic.plan` — implementation plan; refuses to run while blockers exist
 - `/spectastic.tasks` — task breakdown
 - `/spectastic.implement` — implement the next unchecked task or `just-do` inbox card; mark complete; loop to drain
-- `/spectastic.propose` — change proposal with typed `<spec-delta op="…">`
-- `/spectastic.apply` — apply approved proposal (moves to changes/archive/ as a side effect)
+- `/spectastic.propose` — change proposal with typed `<spec-delta op="…">`; runs an adversarial risk pass on non-trivial proposals (must-tier touched, removed op, or ≥2 topic prefixes) — three findings land as `<spec-risk>` blocks under §5 Risk register; opt-out `--no-adversarial`, opt-in `--adversarial`
+- `/spectastic.apply` — apply approved proposal (moves to changes/archive/ as a side effect); refuses if any `<spec-risk status="identified">` remains
 - `/spectastic.triage` — single-defect classification *or* list-intake mode (paste a list; one card per item; appends to `inbox.html`)
 
 ## Interview discipline in commands
