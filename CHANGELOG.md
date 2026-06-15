@@ -1,5 +1,27 @@
 # Changelog
 
+## v0.1.0-pre.2 — 2026-06-15
+
+`spectastic init` ported to TypeScript on `@spectastic/cli`; Python implementation retired. Spec [003-init-node-port](./specs/003-init-node-port/spec.html).
+
+### `@spectastic/cli` — new `init` subcommand
+
+- `spectastic init` writes the canonical 16-file lifecycle structure (8 slash commands + 2 assets + 6 templates) into the current directory.
+- Conflict UX via [@clack/prompts](https://github.com/natemoo-re/clack): per-file `[y/N/a/s]` with `a`-all-overwrite and `s`-all-skip shortcuts.
+- `--force` bypasses prompts; non-TTY context with conflicts refuses with exit 2 and a message naming `--force`.
+- Atomic plan-then-write: Ctrl-C during the prompt loop leaves zero files written.
+- Templates bundled inside the published package; runtime resolves via `import.meta.url` with a dev-mode workspace fallback.
+
+### Python implementation retired
+
+- `scripts/spectastic` deleted (was the Python single-file CLI per [001-cli](./specs/001-cli/spec.html), now `Superseded`).
+- `scripts/test_spectastic.py` deleted.
+- Byte-identity parity verified manually: Python output and Node output for `spectastic init` in matched tmp dirs produce zero diffs.
+
+### Performance fix
+
+- Validate subcommand now lazy-imports its heavy deps (`@spectastic/schema` with parse5, tinyglobby, formatters) so `spectastic init` cold-start stays under its 500ms NFR. Validate pays the cost once when actually invoked.
+
 ## v0.1.0-pre — 2026-06-14
 
 First Node-side packages. Spec 002-validate-cli (Tier 1 of the strategy

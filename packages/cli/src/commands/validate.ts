@@ -1,10 +1,4 @@
-import { readFile } from 'node:fs/promises';
-import { validateMany } from '@spectastic/schema';
 import type { Command } from 'commander';
-import { humanFormatter } from '../formatters/human.js';
-import { jsonFormatter } from '../formatters/json.js';
-import { sarifFormatter } from '../formatters/sarif.js';
-import { expandGlobs } from '../glob.js';
 
 interface ValidateOptions {
   format: string;
@@ -13,8 +7,12 @@ interface ValidateOptions {
 
 /**
  * Register the `validate` subcommand. Implements FR-001, FR-002, FR-014
- * of specs/002-validate-cli/spec.html. JSON and SARIF formats are
- * declared but deferred to US2 (T-210, T-211).
+ * of specs/002-validate-cli/spec.html.
+ *
+ * Heavy dependencies (parse5 via @spectastic/schema, tinyglobby) are
+ * dynamically imported inside the action so that other subcommands —
+ * notably `init` — don't pay the cold-start cost on every invocation.
+ * Keeps init under its <500 ms NFR.
  */
 export function registerValidate(program: Command): void {
   program
@@ -24,6 +22,16 @@ export function registerValidate(program: Command): void {
     .option('-f, --format <fmt>', 'output format: human (default) | json | sarif', 'human')
     .option('-i, --ignore <patterns...>', 'additional glob patterns to exclude')
     .action(async (paths: string[], options: ValidateOptions) => {
+      const [{ readFile }, { validateMany }, { expandGlobs }, { humanFormatter }, { jsonFormatter }, { sarifFormatter }] =
+        await Promise.all([
+          import('node:fs/promises'),
+          import('@spectastic/schema'),
+          import('../glob.js'),
+          import('../formatters/human.js'),
+          import('../formatters/json.js'),
+          import('../formatters/sarif.js'),
+        ]);
+
       const files = await expandGlobs(paths, options.ignore);
       if (files.length === 0) {
         process.stderr.write('No files matched the given patterns.\n');

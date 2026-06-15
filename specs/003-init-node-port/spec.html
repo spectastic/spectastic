@@ -1,0 +1,253 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>spectastic init (Node port) · Specification</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Specification · 003-init-node-port</p>
+  <h1><code>spectastic init</code> — Node port</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    Bring init to parity in TypeScript on the same binary as validate, then retire the Python implementation. One CLI, one install, no PATH coexistence anxiety.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>      <span><spec-status value="draft">Draft</spec-status></span>
+    <b>Spec ID</b>     <span>003-init-node-port</span>
+    <b>Owner</b>       <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Reviewers</b>   <span>—</span>
+    <b>Created</b>     <span><time datetime="2026-06-14">14 Jun 2026</time></span>
+    <b>Principles</b><span><a href="../../principles.html">v1.0.1</a></span>
+    <b>Smallest demoable</b><span><code>spectastic init</code> in an empty directory writes the same 16-file lifecycle structure the Python script does today; existing-file conflicts prompt in TTY mode and refuse in non-TTY.</span>
+    <b>Read time</b>   <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-budget words="1800" reqs="18" minutes="10"></spec-budget>
+
+  <spec-tldr>
+    <p>The Tier 1 ship gave us <code>spectastic validate</code> as a Node binary; init still lives in a Python script at <code>scripts/spectastic</code>. The two CLIs collide on the <code>spectastic</code> binary name (only one can own the PATH entry). This spec ports init to TypeScript as a subcommand of <code>@spectastic/cli</code>, achieves feature parity with the existing Python implementation, and retires the Python script as part of apply. After this lands: one binary, two subcommands (<code>init</code> + <code>validate</code>), one install story.</p>
+  </spec-tldr>
+
+  <dl class="invest">
+    <dt><span class="letter">I</span> Independent</dt> <dd>Depends only on <code>@spectastic/cli</code> (Tier 1, shipped) and the existing template/asset files in the repo. No upstream specs block.</dd>
+    <dt><span class="letter">N</span> Negotiable</dt>  <dd>Specifies <em>what</em> the command does (file writes, prompts, exit codes); library choices (prompt library, fs-extras, file-bundling mechanism) defer to the plan.</dd>
+    <dt><span class="letter">V</span> Valuable</dt>    <dd>Unlocks <a href="#SC-003">SC-003</a> — a single <code>spectastic</code> binary on PATH that does both init and validate.</dd>
+    <dt><span class="letter">E</span> Estimable</dt>   <dd>No <code>&lt;spec-question&gt;</code>; the Python script is the canonical reference for every behavior. Plan + tasks derivable from this artifact alone.</dd>
+    <dt><span class="letter">S</span> Small</dt>       <dd>10 FRs, 3 NFRs, 3 SCs. Bounded by parity with an existing implementation.</dd>
+    <dt><span class="letter">T</span> Testable</dt>    <dd>Every requirement observable via integration tests that spawn the CLI against tmp directories. <a href="#SC-001">SC-001</a> names the canonical 16-file fixture set.</dd>
+  </dl>
+
+  <spec-audience-map>
+    <dl>
+      <dt>Exec / PM</dt>   <dd>§<a href="#context">Context</a>, §<a href="#scenarios">User scenarios</a>, §<a href="#success">Success criteria</a>.</dd>
+      <dt>Reviewer</dt>    <dd>§<a href="#requirements">Requirements</a>, §<a href="#assumptions">Assumptions</a>, §<a href="#questions">Open questions</a>.</dd>
+      <dt>Implementer</dt> <dd>§<a href="#requirements">Requirements</a>, §<a href="#data">Data model</a>, §<a href="#conformance">Conformance index</a>.</dd>
+    </dl>
+  </spec-audience-map>
+</header>
+
+
+<section id="context">
+<h2>1 · Context</h2>
+<p>Spectastic ships two CLIs today. The Python <code>scripts/spectastic init</code> bootstraps a project (8 slash commands + 2 assets + 6 templates = 16 files); its spec at <a href="../001-cli/spec.html">001-cli</a> is the behavioral contract. The Node <code>spectastic validate</code> shipped in <a href="../002-validate-cli/spec.html">002-validate-cli</a> as a subcommand of <code>@spectastic/cli</code>. Both want the same <code>spectastic</code> binary name on PATH — exactly one can own it. Spec 002 §6 Assumption #4 acknowledged this transition cost and named "retire Python once Node CLI reaches parity" as the resolution. This spec is that resolution.</p>
+<p>Porting yields three immediate wins: one install story (<code>npm i -g @spectastic/cli</code> instead of <code>chmod +x</code> on a downloaded Python file), one binary on PATH (no <code>spectastic-init</code> renaming compromise), and shared lifecycle/test infrastructure across init and validate (and future subcommands like <code>adopt</code>, <code>generate</code>, <code>doctor</code>). The Python script's 1.0 behavior is the contract; the Node implementation is the new home.</p>
+</section>
+
+
+<section id="scenarios">
+<h2>2 · User scenarios &amp; testing</h2>
+
+<p>Each story is independently testable.</p>
+
+<h3>US1 · New-project author bootstraps spectastic <spec-pill>P1</spec-pill></h3>
+<p>As a <strong>developer starting a new spec-driven project</strong>, I want to <strong>run <code>spectastic init</code> in an empty directory</strong> so that <strong>I get a working spectastic project (slash commands, assets, templates) with one command, no clone required</strong>.</p>
+<p><em>Acceptance:</em> Empty directory + zero-arg invocation produces the same 16-file structure the Python script writes today, exits 0, prints a summary line "<code>wrote 16, overwrote 0, skipped 0</code>" and a next-step hint pointing at <code>/spectastic.principles</code>.</p>
+
+<h3>US2 · Repeat-init author isn't surprised <spec-pill>P1</spec-pill></h3>
+<p>As a <strong>developer re-initialising or updating an existing spectastic project</strong>, I want to <strong>be prompted before any existing file is overwritten</strong> so that <strong>I never lose work I forgot to commit</strong>.</p>
+<p><em>Acceptance:</em> Each conflict prompts <code>[y/N/a/s]</code> (default N); <code>a</code> overwrites all remaining; <code>s</code> skips all remaining. <code>--force</code> bypasses prompts entirely. Non-TTY context with any conflict refuses with exit 2 and a message naming <code>--force</code>.</p>
+
+<h3>US3 · CI script idempotently bootstraps a workspace <spec-pill>P2</spec-pill></h3>
+<p>As a <strong>CI maintainer for a project template</strong>, I want to <strong>run <code>spectastic init --force</code> in a fresh workspace</strong> so that <strong>the build always starts from a known-good baseline without manual interaction</strong>.</p>
+<p><em>Acceptance:</em> <code>--force</code> mode in non-TTY context completes without prompting; exit 0 on success; exit 1 on any unrecoverable filesystem error.</p>
+
+<h3>Edge cases</h3>
+<ul>
+  <li><strong>Destination directory not writable</strong> — exit 1 with a clear message naming the path. No partial writes left behind.</li>
+  <li><strong>Templates missing from the install</strong> (packaging bug) — exit 1 early with a message instructing reinstall.</li>
+  <li><strong>Init in a directory that already has spectastic but is mid-edit</strong> — every existing file produces a conflict prompt; user can <code>s</code>-skip all to safely abort.</li>
+  <li><strong>Init in the spectastic repo itself</strong> (self-init) — works; same conflict-prompt behavior applies to every templated file already present.</li>
+  <li><strong>Symlinked destination files</strong> — prompts as normal; on overwrite, the existing symlink is replaced with a regular file (matches the Python script's behavior).</li>
+</ul>
+</section>
+
+
+<section id="requirements">
+<h2>3 · Requirements</h2>
+
+<p>Conformance keywords (<spec-rule>MUST</spec-rule>, <spec-rule level="should">SHOULD</spec-rule>, <spec-rule level="may">MAY</spec-rule>) follow RFC 2119. The Python script (<a href="../001-cli/spec.html">001-cli</a>) is the canonical reference for any behavior not explicitly named here.</p>
+
+<h3>Functional — the subcommand</h3>
+
+<spec-requirement id="FR-001" priority="must">
+<p>The <code>spectastic init</code> subcommand <spec-rule>MUST</spec-rule> accept zero positional arguments and write to the current working directory. With unexpected positional arguments, print usage and exit 2.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-002" priority="must">
+<p>The subcommand <spec-rule>MUST</spec-rule> write the canonical 16-file lifecycle structure: eight slash-command files at <code>.claude/commands/spectastic.{principles,spec,plan,tasks,implement,propose,apply,triage}.md</code>; two asset files at <code>assets/spec.{css,js}</code>; six template files at <code>templates/{principles,spec,plan,tasks,proposal,inbox}.html</code>. Source content for each file is bundled inside <code>@spectastic/cli</code> and is byte-identical to the file shipping in this repo at the corresponding path.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-003" priority="must">
+<p>The subcommand <spec-rule>MUST</spec-rule> detect conflicts (any destination file already existing) and prompt per-file in a TTY: <code>[y/N/a/s]</code> with default <code>N</code> (skip this file). <code>y</code> overwrites this file. <code>a</code> overwrites every remaining conflict without further prompting. <code>s</code> skips every remaining conflict without further prompting.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-004" priority="must">
+<p>The subcommand <spec-rule>MUST</spec-rule> accept a <code>--force</code> flag that overwrites every conflict without prompting. <code>--force</code> in an empty directory (no conflicts) is a no-op flag.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-005" priority="must">
+<p>In a non-TTY context (CI, piped input) with at least one conflict and without <code>--force</code>, the subcommand <spec-rule>MUST</spec-rule> refuse with exit code 2 and an error message that names <code>--force</code> as the resolution. The CLI <spec-rule>MUST NOT</spec-rule> hang on a prompt that can never be answered.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-006" priority="must">
+<p>Exit codes <spec-rule>MUST</spec-rule> be: <code>0</code> on success (every file written or intentionally skipped); <code>1</code> on unrecoverable IO error (e.g. destination not writable, template missing from install); <code>2</code> on usage error or non-TTY-conflict-without-force.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-007" priority="must">
+<p>After completion, the subcommand <spec-rule>MUST</spec-rule> print a summary line in the form <code>spectastic init — summary</code> followed by <code>wrote N, overwrote M, skipped K</code>, then a next-step hint pointing at <code>/spectastic.principles</code>. Matches the Python script's output verbatim.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-008" priority="must">
+<p>Writes <spec-rule>MUST</spec-rule> be atomic across the file set: a first pass scans every destination for conflicts and prompts for each (or applies <code>--force</code>); only after every decision is made does the second pass write any file. A user who aborts mid-prompt (Ctrl-C) leaves zero files written.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-009" priority="must">
+<p>Templates and assets <spec-rule>MUST</spec-rule> bundle inside the published <code>@spectastic/cli</code> npm package (under the package's own directory structure) and resolve at runtime relative to the binary's installed location via <code>import.meta.url</code> — not via a CWD-relative lookup. The CLI <spec-rule>MUST</spec-rule> work identically whether invoked via <code>npx</code>, a global <code>npm i -g</code> install, or a workspace-symlinked dev install.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-010" priority="must">
+<p>At apply time for this spec: the Python script <code>scripts/spectastic</code> and its test file <code>scripts/test_spectastic.py</code> <spec-rule>MUST</spec-rule> be removed from the repository, and <a href="../001-cli/spec.html">spec 001-cli</a>'s <code>&lt;spec-status&gt;</code> <spec-rule>MUST</spec-rule> flip to <code>superseded</code> with a forward link to this spec. The 001-cli artifact is preserved as historical record; the contract moves here.</p>
+</spec-requirement>
+
+<h3>Non-functional</h3>
+
+<spec-requirement id="NFR-001" priority="must">
+<p>Init <spec-rule>MUST</spec-rule> complete in under 500 ms p95 on a modern laptop (Apple M-series or comparable) in an empty directory. The work is pure filesystem (no network); the threshold is generous to absorb npm-install warm-up latency.</p>
+</spec-requirement>
+
+<spec-requirement id="NFR-002" priority="must">
+<p>The subcommand <spec-rule>MUST NOT</spec-rule> alter anything outside the destination directory. No global config, no home-directory dotfiles, no logs in <code>/tmp</code>. Failure to write does not leave debris in the parent path.</p>
+</spec-requirement>
+
+<spec-requirement id="NFR-003" priority="should">
+<p>Init <spec-rule level="should">SHOULD</spec-rule> work cross-platform on macOS, Linux, and Windows under Node 20 LTS+. Path separators, line endings, and file-mode bits handled per Node's standard APIs; no shell-out to <code>cp</code>/<code>mkdir</code>.</p>
+</spec-requirement>
+
+<h3>Out of scope (deferred to other slices)</h3>
+<spec-out-of-scope>
+  <ul>
+    <li defer-to="TBD-npm-publish">npm-publish workflow for <code>@spectastic/cli</code> and <code>@spectastic/schema</code>. This spec makes init publishable; actually publishing (org permissions, release-tag policy, automation) is its own slice.</li>
+    <li defer-to="TBD-tier-2-installers">Cross-tool installers (<code>--target cursor|aider|claude|copilot|generic</code>). Tier 2 work; this spec stays Claude-only to match parity with the Python implementation.</li>
+    <li defer-to="TBD-doctor"><code>spectastic doctor</code> diagnostics subcommand.</li>
+    <li defer-to="TBD-update"><code>spectastic update</code> mode that refreshes templates without touching authored content.</li>
+    <li defer-to="TBD-editor-detect">Auto-detect editor (Claude vs Cursor vs Aider). Users name their tool implicitly by which init flavor they invoke.</li>
+    <li defer-to="never">A backwards-compatible Python shim. The Python script's lifetime ends with this spec's apply; users on a clone older than this slice keep working from that clone.</li>
+  </ul>
+</spec-out-of-scope>
+</section>
+
+
+<section id="data">
+<h2>4 · Data model</h2>
+
+<p>One owned shape: the file-write decision. Everything else is filesystem mechanics.</p>
+
+<h3>Entities</h3>
+<dl>
+  <dt><code>FileWriteDecision</code></dt>
+  <dd>Fields: <code>source</code> (bundled path inside <code>@spectastic/cli</code>), <code>destination</code> (CWD-relative path), <code>action</code> (<code>"write" | "overwrite" | "skip"</code>). The first pass builds an array of these; the second pass executes them. Aborting between passes leaves zero files written.</dd>
+</dl>
+
+<spec-note>
+<p>The two-pass design is the only non-obvious invariant. A naive interactive write-as-you-go loop would partially-init a directory if the user Ctrl-Cs mid-prompt; the two-pass approach prevents that. The plan will name how the prompt batch reads (e.g. <code>readline.Interface</code> vs an interactive-prompt library) but the data model is fixed: collect decisions first, execute second.</p>
+</spec-note>
+</section>
+
+
+<section id="success">
+<h2>5 · Success criteria</h2>
+
+<p>Technology-agnostic, measurable outcomes.</p>
+
+<spec-requirement id="SC-001" priority="must">
+<p>Running <code>spectastic init</code> in an empty temporary directory produces a file tree byte-identical (modulo trailing-newline normalisation) to what the Python <code>scripts/spectastic init</code> produces in the same directory on the same checkout: the same 16 files at the same paths with the same content.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-002" priority="must">
+<p>Integration tests cover every branch of the conflict matrix: empty-dir clean init; existing-file prompt with <code>y</code>/<code>N</code>/<code>a</code>/<code>s</code>; <code>--force</code> in TTY; <code>--force</code> in non-TTY; non-TTY with conflict and without <code>--force</code> (exit 2); unrecoverable IO error (destination not writable; exit 1).</p>
+</spec-requirement>
+
+<spec-requirement id="SC-003" priority="must">
+<p>After this spec is applied: the repository contains no Python implementation of <code>spectastic</code> (<code>scripts/spectastic</code> and <code>scripts/test_spectastic.py</code> deleted); <code>which spectastic</code> on a clean install resolves to the Node CLI only; spec 001-cli's status pill reads "Superseded" and links forward to this spec.</p>
+</spec-requirement>
+</section>
+
+
+<section id="assumptions">
+<h2>6 · Assumptions</h2>
+
+<spec-assumption>
+<p>The Python script at <code>scripts/spectastic</code> as of commit <code>f6107e2</code> is the canonical reference for every observable behavior — file set, prompt UX, exit codes, summary format. Any divergence in the Node port is a bug unless explicitly redocumented here.</p>
+</spec-assumption>
+
+<spec-assumption>
+<p>Bundling templates inside <code>@spectastic/cli</code> via the package.json <code>files</code> field is the cleanest distribution. Resolving at runtime via <code>import.meta.url</code> (relative to the compiled binary's location) survives npx, global install, and workspace-symlinked dev install without code change.</p>
+</spec-assumption>
+
+<spec-assumption>
+<p>npm publication of <code>@spectastic/cli</code> happens in a follow-up slice (TBD-npm-publish). Until then, users install via <code>npm link</code> from a clone, the same way the Tier 1 ship works today. The retirement of Python init doesn't block on npm publish — the Node CLI is reachable from a clone the same way the Python one was.</p>
+</spec-assumption>
+</section>
+
+
+<section id="questions">
+<h2>7 · Open questions</h2>
+<spec-questions>
+<ol>
+  <li>None at write time.</li>
+</ol>
+</spec-questions>
+</section>
+
+
+<section id="conformance">
+<h2>8 · Conformance index</h2>
+<p>Auto-built from every <code>&lt;spec-requirement&gt;</code> in this document.</p>
+<spec-conformance></spec-conformance>
+</section>
+
+
+<section id="changelog">
+<h2>9 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-06-14">14 Jun 2026</time><span>Initial draft. Anchored decisions: full parity in one slice; templates bundle inside <code>@spectastic/cli</code>; cross-tool installers defer to Tier 2; 001-cli flips to superseded on apply; npm-publish workflow defers to TBD-npm-publish.</span></li>
+  <li><time datetime="2026-06-15">15 Jun 2026</time><span>All 29 tasks complete; 58/58 tests passing. SC-001 verified manually via <code>diff -r</code> of Python and Node init output trees — zero diffs. Python <code>scripts/spectastic</code> and <code>scripts/test_spectastic.py</code> deleted; 001-cli flipped to <code>Superseded</code>; root README and CHANGELOG updated; CLAUDE.md had no stale refs.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  003-init-node-port · <code>spectastic init</code> — Node port · authored 14 Jun 2026 ·
+  <button data-theme-toggle style="background:none;border:none;color:var(--c-link);cursor:pointer;font:inherit;padding:0;border-bottom:1px solid currentColor;">toggle theme</button>
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>
