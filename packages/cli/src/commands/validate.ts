@@ -2,6 +2,8 @@ import { readFile } from 'node:fs/promises';
 import { validateMany } from '@spectastic/schema';
 import type { Command } from 'commander';
 import { humanFormatter } from '../formatters/human.js';
+import { jsonFormatter } from '../formatters/json.js';
+import { sarifFormatter } from '../formatters/sarif.js';
 import { expandGlobs } from '../glob.js';
 
 interface ValidateOptions {
@@ -36,16 +38,19 @@ export function registerValidate(program: Command): void {
       const findings = validateMany(inputs);
 
       let output: string;
-      if (options.format === 'human') {
-        output = humanFormatter(findings);
-      } else if (options.format === 'json' || options.format === 'sarif') {
-        process.stderr.write(
-          `Format "${options.format}" is part of US2 (T-210/T-211) and not yet implemented in v0.1.\n`,
-        );
-        process.exit(2);
-      } else {
-        process.stderr.write(`Unknown format "${options.format}". Use human | json | sarif.\n`);
-        process.exit(2);
+      switch (options.format) {
+        case 'human':
+          output = humanFormatter(findings);
+          break;
+        case 'json':
+          output = jsonFormatter(findings);
+          break;
+        case 'sarif':
+          output = sarifFormatter(findings);
+          break;
+        default:
+          process.stderr.write(`Unknown format "${options.format}". Use human | json | sarif.\n`);
+          process.exit(2);
       }
       process.stdout.write(output);
 
