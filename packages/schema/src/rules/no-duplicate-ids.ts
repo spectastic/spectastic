@@ -28,11 +28,6 @@ import type { CrossFileRule, Finding, Location } from '../types.js';
  * CLI additionally ignores `**\/archive\/**` and `**\/withdrawn\/**`
  * so archived proposals don't spuriously collide with the live spec.
  *
- * Note: FR-011 of the spec describes cross-file dupe detection more
- * broadly. The narrower interpretation here aligns with the project's
- * own dual-convention; revisiting FR-011 wording is queued as a
- * follow-up `/spectastic.propose`.
- *
  * Implements FR-011 of specs/002-validate-cli/spec.html.
  */
 const SCOPED_TAGS: ReadonlySet<string> = new Set(['spec-requirement', 'spec-decision']);
