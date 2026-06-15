@@ -1,0 +1,33 @@
+# Contributing
+
+Spectastic is at v0.1. The methodology is still reshaping itself, so the contribution surface is intentionally narrow.
+
+## What to do
+
+| You want to … | Route |
+| --- | --- |
+| Report a bug or sharp edge | Open an issue. |
+| Suggest a small, revert-safe change | `/spectastic.triage` it as a list-intake item — one card per change in `inbox.html`. |
+| Propose a non-trivial change to the methodology | `/spectastic.propose` against the relevant spec; PR the resulting `proposal.html`. |
+| Discuss a direction before authoring anything | Open an issue or a draft PR with the question. |
+
+PRs that bypass `/spectastic.propose` for non-trivial methodology changes will be asked to re-route. The proposal cycle isn't ceremony — it carries the typed deltas, risk register, and migration prose that `/spectastic.apply` depends on.
+
+## Voice rule
+
+Spectastic stands on its own. Shipping copy describes the product in its own terms — not as an "alternative to X", not as "inspired by Y", not through named individuals. Canonical links to authoritative sources (RFCs, standards bodies, GitHub Docs, the [data-ink-ratio](https://en.wikipedia.org/wiki/Data-ink_ratio) Wikipedia page) are welcome where they're load-bearing.
+
+The private aesthetic lineage lives in `CLAUDE.md`; the public surface stays principle-first.
+
+## Commit messages
+
+Plain commit messages. No `Co-Authored-By: Claude` or other AI-attribution trailers. If a `Co-Authored-By:` line is warranted (pair work with another human), use the standard format.
+
+## Expectations pre-1.0
+
+- The slash-command surface (eight verbs) is stable; behaviours within them are not.
+- The `<spec-*>` custom-element vocabulary is mostly stable; expect minor renames.
+- The CSS design system may shift; class names are not a contract.
+- IDs (`REQ-…`, `D-…`, `T-…`) are contracts and survive refactors — see `principles.html` §P-3.
+
+This file will grow as the contribution surface widens at v1.0.
