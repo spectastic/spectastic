@@ -216,11 +216,49 @@ Open `assets/spec.css` to tweak. Everything is CSS custom properties at the top.
 
 ## Install
 
-The CLI is a single Python 3.9+ file at `scripts/spectastic`. Runtime needs only the standard library — no `pip install` to run it. From a clone:
+There are two CLIs in this repo today; both are intentional during the v0.1 transition.
+
+### `spectastic init` (Python, project bootstrap)
+
+A single-file Python 3.9+ script at `scripts/spectastic`. Runtime needs only the standard library — no `pip install` to run it. From a clone:
 
 ```sh
 chmod +x scripts/spectastic
 ./scripts/spectastic init     # bootstrap the lifecycle into the current directory
+```
+
+### `spectastic validate` (Node, validator)
+
+A Node package shipped as `@spectastic/cli` (see [`packages/cli/`](./packages/cli/) and the [spec at `specs/002-validate-cli/`](./specs/002-validate-cli/spec.html)). Validates spec-html files against the canonical grammar; emits human / JSON / SARIF.
+
+```sh
+# One-off via npx
+npx @spectastic/cli validate "specs/**/*.html"
+
+# Or install globally
+npm i -g @spectastic/cli
+spectastic validate --format sarif "specs/**/*.html" > spectastic.sarif
+```
+
+Two example CI workflows are under [`docs/ci-examples/`](./docs/ci-examples/): one for GitHub Actions (uploads SARIF to Code Scanning), one for GitLab CI (exposes SARIF as a SAST report). Both surface findings as inline PR/MR annotations.
+
+#### Developing the Node packages
+
+The Node side uses pnpm-compatible workspaces. pnpm is the canonical installer; [pacquet](https://github.com/pnpm/pacquet) (a Rust pnpm reimplementation) is permitted for faster local installs.
+
+```sh
+# install
+corepack enable pnpm && pnpm install
+# or, if corepack isn't available:
+npm i -g pnpm && pnpm install
+
+# typecheck + build + test
+pnpm typecheck
+pnpm -r build
+pnpm test
+
+# run the validator directly
+node packages/cli/bin/spectastic validate principles.html
 ```
 
 To put it on your `PATH` instead of running from a clone, copy the directory anywhere and symlink the executable:

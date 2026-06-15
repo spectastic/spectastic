@@ -1,0 +1,53 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+  security-events: write  # for SARIF upload
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Build
+        run: pnpm -r build
+
+      - name: Unit + integration tests
+        run: pnpm test
+
+      - name: Dogfood — validate the repo's own spec-html artifacts
+        run: |
+          node packages/cli/bin/spectastic validate \
+            --format sarif \
+            "specs/**/*.html" \
+            "principles.html" \
+            "examples/spectastic-spec.html" \
+            "examples/triage-log.html" \
+            > spectastic.sarif || true
+
+      - name: Upload SARIF to Code Scanning
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: spectastic.sarif
+          category: spectastic-dogfood

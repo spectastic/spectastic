@@ -1,0 +1,45 @@
+# Example GitHub Actions workflow that runs `spectastic validate` and
+# uploads SARIF to GitHub Code Scanning. Findings appear as inline
+# annotations on the PR diff and as Security tab alerts.
+#
+# Copy into .github/workflows/spec-validate.yml in your project.
+# Adjust the patterns under "Validate spec-html" to match your layout.
+
+name: Spec validation
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    paths:
+      - 'specs/**/*.html'
+      - 'principles.html'
+      - 'examples/**/*.html'
+
+permissions:
+  contents: read
+  security-events: write  # required to upload SARIF
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Validate spec-html
+        run: |
+          npx @spectastic/cli validate \
+            --format sarif \
+            "specs/**/*.html" "principles.html" "examples/**/*.html" \
+            > spectastic.sarif
+
+      - name: Upload SARIF to GitHub Code Scanning
+        if: always()  # upload even when validate exits non-zero
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: spectastic.sarif
+          category: spectastic
