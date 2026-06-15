@@ -1,0 +1,291 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>spectastic init (Node port) · Tasks</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Tasks · 003-init-node-port</p>
+  <h1><code>spectastic init</code> — Node port</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    Ordered, parallelizable work. Tests precede implementation. Drive through with
+    <code>/spectastic.implement</code> — one task per invocation.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>     <span><spec-status value="draft">Draft</spec-status></span>
+    <b>Spec</b>       <span><a href="./spec.html">003-init-node-port</a></span>
+    <b>Plan</b>       <span><a href="./plan.html">plan</a></span>
+    <b>Branch</b>     <span><code>003-init-node-port</code></span>
+    <b>Created</b>    <span><time datetime="2026-06-14">14 Jun 2026</time></span>
+    <b>Read time</b>  <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-tldr>
+    <p>29 tasks across five phases. Setup wires @clack/prompts and the prebuild bundle copy; Foundational adds the bundle resolver and the FileWriteDecision type that every story consumes; US1 ships the empty-directory init (the smallest demoable); US2 adds the conflict-prompt loop; US3 adds <code>--force</code> and non-TTY refusal; Polish retires the Python implementation and flips 001-cli to superseded. Tasks marked <span class="par">[P]</span> can run in parallel. Tests for each story <strong>MUST</strong> be written and failing before its implementation tasks start.</p>
+  </spec-tldr>
+</header>
+
+
+<section id="strategy">
+<h2>1 · Execution strategy</h2>
+
+<spec-tabs>
+  <spec-tab label="MVP-first">
+    <p>Drive US1 end-to-end first (empty-dir init works). Demo the smallest valuable slice, then layer US2 (prompts) and US3 (--force). Polish — including the Python deletion — comes only after all three stories pass tests.</p>
+  </spec-tab>
+  <spec-tab label="Incremental">
+    <p>Setup → Foundational → US1 → US2 → US3 → Polish. Each story closes its conformance before the next opens. Recommended for solo work; lowest coordination cost.</p>
+  </spec-tab>
+  <spec-tab label="Parallel teams">
+    <p>One contributor on Setup + Foundational solo; after T-012 lands, one contributor per user story. Coordinate at <code>packages/cli/src/commands/init.ts</code> (the action handler that wires everything together).</p>
+  </spec-tab>
+</spec-tabs>
+</section>
+
+
+<section id="phase-setup" class="phase">
+<h2>2 · Phase 1 — Setup</h2>
+<p>Repo wiring for the new dep and the prebuild bundle copy.</p>
+
+<spec-task id="T-001" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Add @clack/prompts dep, prebuild script, and _bundled in the files field</strong> <span class="path">packages/cli/package.json</span></div>
+</spec-task>
+<spec-task id="T-002" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Extend .gitignore with packages/cli/_bundled/ and packages/cli/_bundled.tmp/</strong> <span class="path">.gitignore</span></div>
+</spec-task>
+<spec-task id="T-003">
+  <input type="checkbox" checked>
+  <div><strong>Write atomic prebuild script: copies repo-root templates/, assets/, commands/ into _bundled.tmp/ then renames to _bundled/ (interrupted prebuild leaves no partial bundle)</strong> <span class="path">packages/cli/scripts/prebuild.mjs</span></div>
+</spec-task>
+</section>
+
+
+<section id="phase-foundation" class="phase">
+<h2>3 · Phase 2 — Foundational</h2>
+<p>Shared infrastructure. Independent files; all parallel.</p>
+
+<spec-task id="T-010" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Define FileWriteDecision { source, destination, action: "write" | "overwrite" | "skip" } + BundleInventory types</strong> <span class="path">packages/cli/src/commands/init/types.ts</span></div>
+</spec-task>
+<spec-task id="T-011" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Bundle resolver: try _bundled/ relative to import.meta.url first; fall back to workspace root (../../) with a one-line dev warning</strong> <span class="path">packages/cli/src/commands/init/bundle.ts</span></div>
+</spec-task>
+<spec-task id="T-012" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Summary printer: "wrote N, overwrote M, skipped K" + next-step hint pointing at /spectastic.principles</strong> <span class="path">packages/cli/src/commands/init/summary.ts</span></div>
+</spec-task>
+</section>
+
+
+<section id="phase-us1" class="phase">
+<h2>4 · Phase 3a — US1 · New-project author bootstraps spectastic <spec-pill>P1</spec-pill></h2>
+<p>Empty-dir init writes the 16-file lifecycle. The smallest demoable.</p>
+
+<h3>Tests (write &amp; fail first)</h3>
+<spec-task id="T-100" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Unit test for plan.ts against empty cwd: returns 16 decisions, all action="write"; assert destination paths match the canonical layout</strong> <span class="path">packages/cli/test/init/plan.test.ts</span></div>
+</spec-task>
+<spec-task id="T-101" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Unit test for write.ts: given a plan with all "write" actions, creates the files at the right paths with byte-identical content vs the bundle</strong> <span class="path">packages/cli/test/init/write.test.ts</span></div>
+</spec-task>
+<spec-task id="T-102" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Smoke integration: spawn compiled CLI in os.tmpdir() empty subdir; assert 16-file structure, exit 0, summary line format (FR-001, FR-002, FR-006, FR-007)</strong> <span class="path">packages/cli/test/init/smoke.test.ts</span></div>
+</spec-task>
+
+<h3>Implementation</h3>
+<spec-task id="T-110">
+  <input type="checkbox" checked>
+  <div><strong>Plan builder: walk bundle inventory (from T-011); for each source, compute CWD-relative destination + check existence; produce FileWriteDecision[] with action="write" for all (no conflicts in US1 path)</strong> <span class="path">packages/cli/src/commands/init/plan.ts</span></div>
+</spec-task>
+<spec-task id="T-111">
+  <input type="checkbox" checked>
+  <div><strong>Writer: execute FileWriteDecision[] sequentially; mkdir -p parents; copy source → destination via fs.copyFile (FR-008 atomicity satisfied by plan-then-write)</strong> <span class="path">packages/cli/src/commands/init/write.ts</span></div>
+</spec-task>
+<spec-task id="T-112">
+  <input type="checkbox" checked>
+  <div><strong>Init action handler: commander registration + flow (bundle → plan → write → summary); no prompt path yet (US2 adds it)</strong> <span class="path">packages/cli/src/commands/init.ts</span></div>
+</spec-task>
+<spec-task id="T-113">
+  <input type="checkbox" checked>
+  <div><strong>Wire init alongside validate in the commander entry; usage shows both subcommands</strong> <span class="path">packages/cli/src/index.ts</span></div>
+</spec-task>
+<spec-task id="T-114">
+  <input type="checkbox" checked>
+  <div><strong>Run prebuild once, build the CLI, verify T-102 smoke passes end-to-end</strong> <span class="path">packages/cli/_bundled/ + dist/</span></div>
+</spec-task>
+
+<spec-note>
+<p>Closes <a href="./spec.html#FR-001">FR-001</a>, <a href="./spec.html#FR-002">FR-002</a>, <a href="./spec.html#FR-006">FR-006</a> (exit 0/1 paths), <a href="./spec.html#FR-007">FR-007</a>, <a href="./spec.html#FR-008">FR-008</a>, <a href="./spec.html#FR-009">FR-009</a>, <a href="./spec.html#NFR-001">NFR-001</a>, <a href="./spec.html#NFR-002">NFR-002</a>, <a href="./spec.html#NFR-003">NFR-003</a>, partial <a href="./spec.html#SC-001">SC-001</a> (empty-dir branch).</p>
+</spec-note>
+</section>
+
+
+<section id="phase-us2" class="phase">
+<h2>5 · Phase 3b — US2 · Repeat-init author isn't surprised <spec-pill>P1</spec-pill></h2>
+<p>Conflict prompts make re-init safe.</p>
+
+<h3>Tests (write &amp; fail first)</h3>
+<spec-task id="T-200" parallel>
+  <input type="checkbox">
+  <div><strong>Unit test for prompt-decision: given a plan with conflicts + simulated answers (y, N, a, s, mixed), mutates plan to correct action values</strong> <span class="path">packages/cli/test/init/prompt.test.ts</span></div>
+</spec-task>
+<spec-task id="T-201" parallel>
+  <input type="checkbox">
+  <div><strong>Smoke integration: existing-file tmp dir, programmatically drive prompts (y / N / a / s flows), assert correct files written/skipped/overwritten and summary counts</strong> <span class="path">packages/cli/test/init/smoke.test.ts (extend)</span></div>
+</spec-task>
+
+<h3>Implementation</h3>
+<spec-task id="T-210">
+  <input type="checkbox">
+  <div><strong>Prompt loop: for each conflict in the plan, use @clack/prompts select with [y/N/a/s] options; mutate plan in-place (y→overwrite, N→skip default, a→all-remaining overwrite, s→all-remaining skip); propagate Ctrl-C as cancel (writer not called)</strong> <span class="path">packages/cli/src/commands/init/prompt.ts</span></div>
+</spec-task>
+<spec-task id="T-211">
+  <input type="checkbox">
+  <div><strong>Wire prompt loop into init.ts action: if any plan entry has a pre-existing destination, run prompt loop between plan and write phases</strong> <span class="path">packages/cli/src/commands/init.ts (modify)</span></div>
+</spec-task>
+
+<spec-note>
+<p>Closes <a href="./spec.html#FR-003">FR-003</a>; remaining <a href="./spec.html#SC-001">SC-001</a> coverage (conflict branches); partial <a href="./spec.html#SC-002">SC-002</a> (y/N/a/s matrix).</p>
+</spec-note>
+</section>
+
+
+<section id="phase-us3" class="phase">
+<h2>6 · Phase 3c — US3 · CI script idempotent bootstrap <spec-pill>P2</spec-pill></h2>
+<p><code>--force</code> + non-TTY refusal.</p>
+
+<h3>Tests (write &amp; fail first)</h3>
+<spec-task id="T-300" parallel>
+  <input type="checkbox">
+  <div><strong>Unit test: --force flag causes the prompt loop to be skipped; plan mutates with all conflicts → "overwrite" automatically</strong> <span class="path">packages/cli/test/init/prompt.test.ts (extend)</span></div>
+</spec-task>
+<spec-task id="T-301" parallel>
+  <input type="checkbox">
+  <div><strong>Smoke integration: spawn CLI without TTY (stdin redirected from /dev/null) against existing-file tmp dir, assert exit 2 and error message names --force; then re-run with --force and assert exit 0</strong> <span class="path">packages/cli/test/init/smoke.test.ts (extend)</span></div>
+</spec-task>
+
+<h3>Implementation</h3>
+<spec-task id="T-310">
+  <input type="checkbox">
+  <div><strong>Add --force option to the init commander; thread the boolean through to the prompt module</strong> <span class="path">packages/cli/src/commands/init.ts (modify)</span></div>
+</spec-task>
+<spec-task id="T-311">
+  <input type="checkbox">
+  <div><strong>TTY + force gating in prompt.ts: if --force, skip prompts and mark all conflicts "overwrite"; else if !process.stdin.isTTY and conflicts exist, refuse with exit 2 and a stderr message naming --force</strong> <span class="path">packages/cli/src/commands/init/prompt.ts (modify)</span></div>
+</spec-task>
+
+<spec-note>
+<p>Closes <a href="./spec.html#FR-004">FR-004</a>, <a href="./spec.html#FR-005">FR-005</a>, <a href="./spec.html#FR-006">FR-006</a> (exit 2 branch); completes <a href="./spec.html#SC-002">SC-002</a>.</p>
+</spec-note>
+</section>
+
+
+<section id="phase-polish" class="phase">
+<h2>7 · Phase 4 — Polish</h2>
+<p>Manual parity verification, Python retirement, 001-cli supersession, doc + changelog updates. <a href="./spec.html#FR-010">FR-010</a> + <a href="./spec.html#SC-003">SC-003</a>.</p>
+
+<spec-task id="T-900">
+  <input type="checkbox">
+  <div><strong>Manual byte-identity parity check: in two tmp dirs, run Python <code>scripts/spectastic init</code> in A and Node <code>spectastic init</code> in B; diff -r A B should produce zero differences (modulo trailing newlines per SC-001). Record result in spec changelog.</strong> <span class="path">tmp verification (no file path)</span></div>
+</spec-task>
+<spec-task id="T-901" parallel>
+  <input type="checkbox">
+  <div><strong>Delete Python implementation</strong> <span class="path">scripts/spectastic</span></div>
+</spec-task>
+<spec-task id="T-902" parallel>
+  <input type="checkbox">
+  <div><strong>Delete Python test file</strong> <span class="path">scripts/test_spectastic.py</span></div>
+</spec-task>
+<spec-task id="T-903">
+  <input type="checkbox">
+  <div><strong>Flip 001-cli spec-status to "superseded"; add a <code>&lt;spec-note&gt;</code> in the header linking forward to specs/003-init-node-port/spec.html</strong> <span class="path">specs/001-cli/spec.html</span></div>
+</spec-task>
+<spec-task id="T-904" parallel>
+  <input type="checkbox">
+  <div><strong>Update root README: remove the Python init install path; promote the Node CLI install to canonical; one binary, two subcommands</strong> <span class="path">README.md</span></div>
+</spec-task>
+<spec-task id="T-905" parallel>
+  <input type="checkbox">
+  <div><strong>CHANGELOG entry for Python retirement + init subcommand under @spectastic/cli</strong> <span class="path">CHANGELOG.md</span></div>
+</spec-task>
+<spec-task id="T-906" parallel>
+  <input type="checkbox">
+  <div><strong>Grep repo for "scripts/spectastic" and "spectastic init" Python references; update each that still applies (CLAUDE.md, project README, etc.) — leave 001-cli body untouched (historical record)</strong> <span class="path">multi-file</span></div>
+</spec-task>
+</section>
+
+
+<section id="traceability">
+<h2>8 · Requirement traceability</h2>
+<p>Every <code>FR</code>/<code>NFR</code>/<code>SC</code> in the spec maps to at least one task.</p>
+
+<table>
+  <thead><tr><th>Requirement</th><th>Closed by</th></tr></thead>
+  <tbody>
+    <tr><td><a href="./spec.html#FR-001">FR-001</a> Zero-arg + cwd</td><td>T-102, T-112</td></tr>
+    <tr><td><a href="./spec.html#FR-002">FR-002</a> 16-file canonical set</td><td>T-100, T-101, T-102, T-110, T-111</td></tr>
+    <tr><td><a href="./spec.html#FR-003">FR-003</a> [y/N/a/s] prompts</td><td>T-200, T-201, T-210, T-211</td></tr>
+    <tr><td><a href="./spec.html#FR-004">FR-004</a> --force flag</td><td>T-300, T-310, T-311</td></tr>
+    <tr><td><a href="./spec.html#FR-005">FR-005</a> Non-TTY refusal</td><td>T-301, T-311</td></tr>
+    <tr><td><a href="./spec.html#FR-006">FR-006</a> Exit codes 0/1/2</td><td>T-102, T-301, T-112, T-311</td></tr>
+    <tr><td><a href="./spec.html#FR-007">FR-007</a> Summary line</td><td>T-012, T-102</td></tr>
+    <tr><td><a href="./spec.html#FR-008">FR-008</a> Atomic plan-then-write</td><td>T-111, T-210 (Ctrl-C path)</td></tr>
+    <tr><td><a href="./spec.html#FR-009">FR-009</a> Templates bundled, runtime resolution</td><td>T-003, T-011, T-114</td></tr>
+    <tr><td><a href="./spec.html#FR-010">FR-010</a> Apply-time Python deletion + 001-cli supersession</td><td>T-901, T-902, T-903</td></tr>
+    <tr><td><a href="./spec.html#NFR-001">NFR-001</a> &lt;500ms p95</td><td>T-102 (smoke time-bounds)</td></tr>
+    <tr><td><a href="./spec.html#NFR-002">NFR-002</a> No global state</td><td>T-111 (writer scope-bounded)</td></tr>
+    <tr><td><a href="./spec.html#NFR-003">NFR-003</a> Cross-platform</td><td>T-102 (smoke runs on macOS + Linux CI)</td></tr>
+    <tr><td><a href="./spec.html#SC-001">SC-001</a> Byte-identity parity</td><td>T-102, T-201, T-900</td></tr>
+    <tr><td><a href="./spec.html#SC-002">SC-002</a> Full conflict matrix coverage</td><td>T-200, T-201, T-300, T-301</td></tr>
+    <tr><td><a href="./spec.html#SC-003">SC-003</a> Post-apply: no Python; 001-cli superseded</td><td>T-901, T-902, T-903, T-906</td></tr>
+  </tbody>
+</table>
+</section>
+
+
+<section id="dependencies">
+<h2>9 · Dependencies</h2>
+<pre><code>Setup (T-001..T-003)            → Foundational
+Foundational (T-010..T-012)     → US1 (T-011 + T-012 feed plan; T-010 is shared types)
+US1 tests (T-100..T-102)        → can be written while Foundational lands (mocks)
+US1 impl (T-110..T-114)         → T-110 first (others build on the planner)
+US2 (T-200..T-211)              → blocks on T-112 (init action handler exists)
+US3 (T-300..T-311)              → blocks on T-211 (prompt module exists)
+Polish (T-900..T-906)           → all three stories must close first
+                                  T-900 (manual parity) gates T-901..T-906
+</code></pre>
+</section>
+
+
+<section id="changelog">
+<h2>10 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-06-14">14 Jun 2026</time><span>Initial task breakdown. 29 tasks across five phases; 16 parallelizable. Every FR/NFR/SC traced to at least one task in §8. Python retirement (T-901..T-903) gates on manual parity verification (T-900) per FR-010 + SC-001.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  Tasks for 003-init-node-port · <code>spectastic init</code> — Node port · authored 14 Jun 2026 ·
+  <button data-theme-toggle style="background:none;border:none;color:var(--c-link);cursor:pointer;font:inherit;padding:0;border-bottom:1px solid currentColor;">toggle theme</button>
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>

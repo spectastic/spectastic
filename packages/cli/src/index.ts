@@ -1,4 +1,5 @@
 import { Command } from 'commander';
+import { registerInit } from './commands/init.js';
 import { registerValidate } from './commands/validate.js';
 
 /**
@@ -13,6 +14,7 @@ program
   .description('Validate spec-html files against the spectastic grammar.')
   .version('0.1.0-pre');
 
+registerInit(program);
 registerValidate(program);
 
 if (process.argv.length <= 2) {
