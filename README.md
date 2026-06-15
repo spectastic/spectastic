@@ -216,58 +216,21 @@ Open `assets/spec.css` to tweak. Everything is CSS custom properties at the top.
 
 ## Install
 
-There are two CLIs in this repo today; both are intentional during the v0.1 transition.
-
-### `spectastic init` (Python, project bootstrap)
-
-A single-file Python 3.9+ script at `scripts/spectastic`. Runtime needs only the standard library — no `pip install` to run it. From a clone:
-
-```sh
-chmod +x scripts/spectastic
-./scripts/spectastic init     # bootstrap the lifecycle into the current directory
-```
-
-### `spectastic validate` (Node, validator)
-
-A Node package shipped as `@spectastic/cli` (see [`packages/cli/`](./packages/cli/) and the [spec at `specs/002-validate-cli/`](./specs/002-validate-cli/spec.html)). Validates spec-html files against the canonical grammar; emits human / JSON / SARIF.
+One CLI, two subcommands. The Node package `@spectastic/cli` provides both `spectastic init` (bootstrap a project) and `spectastic validate` (check spec-html files against the canonical grammar; emits human / JSON / SARIF).
 
 ```sh
 # One-off via npx
+npx @spectastic/cli init
 npx @spectastic/cli validate "specs/**/*.html"
 
 # Or install globally
 npm i -g @spectastic/cli
+cd my-new-project
+spectastic init
 spectastic validate --format sarif "specs/**/*.html" > spectastic.sarif
 ```
 
 Two example CI workflows are under [`docs/ci-examples/`](./docs/ci-examples/): one for GitHub Actions (uploads SARIF to Code Scanning), one for GitLab CI (exposes SARIF as a SAST report). Both surface findings as inline PR/MR annotations.
-
-#### Developing the Node packages
-
-The Node side uses pnpm-compatible workspaces. pnpm is the canonical installer; [pacquet](https://github.com/pnpm/pacquet) (a Rust pnpm reimplementation) is permitted for faster local installs.
-
-```sh
-# install
-corepack enable pnpm && pnpm install
-# or, if corepack isn't available:
-npm i -g pnpm && pnpm install
-
-# typecheck + build + test
-pnpm typecheck
-pnpm -r build
-pnpm test
-
-# run the validator directly
-node packages/cli/bin/spectastic validate principles.html
-```
-
-To put it on your `PATH` instead of running from a clone, copy the directory anywhere and symlink the executable:
-
-```sh
-git clone https://github.com/briancorbin/spectastic ~/.local/share/spectastic
-chmod +x ~/.local/share/spectastic/scripts/spectastic
-ln -s ~/.local/share/spectastic/scripts/spectastic ~/.local/bin/spectastic
-```
 
 ### Usage
 
@@ -285,18 +248,30 @@ Next step:
   to author your project's principles.html.
 ```
 
-When existing files conflict, you get a per-file `[y/N/a/s]` prompt (default = `N`, `a` = overwrite all remaining, `s` = skip all remaining). Pass `--force` to overwrite every conflict without prompting. In a non-TTY environment (CI, piped input) with conflicts, the CLI refuses with exit code 2 and a message naming `--force` rather than hanging on a prompt that can never be answered.
+When existing files conflict, you get a per-file `[y/N/a/s]` prompt (default = `N`, `a` = overwrite all remaining, `s` = skip all remaining) via [@clack/prompts](https://github.com/natemoo-re/clack). Pass `--force` to overwrite every conflict without prompting. In a non-TTY environment (CI, piped input) with conflicts, the CLI refuses with exit code 2 and a message naming `--force` rather than hanging on a prompt that can never be answered.
 
 ### Development
 
-For development on the CLI itself (running the test suite at `scripts/test_spectastic.py`), the only dev-only dependency is `pytest`:
+The Node side uses pnpm-compatible workspaces. pnpm is the canonical installer; [pacquet](https://github.com/pnpm/pacquet) (a Rust pnpm reimplementation) is permitted for faster local installs.
 
 ```sh
-pip install pytest
-pytest scripts/test_spectastic.py
-```
+# install (Node 20+ required)
+corepack enable pnpm && pnpm install
+# or, if corepack isn't available:
+npm i -g pnpm && pnpm install
 
-`pytest` is not used at runtime; the CLI imports nothing third-party.
+# typecheck + build + test
+pnpm typecheck
+pnpm -r build
+pnpm test
+
+# run from the clone
+node packages/cli/bin/spectastic init
+node packages/cli/bin/spectastic validate principles.html
+
+# or symlink onto PATH
+ln -s "$(pwd)/packages/cli/bin/spectastic" ~/.local/bin/spectastic
+```
 
 ## Editing workflow
 

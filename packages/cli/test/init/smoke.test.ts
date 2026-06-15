@@ -96,15 +96,29 @@ describe('init: smoke (T-102)', () => {
     expect(r.durationMs, `init took ${r.durationMs.toFixed(0)}ms`).toBeLessThan(500);
   });
 
-  it('existing file in destination + no --force → exit 2 (will be FR-005 refusal once US2/US3 land)', async () => {
+  it('existing file in non-TTY without --force → exit 2 (FR-005)', async () => {
     const tmpDir = mkdtempSync(join(tmpdir(), 'spectastic-init-conflict-'));
-    // Pre-create a conflict.
     const assetsDir = join(tmpDir, 'assets');
     mkdirSync(assetsDir, { recursive: true });
     writeFileSync(join(assetsDir, 'spec.css'), '/* user content */');
 
     const r = await runCLI(['init'], tmpDir);
-    // US1 ships a temporary refusal; US2 turns this into the prompt loop.
     expect(r.code).toBe(2);
+    expect(r.stderr).toContain('--force');
+  });
+
+  it('existing file + --force → exit 0, file overwritten (FR-004, T-301)', async () => {
+    const tmpDir = mkdtempSync(join(tmpdir(), 'spectastic-init-force-'));
+    const assetsDir = join(tmpDir, 'assets');
+    mkdirSync(assetsDir, { recursive: true });
+    const conflictPath = join(assetsDir, 'spec.css');
+    writeFileSync(conflictPath, '/* user content — should be overwritten */');
+
+    const r = await runCLI(['init', '--force'], tmpDir);
+    expect(r.code, `stderr: ${r.stderr}\nstdout: ${r.stdout}`).toBe(0);
+    // Content should now be the bundle's spec.css, not the user content.
+    const after = require('node:fs').readFileSync(conflictPath, 'utf8');
+    expect(after).not.toContain('user content');
+    expect(after.length).toBeGreaterThan(1000); // spec.css is ~50KB
   });
 });
