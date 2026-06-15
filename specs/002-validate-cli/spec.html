@@ -1,0 +1,290 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>spec-html schema + spectastic validate · Specification</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Specification · 002-validate-cli</p>
+  <h1>spec-html schema + <code>spectastic validate</code></h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    A TypeScript-native schema for the spec-html vocabulary and a single command that catches what reviewers shouldn't have to.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>      <span><spec-status value="draft">Draft</spec-status></span>
+    <b>Spec ID</b>     <span>002-validate-cli</span>
+    <b>Owner</b>       <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Reviewers</b>   <span>—</span>
+    <b>Created</b>     <span><time datetime="2026-06-14">14 Jun 2026</time></span>
+    <b>Principles</b><span><a href="../../principles.html">v1.0.1</a></span>
+    <b>Smallest demoable</b><span><code>spectastic validate examples/spectastic-spec.html</code> exits 0; broken fixture exits 1 with anchored findings.</span>
+    <b>Read time</b>   <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-budget words="2200" reqs="22" minutes="14"></spec-budget>
+
+  <spec-tldr>
+    <p>The <code>&lt;spec-*&gt;</code> vocabulary is enforced today by CSS, JS warnings, and slash-command prose. This spec makes the enforcement first-class: a TypeScript schema package (<code>@spectastic/schema</code>) and a Node CLI (<code>spectastic validate</code>) that read any spec-html file, apply a published rule set, and exit non-zero on errors. Same engine powers a future VS Code extension, MCP server, and TypeScript kernel — so every surface judges spec validity against the same rules.</p>
+  </spec-tldr>
+
+  <spec-note>
+    <p><strong>Principles amendment applied.</strong> Principles v1.0.0 → v1.0.1 via <a href="../../changes/archive/2026-06-14-clarify-tooling-scope/proposal.html">2026-06-14-clarify-tooling-scope</a> (14 Jun 2026). The "no build step" non-goal now scopes to the spec artifact; the "no separate CLI required" wording is now "complementary CLIs are permitted." This spec is principles-clean.</p>
+  </spec-note>
+
+  <dl class="invest">
+    <dt><span class="letter">I</span> Independent</dt> <dd>Depends on principles v1.0.1 (applied 14 Jun 2026) and nothing else. No upstream specs blocked on it.</dd>
+    <dt><span class="letter">N</span> Negotiable</dt>  <dd>Specifies <em>what</em> the validator catches and <em>how</em> findings render; library choice (parse5 vs htmlparser2), installer (pacquet vs pnpm), and rule implementation defer to the plan.</dd>
+    <dt><span class="letter">V</span> Valuable</dt>    <dd>Unlocks <a href="#SC-001">SC-001</a> — a single command turns the implicit grammar into an enforced one and gates CI on both GitHub and GitLab.</dd>
+    <dt><span class="letter">E</span> Estimable</dt>   <dd>No <code>&lt;spec-question&gt;</code>; all <code>defer-to=</code> set; INVEST clean. Plan and tasks derivable from this artifact alone.</dd>
+    <dt><span class="letter">S</span> Small</dt>       <dd>Single binary, single schema package, 12 rules in v1, three output formats. Fits the 1,500-word / 20-requirement budget.</dd>
+    <dt><span class="letter">T</span> Testable</dt>    <dd>Every requirement observable via fixture spec.html files; success criteria quantified — <a href="#SC-002">SC-002</a> names a per-rule positive/negative fixture pair.</dd>
+  </dl>
+
+  <spec-audience-map>
+    <dl>
+      <dt>Exec / PM</dt>   <dd>§<a href="#context">Context</a>, §<a href="#scenarios">User scenarios</a>, §<a href="#success">Success criteria</a>.</dd>
+      <dt>Reviewer</dt>    <dd>§<a href="#requirements">Requirements</a>, §<a href="#assumptions">Assumptions</a>, §<a href="#questions">Open questions</a>.</dd>
+      <dt>Implementer</dt> <dd>§<a href="#requirements">Requirements</a>, §<a href="#data">Data model</a>, §<a href="#conformance">Conformance index</a>.</dd>
+    </dl>
+  </spec-audience-map>
+</header>
+
+
+<section id="context">
+<h2>1 · Context</h2>
+<p>Spectastic's <code>&lt;spec-*&gt;</code> grammar lives implicitly: CSS marks <code>&lt;spec-delta&gt;</code> with no <code>op=</code> as "MISSING OP", JS logs a console warning when <code>&lt;spec-out-of-scope&gt;</code> <code>&lt;li&gt;</code> lacks <code>defer-to=</code>, and slash-command prose tells the author what's required. A reviewer who opens a spec.html sees the visible failures; a CI pipeline does not. There is no mechanical gate.</p>
+<p>The strategy plan at <code>~/.claude/plans/serialized-whistling-sundae.md</code> identifies a validator + formal schema as Tier 1's first piece because every later surface — VS Code diagnostics, MCP-exposed checks, the future TypeScript kernel — depends on shared rules. Authors, CI bots, and editor extensions are the users; today they have nothing.</p>
+</section>
+
+
+<section id="scenarios">
+<h2>2 · User scenarios &amp; testing</h2>
+
+<p>Each story is independently testable. US1 alone is a viable MVP.</p>
+
+<h3>US1 · Author validates locally <spec-pill>P1</spec-pill></h3>
+<p>As a <strong>spec author</strong>, I want to <strong>run <code>spectastic validate path/to/spec.html</code></strong> so that <strong>I catch grammar slips before commit and don't ship a spec with broken anchors or missing required attributes</strong>.</p>
+<p><em>Acceptance:</em> Running against <code>examples/spectastic-spec.html</code> exits 0 silently (or with a green summary line). Running against a fixture with one <code>&lt;spec-out-of-scope&gt;</code> <code>&lt;li&gt;</code> lacking <code>defer-to=</code> exits 1, prints the file, line, column, rule ID (<code>no-missing-defer-to</code>), severity, and a one-line fix hint. No stack traces on rule violations.</p>
+
+<h3>US2 · CI gates on a glob <spec-pill>P1</spec-pill></h3>
+<p>As a <strong>repo maintainer</strong>, I want to <strong>run <code>spectastic validate "specs/**/*.html" --format sarif &gt; out.sarif</code> in CI</strong> so that <strong>GitHub Code Scanning and GitLab Security Reports both draw inline PR/MR annotations and the pipeline gates on errors</strong>.</p>
+<p><em>Acceptance:</em> Glob expansion across many files completes; aggregate exit code is 1 if any file has at least one <em>error</em>-severity finding, 0 otherwise. SARIF output validates against the SARIF 2.1.0 schema (subset that GitHub and GitLab consume). Human-format output remains usable when piped to a terminal log.</p>
+
+<h3>US3 · Schema imported as library <spec-pill>P2</spec-pill></h3>
+<p>As a <strong>VS Code extension or MCP server author</strong>, I want to <strong>import <code>@spectastic/schema</code> and call <code>validate(html, options)</code></strong> so that <strong>I render the same findings inline in the editor or return them as a structured MCP tool result, without re-implementing rules per surface</strong>.</p>
+<p><em>Acceptance:</em> The schema package exposes a documented TypeScript API returning an array of <code>Finding</code> objects (file, line, column, rule, severity, message, optional fix-hint). No CLI dependency; pure function over an HTML string. Type definitions ship in the published package.</p>
+
+<h3>Edge cases</h3>
+<ul>
+  <li><strong>Empty file</strong> — exits with a single error: <code>empty-document</code>. Not silent success.</li>
+  <li><strong>Non-HTML file</strong> (binary, JSON, markdown) — exits 2 (usage error), not 1 (validation error), so CI can distinguish.</li>
+  <li><strong>Glob matches nothing</strong> — exits 2 with a message, not 0. Silent zero on no-match has burned every linter that allowed it.</li>
+  <li><strong>Two files reuse the same stable ID</strong> — the cross-file <code>no-duplicate-ids</code> rule fires once with both file:line locations cited in the finding's "related locations" field.</li>
+  <li><strong>File over ~50,000 lines</strong> — parses but emits a single warning (<code>file-too-large</code>) that performance NFR is no longer guaranteed.</li>
+  <li><strong>Pre-amendment <code>principles.html</code></strong> — validates as today's principles describe; the validator does not enforce future principles versions retroactively.</li>
+</ul>
+</section>
+
+
+<section id="requirements">
+<h2>3 · Requirements</h2>
+
+<p>Conformance keywords (<spec-rule>MUST</spec-rule>, <spec-rule level="should">SHOULD</spec-rule>, <spec-rule level="may">MAY</spec-rule>) follow RFC 2119.</p>
+
+<h3>Functional — the CLI</h3>
+
+<spec-requirement id="FR-001" priority="must">
+<p>The CLI <spec-rule>MUST</spec-rule> accept one or more positional arguments, each of which may be a file path or a glob pattern. When run with no arguments, the CLI prints usage and exits 2.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-002" priority="must">
+<p>The CLI <spec-rule>MUST</spec-rule> exit 0 when no error-severity findings are produced, 1 when at least one error-severity finding is produced across all files, and 2 on usage errors (unknown flag, non-HTML input, glob matches nothing).</p>
+</spec-requirement>
+
+<spec-requirement id="FR-003" priority="must">
+<p>The CLI <spec-rule>MUST</spec-rule> default to a human-readable output format: one line per finding, anchored as <code>file:line:col</code>, including rule ID, severity, message, and an optional one-line fix hint, followed by a summary line "<code>N errors, M warnings</code>".</p>
+</spec-requirement>
+
+<spec-requirement id="FR-004" priority="must">
+<p>The CLI <spec-rule>MUST</spec-rule> emit JSON when invoked with <code>--format json</code>: a top-level array of <a href="#findings-shape">Finding</a> objects, one per finding, suitable for VS Code, MCP, or CI script consumption.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-005" priority="must">
+<p>The CLI <spec-rule>MUST</spec-rule> emit SARIF 2.1.0 when invoked with <code>--format sarif</code>, scoped to the subset accepted by GitHub Code Scanning and GitLab Security Reports. SARIF output is valid against the official schema.</p>
+</spec-requirement>
+
+<h3>Functional — the rules</h3>
+
+<spec-requirement id="FR-006" priority="must">
+<p>The schema <spec-rule>MUST</spec-rule> flag any <code>&lt;spec-out-of-scope&gt;</code> <code>&lt;li&gt;</code> that lacks a <code>defer-to=</code> attribute (rule: <code>no-missing-defer-to</code>, severity: error).</p>
+</spec-requirement>
+
+<spec-requirement id="FR-007" priority="must">
+<p>The schema <spec-rule>MUST</spec-rule> flag any <code>&lt;spec-question&gt;</code> present in a spec whose status is <code>accepted</code> (rule: <code>no-unresolved-question</code>, severity: error). <code>draft</code> and <code>review</code> status produce a warning, not an error, so the validator does not block early-cycle authoring.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-008" priority="must">
+<p>The schema <spec-rule>MUST</spec-rule> flag any <code>&lt;spec-delta&gt;</code> without an <code>op=</code> attribute, or with an <code>op=</code> value not in <code>{added, modified, removed, renamed}</code> (rule: <code>delta-op-required</code>, severity: error). The same element without a <code>target=</code> attribute fires <code>delta-target-required</code> (severity: error).</p>
+</spec-requirement>
+
+<spec-requirement id="FR-009" priority="must">
+<p>The schema <spec-rule>MUST</spec-rule> flag any <code>&lt;spec-risk&gt;</code> without a <code>target=</code> attribute (rule: <code>risk-target-required</code>, error) or without a <code>status=</code> in <code>{identified, accepted, mitigated, rejected, no-value-found}</code> (rule: <code>risk-status-required</code>, error).</p>
+</spec-requirement>
+
+<spec-requirement id="FR-010" priority="must">
+<p>The schema <spec-rule>MUST</spec-rule> flag any <code>&lt;spec-requirement&gt;</code> without an <code>id=</code> matching the pattern <code>[A-Z]+-[A-Z]*-?[0-9]+</code> (rule: <code>requirement-id-required</code>, error) or any <code>&lt;spec-task&gt;</code> without an <code>id=</code> matching <code>T-[0-9]+</code> (rule: <code>task-id-required</code>, error).</p>
+</spec-requirement>
+
+<spec-requirement id="FR-011" priority="must">
+<p>The schema <spec-rule>MUST</spec-rule> detect stable-ID duplicates across the validated set: when two or more <code>id=</code> attributes anywhere in the project (across all input files) share the same value, every site is flagged with rule <code>no-duplicate-ids</code> (severity: error) and the finding cites all locations. Cross-file detection is the only cross-file check in v1.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-012" priority="must">
+<p>The schema <spec-rule>MUST</spec-rule> flag any <code>&lt;dl class="invest"&gt;</code> with a <code>&lt;dd class="fail"&gt;</code> row when the containing spec's status is <code>review</code> or <code>accepted</code> (rule: <code>invest-row-failed</code>, severity: error). For <code>draft</code> status, the same condition fires as a warning.</p>
+</spec-requirement>
+
+<h3>Functional — the library</h3>
+
+<spec-requirement id="FR-013" priority="must">
+<p>The schema package <spec-rule>MUST</spec-rule> publish a TypeScript API exporting <code>validate(html: string, options?): Finding[]</code> and a typed <code>Rule</code> definition shape. The package <spec-rule level="should">SHOULD</spec-rule> have zero runtime dependencies beyond a single HTML parser.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-014" priority="should">
+<p>Rules <spec-rule level="should">SHOULD</spec-rule> declare a default severity in <code>{error, warning}</code>; the CLI gates on errors only. Per-rule severity overrides via config are out of scope for v1 (defer to <code>TBD-validator-config</code>).</p>
+</spec-requirement>
+
+<h3>Non-functional</h3>
+
+<spec-requirement id="NFR-001" priority="must">
+<p>Validation <spec-rule>MUST</spec-rule> complete in under 100 ms per file at p95 on a modern laptop (Apple M-series or comparable, ≥16 GB RAM) for spec files under 5,000 lines. Measured against the existing examples (<code>examples/spectastic-spec.html</code> and the archived proposals) plus the fixtures introduced in this slice.</p>
+</spec-requirement>
+
+<spec-requirement id="NFR-002" priority="must">
+<p>The CLI <spec-rule>MUST</spec-rule> be installable as <code>npx @spectastic/cli</code> and as a global <code>npm i -g @spectastic/cli</code> with no OS-specific build steps for end users. Node 20 LTS is the minimum supported runtime.</p>
+</spec-requirement>
+
+<spec-requirement id="NFR-003" priority="must">
+<p>The repository <spec-rule>MUST</spec-rule> be laid out as pnpm-compatible workspaces (workspace shape and lockfile format), so future packages (<code>@spectastic/core</code>, <code>@spectastic/mcp</code>, <code>@spectastic/vscode-ext</code>) can join without restructuring. The installer used during development (pnpm vs pacquet) is a plan-level decision, not a spec requirement.</p>
+</spec-requirement>
+
+<h3>Out of scope (deferred to other slices)</h3>
+<spec-out-of-scope>
+  <ul>
+    <li defer-to="TBD-validator-fix">Auto-fix mode (<code>--fix</code>). HTML round-trip is risky and the v1 rules don't benefit enough to justify the implementation cost.</li>
+    <li defer-to="TBD-validator-watch">Watch mode (continuous validate on file change). The VS Code extension supersedes this need for editor users; CI uses run-to-completion.</li>
+    <li defer-to="TBD-validator-config">User config file (<code>spectastic.config.json</code>) for per-rule severity overrides and rule disabling. v1 ships fixed defaults.</li>
+    <li defer-to="TBD-conformance-code">Conformance against source code (e.g. <code>// @spec REQ-AUTH-001</code> comments). Tier 4 brownfield work; depends on a code scanner this slice does not build.</li>
+    <li defer-to="TBD-vscode-ext">The VS Code extension itself. This spec ships the engine the extension imports; the extension is a downstream slice.</li>
+    <li defer-to="TBD-mcp-server">The MCP server. Same shape — engine here, server downstream.</li>
+    <li defer-to="TBD-cli-init">Porting <code>spectastic init</code> to Node. The existing Python CLI continues serving init until the Node CLI reaches parity in a later slice.</li>
+    <li defer-to="TBD-cross-ref">Cross-file reference validation (e.g. <code>&lt;spec-delta target="REQ-AUTH-001"&gt;</code> resolves to a live requirement). Stays scoped to duplicate-ID detection in v1.</li>
+  </ul>
+</spec-out-of-scope>
+</section>
+
+
+<section id="data">
+<h2>4 · Data model</h2>
+
+<p>The slice owns one data shape: the validator finding. All output formats are projections of it.</p>
+
+<h3 id="findings-shape">Entities</h3>
+<dl>
+  <dt><code>Finding</code></dt>
+  <dd>Fields: <code>file</code> (string), <code>line</code> (number, 1-indexed), <code>column</code> (number, 1-indexed), <code>rule</code> (string, kebab-case), <code>severity</code> (<code>"error" | "warning"</code>), <code>message</code> (string), <code>fixHint</code> (string, optional), <code>relatedLocations</code> (array of <code>{file, line, column}</code>, optional — used by <code>no-duplicate-ids</code>).</dd>
+  <dt><code>Rule</code></dt>
+  <dd>Fields: <code>id</code> (kebab-case), <code>defaultSeverity</code> (<code>"error" | "warning"</code>), <code>check</code> (function: <code>(doc, ctx) =&gt; Finding[]</code>). The rule registry is a TS module exporting a frozen array.</dd>
+</dl>
+
+<spec-note>
+<p>The <code>Finding</code> shape is the wire format between the engine and every consumer. Output formatters (human / JSON / SARIF) read it; they do not extend it. Adding a field is a breaking change to the schema package — bump major.</p>
+</spec-note>
+</section>
+
+
+<section id="success">
+<h2>5 · Success criteria</h2>
+
+<p>Technology-agnostic, measurable outcomes.</p>
+
+<spec-requirement id="SC-001" priority="must">
+<p>Running the CLI against every spec-html artifact currently in the repository (<code>examples/spectastic-spec.html</code>, <code>examples/triage-log.html</code>, all archived proposals under <code>examples/changes/archive/**</code>, <code>principles.html</code> after the v1.1 amendment, and the canonical templates) produces zero error-severity findings on a clean checkout.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-002" priority="must">
+<p>Each rule declared in §3 has at least one positive fixture (a spec.html demonstrating the violation, validated to produce that exact finding) and one negative fixture (a spec.html that does not trigger it). The fixtures live under <code>packages/schema/fixtures/</code> and run in the test suite.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-003" priority="must">
+<p>A demonstration CI workflow exists for both GitHub Actions and GitLab CI that runs <code>spectastic validate</code> on a sample repo and, given a deliberately broken spec, shows an inline PR/MR annotation pointing at the offending line. Workflows ship under <code>docs/ci-examples/</code>.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-004" priority="should">
+<p>The schema package is importable from a separate Node project (<code>npm i @spectastic/schema</code>), the API matches the published types, and a single-page test app calling <code>validate(html)</code> renders findings without pulling in CLI internals or filesystem code.</p>
+</spec-requirement>
+</section>
+
+
+<section id="assumptions">
+<h2>6 · Assumptions</h2>
+
+<spec-assumption>
+<p>The principles v1.0.1 amendment landed via <a href="../../changes/archive/2026-06-14-clarify-tooling-scope/proposal.html">2026-06-14-clarify-tooling-scope</a> before this spec moved past draft. The "spec artifact has no build step" non-goal is preserved (with consuming tooling explicitly permitted to build); the categorical "no separate CLI required" wording is replaced by "complementary CLIs are permitted."</p>
+</spec-assumption>
+
+<spec-assumption>
+<p>parse5 (or a comparable HTML parser like htmlparser2) provides accurate line and column information for every element node. The choice of parser is a plan-level decision; both options support source-location tracking.</p>
+</spec-assumption>
+
+<spec-assumption>
+<p>SARIF 2.1.0 remains the format both GitHub Code Scanning and GitLab Security Reports accept through the planning horizon. If GitLab's wrapping format diverges, a small <code>--format gitlab-codequality</code> shim is added in a later slice without disrupting SARIF support.</p>
+</spec-assumption>
+
+<spec-assumption>
+<p>The existing Python <code>scripts/spectastic init</code> continues to work for project bootstrapping until the Node CLI grows an <code>init</code> subcommand at feature parity. The two CLIs coexist on the same <code>spectastic</code> binary name only during the transition; a contributor with both installed gets whichever is first on their <code>PATH</code>, and this is acceptable for the lifetime of the transition.</p>
+</spec-assumption>
+</section>
+
+
+<section id="questions">
+<h2>7 · Open questions</h2>
+<spec-questions>
+<ol>
+  <li>None at write time. Every decidable question was anchored in the interview. If the principles amendment proposal surfaces a shape the assumptions above did not anticipate, this section grows in a re-entry pass.</li>
+</ol>
+</spec-questions>
+</section>
+
+
+<section id="conformance">
+<h2>8 · Conformance index</h2>
+<p>Auto-built from every <code>&lt;spec-requirement&gt;</code> in this document.</p>
+<spec-conformance></spec-conformance>
+</section>
+
+
+<section id="changelog">
+<h2>9 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-06-14">14 Jun 2026</time><span>Initial draft. Anchored decisions: TS-module schema, <code>spectastic</code> binary (Node, eventually replaces Python), single-file + cross-file duplicate-ID checks, principles amendment as prerequisite, Human + JSON + SARIF outputs, errors + warnings with gate on errors only, pnpm-compatible workspaces, &lt;100 ms p95 per file.</span></li>
+  <li><time datetime="2026-06-14">14 Jun 2026</time><span>Principles precondition cleared. v1.0.0 → v1.0.1 applied via <a href="../../changes/archive/2026-06-14-clarify-tooling-scope/proposal.html">2026-06-14-clarify-tooling-scope</a>. <code>&lt;spec-warning&gt;</code> demoted to <code>&lt;spec-note&gt;</code>; ready for <code>/spectastic.plan</code>.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  002-validate-cli · spec-html schema + <code>spectastic validate</code> · authored 14 Jun 2026 ·
+  <button data-theme-toggle style="background:none;border:none;color:var(--c-link);cursor:pointer;font:inherit;padding:0;border-bottom:1px solid currentColor;">toggle theme</button>
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>
