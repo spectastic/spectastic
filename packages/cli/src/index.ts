@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { Command } from 'commander';
 import { registerInit } from './commands/init.js';
 import { registerValidate } from './commands/validate.js';
@@ -8,11 +11,23 @@ import { registerValidate } from './commands/validate.js';
  * Per FR-001 of specs/002-validate-cli/spec.html: no args → print
  * usage and exit 2. With args, parse via commander and dispatch.
  */
+
+// Read version from this package's package.json at runtime so `spectastic -V`
+// always reports the actually-installed version. The path resolves from the
+// compiled `dist/index.js` (production install) and from `src/index.ts` (dev),
+// both of which sit one level under the package root.
+const here = dirname(fileURLToPath(import.meta.url));
+const pkg = JSON.parse(readFileSync(join(here, '..', 'package.json'), 'utf8')) as {
+  version: string;
+};
+
 const program = new Command();
 program
   .name('spectastic')
-  .description('Validate spec-html files against the spectastic grammar.')
-  .version('0.1.0-pre');
+  .description(
+    'Single-file HTML spec tooling: bootstrap a project with `init`; validate spec-html artifacts with `validate`.',
+  )
+  .version(pkg.version);
 
 registerInit(program);
 registerValidate(program);
