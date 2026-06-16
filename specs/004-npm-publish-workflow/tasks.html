@@ -1,0 +1,261 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>npm publish workflow · Tasks</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Tasks · 004-npm-publish-workflow</p>
+  <h1>npm publish workflow for <code>@spectastic/cli</code> and <code>@spectastic/schema</code></h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    Ordered, parallelizable work. Drive through with
+    <code>/spectastic.implement</code> — one task per invocation.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>     <span><spec-status value="draft">Draft</spec-status></span>
+    <b>Spec</b>       <span><a href="./spec.html">004-npm-publish-workflow</a></span>
+    <b>Plan</b>       <span><a href="./plan.html">plan</a></span>
+    <b>Branch</b>     <span><code>004-npm-publish-workflow</code></span>
+    <b>Created</b>    <span><time datetime="2026-06-15">15 Jun 2026</time></span>
+    <b>Read time</b>  <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-tldr>
+    <p>22 tasks across five phases. Setup wires Dependabot + the one-time npm-org bootstrap; Foundational scaffolds the workflow file and the shared install + gate steps; US1 wires the publish path; US2 adds the dry-run job + README; US3 is a single manual provenance verification (config is covered in Foundational); Polish drives the first real release and verifies SC-001..SC-003 against npm and a clean environment. Tasks marked <span class="par">[P]</span> can run in parallel.</p>
+  </spec-tldr>
+</header>
+
+
+<section id="strategy">
+<h2>1 · Execution strategy</h2>
+
+<spec-tabs>
+  <spec-tab label="MVP-first">
+    <p>Skeleton workflow → publish step → first real publish at 0.1.0-pre.3 — minimum to make <code>npm i -g</code> work for an outsider. Layer dry-run, README, Dependabot, and verification work after the first release lands.</p>
+  </spec-tab>
+  <spec-tab label="Incremental">
+    <p>Setup → Foundational → US1 → US2 → US3 → Polish. Each story closes its conformance before the next opens. Recommended for solo work; lowest coordination cost. Polish gates on the first real publish having landed.</p>
+  </spec-tab>
+  <spec-tab label="Parallel teams">
+    <p>One contributor on the workflow file (Foundational + US1); one on the README docs (US2); they meet at the dry-run job. Useful only if you have two people; for solo work, Incremental is cleaner.</p>
+  </spec-tab>
+</spec-tabs>
+</section>
+
+
+<section id="phase-setup" class="phase">
+<h2>2 · Phase 1 — Setup</h2>
+<p>Repo wiring + the one-time npm-org bootstrap.</p>
+
+<spec-task id="T-001" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Add or extend Dependabot config for the github-actions ecosystem</strong> <span class="path">.github/dependabot.yml</span></div>
+</spec-task>
+<spec-task id="T-002">
+  <input type="checkbox">
+  <div><strong>One-time maintainer bootstrap: create or confirm the @spectastic npm org; generate a granular access token scoped to publishing @spectastic/* only; add it as the NPM_TOKEN repo secret in GitHub Actions settings</strong> <span class="path">npm + GitHub UI (manual; no committed file)</span></div>
+</spec-task>
+<spec-task id="T-003" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Add a placeholder "Releasing" section to the root README so US2 has a target to fill</strong> <span class="path">README.md</span></div>
+</spec-task>
+</section>
+
+
+<section id="phase-foundation" class="phase">
+<h2>3 · Phase 2 — Foundational</h2>
+<p>The publish workflow's skeleton + shared gates. Sequential within the same file.</p>
+
+<spec-task id="T-010">
+  <input type="checkbox" checked>
+  <div><strong>Scaffold publish.yml: name, on triggers (push tags v* + pull_request paths filter), env block, two jobs (dry-run, publish), permissions block on the publish job (id-token: write, contents: read) for OIDC</strong> <span class="path">.github/workflows/publish.yml</span></div>
+</spec-task>
+<spec-task id="T-011">
+  <input type="checkbox" checked>
+  <div><strong>Add shared install + gate steps (used by both jobs via YAML anchor or duplicated for clarity): actions/checkout@v4, actions/setup-node@v4 (node 20), pnpm/action-setup@v4, pnpm install --frozen-lockfile, pnpm typecheck, pnpm test, pnpm -r build (includes prebuild). Per <a href="./spec.html#FR-002">FR-002</a> + <a href="./spec.html#FR-007">FR-007</a> + D-002 (major-version tag pins)</strong> <span class="path">.github/workflows/publish.yml (jobs.*.steps)</span></div>
+</spec-task>
+<spec-task id="T-012">
+  <input type="checkbox" checked>
+  <div><strong>Verify-version step (publish job only): extract version from $GITHUB_REF (strip leading v); read both packages' package.json version fields; fail the job if either differs from the tag-derived version (<a href="./spec.html#FR-003">FR-003</a>)</strong> <span class="path">.github/workflows/publish.yml (publish job step)</span></div>
+</spec-task>
+</section>
+
+
+<section id="phase-us1" class="phase">
+<h2>4 · Phase 3a — US1 · Outsider installs spectastic <spec-pill>P1</spec-pill></h2>
+<p>The publish path: dist-tag derivation, the actual pnpm publish, and the summary block.</p>
+
+<h3>Tests (write &amp; fail first)</h3>
+<spec-task id="T-100" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Dry-run job body: same gates as publish, then <code>pnpm publish --dry-run -r --provenance --access public</code>. The dry-run exercises workspace:* rewriting, package contents, and the provenance configuration without writing to npm (<a href="./spec.html#FR-002">FR-002</a>, <a href="./plan.html#D-003">D-003</a>)</strong> <span class="path">.github/workflows/publish.yml (dry-run job)</span></div>
+</spec-task>
+
+<h3>Implementation</h3>
+<spec-task id="T-110">
+  <input type="checkbox" checked>
+  <div><strong>Dist-tag derivation step (publish job): inline bash conditional sets DIST_TAG to "next" when $VERSION contains a hyphen, "latest" otherwise; exports via $GITHUB_OUTPUT (<a href="./spec.html#FR-006">FR-006</a>, <a href="./plan.html#D-005">D-005</a>)</strong> <span class="path">.github/workflows/publish.yml (publish job step)</span></div>
+</spec-task>
+<spec-task id="T-111">
+  <input type="checkbox" checked>
+  <div><strong>pnpm publish step: <code>pnpm publish -r --provenance --access public --tag $DIST_TAG --no-git-checks</code>; NODE_AUTH_TOKEN from secrets.NPM_TOKEN; .npmrc with always-auth=true. Per <a href="./spec.html#FR-004">FR-004</a> + <a href="./spec.html#FR-005">FR-005</a></strong> <span class="path">.github/workflows/publish.yml (publish job step)</span></div>
+</spec-task>
+<spec-task id="T-112" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Workflow-summary step: write a markdown block to $GITHUB_STEP_SUMMARY listing the two published versions with links to their npmjs.com pages (<a href="./spec.html#FR-008">FR-008</a>)</strong> <span class="path">.github/workflows/publish.yml (publish job step)</span></div>
+</spec-task>
+
+<spec-note>
+<p>Closes <a href="./spec.html#FR-001">FR-001</a> (trigger), <a href="./spec.html#FR-004">FR-004</a> (publish step), <a href="./spec.html#FR-005">FR-005</a> (provenance via OIDC), <a href="./spec.html#FR-006">FR-006</a> (dist-tag), <a href="./spec.html#FR-008">FR-008</a> (summary). Partial coverage of <a href="./spec.html#SC-001">SC-001</a> (outsider install) — full verification lands in Polish after first real publish.</p>
+</spec-note>
+</section>
+
+
+<section id="phase-us2" class="phase">
+<h2>5 · Phase 3b — US2 · Maintainer releases <spec-pill>P1</spec-pill></h2>
+<p>README "Releasing" docs + verification that the dry-run job actually catches things.</p>
+
+<h3>Tests (write &amp; fail first)</h3>
+<spec-task id="T-200" parallel>
+  <input type="checkbox">
+  <div><strong>Open a test PR that touches publish.yml (e.g. a trivial whitespace edit) and confirm the dry-run job runs end-to-end and reports success in the PR checks. Close the PR without merging</strong> <span class="path">GitHub PR (manual smoke)</span></div>
+</spec-task>
+
+<h3>Implementation</h3>
+<spec-task id="T-210">
+  <input type="checkbox" checked>
+  <div><strong>Fill the README "Releasing" section: primary tag-push procedure step-by-step (edit packages/cli/package.json + packages/schema/package.json to new version → commit → git tag v&lt;version&gt; → git push --tags); link to the Actions tab for the workflow run (<a href="./spec.html#FR-009">FR-009</a>)</strong> <span class="path">README.md</span></div>
+</spec-task>
+<spec-task id="T-211" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Add "Emergency local fallback" subsection: <code>npm login</code> + <code>pnpm publish -r --provenance --access public --tag &lt;next|latest&gt;</code>; warning that the maintainer's local NPM_TOKEN is in their npm config, not GitHub secrets (<a href="./spec.html#FR-009">FR-009</a>)</strong> <span class="path">README.md</span></div>
+</spec-task>
+
+<spec-note>
+<p>Closes <a href="./spec.html#FR-009">FR-009</a> (README dual-path); verifies <a href="./spec.html#FR-002">FR-002</a> + <a href="./spec.html#FR-003">FR-003</a> via the dry-run; partial <a href="./spec.html#SC-004">SC-004</a> coverage (full verification in Polish).</p>
+</spec-note>
+</section>
+
+
+<section id="phase-us3" class="phase">
+<h2>6 · Phase 3c — US3 · Provenance verifiable <spec-pill>P2</spec-pill></h2>
+<p>The provenance config landed in Foundational (T-010 permissions block) + US1 (T-111 --provenance flag). Story exit is a single manual verification.</p>
+
+<spec-task id="T-310">
+  <input type="checkbox">
+  <div><strong>After the first publish lands (Polish), visit npmjs.com/package/@spectastic/cli and confirm the version page shows a verified-source provenance badge linking to a specific commit in <code>spectastic/spectastic</code> and a specific workflow run. Same check for @spectastic/schema. Per <a href="./spec.html#SC-002">SC-002</a></strong> <span class="path">npmjs.com (manual verification; record result in spec changelog)</span></div>
+</spec-task>
+
+<spec-note>
+<p>Closes <a href="./spec.html#FR-005">FR-005</a> (provenance via OIDC) and <a href="./spec.html#SC-002">SC-002</a> (badge visible). The configuration work is in T-010 + T-111; this task is the visual confirmation.</p>
+</spec-note>
+</section>
+
+
+<section id="phase-polish" class="phase">
+<h2>7 · Phase 4 — Polish</h2>
+<p>First real release + the three success-criteria verifications + housekeeping. T-900 → T-902 are sequential; T-903..T-907 parallel after T-902.</p>
+
+<spec-task id="T-900">
+  <input type="checkbox">
+  <div><strong>Bump <code>packages/cli/package.json</code> and <code>packages/schema/package.json</code> versions from <code>0.1.0-pre</code> to <code>0.1.0-pre.3</code> (matches CHANGELOG); commit "v0.1.0-pre.3"</strong> <span class="path">packages/{cli,schema}/package.json</span></div>
+</spec-task>
+<spec-task id="T-901">
+  <input type="checkbox">
+  <div><strong>Tag and push: <code>git tag v0.1.0-pre.3 &amp;&amp; git push --tags</code>. Watch the workflow run in the Actions tab; resolve any first-publish quirks (token scope, org permissions)</strong> <span class="path">git + GitHub Actions UI</span></div>
+</spec-task>
+<spec-task id="T-902">
+  <input type="checkbox">
+  <div><strong>Confirm workflow completed successfully and both packages appear on npmjs.com at version 0.1.0-pre.3 on the <code>next</code> dist-tag (<code>npm view @spectastic/cli dist-tags</code> shows <code>next: 0.1.0-pre.3</code>)</strong> <span class="path">npmjs.com + local terminal</span></div>
+</spec-task>
+<spec-task id="T-903" parallel>
+  <input type="checkbox">
+  <div><strong>SC-001 verification: in a fresh container or VM with Node 20+ but no spectastic clone, run <code>npm i -g @spectastic/cli@next</code> then <code>spectastic init</code> in an empty directory + <code>spectastic validate principles.html</code>. Record outcome in the spec changelog</strong> <span class="path">fresh environment (manual; record result in spec changelog)</span></div>
+</spec-task>
+<spec-task id="T-904" parallel>
+  <input type="checkbox">
+  <div><strong>SC-002 verification: complete T-310 — confirm provenance badge visible on both packages' npmjs.com pages</strong> <span class="path">npmjs.com (manual)</span></div>
+</spec-task>
+<spec-task id="T-905" parallel>
+  <input type="checkbox">
+  <div><strong>SC-003 verification: open a test PR that deliberately breaks a test (e.g. flip an assertion); confirm the dry-run job fails before the publish-dry-run step; close the PR without merging</strong> <span class="path">GitHub PR (manual smoke)</span></div>
+</spec-task>
+<spec-task id="T-906" parallel>
+  <input type="checkbox">
+  <div><strong>CHANGELOG entry for v0.1.0-pre.3 — first npm publish; provenance verified; install path documented</strong> <span class="path">CHANGELOG.md</span></div>
+</spec-task>
+<spec-task id="T-907" parallel>
+  <input type="checkbox">
+  <div><strong>Update specs/003-init-node-port references: the TBD-npm-publish defer-to is no longer pending. Add a closure note in 003's spec changelog citing 004 as the slice that landed</strong> <span class="path">specs/003-init-node-port/spec.html</span></div>
+</spec-task>
+</section>
+
+
+<section id="traceability">
+<h2>8 · Requirement traceability</h2>
+<p>Every <code>FR</code>/<code>NFR</code>/<code>SC</code> in the spec maps to at least one task.</p>
+
+<table>
+  <thead><tr><th>Requirement</th><th>Closed by</th></tr></thead>
+  <tbody>
+    <tr><td><a href="./spec.html#FR-001">FR-001</a> tag-push trigger</td><td>T-010</td></tr>
+    <tr><td><a href="./spec.html#FR-002">FR-002</a> gates before publish</td><td>T-011, T-100 (dry-run), T-200 (verify)</td></tr>
+    <tr><td><a href="./spec.html#FR-003">FR-003</a> verify tag vs package.json</td><td>T-012</td></tr>
+    <tr><td><a href="./spec.html#FR-004">FR-004</a> pnpm publish -r atomic</td><td>T-111</td></tr>
+    <tr><td><a href="./spec.html#FR-005">FR-005</a> provenance via OIDC</td><td>T-010 (permissions), T-111 (--provenance), T-310 (verification)</td></tr>
+    <tr><td><a href="./spec.html#FR-006">FR-006</a> dist-tag derivation</td><td>T-110</td></tr>
+    <tr><td><a href="./spec.html#FR-007">FR-007</a> prebuild re-run</td><td>T-011 (pnpm -r build runs prebuild)</td></tr>
+    <tr><td><a href="./spec.html#FR-008">FR-008</a> workflow summary</td><td>T-112</td></tr>
+    <tr><td><a href="./spec.html#FR-009">FR-009</a> README dual-path docs</td><td>T-003, T-210, T-211</td></tr>
+    <tr><td><a href="./spec.html#NFR-001">NFR-001</a> &lt;5 min p95</td><td>T-902 (verified in Polish)</td></tr>
+    <tr><td><a href="./spec.html#NFR-002">NFR-002</a> NPM_TOKEN granular-scoped + secret</td><td>T-002 (bootstrap), T-111 (env)</td></tr>
+    <tr><td><a href="./spec.html#NFR-003">NFR-003</a> third-party Actions pinned</td><td>T-011 (major-version tags), T-001 (Dependabot)</td></tr>
+    <tr><td><a href="./spec.html#SC-001">SC-001</a> outsider can install + run</td><td>T-903</td></tr>
+    <tr><td><a href="./spec.html#SC-002">SC-002</a> provenance badge visible</td><td>T-310, T-904</td></tr>
+    <tr><td><a href="./spec.html#SC-003">SC-003</a> failing tests halt publish</td><td>T-905</td></tr>
+    <tr><td><a href="./spec.html#SC-004">SC-004</a> README documents both paths</td><td>T-210, T-211</td></tr>
+  </tbody>
+</table>
+</section>
+
+
+<section id="dependencies">
+<h2>9 · Dependencies</h2>
+<pre><code>Setup (T-001..T-003)            → Foundational
+T-002 (npm org + secret)        → blocks any task that actually publishes (T-901, T-200)
+Foundational (T-010..T-012)     → US1 + US2 (both jobs share Foundational's steps)
+US1 (T-100..T-112)              → required for first publish
+US2 (T-200..T-211)              → T-200 blocks on T-100 (dry-run job must exist first)
+US3 (T-310)                     → blocks on T-901 (first real publish must land)
+Polish (T-900..T-907)           → T-901 blocks on T-002 + US1 + US2 complete
+                                  T-902 blocks on T-901
+                                  T-903..T-907 parallel after T-902
+</code></pre>
+</section>
+
+
+<section id="changelog">
+<h2>10 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-06-15">15 Jun 2026</time><span>Initial task breakdown. 22 tasks across five phases; 10 parallelizable. Every FR/NFR/SC traced to at least one task in §8. T-002 (one-time npm-org bootstrap) gates everything downstream of it; T-901 (first real publish) gates the verification tasks in Polish.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  Tasks for 004-npm-publish-workflow · npm publish workflow · authored 15 Jun 2026 ·
+  <button data-theme-toggle style="background:none;border:none;color:var(--c-link);cursor:pointer;font:inherit;padding:0;border-bottom:1px solid currentColor;">toggle theme</button>
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>

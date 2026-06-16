@@ -273,6 +273,59 @@ node packages/cli/bin/spectastic validate principles.html
 ln -s "$(pwd)/packages/cli/bin/spectastic" ~/.local/bin/spectastic
 ```
 
+## Releasing
+
+A release is a git tag push. The GitHub Actions workflow at [`.github/workflows/publish.yml`](.github/workflows/publish.yml) runs the gates (typecheck + tests + build + version verify) and publishes both `@spectastic/cli` and `@spectastic/schema` to npm with provenance attestation via GitHub OIDC.
+
+### Primary release path (CI-driven)
+
+```sh
+# 1. Bump the version in both packages to the same value.
+$EDITOR packages/cli/package.json     # e.g. "version": "0.1.0-pre.3"
+$EDITOR packages/schema/package.json  # must match cli exactly
+
+# 2. Commit and tag (the v prefix is required; matches the workflow trigger).
+git commit -am "v0.1.0-pre.3"
+git tag v0.1.0-pre.3
+git push --follow-tags
+```
+
+The workflow:
+
+- Runs typecheck + tests + build. **Refuses to publish if any gate fails.**
+- Verifies the tag-derived version (`v0.1.0-pre.3` → `0.1.0-pre.3`) matches the `version` field in **both** packages' `package.json`. Refuses on mismatch.
+- Derives the dist-tag: versions containing a hyphen (`X.Y.Z-pre.N`) publish on `next`; bare semver (`X.Y.Z`) publishes on `latest`. Keeps `npm i @spectastic/cli` (no tag) from pulling pre-releases by accident.
+- Publishes both packages in one `pnpm publish -r` invocation with `--provenance --access public`. The provenance attestation appears on each version's npmjs.com page as a verified-source badge linking to the commit and workflow run.
+
+Watch the run in the [Actions tab](https://github.com/spectastic/spectastic/actions/workflows/publish.yml).
+
+### Emergency local fallback
+
+If CI is unavailable, a maintainer can publish from their laptop:
+
+```sh
+npm login                       # authenticate as a maintainer of @spectastic
+pnpm install --frozen-lockfile
+pnpm typecheck && pnpm test
+pnpm -r build                   # re-runs prebuild so _bundled/ is fresh
+pnpm publish -r \
+  --provenance \
+  --access public \
+  --tag next                    # or "latest" for a bare semver release
+```
+
+The local fallback uses your laptop's npm token (in `~/.npmrc`), not the CI's `NPM_TOKEN` secret. `--provenance` from a local machine requires an npm trusted-publisher configuration; without it, the published version will not show a provenance badge until republished via CI.
+
+### One-time bootstrap
+
+Before the first publish, a maintainer must (one-off):
+
+1. Create or confirm the `@spectastic` npm organization (`npm org create spectastic` if it doesn't exist).
+2. Generate a granular access token scoped to **publishing** the `@spectastic` org only (not classic, not org-admin).
+3. Add it as the `NPM_TOKEN` secret in this repo's GitHub Actions settings (Settings → Secrets and variables → Actions).
+
+These steps happen on `npmjs.com` and `github.com`, not in this repo.
+
 ## Editing workflow
 
 Source files in `templates/` and `specs/<id>/` link to `assets/spec.css` and `assets/spec.js` so you can iterate on the design system without touching every spec. When you want to ship one as a single attachable file:

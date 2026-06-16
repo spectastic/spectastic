@@ -1,0 +1,163 @@
+name: Publish
+
+# Two jobs share most of the gate logic (install + typecheck + tests + build).
+# - dry-run: runs on PRs touching this file; exercises the publish path via
+#            `pnpm publish --dry-run` without writing to npm. Per D-003.
+# - publish: runs on `v*` tag pushes; the real publish with --provenance
+#            via OIDC. Per D-001 and FR-001..FR-008 of spec 004.
+
+on:
+  push:
+    tags:
+      - 'v*'
+  pull_request:
+    paths:
+      - '.github/workflows/publish.yml'
+
+env:
+  NODE_VERSION: '20'
+  PNPM_VERSION: '9'
+
+jobs:
+  # T-100: dry-run validates the workflow file on PRs that touch it.
+  # Same gates as publish, plus `pnpm publish --dry-run` to exercise
+  # workspace:* rewriting, package contents, and manifest validation.
+  dry-run:
+    name: Dry-run (PR validation)
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Test
+        run: pnpm test
+
+      - name: Build (includes prebuild)
+        run: pnpm -r build
+
+      # Dry-run omits --provenance because it's not actually publishing; the
+      # publish job uses --provenance with OIDC.
+      - name: Dry-run publish
+        run: pnpm publish --dry-run -r --access public --no-git-checks
+
+  # T-010 / T-012 / T-110 / T-111 / T-112: real publish on `v*` tag push.
+  publish:
+    name: Publish to npm
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write     # required for npm --provenance via GitHub OIDC
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Test
+        run: pnpm test
+
+      - name: Build (includes prebuild)
+        run: pnpm -r build
+
+      # T-012: verify the pushed tag matches both packages' versions.
+      # Refuses if either differs from the tag-derived version. Per FR-003.
+      - name: Verify versions match tag
+        id: version
+        run: |
+          TAG_VERSION="${GITHUB_REF#refs/tags/v}"
+          CLI_VERSION=$(node -p "require('./packages/cli/package.json').version")
+          SCHEMA_VERSION=$(node -p "require('./packages/schema/package.json').version")
+
+          echo "Tag version:    $TAG_VERSION"
+          echo "CLI version:    $CLI_VERSION"
+          echo "Schema version: $SCHEMA_VERSION"
+
+          if [[ "$CLI_VERSION" != "$TAG_VERSION" ]]; then
+            echo "::error::@spectastic/cli version ($CLI_VERSION) does not match tag ($TAG_VERSION)"
+            exit 1
+          fi
+          if [[ "$SCHEMA_VERSION" != "$TAG_VERSION" ]]; then
+            echo "::error::@spectastic/schema version ($SCHEMA_VERSION) does not match tag ($TAG_VERSION)"
+            exit 1
+          fi
+
+          echo "version=$TAG_VERSION" >> "$GITHUB_OUTPUT"
+
+      # T-110: derive dist-tag from version. Pre-releases (X.Y.Z-pre.N) → next,
+      # bare semver (X.Y.Z) → latest. Per FR-006 and D-005.
+      - name: Derive dist-tag
+        id: dist-tag
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          if [[ "$VERSION" == *-* ]]; then
+            DIST_TAG="next"
+          else
+            DIST_TAG="latest"
+          fi
+          echo "Dist-tag: $DIST_TAG"
+          echo "tag=$DIST_TAG" >> "$GITHUB_OUTPUT"
+
+      # T-111: real publish with --provenance via OIDC. NPM_TOKEN is a
+      # granular-access token scoped to publishing @spectastic/*. Per FR-004,
+      # FR-005, NFR-002.
+      - name: Publish to npm
+        run: |
+          pnpm publish -r \
+            --provenance \
+            --access public \
+            --tag ${{ steps.dist-tag.outputs.tag }} \
+            --no-git-checks
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      # T-112: workflow summary block listing published versions + npmjs.com
+      # links. Surfaces what just shipped without scrolling the run log. Per
+      # FR-008.
+      - name: Workflow summary
+        if: success()
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          DIST_TAG="${{ steps.dist-tag.outputs.tag }}"
+          cat >> "$GITHUB_STEP_SUMMARY" <<EOF
+          # Published v$VERSION on \`$DIST_TAG\`
+
+          - [@spectastic/cli@$VERSION](https://www.npmjs.com/package/@spectastic/cli/v/$VERSION)
+          - [@spectastic/schema@$VERSION](https://www.npmjs.com/package/@spectastic/schema/v/$VERSION)
+
+          Install:
+
+          \`\`\`sh
+          npm i -g @spectastic/cli@$DIST_TAG
+          \`\`\`
+
+          Provenance attestation visible on each version page.
+          EOF
