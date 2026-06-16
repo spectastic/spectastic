@@ -22,10 +22,9 @@ export function registerValidate(program: Command): void {
     .option('-f, --format <fmt>', 'output format: human (default) | json | sarif', 'human')
     .option('-i, --ignore <patterns...>', 'additional glob patterns to exclude')
     .action(async (paths: string[], options: ValidateOptions) => {
-      const [{ readFile }, { validateMany }, { expandGlobs }, { humanFormatter }, { jsonFormatter }, { sarifFormatter }] =
+      const [{ validateCommand }, { expandGlobs }, { humanFormatter }, { jsonFormatter }, { sarifFormatter }] =
         await Promise.all([
-          import('node:fs/promises'),
-          import('@spectastic/schema'),
+          import('@spectastic/core/commands/validate'),
           import('../glob.js'),
           import('../formatters/human.js'),
           import('../formatters/json.js'),
@@ -38,23 +37,23 @@ export function registerValidate(program: Command): void {
         process.exit(2);
       }
 
-      const inputs: Array<{ html: string; file: string }> = [];
-      for (const file of files) {
-        const html = await readFile(file, 'utf8');
-        inputs.push({ html, file });
+      const result = await validateCommand({ files }, { cwd: process.cwd() });
+
+      if (result.exitCode === 2) {
+        process.stderr.write(`${result.errorMessage ?? 'usage error'}\n`);
+        process.exit(2);
       }
-      const findings = validateMany(inputs);
 
       let output: string;
       switch (options.format) {
         case 'human':
-          output = humanFormatter(findings);
+          output = humanFormatter(result.findings);
           break;
         case 'json':
-          output = jsonFormatter(findings);
+          output = jsonFormatter(result.findings);
           break;
         case 'sarif':
-          output = sarifFormatter(findings);
+          output = sarifFormatter(result.findings);
           break;
         default:
           process.stderr.write(`Unknown format "${options.format}". Use human | json | sarif.\n`);
@@ -62,7 +61,6 @@ export function registerValidate(program: Command): void {
       }
       process.stdout.write(output);
 
-      const hasError = findings.some((f) => f.severity === 'error');
-      process.exit(hasError ? 1 : 0);
+      process.exit(result.exitCode);
     });
 }

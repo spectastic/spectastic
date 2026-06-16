@@ -1,5 +1,19 @@
 # Changelog
 
+## v0.1.0-pre.8 — 2026-06-16
+
+First kernel verb extracted. Foundation for Tier 2 (MCP) + Tier 3 (VS Code) + Tier 6 (web editor) reach.
+
+- **New package `@spectastic/core`** at `packages/core/`. Third pnpm-workspace package alongside `cli` + `schema`. Houses the verb kernel — one TypeScript module the CLI, the future MCP server, and the future VS Code extension all share. Synced version with cli + schema; published with provenance under `next`.
+- **`validateCommand` extracted** to `@spectastic/core/commands/validate` per [spec 006-kernel-extraction](./specs/006-kernel-extraction/spec.html). The CLI's `validate` subcommand now imports from core; behaviour is byte-identical (same exit codes, same output formats, same finding shape). Full-project validate still returns `✓ no findings`; 68/68 tests pass (was 64, +4 from kernel unit tests).
+- **Per-verb subpath exports** (`./commands/validate`, `./providers/node-fs`) keep the lazy-loading discipline. Importing `@spectastic/core` (the main entry) loads zero command code — only types. The bench's `init-help-cold-start` scenario is the regression guard.
+- **Forward-looking `AIProvider` interface** declared in v1 with `chat` + `ask<T>` + `subagent` even though validate uses none of them. Means the 007-core-triage PR that lands the first Claude implementation and the 013-core-propose PR that lights up `subagent()` are both additive rather than interface-extending breaking changes.
+- **Pre-1.0 versioning policy** documented in `packages/core/README.md`: breaking changes to the kernel API may land in minor version bumps until 1.0.0. Downstream consumers should pin with `~0.x.y`, not `^0.x.y`.
+- **Bench regression check**: `validate-full-project` p50 184 ms (vs 175 ms M1 dev baseline = +5%, well within the ±20% NFR-002 target). All four bench scenarios within budget.
+- **Publish workflow version-verify gate extended** to cover all three packages — `cli`, `schema`, `core` — must share the tag's version or the workflow fails.
+
+Seven sibling kernel-extraction slices ([007-core-triage](./specs/007-core-triage/spec.html) through [014-core-implement](./specs/014-core-implement/spec.html)) are speccced and ready to plan once 006 ships.
+
 ## v0.1.0-pre.7 — 2026-06-16
 
 Closes the third slicing-consistency rule: cross-file parent/child reciprocity.
