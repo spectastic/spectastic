@@ -63,6 +63,37 @@
   </details>
 </spec-triage>
 
+<spec-triage id="T-002" layer="spec">
+  <header>
+    <h4>plan.html and tasks.html statuses never transition; spec.html flip is unreliable in practice</h4>
+    <span class="meta">
+      <span class="layer-pill">Spec</span>
+      <span class="regen" data-result="fail">upstream</span>
+    </span>
+  </header>
+
+  <p class="headline">Debugging shipped specs (002, 003) whose <em>sibling</em> plan.html + tasks.html stay in Draft after the spec.html itself is Accepted, plus spec 004 whose all three artifacts are still Draft despite a successful first npm publish; root cause was <a href="./spectastic-spec.html#REQ-LIFECYCLE-004">REQ-LIFECYCLE-004</a> covers spec.html via the tasks-driven last-tick trigger and covers <em>tasks-less</em> artifacts (principles, meta-spec, triage logs, inbox) via author affirmation but leaves plan.html and tasks.html in a gap — they belong to a spec that <em>has</em> a tasks.html so the tasks-less clause doesn't apply, but they don't <em>have</em> their own tasks.html to drive the last-tick trigger; fixed by extending REQ-LIFECYCLE-004 so plan/tasks status bundles with the parent spec (one author confirmation flips all three siblings) and tightening <code>/spectastic.implement</code>'s last-tick step to always perform the bundled flip; regeneration fails because the next LLM session will keep ticking boxes without flipping any pills.</p>
+
+  <dl>
+    <dt>Expected</dt> <dd>Shipped specs have all three artifacts (spec.html, plan.html, tasks.html) at <em>Accepted</em>. In-progress specs have all three at <em>Draft</em>. The three siblings move together as one logical lifecycle unit.</dd>
+    <dt>Actual</dt>   <dd>Audit of the live repo: <code>specs/002-validate-cli/{plan,tasks}.html</code> Draft (spec is Accepted from the T-001 hotfix); <code>specs/003-init-node-port/{plan,tasks}.html</code> Draft (spec is Accepted from the same hotfix); <code>specs/004-npm-publish-workflow/{spec,plan,tasks}.html</code> all three Draft despite the first npm publish landing successfully this session. Three specs, nine artifacts, only two are Accepted.</dd>
+    <dt>Diagnosis</dt><dd>Two reinforcing gaps. <strong>(a)</strong> <a href="./spectastic-spec.html#REQ-LIFECYCLE-004">REQ-LIFECYCLE-004</a>'s Draft→Accepted trigger ("last unchecked checkbox in the artifact's <code>tasks.html</code>") only fits the spec.html artifact. The tasks-less clause that follows ("for artifacts without a <code>tasks.html</code>...") covers principles, meta-spec, triage, and inbox — but explicitly assumes the artifact has no associated tasks.html. plan.html and tasks.html fall outside both clauses: they have a tasks.html (the same one), but it's not <em>theirs</em>. <strong>(b)</strong> Even for spec.html, the LLM-driven last-tick prompt is unreliable: spec 004 drained to T-907 without ever surfacing the flip prompt, because the remaining tasks (T-310, T-905) were manual user gates that paused the drain before the LLM could detect last-tick. The discipline that's supposed to surface the flip is fragile when manual gates are interleaved with code tasks.</dd>
+    <dt>Fix</dt>      <dd>Extend <a href="./spectastic-spec.html#REQ-LIFECYCLE-004">REQ-LIFECYCLE-004</a> with a <strong>bundling clause</strong>: a spec's plan.html and tasks.html status MUST track the parent spec.html status — they move together as one logical unit. The same author confirmation that flips spec.html flips all three siblings (and appends matching <code>&lt;spec-changelog&gt;</code> entries to each). Tighten <code>commands/spectastic.implement.md</code> step 8 to always check the bundle-trigger condition after each tick: count remaining unchecked boxes in tasks.html; if zero, prompt the bundled flip even when the current invocation just ticked a non-final box in a partial drain. Hotfix: catch-up flip 002/003 plan + tasks to Accepted; flip 004's spec/plan/tasks to Accepted as part of this triage's fix landing.</dd>
+  </dl>
+
+  <details>
+    <summary>Deep dive — hotfix list + cascade through the implement command</summary>
+    <p>The hotfix lands in two strokes:</p>
+    <ul>
+      <li><a href="../specs/002-validate-cli/plan.html">002-validate-cli/plan.html</a> + <a href="../specs/002-validate-cli/tasks.html">tasks.html</a> — flip Draft → Accepted; append a one-line changelog entry citing this card.</li>
+      <li><a href="../specs/003-init-node-port/plan.html">003-init-node-port/plan.html</a> + <a href="../specs/003-init-node-port/tasks.html">tasks.html</a> — same.</li>
+      <li><a href="../specs/004-npm-publish-workflow/spec.html">004-npm-publish-workflow/spec.html</a> + <a href="../specs/004-npm-publish-workflow/plan.html">plan.html</a> + <a href="../specs/004-npm-publish-workflow/tasks.html">tasks.html</a> — all three; the first npm publish (v0.1.0-pre.3 + .4) is the affirmation; the spec is the operative contract for the publish workflow.</li>
+    </ul>
+    <p>The upstream amendment lands via <code>/spectastic.propose</code> against <code>examples/spectastic-spec.html</code>. The proposal adds the bundling clause to REQ-LIFECYCLE-004 and tightens the implement command prose. After the amendment, the next session's drain reliably flips all three siblings on the last tick — no more nine-artifact lag.</p>
+    <p>Cascade vs <a href="#T-001">T-001</a>: T-001 closed the spec.html-only flip protocol; T-002 closes the plan + tasks coverage gap that T-001's fix didn't address. The two amendments are sequential refinements of the same REQ.</p>
+  </details>
+</spec-triage>
+
 </spec-triage-log>
 </section>
 
@@ -73,6 +104,7 @@
 <ol>
   <li><time datetime="2026-06-15">15 Jun 2026</time><span>T-001 added — closed specs never flip Draft → Accepted; meta-spec lifecycle gap.</span></li>
   <li><time datetime="2026-06-15">15 Jun 2026</time><span>T-001 closed — fix landed in three parts: (a) hotfix flipped 002 + 003 to Accepted, (b) applied <code>2026-06-15-lifecycle-state-transitions</code> adding the finite state machine to the meta-spec, (c) updated <code>commands/spectastic.implement.md</code> with the last-tick confirmation prompt.</span></li>
+  <li><time datetime="2026-06-16">16 Jun 2026</time><span>T-002 added — plan.html and tasks.html status never transitions; REQ-LIFECYCLE-004 left a gap between the tasks-driven trigger (covers spec.html) and the tasks-less clause (covers principles/meta-spec/triage/inbox). Audit shows nine artifacts that should be Accepted are sitting in Draft. <code>spec</code> layer; regen <code>fail</code>.</span></li>
 </ol>
 </spec-changelog>
 </section>
