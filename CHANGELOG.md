@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.1.0-pre.4 — 2026-06-16
+
+npm-page polish that should have ridden with the first publish.
+
+- **`@spectastic/cli` description** now names both subcommands (`init` + `validate`) instead of just `validate`. Previous wording underrepresented what the CLI does post-Tier-1.5.
+- **`packages/cli/README.md`** authored. Previously the npm page showed "This package does not have a README"; now it surfaces the two-subcommand surface, the install line, the exit-code contract, and provenance verification.
+- **`license: MIT`** added to both `package.json` files (the LICENSE file at repo root existed since 788e607 but neither package declared it — npm pages displayed `none`).
+- **Keywords** added to both packages: `spectastic`, `spec-driven-development`, `specs`, `lifecycle`, `html`, `linter`, `validator`, `ci`, `sarif`, plus per-package specifics (`init`/`scaffold`/`cli` for cli; `ast`/`parse5` for schema). Helps npm search.
+- **`homepage` / `repository.directory` / `bugs`** added to both — the npm "Repository" link now resolves to the right subdirectory.
+
+No runtime behavior changes; only manifest + docs.
+
 ## v0.1.0-pre.3 — 2026-06-16
 
 **First publish to npm.** Both `@spectastic/cli` and `@spectastic/schema` are now installable as `npm i -g @spectastic/cli@next`. Spec [004-npm-publish-workflow](./specs/004-npm-publish-workflow/spec.html).
