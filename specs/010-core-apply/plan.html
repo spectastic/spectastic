@@ -1,0 +1,318 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Core apply · Plan</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Implementation plan · 010-core-apply</p>
+  <h1>Core apply — implementation plan</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    How <code>applyCommand</code> ships — one entry point, two modes, byte-stable HTML mutation, atomic folder moves, all IO through <code>ctx.fs</code>.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>     <span><spec-status value="draft">Draft</spec-status></span>
+    <b>Spec</b>       <span><a href="./spec.html">010-core-apply</a></span>
+    <b>Owner</b>      <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Branch</b>     <span><code>main</code> (squashed-snapshot pattern)</span>
+    <b>Created</b>    <span><time datetime="2026-06-16">16 Jun 2026</time></span>
+    <b>Read time</b>  <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-budget words="2000" reqs="8" minutes="8"></spec-budget>
+
+  <spec-tldr>
+    <p>Extract <code>/spectastic.apply</code> into <code>@spectastic/core/commands/apply</code> per 006's kernel contract. Both modes share one entry: discriminated-union input to <code>applyCommand</code>. HTML mutation is <strong>targeted string replacement</strong> on stable anchors — no parse5 round-trip, no reformatting. Mutate first, atomic <code>ctx.fs.rename</code> last. Risk-register gate is a pure regex scan. No AI usage. Single PR; ships as <code>v0.1.0-pre.12</code>.</p>
+  </spec-tldr>
+</header>
+
+
+<section id="principles-check">
+<h2>1 · Principles check</h2>
+<p>Validated against <a href="../../principles.html">principles v1.0.1</a>. All five principles compatible; no exceptions, no violations.</p>
+
+<table>
+  <thead><tr><th>Principle</th><th>Compliance</th><th>Notes</th></tr></thead>
+  <tbody>
+    <tr><td>P-1 · Source order is reading order</td><td><spec-pill>OK</spec-pill></td><td>Targeted replacement preserves source order; added requirements land at end of their topic group.</td></tr>
+    <tr><td>P-2 · Semantic tags over class soup</td><td><spec-pill>OK</spec-pill></td><td>Mutation anchors on <code>&lt;spec-requirement&gt;</code>, <code>&lt;spec-status&gt;</code>, <code>&lt;spec-changelog&gt;</code> — semantic only.</td></tr>
+    <tr><td>P-3 · IDs are contracts</td><td><spec-pill>OK</spec-pill></td><td>RENAME rewrites intra-spec cross-refs; cross-spec drift surfaces as warnings (D-006). Archived proposals stay verbatim.</td></tr>
+    <tr><td>P-4 · Progressive enhancement, never dependence</td><td><spec-pill>OK</spec-pill></td><td>Kernel emits no browser code; output spec.html degrades as today.</td></tr>
+    <tr><td>P-5 · Calm density</td><td><spec-pill>OK</spec-pill></td><td>No UI change. Determinism preserves whitespace; diffs read cleanly.</td></tr>
+  </tbody>
+</table>
+</section>
+
+
+<section id="technical-context">
+<h2>2 · Technical context</h2>
+<dl>
+  <dt>Language(s)</dt>     <dd>TypeScript 5.7, Node ≥20.</dd>
+  <dt>Frameworks</dt>      <dd>None new. Reuses tsup, vitest, <code>KernelContext</code> + <code>FileSystem</code> from <a href="../006-kernel-extraction/plan.html">006</a>. Parse5 is <strong>not</strong> used in the mutation path (D-001).</dd>
+  <dt>Storage</dt>         <dd>All IO through <code>ctx.fs</code>; folder move via new <code>ctx.fs.rename</code> (D-003).</dd>
+  <dt>Testing</dt>         <dd>Unit-first per <a href="../006-kernel-extraction/plan.html#D-008">006 D-008</a>: <code>packages/core/test/apply.test.ts</code> with stub <code>ctx.fs</code>; CLI integration tests at <code>packages/cli/test/apply.integration.test.ts</code>; byte-identity replay over <code>examples/changes/archive/</code> + <code>withdrawn/</code> as SC-001's detector.</dd>
+  <dt>Perf targets</dt>    <dd>All <code>bench/baselines.json</code> scenarios within budget; <code>init-help-cold-start</code> p50 within ±20% of the post-007 baseline.</dd>
+  <dt>Constraints</dt>     <dd>Byte-identical replay output (<a href="./spec.html#SC-001">SC-001</a>); deterministic across runs (<a href="./spec.html#FR-010">FR-010</a>); IO via <code>ctx.fs</code> (<a href="./spec.html#FR-011">FR-011</a>); risk-register gate (<a href="./spec.html#FR-008">FR-008</a>).</dd>
+</dl>
+</section>
+
+
+<section id="approach">
+<h2>3 · Approach</h2>
+
+<p>Three moves, one PR. <strong>One</strong>: implement <code>applyCommand</code> at <code>packages/core/src/commands/apply.ts</code> with a discriminated-union input (<code>ApplyInput | WithdrawInput</code>) and shared helpers (gate, mutation, changelog append, folder move). <strong>Two</strong>: add <code>rename</code> to the <code>FileSystem</code> interface (impl in <code>nodeFs</code> via <code>fs.promises.rename</code>, mirrored in the test stub). <strong>Three</strong>: add the <code>spectastic apply</code> CLI subcommand at <code>packages/cli/src/commands/apply.ts</code> with <code>commander</code> flag parsing, translating between flags and the discriminated union. Update <code>commands/spectastic.apply.md</code> with the MAY-Bash note per FR-013.</p>
+
+<p>The architecturally-interesting piece is HTML mutation. <strong>Targeted string replacement</strong> wins over parse5 round-trip: spec.html is author-curated and a round-trip would re-pretty-print everything, producing massive diffs and violating FR-010. The strategy locates each target by anchored regex on <code>&lt;spec-requirement id="…"&gt;…&lt;/spec-requirement&gt;</code>, replaces the matched substring, and leaves the rest byte-untouched. ADDED scans forward from the topic-group <code>&lt;h3&gt;</code> to the next <code>&lt;h3&gt;</code> or section close and inserts there.</p>
+
+<spec-arch>
+<figure>
+<svg viewBox="0 0 720 280" role="img" aria-label="apply architecture: CLI parses flags, calls kernel with discriminated-union input; kernel reads via ctx.fs, mutates by targeted string replacement, writes back, then atomically renames the folder.">
+  <style>
+    .box { fill:#fcfbf7; stroke:#c4c1bb; stroke-width:1.2; }
+    .label { font: 700 11px Lato, sans-serif; fill:#4a4a46; letter-spacing:0.06em; text-transform:uppercase; }
+    .body  { font: 400 12px "Source Serif 4", Georgia, serif; fill:#353534; }
+    .arr   { stroke:#73706d; stroke-width:1.2; fill:none; }
+    .step  { font: 400 11px "Source Serif 4", Georgia, serif; fill:#73706d; font-style:italic; }
+  </style>
+  <defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#73706d"/></marker></defs>
+
+  <rect class="box" x="20"  y="20"  width="160" height="60" rx="4"/>
+  <text class="label" x="36" y="42">CLI subcmd</text>
+  <text class="body"  x="36" y="62">apply (shim)</text>
+
+  <rect class="box" x="270" y="20"  width="180" height="60" rx="4"/>
+  <text class="label" x="286" y="42">core/commands</text>
+  <text class="body"  x="286" y="62">applyCommand</text>
+
+  <rect class="box" x="530" y="20"  width="170" height="60" rx="4"/>
+  <text class="label" x="546" y="42">core/providers</text>
+  <text class="body"  x="546" y="62">FileSystem (ctx.fs)</text>
+
+  <rect class="box" x="270" y="120" width="180" height="40" rx="4"/>
+  <text class="body"  x="286" y="145">gate + mutate + write</text>
+
+  <rect class="box" x="270" y="180" width="180" height="40" rx="4"/>
+  <text class="body"  x="286" y="205">rename folder (atomic)</text>
+
+  <rect class="box" x="20"  y="180" width="200" height="40" rx="4"/>
+  <text class="body"  x="36"  y="205">specs/&lt;id&gt;/spec.html</text>
+  <rect class="box" x="500" y="180" width="200" height="40" rx="4"/>
+  <text class="body"  x="516" y="205">archive/ or withdrawn/</text>
+
+  <path class="arr" d="M180 50 L270 50" marker-end="url(#ah)"/>
+  <path class="arr" d="M450 50 L530 50" marker-end="url(#ah)"/>
+  <path class="arr" d="M360 80 L360 120" marker-end="url(#ah)"/>
+  <path class="arr" d="M360 160 L360 180" marker-end="url(#ah)"/>
+  <path class="arr" d="M270 200 L220 200" marker-end="url(#ah)"/>
+  <path class="arr" d="M450 200 L500 200" marker-end="url(#ah)"/>
+
+  <text class="step" x="470" y="145">step 1–3</text>
+  <text class="step" x="470" y="200">step 4</text>
+</svg>
+<figcaption>CLI translates flags to the discriminated union; kernel sequences gate → mutate → write → rename. Steps 1–3 mutate the live spec; step 4 is the atomic folder move. A failure in 1–3 leaves the source folder untouched (see D-002).</figcaption>
+</figure>
+</spec-arch>
+</section>
+
+
+<section id="alternatives">
+<h2>4 · Alternatives considered</h2>
+
+<spec-matrix>
+<table>
+  <thead>
+    <tr><th>Option</th><th>Byte-stability</th><th>Robustness</th><th>Effort</th><th class="score">Total</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Full parse5 round-trip mutation</td><td>1</td><td>4</td><td>2</td><td class="score">7</td></tr>
+    <tr><td>Hybrid parse5-locate + string-splice</td><td>3</td><td>3</td><td>3</td><td class="score">9</td></tr>
+    <tr data-winner><td>Targeted string replacement on stable anchors — chosen</td><td>4</td><td>3</td><td>4</td><td class="score">11</td></tr>
+  </tbody>
+</table>
+</spec-matrix>
+
+<p>Full round-trip loses on byte-stability. Hybrid (parse-to-locate, splice-by-offset) adds parse5 weight per call and the offset math is fiddly. Targeted replacement wins because spec.html's anchors are stable and unique; if they ever drift, schema validation upstream catches it before apply runs.</p>
+</section>
+
+
+<section id="decisions">
+<h2>5 · Decisions</h2>
+
+<spec-decision id="D-001">
+  <h4>D-001 · HTML mutation via targeted string replacement on stable anchors</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>FR-010 requires byte-stable output. A parse5 round-trip would re-pretty-print everything.</dd>
+    <dt>Decision</dt>     <dd>Anchored regex: <code>&lt;spec-requirement\s+id="ID"[^&gt;]*&gt;[\s\S]*?&lt;\/spec-requirement&gt;</code> for MODIFY/REMOVE/RENAME; <code>&lt;spec-status\s+value="…"&gt;…&lt;/spec-status&gt;</code> for status flips; closing <code>&lt;/ol&gt;</code> inside <code>&lt;spec-changelog&gt;</code> for append. ADDED locates the topic-group <code>&lt;h3&gt;</code> and inserts before the next <code>&lt;h3&gt;</code> or section close. No parse5 in the mutation path.</dd>
+    <dt>Consequences</dt> <dd>+ Byte-stable; preserves whitespace, attribute order. + No parse5 on the hot path. − Fragile to anchor drift; mitigated by upstream schema validation. − Regex authoring needs care; unit tests cover each op.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-002">
+  <h4>D-002 · Operation sequencing — mutate first, rename last; no rollback</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>Apply has multiple side effects. Cross-process filesystem transactions are not a thing.</dd>
+    <dt>Decision</dt>     <dd>Strict ordering: (1) gate-check, (2) compute mutations in memory, (3) write live spec, (4) write archived/withdrawn proposal (status + changelog), (5) <code>ctx.fs.rename</code> the folder. Steps 1–2 leave nothing changed on failure; step 5 is single-syscall atomic per OS. No rollback code; git is the rollback mechanism, named in the CLI's error output.</dd>
+    <dt>Consequences</dt> <dd>+ Simple, predictable. + No transaction code. − Crash between step 3 and step 5 requires git revert. − Apply is a development-time gesture, not production.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-003">
+  <h4>D-003 · Add <code>rename</code> to <code>FileSystem</code> interface</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>006's <code>FileSystem</code> shipped four methods per <a href="../006-kernel-extraction/plan.html#D-005">006 D-005</a>. FR-005 requires atomic folder move via <code>ctx.fs</code>, never <code>node:fs</code> direct.</dd>
+    <dt>Decision</dt>     <dd>Add <code>rename(from: string, to: string): Promise&lt;void&gt;</code>. The <code>nodeFs</code> impl wraps <code>fs.promises.rename</code> (atomic per POSIX/NTFS, same-filesystem). Test stub rewrites map keys. First additive change to the interface, anticipated as a v0.x minor bump in 006 D-005.</dd>
+    <dt>Consequences</dt> <dd>+ Single syscall keeps the move atomic. + VS Code's <code>workspace.fs</code> + MCP FS capabilities both expose <code>rename</code>. − Pre-1.0 interface broadening; release notes flag it. − Cross-filesystem fallback to copy+unlink on some OS; same-filesystem assumption documented.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-004">
+  <h4>D-004 · Discriminated-union input (<code>ApplyInput | WithdrawInput</code>) over separate functions</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>FR-003 puts both modes under one verb; they share preconditions, folder-move, and changelog discipline. Two functions would duplicate that.</dd>
+    <dt>Decision</dt>     <dd>One <code>applyCommand(input: ApplyInput | WithdrawInput, ctx)</code>. Input is a discriminated union with literal <code>mode</code>: <code>{ mode: 'apply', slug }</code> or <code>{ mode: 'withdraw', slug, reason }</code>. Kernel branches on <code>mode</code>; shared helpers as private functions.</dd>
+    <dt>Consequences</dt> <dd>+ One entry, one test file, one CLI shim. + TS type narrowing is statically safe. − <code>ApplyResult</code> carries mode-specific fields (<code>deltasApplied: 0</code> for withdraw); documented in spec §4.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-005">
+  <h4>D-005 · Risk-register gate — pure scan, structured refusal</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>FR-008 requires apply to refuse if any <code>&lt;spec-risk status="identified"&gt;</code> remains, listing offenders by <code>target=</code>. Kernel must never transition statuses on its own.</dd>
+    <dt>Decision</dt>     <dd>Scan via regex <code>/&lt;spec-risk\s+[^&gt;]*?status="identified"[^&gt;]*?target="([^"]+)"/g</code> (plus attribute-swapped variant). If matches non-empty, throw typed <code>RiskGateError</code> with <code>{ targets: string[] }</code>. CLI catches and formats with exit code 2. No AI; no status mutation.</dd>
+    <dt>Consequences</dt> <dd>+ Pure, fast, deterministic. + Typed error lets MCP / VS Code render their own UI. − Attribute-order variance needs both regex orderings; fixture covers each.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-006">
+  <h4>D-006 · Cross-spec reference rewrite for RENAME — intra-spec only; cross-spec surfaces as report</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>FR-004 requires intra-spec rewrite on RENAME. Spec edge case defers cross-spec propagation to <code>TBD-core-cross-spec</code> but expects drift surfaced, not silently propagated.</dd>
+    <dt>Decision</dt>     <dd>Rewrite within live <code>spec.html</code> only (<code>href="#OLD"</code>, ID attrs, prose mentions matching <code>\bOLD\b</code>). Do <strong>not</strong> rewrite archived proposals, siblings, or principles. After in-spec rewrite, scan folder siblings (<code>plan.html</code>, <code>tasks.html</code>) and other <code>specs/**/spec.html</code> for stray refs; surface each in <code>ApplyResult.crossSpecWarnings: string[]</code>. CLI prints them as "review manually" warnings.</dd>
+    <dt>Consequences</dt> <dd>+ Honours "preserved verbatim" discipline. + Author retains control over cross-spec mutation. − Two-pass scan on RENAME (rare). − Warnings list may grow noisy; v1 accepts that.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-007">
+  <h4>D-007 · Changelog entry format + insertion point</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>FR-006/FR-007 require <code>&lt;spec-changelog&gt;</code> append on live spec + paired entry on the moved proposal. Today's markdown specifies the exact shape.</dd>
+    <dt>Decision</dt>     <dd>Locate the closing <code>&lt;/ol&gt;</code> inside <code>&lt;spec-changelog&gt;</code> (last occurrence) and insert a new <code>&lt;li&gt;</code> before it, matching the markdown template verbatim. Date comes from new optional <code>ctx.now?.()</code> — defaults to <code>new Date()</code>; test fixtures inject a fixed date. Summary derives from the proposal's <code>&lt;h1&gt;</code> / <code>&lt;spec-tldr&gt;</code>; caller can override via <code>ApplyInput.summary?: string</code>.</dd>
+    <dt>Consequences</dt> <dd>+ Matches existing corpus; SC-001 byte-identity achievable. + Injected dates make tests deterministic. − Adds <code>ctx.now</code> (small additive). − Summary heuristic may pick poor text; <code>--summary</code> is the override.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-008">
+  <h4>D-008 · Single-PR migration, bench-gated, ships as <code>v0.1.0-pre.12</code></h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>010 lands four pieces (kernel, FS interface additions, CLI, markdown). Tightly coupled; staging splits them poorly.</dd>
+    <dt>Decision</dt>     <dd>Single PR per <a href="../006-kernel-extraction/plan.html#D-008">006</a> + <a href="../007-core-triage/plan.html#D-008">007</a> precedent. Ships as <code>v0.1.0-pre.12</code> (007 shipped pre.9; pre.10/pre.11 reserved for interleaved sibling extractions). Bench enforces lazy loading; CLI integration tests prove wiring; byte-identity replay proves SC-001.</dd>
+    <dt>Consequences</dt> <dd>+ Atomic; reverts cleanly; simpler version bookkeeping. − Larger diff; any failure blocks the whole slice.</dd>
+  </dl>
+</spec-decision>
+</section>
+
+
+<section id="project-structure">
+<h2>6 · Project structure</h2>
+
+<pre><code>packages/core/
+  package.json                                       <em>(adds ./commands/apply subpath)</em>
+  tsup.config.ts                                     <em>(adds src/commands/apply.ts entry)</em>
+  src/
+    types.ts                                         <em>(extends FileSystem with rename; adds ctx.now)</em>
+    commands/
+      apply.ts                                       <em>(new — applyCommand + helpers)</em>
+    providers/
+      node-fs.ts                                     <em>(adds rename method)</em>
+  test/
+    apply.test.ts                                    <em>(new — unit; in-memory ctx.fs; both modes; SC-001 replay)</em>
+
+packages/cli/
+  src/commands/
+    apply.ts                                         <em>(new — CLI subcommand; commander flag parsing)</em>
+  test/
+    apply.integration.test.ts                        <em>(new — temp-dir fixture; both modes)</em>
+
+commands/
+  spectastic.apply.md                                <em>(adds MAY-Bash note per FR-013)</em>
+
+CHANGELOG.md                                         <em>(v0.1.0-pre.12 entry)</em>
+</code></pre>
+
+<p>No new runtime deps; five new TS files + one markdown update + interface additions to existing <code>types.ts</code> and <code>node-fs.ts</code>. Bench config untouched (existing scenarios catch regressions).</p>
+</section>
+
+
+<section id="risks">
+<h2>7 · Risks &amp; mitigations</h2>
+
+<table>
+  <thead><tr><th>Risk</th><th>Likelihood</th><th>Impact</th><th>Mitigation</th></tr></thead>
+  <tbody>
+    <tr><td>Regex-based mutation misses anchor variants.</td><td>M</td><td>H</td><td>Fixtures cover both attribute orderings, comments, multi-line attrs; upstream schema validation is the safety net.</td></tr>
+    <tr><td>Crash between live-spec write and folder rename leaves inconsistent state.</td><td>L</td><td>M</td><td>Git is the rollback (D-002); CLI error names the recovery gesture; acceptable for a dev-time verb.</td></tr>
+    <tr><td>RENAME's cross-spec scan slows large repos.</td><td>L</td><td>L</td><td>RENAME is rare; scan is per-op; warnings non-fatal (D-006). Future <code>TBD-core-cross-spec</code> owns optimisation.</td></tr>
+    <tr><td>Cross-filesystem rename falls back to copy+unlink on some platforms.</td><td>L</td><td>L</td><td>Same-repo paths hold same-filesystem assumption (D-003).</td></tr>
+    <tr><td>Changelog summary heuristic produces poor text.</td><td>M</td><td>L</td><td><code>ApplyInput.summary</code> override + <code>--summary</code> CLI flag (D-007).</td></tr>
+    <tr><td>SC-001 byte-identity replay fails due to historical corpus drift.</td><td>L</td><td>M</td><td>Comparison normalises whitespace + line endings; substantive diffs still fail loudly.</td></tr>
+  </tbody>
+</table>
+</section>
+
+
+<section id="complexity">
+<h2>8 · Complexity tracking</h2>
+<p>Two deliberate additions warrant flagging:</p>
+
+<spec-assumption>
+<p><strong>Regex-based HTML mutation (D-001).</strong> Conventional wisdom warns against regex-on-HTML. Justified here because spec.html is author-curated with stable anchors, schema validation runs upstream as the well-formedness guarantor, and parse5 round-trip violates FR-010 non-negotiably. The regex shape is bounded to anchored elements the schema enforces; not arbitrary HTML.</p>
+</spec-assumption>
+
+<spec-assumption>
+<p><strong>No rollback logic for partial failures (D-002).</strong> A crash between live-spec write and folder rename leaves a small inconsistent window. Accepted because apply runs under git, cross-process FS transactions are genuinely hard, and git revert is the universal escape hatch. CLI error output names the recovery gesture.</p>
+</spec-assumption>
+</section>
+
+
+<section id="questions">
+<h2>9 · Open questions</h2>
+<spec-questions>
+<ol>
+  <li>None. Eight plan-phase decisions anchored upfront; the spec arrived with zero open questions and the plan preserved that. Issues that surface during implementation route back through <code>/spectastic.propose</code>.</li>
+</ol>
+</spec-questions>
+</section>
+
+
+<section id="changelog">
+<h2>10 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-06-16">16 Jun 2026</time><span>Initial plan. Anchored: targeted string-replacement HTML mutation (D-001); mutate-then-rename sequencing with git as rollback (D-002); <code>FileSystem.rename</code> added (D-003); discriminated-union input (D-004); risk-register gate as pure scan with structured refusal (D-005); intra-spec RENAME rewrite + cross-spec drift surfaced as warnings (D-006); changelog format matches corpus, <code>ctx.now</code> added (D-007); single PR as <code>v0.1.0-pre.12</code> (D-008). Bench-gated; SC-001 enforced via byte-identity replay.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  Plan for 010-core-apply · Core apply · authored 16 Jun 2026 ·
+  <button data-theme-toggle style="background:none;border:none;color:var(--c-link);cursor:pointer;font:inherit;padding:0;border-bottom:1px solid currentColor;">toggle theme</button>
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>

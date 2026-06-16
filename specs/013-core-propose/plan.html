@@ -1,0 +1,335 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Extract /spectastic.propose into @spectastic/core · Plan</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Implementation plan · 013-core-propose</p>
+  <h1>Extract <code>/spectastic.propose</code> into <code>@spectastic/core</code> — implementation plan</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    How <code>proposeCommand</code> ships with the adversarial pass intact — base flow plus <code>ctx.ai.subagent()</code> as a co-equal concern, lazy-loaded, bench-gated, single PR.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>     <span><spec-status value="draft">Draft</spec-status></span>
+    <b>Spec</b>       <span><a href="./spec.html">013-core-propose</a></span>
+    <b>Owner</b>      <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Branch</b>     <span><code>main</code> (squashed-snapshot pattern)</span>
+    <b>Created</b>    <span><time datetime="2026-06-16">16 Jun 2026</time></span>
+    <b>Read time</b>  <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-budget words="2400" reqs="9" minutes="10"></spec-budget>
+
+  <spec-tldr>
+    <p>Implement <code>proposeCommand</code> at <code>packages/core/src/commands/propose.ts</code> following <a href="../006-kernel-extraction/plan.html">006</a>'s contract. Lands the first <code>subagent()</code> impl (007 shipped the stub) via a separate <code>@anthropic-ai/sdk</code> call with a critic-role system prompt, demanding three structured <code>RiskFinding</code> objects embedded as <code>&lt;spec-risk status="identified"&gt;</code>. Author-response discipline at the render boundary; sibling scan via <code>ctx.fs</code>; delta-target validation pre-write. Single PR; <code>v0.1.0-pre.15</code>.</p>
+  </spec-tldr>
+</header>
+
+
+<section id="principles-check">
+<h2>1 · Principles check</h2>
+<p>Validated against <a href="../../principles.html">principles v1.0.1</a>. All five principles compatible; no exceptions, no violations.</p>
+
+<table>
+  <thead><tr><th>Principle</th><th>Compliance</th><th>Notes</th></tr></thead>
+  <tbody>
+    <tr><td>P-1 · Source order is reading order</td><td><spec-pill>OK</spec-pill></td><td>Kernel emits semantic <code>&lt;spec-delta&gt;</code> / <code>&lt;spec-risk&gt;</code> blocks into the proposal artifact; no DOM mutation, source order preserved.</td></tr>
+    <tr><td>P-2 · Semantic tags over class soup</td><td><spec-pill>OK</spec-pill></td><td>Every delta carries typed <code>op</code> + <code>target</code>; risks carry typed <code>target</code> + <code>status</code>; no class-based discrimination.</td></tr>
+    <tr><td>P-3 · IDs are contracts</td><td><spec-pill>OK</spec-pill></td><td>Delta <code>target</code> IDs verified against the live spec pre-write; hallucinated IDs raise typed errors. Risk <code>target</code> values are delta IDs, REQ IDs, or <code>§n</code> anchors.</td></tr>
+    <tr><td>P-4 · Progressive enhancement, never dependence</td><td><spec-pill>OK</spec-pill></td><td>Kernel emits no browser code; proposals render as semantic HTML with or without <code>spec.js</code>.</td></tr>
+    <tr><td>P-5 · Calm density</td><td><spec-pill>OK</spec-pill></td><td>Output shape inherited from existing <code>proposal.html</code> template; risk register density bounded by "exactly three findings" critic discipline.</td></tr>
+  </tbody>
+</table>
+</section>
+
+
+<section id="technical-context">
+<h2>2 · Technical context</h2>
+<dl>
+  <dt>Language(s)</dt>     <dd>TypeScript 5.7, Node ≥20 (matches existing packages).</dd>
+  <dt>Frameworks</dt>      <dd>None new. Reuses <code>@anthropic-ai/sdk</code> (already a regular dep per <a href="../007-core-triage/plan.html#D-001">007 D-001</a>), tsup (build), vitest (test), commander (CLI dispatch).</dd>
+  <dt>Storage</dt>         <dd>In-process; proposal HTML persists via the CLI subcommand's <code>ctx.fs.writeFile</code>. Kernel returns structured <code>ProposeResult</code> only — never touches disk directly.</dd>
+  <dt>Testing</dt>         <dd>Unit-first per <a href="../006-kernel-extraction/plan.html#D-008">006 D-008</a>: <code>packages/core/test/propose.test.ts</code> with stub <code>AIProvider</code> (including stub <code>subagent()</code> returning canned <code>RiskFinding[]</code>); CLI integration test at <code>packages/cli/test/propose.integration.test.ts</code>; bench unchanged.</dd>
+  <dt>Perf targets</dt>    <dd>All four <code>bench/baselines.json</code> scenarios within budget; <code>init-help-cold-start</code> p50 within ±20% of the post-007 baseline — proof <code>propose.ts</code> stayed off the init path.</dd>
+  <dt>Constraints</dt>     <dd>Byte-identical proposal output on stub-AI fixture per <a href="./spec.html#SC-001">SC-001</a>; adversarial pass fires per the REQ-CHANGE-004 heuristic per <a href="./spec.html#SC-002">SC-002</a>; exactly three <code>&lt;spec-risk status="identified"&gt;</code> blocks emitted; <code>--no-adversarial</code> / <code>--adversarial</code> overrides honoured.</dd>
+</dl>
+</section>
+
+
+<section id="approach">
+<h2>3 · Approach</h2>
+
+<p>Three moves, one PR. <strong>One</strong>: implement <code>proposeCommand</code> at <code>packages/core/src/commands/propose.ts</code> per 006's signature — two-phase interview via <code>ctx.io.prompt()</code> + <code>ctx.ai.ask&lt;T&gt;()</code>, live spec read via <code>ctx.fs</code>, delta-target validation, sibling-folder scan, render to HTML. <strong>Two</strong>: replace the <code>ClaudeProvider.subagent()</code> stub (007) with a real <code>@anthropic-ai/sdk</code> call that declares the critic role via a system prompt. <strong>Three</strong>: add a <code>spectastic propose &lt;spec-id&gt; "&lt;description&gt;"</code> CLI subcommand with <code>--no-adversarial</code> / <code>--adversarial</code> flags; writes the returned HTML to <code>specs/&lt;spec-id&gt;/changes/&lt;date&gt;-&lt;slug&gt;/proposal.html</code>.</p>
+
+<p>Adversarial pass is the distinctive piece. The <a href="./spec.html#FR-008">FR-008</a> heuristic fires when the proposal touches a <code>priority="must"</code> requirement, contains <code>op="removed"</code>, or spans ≥2 topic prefixes. The kernel calls <code>ctx.ai.subagent()</code> with the canonical critic prompt from <code>commands/spectastic.propose.md</code> §8 reproduced verbatim (markdown stays canonical per <a href="../006-kernel-extraction/spec.html#FR-008">006 FR-008</a>); the sub-agent returns three findings; the kernel embeds each as <code>&lt;spec-risk target="…" status="identified"&gt;</code> in §5 and MAY draft a starter response per <a href="./spec.html#FR-011">FR-011</a>. Status transitions are author commitment — the apply-time gate in REQ-CHANGE-004 gives the <code>identified</code> default its teeth.</p>
+
+<spec-arch>
+<figure>
+<svg viewBox="0 0 720 300" role="img" aria-label="propose architecture: CLI invokes kernel which orchestrates two-phase interview, sibling scan, delta validation, and (conditionally) adversarial sub-agent via Claude provider.">
+  <style>
+    .box { fill:#fcfbf7; stroke:#c4c1bb; stroke-width:1.2; }
+    .label { font: 700 11px Lato, sans-serif; fill:#4a4a46; letter-spacing:0.06em; text-transform:uppercase; }
+    .body { font: 400 12px "Source Serif 4", Georgia, serif; fill:#353534; }
+    .arr { stroke:#73706d; stroke-width:1.2; fill:none; }
+    .arr-dim { stroke:#a09d99; stroke-width:1; fill:none; stroke-dasharray:3 3; }
+  </style>
+  <defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#73706d"/></marker></defs>
+
+  <rect class="box" x="20"  y="20"  width="160" height="60" rx="4"/>
+  <text class="label" x="36" y="42">CLI subcmd</text>
+  <text class="body"  x="36" y="62">propose (shim)</text>
+
+  <rect class="box" x="260" y="20"  width="200" height="60" rx="4"/>
+  <text class="label" x="276" y="42">core/commands</text>
+  <text class="body"  x="276" y="62">proposeCommand</text>
+
+  <rect class="box" x="540" y="20"  width="160" height="60" rx="4"/>
+  <text class="label" x="556" y="42">core/providers</text>
+  <text class="body"  x="556" y="62">ClaudeProvider</text>
+
+  <rect class="box" x="260" y="120" width="200" height="40" rx="4"/>
+  <text class="body"  x="276" y="145">two-phase interview</text>
+
+  <rect class="box" x="260" y="170" width="200" height="40" rx="4"/>
+  <text class="body"  x="276" y="195">sibling scan + delta verify</text>
+
+  <rect class="box" x="260" y="220" width="200" height="40" rx="4"/>
+  <text class="body"  x="276" y="245">adversarial pass (heuristic)</text>
+
+  <rect class="box" x="540" y="220" width="160" height="40" rx="4"/>
+  <text class="body"  x="556" y="245">subagent() · critic</text>
+
+  <path class="arr" d="M180 50 L260 50" marker-end="url(#ah)"/>
+  <path class="arr" d="M460 50 L540 50" marker-end="url(#ah)"/>
+  <path class="arr-dim" d="M360 80 L360 120" marker-end="url(#ah)"/>
+  <path class="arr-dim" d="M360 160 L360 170" marker-end="url(#ah)"/>
+  <path class="arr-dim" d="M360 210 L360 220" marker-end="url(#ah)"/>
+  <path class="arr" d="M460 240 L540 240" marker-end="url(#ah)"/>
+
+  <text class="body" x="20" y="280" style="font-size:11px;font-style:italic;">CLI writes ProposeResult.html to disk; kernel never touches fs for writes.</text>
+</svg>
+<figcaption>CLI invokes kernel; kernel runs interview, validates deltas, scans siblings, and conditionally fires the adversarial pass via the Claude provider's <code>subagent()</code>; kernel returns structured <code>ProposeResult</code>; CLI writes the rendered HTML.</figcaption>
+</figure>
+</spec-arch>
+</section>
+
+
+<section id="alternatives">
+<h2>4 · Alternatives considered</h2>
+
+<spec-matrix>
+<table>
+  <thead>
+    <tr><th>Option</th><th>Reuse</th><th>Adversarial fidelity</th><th>Effort</th><th class="score">Total</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Spawn child <code>claude</code> CLI process for <code>subagent()</code></td><td>2</td><td>3</td><td>2</td><td class="score">7</td></tr>
+    <tr><td>Skip adversarial pass — base flow only, defer pass to 014</td><td>4</td><td>1</td><td>4</td><td class="score">9</td></tr>
+    <tr data-winner><td>Separate <code>@anthropic-ai/sdk</code> call with critic system prompt — chosen</td><td>4</td><td>4</td><td>3</td><td class="score">11</td></tr>
+  </tbody>
+</table>
+</spec-matrix>
+
+<p>Child-process (option 1) matches Claude Code's sub-agent semantics most literally but adds operational complexity (spawn, IPC, lifecycle) for marginal fidelity gain. Deferring the pass (option 2) tempts on effort but leaves the verb half-defined — the spec anchored "base flow + adversarial pass together" as the slice boundary. The chosen approach reuses 007's SDK dependency, isolates the critic role via system prompt, and keeps <code>AIProvider</code> portable. Upgrading to true sub-agent semantics later is a provider-internal change with no kernel surface impact.</p>
+</section>
+
+
+<section id="decisions">
+<h2>5 · Decisions</h2>
+
+<spec-decision id="D-001">
+  <h4>D-001 · <code>ClaudeProvider.subagent()</code> — separate SDK call with critic-role system prompt</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>007 D-001 stubbed <code>subagent()</code> as <code>throw "not implemented; lands with 013-core-propose"</code>. This slice fills it in. Interface from <a href="../006-kernel-extraction/plan.html#D-004">006 D-004</a>: <code>(prompt, opts?) =&gt; Promise&lt;unknown&gt;</code>.</dd>
+    <dt>Decision</dt>     <dd>Fresh <code>messages.create</code> call (separate client or fresh conversation state). Critic role declared via system prompt: <em>"You are an adversarial reviewer. Identify exactly three risks in the proposal below."</em> Proposal + live spec + principles concatenated as user input. <code>temperature: 0</code>. Returns raw text; caller parses into <code>RiskFinding[]</code>.</dd>
+    <dt>Consequences</dt> <dd>+ Reuses 007's SDK dep; + system-prompt isolation; + 007 D-005 key-redaction applies. − Not true sub-agent semantics; − critic prompt is the only role boundary — drift risk if it erodes.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-002">
+  <h4>D-002 · Adversarial-pass heuristic</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd><a href="./spec.html#FR-008">FR-008</a> codifies the REQ-CHANGE-004 heuristic; must be testable in isolation so unit tests cover each branch.</dd>
+    <dt>Decision</dt>     <dd>Pure function <code>shouldFireAdversarial(deltas, liveSpec, override?): boolean</code> at <code>helpers/adversarial-heuristic.ts</code>. Tri-state override (<code>true</code> forces, <code>false</code> skips, <code>undefined</code> evaluates). For undefined: short-circuit must-tier check (lookup target against parsed <code>priority=</code>), then removed-op check, then topic-prefix count (regex on leading <code>REQ-&lt;TOPIC&gt;-</code> segment; threshold ≥2).</dd>
+    <dt>Consequences</dt> <dd>+ Auditable + testable without AI mocks. − Topic-prefix detection assumes <code>REQ-&lt;TOPIC&gt;-NNN</code> shape; non-conforming IDs bucket as "no prefix".</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-003">
+  <h4>D-003 · Critic prompt as TS constant, verbatim from canonical markdown</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>Critic prompt at <code>commands/spectastic.propose.md</code> §8 is canonical per <a href="../006-kernel-extraction/spec.html#FR-008">006 FR-008</a>. Kernel must reproduce without drift but without runtime markdown read.</dd>
+    <dt>Decision</dt>     <dd>TS string constant in <code>commands/propose.ts</code> with docblock linking to §8. Carries the three-finding block (regret-in-30-days, contradiction citation, scope concern), the "empty findings forbidden" clause, and the <code>&lt;spec-risk status="no-value-found"&gt;</code> escape. Drift-detector unit test asserts the constant contains all three finding-shape phrases.</dd>
+    <dt>Consequences</dt> <dd>+ No runtime IO; + portable to non-Node runtimes; + drift detector. − Two sources of truth require manual sync.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-004">
+  <h4>D-004 · <code>RiskFinding</code> parsed from critic JSON</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd><a href="./spec.html#data">Spec §4</a> locks <code>RiskFinding = { target, status, concern, response? }</code>. Critic returns text; kernel extracts three structured findings.</dd>
+    <dt>Decision</dt>     <dd>Critic prompt instructs JSON output: array of three <code>{target, concern, response?}</code>. Status fixed to <code>'identified'</code> on emit (kernel sets it, never critic — supports D-005). Reuse <a href="../007-core-triage/plan.html#D-002">007 D-002</a>'s JSON-parse + one-retry pattern. Validation: length === 3, non-empty <code>target</code> + <code>concern</code> per entry. Failure after retry throws typed <code>AdversarialPassError</code>.</dd>
+    <dt>Consequences</dt> <dd>+ Aligns with 007's JSON-parse pattern; + deterministic render. − Prompt carries JSON-schema description; − one extra round-trip on parse failure.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-005">
+  <h4>D-005 · Author-response discipline — render helper hard-codes <code>status="identified"</code></h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd><a href="./spec.html#FR-011">FR-011</a>: kernel MAY draft response prose; MUST leave <code>status="identified"</code>. The apply-time gate in REQ-CHANGE-004 refuses on <code>identified</code> — the default forces author touch before archive.</dd>
+    <dt>Decision</dt>     <dd><code>renderRiskBlock(finding): string</code> always emits <code>&lt;spec-risk target="…" status="identified"&gt;</code>; the input's <code>status</code> field is ignored on render (defensive default). Empty <code>finding.response</code> renders <code>&lt;div class="response"&gt;&lt;em&gt;Author response not yet recorded.&lt;/em&gt;&lt;/div&gt;</code>; non-empty passes through the critic draft. Unit test asserts every emitted block carries <code>status="identified"</code> regardless of input.</dd>
+    <dt>Consequences</dt> <dd>+ Apply-time gate stays meaningful; + author commitment structurally enforced. − Critic's draft response passes through unfiltered — quality depends on the critic, not the kernel.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-006">
+  <h4>D-006 · Sibling-proposal scan via <code>ctx.fs.readdir</code></h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd><a href="./spec.html#FR-012">FR-012</a>: scan <code>specs/&lt;spec-id&gt;/changes/</code> for sibling proposals overlapping new deltas. SHOULD report via <code>ctx.io.prompt()</code>; MUST NOT auto-block.</dd>
+    <dt>Decision</dt>     <dd><code>scanSiblings(specId, ctx, targets): Promise&lt;SiblingConflict[]&gt;</code> reads the changes folder via <code>ctx.fs.readdir</code>, filters <code>YYYY-MM-DD-&lt;slug&gt;</code> entries, reads each <code>proposal.html</code>, extracts <code>&lt;spec-delta target="…"&gt;</code> via regex, returns intersection conflicts. Skips the new proposal's own folder. Called pre-render; conflicts surface via prompt without gating the write.</dd>
+    <dt>Consequences</dt> <dd>+ Stays within <a href="../006-kernel-extraction/plan.html#D-005">006 D-005</a>'s <code>FileSystem</code> interface (no new methods). − Regex on HTML is fragile to template change; a future structural parse helper would harden it.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-007">
+  <h4>D-007 · Delta-target validation pre-write, typed error on mismatch</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd><a href="./spec.html#FR-004">FR-004</a>: existence-required ops must hit an extant target; <code>added</code> must miss. FR-005's "no silent failure" demands a loud raise, not a comment in output.</dd>
+    <dt>Decision</dt>     <dd><code>validateDeltaTargets(deltas, liveSpecHtml): void</code> parses <code>&lt;spec-requirement id="…"&gt;</code> via regex, iterates deltas, throws <code>DeltaTargetError</code> on mismatch — error carries offending target + op + closest existing ID (Levenshtein ≤ 3) as a suggestion. Called pre-render; render proceeds only on clean pass.</dd>
+    <dt>Consequences</dt> <dd>+ Hallucinated IDs caught before write; + suggestion accelerates fixup. − Regex misses non-canonical attribute orderings; schema lint catches that separately.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-008">
+  <h4>D-008 · Two-phase interview reuses 011's helpers</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>Interview shape mirrors 011 / 012: narrative via <code>ctx.io.prompt()</code>, decisions via <code>ctx.ai.ask&lt;T&gt;()</code>. 011 lands the helpers; reuse, don't re-implement.</dd>
+    <dt>Decision</dt>     <dd>Import from <code>@spectastic/core/helpers/interview</code> (011's subpath). If 011 hasn't landed at integration time, ship parallel helpers at <code>helpers/propose-interview.ts</code> with a doc-comment marking the merge target. Skip-what's-known per FR-006: each <code>ask&lt;T&gt;()</code> checks input + live spec + sibling folders first and short-circuits when an answer is already known.</dd>
+    <dt>Consequences</dt> <dd>+ One source of truth for interview UX. − Coupling to 011's API; breaking changes ripple. Mitigated by 006 FR-012's pre-1.0 versioning.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-009">
+  <h4>D-009 · Single-PR migration; ships as <code>v0.1.0-pre.15</code></h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>Four things land together: verb extraction, <code>subagent()</code> impl, CLI subcommand, markdown update. Tightly coupled — no impl means no pass tests, no CLI means no end-to-end SC verification.</dd>
+    <dt>Decision</dt>     <dd>Single PR per 006 / 007 precedent. Synced version bump across <code>@spectastic/{cli,core,schema}</code> to <code>0.1.0-pre.15</code> per <a href="../004-npm-publish-workflow/spec.html">004</a>. Bench + CLI integration tests gate the merge.</dd>
+    <dt>Consequences</dt> <dd>+ Atomic; reverts cleanly; simple version bookkeeping. − Larger diff; bench/test failure blocks the whole slice.</dd>
+  </dl>
+</spec-decision>
+</section>
+
+
+<section id="project-structure">
+<h2>6 · Project structure</h2>
+
+<pre><code>packages/core/
+  package.json                                       <em>(adds ./commands/propose subpath)</em>
+  tsup.config.ts                                     <em>(adds src/commands/propose.ts entry)</em>
+  src/
+    commands/
+      propose.ts                                     <em>(new — proposeCommand; critic prompt constant; render helpers)</em>
+    helpers/
+      adversarial-heuristic.ts                       <em>(new — shouldFireAdversarial pure fn)</em>
+      validate-delta-targets.ts                      <em>(new — DeltaTargetError + suggestion)</em>
+      scan-siblings.ts                               <em>(new — scanSiblings via ctx.fs)</em>
+      propose-interview.ts                           <em>(new — reuses 011 if available; otherwise parallel)</em>
+    providers/
+      claude.ts                                      <em>(modified — subagent() stub replaced with real impl per D-001)</em>
+  test/
+    propose.test.ts                                  <em>(new — unit; stub AIProvider with stub subagent; covers SC-003)</em>
+    adversarial-heuristic.test.ts                    <em>(new — per-branch coverage of D-002)</em>
+    validate-delta-targets.test.ts                   <em>(new — happy + mismatch + suggestion)</em>
+    scan-siblings.test.ts                            <em>(new — in-memory ctx.fs fixtures)</em>
+
+packages/cli/
+  src/commands/
+    propose.ts                                       <em>(new — CLI subcommand; --no-adversarial / --adversarial flags; writes ProposeResult.html)</em>
+  test/
+    propose.integration.test.ts                     <em>(new — heuristic fires + skip + force; stub provider for happy path)</em>
+
+commands/
+  spectastic.propose.md                             <em>(adds MAY-Bash note per FR-015)</em>
+
+CHANGELOG.md                                         <em>(v0.1.0-pre.15 entry)</em>
+</code></pre>
+
+<p>Zero new runtime deps. Six new TS files + one provider modification + one markdown update; bench config untouched; <code>package.json</code> gains one subpath export.</p>
+</section>
+
+
+<section id="risks">
+<h2>7 · Risks &amp; mitigations</h2>
+
+<table>
+  <thead><tr><th>Risk</th><th>Likelihood</th><th>Impact</th><th>Mitigation</th></tr></thead>
+  <tbody>
+    <tr><td><code>propose.ts</code> creeps onto the init path through an eager re-export in <code>src/index.ts</code>, defeating subpath enforcement.</td><td>M</td><td>H</td><td>Bench's <code>init-help-cold-start</code> (150 ms) catches it on the first PR; <a href="../006-kernel-extraction/plan.html#D-002">006 D-002</a>'s per-verb subpath discipline forbids it explicitly.</td></tr>
+    <tr><td>Critic returns malformed JSON or wrong number of findings; D-004's one-retry doesn't recover.</td><td>M</td><td>M</td><td>Typed <code>AdversarialPassError</code> surfaces verbatim to the CLI; user re-runs with <code>--no-adversarial</code> or accepts the failure. Unit test exercises the failure path with a stub returning malformed text.</td></tr>
+    <tr><td>Critic-role-via-system-prompt produces weak findings vs. a true sub-agent.</td><td>M</td><td>M</td><td>Prompt quality is iterable; D-001's note explicitly permits upgrading to true sub-agent semantics later without changing the kernel surface. Drift detector test (D-003) catches prompt erosion.</td></tr>
+    <tr><td>Sibling-scan regex misses deltas embedded in unusual markup (e.g. inside <code>&lt;details&gt;</code> with attributes).</td><td>L</td><td>M</td><td>Regex targets <code>&lt;spec-delta[^&gt;]*target="([^"]+)"</code> — robust to attribute order and surrounding markup. A future structural parse would harden it further.</td></tr>
+    <tr><td>Author-response discipline bypassed by future kernel code emitting <code>status="accepted"</code> directly.</td><td>L</td><td>H</td><td>D-005's render helper hard-codes <code>status="identified"</code> on emit; unit test asserts every emitted block carries it. Apply-time gate in REQ-CHANGE-004 is the second line.</td></tr>
+    <tr><td>011's interview helpers haven't landed at integration time, forcing parallel helpers in 013.</td><td>L</td><td>L</td><td>D-008 anticipates this — parallel helpers in <code>helpers/propose-interview.ts</code> with a doc-comment naming the merge target; cleanup is a follow-up PR after 011 ships.</td></tr>
+  </tbody>
+</table>
+</section>
+
+
+<section id="complexity">
+<h2>8 · Complexity tracking</h2>
+<p>Two deliberate additions warrant flagging:</p>
+
+<spec-assumption>
+<p><strong>Critic prompt as TS constant, not markdown read at runtime (D-003).</strong> Trades two-sources-of-truth maintenance cost for runtime portability (no file IO; works in MCP / VS Code). Drift-detector unit test on the three finding-shape phrases is the safety net.</p>
+</spec-assumption>
+
+<spec-assumption>
+<p><strong>Sub-agent via separate SDK call, not child-process agent (D-001).</strong> True sub-agent semantics (separate process, distinct agent identity) would match Claude Code most faithfully. The chosen fresh <code>messages.create</code> + critic-role system prompt reuses 007's SDK dep and keeps the kernel portable. Upgrade path documented; revisit only if SC-002 can't be delivered via prompt isolation.</p>
+</spec-assumption>
+</section>
+
+
+<section id="questions">
+<h2>9 · Open questions</h2>
+<spec-questions>
+<ol>
+  <li>None. Nine decisions anchored upfront: subagent impl (D-001), heuristic shape (D-002), critic prompt source (D-003), risk data model (D-004), author-response discipline (D-005), sibling scan (D-006), delta validation (D-007), interview reuse (D-008), single-PR migration (D-009). Issues that surface during implementation route back through <code>/spectastic.propose</code> against this plan.</li>
+</ol>
+</spec-questions>
+</section>
+
+
+<section id="changelog">
+<h2>10 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-06-16">16 Jun 2026</time><span>Initial plan. Anchored nine decisions: subagent via separate SDK call + critic-role system prompt (D-001); heuristic as pure function with tri-state override (D-002); critic prompt as TS constant with drift detector (D-003); <code>RiskFinding</code> parsed from critic JSON, status hard-coded <code>identified</code> on emit (D-004); author-response discipline at render-helper boundary (D-005); sibling scan via <code>ctx.fs.readdir</code> + regex (D-006); delta-target validation pre-write with Levenshtein suggestion (D-007); interview reuses 011's helpers with parallel fallback (D-008); single PR shipping as <code>v0.1.0-pre.15</code> (D-009). Bench gated; lazy-loading enforced by <code>init-help-cold-start</code>.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  Plan for 013-core-propose · Extract /spectastic.propose into @spectastic/core · authored 16 Jun 2026 ·
+  <button data-theme-toggle style="background:none;border:none;color:var(--c-link);cursor:pointer;font:inherit;padding:0;border-bottom:1px solid currentColor;">toggle theme</button>
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>

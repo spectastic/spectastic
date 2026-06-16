@@ -1,0 +1,322 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Core implement · Plan</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Implementation plan · 014-core-implement</p>
+  <h1>Core implement — implementation plan</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    How <code>implementCommand</code> ships in its smallest demoable shape — one task per invocation, estimability-gated, with the bundled flip prompt mandated by REQ-LIFECYCLE-005 wired through <code>ctx.ai.ask&lt;T&gt;()</code>. Drain modes wait their turn.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>     <span><spec-status value="draft">Draft</spec-status></span>
+    <b>Spec</b>       <span><a href="./spec.html">014-core-implement</a></span>
+    <b>Owner</b>      <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Branch</b>     <span><code>main</code> (squashed-snapshot pattern)</span>
+    <b>Created</b>    <span><time datetime="2026-06-16">16 Jun 2026</time></span>
+    <b>Read time</b>  <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-budget words="2200" reqs="9" minutes="9"></spec-budget>
+
+  <spec-tldr>
+    <p>Extract <code>/spectastic.implement</code> into <code>@spectastic/core/commands/implement</code> per <a href="../006-kernel-extraction/spec.html">006</a>'s contract — single-task only. Drain modes (<code>--all</code>, <code>--phase=&lt;id&gt;</code>, <code>--parallel</code>) carve out to <code>TBD-core-implement-drain</code>. The kernel resolves one target, applies the estimability gate (matching <a href="../012-core-plan/spec.html">012</a>'s), orchestrates the work, runs scoped verification, ticks one checkbox or one <code>&lt;spec-triage&gt;</code> via <code>ctx.fs</code>, and on last-tick of a Draft spec surfaces the three-sibling bundled flip prompt via <code>ctx.ai.ask&lt;T&gt;()</code>. Kernel never auto-flips; partial bundle flips forbidden. Reuses the 007 <code>ClaudeProvider</code>. Single PR; ships as <code>v0.1.0-pre.16</code>. Biggest risk: interface must stay drain-extensible when the sibling slice lands.</p>
+  </spec-tldr>
+</header>
+
+
+<section id="principles-check">
+<h2>1 · Principles check</h2>
+<p>Validated against <a href="../../principles.html">principles v1.0.1</a>. All five principles compatible; no exceptions, no violations.</p>
+
+<table>
+  <thead><tr><th>Principle</th><th>Compliance</th><th>Notes</th></tr></thead>
+  <tbody>
+    <tr><td>P-1 · Source order is reading order</td><td><spec-pill>OK</spec-pill></td><td>Kernel is TS; tick + card writes preserve document order (FR-006, FR-007).</td></tr>
+    <tr><td>P-2 · Semantic tags over class soup</td><td><spec-pill>OK</spec-pill></td><td>Writes target existing semantic elements; no new class soup.</td></tr>
+    <tr><td>P-3 · IDs are contracts</td><td><spec-pill>OK</spec-pill></td><td>Targets resolved by stable IDs (<code>T-NNN</code>, <code>I-NNN</code>); never reused or rewritten.</td></tr>
+    <tr><td>P-4 · Progressive enhancement, never dependence</td><td><spec-pill>OK</spec-pill></td><td>Kernel emits no browser code; ticked checkboxes degrade as plain HTML.</td></tr>
+    <tr><td>P-5 · Calm density</td><td><spec-pill>OK</spec-pill></td><td>No UI surface change; flip-prompt rendering is caller-side.</td></tr>
+  </tbody>
+</table>
+</section>
+
+
+<section id="technical-context">
+<h2>2 · Technical context</h2>
+<dl>
+  <dt>Language(s)</dt>     <dd>TypeScript 5.7, Node ≥20 (matches existing packages).</dd>
+  <dt>Frameworks</dt>      <dd>None new. Inherits the kernel scaffold from 006 (tsup, vitest, commander); reuses the <code>ClaudeProvider</code> shipped with 007.</dd>
+  <dt>Storage</dt>         <dd>In-process; kernel reads / writes via <code>ctx.fs</code>. No persistence beyond the spec artifacts themselves.</dd>
+  <dt>Testing</dt>         <dd>Unit-first per <a href="../006-kernel-extraction/plan.html#D-008">006 D-008</a>: <code>packages/core/test/implement.test.ts</code> with stub <code>AIProvider</code> + stub <code>fs</code>. CLI integration test at <code>packages/cli/test/implement.integration.test.ts</code> exercises both task and inbox-card paths.</dd>
+  <dt>Perf targets</dt>    <dd>All four <code>bench/baselines.json</code> scenarios within budget. <code>init-help-cold-start</code> stays the lazy-loading regression guard — importing <code>@spectastic/core/commands/implement</code> <strong>MUST NOT</strong> eagerly load parse5 or the Claude provider onto the CLI init path (NFR-001).</dd>
+  <dt>Constraints</dt>     <dd>Byte-identical task-tick output vs today's slash-command flow (<a href="./spec.html#SC-001">SC-001</a>); no auto-flip (<a href="./spec.html#FR-010">FR-010</a>); drain-extensible interface (D-008).</dd>
+</dl>
+</section>
+
+
+<section id="approach">
+<h2>3 · Approach</h2>
+
+<p>Three moves, one PR. <strong>One</strong>: implement <code>implementCommand</code> at <code>packages/core/src/commands/implement.ts</code> per 006's signature — target resolution, gate, work orchestration via <code>ctx.ai.chat()</code>, verification via caller callback (D-007), tick via <code>ctx.fs</code>, bundled flip via <code>ctx.ai.ask&lt;T&gt;()</code>. <strong>Two</strong>: add a <code>spectastic implement &lt;target&gt;</code> CLI subcommand that constructs <code>ClaudeProvider</code> + <code>KernelContext</code>, supplies the default verify callback, translates <code>ImplementResult</code> to exit codes (0 / 1 / 2), and rejects drain flags with a typed error pointing at the sibling slice. <strong>Three</strong>: update <code>commands/spectastic.implement.md</code> with the MAY-Bash-to-CLI note (<a href="../006-kernel-extraction/spec.html#FR-009">006 FR-009</a>) and a line on the carve-out.</p>
+
+<p>The architecturally-interesting piece is the bundled flip prompt. Today's markdown (step 8) relies on the LLM noticing "last tick"; the extraction makes it deterministic. After every successful tick, the kernel re-reads the file, parses the matching <code>spec.html</code>'s <code>&lt;spec-status&gt;</code>, counts remaining unchecked checkboxes; predicate <code>(status === 'draft') AND (count === 0)</code> triggers one <code>ctx.ai.ask&lt;T&gt;()</code> call naming the spec, transition, three sibling files, and test-pass reminder. On Confirm: write <code>value="accepted"</code> to all three siblings plus matching <code>&lt;spec-changelog&gt;</code> entries — one logical gesture, no partial commits.</p>
+
+<spec-arch>
+<figure>
+<svg viewBox="0 0 720 280" role="img" aria-label="implement architecture: CLI invokes kernel; kernel resolves target, gates, orchestrates work, ticks one checkbox or card, and on last-tick fires bundled flip prompt covering three siblings.">
+  <style>
+    .box { fill:#fcfbf7; stroke:#c4c1bb; stroke-width:1.2; }
+    .accent { fill:#f6f3eb; stroke:#c4c1bb; stroke-width:1.2; }
+    .label { font: 700 11px Lato, sans-serif; fill:#4a4a46; letter-spacing:0.06em; text-transform:uppercase; }
+    .body  { font: 400 12px "Source Serif 4", Georgia, serif; fill:#353534; }
+    .arr   { stroke:#73706d; stroke-width:1.2; fill:none; }
+  </style>
+  <defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#73706d"/></marker></defs>
+
+  <rect class="box" x="20"  y="20"  width="160" height="60" rx="4"/>
+  <text class="label" x="36" y="42">CLI subcmd</text>
+  <text class="body"  x="36" y="62">implement (shim)</text>
+
+  <rect class="box" x="270" y="20"  width="180" height="60" rx="4"/>
+  <text class="label" x="286" y="42">core/commands</text>
+  <text class="body"  x="286" y="62">implementCommand</text>
+
+  <rect class="box" x="530" y="20"  width="170" height="60" rx="4"/>
+  <text class="label" x="546" y="42">core/providers</text>
+  <text class="body"  x="546" y="62">ClaudeProvider (007)</text>
+
+  <rect class="box" x="270" y="110" width="180" height="40" rx="4"/>
+  <text class="body"  x="286" y="135">estimability gate</text>
+
+  <rect class="box" x="270" y="170" width="180" height="40" rx="4"/>
+  <text class="body"  x="286" y="195">tick (tasks.html / inbox.html)</text>
+
+  <rect class="accent" x="270" y="230" width="180" height="40" rx="4"/>
+  <text class="body"  x="286" y="255" style="font-style:italic;">last-tick + Draft → ask&lt;T&gt;()</text>
+
+  <rect class="box" x="530" y="170" width="170" height="40" rx="4"/>
+  <text class="body"  x="546" y="195">three siblings (flip)</text>
+
+  <path class="arr" d="M180 50 L270 50" marker-end="url(#ah)"/>
+  <path class="arr" d="M450 50 L530 50" marker-end="url(#ah)"/>
+  <path class="arr" d="M360 80 L360 110" marker-end="url(#ah)"/>
+  <path class="arr" d="M360 150 L360 170" marker-end="url(#ah)"/>
+  <path class="arr" d="M360 210 L360 230" marker-end="url(#ah)"/>
+  <path class="arr" d="M450 250 L615 250 L615 210" marker-end="url(#ah)"/>
+</svg>
+<figcaption>Single-task path. Shaded box: the bundled flip prompt — fires on last-tick + Draft only, gated by <code>ctx.ai.ask&lt;T&gt;()</code>; on Confirm the kernel writes to all three siblings in one gesture. Drain modes carve out to <code>TBD-core-implement-drain</code>.</figcaption>
+</figure>
+</spec-arch>
+</section>
+
+
+<section id="alternatives">
+<h2>4 · Alternatives considered</h2>
+
+<spec-matrix>
+<table>
+  <thead>
+    <tr><th>Option</th><th>Scope</th><th>Risk</th><th>Effort</th><th class="score">Total</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Ship single-task + drain modes in one slice</td><td>5</td><td>2</td><td>2</td><td class="score">9</td></tr>
+    <tr><td>Ship single-task; defer all drain modes indefinitely</td><td>3</td><td>5</td><td>5</td><td class="score">13</td></tr>
+    <tr data-winner><td>Ship single-task now; sibling slice <code>TBD-core-implement-drain</code> queued — chosen</td><td>4</td><td>4</td><td>5</td><td class="score">13</td></tr>
+  </tbody>
+</table>
+</spec-matrix>
+
+<p>"All-in-one" fails small-batches: the verb is already the heaviest of the eight, and drain modes add three flags plus phase resolution plus parallel agent fan-out — a bundle big enough for its own slice. Indefinite deferral wins on risk but leaves drain flows without CLI parity, slowing the MCP / VS Code consumers. The chosen split keeps the sibling drain slice as the obvious next increment; D-008 codifies the extension shape so it lands additively.</p>
+</section>
+
+
+<section id="decisions">
+<h2>5 · Decisions</h2>
+
+<spec-decision id="D-001">
+  <h4>D-001 · Single-task target resolution — three shapes, one slot</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd><a href="./spec.html#FR-004">FR-004</a> requires resolving a single positional to a specific task or inbox card. Three input shapes need disambiguation.</dd>
+    <dt>Decision</dt>     <dd>Match precedence: (1) <code>^T-\d+$</code> → scan every <code>specs/&lt;id&gt;/tasks.html</code> via <code>ctx.fs</code>; locate the unique <code>&lt;input type="checkbox"&gt;</code> whose parent <code>&lt;spec-task id="T-NNN"&gt;</code> matches. (2) <code>^I-\d+$</code> → open <code>./inbox.html</code>; locate <code>&lt;spec-triage id="I-NNN" layer="just-do"&gt;</code>. (3) else → treat as spec ID; pick first unchecked checkbox in <code>specs/&lt;target&gt;/tasks.html</code>. Multi-match on (1) is a typed <code>IDCollisionError</code>; no match is <code>TargetNotFoundError</code>.</dd>
+    <dt>Consequences</dt> <dd>+ One slot, three shapes — matches today's slash flow. − Cold <code>T-NNN</code> lookup walks every spec's tasks.html; acceptable at workspace scale.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-002">
+  <h4>D-002 · Estimability gate scan — same pattern as 012's gate</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd><a href="./spec.html#FR-005">FR-005</a> requires halting before any work if the source spec / plan has blockers. Check shape matches <a href="../012-core-plan/spec.html#FR-006">012's gate</a>; sharing avoids drift.</dd>
+    <dt>Decision</dt>     <dd>Read <code>spec.html</code> + <code>plan.html</code> via <code>ctx.fs</code>; parse via parse5 (already on the verb path); scan for three blocker patterns: (a) unresolved <code>&lt;spec-question&gt;</code> inside the task's section; (b) <code>[NEEDS CLARIFICATION]</code> marker referenced by the task; (c) <code>&lt;spec-out-of-scope&gt;</code> <code>&lt;li&gt;</code> the task touches missing <code>defer-to=</code>. Any hit yields <code>EstimabilityBlockedError</code> with the full structured blocker list (not just the first). CLI exits 2.</dd>
+    <dt>Consequences</dt> <dd>+ Behavioural parity with 012's gate; shared helper extractable. + Structured list lets the caller render every blocker at once.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-003">
+  <h4>D-003 · Task-tick mechanism — minimal-edit string write for byte-identity</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd><a href="./spec.html#FR-006">FR-006</a> + <a href="./spec.html#SC-001">SC-001</a> require byte-identical output vs today's slash flow. parse5-serialise renormalises whitespace differently, breaking SC-001.</dd>
+    <dt>Decision</dt>     <dd>Locate the target's <code>&lt;input type="checkbox"&gt;</code> by string-walking — not by serialising the parsed tree. Find the <code>&lt;spec-task id="T-NNN"&gt;</code> opening tag, find the first following <code>&lt;input type="checkbox"</code> (single or double quote), splice <code> checked</code> before <code>&gt;</code> if not already present. Write back via <code>ctx.fs.writeFile</code>. No whitespace renormalisation; idempotent.</dd>
+    <dt>Consequences</dt> <dd>+ Byte-identical by construction; + idempotent re-tick. − String-walking is more fragile than tree edits; offset by exhaustive unit tests on quote-style + whitespace variants.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-004">
+  <h4>D-004 · Inbox card tick — same minimal-edit approach</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd><a href="./spec.html#FR-007">FR-007</a> requires writing <code>data-status="done"</code> to a single <code>&lt;spec-triage&gt;</code>; same byte-identity discipline.</dd>
+    <dt>Decision</dt>     <dd>Locate <code>&lt;spec-triage id="I-NNN"</code> via string match; rewrite an existing <code>data-status=</code> to <code>"done"</code>, or splice <code> data-status="done"</code> before <code>&gt;</code>. Card stays in place — never removed or moved.</dd>
+    <dt>Consequences</dt> <dd>+ History preserved (faded card + DONE pill via existing CSS); + idempotent. − Same string-walking fragility as D-003.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-005">
+  <h4>D-005 · Bundled flip prompt — deterministic predicate, single <code>ask&lt;T&gt;()</code></h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd><a href="./spec.html#FR-008">FR-008</a> + <a href="../../examples/spectastic-spec.html#REQ-LIFECYCLE-005">REQ-LIFECYCLE-005</a> require deterministic evaluation after every tick taken while status is Draft; today's LLM-heuristic detection is the fragility being closed.</dd>
+    <dt>Decision</dt>     <dd>After every successful tick, re-read the <code>tasks.html</code>, parse the matching <code>spec.html</code>'s <code>&lt;spec-status&gt;</code>, count remaining unchecked checkboxes. Predicate: <code>(status === 'draft') AND (count === 0)</code>. On true, construct one <code>Question</code> (Confirm flip / Decline) naming spec + transition + three siblings + trigger + test-pass reminder (D-006); call <code>ctx.ai.ask&lt;T&gt;()</code>. Skip when status is past Draft — matches REQ-LIFECYCLE-005's scoping.</dd>
+    <dt>Consequences</dt> <dd>+ Deterministic; re-ticks on flipped specs don't re-prompt. − Extra read + parse per tick; negligible vs AI cost.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-006">
+  <h4>D-006 · Flip-prompt UX — reminder in prose; no auto-flip; decline is no-op</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd><a href="./spec.html#FR-009">FR-009</a> + <a href="./spec.html#FR-010">FR-010</a> require the prompt to remind about SC integration tests, forbid auto-flip, and require declined / interrupted prompts to leave statuses unchanged.</dd>
+    <dt>Decision</dt>     <dd>Reminder rides in the <code>Question</code>'s prose ("Before confirming: have you verified the integration tests covering this spec's Success Criteria pass?"). The two-option surface is the gate — only Confirm writes. On Decline or interrupted <code>ask&lt;T&gt;()</code>, kernel returns <code>ImplementResult { ..., flipPromptFired: true, flipConfirmed: false }</code> and writes nothing to status pills or changelogs. Tick stays landed regardless.</dd>
+    <dt>Consequences</dt> <dd>+ Reminder is part of the gesture. + Author judgment stays the gate. + Declined flips can be re-done manually later.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-007">
+  <h4>D-007 · Verification — caller-supplied callback, not <code>ctx.shell</code></h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd><a href="./spec.html#FR-011">FR-011</a> requires scoped verification before ticking; runner choice deferred to the plan. Adding <code>ctx.shell</code> just for this verb would over-extend <code>KernelContext</code>.</dd>
+    <dt>Decision</dt>     <dd>Extend <code>ImplementInput</code> with optional <code>verify?: (task: ResolvedTask) =&gt; Promise&lt;VerifyResult&gt;</code>. CLI supplies a default that shells <code>pnpm test --filter &lt;package&gt;</code> (or whichever scoped check the task names); MCP / VS Code pass their own. Kernel runs the callback after work, before tick. On <code>passed === false</code>, halt with <code>VerificationFailedError</code>; CLI exits 1. Callers handling verification externally pass <code>verify: undefined</code>.</dd>
+    <dt>Consequences</dt> <dd>+ Kernel stays pure-with-respect-to-process. + No new <code>KernelContext</code> field for one verb. + Each surface picks its runner.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-008">
+  <h4>D-008 · Drain modes carved out — interface drain-extensible</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd><a href="./spec.html#FR-003">FR-003</a> carves drain modes out to <code>TBD-core-implement-drain</code>; the sibling must land additively.</dd>
+    <dt>Decision</dt>     <dd>v1 <code>ImplementInput</code> declares <code>target: string</code> + optional <code>verify?</code>. Sibling will add optional <code>all?</code>, <code>phase?: 'setup' | 'foundation' | 'us1' | 'us2' | 'us3' | 'polish'</code>, <code>parallel?</code> — defaults preserve v1 behaviour. <code>ImplementResult</code> v1 returns a single <code>ticked</code> field; sibling introduces <code>ticks: TickResult[]</code> alongside, with <code>ticked</code> as a pointer to the first. v1 CLI rejects drain flags with a typed error pointing at the sibling spec.</dd>
+    <dt>Consequences</dt> <dd>+ Sibling slice is purely additive; consumers pinning <code>~0.x.y</code> stay safe. − <code>ticks</code>-vs-<code>ticked</code> dual surface is mildly awkward until sibling lands.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-009">
+  <h4>D-009 · Single-PR migration; ships as <code>v0.1.0-pre.16</code></h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>Eighth kernel-verb extraction; verb + CLI + markdown + tests are tightly coupled and need to land together.</dd>
+    <dt>Decision</dt>     <dd>Single PR per 006 D-008 + 007 D-008 precedent. Bump to <code>v0.1.0-pre.16</code> synced across <code>cli</code> + <code>core</code> + <code>schema</code> per <a href="../004-npm-publish-workflow/spec.html">004</a>. CHANGELOG entry names the carve-out. Bench-gated; CLI integration tests prove SC-001.</dd>
+    <dt>Consequences</dt> <dd>+ Atomic; reverts cleanly. + Carve-out visible in CHANGELOG. − Bench / test failure blocks the whole slice.</dd>
+  </dl>
+</spec-decision>
+</section>
+
+
+<section id="project-structure">
+<h2>6 · Project structure</h2>
+
+<pre><code>packages/core/
+  package.json                       <em>(+ ./commands/implement subpath)</em>
+  tsup.config.ts                     <em>(+ src/commands/implement.ts entry)</em>
+  src/
+    commands/
+      implement.ts                   <em>(new — implementCommand; docblock per 006 FR-008)</em>
+    helpers/
+      target-resolver.ts             <em>(new — D-001)</em>
+      estimability-gate.ts           <em>(new — D-002; shared with plan)</em>
+      tick-writer.ts                 <em>(new — D-003 + D-004)</em>
+      flip-predicate.ts              <em>(new — D-005)</em>
+  test/
+    implement.test.ts                <em>(new — covers SC-002 + SC-003)</em>
+    tick-writer.test.ts              <em>(new — variant matrix for D-003 / D-004)</em>
+packages/cli/
+  src/commands/implement.ts          <em>(new — shim; rejects drain flags)</em>
+  test/implement.integration.test.ts <em>(new — both paths; SC-001 assertion)</em>
+commands/spectastic.implement.md     <em>(updated — MAY-Bash + carve-out note)</em>
+CHANGELOG.md                         <em>(v0.1.0-pre.16 entry naming the carve-out)</em>
+</code></pre>
+
+<p>Three helpers extracted as named modules — one (estimability-gate) shared with 012 once that ships. Five new TS files + one markdown update; no new dependencies.</p>
+</section>
+
+
+<section id="risks">
+<h2>7 · Risks &amp; mitigations</h2>
+
+<table>
+  <thead><tr><th>Risk</th><th>Likelihood</th><th>Impact</th><th>Mitigation</th></tr></thead>
+  <tbody>
+    <tr><td>String-walking tick writer (D-003 / D-004) breaks on a quote-style or whitespace variant not in the test corpus.</td><td>M</td><td>M</td><td>Exhaustive unit tests on quote, attribute-order, and pre-existing-<code>checked</code> variants; integration test asserts byte-identity vs today's slash output.</td></tr>
+    <tr><td>Drain-modes interface (D-008) needs adjustment when the sibling slice implements it.</td><td>M</td><td>L</td><td>Pre-1.0 versioning permits minor-bump breakage; shape documented as provisional in the kernel docblock.</td></tr>
+    <tr><td>Bundled flip predicate (D-005) fires spuriously on missing / malformed <code>&lt;spec-status&gt;</code>.</td><td>L</td><td>M</td><td>Fail-closed: unparseable status defaults to "not Draft"; unit test covers the malformed case.</td></tr>
+    <tr><td>Verification callback (D-007) is skipped and a buggy task ticks without verification.</td><td>L</td><td>H</td><td>CLI default verify callback always runs; only explicit opt-out skips. Integration test asserts the default fires.</td></tr>
+    <tr><td>SC-001 byte-identity fails on incidental whitespace today's slash flow happens to renormalise.</td><td>L</td><td>M</td><td>SC-001 explicitly admits "modulo trivial whitespace"; integration test canonicalises both sides via a single helper before diff.</td></tr>
+  </tbody>
+</table>
+</section>
+
+
+<section id="complexity">
+<h2>8 · Complexity tracking</h2>
+<p>Two deliberate additions warrant flagging:</p>
+
+<spec-assumption>
+<p><strong>String-walking tick writer (D-003 / D-004) over parse5-serialise.</strong> Byte-identity (SC-001) is a hard requirement; parse5 renormalises whitespace in ways that fail it. Cost is a fragile edit path; mitigated by exhaustive unit tests on quote / whitespace / attribute-order variants. Cheaper than negotiating SC-001 down.</p>
+</spec-assumption>
+
+<spec-assumption>
+<p><strong>Provisional <code>ticks: TickResult[]</code> shape (D-008).</strong> The drain slice isn't specced; array-shape is decided now to keep the sibling PR additive, but actual shape may need adjustment (ordering, partial-failure, fan-out aggregation). Documented as provisional in the kernel docblock; acceptable under the pre-1.0 versioning policy.</p>
+</spec-assumption>
+</section>
+
+
+<section id="questions">
+<h2>9 · Open questions</h2>
+<spec-questions>
+<ol>
+</ol>
+</spec-questions>
+</section>
+
+
+<section id="changelog">
+<h2>10 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-06-16">16 Jun 2026</time><span>Initial plan. Anchored: three-shape target resolution (D-001); estimability gate sharing 012's scan (D-002); string-walking tick writer for byte-identity (D-003); same approach for inbox cards (D-004); deterministic bundled flip prompt via <code>ctx.ai.ask&lt;T&gt;()</code> with three-sibling write on Confirm (D-005); reminder in prompt prose, no auto-flip, decline is no-op (D-006); verification via caller-supplied callback (D-007); drain modes carved out with drain-extensible interface (D-008); single PR as <code>v0.1.0-pre.16</code> (D-009). Bench-gated; CLI integration tests prove SC-001.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  Plan for 014-core-implement · Core implement · authored 16 Jun 2026 ·
+  <button data-theme-toggle style="background:none;border:none;color:var(--c-link);cursor:pointer;font:inherit;padding:0;border-bottom:1px solid currentColor;">toggle theme</button>
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>

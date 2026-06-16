@@ -1,0 +1,315 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Core spec verb · Plan</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Implementation plan · 011-core-spec</p>
+  <h1>Core spec verb — implementation plan</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    How <code>specCommand</code> ships — a two-phase interview engine running on top of <code>ai.chat()</code> + <code>ai.ask&lt;T&gt;()</code>, fresh and re-entry modes from one code path, structured <code>SpecResult</code> for the caller to write.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>     <span><spec-status value="draft">Draft</spec-status></span>
+    <b>Spec</b>       <span><a href="./spec.html">011-core-spec</a></span>
+    <b>Owner</b>      <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Branch</b>     <span><code>main</code> (squashed-snapshot pattern)</span>
+    <b>Created</b>    <span><time datetime="2026-06-16">16 Jun 2026</time></span>
+    <b>Read time</b>  <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-budget words="2200" reqs="8" minutes="9"></spec-budget>
+
+  <spec-tldr>
+    <p>Extract <code>/spectastic.spec</code> into <code>@spectastic/core/commands/spec</code> per the 006 kernel contract; reuse <code>ClaudeProvider</code> from 007. Centrepiece: a two-phase interview engine alternating <code>ai.chat()</code> (narrative) + <code>ai.ask&lt;T&gt;()</code> (bounded choice), looping until a typed "complete?" ask returns done. Fresh and re-entry share the engine — re-entry parses the existing <code>spec.html</code> and restricts deltas to ADD / ENHANCE unless the user confirms removal. Kernel returns <code>SpecResult { html, specId, requirementsCount, warnings }</code>; caller writes to disk. Single PR; ships as <code>v0.1.0-pre.13</code>; bench-gated.</p>
+  </spec-tldr>
+</header>
+
+
+<section id="principles-check">
+<h2>1 · Principles check</h2>
+<p>Validated against <a href="../../principles.html">principles v1.0.1</a>. All five principles compatible; no exceptions, no violations.</p>
+
+<table>
+  <thead><tr><th>Principle</th><th>Compliance</th><th>Notes</th></tr></thead>
+  <tbody>
+    <tr><td>P-1 · Source order is reading order</td><td><spec-pill>OK</spec-pill></td><td>Generated <code>spec.html</code> preserves the template's section order; the kernel populates in place rather than reordering.</td></tr>
+    <tr><td>P-2 · Semantic tags over class soup</td><td><spec-pill>OK</spec-pill></td><td>Output emits <code>&lt;spec-requirement&gt;</code>, <code>&lt;spec-rule&gt;</code>, <code>&lt;dl class="invest"&gt;</code> per existing conventions; no new class-only patterns introduced.</td></tr>
+    <tr><td>P-3 · IDs are contracts</td><td><spec-pill>OK</spec-pill></td><td>Re-entry mode preserves every <code>FR-NNN</code> / <code>NFR-NNN</code> / <code>SC-NNN</code>; new IDs increment from max-existing; no reuse.</td></tr>
+    <tr><td>P-4 · Progressive enhancement, never dependence</td><td><spec-pill>OK</spec-pill></td><td>Kernel emits no browser code; generated artifacts degrade as plain semantic HTML.</td></tr>
+    <tr><td>P-5 · Calm density</td><td><spec-pill>OK</spec-pill></td><td>Generated spec inherits the template's typographic system; budget gauge nudges keep generated artifacts within the calm-density envelope.</td></tr>
+  </tbody>
+</table>
+</section>
+
+
+<section id="technical-context">
+<h2>2 · Technical context</h2>
+<dl>
+  <dt>Language(s)</dt>      <dd>TypeScript 5.7, Node ≥20 (matches existing packages).</dd>
+  <dt>Frameworks</dt>       <dd>None new. Reuses <code>ClaudeProvider</code> from <a href="../007-core-triage/spec.html">007</a>; parses existing specs via parse5 (already transitively present via <code>@spectastic/schema</code>).</dd>
+  <dt>Storage</dt>          <dd>In-process; kernel returns the generated HTML string. CLI subcommand owns the <code>writeFile</code> + directory creation + asset-path rewrite.</dd>
+  <dt>Testing</dt>          <dd>Unit-first per <a href="../006-kernel-extraction/plan.html#D-008">006 D-008</a>: <code>packages/core/test/spec.test.ts</code> with stub <code>AIProvider</code> driving scripted chat + ask answers; CLI integration tests at <code>packages/cli/test/cli.test.ts</code> cover the wiring; real-Claude SC-001 fixture test gated by <code>skipIf(!process.env.ANTHROPIC_API_KEY)</code> per <a href="../007-core-triage/plan.html#D-007">007 D-007</a>.</dd>
+  <dt>Perf targets</dt>     <dd>All four <code>bench/baselines.json</code> scenarios within budget; <code>init-help-cold-start</code> p50 within ±20% of today's post-007 baseline.</dd>
+  <dt>Constraints</dt>      <dd>Markdown procedure (<code>commands/spectastic.spec.md</code>) remains canonical (<a href="./spec.html#FR-012">FR-012</a>); kernel never touches the filesystem (<a href="./spec.html#FR-010">FR-010</a>); no module-level side effects (<a href="./spec.html#FR-001">FR-001</a>).</dd>
+</dl>
+</section>
+
+
+<section id="approach">
+<h2>3 · Approach</h2>
+
+<p>Three moves, one PR. <strong>One</strong>: <code>specCommand</code> at <code>packages/core/src/commands/spec.ts</code> orchestrates an interview-engine helper that alternates chat (narrative slots) and <code>ask&lt;T&gt;()</code> (bounded choices), looping until a dedicated termination ask resolves. <strong>Two</strong>: <code>reentry.ts</code> parses an existing <code>spec.html</code> via parse5, snapshots the stable ID set + changelog + open-questions, and seeds the engine with an ADD-or-ENHANCE-only constraint; removals require explicit <code>ask&lt;T&gt;()</code> confirmation. <strong>Three</strong>: a <code>spectastic spec</code> CLI subcommand at <code>packages/cli/src/commands/spec.ts</code> handles argument parsing, ID assignment, directory creation, template copy with asset-path rewrite, and writing the kernel's HTML result to disk.</p>
+
+<p>The interview engine is the architecturally-interesting piece. Today's slash-command runs inside Claude Code's conversation context; the kernel can't rely on that. <code>specCommand</code> builds an internal <code>InterviewSession</code> tracking filled narrative slots, anchored decisions, and open questions. Each loop iteration prompts the LLM via <code>chat()</code> with session state to choose the next phase + payload; the engine dispatches accordingly. Termination is its own typed commitment (D-005) — not a heuristic.</p>
+
+<spec-arch>
+<figure>
+<svg viewBox="0 0 720 280" role="img" aria-label="spec verb architecture: CLI invokes kernel which orchestrates an interview engine alternating chat and ask calls against the AIProvider; kernel returns SpecResult and caller writes to disk.">
+  <style>
+    .box { fill:#fcfbf7; stroke:#c4c1bb; stroke-width:1.2; }
+    .label { font: 700 11px Lato, sans-serif; fill:#4a4a46; letter-spacing:0.06em; text-transform:uppercase; }
+    .body  { font: 400 12px "Source Serif 4", Georgia, serif; fill:#353534; }
+    .arr   { stroke:#73706d; stroke-width:1.2; fill:none; }
+    .arr-dim { stroke:#a09d99; stroke-width:1; fill:none; stroke-dasharray:3 3; }
+  </style>
+  <defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#73706d"/></marker></defs>
+
+  <rect class="box" x="20"  y="20"  width="160" height="60" rx="4"/>
+  <text class="label" x="36" y="42">CLI subcmd</text>
+  <text class="body"  x="36" y="62">spec (shim)</text>
+
+  <rect class="box" x="240" y="20"  width="200" height="60" rx="4"/>
+  <text class="label" x="256" y="42">core/commands</text>
+  <text class="body"  x="256" y="62">specCommand + engine</text>
+
+  <rect class="box" x="500" y="20"  width="200" height="60" rx="4"/>
+  <text class="label" x="516" y="42">core/providers</text>
+  <text class="body"  x="516" y="62">ClaudeProvider (from 007)</text>
+
+  <rect class="box" x="240" y="120" width="200" height="40" rx="4"/>
+  <text class="body"  x="256" y="145">reentry.ts (parse5)</text>
+
+  <rect class="box" x="20"  y="200" width="200" height="40" rx="4"/>
+  <text class="body"  x="36"  y="225">specs/&lt;id&gt;/spec.html</text>
+  <rect class="box" x="500" y="200" width="200" height="40" rx="4"/>
+  <text class="body"  x="516" y="225">templates/spec.html</text>
+
+  <path class="arr" d="M180 50 L240 50" marker-end="url(#ah)"/>
+  <path class="arr" d="M440 50 L500 50" marker-end="url(#ah)"/>
+  <path class="arr" d="M340 80 L340 120" marker-end="url(#ah)"/>
+  <path class="arr" d="M100 80 L100 200" marker-end="url(#ah)"/>
+  <path class="arr-dim" d="M600 200 L600 80"/>
+
+  <text class="body" x="240" y="265" style="font-size:11px;font-style:italic;">caller owns IO; kernel pure</text>
+</svg>
+<figcaption>CLI handles IO + ID assignment; kernel runs the two-phase interview through the AIProvider; reentry helper parses existing artifacts; CLI writes the generated HTML to disk.</figcaption>
+</figure>
+</spec-arch>
+</section>
+
+
+<section id="alternatives">
+<h2>4 · Alternatives considered</h2>
+
+<spec-matrix>
+<table>
+  <thead>
+    <tr><th>Option</th><th>Robustness</th><th>Surface fit</th><th>Effort</th><th class="score">Total</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Hard-coded question script (no LLM-driven sequencing)</td><td>4</td><td>2</td><td>4</td><td class="score">10</td></tr>
+    <tr><td>Pure conversational <code>chat()</code> loop (no <code>ask&lt;T&gt;()</code>)</td><td>2</td><td>3</td><td>4</td><td class="score">9</td></tr>
+    <tr data-winner><td>LLM-driven phase sequencing + typed <code>ask&lt;T&gt;()</code> anchoring — chosen</td><td>3</td><td>4</td><td>3</td><td class="score">10</td></tr>
+  </tbody>
+</table>
+</spec-matrix>
+
+<p>The hard-coded script is deterministic but can't follow conversational threads or surface non-obvious questions the way the slash-command markdown intends. The pure <code>chat()</code> loop matches today's Claude-Code-only behaviour but defeats the point of <code>ask&lt;T&gt;()</code> — future MCP and VS Code surfaces would re-build bounded-choice UI from prose. The chosen approach uses <code>chat()</code> for phase sequencing and <code>ask&lt;T&gt;()</code> for commitments, preserving the discipline that decidable questions are typed commitments while letting non-Claude-Code surfaces render bounded choices natively.</p>
+</section>
+
+
+<section id="decisions">
+<h2>5 · Decisions</h2>
+
+<spec-decision id="D-001">
+  <h4>D-001 · Two-phase interview as an explicit state machine</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>The slash-command markdown sequences phases implicitly inside Claude Code's conversation context; the kernel must model sequencing explicitly.</dd>
+    <dt>Decision</dt>     <dd>Internal <code>InterviewSession</code> tracks filled slots, anchored decisions, open questions. Each loop iteration: <code>ai.chat()</code> with session state picks next phase; dispatch <code>{ kind: 'chat', prompt }</code> → <code>ai.chat()</code> appends to slot, or <code>{ kind: 'decision', questions }</code> → <code>ai.ask&lt;T&gt;()</code> records picks. LLM-driven alternation, not fixed.</dd>
+    <dt>Consequences</dt> <dd>+ Mirrors slash-command discipline; + future surfaces receive typed phase events; + stub-AIProvider tests script the sequence deterministically. − Engine complexity sits in core; docblock must summarise faithfully.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-002">
+  <h4>D-002 · Re-entry detection and ADD/ENHANCE-only deltas</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd><a href="./spec.html#FR-005">FR-005</a> requires re-entry to preserve existing IDs and changelog entries; removals require explicit confirmation. The kernel needs structural enforcement, not prompt instructions alone.</dd>
+    <dt>Decision</dt>     <dd><code>reentry.ts</code> parses the existing <code>spec.html</code> via parse5; snapshots <code>{ requirements: { id, level, html }[], changelog, openQuestions }</code>. The engine receives the snapshot and is constrained to ADD (new requirement with fresh ID = <code>max(existingIds) + 1</code>) or ENHANCE (extend <code>&lt;details&gt;</code> rationale; <code>id=</code>, <code>priority=</code>, primary statement intact). REMOVE/OVERWRITE triggers dedicated <code>ai.ask&lt;T&gt;()</code> confirmation; default is preserve.</dd>
+    <dt>Consequences</dt> <dd>+ ID-preservation is structural, not prompt-policed; + fresh-vs-re-entry diff is one conditional branch. − parse5 exercised at runtime (already present transitively); − malformed-existing-spec needs a clear error path.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-003">
+  <h4>D-003 · INVEST self-check generated as a final, dedicated phase</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd><a href="./spec.html#FR-007">FR-007</a> requires all six INVEST rows populated; <code>V</code> links to <code>SC-</code> ID; <code>T</code> links to acceptance or requirement; <code>✗</code> rows surface a warning.</dd>
+    <dt>Decision</dt>     <dd>After the main loop terminates, a dedicated INVEST pass batches 1–2 <code>ai.ask&lt;T&gt;()</code> calls (honouring the four-question limit), each offering "✓ — linkage" / "✗ — flag in warnings". <code>V</code> option set derives from actual <code>SC-NNN</code> IDs in the artifact; <code>T</code> spans acceptance scenarios + requirements. <code>✗</code> picks append to <code>SpecResult.warnings</code>.</dd>
+    <dt>Consequences</dt> <dd>+ Linkage structurally validated (option sets derived from artifact); + warnings flow through typed result. − 1–2 extra ask calls in the trailing phase.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-004">
+  <h4>D-004 · Budget gauge — running word count, amber-band warning via <code>SpecResult.warnings</code></h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd><a href="./spec.html#FR-008">FR-008</a> requires a splitting nudge when the draft crosses 70% of <code>&lt;spec-budget&gt;</code>. The slash-command surfaces this conversationally; the kernel needs a typed channel.</dd>
+    <dt>Decision</dt>     <dd>After each ENHANCE/ADD delta, the engine strips HTML tags and recomputes the word count. Crossing 70% fires one <code>ai.ask&lt;T&gt;()</code>: (a) move material to <code>&lt;spec-out-of-scope&gt;</code> with <code>defer-to="TBD-&lt;topic&gt;"</code>, (b) scaffold sibling spec (recorded in <code>warnings</code>), (c) acknowledge and proceed. The crossing also unconditionally appends to <code>SpecResult.warnings</code>.</dd>
+    <dt>Consequences</dt> <dd>+ Splitting discipline reaches non-Claude-Code surfaces; + caller chooses the rendering. − O(n) recomputation per delta; n stays small.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-005">
+  <h4>D-005 · Interview termination via a dedicated <code>ask&lt;T&gt;()</code> "complete?" question</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>"Decision exhaustion" is the bound in <code>CLAUDE.md</code>'s interview discipline. Pure heuristics over/undershoot; pure LLM judgement risks runaway loops.</dd>
+    <dt>Decision</dt>     <dd>Past a minimum of three iterations, the engine fires <code>ai.ask&lt;T&gt;()</code> with two options: <em>"Continue — a careful reviewer would still surface a non-obvious question"</em> or <em>"Complete — every decidable question is anchored."</em> Continue is the recommended default; complete advances to the INVEST pass. A 24-iteration hard ceiling backstops pathological loops and appends a warning.</dd>
+    <dt>Consequences</dt> <dd>+ Termination is a typed commitment, matching the discipline's framing. − One ask call per iteration past the minimum; ceiling is a backstop.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-006">
+  <h4>D-006 · User-story extraction from chat — structured prompt + JSON parse</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>Chat captures user-story prose; the artifact requires structured <em>As a / I want to / so that</em> triples. Deriving them is an LLM task.</dd>
+    <dt>Decision</dt>     <dd>After user-story chat capture, one <code>ai.chat()</code> call with a structured-prompt + JSON instruction (matching <a href="../007-core-triage/plan.html#D-002">007 D-002</a>) extracts the triples as <code>[{ role, action, outcome }]</code>. Parse, retry once with stricter system prompt; both-failure path appends a warning, doesn't block. Each triple becomes a <code>US-N</code> block.</dd>
+    <dt>Consequences</dt> <dd>+ Reuses 007's proven JSON-parse-with-retry pattern; + structured triples enable a later per-story priority ask. − Two-call worst case; − parse failure degrades to warning.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-007">
+  <h4>D-007 · Smallest-demoable as the first decision-phase question — always, fresh mode</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd><a href="./spec.html#FR-006">FR-006</a> mandates smallest-demoable as the first decision-phase question in fresh mode. LLM-driven sequencing could defer it; the spec says it can't.</dd>
+    <dt>Decision</dt>     <dd>Fresh-mode's first decision iteration is hard-coded: one <code>ai.ask&lt;T&gt;()</code> with three options derived from <code>input.description</code> via a one-shot <code>chat()</code>. If an option reaches for "the whole feature" wording, a follow-up <code>ai.ask&lt;T&gt;()</code> offers 2–3 narrower framings (FR-006's SHOULD). Re-entry skips this — the boundary is set.</dd>
+    <dt>Consequences</dt> <dd>+ FR-006 structurally enforced; + SHOULD-tier follow-up is concrete. − One hard-coded branch in an LLM-driven loop; isolated to the first iteration.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-008">
+  <h4>D-008 · Single-PR migration, bench-gated, <code>v0.1.0-pre.13</code></h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>The slice lands verb + CLI subcommand + markdown update + the first heavy exercise of <code>ai.ask&lt;T&gt;()</code>. Staging adds version coordination without reducing review scope.</dd>
+    <dt>Decision</dt>     <dd>Single PR per 006/007 precedent (their D-008). Ships as <code>v0.1.0-pre.13</code>. Bench enforces lazy-loading (<code>spec.ts</code> stays off init path); CLI tests prove wiring; <code>npm view</code> confirms the slice.</dd>
+    <dt>Consequences</dt> <dd>+ Atomic; + reverts cleanly. − Larger diff than typical; bench/test failure blocks the whole slice.</dd>
+  </dl>
+</spec-decision>
+</section>
+
+
+<section id="project-structure">
+<h2>6 · Project structure</h2>
+
+<pre><code>packages/core/
+  package.json                                       <em>(adds ./commands/spec subpath; no new deps)</em>
+  tsup.config.ts                                     <em>(adds src/commands/spec.ts entry)</em>
+  src/
+    commands/
+      spec.ts                                        <em>(new — specCommand + InterviewSession engine)</em>
+    helpers/
+      reentry.ts                                     <em>(new — parse5-based existing-spec snapshot + ADD/ENHANCE constraint)</em>
+      invest-pass.ts                                 <em>(new — six-row INVEST check; populates warnings)</em>
+      word-count.ts                                  <em>(new — strip-tags word counter for budget gauge)</em>
+  test/
+    spec.test.ts                                     <em>(new — unit; stub AIProvider; covers SC-001, SC-002)</em>
+    reentry.test.ts                                  <em>(new — fixture-based; preserves IDs + changelog)</em>
+
+packages/cli/
+  src/commands/
+    spec.ts                                          <em>(new — CLI subcommand; ID assignment, dir create, asset-path rewrite, writeFile)</em>
+  test/
+    cli.test.ts                                      <em>(extended — covers spec subcommand wiring; SC-003)</em>
+
+commands/
+  spectastic.spec.md                                 <em>(adds MAY-Bash-to-CLI note per FR-012)</em>
+
+CHANGELOG.md                                          <em>(v0.1.0-pre.13 entry)</em>
+</code></pre>
+
+<p>One CLI subcommand + one verb file + three helpers + two new test files + one markdown update. No new dependencies; parse5 already present transitively.</p>
+</section>
+
+
+<section id="risks">
+<h2>7 · Risks &amp; mitigations</h2>
+
+<table>
+  <thead><tr><th>Risk</th><th>Likelihood</th><th>Impact</th><th>Mitigation</th></tr></thead>
+  <tbody>
+    <tr><td>Interview loop runs away — LLM never picks "complete" on the termination ask.</td><td>M</td><td>M</td><td>Hard 24-iteration ceiling (D-005); ceiling-hit appends a warning so it's visible; unit tests script termination paths deterministically.</td></tr>
+    <tr><td>Re-entry parse5 fails on a slightly-malformed existing spec, blocking the whole verb.</td><td>L</td><td>H</td><td>parse5 in HTML-fragment mode is tolerant; reentry.ts wraps parse errors as a typed <code>SpecReentryError</code> with the offending file path + line; the CLI subcommand surfaces it cleanly. Unit tests include malformed-input fixtures.</td></tr>
+    <tr><td>Budget gauge fires falsely on collapsed <code>&lt;details&gt;</code> or marginalia.</td><td>M</td><td>L</td><td>Counter strips tags; collapsed details count the same as expanded (discipline cares about total surface, not first-read). Fixtures verify against hand-tallied references.</td></tr>
+    <tr><td>INVEST pass adds noticeable latency.</td><td>M</td><td>L</td><td>1–2 batched calls; option sets derived locally; net under 5s typical. Acceptable for structural FR-007 enforcement.</td></tr>
+    <tr><td>SC-001 byte-identity unattainable because today's slash command produces non-deterministic LLM prose.</td><td>M</td><td>M</td><td>Per the 007 precedent (its Risks table): assert on structural fields (FR IDs, INVEST linkage, conformance count), not exact prose bytes. Whitespace + dynamic date are explicitly excluded by the spec (<a href="./spec.html#SC-001">SC-001</a>).</td></tr>
+    <tr><td>Stub-AIProvider queue drifts out of sync with engine question order, hiding interview-shape regressions.</td><td>M</td><td>M</td><td>Per the spec's edge-case discipline: empty queue mid-interview fails loudly with the unconsumed question text. Tests assert consumed-queue length.</td></tr>
+  </tbody>
+</table>
+</section>
+
+
+<section id="complexity">
+<h2>8 · Complexity tracking</h2>
+<p>Two deliberate additions warrant flagging:</p>
+
+<spec-assumption>
+<p><strong>LLM-driven phase sequencing (D-001) instead of fixed alternation.</strong> Adds engine complexity — the loop queries the LLM for "what next?" rather than walking a script. Justified: the slash-command discipline is exactly this — the human picks the next probe based on what's missing, not a fixed order. A scripted alternation over-asks (every slot mechanically) or under-asks (misses non-obvious follow-ups). Debuggability cost addressed by snapshotting phase sequences in unit tests.</p>
+</spec-assumption>
+
+<spec-assumption>
+<p><strong>INVEST pass as a dedicated trailing phase (D-003), not inline.</strong> Could fold into the main loop; the trailing pass costs 1–2 extra calls. Justified because FR-007's linkage (<code>V → SC-NNN</code>, <code>T → acceptance|FR</code>) requires the artifact substantively complete before the question is well-posed — option sets derive from generated IDs that don't exist mid-interview.</p>
+</spec-assumption>
+</section>
+
+
+<section id="questions">
+<h2>9 · Open questions</h2>
+<spec-questions>
+<ol>
+  <li>None. The propose-time spec interview and the plan-time interview together anchored every decidable question. Any issue that surfaces during implementation routes back through <code>/spectastic.propose</code> against this plan (or the spec, depending on the layer).</li>
+</ol>
+</spec-questions>
+</section>
+
+
+<section id="changelog">
+<h2>10 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-06-16">16 Jun 2026</time><span>Initial plan. Anchored: two-phase interview as state machine (D-001); re-entry ADD/ENHANCE-only via parse5 snapshot (D-002); INVEST self-check as trailing phase with IDs as option sets (D-003); budget gauge crossings surface via <code>SpecResult.warnings</code> + inline ask (D-004); termination via typed "complete?" ask with 24-iter ceiling (D-005); user-story extraction via JSON-parse + retry (D-006); smallest-demoable hard-coded as first fresh-mode question (D-007); single PR as <code>v0.1.0-pre.13</code> (D-008). Bench-gated; reuses 007's <code>ClaudeProvider</code>; markdown canonical.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  Plan for 011-core-spec · Core spec verb · authored 16 Jun 2026 ·
+  <button data-theme-toggle style="background:none;border:none;color:var(--c-link);cursor:pointer;font:inherit;padding:0;border-bottom:1px solid currentColor;">toggle theme</button>
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>
