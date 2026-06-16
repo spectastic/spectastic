@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.1.0-pre.7 — 2026-06-16
+
+Closes the third slicing-consistency rule: cross-file parent/child reciprocity.
+
+- **New rule `parent-child-reciprocity`** (cross-file). For every doc with `<spec-parent specid="X">`, when X is also in the validation set, X must contain a reciprocal `<spec-out-of-scope> <li defer-to="<this-spec-id>">`. The two halves of a slice carve-out must point at each other.
+- Single-direction only (child → parent). The reverse direction would over-fire on legitimate non-parent/child defer-tos.
+- Fires only when both parent and child are in the validation set. Single-doc validation skips it; the test harness was extended to support multi-file directory fixtures so this rule can be exercised properly.
+- Together with `spec-parent-well-formed` and `no-broken-defer-to`, this completes the slicing-consistency triplet identified by the 16 Jun 2026 audit and listed under [examples/slicing-gaps.html §5](./examples/slicing-gaps.html#deferred).
+- 64 tests pass (62 → 64 from the new rule's positive/negative pair, now using the directory-fixture loader).
+
 ## v0.1.0-pre.6 — 2026-06-16
 
 Ships the two new validator rules to npm consumers.

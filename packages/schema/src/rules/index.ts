@@ -9,6 +9,7 @@ import { noBrokenDeferToRule } from './no-broken-defer-to.js';
 import { noDuplicateIdsRule } from './no-duplicate-ids.js';
 import { noMissingDeferToRule } from './no-missing-defer-to.js';
 import { noUnresolvedQuestionRule } from './no-unresolved-question.js';
+import { parentChildReciprocityRule } from './parent-child-reciprocity.js';
 import { requirementIdRequiredRule } from './requirement-id-required.js';
 import { riskStatusRequiredRule } from './risk-status-required.js';
 import { riskTargetRequiredRule } from './risk-target-required.js';
@@ -48,4 +49,5 @@ export const rules: readonly Rule[] = [
   // Cross-file rules.
   noDuplicateIdsRule,
   noBrokenDeferToRule,
+  parentChildReciprocityRule,
 ];
