@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Triage log · 002-validate-cli</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Triage log · 002-validate-cli</p>
+  <h1>Debug sessions</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    One card per session. Tier-1 fills in under 30 seconds; deep-dive only when needed.
+  </p>
+
+  <spec-meta>
+    <b>Spec</b>      <span><a href="./spec.html">002-validate-cli · spec</a></span>
+    <b>Plan</b>      <span><a href="./plan.html">002-validate-cli · plan</a></span>
+    <b>Last entry</b><span><time datetime="2026-06-15">15 Jun 2026</time></span>
+    <b>Entries</b>   <span>1</span>
+  </spec-meta>
+
+  <spec-tldr>
+    <p>Each card answers five questions in order: <em>what broke</em>, <em>what's the cause</em>,
+    <em>which layer owns the fix</em>, <em>does the regen test pass</em>, <em>what change to make</em>.
+    The deep-dive is only filled when the bug crosses a contract, hits a project-wide invariant,
+    or needs a hotfix-before-amendment sequence.</p>
+  </spec-tldr>
+</header>
+
+
+<section id="log">
+<h2>Sessions</h2>
+
+<spec-triage-log>
+
+<spec-triage id="T-001" layer="implementation">
+  <header>
+    <h4><code>validate --help</code> description leaks the internal FR ID</h4>
+    <span class="meta">
+      <span class="layer-pill">Implementation</span>
+      <span class="regen" data-result="pass">code</span>
+    </span>
+  </header>
+
+  <p class="headline">Debugging the appearance of <code>FR-002</code> in <code>validate --help</code> output, root cause was an <strong>implementation</strong> drift — the Commander <code>.description(...)</code> string echoes the FR ID from the file's source comment into user-facing copy; fixed by trimming the description to plain prose; regeneration <strong>passes</strong> — nothing in the spec or plan tells the implementer to cite FR IDs in user output.</p>
+
+  <dl>
+    <dt>Expected</dt> <dd><code>validate --help</code> shows a plain-English description of the subcommand. Internal anchors (<code>FR-…</code>, <code>NFR-…</code>, <code>REQ-…</code>) belong in source comments and specs, not user-visible copy.</dd>
+    <dt>Actual</dt>   <dd><code>validate --help</code> renders <em>"Validate one or more spec-html files. Exits 0/1/2 per FR-002."</em> — the trailing <code>per FR-002</code> exposes an internal traceability ID to end users.</dd>
+    <dt>Diagnosis</dt><dd><code>packages/cli/src/commands/validate.ts:20</code> calls Commander's <code>.description()</code> with a string that ends in <code>per FR-002</code>. The same file's docstring at line 9 reads <em>"Implements FR-001, FR-002, FR-014"</em>; the LLM author appears to have carried the FR ID from the comment into the user-facing description. Spec <a href="./spec.html#FR-002">FR-002</a> (exit-code contract) is correct as written; the leak is purely in the description string.</dd>
+    <dt>Fix</dt>      <dd><code>packages/cli/src/commands/validate.ts:20</code> — replace the description with prose that names the exit semantics directly, no FR ID. Suggested: <em>"Validate one or more spec-html files. Exits 0 on clean, 1 on findings, 2 on usage errors."</em></dd>
+  </dl>
+
+  <spec-diff style="margin:var(--s-3) 0 0;font-size:.78rem">
+<del>    .description('Validate one or more spec-html files. Exits 0/1/2 per FR-002.')</del>
+<ins>    .description('Validate one or more spec-html files. Exits 0 on clean, 1 on findings, 2 on usage errors.')</ins>
+  </spec-diff>
+
+  <details>
+    <summary>Deep dive — cascade considered, not promoted</summary>
+    <p>No cross-spec contract touched, no scope-deferred functionality exposed, no hotfix-before-amendment sequence needed — this is a one-line code fix.</p>
+    <p>Principles cascade <strong>considered</strong>: a candidate principle ("internal anchors — <code>FR-…</code>, <code>NFR-…</code>, <code>REQ-…</code>, <code>T-…</code>, <code>D-…</code>, <code>I-…</code> — <spec-rule>MUST NOT</spec-rule> appear in user-facing CLI output, help text, error messages, or exit summaries") would prevent this entire class of leak across <code>init</code>, <code>validate</code>, and any future subcommand. <strong>Not promoted now</strong>: one occurrence in one string isn't a pattern. Re-evaluate if a second leak surfaces in <code>init</code>, in a SARIF/JSON formatter, or in a future subcommand — at two data points, draft the principles amendment.</p>
+  </details>
+</spec-triage>
+
+</spec-triage-log>
+</section>
+
+
+<section id="protocol">
+<h2>Protocol</h2>
+
+<p>Five required Tier-1 fields, in order:</p>
+
+<spec-requirement id="TRIAGE-001" priority="must">
+<p>Each card <spec-rule>MUST</spec-rule> include a <strong>headline</strong> in
+Y-statement form: <em>"Debugging X, root cause was Y; fixed by Z; regen pass|fail."</em></p>
+</spec-requirement>
+
+<spec-requirement id="TRIAGE-002" priority="must">
+<p>Each card <spec-rule>MUST</spec-rule> state <strong>Expected</strong>, <strong>Actual</strong>,
+and <strong>Diagnosis</strong> (one sentence — cause, not symptom).</p>
+</spec-requirement>
+
+<spec-requirement id="TRIAGE-003" priority="must">
+<p>Each card <spec-rule>MUST</spec-rule> declare a single <strong>layer</strong> attribute
+(<code>spec | plan | implementation | cross-spec | principles | platform</code>) and a
+<strong>regeneration test result</strong> (pass | fail).</p>
+</spec-requirement>
+
+<spec-requirement id="TRIAGE-004" priority="must">
+<p>Each card <spec-rule>MUST</spec-rule> include a concrete <strong>Fix</strong> — artifact
+path + one-line proposal. For implementation gaps, a <code>&lt;spec-diff&gt;</code> pointing
+at the offending line.</p>
+</spec-requirement>
+
+<spec-requirement id="TRIAGE-005" priority="should">
+<p>The <strong>deep-dive</strong> <code>&lt;details&gt;</code> block
+<spec-rule level="should">SHOULD</spec-rule> be filled only when at least one of:
+cross-spec contract touched, project-wide invariant implicated, deferred scope exposed, or
+hotfix-before-amendment sequence required.</p>
+</spec-requirement>
+
+<spec-requirement id="TRIAGE-006" priority="may">
+<p>Cards <spec-rule level="may">MAY</spec-rule> append a single <code>&lt;spec-question&gt;</code>
+if a decision is owed to the human before the fix lands.</p>
+</spec-requirement>
+</section>
+
+
+<section id="changelog">
+<h2>Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-06-15">15 Jun 2026</time><span>T-001 added — <code>validate --help</code> leaks <code>FR-002</code> into the user-facing description; implementation drift in <code>packages/cli/src/commands/validate.ts:20</code>.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  Triage log for 002-validate-cli ·
+  <button data-theme-toggle style="background:none;border:none;color:var(--c-link);cursor:pointer;font:inherit;padding:0;border-bottom:1px solid currentColor;">toggle theme</button>
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>

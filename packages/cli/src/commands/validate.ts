@@ -17,7 +17,7 @@ interface ValidateOptions {
 export function registerValidate(program: Command): void {
   program
     .command('validate')
-    .description('Validate one or more spec-html files. Exits 0/1/2 per FR-002.')
+    .description('Validate one or more spec-html files. Exits 0 on clean, 1 on findings, 2 on usage errors.')
     .argument('<paths...>', 'file paths or glob patterns')
     .option('-f, --format <fmt>', 'output format: human (default) | json | sarif', 'human')
     .option('-i, --ignore <patterns...>', 'additional glob patterns to exclude')
