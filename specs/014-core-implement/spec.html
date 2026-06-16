@@ -1,0 +1,277 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Core implement · Specification</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Specification · 014-core-implement · <spec-parent specid="006-kernel-extraction"><a href="../006-kernel-extraction/spec.html">Kernel extraction</a></spec-parent></p>
+  <h1>Core implement — extract <code>/spectastic.implement</code> into <code>@spectastic/core</code> (single-task mode)</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    The most-used verb, extracted at its smallest demoable: one task per invocation. Drain modes carved out to a sibling slice.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>      <span><spec-status value="draft">Draft</spec-status></span>
+    <b>Spec ID</b>     <span>014-core-implement</span>
+    <b>Owner</b>       <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Reviewers</b>   <span>—</span>
+    <b>Created</b>     <span><time datetime="2026-06-16">16 Jun 2026</time></span>
+    <b>Principles</b>  <span><a href="../../principles.html">v1.0.1</a></span>
+    <b>Smallest demoable</b><span>Implement extracted end-to-end (kernel + CLI + slash markdown) for single-task only: ticking the last unchecked task via <code>spectastic implement &lt;T-NNN&gt;</code> fires the bundled flip prompt through <code>ctx.ai.ask&lt;T&gt;()</code>; bench passes.</span>
+    <b>Read time</b>   <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-budget words="1800" reqs="18" minutes="7"></spec-budget>
+
+  <spec-tldr>
+    <p>The most-used verb, extracted into <code>packages/core/src/commands/implement.ts</code> per 006's contract, but only for the <em>single-task</em> invocation path: <code>spectastic implement &lt;T-NNN | I-NNN | spec-id&gt;</code>. Drain modes (<code>--all</code>, <code>--phase=&lt;id&gt;</code>, <code>--parallel</code>) carve out to <code>TBD-core-implement-drain</code>. Still lands the load-bearing pieces: estimability gate, task-tick, inbox <code>just-do</code> tick, verification, and the bundled flip prompt mandated by <a href="../../examples/spectastic-spec.html#REQ-LIFECYCLE-005">REQ-LIFECYCLE-005</a>.</p>
+  </spec-tldr>
+
+  <dl class="invest">
+    <dt><span class="letter">I</span> Independent</dt> <dd>Depends on <a href="../006-kernel-extraction/spec.html">006-kernel-extraction</a> and the principles. Drain modes carve out to <code>TBD-core-implement-drain</code>; no sibling kernel-verb slice (007–013) blocks on this one.</dd>
+    <dt><span class="letter">N</span> Negotiable</dt>  <dd>Specifies input/result shape, estimability gate, task-tick mechanism, and the bundled flip prompt's confirmation gesture. Prompt copy and verification-runner choice (<code>ctx.fs</code> vs <code>ctx.shell</code>) defer to the plan.</dd>
+    <dt><span class="letter">V</span> Valuable</dt>    <dd>Unlocks <a href="#SC-001">SC-001</a> — a downstream consumer can call <code>implementCommand</code> with a stub <code>AIProvider</code> + stub <code>fs</code> and drive one task to completion, bundled flip prompt included, without spawning a CLI process. Also unblocks the drain-modes slice by establishing the single-task contract.</dd>
+    <dt><span class="letter">E</span> Estimable</dt>   <dd>Architectural decisions inherit from 006. Verb-specific decisions (single-task scope only; drain carved out; bundled flip via <code>ctx.ai.ask&lt;T&gt;()</code>; kernel never auto-flips; verification runs the smallest scoped check) anchored before authoring.</dd>
+    <dt><span class="letter">S</span> Small</dt>       <dd>Small <em>because drain modes are carved out</em>. ~14 requirements, single-session by design. Drain-modes slice is the obvious next increment.</dd>
+    <dt><span class="letter">T</span> Testable</dt>    <dd>Every requirement observable: kernel unit-tested with stubs; CLI integration test exercises task and inbox-card paths; last-tick + Draft state asserts the bundled flip prompt fires; tasks.html output diffed byte-for-byte against today's flow.</dd>
+  </dl>
+
+  <spec-audience-map>
+    <dl>
+      <dt>Exec / PM</dt>   <dd>§<a href="#context">Context</a>, §<a href="#scenarios">User scenarios</a>, §<a href="#success">Success criteria</a>.</dd>
+      <dt>Reviewer</dt>    <dd>§<a href="#requirements">Requirements</a>, §<a href="#data">Data model</a>, §<a href="#assumptions">Assumptions</a>.</dd>
+      <dt>Implementer</dt> <dd>§<a href="#requirements">Requirements</a>, §<a href="#data">Data model</a>, §<a href="#conformance">Conformance index</a>. The plan (<code>plan.html</code>) will carry the ADRs.</dd>
+    </dl>
+  </spec-audience-map>
+</header>
+
+
+<section id="context">
+<h2>1 · Context</h2>
+<p>Today's <code>/spectastic.implement</code> is the most-used verb — every spec slice drains through it; the small-batch loop routes through it. Procedure lives entirely in <code>commands/spectastic.implement.md</code>; nothing is reachable from MCP, VS Code, or scripted-CI consumers.</p>
+<p>The verb is also the heaviest of the eight: estimability gate, task-tick, inbox <code>just-do</code> tick, verification, three drain modes, parallel agent fan-out, plus the bundled flip prompt mandated by <a href="../../examples/spectastic-spec.html#REQ-LIFECYCLE-004">REQ-LIFECYCLE-004</a> and <a href="../../examples/spectastic-spec.html#REQ-LIFECYCLE-005">REQ-LIFECYCLE-005</a>. Bundling all of that violates small-batches. Split: single-task is the smallest demoable; drain modes warrant their own slice. This spec ships single-task; <code>TBD-core-implement-drain</code> picks up the rest.</p>
+</section>
+
+
+<section id="scenarios">
+<h2>2 · User scenarios &amp; testing</h2>
+
+<p>Each story is independently testable: if you implemented only US1, you would still have a viable MVP that proves the shape.</p>
+
+<h3>US1 · Maintainer drives one task via CLI <spec-pill>P1</spec-pill></h3>
+<p>As a <strong>maintainer outside Claude Code</strong>, I want to <strong>run <code>spectastic implement T-014</code> and have one task driven end-to-end</strong> so that <strong>implementation doesn't require a Claude Code session.</strong></p>
+<p><em>Acceptance:</em> CLI loads spec + plan + tasks, applies the gate, does the work, runs verification, ticks the matching checkbox, prints a one-line summary. Exit <code>0</code> on success, <code>1</code> on verification failure, <code>2</code> on blocked estimability.</p>
+
+<h3>US2 · Maintainer drains a single inbox just-do card <spec-pill>P1</spec-pill></h3>
+<p>As a <strong>maintainer with an unfinished <code>just-do</code> card in <code>inbox.html</code></strong>, I want to <strong>run <code>spectastic implement I-013</code> and drive that card to completion</strong> so that <strong>the small-batch loop works the same from CLI as from slash command.</strong></p>
+<p><em>Acceptance:</em> CLI locates the matching <code>&lt;spec-triage layer="just-do"&gt;</code>, does the work, runs verification, writes <code>data-status="done"</code> to that single card. Other cards untouched; card stays as history.</p>
+
+<h3>US3 · Last-tick fires the bundled flip prompt <spec-pill>P1</spec-pill></h3>
+<p>As a <strong>maintainer ticking the final unchecked task in a Draft spec</strong>, I want to <strong>see an explicit bundled flip prompt covering the three siblings</strong> so that <strong><a href="../../examples/spectastic-spec.html#REQ-LIFECYCLE-005">REQ-LIFECYCLE-005</a> is enforced deterministically.</strong></p>
+<p><em>Acceptance:</em> When remaining unchecked count hits zero, kernel calls <code>ctx.ai.ask&lt;T&gt;()</code> with a confirmation naming spec, transition, and three siblings; reminds author to verify SC integration tests pass. Kernel never auto-flips; only on confirmation does it write <code>value="accepted"</code> to all three pills and append matching changelog entries.</p>
+
+<h3>US4 · Future MCP / VS Code consumer invokes the kernel directly <spec-pill>P2</spec-pill></h3>
+<p>As a <strong>future MCP / VS Code author</strong>, I want to <strong>import <code>implementCommand</code>, inject my own <code>AIProvider</code> + <code>fs</code>, and drive a single task programmatically</strong> so that <strong>I can render the flip-prompt UI in my own surface.</strong></p>
+<p><em>Acceptance:</em> A test passes stubs, asserts <code>ImplementResult</code> shape, verifies the bundled flip prompt fires on last-tick + Draft. No process spawn; no real model or fs call.</p>
+
+<h3>Edge cases</h3>
+<details>
+<summary><strong>Five tracked failure modes the extraction handles</strong></summary>
+<ul>
+  <li><strong>Estimability gate trips</strong> — open <code>&lt;spec-question&gt;</code> in the task's section, <code>[NEEDS CLARIFICATION]</code> marker referenced by the task, missing <code>defer-to=</code> on a <code>&lt;spec-out-of-scope&gt;</code> item the task touches. Kernel surfaces a typed error naming the blocker; CLI exits <code>2</code>.</li>
+  <li><strong>Task already ticked</strong> — caller passed <code>T-NNN</code> for a task whose checkbox already has <code>checked</code>. Kernel surfaces a typed result; CLI reports and exits <code>0</code> without re-ticking.</li>
+  <li><strong>Spec status past Draft</strong> — last-tick on an Accepted / In Review / Superseded spec must <em>not</em> re-fire the bundled flip prompt (per <a href="../../examples/spectastic-spec.html#REQ-LIFECYCLE-005">REQ-LIFECYCLE-005</a> Draft-scoping). Kernel checks status before evaluating the predicate.</li>
+  <li><strong>Author declines the flip prompt</strong> — all three sibling statuses stay Draft; kernel reports the declined flip in <code>ImplementResult.flipConfirmed: false</code>; tick still landed.</li>
+  <li><strong>Verification fails</strong> — kernel runs the scoped check, surfaces the failure, does <em>not</em> tick the checkbox. CLI exits <code>1</code>. Author re-invokes after fixing.</li>
+</ul>
+</details>
+</section>
+
+
+<section id="requirements">
+<h2>3 · Requirements</h2>
+
+<p>Conformance keywords (<spec-rule>MUST</spec-rule>, <spec-rule level="should">SHOULD</spec-rule>, <spec-rule level="may">MAY</spec-rule>) follow RFC 2119.</p>
+
+<h3>Functional — the verb</h3>
+
+<spec-requirement id="FR-001" priority="must">
+<p><code>implementCommand</code> <spec-rule>MUST</spec-rule> conform to the kernel contract from <a href="../006-kernel-extraction/spec.html#FR-003">006 FR-003</a>: signature <code>(input: ImplementInput, ctx: KernelContext) =&gt; Promise&lt;ImplementResult&gt;</code>; pure with respect to arguments; no module-level side effects; all IO and AI access flows through <code>ctx</code>.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-002" priority="must">
+<p>The function <spec-rule>MUST</spec-rule> live at <code>packages/core/src/commands/implement.ts</code> and be exposed via subpath <code>@spectastic/core/commands/implement</code> per <a href="../006-kernel-extraction/spec.html#FR-002">006 FR-002</a>. The umbrella entry <spec-rule>MUST NOT</spec-rule> eagerly load it.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-003" priority="must">
+<p><code>@spectastic/cli</code> <spec-rule>MUST</spec-rule> add an <code>implement</code> subcommand accepting a single positional target: a task ID (<code>T-NNN</code>), inbox card ID (<code>I-NNN</code>), or spec ID. v1 <spec-rule>MUST NOT</spec-rule> accept <code>--all</code>, <code>--phase=&lt;id&gt;</code>, or <code>--parallel</code> — drain modes carve out to <code>TBD-core-implement-drain</code>.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-004" priority="must">
+<p>The kernel <spec-rule>MUST</spec-rule> resolve the target to a specific task (<code>T-NNN</code> directly, or the next unchecked task in a spec ID's <code>tasks.html</code>) or a specific inbox <code>just-do</code> card (<code>I-NNN</code>). It <spec-rule>MUST</spec-rule> read spec / plan / tasks via <code>ctx.fs</code> — never via direct <code>node:fs</code>.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-005" priority="must">
+<p>Before any work, the kernel <spec-rule>MUST</spec-rule> apply the estimability gate: open <code>&lt;spec-question&gt;</code> in the task's section, <code>[NEEDS CLARIFICATION]</code> referenced by the task, or missing <code>defer-to=</code> on a touched <code>&lt;spec-out-of-scope&gt;</code> item <spec-rule>MUST</spec-rule> halt with a typed error naming the blocker. CLI exits <code>2</code>.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-006" priority="must">
+<p>After successful work + verification, the kernel <spec-rule>MUST</spec-rule> write the <code>checked</code> attribute to the single targeted <code>&lt;input type="checkbox"&gt;</code> in <code>tasks.html</code> via <code>ctx.fs</code>. Other tasks <spec-rule>MUST</spec-rule> remain untouched; document order <spec-rule>MUST NOT</spec-rule> change.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-007" priority="must">
+<p>For inbox <code>just-do</code> targets, the kernel <spec-rule>MUST</spec-rule> write <code>data-status="done"</code> to the single targeted <code>&lt;spec-triage&gt;</code> in <code>inbox.html</code> via <code>ctx.fs</code>. The card <spec-rule>MUST NOT</spec-rule> be removed or moved; other cards untouched.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-008" priority="must">
+<p>After every tick taken while the spec's status is <code>Draft</code>, the kernel <spec-rule>MUST</spec-rule> count remaining unchecked <code>&lt;input type="checkbox"&gt;</code> in the spec's <code>tasks.html</code>. If exactly zero, the kernel <spec-rule>MUST</spec-rule> surface a Draft → Accepted bundled flip prompt via <code>ctx.ai.ask&lt;T&gt;()</code> naming the spec, the transition, and the three siblings (<code>spec.html</code>, <code>plan.html</code>, <code>tasks.html</code>) per <a href="../../examples/spectastic-spec.html#REQ-LIFECYCLE-005">REQ-LIFECYCLE-005</a>. Skip when status is past <code>Draft</code>.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-009" priority="must">
+<p>The flip prompt <spec-rule>MUST</spec-rule> remind the author to verify integration tests covering the spec's Success Criteria pass before confirming. The confirmation gesture absorbs the test-pass discipline; author judgment is the gate.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-010" priority="must">
+<p>The kernel <spec-rule>MUST NOT</spec-rule> auto-flip status. On explicit confirmation, the kernel <spec-rule>MUST</spec-rule> write <code>value="accepted"</code> to the <code>&lt;spec-status&gt;</code> pill in <em>all three</em> siblings and append a matching one-line <code>&lt;spec-changelog&gt;</code> entry to each (old state, new state, date, trigger). Partial bundle flips are forbidden.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-011" priority="must">
+<p>The kernel <spec-rule>MUST</spec-rule> run the smallest scoped verification the task admits (scoped tests, smoke check, build) before ticking. The verification runner (kernel shells via <code>ctx.shell</code>, reads test output via <code>ctx.fs</code>, or accepts a caller-supplied callback) defers to the plan. Failing verification <spec-rule>MUST</spec-rule> halt without writing the tick.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-012" priority="must">
+<p>The kernel <spec-rule>MUST</spec-rule> be unit-tested at <code>packages/core/test/implement.test.ts</code> with stub <code>ai</code> + stub <code>fs</code> (no process spawn, no real model call, no real fs write). The CLI subcommand <spec-rule>MUST</spec-rule> have an integration test under <code>packages/cli/test/</code> exercising task and inbox-card paths.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-013" priority="must">
+<p><code>commands/spectastic.implement.md</code> <spec-rule>MUST</spec-rule> be updated to (a) note the slash command <spec-rule level="may">MAY</spec-rule> shell out to <code>spectastic implement</code> for deterministic single-task execution (per <a href="../006-kernel-extraction/spec.html#FR-009">006 FR-009</a>), and (b) reference the drain-modes carve-out — the CLI does not yet support <code>--all</code> / <code>--phase=&lt;id&gt;</code> / <code>--parallel</code>; drain invocations stay on the markdown procedure.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-014" priority="must">
+<p>The <code>implementCommand</code> docblock <spec-rule>MUST</spec-rule> link to <code>commands/spectastic.implement.md</code> as the canonical procedure per <a href="../006-kernel-extraction/spec.html#FR-008">006 FR-008</a>. Markdown <spec-rule>MUST NOT</spec-rule> be auto-generated from the docblock.</p>
+</spec-requirement>
+
+<h3>Non-functional</h3>
+
+<spec-requirement id="NFR-001" priority="must">
+<p>The extraction <spec-rule>MUST NOT</spec-rule> regress any scenario in <code>bench/baselines.json</code> past its declared budget. Importing <code>@spectastic/core/commands/implement</code> <spec-rule>MUST NOT</spec-rule> eagerly load parse5, the Claude provider, or any other heavy dependency onto the CLI init path.</p>
+</spec-requirement>
+
+<h3>Out of scope (deferred to other slices)</h3>
+<details>
+<summary>Drain modes carved out to <code>TBD-core-implement-drain</code>; seven sibling kernel-verb extractions linked.</summary>
+<spec-out-of-scope>
+  <ul>
+    <li defer-to="TBD-core-implement-drain">Drain modes: <code>--all</code>, <code>--phase=&lt;id&gt;</code>, <code>--parallel</code>; parallel agent fan-out; phase resolution (<code>setup</code> / <code>foundation</code> / <code>us1</code> / <code>us2</code> / <code>us3</code> / <code>polish</code> → <code>&lt;section id="phase-…"&gt;</code>).</li>
+    <li defer-to="007-core-triage">Extract <code>/spectastic.triage</code> — pairs with this verb.</li>
+    <li defer-to="008-core-principles">Extract <code>/spectastic.principles</code>.</li>
+    <li defer-to="009-core-tasks">Extract <code>/spectastic.tasks</code>.</li>
+    <li defer-to="010-core-apply">Extract <code>/spectastic.apply</code>.</li>
+    <li defer-to="011-core-spec">Extract <code>/spectastic.spec</code>.</li>
+    <li defer-to="012-core-plan">Extract <code>/spectastic.plan</code>.</li>
+    <li defer-to="013-core-propose">Extract <code>/spectastic.propose</code>.</li>
+  </ul>
+</spec-out-of-scope>
+</details>
+</section>
+
+
+<section id="data">
+<h2>4 · Data model</h2>
+<details>
+<summary>Three types this slice owns: <code>ImplementInput</code>, <code>ImplementResult</code>, <code>TaskTickResult</code>. Reuses <code>KernelContext</code> and <code>AIProvider</code> from 006.</summary>
+
+<h3>Entities</h3>
+<dl>
+  <dt><code>ImplementInput</code></dt>
+  <dd>Fields: <code>target: string</code> — the single positional argument, matching one of: a task ID (<code>T-NNN</code>), an inbox card ID (<code>I-NNN</code>), or a spec ID (e.g. <code>014-core-implement</code>) which resolves to the next unchecked task in that spec's <code>tasks.html</code>. No flags in v1; drain-mode fields carved out to the sibling slice.</dd>
+
+  <dt><code>ImplementResult</code></dt>
+  <dd>Fields: <code>ticked: { kind: 'task' | 'just-do'; id: string }</code> (which item was ticked and its ID), <code>filesChanged: string[]</code> (every file the kernel wrote to, including the tasks.html or inbox.html and any work-product files), <code>verified: boolean</code> (did scoped verification pass), <code>flipPromptFired?: boolean</code> (was the bundled flip prompt surfaced — true on last-tick + Draft), <code>flipConfirmed?: boolean</code> (did the author confirm the flip — undefined when the prompt didn't fire).</dd>
+
+  <dt><code>TaskTickResult</code></dt>
+  <dd>Fields: <code>taskId: string</code>, <code>file: string</code> (absolute or workspace-relative path to the tasks.html that was modified), <code>remainingUnchecked: number</code> (count of unchecked <code>&lt;input type="checkbox"&gt;</code> elements still present after the tick — the predicate input for FR-008's bundled flip check). Used internally and surfaced for callers that want to render their own progress UI.</dd>
+</dl>
+
+<spec-note>
+<p>The kernel never owns the spec status pill's mutation autonomously — the bundled flip is gated on explicit author confirmation via <code>ctx.ai.ask&lt;T&gt;()</code>. On confirmation the kernel writes to all three siblings; on decline it writes nothing. The contract: one tick per invocation, one optional bundled flip per last-tick on Draft.</p>
+</spec-note>
+</details>
+</section>
+
+
+<section id="success">
+<h2>5 · Success criteria</h2>
+
+<p>Technology-agnostic, measurable outcomes.</p>
+
+<spec-requirement id="SC-001" priority="must">
+<p>For a representative single-task invocation against a fixture spec, the resulting <code>tasks.html</code> is byte-identical (modulo trivial whitespace normalisation) to the file produced by today's slash-command flow against the same inputs.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-002" priority="must">
+<p>A unit test drives the last-tick path with a Draft fixture, asserts <code>ctx.ai.ask&lt;T&gt;()</code> is called exactly once with a payload naming the three siblings, and verifies that on stub-confirmation all three pills are written and three matching <code>&lt;spec-changelog&gt;</code> entries land. The same test with a non-Draft fixture asserts the prompt does <em>not</em> fire.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-003" priority="must">
+<p>A test imports <code>implementCommand</code> from <code>@spectastic/core/commands/implement</code>, passes a stub <code>AIProvider</code> + stub <code>fs</code>, and asserts the returned <code>ImplementResult</code> shape matches expectations. No process spawn; no real model call; no real fs write.</p>
+</spec-requirement>
+</section>
+
+
+<section id="assumptions">
+<h2>6 · Assumptions</h2>
+<details>
+<summary>Two preconditions: 006's kernel scaffolding is shipped; the bundled flip prompt's UX renders acceptably in a CLI context via the same <code>ask&lt;T&gt;()</code> shape Claude Code uses.</summary>
+
+<spec-assumption>
+<p>006-kernel-extraction has shipped: <code>@spectastic/core</code> package exists with <code>KernelContext</code> + <code>AIProvider</code> interfaces, per-verb subpath exports are wired, and the bench scaffold gates regression. This slice extends the contract; it does not reinvent it.</p>
+</spec-assumption>
+
+<spec-assumption>
+<p>The bundled flip prompt's confirmation gesture rendered via <code>ctx.ai.ask&lt;T&gt;()</code> is acceptable UX in both the CLI (where the user sees terminal-rendered options) and the future MCP / VS Code consumers (where the caller renders the prompt in its own surface). The interface is shape-stable; the rendering is caller-side.</p>
+</spec-assumption>
+</details>
+</section>
+
+
+<section id="questions">
+<h2>7 · Open questions</h2>
+<spec-questions>
+<ol>
+</ol>
+</spec-questions>
+</section>
+
+
+<section id="conformance">
+<h2>8 · Conformance index</h2>
+<p>Auto-built from every <code>&lt;spec-requirement&gt;</code> in this document.</p>
+<spec-conformance></spec-conformance>
+</section>
+
+
+<section id="changelog">
+<h2>9 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-06-16">16 Jun 2026</time><span>Initial draft. Eighth verb extraction after 006. Scoped deliberately to single-task invocation: <code>spectastic implement &lt;T-NNN | I-NNN | spec-id&gt;</code>. Drain modes (<code>--all</code>, <code>--phase=&lt;id&gt;</code>, <code>--parallel</code>) and parallel agent fan-out carved out to <code>TBD-core-implement-drain</code>. Still ships the load-bearing pieces: estimability gate, task-tick, inbox just-do tick, verification, and the bundled flip prompt mandated by REQ-LIFECYCLE-005 (fires on last-tick + Draft only; via <code>ctx.ai.ask&lt;T&gt;()</code>; kernel never auto-flips; partial bundle flips forbidden). Adds <code>spectastic implement</code> CLI subcommand; updates <code>commands/spectastic.implement.md</code> with MAY-Bash-to-CLI note plus drain-modes carve-out reference.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  014-core-implement · Core implement · authored 16 Jun 2026 ·
+  <button data-theme-toggle style="background:none;border:none;color:var(--c-link);cursor:pointer;font:inherit;padding:0;border-bottom:1px solid currentColor;">toggle theme</button>
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>

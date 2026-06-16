@@ -1,0 +1,272 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Core apply · Specification</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Specification · 010-core-apply · <spec-parent specid="006-kernel-extraction"><a href="../006-kernel-extraction/spec.html">006-kernel-extraction</a></spec-parent></p>
+  <h1>Core apply — <code>applyCommand</code> in <code>@spectastic/core</code></h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    Extract <code>/spectastic.apply</code> from in-LLM markdown into a deterministic TypeScript kernel function. Apply and withdraw modes share one entry point; the slash command keeps the canonical procedure and gains a MAY-Bash-to-CLI note.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>      <span><spec-status value="draft">Draft</spec-status></span>
+    <b>Spec ID</b>     <span>010-core-apply</span>
+    <b>Owner</b>       <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Reviewers</b>   <span>—</span>
+    <b>Created</b>     <span><time datetime="2026-06-16">16 Jun 2026</time></span>
+    <b>Principles</b>  <span><a href="../../principles.html">v1.0.1</a></span>
+    <b>Smallest demoable</b><span><code>apply</code> extracted end-to-end (kernel + CLI subcommand + slash-command markdown updated): applying any existing <code>examples/changes/archive/&lt;slug&gt;/</code> proposal via <code>applyCommand</code> produces byte-identical resulting <code>spec.html</code> to today's slash-command flow; <code>pnpm bench</code> passes within budget; one new kernel-level unit test runs alongside the CLI integration suite.</span>
+    <b>Read time</b>   <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-budget words="1900" reqs="18" minutes="8"></spec-budget>
+
+  <spec-tldr>
+    <p>Today's <code>/spectastic.apply</code> is a markdown procedure the LLM executes step-by-step: verify preconditions, mutate the live spec for each <code>&lt;spec-delta&gt;</code>, move the folder, append the changelog. That works inside Claude Code but is invisible to Tier 2 MCP, Tier 3 VS Code, or any non-LLM consumer. This slice pulls the procedure into <code>@spectastic/core/commands/apply</code> as the second worked example after <a href="../006-kernel-extraction/spec.html">006</a>'s <code>validate</code>. Both <strong>apply mode</strong> and <strong>withdraw mode</strong> land together — they're variants of one lifecycle gesture and share a data model. The kernel owns the deterministic operations (HTML delta application, folder move, changelog append); the CLI owns shell concerns. HTML output is byte-stable.</p>
+  </spec-tldr>
+
+  <dl class="invest">
+    <dt><span class="letter">I</span> Independent</dt> <dd>Depends on <a href="../006-kernel-extraction/spec.html">006-kernel-extraction</a> (kernel contract). No sibling kernel slice depends on this one.</dd>
+    <dt><span class="letter">N</span> Negotiable</dt>  <dd>Specifies kernel contract and CLI surface. HTML traversal strategy (parse5 vs string replacement) defers to plan.</dd>
+    <dt><span class="letter">V</span> Valuable</dt>    <dd>Closes <code>defer-to="TBD-core-apply"</code> from 006 and gives downstream surfaces (MCP, VS Code) a programmatic apply they can call without spawning the CLI.</dd>
+    <dt><span class="letter">E</span> Estimable</dt>   <dd>Procedure already exists in markdown; extraction is translation, not design. Small data model. No open questions.</dd>
+    <dt><span class="letter">S</span> Small</dt>       <dd>One verb, two modes, one new kernel file plus a CLI subcommand, plus an updated slash-command markdown. ~18 requirements, ~1,800 words.</dd>
+    <dt><span class="letter">T</span> Testable</dt>    <dd>Kernel function unit-tested with stubbed <code>ctx.fs</code>; CLI integration-tested; byte-identity verified against the existing <code>examples/changes/archive/</code> corpus.</dd>
+  </dl>
+
+  <spec-audience-map>
+    <dl>
+      <dt>Exec / PM</dt>   <dd>§<a href="#context">Context</a>, §<a href="#scenarios">User scenarios</a>, §<a href="#success">Success criteria</a>.</dd>
+      <dt>Reviewer</dt>    <dd>§<a href="#requirements">Requirements</a>, §<a href="#data">Data model</a>, §<a href="#assumptions">Assumptions</a>.</dd>
+      <dt>Implementer</dt> <dd>§<a href="#requirements">Requirements</a>, §<a href="#data">Data model</a>, §<a href="#conformance">Conformance index</a>. The plan will carry HTML-manipulation ADRs.</dd>
+    </dl>
+  </spec-audience-map>
+</header>
+
+
+<section id="context">
+<h2>1 · Context</h2>
+<p>Today's <code>/spectastic.apply</code> is a markdown procedure at <code>commands/spectastic.apply.md</code> executed by the LLM in-process. It enforces the <a href="../../examples/spectastic-spec.html#REQ-CHANGE-001">REQ-CHANGE-001</a>..<a href="../../examples/spectastic-spec.html#REQ-CHANGE-005">005</a> contract (proposal-shaped folder, typed deltas, risk-register gate, dual-surface rejection workflow). Per <a href="../006-kernel-extraction/spec.html">006-kernel-extraction</a>, the eight slash-command verbs need a shared TypeScript kernel so future MCP, VS Code, and web-editor consumers don't re-implement each verb. This slice extracts <code>apply</code> — the most operationally-coupled deterministic verb (folder moves, multi-file mutations), a good test of whether the kernel contract holds for a verb that does real IO.</p>
+<p>Apply mode and withdraw mode land together: they're two paths through one lifecycle gesture and share preconditions, the changelog-append discipline, and the folder-move logic.</p>
+</section>
+
+
+<section id="scenarios">
+<h2>2 · User scenarios &amp; testing</h2>
+
+<p>Each story is independently testable: if you implemented only US1, you would still have a viable MVP.</p>
+
+<h3>US1 · Maintainer applies an approved proposal <spec-pill>P1</spec-pill></h3>
+<p>As a <strong>maintainer with an approved <code>changes/&lt;slug&gt;/proposal.html</code></strong>, I want to <strong>run <code>spectastic apply &lt;slug&gt;</code> and have deltas fold into the live spec, the folder move to <code>archive/</code>, and a changelog entry append</strong> so that <strong>the "approved → applied" gesture is one deterministic command.</strong></p>
+<p><em>Acceptance:</em> Running the new CLI subcommand on any existing <code>examples/changes/archive/&lt;slug&gt;/</code> proposal (apply temporarily reverted) reproduces the current archived state byte-for-byte.</p>
+
+<h3>US2 · Maintainer withdraws an authored proposal <spec-pill>P1</spec-pill></h3>
+<p>As a <strong>maintainer whose authored proposal is no longer the direction</strong>, I want to <strong>run <code>spectastic apply --withdraw &lt;slug&gt; --reason="…"</code></strong> so that <strong>the rejection is preserved as history per <a href="../../examples/spectastic-spec.html#REQ-CHANGE-005">REQ-CHANGE-005</a>'s Surface B.</strong></p>
+<p><em>Acceptance:</em> Running withdraw mode on a copy of <code>examples/changes/withdrawn/2026-06-13-implement-to-build/</code>'s pre-withdrawal state reproduces the current withdrawn state: status pill <code>withdrawn</code>, folder under <code>withdrawn/</code>, paired changelog entries on both the live spec and the moved proposal.</p>
+
+<h3>US3 · Downstream surface invokes apply programmatically <spec-pill>P2</spec-pill></h3>
+<p>As a <strong>future MCP server or VS Code extension author</strong>, I want to <strong>import <code>applyCommand</code> from <code>@spectastic/core/commands/apply</code> and call it with a stubbed <code>ctx.fs</code></strong> so that <strong>I can surface apply through a tool call without spawning the CLI.</strong></p>
+<p><em>Acceptance:</em> <code>packages/core/test/apply.test.ts</code> calls <code>applyCommand({ slug })</code> against an in-memory <code>ctx.fs</code> and receives an <code>ApplyResult</code> matching the expected live-spec string and folder layout. No process spawn.</p>
+
+<h3>Edge cases</h3>
+<details>
+<summary><strong>Five tracked failure modes apply handles</strong></summary>
+<ul>
+  <li><strong>Risk-register gate blocks apply</strong> — proposal carries a <code>&lt;spec-risk status="identified"&gt;</code>. Per <a href="../../examples/spectastic-spec.html#REQ-CHANGE-004">REQ-CHANGE-004</a>, apply refuses and lists offenders. The user transitions each to <code>accepted | mitigated | rejected</code> in the proposal, then retries.</li>
+  <li><strong>Delta target ID missing for MODIFY/REMOVE/RENAME</strong> — the live spec doesn't contain the ID the delta names. Apply stops; never guesses. Reported via <code>DeltaApplication.result = 'gate-blocked'</code>.</li>
+  <li><strong>HTML re-formatting drift</strong> — a naive parse5-roundtrip would re-pretty-print the live spec and produce a giant diff. The kernel uses targeted-mutation only: change the requirement block in place, leave surrounding whitespace and attribute order alone.</li>
+  <li><strong>Withdraw of an already-applied proposal</strong> — proposal status is <code>applied</code> or <code>withdrawn</code>. Withdraw refuses; lifecycle terminal states are one-way per <a href="../../examples/spectastic-spec.html#REQ-CHANGE-005">REQ-CHANGE-005</a>.</li>
+  <li><strong>Cross-spec drift on a renamed ID</strong> — a RENAME updates the ID and intra-spec cross-refs but a sibling spec also references the old ID. v1 flags this as an open question in the apply report rather than propagating silently; full handling deferred (see Out of scope).</li>
+</ul>
+</details>
+</section>
+
+
+<section id="requirements">
+<h2>3 · Requirements</h2>
+
+<p>Conformance keywords (<spec-rule>MUST</spec-rule>, <spec-rule level="should">SHOULD</spec-rule>, <spec-rule level="may">MAY</spec-rule>) follow RFC 2119.</p>
+
+<h3>Functional — the kernel function</h3>
+
+<spec-requirement id="FR-001" priority="must">
+<p>The <code>applyCommand</code> function <spec-rule>MUST</spec-rule> conform to the <code>KernelContext</code> shape defined in <a href="../006-kernel-extraction/spec.html#FR-007">006 FR-007</a>: signature <code>async function applyCommand(input: ApplyInput | WithdrawInput, ctx: KernelContext): Promise&lt;ApplyResult&gt;</code>; all IO through <code>ctx.fs</code>; no module-level side effects; no implicit <code>process.cwd()</code>, <code>process.env</code>, or <code>console</code> usage.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-002" priority="must">
+<p>The kernel function <spec-rule>MUST</spec-rule> be implemented at <code>packages/core/src/commands/apply.ts</code> with a subpath export <code>@spectastic/core/commands/apply</code> declared in the package's <code>exports</code> field, following the per-verb subpath pattern from <a href="../006-kernel-extraction/spec.html#FR-002">006 FR-002</a>. The umbrella entry <spec-rule>MUST NOT</spec-rule> eagerly load <code>apply.ts</code>.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-003" priority="must">
+<p><code>@spectastic/cli</code> <spec-rule>MUST</spec-rule> expose <code>spectastic apply &lt;slug&gt;</code> (apply mode) and <code>spectastic apply --withdraw &lt;slug&gt; --reason="&lt;one-line&gt;"</code> (withdraw mode), both importing <code>applyCommand</code> from <code>@spectastic/core/commands/apply</code>. The CLI owns arg parsing, stdout formatting, and exit-code translation; the kernel owns deterministic operations.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-004" priority="must">
+<p>Apply mode <spec-rule>MUST</spec-rule> implement the four delta operations per <a href="../../examples/spectastic-spec.html#REQ-CHANGE-002">REQ-CHANGE-002</a>: <code>added</code> inserts a new <code>&lt;spec-requirement&gt;</code> in its topic-group; <code>modified</code> replaces the body of the existing <code>id="…"</code> block; <code>removed</code> deletes the block; <code>renamed</code> updates the <code>id="…"</code> attribute and rewrites intra-spec cross-references to the old ID. Each operation <spec-rule>MUST</spec-rule> return a <code>DeltaApplication</code> entry naming the target, op, and result.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-005" priority="must">
+<p>Apply mode <spec-rule>MUST</spec-rule> move the change folder from <code>specs/&lt;spec-id&gt;/changes/&lt;slug&gt;/</code> to <code>specs/&lt;spec-id&gt;/changes/archive/&lt;slug&gt;/</code> after all deltas apply. The move <spec-rule>MUST</spec-rule> be atomic (one <code>rename</code> via <code>ctx.fs</code>); the date-prefixed folder name is preserved.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-006" priority="must">
+<p>Apply mode <spec-rule>MUST</spec-rule> append a <code>&lt;spec-changelog&gt;</code> entry to the live spec naming the archived proposal path with a one-line summary, flip the archived proposal's <code>&lt;spec-status&gt;</code> from <code>approved</code> to <code>applied</code>, and append a final entry to the proposal's own changelog recording the apply date. Markup shape follows <code>commands/spectastic.apply.md</code>'s Procedure steps 5 and 7.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-007" priority="must">
+<p>Withdraw mode <spec-rule>MUST</spec-rule> flip the proposal's <code>&lt;spec-status&gt;</code> to <code>withdrawn</code>, move the folder from <code>changes/&lt;slug&gt;/</code> to <code>changes/withdrawn/&lt;slug&gt;/</code> (sibling of <code>archive/</code>), append a "Considered <code>&lt;slug&gt;</code>, withdrew on <code>&lt;date&gt;</code> because <code>&lt;reason&gt;</code>." entry to the live spec's changelog, and append a paired entry to the moved proposal. Refuse if the folder already exists under <code>archive/</code> or <code>withdrawn/</code>.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-008" priority="must">
+<p>Apply mode <spec-rule>MUST</spec-rule> refuse if any <code>&lt;spec-risk&gt;</code> in the proposal's <code>&lt;spec-risk-log&gt;</code> carries <code>status="identified"</code>, per <a href="../../examples/spectastic-spec.html#REQ-CHANGE-004">REQ-CHANGE-004</a>, and <spec-rule>MUST</spec-rule> list offenders by <code>target=</code>. Apply <spec-rule>MUST NOT</spec-rule> re-run the heuristic, re-spawn the critic agent, or transition statuses — the status field is the user's commitment and apply reads it.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-009" priority="must">
+<p>Both modes <spec-rule>MUST</spec-rule> carry the <code>&lt;spec-risk-log&gt;</code> contents verbatim into the archived or withdrawn proposal. The kernel <spec-rule>MUST NOT</spec-rule> rewrite risk responses, statuses, or ordering during apply — the author's status calls are the artifact's record of how each risk was resolved.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-010" priority="must">
+<p>HTML manipulation <spec-rule>MUST</spec-rule> be deterministic and byte-stable. Targeted mutations only: locate the requirement, changelog, or status block by ID/anchor and replace only that block, preserving surrounding whitespace, attribute order, and formatting. Whole-document parse5 round-trips that re-pretty-print are not acceptable. Running the kernel twice on the same inputs <spec-rule>MUST</spec-rule> produce byte-identical output.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-011" priority="must">
+<p>All filesystem operations (reads, writes, folder rename) <spec-rule>MUST</spec-rule> flow through <code>ctx.fs</code>, never direct <code>node:fs</code>. Tests <spec-rule>MUST</spec-rule> exercise the function with an in-memory stub <code>ctx.fs</code>; no real filesystem IO at the unit-test layer.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-012" priority="must">
+<p>Unit tests at <code>packages/core/test/apply.test.ts</code> <spec-rule>MUST</spec-rule> cover apply mode, withdraw mode, the risk-register gate, each delta op, and the deterministic-output invariant. <code>@spectastic/cli</code>'s test suite <spec-rule>MUST</spec-rule> gain integration tests for both invocations against a temp-dir fixture.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-013" priority="must">
+<p><code>commands/spectastic.apply.md</code> <spec-rule>MUST</spec-rule> gain a note that the LLM <spec-rule level="may">MAY</spec-rule> invoke <code>spectastic apply &lt;slug&gt;</code> (or the withdraw form) via Bash for deterministic execution, but is not required to — the markdown procedure stays canonical per <a href="../006-kernel-extraction/spec.html#FR-009">006 FR-009</a>.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-014" priority="should">
+<p>The kernel function's docblock <spec-rule level="should">SHOULD</spec-rule> link to <code>commands/spectastic.apply.md</code> per <a href="../006-kernel-extraction/spec.html#FR-008">006 FR-008</a>. The markdown <spec-rule>MUST NOT</spec-rule> be auto-generated from the docblock in v1.</p>
+</spec-requirement>
+
+<h3>Non-functional</h3>
+
+<spec-requirement id="NFR-001" priority="must">
+<p>The extraction <spec-rule>MUST NOT</spec-rule> regress any scenario in <code>bench/baselines.json</code> past its declared budget. The <code>init-help-cold-start</code> scenario <spec-rule>MUST</spec-rule> stay within ±20% of its 52 ms CI baseline — the apply subpath must not eager-load parse5 onto the init path.</p>
+</spec-requirement>
+
+<h3>Out of scope (deferred to other slices)</h3>
+<spec-out-of-scope>
+  <ul>
+    <li defer-to="TBD-core-cross-spec">Cross-spec drift propagation when a RENAME updates an ID referenced from a sibling spec. v1 surfaces the drift as an open question in the apply report; full handling needs its own slice.</li>
+    <li defer-to="TBD-core-apply-conflicts">Conflict resolution between two concurrent proposals targeting the same requirement. The current procedure assumes one apply at a time; concurrent-apply detection is a separate problem.</li>
+    <li defer-to="TBD-core-triage">Extract <code>/spectastic.triage</code> — sibling kernel slice; exercises AI adapter on a low-stakes verb.</li>
+    <li defer-to="TBD-core-implement">Extract <code>/spectastic.implement</code> — sibling kernel slice; drain modes deserve their own scope.</li>
+    <li defer-to="TBD-core-spec">Extract <code>/spectastic.spec</code> — sibling kernel slice; tests <code>AIProvider.ask&lt;T&gt;()</code> end-to-end.</li>
+    <li defer-to="TBD-core-plan">Extract <code>/spectastic.plan</code> — sibling kernel slice; pairs with spec.</li>
+    <li defer-to="TBD-core-tasks">Extract <code>/spectastic.tasks</code> — sibling kernel slice; deterministic generation from spec + plan.</li>
+    <li defer-to="TBD-core-propose">Extract <code>/spectastic.propose</code> — sibling kernel slice; adversarial-pass spawn needs sub-agent semantics on <code>AIProvider</code>.</li>
+    <li defer-to="TBD-core-principles">Extract <code>/spectastic.principles</code> — sibling kernel slice; smallest of the slash verbs.</li>
+    <li defer-to="never">Auto-triggering <code>/spectastic.plan</code> or <code>/spectastic.tasks</code> from a large-change classification. Decided against by <a href="../../examples/spectastic-spec.html#REQ-CHANGE-003">REQ-CHANGE-003</a> — apply states the routing rule as guidance only.</li>
+  </ul>
+</spec-out-of-scope>
+</section>
+
+
+<section id="data">
+<h2>4 · Data model</h2>
+<details>
+<summary>Four types this slice owns: <code>ApplyInput</code>, <code>WithdrawInput</code>, <code>ApplyResult</code>, and <code>DeltaApplication</code>. <code>KernelContext</code> is reused from 006.</summary>
+
+<h3>Entities</h3>
+<dl>
+  <dt><code>ApplyInput</code></dt>
+  <dd><code>{ slug: string }</code>. The <code>&lt;YYYY-MM-DD&gt;-&lt;slug&gt;</code> folder name under <code>specs/&lt;spec-id&gt;/changes/</code>. Slug omitted at the CLI layer defaults to the most-recently-modified <code>approved</code> proposal — defaulting is the CLI's responsibility, not the kernel's.</dd>
+
+  <dt><code>WithdrawInput</code></dt>
+  <dd><code>{ slug: string, reason: string }</code>. Both required; empty <code>reason</code> is rejected at the kernel layer (not just the CLI), per <a href="../../examples/spectastic-spec.html#REQ-CHANGE-005">REQ-CHANGE-005</a>'s "refuses if <code>--reason</code> is empty" clause.</dd>
+
+  <dt><code>ApplyResult</code></dt>
+  <dd><code>{ liveSpec: string, archivedPath: string, deltasApplied: number, changelogEntry: string }</code>. Returned by both modes — in withdraw mode, <code>deltasApplied</code> is <code>0</code> and <code>archivedPath</code> points at the <code>withdrawn/</code> location. The CLI formats this into stdout; programmatic consumers read the fields directly.</dd>
+
+  <dt><code>DeltaApplication</code></dt>
+  <dd><code>{ target: string, op: 'added' | 'modified' | 'removed' | 'renamed', result: 'success' | 'gate-blocked', reason?: string }</code>. One entry per delta in apply mode. <code>gate-blocked</code> entries surface a non-empty <code>reason</code> (e.g. "target not found", "ID already exists"). The kernel halts on first gate-block; subsequent deltas are not attempted, so a returned <code>DeltaApplication[]</code> never contains a mix of <code>success</code> after <code>gate-blocked</code>.</dd>
+</dl>
+</details>
+</section>
+
+
+<section id="success">
+<h2>5 · Success criteria</h2>
+
+<p>Technology-agnostic, measurable outcomes.</p>
+
+<spec-requirement id="SC-001" priority="must">
+<p>For every proposal under <code>examples/changes/archive/</code> and <code>examples/changes/withdrawn/</code>, running the kernel against a pre-apply (or pre-withdraw) snapshot reproduces the current archived state byte-for-byte: same live spec, same folder location, same paired changelog entries. Byte-identity regression detector.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-002" priority="must">
+<p><code>pnpm bench</code> passes all scenarios on CI with p50 within budget. <code>init-help-cold-start</code> stays within ±20% of its 52 ms baseline — apply's HTML-manipulation path does not leak onto init.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-003" priority="must">
+<p>A test at <code>packages/core/test/apply.test.ts</code> imports <code>applyCommand</code> from <code>@spectastic/core/commands/apply</code>, calls both modes against an in-memory stub <code>ctx.fs</code>, and asserts on <code>ApplyResult</code>, <code>DeltaApplication[]</code>, and post-state filesystem. No process spawn. Existing CLI integration tests stay green.</p>
+</spec-requirement>
+</section>
+
+
+<section id="assumptions">
+<h2>6 · Assumptions</h2>
+<details>
+<summary>Two preconditions: 006 kernel package shape is shipped, and HTML targeted-mutation is feasible without a full parse5 round-trip.</summary>
+
+<spec-assumption>
+<p><a href="../006-kernel-extraction/spec.html">006-kernel-extraction</a> has shipped: <code>@spectastic/core</code> exists with the established workspace shape, subpath-export pattern, and <code>KernelContext</code> / <code>AIProvider</code> interfaces. This spec builds on that contract; without it, FR-001 and FR-002 have no foundation.</p>
+</spec-assumption>
+
+<spec-assumption>
+<p>Targeted HTML mutation (locate-by-ID, replace-block, preserve-surroundings) is implementable without a full parse5 round-trip that re-pretty-prints. The <code>id="…"</code> attribute on <code>&lt;spec-requirement&gt;</code>, the <code>&lt;spec-status&gt;</code> wrapper, and the <code>&lt;spec-changelog&gt;</code> block are all stable, anchorable elements. Implementation strategy (string-based block replacement vs surgical parse5 manipulation vs a hybrid) defers to the plan; this assumption is that <em>some</em> deterministic strategy exists.</p>
+</spec-assumption>
+</details>
+</section>
+
+
+<section id="questions">
+<h2>7 · Open questions</h2>
+<spec-questions>
+<ol>
+  <li>None at write time. Scope, mode coverage, kernel-vs-caller responsibility split, HTML-manipulation determinism requirement, and risk-register gate semantics were all anchored at intake. Anything that surfaces during plan or implementation goes back through <code>/spectastic.propose</code>.</li>
+</ol>
+</spec-questions>
+</section>
+
+
+<section id="conformance">
+<h2>8 · Conformance index</h2>
+<p>Auto-built from every <code>&lt;spec-requirement&gt;</code> in this document.</p>
+<spec-conformance></spec-conformance>
+</section>
+
+
+<section id="changelog">
+<h2>9 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-06-16">16 Jun 2026</time><span>Initial draft. Anchored decisions: both apply mode and withdraw mode in scope (variants of one gesture, share data model); kernel performs operations via <code>ctx.fs</code> rather than returning a PlanOfOperations (apply-and-archive is atomic per <a href="../../examples/spectastic-spec.html#REQ-CHANGE-001">REQ-CHANGE-001</a>); HTML manipulation must be deterministic and byte-stable (no random AST re-formatting); markdown procedure stays canonical, slash command gains MAY-Bash-to-CLI note. Eight sibling kernel-extraction slices reciprocally linked via <code>defer-to=</code>. Multi-session by design.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  010-core-apply · Core apply · authored 16 Jun 2026 ·
+  <button data-theme-toggle style="background:none;border:none;color:var(--c-link);cursor:pointer;font:inherit;padding:0;border-bottom:1px solid currentColor;">toggle theme</button>
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>

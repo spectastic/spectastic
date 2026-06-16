@@ -1,0 +1,232 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Core · principles verb · Specification</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Specification · 008-core-principles · <spec-parent specid="006-kernel-extraction"><a href="../006-kernel-extraction/spec.html">Kernel extraction</a></spec-parent></p>
+  <h1>Core · <code>principles</code> verb extracted into <code>@spectastic/core</code></h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    Lift the <code>/spectastic.principles</code> procedure into the kernel so any future surface (MCP, VS Code, web editor) can author a fresh principles document by calling one async function.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>      <span><spec-status value="draft">Draft</spec-status></span>
+    <b>Spec ID</b>     <span>008-core-principles</span>
+    <b>Owner</b>       <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Reviewers</b>   <span>—</span>
+    <b>Created</b>     <span><time datetime="2026-06-16">16 Jun 2026</time></span>
+    <b>Principles</b>  <span><a href="../../principles.html">v1.0.1</a></span>
+    <b>Smallest demoable</b><span>The <code>principles</code> verb extracted end-to-end: <code>@spectastic/core/commands/principles</code> exports <code>principlesCommand()</code>; <code>@spectastic/cli</code>'s <code>principles</code> subcommand imports from core; <code>commands/spectastic.principles.md</code> notes the optional Bash escape; bench passes within budget; output is byte-identical to today's slash-command flow on a clean fixture.</span>
+    <b>Read time</b>   <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-budget words="1400" reqs="14" minutes="6"></spec-budget>
+
+  <spec-tldr>
+    <p>The <code>/spectastic.principles</code> procedure lives only as markdown the LLM reads at invocation; no TypeScript code exists for it. This slice extracts it as the first AI-touching verb to follow the <a href="../006-kernel-extraction/spec.html">006</a> pattern. Scope is deliberately narrow: <strong>fresh-generation only</strong> — amendments stay in <code>/spectastic.propose</code>. Adds <code>principlesCommand()</code> at <code>packages/core/src/commands/principles.ts</code>, a <code>spectastic principles</code> CLI subcommand, kernel + CLI tests, and a one-line note in the slash-command markdown that the Bash escape is available. Near-pure template generation; the smallest of the seven slash verbs and the right next worked example after <code>validate</code>.</p>
+  </spec-tldr>
+
+  <dl class="invest">
+    <dt><span class="letter">I</span> Independent</dt> <dd>Depends on <a href="../006-kernel-extraction/spec.html">006</a> (kernel package, <code>KernelContext</code>, <code>AIProvider</code>) and <a href="../../principles.html">principles v1.0.1</a>. Sibling extractions (<a href="../007-core-triage/spec.html">007</a>, <a href="../009-core-tasks/spec.html">009</a>–<a href="../014-core-implement/spec.html">014</a>) proceed in parallel.</dd>
+    <dt><span class="letter">N</span> Negotiable</dt>  <dd>Specifies the function contract, the CLI subcommand surface, and the test layers. Template-loading approach and prompt phrasing defer to the plan.</dd>
+    <dt><span class="letter">V</span> Valuable</dt>    <dd>Unlocks <a href="#SC-001">SC-001</a> — a fresh <code>principles.html</code> can be authored from any surface without the slash command.</dd>
+    <dt><span class="letter">E</span> Estimable</dt>   <dd>All decisions inherit from 006 + the propose-time interview (fresh-generation only, CLI subcommand, MAY-Bash note). No <code>&lt;spec-question&gt;</code> open.</dd>
+    <dt><span class="letter">S</span> Small</dt>       <dd>Under 1,400 words; under 14 requirements. One verb, one CLI subcommand, one markdown touch.</dd>
+    <dt><span class="letter">T</span> Testable</dt>    <dd>Every requirement observable: subpath import resolves, CLI runs, byte-identical fixture output, bench within budget. <a href="#SC-001">SC-001</a>..<a href="#SC-003">SC-003</a> name the observations.</dd>
+  </dl>
+
+  <spec-audience-map>
+    <dl>
+      <dt>Exec / PM</dt>   <dd>§<a href="#context">Context</a>, §<a href="#scenarios">User scenarios</a>, §<a href="#success">Success criteria</a>.</dd>
+      <dt>Reviewer</dt>    <dd>§<a href="#requirements">Requirements</a>, §<a href="#data">Data model</a>, §<a href="#assumptions">Assumptions</a>.</dd>
+      <dt>Implementer</dt> <dd>§<a href="#requirements">Requirements</a>, §<a href="#data">Data model</a>, §<a href="#conformance">Conformance index</a>. The plan (<code>plan.html</code>) will carry the ADRs.</dd>
+    </dl>
+  </spec-audience-map>
+</header>
+
+
+<section id="context">
+<h2>1 · Context</h2>
+<p>Today's <code>/spectastic.principles</code> verb is an LLM-executed procedure in <a href="../../commands/spectastic.principles.md"><code>commands/spectastic.principles.md</code></a>: copy <code>templates/principles.html</code>, interview the user for project name + 3–5 principles + governance, fill the template, write the file. No TypeScript exists; future surfaces (MCP, VS Code, web editor) cannot reach the verb without re-implementing it.</p>
+<p><a href="../006-kernel-extraction/spec.html">006</a> established the architecture (per-verb subpaths, <code>async function …Command(input, ctx)</code>, injected <code>KernelContext</code> with optional <code>ai</code>, markdown canonical, slash commands MAY call kernel via Bash). <code>principles</code> is the natural next slice: smallest slash verb, near-pure template generation, exercises <code>AIProvider</code> on a low-stakes verb whose worst failure mode is a re-run.</p>
+</section>
+
+
+<section id="scenarios">
+<h2>2 · User scenarios &amp; testing</h2>
+
+<p>Each story is independently testable: if you implemented only US1, you would still have a viable MVP that proves the shape.</p>
+
+<h3>US1 · Maintainer authors fresh principles via the CLI <spec-pill>P1</spec-pill></h3>
+<p>As a <strong>maintainer setting up spectastic in a new repo</strong>, I want to <strong>run <code>spectastic principles</code> and get the same interview-driven <code>principles.html</code> the slash command produces</strong> so that <strong>the verb is reachable without Claude Code (scripting, non-Claude environments).</strong></p>
+<p><em>Acceptance:</em> Running <code>spectastic principles</code> in a clean directory with a stubbed <code>AIProvider</code> returning canned answers produces a <code>principles.html</code> byte-identical (modulo trivial whitespace) to today's slash-command flow on the same inputs. Exit code <code>0</code> on success, <code>2</code> on usage error.</p>
+
+<h3>US2 · Downstream surface invokes the kernel programmatically <spec-pill>P2</spec-pill></h3>
+<p>As a <strong>future MCP / VS Code author</strong>, I want to <strong>import <code>principlesCommand</code> from <code>@spectastic/core/commands/principles</code> with a custom <code>AIProvider</code></strong> so that <strong>the surface drives principles authoring without spawning a CLI.</strong></p>
+<p><em>Acceptance:</em> A test under <code>packages/core/test/principles.test.ts</code> calls <code>principlesCommand(input, ctx)</code> with a stub <code>ctx.ai</code>, asserts on the returned <code>{ html, principlesCount }</code>, spawns no process, resolves well under 100 ms with a synchronous stub.</p>
+
+<h3>Edge cases</h3>
+<details>
+<summary><strong>Three tracked failure modes the extraction handles</strong></summary>
+<ul>
+  <li><strong>Caller passes no <code>ctx.ai</code></strong> — the function rejects with a typed error rather than reading from globals. Verbs that require AI must declare it; deterministic verbs (<code>validate</code>) leave the field optional.</li>
+  <li><strong>Interview returns fewer than 3 or more than 5 principles</strong> — the procedure clamps and surfaces a warning in the result; behaviour matches today's slash-command guidance ("3–5 core principles").</li>
+  <li><strong>Template path drift</strong> — kernel locates <code>templates/principles.html</code> via <code>ctx.cwd</code> + relative resolution (no <code>process.cwd()</code> reads). If the template is missing, the function rejects with a typed error pointing the caller at the missing path.</li>
+</ul>
+</details>
+</section>
+
+
+<section id="requirements">
+<h2>3 · Requirements</h2>
+
+<p>Conformance keywords (<spec-rule>MUST</spec-rule>, <spec-rule level="should">SHOULD</spec-rule>, <spec-rule level="may">MAY</spec-rule>) follow RFC 2119.</p>
+
+<h3>Functional</h3>
+
+<spec-requirement id="FR-001" priority="must">
+<p><code>principlesCommand</code> <spec-rule>MUST</spec-rule> conform to <a href="../006-kernel-extraction/spec.html#FR-007">006 FR-007</a>: signature <code>async function principlesCommand(input: PrinciplesInput, ctx: KernelContext): Promise&lt;PrinciplesResult&gt;</code>, no module-level side effects, no implicit <code>process.cwd()</code> / <code>process.env</code> reads, all IO via <code>ctx.fs</code>, all AI access via <code>ctx.ai</code>.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-002" priority="must">
+<p>The implementation <spec-rule>MUST</spec-rule> live at <code>packages/core/src/commands/principles.ts</code> and be exported via the per-verb subpath <code>@spectastic/core/commands/principles</code> per <a href="../006-kernel-extraction/spec.html#FR-002">006 FR-002</a>. It <spec-rule>MUST NOT</spec-rule> be re-exported from the package's main entry.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-003" priority="must">
+<p><code>@spectastic/cli</code> <spec-rule>MUST</spec-rule> expose a <code>spectastic principles</code> subcommand that imports <code>principlesCommand</code> from <code>@spectastic/core/commands/principles</code>. The subcommand owns shell-side concerns (argv, interview prompt UX, stdout/stderr, exit codes: <code>0</code> success, <code>2</code> usage error); the kernel owns the deterministic core (template fill, ID assignment, HTML assembly).</p>
+</spec-requirement>
+
+<spec-requirement id="FR-004" priority="must">
+<p>v1 scope <spec-rule>MUST</spec-rule> be <strong>fresh-generation only</strong>. Amendments (version bumps, principle add/remove/reword, sync impact report) stay in <code>/spectastic.propose</code> against <code>principles.html</code> and are explicitly out of this slice. The kernel function <spec-rule>MUST</spec-rule> reject (typed error) if a <code>principles.html</code> already exists at the resolved output path.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-005" priority="must">
+<p>The kernel function <spec-rule>MUST</spec-rule> be unit-tested at <code>packages/core/test/principles.test.ts</code> as a pure function (stub <code>ctx.ai</code> + <code>ctx.fs</code>, no real IO, no process spawn) <em>and</em> the CLI subcommand <spec-rule>MUST</spec-rule> be integration-tested at <code>packages/cli/test/cli.test.ts</code> (process spawn, stubbed AI, byte-identical output assertion). Both layers per <a href="../006-kernel-extraction/spec.html#FR-010">006 FR-010</a>.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-006" priority="must">
+<p><a href="../../commands/spectastic.principles.md"><code>commands/spectastic.principles.md</code></a> <spec-rule>MUST</spec-rule> be updated with a one-paragraph note that for deterministic operations the LLM <spec-rule level="may">MAY</spec-rule> invoke <code>spectastic principles</code> via Bash. The markdown remains canonical; the kernel is an alternate path. Slash-command behaviour <spec-rule>MUST NOT</spec-rule> regress.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-007" priority="must">
+<p><code>principlesCommand</code>'s docblock <spec-rule>MUST</spec-rule> link to <code>commands/spectastic.principles.md</code> as the canonical procedure per <a href="../006-kernel-extraction/spec.html#FR-008">006 FR-008</a>. The markdown <spec-rule>MUST NOT</spec-rule> be auto-generated in v1.</p>
+</spec-requirement>
+
+<h3>Non-functional</h3>
+
+<spec-requirement id="NFR-001" priority="must">
+<p>The extraction <spec-rule>MUST NOT</spec-rule> regress any <code>bench/baselines.json</code> scenario past budget. The <code>init-help-cold-start</code> scenario (150 ms) <spec-rule>MUST</spec-rule> stay green — the new subcommand <spec-rule>MUST NOT</spec-rule> land on the cold-start path via eager imports.</p>
+</spec-requirement>
+
+<h3>Out of scope (deferred to other slices)</h3>
+<spec-out-of-scope>
+  <ul>
+    <li defer-to="never">Amendments to an existing <code>principles.html</code> (version bumps, principle add/remove/reword, sync impact report). Stays in <code>/spectastic.propose</code>; explicitly not a kernel verb in v1.</li>
+    <li defer-to="never">Multi-version history tracking inside the kernel. Today's changelog discipline in the artifact itself is sufficient.</li>
+    <li defer-to="never">Cross-project principles import / inheritance. Not a use case the lifecycle has surfaced.</li>
+    <li defer-to="007-core-triage">Extract <code>/spectastic.triage</code> — the parallel sibling slice for the triage verb.</li>
+    <li defer-to="009-core-tasks">Extract <code>/spectastic.tasks</code> — deterministic generation from spec + plan.</li>
+    <li defer-to="010-core-apply">Extract <code>/spectastic.apply</code> — mostly deterministic (deltas, archive, changelog).</li>
+    <li defer-to="011-core-spec">Extract <code>/spectastic.spec</code> — exercises <code>AIProvider.ask&lt;T&gt;()</code> end-to-end.</li>
+    <li defer-to="012-core-plan">Extract <code>/spectastic.plan</code> — pairs with spec.</li>
+    <li defer-to="013-core-propose">Extract <code>/spectastic.propose</code> — adversarial-pass spawn needs sub-agent semantics on <code>AIProvider</code>.</li>
+    <li defer-to="014-core-implement">Extract <code>/spectastic.implement</code> — drain modes deserve their own slice.</li>
+  </ul>
+</spec-out-of-scope>
+</section>
+
+
+<section id="data">
+<h2>4 · Data model</h2>
+<details>
+<summary>Two types this slice owns: <code>PrinciplesInput</code> (caller-supplied seeds) and <code>PrinciplesResult</code> (the rendered HTML + count). The kernel renders the string; the caller decides where to write it.</summary>
+
+<h3>Entities</h3>
+<dl>
+  <dt><code>PrinciplesInput</code></dt>
+  <dd>Fields: <code>projectName?: string</code> (if omitted, the function prompts via <code>ctx.ai</code>); <code>principlesCount?: number</code> (target count for the interview, clamped to 3–5 to match today's guidance). All fields optional; the kernel function fills gaps by interviewing through <code>ctx.ai</code>.</dd>
+
+  <dt><code>PrinciplesResult</code></dt>
+  <dd>Fields: <code>html: string</code> (the rendered <code>principles.html</code> content, ready to write); <code>principlesCount: number</code> (the actual number of <code>P-N</code> blocks emitted). The kernel does not write the file; the caller (CLI subcommand or downstream surface) decides the output path and performs the write. This keeps the kernel pure and lets downstream surfaces (preview UIs, MCP) consume the rendered HTML without committing to a filesystem.</dd>
+</dl>
+</details>
+</section>
+
+
+<section id="success">
+<h2>5 · Success criteria</h2>
+
+<p>Technology-agnostic, measurable outcomes.</p>
+
+<spec-requirement id="SC-001" priority="must">
+<p>Given a stubbed <code>AIProvider</code> returning canned answers (project name + 3 principles + governance), <code>principlesCommand</code> returns a <code>PrinciplesResult</code> whose <code>html</code> is byte-identical (modulo trivial whitespace) to the file today's slash command produces on the same inputs.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-002" priority="must">
+<p><code>packages/core/test/principles.test.ts</code> imports <code>principlesCommand</code> from the subpath, calls it with stub <code>ctx.fs</code> + <code>ctx.ai</code>, asserts on the returned shape without spawning any process. <code>packages/cli/test/cli.test.ts</code> spawns <code>spectastic principles</code>, feeds canned answers, asserts the resulting file matches the kernel's output.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-003" priority="must">
+<p><code>pnpm bench</code> passes all scenarios within their <code>bench/baselines.json</code> budgets. The <code>init-help-cold-start</code> p50 stays within ±20% of today's baseline — adding the subcommand <spec-rule>MUST NOT</spec-rule> grow cold-start time.</p>
+</spec-requirement>
+</section>
+
+
+<section id="assumptions">
+<h2>6 · Assumptions</h2>
+<details>
+<summary>Two preconditions: 006's kernel package shape is in place, and the AI-stubbing pattern is conventional for the test stack.</summary>
+
+<spec-assumption>
+<p><a href="../006-kernel-extraction/spec.html">006-kernel-extraction</a> has shipped <code>packages/core/</code> with the <code>KernelContext</code> and <code>AIProvider</code> interfaces, per-verb subpath exports, and tsup multi-entry build. This slice adds one verb on top of that foundation; it does not re-derive the architecture.</p>
+</spec-assumption>
+
+<spec-assumption>
+<p>Stubbing <code>ctx.ai</code> in vitest with canned responses is straightforward for a verb that uses <code>ai.chat()</code> and <code>ai.ask&lt;T&gt;()</code> for bounded-choice questions. The Claude implementation that lands with <a href="../007-core-triage/spec.html">007-core-triage</a> will follow the same interface, so this slice's stub pattern transfers.</p>
+</spec-assumption>
+</details>
+</section>
+
+
+<section id="questions">
+<h2>7 · Open questions</h2>
+<spec-questions>
+<ol>
+  <li>None at write time. All decisions inherit from <a href="../006-kernel-extraction/spec.html">006-kernel-extraction</a> + the propose-time interview for this slice (fresh-generation-only scope, CLI subcommand surface, MAY-Bash note added to the slash-command markdown). Anything that surfaces during plan / implementation goes back through <code>/spectastic.propose</code>.</li>
+</ol>
+</spec-questions>
+</section>
+
+
+<section id="conformance">
+<h2>8 · Conformance index</h2>
+<p>Auto-built from every <code>&lt;spec-requirement&gt;</code> in this document.</p>
+<spec-conformance></spec-conformance>
+</section>
+
+
+<section id="changelog">
+<h2>9 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-06-16">16 Jun 2026</time><span>Initial draft. Decisions inherit from <a href="../006-kernel-extraction/spec.html">006</a> (architecture, function shape, context, subpath exports, markdown canonical, MAY-Bash, two test layers, pre-1.0 versioning). Slice-specific decisions: scope is fresh-generation only (amendments stay in <code>/spectastic.propose</code>); CLI gains a <code>spectastic principles</code> subcommand; slash-command markdown gains a MAY-Bash-to-CLI note; budget set tight because <code>principles</code> is the smallest of the slash verbs.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  008-core-principles · Core · <code>principles</code> verb · authored 16 Jun 2026 ·
+  <button data-theme-toggle style="background:none;border:none;color:var(--c-link);cursor:pointer;font:inherit;padding:0;border-bottom:1px solid currentColor;">toggle theme</button>
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>

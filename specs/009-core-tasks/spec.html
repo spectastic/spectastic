@@ -1,0 +1,268 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Core tasks verb · Specification</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Specification · 009-core-tasks <spec-parent specid="006-kernel-extraction"><a href="../006-kernel-extraction/spec.html">Kernel extraction</a></spec-parent></p>
+  <h1>Core <code>tasks</code> verb — derive the breakdown from spec + plan in the kernel</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    Extract <code>/spectastic.tasks</code> into <code>@spectastic/core/commands/tasks</code>. Light AI for task descriptions; deterministic IDs and phase structure; the slash command keeps working unchanged.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>      <span><spec-status value="draft">Draft</spec-status></span>
+    <b>Spec ID</b>     <span>009-core-tasks</span>
+    <b>Owner</b>       <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Reviewers</b>   <span>—</span>
+    <b>Created</b>     <span><time datetime="2026-06-16">16 Jun 2026</time></span>
+    <b>Principles</b>  <span><a href="../../principles.html">v1.0.1</a></span>
+    <b>Smallest demoable</b><span>The <code>tasks</code> verb extracted end-to-end: <code>@spectastic/core/commands/tasks</code> exports <code>tasksCommand()</code>; <code>@spectastic/cli</code> gains a <code>tasks &lt;spec-id&gt;</code> subcommand that imports from core; <code>commands/spectastic.tasks.md</code> gets a MAY-Bash note; bench stays within budget; task structure is byte-identical to today's slash-command flow on the same spec + plan inputs.</span>
+    <b>Read time</b>   <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-budget words="1700" reqs="16" minutes="7"></spec-budget>
+
+  <spec-tldr>
+    <p>The <code>tasks</code> verb is markdown executed by the LLM in-process — no shared kernel for future MCP or VS Code surfaces to reuse. This slice extracts it under the kernel pattern. The kernel takes <code>spec.html</code> + <code>plan.html</code> paths through <code>ctx.fs</code>, parses with <code>@spectastic/schema</code>, asks <code>ctx.ai.chat()</code> only for task descriptions, and returns a structured five-phase <code>TasksResult</code>; IDs and phase boundaries stay deterministic. The CLI subcommand writes <code>tasks.html</code> to disk. The slash command stays canonical with a MAY-Bash note.</p>
+  </spec-tldr>
+
+  <dl class="invest">
+    <dt><span class="letter">I</span> Independent</dt> <dd>Depends on <a href="../006-kernel-extraction/spec.html">006-kernel-extraction</a> and on <code>templates/tasks.html</code>. No sibling slice blocks on it.</dd>
+    <dt><span class="letter">N</span> Negotiable</dt>  <dd>Contracts the IO shape and the five-phase structure. The <code>ctx.ai.chat()</code> prompt, HTML serialisation, and CLI flag surface defer to the plan.</dd>
+    <dt><span class="letter">V</span> Valuable</dt>    <dd>Unlocks <a href="#SC-001">SC-001</a> — downstream surfaces call <code>tasksCommand</code> and render the breakdown without spawning the CLI process.</dd>
+    <dt><span class="letter">E</span> Estimable</dt>   <dd>Parent-slice decisions apply unchanged. Verb-specific decisions (paths via <code>ctx.fs</code>, light AI, structured return) are anchored in §3.</dd>
+    <dt><span class="letter">S</span> Small</dt>       <dd>One new verb, one new CLI subcommand, one markdown update. ~16 requirements, ~1,700 words.</dd>
+    <dt><span class="letter">T</span> Testable</dt>    <dd>Kernel unit tests against in-memory fixtures; CLI integration test against <code>002-validate-cli</code>; bench passes; byte-identical phase / ID structure on the same inputs.</dd>
+  </dl>
+
+  <spec-audience-map>
+    <dl>
+      <dt>Exec / PM</dt>   <dd>§<a href="#context">Context</a>, §<a href="#scenarios">User scenarios</a>, §<a href="#success">Success criteria</a>.</dd>
+      <dt>Reviewer</dt>    <dd>§<a href="#requirements">Requirements</a>, §<a href="#data">Data model</a>, §<a href="#assumptions">Assumptions</a>.</dd>
+      <dt>Implementer</dt> <dd>§<a href="#requirements">Requirements</a>, §<a href="#data">Data model</a>, §<a href="#conformance">Conformance index</a>. The plan will carry the prompt-engineering and template-rendering ADRs.</dd>
+    </dl>
+  </spec-audience-map>
+</header>
+
+
+<section id="context">
+<h2>1 · Context</h2>
+<p>Today's <code>/spectastic.tasks</code> is a markdown procedure (<a href="../../commands/spectastic.tasks.md">commands/spectastic.tasks.md</a>) the LLM executes in-process: read <code>spec.html</code> + <code>plan.html</code>, copy <code>templates/tasks.html</code>, generate the five phases (Setup / Foundational / US1..US3 / Polish), check every FR / SC is referenced by at least one task. Works in Claude Code; doesn't reach Tier 2 MCP, Tier 3 VS Code, or Tier 6 web editor — each would re-implement the procedure.</p>
+<p>This slice extracts the verb under the kernel pattern fixed in <a href="../006-kernel-extraction/spec.html">006-kernel-extraction</a>. The verb takes spec + plan paths through <code>ctx.fs</code> (not raw strings, not pre-parsed ASTs), uses <code>ctx.ai.chat()</code> only for task-description prose, and keeps IDs, phase boundaries, and traceability deterministic in code.</p>
+</section>
+
+
+<section id="scenarios">
+<h2>2 · User scenarios &amp; testing</h2>
+
+<p>Each story is independently testable: if you implemented only US1, you would still have a viable MVP that proves the kernel + CLI seam.</p>
+
+<h3>US1 · Maintainer runs the CLI subcommand <spec-pill>P1</spec-pill></h3>
+<p>As a <strong>maintainer drafting a new spec</strong>, I want to <strong>run <code>spectastic tasks &lt;spec-id&gt;</code> and get a populated <code>tasks.html</code></strong> so that <strong>I don't have to round-trip through the slash command for routine breakdowns.</strong></p>
+<p><em>Acceptance:</em> Running <code>node packages/cli/dist/index.js tasks 002-validate-cli</code> writes a <code>tasks.html</code> with the same five phases and task-ID ranges (T-001+, T-010+, T-1NN/T-2NN/T-3NN, T-900+) as the existing file. Exit <code>0</code> on success; non-zero with a human-readable error when spec or plan is missing.</p>
+
+<h3>US2 · Slash command keeps working unchanged <spec-pill>P1</spec-pill></h3>
+<p>As a <strong>contributor invoking <code>/spectastic.tasks</code></strong>, I want to <strong>see no behavioural change</strong> so that <strong>muscle memory keeps working and the markdown stays the source of truth.</strong></p>
+<p><em>Acceptance:</em> <code>/spectastic.tasks 002-validate-cli</code> produces a tasks file functionally equivalent to today's output. The markdown gains a MAY-tier note saying the LLM may invoke <code>spectastic tasks</code> via Bash for the deterministic skeleton.</p>
+
+<h3>US3 · Downstream surface imports the kernel directly <spec-pill>P2</spec-pill></h3>
+<p>As a <strong>future MCP server or VS Code extension author</strong>, I want to <strong>import <code>tasksCommand</code> from <code>@spectastic/core/commands/tasks</code> and render the returned phases in-editor</strong> so that <strong>I get the structured breakdown without writing HTML to disk or spawning the CLI process.</strong></p>
+<p><em>Acceptance:</em> A test under <code>packages/core/test/</code> calls <code>tasksCommand({ specPath, planPath }, ctx)</code> with stub <code>ctx.fs</code> + <code>ctx.ai</code> and receives a <code>TasksResult</code> with the five phases populated, every FR/SC referenced, and the same task-ID structure the CLI produces.</p>
+
+<h3>Edge cases</h3>
+<details>
+<summary><strong>Four tracked failure modes the extraction handles</strong></summary>
+<ul>
+  <li><strong>Missing plan.html</strong> — the kernel surfaces a typed error (not a thrown string) so the CLI can print a friendly message and exit with code 2.</li>
+  <li><strong>AI provider unavailable</strong> — if <code>ctx.ai</code> is <code>undefined</code> or its <code>chat()</code> rejects, the kernel still returns the deterministic skeleton with placeholder descriptions and a warning surfaced on <code>TasksResult</code>. The CLI translates the warning to stderr.</li>
+  <li><strong>Spec with no user stories</strong> — the kernel emits Phase 1, Phase 2, Phase 4 only; phase 3 is empty. The traceability check still runs against FR/SC in the spec.</li>
+  <li><strong>Requirement with no covering task</strong> — the kernel surfaces it as a <code>&lt;spec-warning&gt;</code> in the rendered HTML, matching today's slash-command behaviour. Not a fatal error.</li>
+</ul>
+</details>
+</section>
+
+
+<section id="requirements">
+<h2>3 · Requirements</h2>
+
+<p>Conformance keywords (<spec-rule>MUST</spec-rule>, <spec-rule level="should">SHOULD</spec-rule>, <spec-rule level="may">MAY</spec-rule>) follow RFC 2119.</p>
+
+<h3>Functional — the kernel verb</h3>
+
+<spec-requirement id="FR-001" priority="must">
+<p>The <code>tasks</code> verb <spec-rule>MUST</spec-rule> conform to <a href="../006-kernel-extraction/spec.html">006</a>'s <code>KernelContext</code> shape: single async function, no module-level side effects, all IO + AI access flow through <code>ctx</code>, no implicit <code>process.cwd()</code> / <code>process.env</code> / <code>console</code> usage.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-002" priority="must">
+<p><code>tasksCommand</code> <spec-rule>MUST</spec-rule> be implemented at <code>packages/core/src/commands/tasks.ts</code> and exported on its own subpath (<code>@spectastic/core/commands/tasks</code>) per the lazy-loading discipline in <a href="../006-kernel-extraction/spec.html#FR-002">006 FR-002</a>. The package main entry <spec-rule>MUST NOT</spec-rule> eagerly load it.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-003" priority="must">
+<p><code>@spectastic/cli</code> <spec-rule>MUST</spec-rule> gain a <code>tasks &lt;spec-id&gt;</code> subcommand that resolves <code>specs/&lt;spec-id&gt;/spec.html</code> and <code>specs/&lt;spec-id&gt;/plan.html</code>, calls <code>tasksCommand</code>, and writes the returned HTML to <code>specs/&lt;spec-id&gt;/tasks.html</code>. The subcommand owns shell-side concerns (path resolution, file writes, stderr formatting); the kernel owns the deterministic core.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-004" priority="must">
+<p>The kernel <spec-rule>MUST</spec-rule> take spec + plan as filesystem paths via <code>ctx.fs</code>, not as raw content strings and not as pre-parsed ASTs. Reading and parsing happen inside the kernel using <code>@spectastic/schema</code>'s parser, so consumers don't need to pre-process inputs.</p>
+<details><summary>Rationale</summary><p>Paths-through-<code>ctx.fs</code> matches the kernel pattern's IO injection rule and keeps the in-memory test path open (stub <code>ctx.fs</code> returns fixture strings). Raw content strings would force every consumer to read the disk themselves; pre-parsed ASTs would couple the consumer to <code>@spectastic/schema</code>'s internal types.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-005" priority="must">
+<p>The generated tasks file <spec-rule>MUST</spec-rule> contain the five canonical phases — Setup (T-001+), Foundational (T-010+), US1 (T-100+), US2 (T-200+), US3 (T-300+), Polish (T-900+) — per the discipline in <a href="../../commands/spectastic.tasks.md">commands/spectastic.tasks.md</a>. Phase boundaries and ID ranges are computed deterministically in code, not delegated to the LLM.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-006" priority="must">
+<p>The kernel <spec-rule>MUST</spec-rule> use <code>ctx.ai.chat()</code> only for generating human-readable task descriptions (the imperative one-liner and target file path per task). Task IDs, phase assignment, parallel markers, and the requirement-traceability cross-reference <spec-rule>MUST</spec-rule> be computed deterministically — they are stable across runs on the same inputs.</p>
+<details><summary>Rationale</summary><p>Light AI usage keeps the verb fast and reproducible. The LLM is good at framing imperative task titles from requirement prose; it is bad at maintaining stable IDs across re-runs. Splitting the responsibilities lets the bench p50 stay tight and lets traceability stay exact.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-007" priority="must">
+<p>The kernel <spec-rule>MUST</spec-rule> return a structured <code>TasksResult</code> (see §4) containing the rendered HTML string plus the phase data. The caller (CLI today; MCP / editor tomorrow) decides whether to write the HTML to disk, render the phase data in a UI, or both.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-008" priority="must">
+<p>Every <code>FR-NNN</code>, <code>NFR-NNN</code>, and <code>SC-NNN</code> in the input spec <spec-rule>MUST</spec-rule> be referenced by at least one generated task. Requirements without a covering task <spec-rule>MUST</spec-rule> surface as a <code>&lt;spec-warning&gt;</code> in the rendered HTML — matching today's slash-command behaviour — not silently dropped.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-009" priority="must">
+<p>The verb <spec-rule>MUST</spec-rule> ship with unit tests at <code>packages/core/test/tasks.test.ts</code> (pure function; stub <code>ctx.fs</code> + stub <code>ctx.ai</code>; in-memory fixtures) and CLI integration tests at <code>packages/cli/test/cli.test.ts</code> (real spec + plan; assert file written; assert phase / ID structure).</p>
+</spec-requirement>
+
+<spec-requirement id="FR-010" priority="must">
+<p><code>commands/spectastic.tasks.md</code> <spec-rule>MUST</spec-rule> be updated with a MAY-tier note: the LLM <em>may</em> invoke <code>spectastic tasks &lt;spec-id&gt;</code> via Bash to delegate the deterministic skeleton to the kernel; it is not required to. The markdown procedure remains the canonical source of truth.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-011" priority="must">
+<p><code>tasksCommand</code>'s docblock <spec-rule>MUST</spec-rule> link to <code>commands/spectastic.tasks.md</code> as the canonical procedure, per <a href="../006-kernel-extraction/spec.html#FR-008">006 FR-008</a>. The markdown <spec-rule>MUST NOT</spec-rule> be auto-generated from the docblock.</p>
+</spec-requirement>
+
+<h3>Non-functional</h3>
+
+<spec-requirement id="NFR-001" priority="must">
+<p>The extraction <spec-rule>MUST NOT</spec-rule> regress any scenario in <code>bench/baselines.json</code> past its declared budget. The <code>init-help-cold-start</code> scenario is the explicit guard against eager-loading <code>@spectastic/core/commands/tasks</code> (and through it parse5 + the AI provider) on the CLI init path.</p>
+</spec-requirement>
+
+<h3>Out of scope (deferred to other slices)</h3>
+<spec-out-of-scope>
+  <ul>
+    <li defer-to="TBD-core-implement">Task amendments (re-running <code>tasks</code> on an updated spec, merging into an existing <code>tasks.html</code>). Owned by the <code>implement</code> verb's checked-state contract; this slice always writes a fresh file.</li>
+    <li defer-to="TBD-cross-spec-tasks">Cross-spec task linkage (a task in one spec depending on a task in a sibling spec). Surface for a later spec once the in-spec shape is proven.</li>
+    <li defer-to="007-core-triage">Sibling — extract <code>/spectastic.triage</code>.</li>
+    <li defer-to="008-core-principles">Sibling — extract <code>/spectastic.principles</code>.</li>
+    <li defer-to="010-core-apply">Sibling — extract <code>/spectastic.apply</code>.</li>
+    <li defer-to="011-core-spec">Sibling — extract <code>/spectastic.spec</code>.</li>
+    <li defer-to="012-core-plan">Sibling — extract <code>/spectastic.plan</code>.</li>
+    <li defer-to="013-core-propose">Sibling — extract <code>/spectastic.propose</code>.</li>
+    <li defer-to="014-core-implement">Sibling — extract <code>/spectastic.implement</code>.</li>
+  </ul>
+</spec-out-of-scope>
+</section>
+
+
+<section id="data">
+<h2>4 · Data model</h2>
+<details>
+<summary>Four types this slice owns: <code>TasksInput</code>, <code>TasksResult</code>, <code>TaskPhase</code>, <code>Task</code>. All flow through <code>@spectastic/core/commands/tasks</code>'s subpath export.</summary>
+
+<h3>Entities</h3>
+<dl>
+  <dt><code>TasksInput</code></dt>
+  <dd><code>{ specPath: string, planPath: string }</code>. Both are filesystem paths resolved against <code>ctx.cwd</code>; the kernel reads through <code>ctx.fs</code>. No raw content strings; no pre-parsed AST.</dd>
+
+  <dt><code>TasksResult</code></dt>
+  <dd><code>{ html: string, phases: TaskPhase[], totalTasks: number, parallelTasks: number }</code>. <code>html</code> is the rendered single-file artifact ready to write to <code>specs/&lt;spec-id&gt;/tasks.html</code>. <code>phases</code> is the structured breakdown for downstream surfaces that want to render their own UI. <code>totalTasks</code> and <code>parallelTasks</code> are summary counts for the after-write report message the slash command surfaces today.</dd>
+
+  <dt><code>TaskPhase</code></dt>
+  <dd><code>{ id: string, title: string, tasks: Task[] }</code>. <code>id</code> is one of <code>setup</code> / <code>foundation</code> / <code>us1</code> / <code>us2</code> / <code>us3</code> / <code>polish</code>. <code>title</code> is the human label ("Phase 1 — Setup", etc.). Empty phases (e.g. <code>us3</code> on a two-story spec) are omitted from the array.</dd>
+
+  <dt><code>Task</code></dt>
+  <dd><code>{ id: string, title: string, path?: string, parallel: boolean }</code>. <code>id</code> matches <code>T-NNN</code>. <code>title</code> is the imperative one-liner. <code>path</code> is the target file or directory shown via <code>&lt;span class="path"&gt;</code>; optional for tasks that span multiple files. <code>parallel</code> mirrors the boolean <code>parallel</code> attribute on <code>&lt;spec-task&gt;</code>.</dd>
+</dl>
+
+<spec-note>
+<p>The rendered HTML <code>html</code> field and the structured <code>phases</code> array are two views of the same underlying data — keep them in sync. The kernel computes the structured form first, then renders to HTML; consumers that want machine-readable output skip the render step entirely.</p>
+</spec-note>
+</details>
+</section>
+
+
+<section id="success">
+<h2>5 · Success criteria</h2>
+
+<p>Technology-agnostic, measurable outcomes.</p>
+
+<spec-requirement id="SC-001" priority="must">
+<p>A test under <code>packages/core/test/</code> imports <code>tasksCommand</code> from <code>@spectastic/core/commands/tasks</code>, calls it with an in-memory <code>ctx.fs</code> + stub <code>ctx.ai</code> against the real <code>002-validate-cli</code> spec + plan fixtures, and receives a <code>TasksResult</code> whose phase IDs, phase ordering, and task-ID ranges match the existing <code>specs/002-validate-cli/tasks.html</code> on the same inputs.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-002" priority="must">
+<p>Running <code>node packages/cli/dist/index.js tasks 002-validate-cli</code> writes a <code>tasks.html</code> with the same five phases and same total task count as today's slash-command output on the same inputs (modulo trivial whitespace and AI-generated description wording).</p>
+</spec-requirement>
+
+<spec-requirement id="SC-003" priority="must">
+<p><code>pnpm bench</code> passes all scenarios in <code>bench/baselines.json</code> within their declared budgets. The <code>init-help-cold-start</code> scenario's p50 remains within ±20% of today's baseline, proving the new subpath export did not leak into the init code path.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-004" priority="must">
+<p><code>pnpm test</code> passes with the new kernel unit tests for <code>tasksCommand</code> and the new CLI integration test for the <code>tasks</code> subcommand. No existing test moves to skipped or pending.</p>
+</spec-requirement>
+</section>
+
+
+<section id="assumptions">
+<h2>6 · Assumptions</h2>
+<details>
+<summary>Two preconditions: 006's <code>KernelContext</code> shape is final, and <code>@spectastic/schema</code>'s parser surfaces enough structure to enumerate FRs / SCs.</summary>
+
+<spec-assumption>
+<p>The <code>KernelContext</code> shape (<code>cwd</code>, <code>fs</code>, <code>ai</code>) defined in <a href="../006-kernel-extraction/spec.html#FR-007">006 FR-007</a> is stable. If it changes, this slice updates its function signature and tests; no other change cascades.</p>
+</spec-assumption>
+
+<spec-assumption>
+<p><code>@spectastic/schema</code>'s parser exposes (or can be cheaply extended to expose) the FR / NFR / SC IDs and user-story headings from a parsed <code>spec.html</code>. Without that, the kernel would need to re-parse the HTML itself — duplicative and a violation of single-source-of-truth.</p>
+</spec-assumption>
+</details>
+</section>
+
+
+<section id="questions">
+<h2>7 · Open questions</h2>
+<spec-questions>
+<ol>
+  <li>None at write time. All verb-specific decisions (path-vs-content IO shape, light AI scope, structured-vs-string return, slash-command coupling) were anchored in the propose-time interview; kernel-pattern decisions inherit from 006.</li>
+</ol>
+</spec-questions>
+</section>
+
+
+<section id="conformance">
+<h2>8 · Conformance index</h2>
+<p>Auto-built from every <code>&lt;spec-requirement&gt;</code> in this document.</p>
+<spec-conformance></spec-conformance>
+</section>
+
+
+<section id="changelog">
+<h2>9 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-06-16">16 Jun 2026</time><span>Initial draft. Verb-specific decisions anchored: <code>spec.html</code> + <code>plan.html</code> taken as paths through <code>ctx.fs</code> (not raw strings, not pre-parsed AST); five-phase structure (Setup / Foundational / US1..US3 / Polish) preserved; light AI for task descriptions only — IDs and phase boundaries deterministic; structured <code>TasksResult</code> returned with HTML + phase data so downstream surfaces can render their own UI; slash command stays canonical with a MAY-Bash note. Inherits all kernel-pattern decisions from <a href="../006-kernel-extraction/spec.html">006</a>.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  009-core-tasks · Core tasks verb · authored 16 Jun 2026 ·
+  <button data-theme-toggle style="background:none;border:none;color:var(--c-link);cursor:pointer;font:inherit;padding:0;border-bottom:1px solid currentColor;">toggle theme</button>
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>

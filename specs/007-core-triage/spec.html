@@ -1,0 +1,287 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Core triage · Specification</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Specification · 007-core-triage · <spec-parent specid="006-kernel-extraction"><a href="../006-kernel-extraction/spec.html">Kernel extraction</a></spec-parent></p>
+  <h1>Core triage — extract <code>/spectastic.triage</code> into <code>@spectastic/core</code></h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    Second verb out of the markdown-only era. Lands the kernel's first AI-coupled function and the first concrete <code>AIProvider</code> implementation.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>      <span><spec-status value="draft">Draft</spec-status></span>
+    <b>Spec ID</b>     <span>007-core-triage</span>
+    <b>Owner</b>       <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Reviewers</b>   <span>—</span>
+    <b>Created</b>     <span><time datetime="2026-06-16">16 Jun 2026</time></span>
+    <b>Principles</b>  <span><a href="../../principles.html">v1.0.1</a></span>
+    <b>Smallest demoable</b><span>Triage extracted end-to-end: <code>triageCommand()</code> exported from <code>@spectastic/core/commands/triage</code>; first <code>AIProvider</code> impl at <code>providers/claude.ts</code>; <code>spectastic triage</code> CLI subcommand; <code>commands/spectastic.triage.md</code> updated with the MAY-Bash-to-CLI note; cards byte-identical to today's slash-command output; bench within budget.</span>
+    <b>Read time</b>   <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-budget words="2000" reqs="20" minutes="9"></spec-budget>
+
+  <spec-tldr>
+    <p>Extracts <code>/spectastic.triage</code> into <code>packages/core/src/commands/triage.ts</code> per the contract in <a href="../006-kernel-extraction/spec.html">006</a>, ships both single-card and list-intake modes, and — because triage is the first AI-coupled kernel verb — lands the first concrete <code>AIProvider</code> at <code>packages/core/src/providers/claude.ts</code> using <code>@anthropic-ai/sdk</code>. Kernel returns structured <code>TriageCard</code>s; caller writes to disk. Heavier than a routine extraction because the AI adapter is co-introduced.</p>
+  </spec-tldr>
+
+  <dl class="invest">
+    <dt><span class="letter">I</span> Independent</dt> <dd>Depends on <a href="../006-kernel-extraction/spec.html">006-kernel-extraction</a> and the principles. No sibling kernel-verb slice (008–014) blocks on it; later AI-coupled verbs reuse the Claude provider shipped here.</dd>
+    <dt><span class="letter">N</span> Negotiable</dt>  <dd>Specifies the verb shape, the <code>AIProvider</code> surface, and <code>@anthropic-ai/sdk</code> as v1. Prompt content, retry behaviour, and token-budget heuristics defer to the plan.</dd>
+    <dt><span class="letter">V</span> Valuable</dt>    <dd>Unlocks <a href="#SC-003">SC-003</a> — downstream consumers can call <code>triageCommand</code> with a stub <code>AIProvider</code>. Also removes "build the Claude adapter first" from every later AI-coupled extraction's critical path.</dd>
+    <dt><span class="letter">E</span> Estimable</dt>   <dd>All decisions inherit from 006 or were anchored before authoring (both modes in scope, Claude as v1, <code>ask&lt;T&gt;()</code> mirrors <code>AskUserQuestion</code>, caller writes to disk).</dd>
+    <dt><span class="letter">S</span> Small</dt>       <dd>One verb file plus one provider file plus one CLI subcommand plus one markdown edit. ~15 requirements, ~2,000 words.</dd>
+    <dt><span class="letter">T</span> Testable</dt>    <dd>Kernel unit-tested with a stub <code>AIProvider</code>; CLI integration tests cover both modes; Claude provider integration test gated on <code>--network-tests</code>; cards diffed against today's slash-command output. <a href="#SC-001">SC-001</a>..<a href="#SC-005">SC-005</a> name the observations.</dd>
+  </dl>
+
+  <spec-audience-map>
+    <dl>
+      <dt>Exec / PM</dt>   <dd>§<a href="#context">Context</a>, §<a href="#scenarios">User scenarios</a>, §<a href="#success">Success criteria</a>.</dd>
+      <dt>Reviewer</dt>    <dd>§<a href="#requirements">Requirements</a>, §<a href="#data">Data model</a>, §<a href="#assumptions">Assumptions</a>.</dd>
+      <dt>Implementer</dt> <dd>§<a href="#requirements">Requirements</a>, §<a href="#data">Data model</a>, §<a href="#conformance">Conformance index</a>. The plan (<code>plan.html</code>) will carry the ADRs.</dd>
+    </dl>
+  </spec-audience-map>
+</header>
+
+
+<section id="context">
+<h2>1 · Context</h2>
+<p>Today's triage flow lives entirely in <code>commands/spectastic.triage.md</code>, executed by the LLM in-process at <code>/spectastic.triage</code> invocation. The procedure does meaningful work — single-card vs list-intake mode detection, regeneration test, eight-value layer classification, routing to per-spec triage log vs project-root <code>inbox.html</code>, sequential ID assignment — but none of it is reachable from a Tier 2 MCP server, a Tier 3 VS Code extension, or any non-Claude-Code surface. The verb is also Spectastic's most-used at small batch: typo runs, broken-anchor sweeps, list-intake from "a few things in my head."</p>
+<p>This slice is the second verb extraction (after <code>validate</code> in 006) and the first that prompts the model. That makes it the natural home for the first concrete <code>AIProvider</code> implementation — the interface that 006 declared but didn't implement. Choosing triage as the AI-adapter pioneer keeps the stakes low (small structured outputs, no multi-turn agents, no sub-agent spawn) while exercising both <code>chat()</code> (the freeform model call for characterisation and diagnosis) and <code>ask&lt;T&gt;()</code> (the typed bounded-choice pattern for layer classification when the model is uncertain). The slice carries more architectural weight than a routine extraction because the adapter ships alongside the verb.</p>
+</section>
+
+
+<section id="scenarios">
+<h2>2 · User scenarios &amp; testing</h2>
+
+<p>Each story is independently testable: if you implemented only US1, you would still have a viable MVP that proves the shape.</p>
+
+<h3>US1 · Maintainer triages a single defect via CLI <spec-pill>P1</spec-pill></h3>
+<p>As a <strong>maintainer hitting a defect outside Claude Code</strong> (CI red, terminal-only, scripted), I want to <strong>run <code>spectastic triage "&lt;description&gt;" --spec 002-validate-cli</code> and get the same triage card the slash command produces</strong> so that <strong>triage doesn't require a Claude Code session.</strong></p>
+<p><em>Acceptance:</em> CLI produces a <code>&lt;spec-triage&gt;</code> card structurally identical to the slash-command output — same five required fields, same regen-test result, same layer. Exits 0 and prints destination path and ID.</p>
+
+<h3>US2 · Maintainer pastes a list and gets routed inbox cards <spec-pill>P1</spec-pill></h3>
+<p>As a <strong>maintainer with several small cross-cutting items in head</strong>, I want to <strong>pipe the list into <code>spectastic triage</code> and have each item land in <code>inbox.html</code> with the right <code>layer=</code></strong> so that <strong>the small-batch loop works from the CLI as well as the slash command.</strong></p>
+<p><em>Acceptance:</em> List input triggers list-intake mode, writes one <code>&lt;spec-triage&gt;</code> per item to <code>inbox.html</code> with sequential <code>I-NNN</code> IDs, and prints a per-item summary. Items classified as diagnostic layers route to the per-spec triage log instead.</p>
+
+<h3>US3 · Future MCP / VS Code consumer invokes the kernel directly <spec-pill>P2</spec-pill></h3>
+<p>As a <strong>future MCP or VS Code author</strong>, I want to <strong>import <code>triageCommand</code>, inject my own <code>AIProvider</code> (or use the bundled Claude one), and receive a structured <code>TriageResult</code></strong> so that <strong>I can render and persist cards however my surface requires.</strong></p>
+<p><em>Acceptance:</em> A test under <code>packages/core/test/</code> imports <code>triageCommand</code>, passes a stub <code>AIProvider</code>, and asserts <code>TriageResult.cards</code> matches expected shape. No process spawn; no real API call; no filesystem write.</p>
+
+<h3>Edge cases</h3>
+<details>
+<summary><strong>Five tracked failure modes the extraction handles</strong></summary>
+<ul>
+  <li><strong>Missing <code>ANTHROPIC_API_KEY</code></strong> — Claude provider must fail fast with an actionable error before any model call is attempted. CLI catches and exits 2 (usage); kernel throws a typed error the caller can match.</li>
+  <li><strong>API key accidentally logged</strong> — debug logs, error messages, or stack traces must never echo the key. NFR-002 enforces; a unit test inspects log output for the key prefix.</li>
+  <li><strong>Mode detection ambiguity</strong> — input has commas but is one sentence ("I tried X, Y, and Z and it broke"). Heuristic matches today's markdown; when genuinely ambiguous, the CLI prompts the user (matches the slash command's behaviour) and the kernel surfaces a typed result the caller can prompt on.</li>
+  <li><strong>Network failure during model call</strong> — Claude provider surfaces a typed error; the CLI exits 1 and prints a clean message without a stack trace; the kernel propagates without partial writes.</li>
+  <li><strong>List-intake card-ID collision</strong> — two concurrent CLI invocations against the same <code>inbox.html</code> could both pick the same <code>I-NNN</code>. Out of scope for v1 (single-author tool); the kernel scans for highest ID at write time and the caller serialises writes. Documented assumption.</li>
+</ul>
+</details>
+</section>
+
+
+<section id="requirements">
+<h2>3 · Requirements</h2>
+
+<p>Conformance keywords (<spec-rule>MUST</spec-rule>, <spec-rule level="should">SHOULD</spec-rule>, <spec-rule level="may">MAY</spec-rule>) follow RFC 2119.</p>
+
+<h3>Functional — the verb</h3>
+
+<spec-requirement id="FR-001" priority="must">
+<p><code>triageCommand</code> <spec-rule>MUST</spec-rule> conform to the kernel contract in <a href="../006-kernel-extraction/spec.html#FR-003">006 FR-003</a>: signature <code>(input: TriageInput, ctx: KernelContext) =&gt; Promise&lt;TriageResult&gt;</code>; pure; all IO and AI access via <code>ctx</code>.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-002" priority="must">
+<p>The function <spec-rule>MUST</spec-rule> live at <code>packages/core/src/commands/triage.ts</code>, exposed via subpath export <code>@spectastic/core/commands/triage</code> per <a href="../006-kernel-extraction/spec.html#FR-002">006 FR-002</a>. The umbrella entry <spec-rule>MUST NOT</spec-rule> eagerly load it.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-003" priority="must">
+<p><code>@spectastic/cli</code> <spec-rule>MUST</spec-rule> add a <code>triage</code> subcommand that imports <code>triageCommand</code>, constructs a <code>KernelContext</code> with the default Claude <code>AIProvider</code>, accepts the input as positional arg or stdin, accepts <code>--spec &lt;spec-id&gt;</code> for single-card routing, and writes the resulting cards to disk.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-004" priority="must">
+<p>Single-card mode <spec-rule>MUST</spec-rule> follow the procedure in <code>commands/spectastic.triage.md</code>: locate spec, load context, characterise (Expected / Actual / Diagnosis), apply the regeneration test, classify the layer. Kernel returns one <code>TriageCard</code>; caller persists to <code>specs/&lt;spec-id&gt;/triage-log.html</code>.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-005" priority="must">
+<p>List-intake mode <spec-rule>MUST</spec-rule> detect list inputs (newline / comma / explicit list markers per the existing heuristic), produce one <code>TriageCard</code> per item, and classify each independently. Caller routes each card to its appropriate destination (per-spec log for diagnostic layers, <code>inbox.html</code> for routing exits).</p>
+</spec-requirement>
+
+<spec-requirement id="FR-006" priority="must">
+<p>A Claude <code>AIProvider</code> implementation <spec-rule>MUST</spec-rule> ship at <code>packages/core/src/providers/claude.ts</code> using <code>@anthropic-ai/sdk</code>, implementing every method on the interface from <a href="../006-kernel-extraction/spec.html#FR-007">006 FR-007</a>. Exposed via subpath export <code>@spectastic/core/providers/claude</code> and lazy-loaded — never imported from the umbrella entry.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-007" priority="must">
+<p>The Claude provider <spec-rule>MUST</spec-rule> read <code>ANTHROPIC_API_KEY</code> from <code>process.env</code> at construction (or accept it explicitly for testability). Missing key with no explicit argument <spec-rule>MUST</spec-rule> throw a typed error naming the env var.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-008" priority="must">
+<p>The <code>AIProvider</code> interface <spec-rule>MUST</spec-rule> declare two methods consumed here: <code>chat(prompt, opts?): Promise&lt;string&gt;</code> for freeform calls, and <code>ask&lt;T&gt;(questions): Promise&lt;AskAnswer&lt;T&gt;[]&gt;</code> for typed bounded-choice prompts. The <code>ask&lt;T&gt;()</code> shape <spec-rule>MUST</spec-rule> mirror Claude Code's <code>AskUserQuestion</code> exactly: <code>{question, header, options[{label, description, preview?}], multiSelect?}</code>; 1–4 questions per call, 2–4 options each. This slice ships the first concrete impl of both methods.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-009" priority="must">
+<p>Layer classification <spec-rule>MUST</spec-rule> cover all eight values: <code>spec</code>, <code>plan</code>, <code>implementation</code>, <code>cross-spec</code>, <code>principles</code>, <code>platform</code>, <code>just-do</code>, <code>defer</code>. When classification is ambiguous, the kernel <spec-rule>MUST</spec-rule> use <code>ask&lt;T&gt;()</code> to commit the answer rather than hedge in prose.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-010" priority="must">
+<p>The kernel <spec-rule>MUST</spec-rule> return structured <code>TriageCard</code>s and <spec-rule>MUST NOT</spec-rule> hard-code destination paths. The CLI subcommand implements today's routing rules (per-spec for diagnostic layers, inbox for routing exits) as caller logic; other surfaces decide their own destinations.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-011" priority="must">
+<p>The kernel function <spec-rule>MUST</spec-rule> be unit-tested at <code>packages/core/test/triage.test.ts</code> with a stub <code>AIProvider</code>. The CLI subcommand <spec-rule>MUST</spec-rule> have integration tests under <code>packages/cli/test/</code> covering both modes. A Claude-provider integration test <spec-rule>MAY</spec-rule> hit the real API, gated on <code>--network-tests</code> or skipped when <code>ANTHROPIC_API_KEY</code> is unset.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-012" priority="must">
+<p><code>commands/spectastic.triage.md</code> <spec-rule>MUST</spec-rule> note that the slash command <spec-rule level="may">MAY</spec-rule> shell out to <code>spectastic triage</code> via Bash, per <a href="../006-kernel-extraction/spec.html#FR-009">006 FR-009</a>. The markdown remains canonical and works end-to-end without the kernel.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-013" priority="must">
+<p>The <code>triageCommand</code> docblock <spec-rule>MUST</spec-rule> link to <code>commands/spectastic.triage.md</code> as the canonical source, per <a href="../006-kernel-extraction/spec.html#FR-008">006 FR-008</a>. Markdown <spec-rule>MUST NOT</spec-rule> be auto-generated.</p>
+</spec-requirement>
+
+<h3>Non-functional</h3>
+
+<spec-requirement id="NFR-001" priority="must">
+<p>The extraction <spec-rule>MUST NOT</spec-rule> regress any scenario in <code>bench/baselines.json</code>. The Claude provider <spec-rule>MUST</spec-rule> be lazy-loaded — importing <code>@spectastic/core/commands/triage</code> <spec-rule>MUST NOT</spec-rule> eagerly load <code>@anthropic-ai/sdk</code>.</p>
+</spec-requirement>
+
+<spec-requirement id="NFR-002" priority="must">
+<p><code>ANTHROPIC_API_KEY</code> <spec-rule>MUST NOT</spec-rule> appear in any log, error, stack trace, or stdout/stderr. The Claude provider <spec-rule>MUST</spec-rule> redact the key from surfaced errors; a unit test <spec-rule>MUST</spec-rule> assert this on a deliberately-triggered error path.</p>
+</spec-requirement>
+
+<h3>Out of scope (deferred to other slices)</h3>
+<spec-out-of-scope>
+  <ul>
+    <li defer-to="TBD-multi-provider">OpenAI and local-LM <code>AIProvider</code> implementations. v1 ships Claude only; the interface is provider-agnostic so additional implementations land as additive PRs.</li>
+    <li defer-to="TBD-rejected-card-anchor">Rejection support for inbox cards (<code>data-status="rejected"</code> per <code>REQ-CHANGE-005</code>). The kernel returns cards; rejection is a caller-side mutation today and stays so until a dedicated slice formalises it.</li>
+    <li defer-to="008-core-principles">Extract <code>/spectastic.principles</code>. Smallest of the slash verbs.</li>
+    <li defer-to="009-core-tasks">Extract <code>/spectastic.tasks</code>. Deterministic generation from spec + plan.</li>
+    <li defer-to="010-core-apply">Extract <code>/spectastic.apply</code>. Mostly deterministic (deltas, archive, changelog).</li>
+    <li defer-to="011-core-spec">Extract <code>/spectastic.spec</code>. First end-to-end exercise of <code>ask&lt;T&gt;()</code> on a multi-decision verb.</li>
+    <li defer-to="012-core-plan">Extract <code>/spectastic.plan</code>. Pairs with spec.</li>
+    <li defer-to="013-core-propose">Extract <code>/spectastic.propose</code>. Adversarial-pass spawn needs a <code>subagent()</code> method on <code>AIProvider</code>; that interface addition lands with propose, not here.</li>
+    <li defer-to="014-core-implement">Extract <code>/spectastic.implement</code>. Drains the <code>just-do</code> queue this verb fills; obvious co-design but separately specced.</li>
+  </ul>
+</spec-out-of-scope>
+</section>
+
+
+<section id="data">
+<h2>4 · Data model</h2>
+<details>
+<summary>Four types this slice owns: <code>TriageInput</code>, <code>TriageResult</code>, <code>TriageCard</code>, plus the concrete Claude implementation of the <code>AIProvider</code> interface declared in 006.</summary>
+
+<h3>Entities</h3>
+<dl>
+  <dt><code>TriageInput</code></dt>
+  <dd>Fields: <code>description: string</code> (the raw user input — single failure description, error, stack trace, or list); <code>mode: 'single' | 'list'</code> (caller-provided when unambiguous; the kernel detects when omitted); <code>specId?: string</code> (required for single-card mode; ignored in list-intake mode where per-card routing depends on layer classification).</dd>
+
+  <dt><code>TriageResult</code></dt>
+  <dd>Fields: <code>cards: TriageCard[]</code> (one for single-card mode, N for list-intake). The caller decides where to persist each card based on its <code>layer</code>; the kernel does not write to disk.</dd>
+
+  <dt><code>TriageCard</code></dt>
+  <dd>Fields: <code>id: string</code> (sequential <code>T-NNN</code> or <code>I-NNN</code> assigned by the kernel based on caller-supplied highest-existing-ID hint); <code>layer: 'spec' | 'plan' | 'implementation' | 'cross-spec' | 'principles' | 'platform' | 'just-do' | 'defer'</code>; <code>headline: string</code>; <code>expected: string</code>; <code>actual: string</code>; <code>diagnosis: string</code>; <code>fix: string</code>; <code>regenResult?: 'pass' | 'fail' | 'unsure'</code> (omitted for routing-exit layers); <code>deferTo?: string</code> (set when <code>layer === 'defer'</code>); plus an optional <code>deepDive?: string</code> for the cascade / cross-spec / principles section.</dd>
+
+  <dt><code>AIProvider</code> (re-affirmed; concrete Claude impl on disk)</dt>
+  <dd>Interface methods consumed here: <code>chat(prompt, opts?): Promise&lt;string&gt;</code> and <code>ask&lt;T&gt;(questions): Promise&lt;AskAnswer&lt;T&gt;[]&gt;</code>. <code>ask</code> question shape mirrors <code>AskUserQuestion</code>: <code>{question: string, header: string, options: Array&lt;{label: string, description: string, preview?: string}&gt;, multiSelect?: boolean}</code>. The Claude implementation at <code>packages/core/src/providers/claude.ts</code> wraps <code>@anthropic-ai/sdk</code>; alternative providers (deferred) implement the same interface.</dd>
+</dl>
+
+<spec-note>
+<p>The kernel intentionally does not own card-ID assignment globally — the caller passes the highest existing ID (scanned from the target file) as part of the request context, and the kernel increments from there. This keeps the kernel pure and lets the caller serialise writes against its own destination.</p>
+</spec-note>
+</details>
+</section>
+
+
+<section id="success">
+<h2>5 · Success criteria</h2>
+
+<p>Technology-agnostic, measurable outcomes.</p>
+
+<spec-requirement id="SC-001" priority="must">
+<p>For representative single-failure and list inputs, cards produced by <code>spectastic triage</code> are byte-identical (modulo trivial whitespace) to cards the slash command produces against the same inputs. Diff runs in the integration test suite.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-002" priority="must">
+<p><code>pnpm bench</code> passes all scenarios within their declared budgets. The <code>init-help-cold-start</code> p50 stays within ±20% of the post-006 baseline — proof <code>@anthropic-ai/sdk</code> stayed off the init path.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-003" priority="must">
+<p>A test under <code>packages/core/test/</code> imports <code>triageCommand</code>, passes a stub <code>AIProvider</code> with canned responses, and asserts the returned <code>TriageResult.cards</code> match expected shape. No process spawn, no real API call, no filesystem write.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-004" priority="should">
+<p>An integration test (gated on <code>--network-tests</code> or <code>ANTHROPIC_API_KEY</code>) constructs the real Claude provider, calls <code>triageCommand</code>, and asserts cards carry valid layers and required fields. Skipped — not failed — when the env var is unset.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-005" priority="must">
+<p><code>pnpm test</code> passes with the new kernel unit tests and CLI integration tests added; no existing test moves to skipped. <code>ANTHROPIC_API_KEY</code> appears nowhere in captured stdout, stderr, or logs across the full run.</p>
+</spec-requirement>
+</section>
+
+
+<section id="assumptions">
+<h2>6 · Assumptions</h2>
+<details>
+<summary>Three preconditions: ANTHROPIC_API_KEY available in dev and CI environments where AI-coupled tests run; @anthropic-ai/sdk remains stable through the planning horizon; single-author concurrency.</summary>
+
+<spec-assumption>
+<p><code>ANTHROPIC_API_KEY</code> is available in the developer's local environment (already configured for Claude Code use) and in the CI environment where AI-coupled integration tests run. The kernel and Claude provider treat the env var as the authoritative source; if missing, the constructor throws a typed error rather than silently degrading.</p>
+</spec-assumption>
+
+<spec-assumption>
+<p><code>@anthropic-ai/sdk</code> remains the supported official SDK for the Anthropic API through the planning horizon (next ~12 months). Pinning to a major version is sufficient; minor/patch updates are pulled via dependabot.</p>
+</spec-assumption>
+
+<spec-assumption>
+<p>Spectastic remains a single-author tool for the foreseeable future. Concurrent CLI invocations against the same <code>inbox.html</code> or <code>specs/&lt;spec-id&gt;/triage-log.html</code> are not in scope; the kernel scans for the highest existing ID at write-prep time and the caller serialises writes.</p>
+</spec-assumption>
+</details>
+</section>
+
+
+<section id="questions">
+<h2>7 · Open questions</h2>
+<spec-questions>
+<ol>
+  <li>None at write time. All decisions inherit from 006 (kernel contract, lazy-loading, canonical-markdown, slash-command coupling, testing approach, versioning) or were anchored before authoring (both modes in scope; Claude as v1 provider; <code>ask&lt;T&gt;()</code> mirrors <code>AskUserQuestion</code>; kernel returns structured cards and caller writes to disk; <code>subagent()</code> deferred to <a href="#out-of-scope">013-core-propose</a>).</li>
+</ol>
+</spec-questions>
+</section>
+
+
+<section id="conformance">
+<h2>8 · Conformance index</h2>
+<p>Auto-built from every <code>&lt;spec-requirement&gt;</code> in this document.</p>
+<spec-conformance></spec-conformance>
+</section>
+
+
+<section id="changelog">
+<h2>9 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-06-16">16 Jun 2026</time><span>Initial draft. Second verb extraction after 006. Locked decisions: both single-card and list-intake modes in scope; first AI-coupled kernel verb introduces the concrete Claude <code>AIProvider</code> implementation at <code>packages/core/src/providers/claude.ts</code> using <code>@anthropic-ai/sdk</code>; <code>ask&lt;T&gt;()</code> shape mirrors Claude Code's <code>AskUserQuestion</code> exactly; layer classification covers all eight values (six diagnostic + two routing exits); kernel returns structured <code>TriageCard</code>s and the caller decides destination paths; <code>ANTHROPIC_API_KEY</code> from env, never logged; <code>subagent()</code> method deferred to 013-core-propose where it's first needed. Adds <code>spectastic triage</code> CLI subcommand; updates <code>commands/spectastic.triage.md</code> with MAY-Bash-to-CLI note.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  007-core-triage · Core triage · authored 16 Jun 2026 ·
+  <button data-theme-toggle style="background:none;border:none;color:var(--c-link);cursor:pointer;font:inherit;padding:0;border-bottom:1px solid currentColor;">toggle theme</button>
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>

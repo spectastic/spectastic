@@ -1,0 +1,271 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Extract /spectastic.plan into @spectastic/core · Specification</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Specification · 012-core-plan <spec-parent specid="006-kernel-extraction"><a href="../006-kernel-extraction/spec.html">Kernel extraction</a></spec-parent></p>
+  <h1>Extract <code>/spectastic.plan</code> into <code>@spectastic/core</code></h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    Plan as a kernel verb: fresh + re-entry, estimability gate, principles check, ADRs — all behind one async function.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>      <span><spec-status value="draft">Draft</spec-status></span>
+    <b>Spec ID</b>     <span>012-core-plan</span>
+    <b>Owner</b>       <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Reviewers</b>   <span>—</span>
+    <b>Created</b>     <span><time datetime="2026-06-16">16 Jun 2026</time></span>
+    <b>Principles</b><span><a href="../../principles.html">v1.0.1</a></span>
+    <b>Smallest demoable</b><span>Plan extracted end-to-end (kernel + CLI + slash-command markdown updated); running <code>spectastic plan &lt;spec-id&gt;</code> against an existing spec produces a populated <code>plan.html</code>; estimability gate fires when the spec has blockers; <code>pnpm bench</code> passes within budget.</span>
+    <b>Read time</b>   <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-budget words="1800" reqs="17" minutes="7"></spec-budget>
+
+  <spec-tldr>
+    <p>Pull <code>/spectastic.plan</code> into <code>@spectastic/core/commands/plan</code> as <code>planCommand(input, ctx)</code>. Kernel owns: the estimability gate (refuses on open <code>&lt;spec-question&gt;</code>, <code>[NEEDS CLARIFICATION]</code>, missing <code>defer-to=</code>, failed INVEST rows), the two-phase interview (<code>ai.chat()</code> + <code>ai.ask&lt;T&gt;()</code>), the principles walk (OK / EXCEPTION / VIOLATION; VIOLATION halts), and ADR scaffolding with stable <code>D-NNN</code> IDs. Fresh and re-entry modes both ship; re-entry preserves existing ADRs and only adds or enhances. Caller writes to disk; kernel stays pure.</p>
+  </spec-tldr>
+
+  <dl class="invest">
+    <dt><span class="letter">I</span> Independent</dt> <dd>Depends on <a href="../006-kernel-extraction/spec.html">006</a> (kernel shape, <code>KernelContext</code>, <code>AIProvider</code>) and re-uses the <code>ai.ask&lt;T&gt;()</code> pattern proven in <a href="../011-core-spec/spec.html">011-core-spec</a>. No sibling spec blocks on this.</dd>
+    <dt><span class="letter">N</span> Negotiable</dt>  <dd>Contracts the gate logic, the <code>PlanInput</code>/<code>PlanResult</code> shape, the principles-walk semantics, and the re-entry preservation rule. Internal helpers, ADR-card layout, and SVG sketch heuristics defer to the plan.</dd>
+    <dt><span class="letter">V</span> Valuable</dt>    <dd>Unlocks <a href="#SC-001">SC-001</a> — a maintainer who has just authored a spec can call <code>spectastic plan &lt;spec-id&gt;</code> and get a populated <code>plan.html</code> without invoking the slash command, with the same estimability discipline.</dd>
+    <dt><span class="letter">E</span> Estimable</dt>   <dd>All architectural decisions are locked upstream by 006 and re-iterated in this spec's header. No <code>&lt;spec-question&gt;</code> open at write time.</dd>
+    <dt><span class="letter">S</span> Small</dt>       <dd>One verb. One kernel file + one CLI subcommand + slash-command markdown update. ~17 requirements, budget 1,800 words.</dd>
+    <dt><span class="letter">T</span> Testable</dt>    <dd>Every requirement observable: kernel unit-testable with a stub <code>AIProvider</code>; estimability gate testable on a fixture spec with seeded blockers; principles walk testable against a fixture principles set; bench unaffected.</dd>
+  </dl>
+
+  <spec-audience-map>
+    <dl>
+      <dt>Exec / PM</dt>   <dd>§<a href="#context">Context</a>, §<a href="#scenarios">User scenarios</a>, §<a href="#success">Success criteria</a>.</dd>
+      <dt>Reviewer</dt>    <dd>§<a href="#requirements">Requirements</a>, §<a href="#data">Data model</a>, §<a href="#assumptions">Assumptions</a>.</dd>
+      <dt>Implementer</dt> <dd>§<a href="#requirements">Requirements</a>, §<a href="#data">Data model</a>, §<a href="#conformance">Conformance index</a>. The plan will carry the ADRs.</dd>
+    </dl>
+  </spec-audience-map>
+</header>
+
+
+<section id="context">
+<h2>1 · Context</h2>
+<p><code>/spectastic.plan</code> is one of the eight slash commands carved out for extraction in <a href="../006-kernel-extraction/spec.html">006</a>. It pairs with a spec: reads <code>specs/&lt;spec-id&gt;/spec.html</code>, produces <code>plan.html</code> alongside. The procedure is interactive (two-phase interview), gated (refuses while the spec has blockers), and structured (ADRs with stable IDs, optional SVG sketch, alternatives matrix with a winner row, principles walk).</p>
+<p>Today the procedure lives only in <code>commands/spectastic.plan.md</code>. Every future surface (MCP, VS Code, web editor) would re-implement it. This slice moves the logic into <code>@spectastic/core/commands/plan</code> behind the kernel contract 006 defined, re-using the <code>ai.ask&lt;T&gt;()</code> pattern proven in 011-core-spec. CLI gains <code>spectastic plan &lt;spec-id&gt;</code>; the slash-command markdown gains a MAY-Bash-to-CLI note.</p>
+</section>
+
+
+<section id="scenarios">
+<h2>2 · User scenarios &amp; testing</h2>
+
+<p>Each story is independently testable.</p>
+
+<h3>US1 · Maintainer plans a freshly-authored spec <spec-pill>P1</spec-pill></h3>
+<p>As a <strong>maintainer who just authored <code>specs/&lt;id&gt;/spec.html</code></strong>, I want to <strong>run <code>spectastic plan &lt;id&gt;</code> and walk the same two-phase interview the slash command runs</strong> so that <strong>I get a populated <code>plan.html</code> without invoking the slash command.</strong></p>
+<p><em>Acceptance:</em> Against a spec with no blockers, the CLI runs the interview and writes <code>plan.html</code> with at least one <code>&lt;spec-decision id="D-001"&gt;</code>, a principles-check table, a project-structure block, and a risks table.</p>
+
+<h3>US2 · Estimability gate refuses a blocked spec <spec-pill>P1</spec-pill></h3>
+<p>As a <strong>maintainer running <code>spectastic plan &lt;id&gt;</code> against a spec with open questions</strong>, I want to <strong>be halted with every blocker and its file location</strong> so that <strong>I fix the spec instead of guessing past it.</strong></p>
+<p><em>Acceptance:</em> When the source spec contains any open <code>&lt;spec-question&gt;</code>, <code>[NEEDS CLARIFICATION]</code>, missing <code>defer-to=</code>, or failed INVEST row, the kernel returns without writing and the CLI exits non-zero with a structured blocker list.</p>
+
+<h3>US3 · Re-entry deepens an existing plan <spec-pill>P2</spec-pill></h3>
+<p>As a <strong>maintainer iterating on an existing <code>plan.html</code></strong>, I want to <strong>re-run <code>spectastic plan &lt;id&gt;</code> and have the kernel detect re-entry</strong> so that <strong>my prior ADRs are preserved while new decisions get added.</strong></p>
+<p><em>Acceptance:</em> When <code>plan.html</code> already exists, the kernel parses it, preserves every existing <code>&lt;spec-decision&gt;</code>, and only adds or enhances. No existing <code>D-NNN</code> ID is reassigned or removed.</p>
+
+<h3>Edge cases</h3>
+<details>
+<summary><strong>Four tracked failure modes the kernel handles.</strong></summary>
+<ul>
+  <li><strong>Principles VIOLATION mid-walk</strong> — a candidate decision the user proposed violates a stated principle. Kernel halts, surfaces the principle + the violating decision, and asks the user to revise or amend principles. No <code>plan.html</code> written.</li>
+  <li><strong>Spec file missing</strong> — <code>spec.html</code> not found at the resolved path. Kernel returns a structured error; CLI exits 2.</li>
+  <li><strong>Principles file absent</strong> — <code>principles.html</code> at the project root is optional. When absent, the principles-walk step is skipped and the plan's §1 records "no principles defined"; no halt.</li>
+  <li><strong>Single-component feature</strong> — the inline SVG sketch is only required when the feature has more than one moving part. The kernel asks the user (or infers from the spec's component count) before scaffolding the SVG; trivial features get a one-sentence approach paragraph and no sketch.</li>
+</ul>
+</details>
+</section>
+
+
+<section id="requirements">
+<h2>3 · Requirements</h2>
+
+<p>Conformance keywords (<spec-rule>MUST</spec-rule>, <spec-rule level="should">SHOULD</spec-rule>, <spec-rule level="may">MAY</spec-rule>) follow RFC 2119.</p>
+
+<h3>Functional — kernel</h3>
+
+<spec-requirement id="FR-001" priority="must">
+<p>The kernel function <spec-rule>MUST</spec-rule> conform to <a href="../006-kernel-extraction/spec.html#FR-003">006 FR-003</a>'s signature: <code>async function planCommand(input: PlanInput, ctx: KernelContext): Promise&lt;PlanResult&gt;</code>. The function <spec-rule>MUST</spec-rule> be pure with respect to its arguments; all IO and AI access flow through <code>ctx</code>.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-002" priority="must">
+<p><code>planCommand</code> <spec-rule>MUST</spec-rule> be implemented at <code>packages/core/src/commands/plan.ts</code> and exported via the <code>@spectastic/core/commands/plan</code> subpath per <a href="../006-kernel-extraction/spec.html#FR-002">006 FR-002</a>.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-003" priority="must">
+<p>The CLI <spec-rule>MUST</spec-rule> expose a <code>spectastic plan &lt;spec-id&gt;</code> subcommand that resolves <code>&lt;spec-id&gt;</code> to <code>specs/&lt;spec-id&gt;/spec.html</code>, invokes <code>planCommand</code>, and writes <code>PlanResult.html</code> to <code>specs/&lt;spec-id&gt;/plan.html</code>. Re-entry mode <spec-rule>MUST</spec-rule> be triggered by the presence of an existing <code>plan.html</code> at the destination — no explicit flag.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-004" priority="must">
+<p>The kernel <spec-rule>MUST</spec-rule> read the source spec via <code>ctx.fs</code>; never via direct <code>node:fs</code> calls. It <spec-rule>MUST</spec-rule> refuse to plan if the spec fails the estimability gate (FR-005).</p>
+</spec-requirement>
+
+<spec-requirement id="FR-005" priority="must">
+<p>The estimability gate <spec-rule>MUST</spec-rule> halt and report when the source spec contains any of: an open <code>&lt;spec-question&gt;</code> admonition; a <code>[NEEDS CLARIFICATION]</code> marker in body text; a <code>&lt;spec-out-of-scope&gt;</code> <code>&lt;li&gt;</code> missing <code>defer-to=</code>; or an INVEST row in <code>&lt;dl class="invest"&gt;</code> marked with <code>&lt;dd class="fail"&gt;</code>. The gate <spec-rule>MUST</spec-rule> emit a structured list of every blocker with file location, not just the first.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-006" priority="must">
+<p>The interview <spec-rule>MUST</spec-rule> be two-phase: <code>ctx.ai.chat()</code> for narrative answers (high-level approach, alternatives narrative, project-structure prose, risks); <code>ctx.ai.ask&lt;T&gt;()</code> for bounded decisions (test style, risk tolerance, perf budget, persistence shape, tech-stack picks, candidate-ADR thumbs-up). The kernel <spec-rule>MUST</spec-rule> skip questions whose answers are already in <code>PlanInput</code>, the source spec, or upstream artifacts.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-007" priority="must">
+<p>The principles check <spec-rule>MUST</spec-rule> walk every principle in <code>principles.html</code> when present, marking each <code>OK</code>, <code>EXCEPTION</code>, or <code>VIOLATION</code>. An <code>EXCEPTION</code> <spec-rule>MUST</spec-rule> produce a §8 Complexity-tracking entry in the output. A <code>VIOLATION</code> <spec-rule>MUST</spec-rule> halt the kernel and surface the principle + the offending candidate decision; no <code>plan.html</code> is written until resolved.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-008" priority="must">
+<p>Architecture Decision Records <spec-rule>MUST</spec-rule> use stable <code>D-001</code>, <code>D-002</code>, … IDs assigned in encounter order. Each ADR <spec-rule>MUST</spec-rule> carry the four-field shape: Status, Context, Decision, Consequences (with <code>+</code> positives and <code>−</code> negatives). Superseded decisions keep status <code>superseded</code> and link forward; IDs are never reassigned.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-009" priority="should">
+<p>An inline SVG architecture sketch <spec-rule level="should">SHOULD</spec-rule> be included for features with more than one moving part. The kernel <spec-rule>MUST</spec-rule> infer or ask whether the feature warrants a sketch; trivial single-component features skip it.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-010" priority="must">
+<p>The alternatives matrix <spec-rule>MUST</spec-rule> include a scored table with at least two non-chosen options; exactly one row <spec-rule>MUST</spec-rule> carry the <code>data-winner</code> attribute, and that row <spec-rule>MUST</spec-rule> be the alternative actually adopted in the ADRs.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-011" priority="must">
+<p>Re-entry mode <spec-rule>MUST</spec-rule> preserve every existing <code>&lt;spec-decision&gt;</code> block — including stable IDs, status, and content. The kernel may ADD new ADRs (next available <code>D-NNN</code> ID) or ENHANCE existing ones (appending to Context / Consequences with a dated note); it <spec-rule>MUST NOT</spec-rule> renumber or silently rewrite an existing ADR.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-012" priority="must">
+<p>The kernel <spec-rule>MUST</spec-rule> return a structured <code>PlanResult</code> (<code>{ html, decisionsCount, principlesCheck }</code>); the caller is responsible for writing <code>html</code> to disk. The kernel <spec-rule>MUST NOT</spec-rule> call <code>ctx.fs.writeFile</code> itself — that's the CLI's job.</p>
+</spec-requirement>
+
+<h3>Functional — CLI + slash-command coupling</h3>
+
+<spec-requirement id="FR-013" priority="must">
+<p>Tests <spec-rule>MUST</spec-rule> include kernel unit tests at <code>packages/core/test/plan.test.ts</code> (stub <code>AIProvider</code>, stub <code>ctx.fs</code>, fixture spec inputs) and a CLI integration test in <code>packages/cli/test/cli.test.ts</code> that drives the <code>spectastic plan</code> subcommand against a fixture spec.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-014" priority="must">
+<p><code>commands/spectastic.plan.md</code> <spec-rule>MUST</spec-rule> be updated to add a MAY-Bash-to-CLI note: the LLM <spec-rule level="may">MAY</spec-rule> invoke <code>spectastic plan &lt;spec-id&gt;</code> via Bash for the deterministic estimability gate, but the slash-command procedure continues to work end-to-end without it (per <a href="../006-kernel-extraction/spec.html#FR-009">006 FR-009</a>).</p>
+</spec-requirement>
+
+<spec-requirement id="FR-015" priority="must">
+<p>The <code>planCommand</code> docblock <spec-rule>MUST</spec-rule> link to <code>commands/spectastic.plan.md</code> as the canonical procedure (per <a href="../006-kernel-extraction/spec.html#FR-008">006 FR-008</a>); the markdown <spec-rule>MUST NOT</spec-rule> be auto-generated from the docblock.</p>
+</spec-requirement>
+
+<h3>Non-functional</h3>
+
+<spec-requirement id="NFR-001" priority="must">
+<p>The extraction <spec-rule>MUST NOT</spec-rule> regress any scenario in <code>bench/baselines.json</code> past its declared budget (per <a href="../006-kernel-extraction/spec.html#NFR-001">006 NFR-001</a>). In particular, <code>init-help-cold-start</code> stays within budget — no eager parse5 load via the plan subpath.</p>
+</spec-requirement>
+
+<h3>Out of scope (deferred to other slices)</h3>
+<spec-out-of-scope>
+  <ul>
+    <li defer-to="TBD-core-plan-amendments">Amending an accepted plan via a structured proposal flow (separate from re-entry, which mutates the live file). Belongs in a future slice that pairs with <code>/spectastic.propose</code> extraction.</li>
+    <li defer-to="TBD-core-plan-linkage">Cross-spec plan linkage (auto-resolving sibling plan references when a spec links to another spec's plan). Out of scope until at least two extracted plans exist in the wild.</li>
+    <li defer-to="006-kernel-extraction">Kernel skeleton, <code>KernelContext</code>, <code>AIProvider</code> interface, subpath-exports policy — all already established in 006.</li>
+  </ul>
+</spec-out-of-scope>
+</section>
+
+
+<section id="data">
+<h2>4 · Data model</h2>
+<details>
+<summary>Four types this slice owns: <code>PlanInput</code>, <code>PlanResult</code>, <code>Decision</code>, <code>PrinciplesCheckResult</code>.</summary>
+
+<h3>Entities</h3>
+<dl>
+  <dt><code>PlanInput</code></dt>
+  <dd>Fields: <code>specId: string</code> (the <code>NNN-slug</code> identifier resolved against <code>ctx.cwd</code>); <code>mode?: 'fresh' | 'reentry'</code> (optional explicit override; default is auto-detect by checking for an existing <code>plan.html</code> at the destination).</dd>
+
+  <dt><code>PlanResult</code></dt>
+  <dd>Fields: <code>html: string</code> (the full <code>plan.html</code> content the caller writes to disk); <code>decisionsCount: number</code> (count of <code>&lt;spec-decision&gt;</code> blocks in the output, including preserved ones in re-entry mode); <code>principlesCheck: PrinciplesCheckResult</code>.</dd>
+
+  <dt><code>Decision</code></dt>
+  <dd>Fields: <code>id: string</code> (<code>D-NNN</code>, stable forever); <code>status: 'accepted' | 'superseded' | 'proposed'</code>; <code>context: string</code>; <code>decision: string</code>; <code>consequences: string</code> (with <code>+</code> / <code>−</code> markers).</dd>
+
+  <dt><code>PrinciplesCheckResult</code></dt>
+  <dd>Fields: <code>ok: number</code>; <code>exceptions: number</code>; <code>violations: number</code>. A non-zero <code>violations</code> count means the kernel halted before completing; the caller should report rather than persist.</dd>
+</dl>
+</details>
+</section>
+
+
+<section id="success">
+<h2>5 · Success criteria</h2>
+
+<p>Technology-agnostic, measurable outcomes.</p>
+
+<spec-requirement id="SC-001" priority="must">
+<p>Against a fixture spec with no blockers and a stub <code>AIProvider</code> returning canned decisions, <code>planCommand</code> produces byte-identical output across two invocations (same input → same HTML). Verified in <code>packages/core/test/plan.test.ts</code>.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-002" priority="must">
+<p>Against a fixture spec containing each of the four blocker types (open <code>&lt;spec-question&gt;</code>, <code>[NEEDS CLARIFICATION]</code>, missing <code>defer-to=</code>, failed INVEST row), the estimability gate halts and the returned blocker list names every offence with its file location. No <code>plan.html</code> is produced.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-003" priority="must">
+<p>A test file under <code>packages/core/test/</code> imports <code>planCommand</code> from <code>@spectastic/core/commands/plan</code>, calls it with a stub <code>ctx.ai</code> and stub <code>ctx.fs</code>, and receives a structured <code>PlanResult</code>. No process spawn; no real filesystem touched.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-004" priority="must">
+<p><code>pnpm bench</code> passes all scenarios within budget post-extraction, confirming the plan subpath does not regress cold-start or validate-full-project times.</p>
+</spec-requirement>
+</section>
+
+
+<section id="assumptions">
+<h2>6 · Assumptions</h2>
+
+<spec-assumption>
+<p>The <code>AIProvider</code> interface shipping with <a href="../011-core-spec/spec.html">011-core-spec</a> exposes a <code>ask&lt;T&gt;(questions)</code> method whose return shape matches <code>AskUserQuestion</code> well enough that the kernel can drive the decision-phase interview without a wrapper layer.</p>
+</spec-assumption>
+
+<spec-assumption>
+<p>Parsing existing <code>plan.html</code> for re-entry mode can rely on <code>@spectastic/schema</code>'s parse5-based walker (the same dependency already used by <code>validateCommand</code>); no new HTML parsing library is needed for plan-specific element extraction.</p>
+</spec-assumption>
+</section>
+
+
+<section id="questions">
+<h2>7 · Open questions</h2>
+<spec-questions>
+<ol>
+  <li>None at write time. All architectural decisions are locked by 006 and the verb-specific decisions enumerated in this spec's interview prep.</li>
+</ol>
+</spec-questions>
+</section>
+
+
+<section id="conformance">
+<h2>8 · Conformance index</h2>
+<p>Auto-built from every <code>&lt;spec-requirement&gt;</code> in this document.</p>
+<spec-conformance></spec-conformance>
+</section>
+
+
+<section id="changelog">
+<h2>9 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-06-16">16 Jun 2026</time><span>Initial draft. Scope: extract <code>/spectastic.plan</code> into <code>@spectastic/core/commands/plan</code> covering both fresh and re-entry modes. Kernel owns the estimability gate, two-phase interview, principles walk, and ADR scaffolding. Re-uses the <code>ai.ask&lt;T&gt;()</code> pattern from 011-core-spec. CLI adds <code>spectastic plan &lt;spec-id&gt;</code>; slash-command markdown gains a MAY-Bash-to-CLI note.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  012-core-plan · Extract /spectastic.plan into @spectastic/core · authored 16 Jun 2026 ·
+  <button data-theme-toggle style="background:none;border:none;color:var(--c-link);cursor:pointer;font:inherit;padding:0;border-bottom:1px solid currentColor;">toggle theme</button>
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>

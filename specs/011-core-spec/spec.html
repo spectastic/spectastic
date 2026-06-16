@@ -1,0 +1,267 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Core spec verb · Specification</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Specification · 011-core-spec <spec-parent specid="006-kernel-extraction"><a href="../006-kernel-extraction/spec.html">Kernel extraction</a></spec-parent></p>
+  <h1>Core spec verb — extract <code>/spectastic.spec</code> into <code>@spectastic/core</code></h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    The most-interactive verb meets the kernel: a two-phase interview running inside <code>specCommand</code>, exercising <code>AIProvider.ask&lt;T&gt;()</code> end-to-end for the first time.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>      <span><spec-status value="draft">Draft</spec-status></span>
+    <b>Spec ID</b>     <span>011-core-spec</span>
+    <b>Owner</b>       <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Reviewers</b>   <span>—</span>
+    <b>Created</b>     <span><time datetime="2026-06-16">16 Jun 2026</time></span>
+    <b>Principles</b>  <span><a href="../../principles.html">v1.0.1</a></span>
+    <b>Smallest demoable</b><span>The <code>spec</code> verb extracted end-to-end: <code>@spectastic/core/commands/spec</code> exports <code>specCommand()</code>; <code>@spectastic/cli</code> ships a <code>spec</code> subcommand wired to it; <code>commands/spectastic.spec.md</code> notes the MAY-Bash-to-CLI escape hatch. Running <code>spectastic spec "test feature"</code> walks an interactive two-phase interview and writes a populated <code>spec.html</code> to disk; <code>pnpm bench</code> passes within budget.</span>
+    <b>Read time</b>   <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-budget words="1900" reqs="18" minutes="8"></spec-budget>
+
+  <spec-tldr>
+    <p>Extract <code>/spectastic.spec</code> — the most interactive verb — into <code>@spectastic/core/commands/spec.ts</code> following the 006 kernel contract. Two-phase interview: chat via <code>ctx.ai.chat()</code>, decisions via <code>ctx.ai.ask&lt;T&gt;()</code>. Covers fresh-mode and re-entry; kernel returns structured <code>SpecResult</code>, caller writes to disk. First end-to-end exercise of <code>AIProvider.ask&lt;T&gt;()</code> — the abstraction that lets MCP and VS Code render the same interview natively. Markdown stays canonical.</p>
+  </spec-tldr>
+
+  <dl class="invest">
+    <dt><span class="letter">I</span> Independent</dt> <dd>Depends on <a href="../006-kernel-extraction/spec.html">006-kernel-extraction</a> and the canonical markdown at <code>commands/spectastic.spec.md</code>. No sibling specs block on it.</dd>
+    <dt><span class="letter">N</span> Negotiable</dt>  <dd>Specifies the contract (signature, two-phase shape, fresh + re-entry modes, structured result). Stub-AI scaffolding, prompt wording, and CLI flag surface defer to the plan.</dd>
+    <dt><span class="letter">V</span> Valuable</dt>    <dd>Unlocks <a href="#SC-001">SC-001</a> — downstream surfaces drive the spec interview through <code>ask&lt;T&gt;()</code> without re-implementing the procedure.</dd>
+    <dt><span class="letter">E</span> Estimable</dt>   <dd>All non-obvious decisions anchored at propose time: scope (both modes), architecture (chat + decision), result shape (structured, caller writes), markdown's place (canonical).</dd>
+    <dt><span class="letter">S</span> Small</dt>       <dd>One verb extracted. ~13 FR + 1 NFR; ~1,900 words. Re-entry adds one conditional branch.</dd>
+    <dt><span class="letter">T</span> Testable</dt>    <dd>Stub-AI unit tests drive a deterministic script; CLI integration tests cover wiring. <a href="#SC-001">SC-001</a>..<a href="#SC-004">SC-004</a> name the observations.</dd>
+  </dl>
+
+  <spec-audience-map>
+    <dl>
+      <dt>Exec / PM</dt>   <dd>§<a href="#context">Context</a>, §<a href="#scenarios">User scenarios</a>, §<a href="#success">Success criteria</a>.</dd>
+      <dt>Reviewer</dt>    <dd>§<a href="#requirements">Requirements</a>, §<a href="#data">Data model</a>, §<a href="#assumptions">Assumptions</a>.</dd>
+      <dt>Implementer</dt> <dd>§<a href="#requirements">Requirements</a>, §<a href="#data">Data model</a>, §<a href="#conformance">Conformance index</a>.</dd>
+    </dl>
+  </spec-audience-map>
+</header>
+
+
+<section id="context">
+<h2>1 · Context</h2>
+<p>Today's <code>/spectastic.spec</code> is the most-complex interactive verb. The markdown at <code>commands/spectastic.spec.md</code> instructs the LLM to run a two-phase interview: chat phase (context, user stories, edge cases, data model, out-of-scope prose) and a decision phase using Claude Code's <code>AskUserQuestion</code> to anchor every decidable choice (smallest demoable, priorities, scope splits, quantified NFRs) before writing. An unresolved <code>&lt;spec-question&gt;</code> in a finished artifact signals interview failure.</p>
+<p>This works in Claude Code because <code>AskUserQuestion</code> ships there; it doesn't work elsewhere. The kernel from <a href="../006-kernel-extraction/spec.html">006-kernel-extraction</a> defines <code>AIProvider.ask&lt;T&gt;()</code> as the abstract counterpart — same bounded-choice contract, with the surface (Claude Code tool call / MCP elicitation / VS Code quick-pick / web modal) wired by the consumer. <code>spec</code> exercises that abstraction end-to-end for the first time. Re-entry mode is in scope from day one because the markdown already supports it (step 6); folding it in is cheap because the same interview engine handles both paths.</p>
+</section>
+
+
+<section id="scenarios">
+<h2>2 · User scenarios &amp; testing</h2>
+
+<p>Each story is independently testable.</p>
+
+<h3>US1 · Maintainer authors a fresh feature spec via CLI <spec-pill>P1</spec-pill></h3>
+<p>As a <strong>spectastic maintainer outside Claude Code</strong>, I want to <strong>run <code>spectastic spec "&lt;feature&gt;"</code> and walk through an interactive two-phase interview that produces a populated <code>specs/&lt;id&gt;/spec.html</code></strong> so that <strong>I can author specs from any terminal.</strong></p>
+<p><em>Acceptance:</em> <code>spectastic spec "test feature"</code> creates <code>specs/NNN-test-feature/</code>, copies the template with corrected asset paths, runs the interview, and writes a populated <code>spec.html</code>. <code>spectastic validate</code> against the new file returns no findings.</p>
+
+<h3>US2 · Maintainer re-enters an existing spec to deepen it <spec-pill>P1</spec-pill></h3>
+<p>As a <strong>maintainer revisiting an earlier spec</strong>, I want to <strong>run <code>spectastic spec &lt;existing-spec-id&gt;</code> and have the verb sharpen the artifact without losing prior content</strong> so that <strong>I can deepen a spec without re-deriving the original interview.</strong></p>
+<p><em>Acceptance:</em> <code>spectastic spec 011-core-spec</code> reads the existing file, runs a re-entry interview, and either adds content (new FRs with fresh IDs, extended rationale, new changelog entries) or asks explicit confirmation before removing/overwriting. Stable IDs survive; no FR-ID is reused.</p>
+
+<h3>US3 · Future MCP / VS Code consumer invokes <code>specCommand</code> natively <spec-pill>P2</spec-pill></h3>
+<p>As a <strong>future MCP / VS Code author</strong>, I want to <strong>import <code>specCommand</code> from <code>@spectastic/core/commands/spec</code> and supply a custom <code>AIProvider</code> whose <code>ask&lt;T&gt;()</code> renders bounded choices natively</strong> so that <strong>the spec interview reaches users in their tool of choice without re-implementing the procedure.</strong></p>
+<p><em>Acceptance:</em> A test under <code>packages/core/test/</code> constructs a stub <code>AIProvider</code> scripting the answers, calls <code>specCommand(input, ctx)</code>, and receives a <code>SpecResult</code> whose <code>html</code> matches the CLI's output. No process spawn; no Claude Code dependency.</p>
+
+<h3>Edge cases</h3>
+<details>
+<summary><strong>Five tracked failure modes the verb handles</strong></summary>
+<ul>
+  <li><strong>Re-entry overwrite risk</strong> — the verb detects an existing <code>spec.html</code> and switches to re-entry mode automatically. Removals or overwrites of existing requirements require explicit user confirmation via an <code>ask&lt;T&gt;()</code> call; the default is to preserve and extend.</li>
+  <li><strong>Stub-AI test determinism</strong> — the interview's decision phase loops until exhaustion, which is hard to fixture. The stub <code>AIProvider</code> supplies a scripted answer queue; if the queue empties while the verb still asks questions, the test fails loudly with the unconsumed question text — surfacing interview drift rather than hanging.</li>
+  <li><strong>Budget gauge crossing the amber band</strong> — when the in-progress draft exceeds 70% of <code>&lt;spec-budget&gt;</code>, the verb surfaces a splitting nudge via <code>ask&lt;T&gt;()</code>: "Should some of this be its own slice?" with the out-of-scope move as the recommended option.</li>
+  <li><strong>Unresolved questions at write-time</strong> — if the decision phase exits with any decidable question still open, the verb either re-prompts or records the item in <code>&lt;spec-questions&gt;</code> with reasoning. Genuinely-undecidable items survive; decidable ones do not.</li>
+  <li><strong>Spec ID collision</strong> — the verb scans <code>specs/</code> for the highest existing number and increments. If the user supplies an explicit ID that collides with an existing directory, the verb refuses and asks for confirmation to switch into re-entry mode against the existing spec.</li>
+</ul>
+</details>
+</section>
+
+
+<section id="requirements">
+<h2>3 · Requirements</h2>
+
+<p>Conformance keywords (<spec-rule>MUST</spec-rule>, <spec-rule level="should">SHOULD</spec-rule>, <spec-rule level="may">MAY</spec-rule>) follow RFC 2119.</p>
+
+<h3>Functional — the spec verb</h3>
+
+<spec-requirement id="FR-001" priority="must">
+<p><code>specCommand</code> <spec-rule>MUST</spec-rule> conform to the kernel contract in <a href="../006-kernel-extraction/spec.html#FR-003">006 FR-003</a>: signature <code>async function specCommand(input: SpecInput, ctx: KernelContext): Promise&lt;SpecResult&gt;</code>, pure with respect to arguments, all IO + AI access through <code>ctx</code>. No module-level side effects; no implicit <code>process.cwd()</code> or <code>console</code>.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-002" priority="must">
+<p><code>specCommand</code> <spec-rule>MUST</spec-rule> be implemented at <code>packages/core/src/commands/spec.ts</code>, exported via the subpath <code>@spectastic/core/commands/spec</code>. The package's <code>exports</code> field <spec-rule>MUST</spec-rule> gain this subpath additively; the umbrella <code>index.ts</code> <spec-rule>MUST NOT</spec-rule> eagerly re-export it (per <a href="../006-kernel-extraction/spec.html#FR-002">006 FR-002</a>).</p>
+</spec-requirement>
+
+<spec-requirement id="FR-003" priority="must">
+<p><code>@spectastic/cli</code> <spec-rule>MUST</spec-rule> ship a <code>spec</code> subcommand. Invocation forms: <code>spectastic spec "&lt;feature-description&gt;"</code> for fresh-mode authoring (auto-assigned Spec ID) and <code>spectastic spec &lt;existing-spec-id&gt;</code> for re-entry mode against an existing <code>specs/&lt;spec-id&gt;/spec.html</code>. The subcommand owns shell-side concerns (argument parsing, exit-code translation, writing the result HTML to disk); the kernel function owns the interview and HTML generation.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-004" priority="must">
+<p>The verb <spec-rule>MUST</spec-rule> implement the two-phase interview defined in <code>commands/spectastic.spec.md</code>. The chat phase <spec-rule>MUST</spec-rule> use <code>ctx.ai.chat()</code> for narrative capture (context, user-story prose, edge cases, data-model intent, out-of-scope prose); the decision phase <spec-rule>MUST</spec-rule> use <code>ctx.ai.ask&lt;T&gt;()</code> for bounded choices (smallest demoable, priorities, scope splits, quantified NFRs). The decision phase <spec-rule>MUST</spec-rule> loop until decision exhaustion per the discipline in <code>CLAUDE.md</code>.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-005" priority="must">
+<p>Re-entry mode <spec-rule>MUST</spec-rule> detect an existing <code>spec.html</code> at the resolved path and load its content before interviewing. The verb <spec-rule>MUST</spec-rule> preserve existing requirements, IDs, and changelog entries. Additions (new requirements, extended <code>&lt;details&gt;</code> rationale, new changelog entries) are permitted unconditionally; removals or overwrites of existing content <spec-rule>MUST</spec-rule> require explicit confirmation via <code>ctx.ai.ask&lt;T&gt;()</code> before being applied.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-006" priority="must">
+<p>The smallest-demoable prompt <spec-rule>MUST</spec-rule> be the first decision-phase question in fresh mode. If the user's answer reaches for "the whole feature" or "all surfaces at once", the verb <spec-rule level="should">SHOULD</spec-rule> push back with a follow-up <code>ask&lt;T&gt;()</code> offering 2–3 narrower framings before proceeding.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-007" priority="must">
+<p>The artifact generated by <code>specCommand</code> <spec-rule>MUST</spec-rule> include a completed INVEST self-check (<code>&lt;dl class="invest"&gt;</code>) with all six rows populated. The <code>V</code> row <spec-rule>MUST</spec-rule> link to a <code>SC-</code> ID; the <code>T</code> row <spec-rule>MUST</spec-rule> link to an acceptance scenario or requirement. If any row is honestly <code>✗</code>, the verb <spec-rule>MUST</spec-rule> surface a warning in the returned <code>SpecResult</code>.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-008" priority="must">
+<p>The verb <spec-rule>MUST</spec-rule> track the in-progress draft against the spec's declared <code>&lt;spec-budget&gt;</code>. When the running word count exceeds 70% of the budget (amber band), the verb <spec-rule>MUST</spec-rule> surface a splitting nudge via <code>ctx.ai.ask&lt;T&gt;()</code> with options to (a) move material to <code>&lt;spec-out-of-scope&gt;</code> with <code>defer-to="TBD-&lt;topic&gt;"</code>, (b) scaffold a sibling spec, or (c) acknowledge and proceed.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-009" priority="must">
+<p>Every <code>&lt;spec-question&gt;</code> in the generated artifact <spec-rule>MUST</spec-rule> represent a genuinely-undecidable item. The verb <spec-rule>MUST</spec-rule> attempt to anchor every decidable question via <code>ctx.ai.ask&lt;T&gt;()</code> first; only items the user explicitly declines to decide (or that depend on absent upstream information) survive into the open-questions register.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-010" priority="must">
+<p>The kernel function <spec-rule>MUST</spec-rule> return a structured <code>SpecResult</code> containing the generated <code>html</code> string, the resolved <code>specId</code>, and a <code>requirementsCount</code>. The kernel <spec-rule>MUST NOT</spec-rule> write to the filesystem; the CLI subcommand (or any downstream surface) owns the <code>writeFile</code> call. This split keeps the kernel pure and testable per <a href="../006-kernel-extraction/spec.html#FR-003">006 FR-003</a>.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-011" priority="must">
+<p>The verb <spec-rule>MUST</spec-rule> be unit-tested at <code>packages/core/test/spec.test.ts</code> with a stub <code>AIProvider</code> supplying scripted chat responses and <code>ask&lt;T&gt;()</code> answers. CLI integration tests at <code>packages/cli/test/cli.test.ts</code> <spec-rule>MUST</spec-rule> cover the wiring end-to-end (argument parsing, file write, exit code).</p>
+</spec-requirement>
+
+<spec-requirement id="FR-012" priority="must">
+<p><code>commands/spectastic.spec.md</code> <spec-rule>MUST</spec-rule> gain a MAY-Bash-to-CLI note per <a href="../006-kernel-extraction/spec.html#FR-009">006 FR-009</a>: the LLM <spec-rule level="may">MAY</spec-rule> shell out to <code>spectastic spec</code> for deterministic operations (template copy, asset path rewrite, ID assignment, file write) but <spec-rule>MUST NOT</spec-rule> be required to. The markdown procedure remains the source of truth for the interview.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-013" priority="should">
+<p><code>specCommand</code>'s docblock <spec-rule level="should">SHOULD</spec-rule> link to the canonical procedure file (<code>commands/spectastic.spec.md</code>) per <a href="../006-kernel-extraction/spec.html#FR-008">006 FR-008</a>. The docblock summarises the contract; the markdown remains the canonical procedure.</p>
+</spec-requirement>
+
+<h3>Non-functional</h3>
+
+<spec-requirement id="NFR-001" priority="must">
+<p>The extraction <spec-rule>MUST NOT</spec-rule> regress any scenario in <code>bench/baselines.json</code> past its declared budget. The <code>init-help-cold-start</code> scenario remains the explicit lazy-loading regression guard — <code>spec.ts</code> <spec-rule>MUST NOT</spec-rule> import the HTML template, parse5, or any heavyweight dependency at module load; all such work happens inside the command function on first call.</p>
+</spec-requirement>
+
+<h3>Out of scope (deferred to other slices)</h3>
+<spec-out-of-scope>
+  <ul>
+    <li defer-to="TBD-spec-import">Import specs authored by other tools (OpenSpec, GitHub Spec Kit). Cross-tool ingest is its own design problem.</li>
+    <li defer-to="TBD-spec-analytics">Spec analytics — requirement-count trends, churn, budget-band crossings over time. Useful telemetry; not write-path concern.</li>
+    <li defer-to="TBD-cross-spec-authoring">Cross-spec authoring — generating a parent spec from a set of child slices, or vice versa. Adjacent to <code>&lt;spec-parent&gt;</code> but a distinct workflow.</li>
+    <li defer-to="TBD-core-plan">Extract <code>/spectastic.plan</code> — sibling slice. Pairs with this one and reuses the interview engine.</li>
+    <li defer-to="TBD-core-tasks">Extract <code>/spectastic.tasks</code> — also pairs naturally; deterministic generation from spec + plan.</li>
+  </ul>
+</spec-out-of-scope>
+</section>
+
+
+<section id="data">
+<h2>4 · Data model</h2>
+<details>
+<summary>Four types this slice owns: <code>SpecInput</code>, <code>SpecResult</code>, <code>InterviewPhase</code>, and the re-exported <code>Question</code> shape from 006.</summary>
+
+<h3>Entities</h3>
+<dl>
+  <dt><code>SpecInput</code></dt>
+  <dd>Fields: <code>description: string</code> (the user's feature description or, in re-entry mode, the spec ID), <code>specId?: string</code> (optional explicit ID; otherwise auto-assigned by scanning <code>specs/</code>), <code>mode?: 'fresh' | 'reentry'</code> (optional explicit mode; otherwise inferred — re-entry if the resolved <code>spec.html</code> exists, fresh otherwise).</dd>
+
+  <dt><code>SpecResult</code></dt>
+  <dd>Fields: <code>html: string</code> (the populated <code>spec.html</code> content, ready to write to disk), <code>specId: string</code> (the resolved ID, fresh or pre-existing), <code>requirementsCount: number</code> (count of <code>&lt;spec-requirement&gt;</code> elements in the result). The caller writes <code>html</code> to <code>specs/&lt;specId&gt;/spec.html</code>; the kernel never touches the filesystem.</dd>
+
+  <dt><code>InterviewPhase</code></dt>
+  <dd>An internal discriminated union: <code>{ kind: 'chat', prompt: string }</code> for free-form narrative capture (consumed by <code>ctx.ai.chat()</code>) or <code>{ kind: 'decision', questions: Question[] }</code> for bounded-choice anchoring (consumed by <code>ctx.ai.ask&lt;T&gt;()</code>). The verb sequences phases; the AIProvider materialises them in the consumer's surface (Claude Code tool call, MCP elicitation, VS Code quick-pick).</dd>
+
+  <dt><code>Question</code></dt>
+  <dd>Re-exported from <code>@spectastic/core</code>'s main entry (defined by <a href="../006-kernel-extraction/spec.html#FR-007">006 FR-007</a>). Shape mirrors Claude Code's <code>AskUserQuestion</code>: <code>{ question: string, header: string, options: { label: string, description: string }[], multiSelect?: boolean }</code>. 1–4 questions per <code>ask&lt;T&gt;()</code> call; 2–4 options per question.</dd>
+</dl>
+</details>
+</section>
+
+
+<section id="success">
+<h2>5 · Success criteria</h2>
+
+<p>Technology-agnostic, measurable outcomes.</p>
+
+<spec-requirement id="SC-001" priority="must">
+<p>A test under <code>packages/core/test/spec.test.ts</code> drives <code>specCommand</code> against a stub <code>AIProvider</code> scripted to mirror the answers a maintainer would give to a known fixture feature. The returned <code>SpecResult.html</code> is byte-identical (modulo trivial whitespace normalisation and the dynamic <code>Created</code> date) to the artifact today's <code>/spectastic.spec</code> would produce against the same scripted answers.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-002" priority="must">
+<p>Re-entry mode against an existing <code>spec.html</code> fixture preserves every existing <code>&lt;spec-requirement id="…"&gt;</code> ID, every existing <code>&lt;spec-changelog&gt;</code> entry, and every existing <code>&lt;spec-question&gt;</code>. New requirements (if any) receive fresh IDs that do not collide with the existing set. No FR-ID is reused or renumbered.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-003" priority="must">
+<p>Running <code>node packages/cli/dist/index.js spec "test feature"</code> in a clean temp workspace creates <code>specs/001-test-feature/spec.html</code> with no <code>[PLACEHOLDER]</code> tokens remaining, asset paths correctly rewritten to <code>../../assets/spec.css</code> + <code>../../assets/spec.js</code>, and <code>spectastic validate specs/001-test-feature/spec.html</code> returns zero findings.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-004" priority="must">
+<p><code>pnpm bench</code> passes all scenarios within their declared budgets. The <code>init-help-cold-start</code> p50 stays within ±20% of today's baseline (52 ms on CI) — proving the new <code>spec</code> subpath does not eagerly load HTML-generation or template-parsing dependencies onto the init path.</p>
+</spec-requirement>
+</section>
+
+
+<section id="assumptions">
+<h2>6 · Assumptions</h2>
+<details>
+<summary>Two preconditions: 006-kernel-extraction has shipped (with the <code>AIProvider</code> interface and a working Claude adapter), and the markdown procedure remains canonical.</summary>
+
+<spec-assumption>
+<p><a href="../006-kernel-extraction/spec.html">006-kernel-extraction</a> has shipped, including the <code>AIProvider</code> interface and a concrete Claude adapter sufficient for the CLI's <code>spec</code> subcommand to drive a real interview. If the Claude adapter is not yet ready when this slice implements, the CLI subcommand temporarily ships with a clearer "AI provider not yet wired" error; the kernel function itself is testable against a stub <code>AIProvider</code> regardless.</p>
+</spec-assumption>
+
+<spec-assumption>
+<p>The canonical procedure for the spec interview remains <code>commands/spectastic.spec.md</code>; the kernel function summarises and points back via its docblock. Auto-generating the markdown from the docblock is explicitly out of scope per <a href="../006-kernel-extraction/spec.html">006</a>'s decisions log.</p>
+</spec-assumption>
+</details>
+</section>
+
+
+<section id="questions">
+<h2>7 · Open questions</h2>
+<spec-questions>
+<ol>
+  <li>None at write time. All non-obvious decisions anchored via the propose-time interview (scope = both modes; interview = two-phase via <code>ai.chat()</code> + <code>ai.ask&lt;T&gt;()</code>; result = structured, caller writes; markdown stays canonical). Anything that surfaces during plan / implementation goes back through <code>/spectastic.propose</code>.</li>
+</ol>
+</spec-questions>
+</section>
+
+
+<section id="conformance">
+<h2>8 · Conformance index</h2>
+<p>Auto-built from every <code>&lt;spec-requirement&gt;</code> in this document.</p>
+<spec-conformance></spec-conformance>
+</section>
+
+
+<section id="changelog">
+<h2>9 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-06-16">16 Jun 2026</time><span>Initial draft. Anchored decisions: scope covers both fresh-mode and re-entry mode in one slice (re-entry sharpens without overwriting); two-phase interview architecture is the centerpiece — chat phase via <code>ctx.ai.chat()</code>, decision phase via <code>ctx.ai.ask&lt;T&gt;()</code>; <code>specCommand</code> returns structured <code>SpecResult</code> and never touches the filesystem (caller writes); <code>commands/spectastic.spec.md</code> remains canonical and gains the MAY-Bash-to-CLI note; INVEST + budget gauge integration carry over from existing skill discipline. First verb to exercise <code>AIProvider.ask&lt;T&gt;()</code> end-to-end.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  011-core-spec · Core spec verb · authored 16 Jun 2026 ·
+  <button data-theme-toggle style="background:none;border:none;color:var(--c-link);cursor:pointer;font:inherit;padding:0;border-bottom:1px solid currentColor;">toggle theme</button>
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>
