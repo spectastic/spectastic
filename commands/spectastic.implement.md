@@ -68,7 +68,15 @@ Flags can appear in any order in `$ARGUMENTS`. A non-flag token (`T-NNN`, `I-NNN
    - **Tasks file:** find the task's `<input type="checkbox">` and add the `checked` attribute. Do not delete the task; do not reorder. Other tasks stay untouched.
    - **Inbox `just-do` card:** add `data-status="done"` to the `<spec-triage>` element. Do not remove the card or move it out of inbox.html — it stays as history (faded with a DONE pill). Other cards stay untouched.
 
-8. **Verify.** Run the smallest possible verification the task admits — its scoped tests, a smoke check, a build. Report the result in your reply.
+8. **Last-tick status transition (per REQ-LIFECYCLE-004 of the meta-spec).** After ticking, check whether the box just ticked was the *last* unchecked `<input type="checkbox">` in the tasks.html file. If yes, surface a Draft → Accepted flip prompt:
+   - Display an explicit confirmation prompt naming the spec, the proposed transition (`Draft` → `Accepted`), and the trigger ("last task ticked"). Use AskUserQuestion or an equivalent explicit-confirmation gesture — never an inline "do you want to" sentence the user can scroll past.
+   - The prompt **MUST** remind the author to verify the integration tests covering the spec's Success Criteria pass before confirming. This is the test-pass discipline, absorbed into the confirmation gesture: the author's "yes" attests that tests are green.
+   - The command **MUST NOT** auto-flip status. No confirmation, no flip.
+   - On confirmation, edit the spec's `<spec-status value="…">` from `draft` to `accepted` AND append a one-line `<spec-changelog>` entry naming the old state, new state, date, and triggering condition. Example: `Status flipped Draft → Accepted on 15 Jun 2026 — last task ticked, tests verified passing per author confirmation.`
+   - If the user declines (or interrupts the prompt), leave the status as-is and report. The flip can be performed manually later; the requirement is on the prompt, not on the outcome.
+   - This step is **skipped** when the tick was not the last one (most invocations), when the artifact has no tasks.html (handled by the tasks-less-artifact clause of REQ-LIFECYCLE-004 — author affirms separately), or when the spec is already past Draft.
+
+9. **Verify.** Run the smallest possible verification the task admits — its scoped tests, a smoke check, a build. Report the result in your reply.
 
 ## Discipline (non-negotiable)
 

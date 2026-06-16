@@ -18,7 +18,7 @@
   </p>
 
   <spec-meta>
-    <b>Status</b>     <span><spec-status value="draft">Draft</spec-status></span>
+    <b>Status</b>     <span><spec-status value="accepted">Accepted</spec-status></span>
     <b>Version</b>    <span>0.1.0</span>
     <b>Owner</b>      <span>Brian Corbin · @briancorbinxyz</span>
     <b>Last updated</b><span><time datetime="2026-06-12">12 Jun 2026</time></span>
@@ -229,8 +229,10 @@ the spec-driven lifecycle: <code>principles.html</code>, <code>spec.html</code>,
 
 <spec-requirement id="REQ-LIFECYCLE-002" priority="should">
 <p>Each template <spec-rule level="should">SHOULD</spec-rule> include a
-<code>&lt;spec-status&gt;</code> in the header reflecting <em>Draft / In Review / Accepted /
-Superseded / Deprecated</em>.</p>
+<code>&lt;spec-status&gt;</code> in the header reflecting exactly one of:
+<em>Draft</em>, <em>In Review</em>, <em>Accepted</em>, <em>Superseded</em>,
+<em>Deprecated</em>, <em>Blocked</em>. Transitions between these values are
+governed by <a href="#REQ-LIFECYCLE-004">REQ-LIFECYCLE-004</a>.</p>
 </spec-requirement>
 
 <spec-requirement id="REQ-LIFECYCLE-003" priority="must">
@@ -242,6 +244,70 @@ Superseded / Deprecated</em>.</p>
 </ul>
 <p>Styling for <code>&lt;spec-task&gt;</code> <spec-rule>MUST</spec-rule> live in <code>assets/spec.css</code> — not inline in the template. The generic <code>&lt;div class="task"&gt;</code> + class-span form is forbidden as a direct application of <a href="#REQ-AUTHOR-001">REQ-AUTHOR-001</a>.</p>
 <details><summary>Rationale</summary><p>The tasks artifact is regen-derived from a template, so the contract for its internal shape is worth being explicit about. Without a named element, a fresh authoring session falls back to whatever the template already shows — and a class-soup template propagates indefinitely. Codifying <code>&lt;spec-task&gt;</code> turns the implicit pattern into something a validator (or a careful reader) can check.</p></details>
+</spec-requirement>
+
+<spec-requirement id="REQ-LIFECYCLE-004" priority="must">
+<p>The lifecycle status of any artifact (spec, plan, tasks, principles, triage log,
+inbox) <spec-rule>MUST</spec-rule> evolve as a finite state machine over the six
+values named in <a href="#REQ-LIFECYCLE-002">REQ-LIFECYCLE-002</a>. The allowed
+transitions are:</p>
+<dl>
+  <dt><strong>Draft → Accepted</strong></dt>
+  <dd>Triggered when the last unchecked <code>&lt;input type="checkbox"&gt;</code>
+  in the artifact's <code>tasks.html</code> is ticked <em>and</em> the author
+  explicitly confirms the flip. <code>/spectastic.implement</code>
+  <spec-rule>MUST</spec-rule> display a flip prompt at the last-tick that the
+  author must explicitly confirm; the prompt <spec-rule>MUST</spec-rule> remind
+  the author to verify the integration tests covering the Success Criteria pass
+  before confirming. The command <spec-rule>MUST NOT</spec-rule> auto-flip
+  status without explicit confirmation. The confirmation gesture absorbs the
+  test-pass discipline; author judgment is the gate.</dd>
+
+  <dt><strong>Draft → In Review</strong></dt>
+  <dd>Author-initiated manual flip when soliciting reviewer feedback before the
+  spec is locked. Reversible via In Review → Draft.</dd>
+
+  <dt><strong>In Review → Accepted</strong></dt>
+  <dd>Reviewer sign-off. Author flips after the review concludes.</dd>
+
+  <dt><strong>In Review → Draft</strong></dt>
+  <dd>Author-initiated when revisions are needed in response to review.</dd>
+
+  <dt><strong>Accepted → Superseded</strong></dt>
+  <dd>Triggered when a successor artifact adds a <code>&lt;spec-note&gt;</code> in
+  its header citing this artifact as the prior contract. The successor's author
+  flips the predecessor's status to <em>Superseded</em> at the same time the
+  forward-link lands. The predecessor's content is preserved as historical
+  record.</dd>
+
+  <dt><strong>Accepted → Deprecated</strong></dt>
+  <dd>Terminal phase-out without a successor — the requirements described are
+  being removed from the project's scope, not replaced. Manual flip; once
+  Deprecated, no further transitions are allowed.</dd>
+
+  <dt><strong>Any state → Blocked</strong></dt>
+  <dd>Triggered by a triage card or an upstream-block signal (an external system
+  down, a vendor bug, a contractual review pending). Reversible via Blocked →
+  originating-state. The originating state is recorded in the artifact's
+  <code>&lt;spec-changelog&gt;</code> at flip time.</dd>
+
+  <dt><strong>Blocked → originating state</strong></dt>
+  <dd>When the blocker resolves, the artifact returns to whatever state it was
+  in when Blocked was entered. Recorded in <code>&lt;spec-changelog&gt;</code>.</dd>
+</dl>
+<p>For artifacts without a <code>tasks.html</code> (principles, the meta-spec
+itself, triage logs, inbox), the Draft → Accepted trigger is an explicit author
+affirmation that the artifact is the operative contract for the project. The
+author records the affirmation as a one-line <code>&lt;spec-changelog&gt;</code>
+entry naming the date and the reason.</p>
+<p>Transitions not in the list above are <strong>forbidden</strong>. In particular,
+a Superseded or Deprecated artifact <spec-rule>MUST NOT</spec-rule> transition to any
+other state — those are terminal. An Accepted artifact <spec-rule>MUST NOT</spec-rule>
+transition back to Draft or In Review; if amendments are needed, the path is
+<code>/spectastic.propose</code> against the live spec, not a status downgrade.</p>
+<p>Every transition <spec-rule>MUST</spec-rule> append a one-line entry to the
+artifact's <code>&lt;spec-changelog&gt;</code> naming the old state, the new state,
+the date, and the triggering condition or gesture.</p>
 </spec-requirement>
 
 <h3>Change management</h3>
@@ -716,6 +782,8 @@ disabled, fall back to <a href="#requirements">§4 Requirements</a>.</p>
   <li><time datetime="2026-06-13">13 Jun 2026</time><span>Applied <a href="./changes/archive/2026-06-13-rejection-workflow/proposal.html">2026-06-13-rejection-workflow</a>: added REQ-CHANGE-005 codifying the rejection workflow at both lifecycle surfaces — Surface A (<code>data-status="rejected"</code> on inbox cards) and Surface B (<code>/spectastic.apply --withdraw &lt;YYYY-MM-DD&gt;-&lt;slug&gt; --reason="…"</code>). New <code>examples/changes/withdrawn/</code> directory parallel to <code>archive/</code>. Second worked example of the risk pass on a lifecycle change (R1, R2, R3 all mitigated — softened "terminal" language, clarified path notation, acknowledged scope bundle). Closes inbox <a href="../inbox.html#I-011">I-011</a>.</span></li>
   <li><time datetime="2026-06-13">13 Jun 2026</time><span>Considered <a href="./changes/withdrawn/2026-06-13-implement-to-build/proposal.html">2026-06-13-implement-to-build</a>, withdrew on 13 Jun 2026 because of the R1 risk-pass finding identifying the clash of terms <code>build</code> with other well-established meanings (npm/cargo/make build, build steps, build artifacts). Risk pass surfaced what the inbox-capture instinct had flagged; withdrawal flow per <a href="#REQ-CHANGE-005">REQ-CHANGE-005</a> records the rejection lineage. Closes inbox <a href="../inbox.html#I-007">I-007</a>.</span></li>
   <li><time datetime="2026-06-13">13 Jun 2026</time><span>Retired the stale "twelve elements total — that's the budget" warning in §7. v0.1 shipped twelve; the design system has since grown to about three dozen distinct <code>spec-*</code> tags. Discipline reframed from a fixed budget to a per-element justification. Prose-only change; no requirement deltas. Closes the R3 mitigation follow-up from <a href="./changes/archive/2026-06-13-adversarial-risk-pass/proposal.html">2026-06-13-adversarial-risk-pass</a>.</span></li>
+  <li><time datetime="2026-06-15">15 Jun 2026</time><span>Applied <a href="./changes/archive/2026-06-15-lifecycle-state-transitions/proposal.html">2026-06-15-lifecycle-state-transitions</a>: modified REQ-LIFECYCLE-002 (added <em>Blocked</em> to the named value set and forward-link to REQ-LIFECYCLE-004); added REQ-LIFECYCLE-004 (finite state machine for artifact lifecycle, with explicit triggers for every allowed transition and a tasks-less clause for principles/meta-spec/triage/inbox). Driven by <a href="../spectastic-triage-log.html#T-001">T-001</a> of the meta-spec triage log. Adversarial pass produced 3 findings; all mitigated before apply.</span></li>
+  <li><time datetime="2026-06-15">15 Jun 2026</time><span>Status flipped Draft → Accepted via the tasks-less-artifact clause just added to REQ-LIFECYCLE-004: the meta-spec is the operative contract for the project, demonstrated by every downstream spec applying its rules. Affirmation lands simultaneously with the apply above.</span></li>
 </ol>
 </spec-changelog>
 </section>
