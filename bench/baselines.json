@@ -1,0 +1,36 @@
+{
+  "version": 1,
+  "captured_on": "Apple M1 Max, macOS Darwin 25.5, Node 25.9.0",
+  "captured_at": "2026-06-16T00:00:00Z",
+  "notes": [
+    "Budgets are PERMISSIVE — they catch order-of-magnitude regressions (e.g. eager parse5 load on the init path), not single-digit-ms variance.",
+    "GitHub-hosted ubuntu-latest runners run roughly 1.5-2x slower than this M1 baseline; budgets bake in that headroom.",
+    "If a budget here ever feels too tight in practice, raise it deliberately and record why in the corresponding scenario block — don't quietly relax."
+  ],
+  "scenarios": {
+    "cli-version-cold-start": {
+      "description": "`spectastic --version` — pure CLI startup; nothing beyond commander loaded",
+      "dev_baseline_p50_ms": 40,
+      "budget_ms": 150,
+      "rationale": "Node startup + ESM import of the entrypoint + commander. Regression past 150ms means something heavy was loaded eagerly; investigate the import graph."
+    },
+    "init-help-cold-start": {
+      "description": "`spectastic init --help` — init module path; parse5 MUST stay lazy here",
+      "dev_baseline_p50_ms": 40,
+      "budget_ms": 150,
+      "rationale": "If this grows toward validate's cost, init has accidentally started importing parse5 or schema's heavy deps. The I-019 lazy-import fix lives here; this scenario is its regression guard."
+    },
+    "validate-single-cold-start": {
+      "description": "`spectastic validate <one-spec>` — first-doc cost including parse5 + all rules",
+      "dev_baseline_p50_ms": 70,
+      "budget_ms": 250,
+      "rationale": "Cold path: Node + commander + parse5 + every rule's module + parse one doc + run all rules once. The validate path's perf floor."
+    },
+    "validate-full-project": {
+      "description": "`spectastic validate \"specs/**\" \"examples/**\" inbox.html principles.html` — steady-state across the full set",
+      "dev_baseline_p50_ms": 130,
+      "budget_ms": 500,
+      "rationale": "34 docs at ~2.6ms steady-state on dev. Budget allows ~10ms/doc on CI — well above current, but tight enough to catch a O(N^2) regression in a cross-file rule."
+    }
+  }
+}
