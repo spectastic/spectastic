@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.1.0-pre.6 — 2026-06-16
+
+Ships the two new validator rules to npm consumers.
+
+- **New rule `no-broken-defer-to`** (cross-file). `<spec-out-of-scope defer-to="…">` values must be `never`, `TBD` / `TBD-<topic>`, or a well-formed spec ID. The existence-of-target check fires only when the validation set contains 2+ documents, so `spectastic validate path/to/single.html` doesn't false-positive on cross-spec references. Use `spectastic validate "specs/**/*.html" "examples/**/*.html"` (or wider globs) to engage the existence check.
+- **New rule `spec-parent-well-formed`** (per-file). `<spec-parent>` must declare a non-empty `specid=` attribute matching the spec-id format (`<digits>-<lower-kebab>`). Catches the common drift where an author copies `<spec-parent>` from the template but forgets to fill in the ID.
+- Together the two rules form the practical lower bound on parent/child slicing consistency. Strict cross-file reciprocity remains a follow-up; see [examples/slicing-gaps.html §5](./examples/slicing-gaps.html#deferred).
+- 62 tests pass (60 → 62 from the two new fixture pairs). No breaking changes for callers; the new rules emit `error`-severity findings on documents that previously validated cleanly only when those documents had the underlying defect.
+
 ## v0.1.0-pre.5 — 2026-06-16
 
 Republish that ships the I-019 / I-020 / T-002 follow-ups already on disk.
