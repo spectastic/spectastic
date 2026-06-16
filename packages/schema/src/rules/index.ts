@@ -5,12 +5,14 @@ import { deltaTargetRequiredRule } from './delta-target-required.js';
 import { emptyDocumentRule } from './empty-document.js';
 import { fileTooLargeRule } from './file-too-large.js';
 import { investRowFailedRule } from './invest-row-failed.js';
+import { noBrokenDeferToRule } from './no-broken-defer-to.js';
 import { noDuplicateIdsRule } from './no-duplicate-ids.js';
 import { noMissingDeferToRule } from './no-missing-defer-to.js';
 import { noUnresolvedQuestionRule } from './no-unresolved-question.js';
 import { requirementIdRequiredRule } from './requirement-id-required.js';
 import { riskStatusRequiredRule } from './risk-status-required.js';
 import { riskTargetRequiredRule } from './risk-target-required.js';
+import { specParentWellFormedRule } from './spec-parent-well-formed.js';
 import { taskIdRequiredRule } from './task-id-required.js';
 
 /**
@@ -33,6 +35,7 @@ export const rules: readonly Rule[] = [
   riskStatusRequiredRule,
   requirementIdRequiredRule,
   taskIdRequiredRule,
+  specParentWellFormedRule,
 
   // Status-dependent rules (per-file).
   noUnresolvedQuestionRule,
@@ -44,4 +47,5 @@ export const rules: readonly Rule[] = [
 
   // Cross-file rules.
   noDuplicateIdsRule,
+  noBrokenDeferToRule,
 ];
