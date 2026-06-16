@@ -1,0 +1,282 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Kernel extraction · Specification</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Specification · 006-kernel-extraction</p>
+  <h1>Kernel extraction — <code>@spectastic/core</code> as the verb-logic spine</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    Pull the eight slash-command procedures into one TypeScript package the CLI, the future MCP server, and the future VS Code extension all share. Start with one verb; prove the shape; repeat.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>      <span><spec-status value="draft">Draft</spec-status></span>
+    <b>Spec ID</b>     <span>006-kernel-extraction</span>
+    <b>Owner</b>       <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Reviewers</b>   <span>—</span>
+    <b>Created</b>     <span><time datetime="2026-06-16">16 Jun 2026</time></span>
+    <b>Principles</b>  <span><a href="../../principles.html">v1.0.1</a></span>
+    <b>Smallest demoable</b><span>The <code>validate</code> verb extracted end-to-end: <code>@spectastic/core/commands/validate</code> exports <code>validateCommand()</code>; <code>@spectastic/cli</code>'s <code>validate</code> subcommand imports from core (not schema); behaviour is byte-identical; <code>pnpm bench</code> passes within budget; one new kernel-level unit test runs alongside the existing CLI integration suite.</span>
+    <b>Read time</b>   <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-budget words="2200" reqs="20" minutes="10"></spec-budget>
+
+  <spec-tldr>
+    <p>The eight slash-command procedures live as markdown executed by the LLM in-process; only <code>validate</code> has TypeScript code. There's no shared kernel — every future surface (MCP, VS Code, web editor) would have to re-implement every verb. This spec creates that kernel as <code>@spectastic/core</code>, defines its shape (per-verb subpath exports, single async function per verb, injected <code>KernelContext</code> for IO + AI), and extracts <code>validate</code> as the worked example — it's already kernel-shaped, has no AI coupling, and the bench scaffold at <code>f3e249d</code> is the regression detector that proves the lazy-loading discipline holds. Remaining seven verbs deferred to per-verb sibling slices. Kernel extraction does not speed anything up; the win is architectural reach.</p>
+  </spec-tldr>
+
+  <dl class="invest">
+    <dt><span class="letter">I</span> Independent</dt> <dd>Depends on <a href="../002-validate-cli/spec.html">002-validate-cli</a> (the validate logic being extracted) and the principles. No upstream specs block on it; no sibling specs need it before this lands.</dd>
+    <dt><span class="letter">N</span> Negotiable</dt>  <dd>Specifies the contract (per-verb subpaths, single async function, injected context) and the first verb to extract. The internal implementation of <code>validateCommand</code>, the test fixture choices, and the build-tool incantation defer to the plan.</dd>
+    <dt><span class="letter">V</span> Valuable</dt>    <dd>Unlocks <a href="#SC-003">SC-003</a> — a separate test file imports <code>validateCommand</code> from <code>@spectastic/core</code> and runs against a fixture <em>without</em> the CLI process overhead. That import path is what every future surface (MCP, VS Code) reuses.</dd>
+    <dt><span class="letter">E</span> Estimable</dt>   <dd>All nine non-obvious decisions were anchored in the propose-time interview: first verb, package location, function shape, AI access pattern, lazy-loading enforcement, canonical procedure source, slash-command coupling, testing approach, and API stability. No <code>&lt;spec-question&gt;</code> remains open.</dd>
+    <dt><span class="letter">S</span> Small</dt>       <dd>One new package skeleton plus one verb extracted — deliberately the smallest worked example. ~16 requirements, ~2,200 words. Multi-session by design: this spec is the contract that lets future sessions resume the remaining seven verb extractions without re-deriving the architecture.</dd>
+    <dt><span class="letter">T</span> Testable</dt>    <dd>Every requirement observable: package builds, types resolve across three packages, bench passes within budget, CLI behaviour unchanged byte-for-byte, kernel function unit-tested as a pure function. <a href="#SC-001">SC-001</a>..<a href="#SC-004">SC-004</a> name the four canonical observations.</dd>
+  </dl>
+
+  <spec-audience-map>
+    <dl>
+      <dt>Exec / PM</dt>   <dd>§<a href="#context">Context</a>, §<a href="#scenarios">User scenarios</a>, §<a href="#success">Success criteria</a>.</dd>
+      <dt>Reviewer</dt>    <dd>§<a href="#requirements">Requirements</a>, §<a href="#data">Data model</a>, §<a href="#assumptions">Assumptions</a>.</dd>
+      <dt>Implementer</dt> <dd>§<a href="#requirements">Requirements</a>, §<a href="#data">Data model</a>, §<a href="#conformance">Conformance index</a>. The plan (<code>plan.html</code>) will carry the ADRs.</dd>
+    </dl>
+  </spec-audience-map>
+</header>
+
+
+<section id="context">
+<h2>1 · Context</h2>
+<p>Eight slash commands (<code>principles</code>, <code>spec</code>, <code>plan</code>, <code>tasks</code>, <code>implement</code>, <code>propose</code>, <code>apply</code>, <code>triage</code>) are markdown procedures executed by the LLM in-process; only <code>validate</code> has TypeScript code, split between <code>@spectastic/cli</code> (wiring + formatters) and <code>@spectastic/schema</code> (parser + rules + engine). This works for Claude Code today but doesn't scale to Tier 2 MCP, Tier 3 VS Code, or Tier 6 web editor — each would re-implement every verb.</p>
+<p>The trigger to do this now is the bench scaffold at <code>f3e249d</code> (<a href="../../bench/measure.mjs">bench/measure.mjs</a> + <a href="../../bench/baselines.json">bench/baselines.json</a>). Kernel extraction is exactly the change that can accidentally eager-load parse5 on the init path (the I-019 failure mode); the bench is its regression guard. Without it, the kernel work would ship and silently regress.</p>
+</section>
+
+
+<section id="scenarios">
+<h2>2 · User scenarios &amp; testing</h2>
+
+<p>Each story is independently testable: if you implemented only US1, you would still have a viable MVP that proves the shape.</p>
+
+<h3>US1 · CLI consumer sees no change <spec-pill>P1</spec-pill></h3>
+<p>As a <strong>contributor or CI consumer running <code>spectastic validate</code></strong>, I want to <strong>see byte-identical behaviour before and after the extraction</strong> so that <strong>the extraction is invisible to my workflow — same exit codes, same output, same flags.</strong></p>
+<p><em>Acceptance:</em> Running the full-project validate (<code>node packages/cli/dist/index.js validate "specs/**/*.html" "examples/**/*.html" inbox.html principles.html</code>) before and after the extraction produces identical stdout (modulo any trivial whitespace normalisation) and the same exit code (<code>0</code> on the clean repo). The bench passes within budget.</p>
+
+<h3>US2 · Future verb extraction has a pattern to follow <spec-pill>P1</spec-pill></h3>
+<p>As a <strong>contributor extracting the second verb</strong> (likely <code>triage</code> in a sibling slice), I want to <strong>import the existing kernel function and copy its shape</strong> so that <strong>I'm not re-deriving the architecture from scratch and the second verb's PR is purely additive.</strong></p>
+<p><em>Acceptance:</em> The second extraction's PR adds <code>packages/core/src/commands/&lt;verb&gt;.ts</code> alongside <code>validate.ts</code>; the new function follows the same signature shape <code>(input: VerbInput, ctx: KernelContext) =&gt; Promise&lt;VerbResult&gt;</code>; the package's <code>exports</code> field gains one new subpath. No refactor to the existing <code>validateCommand</code> is required.</p>
+
+<h3>US3 · Downstream surface imports the kernel directly <spec-pill>P2</spec-pill></h3>
+<p>As a <strong>future MCP server or VS Code extension author</strong>, I want to <strong>import <code>validateCommand</code> from <code>@spectastic/core/commands/validate</code> and call it without spawning a CLI process</strong> so that <strong>tool-call latency is in the millisecond range rather than the 100ms+ Node-startup range.</strong></p>
+<p><em>Acceptance:</em> A separate Node program (or in this slice, a test file under <code>packages/core/test/</code>) calls <code>validateCommand(input, ctx)</code> against a fixture and receives the same <code>findings</code> the CLI produces. No process spawn; total call time is well under 10 ms once the module is loaded.</p>
+
+<h3>Edge cases</h3>
+<details>
+<summary><strong>Five tracked failure modes the extraction handles</strong></summary>
+<ul>
+  <li><strong>Subpath exports unavailable</strong> — fallback path if Node &lt;16.8 ever needs to consume the package. Out of scope: Node 20+ is already required project-wide.</li>
+  <li><strong>tsup multi-entry config drift</strong> — if subpath outputs ever stop building, the test harness's import will fail loudly; CI catches it before merge.</li>
+  <li><strong>Eager re-export creep</strong> — a future contributor adds <code>export * from './commands/foo'</code> to the umbrella <code>index.ts</code>; the bench's <code>init-help-cold-start</code> budget catches the regression because parse5 would land eagerly on init.</li>
+  <li><strong>Type drift across packages</strong> — <code>@spectastic/cli</code> pins <code>@spectastic/schema</code>'s <code>Finding</code> type while <code>@spectastic/core</code> re-exports a different version. Mitigation: kernel re-exports schema types directly; one source of truth.</li>
+  <li><strong>Behaviour drift in the extraction</strong> — the kernel function returns subtly-different results than the pre-extraction CLI did. Mitigation: the existing CLI integration tests (<code>packages/cli/test/cli.test.ts</code>) stay; SC-004 enforces byte-identical output.</li>
+</ul>
+</details>
+</section>
+
+
+<section id="requirements">
+<h2>3 · Requirements</h2>
+
+<p>Conformance keywords (<spec-rule>MUST</spec-rule>, <spec-rule level="should">SHOULD</spec-rule>, <spec-rule level="may">MAY</spec-rule>) follow RFC 2119.</p>
+
+<h3>Functional — the kernel package</h3>
+
+<spec-requirement id="FR-001" priority="must">
+<p>A new package <code>@spectastic/core</code> <spec-rule>MUST</spec-rule> exist at <code>packages/core/</code>, parallel to <code>packages/cli/</code> and <code>packages/schema/</code>. It <spec-rule>MUST</spec-rule> follow the established workspace shape (<code>package.json</code>, <code>tsconfig.json</code>, <code>tsup.config.ts</code>, <code>src/</code>, <code>test/</code>) and use the same build tool (tsup), test runner (vitest), and TypeScript version as the other packages.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-002" priority="must">
+<p>The package <spec-rule>MUST</spec-rule> declare per-verb subpath exports in its <code>package.json</code> <code>exports</code> field. Consumers <spec-rule>MUST</spec-rule> import each verb from its own subpath (e.g. <code>import { validateCommand } from '@spectastic/core/commands/validate'</code>) — never via an umbrella re-export. The package's main entry (<code>.</code>) <spec-rule>MUST</spec-rule> export only types (<code>KernelContext</code>, <code>AIProvider</code>, per-verb input/result interfaces) and <spec-rule>MUST NOT</spec-rule> eagerly load any verb's command code.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-003" priority="must">
+<p>Every verb function <spec-rule>MUST</spec-rule> follow the signature <code>async function &lt;verb&gt;Command(input: &lt;Verb&gt;Input, ctx: KernelContext): Promise&lt;&lt;Verb&gt;Result&gt;</code>. The function <spec-rule>MUST</spec-rule> be pure with respect to its arguments: all IO, AI access, and prompt UX flow through <code>ctx</code>; no module-level side effects; no implicit <code>process.cwd()</code>, <code>process.env</code>, or <code>console</code> usage inside the function body.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-004" priority="must">
+<p><code>validateCommand</code> <spec-rule>MUST</spec-rule> be implemented at <code>packages/core/src/commands/validate.ts</code> as the first worked example. It <spec-rule>MUST</spec-rule> wrap <code>@spectastic/schema</code>'s <code>validate</code> / <code>validateMany</code> functions and return a <code>ValidateResult</code> shape that includes <code>findings</code>, <code>exitCode</code>, and the resolved input metadata. It <spec-rule>MUST NOT</spec-rule> touch the filesystem directly — file reads flow through <code>ctx.fs</code> (or a callback provided by the caller).</p>
+</spec-requirement>
+
+<spec-requirement id="FR-005" priority="must">
+<p>The <code>@spectastic/cli</code>'s <code>validate</code> subcommand <spec-rule>MUST</spec-rule> import <code>validateCommand</code> from <code>@spectastic/core/commands/validate</code> (not from <code>@spectastic/schema</code> directly). The subcommand owns the shell-side concerns: glob expansion, file reads, output formatting (human/json/sarif), exit code translation. The kernel function owns the deterministic core: parse + validate + structure the result.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-006" priority="must">
+<p>CLI behaviour <spec-rule>MUST</spec-rule> be unchanged post-extraction. The exit-code contract (<code>0</code> clean, <code>1</code> findings, <code>2</code> usage / invalid args), the output formats (<code>human</code> / <code>json</code> / <code>sarif</code>), the finding shape, and every existing flag <spec-rule>MUST</spec-rule> match pre-extraction behaviour byte-for-byte (modulo trivial whitespace normalisation). No user-visible change.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-007" priority="must">
+<p>The package <spec-rule>MUST</spec-rule> define the <code>KernelContext</code> and <code>AIProvider</code> TypeScript interfaces in its main entry, even though <code>validate</code> does not consume <code>AIProvider</code>. Defining the surface now lets the second verb's PR add the Claude adapter additively rather than as a major surface change; downstream consumers (MCP, VS Code) can plan their wiring against v1 types.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-008" priority="must">
+<p>Each verb function's docblock <spec-rule>MUST</spec-rule> link to the canonical procedure file (<code>commands/spectastic.&lt;verb&gt;.md</code> for slash-command verbs; the docblock itself for verbs without a slash command, like <code>validate</code>). The markdown procedure remains the source of truth the LLM reads at slash-command invocation; the kernel docblock summarises and points back. The markdown <spec-rule>MUST NOT</spec-rule> be auto-generated from the docblock in v1.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-009" priority="may">
+<p>Slash commands <spec-rule level="may">MAY</spec-rule> instruct the LLM to invoke <code>spectastic &lt;verb&gt;</code> via Bash for deterministic operations, but <spec-rule>MUST NOT</spec-rule> be required to. Existing markdown procedures continue to work end-to-end without the kernel; the kernel is an alternate code path, not a hard dependency. The v1 of this slice does not modify any slash-command markdown (<code>validate</code> has no slash command; the seven that do are out of scope).</p>
+</spec-requirement>
+
+<spec-requirement id="FR-010" priority="must">
+<p>The kernel function <spec-rule>MUST</spec-rule> be unit-tested at <code>packages/core/test/validate.test.ts</code> as a pure function: no process spawn, no real filesystem IO (use stub <code>ctx.fs</code> or in-memory fixtures). The existing <code>packages/cli/test/cli.test.ts</code> integration tests <spec-rule>MUST</spec-rule> stay green; together the two layers catch logic regressions (kernel test) and wiring regressions (CLI test).</p>
+</spec-requirement>
+
+<spec-requirement id="FR-011" priority="must">
+<p>The package <spec-rule>MUST</spec-rule> declare <code>"publishConfig": {"access": "public"}</code> and follow the established synced-version policy: <code>@spectastic/core</code>, <code>@spectastic/cli</code>, and <code>@spectastic/schema</code> share the same version number on every release. The publish workflow's version-verify gate (<a href="../004-npm-publish-workflow/spec.html#FR-003">004 FR-003</a>) <spec-rule>MUST</spec-rule> be extended to cover the new package.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-012" priority="should">
+<p>The package's README <spec-rule level="should">SHOULD</spec-rule> document the pre-1.0 versioning policy explicitly: breaking changes to the kernel API <spec-rule level="may">MAY</spec-rule> land in minor version bumps until <code>1.0.0</code>, at which point strict semver applies. Downstream consumers <spec-rule level="should">SHOULD</spec-rule> pin tightly (<code>~0.2.0</code>) rather than loosely (<code>^0.2.0</code>) during the pre-1.0 phase.</p>
+</spec-requirement>
+
+<h3>Non-functional</h3>
+
+<spec-requirement id="NFR-001" priority="must">
+<p>The extraction <spec-rule>MUST NOT</spec-rule> regress any scenario in <code>bench/baselines.json</code> past its declared budget. The bench's <code>init-help-cold-start</code> scenario (150 ms budget) is the explicit regression guard for the I-019 lazy-import failure mode — if it ever exceeds budget, parse5 has crept onto the init path via the kernel.</p>
+</spec-requirement>
+
+<spec-requirement id="NFR-002" priority="should">
+<p>The <code>validate-full-project</code> bench scenario's p50 <spec-rule level="should">SHOULD</spec-rule> stay within ±20% of today's baseline (175 ms on M1 dev; 295 ms on ubuntu-latest CI). Re-export through <code>@spectastic/core</code> should add negligible overhead when subpath exports are wired correctly.</p>
+</spec-requirement>
+
+<h3>Out of scope (deferred to other slices)</h3>
+<spec-out-of-scope>
+  <ul>
+    <li defer-to="TBD-core-triage">Extract <code>/spectastic.triage</code> — second verb pick; exercises AI adapter on a low-stakes verb.</li>
+    <li defer-to="TBD-core-implement">Extract <code>/spectastic.implement</code>; drain modes (<code>--all</code> / <code>--phase</code> / <code>--parallel</code>) deserve their own slice.</li>
+    <li defer-to="TBD-core-spec">Extract <code>/spectastic.spec</code>; tests <code>AIProvider.ask&lt;T&gt;()</code> end-to-end.</li>
+    <li defer-to="TBD-core-plan">Extract <code>/spectastic.plan</code>; pairs with spec.</li>
+    <li defer-to="TBD-core-tasks">Extract <code>/spectastic.tasks</code>; deterministic generation from spec + plan.</li>
+    <li defer-to="TBD-core-propose">Extract <code>/spectastic.propose</code>; adversarial-pass spawn needs sub-agent semantics on <code>AIProvider</code>.</li>
+    <li defer-to="TBD-core-apply">Extract <code>/spectastic.apply</code>; mostly deterministic (deltas, archive, changelog).</li>
+    <li defer-to="TBD-core-principles">Extract <code>/spectastic.principles</code>; smallest of the slash verbs.</li>
+    <li defer-to="TBD-mcp-server">MCP server wrapping the kernel (Tier 2). Needs at least 3-4 verbs extracted first.</li>
+    <li defer-to="TBD-vscode-ext">VS Code extension (Tier 3); same multi-verb dependency.</li>
+    <li defer-to="TBD-web-editor">Web editor (Tier 6); deferred pending VS Code usage data.</li>
+    <li defer-to="TBD-multi-provider">OpenAI / local-LM <code>AIProvider</code> adapters. Claude adapter lands with the second verb; others are a separate slice.</li>
+    <li defer-to="TBD-cross-tool-installers">Cross-tool installers (Cursor, Aider, Copilot). Tier 2; presumes kernel + MCP both shipped.</li>
+    <li defer-to="never">Auto-generating slash-command markdown from kernel docblocks. Decided against — markdown stays canonical.</li>
+    <li defer-to="never">Making slash-command Bash-invocation of the kernel mandatory. Decided against — kernel is an alternate code path.</li>
+  </ul>
+</spec-out-of-scope>
+</section>
+
+
+<section id="data">
+<h2>4 · Data model</h2>
+<details>
+<summary>Two types this slice owns: <code>KernelContext</code> (the injected IO/AI surface) and the per-verb <code>Input</code>/<code>Result</code> interfaces (one pair per verb; v1 ships <code>ValidateInput</code> + <code>ValidateResult</code>).</summary>
+
+<h3>Entities</h3>
+<dl>
+  <dt><code>KernelContext</code></dt>
+  <dd>Fields: <code>cwd: string</code> (the directory to resolve relative paths against), <code>fs?: FileSystem</code> (optional; defaults to a thin wrapper over <code>node:fs/promises</code> when the caller doesn't supply one), <code>ai?: AIProvider</code> (optional; <code>undefined</code> for deterministic verbs like <code>validate</code>; required for verbs that prompt the model). Passed by every kernel function; never read from globals.</dd>
+
+  <dt><code>AIProvider</code></dt>
+  <dd>Interface declaring <code>chat(prompt, opts?)</code> for freeform model invocation and <code>ask&lt;T&gt;(questions)</code> for the typed bounded-choice pattern used by the decision-phase interviews. v1 ships the interface only; the Claude implementation lands with the second verb.</dd>
+
+  <dt><code>ValidateInput</code> / <code>ValidateResult</code></dt>
+  <dd><code>ValidateInput</code>: <code>files: string[]</code> (resolved paths or glob patterns), <code>format?: 'human' | 'json' | 'sarif'</code>, <code>ignore?: string[]</code>. <code>ValidateResult</code>: <code>findings: Finding[]</code> (re-exported from <code>@spectastic/schema</code>), <code>exitCode: 0 | 1 | 2</code>, <code>filesValidated: string[]</code>. The CLI's <code>validate</code> subcommand translates <code>ValidateResult</code> into stdout output + process exit code; downstream surfaces consume the structured shape directly.</dd>
+</dl>
+</details>
+</section>
+
+
+<section id="success">
+<h2>5 · Success criteria</h2>
+
+<p>Technology-agnostic, measurable outcomes.</p>
+
+<spec-requirement id="SC-001" priority="must">
+<p><code>pnpm test</code> passes post-extraction with at least the current count plus the new kernel-level unit tests for <code>validateCommand</code>. No existing test moves to skipped or pending.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-002" priority="must">
+<p><code>pnpm bench</code> passes all four scenarios on CI with p50 within their declared budgets in <code>bench/baselines.json</code>. The <code>init-help-cold-start</code> scenario's p50 remains within ±20% of today's baseline (52 ms on CI).</p>
+</spec-requirement>
+
+<spec-requirement id="SC-003" priority="must">
+<p>A test file under <code>packages/core/test/</code> imports <code>validateCommand</code> from <code>@spectastic/core/commands/validate</code>, calls it against an in-memory fixture, and receives the same <code>findings</code> shape the CLI produces against the same fixture file. No process spawn required for this test.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-004" priority="must">
+<p>Running <code>node packages/cli/dist/index.js validate "specs/**/*.html" "examples/**/*.html" inbox.html principles.html</code> produces stdout byte-identical (modulo trivial whitespace normalisation) to the pre-extraction baseline, with the same exit code (<code>0</code> on a clean repo).</p>
+</spec-requirement>
+</section>
+
+
+<section id="assumptions">
+<h2>6 · Assumptions</h2>
+<details>
+<summary>Four preconditions: pnpm workspace, tsup multi-entry, Node 20 subpath exports, bench discipline already shipped.</summary>
+
+<spec-assumption>
+<p>pnpm workspaces support three sibling packages (<code>cli</code>, <code>schema</code>, <code>core</code>) with cross-package <code>workspace:*</code> dependencies, matching today's two-package shape extended by one. No tooling change required.</p>
+</spec-assumption>
+
+<spec-assumption>
+<p>tsup supports multi-entry output for subpath exports via its <code>entry</code> array config. Each entry compiles to its own JS + .d.ts pair; the package's <code>exports</code> field references them. Established pattern in the ecosystem; no novel build work.</p>
+</spec-assumption>
+
+<spec-assumption>
+<p>Node 20+ honours the package.json <code>exports</code> field with subpath patterns. Already a hard requirement project-wide via <code>engines.node</code>.</p>
+</spec-assumption>
+
+<spec-assumption>
+<p>The bench scaffold (<a href="../../bench/measure.mjs">bench/measure.mjs</a> + <a href="../../bench/baselines.json">bench/baselines.json</a>) runs in CI as a step in the <code>build-and-test</code> job and gates merge on regression. Already shipped at commit <code>f3e249d</code>; this assumption is verified, not future-tense.</p>
+</spec-assumption>
+</details>
+</section>
+
+
+<section id="questions">
+<h2>7 · Open questions</h2>
+<spec-questions>
+<ol>
+  <li>None at write time. All nine non-obvious decisions were anchored via the propose-time interview (first verb, package location, function shape, AI access pattern, lazy-loading enforcement, canonical source, slash-command coupling, testing strategy, API stability). Anything that surfaces during plan / implementation goes back through <code>/spectastic.propose</code>.</li>
+</ol>
+</spec-questions>
+</section>
+
+
+<section id="conformance">
+<h2>8 · Conformance index</h2>
+<p>Auto-built from every <code>&lt;spec-requirement&gt;</code> in this document.</p>
+<spec-conformance></spec-conformance>
+</section>
+
+
+<section id="changelog">
+<h2>9 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-06-16">16 Jun 2026</time><span>Initial draft. Anchored decisions: <code>validate</code> as first verb (already kernel-shaped, no AI coupling); <code>packages/core/</code> as location; single async function per verb; <code>KernelContext</code> with injected <code>AIProvider</code> (defined in v1 even though validate doesn't use it); per-verb subpath exports for lazy-loading; markdown stays canonical; slash commands MAY (not MUST) call the kernel; kernel unit tests + CLI integration tests both; pre-1.0 versioning with breaking changes in minor bumps until 1.0. Scope deliberately small — one verb extracted as the worked example; remaining seven verbs each get their own carve-out slice. Multi-session by design.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  006-kernel-extraction · Kernel extraction · authored 16 Jun 2026 ·
+  <button data-theme-toggle style="background:none;border:none;color:var(--c-link);cursor:pointer;font:inherit;padding:0;border-bottom:1px solid currentColor;">toggle theme</button>
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>
