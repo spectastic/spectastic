@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Local publish fallback · Specification</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Specification · 005-publish-local-fallback</p>
+  <h1>Local maintainer fallback for publishing to npm</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    Two commands from a laptop ship a release when CI is unavailable. The escape hatch is documented, not automated.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>      <span><spec-status value="draft">Draft</spec-status></span>
+    <b>Spec ID</b>     <span>005-publish-local-fallback</span>
+    <b>Parent</b>      <span><spec-parent specid="004-npm-publish-workflow"><a href="../004-npm-publish-workflow/spec.html">004-npm-publish-workflow</a></spec-parent></span>
+    <b>Owner</b>       <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Reviewers</b>   <span>—</span>
+    <b>Created</b>     <span><time datetime="2026-06-16">16 Jun 2026</time></span>
+    <b>Principles</b>  <span><a href="../../principles.html">v1.0.1</a></span>
+    <b>Smallest demoable</b><span>Maintainer with no CI access runs <code>npm login</code> + <code>pnpm publish -r --access public</code> from a clean laptop checkout of the repo at a tagged commit; the new version lands on npm with the same dist-tag policy as a CI-driven publish.</span>
+    <b>Read time</b>   <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-budget words="800" reqs="3" minutes="3"></spec-budget>
+
+  <spec-tldr>
+    <p>Carved out of <a href="../004-npm-publish-workflow/spec.html">004-npm-publish-workflow</a> as the first worked example of the parent / child slicing recipe. <a href="../004-npm-publish-workflow/spec.html">004</a> retains the CI-driven publish (the path that runs 99% of the time); this slice owns the laptop escape hatch (the path that runs when CI is down, when GitHub is rate-limiting OIDC, or when a release must ship before merge). One functional requirement (the README documents the fallback), one success criterion (an outsider reading the README can follow it without further explanation). Independently demoable: the maintainer types two commands and a new version lands on npm.</p>
+  </spec-tldr>
+
+  <dl class="invest">
+    <dt><span class="letter">I</span> Independent</dt> <dd>Standalone from <a href="../004-npm-publish-workflow/spec.html">004</a>'s CI workflow. The fallback path doesn't consume any artifact CI produces; it uses the maintainer's <code>~/.npmrc</code> directly.</dd>
+    <dt><span class="letter">N</span> Negotiable</dt>  <dd>Specifies <em>that</em> the README documents the fallback and <em>that</em> the two-command sequence works; the exact wording, the placement within the README, and the depth of the troubleshooting prose are open.</dd>
+    <dt><span class="letter">V</span> Valuable</dt>    <dd>Unlocks <a href="#SC-001">SC-001</a> — a maintainer can ship without CI. The value compounds in low-probability / high-stakes scenarios (CI down on release day, OIDC issuer outage, hotfix-from-airport).</dd>
+    <dt><span class="letter">E</span> Estimable</dt>   <dd>No <code>&lt;spec-question&gt;</code>; the README already carries the documentation (<code>README.md</code> §<em>Emergency local fallback</em>, anchored at <code>#emergency-local-fallback</code>). Acceptance is verification, not implementation.</dd>
+    <dt><span class="letter">S</span> Small</dt>       <dd>One FR, one SC, one assumption. Deliberate — this is the smallest viable parent / child worked example.</dd>
+    <dt><span class="letter">T</span> Testable</dt>    <dd><a href="#SC-001">SC-001</a> names the canonical verification: a reader following the README's fallback section reaches a working install. No CI involvement.</dd>
+  </dl>
+
+  <spec-audience-map>
+    <dl>
+      <dt>Exec / PM</dt>   <dd>§<a href="#context">Context</a>, §<a href="#scenarios">User scenarios</a>.</dd>
+      <dt>Reviewer</dt>    <dd>§<a href="#requirements">Requirements</a>, §<a href="#success">Success criteria</a>, §<a href="#assumptions">Assumptions</a>.</dd>
+      <dt>Implementer</dt> <dd>§<a href="#requirements">Requirements</a>, §<a href="#conformance">Conformance index</a>. The implementation has already landed in the README; the spec is the contract that prevents future drift.</dd>
+    </dl>
+  </spec-audience-map>
+</header>
+
+
+<section id="context">
+<h2>1 · Context</h2>
+<p>Publishing spectastic to npm runs through GitHub Actions on a <code>v*</code> tag push (the contract owned by <a href="../004-npm-publish-workflow/spec.html">004</a>'s <a href="../004-npm-publish-workflow/spec.html#FR-001">FR-001</a>). CI is the default path because it bundles every release gate — typecheck, tests, build, version-verify, provenance attestation — into one trigger the maintainer can't forget.</p>
+<p>CI is not available 100% of the time. GitHub Actions can be down. The OIDC issuer can be rate-limiting. The maintainer can need to ship a hotfix from a network where their CI secrets are unreachable. The carve-out's job is to make that day non-existential: the same maintainer can authenticate to npm directly and run <code>pnpm publish -r</code> from their laptop, accepting the loss of the provenance badge as the cost of the escape hatch.</p>
+</section>
+
+
+<section id="scenarios">
+<h2>2 · User scenarios &amp; testing</h2>
+
+<h3>US1 · Maintainer publishes from a laptop without CI <spec-pill>P2</spec-pill></h3>
+<p>As a <strong>maintainer with no working CI</strong>, I want to <strong>follow a documented two-command sequence to publish both packages</strong> so that <strong>I can ship a release on a day when GitHub Actions is unavailable.</strong></p>
+<p><em>Acceptance:</em> Following the README's <em>Emergency local fallback</em> section verbatim — <code>npm login</code> (one-time per laptop), <code>pnpm publish -r --access public</code> from a clean checkout at the tagged commit — produces a published version on npm with the correct dist-tag (per <a href="../004-npm-publish-workflow/spec.html#FR-006">004's FR-006</a> derivation rules). The published tarball is byte-identical to what CI would have shipped.</p>
+
+<h3>Edge cases</h3>
+<ul>
+  <li><strong>Maintainer's local <code>~/.npmrc</code> already authenticated</strong> — <code>npm login</code> is a no-op; <code>pnpm publish -r</code> proceeds directly.</li>
+  <li><strong>Local <code>_bundled/</code> is stale</strong> — <code>pnpm publish -r</code> picks up whatever the maintainer's working tree has. The README's fallback section <spec-rule>MUST</spec-rule> name <code>pnpm --filter @spectastic/cli build</code> as a prerequisite step so the bundle is fresh.</li>
+  <li><strong>No <code>--provenance</code> badge appears</strong> — expected. Provenance requires an npm trusted-publisher configuration that isn't present on a local machine without setup. The README documents this as a known cost of the fallback.</li>
+</ul>
+</section>
+
+
+<section id="requirements">
+<h2>3 · Requirements</h2>
+
+<p>Conformance keywords (<spec-rule>MUST</spec-rule>, <spec-rule level="should">SHOULD</spec-rule>, <spec-rule level="may">MAY</spec-rule>) follow RFC 2119.</p>
+
+<h3>Functional</h3>
+
+<spec-requirement id="FR-001" priority="must">
+<p>The root <code>README.md</code> <spec-rule>MUST</spec-rule> document a local maintainer fallback for publishing both <code>@spectastic/cli</code> and <code>@spectastic/schema</code> to npm without going through GitHub Actions. The documentation <spec-rule>MUST</spec-rule> name the two-command sequence (<code>npm login</code> followed by <code>pnpm publish -r --access public</code>), the prerequisite <code>pnpm --filter @spectastic/cli build</code> step to refresh <code>_bundled/</code>, and the known cost (no provenance badge without an npm trusted-publisher configuration).</p>
+<p>This FR was originally <a href="../004-npm-publish-workflow/spec.html#FR-009">FR-009 of 004</a>; carved out into this sibling slice via <a href="../004-npm-publish-workflow/changes/archive/2026-06-16-carve-out-local-fallback/proposal.html">2026-06-16-carve-out-local-fallback</a>.</p>
+</spec-requirement>
+
+<h3>Out of scope (deferred to other slices)</h3>
+<spec-out-of-scope>
+  <ul>
+    <li defer-to="TBD-laptop-provenance">Configuring an npm trusted-publisher for the maintainer's local machine so the fallback path also gets a provenance badge. Useful but not blocking; the badge gap is a known cost.</li>
+    <li defer-to="never">Automated CI alternative providers (CircleCI, GitLab) as further fallbacks. Single CI provider stays the default; this slice is the human-in-the-loop alternative, not a CI-on-CI redundancy play.</li>
+  </ul>
+</spec-out-of-scope>
+</section>
+
+
+<section id="success">
+<h2>5 · Success criteria</h2>
+
+<spec-requirement id="SC-001" priority="must">
+<p>An outsider reading the README's fallback section can run the documented two-command sequence and reach a working <code>spectastic</code> install on npm without further explanation. The section is self-contained — it does not assume the reader has read <a href="../004-npm-publish-workflow/spec.html">004</a>'s CI-driven section first.</p>
+<p>This SC was originally <a href="../004-npm-publish-workflow/spec.html#SC-004">SC-004 of 004</a>; carved out via the same proposal.</p>
+</spec-requirement>
+</section>
+
+
+<section id="assumptions">
+<h2>6 · Assumptions</h2>
+
+<spec-assumption>
+<p>The maintainer has a working <code>~/.npmrc</code> with access to publish under the <code>@spectastic</code> organization. The auth mechanism is npm's standard interactive flow; no spectastic-specific tooling is involved.</p>
+</spec-assumption>
+</section>
+
+
+<section id="questions">
+<h2>7 · Open questions</h2>
+<spec-questions>
+<ol>
+  <li>None at write time. This is a documentation-only slice; the README content satisfying <a href="#FR-001">FR-001</a> already exists at <code>README.md</code> §<em>Emergency local fallback</em>.</li>
+</ol>
+</spec-questions>
+</section>
+
+
+<section id="conformance">
+<h2>8 · Conformance index</h2>
+<p>Auto-built from every <code>&lt;spec-requirement&gt;</code> in this document.</p>
+<spec-conformance></spec-conformance>
+</section>
+
+
+<section id="changelog">
+<h2>9 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-06-16">16 Jun 2026</time><span>Initial draft. Authored as the child slice of <a href="../004-npm-publish-workflow/spec.html">004-npm-publish-workflow</a>'s carve-out proposal <a href="../004-npm-publish-workflow/changes/2026-06-16-carve-out-local-fallback/proposal.html">2026-06-16-carve-out-local-fallback</a>. First worked example in the repo of the parent / child slicing pattern: the meta-spec's vocabulary (<code>&lt;spec-parent specid=&quot;…&quot;&gt;</code>, <code>&lt;spec-out-of-scope defer-to=&quot;…&quot;&gt;</code>, removed-with-migration deltas) has been documented since 2026-06-12 but never demonstrated. FR-001 + SC-001 here mirror their pre-carve identities in 004 (FR-009 + SC-004); IDs are spec-local but the requirement bodies carry the lineage.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  005-publish-local-fallback · Local maintainer fallback · authored 16 Jun 2026 ·
+  <button data-theme-toggle style="background:none;border:none;color:var(--c-link);cursor:pointer;font:inherit;padding:0;border-bottom:1px solid currentColor;">toggle theme</button>
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>
