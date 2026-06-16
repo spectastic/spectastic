@@ -1,5 +1,30 @@
 # Changelog
 
+## v0.1.0-pre.3 — 2026-06-16
+
+**First publish to npm.** Both `@spectastic/cli` and `@spectastic/schema` are now installable as `npm i -g @spectastic/cli@next`. Spec [004-npm-publish-workflow](./specs/004-npm-publish-workflow/spec.html).
+
+### Publish workflow
+
+- `.github/workflows/publish.yml` — two jobs sharing the install/build/typecheck/test gates. The `dry-run` job validates the workflow on PRs that touch it (caught two real defects in the smoke test — pnpm/`packageManager` conflict + typecheck-before-build ordering). The `publish` job verifies the tag matches both packages' versions, derives the dist-tag (pre-releases → `next`, bare semver → `latest`), publishes both with `--provenance` via GitHub OIDC, and writes a workflow summary.
+- `.github/dependabot.yml` — weekly bumps for GitHub Actions and npm ecosystems. Already proven on day one: `actions/checkout` v4→v6 and `pnpm/action-setup` v4→v6 PRs both went green through the dry-run job.
+
+### Install
+
+```sh
+npm i -g @spectastic/cli@next
+spectastic init                    # bootstrap a project
+spectastic validate "*.html"       # check artifacts
+```
+
+### Provenance
+
+Each version page on npmjs.com displays a verified-source attestation linking to the originating commit and GitHub Actions run. Cryptographic signature verifiable via `npm audit signatures`.
+
+### Known quirk
+
+npm's first-publish behavior auto-tagged both packages on `latest` in addition to the requested `next` — for the first version, `npm view @spectastic/cli dist-tags` shows `{ next: '0.1.0-pre.3', latest: '0.1.0-pre.3' }`. Self-corrects on the next bare-semver release (the workflow will overwrite `latest` when a `vX.Y.Z` tag without a hyphen ships).
+
 ## v0.1.0-pre.2 — 2026-06-15
 
 `spectastic init` ported to TypeScript on `@spectastic/cli`; Python implementation retired. Spec [003-init-node-port](./specs/003-init-node-port/spec.html).
