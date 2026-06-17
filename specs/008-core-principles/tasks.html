@@ -1,0 +1,231 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Core principles · Tasks</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Tasks · 008-core-principles</p>
+  <h1>Core principles — task breakdown</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    Ordered, parallelizable work. Tests precede implementation. Drive through with <code>/spectastic.implement</code> — one task per invocation.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>     <span><spec-status value="draft">Draft</spec-status></span>
+    <b>Spec</b>       <span><a href="./spec.html">008-core-principles</a></span>
+    <b>Plan</b>       <span><a href="./plan.html">plan</a></span>
+    <b>Branch</b>     <span><code>main</code> (squashed-snapshot pattern)</span>
+    <b>Created</b>    <span><time datetime="2026-06-16">16 Jun 2026</time></span>
+    <b>Read time</b>  <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-budget words="900" reqs="15" minutes="4"></spec-budget>
+
+  <spec-tldr>
+    <p>15 tasks across five phases. Setup (3) → Foundational (2) → US1 kernel + CLI end-to-end (7) → US2 slash-command markdown note (1) → Polish + release (5). Tasks marked <span class="par">[P]</span> can run in parallel — different files, no in-flight dependency. Tests for a story <strong>MUST</strong> be written and failing before its implementation tasks start. Single PR per <a href="./plan.html#D-005">D-005</a>; <code>v0.1.0-pre.10</code> ships at the end of Phase 4.</p>
+  </spec-tldr>
+</header>
+
+
+<section id="strategy">
+<h2>1 · Execution strategy</h2>
+
+<spec-tabs>
+  <spec-tab label="MVP-first">
+    <p>Drive US1 end-to-end (kernel function, CLI subcommand, refuses-if-exists guard, tests green, bench green). That alone makes the slice shippable. US2 (slash-command MAY-Bash note) is a one-line markdown touch; tag it off when convenient. Polish ships the version bump + tag + publish. <strong>Pick this one for solo work.</strong></p>
+  </spec-tab>
+  <spec-tab label="Incremental">
+    <p>Setup → Foundational → US1 → US2 → Polish, each phase closing its conformance before the next opens. Slightly more ceremony than MVP-first; cleaner if multiple contributors are involved.</p>
+  </spec-tab>
+  <spec-tab label="Parallel teams">
+    <p>Not applicable — 15 tasks, single contributor expected. Listed for template completeness.</p>
+  </spec-tab>
+</spec-tabs>
+</section>
+
+
+<section id="phase-setup" class="phase">
+<h2>2 · Phase 1 — Setup</h2>
+
+<p>Wire the new <code>principles</code> subpath into <code>packages/core/</code>'s build + exports. All [P] — different files.</p>
+
+<spec-task id="T-001" parallel>
+  <input type="checkbox">
+  <div><strong>Add <code>./commands/principles</code> subpath export</strong> to <code>packages/core/package.json</code>'s <code>exports</code> field, mirroring the existing <code>./commands/validate</code> pattern (<code>types</code> + <code>default</code> pointing at <code>./dist/commands/principles.{d.ts,js}</code>). Required by <a href="./spec.html#FR-002">FR-002</a>. <span class="path">packages/core/package.json</span></div>
+</spec-task>
+
+<spec-task id="T-002" parallel>
+  <input type="checkbox">
+  <div><strong>Add <code>src/commands/principles.ts</code> entry</strong> to <code>packages/core/tsup.config.ts</code>'s <code>entry</code> array so the new verb builds as its own dist file (preserves the lazy-loading discipline per <a href="./spec.html#NFR-001">NFR-001</a>). <span class="path">packages/core/tsup.config.ts</span></div>
+</spec-task>
+
+<spec-task id="T-003">
+  <input type="checkbox">
+  <div><strong>Run <code>pnpm install</code></strong> to refresh <code>pnpm-lock.yaml</code> for any workspace edges touched by the new subpath. <span class="path">pnpm-lock.yaml</span></div>
+</spec-task>
+</section>
+
+
+<section id="phase-foundation" class="phase">
+<h2>3 · Phase 2 — Foundational</h2>
+
+<p>Per-verb types + the template loader helper. T-010 first; T-011 depends on the types it adds.</p>
+
+<spec-task id="T-010">
+  <input type="checkbox">
+  <div><strong>Extend <code>packages/core/src/types.ts</code></strong> with <code>PrinciplesInput</code> (<code>projectName?: string</code>, <code>principlesCount?: number</code>, <code>outputPath?: string</code>) per <a href="./plan.html#D-003">D-003</a>, <code>PrinciplesResult</code> (<code>html: string</code>, <code>principlesCount: number</code>) per <a href="./spec.html#data">spec §4</a>, and the typed <code>PrinciplesExistsError</code> class per <a href="./plan.html#D-002">D-002</a>. <span class="path">packages/core/src/types.ts</span></div>
+</spec-task>
+
+<spec-task id="T-011">
+  <input type="checkbox">
+  <div><strong>Create <code>packages/core/src/helpers/principles-template.ts</code></strong> — a small template loader that resolves <code>join(ctx.cwd, 'templates/principles.html')</code>, reads it via <code>ctx.fs.readFile</code>, throws <code>TemplateNotFoundError</code> on miss, and applies the <code>../assets/</code> → <code>./assets/</code> rewrite per <a href="./plan.html#D-004">D-004</a>. Disk-read per the matrix in <a href="./plan.html#alternatives">plan §4</a>. <span class="path">packages/core/src/helpers/principles-template.ts</span></div>
+</spec-task>
+</section>
+
+
+<section id="phase-us1" class="phase">
+<h2>4 · Phase 3a — US1 · Maintainer authors fresh principles via the CLI <spec-pill>P1</spec-pill></h2>
+
+<p>The smallest demoable: <code>spectastic principles</code> in a clean directory produces a valid <code>principles.html</code>, kernel-first.</p>
+
+<h3>Tests (write &amp; fail first)</h3>
+
+<spec-task id="T-100">
+  <input type="checkbox">
+  <div><strong>Write <code>packages/core/test/principles.test.ts</code></strong> — unit tests importing <code>principlesCommand</code> via the subpath <code>'@spectastic/core/commands/principles'</code>. In-memory <code>ctx.fs</code> stub serves the template; stub <code>ctx.ai.chat()</code> returns canned answers. Covers (a) fresh-generate happy path (asserts <code>html</code> contains rendered project name + 3–5 <code>P-N</code> blocks, <code>principlesCount</code> matches per <a href="./spec.html#SC-001">SC-001</a>) and (b) refuse-if-exists — <code>ctx.fs.stat</code> returns "file exists" → rejects with <code>PrinciplesExistsError</code> before any AI call per <a href="./plan.html#D-002">D-002</a>. Tests fail until T-110 lands. <span class="path">packages/core/test/principles.test.ts</span></div>
+</spec-task>
+
+<h3>Implementation</h3>
+
+<spec-task id="T-110">
+  <input type="checkbox">
+  <div><strong>Create <code>packages/core/src/commands/principles.ts</code></strong> implementing <code>async function principlesCommand(input: PrinciplesInput, ctx: KernelContext): Promise&lt;PrinciplesResult&gt;</code>. Reads template via the T-011 helper (<code>ctx.fs</code>), stats output path and rejects with <code>PrinciplesExistsError</code> if present per <a href="./plan.html#D-002">D-002</a>, interviews missing input fields via <code>ctx.ai.chat()</code> per <a href="./plan.html#D-003">D-003</a>, fills placeholders, returns <code>{ html, principlesCount }</code> per <a href="./plan.html#D-001">D-001</a>. Docblock links to <code>commands/spectastic.principles.md</code> as canonical procedure per <a href="./spec.html#FR-007">FR-007</a>. <span class="path">packages/core/src/commands/principles.ts</span></div>
+</spec-task>
+
+<spec-task id="T-111">
+  <input type="checkbox">
+  <div><strong>Create <code>packages/cli/src/commands/principles.ts</code></strong> — the <code>spectastic principles</code> subcommand. Imports <code>principlesCommand</code> from <code>@spectastic/core/commands/principles</code>, constructs <code>ClaudeProvider</code> (from 007) + <code>nodeFs</code> + <code>KernelContext</code>, calls kernel, writes <code>html</code> to <code>./principles.html</code>, exits 0. <code>PrinciplesExistsError</code> → exit 1 + message "principles.html already exists; use /spectastic.propose to amend"; usage error → exit 2 per <a href="./plan.html#D-006">D-006</a> and <a href="./spec.html#FR-003">FR-003</a>. Register the subcommand in the CLI dispatcher. <span class="path">packages/cli/src/commands/principles.ts</span></div>
+</spec-task>
+
+<spec-task id="T-112">
+  <input type="checkbox">
+  <div><strong>Write <code>packages/cli/test/principles.integration.test.ts</code></strong> — integration test that spawns <code>spectastic principles</code> via process in a temp dir with a stub-provider injection, feeds canned answers, asserts the written <code>principles.html</code> file matches the kernel's expected structural output per <a href="./spec.html#FR-005">FR-005</a> + <a href="./spec.html#SC-002">SC-002</a>. Byte-identity interpreted structurally per <a href="./plan.html#risks">plan §7</a>. <span class="path">packages/cli/test/principles.integration.test.ts</span></div>
+</spec-task>
+
+<spec-task id="T-113">
+  <input type="checkbox">
+  <div><strong>Run <code>pnpm -r build</code></strong> end-to-end. Confirm core + cli build cleanly; the new subpath emits <code>dist/commands/principles.{js,d.ts}</code>; CLI's typecheck consumes the kernel function's type. <span class="path">packages/{core,cli}/dist/</span></div>
+</spec-task>
+
+<spec-task id="T-114">
+  <input type="checkbox">
+  <div><strong>Run <code>pnpm test</code></strong> and confirm: (a) T-100 kernel unit tests pass; (b) T-112 CLI integration test passes; (c) existing 006-era tests stay green (no regression in <code>packages/cli/test/cli.test.ts</code>, <code>packages/core/test/validate.test.ts</code>, schema suite). <span class="path">(test run)</span></div>
+</spec-task>
+
+<spec-task id="T-115">
+  <input type="checkbox">
+  <div><strong>Run <code>pnpm bench</code></strong> and confirm all scenarios within budget per <a href="./spec.html#SC-003">SC-003</a>. <code>init-help-cold-start</code> p50 stays within ±20% of the post-007 baseline — proof the new <code>principles</code> subcommand did not land on the cold-start path via eager imports per <a href="./spec.html#NFR-001">NFR-001</a>. <span class="path">(bench run)</span></div>
+</spec-task>
+
+<spec-task id="T-116">
+  <input type="checkbox">
+  <div><strong>Manual smoke</strong>: in an empty temp dir, run <code>node packages/cli/dist/index.js principles</code>, feed real answers via stdin, confirm a valid <code>principles.html</code> is produced (placeholders all filled, 3–5 <code>P-N</code> blocks emitted, asset paths rewritten to <code>./assets/</code>). Re-run in the same dir, confirm exit 1 + "already exists" message per <a href="./spec.html#FR-004">FR-004</a>. <span class="path">(manual smoke)</span></div>
+</spec-task>
+
+<spec-note>
+<p>Closes <a href="./spec.html#FR-001">FR-001</a>, <a href="./spec.html#FR-002">FR-002</a>, <a href="./spec.html#FR-003">FR-003</a>, <a href="./spec.html#FR-004">FR-004</a>, <a href="./spec.html#FR-005">FR-005</a>, <a href="./spec.html#FR-007">FR-007</a>, <a href="./spec.html#NFR-001">NFR-001</a>, <a href="./spec.html#SC-001">SC-001</a>, <a href="./spec.html#SC-002">SC-002</a>, <a href="./spec.html#SC-003">SC-003</a>.</p>
+</spec-note>
+</section>
+
+
+<section id="phase-us2" class="phase">
+<h2>5 · Phase 3b — US2 · Downstream surface invokes the kernel programmatically <spec-pill>P2</spec-pill></h2>
+
+<p>US2's kernel-importability is structurally satisfied by T-100 (subpath import, no process spawn, stub <code>ctx.ai</code>). The remaining work is the slash-command markdown note that tells future LLM invocations about the kernel escape.</p>
+
+<spec-task id="T-200" parallel>
+  <input type="checkbox">
+  <div><strong>Update <code>commands/spectastic.principles.md</code></strong> with a one-paragraph note that for deterministic operations the LLM <spec-rule level="may">MAY</spec-rule> invoke <code>spectastic principles</code> via Bash; markdown remains canonical. Mirror the wording used in <code>commands/spectastic.validate.md</code> (if present) or 006's equivalent. <span class="path">commands/spectastic.principles.md</span></div>
+</spec-task>
+
+<spec-note>
+<p>Closes <a href="./spec.html#FR-006">FR-006</a>.</p>
+</spec-note>
+</section>
+
+
+<section id="phase-polish" class="phase">
+<h2>6 · Phase 4 — Polish + release</h2>
+
+<p>Changelog, version bump, commit, tag, publish-watch — same release ritual as 006-pre.8 / 007-pre.9.</p>
+
+<spec-task id="T-900" parallel>
+  <input type="checkbox">
+  <div><strong>Update <code>CHANGELOG.md</code></strong> with a <code>v0.1.0-pre.10</code> entry summarising: new <code>principles</code> kernel verb at <code>@spectastic/core/commands/principles</code>; new <code>spectastic principles</code> CLI subcommand; fresh-generation only (refuses-if-exists); slash-command markdown gains MAY-Bash note; bench within budget. <span class="path">CHANGELOG.md</span></div>
+</spec-task>
+
+<spec-task id="T-901">
+  <input type="checkbox">
+  <div><strong>Bump all three package.json versions to <code>0.1.0-pre.10</code></strong> in lockstep — cli, schema, core — per the shared-version policy from 006. Update <code>pnpm-lock.yaml</code>. <span class="path">packages/{cli,schema,core}/package.json + pnpm-lock.yaml</span></div>
+</spec-task>
+
+<spec-task id="T-902">
+  <input type="checkbox">
+  <div><strong>Commit + push to <code>origin/main</code></strong> with the standard squashed-snapshot commit message. Per project memory: no Co-Authored-By Claude trailer. <span class="path">(git)</span></div>
+</spec-task>
+
+<spec-task id="T-903">
+  <input type="checkbox">
+  <div><strong>Tag <code>v0.1.0-pre.10</code> + push tag</strong>. Tag push triggers <code>publish.yml</code>; workflow runs all gates (build / typecheck / tests / bench / version-verify) and publishes all three packages with provenance under the <code>next</code> dist-tag. <span class="path">(git tag + push)</span></div>
+</spec-task>
+
+<spec-task id="T-904">
+  <input type="checkbox">
+  <div><strong>Watch publish workflow + verify on npm</strong>: confirm success on Actions; <code>npm view @spectastic/core@0.1.0-pre.10</code> resolves; same for cli + schema. <span class="path">(npm + GitHub Actions verification)</span></div>
+</spec-task>
+</section>
+
+
+<section id="dependencies">
+<h2>7 · Dependencies</h2>
+<pre><code>Phase 1 Setup           → Phase 2 Foundational
+Phase 2 Foundational    → US1 (T-100..T-116)        — kernel function depends on types + template helper
+                        → US2 (T-200)               — markdown note independent; gated only by command shipping
+
+US1, US2                → Phase 4 Polish + release  — ship after stories close
+
+T-010                   → T-011, T-100, T-110       — types unblock helper, tests, impl
+T-011                   → T-110                     — impl uses the template helper
+T-100                   → T-110                     — test fails until impl lands
+T-110                   → T-111                     — CLI subcommand depends on kernel function
+T-111                   → T-112, T-113              — integration test + build need CLI
+T-113                   → T-114, T-115, T-116       — tests + bench + smoke need built dist
+T-901                   → T-902 → T-903 → T-904
+</code></pre>
+</section>
+
+
+<section id="changelog">
+<h2>8 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-06-16">16 Jun 2026</time><span>Initial task breakdown. 15 tasks across five phases; 5 parallelizable. Every FR/NFR/SC traced to at least one task (US1 closes 9 requirements end-to-end; US2 closes FR-006 via the slash-command markdown note). MVP-first execution strategy recommended for solo work. Single PR per <a href="./plan.html#D-005">D-005</a>; <code>v0.1.0-pre.10</code> ships at end of Phase 4.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  Tasks for 008-core-principles · Core principles · authored 16 Jun 2026 ·
+  <button data-theme-toggle style="background:none;border:none;color:var(--c-link);cursor:pointer;font:inherit;padding:0;border-bottom:1px solid currentColor;">toggle theme</button>
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>
