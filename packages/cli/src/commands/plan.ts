@@ -1,18 +1,27 @@
 import type { Command } from 'commander';
 
+/**
+ * Per FR-003 of specs/012-core-plan/spec.html (post P-6 cascade): auto-re-entry
+ * gates on destination `<spec-status>` — Draft (or no existing plan) triggers
+ * auto-re-entry / fresh authoring (no flag); past-Draft refuses with a pointer
+ * to /spectastic.propose. `--force` bypasses with a warning.
+ */
 export function registerPlan(program: Command): void {
   program
     .command('plan')
-    .description('Generate plan.html for an existing spec slice.')
+    .description('Generate plan.html for a spec; auto-re-enter Draft plans in place, refuse past-Draft.')
     .argument('<spec-id>')
-    .action(async (specId: string) => {
-      const [{ planCommand }, { ClaudeProvider }, { nodeFs }, fs, path] = await Promise.all([
-        import('@spectastic/core/commands/plan'),
-        import('@spectastic/core/providers/claude'),
-        import('@spectastic/core/providers/node-fs'),
-        import('node:fs/promises'),
-        import('node:path'),
-      ]);
+    .option('--force', 'bypass the past-Draft refuse with a warning')
+    .action(async (specId: string, opts: { force?: boolean }) => {
+      const [{ planCommand }, { ClaudeProvider }, { nodeFs }, { gateOnDestinationState }, fs, path] =
+        await Promise.all([
+          import('@spectastic/core/commands/plan'),
+          import('@spectastic/core/providers/claude'),
+          import('@spectastic/core/providers/node-fs'),
+          import('../state-gate.js'),
+          import('node:fs/promises'),
+          import('node:path'),
+        ]);
 
       const ai = new ClaudeProvider();
       const specPath = path.resolve(process.cwd(), 'specs', specId, 'spec.html');
@@ -20,12 +29,24 @@ export function registerPlan(program: Command): void {
       const principlesPath = path.resolve(process.cwd(), 'principles.html');
 
       const specHtml = await fs.readFile(specPath, 'utf8');
-      let existingPlan: string | undefined;
-      try {
-        existingPlan = await fs.readFile(planPath, 'utf8');
-      } catch {
-        // fresh
+
+      const decision = await gateOnDestinationState(fs, planPath, { force: opts.force });
+      if (decision.kind === 'refuse') {
+        process.stderr.write(
+          `${planPath} exists in <spec-status value="${decision.status}"> — past-Draft per P-6 of principles.html.\nRefusing to sharpen. Amend via /spectastic.propose against the spec, or pass --force to bypass.\n`,
+        );
+        process.exit(2);
       }
+      let existingPlan: string | undefined;
+      if (decision.kind === 'edit-in-place') {
+        existingPlan = decision.existing;
+        const note =
+          opts.force && decision.status !== null && decision.status !== 'draft'
+            ? `warn: bypassing change-management surface (status was ${decision.status}); --force in effect.\n`
+            : `Auto-re-entering Draft ${planPath} in place per P-6.\n`;
+        process.stderr.write(note);
+      }
+
       let principlesHtml: string | undefined;
       try {
         principlesHtml = await fs.readFile(principlesPath, 'utf8');

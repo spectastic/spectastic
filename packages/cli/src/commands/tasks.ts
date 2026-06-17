@@ -3,20 +3,23 @@ import type { Command } from 'commander';
 /**
  * Register the `tasks` subcommand. Reads spec.html + plan.html for the
  * named slice; calls @spectastic/core/commands/tasks; writes the result
- * to specs/<id>/tasks.html.
+ * to specs/<id>/tasks.html. Per FR-012 of specs/009-core-tasks/spec.html
+ * (post P-6 cascade): destination state gates the write — Draft accepts
+ * in-place edit; past-Draft refuses with a pointer to /spectastic.propose.
  */
 export function registerTasks(program: Command): void {
   program
     .command('tasks')
-    .description('Generate tasks.html for an existing spec slice.')
+    .description('Generate tasks.html for an existing spec slice; edit Draft in place, refuse past-Draft.')
     .argument('<spec-id>', 'spec ID, e.g. 001-auth-service')
-    .option('--force', 'overwrite existing tasks.html')
+    .option('--force', 'bypass the past-Draft refuse with a warning')
     .action(async (specId: string, opts: { force?: boolean }) => {
-      const [{ tasksCommand }, { ClaudeProvider }, { nodeFs }, fs, path] =
+      const [{ tasksCommand }, { ClaudeProvider }, { nodeFs }, { gateOnDestinationState }, fs, path] =
         await Promise.all([
           import('@spectastic/core/commands/tasks'),
           import('@spectastic/core/providers/claude'),
           import('@spectastic/core/providers/node-fs'),
+          import('../state-gate.js'),
           import('node:fs/promises'),
           import('node:path'),
         ]);
@@ -25,16 +28,19 @@ export function registerTasks(program: Command): void {
       const planPath = path.resolve(process.cwd(), 'specs', specId, 'plan.html');
       const tasksPath = path.resolve(process.cwd(), 'specs', specId, 'tasks.html');
 
-      try {
-        await fs.access(tasksPath);
-        if (!opts.force) {
-          process.stderr.write(
-            `${tasksPath} already exists. Use --force to overwrite.\n`,
-          );
-          process.exit(2);
-        }
-      } catch {
-        // Doesn't exist — proceed.
+      const decision = await gateOnDestinationState(fs, tasksPath, { force: opts.force });
+      if (decision.kind === 'refuse') {
+        process.stderr.write(
+          `${tasksPath} exists in <spec-status value="${decision.status}"> — past-Draft per P-6 of principles.html.\nRefusing to overwrite. Amend via /spectastic.propose against the parent spec, or pass --force to bypass.\n`,
+        );
+        process.exit(2);
+      }
+      if (decision.kind === 'edit-in-place') {
+        const note =
+          opts.force && decision.status !== null && decision.status !== 'draft'
+            ? `warn: bypassing change-management surface (status was ${decision.status}); --force in effect.\n`
+            : `Editing Draft ${tasksPath} in place per P-6.\n`;
+        process.stderr.write(note);
       }
 
       const ai = new ClaudeProvider();

@@ -34,6 +34,21 @@ const FR_RE = /^FR-\d+$/;
 const NFR_RE = /^NFR-\d+$/;
 const SC_RE = /^SC-\d+$/;
 
+/**
+ * Returns the `value` of the first `<spec-status value="…">` element in the
+ * document, or `null` if none is present. Used by authoring verbs (principles,
+ * tasks, spec, plan) to honour P-6 of principles.html: Draft destinations
+ * accept in-place edit; past-Draft destinations route through change-management.
+ */
+export function extractSpecStatus(htmlOrDoc: string | ParsedDocument): string | null {
+  const doc = typeof htmlOrDoc === 'string' ? parse(htmlOrDoc, '<inline>') : htmlOrDoc;
+  for (const el of findAll(doc.ast, 'spec-status')) {
+    const value = getAttr(el, 'value');
+    if (value) return value;
+  }
+  return null;
+}
+
 export function extractSpecMetadata(htmlOrDoc: string | ParsedDocument): SpecMetadata {
   const doc = typeof htmlOrDoc === 'string' ? parse(htmlOrDoc, '<inline>') : htmlOrDoc;
 

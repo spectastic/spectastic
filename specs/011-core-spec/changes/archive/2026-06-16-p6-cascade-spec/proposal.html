@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>P-6 cascade — spec verb · Change proposal</title>
+<link rel="stylesheet" href="../../../../../assets/spec.css">
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Change proposal · 011-core-spec</p>
+  <h1>Gate invocation forms on destination state (cite P-6)</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    Mechanical application of newly-ratified <a href="../../../../../principles.html#P-6">P-6</a> to the <code>spec</code> verb's invocation gate. The most urgent of the four cascades — current behaviour silently overwrites Draft specs.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>     <span><spec-status value="applied">Applied</spec-status></span>
+    <b>Change ID</b>  <span>2026-06-16-p6-cascade-spec</span>
+    <b>Spec</b>       <span><a href="../../../spec.html">011-core-spec</a></span>
+    <b>Source</b>     <span><a href="../../../triage-log.html#T-001">011/T-001</a> · sibling of <a href="../../../../../changes/archive/2026-06-16-p6-draft-is-loose/proposal.html">2026-06-16-p6-draft-is-loose</a></span>
+    <b>Author</b>     <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Created</b>    <span><time datetime="2026-06-16">16 Jun 2026</time></span>
+    <b>Targets</b>    <span>1 modified (FR-003)</span>
+    <b>Read time</b>  <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-tldr>
+    <p>FR-003 currently keys invocation behaviour off the argument shape (description-string → fresh; spec-id → re-entry). Per <a href="../../../triage-log.html#T-001">011/T-001</a>, this lets a fresh-mode invocation against a path with an existing Draft spec silently overwrite it (no flag, no signal). Per <a href="../../../../../principles.html#P-6">P-6</a>, destination state — not argument shape — is the right gate. MODIFY FR-003 to consult <code>&lt;spec-status&gt;</code> on the resolved path before deciding to author / edit / refuse.</p>
+  </spec-tldr>
+</header>
+
+
+<spec-change id="2026-06-16-p6-cascade-spec" status="applied">
+
+<header>
+  <h3>Gate invocation forms on destination state (cite P-6)</h3>
+  <span class="meta"><spec-status value="applied">Applied</spec-status></span>
+</header>
+
+
+<section id="intent">
+<h2>1 · Intent</h2>
+<p>One of four mechanical cascades from <a href="../../../../../changes/archive/2026-06-16-p6-draft-is-loose/proposal.html">P-6</a>. Of the four, this one matters most operationally: 011's current behaviour silently overwrites Draft specs the user may not have meant to discard (per <a href="../../../triage-log.html#T-001">011/T-001</a>'s deep-dive — "silently overwrites" is more dangerous than 008's over-eager refuse, because there's no signal). MODIFY FR-003 to make destination state the gate, not the argument shape.</p>
+</section>
+
+
+<section id="scope">
+<h2>2 · Scope</h2>
+
+<spec-goals>
+  <h3>In scope</h3>
+  <ul>
+    <li>MODIFY FR-003 to gate invocation behaviour on the resolved destination's <code>&lt;spec-status&gt;</code> per P-6.</li>
+    <li>Hotfix <code>packages/cli/src/commands/spec.ts</code> to read destination state before <code>fs.writeFile</code>.</li>
+  </ul>
+</spec-goals>
+
+<spec-non-goals>
+  <h3>Out of scope</h3>
+  <ul>
+    <li>FR-005's re-entry-mode protections for content preservation (preserves IDs / changelog entries; requires explicit confirmation for removals). Untouched — it governs the <em>shape</em> of re-entry, not whether re-entry triggers.</li>
+    <li>Removing the implicit argument-shape detection. Argument shape can still <em>hint</em> at the user's intent for prompt construction (fresh vs sharpen phrasing); it just no longer gates the destructive write.</li>
+  </ul>
+</spec-non-goals>
+</section>
+
+
+<section id="approach">
+<h2>3 · Approach</h2>
+<p>Single MODIFY on FR-003. The post-state preserves the two invocation forms (description-string for fresh authoring; spec-id for re-entry) but adds the destination-state gate as the actual decision point: a fresh path or Draft destination → author / edit in place; past-Draft destination → refuse with pointer to <code>/spectastic.propose</code>; <code>--force</code> override available. Argument shape becomes a prompt-construction hint, not a destructive gate.</p>
+</section>
+
+
+<section id="deltas">
+<h2>4 · Deltas</h2>
+
+<spec-delta op="modified" target="FR-003">
+  <p><strong>What changes:</strong> Invocation behaviour gates on destination <code>&lt;spec-status&gt;</code> per P-6, not on argument shape; argument shape remains a prompt-construction hint.</p>
+  <spec-requirement id="FR-003" priority="must">
+    <p><code>@spectastic/cli</code> <spec-rule>MUST</spec-rule> ship a <code>spec</code> subcommand with two invocation forms: <code>spectastic spec "&lt;feature-description&gt;"</code> (auto-assigns a Spec ID) and <code>spectastic spec &lt;existing-spec-id&gt;</code> (resolves <code>specs/&lt;spec-id&gt;/spec.html</code>). Regardless of invocation form, the subcommand <spec-rule>MUST</spec-rule> gate its destructive behaviour on the resolved destination's <code>&lt;spec-status&gt;</code> per <a href="../../../../../principles.html#P-6">P-6</a>: a fresh path or Draft destination <spec-rule>MUST</spec-rule> be authored / edited in place (preserve existing IDs; append a one-line <code>&lt;spec-changelog&gt;</code> entry); a past-Draft destination (<em>Accepted</em>, <em>In Review</em>, <em>Superseded</em>, <em>Deprecated</em>, <em>Blocked</em>) <spec-rule>MUST</spec-rule> be refused with a typed error pointing at <code>/spectastic.propose</code>. A <code>--force</code> override <spec-rule level="may">MAY</spec-rule> bypass the past-Draft refuse with a one-line warning that the operation skips the change-management surface. Argument shape <spec-rule level="may">MAY</spec-rule> hint at the kernel's prompt construction (Sharpen-vs-Author phrasing) but <spec-rule>MUST NOT</spec-rule> be the gate for overwriting.</p>
+    <details><summary>Rationale</summary><p>Cascade of <a href="../../../triage-log.html#T-001">011/T-001</a>: the original FR-003's argument-shape-driven gate let a fresh-mode invocation silently overwrite a Draft spec at the resolved path. <a href="../../../../../principles.html#P-6">P-6</a> ratified destination-state as the right gate; this FR honours it. The "silently overwrites Draft" failure mode is more dangerous than 008's over-rigid refuse — no signal — which is why this cascade gets priority operationally.</p></details>
+  </spec-requirement>
+</spec-delta>
+</section>
+
+
+<section id="risks">
+<h2>5 · Risk register</h2>
+<p>Adversarial pass deliberately opted out (<code>--no-adversarial</code>). Substance exhausted at <a href="../../../../../changes/archive/2026-06-16-p6-draft-is-loose/proposal.html">parent P-6 proposal</a>; this is a mechanical cascade.</p>
+
+<spec-risk-log>
+</spec-risk-log>
+</section>
+
+
+<section id="tasks">
+<h2>6 · Tasks</h2>
+<ul style="list-style:none;padding-left:0;">
+  <li><input type="checkbox" checked> Apply this proposal: MODIFY FR-003 in <code>specs/011-core-spec/spec.html</code>.</li>
+  <li><input type="checkbox" checked> Hotfix <code>packages/cli/src/commands/spec.ts</code>: read destination <code>&lt;spec-status&gt;</code> before <code>fs.writeFile</code>; route Draft → in-place edit, past-Draft → refuse, <code>--force</code> → warn + write. Landed via shared <code>gateOnDestinationState</code> helper (<code>packages/cli/src/state-gate.ts</code>); both invocation paths gated (re-entry via <code>--reentry</code> AND fresh-mode against a resolved output path).</li>
+  <li><input type="checkbox" checked> Tick <a href="../../../triage-log.html#T-001">011/T-001</a> closed once the hotfix lands.</li>
+</ul>
+</section>
+
+
+<section id="questions">
+<h2>7 · Open questions</h2>
+<spec-questions>
+<ol>
+  <li>None. P-6 + 011's triage-card deep-dive settle every decision.</li>
+</ol>
+</spec-questions>
+</section>
+
+
+<section id="changelog">
+<h2>8 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-06-16">16 Jun 2026</time><span>Proposal authored. Single MODIFY on FR-003 making destination <code>&lt;spec-status&gt;</code> the invocation gate per just-ratified <a href="../../../../../principles.html#P-6">P-6</a>. <code>--no-adversarial</code> per cascade discipline. Status approved on author commit. Most operationally urgent of the four cascades — current impl silently overwrites Draft specs.</span></li>
+  <li><time datetime="2026-06-16">16 Jun 2026</time><span>Applied. FR-003 MODIFIED in <a href="../../../spec.html#FR-003">specs/011-core-spec/spec.html § FR-003</a>; folder archived; paths rewritten for new depth. Hotfix tasks remain open.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+</spec-change>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  2026-06-16-p6-cascade-spec · Gate invocation forms on destination state (cite P-6) · authored 16 Jun 2026 ·
+  <button data-theme-toggle style="background:none;border:none;color:var(--c-link);cursor:pointer;font:inherit;padding:0;border-bottom:1px solid currentColor;">toggle theme</button>
+</footer>
+
+</main>
+<script src="../../../../../assets/spec.js"></script>
+</body>
+</html>

@@ -136,7 +136,7 @@ function renderPrinciplesHtml(
 
   <spec-meta>
     <b>Status</b>      <span><spec-status value="draft">Draft</spec-status></span>
-    <b>Version</b>     <span>v1.0.0</span>
+    <b>Version</b>     <span>v0.1.0</span>
     <b>Created</b>     <span><time datetime="${today}">${today}</time></span>
     <b>Read time</b>   <span data-reading-time></span>
   </spec-meta>
