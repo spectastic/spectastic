@@ -8,10 +8,11 @@ export function registerImplement(program: Command): void {
     .option('--all', 'drain mode (DEFERRED to TBD-core-implement-drain)')
     .option('--phase <id>', 'phase drain (DEFERRED)')
     .option('--parallel', 'parallel drain (DEFERRED)')
+    .option('-y, --yes', 'auto-confirm bundled flip prompt without TTY interaction')
     .action(
       async (
         target: string,
-        opts: { all?: boolean; phase?: string; parallel?: boolean },
+        opts: { all?: boolean; phase?: string; parallel?: boolean; yes?: boolean },
       ) => {
         if (opts.all || opts.phase || opts.parallel) {
           process.stderr.write(
@@ -26,17 +27,17 @@ export function registerImplement(program: Command): void {
           import('node:path'),
         ]);
 
-        // Resolve target → file. T-NNN needs a spec ID context; simplest: scan
-        // most-recent tasks.html. For I-NNN, read inbox.html at project root.
         let tasksHtml: string | undefined;
         let inboxHtml: string | undefined;
         let specHtml: string | undefined;
+        let planHtml: string | undefined;
         let targetFile: string;
+        let specDir: string | undefined;
+
         if (/^I-\d+$/.test(target)) {
           targetFile = path.resolve(process.cwd(), 'inbox.html');
           inboxHtml = await fs.readFile(targetFile, 'utf8');
         } else if (/^T-\d+$/.test(target)) {
-          // Find the tasks.html that contains this T-NNN.
           const { glob } = await import('tinyglobby');
           const candidates = await glob(['specs/**/tasks.html'], { cwd: process.cwd() });
           let found: string | null = null;
@@ -45,8 +46,9 @@ export function registerImplement(program: Command): void {
             if (content.includes(`id="${target}"`)) {
               found = candidate;
               tasksHtml = content;
-              const specPath = path.resolve(process.cwd(), path.dirname(candidate), 'spec.html');
-              try { specHtml = await fs.readFile(specPath, 'utf8'); } catch { /* optional */ }
+              specDir = path.dirname(path.resolve(process.cwd(), candidate));
+              try { specHtml = await fs.readFile(path.join(specDir, 'spec.html'), 'utf8'); } catch { /* optional */ }
+              try { planHtml = await fs.readFile(path.join(specDir, 'plan.html'), 'utf8'); } catch { /* optional */ }
               break;
             }
           }
@@ -66,27 +68,94 @@ export function registerImplement(program: Command): void {
             ...(tasksHtml ? { tasksHtml } : {}),
             ...(inboxHtml ? { inboxHtml } : {}),
             ...(specHtml ? { specHtml } : {}),
+            ...(planHtml ? { planHtml } : {}),
           },
           { cwd: process.cwd() },
         );
 
-        // Apply the tick to the file.
+        // Write the tick.
+        const escId = target.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
         if (tasksHtml && targetFile) {
-          const escId = target.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-          const re = new RegExp(`(<spec-task\\s+id=["']${escId}["'][^>]*>\\s*<input\\s+type=["']checkbox["'])(?!\\s+checked)`);
-          const updated = tasksHtml.replace(re, '$1 checked');
-          await fs.writeFile(targetFile, updated, 'utf8');
+          const re = new RegExp(
+            `(<spec-task\\s+id=["']${escId}["'][^>]*>\\s*<input\\s+type=["']checkbox["'])(?!\\s+checked)`,
+          );
+          tasksHtml = tasksHtml.replace(re, '$1 checked');
+          await fs.writeFile(targetFile, tasksHtml, 'utf8');
         } else if (inboxHtml && targetFile) {
-          const escId = target.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-          const re = new RegExp(`(<spec-triage\\s+id=["']${escId}["'])(?![^>]*\\bdata-status=)`);
-          const updated = inboxHtml.replace(re, '$1 data-status="done"');
-          await fs.writeFile(targetFile, updated, 'utf8');
+          const re = new RegExp(
+            `(<spec-triage\\s+id=["']${escId}["'])(?![^>]*\\bdata-status=)`,
+          );
+          inboxHtml = inboxHtml.replace(re, '$1 data-status="done"');
+          await fs.writeFile(targetFile, inboxHtml, 'utf8');
         }
 
         process.stdout.write(
-          `Ticked ${result.ticked.id} in ${result.ticked.file} (${result.remainingUnchecked} unchecked remaining)${result.flipPromptFired ? ' — bundled flip prompt fires.' : ''}.\n`,
+          `Ticked ${result.ticked.id} in ${result.ticked.file} (${result.remainingUnchecked} unchecked remaining)\n`,
         );
+
+        // Bundled-flip prompt per REQ-LIFECYCLE-005.
+        if (result.flipPromptFired && specDir && tasksHtml && specHtml) {
+          process.stdout.write(
+            '\nLast task ticked on a Draft spec. The bundled flip will set status="accepted" on spec.html, plan.html, and tasks.html.\n',
+          );
+          process.stdout.write('Verify integration tests covering the Success Criteria pass before confirming.\n');
+
+          const confirmed = opts.yes ? true : await confirmStdin('Flip the bundle Draft → Accepted? [y/N] ');
+          if (confirmed) {
+            await flipBundle(specDir, fs, path);
+            process.stdout.write(`Flipped spec + plan + tasks → Accepted in ${specDir}\n`);
+          } else {
+            process.stdout.write('Skipped flip. Run again with --yes to auto-confirm.\n');
+          }
+        }
+
         process.exit(0);
       },
     );
+}
+
+async function confirmStdin(prompt: string): Promise<boolean> {
+  if (!process.stdin.isTTY) return false;
+  const readline = await import('node:readline');
+  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+  return new Promise((resolve) => {
+    rl.question(prompt, (answer) => {
+      rl.close();
+      resolve(/^y(es)?$/i.test(answer.trim()));
+    });
+  });
+}
+
+async function flipBundle(
+  specDir: string,
+  fs: typeof import('node:fs/promises'),
+  path: typeof import('node:path'),
+): Promise<void> {
+  const today = new Date().toISOString().slice(0, 10);
+  const todayHuman = formatHumanDate(new Date());
+  const entry = `<li><time datetime="${today}">${todayHuman}</time><span>Status flipped Draft → Accepted on ${todayHuman} — zero remaining unchecked tasks; tests verified passing per author confirmation. Sibling bundle (REQ-LIFECYCLE-005).</span></li>`;
+
+  for (const file of ['spec.html', 'plan.html', 'tasks.html'] as const) {
+    const fp = path.join(specDir, file);
+    let html: string;
+    try {
+      html = await fs.readFile(fp, 'utf8');
+    } catch {
+      continue;
+    }
+    html = html.replace(
+      /<spec-status\s+value=["']draft["']>[^<]*<\/spec-status>/g,
+      '<spec-status value="accepted">Accepted</spec-status>',
+    );
+    const closing = html.lastIndexOf('</ol>');
+    if (closing !== -1) {
+      html = `${html.slice(0, closing)}  ${entry}\n${html.slice(closing)}`;
+    }
+    await fs.writeFile(fp, html, 'utf8');
+  }
+}
+
+function formatHumanDate(d: Date): string {
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  return `${d.getDate()} ${months[d.getMonth()]} ${d.getFullYear()}`;
 }

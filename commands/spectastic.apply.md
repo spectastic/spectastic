@@ -145,3 +145,9 @@ Per `REQ-CHANGE-003` of the meta-spec, after `/spectastic.apply` lands a change,
 - **Large change** — multi-requirement, architectural shift, new topic group. Re-run `/spectastic.plan` against the updated spec to revisit ADRs, then `/spectastic.tasks` to derive a fresh breakdown, then `/spectastic.implement` to drain it.
 
 The boundary heuristic: **more than one new ADR would land → large**. Otherwise the proposal's inline tasks are the breakdown. State the rule as guidance, not a guardrail — never auto-trigger plan/tasks based on your own classification, and never refuse an apply based on it.
+
+## Optional: CLI dispatch
+
+Per 006 FR-009: for deterministic dispatch outside Claude Code (CI scripts, raw shell automation), the LLM MAY invoke `spectastic apply` via Bash. This bypasses LLM-driven file handling and routes through `@spectastic/core/commands/apply` directly. The markdown procedure above remains canonical; the CLI is an alternate code path.
+
+The CLI requires `ANTHROPIC_API_KEY` in the environment for AI-coupled verbs; the slash-command path uses the in-host Claude session and needs no key.

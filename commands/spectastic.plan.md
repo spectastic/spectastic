@@ -72,3 +72,9 @@ User input (from `$ARGUMENTS`): a Spec ID such as `001-auth-service`, or empty (
 ## After writing
 
 Report the path, the principles version checked against, and propose `/spectastic.tasks` to derive the work list.
+
+## Optional: CLI dispatch
+
+Per 006 FR-009: for deterministic dispatch outside Claude Code (CI scripts, raw shell automation), the LLM MAY invoke `spectastic plan` via Bash. This bypasses LLM-driven file handling and routes through `@spectastic/core/commands/plan` directly. The markdown procedure above remains canonical; the CLI is an alternate code path.
+
+The CLI requires `ANTHROPIC_API_KEY` in the environment for AI-coupled verbs; the slash-command path uses the in-host Claude session and needs no key.

@@ -57,3 +57,9 @@ User input (from `$ARGUMENTS`): a Spec ID such as `001-auth-service`, or empty (
 ## After writing
 
 Report the path, total task count, and the count of `[P]`-parallel tasks. Suggest the user open the file in a browser and start ticking boxes.
+
+## Optional: CLI dispatch
+
+Per 006 FR-009: for deterministic dispatch outside Claude Code (CI scripts, raw shell automation), the LLM MAY invoke `spectastic tasks` via Bash. This bypasses LLM-driven file handling and routes through `@spectastic/core/commands/tasks` directly. The markdown procedure above remains canonical; the CLI is an alternate code path.
+
+The CLI requires `ANTHROPIC_API_KEY` in the environment for AI-coupled verbs; the slash-command path uses the in-host Claude session and needs no key.

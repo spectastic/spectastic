@@ -52,3 +52,9 @@ User input (from `$ARGUMENTS`): either the project name to ratify a new principl
 ## After writing
 
 Tell the user the path, the version, and propose `/spectastic.spec` for the first feature.
+
+## Optional: CLI dispatch
+
+Per 006 FR-009: for deterministic dispatch outside Claude Code (CI scripts, raw shell automation), the LLM MAY invoke `spectastic principles` via Bash. This bypasses LLM-driven file handling and routes through `@spectastic/core/commands/principles` directly. The markdown procedure above remains canonical; the CLI is an alternate code path.
+
+The CLI requires `ANTHROPIC_API_KEY` in the environment for AI-coupled verbs; the slash-command path uses the in-host Claude session and needs no key.

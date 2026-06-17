@@ -1,5 +1,24 @@
 # Changelog
 
+## v0.1.0-pre.14 — 2026-06-16
+
+Backfill release: per-verb unit tests + bundled-flip CLI fix + slash-command markdown updates.
+
+Real bug fix:
+- **`spectastic implement` now actually surfaces the bundled flip prompt**. Pre-fix, the CLI subcommand reported `flipPromptFired: true` from the kernel but never asked the author to confirm or wrote the bundle flips. The kernel still reports the signal; the CLI now (a) reads sibling spec.html + plan.html, (b) prompts via stdin (`[y/N]`), (c) rewrites all three status pills + appends matching changelog entries on confirm. `--yes` flag added for non-TTY contexts.
+
+Coverage backfill:
+- **Per-verb unit tests for 011/012/013/014** authored via four parallel sub-agents. 7 tests each, 28 total, all passing. Full suite is 112/112 across 19 files (was 84/15 in pre.13).
+- Tests cover: estimability gate refusals (012), defensive risk status forcing (013), adversarial heuristic per condition (013), bundled-flip-prompt firing conditions (014), re-entry mode (011/012), missing-ai guards.
+
+Discoverability:
+- **Slash-command markdown for 007–014** now each carries the "Optional: CLI dispatch" footer per 006 FR-009. Notes the `ANTHROPIC_API_KEY` requirement for the CLI path; the slash-command path inside Claude Code stays key-free.
+
+What's still not done (post-pre.14 honest list):
+- No CLI integration tests for the 8 new subcommands beyond compile-time wiring + the kernel unit tests. The existing `cli.test.ts` only exercises `validate`.
+- No real-Claude smoke test against any of the new verbs; the kernel functions are exercised only through stub `AIProvider`s.
+- 012's planned `helpers/interview.ts` extraction (D-007) still deferred; interview primitives stay inline in `spec.ts`.
+
 ## v0.1.0-pre.13 — 2026-06-16
 
 Final batched release: kernel verbs 011 + 012 + 013 + 014 land together.

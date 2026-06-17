@@ -124,3 +124,9 @@ Report: the proposal path, the count and breakdown of deltas (e.g. "2 added, 1 m
 before sharing.
 
 Suggest `/spectastic.apply <date>-<slug>` as the follow-up when the proposal is approved.
+
+## Optional: CLI dispatch
+
+Per 006 FR-009: for deterministic dispatch outside Claude Code (CI scripts, raw shell automation), the LLM MAY invoke `spectastic propose` via Bash. This bypasses LLM-driven file handling and routes through `@spectastic/core/commands/propose` directly. The markdown procedure above remains canonical; the CLI is an alternate code path.
+
+The CLI requires `ANTHROPIC_API_KEY` in the environment for AI-coupled verbs; the slash-command path uses the in-host Claude session and needs no key.
