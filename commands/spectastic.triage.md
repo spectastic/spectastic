@@ -153,3 +153,15 @@ Wrote 4 cards to ./inbox.html:
 
 3 just-do items queued. Run /spectastic.implement to take the first.
 ```
+
+## Optional: CLI dispatch
+
+For deterministic dispatch (e.g. when running outside Claude Code, or scripting in CI), the LLM MAY invoke `spectastic triage` via Bash. This bypasses LLM-driven card generation and routes through `@spectastic/core/commands/triage` directly. The markdown procedure above remains canonical; the CLI is an alternate code path per 006 FR-009.
+
+```sh
+spectastic triage "session expiry never fires" --spec 001-auth --format json
+echo "typo on line 42, broken anchor in CLAUDE.md, dark-mode polish" | spectastic triage --mode list
+```
+
+The CLI requires `ANTHROPIC_API_KEY` in the environment; the slash-command path uses the in-host Claude session and needs no key.
+

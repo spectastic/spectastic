@@ -3,6 +3,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Command } from 'commander';
 import { registerInit } from './commands/init.js';
+import { registerTriage } from './commands/triage.js';
 import { registerValidate } from './commands/validate.js';
 
 /**
@@ -25,12 +26,13 @@ const program = new Command();
 program
   .name('spectastic')
   .description(
-    'Single-file HTML spec tooling: bootstrap a project with `init`; validate spec-html artifacts with `validate`.',
+    'Single-file HTML spec tooling: bootstrap a project with `init`; validate spec-html artifacts with `validate`; triage defects into structured cards with `triage`.',
   )
   .version(pkg.version);
 
 registerInit(program);
 registerValidate(program);
+registerTriage(program);
 
 if (process.argv.length <= 2) {
   program.outputHelp();

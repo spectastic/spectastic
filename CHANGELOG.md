@@ -1,5 +1,19 @@
 # Changelog
 
+## v0.1.0-pre.9 — 2026-06-16
+
+Second kernel verb: `triage`, plus the first concrete `ClaudeProvider`.
+
+- **`triageCommand`** at `@spectastic/core/commands/triage` extracts the `/spectastic.triage` slash verb. Single-card + list-intake both in scope. Eight layer classifications; LLM-based with `ask<T>()` escalation on ambiguity. Caller passes `startingIdT` + `startingIdI` so the kernel stays pure (no destination paths inside).
+- **`ClaudeProvider`** at `@spectastic/core/providers/claude` — first concrete `AIProvider` implementation. `chat()` via `@anthropic-ai/sdk`'s `messages.create`; `ask<T>()` via structured-prompt + JSON parse + one stricter retry; `subagent()` ships as a stub throwing "lands with 013-core-propose" so the surface is forward-looking (007 spec FR-008 + 006 D-004).
+- **ANTHROPIC_API_KEY redaction**: every error from SDK calls is rewrapped as `ClaudeProviderError`; the key value is scrubbed from `.message` + `.stack` substrings. Unit-tested on a deliberately-triggered error path.
+- **CLI subcommand**: `spectastic triage [description]` (reads arg or stdin); flags `--spec <id>`, `--mode single|list`, `--format human|json`. Requires `ANTHROPIC_API_KEY` in the environment; the slash-command path inside Claude Code does not.
+- **List-intake heuristic**: ported verbatim from the slash-command markdown's discipline — newlines, commas/semicolons, bullet markers, numbered items, phrases like "things/items/stuff."
+- **Slash-command markdown** gains an "Optional: CLI dispatch" section pointing at the new subcommand per 006 FR-009.
+- **Bench unbroken**: `init-help-cold-start` p50 stays at ~99 ms (vs 150 ms budget); `@anthropic-ai/sdk` is lazy-loaded only via the `@spectastic/core/providers/claude` subpath. 72/72 tests pass (was 68; +4 new kernel triage tests).
+
+Seven more verb extractions queued ([008](./specs/008-core-principles/spec.html) through [014](./specs/014-core-implement/spec.html)). Each follows this same shape.
+
 ## v0.1.0-pre.8 — 2026-06-16
 
 First kernel verb extracted. Foundation for Tier 2 (MCP) + Tier 3 (VS Code) + Tier 6 (web editor) reach.

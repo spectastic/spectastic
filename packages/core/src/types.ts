@@ -142,3 +142,60 @@ export interface ValidateResult {
   /** Optional message for callers that surface usage errors. */
   errorMessage?: string;
 }
+
+// --- triage ------------------------------------------------------------
+
+/** Eight layer values per FR-009 of 007-core-triage. */
+export type TriageLayer =
+  | 'spec'
+  | 'plan'
+  | 'implementation'
+  | 'cross-spec'
+  | 'principles'
+  | 'platform'
+  | 'just-do'
+  | 'defer';
+
+/** Input to triageCommand. */
+export interface TriageInput {
+  /** Raw user input — single failure description, error, stack, or list. */
+  description: string;
+  /** When set, caller's mode wins; when undefined, kernel detects via heuristic. */
+  mode?: 'single' | 'list';
+  /** Required for single-card mode; ignored in list-intake. */
+  specId?: string;
+  /** Highest existing T-NNN in the destination triage-log (caller scans). */
+  startingIdT?: number;
+  /** Highest existing I-NNN in the destination inbox (caller scans). */
+  startingIdI?: number;
+}
+
+/** One produced triage card. */
+export interface TriageCard {
+  /** Sequential ID assigned by the kernel from caller-supplied starting points. */
+  id: string;
+  /** Layer classification per FR-009. */
+  layer: TriageLayer;
+  /** One-line failure title. */
+  headline: string;
+  /** Single-sentence expected. */
+  expected: string;
+  /** Single-sentence actual. */
+  actual: string;
+  /** Single-sentence root cause; may cite REQ IDs. */
+  diagnosis: string;
+  /** Artifact path + one-line proposal. */
+  fix: string;
+  /** Omitted for routing-exit layers (just-do, defer). */
+  regenResult?: 'pass' | 'fail' | 'unsure';
+  /** Only when layer === 'defer'. */
+  deferTo?: string;
+  /** Optional deep-dive prose for cascade / cross-spec / principles. */
+  deepDive?: string;
+}
+
+/** Result of triageCommand. Caller decides where to persist each card. */
+export interface TriageResult {
+  /** One card for single-card mode; N for list-intake. */
+  cards: ReadonlyArray<TriageCard>;
+}

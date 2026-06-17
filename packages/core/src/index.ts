@@ -24,4 +24,8 @@ export type {
   KernelContext,
   ValidateInput,
   ValidateResult,
+  TriageLayer,
+  TriageInput,
+  TriageCard,
+  TriageResult,
 } from './types.js';

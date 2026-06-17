@@ -12,7 +12,13 @@ import { defineConfig } from 'tsup';
  * guard for that lazy-loading discipline.
  */
 export default defineConfig({
-  entry: ['src/index.ts', 'src/commands/validate.ts', 'src/providers/node-fs.ts'],
+  entry: [
+    'src/index.ts',
+    'src/commands/validate.ts',
+    'src/commands/triage.ts',
+    'src/providers/node-fs.ts',
+    'src/providers/claude.ts',
+  ],
   format: ['esm'],
   dts: true,
   sourcemap: true,
