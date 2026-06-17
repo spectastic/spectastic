@@ -3,8 +3,12 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Command } from 'commander';
 import { registerApply } from './commands/apply.js';
+import { registerImplement } from './commands/implement.js';
 import { registerInit } from './commands/init.js';
+import { registerPlan } from './commands/plan.js';
 import { registerPrinciples } from './commands/principles.js';
+import { registerPropose } from './commands/propose.js';
+import { registerSpec } from './commands/spec.js';
 import { registerTasks } from './commands/tasks.js';
 import { registerTriage } from './commands/triage.js';
 import { registerValidate } from './commands/validate.js';
@@ -39,6 +43,10 @@ registerTriage(program);
 registerPrinciples(program);
 registerTasks(program);
 registerApply(program);
+registerSpec(program);
+registerPlan(program);
+registerPropose(program);
+registerImplement(program);
 
 if (process.argv.length <= 2) {
   program.outputHelp();

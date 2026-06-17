@@ -289,3 +289,103 @@ export interface ApplyResult {
   /** Cross-spec references the apply touched but didn't rewrite; surfaced for follow-up. */
   crossSpecWarnings: string[];
 }
+
+// --- spec (verb 011) + plan (verb 012) ---------------------------------
+
+export interface SpecInput {
+  /** Feature name or one-line description. */
+  description: string;
+  /** When set, the kernel runs in re-entry mode against the existing spec. */
+  specId?: string;
+  /** Existing spec.html content (for re-entry); caller reads it. */
+  existingSpec?: string;
+}
+
+export interface SpecResult {
+  /** Generated or sharpened spec.html content. */
+  html: string;
+  /** The chosen spec ID. */
+  specId: string;
+  /** How many requirements the kernel ended up authoring (FR + NFR + SC). */
+  requirementsCount: number;
+  /** Any soft warnings (over-budget, INVEST gaps, etc.). */
+  warnings: string[];
+}
+
+export interface PlanInput {
+  /** Spec ID to plan against. */
+  specId: string;
+  /** Existing spec.html content (kernel reads). */
+  specHtml: string;
+  /** Existing plan.html content (for re-entry; undefined = fresh). */
+  existingPlan?: string;
+  /** Existing principles.html content (for the principles check). */
+  principlesHtml?: string;
+}
+
+export interface PlanResult {
+  html: string;
+  decisionsCount: number;
+  estimabilityBlockers: string[];
+  principlesCheck: {
+    ok: number;
+    exceptions: number;
+    violations: number;
+  };
+}
+
+// --- propose (verb 013) ------------------------------------------------
+
+export interface Delta {
+  op: 'added' | 'modified' | 'removed' | 'renamed';
+  target: string;
+  postState?: string;
+  reason?: string;
+  migration?: string;
+}
+
+export interface RiskFinding {
+  target: string;
+  status: 'identified' | 'accepted' | 'mitigated' | 'rejected' | 'no-value-found';
+  concern: string;
+  response?: string;
+}
+
+export interface ProposeInput {
+  specId: string;
+  description: string;
+  specHtml: string;
+  adversarial?: boolean | 'auto';
+}
+
+export interface ProposeResult {
+  html: string;
+  deltasCount: number;
+  risks: RiskFinding[];
+}
+
+// --- implement (verb 014, single-task mode) ----------------------------
+
+export interface ImplementInput {
+  /** T-NNN, I-NNN, or spec-id. */
+  target: string;
+  /** Source spec.html content (for estimability gate). */
+  specHtml?: string;
+  /** Source plan.html content. */
+  planHtml?: string;
+  /** Source tasks.html content (for tick + remaining count). */
+  tasksHtml?: string;
+  /** Source inbox.html content (for just-do cards). */
+  inboxHtml?: string;
+}
+
+export interface ImplementResult {
+  /** What got ticked (single in v0.1; `ticks` field reserved for drain modes). */
+  ticked: { kind: 'task' | 'just-do'; id: string; file: string };
+  /** Reserved for the carved-out drain modes. */
+  ticks?: ReadonlyArray<{ kind: 'task' | 'just-do'; id: string; file: string }>;
+  /** Number of unchecked checkboxes remaining in the target tasks.html. */
+  remainingUnchecked: number;
+  /** True if the bundled flip prompt was surfaced (last-tick + Draft). */
+  flipPromptFired: boolean;
+}

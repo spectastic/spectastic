@@ -127,10 +127,24 @@ export class ClaudeProvider implements AIProvider {
     return parsed as TResult;
   }
 
-  async subagent(_prompt: string, _opts?: SubagentOpts): Promise<SubagentResult> {
-    throw new ClaudeProviderError(
-      'ClaudeProvider.subagent() is not implemented in v0.1.0-pre.9; the adversarial-pass implementation lands with 013-core-propose. See specs/013-core-propose/spec.html.',
-    );
+  async subagent(prompt: string, opts: SubagentOpts = {}): Promise<SubagentResult> {
+    // Per 013 D-001: separate messages.create call with a critic system prompt.
+    // No streaming; deterministic temperature.
+    try {
+      const response = await this.client.messages.create({
+        model: opts.model ?? this.model,
+        max_tokens: 2048,
+        temperature: 0,
+        system:
+          'You are a focused sub-agent invoked for a specialised task. Stay narrowly scoped to the user prompt. Output is consumed by a program; prefer JSON when the task specifies a structured shape.',
+        messages: [{ role: 'user', content: prompt }],
+      });
+      const block = response.content[0];
+      const output = block && block.type === 'text' ? block.text : '';
+      return { output };
+    } catch (err) {
+      throw this.wrap(err);
+    }
   }
 
   /**

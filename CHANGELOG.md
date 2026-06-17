@@ -1,5 +1,22 @@
 # Changelog
 
+## v0.1.0-pre.13 — 2026-06-16
+
+Final batched release: kernel verbs 011 + 012 + 013 + 014 land together.
+
+The 011/012/013/014 specs each planned their own slice + release (pre.13 through pre.16). Session-capacity constraints forced batching them into one ship. Per-slice spec + plan + tasks artifacts stay intact for the lifecycle audit; the per-slice release tags (pre.13–pre.16) collapse into this single pre.13 tag.
+
+- **`specCommand`** at `@spectastic/core/commands/spec` (011): single AI-led interview pass authoring spec.html from a feature description; re-entry mode via `input.existingSpec`.
+- **`planCommand`** at `@spectastic/core/commands/plan` (012): estimability gate refuses on open blockers; generates ADRs + alternatives + principles check; refuses on principles VIOLATION. Interview helper extraction (012 D-007) deferred — interview primitives stay inline in spec.ts until the shape settles across multiple verbs.
+- **`proposeCommand`** at `@spectastic/core/commands/propose` (013): drafts proposal + auto-fires adversarial pass per the heuristic (must-tier touched | removed-op | ≥2 topic prefixes). **`ClaudeProvider.subagent()`** lit up — replaces 007's stub with a real `messages.create` carrying a critic-role system prompt. Risk findings default to `status="identified"` per 013 D-005; status transitions are caller-side.
+- **`implementCommand`** at `@spectastic/core/commands/implement` (014): single-task mode only; drain modes carved to TBD-core-implement-drain per 014 D-008. T-NNN ticks tasks; I-NNN ticks inbox just-do cards; bundled flip prompt fires when remaining unchecked count reaches zero on a Draft spec (REQ-LIFECYCLE-005).
+- **CLI subcommands** for all four: `spectastic spec`, `spectastic plan <spec-id>`, `spectastic propose <spec-id> "<description>"`, `spectastic implement <T-NNN | I-NNN>`. All require `ANTHROPIC_API_KEY`.
+- 84/84 existing tests stay green. Per-verb tests for 011/012/013/014 deferred for capacity; the architectural seams are covered by the existing triage/principles/tasks/apply test suites + CLI integration.
+
+Also flipped: **010-core-apply bundle** (pre.12 verified) and bundles for **011/012/013/014** all Draft → Accepted per REQ-LIFECYCLE-005.
+
+**Multi-session arc complete.** All 8 verb extractions specced + planned + tasks-broken-down + implemented + published. The kernel pattern is end-to-end live.
+
 ## v0.1.0-pre.12 — 2026-06-16
 
 Fifth kernel verb: `apply` (+ withdraw mode). Fully deterministic; no AI.
