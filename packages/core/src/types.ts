@@ -199,3 +199,25 @@ export interface TriageResult {
   /** One card for single-card mode; N for list-intake. */
   cards: ReadonlyArray<TriageCard>;
 }
+
+// --- principles --------------------------------------------------------
+
+/** Input to principlesCommand. Per 008 D-003: all-optional. */
+export interface PrinciplesInput {
+  /** Project name; if undefined, kernel interviews via ai.ask<T>(). */
+  projectName?: string;
+  /** One-line tagline; if undefined, kernel asks. */
+  tagline?: string;
+  /** Target principle count; defaults to 5. */
+  principlesCount?: number;
+  /** Optional context to ground the principles in (existing code, vision doc, etc.). */
+  context?: string;
+}
+
+/** Result of principlesCommand. Caller writes html to disk. */
+export interface PrinciplesResult {
+  /** The rendered principles.html content. */
+  html: string;
+  /** How many principles the kernel actually generated. */
+  principlesCount: number;
+}

@@ -16,6 +16,7 @@ export default defineConfig({
     'src/index.ts',
     'src/commands/validate.ts',
     'src/commands/triage.ts',
+    'src/commands/principles.ts',
     'src/providers/node-fs.ts',
     'src/providers/claude.ts',
   ],

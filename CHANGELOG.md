@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.1.0-pre.10 — 2026-06-16
+
+Third kernel verb: `principles` — fresh-generation only.
+
+- **`principlesCommand`** at `@spectastic/core/commands/principles` extracts the `/spectastic.principles` slash verb (the smallest of the slash family). Single `ai.chat()` call generates principle bodies; kernel returns the rendered HTML; caller writes it. Refuse-if-exists logic lives caller-side per 008 D-002 (the CLI subcommand checks before writing, exits 2 on conflict unless `--force`).
+- **CLI subcommand**: `spectastic principles --name <project> [--tagline …] [--count N] [--force] [--output path]`. Requires `ANTHROPIC_API_KEY` in the environment.
+- **Slash-command markdown** gains a brief CLI-dispatch note per 006 FR-009.
+- 77/77 tests pass (was 72; +5 new kernel principles tests).
+- Bench unbroken; lazy-loading discipline holds.
+
+Also lands in this commit: **007-core-triage bundle flipped Draft → Accepted** per REQ-LIFECYCLE-005, on confirmation that `@spectastic/{cli,core,schema}@0.1.0-pre.9` are live on npm with provenance and the CLI behaviour matches the slash-command flow.
+
 ## v0.1.0-pre.9 — 2026-06-16
 
 Second kernel verb: `triage`, plus the first concrete `ClaudeProvider`.

@@ -28,4 +28,6 @@ export type {
   TriageInput,
   TriageCard,
   TriageResult,
+  PrinciplesInput,
+  PrinciplesResult,
 } from './types.js';
