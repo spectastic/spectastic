@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>008-core-principles · Triage log</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Triage log · 008-core-principles</p>
+  <h1>008-core-principles — triage log</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    Defects surfaced against the <code>principles</code> kernel verb. Cards are append-only; IDs are stable.
+  </p>
+
+  <spec-meta>
+    <b>Spec</b>      <span><a href="./spec.html">008-core-principles</a></span>
+    <b>Created</b>   <span><time datetime="2026-06-16">16 Jun 2026</time></span>
+    <b>Read time</b> <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-tldr>
+    <p>Triage cards for defects in the <code>principlesCommand</code> verb (<code>packages/core/src/commands/principles.ts</code>) and its CLI subcommand (<code>packages/cli/src/commands/principles.ts</code>). Cards follow the five-required-field format documented at <a href="../../examples/triage-log.html">examples/triage-log.html</a>.</p>
+  </spec-tldr>
+</header>
+
+
+<section id="cards">
+<h2>Cards</h2>
+<spec-triage-log>
+
+<spec-triage id="T-001" layer="spec">
+  <header>
+    <h4>Generated principles.html is v1.0.0 + refuses re-run even when still Draft</h4>
+    <span class="meta">
+      <span class="layer-pill">Spec</span>
+      <span class="regen" data-result="fail">upstream</span>
+    </span>
+  </header>
+
+  <p class="headline">Debugging <code>spectastic principles</code> smoke test, root cause was two upstream gaps in 008's spec — no initial-version policy (so the implementation hardcoded v1.0.0 against fresh-draft semantics) and FR-004's refuse-if-exists rule treats every re-run as ceremonious supersession even when the destination is still Draft and unratified; fixed by amending FR-004 + adding an FR for the version policy via <code>/spectastic.propose</code>; regeneration fails because the next LLM session has no spec language constraining either behaviour.</p>
+
+  <dl>
+    <dt>Expected</dt>
+    <dd>(a) A freshly-generated <code>principles.html</code> carries a pre-1.0 version (e.g. <code>v0.1.0</code>) while still Draft; only Accepted ratification graduates it to <code>v1.0.0</code>. (b) Re-running <code>spectastic principles</code> against a Draft destination edits in place — no Supersede ceremony when the prior artifact has not been ratified.</dd>
+    <dt>Actual</dt>
+    <dd>(a) Generated artifact ships at <code>v1.0.0</code> on first author (see <code>packages/core/src/commands/principles.ts</code> line 139: <code>&lt;b&gt;Version&lt;/b&gt;&lt;span&gt;v1.0.0&lt;/span&gt;</code>) while <code>&lt;spec-status value="draft"&gt;Draft&lt;/spec-status&gt;</code> — version and lifecycle state contradict. (b) Re-run is forced through the refuse-if-exists path (per <a href="./spec.html#FR-004">FR-004</a>); the only re-run path is <code>--force</code> (overwrite, treated as supersession) or a full <code>/spectastic.propose</code> against the artifact. No in-place-edit-while-Draft affordance.</dd>
+    <dt>Diagnosis</dt>
+    <dd>Two distinct upstream gaps in <a href="./spec.html">008's spec</a>. (1) No FR constrains the initial-version policy of the generated artifact; the implementation chose <code>v1.0.0</code> as a sensible default, but that conflicts with the project-wide pre-1.0 convention captured in <a href="../006-kernel-extraction/spec.html#FR-012">006 FR-012</a> for npm packages — the same discipline should apply to <em>any</em> generated artifact until it earns <code>Accepted</code>. (2) <a href="./spec.html#FR-004">FR-004</a>'s blanket "reject (typed error) if a <code>principles.html</code> already exists" treats Draft and Accepted destinations identically; Draft means unratified, and unratified artifacts have no contract to protect — in-place edit is the natural authoring loop. Per <a href="../../examples/spectastic-spec.html#REQ-LIFECYCLE-004">REQ-LIFECYCLE-004</a> of the meta-spec, Draft is the only state where the artifact has no consumer commitments; the verb should honour that asymmetry.</dd>
+    <dt>Fix</dt>
+    <dd>Open <code>/spectastic.propose</code> against <code>specs/008-core-principles/spec.html</code> with two changes: (a) <strong>modify FR-004</strong> to scope the refuse-if-exists rule to destinations whose <code>&lt;spec-status&gt;</code> is past Draft (Accepted / In Review / Superseded / Deprecated / Blocked); when the destination is Draft, default behaviour is in-place edit (preserve ID, append a one-line <code>&lt;spec-changelog&gt;</code> entry). <code>--force</code> remains the override for past-Draft destinations. (b) <strong>add FR-008</strong> specifying the initial version policy: generated artifacts <spec-rule>MUST</spec-rule> carry a version below <code>1.0.0</code> (recommend <code>v0.1.0</code>) while their <code>&lt;spec-status&gt;</code> is <code>Draft</code>; graduation to <code>v1.0.0</code> ties to the Draft → Accepted bundled-flip prompt. Hotfix the implementation (<code>packages/core/src/commands/principles.ts</code> line 139) to emit <code>v0.1.0</code> in the same PR; CLI subcommand gains the Draft-state detection + in-place-edit path.</dd>
+  </dl>
+
+  <details>
+    <summary>Deep dive — principles candidate + cross-spec implications</summary>
+    <p><strong>Candidate principle.</strong> The user's framing — "less ceremony when we have not officially ratified" — generalises beyond the <code>principles</code> verb. It's a cross-cutting invariant: <em>artifacts in Draft state are loose; ratified states are locked</em>. This could land as a project principle (e.g. <code>P-6 · Draft is loose, ratified is locked</code>) in a follow-up against <code>principles.html</code> itself — but that's expansion, not the immediate fix. Surface here; do not silently promote.</p>
+    <p><strong>Cross-spec.</strong> If the <code>P-6</code> principle lands, the same Draft-vs-ratified asymmetry will need to surface in the analogous verbs that generate artifacts: <code>specCommand</code> (011), <code>planCommand</code> (012), <code>tasksCommand</code> (009), <code>proposeCommand</code> (013). Each of those has the same potential gap if its re-run behaviour conflates Draft destinations with ratified ones. The 008 proposal should explicitly defer the cross-verb sweep to either (a) the <code>P-6</code> principles proposal cascading downstream, or (b) a per-verb triage when each surfaces the same defect.</p>
+    <p><strong>Hotfix vs amendment sequence.</strong> Hotfix lands with the amendment in a single PR: the spec change to FR-004 + new FR-008 ride alongside the impl change to the hardcoded <code>v1.0.0</code> + the CLI's Draft-detection logic. No need to land the impl ahead of the spec because the user has a current pain point but no third-party dependency.</p>
+    <p><strong>Connection to <a href="../006-kernel-extraction/spec.html#FR-012">006 FR-012</a>.</strong> The pre-1.0 versioning policy already exists for the <code>@spectastic/*</code> npm packages ("breaking changes <spec-rule level="may">MAY</spec-rule> land in minor version bumps until <code>1.0.0</code>"). Extending the same discipline to generated artifacts is consistent — the principle is the same shape ("pre-1.0 means content can shift without ceremony") in both surfaces.</p>
+  </details>
+</spec-triage>
+
+</spec-triage-log>
+</section>
+
+
+<section id="changelog">
+<h2>Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-06-16">16 Jun 2026</time><span>T-001 added — <code>principles</code> verb produces v1.0.0 artifact in Draft state; re-run refuses even when destination is unratified. <code>spec</code> layer; regen <code>fail</code>. Fix routes through <code>/spectastic.propose</code> against <a href="./spec.html">008 spec.html</a>: modify FR-004 + add FR-008 (version policy).</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  008-core-principles triage log · authored 16 Jun 2026 ·
+  <button data-theme-toggle style="background:none;border:none;color:var(--c-link);cursor:pointer;font:inherit;padding:0;border-bottom:1px solid currentColor;">toggle theme</button>
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>
