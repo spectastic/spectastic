@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.1.0-pre.11 — 2026-06-16
+
+Fourth kernel verb: `tasks` — generates 5-phase tasks.html from spec + plan.
+
+- **`tasksCommand`** at `@spectastic/core/commands/tasks` reads spec.html + plan.html via `ctx.fs`, parses via `@spectastic/schema`'s new `extractSpecMetadata` helper, derives a deterministic 5-phase task skeleton from the FRs, lightly enriches task titles via `ai.chat()`, and emits `<spec-warning>` if any requirement is unreferenced (FR-008).
+- **`@spectastic/schema` surface extension**: `extractSpecMetadata(htmlOrDoc)` returns `{ specId, fr[], nfr[], sc[] }`. First sibling slice to extend the schema's API. Pre-1.0 minor bump.
+- **CLI subcommand**: `spectastic tasks <spec-id>`. Reads `specs/<id>/spec.html` + `plan.html`; writes `tasks.html`. Refuses if exists unless `--force`.
+- 81/81 tests pass (was 77; +4 new kernel tasks tests).
+
+Also flipped: **008-core-principles bundle Draft → Accepted** per REQ-LIFECYCLE-005 on confirmation that v0.1.0-pre.10 is live on npm.
+
 ## v0.1.0-pre.10 — 2026-06-16
 
 Third kernel verb: `principles` — fresh-generation only.

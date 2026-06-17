@@ -221,3 +221,32 @@ export interface PrinciplesResult {
   /** How many principles the kernel actually generated. */
   principlesCount: number;
 }
+
+// --- tasks (the verb that generates tasks.html) ------------------------
+
+export interface TasksInput {
+  /** Path to the source spec.html (resolved). */
+  specPath: string;
+  /** Path to the source plan.html (resolved). */
+  planPath: string;
+}
+
+export interface TaskItem {
+  id: string;
+  title: string;
+  path?: string;
+  parallel: boolean;
+}
+
+export interface TaskPhase {
+  id: 'setup' | 'foundation' | 'us1' | 'us2' | 'us3' | 'polish';
+  title: string;
+  tasks: TaskItem[];
+}
+
+export interface TasksResult {
+  html: string;
+  phases: TaskPhase[];
+  totalTasks: number;
+  parallelTasks: number;
+}

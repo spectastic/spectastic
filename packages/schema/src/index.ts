@@ -12,6 +12,8 @@
 
 export { validate, validateMany } from './engine.js';
 export { rules } from './rules/index.js';
+export { extractSpecMetadata } from './extract.js';
+export type { Requirement, SpecMetadata } from './extract.js';
 export type {
   Finding,
   Location,

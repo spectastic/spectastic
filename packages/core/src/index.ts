@@ -30,4 +30,8 @@ export type {
   TriageResult,
   PrinciplesInput,
   PrinciplesResult,
+  TasksInput,
+  TaskItem,
+  TaskPhase,
+  TasksResult,
 } from './types.js';

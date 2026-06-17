@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { Command } from 'commander';
 import { registerInit } from './commands/init.js';
 import { registerPrinciples } from './commands/principles.js';
+import { registerTasks } from './commands/tasks.js';
 import { registerTriage } from './commands/triage.js';
 import { registerValidate } from './commands/validate.js';
 
@@ -35,6 +36,7 @@ registerInit(program);
 registerValidate(program);
 registerTriage(program);
 registerPrinciples(program);
+registerTasks(program);
 
 if (process.argv.length <= 2) {
   program.outputHelp();
