@@ -1,0 +1,241 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AI provider injection point · Tasks</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Tasks · 015-ai-stub-injection</p>
+  <h1>AI provider injection point — task breakdown</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    Ordered, parallelizable. Drive through with <code>/spectastic.implement</code>.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>     <span><spec-status value="draft">Draft</spec-status></span>
+    <b>Spec</b>       <span><a href="./spec.html">015-ai-stub-injection</a></span>
+    <b>Plan</b>       <span><a href="./plan.html">plan</a></span>
+    <b>Branch</b>     <span><code>main</code></span>
+    <b>Created</b>    <span><time datetime="2026-06-17">17 Jun 2026</time></span>
+    <b>Read time</b>  <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-tldr>
+    <p>21 tasks across five phases. Setup (3) → Foundational (3 — stub class, validator, factory) → US1 happy-path tests per AI-using verb + verification (11) → US2 docs (1) → Polish + release (3). The staged implementation from commit <code>9ed455e</code> covers most of Phases 1+2 and one verb's test (principles, inline-fixture variant); tasks reflect that with "verify-already-in-staging-matches-spec" framing where appropriate, and net-new work where the spec sharpened scope (FR-005 load-time validator; FR-010 per-verb tests beyond principles). Single PR; ships <code>v0.1.0-pre.15</code>.</p>
+  </spec-tldr>
+</header>
+
+
+<section id="strategy">
+<h2>1 · Execution strategy</h2>
+
+<spec-tabs>
+  <spec-tab label="MVP-first">
+    <p>Drive US1 end-to-end on one verb (principles, since the staged work already has it) → drain the other 5 verbs (tasks → plan → spec → triage → propose) → US2 docs → release. <strong>Pick this for solo work.</strong></p>
+  </spec-tab>
+  <spec-tab label="Incremental">
+    <p>Phase order; close conformance per phase before next opens.</p>
+  </spec-tab>
+  <spec-tab label="Parallel teams">
+    <p>Not applicable — single contributor.</p>
+  </spec-tab>
+</spec-tabs>
+</section>
+
+
+<section id="phase-setup" class="phase">
+<h2>2 · Phase 1 — Setup</h2>
+
+<p>Wire the new <code>stub</code> subpath into <code>packages/core/</code>'s build + exports, plus the <code>fixtures/</code> dir. All [P] — different files.</p>
+
+<spec-task id="T-001" parallel>
+  <input type="checkbox">
+  <div><strong>Add <code>./providers/stub</code> subpath export to <code>packages/core/package.json</code></strong> mirroring the existing <code>./providers/claude</code> pattern. Required by <a href="./spec.html#FR-001">FR-001</a>. <span class="path">packages/core/package.json</span></div>
+</spec-task>
+
+<spec-task id="T-002" parallel>
+  <input type="checkbox">
+  <div><strong>Add <code>src/providers/stub.ts</code> entry to <code>packages/core/tsup.config.ts</code></strong> so the new module builds as its own dist file (preserves lazy-loading per <a href="./spec.html#NFR-001">NFR-001</a>). <span class="path">packages/core/tsup.config.ts</span></div>
+</spec-task>
+
+<spec-task id="T-003" parallel>
+  <input type="checkbox">
+  <div><strong>Create <code>packages/cli/test/fixtures/</code> directory</strong> (initial state: contains at least the principles fixture from T-110 so the dir is non-empty). <span class="path">packages/cli/test/fixtures/</span></div>
+</spec-task>
+</section>
+
+
+<section id="phase-foundation" class="phase">
+<h2>3 · Phase 2 — Foundational</h2>
+
+<p>Stub class + validator + factory. T-010 blocks T-011 (validator is part of the stub class file); T-012 is independent.</p>
+
+<spec-task id="T-010">
+  <input type="checkbox">
+  <div><strong>Author <code>packages/core/src/providers/stub.ts</code></strong> with <code>StubAIProvider</code> implementing the <code>AIProvider</code> interface (<code>chat</code>, <code>ask</code>, <code>subagent</code>) per <a href="./spec.html#FR-002">FR-002</a>. Constructor accepts <code>string | StubScript</code> per <a href="./spec.html#FR-003">FR-003</a>. Sequential consumption per <a href="./spec.html#FR-006">FR-006</a>; overflow throws <code>StubAIProviderError</code> with method + count per <a href="./plan.html#D-003">D-003</a>. Most of this is in staging from <code>9ed455e</code>; verify against spec + sharpen where missing. <span class="path">packages/core/src/providers/stub.ts</span></div>
+</spec-task>
+
+<spec-task id="T-011">
+  <input type="checkbox">
+  <div><strong>Add <code>validateStubScript(parsed, path)</code> recursive walker</strong> to <code>stub.ts</code> per <a href="./spec.html#FR-004">FR-004</a> + <a href="./spec.html#FR-005">FR-005</a> + <a href="./plan.html#D-001">D-001</a>. Called at load time (in the constructor, after JSON parse). Throws <code>StubAIProviderError</code> with the offending JSON path (<code>chat[2]</code>, <code>ask[0].Header</code>). Net-new vs the staged work, which currently trusts the script shape. <span class="path">packages/core/src/providers/stub.ts</span></div>
+</spec-task>
+
+<spec-task id="T-012">
+  <input type="checkbox">
+  <div><strong>Author <code>packages/cli/src/ai-factory.ts</code></strong> exporting <code>createAIProvider()</code> per <a href="./spec.html#FR-007">FR-007</a>. Reads <code>process.env.SPECTASTIC_AI_STUB</code>; lazy-imports either <code>StubAIProvider</code> or <code>ClaudeProvider</code> per <a href="./spec.html#FR-008">FR-008</a> + <a href="./plan.html#D-002">D-002</a>. Already in staging from <code>9ed455e</code>; verify matches spec. <span class="path">packages/cli/src/ai-factory.ts</span></div>
+</spec-task>
+</section>
+
+
+<section id="phase-us1" class="phase">
+<h2>4 · Phase 3a — US1 · Test author writes a deterministic integration test <spec-pill>P1</spec-pill></h2>
+
+<p>Per-verb wiring + per-verb happy-path test. Tests-with-impl: failing test + fixture file + verb wire-through land together as one tick.</p>
+
+<h3>Tests (write &amp; fail first)</h3>
+
+<spec-task id="T-100">
+  <input type="checkbox">
+  <div><strong>Author <code>packages/core/test/stub-provider.test.ts</code></strong> per <a href="./spec.html#FR-011">FR-011</a>. Coverage: sequential per method, overflow shape, file-path + inline-object ctors, missing-file, malformed-JSON, schema-mismatch (depends on T-011). 9 tests in staging cover all except schema-mismatch. <span class="path">packages/core/test/stub-provider.test.ts</span></div>
+</spec-task>
+
+<h3>Implementation (one verb per task)</h3>
+
+<spec-task id="T-110" parallel>
+  <input type="checkbox">
+  <div><strong>Principles fixture + happy-path test</strong>. Author <code>packages/cli/test/fixtures/principles-script.json</code> with the canned principles JSON; refactor <code>packages/cli/test/principles.integration.test.ts</code> to read this fixture (currently inline-writes via <code>writeFileSync</code> in tmpdir). Assert on real generated artifact per <a href="./spec.html#FR-010">FR-010</a>. <span class="path">packages/cli/test/fixtures/principles-script.json + packages/cli/test/principles.integration.test.ts</span></div>
+</spec-task>
+
+<spec-task id="T-111" parallel>
+  <input type="checkbox">
+  <div><strong>Tasks fixture + happy-path test</strong>. Tasks verb calls <code>ai.chat()</code> once; fixture provides the canned task JSON. <span class="path">packages/cli/test/fixtures/tasks-script.json + packages/cli/test/tasks.integration.test.ts</span></div>
+</spec-task>
+
+<spec-task id="T-112" parallel>
+  <input type="checkbox">
+  <div><strong>Plan fixture + happy-path test</strong>. Plan verb calls <code>ai.chat()</code> + may call <code>ai.ask()</code>; fixture provides both arrays. Assert on plan.html structure (ADR IDs, principles-check table, alternatives matrix). <span class="path">packages/cli/test/fixtures/plan-script.json + packages/cli/test/plan.integration.test.ts</span></div>
+</spec-task>
+
+<spec-task id="T-113" parallel>
+  <input type="checkbox">
+  <div><strong>Spec fixture + happy-path test</strong>. Spec is most-interactive: <code>chat</code> + <code>ask</code> both heavily used. Fixture covers full two-phase interview. Assert generated spec.html carries FR/NFR/SC IDs + INVEST table. <span class="path">packages/cli/test/fixtures/spec-script.json + packages/cli/test/spec.integration.test.ts</span></div>
+</spec-task>
+
+<spec-task id="T-114" parallel>
+  <input type="checkbox">
+  <div><strong>Triage fixture + happy-path test</strong>. Triage calls <code>ai.chat()</code> once per card; fixture provides canned card JSON. Cover single-item mode minimum; list-intake as stretch. <span class="path">packages/cli/test/fixtures/triage-script.json + packages/cli/test/triage.integration.test.ts</span></div>
+</spec-task>
+
+<spec-task id="T-115">
+  <input type="checkbox">
+  <div><strong>Propose fixture + happy-path test</strong> — most complex. Uses <code>chat</code> + <code>ask</code> + <code>subagent</code> (adversarial pass). Fixture's <code>subagent[0].output</code> is JSON-string-in-string (critic returns JSON; see <a href="./plan.html#risks">plan §7 risk 3</a>). Assert generated proposal contains expected <code>&lt;spec-delta&gt;</code> + <code>&lt;spec-risk&gt;</code> blocks. NOT parallel — do last. <span class="path">packages/cli/test/fixtures/propose-script.json + packages/cli/test/propose.integration.test.ts</span></div>
+</spec-task>
+
+<h3>Verification</h3>
+
+<spec-task id="T-116">
+  <input type="checkbox">
+  <div><strong>Audit no remaining direct ClaudeProvider in verb CLIs</strong> per <a href="./spec.html#FR-009">FR-009</a>. <code>grep -rn 'new ClaudeProvider(' packages/cli/src/</code> must return zero hits. <span class="path">(audit run)</span></div>
+</spec-task>
+
+<spec-task id="T-117">
+  <input type="checkbox">
+  <div><strong>Run <code>pnpm -r build</code></strong>. Confirm: <code>@spectastic/core</code> emits <code>dist/providers/stub.{js,d.ts}</code>; <code>@spectastic/cli</code>'s typecheck consumes <code>createAIProvider</code>'s return type cleanly. <span class="path">(build run)</span></div>
+</spec-task>
+
+<spec-task id="T-118">
+  <input type="checkbox">
+  <div><strong>Run <code>pnpm vitest run</code></strong>. Full suite passes (current 144 baseline + new tests). Per-verb happy-path tests pass with fixtures; existing wiring tests still pass without. <span class="path">(test run)</span></div>
+</spec-task>
+
+<spec-task id="T-119">
+  <input type="checkbox">
+  <div><strong>Run <code>pnpm bench</code></strong> per <a href="./spec.html#NFR-001">NFR-001</a>. All 4 scenarios within budget; <code>init-help-cold-start</code> stays under 150ms — proves factory + stub don't crept onto cold-start path. <span class="path">(bench run)</span></div>
+</spec-task>
+
+<spec-note>
+<p>Closes <a href="./spec.html#FR-001">FR-001</a>..<a href="./spec.html#FR-011">FR-011</a>, <a href="./spec.html#NFR-001">NFR-001</a>, <a href="./spec.html#NFR-002">NFR-002</a>, <a href="./spec.html#SC-001">SC-001</a>, <a href="./spec.html#SC-002">SC-002</a>, <a href="./spec.html#SC-003">SC-003</a>.</p>
+</spec-note>
+</section>
+
+
+<section id="phase-us2" class="phase">
+<h2>5 · Phase 3b — US2 · CI runs the same tests deterministically <spec-pill>P1</spec-pill></h2>
+
+<p>US2 is structurally satisfied by T-110..T-115 (CI runs <code>pnpm vitest run</code>; tests use the stub via env var). The remaining piece is documenting the convention.</p>
+
+<spec-task id="T-200" parallel>
+  <input type="checkbox">
+  <div><strong>Document the <code>SPECTASTIC_AI_STUB</code> convention</strong> in <code>CONTRIBUTING.md</code>'s testing section. One paragraph: env var name, fixture-file location (<code>packages/cli/test/fixtures/&lt;verb&gt;-script.json</code>), principles-script.json as worked example, link to <code>015-ai-stub-injection/spec.html</code>. <span class="path">CONTRIBUTING.md</span></div>
+</spec-task>
+</section>
+
+
+<section id="phase-polish" class="phase">
+<h2>6 · Phase 4 — Polish + release</h2>
+
+<p>Changelog + version bump + commit. Same ritual as prior pre.X releases.</p>
+
+<spec-task id="T-900" parallel>
+  <input type="checkbox">
+  <div><strong>Update <code>CHANGELOG.md</code></strong> with a <code>v0.1.0-pre.15</code> entry: new <code>StubAIProvider</code> + <code>SPECTASTIC_AI_STUB</code> injection point; 6 happy-path integration tests added; load-time JSON-schema validation; hand-rolled validator (no new deps). Note: smoke tier + Ollama provider deferred per spec §3 out-of-scope. <span class="path">CHANGELOG.md</span></div>
+</spec-task>
+
+<spec-task id="T-901">
+  <input type="checkbox">
+  <div><strong>Bump all three package.jsons to <code>0.1.0-pre.15</code></strong> in lockstep (cli, schema, core). Update <code>pnpm-lock.yaml</code>. Commit + push origin/main (no Claude trailer per project memory). <span class="path">packages/{cli,core,schema}/package.json + pnpm-lock.yaml + (git)</span></div>
+</spec-task>
+
+<spec-task id="T-902">
+  <input type="checkbox">
+  <div><strong>Bundled-flip prompt</strong> per <a href="../../examples/spectastic-spec.html#REQ-LIFECYCLE-005">REQ-LIFECYCLE-005</a>. After T-901 commits with all tasks ticked, <code>/spectastic.implement</code> on the last task surfaces the Draft → Accepted bundled flip prompt. Confirm; spec.html + plan.html + tasks.html all flip to <code>&lt;spec-status value="accepted"&gt;</code> with matching changelog entries. <span class="path">specs/015-ai-stub-injection/{spec,plan,tasks}.html (flipped together)</span></div>
+</spec-task>
+</section>
+
+
+<section id="dependencies">
+<h2>7 · Dependencies</h2>
+<pre><code>Phase 1 Setup           → Phase 2 Foundational
+Phase 2 Foundational    → US1                       — stub class + factory unblock per-verb tests
+
+T-001, T-002, T-003     → independent; all [P]
+T-010 (stub class)      → T-011 (validator extends it)
+T-010                   → T-100 (unit tests need the class)
+T-011                   → T-100 (schema-mismatch test needs validator)
+T-012 (factory)         → T-110..T-115 (per-verb tests use factory routing)
+T-110..T-114            → parallel; different verbs / different fixture files
+T-115 (propose)         → after T-110..T-114; most complex; subagent + JSON-in-JSON
+T-116 (audit)           → after T-110..T-115
+T-117 (build)           → T-010, T-011, T-012, all per-verb wirings
+T-118 (full tests)      → T-117
+T-119 (bench)           → T-117
+T-200 (docs)            → after T-110
+T-900, T-901            → after T-118, T-119 green
+T-902 (bundled flip)    → after T-901 (last task in slice)
+</code></pre>
+</section>
+
+
+<section id="changelog">
+<h2>8 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-06-17">17 Jun 2026</time><span>Initial task breakdown. 21 tasks across five phases; 8 parallelizable. Every FR/NFR/SC traced to at least one task. US1 closes all 11 FRs end-to-end; US2 closes via T-200 docs. MVP-first execution strategy recommended. Single PR per <a href="./plan.html#D-002">D-002</a>; ships <code>v0.1.0-pre.15</code>. Starting state: the staged implementation from commit <code>9ed455e</code> covers T-001/002/010/012/100 (partially) + T-110's fixture-less variant; tasks ticking those will be sharpen-not-author.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  Tasks for 015-ai-stub-injection · AI provider injection point · authored 17 Jun 2026 ·
+  <button data-theme-toggle style="background:none;border:none;color:var(--c-link);cursor:pointer;font:inherit;padding:0;border-bottom:1px solid currentColor;">light/dark</button>
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>

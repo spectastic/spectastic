@@ -1,0 +1,262 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AI provider injection point · Specification</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Specification · 015-ai-stub-injection</p>
+  <h1>AI provider injection point for deterministic CI</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    A stub <code>AIProvider</code> routed via env var so CI integration tests assert on real generated artifacts without burning API spend or losing determinism to small-model drift.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>      <span><spec-status value="draft">Draft</spec-status></span>
+    <b>Spec ID</b>     <span>015-ai-stub-injection</span>
+    <b>Owner</b>       <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Reviewers</b>   <span>—</span>
+    <b>Created</b>     <span><time datetime="2026-06-17">17 Jun 2026</time></span>
+    <b>Principles</b>  <span><a href="../../principles.html">v1.1.0</a></span>
+    <b>Smallest demoable</b><span>A new <code>SPECTASTIC_AI_STUB=path/to/script.json</code> env var routes the CLI's AI calls through a <code>StubAIProvider</code> that consumes a JSON script of canned responses; each of the 6 AI-using verb subcommands (<code>principles</code>, <code>tasks</code>, <code>plan</code>, <code>spec</code>, <code>propose</code>, <code>triage</code>) ships one stub-driven happy-path integration test asserting on the real generated artifact.</span>
+    <b>Read time</b>   <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-budget words="1400" reqs="14" minutes="6"></spec-budget>
+
+  <spec-tldr>
+    <p>The CLI integration tests landed in <code>15514a3</code> cover the documented surface (state-gate behaviour, error paths) but can't reach happy-path output of AI-using verbs without burning real Claude calls. Real-LLM CI was considered and rejected (small local models intermittently produce malformed JSON; Claude burns API spend and leaks keys to forked PRs — see the project's <code>feedback-ai-in-ci-uses-stubs</code> memory). This slice adds a <code>StubAIProvider</code> that reads canned responses from a validated JSON script, plus a CLI factory routing through <code>SPECTASTIC_AI_STUB</code>. Both branches stay lazy-loaded — the cold-start path still doesn't touch <code>@anthropic-ai/sdk</code> for <code>--help</code> or any stub-routed test. Each of the 6 AI-using verbs gains one happy-path integration test using the new surface. Smoke tier (real Claude / Ollama, local-only) is scope-deferred to a separate slice.</p>
+  </spec-tldr>
+
+  <dl class="invest">
+    <dt><span class="letter">I</span> Independent</dt> <dd>Depends on <a href="../006-kernel-extraction/spec.html">006-kernel-extraction</a> (the <code>AIProvider</code> interface + per-verb subpath pattern) and on the 6 AI-using verb specs (007/008/009/011/012/013) whose CLI subcommands this slice rewires. No sibling specs block on it.</dd>
+    <dt><span class="letter">N</span> Negotiable</dt>  <dd>Specifies the env var name, the script schema, the factory routing contract, and the per-verb happy-path coverage shape. Schema-validator implementation (hand-rolled per propose-time decision; could swap to a typed schema library later), error-message wording, and lazy-loading layout defer to the plan.</dd>
+    <dt><span class="letter">V</span> Valuable</dt>    <dd>Unlocks <a href="#SC-001">SC-001</a> — CI integration tests assert on real generated artifacts of AI-using verbs deterministically.</dd>
+    <dt><span class="letter">E</span> Estimable</dt>   <dd>All non-obvious decisions anchored at propose time via <code>AskUserQuestion</code>: env var name (<code>SPECTASTIC_AI_STUB</code>), subagent inclusion (in scope), schema rigor (validate on load), validator impl (hand-rolled), test shape (one happy path per verb), smallest demoable scope (all 6 verbs covered in this slice). No <code>&lt;spec-question&gt;</code> open.</dd>
+    <dt><span class="letter">S</span> Small</dt>       <dd>Under 1,400 words; 11 FR + 2 NFR + 3 SC. One new module (<code>StubAIProvider</code>), one new factory (<code>ai-factory.ts</code>), 6 mechanical fixture test files, 6 CLI verb rewires.</dd>
+    <dt><span class="letter">T</span> Testable</dt>    <dd>Every requirement observable: subpath import resolves, env var routing testable end-to-end via spawn, schema mismatch throws naming the offending path, overflow throws naming method + count, real generated artifact in each verb's integration test. <a href="#SC-001">SC-001</a>..<a href="#SC-003">SC-003</a> name the observations.</dd>
+  </dl>
+
+  <spec-audience-map>
+    <dl>
+      <dt>Exec / PM</dt>   <dd>§<a href="#context">Context</a>, §<a href="#scenarios">User scenarios</a>, §<a href="#success">Success criteria</a>.</dd>
+      <dt>Reviewer</dt>    <dd>§<a href="#requirements">Requirements</a>, §<a href="#data">Data model</a>, §<a href="#assumptions">Assumptions</a>.</dd>
+      <dt>Implementer</dt> <dd>§<a href="#requirements">Requirements</a>, §<a href="#data">Data model</a>, §<a href="#conformance">Conformance index</a>.</dd>
+    </dl>
+  </spec-audience-map>
+</header>
+
+
+<section id="context">
+<h2>1 · Context</h2>
+<p>The CLI integration tests shipped in <code>15514a3</code> cover the deterministic surface of all 8 verb subcommands: state-gate behaviour per <a href="../../principles.html#P-6">P-6</a> (refuse / edit-in-place / <code>--force</code>), error paths, arg validation. For the 6 AI-using verbs (<code>triage</code>, <code>principles</code>, <code>tasks</code>, <code>spec</code>, <code>plan</code>, <code>propose</code>) the tests stop short of happy-path coverage — they assert that the CLI reaches the AI layer (via the "<code>ANTHROPIC_API_KEY</code> is not set" error when the env var is empty) but can't assert on the actual generated artifact without a real LLM call.</p>
+<p>Real-LLM CI was considered and rejected. The full reasoning lives in the project's <code>feedback-ai-in-ci-uses-stubs</code> memory; the summary: small models (Gemma 2 2B at q4 fits GitHub Actions' 7GB easily) intermittently produce malformed JSON / drop closing braces / pick slightly different phrasings even at <code>temperature=0</code>, turning every failing test into "is this a real regression or just the model being non-deterministic." Claude in CI burns API spend per push and leaks the key to forked PRs. Stub providers with hand-curated responses are deterministic, fast, and catch the regressions integration tests are meant to catch (prompt-format drift, parse-shape breakage, wiring bugs).</p>
+<p>The load-bearing piece is the injection point itself. Once a stub provider can be injected via env var, the surface unlocks two follow-on slices that are out of scope here: per-verb stub-using happy-path tests can extend coverage to specific output shapes, and a separate <code>pnpm test:smoke</code> tier can run the same tests against real Claude (or an Ollama provider, when one exists) for local pre-tag verification.</p>
+</section>
+
+
+<section id="scenarios">
+<h2>2 · User scenarios &amp; testing</h2>
+
+<p>Each story is independently testable.</p>
+
+<h3>US1 · Test author writes a deterministic integration test <spec-pill>P1</spec-pill></h3>
+<p>As a <strong>test author building integration coverage for an AI-using verb</strong>, I want to <strong>point the CLI at a JSON script of canned responses</strong> so that <strong>my test asserts on the actual generated artifact without an API key.</strong></p>
+<p><em>Acceptance:</em> Setting <code>SPECTASTIC_AI_STUB=path/to/script.json</code> in the spawned process's environment routes the CLI's AI calls through <code>StubAIProvider</code>, which consumes responses from the script's <code>chat</code> / <code>ask</code> / <code>subagent</code> arrays sequentially. The test asserts on real CLI output (exit code, summary stdout, generated file contents).</p>
+
+<h3>US2 · CI runs the same tests deterministically <spec-pill>P1</spec-pill></h3>
+<p>As a <strong>CI maintainer</strong>, I want <strong>the integration tests to use the stub by default</strong> so that <strong>the suite stays fast, deterministic, and doesn't burn API spend or leak keys to forked PRs.</strong></p>
+<p><em>Acceptance:</em> Test fixtures in the repository under <code>packages/cli/test/fixtures/</code> ship as committed JSON files. CI runs <code>pnpm vitest run</code> with <code>SPECTASTIC_AI_STUB</code> set per test; suite passes deterministically with no real LLM call.</p>
+
+<h3>US3 · Stub surfaces script gaps loudly <spec-pill>P2</spec-pill></h3>
+<p>As a <strong>test author debugging a failing fixture</strong>, I want <strong>the stub to throw a descriptive error naming the method + invocation count when the script runs out of responses</strong> so that <strong>I don't waste time debugging a phantom LLM-side bug — the message tells me to extend the script.</strong></p>
+<p><em>Acceptance:</em> When a CLI test invokes the stub <em>N + 1</em> times against a script defining <em>N</em> responses for that method, the thrown <code>StubAIProviderError</code>'s <code>.message</code> names the method (<code>chat</code> / <code>ask</code> / <code>subagent</code>), the invocation count (<em>N + 1</em>), and the script's defined count (<em>N</em>).</p>
+
+<h3>Edge cases</h3>
+<details>
+<summary><strong>Tracked failure modes the stub handles</strong></summary>
+<ul>
+  <li><strong>Stub script malformed JSON</strong> — constructor throws <code>StubAIProviderError</code> naming the parse failure + file path. Test surfaces the path so the author knows which fixture to fix.</li>
+  <li><strong>Stub script schema mismatch</strong> (e.g. <code>chat</code> is not an array of strings, <code>ask</code> entries are not flat string-valued objects) — schema validator throws <code>StubAIProviderError</code> naming the offending path (<code>chat[2]</code>, <code>ask[0].Header</code>, etc.). Validated <strong>at load time</strong>, not lazily on first call.</li>
+  <li><strong>Stub script missing a section</strong> (e.g. only <code>chat</code> defined) — missing sections default to empty arrays; overflow throws on first attempt to use that section.</li>
+  <li><strong>SPECTASTIC_AI_STUB set to a missing file</strong> — constructor throws <code>StubAIProviderError</code> naming the path.</li>
+  <li><strong>SPECTASTIC_AI_STUB unset</strong> — factory falls through to <code>ClaudeProvider</code>; production behaviour unchanged.</li>
+</ul>
+</details>
+</section>
+
+
+<section id="requirements">
+<h2>3 · Requirements</h2>
+
+<p>Conformance keywords (<spec-rule>MUST</spec-rule>, <spec-rule level="should">SHOULD</spec-rule>, <spec-rule level="may">MAY</spec-rule>) follow RFC 2119.</p>
+
+<h3>Functional</h3>
+
+<spec-requirement id="FR-001" priority="must">
+<p><code>StubAIProvider</code> <spec-rule>MUST</spec-rule> live at <code>packages/core/src/providers/stub.ts</code> and be exported on its own subpath (<code>@spectastic/core/providers/stub</code>) per the lazy-loading discipline in <a href="../006-kernel-extraction/spec.html#FR-002">006 FR-002</a>. The package's main entry <spec-rule>MUST NOT</spec-rule> eagerly load it.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-002" priority="must">
+<p><code>StubAIProvider</code> <spec-rule>MUST</spec-rule> implement the <code>AIProvider</code> interface (<code>chat</code>, <code>ask&lt;T&gt;</code>, <code>subagent</code>) from <code>@spectastic/core</code> as a complete drop-in for <code>ClaudeProvider</code> — no method may be a no-op or "not implemented" throw.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-003" priority="must">
+<p>The constructor <spec-rule>MUST</spec-rule> accept either (a) a filesystem path to a JSON script or (b) an inline <code>StubScript</code> object. Both paths produce a fully-loaded, validated provider; inline construction supports unit tests that don't want to touch disk.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-004" priority="must">
+<p>The script schema <spec-rule>MUST</spec-rule> be:
+<code>{ chat?: string[], ask?: Record&lt;string,string&gt;[], subagent?: { output: string }[] }</code>.
+Missing top-level sections <spec-rule>MUST</spec-rule> default to empty arrays. Each method consumes its corresponding array sequentially per call.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-005" priority="must">
+<p>The script <spec-rule>MUST</spec-rule> be validated against the schema in <a href="#FR-004">FR-004</a> at construction time (load-time), not lazily on first call. A schema mismatch <spec-rule>MUST</spec-rule> throw <code>StubAIProviderError</code> whose <code>.message</code> names the offending JSON path (e.g. <code>chat[2]</code>, <code>ask[0].Header</code>).</p>
+<details><summary>Rationale</summary><p>Load-time validation surfaces fixture mistakes loudly, before the test runs. Lazy validation would let a malformed script silently pass the first few calls and only fail when an unrelated path is exercised — much harder to debug.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-006" priority="must">
+<p>Sequential consumption per method: the Nth call to <code>chat</code> returns <code>script.chat[N-1]</code>. Overflow (the script defines fewer responses than the test invokes) <spec-rule>MUST</spec-rule> throw <code>StubAIProviderError</code> whose <code>.message</code> names the method, the invocation count, and the script's defined count.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-007" priority="must">
+<p><code>@spectastic/cli</code> <spec-rule>MUST</spec-rule> gain a new module at <code>packages/cli/src/ai-factory.ts</code> exporting <code>async function createAIProvider(): Promise&lt;AIProvider&gt;</code>. The factory <spec-rule>MUST</spec-rule> route to <code>StubAIProvider</code> when <code>process.env.SPECTASTIC_AI_STUB</code> is set (passing the env-var value as the script path); otherwise it falls through to <code>ClaudeProvider</code>.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-008" priority="must">
+<p>Both branches of <code>createAIProvider()</code> <spec-rule>MUST</spec-rule> be lazy-loaded — the factory <spec-rule>MUST NOT</spec-rule> top-level-import either <code>ClaudeProvider</code> or <code>StubAIProvider</code>. The factory module itself <spec-rule>MUST</spec-rule> be lazy-imported inside each CLI verb's <code>.action()</code> handler (matching the existing pattern for command imports).</p>
+</spec-requirement>
+
+<spec-requirement id="FR-009" priority="must">
+<p>The 6 AI-using verb CLI subcommands — <code>principles</code>, <code>tasks</code>, <code>plan</code>, <code>spec</code>, <code>propose</code>, <code>triage</code> — <spec-rule>MUST</spec-rule> be wired through <code>createAIProvider()</code>. No remaining direct <code>new ClaudeProvider()</code> calls may appear in <code>packages/cli/src/commands/</code>.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-010" priority="must">
+<p>Each of the 6 AI-using verbs <spec-rule>MUST</spec-rule> gain exactly one stub-driven happy-path integration test in its <code>packages/cli/test/&lt;verb&gt;.integration.test.ts</code> file. Each test <spec-rule>MUST</spec-rule> set <code>SPECTASTIC_AI_STUB</code> to a fixture script path and assert on the real generated artifact's structural shape (title / IDs / status pill / version field as applicable to the verb).</p>
+</spec-requirement>
+
+<spec-requirement id="FR-011" priority="must">
+<p>The stub provider <spec-rule>MUST</spec-rule> ship with kernel-level unit tests at <code>packages/core/test/stub-provider.test.ts</code> covering: sequential consumption per method, overflow error shape, file-path constructor, inline-object constructor, missing-file error, malformed-JSON error, schema-mismatch error.</p>
+</spec-requirement>
+
+<h3>Non-functional</h3>
+
+<spec-requirement id="NFR-001" priority="must">
+<p>The injection point <spec-rule>MUST NOT</spec-rule> regress any scenario in <code>bench/baselines.json</code> past its declared budget. The <code>init-help-cold-start</code> scenario (150 ms budget) is the explicit guard against eager-loading either provider through the factory.</p>
+</spec-requirement>
+
+<spec-requirement id="NFR-002" priority="should">
+<p>Stub-script load + first <code>chat</code> response <spec-rule level="should">SHOULD</spec-rule> complete in under 10 ms in-process. This is a trivial <code>JSON.parse</code> + shape walk + array access; it exists as a quantified budget so test latency from a thousand-call script stays sub-second.</p>
+</spec-requirement>
+
+<h3>Out of scope (deferred to other slices)</h3>
+<spec-out-of-scope>
+  <ul>
+    <li defer-to="TBD-smoke-tier-tests">A <code>pnpm test:smoke</code> script that re-runs the integration tests against real Claude when <code>ANTHROPIC_API_KEY</code> is set. The injection-point + per-verb tests this slice ships are the foundation; the smoke runner is a separate slice.</li>
+    <li defer-to="TBD-ollama-provider">An <code>OllamaProvider</code> class for the smoke tier (local-only prompt-iteration testing against Gemma / Llama / etc.). Same shape as <code>ClaudeProvider</code>; lands when the smoke tier needs it.</li>
+    <li defer-to="TBD-stub-record-mode">A recording mode that captures real Claude responses into a stub script for fixture seeding. Useful for bootstrapping a new verb's fixture; not load-bearing for this slice.</li>
+    <li defer-to="never">Hot-reload of the stub script while a test is running. Test fixtures are static.</li>
+    <li defer-to="never">Per-prompt response matching (vs sequential consumption). Sequential keeps test scripts trivially writable; matching adds combinatorial complexity for zero gain in fixture-driven tests.</li>
+  </ul>
+</spec-out-of-scope>
+</section>
+
+
+<section id="data">
+<h2>4 · Data model</h2>
+
+<p>One new interface (<code>StubScript</code>) and one new error class (<code>StubAIProviderError</code>) are added to <code>@spectastic/core/providers/stub</code>. No changes to existing types.</p>
+
+<h3>Entities</h3>
+<dl>
+  <dt><code>StubScript</code></dt>
+  <dd>Script object loaded from JSON. Fields:
+    <ul>
+      <li><code>chat?: string[]</code> — array of raw responses for <code>chat()</code>; consumed sequentially.</li>
+      <li><code>ask?: Record&lt;string, string&gt;[]</code> — array of answer objects for <code>ask&lt;T&gt;()</code>; each object's keys correspond to question headers, values are selected option labels.</li>
+      <li><code>subagent?: { output: string }[]</code> — array of subagent results for <code>subagent()</code>; each object has the same shape as <code>SubagentResult</code> from <code>@spectastic/core</code>.</li>
+    </ul>
+  </dd>
+  <dt><code>StubAIProviderError</code></dt>
+  <dd>Subclass of <code>Error</code> with <code>.name === 'StubAIProviderError'</code>. Thrown for: file read failure, JSON parse failure, schema validation failure (includes the offending JSON path in <code>.message</code>), method overflow (includes the method name + invocation count + script size in <code>.message</code>).</dd>
+</dl>
+
+<spec-note>
+<p>The validator <spec-rule>MUST</spec-rule> be hand-rolled (per propose-time decision: no Zod dependency added). Roughly 30 lines of pure TypeScript walking the parsed object, checking types per the schema in <a href="#FR-004">FR-004</a>. The hand-rolled choice keeps the package dependency surface minimal — Zod's ~70KB doesn't earn its weight for a schema this narrow.</p>
+</spec-note>
+</section>
+
+
+<section id="success">
+<h2>5 · Success criteria</h2>
+
+<p>Technology-agnostic, measurable outcomes. These are how we know it worked.</p>
+
+<spec-requirement id="SC-001" priority="must">
+<p>Running each of the 6 AI-using verbs' integration tests with <code>SPECTASTIC_AI_STUB</code> set to its fixture script produces the expected generated artifact, asserted on by structural checks (title contains expected project / spec ID; element IDs present; status pill matches expected lifecycle state; version field matches FR-008 of <a href="../008-core-principles/spec.html">008</a> where applicable). Suite passes <code>pnpm vitest run</code> with no real LLM call.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-002" priority="must">
+<p>Removing <code>SPECTASTIC_AI_STUB</code> from the test process's environment causes the CLI to attempt a real Claude call and fail on the missing API key — proves the factory routes correctly to <code>ClaudeProvider</code> when the stub var is unset.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-003" priority="must">
+<p>A stub script that overflows (N + 1 invocations against a script defining N responses) produces a <code>StubAIProviderError</code> whose <code>.message</code> names both the method (<code>chat</code> / <code>ask</code> / <code>subagent</code>) and the call count vs script size, observable via the failing test's stderr.</p>
+</spec-requirement>
+</section>
+
+
+<section id="assumptions">
+<h2>6 · Assumptions</h2>
+
+<spec-assumption>
+<p>The <code>AIProvider</code> interface declared in <code>@spectastic/core</code>'s <code>types.ts</code> is stable enough that a drop-in stub doesn't drift away from <code>ClaudeProvider</code>. If the interface gains a new method (e.g. <code>stream()</code>), this slice's stub will need an additive method; that's a small follow-up.</p>
+</spec-assumption>
+
+<spec-assumption>
+<p>JSON files are the right fixture format. Alternatives (YAML, TypeScript, function-returning-script) were considered but rejected: JSON is trivially editable, doesn't need a parser dep, surfaces cleanly in <code>git diff</code>, and lets fixtures be written by hand without compilation.</p>
+</spec-assumption>
+</section>
+
+
+<section id="questions">
+<h2>7 · Open questions</h2>
+<spec-questions>
+<ol>
+  <li>None. All decisions anchored at propose time via the decision-phase interview.</li>
+</ol>
+</spec-questions>
+</section>
+
+
+<section id="conformance">
+<h2>8 · Conformance index</h2>
+<p>Auto-built from every <code>&lt;spec-requirement&gt;</code> in this document.</p>
+<spec-conformance></spec-conformance>
+</section>
+
+
+<section id="changelog">
+<h2>9 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-06-17">17 Jun 2026</time><span>Initial draft. Architecture decided in conversation following the <code>feedback-ai-in-ci-uses-stubs</code> memory commitment. Decision-phase interview locked: scope (all 6 AI-using verbs covered with happy-path tests, not just the principles demo), subagent in scope, env var name <code>SPECTASTIC_AI_STUB</code>, schema validated on load, hand-rolled validator (no Zod), one happy-path test per verb, status Draft. Implementation work for the stub class + factory + principles demo test sits in staging (was committed as <code>9ed455e</code>, soft-reset to author this spec first); remaining 5 happy-path tests + the hand-rolled validator are the remaining work.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  015-ai-stub-injection · AI provider injection point for deterministic CI · authored 17 Jun 2026 ·
+  <button data-theme-toggle style="background:none;border:none;color:var(--c-link);cursor:pointer;font:inherit;padding:0;border-bottom:1px solid currentColor;">light/dark</button>
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>
