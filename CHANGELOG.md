@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.1.0-pre.12 — 2026-06-16
+
+Fifth kernel verb: `apply` (+ withdraw mode). Fully deterministic; no AI.
+
+- **`applyCommand`** at `@spectastic/core/commands/apply` handles both apply and withdraw via discriminated `ApplyInput | WithdrawInput` (010 D-004). Targeted string replacement on stable `<spec-requirement id="…">` anchors (D-001); atomic folder move via `fs.rename` (D-002, D-003); risk-status gate refuses with structured error if any `<spec-risk status="identified">` remains (D-005).
+- **`FileSystem.rename(from, to)`** added — first additive extension to the FileSystem surface from 006.
+- **CLI subcommand**: `spectastic apply <spec-id> <slug>`; `--withdraw --reason "…"` for the withdraw path.
+- 84/84 tests pass (was 81; +3 new kernel apply tests).
+
+Also flipped: **008-core-principles bundle** (catching up; pre.10 verified) and **009-core-tasks bundle** (pre.11 verified) both Draft → Accepted per REQ-LIFECYCLE-005.
+
 ## v0.1.0-pre.11 — 2026-06-16
 
 Fourth kernel verb: `tasks` — generates 5-phase tasks.html from spec + plan.
