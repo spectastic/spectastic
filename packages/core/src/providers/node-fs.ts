@@ -13,7 +13,7 @@
  * this module internally as the default — see each command file.
  */
 
-import { readFile, writeFile, readdir, stat } from 'node:fs/promises';
+import { readFile, writeFile, readdir, stat, rename } from 'node:fs/promises';
 import type { FileSystem } from '../types.js';
 
 export const nodeFs: FileSystem = {
@@ -29,5 +29,8 @@ export const nodeFs: FileSystem = {
   async stat(path) {
     const s = await stat(path);
     return { isFile: s.isFile(), isDirectory: s.isDirectory() };
+  },
+  async rename(from, to) {
+    return rename(from, to);
   },
 };

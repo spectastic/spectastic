@@ -18,6 +18,7 @@ export default defineConfig({
     'src/commands/triage.ts',
     'src/commands/principles.ts',
     'src/commands/tasks.ts',
+    'src/commands/apply.ts',
     'src/providers/node-fs.ts',
     'src/providers/claude.ts',
   ],

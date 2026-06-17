@@ -27,6 +27,8 @@ export interface FileSystem {
   writeFile(path: string, content: string): Promise<void>;
   readdir(path: string): Promise<string[]>;
   stat(path: string): Promise<{ isFile: boolean; isDirectory: boolean }>;
+  /** Atomic move; added in 010-core-apply per its plan D-003. */
+  rename(from: string, to: string): Promise<void>;
 }
 
 // --- AI ----------------------------------------------------------------
@@ -249,4 +251,41 @@ export interface TasksResult {
   phases: TaskPhase[];
   totalTasks: number;
   parallelTasks: number;
+}
+
+// --- apply (verb 010) --------------------------------------------------
+
+export interface ApplyInput {
+  kind: 'apply';
+  /** Spec ID owning the change folder, e.g. "001-auth". */
+  specId: string;
+  /** Slug like "2026-06-16-add-oauth"; resolves to changes/<slug>/. */
+  slug: string;
+}
+
+export interface WithdrawInput {
+  kind: 'withdraw';
+  specId: string;
+  slug: string;
+  reason: string;
+}
+
+export interface DeltaApplication {
+  target: string;
+  op: 'added' | 'modified' | 'removed' | 'renamed';
+  result: 'success' | 'gate-blocked';
+  reason?: string;
+}
+
+export interface ApplyResult {
+  /** Path to the live spec.html (post-mutation). */
+  liveSpec: string;
+  /** Where the proposal folder ended up. */
+  archivedPath: string;
+  /** One per <spec-delta> applied. */
+  deltas: DeltaApplication[];
+  /** New entry appended to the live spec's changelog. */
+  changelogEntry: string;
+  /** Cross-spec references the apply touched but didn't rewrite; surfaced for follow-up. */
+  crossSpecWarnings: string[];
 }

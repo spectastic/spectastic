@@ -34,4 +34,8 @@ export type {
   TaskItem,
   TaskPhase,
   TasksResult,
+  ApplyInput,
+  WithdrawInput,
+  DeltaApplication,
+  ApplyResult,
 } from './types.js';

@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Command } from 'commander';
+import { registerApply } from './commands/apply.js';
 import { registerInit } from './commands/init.js';
 import { registerPrinciples } from './commands/principles.js';
 import { registerTasks } from './commands/tasks.js';
@@ -37,6 +38,7 @@ registerValidate(program);
 registerTriage(program);
 registerPrinciples(program);
 registerTasks(program);
+registerApply(program);
 
 if (process.argv.length <= 2) {
   program.outputHelp();
