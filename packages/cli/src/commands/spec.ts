@@ -27,8 +27,6 @@ export function registerSpec(program: Command): void {
           import('node:path'),
         ]);
 
-      const ai = new ClaudeProvider();
-
       // If --reentry given, resolve to its known path; otherwise the kernel decides the ID.
       const reentryPath = opts.reentry
         ? path.resolve(process.cwd(), 'specs', opts.reentry, 'spec.html')
@@ -52,6 +50,10 @@ export function registerSpec(program: Command): void {
           process.stderr.write(note);
         }
       }
+
+      // Construct AI provider only after the gate decides to proceed — keeps the gate's
+      // informative refuse/warn message reachable when ANTHROPIC_API_KEY is missing.
+      const ai = new ClaudeProvider();
 
       const input = {
         description,

@@ -23,7 +23,6 @@ export function registerPlan(program: Command): void {
           import('node:path'),
         ]);
 
-      const ai = new ClaudeProvider();
       const specPath = path.resolve(process.cwd(), 'specs', specId, 'spec.html');
       const planPath = path.resolve(process.cwd(), 'specs', specId, 'plan.html');
       const principlesPath = path.resolve(process.cwd(), 'principles.html');
@@ -53,6 +52,10 @@ export function registerPlan(program: Command): void {
       } catch {
         // optional
       }
+
+      // Construct AI provider only after the gate decides to proceed — keeps the gate's
+      // informative refuse/warn message reachable when ANTHROPIC_API_KEY is missing.
+      const ai = new ClaudeProvider();
 
       const result = await planCommand(
         {
