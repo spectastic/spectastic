@@ -33,7 +33,9 @@ Detection heuristic: if the input contains explicit list markers (commas, semico
 
 1. **Locate the spec.** If the user named a Spec ID, use it. Otherwise scan `specs/` for the most recently modified spec or ask one clarifying question. Resolve to `specs/<spec-id>/`.
 
-2. **Locate the triage log.** Either `specs/<spec-id>/triage-log.html` exists, or copy `examples/triage-log.html` to create one (strip the demo cards; keep header, TL;DR, protocol section, change log).
+2. **Locate the triage log.** Either `specs/<spec-id>/triage-log.html` exists, or copy `templates/triage-log.html` to create one. The template ships with placeholders (`[SPEC_ID]`, `[CREATED_DATE]`) + a commented sample card framework; fill the placeholders and uncomment-or-replace the sample to author the first card. The protocol reference (`TRIAGE-001`..`TRIAGE-006`) lives in `examples/triage-log.html`, not in every log — link to it from the TL;DR if a reader needs the spec of the format.
+
+   **Adjust asset paths on copy.** The template's `<link>` and `<script>` use `../assets/spec.css` (one level up — correct for in-place preview from `templates/`). The destination is two levels deep (`specs/<spec-id>/`), so on copy rewrite `../assets/` → `../../assets/` for both the stylesheet and the script. Adjust the parent-link reference in the TL;DR (`../../examples/triage-log.html`) similarly: `../../examples/triage-log.html` is already correct for the destination depth — no rewrite needed there.
 
 3. **Load context.** Read principles, spec, plan, related specs that share a contract, and only the implementation files implicated by the failure. State explicitly what you read; if you skipped a file you should have read, say so.
 

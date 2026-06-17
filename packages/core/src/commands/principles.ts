@@ -115,7 +115,7 @@ function renderPrinciplesHtml(
   const principlesSection = principles
     .map(
       (p) =>
-        `\n<h3>${p.id} · ${escapeHtml(p.shortLabel)}</h3>\n<p>${escapeHtml(p.body)}</p>`,
+        `\n<h3 id="${p.id}">${p.id} · ${escapeHtml(p.shortLabel)}</h3>\n<p>${escapeHtml(p.body)}</p>`,
     )
     .join('\n');
   return `<!doctype html>

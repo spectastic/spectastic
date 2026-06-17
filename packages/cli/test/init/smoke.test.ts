@@ -54,7 +54,7 @@ function listFilesRecursive(dir: string, base = dir): string[] {
 
 /**
  * T-102 of specs/003-init-node-port/tasks.html. Smoke integration:
- * spawn the compiled CLI in an empty tmp dir and assert the 16-file
+ * spawn the compiled CLI in an empty tmp dir and assert the 17-file
  * lifecycle structure lands with exit 0 and the right summary shape.
  *
  * Implements FR-001, FR-002, FR-006, FR-007, NFR-001 (perf check).
@@ -67,13 +67,13 @@ describe('init: smoke (T-102)', () => {
     ).toBe(true);
   });
 
-  it('empty dir → 16 files, exit 0, summary present (FR-001, FR-002, FR-006, FR-007)', async () => {
+  it('empty dir → 17 files, exit 0, summary present (FR-001, FR-002, FR-006, FR-007)', async () => {
     const tmpDir = mkdtempSync(join(tmpdir(), 'spectastic-init-smoke-'));
     const r = await runCLI(['init'], tmpDir);
     expect(r.code, `stderr: ${r.stderr}\nstdout: ${r.stdout}`).toBe(0);
 
     const files = listFilesRecursive(tmpDir).sort();
-    expect(files.length).toBe(16);
+    expect(files.length).toBe(17);
     expect(files).toContain('.claude/commands/spectastic.spec.md');
     expect(files).toContain('.claude/commands/spectastic.apply.md');
     expect(files).toContain('.claude/commands/spectastic.implement.md');

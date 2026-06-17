@@ -15,8 +15,8 @@ interface InitOptions {
 
 /**
  * Register the `init` subcommand. Bootstraps a spectastic project in
- * the current working directory by writing the canonical 16-file
- * lifecycle structure (8 slash commands + 2 assets + 6 templates).
+ * the current working directory by writing the canonical 17-file
+ * lifecycle structure (8 slash commands + 2 assets + 7 templates).
  *
  * Per FR-001..FR-009 of specs/003-init-node-port/spec.html.
  * Conflict UX delegates to `resolveConflicts` (prompt.ts); --force
