@@ -107,4 +107,38 @@ describe('CLI integration: tasks (T-112)', () => {
     expect(r.code).not.toBe(0);
     expect(r.stderr).toContain('ANTHROPIC_API_KEY');
   });
+
+  it('happy path with SPECTASTIC_AI_STUB writes a complete tasks.html (T-112)', async () => {
+    const { cwd, specId, tasksPath } = setupSpecDir({});
+    // Replace the minimal-spec stub with one carrying real requirements so
+    // extractSpecMetadata returns non-empty fr[]. Without this the tasks kernel
+    // generates only setup/foundation/polish phases.
+    writeFileSync(
+      `${cwd}/specs/${specId}/spec.html`,
+      `<!doctype html><html><body><main>
+<header><spec-meta></spec-meta></header>
+<section id="requirements"><h2>Requirements</h2>
+  <spec-requirement id="FR-001" priority="must"><p>Do the thing.</p></spec-requirement>
+  <spec-requirement id="FR-002" priority="must"><p>Do the other thing.</p></spec-requirement>
+</section>
+</main></body></html>`,
+    );
+    const scriptPath = resolve(here, 'fixtures', 'tasks-script.json');
+
+    const r = await runCLI(
+      ['tasks', specId],
+      cwd,
+      { SPECTASTIC_AI_STUB: scriptPath, ANTHROPIC_API_KEY: '' },
+    );
+
+    expect(r.code, `stdout: ${r.stdout}\nstderr: ${r.stderr}`).toBe(0);
+    expect(r.stdout).toContain('Wrote');
+    expect(r.stdout).toContain('tasks');
+
+    const generated = readFileSync(tasksPath, 'utf8');
+    expect(generated).toContain('<spec-status value="draft">Draft</spec-status>');
+    expect(generated).toContain('spec-task');
+    // AI-enriched titles round-trip through to the generated artifact.
+    expect(generated).toContain('Implement FR-001 with care');
+  });
 });

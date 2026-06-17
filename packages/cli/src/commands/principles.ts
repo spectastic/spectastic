@@ -27,10 +27,10 @@ export function registerPrinciples(program: Command): void {
         force?: boolean;
         output: string;
       }) => {
-        const [{ principlesCommand }, { ClaudeProvider }, { nodeFs }, { gateOnDestinationState }, fs] =
+        const [{ principlesCommand }, { createAIProvider }, { nodeFs }, { gateOnDestinationState }, fs] =
           await Promise.all([
             import('@spectastic/core/commands/principles'),
-            import('@spectastic/core/providers/claude'),
+            import('../ai-factory.js'),
             import('@spectastic/core/providers/node-fs'),
             import('../state-gate.js'),
             import('node:fs/promises'),
@@ -51,7 +51,7 @@ export function registerPrinciples(program: Command): void {
           process.stderr.write(note);
         }
 
-        const ai = new ClaudeProvider();
+        const ai = await createAIProvider();
         const ctx = { cwd: process.cwd(), fs: nodeFs, ai };
 
         const input = {

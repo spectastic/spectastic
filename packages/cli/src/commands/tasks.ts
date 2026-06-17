@@ -14,10 +14,10 @@ export function registerTasks(program: Command): void {
     .argument('<spec-id>', 'spec ID, e.g. 001-auth-service')
     .option('--force', 'bypass the past-Draft refuse with a warning')
     .action(async (specId: string, opts: { force?: boolean }) => {
-      const [{ tasksCommand }, { ClaudeProvider }, { nodeFs }, { gateOnDestinationState }, fs, path] =
+      const [{ tasksCommand }, { createAIProvider }, { nodeFs }, { gateOnDestinationState }, fs, path] =
         await Promise.all([
           import('@spectastic/core/commands/tasks'),
-          import('@spectastic/core/providers/claude'),
+          import('../ai-factory.js'),
           import('@spectastic/core/providers/node-fs'),
           import('../state-gate.js'),
           import('node:fs/promises'),
@@ -43,7 +43,7 @@ export function registerTasks(program: Command): void {
         process.stderr.write(note);
       }
 
-      const ai = new ClaudeProvider();
+      const ai = await createAIProvider();
       const ctx = { cwd: process.cwd(), fs: nodeFs, ai };
 
       const result = await tasksCommand({ specPath, planPath }, ctx);

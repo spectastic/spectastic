@@ -75,4 +75,22 @@ describe('CLI integration: triage (T-112)', () => {
     expect(r.code).not.toBe(0);
     expect(r.stderr).toContain('ANTHROPIC_API_KEY');
   });
+
+  it('happy path with SPECTASTIC_AI_STUB produces a triage card (T-112)', async () => {
+    const cwd = mkdtempSync(join(tmpdir(), 'spectastic-triage-stub-'));
+    const scriptPath = resolve(here, 'fixtures', 'triage-script.json');
+
+    const r = await runCLI(
+      ['triage', 'Login button does nothing when clicked', '--format', 'json'],
+      cwd,
+      { SPECTASTIC_AI_STUB: scriptPath, ANTHROPIC_API_KEY: '' },
+    );
+
+    expect(r.code, `stdout: ${r.stdout}\nstderr: ${r.stderr}`).toBe(0);
+    // --format json emits the card data as JSON; assert on the parsed shape.
+    const parsed = JSON.parse(r.stdout) as { cards: Array<{ layer: string; headline: string }> };
+    expect(parsed.cards).toHaveLength(1);
+    expect(parsed.cards[0]?.layer).toBe('implementation');
+    expect(parsed.cards[0]?.headline).toContain('Login button');
+  });
 });

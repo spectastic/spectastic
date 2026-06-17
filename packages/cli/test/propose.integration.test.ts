@@ -80,4 +80,46 @@ describe('CLI integration: propose (T-112)', () => {
     expect(r.code).not.toBe(0);
     expect(r.stderr.toLowerCase()).toContain('argument');
   });
+
+  it('happy path with SPECTASTIC_AI_STUB triggers adversarial pass via removed-delta heuristic (T-112)', async () => {
+    const cwd = mkdtempSync(join(tmpdir(), 'spectastic-propose-stub-'));
+    const specId = 'foo-bar';
+    const { mkdirSync, writeFileSync, readFileSync, readdirSync } = await import('node:fs');
+    mkdirSync(`${cwd}/specs/${specId}`, { recursive: true });
+    writeFileSync(
+      `${cwd}/specs/${specId}/spec.html`,
+      `<!doctype html><html><body><main>
+<header><spec-meta></spec-meta></header>
+<section><h2>Reqs</h2>
+  <spec-requirement id="FR-001" priority="must"><p>Do the thing.</p></spec-requirement>
+  <spec-requirement id="FR-002" priority="must"><p>Do the other thing.</p></spec-requirement>
+</section>
+</main></body></html>`,
+    );
+    const scriptPath = resolve(here, 'fixtures', 'propose-script.json');
+
+    const r = await runCLI(
+      ['propose', specId, 'remove FR-002'],
+      cwd,
+      { SPECTASTIC_AI_STUB: scriptPath, ANTHROPIC_API_KEY: '' },
+    );
+
+    expect(r.code, `stdout: ${r.stdout}\nstderr: ${r.stderr}`).toBe(0);
+    expect(r.stdout).toContain('1 deltas');
+    // Adversarial pass fired (removed-delta + must-tier touched) → 3 risks identified.
+    expect(r.stdout).toContain('3 risks identified');
+
+    // Locate the generated proposal in specs/<id>/changes/<date>-<slug>/
+    const changesDir = `${cwd}/specs/${specId}/changes`;
+    const slugDirs = readdirSync(changesDir);
+    expect(slugDirs).toHaveLength(1);
+    const proposalPath = `${changesDir}/${slugDirs[0]}/proposal.html`;
+    const proposal = readFileSync(proposalPath, 'utf8');
+
+    expect(proposal).toContain('<spec-delta op="removed" target="FR-002">');
+    // All three risks landed as <spec-risk status="identified"> per 013 D-005.
+    expect(proposal).toContain('<spec-risk');
+    expect(proposal).toContain('status="identified"');
+    expect(proposal).toContain('FR-002');
+  });
 });

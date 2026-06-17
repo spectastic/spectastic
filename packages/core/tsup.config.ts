@@ -25,6 +25,7 @@ export default defineConfig({
     'src/commands/implement.ts',
     'src/providers/node-fs.ts',
     'src/providers/claude.ts',
+    'src/providers/stub.ts',
   ],
   format: ['esm'],
   dts: true,

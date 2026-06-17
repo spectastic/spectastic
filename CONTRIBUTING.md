@@ -23,6 +23,20 @@ The private aesthetic lineage lives in `CLAUDE.md`; the public surface stays pri
 
 Plain commit messages. No `Co-Authored-By: Claude` or other AI-attribution trailers. If a `Co-Authored-By:` line is warranted (pair work with another human), use the standard format.
 
+## Writing CLI integration tests for AI-using verbs
+
+Tests for AI-using verbs (`triage`, `principles`, `tasks`, `spec`, `plan`, `propose`) use a stub `AIProvider` in CI — never a real LLM. See [`specs/015-ai-stub-injection/spec.html`](./specs/015-ai-stub-injection/spec.html) for the full rationale.
+
+To write a happy-path test:
+
+1. Drop a JSON fixture at `packages/cli/test/fixtures/<verb>-script.json`. The script's shape is `{ chat?: string[], ask?: Record<string,string>[], subagent?: { output: string }[] }`. Methods consume their array sequentially; overflow throws a descriptive error naming the method + call count.
+2. In the integration test, set `SPECTASTIC_AI_STUB=<absolute path to fixture>` in the spawned process's env. The CLI's `createAIProvider()` factory routes to `StubAIProvider` instead of `ClaudeProvider` when that env var is set.
+3. Assert on the real generated artifact (file contents, exit code, stdout summary). The stub round-trips through the full kernel → renderer → disk path; tests assert on structural shape, not byte-identity.
+
+Worked example: [`packages/cli/test/principles.integration.test.ts`](./packages/cli/test/principles.integration.test.ts) → reads [`packages/cli/test/fixtures/principles-script.json`](./packages/cli/test/fixtures/principles-script.json) and asserts the generated `principles.html` carries the expected `<h3 id="P-N">` anchors + version pill.
+
+A separate `pnpm test:smoke` tier that runs the same tests against real Claude is a deferred slice (`TBD-smoke-tier-tests`); until it lands, real-LLM testing is a hand operation against your local key.
+
 ## Expectations pre-1.0
 
 - The slash-command surface (eight verbs) is stable; behaviours within them are not.

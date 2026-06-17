@@ -26,9 +26,9 @@ export function registerTriage(program: Command): void {
         descArg: string | undefined,
         opts: { spec?: string; mode?: 'single' | 'list'; format: string },
       ) => {
-        const [{ triageCommand }, { ClaudeProvider }, { nodeFs }] = await Promise.all([
+        const [{ triageCommand }, { createAIProvider }, { nodeFs }] = await Promise.all([
           import('@spectastic/core/commands/triage'),
-          import('@spectastic/core/providers/claude'),
+          import('../ai-factory.js'),
           import('@spectastic/core/providers/node-fs'),
         ]);
 
@@ -38,7 +38,7 @@ export function registerTriage(program: Command): void {
           process.exit(2);
         }
 
-        const ai = new ClaudeProvider();
+        const ai = await createAIProvider();
         const ctx = { cwd: process.cwd(), fs: nodeFs, ai };
 
         const input: Parameters<typeof triageCommand>[0] = {

@@ -1,5 +1,40 @@
 # Changelog
 
+## v0.1.0-pre.15 — 2026-06-17
+
+Mid-cycle release covering the P-6 lifecycle ratification + a substantial test-infrastructure expansion. Six logical landings rolled up into one tag:
+
+**Principles ratification — P-6 added.** New principle: *Draft is loose, ratified is locked*. Codifies the Draft-vs-past-Draft asymmetry surfaced by four sibling triage cards (008/009/011/012 T-001) where authoring verbs treated destination existence as the gate instead of destination state. Principles bumped v1.0.1 → v1.1.0. Adversarial pass on P-6 produced three risks; all mitigated in P-6's body before apply (distinguishes Draft / terminal / reversible-to-Draft; defers to REQ-LIFECYCLE-004's FSM; scopes "without ceremony" to the change-management cycle only).
+
+**Cascade quartet applied.** Four sibling proposals citing P-6:
+- 008/FR-004 MODIFIED → refuse-if-exists scopes to past-Draft (principles verb)
+- 009/FR-012 ADDED → destination-state gate (tasks verb; newly anchored, was impl-only)
+- 011/FR-003 MODIFIED → invocation gate on state, not argument shape (spec verb)
+- 012/FR-003 MODIFIED → auto-re-entry gates on `<spec-status>` (plan verb)
+
+**CLI hotfix shipped at one boundary.** New `gateOnDestinationState` helper in `packages/cli/src/state-gate.ts` plus `extractSpecStatus` in `@spectastic/schema`. Kernel stays pure; CLI owns the gate. Draft → in-place edit (`Editing Draft` stderr); past-Draft → refuse exit 2 with pointer to `/spectastic.propose`; `--force` bypass emits a warning naming the change-management surface being skipped.
+
+**Version-policy half closed (008/T-001 finished).** FR-008 ADDED + kernel hotfix: generated `principles.html` Draft artifacts default to `v0.1.0`, MUST NOT cross `1.0.0` while Draft, graduate at the bundled-flip prompt. Closes the v1.0.0-while-Draft contradiction from the original smoke test.
+
+**Template surface gaps drained (I-022..I-025).**
+- New `templates/triage-log.html` — closes the root cause of this week's three-missing-footers bug (the triage skill instructed copying from `examples/` because the template didn't exist).
+- `id="P-N"` cascade to `templates/principles.html` + the kernel renderer — fresh principles generation now ships working `#P-N` anchors.
+- `templates/principles.html` header pre-fills `v0.1.0` per FR-008 with an inline HTML comment naming the constraint.
+- `init` file-count contract updated (16 → 17) to match the new template.
+
+**Retroactive audit + light/dark rename.** Tasks-file audit across 008/012/013/014 ticked 69 boxes that shipped in pre.10/pre.13/pre.14; stale 002/T-001 triage card marked done; "toggle theme" label renamed to "light/dark" across 60 live shipping files (archived/withdrawn preserved verbatim per the I-013 precedent).
+
+**CLI integration tests for the 8 verb subcommands.** New `packages/cli/test/<verb>.integration.test.ts` files for each verb — 32 tests covering state-gate behaviour (refuse / edit-in-place / `--force` warn), error paths, deterministic happy paths for `implement` + `apply`, and wiring-proof paths for AI-using verbs. Real bug caught in flight: `spec.ts` + `plan.ts` constructed `ClaudeProvider` before the state-gate ran — fixed by moving construction to after the gate so the informative refuse/warn message stays reachable when `ANTHROPIC_API_KEY` is missing.
+
+**StubAIProvider + SPECTASTIC_AI_STUB injection point (015).** Foundation for deterministic AI-verb integration testing per the new `feedback-ai-in-ci-uses-stubs` memory. New `@spectastic/core/providers/stub` exports `StubAIProvider` implementing the full `AIProvider` interface (`chat`, `ask`, `subagent`) as a drop-in for `ClaudeProvider`. Reads a JSON script — `{ chat?, ask?, subagent? }` — and consumes responses sequentially. Hand-rolled load-time validator (no Zod dep) throws `StubAIProviderError` with the offending JSON path on schema mismatch. CLI factory `packages/cli/src/ai-factory.ts` routes based on `SPECTASTIC_AI_STUB=path/to/script.json`; both branches lazy-loaded so cold-start stays unaffected. All 6 AI-using verbs gained one happy-path integration test using committed fixture scripts at `packages/cli/test/fixtures/<verb>-script.json`. Spec/plan/tasks for the slice authored under `specs/015-ai-stub-injection/` (15 FRs total; 21 tasks across 5 phases; INVEST self-check + principles-check + 4 ADRs + architecture sketch all clean).
+
+Suite: **165 tests pass across 28 files** (was 112/19 in pre.14). Bench all 4 scenarios within budget.
+
+Deferred (named in 015's out-of-scope register with `defer-to=`):
+- `TBD-smoke-tier-tests` — `pnpm test:smoke` script that re-runs the integration tests against real Claude when a key is set
+- `TBD-ollama-provider` — `OllamaProvider` class for local-only prompt-iteration testing
+- `TBD-stub-record-mode` — recording mode that captures real Claude responses into a stub script
+
 ## v0.1.0-pre.14 — 2026-06-16
 
 Backfill release: per-verb unit tests + bundled-flip CLI fix + slash-command markdown updates.

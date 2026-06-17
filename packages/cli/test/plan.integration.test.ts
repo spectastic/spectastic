@@ -95,4 +95,25 @@ describe('CLI integration: plan (T-112)', () => {
     expect(r.code).not.toBe(0);
     expect(r.stderr).toContain('ANTHROPIC_API_KEY');
   });
+
+  it('happy path with SPECTASTIC_AI_STUB writes a complete plan.html (T-112)', async () => {
+    const { cwd, specId, planPath } = setupSpecDir({});
+    const scriptPath = resolve(here, 'fixtures', 'plan-script.json');
+
+    const r = await runCLI(
+      ['plan', specId],
+      cwd,
+      { SPECTASTIC_AI_STUB: scriptPath, ANTHROPIC_API_KEY: '' },
+    );
+
+    expect(r.code, `stdout: ${r.stdout}\nstderr: ${r.stderr}`).toBe(0);
+    expect(r.stdout).toContain('Wrote');
+    expect(r.stdout).toContain('1 ADRs');
+
+    const generated = readFileSync(planPath, 'utf8');
+    expect(generated).toContain('<spec-decision id="D-001">');
+    expect(generated).toContain('Use the obvious approach');
+    expect(generated).toContain('Approach B');
+    expect(generated).toContain('data-winner');
+  });
 });

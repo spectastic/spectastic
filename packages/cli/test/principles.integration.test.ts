@@ -132,4 +132,31 @@ describe('CLI integration: principles (T-112)', () => {
     expect(r.code).not.toBe(0);
     expect(r.stderr).toContain('ANTHROPIC_API_KEY');
   });
+
+  it('happy path with SPECTASTIC_AI_STUB writes a complete principles.html', async () => {
+    const tmpDir = mkdtempSync(join(tmpdir(), 'spectastic-principles-stub-'));
+    const out = join(tmpDir, 'principles.html');
+    // Per D-004 of 015-ai-stub-injection plan: fixture lives in a committed file
+    // at packages/cli/test/fixtures/<verb>-script.json, not inline-written here.
+    const scriptPath = resolve(here, 'fixtures', 'principles-script.json');
+
+    const r = await runCLI(
+      ['principles', '--output', out, '--name', 'demo'],
+      tmpDir,
+      { SPECTASTIC_AI_STUB: scriptPath, ANTHROPIC_API_KEY: '' },
+    );
+
+    expect(r.code, `stdout: ${r.stdout}\nstderr: ${r.stderr}`).toBe(0);
+    expect(r.stdout).toContain('Wrote');
+    expect(r.stdout).toContain('5 principles');
+
+    const generated = readFileSync(out, 'utf8');
+    // Structural assertions — content delivered through the stub round-trips
+    // through the renderer correctly.
+    expect(generated).toContain('<title>demo · Principles</title>');
+    expect(generated).toContain('<h3 id="P-1">P-1 · Source order is reading order</h3>');
+    expect(generated).toContain('<h3 id="P-5">P-5 · Calm density</h3>');
+    expect(generated).toContain('<spec-status value="draft">Draft</spec-status>');
+    expect(generated).toContain('<span>v0.1.0</span>');
+  });
 });

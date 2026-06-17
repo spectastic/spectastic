@@ -14,15 +14,15 @@ export function registerPropose(program: Command): void {
         description: string,
         opts: { adversarial?: boolean },
       ) => {
-        const [{ proposeCommand }, { ClaudeProvider }, { nodeFs }, fs, path] = await Promise.all([
+        const [{ proposeCommand }, { createAIProvider }, { nodeFs }, fs, path] = await Promise.all([
           import('@spectastic/core/commands/propose'),
-          import('@spectastic/core/providers/claude'),
+          import('../ai-factory.js'),
           import('@spectastic/core/providers/node-fs'),
           import('node:fs/promises'),
           import('node:path'),
         ]);
 
-        const ai = new ClaudeProvider();
+        const ai = await createAIProvider();
         const specPath = path.resolve(process.cwd(), 'specs', specId, 'spec.html');
         const specHtml = await fs.readFile(specPath, 'utf8');
 

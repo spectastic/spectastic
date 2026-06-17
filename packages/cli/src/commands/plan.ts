@@ -13,10 +13,10 @@ export function registerPlan(program: Command): void {
     .argument('<spec-id>')
     .option('--force', 'bypass the past-Draft refuse with a warning')
     .action(async (specId: string, opts: { force?: boolean }) => {
-      const [{ planCommand }, { ClaudeProvider }, { nodeFs }, { gateOnDestinationState }, fs, path] =
+      const [{ planCommand }, { createAIProvider }, { nodeFs }, { gateOnDestinationState }, fs, path] =
         await Promise.all([
           import('@spectastic/core/commands/plan'),
-          import('@spectastic/core/providers/claude'),
+          import('../ai-factory.js'),
           import('@spectastic/core/providers/node-fs'),
           import('../state-gate.js'),
           import('node:fs/promises'),
@@ -55,7 +55,7 @@ export function registerPlan(program: Command): void {
 
       // Construct AI provider only after the gate decides to proceed — keeps the gate's
       // informative refuse/warn message reachable when ANTHROPIC_API_KEY is missing.
-      const ai = new ClaudeProvider();
+      const ai = await createAIProvider();
 
       const result = await planCommand(
         {

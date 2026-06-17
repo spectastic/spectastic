@@ -17,10 +17,10 @@ export function registerSpec(program: Command): void {
     .option('--reentry <spec-id>', 'sharpen the existing spec at this ID (hints Sharpen-vs-Author phrasing)')
     .option('--force', 'bypass the past-Draft refuse with a warning')
     .action(async (description: string, opts: { reentry?: string; force?: boolean }) => {
-      const [{ specCommand }, { ClaudeProvider }, { nodeFs }, { gateOnDestinationState }, fs, path] =
+      const [{ specCommand }, { createAIProvider }, { nodeFs }, { gateOnDestinationState }, fs, path] =
         await Promise.all([
           import('@spectastic/core/commands/spec'),
-          import('@spectastic/core/providers/claude'),
+          import('../ai-factory.js'),
           import('@spectastic/core/providers/node-fs'),
           import('../state-gate.js'),
           import('node:fs/promises'),
@@ -53,7 +53,7 @@ export function registerSpec(program: Command): void {
 
       // Construct AI provider only after the gate decides to proceed — keeps the gate's
       // informative refuse/warn message reachable when ANTHROPIC_API_KEY is missing.
-      const ai = new ClaudeProvider();
+      const ai = await createAIProvider();
 
       const input = {
         description,

@@ -102,4 +102,27 @@ describe('CLI integration: spec (T-112)', () => {
     expect(r.code).not.toBe(0);
     expect(r.stderr).toContain('ANTHROPIC_API_KEY');
   });
+
+  it('happy path with SPECTASTIC_AI_STUB writes a complete spec.html (T-112)', async () => {
+    const cwd = mkdtempSync(join(tmpdir(), 'spectastic-spec-stub-'));
+    const scriptPath = resolve(here, 'fixtures', 'spec-script.json');
+
+    const r = await runCLI(
+      ['spec', 'test feature'],
+      cwd,
+      { SPECTASTIC_AI_STUB: scriptPath, ANTHROPIC_API_KEY: '' },
+    );
+
+    expect(r.code, `stdout: ${r.stdout}\nstderr: ${r.stderr}`).toBe(0);
+    expect(r.stdout).toContain('Wrote');
+    expect(r.stdout).toContain('4 reqs');
+
+    // The kernel derives a Spec ID from the description: `000-test-feature`.
+    const generated = readFileSync(`${cwd}/specs/000-test-feature/spec.html`, 'utf8');
+    expect(generated).toContain('FR-001');
+    expect(generated).toContain('NFR-001');
+    expect(generated).toContain('SC-001');
+    expect(generated).toContain('US1');
+    expect(generated).toContain('<spec-status value="draft">Draft</spec-status>');
+  });
 });
