@@ -1,0 +1,314 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Themes (theme × mode) · Specification</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Specification · 016-theme-support</p>
+  <h1>Themes</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    Two orthogonal axes — a visual <em>theme</em> and a light/dark <em>mode</em> — so every artifact can read as <code>spectastic-calm</code> or <code>spectastic-heavy</code>, light or dark.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>      <span><spec-status value="draft">Draft</spec-status></span>
+    <b>Spec ID</b>     <span>016-theme-support</span>
+    <b>Owner</b>       <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Reviewers</b>   <span>—</span>
+    <b>Created</b>     <span><time datetime="2026-06-17">2026-06-17</time></span>
+    <b>Principles</b>  <span><a href="../../principles.html">v1.1.0</a></span>
+    <b>Smallest demoable</b><span>Any artifact offers a theme dropdown (calm / heavy) and a light/dark mode toggle; the choice persists and applies before first paint.</span>
+    <b>Read time</b>   <span data-reading-time></span>
+  </spec-meta>
+
+  <!-- Live size gauge — green at <70%, amber 70-100%, red over. -->
+  <spec-budget words="1500" reqs="20" minutes="12"></spec-budget>
+
+  <spec-tldr>
+    <p>Spectastic already ships a binary light/dark toggle. This spec generalises it into two
+    independent axes: a <strong>theme</strong> (a visual identity — typography <em>and</em> structure)
+    and a <strong>mode</strong> (a light or dark colour palette). Two themes ship —
+    <code>spectastic-calm</code> (today's look, renamed) and <code>spectastic-heavy</code> (heavier
+    weights and a denser, carded structure, derived from the reference design) — and each renders in
+    both modes, a 2×2 matrix. Selection lives in
+    <code>data-theme</code>/<code>data-mode</code> attributes, persists across artifacts, and
+    applies before first paint so there is no flash.</p>
+  </spec-tldr>
+
+  <dl class="invest">
+    <dt><span class="letter">I</span> Independent</dt> <dd>Touches only the shared assets plus footer chrome; depends on the principles, no upstream specs.</dd>
+    <dt><span class="letter">N</span> Negotiable</dt>  <dd>Exact weight-per-role map and dark hex values are deferred to the plan; the spec contracts the axes and behaviour, not the literals.</dd>
+    <dt><span class="letter">V</span> Valuable</dt>    <dd>Unlocks <a href="#SC-001">SC-001</a> (four theme×mode combinations, kept across the artifact set) and <a href="#SC-006">SC-006</a> (heavy is visually faithful to the reference).</dd>
+    <dt><span class="letter">E</span> Estimable</dt>   <dd>Mechanism decided (data attributes + two <code>localStorage</code> keys + inline head script); plan derivable without further interview.</dd>
+    <dt><span class="letter">S</span> Small</dt>       <dd>⚠ Strained after the <a href="./triage-log.html#T-002">T-002</a> re-entry: full component parity across <em>every</em> artifact type (<a href="#FR-007">FR-007</a>/<a href="#SC-006">SC-006</a>) is a large body of work. The plan <strong>SHOULD</strong> slice it (e.g. per component group or per artifact type, demoable-first); the core theme/mode mechanism already shipped.</dd>
+    <dt><span class="letter">T</span> Testable</dt>    <dd>Every requirement observable; criteria quantified — four combinations, AA ratios, a paint-frame check.</dd>
+  </dl>
+
+  <spec-audience-map>
+    <dl>
+      <dt>Exec / PM</dt>   <dd>§<a href="#context">Context</a>, §<a href="#scenarios">User scenarios</a>, §<a href="#success">Success criteria</a>.</dd>
+      <dt>Reviewer</dt>    <dd>§<a href="#requirements">Requirements</a>, §<a href="#assumptions">Assumptions</a>, §<a href="#questions">Open questions</a>.</dd>
+      <dt>Implementer</dt> <dd>§<a href="#requirements">Requirements</a>, §<a href="#data">Data model</a>, §<a href="#conformance">Conformance index</a>.</dd>
+    </dl>
+  </spec-audience-map>
+</header>
+
+
+<section id="context">
+<h2>1 · Context</h2>
+<p>Every spectastic artifact today carries a single <code>[data-theme-toggle]</code> button that
+flips an <code>html.dark</code> class and saves <code>localStorage['spectastic-theme']</code>. That
+is a <em>mode</em> toggle wearing the word "theme": it only ever changed colour, against a single
+typographic look.</p>
+<p>We want a second visual identity — heavier type, derived from the reference design — without
+giving up dark mode in either look. That forces the concerns apart: a <strong>theme</strong> is the
+visual identity — typography <em>and</em> structure (weights, surfaces, radii, rule weights,
+spacing); a <strong>mode</strong> is the colour palette (light or dark). They are orthogonal, so the
+look-set is a 2×2 matrix, not a single switch. This
+affects every reader and author, and the shared <code>assets/spec.css</code> + <code>spec.js</code>
+all artifacts load.</p>
+</section>
+
+
+<section id="scenarios">
+<h2>2 · User scenarios &amp; testing</h2>
+
+<p>Each story <strong>MUST</strong> be independently testable: if you implemented only US1, you would
+still have a viable MVP.</p>
+
+<h3>US1 · Pick a typographic theme <spec-pill>P1</spec-pill></h3>
+<p>As a <strong>spec reader or author</strong>, I want to <strong>choose between the calm and heavy themes from a dropdown</strong> so that <strong>I can read in the visual identity I prefer</strong>.</p>
+<p><em>Acceptance:</em> a theme dropdown in the footer lists <code>spectastic-calm</code> and <code>spectastic-heavy</code>; selecting heavy re-renders the document in the heavier weights with no change to colour; the choice survives reload and carries to the next artifact opened from the same origin.</p>
+
+<h3>US2 · Switch mode within any theme <spec-pill>P1</spec-pill></h3>
+<p>As a <strong>reader</strong>, I want to <strong>toggle light/dark independently of the theme</strong> so that <strong>either theme is comfortable in either lighting</strong>.</p>
+<p><em>Acceptance:</em> the mode toggle flips light↔dark; all four combinations (calm·light, calm·dark, heavy·light, heavy·dark) render correctly; mode and theme persist separately.</p>
+
+<h3>US3 · Return without a flash <spec-pill>P2</spec-pill></h3>
+<p>As a <strong>returning visitor</strong>, I want my <strong>last theme and mode applied instantly on load</strong> so that <strong>the page never flickers from calm/light to my saved look</strong>.</p>
+<p><em>Acceptance:</em> on a hard reload with a saved non-default selection, the first painted frame already shows the saved theme and mode.</p>
+
+<h3>Edge cases</h3>
+<ul>
+  <li>An existing visitor has only the legacy <code>spectastic-theme = 'dark'</code> saved (a mode, under the old key). They should land on dark mode with the calm theme — intent preserved, nothing broken (FR-006, SC-005).</li>
+  <li>JavaScript is disabled. The artifact still renders fully in the default theme and light mode; the switcher is simply inert (NFR-002).</li>
+  <li>An unknown <code>data-theme</code>/<code>data-mode</code> value (hand-edited or stale) falls back to the default (<code>spectastic-calm</code>, light) rather than rendering unstyled.</li>
+</ul>
+</section>
+
+
+<section id="requirements">
+<h2>3 · Requirements</h2>
+
+<p>Conformance keywords (<spec-rule>MUST</spec-rule>, <spec-rule level="should">SHOULD</spec-rule>,
+<spec-rule level="may">MAY</spec-rule>) follow RFC 2119.</p>
+
+<h3>Functional</h3>
+
+<spec-requirement id="FR-001" priority="must">
+<p>The design system <spec-rule>MUST</spec-rule> define a theme registry of at least two themes — <code>spectastic-calm</code> (the default) and <code>spectastic-heavy</code> — each selectable from a dropdown control present in every artifact.</p>
+<details><summary>Rationale</summary><p>"First alternative" implies more will follow; a registry plus dropdown scales past two without UI rework. The existing theme is renamed to <code>spectastic-calm</code> because "light" now names a mode, not a theme.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-002" priority="must">
+<p>A theme <spec-rule>MUST</spec-rule> control the full visual identity — typography (font families and weights), structural treatment (surface/card elevation, border radii, border and rule weights, the spacing/density scale), <em>and</em> component-level styling (pill shape, card and admonition treatment, multi-column layouts) — and <spec-rule>MUST NOT</spec-rule> redefine any colour custom property.</p>
+<details><summary>Rationale</summary><p>The split is identity (theme) versus lighting (mode). A theme owns the shape and weight of the page — type weight, card rounding, spacing density, and how components like pills and the goals grid are laid out; a mode owns every colour, including what colour a border or surface is. Holding colour out of the theme keeps the look-set a clean 2×2: any theme renders in either mode against the same palette. Broadened on re-entry (<a href="./triage-log.html#T-002">T-002</a>) from "type + base structure" to include component styling, since per-theme component rules are what <a href="#FR-007">FR-007</a> parity requires.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-003" priority="must">
+<p>The design system <spec-rule>MUST</spec-rule> support two colour modes — <code>light</code> (default) and <code>dark</code> — toggled independently of the active theme, such that every registered theme renders correctly in both modes.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-004" priority="must">
+<p>The active theme and mode <spec-rule>MUST</spec-rule> be expressed as <code>data-theme</code> and <code>data-mode</code> attributes on the root <code>&lt;html&gt;</code> element, and the stylesheet <spec-rule>MUST</spec-rule> key off those attributes.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-005" priority="must">
+<p>The selection <spec-rule>MUST</spec-rule> persist across reloads and across navigation between artifacts, via two <code>localStorage</code> keys: <code>spectastic-theme</code> (theme id) and <code>spectastic-mode</code> (<code>light</code>|<code>dark</code>).</p>
+</spec-requirement>
+
+<spec-requirement id="FR-006" priority="must">
+<p>On load, a pre-existing <code>spectastic-theme</code> value of <code>light</code> or <code>dark</code> (the legacy mode-only key) <spec-rule>MUST</spec-rule> be migrated into <code>spectastic-mode</code>, with the theme defaulting to <code>spectastic-calm</code>.</p>
+<details><summary>Rationale</summary><p>The old key stored a mode under a misleading name. Migrating it preserves every existing visitor's intent on first load after the upgrade, with no broken or ignored preference.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-007" priority="must">
+<p>The <code>spectastic-heavy</code> theme <spec-rule>MUST</spec-rule> reproduce the reference design's <em>visual identity at the component level</em> — not only heavier Fraunces/Lato weights, but the reference's pill shape, carded boxes and surfaces, border radii, rule weights, spacing, and multi-column layouts (e.g. the two-column goals/non-goals grid and the budget gauge rendered as horizontal bars) — wherever those components appear, across every artifact type. It <spec-rule>MUST</spec-rule> reuse the four existing families (Fraunces, Source Serif 4, Lato, IBM Plex Mono), introducing no new typeface downloads. The sticky/blurred top bar is excluded (deferred — see §3 Out of scope).</p>
+<details><summary>Rationale</summary><p>Sharpened on re-entry after <a href="./triage-log.html#T-002">T-002</a>: the original wording enumerated only "carded surfaces, radii, rule weights, spacing", which a token-only theme satisfied while still looking nothing like the reference (pills, columns, boxes were untouched). Parity is now defined at the component level and measured by <a href="#SC-006">SC-006</a>. Components <em>absent</em> from the reference (it demonstrates a spec layout only — e.g. task checkboxes, deltas, triage cards) inherit heavy's structural treatment consistently; they have no reference target to match.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-008" priority="may">
+<p>The change of theme or mode <spec-rule level="may">MAY</spec-rule> animate via a short colour/type transition, matching the reference design's calm cross-fade.</p>
+</spec-requirement>
+
+<h3>Non-functional</h3>
+
+<spec-requirement id="NFR-001" priority="must">
+<p>The saved theme and mode <spec-rule>MUST</spec-rule> be applied before first paint via an inline <code>&lt;head&gt;</code> script, so there is no flash of the default theme/mode before the saved selection takes effect.</p>
+</spec-requirement>
+
+<spec-requirement id="NFR-002" priority="must">
+<p>With JavaScript disabled, every artifact <spec-rule>MUST</spec-rule> render fully readable in the default theme (<code>spectastic-calm</code>) and <code>light</code> mode; theme and mode switching are progressive enhancements (per <a href="../../principles.html#P-4">P-4</a>).</p>
+</spec-requirement>
+
+<spec-requirement id="NFR-003" priority="must">
+<p>All four theme×mode combinations <spec-rule>MUST</spec-rule> meet WCAG 2.1 AA contrast — at least 4.5:1 for body text and 3:1 for large text and UI components.</p>
+</spec-requirement>
+
+<spec-requirement id="NFR-004" priority="should">
+<p>The inline head script and switcher logic <spec-rule level="should">SHOULD</spec-rule> add no perceptible load cost and <spec-rule level="should">SHOULD</spec-rule> introduce no build step, keeping each artifact a single self-contained file (per <a href="../../principles.html#P-1">P-1</a>).</p>
+</spec-requirement>
+
+<spec-requirement id="NFR-005" priority="must">
+<p>A theme <spec-rule>MUST</spec-rule> be pure CSS keyed on <code>data-theme</code> over the existing semantic vocabulary: it <spec-rule>MUST NOT</spec-rule> require any document to carry added markup, wrappers, classes, or data-attributes, and a document incurs a component's theming only by using that component (opt-in by usage). Adding a theme <spec-rule>MUST</spec-rule> be additive — one new <code>[data-theme]</code> stylesheet section, with no change to base CSS, to documents, or to other themes.</p>
+<details><summary>Rationale &amp; hard-case fallback</summary><p>Raised while reconsidering how themes 3/4/5 scale: rich styling must not tax documents that don't use a feature, and a new theme must never complicate existing ones. Where a reference layout can't be reached by CSS over the current DOM (e.g. side-by-side goals/non-goals needs a shared parent), prefer a CSS-only solution (<code>:has()</code>, grid on the existing parent); only if that is impossible may the supporting structure be added as an <em>opt-in authoring-template hook</em> — present for newly-scaffolded documents that use the feature, never forced on documents that don't. Parity (<a href="#FR-007">FR-007</a>) stays non-negotiable; this constrains <em>how</em> it's reached.</p></details>
+</spec-requirement>
+
+<h3>Out of scope (deferred to other slices)</h3>
+<spec-out-of-scope>
+  <ul>
+    <li defer-to="TBD">OS preference detection (<code>prefers-color-scheme</code>) for the initial mode — default stays <code>light</code> until the user chooses.</li>
+    <li defer-to="TBD">A third theme beyond calm and heavy, and any user-authored/custom theme editor.</li>
+    <li defer-to="TBD">Themes that own colour (theme-specific accents) — excluded; colour stays mode-owned per <a href="#FR-002">FR-002</a>.</li>
+    <li defer-to="TBD">Mixing themes <em>within</em> a single artifact (applying different themes to different sections/components of one document). Per-theme component styling — heavy styling pills and cards differently from calm — is <em>in</em> scope (<a href="#FR-007">FR-007</a>); this item is only the different-themes-in-one-doc case.</li>
+    <li defer-to="TBD">The sticky, backdrop-blurred top bar from the reference — deferred new chrome; heavy keeps the existing static header this slice (tension with <a href="../../principles.html#P-5">P-5</a> calm density to be weighed before adopting).</li>
+  </ul>
+</spec-out-of-scope>
+</section>
+
+
+<section id="data">
+<h2>4 · Data model</h2>
+
+<p>The feature owns three small concepts. None is persisted server-side; the only store is the
+browser's <code>localStorage</code>.</p>
+
+<h3>Entities</h3>
+<dl>
+  <dt>Theme</dt><dd>A named visual identity. Fields: <code>id</code> (e.g. <code>spectastic-calm</code>), display name, font-family + weight assignments per role (heading, body, metadata, code), and structural tokens (surface/card elevation, border radii, border/rule weights, spacing-scale density). Owns no colour value.</dd>
+  <dt>Mode</dt><dd>A colour-palette lightness: <code>light</code> (default) or <code>dark</code>. Owns every <code>--c-*</code> colour custom property — including the colour of borders and surfaces whose geometry the theme sets.</dd>
+  <dt>Preference</dt><dd>The persisted pair <code>{ theme, mode }</code>, stored as <code>localStorage['spectastic-theme']</code> and <code>localStorage['spectastic-mode']</code>, and reflected on <code>&lt;html&gt;</code> as <code>data-theme</code> / <code>data-mode</code>.</dd>
+</dl>
+
+<spec-note>
+<p><strong>Invariant:</strong> theme ⊥ mode. Any theme is valid in any mode; the default selection is
+(<code>spectastic-calm</code>, <code>light</code>). An unrecognised value on either axis resolves to
+that default rather than rendering unstyled.</p>
+</spec-note>
+
+<details><summary>Reference palette (the modes' colours derive from this)</summary>
+<p>Light ≈ today's values (cream <code>#f6f5f1</code> ground, <code>#353534</code> ink). Dark: ground
+<code>#1b1917</code>, raised <code>#252220</code>, ink <code>#e9e4da</code>, with brightened accents
+(link <code>#e98cb6</code>, sea <code>#42cadd</code>, purple <code>#b29bdf</code>, salmon
+<code>#f08a79</code>). Exact mapping onto <code>--c-*</code> names is a plan detail.</p>
+</details>
+</section>
+
+
+<section id="success">
+<h2>5 · Success criteria</h2>
+
+<p>Technology-agnostic, measurable outcomes. These are how we know it worked.</p>
+
+<spec-requirement id="SC-001" priority="must">
+<p>A reader can select any of the four theme×mode combinations on any artifact, and the same selection is in effect after reload and after navigating to a different artifact from the same origin (4/4 combinations, persistence verified both ways).</p>
+</spec-requirement>
+
+<spec-requirement id="SC-002" priority="must">
+<p>On a hard reload with a saved non-default selection, the first painted frame already shows the saved theme and mode — no visible flip from the default.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-003" priority="must">
+<p>All four combinations pass an automated WCAG AA contrast check (4.5:1 body, 3:1 large/UI) on a representative artifact.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-004" priority="should">
+<p>Adding a third theme touches only the stylesheet (one theme block — its typography and structural tokens) and the theme registry — zero edits to any artifact's markup and zero changes to the switch logic (verifiable by diff).</p>
+</spec-requirement>
+
+<spec-requirement id="SC-005" priority="should">
+<p>An existing visitor whose only saved preference is the legacy <code>spectastic-theme = 'dark'</code> lands on dark mode with the calm theme after migration — their original intent is preserved.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-006" priority="must">
+<p>Under <code>spectastic-heavy</code>, the computed styling of every component the reference design exhibits matches the reference's measured target values on a representative artifact of each type — verifiable property-by-property via computed styles, no human judgement required. Targets are <em>measured</em> from <code>example.html</code> (connector computed styles), not transcribed or guessed.</p>
+<details><summary>Parity checklist (measured from <code>example.html</code>)</summary>
+<p><strong>Shape:</strong> status-pill radius <code>5px</code>; tag/priority-pill radius <code>4px</code>; card/admonition/decision radius <code>12px</code>; budget-gauge-card radius <code>10px</code>; card border <code>1px</code>; left/top accent bar <code>3px</code>; Fraunces headings h1 <code>500</code> / h2·h3 <code>540</code>; status &amp; label weight <code>900</code>.</p>
+<p><strong>Pills (bright, filled, AA):</strong> status pills and requirement priority pills (MUST/SHOULD/MAY) are filled chips, and the requirement id chip is a filled sea chip — all drawn from the <code>--c-pill-*</code> palette (fixed fill+text pairs ≥&nbsp;4.5:1, so they stay AA in both modes). The reference's exact pill colours are sub-AA (e.g. salmon+cream ≈ 3.4:1); heavy keeps the bright filled <em>treatment</em> and hue family but deepens to clear <a href="#NFR-003">NFR-003</a> — a deliberate, documented colour divergence.</p>
+<p><strong>Layout:</strong> goals/non-goals as a two-column grid (<code>1fr 1fr</code>, gap <code>20px</code>); the budget gauge as a horizontal flex row of cards (label+value above a thin bar); the changelog as a timeline with a <code>2px</code> left rail connecting the dated entries; <code>&lt;spec-requirement&gt;</code> as a card (id chip + priority pill on a top row, body below); <strong>one column top-to-bottom</strong> — heavy unifies the reading measure (≈42rem) so every top-level block (header, meta, budget, cards, prose) shares one width and aligns left+right, like the reference (calm keeps its narrow-prose/wide-element split); <code>&lt;spec-meta&gt;</code> as an aligned key/value grid compacted to two pairs per row (the reference's single inline row suits its 4 short fields; spectastic's 8 fields — one a long prose field — read better aligned, so the grid is kept aligned rather than run inline — a readability divergence).</p>
+<p><strong>Documented divergences</strong> (reference is law except these, decided deliberately): pill colours are deepened from the reference's exact (sub-AA) values to satisfy <a href="#NFR-003">NFR-003</a> (see Pills above); <code>&lt;spec-meta&gt;</code> stays an aligned grid rather than the reference's inline row (readability with 8 fields); the sticky/blurred header stays deferred (§3 Out of scope). <em>The earlier "keep the requirement gutter" divergence was reversed on review — requirements now match the reference's card.</em></p></details>
+</spec-requirement>
+</section>
+
+
+<section id="assumptions">
+<h2>6 · Assumptions</h2>
+
+<spec-assumption>
+<p>The four families already loaded by every artifact include the heavier weights <code>spectastic-heavy</code> needs (Fraunces up to 700, Lato 900); the heavy theme reuses them and adds no new typeface downloads.</p>
+</spec-assumption>
+
+<spec-assumption>
+<p>The carded surfaces, radii, border/rule weights, and spacing seen in the reference design are <em>owned by the theme</em> (per FR-002), not shared global primitives. <code>spectastic-calm</code> captures today's lighter, airier structure as one theme's tokens; <code>spectastic-heavy</code> defines its own denser, carded structure. Both inherit colour from the active mode.</p>
+</spec-assumption>
+
+<spec-assumption>
+<p>The reference artifact is the visual target for both the heavy weights and the palettes; because its palette is close to today's, the modes refine existing <code>--c-*</code> values rather than introduce a new colour system.</p>
+</spec-assumption>
+
+<spec-assumption>
+<p>Print output is unaffected by theme or mode (print uses its own baseline) and is not gated here.</p>
+</spec-assumption>
+</section>
+
+
+<section id="questions">
+<h2>7 · Open questions</h2>
+<spec-questions>
+<p>None outstanding. Every scope and mechanism decision was anchored during the spec interview
+(see the change log). The remaining choices — the exact weight-per-role map, the dark hex values
+mapped onto <code>--c-*</code>, and the precise reference component values (radii, paddings, column
+counts) confirmed against <code>example.html</code> at implementation time — are Negotiable
+implementation details for the plan, not unresolved questions.</p>
+</spec-questions>
+</section>
+
+
+<section id="conformance">
+<h2>8 · Conformance index</h2>
+<p>Auto-built from every <code>&lt;spec-requirement&gt;</code> in this document.</p>
+<spec-conformance></spec-conformance>
+</section>
+
+
+<section id="changelog">
+<h2>9 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-06-18">2026-06-18</time><span>Review: <strong>calm</strong> prose-cards (tldr, requirement, decision, admonitions, meta, conformance, audience-map, INVEST, budget, out-of-scope) now cap at the narrow reading measure so they no longer overrun the body text; genuinely-wide data (tables, option matrix, diff, code, figures, arch, triage) keeps the wider measure. No effect on heavy (where <code>--measure == --measure-wide</code>). Calm was otherwise verified pixel-identical to pre-016. Guarded by a calm card-cap test.</span></li>
+  <li><time datetime="2026-06-18">2026-06-18</time><span>Review: heavy now uses <strong>one column</strong> top-to-bottom (unified <code>--measure</code> ≈ 42rem + <code>main</code> cap), so every top-level block aligns left+right like the reference — replacing the earlier per-card measure cap, which had left cards <em>narrower</em> than the header/meta/budget. Guarded by a single-column alignment test.</span></li>
+  <li><time datetime="2026-06-18">2026-06-18</time><span>Review round: added bright filled pills (status + priority + id chip) via an AA-tuned <code>--c-pill-*</code> palette (the reference's exact pill colours are sub-AA; deepened to keep <a href="#NFR-003">NFR-003</a> green); <strong>reversed</strong> the requirement-gutter divergence — requirements now render as the reference's card; added the changelog timeline rail; meta corrected to a readable aligned grid. Two pre-existing base bugs (heading/inline-code overlap; out-of-scope chip overlap) fixed in base CSS and guarded.</span></li>
+  <li><time datetime="2026-06-18">2026-06-18</time><span>Rebuilt the <a href="#SC-006">SC-006</a> parity checklist from connector-measured computed styles (shape + layout), after a side-by-side audit caught two omissions: the horizontal <code>&lt;spec-meta&gt;</code> row (now in scope) and the requirement layout (then kept as the gutter; later reversed to the card). Reference is law except deliberate, recorded divergences.</span></li>
+  <li><time datetime="2026-06-18">2026-06-18</time><span>Added <a href="#NFR-005">NFR-005</a> — themes are pure CSS over the existing vocabulary, opt-in by element usage, additive across themes; no document is forced to carry markup for features it doesn't use. Captures the "rich but opt-in" theme-scaling contract (parity stays non-negotiable).</span></li>
+  <li><time datetime="2026-06-18">2026-06-18</time><span>Re-entry after <a href="./triage-log.html#T-002">T-002</a>: sharpened <a href="#FR-007">FR-007</a> from a narrow structural enumeration to full component-level visual parity with the reference (pills, columns, boxes, gauges) across every artifact type; broadened <a href="#FR-002">FR-002</a> to include component styling; added <a href="#SC-006">SC-006</a> (measurable parity checklist); deferred the sticky/blurred header; flagged INVEST-S as strained (plan should slice).</span></li>
+  <li><time datetime="2026-06-17">2026-06-17</time><span>Initial draft. Decisions anchored: theme (calm/heavy) and mode (light/dark) as orthogonal axes; theme owns typography <em>and</em> structure (weights, surfaces, radii, rule weights, spacing) while mode owns all colour; <code>data-theme</code>/<code>data-mode</code> attributes with two <code>localStorage</code> keys and legacy-key migration; dropdown + mode toggle; apply-before-paint (must); WCAG AA across all four combinations; OS-preference detection deferred.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  016-theme-support · Themes · authored 2026-06-17 ·
+  <button data-theme-toggle style="background:none;border:none;color:var(--c-link);cursor:pointer;font:inherit;padding:0;border-bottom:1px solid currentColor;">light/dark</button>
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>

@@ -1,0 +1,243 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Triage log · 016-theme-support</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Triage log · 016-theme-support</p>
+  <h1>Debug sessions</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    One card per session. Tier-1 fills in under 30 seconds; deep-dive only when needed.
+  </p>
+
+  <spec-meta>
+    <b>Spec</b>      <span><a href="./spec.html">016-theme-support · spec</a></span>
+    <b>Plan</b>      <span><a href="./plan.html">016-theme-support · plan</a></span>
+    <b>Last entry</b><span><time datetime="2026-06-18">18 Jun 2026</time></span>
+    <b>Entries</b>   <span>4</span>
+  </spec-meta>
+
+  <spec-tldr>
+    <p>Each card answers five questions in order: <em>what broke</em>, <em>what's the cause</em>,
+    <em>which layer owns the fix</em>, <em>does the regen test pass</em>, <em>what change to make</em>.
+    The deep-dive is only filled when the bug crosses a contract, hits a project-wide invariant,
+    or needs a hotfix-before-amendment sequence.</p>
+  </spec-tldr>
+</header>
+
+
+<section id="log">
+<h2>Sessions</h2>
+
+<spec-triage-log>
+
+<spec-triage id="T-001" layer="implementation">
+  <header>
+    <h4>Unrouted &lt;spec-triage&gt; pill fails WCAG AA contrast</h4>
+    <span class="meta">
+      <span class="layer-pill">Implementation</span>
+      <span class="regen" data-result="pass">code</span>
+    </span>
+  </header>
+
+  <p class="headline">Debugging a sub-AA component pill, root cause was the
+  <em>unrouted</em>-state pill colour (salmon on the mode surface, ~3:1) combined with a coverage gap
+  in the <a href="./spec.html#SC-003">SC-003</a> contrast fixture; fixed by making the pill colour
+  mode-aware and adding the unrouted state to the fixture; regeneration <strong>passes</strong> —
+  <a href="./spec.html#NFR-003">NFR-003</a> already mandates AA for every component, so the miss is
+  code/fixture drift, not a requirement gap.</p>
+
+  <dl>
+    <dt>Expected</dt> <dd>Every component meets WCAG AA (&ge;4.5:1) across all four theme×mode combinations (<a href="./spec.html#NFR-003">NFR-003</a>, <a href="./spec.html#SC-003">SC-003</a>).</dd>
+    <dt>Actual</dt>   <dd>The unrouted <code>&lt;spec-triage&gt;</code> pill renders salmon <code>#e1624f</code> on the surface (~3:1 light, ~3.3:1 dark) — below 4.5:1.</dd>
+    <dt>Diagnosis</dt><dd>The <a href="./spec.html#SC-003">SC-003</a> axe sweep runs on <span class="path">tests/fixtures/all-components.html</span>, which omits an unrouted <code>&lt;spec-triage&gt;</code>; the sub-AA rule (<code>spec-triage:not([layer]) .layer-pill</code> in <span class="path">assets/spec.css</span>) therefore never reached the gate.</dd>
+    <dt>Fix</dt>      <dd><span class="path">assets/spec.css</span> — give the unrouted pill a <em>mode-aware</em> colour (the surface is <code>var(--c-surface)</code>, so a single literal can't pass both modes): add a <code>--c-danger</code> token (light <code>#b0392a</code> / dark <code>#f08a79</code>) and use it. Then add an unrouted <code>&lt;spec-triage&gt;</code> to <span class="path">tests/fixtures/all-components.html</span> so the sweep covers it.</dd>
+  </dl>
+
+  <spec-diff>
+<del>  color: var(--c-salmon);   /* #e1624f — ~3:1 on light surface, ~3.3:1 on dark */</del>
+<ins>  color: var(--c-danger);   /* new token: light #b0392a / dark #f08a79 — AA in both modes */</ins>
+  </spec-diff>
+
+  <details>
+    <summary>Deep dive — none required</summary>
+    <p>No cross-spec contract, no project-wide invariant, no deferred-scope promotion, no
+    hotfix-before-amendment sequence. Self-contained colour + fixture fix under the existing
+    <a href="./spec.html#NFR-003">NFR-003</a>; not a spec change. Implement as a one-file
+    <code>just-do</code> via <code>/spectastic.implement</code>.</p>
+  </details>
+</spec-triage>
+
+<spec-triage id="T-002" layer="spec">
+  <header>
+    <h4>spectastic-heavy doesn't match the reference design</h4>
+    <span class="meta">
+      <span class="layer-pill">Spec</span>
+      <span class="regen" data-result="fail">upstream</span>
+    </span>
+  </header>
+
+  <p class="headline">Debugging <code>spectastic-heavy</code> not resembling the reference
+  (<code>example.html</code>), root cause was <a href="./spec.html#FR-007">FR-007</a> enumerating
+  only a narrow structural set (surfaces / radii / rule-weights / spacing) with no visual-parity
+  criterion — pills, columns, boxes, and the header are never <em>required</em> to match; fixed by
+  sharpening <a href="./spec.html#FR-007">FR-007</a> to full component parity and adding a
+  measurable parity success criterion, then re-planning; regeneration <strong>fails</strong> —
+  another session follows the same thin spec/plan and reproduces the mismatch.</p>
+
+  <dl>
+    <dt>Expected</dt> <dd>spectastic-heavy is visually faithful to the reference design (<code>example.html</code>) — pills, columns, boxes, surfaces, header, spacing and weights all match (<a href="./spec.html#FR-007">FR-007</a>).</dd>
+    <dt>Actual</dt>   <dd>Heavy changes only font-weights + four tokens (<code>--card-radius</code>, <code>--rule-w</code>, <code>--accent-bar-w</code>, <code>--card-shadow</code>); the reference's 5px pills, 12px carded boxes, sticky blurred header, 2-col goal grids and gauge cards are absent.</dd>
+    <dt>Diagnosis</dt><dd><a href="./spec.html#FR-007">FR-007</a> lists only "carded surfaces, border radii, rule weights, spacing" and no success criterion measures visual parity, so plan <a href="./plan.html#D-001">D-001</a> scoped a token-only theme that cannot express component-level styling; the implementation faithfully built that thin theme.</dd>
+    <dt>Fix</dt>      <dd><span class="path">specs/016-theme-support/spec.html</span> — 016 is Draft, so per <a href="../../principles.html#P-6">P-6</a> sharpen <a href="./spec.html#FR-007">FR-007</a> in place (re-entry via <code>/spectastic.spec</code>) to require full component-level parity with the reference (pills, columns, boxes, surfaces, header) and add a measurable visual-parity success criterion; then cascade <code>/spectastic.plan</code> → <code>/spectastic.tasks</code> → <code>/spectastic.implement</code>.</dd>
+  </dl>
+
+  <details>
+    <summary>Deep dive — cascade required</summary>
+    <p><strong>Scope sharpening, surfaced not silently promoted.</strong> The user is widening
+    "match the reference" beyond FR-007's current enumeration to full visual parity. Because 016 is
+    in <spec-status value="draft">Draft</spec-status>, P-6 permits the FR-007 edit + new SC in place
+    (no propose/apply cycle); the heavier ceremony isn't required until the spec leaves Draft.</p>
+    <p><strong>Cascade:</strong> spec (sharpen FR-007 + add parity SC) → plan (<a href="./plan.html#D-001">D-001</a>
+    must grow from token-only to <em>per-theme component overrides</em>, e.g.
+    <code>[data-theme="spectastic-heavy"] spec-status { … }</code> and a sticky header, since pills /
+    columns / header can't be reached by the current token set) → tasks → implement. The four
+    passing contrast combinations (<a href="./spec.html#SC-003">SC-003</a>) and the no-flash /
+    migration behaviour are unaffected and should stay green.</p>
+    <p><strong>Principles watch:</strong> the reference is denser and adds chrome (sticky header).
+    The amendment should confirm heavy still honours <a href="../../principles.html#P-5">P-5</a>
+    (calm density) — the reference reads as calm-but-dense, so this is a check, not a blocker.</p>
+  </details>
+</spec-triage>
+
+<spec-triage id="T-003" layer="implementation">
+  <header>
+    <h4>Heading + inline-code line overlap (pre-existing, both themes)</h4>
+    <span class="meta">
+      <span class="layer-pill">Implementation</span>
+      <span class="regen" data-result="pass">code</span>
+    </span>
+  </header>
+
+  <p class="headline">Debugging a wrapped <code>&lt;h1&gt;</code> whose lines overlapped where inline
+  <code>&lt;code&gt;</code> appeared, root cause was the tight heading <code>line-height:1.05</code>
+  plus inline code's padding/border/0.9em box exceeding the line box (≈73px vs 57px); fixed in base
+  CSS by loosening h1 line-height to 1.14 and shrinking/flattening code inside headings; regeneration
+  <strong>passes</strong> — a pure CSS implementation fix, no spec governs it.</p>
+
+  <dl>
+    <dt>Expected</dt> <dd>A multi-line heading containing inline code reads cleanly, lines never overlap — in calm and heavy.</dd>
+    <dt>Actual</dt>   <dd>Inline <code>&lt;code&gt;</code> rendered ~73px tall inside a 57px <code>h1</code> line box, so wrapped lines collided (visible long before themes; calm too).</dd>
+    <dt>Diagnosis</dt><dd>Base <code>h1 { line-height: 1.05 }</code> is too tight for wrapped headings, and inline <code>code</code> added vertical padding + border + <code>0.9em</code> size on top — not a theme or spec issue, an old base-CSS gap.</dd>
+    <dt>Fix</dt>      <dd><span class="path">assets/spec.css</span> — <code>h1</code> line-height 1.05→1.14; <code>:is(h1..h6) code</code> drops vertical padding/border, <code>font-size:0.8em</code>, <code>line-height:inherit</code>. Verified: code box 56.5px &lt; 62px line box, +6px between lines. Guard: <span class="path">tests/heading-code.spec.ts</span>.</dd>
+  </dl>
+
+  <details>
+    <summary>Deep dive — none required</summary>
+    <p>No cross-spec contract, invariant, or hotfix. Base fix benefits both themes; already applied
+    and regression-guarded. Surfaced during the 016 heavy review but predates it.</p>
+  </details>
+</spec-triage>
+
+<spec-triage id="T-004" layer="implementation">
+  <header>
+    <h4>Out-of-scope defer-to chip overlaps the item text (pre-existing, both themes)</h4>
+    <span class="meta">
+      <span class="layer-pill">Implementation</span>
+      <span class="regen" data-result="pass">code</span>
+    </span>
+  </header>
+
+  <p class="headline">Debugging the <code>&lt;spec-out-of-scope&gt;</code> list where a long
+  <code>defer-to</code> chip overlapped the deferred-item text, root cause was the chip being
+  absolutely positioned over a fixed <code>10rem</code> text indent — long values overflowed the
+  reserve; fixed by making the chip an <em>inline-block</em> at the start of a block list item;
+  regeneration <strong>passes</strong> — a base-CSS layout fix, no spec governs it.</p>
+
+  <dl>
+    <dt>Expected</dt> <dd>A deferred item's <code>→ defer-to</code> chip sits beside its text, never overlapping — at any value length, in both themes.</dd>
+    <dt>Actual</dt>   <dd>Long values (e.g. <code>TBD-github-releases</code>) overflowed the absolute chip's <code>10rem</code> reserve and printed over the item text (the first letters were hidden).</dd>
+    <dt>Diagnosis</dt><dd>Base <code>spec-out-of-scope li</code> reserved a fixed <code>padding-left:10rem</code> for a <code>position:absolute</code> chip; any wider <code>defer-to</code> spilled into the text. Pre-existing in calm; not a theme/spec issue.</dd>
+    <dt>Fix</dt>      <dd><span class="path">assets/spec.css</span> — the <code>::before</code> chip is an <code>inline-block</code> at the start of a <em>block</em> list item (a grid/flex container would instead pull inline <code>&lt;code&gt;</code>/<code>&lt;a&gt;</code> from the description into the chip column — a first grid attempt did exactly that). The chip auto-sizes, so long values can't overflow. Guard: <span class="path">tests/heading-code.spec.ts</span> asserts the item is not grid/flex and inline code stays in the text flow, both themes.</dd>
+  </dl>
+
+  <details>
+    <summary>Deep dive — none required</summary>
+    <p>No cross-spec contract, invariant, or hotfix. Base fix; benefits both themes; applied and guarded.
+    Surfaced in the 016 review, predates it (same class as <a href="#T-003">T-003</a>).</p>
+  </details>
+</spec-triage>
+
+</spec-triage-log>
+</section>
+
+
+<section id="protocol">
+<h2>Protocol</h2>
+
+<p>Five required Tier-1 fields, in order:</p>
+
+<spec-requirement id="TRIAGE-001" priority="must">
+<p>Each card <spec-rule>MUST</spec-rule> include a <strong>headline</strong> in
+Y-statement form: <em>"Debugging X, root cause was Y; fixed by Z; regen pass|fail."</em></p>
+</spec-requirement>
+
+<spec-requirement id="TRIAGE-002" priority="must">
+<p>Each card <spec-rule>MUST</spec-rule> state <strong>Expected</strong>, <strong>Actual</strong>,
+and <strong>Diagnosis</strong> (one sentence — cause, not symptom).</p>
+</spec-requirement>
+
+<spec-requirement id="TRIAGE-003" priority="must">
+<p>Each card <spec-rule>MUST</spec-rule> declare a single <strong>layer</strong> attribute
+(<code>spec | plan | implementation | cross-spec | principles | platform</code>) and a
+<strong>regeneration test result</strong> (pass | fail).</p>
+</spec-requirement>
+
+<spec-requirement id="TRIAGE-004" priority="must">
+<p>Each card <spec-rule>MUST</spec-rule> include a concrete <strong>Fix</strong> — artifact
+path + one-line proposal. For implementation gaps, a <code>&lt;spec-diff&gt;</code> pointing
+at the offending line.</p>
+</spec-requirement>
+
+<spec-requirement id="TRIAGE-005" priority="should">
+<p>The <strong>deep-dive</strong> <code>&lt;details&gt;</code> block
+<spec-rule level="should">SHOULD</spec-rule> be filled only when at least one of:
+cross-spec contract touched, project-wide invariant implicated, deferred scope exposed, or
+hotfix-before-amendment sequence required.</p>
+</spec-requirement>
+
+<spec-requirement id="TRIAGE-006" priority="may">
+<p>Cards <spec-rule level="may">MAY</spec-rule> append a single <code>&lt;spec-question&gt;</code>
+if a decision is owed to the human before the fix lands.</p>
+</spec-requirement>
+</section>
+
+
+<section id="changelog">
+<h2>Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-06-18">18 Jun 2026</time><span>T-004 added — out-of-scope defer-to chip overlap, pre-existing base-CSS bug (both themes); fixed + guarded.</span></li>
+  <li><time datetime="2026-06-18">18 Jun 2026</time><span>T-003 added — heading/inline-code line overlap, pre-existing base-CSS bug (both themes); fixed + guarded.</span></li>
+  <li><time datetime="2026-06-18">18 Jun 2026</time><span>T-002 added — spectastic-heavy doesn't match the reference design, spec gap (regen fail); cascade to plan + tasks.</span></li>
+  <li><time datetime="2026-06-18">18 Jun 2026</time><span>T-001 added — unrouted triage pill sub-AA contrast, implementation drift (regen pass).</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  Triage log for 016-theme-support ·
+  <button data-theme-toggle style="background:none;border:none;color:var(--c-link);cursor:pointer;font:inherit;padding:0;border-bottom:1px solid currentColor;">light/dark</button>
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>

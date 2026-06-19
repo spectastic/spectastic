@@ -113,7 +113,7 @@ Specs grow because each "just one more edge case" is cheaper to add than to extr
 
 Spectastic embeds the discipline that prevents this without adding new verbs:
 
-- **`<spec-budget>`** in the header renders a live gauge. Default budgets: 1,500 words, 20 requirements, 12-minute read. Override with attributes (`<spec-budget words="2500" reqs="25" minutes="15">`). Amber from 70% of budget; red over. Specs that cross the threshold are signalled for splitting.
+- **`<spec-budget>`** in the header renders a live gauge. Default budgets: 1,500 words, 20 requirements, 12-minute read. Override with attributes (`<spec-budget words="2500" reqs="25" minutes="15">`). Amber from 70% of budget; red over. Specs that cross the threshold are signalled for splitting. **Spec-only** — the budget is the spec-sizing discipline, so it ships only in `spec.html`; plans, tasks, and principles show read-time in their `<spec-meta>` and carry no budget (a requirements gauge on a plan would always read 0).
 - **`<spec-out-of-scope>`** with required `defer-to=` makes excluded items into deferrals. Each entry points at a sibling spec ID, or `TBD` if the slice does not yet exist. Missing `defer-to` renders visibly broken.
 - **INVEST self-check** in the header `<dl class="invest">` — six rows the author fills honestly. `V` and `T` carry linked evidence; failures (`<dd class="fail">`) block the plan.
 - **Estimability gate** in `/spectastic.plan` — refuses to run while any `<spec-question>`, `[NEEDS CLARIFICATION]`, missing `defer-to=`, or failing INVEST row exists.
@@ -179,7 +179,7 @@ Twelve-ish custom elements cover the spec shape. Tag name is schema.
 | `<spec-matrix>` | Option × criterion decision table with a `data-winner` row. |
 | `<spec-tradeoff>` | Inline bar sparklines scoring options on a few axes. |
 | `<spec-questions>` | Numbered open-question register. |
-| `<spec-changelog>` | Append-only revision history. |
+| `<spec-changelog>` | Append-only revision history. On a **versioned** artifact (e.g. principles), each entry records **version · date** — `<span class="rev"><b>vX.Y.Z</b> · <time>DATE</time></span>` in the meta cell, then the note — mirroring the reference design. Date-only on unversioned artifacts. |
 | `<spec-arch>` | Frame around an inline SVG architecture sketch. |
 | `<spec-conformance>` | Auto-built index of every requirement. |
 | `<spec-glossary>` | Definition list with cross-linked `<dfn>` references. |
@@ -210,7 +210,12 @@ A calm typographic system that prioritises readability over chrome:
 - **Spacing** 8 px grid; fluid type scale from 14–82 px.
 - **Layout** single column, ~38 rem reading measure, ~14 rem gutter for sidenotes.
 
-A `html.dark` class flips to a warm dark theme without touching individual elements.
+Two orthogonal axes drive the look: a **theme** (`data-theme` — `spectastic-calm` or
+`spectastic-heavy`, owning typography weight + structure) and a **mode** (`data-mode` —
+`light` or `dark`, owning colour). A footer dropdown picks the theme; the toggle flips the
+mode; both persist in `localStorage` and apply before first paint. Adding a theme is one
+`[data-theme="…"]` block in `assets/spec.css` plus one registry entry in
+`assets/theme-boot.js` — no per-artifact edits.
 
 Open `assets/spec.css` to tweak. Everything is CSS custom properties at the top.
 
@@ -328,7 +333,7 @@ These steps happen on `npmjs.com` and `github.com`, not in this repo.
 
 ## Editing workflow
 
-Source files in `templates/` and `specs/<id>/` link to `assets/spec.css` and `assets/spec.js` so you can iterate on the design system without touching every spec. When you want to ship one as a single attachable file:
+Source files in `templates/` and `specs/<id>/` link to `assets/spec.css` and `assets/spec.js` so you can iterate on the design system without touching every spec. Each `<head>` also loads the render-blocking `assets/theme-boot.js` so the saved theme + mode apply before first paint (no flash). The verb commands rewrite `../assets/` → `../../assets/` on copy, so a freshly scaffolded artifact picks up the boot script at the right depth automatically; to retrofit existing artifacts in bulk, run `node scripts/retrofit-theme-boot.mjs` (idempotent, depth-aware). When you want to ship one as a single attachable file:
 
 ```sh
 scripts/inline.sh specs/001-auth/spec.html > dist/spec.html

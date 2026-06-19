@@ -13,7 +13,7 @@ describe('init: plan builder (T-100, FR-002)', () => {
     const inventory = resolveBundle();
     const cwd = mkdtempSync(join(tmpdir(), 'spectastic-init-plan-'));
     const plan = buildPlan({ inventory, cwd });
-    expect(plan.length).toBe(17);
+    expect(plan.length).toBe(18);
     expect(plan.every((d) => d.action === 'write')).toBe(true);
     expect(plan.every((d) => d.preExisting === false)).toBe(true);
   });
@@ -26,6 +26,7 @@ describe('init: plan builder (T-100, FR-002)', () => {
     expect(destinations).toContain('.claude/commands/spectastic.spec.md');
     expect(destinations).toContain('assets/spec.css');
     expect(destinations).toContain('assets/spec.js');
+    expect(destinations).toContain('assets/theme-boot.js');
     expect(destinations).toContain('templates/spec.html');
     expect(destinations).toContain('templates/principles.html');
     expect(destinations).toContain('templates/inbox.html');

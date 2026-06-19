@@ -146,14 +146,54 @@
     });
   });
 
-  /* ---- 7. Dark-mode toggle ----------------------------------------- */
-  const btn = document.querySelector('[data-theme-toggle]');
-  if (btn) {
-    const saved = localStorage.getItem('spectastic-theme');
-    if (saved === 'dark') document.documentElement.classList.add('dark');
-    btn.addEventListener('click', () => {
-      const isDark = document.documentElement.classList.toggle('dark');
-      localStorage.setItem('spectastic-theme', isDark ? 'dark' : 'light');
+  /* ---- 7. Theme + mode switcher ------------------------------------ */
+  /* Registry, persistence and legacy migration live in theme-boot.js
+     (window.__spectastic), which already applied the saved theme + mode to
+     <html> before first paint. This block is pure progressive enhancement:
+     with JS off the document still renders in its default/persisted look. */
+  const themeApi = window.__spectastic;
+  const toggle = document.querySelector('[data-theme-toggle]');
+  if (themeApi && toggle) {
+    /* A controls container sits just before the existing footer toggle. */
+    const controls = document.createElement('span');
+    controls.className = 'theme-controls';
+    toggle.parentNode.insertBefore(controls, toggle);
+
+    /* Sync any UI to the live <html> attributes. Extended by the theme
+       <select> (US1) and the mode toggle (US2). */
+    const reflect = () => {
+      const { theme, mode } = themeApi.current();
+      controls.dataset.theme = theme;
+      controls.dataset.mode = mode;
+      reflect.handlers.forEach((fn) => fn(theme, mode));
+    };
+    reflect.handlers = [];
+
+    /* US1 — theme <select>, built from the registry. Adding a future theme
+       touches only the registry in theme-boot.js, never this markup. */
+    const select = document.createElement('select');
+    select.className = 'theme-select';
+    select.setAttribute('aria-label', 'Theme');
+    themeApi.THEMES.forEach((t) => {
+      const opt = document.createElement('option');
+      opt.value = t.id;
+      opt.textContent = t.label;
+      select.appendChild(opt);
     });
+    select.addEventListener('change', () => themeApi.setTheme(select.value));
+    controls.appendChild(select);
+    reflect.handlers.push((theme) => { select.value = theme; });
+
+    /* US2 — the existing footer toggle now flips light/dark mode. */
+    toggle.addEventListener('click', () => {
+      themeApi.setMode(themeApi.current().mode === 'dark' ? 'light' : 'dark');
+      reflect();
+    });
+    reflect.handlers.push((theme, mode) => {
+      toggle.textContent = mode === 'dark' ? 'dark' : 'light';
+      toggle.setAttribute('aria-pressed', String(mode === 'dark'));
+    });
+
+    reflect();
   }
 })();
