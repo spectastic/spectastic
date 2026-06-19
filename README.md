@@ -211,7 +211,7 @@ A calm typographic system that prioritises readability over chrome:
 - **Layout** single column, ~38 rem reading measure, ~14 rem gutter for sidenotes.
 
 Two orthogonal axes drive the look: a **theme** (`data-theme` — `spectastic-calm` or
-`spectastic-heavy`, owning typography weight + structure) and a **mode** (`data-mode` —
+`spectastic-vivid`, owning typography weight + structure) and a **mode** (`data-mode` —
 `light` or `dark`, owning colour). A footer dropdown picks the theme; the toggle flips the
 mode; both persist in `localStorage` and apply before first paint. Adding a theme is one
 `[data-theme="…"]` block in `assets/spec.css` plus one registry entry in

@@ -5,7 +5,7 @@ import { test, expect } from '@playwright/test';
 // adjacent wrapped line. Invariant: code must fit within the heading's line box.
 const FIXTURE = '/tests/fixtures/all-components.html';
 
-for (const theme of ['spectastic-calm', 'spectastic-heavy']) {
+for (const theme of ['spectastic-calm', 'spectastic-vivid']) {
   test(`inline code fits the heading line box · ${theme}`, async ({ page }) => {
     await page.goto(FIXTURE);
     await page.evaluate((t) => document.documentElement.setAttribute('data-theme', t), theme);

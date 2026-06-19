@@ -12,23 +12,23 @@ test.describe('US1 · theme switch (FR-001, SC-001)', () => {
     const values = await select.locator('option').evaluateAll((os) =>
       os.map((o) => (o as HTMLOptionElement).value)
     );
-    expect(values).toEqual(['spectastic-calm', 'spectastic-heavy']);
+    expect(values).toEqual(['spectastic-calm', 'spectastic-vivid']);
   });
 
   test('choosing heavy sets data-theme and persists across reload', async ({ page }) => {
     await page.goto(FIXTURE);
-    await page.locator('select.theme-select').selectOption('spectastic-heavy');
-    await expect(page.locator('html')).toHaveAttribute('data-theme', 'spectastic-heavy');
+    await page.locator('select.theme-select').selectOption('spectastic-vivid');
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'spectastic-vivid');
 
     await page.reload();
-    await expect(page.locator('html')).toHaveAttribute('data-theme', 'spectastic-heavy');
-    await expect(page.locator('select.theme-select')).toHaveValue('spectastic-heavy');
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'spectastic-vivid');
+    await expect(page.locator('select.theme-select')).toHaveValue('spectastic-vivid');
   });
 
   test('the theme carries to another artifact on the same origin', async ({ page }) => {
     await page.goto(FIXTURE);
-    await page.locator('select.theme-select').selectOption('spectastic-heavy');
+    await page.locator('select.theme-select').selectOption('spectastic-vivid');
     await page.goto('/tests/fixtures/other.html');
-    await expect(page.locator('html')).toHaveAttribute('data-theme', 'spectastic-heavy');
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'spectastic-vivid');
   });
 });

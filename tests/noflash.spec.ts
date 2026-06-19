@@ -5,11 +5,11 @@ const FIXTURE = '/tests/fixtures/all-components.html';
 
 test('a saved non-default selection is applied on load', async ({ page }) => {
   await page.addInitScript(() => {
-    localStorage.setItem('spectastic-theme', 'spectastic-heavy');
+    localStorage.setItem('spectastic-theme', 'spectastic-vivid');
     localStorage.setItem('spectastic-mode', 'dark');
   });
   await page.goto(FIXTURE);
-  await expect(page.locator('html')).toHaveAttribute('data-theme', 'spectastic-heavy');
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'spectastic-vivid');
   await expect(page.locator('html')).toHaveAttribute('data-mode', 'dark');
 });
 

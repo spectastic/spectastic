@@ -8,8 +8,8 @@ const FIXTURE = '/tests/fixtures/all-components.html';
 const combos: Array<[string, string]> = [
   ['spectastic-calm', 'light'],
   ['spectastic-calm', 'dark'],
-  ['spectastic-heavy', 'light'],
-  ['spectastic-heavy', 'dark'],
+  ['spectastic-vivid', 'light'],
+  ['spectastic-vivid', 'dark'],
 ];
 
 for (const [theme, mode] of combos) {

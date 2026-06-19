@@ -15,9 +15,9 @@ test('the toggle flips [data-mode] light↔dark', async ({ page }) => {
 
 test('mode is independent of theme — all four combinations hold', async ({ page }) => {
   await page.goto(FIXTURE);
-  await page.locator('select.theme-select').selectOption('spectastic-heavy');
+  await page.locator('select.theme-select').selectOption('spectastic-vivid');
   await page.locator('[data-theme-toggle]').click(); // → dark
-  await expect(html(page)).toHaveAttribute('data-theme', 'spectastic-heavy');
+  await expect(html(page)).toHaveAttribute('data-theme', 'spectastic-vivid');
   await expect(html(page)).toHaveAttribute('data-mode', 'dark');
   // body still renders (visible) in the heavy·dark combination
   await expect(page.locator('main h1')).toBeVisible();
@@ -25,14 +25,14 @@ test('mode is independent of theme — all four combinations hold', async ({ pag
 
 test('theme and mode persist as separate keys across reload', async ({ page }) => {
   await page.goto(FIXTURE);
-  await page.locator('select.theme-select').selectOption('spectastic-heavy');
+  await page.locator('select.theme-select').selectOption('spectastic-vivid');
   await page.locator('[data-theme-toggle]').click(); // dark
   await page.reload();
-  await expect(html(page)).toHaveAttribute('data-theme', 'spectastic-heavy');
+  await expect(html(page)).toHaveAttribute('data-theme', 'spectastic-vivid');
   await expect(html(page)).toHaveAttribute('data-mode', 'dark');
   const stored = await page.evaluate(() => ({
     theme: localStorage.getItem('spectastic-theme'),
     mode: localStorage.getItem('spectastic-mode'),
   }));
-  expect(stored).toEqual({ theme: 'spectastic-heavy', mode: 'dark' });
+  expect(stored).toEqual({ theme: 'spectastic-vivid', mode: 'dark' });
 });

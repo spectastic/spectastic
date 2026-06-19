@@ -21,13 +21,13 @@ test('the switcher is generated from the registry (no per-artifact markup)', asy
 
 test('a theme is a self-contained attribute-scoped section + registry entry', () => {
   const css = readFileSync('assets/spec.css', 'utf8');
-  const total = (css.match(/spectastic-heavy/g) || []).length;
-  const scoped = (css.match(/\[data-theme="spectastic-heavy"\]/g) || []).length;
+  const total = (css.match(/spectastic-vivid/g) || []).length;
+  const scoped = (css.match(/\[data-theme="spectastic-vivid"\]/g) || []).length;
   expect(scoped, 'heavy theme has stylesheet rules').toBeGreaterThan(0);
   // every mention of the theme is inside a [data-theme] selector — no bare/global
   // leakage, so the theme is additive and removable as a unit (D-006/D-008).
   expect(total, 'every heavy mention is attribute-scoped').toBe(scoped);
   // the registry (single source) carries the same id
   const boot = readFileSync('assets/theme-boot.js', 'utf8');
-  expect(boot).toContain('spectastic-heavy');
+  expect(boot).toContain('spectastic-vivid');
 });

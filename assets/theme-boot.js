@@ -7,7 +7,7 @@
   var KEY_THEME = 'spectastic-theme', KEY_MODE = 'spectastic-mode';
   var THEMES = [
     { id: 'spectastic-calm',  label: 'Calm'  },
-    { id: 'spectastic-heavy', label: 'Heavy' }
+    { id: 'spectastic-vivid', label: 'Vivid' }
   ];
   var MODES = ['light', 'dark'];
   var DEF_THEME = 'spectastic-calm', DEF_MODE = 'light';

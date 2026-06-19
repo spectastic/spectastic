@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 
-// US1 — heavy is heavier (FR-007), and a theme owns type/structure but NOT
+// US1 — vivid is heavier (FR-007), and a theme owns type/structure but NOT
 // colour (FR-002). getComputedStyle returns the specified font-weight whether
 // or not the webfont file loaded, so these assertions hold offline.
 const FIXTURE = '/tests/fixtures/all-components.html';
@@ -13,13 +13,13 @@ const cssVar = (page, name: string) =>
     name
   );
 
-test('heavy raises heading weights vs calm; colour tokens are theme-invariant', async ({ page }) => {
+test('vivid raises heading weights vs calm; colour tokens are theme-invariant', async ({ page }) => {
   await page.goto(FIXTURE);
   const calmH1 = Number(await weight(page, 'main h1'));
   const calmH2 = Number(await weight(page, 'main h2'));
   const calmLink = await cssVar(page, '--c-link');
 
-  await page.locator('select.theme-select').selectOption('spectastic-heavy');
+  await page.locator('select.theme-select').selectOption('spectastic-vivid');
   const heavyH1 = Number(await weight(page, 'main h1'));
   const heavyH2 = Number(await weight(page, 'main h2'));
   const heavyLink = await cssVar(page, '--c-link');
@@ -31,9 +31,9 @@ test('heavy raises heading weights vs calm; colour tokens are theme-invariant', 
   expect(heavyLink).toBe(calmLink);
 });
 
-test('heavy matches the reference weight map (measured)', async ({ page }) => {
+test('vivid matches the reference weight map (measured)', async ({ page }) => {
   await page.goto(FIXTURE);
-  await page.locator('select.theme-select').selectOption('spectastic-heavy');
+  await page.locator('select.theme-select').selectOption('spectastic-vivid');
   expect(await cssVar(page, '--fw-h1')).toBe('500'); // reference Fraunces h1
   expect(await cssVar(page, '--fw-h2')).toBe('540'); // reference section headings
 });
@@ -46,7 +46,7 @@ test('switching theme requests no additional font files', async ({ page }) => {
   await page.goto(FIXTURE);
   await page.waitForLoadState('networkidle').catch(() => {});
   const before = fontReqs.length;
-  await page.locator('select.theme-select').selectOption('spectastic-heavy');
+  await page.locator('select.theme-select').selectOption('spectastic-vivid');
   await page.waitForTimeout(400);
   expect(fontReqs.length).toBe(before);
 });

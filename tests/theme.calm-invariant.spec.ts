@@ -1,8 +1,8 @@
 import { test, expect } from '@playwright/test';
 
-// R-6 guard — the heavy parity work must not regress calm. Heavy rules are
-// scoped to [data-theme="spectastic-heavy"]; calm (:root default) must keep
-// today's computed values. These are calm's current values; if a heavy edit
+// R-6 guard — the vivid parity work must not regress calm. Vivid rules are
+// scoped to [data-theme="spectastic-vivid"]; calm (:root default) must keep
+// today's computed values. These are calm's current values; if a vivid edit
 // leaks into calm, one of these flips.
 const FIXTURE = '/tests/fixtures/all-components.html';
 
@@ -32,9 +32,10 @@ test.describe('calm invariance (R-6)', () => {
     expect(await prop(page, 'spec-decision', 'borderTopWidth'), 'no top accent in calm').toBe('1px');
   });
 
-  // Prose-cards align to the narrow reading measure so they don't overrun the
-  // body text; genuinely-wide data (tables, matrix, diff, code) may exceed it.
-  test('calm prose-cards cap at the reading measure; wide data may exceed', async ({ page }) => {
+  // Calm is a single narrow column centred in the viewport: every block —
+  // cards AND wide data (tables, matrix, diff, code) — caps at the reading
+  // measure, and main has equal left/right margins.
+  test('calm is one centred narrow column — all content caps at the reading measure', async ({ page }) => {
     await calm(page);
     const r = await page.evaluate(() => {
       const W = (s: string) => {
@@ -45,16 +46,19 @@ test.describe('calm invariance (R-6)', () => {
         parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--measure')) * 16;
       const widths = (sels: string[]) =>
         sels.map((s) => ({ s, w: W(s) })).filter((x) => x.w != null) as { s: string; w: number }[];
+      const main = document.querySelector('main')!.getBoundingClientRect();
       return {
         measure,
-        cards: widths([
+        content: widths([
           'spec-tldr', 'spec-requirement', 'spec-decision', 'spec-note', 'spec-meta',
           'spec-conformance', 'spec-audience-map', 'dl.invest', 'spec-budget', 'spec-out-of-scope',
+          'table', 'spec-matrix', 'spec-diff', 'pre',
         ]),
-        wide: widths(['table', 'spec-matrix', 'spec-diff', 'pre']),
+        leftMargin: Math.round(main.left),
+        rightMargin: Math.round(window.innerWidth - main.right),
       };
     });
-    for (const c of r.cards) expect(c.w, `${c.s} caps at the reading measure`).toBeLessThanOrEqual(r.measure + 2);
-    for (const w of r.wide) expect(w.w, `${w.s} keeps the wide measure`).toBeGreaterThan(r.measure + 2);
+    for (const c of r.content) expect(c.w, `${c.s} caps at the reading measure`).toBeLessThanOrEqual(r.measure + 2);
+    expect(Math.abs(r.leftMargin - r.rightMargin), 'main is centred (equal margins)').toBeLessThanOrEqual(2);
   });
 });
