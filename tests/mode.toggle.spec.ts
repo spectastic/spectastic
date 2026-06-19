@@ -7,16 +7,16 @@ const html = (page) => page.locator('html');
 test('the toggle flips [data-mode] light↔dark', async ({ page }) => {
   await page.goto(FIXTURE);
   await expect(html(page)).toHaveAttribute('data-mode', 'light');
-  await page.locator('[data-theme-toggle]').click();
+  await page.locator('[data-theme-toggle]:visible').click();
   await expect(html(page)).toHaveAttribute('data-mode', 'dark');
-  await page.locator('[data-theme-toggle]').click();
+  await page.locator('[data-theme-toggle]:visible').click();
   await expect(html(page)).toHaveAttribute('data-mode', 'light');
 });
 
 test('mode is independent of theme — all four combinations hold', async ({ page }) => {
   await page.goto(FIXTURE);
-  await page.locator('select.theme-select').selectOption('spectastic-vivid');
-  await page.locator('[data-theme-toggle]').click(); // → dark
+  await page.locator('select.theme-select:visible').selectOption('spectastic-vivid');
+  await page.locator('[data-theme-toggle]:visible').click(); // → dark
   await expect(html(page)).toHaveAttribute('data-theme', 'spectastic-vivid');
   await expect(html(page)).toHaveAttribute('data-mode', 'dark');
   // body still renders (visible) in the heavy·dark combination
@@ -25,8 +25,8 @@ test('mode is independent of theme — all four combinations hold', async ({ pag
 
 test('theme and mode persist as separate keys across reload', async ({ page }) => {
   await page.goto(FIXTURE);
-  await page.locator('select.theme-select').selectOption('spectastic-vivid');
-  await page.locator('[data-theme-toggle]').click(); // dark
+  await page.locator('select.theme-select:visible').selectOption('spectastic-vivid');
+  await page.locator('[data-theme-toggle]:visible').click(); // dark
   await page.reload();
   await expect(html(page)).toHaveAttribute('data-theme', 'spectastic-vivid');
   await expect(html(page)).toHaveAttribute('data-mode', 'dark');

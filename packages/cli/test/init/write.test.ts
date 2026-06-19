@@ -16,7 +16,7 @@ describe('init: writer (T-101, FR-002, FR-008)', () => {
     const plan = buildPlan({ inventory, cwd });
     const summary = await executeWrites(plan);
 
-    expect(summary.wrote).toBe(18);
+    expect(summary.wrote).toBe(19);
     expect(summary.overwrote).toBe(0);
     expect(summary.skipped).toBe(0);
 
@@ -42,7 +42,7 @@ describe('init: writer (T-101, FR-002, FR-008)', () => {
     }
     const summary = await executeWrites(plan);
     expect(summary.skipped).toBe(3);
-    expect(summary.wrote).toBe(15);
+    expect(summary.wrote).toBe(16);
 
     // Skipped destinations must not exist.
     for (let i = 0; i < 3; i++) {
@@ -63,7 +63,7 @@ describe('init: writer (T-101, FR-002, FR-008)', () => {
 
     const summary = await executeWrites(plan);
     expect(summary.overwrote).toBe(1);
-    expect(summary.wrote).toBe(17);
+    expect(summary.wrote).toBe(18);
     expect(existsSync(first.destination)).toBe(true);
   });
 });

@@ -152,47 +152,114 @@
      <html> before first paint. This block is pure progressive enhancement:
      with JS off the document still renders in its default/persisted look. */
   const themeApi = window.__spectastic;
-  const toggle = document.querySelector('[data-theme-toggle]');
-  if (themeApi && toggle) {
-    /* A controls container sits just before the existing footer toggle. */
-    const controls = document.createElement('span');
-    controls.className = 'theme-controls';
-    toggle.parentNode.insertBefore(controls, toggle);
-
-    /* Sync any UI to the live <html> attributes. Extended by the theme
-       <select> (US1) and the mode toggle (US2). */
+  /* Query the footer toggle BEFORE injecting the header (which adds its own),
+     so this resolves to the artifact's existing footer control. */
+  const footerToggle = document.querySelector('[data-theme-toggle]');
+  if (themeApi) {
+    /* One source of truth: reflect() syncs every registered control to the live
+       <html> attributes. Both the footer switcher and the vivid header register
+       handlers here, so the two control sets never drift (D-009). */
     const reflect = () => {
       const { theme, mode } = themeApi.current();
-      controls.dataset.theme = theme;
-      controls.dataset.mode = mode;
       reflect.handlers.forEach((fn) => fn(theme, mode));
     };
     reflect.handlers = [];
 
-    /* US1 — theme <select>, built from the registry. Adding a future theme
+    /* US1 — a theme <select> built from the registry. Adding a future theme
        touches only the registry in theme-boot.js, never this markup. */
-    const select = document.createElement('select');
-    select.className = 'theme-select';
-    select.setAttribute('aria-label', 'Theme');
-    themeApi.THEMES.forEach((t) => {
-      const opt = document.createElement('option');
-      opt.value = t.id;
-      opt.textContent = t.label;
-      select.appendChild(opt);
-    });
-    select.addEventListener('change', () => themeApi.setTheme(select.value));
-    controls.appendChild(select);
-    reflect.handlers.push((theme) => { select.value = theme; });
+    const buildSelect = () => {
+      const select = document.createElement('select');
+      select.className = 'theme-select';
+      select.setAttribute('aria-label', 'Theme');
+      themeApi.THEMES.forEach((t) => {
+        const opt = document.createElement('option');
+        opt.value = t.id;
+        opt.textContent = t.label;
+        select.appendChild(opt);
+      });
+      select.addEventListener('change', () => { themeApi.setTheme(select.value); reflect(); });
+      reflect.handlers.push((theme) => { select.value = theme; });
+      return select;
+    };
 
-    /* US2 — the existing footer toggle now flips light/dark mode. */
-    toggle.addEventListener('click', () => {
-      themeApi.setMode(themeApi.current().mode === 'dark' ? 'light' : 'dark');
-      reflect();
+    /* US2 — wire a [data-theme-toggle] element to flip light/dark mode. */
+    const wireMode = (btn, render) => {
+      btn.addEventListener('click', () => {
+        themeApi.setMode(themeApi.current().mode === 'dark' ? 'light' : 'dark');
+        reflect();
+      });
+      reflect.handlers.push((theme, mode) => render(btn, mode));
+    };
+
+    /* ---- Footer switcher (calm's controls; the original location) ---- */
+    if (footerToggle) {
+      const controls = document.createElement('span');
+      controls.className = 'theme-controls';
+      footerToggle.parentNode.insertBefore(controls, footerToggle);
+      controls.appendChild(buildSelect());
+      wireMode(footerToggle, (btn, mode) => {
+        btn.textContent = mode === 'dark' ? 'dark' : 'light';
+        btn.setAttribute('aria-pressed', String(mode === 'dark'));
+      });
+    }
+
+    /* ---- Vivid header (FR-009) — injected at body-start so source order is
+       reading order (P-1); revealed only under vivid by CSS (T-611). With JS
+       off this never runs, so the document falls back to the footer-only,
+       calm-default look (NFR-002). ---- */
+    const SUN = '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>';
+    const MOON = '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>';
+
+    const bar = document.createElement('header');
+    bar.className = 'spec-bar';
+
+    /* Brand / back-link → the project landing (index.html), at this artifact's
+       depth (derived from the stylesheet href, which already encodes it). */
+    const cssLink = document.querySelector('link[rel="stylesheet"]');
+    const cssHref = cssLink ? cssLink.getAttribute('href') : 'assets/spec.css';
+    const rootPrefix = cssHref.slice(0, Math.max(0, cssHref.indexOf('assets/')));
+    /* Canonical spectrum mark (017-brand-logo): one prong path rotated 8× at 45°,
+       fills var(--spec-1…8). aria-hidden — the "spectastic" text carries the name;
+       .spec-logo places it AFTER the wordmark, cap-line aligned. */
+    const PRONG = 'M50 50 L43.5 18 Q50 10.5 56.5 18 Z';
+    let prongs = '';
+    for (let i = 0; i < 8; i++) {
+      prongs += '<path d="' + PRONG + '" fill="var(--spec-' + (i + 1) + ')" transform="rotate(' + i * 45 + ' 50 50)"/>';
+    }
+    const markSvg = '<svg viewBox="0 0 100 100" aria-hidden="true" style="overflow:visible">' + prongs + '</svg>';
+    const brand = document.createElement('a');
+    brand.className = 'spec-brand spec-logo';
+    brand.href = rootPrefix + 'index.html';
+    brand.append('spectastic');
+    brand.insertAdjacentHTML('beforeend', markSvg);
+
+    /* Artifact path — the last segments of the URL, overridable per document. */
+    const path = document.createElement('span');
+    path.className = 'spec-path';
+    path.textContent =
+      document.body.dataset.docPath ||
+      location.pathname.split('/').filter(Boolean).slice(-2).join('/');
+
+    const right = document.createElement('span');
+    right.className = 'spec-bar-controls';
+    right.appendChild(buildSelect());
+    const modeBtn = document.createElement('button');
+    modeBtn.setAttribute('data-theme-toggle', '');
+    modeBtn.className = 'mode-toggle';
+    modeBtn.setAttribute('aria-label', 'Toggle light or dark mode');
+    wireMode(modeBtn, (btn, mode) => {
+      btn.innerHTML = mode === 'dark' ? SUN : MOON;
+      btn.setAttribute('aria-pressed', String(mode === 'dark'));
     });
-    reflect.handlers.push((theme, mode) => {
-      toggle.textContent = mode === 'dark' ? 'dark' : 'light';
-      toggle.setAttribute('aria-pressed', String(mode === 'dark'));
-    });
+    right.appendChild(modeBtn);
+
+    /* Inner wrapper centres the content to the reading column while the bar
+       (blur + bottom rule) spans full width. */
+    const inner = document.createElement('div');
+    inner.className = 'spec-bar-inner';
+    inner.append(brand, path, right);
+    bar.appendChild(inner);
+    document.body.insertBefore(bar, document.body.firstChild);
 
     reflect();
   }

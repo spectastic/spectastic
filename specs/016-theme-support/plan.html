@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Themes · Plan</title>
 <link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
 </head>
 <body>
 <main>
@@ -53,11 +54,11 @@ principles amendment or a deliberate exception logged in §8.</p>
 <table>
   <thead><tr><th>Principle</th><th>Compliance</th><th>Notes</th></tr></thead>
   <tbody>
-    <tr><td>P-1 · Source order is reading order</td><td><spec-pill>OK</spec-pill></td><td><code>theme-boot.js</code> sits in <code>&lt;head&gt;</code> (a sanctioned location) and only sets two attributes on <code>&lt;html&gt;</code> — it does not reorder or inject content. <code>cat</code> still reads top-to-bottom.</td></tr>
+    <tr><td>P-1 · Source order is reading order</td><td><spec-pill>OK</spec-pill></td><td><code>theme-boot.js</code> sits in <code>&lt;head&gt;</code> and only sets two attributes on <code>&lt;html&gt;</code>. The vivid header (<a href="#D-009">D-009</a>) is injected at the <em>start</em> of <code>&lt;body&gt;</code>, so source order stays header→content; it is chrome, not reordered reading content. <code>cat</code> still reads top-to-bottom.</td></tr>
     <tr><td>P-2 · Semantic tags over class soup</td><td><spec-pill>OK</spec-pill></td><td>State moves to <code>data-theme</code>/<code>data-mode</code> attributes (not class soup); the switcher is a native <code>&lt;select&gt;</code>. Replaces the lone <code>.dark</code> class.</td></tr>
     <tr><td>P-3 · IDs are contracts</td><td><spec-pill>OK</spec-pill></td><td>Theme ids (<code>spectastic-calm</code>, <code>spectastic-vivid</code>) and storage keys are stable contracts; the legacy key is migrated, never reused (<a href="./spec.html#FR-006">FR-006</a>).</td></tr>
     <tr><td>P-4 · Progressive enhancement</td><td><spec-pill>OK</spec-pill></td><td>JS off → <code>:root</code> defaults render calm + light fully (<a href="./spec.html#NFR-002">NFR-002</a>). If <code>theme-boot.js</code> fails to load, the page still paints the default. Switching is the enhancement.</td></tr>
-    <tr><td>P-5 · Calm density</td><td><spec-pill>OK</spec-pill></td><td>Switcher chrome is one native <code>&lt;select&gt;</code> + the existing footer toggle. <em>vivid</em> is denser by design; the reference reads calm-but-dense, and the one piece of pure chrome (the sticky/blurred header) is <a href="./spec.html#requirements">deferred</a> specifically to keep this honest. Parity must not cross into crowding.</td></tr>
+    <tr><td>P-5 · Calm density</td><td><spec-pill>OK</spec-pill></td><td>Switcher chrome is one native <code>&lt;select&gt;</code> + the existing footer toggle. <em>vivid</em> is denser by design; the reference reads calm-but-dense. The sticky/blurred header (<a href="./spec.html#FR-009">FR-009</a>, <a href="#D-009">D-009</a>) is now in scope but <strong>vivid only</strong> — calm keeps its minimal chrome, which is exactly what keeps P-5 honest. Parity must not cross into crowding.</td></tr>
     <tr><td>P-6 · Draft is loose, ratified is locked</td><td><spec-pill>OK</spec-pill></td><td>Purely additive to the rendering layer; changes no lifecycle/state behaviour of any artifact.</td></tr>
   </tbody>
 </table>
@@ -280,6 +281,26 @@ hybrid keeps the token strategy's wins while reaching the component-level parity
     <dt>Consequences</dt> <dd>+ Adding theme N is additive CSS, bounded, with zero document or other-theme cost. + Reconciles <a href="#D-006">D-006</a> with the §4 token win — scoped rules are acceptable precisely because they are CSS-only and opt-in by usage. + Bounds D-006 so it can never drift into forced scaffolding. − A few reference layouts need <code>:has()</code>/grid work or a small template hook (<a href="#R-8">R-8</a>). − Candidate to promote to a principle (P-7) once the theme count grows — flagged, not amended (§8).</dd>
   </dl>
 </spec-decision>
+
+<spec-decision id="D-009">
+  <h4>D-009 · Vivid header — inject once, reveal per-theme via CSS (no runtime DOM moves)</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd><a href="./spec.html#FR-009">FR-009</a>: vivid gets a sticky, backdrop-blurred top header carrying the brand/back-link, artifact path, theme dropdown, and a sun/moon mode toggle; the controls move out of the footer (where <code>spec.js</code> §7 builds them today). Must honour <a href="../../principles.html#P-1">P-1</a> (source order = reading order), <a href="../../principles.html#P-4">P-4</a> (degrade without JS), and <a href="../../principles.html#P-5">P-5</a> (calm density).</dd>
+    <dt>Decision</dt>     <dd><code>spec.js</code> injects a semantic <code>&lt;header&gt;</code> at the <em>start</em> of <code>&lt;body&gt;</code> on every load (P-1). The theme dropdown + mode toggle render in <em>both</em> the header and the footer, each wired to the same <code>window.__spectastic</code> registry + reflect handlers; CSS reveals the header only under <code>[data-theme="spectastic-vivid"]</code> (<code>position:sticky;top:0</code> + <code>backdrop-filter:blur()</code>, with an <code>@supports</code> solid-surface fallback) and the footer controls only under calm. Brand links to <code>index.html</code>; the path auto-derives from <code>location.pathname</code> (trailing segments) with a <code>&lt;body data-doc-path&gt;</code> override; the mode toggle is an inline sun/moon SVG. No runtime DOM relocation.</dd>
+    <dt>Consequences</dt> <dd>+ No DOM churn on theme switch; both control sets stay in sync because they read one registry. + Header sits first in source order (P-1) and, being JS-injected + vivid-only, vanishes under no-JS/calm — degrading to today's footer switcher (P-4). + Vivid-only keeps calm's chrome minimal (P-5). − Two control instances to keep wired (mitigated: shared reflect handlers, one source of truth). − <code>backdrop-filter</code> is uneven across browsers (mitigated by the <code>@supports</code> fallback, <a href="#R-9">R-9</a>).</dd>
+  </dl>
+  <spec-matrix>
+  <table>
+    <thead><tr><th>Approach</th><th>Simplicity</th><th>P-1 source order</th><th>Switch cost</th><th class="score">Total</th></tr></thead>
+    <tbody>
+      <tr data-winner><td>Inject once + CSS toggle</td><td>4</td><td>5</td><td>5</td><td class="score">14</td></tr>
+      <tr><td>Runtime relocate on switch</td><td>3</td><td>3</td><td>2</td><td class="score">8</td></tr>
+      <tr><td>Build header only in vivid</td><td>2</td><td>3</td><td>2</td><td class="score">7</td></tr>
+    </tbody>
+  </table>
+  </spec-matrix>
+</spec-decision>
 </section>
 
 
@@ -319,6 +340,18 @@ assets/
                     #   (calm :root untouched; rules scoped to the vivid selector)
 tests/
   theme.parity.spec.ts  # NEW — SC-006 computed-style checklist vs example.html
+
+# ── Re-plan (FR-009): vivid sticky header, layered on the above ──
+assets/
+  spec.js           # inject a semantic &lt;header&gt; at body-start; render the
+                    #   theme dropdown + sun/moon mode toggle in BOTH header
+                    #   and footer, wired to window.__spectastic (D-009)
+  spec.css          # [data-theme="spectastic-vivid"] header: sticky + blur
+                    #   (@supports solid fallback); reveal header in vivid,
+                    #   footer controls in calm; brand → index.html
+tests/
+  theme.header.spec.ts  # NEW — FR-009: vivid header sticky + controls work;
+                        #   calm has none; no-JS falls back; axe AA over blur
 </code></pre>
 </section>
 
@@ -337,6 +370,7 @@ tests/
     <tr id="R-6"><td>Per-theme layout rules (2-col grid, gauge-as-bars) leak into calm or break the narrow-viewport layout</td><td>Med</td><td>Med</td><td>Every component rule is scoped under <code>[data-theme="spectastic-vivid"]</code>, so calm is structurally untouched; screenshot-diff <em>both</em> themes at wide + narrow widths; a calm "no-change" gate complements the vivid <a href="./spec.html#SC-006">SC-006</a> gate.</td></tr>
     <tr id="R-7"><td>SC-006 checklist values drift from the reference (guessed, or <code>example.html</code> moves)</td><td>Low</td><td>Med</td><td>Capture target values directly from <code>example.html</code> at implementation; encode them as explicit constants in <code>theme.parity.spec.ts</code> with the reference as the cited source of truth.</td></tr>
     <tr id="R-8"><td>A parity feature genuinely needs document structure (no CSS-only path) → pressure to force markup on every document</td><td>Med</td><td>Med</td><td><a href="#D-008">D-008</a>/<a href="./spec.html#NFR-005">NFR-005</a> forbid forced markup; try <code>:has()</code>/grid on existing parents first, and if truly impossible add an <em>opt-in</em> template hook only. Each such feature is reviewed against the contract before landing.</td></tr>
+    <tr id="R-9"><td>Header <code>backdrop-filter</code> unsupported or janky; or the sticky bar fails AA over translucent content (<a href="./spec.html#FR-009">FR-009</a>)</td><td>Med</td><td>Med</td><td><code>@supports (backdrop-filter)</code> guard with a solid near-opaque surface fallback (<a href="#D-009">D-009</a>); axe-core asserts the header's AA over its settled background in the <code>{vivid}×{light,dark}</code> combos; sticky offset measured against the centered column.</td></tr>
   </tbody>
 </table>
 </section>
@@ -400,6 +434,7 @@ weight-per-role map and dark hex values) are Negotiable implementation detail, n
 <h2>10 · Change log</h2>
 <spec-changelog>
 <ol>
+  <li><time datetime="2026-06-19">2026-06-19</time><span>Added <a href="#D-009">D-009</a> — vivid sticky header: inject a semantic <code>&lt;header&gt;</code> at body-start once, render controls in both header + footer wired to one registry, reveal per-theme via CSS (sticky + blur, <code>@supports</code> solid fallback). Plans <a href="./spec.html#FR-009">FR-009</a>; added <a href="#R-9">R-9</a> (backdrop-filter / AA-over-blur); refreshed the P-1 and P-5 checks (header injected at top preserves source order; vivid-only keeps calm minimal).</span></li>
   <li><time datetime="2026-06-18">2026-06-18</time><span>Added D-008 — themes are CSS-only over the existing vocabulary, opt-in by element usage, additive across themes (no forced document markup; CSS-only-first with an opt-in template-hook fallback). Bounds D-006; implements <a href="./spec.html#NFR-005">NFR-005</a>; added R-8; flagged as principle candidate P-7.</span></li>
   <li><time datetime="2026-06-18">2026-06-18</time><span>Re-plan after <a href="./triage-log.html#T-002">T-002</a>: added per-theme component-override layer on the token base (D-006) and a component-group, demoable-first slicing strategy (D-007); raised risk tolerance Low → Medium; added R-6 (per-theme layout leakage) and R-7 (parity-checklist drift); extended the test tier with an SC-006 computed-style parity gate. D-001 augmented (not superseded).</span></li>
   <li><time datetime="2026-06-18">2026-06-18</time><span>Initial plan. Decisions: token-based theming (D-001); pre-paint <code>theme-boot.js</code> in <code>&lt;head&gt;</code> with the switcher in <code>spec.js</code> (D-002); mode as <code>[data-mode]</code>, drop <code>html.dark</code> (D-003); JS-built native <code>&lt;select&gt;</code> from a registry (D-004); Playwright + axe-core test tier (D-005); full 67-file retrofit; risk tolerance Low.</span></li>

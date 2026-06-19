@@ -10,7 +10,8 @@ const FIXTURE = '/tests/fixtures/all-components.html';
 test('the switcher is generated from the registry (no per-artifact markup)', async ({ page }) => {
   await page.goto(FIXTURE);
   const { optionValues, registryIds } = await page.evaluate(() => ({
-    optionValues: [...document.querySelectorAll('select.theme-select option')].map(
+    // One switcher instance (footer + vivid header carry identical copies).
+    optionValues: [...document.querySelector('select.theme-select')!.querySelectorAll('option')].map(
       (o) => (o as HTMLOptionElement).value
     ),
     registryIds: (window as any).__spectastic.THEMES.map((t: any) => t.id),

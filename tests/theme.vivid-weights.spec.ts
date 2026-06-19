@@ -19,7 +19,7 @@ test('vivid raises heading weights vs calm; colour tokens are theme-invariant', 
   const calmH2 = Number(await weight(page, 'main h2'));
   const calmLink = await cssVar(page, '--c-link');
 
-  await page.locator('select.theme-select').selectOption('spectastic-vivid');
+  await page.locator('select.theme-select:visible').selectOption('spectastic-vivid');
   const heavyH1 = Number(await weight(page, 'main h1'));
   const heavyH2 = Number(await weight(page, 'main h2'));
   const heavyLink = await cssVar(page, '--c-link');
@@ -33,7 +33,7 @@ test('vivid raises heading weights vs calm; colour tokens are theme-invariant', 
 
 test('vivid matches the reference weight map (measured)', async ({ page }) => {
   await page.goto(FIXTURE);
-  await page.locator('select.theme-select').selectOption('spectastic-vivid');
+  await page.locator('select.theme-select:visible').selectOption('spectastic-vivid');
   expect(await cssVar(page, '--fw-h1')).toBe('500'); // reference Fraunces h1
   expect(await cssVar(page, '--fw-h2')).toBe('540'); // reference section headings
 });
@@ -46,7 +46,7 @@ test('switching theme requests no additional font files', async ({ page }) => {
   await page.goto(FIXTURE);
   await page.waitForLoadState('networkidle').catch(() => {});
   const before = fontReqs.length;
-  await page.locator('select.theme-select').selectOption('spectastic-vivid');
+  await page.locator('select.theme-select:visible').selectOption('spectastic-vivid');
   await page.waitForTimeout(400);
   expect(fontReqs.length).toBe(before);
 });

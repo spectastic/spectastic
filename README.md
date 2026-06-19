@@ -28,7 +28,9 @@ spectastic/
 ├── inbox.html                    project-root small-batch entry point (live)
 ├── assets/
 │   ├── spec.css                  ~25 KB design system (calm cream palette, serif+sans+mono trio)
-│   └── spec.js                   ~5 KB progressive enhancement
+│   ├── spec.js                   ~5 KB progressive enhancement
+│   ├── theme-boot.js             render-blocking theme/mode boot (applies before first paint)
+│   └── favicon.svg               the spectrum brand mark (see Brand logo)
 ├── templates/
 │   ├── principles.html           project principles scaffold
 │   ├── spec.html                 feature specification scaffold
@@ -218,6 +220,28 @@ mode; both persist in `localStorage` and apply before first paint. Adding a them
 `assets/theme-boot.js` — no per-artifact edits.
 
 Open `assets/spec.css` to tweak. Everything is CSS custom properties at the top.
+
+### Brand logo
+
+The mark is the **spectrum asterisk** — one prong path rotated eight times at 45°, its eight fills the
+eight lifecycle commands in fixed clockwise order (principles `#5f023e` → spec → plan → tasks →
+implement → propose → apply → triage `#7558b2`). It is always the canonical inline SVG (`var(--spec-1…8)`
+fills, `favicon.svg` for tabs) — **never** a Unicode glyph; the order and colours never change. The
+spectrum is the default; a mono variant follows the ink for single-colour use, and dark mode swaps in a
+brightened set automatically.
+
+Place it **after** the wordmark, lifted to the cap line — two techniques:
+
+```html
+<!-- A · wordmark lockup (chrome, headings) — mark 0.52em, cap-line aligned -->
+<span class="spec-logo">spectastic<svg viewBox="0 0 100 100" aria-hidden="true" style="overflow:visible"><!-- 8 prongs, fill var(--spec-1…8) --></svg></span>
+
+<!-- B · running text — the mark as a superscript -->
+spec-driven<sup class="spec-sup"><svg viewBox="0 0 100 100" style="overflow:visible"><!-- 8 prongs --></svg></sup> done right
+```
+
+Keep one prong-length of clearspace around the standalone icon and don't render it below 16px. Full
+contract: [`specs/017-brand-logo/spec.html`](./specs/017-brand-logo/spec.html).
 
 ## Install
 
