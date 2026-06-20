@@ -315,14 +315,14 @@ const GATE_SCRIPT = `<script>
 /* quiz-gate (019-explain-course FR-006) — enhancement only; degrades to self-mark */
 (function () {
   for (const quiz of document.querySelectorAll('.quiz')) {
-    var correct = Number(quiz.getAttribute('data-correct'));
-    var objId = quiz.getAttribute('data-obj');
-    var checkbox = objId ? document.querySelector('#' + objId + ' input[type=checkbox]') : null;
-    var answer = quiz.querySelector('.quiz-answer');
+    const correct = Number(quiz.getAttribute('data-correct'));
+    const objId = quiz.getAttribute('data-obj');
+    const checkbox = objId ? document.querySelector('#' + objId + ' input[type=checkbox]') : null;
+    const answer = quiz.querySelector('.quiz-answer');
     if (answer) answer.hidden = true;
     quiz.querySelectorAll('input[type=radio]').forEach(function (radio) {
       radio.addEventListener('change', function () {
-        var chosen = Number(radio.value);
+        const chosen = Number(radio.value);
         if (answer) answer.hidden = false;
         quiz.classList.toggle('correct', chosen === correct);
         quiz.classList.toggle('incorrect', chosen !== correct);
@@ -430,7 +430,14 @@ ${opts}
 </spec-tabs>
 ${
   teachBack
-    ? `\n<spec-decision>\n  <h4>Teach-back (ungraded)</h4>\n  <p>${escapeHtml(teachBack)}</p>\n</spec-decision>`
+    ? `\n<spec-decision>
+  <h4>Teach-back (ungraded)</h4>
+  <p>${escapeHtml(teachBack)}</p>
+  <label class="teachback">
+    <span class="small-caps">Your answer — not saved (the course is ephemeral); writing it is the point.</span>
+    <textarea name="teachback-${id}" rows="3" placeholder="Explain it in your own words…" style="display:block;width:100%;margin-top:var(--s-2);font:inherit;padding:var(--s-2)"></textarea>
+  </label>
+</spec-decision>`
     : ''
 }`;
 }

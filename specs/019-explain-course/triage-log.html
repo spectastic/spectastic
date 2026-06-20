@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>019-explain-course · Triage log</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Triage log · 019-explain-course</p>
+  <h1>019-explain-course — triage log</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    Defects against the <code>019-explain-course</code> spec. Cards append-only; IDs stable.
+  </p>
+
+  <spec-meta>
+    <b>Spec</b>      <span><a href="./spec.html">019-explain-course</a></span>
+    <b>Created</b>   <span><time datetime="2026-06-20">2026-06-20</time></span>
+    <b>Read time</b> <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-tldr>
+    <p>Two defects found by opening the first real generated course (<code>007-core-triage</code>): the quiz gate
+    fired on the wrong objective, and the teach-back had no way to respond. Both are implementation defects in
+    <code>assembleCourse</code> — regeneration reproduces them — and both slipped a structural-only SC-003 test.</p>
+  </spec-tldr>
+</header>
+
+
+<section id="cards">
+<h2>Cards</h2>
+<spec-triage-log>
+
+<spec-triage id="T-001" layer="implementation">
+  <header>
+    <h4>Quiz gate marks only the last objective (closure-over-<code>var</code>)</h4>
+    <span class="meta">
+      <span class="layer-pill">Implementation</span>
+      <span class="regen" data-result="fail">code</span>
+    </span>
+  </header>
+
+  <p class="headline">Debugging "only the last objective revealed its answer," root cause was an implementation
+  closure-over-<code>var</code> bug in the generated quiz-gate script; fixed by block-scoping the per-objective
+  bindings; regeneration <em>fails</em> (the generator emits the same broken script every time).</p>
+
+  <dl>
+    <dt>Expected</dt> <dd>Answering objective <em>N</em>'s quiz reveals objective <em>N</em>'s answer and ticks objective <em>N</em>'s mastery checkbox (<a href="./spec.html#FR-006">FR-006</a>).</dd>
+    <dt>Actual</dt>   <dd>Answering <em>any</em> quiz revealed only the <strong>last</strong> objective's answer and would tick the last objective's checkbox; objectives 1..N−1 never responded.</dd>
+    <dt>Diagnosis</dt><dd>The gate script declared <code>correct</code>, <code>objId</code>, <code>checkbox</code>, <code>answer</code> with <code>var</code> inside a <code>for…of</code> loop. <code>var</code> is function-scoped, so every <code>change</code> handler closed over the same bindings, which hold the final iteration's values. Flagged at author time by linter <code>S1515</code> and dismissed as style. <a href="./spec.html#SC-003">SC-003</a>'s test was structural (asserted the script <em>string</em>) and never executed the JS, so the broken-but-present gate passed.</dd>
+    <dt>Fix</dt>      <dd><span class="path">packages/core/src/commands/course.ts</span> — <code>GATE_SCRIPT</code> uses <code>const</code> for the per-iteration bindings. Guard: <span class="path">tests/course.gate.spec.ts</span> drives a generated course in a real browser and asserts the answered objective's checkbox (not the last) is ticked; plus a structural assertion in the integration test that the gate script carries no <code>var</code>.</dd>
+  </dl>
+
+  <details>
+    <summary>Deep dive — none required</summary>
+    <p>Self-contained implementation fix. No cross-spec contract, principles invariant, or deferred scope touched.</p>
+  </details>
+</spec-triage>
+
+<spec-triage id="T-002" layer="implementation">
+  <header>
+    <h4>Teach-back prompt has no affordance to respond</h4>
+    <span class="meta">
+      <span class="layer-pill">Implementation</span>
+      <span class="regen" data-result="fail">code</span>
+    </span>
+  </header>
+
+  <p class="headline">Debugging "no way to write anything down for teach-back," root cause was the implementation
+  rendering the prompt as static prose with no input; fixed by adding a non-persisted <code>&lt;textarea&gt;</code>;
+  regeneration <em>fails</em> (every generated course omitted the input).</p>
+
+  <dl>
+    <dt>Expected</dt> <dd>The ungraded teach-back (<a href="./spec.html#FR-007">FR-007</a>) lets the learner articulate the answer in their own words — the testing-effect benefit requires actually writing it.</dd>
+    <dt>Actual</dt>   <dd><code>assembleCourse</code> rendered <code>&lt;spec-decision&gt;&lt;h4&gt;Teach-back&lt;/h4&gt;&lt;p&gt;prompt&lt;/p&gt;&lt;/spec-decision&gt;</code> — a rhetorical question with nowhere to respond.</dd>
+    <dt>Diagnosis</dt><dd><a href="./spec.html#FR-007">FR-007</a> says "teach-back prompt"; the implementation took "prompt" literally and omitted the response affordance. The spec is satisfiable with an input — this is an implementation gap, not a spec defect.</dd>
+    <dt>Fix</dt>      <dd><span class="path">packages/core/src/commands/course.ts</span> — render a <code>&lt;textarea&gt;</code> under the teach-back prompt. Content is intentionally <strong>not persisted</strong> (courses are ephemeral/git-ignored, <a href="./spec.html#FR-001">FR-001</a>); the value is articulating in-session. A label states this.</dd>
+  </dl>
+
+  <details>
+    <summary>Deep dive — none required</summary>
+    <p>Within <a href="./spec.html#FR-007">FR-007</a> as written; no amendment needed.</p>
+  </details>
+</spec-triage>
+
+</spec-triage-log>
+</section>
+
+
+<section id="changelog">
+<h2>Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-06-20">2026-06-20</time><span>Triage log scaffolded with two implementation defects (T-001 gate closure bug, T-002 teach-back affordance) found by opening the first generated course.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  019-explain-course · triage log · 2026-06-20 ·
+  <button data-theme-toggle style="background:none;border:none;color:var(--c-link);cursor:pointer;font:inherit;padding:0;border-bottom:1px solid currentColor;">light/dark</button>
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>

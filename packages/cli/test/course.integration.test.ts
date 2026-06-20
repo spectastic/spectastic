@@ -143,6 +143,11 @@ describe('course CLI (T-100, FR-003/FR-004/SC-001/SC-002)', () => {
 
     // The quiz gate ships as an inline enhancement script…
     expect(html).toMatch(/querySelectorAll\(['"]\.quiz['"]\)/);
+    // …block-scoped, never `var` — guards the closure-over-var regression (triage T-001)
+    // that made the gate fire on the last objective only. Behaviour is proven in
+    // tests/course.gate.spec.ts; this is the cheap structural backstop.
+    const gate = html.slice(html.indexOf('quiz-gate'));
+    expect(gate).not.toMatch(/\bvar\s/);
     // …but the no-JS baseline must not dead-end: the mastery checkbox stays
     // directly markable (never disabled) and the answer renders inline.
     expect(html).not.toMatch(/type="checkbox"\s+disabled/);
