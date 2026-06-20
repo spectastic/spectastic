@@ -1,0 +1,331 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>explain --course — the grounded course · Plan</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Implementation plan · 019-explain-course</p>
+  <h1>explain --course — the grounded course</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    How we will build it.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>     <span><spec-status value="draft">Draft</spec-status></span>
+    <b>Spec</b>       <span><a href="./spec.html">019-explain-course</a></span>
+    <b>Owner</b>      <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Branch</b>     <span><code>019-explain-course</code></span>
+    <b>Created</b>    <span><time datetime="2026-06-20">2026-06-20</time></span>
+    <b>Read time</b>  <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-tldr>
+    <p>A <strong>hybrid</strong>: <code>/spectastic.explain --course &lt;target&gt;</code> drives the in-session
+    agent to retrieve source and draft ≤7 objectives (Read + MCQ) as a structured JSON draft, then hands that
+    draft to a new stub-testable CLI/kernel (<code>spectastic course</code>) that <strong>verifies</strong> it —
+    every cited reference confirmed to exist, every quiz item posed to a <em>blind</em> AI call and rejected if
+    answerable without the source — <strong>assembles</strong> a <code>course.html</code> from a new template, and
+    <strong>writes</strong> it to <code>.spectastic/courses/</code>. The agent owns generation and the
+    regenerate-or-drop loop; the kernel owns the testable guarantees. Biggest risk: the guessability check is
+    itself an LLM judgment — guarded by a conservative reject rule, stub-driven tests, and a manual smoke.</p>
+  </spec-tldr>
+</header>
+
+
+<section id="principles-check">
+<h2>1 · Principles check</h2>
+<p>Verify this plan respects every principle in <a href="../../principles.html">v1.1.0</a>. Any violation requires
+either a principles amendment or a deliberate exception logged below.</p>
+
+<table>
+  <thead><tr><th>Principle</th><th>Compliance</th><th>Notes</th></tr></thead>
+  <tbody>
+    <tr><td>P-1 · Source order is reading order</td><td><spec-pill>OK</spec-pill></td><td>Command file and kernel are linear; the generated <code>course.html</code> reads objectives top-to-bottom, gate script at the bottom.</td></tr>
+    <tr><td>P-2 · Semantic tags over class soup</td><td><spec-pill>OK</spec-pill></td><td><code>course.html</code> reuses <code>&lt;spec-task&gt;</code>, <code>&lt;spec-tabs&gt;</code>, <code>&lt;spec-decision&gt;</code>, <code>&lt;spec-glossary&gt;</code> — no new elements (<a href="./spec.html#NFR-002">NFR-002</a>).</td></tr>
+    <tr><td>P-3 · IDs are contracts</td><td><spec-pill>OK</spec-pill></td><td>Courses carry no IDs; they reference the stable IDs they teach (<a href="./spec.html#FR-003">FR-003</a>).</td></tr>
+    <tr><td>P-4 · Progressive enhancement, never dependence</td><td><spec-pill>OK</spec-pill></td><td>The quiz gate is an inline enhancement (D-004); with JS off the ledger is self-markable and answers render inline (<a href="./spec.html#FR-006">FR-006</a>, <a href="./spec.html#SC-003">SC-003</a>).</td></tr>
+    <tr><td>P-5 · Calm density</td><td><spec-pill>OK</spec-pill></td><td>The course follows the house typographic system via <code>assets/spec.css</code>.</td></tr>
+    <tr><td>P-6 · Draft is loose, ratified is locked</td><td><spec-pill>OK</spec-pill></td><td>Courses are ephemeral, non-lifecycle artifacts with no status pill — the change-management gate doesn't apply.</td></tr>
+  </tbody>
+</table>
+</section>
+
+
+<section id="technical-context">
+<h2>2 · Technical context</h2>
+<dl>
+  <dt>Language(s)</dt>      <dd>TypeScript 5.7+ on Node 20+, ESM (the kernel + CLI). The command file is markdown prose; the generated <code>course.html</code> is HTML with a small inline script.</dd>
+  <dt>Frameworks</dt>       <dd>commander.js (CLI), vitest (tests), tsup (build), pnpm workspace. The existing <code>AIProvider</code> (<a href="../015-ai-stub-injection/spec.html">015</a>) + <code>StubAIProvider</code>. No new dependency.</dd>
+  <dt>Storage</dt>          <dd><code>.spectastic/courses/&lt;date&gt;-&lt;slug&gt;/course.html</code>, git-ignored (the CLI ensures a <code>.spectastic/.gitignore</code>); <code>--keep</code> retains. No database; no cross-session state (<a href="./spec.html#NFR-001">NFR-001</a> bounds size).</dd>
+  <dt>Testing</dt>          <dd>Stub-driven integration over the <code>course</code> CLI (the <a href="../015-ai-stub-injection/spec.html">015</a> pattern): canned generation + guessability responses; assert structure, existence (<a href="./spec.html#SC-001">SC-001</a>), guessable-item rejection (<a href="./spec.html#SC-002">SC-002</a>), no-JS self-mark (<a href="./spec.html#SC-003">SC-003</a>). Plus a manual real-LLM smoke.</dd>
+  <dt>Perf targets</dt>     <dd>None quantified. Generation/verification is an LLM batch bounded by ≤7 objectives × one blind call each; not a latency surface. CI uses the stub (sub-second).</dd>
+  <dt>Constraints</dt>      <dd>Single-file self-contained <code>course.html</code>, no build step, reuse <code>&lt;spec-*&gt;</code> + <code>spec.css</code>/<code>spec.js</code> (<a href="./spec.html#NFR-002">NFR-002</a>); <code>--course</code> rides the opt-in extended <code>explain</code> verb (<a href="./spec.html#FR-011">FR-011</a>); apart from the course dir, mutate no tracked source.</dd>
+</dl>
+</section>
+
+
+<section id="approach">
+<h2>3 · Approach</h2>
+
+<p>Split by what each side is best at. <strong>The agent generates</strong> — it has Read/Grep, so it resolves
+the target, reads real source, and drafts ≤7 objectives (each a Read explanation, an MCQ with per-option
+feedback, an ungraded teach-back, and the list of references it cited) as a structured JSON <em>course draft</em>.
+<strong>The kernel verifies</strong> — a new <code>spectastic course</code> reads the draft on stdin, confirms
+every cited reference exists in the repo, and poses each quiz item to a <em>blind</em> AI call (question only, no
+source) via <code>AIProvider.subagent</code>; an item answered correctly blind is reported as guessable. The agent
+regenerates reported items (or drops the objective after retries, per <a href="./spec.html#FR-004">FR-004</a>) and
+re-submits; on a clean draft the kernel assembles <code>course.html</code> from a new
+<code>templates/course.html</code> skeleton and writes it under <code>.spectastic/courses/</code>.</p>
+
+<p>The verification, assembly, and write — the testable guarantees — live in code routed through the
+<code>AIProvider</code> factory, so the whole path is stub-driven in CI with no API spend. The interactive quiz
+gate is a small inline script generated into each <code>course.html</code>, degrading to a self-markable ledger
+with JS off.</p>
+
+<spec-arch>
+<figure>
+<svg viewBox="0 0 700 250" role="img" aria-label="Hybrid: agent drafts, kernel verifies and writes">
+  <style>
+    .box { fill:#fcfbf7; stroke:#c4c1bb; stroke-width:1.2; }
+    .k { fill:#f3f6f6; stroke:#9fb9bd; }
+    .label { font: 700 11px Lato, sans-serif; fill:#4a4a46; letter-spacing:0.05em; text-transform:uppercase; }
+    .body { font: 400 12px "Source Serif 4", Georgia, serif; fill:#353534; }
+    .arr { stroke:#73706d; stroke-width:1.2; fill:none; }
+    .dash { stroke:#b08; stroke-width:1.1; fill:none; stroke-dasharray:4 3; }
+  </style>
+
+  <rect class="box" x="16"  y="40" width="150" height="58" rx="4"/>
+  <text class="label" x="30" y="63">explain --course</text>
+  <text class="body"  x="30" y="83">agent drafts</text>
+
+  <rect class="box" x="210" y="40" width="140" height="58" rx="4"/>
+  <text class="label" x="224" y="63">course draft</text>
+  <text class="body"  x="224" y="83">JSON · stdin</text>
+
+  <rect class="box k" x="396" y="32" width="150" height="74" rx="4"/>
+  <text class="label" x="410" y="55">spectastic course</text>
+  <text class="body"  x="410" y="73">verify · assemble</text>
+  <text class="body"  x="410" y="90">· write</text>
+
+  <rect class="box" x="396" y="150" width="150" height="46" rx="4"/>
+  <text class="label" x="410" y="170">AIProvider</text>
+  <text class="body"  x="410" y="187">blind guess-check</text>
+
+  <rect class="box" x="582" y="40" width="104" height="58" rx="4"/>
+  <text class="label" x="595" y="63">course.html</text>
+  <text class="body"  x="595" y="83">.spectastic/</text>
+
+  <rect class="box" x="210" y="150" width="140" height="46" rx="4"/>
+  <text class="label" x="224" y="170">templates/</text>
+  <text class="body"  x="224" y="187">course.html</text>
+
+  <path class="arr" d="M166 69 L210 69" marker-end="url(#a)"/>
+  <path class="arr" d="M350 69 L396 69" marker-end="url(#a)"/>
+  <path class="arr" d="M546 69 L582 69" marker-end="url(#a)"/>
+  <path class="arr" d="M471 106 L471 150" marker-end="url(#a)"/>
+  <path class="arr" d="M350 173 L396 145" marker-end="url(#a)"/>
+  <path class="dash" d="M396 96 C320 130 240 120 230 98" marker-end="url(#b)"/>
+  <text class="body" x="250" y="128" fill="#b08" style="font-size:10px">regenerate / drop</text>
+
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#73706d"/></marker>
+    <marker id="b" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#b08"/></marker>
+  </defs>
+</svg>
+<figcaption>The agent drafts and owns the regenerate-or-drop loop (dashed); the kernel verifies against the repo
+and a blind <code>AIProvider</code> call, then assembles from the template and writes the course.</figcaption>
+</figure>
+</spec-arch>
+</section>
+
+
+<section id="alternatives">
+<h2>4 · Alternatives considered</h2>
+
+<p>The decisive choice is the implementation surface. Scores 1 (poor) – 5 (excellent).</p>
+
+<spec-matrix>
+<table>
+  <thead>
+    <tr><th>Option</th><th>Testable guarantees</th><th>Retrieval quality</th><th>Build effort</th><th>Fit to spec</th><th class="score">Total</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Markdown-only (agent does everything)</td><td>2</td><td>5</td><td>5</td><td>3</td><td class="score">15</td></tr>
+    <tr><td>CLI/kernel end-to-end (+ new retrieval util)</td><td>5</td><td>2</td><td>2</td><td>4</td><td class="score">13</td></tr>
+    <tr data-winner><td>Hybrid (agent drafts, kernel verifies/writes)</td><td>5</td><td>5</td><td>3</td><td>5</td><td class="score">18</td></tr>
+  </tbody>
+</table>
+</spec-matrix>
+
+<p>Markdown-only keeps retrieval strong but makes the anti-hallucination guarantees agent-driven, not CI-testable
+— cutting against <a href="../015-ai-stub-injection/spec.html">015</a>'s whole reason for the stub. CLI-end-to-end
+makes everything testable but forces a brittle retrieval util for fuzzy targets. Hybrid takes the agent's
+retrieval <em>and</em> keeps the guarantees in stub-tested code.</p>
+</section>
+
+
+<section id="decisions">
+<h2>5 · Decisions</h2>
+
+<spec-decision id="D-001">
+  <h4>D-001 · Hybrid surface — agent drafts, kernel verifies + assembles + writes</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>The course writes an artifact and must verify it (<a href="./spec.html#SC-001">SC-001</a>/<a href="./spec.html#SC-002">SC-002</a>) — unlike the markdown-only coach. Generation wants the agent's Read/Grep; verification wants deterministic, stub-testable code.</dd>
+    <dt>Decision</dt>     <dd>The <code>--course</code> branch of <code>explain.md</code> drives the agent to draft objectives; a new <code>spectastic course</code> kernel verifies, assembles from a template, and writes. The agent owns generation; the kernel owns the testable guarantees.</dd>
+    <dt>Consequences</dt> <dd>+ Best retrieval and CI-testable guarantees. + Reuses the <code>AIProvider</code>/stub infra. − Two surfaces + a contract between them (D-002). − Heaviest verb to date.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-002">
+  <h4>D-002 · Course-draft contract — JSON on stdin; agent owns the regenerate-or-drop loop</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>The agent and kernel need a contract, and <a href="./spec.html#FR-004">FR-004</a> requires guessable items to be regenerated then dropped. Regeneration is generation — the agent's job.</dd>
+    <dt>Decision</dt>     <dd>The agent emits a <em>course draft</em> JSON (<code>objectives[]</code>: title, read, quiz{question, options, correctIndex, feedback}, teachBack, refs[]) piped to <code>spectastic course --target &lt;t&gt; [--keep]</code> on stdin. The kernel validates the draft schema on load, verifies, and reports per-item pass/fail; the agent regenerates failures (cap retries, then drops the objective) and re-submits; a clean draft is written.</dd>
+    <dt>Consequences</dt> <dd>+ Stateless, idempotent kernel; the loop lives where generation lives. + No draft file in the tracked tree (stdin). − The schema must be validated loudly (R2).</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-003">
+  <h4>D-003 · Guessability = a blind per-item <code>AIProvider</code> call; existence = repo lookup</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd><a href="./spec.html#FR-004">FR-004</a> needs real blinding — an item is "guessable" if answerable <em>without</em> the source.</dd>
+    <dt>Decision</dt>     <dd>Each quiz item is posed to <code>AIProvider.subagent</code> with the question + options only (no source) in a fresh context; a correct blind answer ⇒ reject. Reference existence is a plain repo lookup (resolve spec IDs / element IDs / paths via <code>fs</code>/glob). Both route through the factory, so the stub drives them in tests.</dd>
+    <dt>Consequences</dt> <dd>+ Genuine blinding; deterministic under the stub. + No new AI infra. − One extra AI call per quiz item (bounded by ≤7 objectives). − The blind judge can err (R1).</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-004">
+  <h4>D-004 · <code>templates/course.html</code> skeleton + inline gate script; degrades to self-mark</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd><a href="./spec.html#NFR-002">NFR-002</a> wants single-file reuse of the <code>&lt;spec-*&gt;</code> vocabulary; <a href="./spec.html#FR-006">FR-006</a> wants a quiz gate that never dead-ends with JS off (<a href="../../principles.html#P-4">P-4</a>).</dd>
+    <dt>Decision</dt>     <dd>Add <code>templates/course.html</code>: <code>&lt;spec-meta&gt;</code> + objectives as a <code>&lt;spec-task&gt;</code> mastery ledger, each with <code>&lt;spec-tabs&gt;</code> (Read / Quiz) and a <code>&lt;spec-decision&gt;</code> teach-back prompt, plus a small inline gate <code>&lt;script&gt;</code>. The kernel fills it. With JS off, checkboxes are directly markable and the correct answer renders inline. Gate JS stays out of shared <code>spec.js</code>.</dd>
+    <dt>Consequences</dt> <dd>+ Self-contained, no build step; shared <code>spec.js</code> stays clean. + Consistent structure across courses. − A 4th artifact template to maintain.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-005">
+  <h4>D-005 · Ephemeral storage under <code>.spectastic/courses/</code>, git-ignored, <code>--keep</code></h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd><a href="./spec.html#FR-001">FR-001</a> (D-008): courses are ephemeral and outside <code>specs/</code>.</dd>
+    <dt>Decision</dt>     <dd>Write to <code>.spectastic/courses/&lt;date&gt;-&lt;slug&gt;/course.html</code>. The kernel ensures a <code>.spectastic/.gitignore</code> (<code>*</code>) on first write so courses are ignored by default; <code>--keep</code> records the course as intended-to-track (e.g. a sibling marker / un-ignore).</dd>
+    <dt>Consequences</dt> <dd>+ The contract tree stays clean; ephemerality is the default. − A first-write side effect (creating <code>.spectastic/.gitignore</code>); idempotent.</dd>
+  </dl>
+</spec-decision>
+</section>
+
+
+<section id="project-structure">
+<h2>6 · Project structure</h2>
+
+<pre><code>commands/
+  spectastic.explain.md            # CHANGED — add the --course mode: draft objectives, pipe to
+                                   #           `spectastic course`, run the regenerate-or-drop loop
+templates/
+  course.html                      # NEW — course skeleton + inline quiz-gate script (D-004)
+packages/core/src/commands/
+  course.ts                        # NEW kernel — verifyExistence(draft, repo),
+                                   #   verifyGuessability(draft, ai), assembleCourse(draft, template)
+packages/core/                     # CHANGED — add ./commands/course subpath export (lazy) + tsup entry
+packages/cli/src/commands/
+  course.ts                        # NEW CLI — `spectastic course`: read draft (stdin), verify, assemble,
+                                   #   write .spectastic/courses/, --keep, ensure .spectastic/.gitignore
+packages/cli/src/index.ts          # CHANGED — registerCourse(program)
+packages/cli/test/
+  course.integration.test.ts       # NEW — stub-driven: structure, SC-001 existence, SC-002 reject, SC-003 no-JS
+  fixtures/course-*.json           # NEW — draft + stub-script fixtures
+specs/019-explain-course/
+  smoke.md                         # NEW — manual real-LLM course-quality smoke
+</code></pre>
+</section>
+
+
+<section id="risks">
+<h2>7 · Risks &amp; mitigations</h2>
+
+<table>
+  <thead><tr><th>Risk</th><th>Likelihood</th><th>Impact</th><th>Mitigation</th></tr></thead>
+  <tbody>
+    <tr><td>The blind guessability judge errs — a guessable item slips through, or a good item is wrongly rejected</td><td>M</td><td>M</td><td>Conservative rule (reject only on a confident correct blind answer); stub tests pin the reject path; the manual smoke spot-checks real courses. Tunable prompt, not load-bearing infra.</td></tr>
+    <tr><td>Agent emits a malformed course draft (contract drift)</td><td>M</td><td>M</td><td>Kernel validates the draft schema on load and throws naming the offending path (the <code>StubAIProvider</code> validator pattern from <a href="../015-ai-stub-injection/spec.html#FR-005">015 FR-005</a>).</td></tr>
+    <tr><td>Regenerate loop never converges (an objective stays guessable)</td><td>L</td><td>L</td><td>Cap retries (e.g. 2), then drop the objective per <a href="./spec.html#FR-004">FR-004</a>; <a href="./spec.html#NFR-001">NFR-001</a> caps the course at ≤7.</td></tr>
+    <tr><td>Inline gate script breaks the no-JS baseline (P-4 dead-end)</td><td>M</td><td>M</td><td><a href="./spec.html#SC-003">SC-003</a> test loads a generated course with JS disabled and asserts the ledger is self-markable and answers render inline; the template ships the degraded baseline as the default state.</td></tr>
+    <tr><td><code>--keep</code> / git-ignore semantics surprise a user (course lost or unexpectedly tracked)</td><td>L</td><td>M</td><td>Default is git-ignored (ephemeral, per D-008); the write summary states the path and whether it's kept; <code>--keep</code> is the only way to retain.</td></tr>
+  </tbody>
+</table>
+
+<spec-warning>
+<p>The course's anti-hallucination guarantees (<a href="./spec.html#SC-001">SC-001</a>/<a href="./spec.html#SC-002">SC-002</a>)
+are only as strong as the blind judge and the existence lookup. Stub tests prove the <em>mechanism</em> (a
+guessable item is rejected; a missing ref fails); real-course <em>quality</em> rests on the manual smoke. Accept
+this before implementation.</p>
+</spec-warning>
+</section>
+
+
+<section id="complexity">
+<h2>8 · Complexity tracking</h2>
+<p>This is the heaviest verb to date; each piece earns its place.</p>
+
+<spec-assumption>
+<p><strong>Two surfaces + a contract (D-001/D-002).</strong> Justified: the spec's headline value is verification
+(<a href="./spec.html#SC-002">SC-002</a>), which must be deterministic and CI-tested — that wants code — while
+generation wants the agent's retrieval. A single surface sacrifices one or the other; the JSON-on-stdin contract
+is the minimal seam between them.</p>
+</spec-assumption>
+
+<spec-assumption>
+<p><strong>A 4th artifact template + a new CLI subcommand.</strong> Justified: <a href="./spec.html#NFR-002">NFR-002</a>
+requires a consistent self-contained <code>course.html</code> (a template is how every other artifact gets that),
+and the kernel needs a CLI entry to be invoked by the slash command and stub-tested like the six AI verbs.</p>
+</spec-assumption>
+
+<spec-assumption>
+<p><strong>Risk tolerance: Medium.</strong> Novel verification (blind guessability) built on the proven
+<code>AIProvider</code>/stub infrastructure; the only genuinely new infra is the draft contract and the course
+template.</p>
+</spec-assumption>
+</section>
+
+
+<section id="questions">
+<h2>9 · Open questions</h2>
+<spec-questions>
+<p>None block implementation. The decisions the spec deferred to this plan are resolved above: the surface is
+D-001 (hybrid), the guessability mechanism is D-003 (blind <code>AIProvider</code> call). The exact draft-schema
+field names and the retry cap are implementation details for <a href="../../templates/tasks.html">tasks</a>, not
+open questions.</p>
+</spec-questions>
+</section>
+
+
+<section id="changelog">
+<h2>10 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-06-20">2026-06-20</time><span>Initial plan. Hybrid surface (D-001): agent drafts, <code>spectastic course</code> kernel verifies + assembles + writes. JSON-on-stdin draft contract with agent-owned regenerate-or-drop loop (D-002); blind per-item guessability via <code>AIProvider</code> (D-003); <code>templates/course.html</code> + inline gate script degrading to self-mark (D-004); ephemeral <code>.spectastic/courses/</code> storage (D-005). Stub-driven integration tests + manual smoke. Checked against principles v1.1.0 — all OK.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  Plan for 019-explain-course · explain --course — the grounded course · authored 2026-06-20 ·
+  <button data-theme-toggle style="background:none;border:none;color:var(--c-link);cursor:pointer;font:inherit;padding:0;border-bottom:1px solid currentColor;">light/dark</button>
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>

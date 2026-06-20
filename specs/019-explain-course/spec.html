@@ -1,0 +1,307 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>explain --course — the grounded course · Specification</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Specification · 019-explain-course · <spec-parent specid="018-explain"><a href="../018-explain/spec.html">explain — the grounded coach</a></spec-parent></p>
+  <h1>explain --course — the grounded course</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    The persistent sibling of the coach: <code>explain --course &lt;target&gt;</code> generates a self-contained
+    course you read, quiz yourself on, and check off — every item grounded in real source and verified against the
+    repository.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>      <span><spec-status value="draft">Draft</spec-status></span>
+    <b>Spec ID</b>     <span>019-explain-course</span>
+    <b>Owner</b>       <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Reviewers</b>   <span>—</span>
+    <b>Created</b>     <span><time datetime="2026-06-20">2026-06-20</time></span>
+    <b>Principles</b><span><a href="../../principles.html">v1.1.0</a></span>
+    <b>Smallest demoable</b><span><code>explain --course &lt;spec-id&gt;</code> writes a git-ignored <code>course.html</code> of ≤7 grounded, quiz-gated objectives (each a Read + an MCQ).</span>
+    <b>Read time</b>   <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-budget words="2000" reqs="20" minutes="12"></spec-budget>
+
+  <spec-tldr>
+    <p><a href="../018-explain/spec.html">018-explain</a> shipped the coach — an ephemeral in-chat read. This is
+    its persistent sibling. <code>explain --course &lt;target&gt;</code> generates a blended <code>course.html</code>:
+    a handful of objectives, each with a grounded Read explanation and an MCQ-with-feedback quiz, presented as a
+    mastery ledger you tick off as you pass. Every cited reference is confirmed to exist and every quiz item is
+    verified <em>unguessable without the source</em> — the anti-hallucination guarantee is the whole point.
+    Courses are ephemeral: written under <code>.spectastic/courses/</code>, git-ignored, regenerated rather than
+    maintained.</p>
+  </spec-tldr>
+
+  <dl class="invest">
+    <dt><span class="letter">I</span> Independent</dt> <dd>Depends on principles v1.1.0 and the parent <a href="../018-explain/spec.html">018-explain</a> (reuses its opt-in extended-verb packaging). No other spec blocks on it.</dd>
+    <dt><span class="letter">N</span> Negotiable</dt>  <dd>Outcomes only. The generation/verification mechanism and the implementation surface (markdown-driven vs. CLI-backed) are deferred to the plan.</dd>
+    <dt><span class="letter">V</span> Valuable</dt>    <dd>Unlocks <a href="#SC-001">SC-001</a> — a persistent, grounded, self-checkable course on any real target, on demand.</dd>
+    <dt><span class="letter">E</span> Estimable</dt>   <dd>Plan + tasks derivable without further interview; no open question blocks estimation (§<a href="#questions">7</a>).</dd>
+    <dt><span class="letter">S</span> Small</dt>       <dd>Bounded: single repo-anchored target, Read+Quiz, ≤7 objectives; everything heavier — Build, interleaving, cross-spec, ad-hoc, band, graded teach-back — is deferred (§<a href="#requirements">3</a>).</dd>
+    <dt><span class="letter">T</span> Testable</dt>    <dd>Quantified: <a href="#SC-001">SC-001</a> (zero hallucinated refs), <a href="#SC-002">SC-002</a> (zero guessable quiz items), <a href="#SC-003">SC-003</a> (no-JS readable + self-markable).</dd>
+  </dl>
+
+  <spec-audience-map>
+    <dl>
+      <dt>Exec / PM</dt>   <dd>§<a href="#context">Context</a>, §<a href="#scenarios">User scenarios</a>, §<a href="#success">Success criteria</a>.</dd>
+      <dt>Reviewer</dt>    <dd>§<a href="#requirements">Requirements</a>, §<a href="#assumptions">Assumptions</a>, §<a href="#questions">Open questions</a>.</dd>
+      <dt>Implementer</dt> <dd>§<a href="#requirements">Requirements</a>, §<a href="#data">Data model</a>, §<a href="#conformance">Conformance index</a>.</dd>
+    </dl>
+  </spec-audience-map>
+</header>
+
+
+<section id="context">
+<h2>1 · Context</h2>
+<p>The coach (<a href="../018-explain/spec.html">018-explain</a>) answers "explain this" in one ephemeral chat
+read and writes nothing. But a chat read doesn't <em>build</em> anyone: no artifact to return to, no check that
+you understood, no structure across a topic. The handover at <a href="../../docs/explain.html">docs/explain.html</a>
+always framed the coach as the cheap first half; the course is the second.</p>
+<p>This is the course's first slice. The frame is settled by the handover: courses are ephemeral, outside
+<code>specs/</code> (D-008); the learner model is per-objective mastery — no learning styles, no recommender, no
+gamification (D-009); every item is generated from real source and verified against the repo (D-010); the graded
+teach-back (D-005) is deferred. Stakeholders: the learner ramping on a spec or subsystem, and the maintainer who
+wants grounded onboarding without hand-writing it.</p>
+</section>
+
+
+<section id="scenarios">
+<h2>2 · User scenarios &amp; testing</h2>
+
+<p>Each story <strong>MUST</strong> be independently testable: if you implemented only US1, you would still have a
+viable MVP.</p>
+
+<h3>US1 · Generate a grounded course <spec-pill>P1</spec-pill></h3>
+<p>As a <strong>learner ramping on a spec or subsystem</strong>, I want to <strong>run
+<code>explain --course &lt;target&gt;</code> and get a self-contained course grounded in that target</strong> so
+that <strong>I can study it on my own, trusting that nothing in it was invented</strong>.</p>
+<p><em>Acceptance:</em> a git-ignored <code>course.html</code> is written under <code>.spectastic/courses/</code>
+with ≤7 objectives, each a Read explanation + an MCQ quiz; every cited reference resolves to real source and every
+quiz item is verified unguessable without that source.</p>
+
+<h3>US2 · Quiz-gated mastery ledger <spec-pill>P2</spec-pill></h3>
+<p>As a <strong>learner working through a course</strong>, I want <strong>each objective to unlock as "mastered"
+only when I answer its quiz correctly</strong> so that <strong>the ledger reflects what I actually understand,
+not what I skimmed</strong>.</p>
+<p><em>Acceptance:</em> a correct quiz answer marks the objective's <code>&lt;spec-task&gt;</code> checkbox; with
+JavaScript off the checkbox is directly tick-able and the quiz + answer render inline — the gate never produces a
+dead-end.</p>
+
+<h3>Edge cases</h3>
+<ul>
+  <li>A target that doesn't resolve to real source → <strong>refused with a report</strong> (as the coach does), never turned into an ungrounded course (<a href="#FR-002">FR-002</a>).</li>
+  <li>A target that resolves to more than one artifact → one clarifying question, then proceed.</li>
+  <li>A quiz item that stays guessable after regeneration retries → its objective is dropped rather than shipped weak (<a href="#FR-004">FR-004</a>).</li>
+  <li>The underlying spec/code moves → the course goes stale; it is <strong>regenerated</strong>, never patched (<a href="#FR-010">FR-010</a>).</li>
+</ul>
+</section>
+
+
+<section id="requirements">
+<h2>3 · Requirements</h2>
+
+<p>Conformance keywords (<spec-rule>MUST</spec-rule>, <spec-rule level="should">SHOULD</spec-rule>,
+<spec-rule level="may">MAY</spec-rule>) follow RFC 2119.</p>
+
+<h3>Functional</h3>
+
+<spec-requirement id="FR-001" priority="must">
+<p><code>explain --course &lt;target&gt;</code> <spec-rule>MUST</spec-rule> generate a self-contained
+<code>course.html</code> and write it to <code>.spectastic/courses/&lt;date&gt;-&lt;slug&gt;/course.html</code>,
+git-ignored by default; a <code>--keep</code> flag <spec-rule>MUST</spec-rule> opt a course into being retained
+(tracked).</p>
+</spec-requirement>
+
+<spec-requirement id="FR-002" priority="must">
+<p>A course <spec-rule>MUST</spec-rule> cover a <strong>single, repo-anchored</strong> target — one spec ID, one
+requirement/decision/success-criterion ID, or one file or directory path. A target that resolves to nothing
+<spec-rule>MUST</spec-rule> be refused with a report, not turned into a course.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-003" priority="must">
+<p>Every reference the course cites — symbol, path, or ID — <spec-rule>MUST</spec-rule> resolve to a real artifact
+in the repository; the course <spec-rule>MUST NOT</spec-rule> cite anything it has not confirmed exists.</p>
+<details><summary>Rationale</summary><p>D-010; the same grounding guarantee the coach gives at <a href="../018-explain/spec.html#FR-003">018 FR-003</a>, now over a generated artifact.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-004" priority="must">
+<p>Each quiz item <spec-rule>MUST</spec-rule> be generated from retrieved real source and <spec-rule>MUST</spec-rule>
+pass a guessability check before shipping: an item the model can answer correctly with the source hidden
+<spec-rule>MUST</spec-rule> be rejected and regenerated. An objective whose quiz stays guessable after retries
+<spec-rule>MUST</spec-rule> be dropped rather than shipped.</p>
+<details><summary>Rationale</summary><p>A quiz answerable from generic knowledge tests nothing about the repo. The guessability check is the verification half of D-010.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-005" priority="must">
+<p>A course <spec-rule>MUST</spec-rule> present its objectives as a mastery ledger of
+<code>&lt;spec-task&gt;</code> checkboxes; each objective <spec-rule>MUST</spec-rule> carry a grounded Read
+explanation and an MCQ-with-feedback quiz.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-006" priority="must">
+<p>Mastery <spec-rule>MUST</spec-rule> be quiz-gated: a correct quiz answer marks the objective mastered. With
+JavaScript disabled, the checkbox <spec-rule>MUST</spec-rule> be directly markable and the quiz plus its answer
+<spec-rule>MUST</spec-rule> render inline — the gate is a progressive enhancement, never a block.</p>
+<details><summary>Rationale</summary><p>Honors <a href="../../principles.html#P-4">P-4</a> (enhancement, never dependence): the readable, self-markable baseline survives with JS off.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-007" priority="should">
+<p>Each objective <spec-rule level="should">SHOULD</spec-rule> carry an <strong>ungraded</strong> teach-back
+prompt. Grading the teach-back is out of scope (the graded gate is deferred D-005).</p>
+</spec-requirement>
+
+<spec-requirement id="FR-008" priority="must">
+<p>A course <spec-rule>MUST NOT</spec-rule> use streaks, badges, points, XP, or a leaderboard. Informational
+feedback is the only motivator.</p>
+<details><summary>Rationale</summary><p>D-009: completion-contingent rewards undermine intrinsic motivation; this also keeps the calm house voice.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-009" priority="should">
+<p>Objective modality <spec-rule level="should">SHOULD</spec-rule> follow the objective's Bloom level —
+recall/understand objectives become MCQ-with-feedback. Apply/create (hands-on Build) objectives are out of scope
+for this slice.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-010" priority="must">
+<p>A stale course <spec-rule>MUST</spec-rule> be handled by regeneration (re-running
+<code>explain --course</code>); the verb <spec-rule>MUST NOT</spec-rule> provide an in-place update or patch path.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-011" priority="must">
+<p><code>--course</code> <spec-rule>MUST</spec-rule> be a mode of the opt-in extended <code>explain</code> verb
+(<a href="../018-explain/spec.html#FR-009">018 FR-009</a>). Apart from writing the course directory, the verb
+<spec-rule>MUST NOT</spec-rule> modify tracked repository source.</p>
+</spec-requirement>
+
+<h3>Non-functional</h3>
+
+<spec-requirement id="NFR-001" priority="should">
+<p>A v1 course <spec-rule level="should">SHOULD</spec-rule> contain no more than ~7 objectives, so it stays
+completable in one sitting; a target warranting more is a signal to narrow scope.</p>
+<details><summary>Rationale</summary><p>Self-paced completion runs ~5–15%; a small, in-flow unit is the guard (D-009).</p></details>
+</spec-requirement>
+
+<spec-requirement id="NFR-002" priority="must">
+<p>A generated <code>course.html</code> <spec-rule>MUST</spec-rule> be a self-contained single file that reuses the
+existing <code>&lt;spec-*&gt;</code> vocabulary and <code>assets/spec.css</code> / <code>spec.js</code>; it
+<spec-rule>MUST NOT</spec-rule> require new custom elements or any build step to view.</p>
+</spec-requirement>
+
+<h3>Out of scope (deferred to other slices)</h3>
+<spec-out-of-scope>
+  <ul>
+    <li defer-to="TBD">Hands-on <strong>Build</strong> objectives (apply/create Bloom levels) and the runnable verification that compiles/tests an exercise against the repo.</li>
+    <li defer-to="TBD"><strong>Ad-hoc topic</strong> courses (a target with no repo anchor) — the weakest, ungrounded mode, behind a warning.</li>
+    <li defer-to="TBD"><strong>Band personalization</strong> of course depth by <code>--proficiency</code>. The flag exists on the verb (<a href="../018-explain/spec.html#FR-006">018 FR-006</a>); v1 does not vary course depth by it.</li>
+    <li defer-to="TBD">Interleaving/spacing across objectives, and cross-spec / multi-target courses.</li>
+    <li defer-to="TBD">The graded teach-back gate (D-005), and persistent storage of mastery across sessions.</li>
+  </ul>
+</spec-out-of-scope>
+</section>
+
+
+<section id="data">
+<h2>4 · Data model</h2>
+
+<p>This feature owns one ephemeral artifact and the objects it composes. None carry stable IDs — a course
+<em>references</em> the stable IDs it teaches (<a href="../../principles.html#P-3">P-3</a>).</p>
+
+<h3>Entities</h3>
+<dl>
+  <dt>Course</dt><dd>The generated <code>course.html</code> under <code>.spectastic/courses/&lt;date&gt;-&lt;slug&gt;/</code>. Holds the target and an ordered list of objectives rendered as a mastery ledger. Git-ignored unless <code>--keep</code>.</dd>
+  <dt>Objective</dt><dd>One learnable unit: a grounded Read explanation, an MCQ-with-feedback quiz, and an ungraded teach-back prompt. Carries a mastery flag (the ledger checkbox); modality follows its Bloom level (FR-009).</dd>
+  <dt>Quiz item</dt><dd>An MCQ generated from retrieved real source, with a correct option and per-option feedback. Verified unguessable-without-source (FR-004); the correct answer drives the mastery gate (FR-006).</dd>
+</dl>
+
+<spec-note>
+<p>A course is <strong>generated tooling output</strong>, not a hand-authored lifecycle artifact (closer to the
+validator's SARIF than a <code>spec.html</code>). Ephemeral and git-ignored, it sits outside the validated
+canonical set — no schema change — and the principles' v1.0.1 clarification permits generated tooling output, so
+the "no build step" non-goal holds.</p>
+</spec-note>
+</section>
+
+
+<section id="success">
+<h2>5 · Success criteria</h2>
+
+<p>Technology-agnostic, measurable outcomes. These are how we know it worked.</p>
+
+<spec-requirement id="SC-001" priority="must">
+<p>Across a sample of courses, <strong>100%</strong> of the references they cite resolve to artifacts that exist
+in the repository — zero hallucinated references.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-002" priority="must">
+<p>In a shipped course, <strong>0</strong> quiz items pass the guessability check — every quiz item requires its
+source to answer.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-003" priority="must">
+<p>A generated course opens in a browser with no tooling; with JavaScript disabled it remains fully readable and
+the mastery ledger remains self-markable — no objective becomes a dead-end.</p>
+</spec-requirement>
+</section>
+
+
+<section id="assumptions">
+<h2>6 · Assumptions</h2>
+
+<spec-assumption>
+<p>The parent <a href="../018-explain/spec.html">018-explain</a> is in place: its opt-in extended-verb packaging
+(and the <code>--proficiency</code> flag it defined) are reused rather than re-specified.</p>
+</spec-assumption>
+
+<spec-assumption>
+<p>The generating session can read repository source and run an AI to generate and verify items; the exact
+mechanism (in-session vs. CLI/kernel) is a plan decision.</p>
+</spec-assumption>
+</section>
+
+
+<section id="questions">
+<h2>7 · Open questions</h2>
+<spec-questions>
+<p>None block implementation — every decidable question was anchored in the interview. The implementation surface
+(markdown-driven vs. CLI/kernel-backed generation + verification) and the guessability-check mechanism are
+<a href="../../templates/plan.html">plan</a> decisions, not open questions.</p>
+</spec-questions>
+</section>
+
+
+<section id="conformance">
+<h2>8 · Conformance index</h2>
+<p>Auto-built from every <code>&lt;spec-requirement&gt;</code> in this document.</p>
+<spec-conformance></spec-conformance>
+</section>
+
+
+<section id="changelog">
+<h2>9 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-06-20">2026-06-20</time><span>Initial draft. Single-target Read+Quiz slice scoped from <a href="../../docs/explain.html">docs/explain.html</a>; sibling of <a href="../018-explain/spec.html">018-explain</a>. Anchored: <code>.spectastic/courses/</code> git-ignored storage (<code>--keep</code>), existence + guessability verification, quiz-gated mastery degrading to self-mark with JS off, regenerate-only staleness, ≤7-objective size bound. Ad-hoc topics, band personalization, Build, interleaving, cross-spec, and graded teach-back deferred (the last two pairs to keep the slice within budget).</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  019-explain-course · explain --course — the grounded course · authored 2026-06-20 ·
+  <button data-theme-toggle style="background:none;border:none;color:var(--c-link);cursor:pointer;font:inherit;padding:0;border-bottom:1px solid currentColor;">light/dark</button>
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>
