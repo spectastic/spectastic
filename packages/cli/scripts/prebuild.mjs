@@ -29,6 +29,10 @@ const SOURCES = [
   ['commands', '.claude/commands'],
   ['assets', 'assets'],
   ['templates', 'templates'],
+  // Verb tier manifest — read by init to keep extended verbs out of the
+  // default install (specs/018-explain/plan.html D-002, T-312). Lives at the
+  // bundle root, not under an installed subdir, so it is never written to cwd.
+  ['commands.json', 'commands.json'],
 ];
 
 async function main() {

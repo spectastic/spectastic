@@ -73,6 +73,18 @@ Eight Claude Code slash commands. Five cover the core spec lifecycle, two cover 
 
 The slash command files live in `commands/`. Install them into your project's `.claude/commands/` (or run them from this directory directly) and Claude Code picks them up.
 
+### Core vs. extended verbs
+
+The eight above are the **core** (hero) verbs — the minimal lifecycle surface, installed by default. Beyond them sits an **extended**, opt-in tier for capabilities that aren't part of the day-to-day flow. The tiers are declared in [`commands.json`](./commands.json); `spectastic init` installs only the core set unless you ask for an extended verb by name:
+
+```sh
+spectastic init --with explain      # also install the extended `explain` verb
+```
+
+| Extended verb | Command | What it does |
+| --- | --- | --- |
+| explain | `/spectastic.explain <target> [--proficiency=wheels\|completion\|independent]` | A grounded, in-chat coaching read of a spec, requirement, decision, or file. Ephemeral — writes no artifact, cites only real source, pulled on demand. |
+
 ### Change proposals (`/spectastic.propose` + `/spectastic.apply`)
 
 Spec evolution happens via PR-shaped proposal artifacts. Each change is a folder

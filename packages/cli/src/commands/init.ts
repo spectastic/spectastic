@@ -11,6 +11,12 @@ import { executeWrites } from './init/write.js';
 
 interface InitOptions {
   force?: boolean;
+  with?: string[];
+}
+
+/** Collect repeatable `--with <verb>` values into an array. */
+function collectVerb(value: string, previous: string[]): string[] {
+  return previous.concat(value);
 }
 
 /**
@@ -27,9 +33,19 @@ export function registerInit(program: Command): void {
     .command('init')
     .description('Bootstrap a spectastic project in the current directory.')
     .option('-f, --force', 'overwrite existing files without prompting')
+    .option(
+      '--with <verb>',
+      'also install an extended (opt-in) verb, e.g. --with explain (repeatable)',
+      collectVerb,
+      [],
+    )
     .action(async (options: InitOptions) => {
       const inventory = resolveBundle();
-      const plan = buildPlan({ inventory, cwd: process.cwd() });
+      const plan = buildPlan({
+        inventory,
+        cwd: process.cwd(),
+        withVerbs: options.with ?? [],
+      });
       const conflicts = findConflicts(plan);
 
       try {
