@@ -1,17 +1,19 @@
 ---
-description: Explain a spec, requirement, decision, or file — a grounded, in-chat coaching read. Extended (opt-in) verb.
-argument-hint: <target…> [--proficiency=wheels|completion|independent]
+description: Explain a spec, requirement, decision, or file — a grounded, in-chat coaching read; --course generates a persistent grounded course. Extended (opt-in) verb.
+argument-hint: <target…> [--proficiency=wheels|completion|independent] [--course [--keep]]
 ---
 
 # /spectastic.explain
 
 You are the **coach**. `explain <target>` produces an ephemeral, in-chat, just-in-time explanation of a real
 spec, requirement, decision, or file — grounded in the repository's actual source, never invented, pulled on
-demand. It is an **extended verb**: opt-in, not one of the eight core lifecycle verbs, and it writes **no
-artifact** and changes nothing on disk.
+demand. It is an **extended verb**: opt-in, not one of the eight core lifecycle verbs. In the bare (coach) mode
+it writes **no artifact** and changes nothing on disk; the `--course` mode is the one exception — it generates a
+persistent, ephemeral course (see **Course mode** below).
 
-This verb is deliberately small. It reuses the existing command-file shape and the in-session agent's own file
-tools; there is no CLI subcommand, kernel, or generated file behind it (see `specs/018-explain/plan.html` D-001).
+The coach is deliberately small — the in-session agent's own file tools, no kernel (see
+`specs/018-explain/plan.html` D-001). `--course` is the heavier sibling: you draft, and a kernel
+(`spectastic course`) verifies + assembles + writes (see `specs/019-explain-course/plan.html`).
 
 ## Inputs
 
@@ -21,11 +23,16 @@ User input (from `$ARGUMENTS`):
   success-criterion ID (`FR-003`, `D-010`, `SC-001`), or a file or directory path (`packages/cli/src/`).
 - An optional **`--proficiency=wheels|completion|independent`** flag setting the coaching depth. Absent ⇒
   `wheels`.
+- An optional **`--course`** flag — switch from the chat read to generating a course (single target only);
+  with **`--keep`** to retain the course instead of git-ignoring it.
 
-Ad-hoc topics with no repository anchor are **out of scope** for this verb (deferred to a future
-`explain --course`); a target that names nothing real is refused, not guessed (see the Procedure).
+A target that names nothing real is refused, not guessed (see the Procedure). Ad-hoc topics with no repository
+anchor are out of scope.
 
 ## Procedure
+
+> **If `--course` is present, skip the coach steps below and follow [Course mode](#course-mode--course).**
+> The steps 1–6 here are the bare in-chat coach.
 
 1. **Parse `$ARGUMENTS`.** Separate the `--proficiency=…` flag (if present) from the **target(s)** — everything
    else. There may be several targets; treat each independently. If no target is given, ask the user what they
@@ -77,3 +84,41 @@ Ad-hoc topics with no repository anchor are **out of scope** for this verb (defe
 
 - Nothing is persisted; the working tree is unchanged. Offer a natural next target (a linked requirement, the
   plan behind a spec) or a lifecycle verb if one is the obvious follow-up — but only on request; never push.
+
+## Course mode (`--course`)
+
+`explain --course <target>` builds a persistent, grounded **course** instead of a chat read. Generation is
+**yours** (you draft objectives from real source); verification, assembly, and the write belong to the kernel
+(`spectastic course`). This is the only mode of `explain` that writes a file — an ephemeral, git-ignored course
+under `.spectastic/courses/<date>-<slug>/course.html`.
+
+1. **Resolve the target** exactly as in step 2 of the coach (spec ID / element ID / path). A **single**,
+   repo-anchored target only; refuse-and-report on a miss. Ad-hoc topics are out of scope for this slice.
+
+2. **Draft ≤ 7 objectives**, each grounded in source you actually read. Per objective:
+   - a **title** and a grounded **read** explanation (cite only references you confirmed exist);
+   - an **MCQ quiz** — `question`, 2–4 `options`, the `correctIndex`, and per-option `feedback` — written so it
+     **cannot be answered without the source** (sanity-check yourself: could a stranger guess it cold? then rewrite it);
+   - an ungraded **teachBack** prompt;
+   - the **refs** the objective cites (spec IDs / element IDs / paths).
+
+   Keep objectives at the recall/understand level (Read + Quiz); hands-on Build is a later slice. No streaks,
+   badges, or XP — feedback is the motivator.
+
+3. **Hand the draft to the kernel.** Emit the course as one JSON object and pipe it to the engine:
+
+   ```bash
+   echo '{"target":"<target>","title":"…","outcome":"…","objectives":[ … ]}' \
+     | spectastic course --target <target> [--keep]
+   ```
+
+   The kernel confirms every cited ref exists and poses each quiz item to a **blind** check (the question with no
+   source); it writes the course only if every item passes.
+
+4. **Run the regenerate-or-drop loop.** If the kernel reports failures — `missing-ref` or `guessable` — fix them:
+   re-ground or remove a missing ref, or rewrite a guessable quiz so it genuinely needs the source, then re-run.
+   If an objective's quiz stays guessable after a couple of attempts, **drop that objective** and re-run. Stop
+   when the course writes cleanly (exit 0).
+
+5. **Report** the written path. The course is **git-ignored by default** — regenerate it when the source moves,
+   don't hand-edit it; `--keep` retains a copy. Don't edit a course in place.

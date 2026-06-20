@@ -364,6 +364,74 @@ export interface ProposeResult {
   risks: RiskFinding[];
 }
 
+// --- course (verb explain --course, spec 019-explain-course) -----------
+
+/** One multiple-choice quiz item generated from real source. */
+export interface CourseQuizItem {
+  /** The question text. */
+  question: string;
+  /** 2+ answer options. */
+  options: string[];
+  /** Index into options[] of the correct answer. */
+  correctIndex: number;
+  /** Optional per-option feedback (parallel to options[]). */
+  feedback?: string[];
+}
+
+/** One learnable unit: a grounded read, a quiz, an ungraded teach-back. */
+export interface CourseObjective {
+  /** Short objective title (becomes the ledger row label). */
+  title: string;
+  /** Grounded Read explanation (HTML-ish prose). */
+  read: string;
+  /** The objective's quiz item. */
+  quiz: CourseQuizItem;
+  /** Optional ungraded teach-back prompt (FR-007). */
+  teachBack?: string;
+  /** References the objective cites — spec IDs, element IDs, or paths (FR-003). */
+  refs: string[];
+}
+
+/** The agent-drafted course, handed to the kernel on stdin (plan D-002). */
+export interface CourseDraft {
+  /** The repo-anchored target this course teaches. */
+  target: string;
+  /** Slug for the course directory; kernel derives one if absent. */
+  slug?: string;
+  /** Course title (defaults from target). */
+  title?: string;
+  /** "By the end you'll be able to…" one-liner. */
+  outcome?: string;
+  /** The objectives (≤7 per NFR-001). */
+  objectives: CourseObjective[];
+}
+
+export interface CourseInput {
+  /** The drafted course to verify + assemble. */
+  draft: CourseDraft;
+}
+
+/** A per-item verification failure the agent must regenerate or drop (FR-004). */
+export interface CourseItemFailure {
+  /** Index into draft.objectives[]. */
+  objectiveIndex: number;
+  /** Why it failed. */
+  kind: 'missing-ref' | 'guessable';
+  /** Human-readable detail (the missing ref, or the guessable question). */
+  detail: string;
+}
+
+export interface CourseResult {
+  /** Rendered course.html — present only when verification is clean. */
+  html?: string;
+  /** The course directory slug (<date>-<slug>). */
+  slug: string;
+  /** Per-item failures; empty ⇒ the draft passed and html is set. */
+  failures: CourseItemFailure[];
+  /** How many objectives were in the verified draft. */
+  objectivesCount: number;
+}
+
 // --- implement (verb 014, single-task mode) ----------------------------
 
 export interface ImplementInput {

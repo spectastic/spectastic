@@ -84,6 +84,7 @@ spectastic init --with explain      # also install the extended `explain` verb
 | Extended verb | Command | What it does |
 | --- | --- | --- |
 | explain | `/spectastic.explain <target> [--proficiency=wheels\|completion\|independent]` | A grounded, in-chat coaching read of a spec, requirement, decision, or file. Ephemeral — writes no artifact, cites only real source, pulled on demand. |
+| explain --course | `/spectastic.explain --course <target> [--keep]` | Generates a persistent, grounded **course** — a handful of objectives, each a reading + a quiz, on a mastery ledger. Every reference is verified to exist and every quiz item is checked to be unanswerable without the source. Courses are ephemeral: written under `.spectastic/courses/`, git-ignored by default (`--keep` retains). Backed by the `spectastic course` engine. |
 
 ### Change proposals (`/spectastic.propose` + `/spectastic.apply`)
 

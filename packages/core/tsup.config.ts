@@ -23,6 +23,7 @@ export default defineConfig({
     'src/commands/plan.ts',
     'src/commands/propose.ts',
     'src/commands/implement.ts',
+    'src/commands/course.ts',
     'src/providers/node-fs.ts',
     'src/providers/claude.ts',
     'src/providers/stub.ts',
