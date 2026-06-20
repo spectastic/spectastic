@@ -97,6 +97,17 @@ The lifecycle's heavy ceremony is still there for items that genuinely need it �
 
 Tier 1 components added — `<spec-budget>`, `<spec-out-of-scope>` with required `defer-to=`, `<spec-parent>`, `<dl class="invest">`. Existing commands gained behavioural upgrades (smallest-demoable prompt in specify, estimability gate in plan, budget-aware splitting nudge in propose). No new verbs. See `README.md` for the retrofit recipe.
 
+## Verification discipline
+
+**Anything that generates interactive HTML needs a browser-level test, not just a structural one.** Schema validation (`spectastic validate`) and string assertions ("the `<script>` is present", "no `disabled` attribute") prove an artifact is *well-formed* — they cannot prove its JavaScript *works*. A behaviorally-broken-but-present enhancement passes every structural check.
+
+The lesson is paid for: `019-explain-course`'s quiz gate shipped a closure-over-`var` bug that marked only the last objective, and the SC-003 test (which only asserted the gate script existed) went green. It was caught by a human opening the artifact. The fix added `tests/course.gate.spec.ts` — Playwright drives a generated course and asserts the *answered* objective is the one marked.
+
+Rules of thumb:
+- Generators of interactive artifacts (`assembleCourse`, theme JS, `<spec-tabs>`/gate behaviour) get a Playwright spec under `tests/` that *runs the JS and asserts behaviour*, plus a cheap structural backstop in vitest (e.g. "the gate script carries no `var`").
+- A green checkmark on a structural-only test is not "verified" for anything with a runtime. Before claiming an interactive feature works, open it in a browser (the MCP Playwright connector) and exercise it.
+- The linter is not noise. The `var`-in-loop bug was flagged as `S1515` and waved off as "style"; it was the bug.
+
 ## Things deferred
 
 Captured in `docs/openspec-considerations.html` and `examples/spectastic-spec.html` §2 (Out of scope):
