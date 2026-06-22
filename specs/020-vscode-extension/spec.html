@@ -1,0 +1,350 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Lifecycle canvas (VS Code) · Specification</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Specification · 020-vscode-extension</p>
+  <h1>Lifecycle canvas (VS Code)</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    An in-editor canvas that shows one spec's whole <code>principles → … → triage</code> flow at a
+    glance — and opens any artifact in a click.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>      <span><spec-status value="draft">Draft</spec-status></span>
+    <b>Spec ID</b>     <span>020-vscode-extension</span>
+    <b>Owner</b>       <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Reviewers</b>   <span>—</span>
+    <b>Created</b>     <span><time datetime="2026-06-21">2026-06-21</time></span>
+    <b>Principles</b><span><a href="../../principles.html">v1.1.0</a></span>
+    <b>Smallest demoable</b><span>Read-only canvas of minimal nodes for one selected spec, laid out top-to-bottom by default, click a node → its rendered artifact opens.</span>
+    <b>Read time</b>   <span data-reading-time></span>
+  </spec-meta>
+
+  <!-- Live size gauge — green at <70%, amber 70-100%, red over. -->
+  <spec-budget words="2000" reqs="20" minutes="12"></spec-budget>
+
+  <spec-tldr>
+    <p>A VS Code panel that draws one selected spec's lifecycle as a calm canvas — one node per
+    artifact file, laid out top-to-bottom by default, each carrying its status and one key metric. Hover for more health; click to
+    open the real rendered document. For authors who today navigate the lifecycle through a file tree
+    with no at-a-glance view of where a spec stands.</p>
+  </spec-tldr>
+
+  <dl class="invest">
+    <dt><span class="letter">I</span> Independent</dt> <dd>Depends on principles v1.1.0 and the fixed per-verb colours of <a href="../017-brand-logo/spec.html">017-brand-logo</a>; reuses <code>assets/spec.css</code> read-only. It owns no shared mutable state.</dd>
+    <dt><span class="letter">N</span> Negotiable</dt>  <dd>Outcomes only. Layout engine, "open" target (webview vs tab), and parse strategy defer to the plan.</dd>
+    <dt><span class="letter">V</span> Valuable</dt>    <dd>Unlocks <a href="#SC-001">SC-001</a> — see a spec's whole lifecycle and reach any artifact in one click.</dd>
+    <dt><span class="letter">E</span> Estimable</dt>   <dd>Boundaries (read-only, open-only, one-spec, sideload-only) are anchored; plan + tasks derivable without further interview.</dd>
+    <dt><span class="letter">S</span> Small</dt>       <dd>One panel, read + navigate only. No verb execution, project overview, or marketplace release — all deferred.</dd>
+    <dt><span class="letter">T</span> Testable</dt>    <dd>Every requirement is observable in a running extension host; criteria quantified (<a href="#SC-003">SC-003</a>, <a href="#SC-004">SC-004</a>).</dd>
+  </dl>
+
+  <spec-audience-map>
+    <dl>
+      <dt>Exec / PM</dt>   <dd>§<a href="#context">Context</a>, §<a href="#scenarios">User scenarios</a>, §<a href="#success">Success criteria</a>.</dd>
+      <dt>Reviewer</dt>    <dd>§<a href="#requirements">Requirements</a>, §<a href="#assumptions">Assumptions</a>, §<a href="#questions">Open questions</a>.</dd>
+      <dt>Implementer</dt> <dd>§<a href="#requirements">Requirements</a>, §<a href="#data">Data model</a>, §<a href="#conformance">Conformance index</a>.</dd>
+    </dl>
+  </spec-audience-map>
+</header>
+
+
+<section id="context">
+<h2>1 · Context</h2>
+<p>spectastic artifacts are self-contained <code>.html</code> files at
+<code>specs/&lt;id&gt;/{spec,plan,tasks,…}.html</code>. Today an author moves through a lifecycle by
+opening files in the VS Code tree — there is no at-a-glance view of <em>where a spec stands</em>:
+which artifacts exist, their status, whether the spec is over budget or carries open questions or a
+blocked plan. That state is already encoded in the artifacts; nothing surfaces it together.</p>
+<p>A <a href="../../docs/vscode-lifecycle-brief/README.md">design brief</a> proposes an in-editor
+<strong>canvas</strong> of connected cards translating the lifecycle into spectastic's calm,
+editorial voice. This spec scopes its first shippable slice: a read-only canvas for <strong>one
+selected spec</strong>, two card fidelities (minimal node, compact card), and a one-click affordance
+into the full rendered artifact. <strong>Users:</strong> authors working a spec through its lifecycle
+in VS Code.</p>
+</section>
+
+
+<section id="scenarios">
+<h2>2 · User scenarios &amp; testing</h2>
+
+<p>Each story <strong>MUST</strong> be independently testable: if you implemented only US1, you would
+still have a viable MVP.</p>
+
+<h3>US1 · See the lifecycle at a glance <spec-pill>P1</spec-pill></h3>
+<p>As an <strong>author</strong>, I want to <strong>open a panel that draws my selected spec's whole
+<code>principles → … → triage</code> flow as connected nodes</strong> so that <strong>I can see which
+artifacts exist and their status without opening each file</strong>.</p>
+<p><em>Acceptance:</em> with a spec selected, the panel shows one minimal node per existing artifact,
+ordered along the lifecycle (vertical by default) — verb icon, title, status pill, one metric — with edges along the flow.</p>
+
+<h3>US2 · Open any artifact in one click <spec-pill>P1</spec-pill></h3>
+<p>As an <strong>author</strong>, I want to <strong>click a node and have its rendered artifact
+open</strong> so that <strong>the canvas is a launcher, not a dead picture</strong>.</p>
+<p><em>Acceptance:</em> clicking any node opens that artifact rendered in spectastic's design system,
+in no more than one click.</p>
+
+<h3>US3 · Read more health without leaving the canvas <spec-pill>P2</spec-pill></h3>
+<p>As an <strong>author</strong>, I want to <strong>hover or select a node to reveal a compact card
+of 3–5 health rows</strong> so that <strong>I can judge a node's state before deciding to open it</strong>.</p>
+<p><em>Acceptance:</em> hover/select expands the node to a compact card of per-verb health fields; a
+node needing attention (over budget, open questions, blocked) is visibly distinct from a calm one
+before any card is opened.</p>
+
+<h3>Edge cases</h3>
+<ul>
+  <li>No spec selected, or a workspace with no <code>specs/</code> — the panel shows a calm empty / first-run state, not an error.</li>
+  <li>An artifact file is present but malformed or unparseable — its node renders in an <em>unknown</em> state; the panel never crashes.</li>
+  <li>An artifact is edited, added, or deleted on disk while the panel is open — the affected node updates without a manual refresh.</li>
+  <li>A spec has child slices or a proposal in flight — these appear as lanes branching off the linear spine.</li>
+</ul>
+</section>
+
+
+<section id="requirements">
+<h2>3 · Requirements</h2>
+
+<p>Conformance keywords (<spec-rule>MUST</spec-rule>, <spec-rule level="should">SHOULD</spec-rule>,
+<spec-rule level="may">MAY</spec-rule>) follow RFC 2119.</p>
+
+<h3>Functional</h3>
+
+<spec-requirement id="FR-001" priority="must">
+<p>The panel <spec-rule>MUST</spec-rule> render the selected spec's lifecycle as a canvas of nodes —
+one node per existing artifact file — ordered along the lifecycle sequence <code>principles → spec →
+plan → tasks → implement → propose → apply → triage</code> (laid out in the orientation set by FR-004).
+A missing artifact simply has no node, which is itself information.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-002" priority="must">
+<p>Each minimal node <spec-rule>MUST</spec-rule> show a verb icon, a title (spec id / name), a status
+pill, and exactly one key metric, colour-coded by node type using the fixed per-verb colour order of
+<a href="../017-brand-logo/spec.html">017-brand-logo</a> — which <spec-rule>MUST NOT</spec-rule> be
+shuffled, recoloured, or dropped.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-003" priority="must">
+<p>Clicking a node <spec-rule>MUST</spec-rule> open that artifact's full rendered document in
+spectastic's existing design system, in no more than one click.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-004" priority="must">
+<p>The canvas <spec-rule>MUST</spec-rule> position nodes by deterministic auto-layout in the active
+orientation — <strong>vertical (top-to-bottom) by default</strong>, or horizontal (left-to-right) —
+with lanes for child slices and proposals branching perpendicular to the spine, and draw edges along
+the flow including branch points (parent↔child, propose→apply / →withdraw). Manual arranging is out
+of scope for this slice.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-005" priority="should">
+<p>Hovering or selecting a node <spec-rule level="should">SHOULD</spec-rule> reveal a compact card of
+3–5 per-verb health rows. The <code>⋯</code> action menu (run / validate) is <strong>out of scope</strong>
+for this slice.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-006" priority="must">
+<p>A node <spec-rule>MUST</spec-rule> enter a visible <em>needs-attention</em> state when any of its
+signals fire — budget red, an open <code>&lt;spec-question&gt;</code>, <code>blocked</code> status, an
+unresolved risk at <code>identified</code>, or a failing regen — and <spec-rule>MUST</spec-rule> stay
+quiet otherwise, so the cue earns its ink only when it means something (P-5).</p>
+</spec-requirement>
+
+<spec-requirement id="FR-007" priority="should">
+<p>A node <spec-rule level="should">SHOULD</spec-rule> show a <em>stale</em> state when its artifact
+predates a change in an upstream artifact (e.g. a plan older than its spec's last edit).</p>
+</spec-requirement>
+
+<spec-requirement id="FR-008" priority="must">
+<p>The panel <spec-rule>MUST</spec-rule> provide a picker to choose which spec's lifecycle is shown,
+and render exactly one spec's lifecycle at a time.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-009" priority="must">
+<p>The canvas <spec-rule>MUST</spec-rule> update live when artifacts in the selected spec are added,
+changed, or removed on disk, via a workspace file-watcher, without requiring a manual refresh.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-010" priority="must">
+<p>Node state <spec-rule>MUST</spec-rule> be derived by scanning <code>specs/&lt;id&gt;/</code> and
+parsing each artifact's HTML (status pills, counts, budget band, health fields); no separate index or
+build step <spec-rule level="may">MAY</spec-rule> be required — the artifacts are the source of truth.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-011" priority="should">
+<p>The panel <spec-rule level="should">SHOULD</spec-rule> render a calm empty / first-run state when no
+spec is selectable, and <spec-rule>MUST</spec-rule> degrade a malformed or unparseable artifact to an
+<em>unknown</em>-state node rather than failing the whole panel.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-012" priority="should">
+<p>Surfaces (page, card, inset) <spec-rule level="should">SHOULD</spec-rule> follow the active VS Code
+theme so the panel sits naturally in the editor, while retaining spectastic's accent colours, per-verb
+brand colours, and status pills.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-013" priority="should">
+<p>The canvas <spec-rule level="should">SHOULD</spec-rule> expose an orientation toggle — a view
+title-bar control and a command — that switches the layout between vertical and horizontal, and
+<spec-rule level="should">SHOULD</spec-rule> remember the chosen orientation per workspace so it
+survives a reload.</p>
+</spec-requirement>
+
+<h3>Non-functional</h3>
+
+<spec-requirement id="NFR-001" priority="must">
+<p>On panel open for a typical single-spec lifecycle (≤ 8 nodes), the canvas <spec-rule>MUST</spec-rule>
+paint in under <strong>300 ms at p95</strong> on a developer-class machine.</p>
+</spec-requirement>
+
+<spec-requirement id="NFR-002" priority="should">
+<p>After an artifact is saved, the affected node <spec-rule level="should">SHOULD</spec-rule> reflect
+the change within <strong>500 ms</strong>, with no full-canvas reload flicker.</p>
+</spec-requirement>
+
+<spec-requirement id="NFR-003" priority="should">
+<p>Nodes and cards <spec-rule level="should">SHOULD</spec-rule> stay legible at small editor sizes in
+both light and dark, meeting WCAG AA contrast for all text against its surface.</p>
+</spec-requirement>
+
+<spec-requirement id="NFR-004" priority="must">
+<p>Every rendered node and overlay <spec-rule>MUST</spec-rule> contain its own content (no overspill
+past its border) and remain fully within the panel viewport (no clipping by an
+<code>overflow</code> ancestor or the editor edge), verified by containment and on-screen-bounds
+assertions — not merely "it rendered".</p>
+<details><summary>Rationale</summary><p>Added after T-001/T-002: a fixed-height node and a hover card
+positioned inside a scroll container passed every presence test yet were visibly cropped. Presence is
+not containment.</p></details>
+</spec-requirement>
+
+<h3>Out of scope (deferred to other slices)</h3>
+<spec-out-of-scope>
+  <ul>
+    <li defer-to="TBD">The <code>⋯</code> action menu — running the next verb or validating from a node (state-mutating; shells to the CLI).</li>
+    <li defer-to="TBD">Whole-project overview (every spec folder at once) and the inbox small-batch node.</li>
+    <li defer-to="TBD">Free / manual node positioning persisted per workspace.</li>
+    <li defer-to="TBD">Marketplace publishing, packaging, and signing — this slice is dev-host / VSIX sideload only.</li>
+    <li defer-to="016-theme-support">The full rendered artifact's design — already shipped in <code>assets/spec.css</code>; reused read-only.</li>
+    <li defer-to="never">Validation squiggles / problems-panel integration — owned permanently by the native VS Code Diagnostics API, not this canvas.</li>
+  </ul>
+</spec-out-of-scope>
+</section>
+
+
+<section id="data">
+<h2>4 · Data model</h2>
+
+<p>A transient, derived view model — it persists nothing; the artifacts on disk are the source of truth.</p>
+
+<h3>Entities</h3>
+<dl>
+  <dt>LifecycleGraph</dt><dd>The selected spec's ordered ArtifactNodes plus their Edges. Rebuilt from a filesystem scan; never written back.</dd>
+  <dt>ArtifactNode</dt><dd>One artifact file: verb type, spec id, path, status, its HealthSnapshot, fidelity (minimal / compact), and derived flags (<em>attention</em>, <em>stale</em>, <em>unknown</em>).</dd>
+  <dt>Edge</dt><dd>A directed link, kind <code>flow</code> (spine), <code>slice</code> (parent↔child), or <code>proposal</code> (propose→apply / →withdraw).</dd>
+  <dt>HealthSnapshot</dt><dd>Per-verb fields parsed from the artifact (for a spec: req count, budget band, open-question count) — the brief's appendix is the authoritative field list.</dd>
+  <dt>Selection</dt><dd>The currently-shown spec id, driven by the picker (FR-008).</dd>
+</dl>
+
+<spec-note>
+<p>Node state is a pure function of the artifacts on disk; the file-watcher (FR-009) re-derives the
+affected node on change. Nothing couples the canvas to a write path — it cannot corrupt a spec because
+it never writes one.</p>
+</spec-note>
+</section>
+
+
+<section id="success">
+<h2>5 · Success criteria</h2>
+
+<p>Technology-agnostic, measurable outcomes. These are how we know it worked.</p>
+
+<spec-requirement id="SC-001" priority="must">
+<p>From a cold panel open, an author can see the full lifecycle of a selected spec and open any one of
+its artifacts in a single click — with no use of the file tree.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-002" priority="must">
+<p>Given a spec with one at-risk artifact (over budget, open questions, or blocked) among calm ones, a
+first-time viewer identifies the at-risk node unaided, without opening any card.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-003" priority="should">
+<p>The canvas paints a single-spec lifecycle (≤ 8 nodes) in under 300 ms at p95 on panel open.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-004" priority="should">
+<p>After an artifact is saved, its node reflects the new state within 500 ms without a manual refresh.</p>
+</spec-requirement>
+</section>
+
+
+<section id="assumptions">
+<h2>6 · Assumptions</h2>
+
+<spec-assumption>
+<p>Specs follow the <code>specs/&lt;id&gt;/&lt;verb&gt;.html</code> layout this repo uses; non-conforming
+layouts are out of scope.</p>
+</spec-assumption>
+
+<spec-assumption>
+<p>Artifact HTML is stable enough to parse for state (status pills, budget gauge, counts) without a
+formal schema — the same structure <code>spectastic validate</code> already relies on.</p>
+</spec-assumption>
+</section>
+
+<spec-warning>
+<p><strong>P-4 exception.</strong> Principle P-4 requires spectastic <em>artifacts</em> to stay readable
+with JavaScript off. The canvas is a VS Code webview — editor tooling, not an artifact — and is inherently
+JS-driven, so it does not degrade to a static document. The artifacts it opens (FR-003) still honour P-4
+unchanged. A deliberate, scoped exception; not a precedent for JS-dependent artifacts.</p>
+</spec-warning>
+
+
+<section id="questions">
+<h2>7 · Open questions</h2>
+<spec-questions>
+<ol>
+  <li>The exact "stale" rule for FR-007 — what counts as an upstream change (file mtime vs a parsed
+  changelog date) — is a plan-time detail; the criterion (a downstream artifact older than its upstream's
+  last change) is fixed, the mechanism is not.</li>
+</ol>
+</spec-questions>
+</section>
+
+
+<section id="conformance">
+<h2>8 · Conformance index</h2>
+<p>Auto-built from every <code>&lt;spec-requirement&gt;</code> in this document.</p>
+<spec-conformance></spec-conformance>
+</section>
+
+
+<section id="changelog">
+<h2>9 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-06-22">2026-06-22</time><span>Applied <a href="./changes/archive/2026-06-22-vertical-layout-default/proposal.html">2026-06-22-vertical-layout-default</a>: canvas supports vertical (default) + horizontal orientation — MODIFY <a href="#FR-004">FR-004</a> (direction), MODIFY <a href="#FR-001">FR-001</a> (sequence not direction), ADD <a href="#FR-013">FR-013</a> (orientation toggle + per-workspace persistence). Adversarial pass caught the FR-001/FR-004 contradiction; 3 risks mitigated.</span></li>
+  <li><time datetime="2026-06-22">2026-06-22</time><span>Added <a href="#NFR-004">NFR-004</a> (rendered nodes/overlays must contain their content and stay within the viewport, verified by containment + on-screen-bounds assertions) — encodes the T-001/T-002 lesson so a future interactive surface inherits the check rather than re-paying for it.</span></li>
+  <li><time datetime="2026-06-21">2026-06-21</time><span>Initial draft. Scope anchored: read-only canvas, one spec at a time, open-only (no verb execution), scan-and-parse data source, native theme surfaces with spectastic accents, auto-layout, live file-watcher, sideload-only.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  020-vscode-extension · Lifecycle canvas (VS Code) · authored 2026-06-21 ·
+  <button data-theme-toggle style="background:none;border:none;color:var(--c-link);cursor:pointer;font:inherit;padding:0;border-bottom:1px solid currentColor;">light/dark</button>
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>

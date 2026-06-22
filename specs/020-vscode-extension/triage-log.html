@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>020-vscode-extension · Triage log</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Triage log · 020-vscode-extension</p>
+  <h1>020-vscode-extension — triage log</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    Defects against the <code>020-vscode-extension</code> spec. Cards append-only; IDs stable.
+  </p>
+
+  <spec-meta>
+    <b>Spec</b>      <span><a href="./spec.html">020-vscode-extension</a></span>
+    <b>Created</b>   <span><time datetime="2026-06-22">2026-06-22</time></span>
+    <b>Read time</b> <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-tldr>
+    <p>One card per debug session. Fits one screen; reads in under 30 seconds. Five required Tier-1 fields
+    (headline · Expected · Actual · Diagnosis · Fix); the deep-dive <code>&lt;details&gt;</code> stays collapsed
+    unless cross-spec, principles, scope, or hotfix-now applies. <strong>T-001…T-004 were diagnosed and fixed
+    while exercising the extension in a live Extension Development Host</strong> — recorded here after the fact;
+    the discipline is to triage, not silently patch.</p>
+  </spec-tldr>
+</header>
+
+
+<section id="cards">
+<h2>Cards</h2>
+<spec-triage-log>
+
+<spec-triage id="T-001" layer="implementation">
+  <header>
+    <h4>Minimal node crops / overspills its content (fixed height)</h4>
+    <span class="meta">
+      <span class="layer-pill">Implementation</span>
+      <span class="regen" data-result="pass">code</span>
+    </span>
+  </header>
+
+  <p class="headline">Debugging a node whose title + pill + metric spilled past its border in the live canvas,
+  root cause was implementation drift — the node used a fixed <code>height</code> instead of growing to fit;
+  fixed by switching to <code>min-height</code> + a flex content column with title ellipsis; regeneration passes
+  (<a href="./spec.html#FR-002">FR-002</a>/<a href="./spec.html#FR-005">FR-005</a> never mandated a fixed height).</p>
+
+  <dl>
+    <dt>Expected</dt> <dd>The minimal node (<a href="./spec.html#FR-002">FR-002</a>) contains its verb label, title, status pill and metric inside its border.</dd>
+    <dt>Actual</dt>   <dd>With a wrapping title (<code>001-game-ui</code>), the stacked content exceeded the fixed 64&nbsp;px box and spilled below the border; the attention ring was clipped at the canvas edge.</dd>
+    <dt>Diagnosis</dt><dd><code>updateNode</code> set <code>el.style.height = pos.h</code> (a hard height), so taller content overflowed; the grid also let label+title wrap together.</dd>
+    <dt>Fix</dt>      <dd><span class="path">packages/vscode/src/webview/node.ts</span> + <span class="path">webview/canvas.css</span>: <code>min-height</code> floor, flex <code>.ncontent</code> column, title <code>nowrap</code>+ellipsis; larger node in <span class="path">webview/layout.ts</span>. Guarded by a Playwright assertion that <code>scrollHeight ≤ clientHeight</code> for every node.</dd>
+  </dl>
+
+  <spec-diff>
+<del>  el.style.height = `${pos.h}px`;            // fixed → content overspills</del>
+<ins>  el.style.minHeight = `${pos.h}px`;         // floor → box grows to fit</ins>
+  </spec-diff>
+
+  <details>
+    <summary>Deep dive — none required</summary>
+    <p>No cross-spec contract, no invariant, no hotfix sequence. Pure rendering correctness; spec + plan unchanged.</p>
+  </details>
+</spec-triage>
+
+<spec-triage id="T-002" layer="implementation">
+  <header>
+    <h4>Compact-card popover clipped near panel edges</h4>
+    <span class="meta">
+      <span class="layer-pill">Implementation</span>
+      <span class="regen" data-result="pass">code</span>
+    </span>
+  </header>
+
+  <p class="headline">Debugging a hover card that was cut off, root cause was implementation drift — the card was
+  appended inside the canvas surface, which the scroll container clips with <code>overflow:auto</code>; fixed by
+  rendering it on <code>&lt;body&gt;</code> with <code>position:fixed</code>, viewport clamping, and flip-above;
+  regeneration passes (<a href="./spec.html#FR-005">FR-005</a> specifies the card, not its stacking context).</p>
+
+  <dl>
+    <dt>Expected</dt> <dd>The hover/select compact card (<a href="./spec.html#FR-005">FR-005</a>) is fully visible wherever its node sits.</dd>
+    <dt>Actual</dt>   <dd>For nodes low/right in the panel the card extended past the surface and was clipped by <code>#canvas-root { overflow:auto }</code>.</dd>
+    <dt>Diagnosis</dt><dd>The card was a child of <code>.canvas-surface</code> with <code>position:absolute</code>, so it lived inside the clipped, scrollable region.</dd>
+    <dt>Fix</dt>      <dd><span class="path">packages/vscode/src/webview/card.ts</span> + <span class="path">webview/canvas.css</span>: append to <code>document.body</code>, <code>position:fixed</code> from the node's <code>getBoundingClientRect()</code>, flip above when no room below, clamp within the viewport. Regression test shrinks the panel and asserts the card stays on-screen.</dd>
+  </dl>
+
+  <details>
+    <summary>Deep dive — none required</summary>
+    <p>No cross-spec contract, no invariant, no hotfix. Positioning-context fix only.</p>
+  </details>
+</spec-triage>
+
+<spec-triage id="T-003" layer="implementation">
+  <header>
+    <h4>Spec picker unreachable from the view — only in the Command Palette</h4>
+    <span class="meta">
+      <span class="layer-pill">Implementation</span>
+      <span class="regen" data-result="pass">code</span>
+    </span>
+  </header>
+
+  <p class="headline">Debugging "two specs exist but I can't switch", root cause was implementation drift — the
+  <code>selectSpec</code> picker (<a href="./spec.html#FR-008">FR-008</a>) shipped but had no in-view affordance;
+  fixed by contributing a <code>view/title</code> button + command icon; regeneration passes (FR-008 requires a
+  picker, which existed — the gap was discoverability, not the requirement).</p>
+
+  <dl>
+    <dt>Expected</dt> <dd>An author can choose which spec the canvas shows (<a href="./spec.html#FR-008">FR-008</a>) without hunting the Command Palette.</dd>
+    <dt>Actual</dt>   <dd>The <code>spectastic.selectSpec</code> command was registered but exposed nowhere in the view; with two specs present there was no visible way to switch.</dd>
+    <dt>Diagnosis</dt><dd>The manifest contributed the command but no <code>menus.view/title</code> entry, so the canvas panel had no button.</dd>
+    <dt>Fix</dt>      <dd><span class="path">packages/vscode/package.json</span>: add a <code>view/title</code> menu + <code>$(list-selection)</code> icon; <span class="path">src/host/extension.ts</span> marks the active spec (<code>✓ showing now</code>) in the QuickPick.</dd>
+  </dl>
+
+  <details>
+    <summary>Deep dive — none required</summary>
+    <p>FR-008's picker existed; this is a UX-completeness fix, not a new requirement. No silent scope expansion.</p>
+  </details>
+</spec-triage>
+
+<spec-triage id="T-004" layer="implementation">
+  <header>
+    <h4>Install gaps — manifest referenced a missing icon; no F5 launch config</h4>
+    <span class="meta">
+      <span class="layer-pill">Implementation</span>
+      <span class="regen" data-result="pass">code</span>
+    </span>
+  </header>
+
+  <p class="headline">Debugging "how do I run it", root cause was incomplete scaffolding — the T-001 manifest pointed
+  at <code>media/canvas-icon.svg</code> that was never created, and there was no Extension Development Host config;
+  fixed by adding the icon + <code>.vscode/launch.json</code>/<code>tasks.json</code>; regeneration passes (sideload
+  is the spec's distribution scope, just unfinished in code).</p>
+
+  <dl>
+    <dt>Expected</dt> <dd>The dev-host / sideload install path (spec distribution scope) works out of the box.</dd>
+    <dt>Actual</dt>   <dd>The Activity Bar icon was blank (file missing) and F5 had no "Run Extension" configuration.</dd>
+    <dt>Diagnosis</dt><dd>T-001 declared a forward icon path never written; no <code>.vscode/launch.json</code> + build task existed for the dev host.</dd>
+    <dt>Fix</dt>      <dd>Add <span class="path">packages/vscode/media/canvas-icon.svg</span> (asterisk mark), <span class="path">.vscode/launch.json</span> (extensionHost) and <span class="path">.vscode/tasks.json</span> (build pre-launch).</dd>
+  </dl>
+
+  <details>
+    <summary>Deep dive — none required</summary>
+    <p>Within the spec's sideload-only distribution scope; the VSIX/marketplace path stays deferred (<a href="../../inbox.html">I-032</a>).</p>
+  </details>
+</spec-triage>
+
+</spec-triage-log>
+</section>
+
+
+<section id="changelog">
+<h2>Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-06-22">22 Jun 2026</time><span>Triage log scaffolded; T-001..T-004 backfilled — node crop/overspill, popover clipping, missing in-view spec picker, install scaffolding gaps. All <code>implementation</code>, regen <code>pass</code>; each fixed and verified (Playwright regressions added for T-001/T-002).</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  020-vscode-extension triage log · scaffolded 2026-06-22 ·
+  <button data-theme-toggle style="background:none;border:none;color:var(--c-link);cursor:pointer;font:inherit;padding:0;border-bottom:1px solid currentColor;">light/dark</button>
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>

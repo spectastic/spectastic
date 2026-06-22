@@ -1,0 +1,231 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Vertical layout, default · Change proposal</title>
+<link rel="stylesheet" href="../../../../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../../../../assets/favicon.svg">
+<script src="../../../../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Change proposal · 020-vscode-extension</p>
+  <h1>Vertical layout, default</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    Support a top-to-bottom orientation and make it the default, so the canvas fits the tall, narrow editor side-panel.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>     <span><spec-status value="applied">Applied</spec-status></span>
+    <b>Change ID</b>  <span>2026-06-22-vertical-layout-default</span>
+    <b>Spec</b>       <span><a href="../../../spec.html">020-vscode-extension</a></span>
+    <b>Author</b>     <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Created</b>    <span><time datetime="2026-06-22">2026-06-22</time></span>
+    <b>Targets</b>    <span>3 requirements (2 modified, 1 added)</span>
+    <b>Read time</b>  <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-tldr>
+    <p>The canvas lays out left-to-right (<a href="../../../spec.html#FR-004">FR-004</a>), but it lives in the
+    VS Code side-panel — tall and narrow — where a horizontal spine wastes vertical space and forces
+    sideways scrolling. This change generalises the layout to two orientations, makes <strong>vertical
+    (top-to-bottom) the default</strong>, and adds a toggle (<a href="../../../spec.html#FR-013">FR-013</a>,
+    new) so authors can flip to horizontal for wide / bottom-panel layouts. The choice persists per workspace.
+    The adversarial pass added an <a href="../../../spec.html#FR-001">FR-001</a> delta so the spine's
+    <em>direction</em> lives only in FR-004.</p>
+  </spec-tldr>
+</header>
+
+
+<spec-change id="2026-06-22-vertical-layout-default" status="applied">
+
+<header>
+  <h3>Vertical layout, default</h3>
+  <span class="meta"><spec-status value="applied">Applied</spec-status></span>
+</header>
+
+
+<section id="intent">
+<h2>1 · Intent</h2>
+<p>The lifecycle canvas renders in a VS Code <em>view</em> — by default an Activity-Bar side panel
+that is much taller than it is wide. The original layout (FR-004) runs the spine left-to-right, which
+suits a wide editor pane but fights the side-panel's aspect ratio: a six-to-eight-node lifecycle
+overflows horizontally and the author scrolls sideways to see <code>tasks</code> or <code>triage</code>,
+while most of the panel's height sits empty.</p>
+<p>A top-to-bottom spine matches the panel's shape — more nodes are visible without scrolling, and a
+pipeline reads naturally downward. We keep horizontal available (the editor area, or a docked bottom
+panel, is wide) but make vertical the default because that is where the canvas actually lives most of
+the time. Maximising the common surface is the whole point.</p>
+</section>
+
+
+<section id="scope">
+<h2>2 · Scope</h2>
+
+<spec-goals>
+  <h3>In scope</h3>
+  <ul>
+    <li>Vertical (top-to-bottom) deterministic auto-layout as the new default orientation.</li>
+    <li>Horizontal (left-to-right) retained as the alternative orientation.</li>
+    <li>Lanes for child slices / proposals branch perpendicular to the spine; edges adapt their curve direction.</li>
+    <li>A view title-bar toggle (and a command) to switch orientation.</li>
+    <li>Per-workspace persistence of the chosen orientation (survives reload).</li>
+  </ul>
+</spec-goals>
+
+<spec-non-goals>
+  <h3>Out of scope</h3>
+  <ul>
+    <li>Animated transition between orientations — an instant re-layout is fine.</li>
+    <li>Per-<em>spec</em> orientation memory — the choice is per workspace, not per selected spec.</li>
+    <li>Free / manual node arranging — already out of scope in the live spec, unchanged here.</li>
+    <li>Any non-orthogonal layout (radial, diagonal, force-directed).</li>
+  </ul>
+</spec-non-goals>
+</section>
+
+
+<section id="approach">
+<h2>3 · Approach</h2>
+<p>Generalise the pure layout function with an <code>orientation: 'vertical' | 'horizontal'</code>
+parameter (default <code>'vertical'</code>). The spine advances along the primary axis — y per verb for
+vertical, x per verb for horizontal — and slice / proposal lanes offset along the perpendicular axis
+(vertical spine → lanes to the right; horizontal spine → lanes below). <code>edges.ts</code> picks its
+curve direction from the same flag. Node and card rendering are unaffected.</p>
+<p>The host owns the choice: a <code>spectastic.toggleOrientation</code> command (surfaced as a
+view title-bar button) flips it and writes to <code>workspaceState</code>; the value rides in the
+graph message to the webview. No new layout engine, no framework — the hand-rolled layout (plan D-003)
+simply takes one more argument.</p>
+
+<spec-note>
+<p>Vertical is strictly better for the default surface but taller graphs scroll vertically, which the
+panel already supports. Containment / viewport bounds (<a href="../../../spec.html#NFR-004">NFR-004</a>)
+must hold in both orientations — the new layout tests assert it for each.</p>
+</spec-note>
+</section>
+
+
+<section id="deltas">
+<h2>4 · Deltas</h2>
+<p>One <code>&lt;spec-delta&gt;</code> per requirement touched. <code>target=</code> links to the live
+spec; <code>op=</code> is one of <code>added | modified | removed | renamed</code>.</p>
+
+<spec-delta op="modified" target="FR-001">
+  <p><strong>What changes:</strong> the spine is ordered by lifecycle <em>sequence</em>, not a hard-coded
+  left-to-right <em>direction</em> — direction is owned by <a href="../../../spec.html#FR-004">FR-004</a>.
+  (Caught by the adversarial pass: FR-001 and FR-004 would otherwise both MUST a direction, and disagree.)</p>
+  <spec-requirement id="FR-001" priority="must">
+    <p>The panel <spec-rule>MUST</spec-rule> render the selected spec's lifecycle as a canvas of nodes —
+    one node per existing artifact file — ordered along the lifecycle sequence <code>principles → spec →
+    plan → tasks → implement → propose → apply → triage</code> (laid out in the orientation set by FR-004).
+    A missing artifact simply has no node, which is itself information.</p>
+  </spec-requirement>
+</spec-delta>
+
+<spec-delta op="modified" target="FR-004">
+  <p><strong>What changes:</strong> the layout is no longer fixed left-to-right; it supports two
+  orientations and defaults to vertical (top-to-bottom).</p>
+  <spec-requirement id="FR-004" priority="must">
+    <p>The canvas <spec-rule>MUST</spec-rule> position nodes by deterministic auto-layout in the active
+    orientation — <strong>vertical (top-to-bottom) by default</strong>, or horizontal (left-to-right) —
+    with lanes for child slices and proposals branching perpendicular to the spine, and draw edges along
+    the flow including branch points (parent↔child, propose→apply / →withdraw). Manual arranging is out
+    of scope for this slice.</p>
+  </spec-requirement>
+</spec-delta>
+
+<spec-delta op="added" target="FR-013">
+  <spec-requirement id="FR-013" priority="should">
+    <p>The canvas <spec-rule level="should">SHOULD</spec-rule> expose an orientation toggle — a view
+    title-bar control and a command — that switches the layout between vertical and horizontal, and
+    <spec-rule level="should">SHOULD</spec-rule> remember the chosen orientation per workspace so it
+    survives a reload.</p>
+    <details><summary>Rationale</summary><p>Vertical is the default, so horizontal needs a discoverable
+    way back; persistence keeps a deliberate choice from resetting on every reload. Mirrors the spec-picker
+    affordance (<a href="../../../spec.html#FR-008">FR-008</a>).</p></details>
+  </spec-requirement>
+</spec-delta>
+</section>
+
+
+<section id="risks">
+<h2>5 · Risk register</h2>
+<p>Populated by the adversarial risk pass (FR-004 is <code>must</code>-tier, so the heuristic fires).
+Each <code>&lt;spec-risk&gt;</code> stays at <code>status="identified"</code> until you commit a transition
+to <code>accepted</code>, <code>mitigated</code>, or <code>rejected</code>; <code>/spectastic.apply</code>
+refuses while any remain <code>identified</code>.</p>
+
+<spec-risk-log>
+
+<spec-risk target="FR-004" status="mitigated">
+  <p class="claim">Flipping the default to vertical while leaving FR-001 (a separate MUST that hard-codes left-to-right ordering) untouched creates a must-vs-must contradiction that will surface the first time someone reads both requirements together.</p>
+  <p class="citation">FR-004 delta: "vertical (top-to-bottom) by default" — set against the un-deltaed FR-001 "ordered left-to-right along principles → … → triage".</p>
+  <div class="response">Conceded — the critic caught a real omission. Addressed by adding the <a href="../../../spec.html#FR-001">FR-001</a> MODIFY delta above, which re-bases FR-001 on lifecycle <em>sequence</em> and hands <em>direction</em> to FR-004. Proposed transition: <strong>mitigated</strong> (your call).</div>
+</spec-risk>
+
+<spec-risk target="FR-001" status="mitigated">
+  <p class="claim">The proposal modifies FR-004's orientation but never deltas FR-001, which independently MUSTs the spine "ordered left-to-right" — after apply the live spec would assert both directions as MUST.</p>
+  <p class="citation">FR-001 — "MUST render the selected spec's lifecycle as a canvas of nodes … ordered left-to-right".</p>
+  <div class="response">Directly fixed: an FR-001 MODIFY delta is now in §4, removing "left-to-right" and deferring direction to FR-004. With both deltas applied together there is a single source of truth for direction. Proposed transition: <strong>mitigated</strong>.</div>
+</spec-risk>
+
+<spec-risk target="§2" status="mitigated">
+  <p class="claim">Scope was too narrow: it listed only header / TL;DR / smallest-demoable prose as L→R cleanup and omitted FR-001 (and US1's acceptance clause), treating a normative MUST as mere prose to tidy at apply time.</p>
+  <p class="citation">Tasks §6 — "update spec header / TL;DR / smallest-demoable prose that still says 'L→R'".</p>
+  <div class="response">Scope corrected: FR-001 is now a first-class delta (not prose). The remaining apply-time housekeeping (header, TL;DR, smallest-demoable, US1 acceptance) is genuinely non-normative prose. Proposed transition: <strong>mitigated</strong>.</div>
+</spec-risk>
+
+</spec-risk-log>
+</section>
+
+
+<section id="tasks">
+<h2>6 · Tasks</h2>
+<p>Scoped to this change only.</p>
+
+<ul style="list-style:none;padding-left:0;">
+  <li><input type="checkbox"> Add an <code>orientation</code> param to the layout (default vertical); place the spine on the primary axis, lanes on the perpendicular. <span class="path">packages/vscode/src/webview/layout.ts</span></li>
+  <li><input type="checkbox"> Adapt edge curve direction to the orientation. <span class="path">packages/vscode/src/webview/edges.ts</span></li>
+  <li><input type="checkbox"> Carry <code>orientation</code> in the graph message; pass it to layout on render. <span class="path">packages/vscode/src/host/messaging.ts</span>, <span class="path">webview/main.ts</span></li>
+  <li><input type="checkbox"> Add the <code>spectastic.toggleOrientation</code> command + <code>view/title</code> button; persist in <code>workspaceState</code>. <span class="path">packages/vscode/src/host/extension.ts</span>, <span class="path">packages/vscode/package.json</span></li>
+  <li><input type="checkbox"> Tests: layout vertical-default + horizontal; Playwright asserts a vertical spine (y increases per verb) and that toggling flips the axis; containment holds in both (NFR-004). <span class="path">packages/vscode/src/webview/layout.test.ts</span>, <span class="path">tests/vscode/canvas-render.spec.ts</span></li>
+  <li><input type="checkbox"> Apply-time housekeeping: update the remaining non-normative "L→R" prose — header, TL;DR, smallest-demoable, and the US1 acceptance clause. (FR-001 itself is handled by its delta.) <span class="path">specs/020-vscode-extension/spec.html</span></li>
+</ul>
+</section>
+
+
+<section id="questions">
+<h2>7 · Open questions</h2>
+<spec-questions>
+<ol>
+  <li>None — orientation set (both, vertical default), access (title-bar toggle + command), and persistence (per workspace) are all anchored.</li>
+</ol>
+</spec-questions>
+</section>
+
+
+<section id="changelog">
+<h2>8 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-06-22">2026-06-22</time><span>Applied to the live spec; status → applied. The three risks were transitioned to <code>mitigated</code> by the author before apply.</span></li>
+  <li><time datetime="2026-06-22">2026-06-22</time><span>Adversarial pass (FR-004 is must-tier): three findings, all converging on an un-deltaed FR-001 contradiction. Draft corrected — added a MODIFY FR-001 delta so direction is owned solely by FR-004. Risks recorded at <code>status="identified"</code> with drafted responses; awaiting your transition before apply.</span></li>
+  <li><time datetime="2026-06-22">2026-06-22</time><span>Proposal authored — add vertical orientation and default to it (MODIFY FR-004), add the orientation toggle + per-workspace persistence (ADD FR-013). Shipped at approved.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+</spec-change>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  2026-06-22-vertical-layout-default · Vertical layout, default · authored 2026-06-22 ·
+  <button data-theme-toggle style="background:none;border:none;color:var(--c-link);cursor:pointer;font:inherit;padding:0;border-bottom:1px solid currentColor;">light/dark</button>
+</footer>
+
+</main>
+<script src="../../../../../assets/spec.js"></script>
+</body>
+</html>
