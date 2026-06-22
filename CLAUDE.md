@@ -106,6 +106,7 @@ The lesson is paid for: `019-explain-course`'s quiz gate shipped a closure-over-
 Rules of thumb:
 - Generators of interactive artifacts (`assembleCourse`, theme JS, `<spec-tabs>`/gate behaviour) get a Playwright spec under `tests/` that *runs the JS and asserts behaviour*, plus a cheap structural backstop in vitest (e.g. "the gate script carries no `var`").
 - A green checkmark on a structural-only test is not "verified" for anything with a runtime. Before claiming an interactive feature works, open it in a browser (the MCP Playwright connector) and exercise it.
+- **Presence is not containment.** For anything *positioned* — cards that size to content, popovers/menus/tooltips anchored to an element — a test that asserts "it rendered" misses the two ways layout actually breaks: content overspilling its own box, and an overlay clipped by an `overflow` ancestor or the viewport edge. Assert containment (`scrollHeight ≤ clientHeight`) and on-screen bounds (the rect sits inside the viewport), not just that the element exists. Paid for by `020-vscode-extension` T-001/T-002: the canvas nodes and hover card passed every "it renders" check and were still visibly cropped when a human opened them.
 - The linter is not noise. The `var`-in-loop bug was flagged as `S1515` and waved off as "style"; it was the bug.
 
 ## Things deferred

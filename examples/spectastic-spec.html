@@ -300,10 +300,12 @@ transitions are:</p>
   <dd>When the blocker resolves, the artifact returns to whatever state it was
   in when Blocked was entered. Recorded in <code>&lt;spec-changelog&gt;</code>.</dd>
 </dl>
-<p>For artifacts without a <code>tasks.html</code> (principles, the meta-spec
-itself, triage logs, inbox), the Draft → Accepted trigger is an explicit author
-affirmation that the artifact is the operative contract for the project. The
-author records the affirmation as a one-line <code>&lt;spec-changelog&gt;</code>
+<p>For artifacts that are not a <code>specs/&lt;spec-id&gt;/</code> spec slice (principles, the
+meta-spec itself, triage logs, inbox) — including when they carry an execution-only
+<code>tasks.html</code> tracker for folded change tasks per <a href="#REQ-CHANGE-006">REQ-CHANGE-006</a> —
+the Draft → Accepted trigger is an explicit author affirmation that the artifact is the operative
+contract for the project; the execution tracker's checkboxes do <strong>not</strong> drive their status.
+The author records the affirmation as a one-line <code>&lt;spec-changelog&gt;</code>
 entry naming the date and the reason.</p>
 <p>Transitions not in the list above are <strong>forbidden</strong>. In particular,
 a Superseded or Deprecated artifact <spec-rule>MUST NOT</spec-rule> transition to any
@@ -339,10 +341,13 @@ the artifact contents. A plan amendment that genuinely needs Accepted → In Rev
 drags the whole bundle back to In Review, because the readiness affirmation no
 longer holds for any of the three siblings.</p>
 <p>Cross-spec bundling is <strong>not</strong> implied: each spec slice has its own
-bundle; one slice's status never tracks another slice's. Non-task artifacts
-(principles, the meta-spec, triage logs, inbox) keep their own author-affirmation
-trigger from <a href="#REQ-LIFECYCLE-004">REQ-LIFECYCLE-004</a>'s tasks-less
-clause — they are not part of any sibling bundle.</p>
+bundle; one slice's status never tracks another slice's. Artifacts outside a
+<code>specs/&lt;spec-id&gt;/</code> slice — principles, the meta-spec, triage logs, inbox — keep their own
+author-affirmation trigger from <a href="#REQ-LIFECYCLE-004">REQ-LIFECYCLE-004</a> and are not part of any
+sibling bundle. Such an artifact <spec-rule level="may">MAY</spec-rule> nonetheless carry a standalone
+<code>tasks.html</code> tracker for tasks folded from an applied proposal (per
+<a href="#REQ-CHANGE-006">REQ-CHANGE-006</a>); that tracker is execution-only — it does <strong>not</strong>
+pull the artifact into a status bundle.</p>
 <p><code>/spectastic.implement</code>'s last-tick step <spec-rule>MUST</spec-rule>
 evaluate the bundle-trigger condition (zero remaining unchecked
 <code>&lt;input type="checkbox"&gt;</code> in the spec's <code>tasks.html</code>)
@@ -356,6 +361,35 @@ manual gate) does not re-fire the bundled flip prompt. The deterministic evaluat
 closes the LLM-fragility failure mode where last-tick goes unnoticed when manual
 gates interleave with code tasks, without introducing a re-confirmation loop on
 already-flipped specs.</p>
+</spec-requirement>
+
+<spec-requirement id="REQ-LIFECYCLE-006" priority="must">
+<p>The <code>/spectastic.plan</code> procedure <spec-rule level="should">SHOULD</spec-rule> ground
+every design-bearing fact against real source before its interview — opening the actual consuming
+code, the dependency's signature at the resolved lockfile version, and quantified platform
+constraints, not the file tree alone — and <spec-rule level="should">SHOULD</spec-rule> record each
+fact in an evidence ledger as one of <code>verified</code> (opened this turn, with a cited source),
+<code>spike</code> (resolved by a time-boxed investigation run during planning, with its finding), or
+<code>assumed</code> (unverified).</p>
+<p>Each <code>&lt;spec-decision&gt;</code> <spec-rule level="should">SHOULD</spec-rule> declare its
+grounding and cite a <code>verified</code> or spike-resolved source in its Context; a decision that
+rests on an unverified assumption <spec-rule level="should">SHOULD</spec-rule> render as a visible
+failure (the planning analogue of <a href="#REQ-AUTHOR-001">REQ-AUTHOR-001</a>'s
+render-broken-when-malformed discipline).</p>
+<p>The gate is the binding clause: the plan <spec-rule>MUST NOT</spec-rule> be declared ready for
+<code>/spectastic.tasks</code> while a <code>must</code>-tier decision rests on an <code>assumed</code>
+or unresolved <code>spike</code> fact, unless the author has accepted it as a tracked
+<code>&lt;spec-risk&gt;</code> whose <code>status</code> the author commits (per
+<a href="#REQ-CHANGE-004">REQ-CHANGE-004</a>'s author-owned-status model). This gate is a plan→tasks
+readiness affirmation, not a Draft content-lock — it mirrors the existing estimability gate, and
+pure-judgment decisions with no external fact are exempt.</p>
+<p>Implementation surprises come from planning under unverified assumption. The grounding
+<em>discipline</em> ships as <code>SHOULD</code> — mirroring <a href="#REQ-CHANGE-004">REQ-CHANGE-004</a>,
+which shipped the adversarial pass as guidance from one data point rather than a blanket MUST that
+hollows into theater. The <em>gate</em> is the <code>MUST</code> that actually stops an ungrounded
+assumption from reaching implementation silently; lifting the <code>/spectastic.explain</code> "cite
+only confirmed source" discipline into planning makes "what the plan knows vs. assumes" structurally
+legible.</p>
 </spec-requirement>
 
 <h3>Change management</h3>
@@ -384,8 +418,8 @@ fields — empty or missing renders visibly broken.</p>
 <spec-requirement id="REQ-CHANGE-003" priority="should">
 <p>After <code>/spectastic.apply</code> lands a change, the command <spec-rule level="should">SHOULD</spec-rule> surface the <em>post-apply routing rule</em> — where the user drives the follow-up implementation work — in both its documented output and its per-apply console report:</p>
 <ul>
-  <li><strong>Small change</strong> (one or two requirements, behavioural addition, no new ADRs): drive the inline task list inside the archived proposal. <code>/spectastic.implement</code> can target those tasks directly.</li>
-  <li><strong>Large change</strong> (multi-requirement, architectural shift, new topic group): re-run <code>/spectastic.plan</code> against the updated spec to revisit ADRs, then <code>/spectastic.tasks</code> to derive a fresh breakdown, then <code>/spectastic.implement</code> to drain it.</li>
+  <li><strong>Small change</strong> (one or two requirements, behavioural addition, no new ADRs): the §6 tasks have been folded into the target's <code>tasks.html</code> as a new phase (per <a href="#REQ-CHANGE-006">REQ-CHANGE-006</a>); drive them with <code>/spectastic.implement</code>.</li>
+  <li><strong>Large change</strong> (multi-requirement, architectural shift, new topic group): re-run <code>/spectastic.plan</code> against the updated spec to revisit ADRs, then <code>/spectastic.tasks</code> to derive a fresh breakdown — which regenerates <code>tasks.html</code> and supersedes the folded phase — then <code>/spectastic.implement</code> to drain it.</li>
 </ul>
 <p>The boundary is fuzzy by design: <em>if more than one new ADR would land, the change is large enough to warrant plan + tasks; otherwise the proposal's inline tasks are the breakdown.</em> The rule is guidance, not a guardrail — apply <spec-rule>MUST NOT</spec-rule> refuse or auto-trigger plan/tasks based on its own classification.</p>
 <details><summary>Rationale</summary><p>The propose template already encodes the small-change shortcut by hosting tasks inside the proposal artifact. The apply command's prose never names the resulting routing rule, so a fresh reader hits the fork unsignposted. Surfacing the rule turns implicit design into explicit guidance and prevents the lifecycle's reading order from leaving a hole between apply and the next implement.</p></details>
@@ -416,6 +450,21 @@ fields — empty or missing renders visibly broken.</p>
 </ul>
 <p>Withdraw is <em>intended</em> as terminal: there is no <code>--unwithdraw</code> command. If you withdrew by accident or under time pressure, restoring the folder and status manually is unsupported but not forbidden — git-revert the move and flip the status field. If your thinking has actually updated since the withdrawal, author a new proposal instead so the lineage stays legible. Implementation ownership: Surface A in <code>commands/spectastic.triage.md</code>; Surface B's procedure in <code>commands/spectastic.apply.md</code>'s Withdraw procedure section.</p>
 <details><summary>Rationale</summary><p>The <code>&lt;spec-status value="withdrawn"&gt;</code> vocabulary has existed since v0.1 but has had no workflow behind it — an authored proposal the author decided against would either sit in <code>changes/&lt;YYYY-MM-DD&gt;-&lt;slug&gt;/</code> indefinitely or get manually deleted. Inbox cards had no terminal-rejected state for routed layers. The lifecycle had no way to record "considered, decided against." This requirement closes both gaps with one discipline — preserve, don't delete — and one apply-mode extension. Priority <code>should</code> rather than <code>must</code> because we're codifying from zero applications; re-evaluate after ≥3 worked rejections.</p></details>
+</spec-requirement>
+
+<spec-requirement id="REQ-CHANGE-006" priority="must">
+<p>On <code>/spectastic.apply</code>, a proposal's §6 tasks <spec-rule>MUST</spec-rule> be folded into
+the target's <code>tasks.html</code> — <code>specs/&lt;id&gt;/tasks.html</code> for a spec, or the artifact's
+sibling tracker for the meta-spec / principles, <strong>created from <code>templates/tasks.html</code> if
+absent</strong> — as a new provenance-linked <code>&lt;spec-task&gt;</code> phase whose IDs continue the
+target's sequence. The provenance <spec-rule>MUST</spec-rule> link the archived proposal.</p>
+<p><code>/spectastic.apply</code> <spec-rule>MUST NOT</spec-rule> itself implement the tasks;
+<code>/spectastic.implement</code> drains the folded phase. The archived proposal §6 remains the frozen
+intent record and <spec-rule>MUST NOT</spec-rule> be ticked in place. This makes apply a uniform
+accept-and-route step for every target — never context-dependent about whether it implements.</p>
+<p>Acceptance ≠ execution (a merge is not a deploy); a command must behave consistently (least
+astonishment); and accepted work belongs in a project's tracked task list, not the triage inbox. One
+execution surface per target, no hand-copy, archive intact.</p>
 </spec-requirement>
 
 <h3>Rendering</h3>
@@ -817,6 +866,8 @@ disabled, fall back to <a href="#requirements">§4 Requirements</a>.</p>
 <h2>12 · Change log</h2>
 <spec-changelog>
 <ol>
+  <li><time datetime="2026-06-22">22 Jun 2026</time><span>Applied <a href="./changes/archive/2026-06-22-fold-proposal-tasks/proposal.html">2026-06-22-fold-proposal-tasks</a>: added <a href="#REQ-CHANGE-006">REQ-CHANGE-006</a> (apply folds a proposal's §6 into the target's <code>tasks.html</code>; apply never implements; <code>/implement</code> drains); fixed <a href="#REQ-CHANGE-003">REQ-CHANGE-003</a>'s impossible wording; re-keyed <a href="#REQ-LIFECYCLE-004">REQ-LIFECYCLE-004</a> + <a href="#REQ-LIFECYCLE-005">REQ-LIFECYCLE-005</a> from "without a tasks.html" to "not a spec slice" so the meta-spec/principles may hold an execution-only tracker. Adversarial pass: 3 risks; the REQ-LIFECYCLE-004 predicate collision resolved by the re-keying delta.</span></li>
+  <li><time datetime="2026-06-22">22 Jun 2026</time><span>Applied <a href="./changes/archive/2026-06-22-plan-grounding/proposal.html">2026-06-22-plan-grounding</a>: added <a href="#REQ-LIFECYCLE-006">REQ-LIFECYCLE-006</a> (grounded planning — <code>/spectastic.plan</code> SHOULD ground design-bearing facts against real source and MUST NOT hand off to <code>/tasks</code> on an unaccepted ungrounded must-decision). Adversarial pass: 3 risks; the blanket-MUST risk resolved by the SHOULD-discipline / MUST-gate split.</span></li>
   <li><time datetime="2026-06-12">12 Jun 2026</time><span>Initial draft. Twelve elements, four templates, four slash commands.</span></li>
   <li><time datetime="2026-06-12">12 Jun 2026</time><span>Applied <a href="./changes/archive/2026-06-12-add-change-proposal/proposal.html">2026-06-12-add-change-proposal</a>: added REQ-CHANGE-001/002 (Change-management topic), modified REQ-LIFECYCLE-001 (five templates), removed REQ-TOOL-002 (deferred CLI), renamed REQ-RENDER-003 → REQ-THEME-001 (new Theming topic).</span></li>
   <li><time datetime="2026-06-12">12 Jun 2026</time><span>Applied <a href="./changes/archive/2026-06-12-tool-command-count/proposal.html">2026-06-12-tool-command-count</a>: modified REQ-TOOL-001 to name all seven shipping commands. Spec-budget bumped 2,500 → 3,000 words on the same apply.</span></li>

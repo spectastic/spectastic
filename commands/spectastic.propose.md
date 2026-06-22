@@ -115,7 +115,10 @@ User input (from `$ARGUMENTS`): a change name or one-line description ("add OAut
 - Replace every `[PLACEHOLDER]`. Never leave one in the final file.
 - Paragraphs short. Reviewers skim proposals more aggressively than specs.
 - Use `<spec-note>` for non-obvious approach details; `<spec-warning>` for risks; tasks as a
-  simple `<ul>` with checkbox inputs.
+  simple `<ul>` with checkbox inputs. The §6 task list is the change's implementation breakdown:
+  on `/spectastic.apply` it folds into the target's `tasks.html` as a new phase that
+  `/spectastic.implement` drains (per `REQ-CHANGE-006`), and the archived proposal §6 becomes the
+  frozen intent record. Write each task as one concrete file/dir of work, the way `tasks.html` tasks read.
 
 ## After writing
 

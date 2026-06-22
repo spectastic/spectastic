@@ -84,6 +84,26 @@ Before withdrawing, verify all of these. **Stop and report** if any check fails:
 7. **Update the proposal's status** in the archived copy to `applied`, and add a final entry
    to the proposal's own `<spec-changelog>` recording the apply date.
 
+8. **Fold the proposal's §6 Tasks into the target's `tasks.html`** (per `REQ-CHANGE-006`). Apply
+   accepts-and-routes; it **never implements** the tasks — `/spectastic.implement` does that.
+
+   - **Resolve the target's `tasks.html`.** For a spec target: `specs/<spec-id>/tasks.html`. For a
+     tasks-less target: the sibling tracker — `examples/spectastic-tasks.html` for the meta-spec,
+     `principles-tasks.html` for principles. **If it doesn't exist, create it** from
+     `templates/tasks.html` (rewrite asset paths for its depth; strip the placeholder phases — the
+     folded phase is its content). The tracker on a tasks-less artifact is **execution-only** and
+     does not pull the artifact into a status bundle (`REQ-LIFECYCLE-004`/`REQ-LIFECYCLE-005`).
+   - **Append a new phase.** Add `<section id="phase-<slug>" class="phase">` with an `<h2>` naming
+     the change and an inline `(applied change <a href="./changes/archive/<date>-<slug>/proposal.html">…</a>)`
+     provenance link; a one-line "Folded from the applied proposal's §6 (archive frozen)" `<p>`; each
+     §6 `<li>` transcribed to a `<spec-task id="T-NNN">` (per `REQ-LIFECYCLE-003`) preserving any
+     `parallel` marker and the `<span class="path">`; and a closing `<spec-note>` linking the
+     requirement IDs the change closed. **IDs continue in a fresh hundred-range above the current
+     max** so they never collide (model on Phase 5 of `specs/020-vscode-extension/tasks.html`).
+   - **Leave the archived proposal §6 frozen/unticked** — it is the intent record, not the execution
+     surface. Do not implement, and do not tick proposal checkboxes in place.
+   - If the proposal has **no §6 tasks**, skip this step.
+
 ## Withdraw procedure
 
 When invoked with `--withdraw <YYYY-MM-DD>-<slug> --reason="<one-line>"`:
@@ -132,7 +152,8 @@ Report:
 - The archived proposal path.
 - The new entry added to the spec's changelog.
 - Any cross-spec references that may need follow-up.
-- The **post-apply routing nudge** (per `REQ-CHANGE-003`): one line naming whether the change is small (drive the proposal's §5 Tasks) or large (re-run `/spectastic.plan` then `/spectastic.tasks`).
+- The **task fold** (per `REQ-CHANGE-006`): the target `tasks.html` the §6 tasks were folded into (and whether it was created), and the new phase / `T-NNN` range. Apply implemented none of them.
+- The **post-apply routing nudge** (per `REQ-CHANGE-003`): one line — small change → run `/spectastic.implement` on the folded phase; large change → optionally re-run `/spectastic.plan` + `/spectastic.tasks` (regenerates, supersedes the fold).
 - The **originating inbox-card nudge** (if the proposal's `<spec-meta>` `Source` row points at `inbox.html#I-NNN`, or if the proposal's prose references an inbox card by ID): one line suggesting that the originating card be transitioned to `data-status="done"` with a new `<dt>Closed by</dt>` row pointing at the archived proposal and the requirement that landed. Apply does **not** make this transition automatically; the inbox-card update is the author's gesture (mirrors the Surface-A discipline in `REQ-CHANGE-005`). Without this nudge in the report, the lifecycle's view and the inbox's view drift apart silently.
 
 Suggest opening the live spec in a browser to confirm the apply rendered cleanly.
@@ -141,10 +162,12 @@ Suggest opening the live spec in a browser to confirm the apply rendered cleanly
 
 Per `REQ-CHANGE-003` of the meta-spec, after `/spectastic.apply` lands a change, the user needs to know where the follow-up implementation work lives. Always name the routing rule explicitly in the per-apply console report:
 
-- **Small change** — one or two requirements, behavioural addition, no new ADRs. The implementation breakdown is the archived proposal's §5 Tasks; `/spectastic.implement` can drive those checkboxes directly.
-- **Large change** — multi-requirement, architectural shift, new topic group. Re-run `/spectastic.plan` against the updated spec to revisit ADRs, then `/spectastic.tasks` to derive a fresh breakdown, then `/spectastic.implement` to drain it.
+The proposal's §6 tasks have already been **folded into the target's `tasks.html`** as a new provenance-linked phase (step 8). Apply implemented nothing — `/spectastic.implement` drains the folded phase.
 
-The boundary heuristic: **more than one new ADR would land → large**. Otherwise the proposal's inline tasks are the breakdown. State the rule as guidance, not a guardrail — never auto-trigger plan/tasks based on your own classification, and never refuse an apply based on it.
+- **Small change** — one or two requirements, behavioural addition, no new ADRs. Run `/spectastic.implement` to drain the folded phase.
+- **Large change** — multi-requirement, architectural shift, new topic group. You may instead re-run `/spectastic.plan` against the updated spec to revisit ADRs, then `/spectastic.tasks` to derive a fresh breakdown — which regenerates `tasks.html` and **supersedes the folded phase** — then `/spectastic.implement`.
+
+The boundary heuristic: **more than one new ADR would land → large**. State the rule as guidance, not a guardrail — apply always folds (it never self-classifies); the large-change re-plan is the author's choice, not apply's.
 
 ## Optional: CLI dispatch
 

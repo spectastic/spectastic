@@ -31,7 +31,22 @@ User input (from `$ARGUMENTS`): a Spec ID such as `001-auth-service`, or empty (
 
 5. **Run the Principles check**. Walk every principle. For each, mark `OK`, `EXCEPTION`, or `VIOLATION`. An exception requires a justification logged in §8 Complexity tracking. A violation requires the user either to revise the plan or amend the principles — stop and ask.
 
-6. **Skip what's known.** Before any interview question, check `$ARGUMENTS`, the surrounding codebase (file tree, package.json, Cargo.toml, lockfiles), and the spec for answers you already have. Don't re-ask. Only interview for what's genuinely missing.
+6. **Ground the plan in verified truth (read before you interview).** Per `REQ-LIFECYCLE-006`, before any interview question, resolve every design-bearing fact against real source — the same discipline `/spectastic.explain` applies to explanations. Don't plan from memory or from how a library "probably" works.
+
+   **Read the real ground** (this is a `SHOULD` — ground the facts a decision will actually rest on, not every file for its own sake). For each requirement and success criterion, identify what the plan will *touch or depend on* and open it:
+   - **Consuming code** — the modules/functions this feature calls into or extends. Read the real signatures and control flow (Grep/Glob/Read, or the LSP tool's `goToDefinition`/`findReferences`), not just the file tree.
+   - **Dependency signatures** — confirm the symbol/option you intend to use exists at the *resolved lockfile version* (open `package-lock.json` / `pnpm-lock.yaml` / `Cargo.lock` / … for the real version, not a newer one).
+   - **Platform / runtime constraints** — record the actual number for any quantified limit the approach assumes (rate limit, payload cap, timeout, supported runtime).
+   - **Existing patterns** — how the codebase already solves the adjacent problem, so the plan *extends rather than regenerates* it.
+
+   **Classify each design-bearing fact** as one of:
+   - `verified` — you opened the source this turn; record the citation (`path:line`, a symbol, `dep@version`, or a doc URL).
+   - `spike` — decidable only by a time-boxed investigation; **run it now** (a measurement, a throwaway prototype, a query against a real system) and record the one-line finding. A spike too large to run now surfaces as the first `/spectastic.tasks` item.
+   - `assumed` — taken as true without verification because verifying now costs more than it's worth.
+
+   Record every fact as a row in **§3 Grounding & evidence** of the plan (claim → source → status → finding). This is the leading edge of the plan: a reviewer reads it to see what the plan *knows* versus *assumes*.
+
+   **Skip what's known.** Facts you just verified don't need re-asking; check `$ARGUMENTS` and the spec too, and only interview for what grounding left genuinely open.
 
 7. **Two-phase interview.** Discovery in chat (narrative), decisions via `AskUserQuestion` (bounded choice). Unresolved questions in the final plan signal that the interview failed.
 
@@ -56,12 +71,18 @@ User input (from `$ARGUMENTS`): a Spec ID such as `001-auth-service`, or empty (
 
 8. **Discipline**:
    - Decisions follow the ADR shape: Status / Context / Decision / Consequences (with `+` positives and `−` negatives).
+   - **Every decision declares its grounding.** Each `<spec-decision>` carries `grounding="verified|spike|assumed|n-a"` (`n-a` = pure judgment with no external fact, e.g. a test-style preference) and its Context cites the backing §3 Grounding row's source (`<code>src/foo.ts:88</code>`, `dep@version`, a URL). A decision missing the attribute, or `grounding="assumed"`, renders the visible `UNGROUNDED` label — the planning analogue of a `<spec-delta>` rendering `MISSING OP`. "We'll use X because it's standard" is not a citation; "X — lockfile resolves `x@4.2`, `x.foo()` confirmed in `dist/index.d.ts:88`" is.
    - Decisions have stable IDs `D-001`, `D-002`, … forever. Superseded decisions keep status `superseded` and link to the replacement.
    - The architecture sketch (inline SVG) is **required** if the feature has more than one moving part. Keep it small — fewer than ~8 boxes; if you need more, sketch the slice, not the system.
    - Alternatives must include a scored matrix with one row marked `data-winner`. The winner must be the one actually chosen.
    - Do not duplicate the spec. Link to its requirement IDs (`<a href="./spec.html#FR-001">FR-001</a>`) rather than restating them.
 
-9. **Validate**. Re-walk Principles check. Now that the plan is written, does any decision violate a principle you marked OK earlier? If yes, fix the decision or escalate.
+9. **Validate**. Re-walk the Principles check — does any decision now violate a principle you marked OK earlier? If yes, fix the decision or escalate. Then re-walk the **grounding gate** (`REQ-LIFECYCLE-006`, the binding clause): the plan is **not ready for `/spectastic.tasks`** while any `must`-tier decision is `grounding="assumed"` or an unresolved `grounding="spike"`. For each, have the user choose — the choice is theirs to commit, not yours — via `AskUserQuestion`:
+   - **Verify** — read the source now; flip the §3 row and the decision to `verified` with a citation.
+   - **Spike** — run the time-boxed investigation now (record the finding), or schedule it as the first `/spectastic.tasks` item.
+   - **Accept the risk** — record `<spec-risk target="D-NNN" status="accepted">` with the user's one-line rationale; leave it `identified` until the user confirms, exactly as in propose §8.
+
+   This gate is a plan→tasks *readiness* affirmation, not a Draft content-lock (P-6) — it mirrors the estimability gate in step 2. Should/may-tier and `n-a` decisions warn but do not block.
 
 ## Output style
 
@@ -71,7 +92,7 @@ User input (from `$ARGUMENTS`): a Spec ID such as `001-auth-service`, or empty (
 
 ## After writing
 
-Report the path, the principles version checked against, and propose `/spectastic.tasks` to derive the work list.
+Report the path, the principles version checked against, and a one-line grounding summary (how many facts `verified` / `spike` / `assumed`). Propose `/spectastic.tasks` to derive the work list **only once the grounding gate is clear** — if a must-tier decision is still ungrounded and unaccepted, name that as the blocker instead.
 
 ## Optional: CLI dispatch
 
