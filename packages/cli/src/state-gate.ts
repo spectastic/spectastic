@@ -14,7 +14,7 @@ export type GateDecision =
 export async function gateOnDestinationState(
   fs: typeof fsPromises,
   destPath: string,
-  opts: { force?: boolean },
+  opts: { force?: boolean | undefined },
 ): Promise<GateDecision> {
   let existing: string;
   try {
