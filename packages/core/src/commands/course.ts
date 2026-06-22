@@ -320,13 +320,20 @@ const GATE_SCRIPT = `<script>
     const checkbox = objId ? document.querySelector('#' + objId + ' input[type=checkbox]') : null;
     const answer = quiz.querySelector('.quiz-answer');
     if (answer) answer.hidden = true;
+    const verdict = quiz.querySelector('.quiz-verdict');
     quiz.querySelectorAll('input[type=radio]').forEach(function (radio) {
       radio.addEventListener('change', function () {
         const chosen = Number(radio.value);
+        const right = chosen === correct;
+        quiz.classList.toggle('correct', right);
+        quiz.classList.toggle('incorrect', !right);
+        if (verdict) {
+          const fb = radio.getAttribute('data-feedback');
+          verdict.textContent = (right ? '✓ Correct.' : '✗ Not quite.') + (fb ? ' ' + fb : '');
+          verdict.hidden = false;
+        }
         if (answer) answer.hidden = false;
-        quiz.classList.toggle('correct', chosen === correct);
-        quiz.classList.toggle('incorrect', chosen !== correct);
-        if (chosen === correct && checkbox) checkbox.checked = true;
+        if (right && checkbox) checkbox.checked = true;
       });
     });
   }
@@ -398,10 +405,11 @@ function renderObjective(o: CourseObjective, i: number): string {
   const id = `T-${String(i + 1).padStart(3, '0')}`;
   const name = `quiz-${id}`;
   const opts = o.quiz.options
-    .map(
-      (opt, k) =>
-        `        <li><label><input type="radio" name="${name}" value="${k}"> ${escapeHtml(opt)}</label></li>`,
-    )
+    .map((opt, k) => {
+      const fb = o.quiz.feedback?.[k]?.trim() ?? '';
+      const fbAttr = fb ? ` data-feedback="${escapeHtml(fb)}"` : '';
+      return `        <li><label><input type="radio" name="${name}" value="${k}"${fbAttr}> ${escapeHtml(opt)}</label></li>`;
+    })
     .join('\n');
   const correctOption = o.quiz.options[o.quiz.correctIndex] ?? '';
   const feedback = o.quiz.feedback?.[o.quiz.correctIndex]?.trim() || '';
@@ -421,9 +429,10 @@ function renderObjective(o: CourseObjective, i: number): string {
       <ol class="quiz-opts">
 ${opts}
       </ol>
+      <p class="quiz-verdict" hidden style="font-weight:600;margin-top:var(--s-3)"></p>
       <details class="quiz-answer">
-        <summary>Answer</summary>
-        <p>Correct: <strong>${escapeHtml(correctOption)}</strong>.${feedback ? ` ${escapeHtml(feedback)}` : ''}</p>
+        <summary>Reveal the answer</summary>
+        <p>The correct answer is <strong>${escapeHtml(correctOption)}</strong>.${feedback ? ` ${escapeHtml(feedback)}` : ''}</p>
       </details>
     </div>
   </spec-tab>
