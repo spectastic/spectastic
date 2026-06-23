@@ -62,6 +62,7 @@ User input (from `$ARGUMENTS`): a feature name or one-line description.
    - Success criteria `SC-001`, … — **technology-agnostic and measurable**
    - **INVEST self-check**: fill the six `<dl class="invest">` rows. `V` must link to a success-criterion ID; `T` must link to an acceptance scenario or requirement. If any row is honestly `✗`, the spec is not ready to estimate — flag it.
    - Only the truly-unresolved questions go into `<spec-questions>`. If anything answerable made it here, loop back to step 6.
+   - **Zero open questions has one form (`REQ-AUTHOR-005`).** When none remain, the `<spec-questions>` register MUST carry no `<li>` — each `<li>` counts as one open question to every consumer (health extraction, the lifecycle needs-attention signal, validators). Put any "resolved because…" rationale in a `<p>` (e.g. `<p>None outstanding — every decision was anchored in the interview.</p>`), never a placeholder or "None" `<li>`.
 
 8. **Discipline**:
    - Every requirement must use an RFC 2119 keyword wrapped in `<spec-rule>` (or `<spec-rule level="should">` / `<spec-rule level="may">`).

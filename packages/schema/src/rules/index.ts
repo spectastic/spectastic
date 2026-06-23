@@ -8,6 +8,7 @@ import { investRowFailedRule } from './invest-row-failed.js';
 import { noBrokenDeferToRule } from './no-broken-defer-to.js';
 import { noDuplicateIdsRule } from './no-duplicate-ids.js';
 import { noMissingDeferToRule } from './no-missing-defer-to.js';
+import { noPlaceholderQuestionRule } from './no-placeholder-question.js';
 import { noUnresolvedQuestionRule } from './no-unresolved-question.js';
 import { parentChildReciprocityRule } from './parent-child-reciprocity.js';
 import { requirementIdRequiredRule } from './requirement-id-required.js';
@@ -40,6 +41,7 @@ export const rules: readonly Rule[] = [
 
   // Status-dependent rules (per-file).
   noUnresolvedQuestionRule,
+  noPlaceholderQuestionRule,
   investRowFailedRule,
 
   // Edge-case rules (per-file).

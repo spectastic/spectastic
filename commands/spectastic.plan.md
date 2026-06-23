@@ -48,7 +48,7 @@ User input (from `$ARGUMENTS`): a Spec ID such as `001-auth-service`, or empty (
 
    **Skip what's known.** Facts you just verified don't need re-asking; check `$ARGUMENTS` and the spec too, and only interview for what grounding left genuinely open.
 
-7. **Two-phase interview.** Discovery in chat (narrative), decisions via `AskUserQuestion` (bounded choice). Unresolved questions in the final plan signal that the interview failed.
+7. **Two-phase interview.** Discovery in chat (narrative), decisions via `AskUserQuestion` (bounded choice). Unresolved questions in the final plan signal that the interview failed. When none remain, represent zero per `REQ-AUTHOR-005`: the `<spec-questions>` register carries no `<li>` — put any "resolved because…" rationale in a `<p>`, never a "None" `<li>` (each `<li>` reads as one open question to consumers).
 
    **Chat phase (narrative answers):**
    - High-level approach in one or two paragraphs

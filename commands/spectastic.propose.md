@@ -49,7 +49,7 @@ User input (from `$ARGUMENTS`): a change name or one-line description ("add OAut
 
 5. **Skip what's known.** Before any interview, check `$ARGUMENTS`, the live spec, and any sibling proposal folders for context you already have. Don't re-ask. Only interview for what's genuinely missing.
 
-6. **Two-phase interview.** Discovery in chat (narrative), decisions via `AskUserQuestion` (bounded choice). The proposal's `<spec-questions>` register should be empty by write-time unless something is genuinely undecidable today.
+6. **Two-phase interview.** Discovery in chat (narrative), decisions via `AskUserQuestion` (bounded choice). The proposal's `<spec-questions>` register should be empty by write-time unless something is genuinely undecidable today. Represent zero per `REQ-AUTHOR-005`: no `<li>` in the register (a `<p>` rationale is fine), never a "None" `<li>` — each `<li>` reads as one open question to consumers.
 
    **Chat phase (narrative answers):**
    - **Intent** — why this change, in one or two paragraphs. The reviewer should understand the motivation before reading the deltas.
