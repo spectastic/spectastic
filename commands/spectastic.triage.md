@@ -45,7 +45,9 @@ Detection heuristic: if the input contains explicit list markers (commas, semico
 
    If you reason your way to a confident answer, just write it. If the answer is genuinely ambiguous, use `AskUserQuestion` to commit the user to `pass` / `fail` / `unsure (needs more investigation)` — don't paper over with prose.
 
-6. **Classify the layer.** Pick the *primary* layer that owns the fix — exactly one of:
+   **Ladder the root cause (`REQ-LIFECYCLE-007`).** The regen test is not one shot — climb it. Start at the candidate (lowest plausible) layer and ask "if I changed *only* this layer, would the regen test still fail?" If it would recur, the owner is upstream — step up `implementation → spec → cross-spec → principles` and re-ask, stopping at the **lowest layer whose fix would pass**. That lowest-passing rung is the layer to classify (step 6): high enough that the bug won't recur, no higher — honest drift isn't inflated past its real layer. One probe per rung — the same regen question, not a second analysis pass — so the card still reads in under 30 seconds. (`just-do` / `defer` items skip the regen test and are exempt.)
+
+6. **Classify the layer.** Pick the *primary* layer that owns the fix — the **lowest layer whose fix passes the regeneration test** (the ladder's stopping rung from step 5; `REQ-LIFECYCLE-007`'s bidirectional gate — no lower, or the bug recurs; no higher, or it's spec inflation) — exactly one of:
 
    *Diagnostic layers (defects):*
    - `spec` — user-visible behavior, NFR, or contract is missing/wrong.
@@ -127,11 +129,11 @@ This is the **pre-propose rejection path**. For the **post-propose** path (an au
 
 ## Discipline (non-negotiable)
 
-- **Fix at the highest layer that needed to change.** A code-only patch resurfaces on the next regen if the upstream gap is real.
+- **Fix at the highest layer that needed to change** — the *upper* bound of the `REQ-LIFECYCLE-007` gate. A code-only patch resurfaces on the next regen if the upstream gap is real; the ladder (step 5) climbs until a fix would pass.
 - **Cite real requirement IDs.** Hallucinated IDs are worse than no IDs. If unsure, read the spec to confirm.
 - **Never silently expand scope.** If the bug exposes deferred functionality, surface it; don't promote it.
 - **No symptom patching.** If the test passes only because you changed the test, that is not a fix.
-- **No spec inflation.** An honest implementation drift (typo, off-by-one, unhandled nil) is **not** a spec failure — the regeneration test catches this.
+- **No spec inflation** — the *lower* bound of the `REQ-LIFECYCLE-007` gate. An honest implementation drift (typo, off-by-one, unhandled nil) is **not** a spec failure: its fix passes the regen test at `implementation`, so the ladder stops there.
 
 ## Output style
 
