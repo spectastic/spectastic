@@ -1,0 +1,333 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Verify view · Specification</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Specification · 021-verify-view</p>
+  <h1>Verify view</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    A generated <code>verify.html</code> per spec that answers "how do I run it, and how do I know it works?" — by
+    aggregating what already exists and grounding the one missing piece in the run that actually happened.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>      <span><spec-status value="draft">Draft</spec-status></span>
+    <b>Spec ID</b>     <span>021-verify-view</span>
+    <b>Owner</b>       <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Reviewers</b>   <span>—</span>
+    <b>Created</b>     <span><time datetime="2026-06-24">2026-06-24</time></span>
+    <b>Principles</b><span><a href="../../principles.html">v1.2.0</a></span>
+    <b>Smallest demoable</b><span>After <code>/implement</code> finishes a spec, <code>specs/&lt;id&gt;/verify.html</code> exists and shows traced SC → acceptance → test links plus a Run/Demo block whose commands are the ones that just ran.</span>
+    <b>Read time</b>   <span data-reading-time></span>
+  </spec-meta>
+
+  <!-- Live size gauge — green at <70%, amber 70-100%, red over. -->
+  <spec-budget words="2500" reqs="20" minutes="12"></spec-budget>
+
+  <spec-tldr>
+    <p>The lifecycle is rich at the front and silent after "implementation complete": nothing tells a teammate how
+    to run, demo, or verify the built feature. This spec adds a generated, derived <code>verify.html</code> per
+    spec that <strong>aggregates</strong> the existing success criteria, acceptance, and test tasks as traced links
+    (never copied), and adds the one missing artifact — a medium-agnostic <strong>Run/Demo block</strong> that
+    <code>/implement</code> fills from the commands it actually ran. A single <code>spectastic verify</code>
+    generator produces it, called by <code>/implement</code> at completion and runnable standalone to regenerate
+    the links; it carries no status of its own, and <code>spectastic validate</code> flags it when its links drift.
+    It is the larger sibling of the ratified <a href="../../principles.html#P-7">P-7</a> — the principle named the
+    bar, this view helps a human confirm it.</p>
+  </spec-tldr>
+
+  <dl class="invest">
+    <dt><span class="letter">I</span> Independent</dt> <dd>Depends on principles v1.2.0 (<a href="../../principles.html#P-7">P-7</a>) and reads the existing structure of <code>spec.html</code>/<code>tasks.html</code>; wires into two named upstreams — the validator (<a href="../002-validate-cli/spec.html">002-validate-cli</a>) and the implement hook (<a href="../014-core-implement/spec.html">014-core-implement</a>). Owns no shared mutable state.</dd>
+    <dt><span class="letter">N</span> Negotiable</dt>  <dd>Outcomes only. Tag names, generator language/package, parse strategy, and the exact link-matching algorithm defer to the plan.</dd>
+    <dt><span class="letter">V</span> Valuable</dt>    <dd>Unlocks <a href="#SC-001">SC-001</a> — a reviewer reaches "how do I run and see this" without archaeology or asking the author.</dd>
+    <dt><span class="letter">E</span> Estimable</dt>   <dd>Boundaries are anchored (full aggregate + Run block; <code>/implement</code> trigger; validate-flags-staleness; derived status). Plan + tasks derivable without further interview.</dd>
+    <dt><span class="letter">S</span> Small</dt>       <dd><strong>Borderline.</strong> One generator, one artifact, one validator rule, one <code>/implement</code> hook. Aggregation and the Run block ship together by necessity — aggregation alone doesn't fix the gap, the Run block alone drifts. Backfill and any AGENTS.md promotion are deferred.</dd>
+    <dt><span class="letter">T</span> Testable</dt>    <dd>Every requirement is observable: the file is generated, the links resolve, the commands reproduce, validate emits the drift finding. Criteria quantified at <a href="#SC-002">SC-002</a>–<a href="#SC-004">SC-004</a>.</dd>
+  </dl>
+
+  <spec-audience-map>
+    <dl>
+      <dt>Exec / PM</dt>   <dd>§<a href="#context">Context</a>, §<a href="#scenarios">User scenarios</a>, §<a href="#success">Success criteria</a>.</dd>
+      <dt>Reviewer</dt>    <dd>§<a href="#requirements">Requirements</a>, §<a href="#assumptions">Assumptions</a>, §<a href="#questions">Open questions</a>.</dd>
+      <dt>Implementer</dt> <dd>§<a href="#requirements">Requirements</a>, §<a href="#data">Data model</a>, §<a href="#conformance">Conformance index</a>.</dd>
+    </dl>
+  </spec-audience-map>
+</header>
+
+
+<section id="context">
+<h2>1 · Context</h2>
+<p>The lifecycle is rich at the front — <code>spec.html</code> carries success criteria (<code>SC-NNN</code>) and
+per-story acceptance; <code>tasks.html</code> opens each story with test-first phases citing the
+<code>FR-NNN</code>/<code>SC-NNN</code> they close — but once <code>/implement</code> ticks the last box, nothing
+answers the question a teammate actually asks: <em>"It's built. How do I run it, see it work, and what do I turn
+on?"</em> A good merge request reads <em>what · why · how · validation</em>; spectastic has homes for three (tasks /
+spec / plan) and <strong>validation is homeless</strong>. Dogfooding <code>spec-tictactoe</code> proved it real —
+the UI shipped with no way to tell how to run the whole thing, and "done" to "I can see it" was private archaeology.</p>
+<p><a href="../../principles.html#P-7">P-7 · Done means verified</a> now names the universal bar; this spec adds the
+per-feature artifact that says how a human confirms <em>this</em> feature. The design rationale — why generate not
+write, aggregate not copy, a standalone file — lives in <a href="../../docs/verify-considerations.html">verify-considerations.html</a>;
+its decisions (D-2 aggregate-don't-copy, D-3 standalone file, D-4 no-new-verb / derived view) are settled inputs
+here. <strong>Users:</strong> the reviewer who lands in <code>specs/&lt;id&gt;/</code> after a build, and the author
+who wants the validation section to keep itself honest.</p>
+</section>
+
+
+<section id="scenarios">
+<h2>2 · User scenarios &amp; testing</h2>
+
+<p>Each story <strong>MUST</strong> be independently testable: if you implemented only US1, you would still have a
+viable MVP.</p>
+
+<h3>US1 · Run and demo a built feature <spec-pill>P1</spec-pill></h3>
+<p>As a <strong>reviewer who just pulled a finished spec</strong>, I want to <strong>open one file and see exactly
+how to run, toggle, test, and demo the feature</strong> so that <strong>I can see it work without reading the
+source or asking the author</strong>.</p>
+<p><em>Acceptance:</em> Opening <code>specs/&lt;id&gt;/verify.html</code> shows a Run/Demo block with the
+build/start command, any required toggle (or an explicit "none"), the exact test command, and a human demo path;
+copy-pasting the Run and Tests commands reproduces the feature's verification.</p>
+
+<h3>US2 · Trace a success criterion to its proof <spec-pill>P1</spec-pill></h3>
+<p>As a <strong>reviewer</strong>, I want to <strong>follow each success criterion to its acceptance scenario and
+the test task that closes it</strong> so that <strong>I can confirm every claimed outcome is actually verified,
+not asserted</strong>.</p>
+<p><em>Acceptance:</em> <code>verify.html</code> lists every <code>SC-NNN</code> from the spec, each linking to its
+acceptance scenario and the closing test task(s); the links resolve to the real anchors in the sibling
+<code>spec.html</code>/<code>tasks.html</code>; no SC prose is copied, only linked.</p>
+
+<h3>US3 · Keep the view honest as the spec changes <spec-pill>P2</spec-pill></h3>
+<p>As a <strong>spec author</strong>, I want <strong><code>spectastic validate</code> to tell me when a
+<code>verify.html</code> has drifted from its spec/tasks</strong> so that <strong>a stale validation section
+fails loudly instead of lying</strong>.</p>
+<p><em>Acceptance:</em> After adding or renaming an <code>SC-NNN</code>/test task without regenerating,
+<code>spectastic validate</code> on the spec directory reports a staleness finding naming the divergence and the
+fix (<code>spectastic verify &lt;id&gt;</code>); regenerating clears it.</p>
+
+<h3>Edge cases</h3>
+<ul>
+  <li><strong>Nothing ran.</strong> A docs-only or non-runtime task leaves the Run/Tests path empty — the typed
+  elements render the absence loudly (an explicit "no tests for this slice"), never a silent blank.</li>
+  <li><strong>JavaScript off.</strong> Every traced link and the whole Run/Demo block are still present — the links
+  are static, materialised at generation time.</li>
+  <li><strong>Regenerate after bundle edits.</strong> The standalone generator re-derives the links from the current
+  bundle while preserving the Run/Demo block <code>/implement</code> captured.</li>
+  <li><strong>Spec implemented before this landed.</strong> Existing specs get no <code>verify.html</code>
+  automatically; they backfill on demand (deferred — see §3).</li>
+</ul>
+</section>
+
+
+<section id="requirements">
+<h2>3 · Requirements</h2>
+
+<p>Conformance keywords (<spec-rule>MUST</spec-rule>, <spec-rule level="should">SHOULD</spec-rule>,
+<spec-rule level="may">MAY</spec-rule>) follow RFC 2119.</p>
+
+<h3>Functional</h3>
+
+<spec-requirement id="FR-001" priority="must">
+<p>A <code>spectastic verify &lt;spec-id&gt;</code> generator <spec-rule>MUST</spec-rule> produce
+<code>specs/&lt;spec-id&gt;/verify.html</code> as a single self-contained HTML artifact in the spectastic design
+system (same stylesheet, semantic-tag vocabulary, and calm typography as every other artifact).</p>
+<details><summary>Rationale</summary><p>Single generator, one code path. A CLI subcommand, not a lifecycle verb — the 8-verb surface is unchanged (D-4).</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-002" priority="must">
+<p><code>verify.html</code> <spec-rule>MUST</spec-rule> aggregate the spec's success criteria, per-story acceptance
+scenarios, and the test-first tasks that close them <strong>by reference only</strong> — as links to the anchors in
+the sibling <code>spec.html</code>/<code>tasks.html</code> — and <spec-rule>MUST NOT</spec-rule> copy their prose.</p>
+<details><summary>Rationale</summary><p>D-2: copying guarantees drift; the borrowed parts can't drift because they are links.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-003" priority="must">
+<p>The aggregation <spec-rule>MUST</spec-rule> trace each <code>SC-NNN</code> to its acceptance scenario and to the
+test task(s) that verify it, and these traces <spec-rule>MUST</spec-rule> be materialised as static links at
+generation time, with no cross-file fetching at render time.</p>
+<details><summary>Rationale</summary><p>Single-file HTML cannot fetch siblings (P-1, P-4). Generation is the only moment siblings are read; the output is plain static links that work with JS off.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-004" priority="must">
+<p><code>verify.html</code> <spec-rule>MUST</spec-rule> carry a Run/Demo block built from typed elements: a run
+command, a toggle (feature flag / env var / setting, or an explicit "none"), a test command citing the test task(s)
+it runs, and a demo path citing the <code>SC-NNN</code> it satisfies. The demo path <spec-rule>MUST</spec-rule> be
+medium-agnostic — a click-path for a UI, an import for a library, a request for a service.</p>
+<details><summary>Rationale</summary><p>The one net-new artifact. Typed (not prose) so it is greppable and a missing field renders loudly; medium-agnostic because spec-kit's "every feature runs from the CLI" was too rigid.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-005" priority="must">
+<p><code>/implement</code> <spec-rule>MUST</spec-rule>, at the last-tick completion transition, invoke the generator
+to materialise or refresh <code>verify.html</code>, populating the run and test elements from the commands it
+actually executed in its Verify step.</p>
+<details><summary>Rationale</summary><p>Grounds the Run block in a real run (the REQ-LIFECYCLE-006 discipline), not aspirational prose — riding the Verify step and last-tick flip <code>/implement</code> already runs.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-006" priority="must">
+<p>The generator <spec-rule>MUST</spec-rule> be runnable standalone (<code>spectastic verify &lt;spec-id&gt;</code>)
+to regenerate the aggregated links from the current bundle, and standalone regeneration <spec-rule>MUST</spec-rule>
+preserve the authored Run/Demo block previously captured by <code>/implement</code>.</p>
+<details><summary>Rationale</summary><p>One generator, two callers. The links are derived (safe to rebuild anytime); the Run block is grounded evidence (must survive a links-only refresh).</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-007" priority="must">
+<p><code>verify.html</code> <spec-rule>MUST NOT</spec-rule> carry its own <code>&lt;spec-status&gt;</code>; it derives
+its lifecycle state from the spec bundle (per <a href="../../examples/spectastic-spec.html#REQ-LIFECYCLE-005">REQ-LIFECYCLE-005</a>).</p>
+<details><summary>Rationale</summary><p>It is a view, not an independent lifecycle participant — one fewer status to keep in sync, and it can never contradict the spec it describes.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-008" priority="must">
+<p><code>spectastic validate</code> <spec-rule>MUST</spec-rule> report a finding when a <code>verify.html</code>'s
+derived links no longer match the current <code>SC-NNN</code>, acceptance, or test-task IDs in its sibling bundle,
+and the finding <spec-rule>MUST</spec-rule> name the divergence and the regeneration fix.</p>
+<details><summary>Rationale</summary><p>Anti-drift, made loud (the linter-is-not-noise discipline). Aggregation removes drift on the parts it links; the validator catches the case where the bundle moved and the view wasn't rebuilt.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-009" priority="should">
+<p>A missing or empty typed element in the Run/Demo block <spec-rule level="should">SHOULD</spec-rule> render
+visibly as an unfilled field rather than collapsing to nothing, so an incomplete Run block is obvious on sight.</p>
+</spec-requirement>
+
+<h3>Non-functional</h3>
+
+<spec-requirement id="NFR-001" priority="must">
+<p><code>verify.html</code> <spec-rule>MUST</spec-rule> be fully readable with JavaScript disabled — every traced
+link and the entire Run/Demo block visible — consistent with progressive enhancement
+(<a href="../../principles.html#P-4">P-4</a>).</p>
+</spec-requirement>
+
+<spec-requirement id="NFR-002" priority="must">
+<p>Regeneration <spec-rule>MUST</spec-rule> be idempotent: running the generator twice against an unchanged bundle
+(and unchanged captured Run block) yields a byte-identical <code>verify.html</code>, so a CI rebuild-and-diff is a
+meaningful drift signal.</p>
+</spec-requirement>
+
+<h3>Out of scope (deferred to other slices)</h3>
+<spec-out-of-scope>
+  <ul>
+    <li defer-to="TBD-verify-backfill">Backfilling <code>verify.html</code> for already-implemented specs 001–020 — forward-only (consistent with P-7's scope); they regenerate on demand later.</li>
+    <li defer-to="never">Promoting the agent-facing verification detail out of <code>CLAUDE.md</code> into an <code>AGENTS.md</code> — only if/when spectastic goes cross-tool.</li>
+    <li defer-to="never">A new lifecycle <em>verb</em> for verification — explicitly rejected (D-4); the generator is a CLI subcommand, not a hero verb.</li>
+    <li defer-to="never">Reviving spec-kit's "every feature must be CLI-runnable" rule — the Run/Demo block is medium-agnostic instead.</li>
+  </ul>
+</spec-out-of-scope>
+</section>
+
+
+<section id="data">
+<h2>4 · Data model</h2>
+
+<p>This feature owns one artifact and a small typed vocabulary; it reads (never mutates) the sibling spec/tasks.</p>
+
+<h3>Entities</h3>
+<dl>
+  <dt><code>verify.html</code></dt><dd>The derived per-spec view. Two regions: an <strong>aggregated trace</strong> (each <code>SC-NNN</code> → acceptance → closing test task, as links) and the <strong>Run/Demo block</strong>. No own status; derives from the bundle.</dd>
+  <dt>Run/Demo block</dt><dd>Typed elements for <em>run</em>, <em>toggle</em>, <em>tests</em> (cites test tasks), and <em>demo</em> (cites the SC it satisfies). The demo field is medium-agnostic.</dd>
+  <dt>Captured run record</dt><dd>The literal run/test commands <code>/implement</code> executed in its Verify step, written into the Run/Demo block as grounded evidence. This is the only hand-authored content; everything else is derived.</dd>
+</dl>
+
+<spec-note>
+<p>Invariant: the trace region is pure derivation (rebuildable anytime); the captured run record is grounded
+evidence (must survive a links-only regeneration, per <a href="#FR-006">FR-006</a>). The generator re-derives the
+links and preserves the run record.</p>
+</spec-note>
+</section>
+
+
+<section id="success">
+<h2>5 · Success criteria</h2>
+
+<p>Technology-agnostic, measurable outcomes. These are how we know it worked.</p>
+
+<spec-requirement id="SC-001" priority="must">
+<p>After a spec is implemented, a reviewer who has never seen it can run, toggle, test, and demo the feature using
+only <code>verify.html</code> — without reading the implementation source or asking the author.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-002" priority="must">
+<p>100% of the spec's <code>SC-NNN</code> appear in <code>verify.html</code>, each as a resolving link to its
+acceptance scenario and its closing test task(s); zero SC prose is duplicated (links only).</p>
+</spec-requirement>
+
+<spec-requirement id="SC-003" priority="must">
+<p>The run and test commands shown in <code>verify.html</code> are the commands that actually executed during
+<code>/implement</code>; a reviewer copy-pasting them reproduces the feature's verification with no edits.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-004" priority="must">
+<p>When an <code>SC-NNN</code> or test task is added or renamed in the bundle without regenerating,
+<code>spectastic validate</code> reports the drift; after <code>spectastic verify &lt;id&gt;</code>, validate is
+clean.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-005" priority="should">
+<p>With JavaScript disabled, <code>verify.html</code> still renders every traced link and the complete Run/Demo
+block.</p>
+</spec-requirement>
+</section>
+
+
+<section id="assumptions">
+<h2>6 · Assumptions</h2>
+
+<spec-assumption>
+<p>Every spec already carries <code>SC-NNN</code>, per-story acceptance, and test-first tasks that cite the
+<code>FR-NNN</code>/<code>SC-NNN</code> they close — the aggregator reads existing structure, it does not require
+authors to add new trace metadata.</p>
+</spec-assumption>
+
+<spec-assumption>
+<p><code>/implement</code>'s Verify step runs real commands whose text can be captured programmatically (it already
+runs "the smallest possible verification the task admits").</p>
+</spec-assumption>
+
+<spec-assumption>
+<p>Forward-only: this binds specs implemented after 021 lands; existing specs are not retroactively given a
+<code>verify.html</code>.</p>
+</spec-assumption>
+</section>
+
+
+<section id="questions">
+<h2>7 · Open questions</h2>
+<spec-questions>
+<p>None outstanding — every decision was anchored in the interview (full aggregate + Run block; grounded Run block;
+typed elements; derived status; one generator / two callers; validate-flags-staleness). The cross-file build-step
+constraint is resolved by <a href="#FR-003">FR-003</a> (static links at generation time). Tag names, generator
+package, and the link-matching algorithm are deferred to <code>/spectastic.plan</code>, not open questions.</p>
+</spec-questions>
+</section>
+
+
+<section id="conformance">
+<h2>8 · Conformance index</h2>
+<p>Auto-built from every <code>&lt;spec-requirement&gt;</code> in this document.</p>
+<spec-conformance></spec-conformance>
+</section>
+
+
+<section id="changelog">
+<h2>9 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-06-24">2026-06-24</time><span>Initial draft. Authored from <a href="../../docs/verify-considerations.html">verify-considerations.html</a> as the larger sibling of the ratified <a href="../../principles.html#P-7">P-7</a>. Seven decisions anchored in the interview (full aggregate + Run block; grounded Run block; typed elements; derived status; one generator / two callers; validate-flags-staleness; forward-only). 11 requirements, zero open questions.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  021-verify-view · Verify view · authored 2026-06-24 ·
+  <button data-theme-toggle style="background:none;border:none;color:var(--c-link);cursor:pointer;font:inherit;padding:0;border-bottom:1px solid currentColor;">light/dark</button>
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>
