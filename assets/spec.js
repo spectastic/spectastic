@@ -152,13 +152,9 @@
      <html> before first paint. This block is pure progressive enhancement:
      with JS off the document still renders in its default/persisted look. */
   const themeApi = window.__spectastic;
-  /* Query the footer toggle BEFORE injecting the header (which adds its own),
-     so this resolves to the artifact's existing footer control. */
-  const footerToggle = document.querySelector('[data-theme-toggle]');
   if (themeApi) {
     /* One source of truth: reflect() syncs every registered control to the live
-       <html> attributes. Both the footer switcher and the vivid header register
-       handlers here, so the two control sets never drift (D-009). */
+       <html> attributes. The header controls register their handlers here (D-009). */
     const reflect = () => {
       const { theme, mode } = themeApi.current();
       reflect.handlers.forEach((fn) => fn(theme, mode));
@@ -191,22 +187,10 @@
       reflect.handlers.push((theme, mode) => render(btn, mode));
     };
 
-    /* ---- Footer switcher (calm's controls; the original location) ---- */
-    if (footerToggle) {
-      const controls = document.createElement('span');
-      controls.className = 'theme-controls';
-      footerToggle.parentNode.insertBefore(controls, footerToggle);
-      controls.appendChild(buildSelect());
-      wireMode(footerToggle, (btn, mode) => {
-        btn.textContent = mode === 'dark' ? 'dark' : 'light';
-        btn.setAttribute('aria-pressed', String(mode === 'dark'));
-      });
-    }
-
-    /* ---- Vivid header (FR-009) — injected at body-start so source order is
-       reading order (P-1); revealed only under vivid by CSS (T-611). With JS
-       off this never runs, so the document falls back to the footer-only,
-       calm-default look (NFR-002). ---- */
+    /* ---- Header (FR-009) — injected at body-start so source order is reading
+       order (P-1); shown in both themes by CSS (calm flat, vivid backdrop-blurred).
+       Controls live here only; the footer switcher is gone. With JS off this never
+       runs, so the document falls back to the calm-default look, no switcher (NFR-002). ---- */
     const SUN = '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>';
     const MOON = '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>';
 
