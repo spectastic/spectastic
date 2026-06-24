@@ -1,0 +1,363 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Verify view · Plan</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Implementation plan · 021-verify-view</p>
+  <h1>Verify view</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    How we will build it.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>     <span><spec-status value="draft">Draft</spec-status></span>
+    <b>Spec</b>       <span><a href="./spec.html">021-verify-view</a></span>
+    <b>Owner</b>      <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Branch</b>     <span><code>main</code></span>
+    <b>Created</b>    <span><time datetime="2026-06-24">2026-06-24</time></span>
+    <b>Read time</b>  <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-tldr>
+    <p>Build <code>spectastic verify &lt;spec-id&gt;</code> as a deterministic engine in
+    <code>@spectastic/core</code> (a thin <code>@spectastic/cli</code> wrapper, the <code>course</code>
+    precedent), reusing the <code>@spectastic/schema</code> parser to aggregate the bundle and the
+    <strong>test-task citation as the join key</strong> (each <code>T-NNN</code> cites the <code>SC-NNN</code> it
+    closes and lives in a <code>phase-usN</code> phase, which names the user story). <code>/implement</code>'s
+    slash command feeds the real commands it ran into the engine; a new cross-file validator rule does live
+    ID-set comparison to catch drift. Biggest risk: the SC→user-story join has no direct link today, so it is
+    derived through the citing task — an SC with no test task can't map, which must render as a loud gap, not a
+    silent one.</p>
+  </spec-tldr>
+</header>
+
+
+<section id="principles-check">
+<h2>1 · Principles check</h2>
+<p>Verify this plan respects every principle in <a href="../../principles.html">v1.2.0</a>. Any violation requires
+either a principles amendment or a deliberate exception logged in §9.</p>
+
+<table>
+  <thead><tr><th>Principle</th><th>Compliance</th><th>Notes</th></tr></thead>
+  <tbody>
+    <tr><td>P-1 · Source order is reading order</td><td><spec-pill>OK</spec-pill></td><td>Generator emits <code>verify.html</code> with DOM order = reading order; no JS reordering.</td></tr>
+    <tr><td>P-2 · Semantic tags over class soup</td><td><spec-pill>OK</spec-pill></td><td>Net-new content is typed — <code>&lt;spec-run&gt;</code>/<code>&lt;spec-toggle&gt;</code>/<code>&lt;spec-tests&gt;</code>/<code>&lt;spec-demo&gt;</code> (<a href="./spec.html#FR-004">FR-004</a>).</td></tr>
+    <tr><td>P-3 · IDs are contracts</td><td><spec-pill>OK</spec-pill></td><td>Trace keys on stable <code>SC-NNN</code>/<code>T-NNN</code> IDs; adds stable <code>id="USn"</code> anchors to user-story headings (<a href="#D-003">D-003</a>).</td></tr>
+    <tr><td>P-4 · Progressive enhancement</td><td><spec-pill>OK</spec-pill></td><td>Links materialised at generation time; <code>verify.html</code> fully readable with JS off (<a href="./spec.html#NFR-001">NFR-001</a>). No runtime sibling fetch.</td></tr>
+    <tr><td>P-5 · Calm density</td><td><spec-pill>OK</spec-pill></td><td>Reuses <code>assets/spec.css</code>; no new visual chrome.</td></tr>
+    <tr><td>P-6 · Draft is loose, ratified is locked</td><td><spec-pill>OK</spec-pill></td><td><code>verify.html</code> derives status, owns no lifecycle (<a href="./spec.html#FR-007">FR-007</a>); the generator only writes the view, never mutates a ratified sibling.</td></tr>
+    <tr><td>P-7 · Done means verified</td><td><spec-pill>OK</spec-pill></td><td>Honoured directly: Playwright drives a generated <code>verify.html</code>, vitest backs the engine/rule (<a href="#D-001">D-001</a>, §2). This feature <em>is</em> the per-feature verification surface P-7 names.</td></tr>
+  </tbody>
+</table>
+</section>
+
+
+<section id="technical-context">
+<h2>2 · Technical context</h2>
+<dl>
+  <dt>Language(s)</dt>      <dd>TypeScript (Node ≥ 18), matching the existing workspace packages.</dd>
+  <dt>Frameworks</dt>       <dd><code>commander</code> (CLI surface), <code>parse5</code> via <code>@spectastic/schema</code> (HTML parsing), <code>tsup</code> (build).</dd>
+  <dt>Storage</dt>          <dd>None. Inputs and output are filesystem HTML artifacts; no DB, no KV.</dd>
+  <dt>Testing</dt>          <dd>Playwright spec opens a generated <code>verify.html</code> and asserts behaviour (links resolve, Run block renders, JS-off intact); vitest covers the engine + the validator rule (aggregation, idempotency, drift). No AI provider — generation is fully deterministic.</dd>
+  <dt>Perf targets</dt>     <dd>Generation completes well under a CI step for a typical bundle (target &lt; 500&nbsp;ms); regeneration byte-identical on an unchanged bundle (<a href="./spec.html#NFR-002">NFR-002</a>).</dd>
+  <dt>Constraints</dt>      <dd>Single-file output; no runtime cross-file fetch (P-4); no new lifecycle verb — a CLI subcommand only (<a href="./spec.html#FR-001">FR-001</a>, D-4 of the brief).</dd>
+</dl>
+</section>
+
+
+<section id="grounding">
+<h2>3 · Grounding &amp; evidence</h2>
+<p>Every design-bearing fact this plan rests on, and how it was confirmed (per <code>REQ-LIFECYCLE-006</code>).
+All <code>verified</code> — opened the source this turn.</p>
+
+<table class="evidence">
+  <thead>
+    <tr><th>Claim the design rests on</th><th>Source</th><th>Status</th><th>Finding / note</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>A core-engine + thin-CLI-wrapper generator with a slash-command hybrid is the established pattern.</td>
+        <td><code>packages/cli/src/commands/course.ts</code></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td>019's <code>course</code>: CLI wrapper delegates to <code>@spectastic/core/commands/course</code>; slash command owns the agentic loop, CLI is the deterministic engine.</td></tr>
+    <tr><td>Test tasks cite the <code>SC</code>/<code>FR</code> they close, and live in <code>id="phase-usN"</code> phases.</td>
+        <td><code>specs/020-vscode-extension/tasks.html</code></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td><code>T-013</code> carries <code>FR-010</code>/<code>FR-001</code>; phases are <code>phase-setup</code>, <code>phase-us1</code>… — the task is the SC→US join.</td></tr>
+    <tr><td>User-story headings carry no <code>id</code> anchors today; <code>SC-NNN</code> do.</td>
+        <td><code>specs/020-vscode-extension/spec.html</code></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td><code>id="SC-001"</code>… present; no <code>id="US1"</code>. The acceptance leg needs an anchor we must add (<a href="#D-003">D-003</a>).</td></tr>
+    <tr><td>The validator supports cross-file rules over a parsed doc set, registered in one array.</td>
+        <td><code>packages/schema/src/types.ts:73</code> · <code>rules/index.ts:31</code></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td><code>CrossFileRule.check({ docs })</code>; <code>no-broken-defer-to</code> is the working precedent for FR-008.</td></tr>
+    <tr><td><code>/implement</code> computes the last-tick completion point and parses tasks deterministically.</td>
+        <td><code>packages/core/src/commands/implement.ts:43</code></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td><code>remainingUnchecked === 0 &amp;&amp; …Draft</code> is the seam FR-005 rides to materialise the view.</td></tr>
+    <tr><td>The parser exposes reusable primitives for aggregation.</td>
+        <td><code>packages/schema/src/parser.ts:13</code></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td><code>parse</code>, <code>findAll</code>, <code>getAttr</code>, <code>getLocation</code> — the same primitives the rules use.</td></tr>
+  </tbody>
+</table>
+</section>
+
+
+<section id="approach">
+<h2>4 · Approach</h2>
+
+<p>Add a deterministic <code>verifyCommand</code> to <code>@spectastic/core</code> and a thin
+<code>spectastic verify &lt;spec-id&gt;</code> wrapper to <code>@spectastic/cli</code>, mirroring <code>course</code>.
+The engine reads <code>specs/&lt;id&gt;/spec.html</code> and <code>tasks.html</code> through the
+<code>@spectastic/schema</code> parser and builds the <strong>trace</strong>: for each <code>SC-NNN</code> it finds
+the test tasks that cite it, reads each task's enclosing <code>phase-usN</code> to identify the user story, and
+emits links to <code>spec.html#SC-NNN</code>, <code>spec.html#USn</code> (acceptance), and
+<code>tasks.html#T-NNN</code> (proof). The <strong>Run/Demo block</strong> is the only authored region: on
+completion, <code>/implement</code>'s slash command passes the commands it actually ran (JSON on stdin); the engine
+writes them into the typed elements and <strong>preserves that block on a links-only regeneration</strong>. A new
+cross-file validator rule re-derives the linkable ID set from the bundle and flags any divergence from what
+<code>verify.html</code> links — the drift signal, made loud.</p>
+
+<spec-arch>
+<figure>
+<svg viewBox="0 0 700 260" role="img" aria-label="Verify view generation and validation flow">
+  <style>
+    .box { fill:#fcfbf7; stroke:#c4c1bb; stroke-width:1.2; }
+    .label { font: 700 11px Lato, sans-serif; fill:#4a4a46; letter-spacing:0.06em; text-transform:uppercase; }
+    .body { font: 400 12px "Source Serif 4", Georgia, serif; fill:#353534; }
+    .arr { stroke:#73706d; stroke-width:1.2; fill:none; }
+    .arrt { font: 400 10px Lato, sans-serif; fill:#73706d; }
+  </style>
+  <!-- implement -->
+  <rect class="box" x="20"  y="20" width="180" height="56" rx="4"/>
+  <text class="label" x="34" y="42">/implement</text>
+  <text class="body"  x="34" y="60">runs verify step → cmds</text>
+  <!-- verify engine -->
+  <rect class="box" x="270" y="100" width="180" height="56" rx="4"/>
+  <text class="label" x="284" y="122">spectastic verify</text>
+  <text class="body"  x="284" y="140">core engine (aggregate)</text>
+  <!-- bundle -->
+  <rect class="box" x="20"  y="180" width="180" height="56" rx="4"/>
+  <text class="label" x="34" y="202">spec + tasks .html</text>
+  <text class="body"  x="34" y="220">parsed via schema</text>
+  <!-- output -->
+  <rect class="box" x="520" y="100" width="160" height="56" rx="4"/>
+  <text class="label" x="534" y="122">verify.html</text>
+  <text class="body"  x="534" y="140">trace + run block</text>
+  <!-- validate -->
+  <rect class="box" x="520" y="190" width="160" height="50" rx="4"/>
+  <text class="label" x="534" y="212">validate rule</text>
+  <text class="body"  x="534" y="229">live id-set drift</text>
+  <!-- arrows -->
+  <path class="arr" d="M200 52 C 250 60, 240 92, 285 100" marker-end="url(#a)"/>
+  <text class="arrt" x="210" y="78">run cmds (stdin)</text>
+  <path class="arr" d="M200 200 C 250 190, 240 158, 270 142" marker-end="url(#a)"/>
+  <text class="arrt" x="208" y="176">read (parse)</text>
+  <path class="arr" d="M450 128 L520 128" marker-end="url(#a)"/>
+  <text class="arrt" x="455" y="120">write</text>
+  <path class="arr" d="M600 156 L600 190" marker-end="url(#a)"/>
+  <text class="arrt" x="606" y="178">checks</text>
+  <path class="arr" d="M520 215 C 360 240, 230 240, 200 224" marker-end="url(#a)"/>
+  <text class="arrt" x="300" y="254">compares against bundle</text>
+  <defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#73706d"/></marker></defs>
+</svg>
+<figcaption>One deterministic engine, two callers (/implement on completion + standalone). The validator rule
+closes the loop by comparing <code>verify.html</code>'s links against the live bundle.</figcaption>
+</figure>
+</spec-arch>
+</section>
+
+
+<section id="alternatives">
+<h2>5 · Alternatives considered</h2>
+
+<p>The load-bearing choice is <em>where generation lives and how the trace is derived</em>. Scores are 1–5
+(higher better): <strong>Reuse</strong> of existing infra, <strong>Testable</strong> deterministically,
+<strong>Drift-safe</strong>, <strong>Effort</strong> (higher = less).</p>
+
+<spec-matrix>
+<table>
+  <thead>
+    <tr><th>Option</th><th>Reuse</th><th>Testable</th><th>Drift-safe</th><th>Effort</th><th class="score">Total</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Agent writes verify.html directly (slash-command only, no engine)</td><td>2</td><td>1</td><td>2</td><td>4</td><td class="score">9</td></tr>
+    <tr><td>New standalone package + bespoke parser</td><td>1</td><td>4</td><td>4</td><td>2</td><td class="score">11</td></tr>
+    <tr data-winner><td>Core engine + CLI wrapper, reuse schema parser, task-citation join</td><td>5</td><td>5</td><td>5</td><td>4</td><td class="score">19</td></tr>
+  </tbody>
+</table>
+</spec-matrix>
+</section>
+
+
+<section id="decisions">
+<h2>6 · Decisions</h2>
+
+<spec-decision id="D-001" grounding="verified">
+  <h4>D-001 · Deterministic engine in core, thin CLI wrapper (the <code>course</code> shape)</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>019 already established the pattern at <code>packages/cli/src/commands/course.ts</code>: the CLI wrapper delegates to a pure <code>@spectastic/core</code> engine; the slash command owns any agentic work. Generation here is fully deterministic (no LLM), so it fits even more cleanly.</dd>
+    <dt>Decision</dt>     <dd><code>verifyCommand</code> lives in <code>@spectastic/core/commands/verify</code>; <code>@spectastic/cli</code> registers a thin <code>verify</code> subcommand. No new lifecycle verb (<a href="./spec.html#FR-001">FR-001</a>).</dd>
+    <dt>Consequences</dt> <dd>+ Reuses build/test/wiring seams; the engine is stub-free and unit-testable. + Verb surface unchanged. − One more core command + CLI registration to maintain.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-002" grounding="verified">
+  <h4>D-002 · The test task is the join key for the trace</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>No markup directly links an <code>SC</code> to its user story. But test tasks <em>cite</em> the SC they close (<code>specs/020/tasks.html</code>, <code>T-013</code> → <code>FR-010</code>) and sit inside <code>id="phase-usN"</code> phases. The task is the only machine-derivable bridge from SC to both its proof and its story.</dd>
+    <dt>Decision</dt>     <dd>For each <code>SC-NNN</code>: collect the <code>T-NNN</code> citing it; the enclosing <code>phase-usN</code> yields the user story <code>n</code>. Emit links to the SC, to <code>spec.html#USn</code>, and to each citing task (<a href="./spec.html#FR-002">FR-002</a>, <a href="./spec.html#FR-003">FR-003</a>).</dd>
+    <dt>Consequences</dt> <dd>+ Both trace legs derive from one parse, no hand-authored mapping. − An <code>SC</code> with no citing test task can't be joined to a story — handled as a loud gap (see <a href="#R-1">R-1</a>, <a href="./spec.html#FR-009">FR-009</a>).</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-003" grounding="verified">
+  <h4>D-003 · Add stable <code>id="USn"</code> anchors to user-story headings</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>The acceptance leg should land on the readable scenario prose in <code>spec.html</code>, not a tasks phase — but US headings carry no anchor today (verified against 020). D-002 already derives <em>which</em> US; it just needs a target.</dd>
+    <dt>Decision</dt>     <dd>Add <code>id="US1"</code>… to user-story <code>&lt;h3&gt;</code>s in <code>templates/spec.html</code> and in this spec (<code>021</code>). The generator links the acceptance leg to <code>spec.html#USn</code>; when the anchor is absent (older specs), it falls back to <code>#scenarios</code>.</dd>
+    <dt>Consequences</dt> <dd>+ Acceptance leg lands on the exact story; strengthens <a href="./spec.html#SC-001">SC-001</a> discoverability. + Anchors are cheap, stable contracts (P-3). − Touches the spec template — a ripple beyond 021's generator, logged in §9. − Pre-anchor specs degrade to the coarse fallback (acceptable; forward-only).</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-004" grounding="verified">
+  <h4>D-004 · Drift = a cross-file rule doing live ID-set comparison</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>The validator already runs cross-file rules over a parsed doc set (<code>types.ts:73</code>, <code>rules/index.ts</code>), with <code>no-broken-defer-to</code> as a working model. Live comparison keeps the links as the single source of truth — no hidden fingerprint.</dd>
+    <dt>Decision</dt>     <dd>Add a <code>CrossFileRule</code> that re-derives the linkable <code>SC</code>/<code>T</code> ID set from the sibling bundle and compares it to the IDs <code>verify.html</code> links; on mismatch it emits a finding naming the divergence and the fix <code>spectastic verify &lt;id&gt;</code> (<a href="./spec.html#FR-008">FR-008</a>). Registered in <code>rules/index.ts</code>.</dd>
+    <dt>Consequences</dt> <dd>+ No stored state; the finding can name <em>what</em> drifted. + Reuses the rule registry and parser. − The rule only fires when <code>verify.html</code> is in the validated doc set (cross-file scope) — documented as a known boundary.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-005" grounding="verified">
+  <h4>D-005 · Run block captured by the slash command, merged by the engine</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>SC-003 wants the Run/Tests commands to be the ones that <em>actually ran</em>. <code>/implement</code> already runs a Verify step and knows its commands; <code>implement.ts:43</code> is the deterministic last-tick seam. The <code>course</code> hybrid (agent supplies data via stdin, engine is deterministic) fits.</dd>
+    <dt>Decision</dt>     <dd>At completion the <code>/implement</code> slash command passes its real commands to <code>spectastic verify</code> (JSON on stdin); the engine writes them into the typed Run/Demo elements and, on any later links-only regeneration, <strong>preserves</strong> that captured block (<a href="./spec.html#FR-005">FR-005</a>, <a href="./spec.html#FR-006">FR-006</a>).</dd>
+    <dt>Consequences</dt> <dd>+ Run block is grounded evidence, not prose; engine stays deterministic and testable. − The capture contract (what JSON shape) is a new seam between the slash command and the engine; specified in tasks.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-006" grounding="n-a">
+  <h4>D-006 · <code>verify.html</code> is git-tracked (unlike <code>course.html</code>)</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>019's <code>course.html</code> is git-ignored (ephemeral teaching). <code>verify.html</code> is part of the spec bundle, reviewed in the PR as the "validation" section — it must be committed.</dd>
+    <dt>Decision</dt>     <dd><code>verify.html</code> is a tracked artifact under <code>specs/&lt;id&gt;/</code>. Idempotent generation (<a href="./spec.html#NFR-002">NFR-002</a>) makes a CI rebuild-and-diff meaningful.</dd>
+    <dt>Consequences</dt> <dd>+ Reviewable, diffable, present at rest. − A regeneration that isn't committed shows as a dirty tree — the intended drift signal.</dd>
+  </dl>
+</spec-decision>
+</section>
+
+
+<section id="project-structure">
+<h2>7 · Project structure</h2>
+
+<pre><code>packages/
+  core/src/commands/
+    verify.ts              # NEW — deterministic engine: aggregate + merge run block (D-001)
+  cli/src/commands/
+    verify.ts              # NEW — thin `spectastic verify <id>` wrapper (D-001)
+  schema/src/rules/
+    verify-view-stale.ts   # NEW — cross-file live ID-set drift rule (D-004)
+    index.ts               # CHANGED — register the new rule
+
+templates/
+  spec.html                # CHANGED — id="USn" anchors on user-story headings (D-003)
+
+commands/
+  spectastic.implement.md  # CHANGED — on completion, pass run cmds to `spectastic verify` (D-005)
+
+tests/
+  verify.view.spec.ts      # NEW — Playwright: links resolve, Run block renders, JS-off intact
+packages/core/src/commands/
+  verify.test.ts           # NEW — vitest: aggregation, task-join, idempotency, run-block preservation
+packages/schema/src/rules/
+  verify-view-stale.test.ts # NEW — vitest: drift fires / clears
+
+specs/021-verify-view/
+  spec.html                # CHANGED — id="US1..US3" on its own story headings (D-003)
+</code></pre>
+</section>
+
+
+<section id="risks">
+<h2>8 · Risks &amp; mitigations</h2>
+
+<table>
+  <thead><tr><th>Risk</th><th>Likelihood</th><th>Impact</th><th>Mitigation</th></tr></thead>
+  <tbody>
+    <tr id="R-1"><td><strong>R-1</strong> · An <code>SC</code> with no citing test task can't be joined to a user story.</td><td>M</td><td>L</td><td>Render the acceptance/test legs as a loud "no test task cites this SC" gap (<a href="./spec.html#FR-009">FR-009</a>), never a silent blank; a test asserts the gap rendering.</td></tr>
+    <tr><td><strong>R-2</strong> · <code>id="USn"</code> ripples to the spec template; pre-anchor specs lack it.</td><td>M</td><td>L</td><td>Generator falls back to <code>#scenarios</code> when no US anchor (D-003); forward-only, consistent with the spec's scope.</td></tr>
+    <tr><td><strong>R-3</strong> · Non-idempotent output (timestamps, unstable ordering) breaks the CI diff signal.</td><td>M</td><td>M</td><td>No timestamps in derived regions; order trace rows by ID; a vitest asserts byte-identical re-generation (<a href="./spec.html#NFR-002">NFR-002</a>).</td></tr>
+    <tr><td><strong>R-4</strong> · Drift rule false-positives when an SC is legitimately untested-yet.</td><td>L</td><td>M</td><td>Rule compares the <em>linkable</em> ID set the view claims vs the bundle's; an intentional gap renders as a known gap (R-1 path), not a drift finding.</td></tr>
+  </tbody>
+</table>
+</section>
+
+
+<section id="complexity">
+<h2>9 · Complexity tracking</h2>
+<p>One deviation introduces complexity beyond 021's generator proper.</p>
+
+<spec-assumption>
+<p><strong>Editing <code>templates/spec.html</code> (D-003).</strong> Adding <code>id="USn"</code> anchors to the
+shared spec template is a change outside this feature's own files, justified because the acceptance-leg link
+(<a href="./spec.html#SC-001">SC-001</a> discoverability) has no good target otherwise, and the anchors are
+inert, stable contracts (P-3) that cost future specs nothing. The fallback to <code>#scenarios</code> means the
+change is additive, not breaking, for specs authored before it.</p>
+</spec-assumption>
+
+<spec-assumption>
+<p><strong>The capture contract (D-005).</strong> A small JSON shape passed from the <code>/implement</code> slash
+command to <code>spectastic verify</code> is new surface between an agent step and a deterministic engine. It is
+kept minimal (run / toggle / tests / demo strings) and specified in tasks so the two sides can't drift.</p>
+</spec-assumption>
+</section>
+
+
+<section id="questions">
+<h2>10 · Open questions</h2>
+<spec-questions>
+<p>None outstanding — engine placement, the trace join, the acceptance-anchor strategy, the drift mechanism, and
+the run-block capture path were all anchored in the interview, each resting on a <code>verified</code> §3 source.
+Exact tag attribute names and the JSON capture shape are mechanical choices for <code>/spectastic.tasks</code>,
+not open questions.</p>
+</spec-questions>
+</section>
+
+
+<section id="changelog">
+<h2>11 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-06-24">2026-06-24</time><span>Initial plan. Six decisions, all grounded against verified sources. Engine in <code>@spectastic/core</code> + CLI wrapper (course precedent); test-task citation as the SC→US join; <code>id="USn"</code> anchors for the acceptance leg; cross-file live ID-set drift rule; slash-command run-block capture. Principles check clean against v1.2.0 (P-7 honoured by the test strategy).</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  Plan for 021-verify-view · Verify view · authored 2026-06-24 ·
+  <button data-theme-toggle style="background:none;border:none;color:var(--c-link);cursor:pointer;font:inherit;padding:0;border-bottom:1px solid currentColor;">light/dark</button>
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>
