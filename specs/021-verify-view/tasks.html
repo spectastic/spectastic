@@ -1,0 +1,243 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Verify view · Tasks</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Tasks · 021-verify-view</p>
+  <h1>Verify view</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    Ordered, parallelizable work. Tests precede implementation. Drive through with
+    <code>/spectastic.implement</code> — one task per invocation.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>     <span><spec-status value="draft">Draft</spec-status></span>
+    <b>Spec</b>       <span><a href="./spec.html">021-verify-view</a></span>
+    <b>Plan</b>       <span><a href="./plan.html">plan</a></span>
+    <b>Branch</b>     <span><code>main</code></span>
+    <b>Created</b>    <span><time datetime="2026-06-24">2026-06-24</time></span>
+    <b>Read time</b>  <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-tldr>
+    <p>22 tasks across five phases. Setup → Foundational → User stories (US1·US2·US3) → Polish.
+    Tasks marked <span class="par">[P]</span> can run in parallel — different files, no dependency. Tests for a
+    story <strong>MUST</strong> be written and failing before its implementation tasks start. The shared engine
+    and parser land in Foundational; US1 adds the Run/Demo block, US2 the SC→proof trace, US3 the drift rule and
+    standalone regeneration.</p>
+  </spec-tldr>
+</header>
+
+
+<section id="strategy">
+<h2>1 · Execution strategy</h2>
+
+<spec-tabs>
+  <spec-tab label="Incremental">
+    <p>Recommended. Setup → Foundational → US1 → US2 → US3 → Polish. Each story closes its conformance before the
+    next opens. US1 (Run/Demo block) is a viable MVP on its own — a generated <code>verify.html</code> that tells a
+    human how to run and see the feature, even before the trace aggregation lands.</p>
+  </spec-tab>
+  <spec-tab label="MVP-first">
+    <p>Implement US1 end-to-end and stop there if needed: the Run/Demo block alone fixes the dogfooding gap. Add
+    US2's trace and US3's drift rule once US1 is verified in a browser.</p>
+  </spec-tab>
+  <spec-tab label="Parallel teams">
+    <p>After Foundational, US1 (Run block + <code>/implement</code> capture), US2 (trace aggregation), and US3
+    (validator rule) touch mostly distinct seams. Coordinate at the shared engine file (<code>verify.ts</code>) and
+    the capture JSON contract via the spec, not Slack.</p>
+  </spec-tab>
+</spec-tabs>
+</section>
+
+
+<section id="phase-setup" class="phase">
+<h2>2 · Phase 1 — Setup</h2>
+
+<spec-task id="T-001" parallel>
+  <input type="checkbox">
+  <div><strong>Scaffold the core engine file</strong> — empty <code>verifyCommand</code> + input/result types, no logic yet <span class="path">packages/core/src/commands/verify.ts</span></div>
+</spec-task>
+<spec-task id="T-002" parallel>
+  <input type="checkbox">
+  <div><strong>Register a stub <code>verify</code> CLI subcommand</strong> that delegates to the core engine (course wrapper shape) <span class="path">packages/cli/src/commands/verify.ts</span></div>
+</spec-task>
+<spec-task id="T-003" parallel>
+  <input type="checkbox">
+  <div><strong>Add a minimal fixture bundle</strong> — a tiny <code>spec.html</code> + <code>tasks.html</code> pair (2 SCs, citing test tasks in <code>phase-us1</code>) for engine + rule tests <span class="path">packages/core/src/commands/__fixtures__/verify/</span></div>
+</spec-task>
+</section>
+
+
+<section id="phase-foundation" class="phase">
+<h2>3 · Phase 2 — Foundational</h2>
+<p>Shared infrastructure no story can ship without — the parse layer, the typed-element styles, the acceptance
+anchors, and the deterministic writer. Sequential where the same file is touched.</p>
+
+<spec-task id="T-010">
+  <input type="checkbox">
+  <div><strong>Implement the bundle reader</strong> — parse <code>spec.html</code>/<code>tasks.html</code> via the <code>@spectastic/schema</code> parser into a model (SCs, tasks + their cited IDs, the <code>phase-usN</code> map) <span class="path">packages/core/src/commands/verify.ts</span></div>
+</spec-task>
+<spec-task id="T-011" parallel>
+  <input type="checkbox">
+  <div><strong>Add typed Run/Demo element styles</strong> for <code>&lt;spec-run&gt;</code>/<code>&lt;spec-toggle&gt;</code>/<code>&lt;spec-tests&gt;</code>/<code>&lt;spec-demo&gt;</code>, including a loud empty-state (unfilled field stays visible) <span class="path">assets/spec.css</span></div>
+</spec-task>
+<spec-task id="T-012" parallel>
+  <input type="checkbox">
+  <div><strong>Add <code>id="US1".."US3"</code> anchors to user-story headings</strong> in the spec template and this spec (D-003 acceptance leg) <span class="path">templates/spec.html, specs/021-verify-view/spec.html</span></div>
+</spec-task>
+<spec-task id="T-013">
+  <input type="checkbox">
+  <div><strong>Emit the base <code>verify.html</code> shell</strong> — design-system chrome, derived status (no own <code>&lt;spec-status&gt;</code>), and a deterministic, idempotent writer (no timestamps; stable ordering) <span class="path">packages/core/src/commands/verify.ts</span></div>
+</spec-task>
+</section>
+
+
+<section id="phase-us1" class="phase">
+<h2>4 · Phase 3a — US1 · Run and demo a built feature</h2>
+
+<h3>Tests (write &amp; fail first)</h3>
+<spec-task id="T-100" parallel>
+  <input type="checkbox">
+  <div><strong>Playwright: Run/Demo block behaviour</strong> — a generated <code>verify.html</code> shows run/toggle/tests/demo, copy-pasted commands reproduce verification, and an empty typed element renders loudly (not blank) <span class="path">tests/verify.view.spec.ts</span></div>
+</spec-task>
+<spec-task id="T-101" parallel>
+  <input type="checkbox">
+  <div><strong>vitest: run-block capture + merge</strong> — engine writes captured run/test commands from JSON-on-stdin into the typed elements <span class="path">packages/core/src/commands/verify.test.ts</span></div>
+</spec-task>
+
+<h3>Implementation</h3>
+<spec-task id="T-110">
+  <input type="checkbox">
+  <div><strong>Emit the Run/Demo block</strong> from the captured-run JSON — medium-agnostic demo, <code>tests</code> cites its test tasks, <code>demo</code> cites its <code>SC</code> <span class="path">packages/core/src/commands/verify.ts</span></div>
+</spec-task>
+<spec-task id="T-111">
+  <input type="checkbox">
+  <div><strong>Wire <code>/implement</code> to feed the engine</strong> — at the last-tick completion, pass the commands it actually ran to <code>spectastic verify</code> (JSON on stdin); define the minimal capture contract <span class="path">commands/spectastic.implement.md</span></div>
+</spec-task>
+
+<spec-note>
+<p>Closes <a href="./spec.html#FR-001">FR-001</a> (the engine now emits a real, openable
+<code>verify.html</code>), <a href="./spec.html#FR-004">FR-004</a>, <a href="./spec.html#FR-005">FR-005</a>,
+<a href="./spec.html#FR-009">FR-009</a>, <a href="./spec.html#SC-001">SC-001</a>,
+<a href="./spec.html#SC-003">SC-003</a>.</p>
+</spec-note>
+</section>
+
+
+<section id="phase-us2" class="phase">
+<h2>5 · Phase 3b — US2 · Trace a success criterion to its proof</h2>
+
+<h3>Tests (write &amp; fail first)</h3>
+<spec-task id="T-200" parallel>
+  <input type="checkbox">
+  <div><strong>Playwright: trace links resolve</strong> — every <code>SC</code> links to its acceptance (<code>#USn</code>) and closing test task, links land on real anchors, no SC prose is copied, and all links + Run block survive JS-off <span class="path">tests/verify.view.spec.ts</span></div>
+</spec-task>
+<spec-task id="T-201" parallel>
+  <input type="checkbox">
+  <div><strong>vitest: the trace join</strong> — SC → citing <code>T-NNN</code> → <code>phase-usN</code> → <code>US n</code>; falls back to <code>#scenarios</code> when a US anchor is absent <span class="path">packages/core/src/commands/verify.test.ts</span></div>
+</spec-task>
+
+<h3>Implementation</h3>
+<spec-task id="T-210">
+  <input type="checkbox">
+  <div><strong>Build the aggregation/trace</strong> — by-reference links only (SC → <code>#USn</code>, SC → <code>#T-NNN</code>); never copy prose; static links materialised at generation time <span class="path">packages/core/src/commands/verify.ts</span></div>
+</spec-task>
+<spec-task id="T-211">
+  <input type="checkbox">
+  <div><strong>Render the trace region</strong> into <code>verify.html</code> and confirm the derived-status header (no own lifecycle pill) <span class="path">packages/core/src/commands/verify.ts</span></div>
+</spec-task>
+
+<spec-note>
+<p>Closes <a href="./spec.html#FR-002">FR-002</a>, <a href="./spec.html#FR-003">FR-003</a>,
+<a href="./spec.html#FR-007">FR-007</a>, <a href="./spec.html#SC-002">SC-002</a>,
+<a href="./spec.html#SC-005">SC-005</a>, <a href="./spec.html#NFR-001">NFR-001</a>.</p>
+</spec-note>
+</section>
+
+
+<section id="phase-us3" class="phase">
+<h2>6 · Phase 3c — US3 · Keep the view honest as the spec changes</h2>
+
+<h3>Tests (write &amp; fail first)</h3>
+<spec-task id="T-300" parallel>
+  <input type="checkbox">
+  <div><strong>vitest: drift rule fires &amp; clears</strong> — adding/renaming an <code>SC</code> or test task without regenerating produces a finding naming the divergence + fix; regeneration clears it <span class="path">packages/schema/src/rules/verify-view-stale.test.ts</span></div>
+</spec-task>
+<spec-task id="T-301" parallel>
+  <input type="checkbox">
+  <div><strong>vitest: regenerate preserves + is idempotent</strong> — standalone regen re-derives links while preserving the captured Run block; byte-identical output on an unchanged bundle <span class="path">packages/core/src/commands/verify.test.ts</span></div>
+</spec-task>
+
+<h3>Implementation</h3>
+<spec-task id="T-310">
+  <input type="checkbox">
+  <div><strong>Implement the <code>verify-view-stale</code> cross-file rule</strong> — live ID-set comparison (bundle vs the IDs <code>verify.html</code> links); register it <span class="path">packages/schema/src/rules/verify-view-stale.ts, packages/schema/src/rules/index.ts</span></div>
+</spec-task>
+<spec-task id="T-311">
+  <input type="checkbox">
+  <div><strong>Implement standalone regeneration</strong> — <code>spectastic verify &lt;id&gt;</code> re-derives links and preserves the Run block; finalise the idempotent writer <span class="path">packages/core/src/commands/verify.ts, packages/cli/src/commands/verify.ts</span></div>
+</spec-task>
+
+<spec-note>
+<p>Closes <a href="./spec.html#FR-006">FR-006</a>, <a href="./spec.html#FR-008">FR-008</a>,
+<a href="./spec.html#NFR-002">NFR-002</a>, <a href="./spec.html#SC-004">SC-004</a>.</p>
+</spec-note>
+</section>
+
+
+<section id="phase-polish" class="phase">
+<h2>7 · Phase 4 — Polish</h2>
+
+<spec-task id="T-900" parallel>
+  <input type="checkbox">
+  <div><strong>Dogfood: materialise <code>verify.html</code> for 021 itself</strong> once the engine works, and open it in a browser to confirm (P-7) <span class="path">specs/021-verify-view/verify.html</span></div>
+</spec-task>
+<spec-task id="T-901" parallel>
+  <input type="checkbox">
+  <div><strong>Document <code>spectastic verify</code></strong> — README usage + a CLAUDE.md note linking the verification discipline to the generated view <span class="path">README.md, CLAUDE.md</span></div>
+</spec-task>
+<spec-task id="T-902" parallel>
+  <input type="checkbox">
+  <div><strong>Add the typed Run/Demo tags to the schema's known-tag vocabulary</strong> so validation stays clean on the new elements <span class="path">packages/schema/src</span></div>
+</spec-task>
+</section>
+
+
+<section id="dependencies">
+<h2>8 · Dependencies</h2>
+<pre><code>Setup           → Foundational
+Foundational    → US1, US2, US3   (mostly independent after this; coordinate at verify.ts + the capture JSON contract)
+US1, US2, US3   → Polish
+</code></pre>
+</section>
+
+
+<section id="changelog">
+<h2>9 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-06-24">2026-06-24</time><span>Initial task breakdown. 22 tasks, test-first per story. Shared engine + parser + typed-element styles + US anchors in Foundational; US1 Run/Demo block + <code>/implement</code> capture; US2 SC→proof trace; US3 drift rule + idempotent standalone regen. Every FR/NFR/SC traced to at least one task.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  Tasks for 021-verify-view · Verify view · authored 2026-06-24 ·
+  <button data-theme-toggle style="background:none;border:none;color:var(--c-link);cursor:pointer;font:inherit;padding:0;border-bottom:1px solid currentColor;">light/dark</button>
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>
