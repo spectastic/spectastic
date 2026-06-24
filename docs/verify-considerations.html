@@ -1,0 +1,282 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Verification — Considerations for Spectastic</title>
+<meta name="description" content="Where 'how do I know it works, and how do I run it?' belongs in the spectastic lifecycle — and why it must be generated, not written.">
+<link rel="stylesheet" href="../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../assets/favicon.svg">
+<script src="../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Considerations · Lifecycle design</p>
+  <h1>Verification</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    "How do I know it works — and how do I run it?" has no home in the lifecycle today. This is where it
+    should live, and why it must be <em>generated</em>, not written.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>     <span><spec-status value="draft">Draft</spec-status></span>
+    <b>Type</b>       <span>Design brief (a <code>/doc</code> — feeds a future <code>/spectastic.spec</code>)</span>
+    <b>Author</b>     <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Created</b>    <span><time datetime="2026-06-23">23 Jun 2026</time></span>
+    <b>Sources</b>    <span>6 primary, verified 23 Jun 2026</span>
+    <b>Read time</b>  <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-tldr>
+    <p>spectastic is thorough at <em>specifying</em> what should work and <em>tasking</em> what to build,
+    but stops at "implementation complete" — no artifact tells a human <strong>how to run, demo, or verify
+    the built feature</strong>. The fix is two layers in two places. The <strong>universal "definition of
+    done"</strong> belongs in the constitution — a new principle <a href="#P-7">P-7 · Done means
+    verified</a> plus the agent-facing detail in <code>CLAUDE.md</code>. The <strong>per-feature "how do I
+    verify <em>this</em>"</strong> belongs in a generated <code>verify.html</code> that <em>aggregates</em>
+    what already exists (success criteria, acceptance, test tasks) and adds the one genuinely-missing piece:
+    a medium-agnostic <strong>Run / Demo block</strong> filled by <code>/implement</code> from what it
+    actually ran. It is <em>generated, not hand-written</em>, because drift is the single thing developers
+    dislike most — and peer tools (Kiro, spec-kit, Tessl) ship nothing here, so it is a clean
+    differentiation.</p>
+  </spec-tldr>
+
+  <spec-audience-map>
+    <dl>
+      <dt>Exec / PM</dt>   <dd>The TL;DR, then §<a href="#thesis">The thesis</a> and §<a href="#map">Where each piece lives</a>.</dd>
+      <dt>Reviewer</dt>    <dd>§<a href="#gap">The gap</a>, §<a href="#research">What the field does</a>, §<a href="#thesis">The thesis</a>.</dd>
+      <dt>Implementer</dt> <dd>§<a href="#thesis">The thesis</a>, §<a href="#runblock">The Run / Demo block</a>, §<a href="#questions">Open questions</a>.</dd>
+    </dl>
+  </spec-audience-map>
+</header>
+
+
+<!-- =======================================================
+     §1 The gap
+     ======================================================= -->
+<section id="gap">
+<h2>1 · The gap</h2>
+
+<p>The lifecycle reads <em>principles → spec → plan → tasks → implement → propose → apply → triage</em>.
+It is rich at the front: <code>spec.html</code> carries measurable <strong>success criteria</strong>
+(<code>SC-NNN</code>), per-story <strong>acceptance</strong> conditions (§2 User scenarios), and a
+<strong>"smallest demoable"</strong> prompt in the header; <code>tasks.html</code> opens every user story
+with <strong>test-first</strong> task phases. But once <code>/implement</code> ticks the last box, the
+lifecycle goes quiet. Nothing answers the question a teammate actually asks:</p>
+
+<blockquote style="border-left:3px solid var(--c-border);margin:var(--s-4) 0;padding-left:var(--s-4);color:var(--c-text-soft);font-style:italic;">
+  "Great — it's built. How do I run it? How do I see it work? What do I have to turn on?"
+</blockquote>
+
+<p>This is not hypothetical. Dogfooding <code>spec-tictactoe</code>, the UI shipped and there was <em>no
+way to tell how to run the whole thing</em> — the spec said what it should do, the tasks said what was
+built, and the gap between "done" and "I can see it" was a private act of archaeology.</p>
+
+<p>It also breaks a habit many engineers already keep. A good merge request reads <strong>what · why · how
+· validation</strong>. spectastic has clean homes for three of them — <em>what</em> → <code>tasks.html</code>,
+<em>why</em> → <code>spec.html</code>, <em>how</em> → <code>plan.html</code> — and <strong>validation is
+homeless</strong>, even though it is "a subset of tasks and the implemented code." spec-kit felt the same
+pull and shipped a per-feature <code>quickstart.md</code> (and, early on, an expectation that every feature
+be runnable from the CLI). The instinct is right; the execution is what this brief is about.</p>
+
+<spec-note>
+<p>What already exists is genuinely good and must not be duplicated: the INVEST self-check ties
+<em>V</em> to an <code>SC-NNN</code> and <em>T</em> to an acceptance scenario; <code>tasks.html</code> is
+test-first; the conformance index auto-builds from requirements. The missing thing is narrow — the bridge
+from "verified in CI" to "here is how <em>you</em> run and see it."</p>
+</spec-note>
+</section>
+
+
+<!-- =======================================================
+     §2 What the field does
+     ======================================================= -->
+<section id="research">
+<h2>2 · What the field does</h2>
+
+<p>Three findings shape the design.</p>
+
+<h3>Peer tools are weak here — which is the opportunity</h3>
+<p>Martin Fowler's comparison of the three leading spec-driven tools is blunt: there is
+<em>"no evidence that any tool generates demo instructions, validation runbooks, or mechanisms to prevent
+acceptance criteria from diverging from actual code behavior… a significant unaddressed challenge"</em>
+(<a href="https://martinfowler.com/articles/exploring-gen-ai/sdd-3-tools.html">SDD with 3 tools</a>).
+spec-kit's <code>quickstart.md</code> is <em>planning-phase</em> guidance, and its checklists are
+<em>"like a definition of done for each step (though interpreted by AI, so there is no 100% guarantee they
+will be respected)"</em>. Kiro and Tessl describe none. So "is it done, and how do I check?" is open
+ground (<a href="https://github.com/github/spec-kit">spec-kit</a>).</p>
+
+<h3>Definition of Done is universal; Acceptance is per-feature</h3>
+<p>The agile literature draws a line spectastic can borrow wholesale: <strong>Acceptance Criteria</strong>
+are unique to one story (what <em>this</em> feature must do); the <strong>Definition of Done</strong> is a
+checklist that applies to <em>every</em> increment (tests pass, security, quality)
+(<a href="https://www.scrum.org/resources/blog/what-difference-between-definition-done-and-acceptance-criteria">Scrum.org</a>).
+That maps cleanly onto spectastic's question of "principles vs verbs": a universal bar belongs in the
+<em>constitution</em>; a per-feature one belongs in a <em>per-feature artifact</em>.</p>
+
+<h3>Drift is the enemy — so generate, don't write</h3>
+<p>The thing developers dislike most is documentation that lies. Stale docs correlate with higher defect
+rates, go materially out of date within 30–90 days, and erode trust until people stop reading them
+(<a href="https://gaudion.dev/blog/documentation-drift">documentation drift</a>). The decisive mitigation
+is mechanical: <em>"generated documentation cuts the manual work that creates inconsistencies… when the
+spec changes, documentation regenerates without human coordination"</em>
+(<a href="https://buildwithfern.com/post/generated-vs-manual-documentation-which-approach">generated vs
+manual</a>). Gojko Adzic's <a href="https://gojko.net/books/specification-by-example/">Specification by
+Example</a> says the same from the other side: keep the WHAT separate from the HOW, because
+<em>"if we include unnecessary details, the specification becomes impossible to maintain… and will go out
+of date very quickly."</em> The executable examples <em>are</em> the living documentation.</p>
+
+<spec-warning>
+<p>The lesson for spectastic: a hand-written <code>verify.html</code> would be the worst possible
+artifact — a fourth copy of the success criteria and test list, guaranteed to drift the moment the spec or
+tasks change. Anything we add here MUST be generated/aggregated, or it is a net negative.</p>
+</spec-warning>
+</section>
+
+
+<!-- =======================================================
+     §3 The thesis
+     ======================================================= -->
+<section id="thesis">
+<h2>3 · The thesis — two layers, two homes</h2>
+
+<p>Verification splits the way Definition-of-Done splits from Acceptance: a universal layer and a
+per-feature layer. Each gets the home its altitude demands.</p>
+
+<spec-decision id="D-1" grounding="verified">
+  <h4>D-1 · The universal "definition of done" goes in the constitution</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Recommended</spec-status></dd>
+    <dt>Context</dt>      <dd>The bar that every feature must clear — tests pass, <code>spectastic validate</code> clean, interactive HTML <strong>browser</strong>-checked ("presence ≠ containment") — is identical across features. It already exists as prose under <code>CLAUDE.md</code> § Verification discipline, but as guidance, not a ratified rule, so it isn't traced by anything. DoD is universal (<a href="https://www.scrum.org/resources/blog/what-difference-between-definition-done-and-acceptance-criteria">Scrum.org</a>).</dd>
+    <dt>Decision</dt>     <dd>Add a principle — <a href="#P-7">P-7 · Done means verified</a> — elevating the verification discipline to a non-negotiable every downstream spec traces to. Keep the agent-facing <em>detail</em> (Playwright for interactive artifacts, the structural backstop, the linter-is-not-noise rule) in <code>CLAUDE.md</code>; promote it to <strong>AGENTS.md</strong> if/when spectastic goes cross-tool (the ideakit / uxkit / speckit family).</dd>
+    <dt>Consequences</dt> <dd>+ One canonical bar, greppable, citable from any spec's success criteria. + No per-feature duplication of "what done means." − A principle amendment (version bump) is required to land it.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-2" grounding="verified">
+  <h4>D-2 · Per-feature verification is a generated view, never hand-written</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Recommended</spec-status></dd>
+    <dt>Context</dt>      <dd>The per-feature inputs already exist, scattered: <code>SC-NNN</code> + acceptance in <code>spec.html</code>, the test-first phases in <code>tasks.html</code>. Copying them into a new doc guarantees drift (§2). spectastic already has the right pattern — <code>&lt;spec-conformance&gt;</code> <em>auto-builds</em> from requirements.</dd>
+    <dt>Decision</dt>     <dd>The per-feature surface <strong>aggregates</strong> (links + traces SC → acceptance → test tasks), it does not copy. The <em>only</em> net-new, hand-authored content is the one thing the codebase has nowhere: a <strong>Run / Demo block</strong> (see §4). Regeneration from the sources is the anti-drift mechanism.</dd>
+    <dt>Consequences</dt> <dd>+ Cannot drift on the parts it borrows — they're links. + The authored surface shrinks to the single irreducible thing. − Cross-file aggregation needs a build step (single-file HTML can't fetch siblings — see §6).</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-3" grounding="n-a">
+  <h4>D-3 · A standalone <code>verify.html</code>, over a buried section</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Recommended</spec-status></dd>
+    <dt>Context</dt>      <dd>The view could be a co-located <code>&lt;spec-verify&gt;</code> section inside <code>tasks.html</code> ("verification ⊆ tasks", less lifecycle surface) or a standalone <code>verify.html</code> per spec. The dogfooding failure was specifically one of <em>discovery</em> — not <em>not having</em> the info, but <em>not finding</em> how to run it.</dd>
+    <dt>Decision</dt>     <dd>A standalone <strong>generated <code>verify.html</code></strong> per spec. A reviewer landing in <code>specs/&lt;id&gt;/</code> sees the file named for the question they have. The usual cost of a standalone doc is drift — but D-2 already removed that by generating it.</dd>
+    <dt>Consequences</dt> <dd>+ Discoverable; maps to the MR "validation" section as a first-class artifact; spec-kit-quickstart-shaped without the staleness. − One more file per spec (justified by D-2 making it cheap to keep honest).</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-4" grounding="n-a">
+  <h4>D-4 · No new verb — <code>/tasks</code> scaffolds it, <code>/implement</code> confirms it</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Recommended</spec-status></dd>
+    <dt>Context</dt>      <dd>spectastic guards its 8-verb surface (a small command set is one of OpenSpec's wins worth keeping — see <a href="./openspec-considerations.html">openspec considerations</a>). And <code>spectastic validate</code> already names the <em>schema</em> validator, so a <code>/validate</code> verb would collide. (That collision is also why the artifact is <code>verify.html</code>: <em>validate</em> = the spec is well-formed; <em>verify</em> = the feature works.)</dd>
+    <dt>Decision</dt>     <dd>No new verb. <code>/tasks</code> scaffolds <code>verify.html</code> (the SC + acceptance + test-task links are derivable then). <code>/implement</code> <strong>confirms</strong> it — filling the Run / Demo block from <em>what it actually ran</em> and marking it verified, the way <a href="../examples/spectastic-spec.html#REQ-LIFECYCLE-006">REQ-LIFECYCLE-006</a> grounds plan facts in real source.</dd>
+    <dt>Consequences</dt> <dd>+ Verb count stays at 8. + The Run block is grounded, not guessed — it's the command the implementer actually used. − <code>/tasks</code> and <code>/implement</code> each grow a small responsibility.</dd>
+  </dl>
+</spec-decision>
+</section>
+
+
+<!-- =======================================================
+     §4 The Run / Demo block
+     ======================================================= -->
+<section id="runblock">
+<h2>4 · The Run / Demo block — the one new thing</h2>
+
+<p>Everything else <code>verify.html</code> shows is borrowed. This block is the net-new content, and it
+is deliberately <strong>medium-agnostic</strong> — spec-kit's old "every feature must run from the CLI" is
+too rigid; a UI feature's demo path is a click-path, a library's is an import, a service's is a request.
+It captures whatever the real path is:</p>
+
+<dl>
+  <dt>Run</dt>       <dd>The build/start commands — e.g. <code>pnpm --filter @spectastic/vscode build</code>, then <kbd>F5</kbd> in VS Code to launch the Extension Host.</dd>
+  <dt>Toggle</dt>    <dd>Any feature flag / env var / setting that must be on — e.g. <code>SPECTASTIC_AI_STUB=…</code>, or "none."</dd>
+  <dt>Tests</dt>     <dd>The exact command that exercises this feature's tests — e.g. <code>npx playwright test tests/vscode/</code> — linked to the test tasks they cover.</dd>
+  <dt>Demo</dt>      <dd>The click-path / URL / request that shows it working to a human — e.g. "open the canvas panel, select a spec, click a node → its rendered artifact opens." Traces to the <code>SC-NNN</code> it satisfies.</dd>
+</dl>
+
+<p>Because <code>/implement</code> fills this from the commands it genuinely executed in its Verify step,
+the block is a <em>record of a real run</em>, not aspirational prose — the same grounding discipline the
+plan applies to design facts. That is what keeps it from rotting.</p>
+</section>
+
+
+<!-- =======================================================
+     §5 Where each piece lives
+     ======================================================= -->
+<section id="map">
+<h2>5 · Where each piece lives</h2>
+
+<table>
+  <thead><tr><th>Concern</th><th>Home</th><th>Why there</th></tr></thead>
+  <tbody>
+    <tr><td>Universal "done" bar (tests pass, validate clean, browser-checked)</td><td><a href="#P-7">P-7</a> + <code>CLAUDE.md</code> (→ <code>AGENTS.md</code> if cross-tool)</td><td>Definition of Done is universal</td></tr>
+    <tr><td>Per-feature acceptance + success criteria</td><td><code>spec.html</code> (already) → <em>traced</em> into <code>verify.html</code></td><td>Already exists; aggregate, don't copy</td></tr>
+    <tr><td>Per-feature tests</td><td><code>tasks.html</code> test phases (already) → <em>traced</em></td><td>Already exists; aggregate, don't copy</td></tr>
+    <tr><td>How to run / demo / toggle (net-new)</td><td><code>verify.html</code> Run / Demo block</td><td>The actual gap</td></tr>
+    <tr><td>Generating + confirming it</td><td><code>/tasks</code> scaffold + <code>/implement</code> confirm — no new verb</td><td>Small command surface; grounded run</td></tr>
+  </tbody>
+</table>
+
+<p>The proposed principle, in the existing <code>principles.html</code> shape:</p>
+
+<spec-decision id="P-7" grounding="n-a">
+  <h4>P-7 · Done means verified <span class="par">(proposed principle)</span></h4>
+  <dl>
+    <dt>Statement</dt>    <dd>An increment is not done because the code exists; it is done when it is <em>verified</em> — its tests pass, <code>spectastic validate</code> is clean, and anything with a runtime has been exercised in a browser, not just asserted present ("presence ≠ containment"). Every spec's success criteria trace to this bar, and every feature ships a <code>verify.html</code> that says how a human confirms it.</dd>
+    <dt>Why</dt>          <dd>The verification discipline already exists in <code>CLAUDE.md</code> but as guidance nothing traces to; a structurally-passing-but-behaviourally-broken artifact (019's quiz gate) shipped under exactly that gap.</dd>
+  </dl>
+</spec-decision>
+</section>
+
+
+<!-- =======================================================
+     §6 Open questions
+     ======================================================= -->
+<section id="questions">
+<h2>6 · Open questions</h2>
+<spec-questions>
+<ol>
+  <li><strong>Aggregation needs a build step.</strong> Single-file HTML can't fetch its sibling <code>spec.html</code>/<code>tasks.html</code> at render time, so the "traced" links must be materialised by a generator (a <code>spectastic verify build</code>, or the <code>/tasks</code>+<code>/implement</code> verbs writing it). This is the same cross-file constraint as the deferred-roadmap rollup — worth solving once, generally.</li>
+  <li><strong>How is the Run block captured?</strong> Does <code>/implement</code> record the literal commands it ran (a typed <code>&lt;spec-run&gt;</code> element?), or does the author confirm a draft? Grounding wants the former.</li>
+  <li><strong>Feature-toggle representation.</strong> A typed element (so it's greppable and a missing-toggle renders loudly), or prose? Leaning typed, mirroring the visible-failure pattern.</li>
+  <li><strong>Does <code>verify.html</code> carry its own lifecycle status</strong>, or derive it from the spec's bundle (per <code>REQ-LIFECYCLE-005</code>)? Probably derive — it's a view, not an independent artifact.</li>
+  <li><strong>Is P-7 one change or two?</strong> The principle (a <code>/spectastic.principles</code> amendment) and the <code>verify.html</code> mechanism (a feature spec) are separable; the principle could land first and stand alone.</li>
+</ol>
+</spec-questions>
+</section>
+
+
+<!-- =======================================================
+     §7 Out of scope
+     ======================================================= -->
+<section id="scope">
+<h2>7 · Out of scope (for this <code>/doc</code>)</h2>
+<spec-non-goals>
+  <ul>
+    <li><spec-out-of-scope defer-to="TBD-verify-spec">Building <code>verify.html</code>, the generator, or the <code>/tasks</code>/<code>/implement</code> changes — this brief feeds a future <code>/spectastic.spec</code>.</spec-out-of-scope></li>
+    <li><spec-out-of-scope defer-to="TBD-verify-spec">Authoring the P-7 amendment to <code>principles.html</code> — a separable <code>/spectastic.principles</code> change.</spec-out-of-scope></li>
+    <li><spec-out-of-scope defer-to="never">Reviving spec-kit's "every feature must be CLI-runnable" requirement — explicitly rejected as too rigid; the Run / Demo block is medium-agnostic.</spec-out-of-scope></li>
+  </ul>
+</spec-non-goals>
+</section>
+
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  Verification — considerations · design brief · drafted 23 Jun 2026
+</footer>
+
+</main>
+<script src="../assets/spec.js"></script>
+</body>
+</html>
