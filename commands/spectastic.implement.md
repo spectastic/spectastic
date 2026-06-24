@@ -78,6 +78,12 @@ Flags can appear in any order in `$ARGUMENTS`. A non-flag token (`T-NNN`, `I-NNN
 
 9. **Verify.** Run the smallest possible verification the task admits — its scoped tests, a smoke check, a build. Report the result in your reply.
 
+10. **Materialise `verify.html` on completion (per spec `021-verify-view`, FR-005).** When this tick brings the spec's tasks.html to **zero remaining unchecked** (the same completion condition as step 8) and the artifact is a real spec bundle (it has a `spec.html` + `tasks.html`), materialise the spec's `verify.html` from the run you actually performed. Build a JSON object of the commands you genuinely executed across the spec's verification — `{ "run": "<build/start cmd>", "toggle": "<flag/env/setting, or 'none'>", "tests": "<the exact test command>", "testsCite": ["T-NNN", …], "demo": "<the human click-path / import / request>", "demoCite": ["SC-NNN", …] }` — and pipe it to the generator:
+    ```bash
+    echo '<that JSON>' | spectastic verify <spec-id>
+    ```
+    The Run/Tests fields **MUST** be commands you actually ran (grounded evidence, not aspirational — SC-003); omit any field you have no real value for (it renders as a loud "not recorded", never a silent blank). This writes/refreshes `specs/<spec-id>/verify.html`; commit it with the bundle. Skip for tasks-less artifacts (principles, triage logs, inbox) and for any non-final tick.
+
 ## Discipline (non-negotiable)
 
 - **One task per invocation by default.** Drain modes (`--all`, `--phase=<id>`, `--parallel`) are explicit opt-ins; they relax this default only when the user types the flag. In drain mode you still do not silently chain past failure — the first failing task pauses the drain and requires explicit re-invocation. Report progress per task (one line per ticked checkbox) so the user sees the work as it lands.

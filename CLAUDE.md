@@ -109,6 +109,8 @@ Rules of thumb:
 - **Presence is not containment.** For anything *positioned* — cards that size to content, popovers/menus/tooltips anchored to an element — a test that asserts "it rendered" misses the two ways layout actually breaks: content overspilling its own box, and an overlay clipped by an `overflow` ancestor or the viewport edge. Assert containment (`scrollHeight ≤ clientHeight`) and on-screen bounds (the rect sits inside the viewport), not just that the element exists. Paid for by `020-vscode-extension` T-001/T-002: the canvas nodes and hover card passed every "it renders" check and were still visibly cropped when a human opened them.
 - The linter is not noise. The `var`-in-loop bug was flagged as `S1515` and waved off as "style"; it was the bug.
 
+**The per-feature view is generated, not written.** Spec `021-verify-view` adds `verify.html` — a derived per-spec view that aggregates the SC → acceptance → test-task trace (by reference) and a Run/Demo block grounded in the real run, materialised by `/spectastic.implement` on completion or regenerated with `spectastic verify <spec-id>`. This is the *artifact* form of P-7; the rules of thumb above are how you clear the bar before that view can honestly say "done". `spectastic validate` flags a `verify.html` whose links have drifted from its bundle (the `verify-view-stale` rule) — treat that finding like any other, not as noise.
+
 ## Things deferred
 
 Captured in `docs/openspec-considerations.html` and `examples/spectastic-spec.html` §2 (Out of scope):

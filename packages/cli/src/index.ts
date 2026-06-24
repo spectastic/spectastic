@@ -13,6 +13,7 @@ import { registerSpec } from './commands/spec.js';
 import { registerTasks } from './commands/tasks.js';
 import { registerTriage } from './commands/triage.js';
 import { registerValidate } from './commands/validate.js';
+import { registerVerify } from './commands/verify.js';
 
 /**
  * @spectastic/cli entry point.
@@ -49,6 +50,7 @@ registerSpec(program);
 registerPlan(program);
 registerPropose(program);
 registerImplement(program);
+registerVerify(program);
 
 if (process.argv.length <= 2) {
   program.outputHelp();

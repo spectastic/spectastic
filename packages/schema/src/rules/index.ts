@@ -16,6 +16,7 @@ import { riskStatusRequiredRule } from './risk-status-required.js';
 import { riskTargetRequiredRule } from './risk-target-required.js';
 import { specParentWellFormedRule } from './spec-parent-well-formed.js';
 import { taskIdRequiredRule } from './task-id-required.js';
+import { verifyViewStaleRule } from './verify-view-stale.js';
 
 /**
  * The canonical spectastic rule registry.
@@ -52,4 +53,5 @@ export const rules: readonly Rule[] = [
   noDuplicateIdsRule,
   noBrokenDeferToRule,
   parentChildReciprocityRule,
+  verifyViewStaleRule,
 ];

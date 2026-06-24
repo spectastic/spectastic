@@ -134,6 +134,7 @@ Spectastic embeds the discipline that prevents this without adding new verbs:
 - **Estimability gate** in `/spectastic.plan` — refuses to run while any `<spec-question>`, `[NEEDS CLARIFICATION]`, missing `defer-to=`, or failing INVEST row exists.
 - **Grounded planning** in `/spectastic.plan` (`REQ-LIFECYCLE-006`) — before the interview, the plan reads the real consuming code, dependency signatures at the resolved lockfile version, and platform constraints, and records each design-bearing fact in a §3 **Grounding & evidence** ledger as `verified` / `spike` / `assumed`. Every `<spec-decision>` carries `grounding="…"` and cites its source; an ungrounded one renders `UNGROUNDED`. The discipline is a `SHOULD`; the **gate** is the `MUST` — no hand-off to `/spectastic.tasks` while a `must`-tier decision rests on an unverified assumption the author hasn't accepted as a `<spec-risk>`. Moves discovery from implementation back to planning.
 - **`<spec-parent specid="…">`** marks a spec as a child slice of a larger umbrella. The slice is still a regular spec.html; the parent reference is the only marker. The conformance index in the parent auto-aggregates child slices.
+- **`verify.html`** is a *generated, derived* per-spec view answering "how do I run it, and how do I know it works?" (spec [`021-verify-view`](./specs/021-verify-view/spec.html)). It **aggregates** the bundle's success criteria → acceptance → closing test-task trace *by reference* (links, never copied prose) and adds the one authored thing — a medium-agnostic **Run/Demo block** of typed elements (`<spec-run>`, `<spec-toggle>`, `<spec-tests cites="…">`, `<spec-demo cites="…">`) that `/spectastic.implement` fills from the commands it *actually ran* on completion (an unrecorded field renders loudly, never blank). It carries no `<spec-status>` of its own (it derives the spec's), and `spectastic validate` flags it as stale when its links drift from the bundle. Regenerate (or rebuild the links while preserving the captured Run block) with `spectastic verify <spec-id>`.
 - **Budget-aware splitting nudge** in `/spectastic.propose` — proposals over ~5 deltas or crossing >2 topic prefixes get a "would these read better as two or three proposals?" prompt.
 
 #### Retrofit recipe — splitting a bloated spec
@@ -271,6 +272,11 @@ npm i -g @spectastic/cli
 cd my-new-project
 spectastic init
 spectastic validate --format sarif "specs/**/*.html" > spectastic.sarif
+
+# Regenerate a spec's derived verify.html (the SC → acceptance → test trace).
+# /spectastic.implement also materialises it on completion, grounding the
+# Run/Demo block in the commands it actually ran.
+spectastic verify 021-verify-view
 ```
 
 Two example CI workflows are under [`docs/ci-examples/`](./docs/ci-examples/): one for GitHub Actions (uploads SARIF to Code Scanning), one for GitLab CI (exposes SARIF as a SAST report). Both surface findings as inline PR/MR annotations.

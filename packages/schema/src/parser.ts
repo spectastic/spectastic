@@ -2,8 +2,8 @@ import { parse as parse5Parse } from 'parse5';
 import type { DefaultTreeAdapterTypes } from 'parse5';
 import type { ParsedDocument } from './types.js';
 
-type Document = DefaultTreeAdapterTypes.Document;
-type Element = DefaultTreeAdapterTypes.Element;
+export type Document = DefaultTreeAdapterTypes.Document;
+export type Element = DefaultTreeAdapterTypes.Element;
 type ChildNode = DefaultTreeAdapterTypes.ChildNode;
 
 /**

@@ -457,3 +457,45 @@ export interface ImplementResult {
   /** True if the bundled flip prompt was surfaced (last-tick + Draft). */
   flipPromptFired: boolean;
 }
+
+// --- verify (verb 021, derived per-spec verify.html view) --------------
+
+/**
+ * The real-run commands /implement captured in its Verify step (D-005),
+ * written verbatim into the typed Run/Demo block. Absent on a links-only
+ * standalone regeneration, where the engine preserves the prior block
+ * (FR-006). Every field is optional: a docs-only task may have run nothing,
+ * which renders as a loud gap rather than a silent blank (FR-009).
+ */
+export interface CapturedRun {
+  /** Build/start command(s) — the `<spec-run>` content. */
+  run?: string;
+  /** Feature flag / env var / setting that must be on, or "none" — `<spec-toggle>`. */
+  toggle?: string;
+  /** The exact command that exercises this feature's tests — `<spec-tests>`. */
+  tests?: string;
+  /** The test-task ids the test command runs — `<spec-tests cites="…">` (FR-004). */
+  testsCite?: string[];
+  /** The human demo path (click-path, import, or request) — `<spec-demo>`. */
+  demo?: string;
+  /** The SC ids the demo path satisfies — `<spec-demo cites="…">` (FR-004). */
+  demoCite?: string[];
+}
+
+export interface VerifyInput {
+  /** The spec whose verify.html is generated (e.g. "021-verify-view"). */
+  specId: string;
+  /**
+   * Real-run commands captured by /implement (D-005). Omitted on a
+   * links-only regeneration, where the engine preserves the existing
+   * Run/Demo block (FR-006).
+   */
+  capturedRun?: CapturedRun;
+}
+
+export interface VerifyResult {
+  /** The spec this view belongs to. */
+  specId: string;
+  /** The generated, self-contained verify.html (FR-001). */
+  html: string;
+}
