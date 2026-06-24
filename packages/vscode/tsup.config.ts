@@ -11,6 +11,12 @@ export default defineConfig([
     platform: 'node',
     target: 'node20',
     external: ['vscode'],
+    // Bundle the workspace packages (and their transitive deps, e.g. parse5)
+    // INTO host.cjs — a packaged .vsix is standalone with no node_modules to
+    // resolve `@spectastic/*` from. Without this the installed extension throws
+    // "Cannot find module '@spectastic/schema'" on activation; the dev-host
+    // only works because it resolves via the workspace symlinks.
+    noExternal: [/^@spectastic\//],
     sourcemap: true,
     clean: true,
     dts: false,
