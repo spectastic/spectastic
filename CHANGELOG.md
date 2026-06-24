@@ -1,5 +1,19 @@
 # Changelog
 
+## v0.1.0-pre.16 — 2026-06-23
+
+First published build since pre.14 — pre.15 (StubAIProvider) was changelogged but never released, so this rolls it up. The bulk is the theme system and four new/expanded slices, plus a run of meta-spec lifecycle hardening.
+
+**Themes — calm × vivid, light × dark (016 + 017).** Two orthogonal axes: theme owns typography + structure, mode owns colour, both pure-CSS over `data-theme`/`data-mode`, applied before paint, WCAG AA across all four combinations. `spectastic-vivid` reproduces the reference design at the component level (pills, carded surfaces, single-column measure). A **sticky top header** — brand/back-link → `index.html`, artifact path, theme dropdown, sun/moon mode toggle — now ships in **both themes**: vivid a dense backdrop-blurred bar, calm a minimal flat treatment; the controls moved out of the footer (FR-009). Canonical spectrum brand mark (017).
+
+**`/spectastic.explain` — grounded coaching (018 + 019).** A new opt-in extended verb: an in-chat grounded read of a spec / requirement / decision / file that cites only confirmed source. `--course` generates a persistent, grounded course with a quiz gate (per-answer feedback + verdict). Browser-verified gate behaviour (`tests/course.gate.spec.ts`).
+
+**VS Code extension (020).** An in-editor, read-only lifecycle canvas — renders a spec's `principles → … → triage` graph with health signals (budget, open questions, risks, status), vertical-by-default layout, and file-watch refresh. Behaviour-first tests (containment + on-screen bounds, not just presence).
+
+**Lifecycle hardening (meta-spec).** Grounded planning — plan SHOULD ground design-bearing facts; a MUST-gate stops an ungrounded must-decision reaching tasks (REQ-LIFECYCLE-006). Apply accepts-and-routes — a proposal's §6 folds into the target's `tasks.html`; apply never implements (REQ-CHANGE-006). The `<spec-questions>` zero-form is unambiguous — no open questions ⇒ no `<li>`, rationale in a `<p>` (REQ-AUTHOR-005) — backed by a `no-placeholder-question` validate rule. Triage root-cause laddering (REQ-LIFECYCLE-007): climb the regeneration test and classify at the lowest layer whose fix passes it — a bidirectional gate against both symptom-classing and spec inflation.
+
+**Fixes.** CLI `gateOnDestinationState` widened for `exactOptionalPropertyTypes` (I-031); quiz-gate closure-over-`var`; decision-grounding renders as a labelled `dl` row instead of a floating badge; dead footer theme-toggle dropped from the templates; "interactive HTML needs a browser-level test" added to the verification discipline.
+
 ## v0.1.0-pre.15 — 2026-06-17
 
 Mid-cycle release covering the P-6 lifecycle ratification + a substantial test-infrastructure expansion. Six logical landings rolled up into one tag:
