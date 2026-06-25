@@ -38,7 +38,7 @@ export const VERB_TOKEN: Record<VerbType, string> = {
 /** Canvas layout orientation (spec FR-004). Vertical is the default. */
 export type Orientation = 'vertical' | 'horizontal';
 
-export type EdgeKind = 'flow' | 'slice' | 'proposal';
+export type EdgeKind = 'flow' | 'slice' | 'proposal' | 'derived';
 
 export interface Edge {
   from: string;
@@ -65,6 +65,12 @@ export interface ArtifactNode {
   stale: boolean;
   /** Unknown: the artifact could not be parsed (spec FR-011). */
   unknown: boolean;
+  /**
+   * Derived-view node (spec FR-014): a regenerated, statusless view such as
+   * verify.html. Renders distinct from the verb spine, no status pill, a
+   * freshness metric instead of a verb metric. Absent/false for verb nodes.
+   */
+  derived?: boolean;
 }
 
 export interface LifecycleGraph {

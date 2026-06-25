@@ -28,6 +28,9 @@ export interface Layout {
 }
 
 const isSlice = (id: string): boolean => id.startsWith('slice:');
+/** Lane (off-spine) nodes: child slices and derived views (FR-014). */
+const isLane = (n: { id: string; derived?: boolean }): boolean =>
+  isSlice(n.id) || Boolean(n.derived);
 
 export function layoutGraph(graph: LifecycleGraph, orientation: Orientation = 'vertical'): Layout {
   const vertical = orientation === 'vertical';
@@ -38,7 +41,7 @@ export function layoutGraph(graph: LifecycleGraph, orientation: Orientation = 'v
   const positions: NodePos[] = [];
 
   const spine = graph.nodes
-    .filter((n) => !isSlice(n.id))
+    .filter((n) => !isLane(n))
     .slice()
     .sort((a, b) => VERB_ORDER.indexOf(a.verb) - VERB_ORDER.indexOf(b.verb));
 
@@ -56,17 +59,19 @@ export function layoutGraph(graph: LifecycleGraph, orientation: Orientation = 'v
     positions.push(pos);
   });
 
-  // Slices branch perpendicular to the spine, aligned with their parent.
+  // Slices and derived views branch perpendicular to the spine, aligned with their parent.
   const laneCount = new Map<string, number>();
-  for (const slice of graph.nodes.filter((n) => isSlice(n.id))) {
-    const parentEdge = graph.edges.find((e) => e.to === slice.id && e.kind === 'slice');
+  for (const lane of graph.nodes.filter(isLane)) {
+    const parentEdge = graph.edges.find(
+      (e) => e.to === lane.id && (e.kind === 'slice' || e.kind === 'derived'),
+    );
     const parent = parentEdge ? posByVerb.get(parentEdge.from) : undefined;
     const baseX = parent?.x ?? PAD;
     const baseY = parent?.y ?? PAD;
     const depth = laneCount.get(parentEdge?.from ?? '') ?? 0;
     laneCount.set(parentEdge?.from ?? '', depth + 1);
     positions.push({
-      id: slice.id,
+      id: lane.id,
       // vertical spine → lane to the right (offset x); horizontal spine → lane below (offset y).
       x: vertical ? baseX + laneStep + depth * spineStep : baseX,
       y: vertical ? baseY + depth * spineStep : baseY + laneStep + depth * spineStep,

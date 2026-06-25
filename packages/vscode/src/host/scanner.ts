@@ -1,6 +1,6 @@
 import { readFile, stat, readdir } from 'node:fs/promises';
 import * as path from 'node:path';
-import { extractHealth, validate, type ArtifactHealth } from '@spectastic/schema';
+import { extractHealth, validate, validateMany, type ArtifactHealth } from '@spectastic/schema';
 import {
   VERB_ORDER,
   type ArtifactNode,
@@ -92,11 +92,72 @@ export async function buildGraph(ctx: ScanContext): Promise<LifecycleGraph> {
     edges.push({ from: 'spec', to: node.id, kind: 'slice' });
   }
 
-  // Staleness across the spine.
+  // Derived views (e.g. verify.html) — statusless, branch off the spine (FR-014, D-008).
+  await appendDerivedView(ctx, present, nodes, edges);
+
+  // Staleness across the spine. Derived nodes carry their own freshness signal.
   const stale = flagStale(mtimeItems);
-  for (const node of nodes) node.stale = stale.has(node.id);
+  for (const node of nodes) {
+    if (!node.derived) node.stale = stale.has(node.id);
+  }
 
   return { specId: ctx.specId, nodes, edges };
+}
+
+/** Append the verify.html derived-view node + its edge off the spine source. */
+async function appendDerivedView(
+  ctx: ScanContext,
+  present: Candidate[],
+  nodes: ArtifactNode[],
+  edges: Edge[],
+): Promise<void> {
+  const verifyPath = path.join(ctx.specDir, 'verify.html');
+  if (!(await fileExists(verifyPath))) return;
+  nodes.push(await buildDerivedNode(ctx, verifyPath));
+  const source =
+    present.find((c) => c.verb === 'tasks') ??
+    present.find((c) => c.verb === 'spec') ??
+    present.at(-1);
+  if (source) edges.push({ from: source.verb, to: 'verify', kind: 'derived' });
+}
+
+/**
+ * Build the statusless derived-view node for verify.html (FR-014 / D-008). Its
+ * metric is a binary stale flag off the verify-view-stale rule (021 FR-008).
+ */
+async function buildDerivedNode(ctx: ScanContext, filePath: string): Promise<ArtifactNode> {
+  const stale = await verifyStale(ctx);
+  return {
+    id: 'verify',
+    // verb is unused for a derived node (no pill, no verb colour); a valid
+    // placeholder keeps the type honest.
+    verb: 'spec',
+    specId: ctx.specId,
+    title: ctx.specId,
+    path: filePath,
+    health: emptyHealth(),
+    metric: stale ? 'stale' : 'in sync',
+    attention: stale,
+    stale,
+    unknown: false,
+    derived: true,
+  };
+}
+
+/** True when verify.html has drifted from its bundle (verify-view-stale, 021 FR-008). */
+async function verifyStale(ctx: ScanContext): Promise<boolean> {
+  const inputs: { html: string; file: string }[] = [];
+  for (const name of ['spec.html', 'tasks.html', 'verify.html']) {
+    try {
+      inputs.push({
+        html: await readFile(path.join(ctx.specDir, name), 'utf8'),
+        file: `specs/${ctx.specId}/${name}`,
+      });
+    } catch {
+      // missing sibling — the rule simply has less to compare.
+    }
+  }
+  return validateMany(inputs).some((f) => f.rule === 'verify-view-stale');
 }
 
 async function buildNode(

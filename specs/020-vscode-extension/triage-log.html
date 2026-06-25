@@ -191,6 +191,124 @@
   </details>
 </spec-triage>
 
+<spec-triage id="T-006" layer="spec">
+  <header>
+    <h4>Canvas omits the verify.html artifact — no verify node in the lifecycle</h4>
+    <span class="meta">
+      <span class="layer-pill">Spec</span>
+      <span class="regen" data-result="fail">upstream</span>
+    </span>
+  </header>
+
+  <p class="headline">Debugging the absence of a verify node on the canvas for a spec that carries a
+  <code>verify.html</code>, root cause was a spec gap: <a href="./spec.html#FR-001">FR-001</a>'s lifecycle
+  node set (<code>principles → spec → plan → tasks → … → triage</code>) and the scanner's hardcoded
+  artifact list (<span class="path">packages/vscode/src/host/scanner.ts</span>: principles / spec / plan /
+  tasks / propose / triage) predate the <code>verify.html</code> <em>derived view</em> introduced by spec
+  <a href="../021-verify-view/spec.html">021-verify-view</a>; fixed by amending 020 to place verify in the
+  node set; regeneration <strong>fails</strong> — 020's spec never names verify, so any rebuild reproduces
+  the omission.</p>
+
+  <dl>
+    <dt>Expected</dt> <dd>With a spec selected, the canvas shows one node per existing artifact file (<a href="./spec.html#FR-001">FR-001</a>); a spec carrying a <code>verify.html</code> shows a verify node.</dd>
+    <dt>Actual</dt>   <dd><code>verify.html</code> exists in <code>specs/&lt;id&gt;/</code> (e.g. spec-tictactoe's 001/002) but no node renders — the scanner enumerates a fixed set that omits it.</dd>
+    <dt>Diagnosis</dt><dd><a href="./spec.html#FR-001">FR-001</a>'s lifecycle sequence and <code>scanner.ts</code>'s artifact list were authored before 021 added <code>verify.html</code> — a <em>derived view</em>, not a lifecycle verb — so the canvas has no representation for it. Needs a spec decision: where verify sits (adjacent to tasks/implement, as a derived-view node), its verb colour, and its one key metric (e.g. trace coverage / stale).</dd>
+    <dt>Fix</dt>      <dd><span class="path">specs/020-vscode-extension/spec.html</span> — amend <a href="./spec.html#FR-001">FR-001</a> (and the node-type/colour requirement) to include <code>verify.html</code> as a derived-view node; cascade to <code>scanner.ts</code> + the graph types + the webview. Author via <code>/spectastic.propose</code> against 020.</dd>
+  </dl>
+
+  <details>
+    <summary>Deep dive — cross-spec / structural</summary>
+    <p><strong>Shared contract.</strong> The lifecycle artifact set is effectively a contract between 020
+    (which renders it) and the lifecycle itself (which defines it). 021 extended the lifecycle with a new
+    artifact; 020 didn't learn it. Rather than hardcode each new artifact, the fix should consider
+    <em>deriving</em> the node set from the canonical lifecycle so future artifacts (e.g. a conformance
+    index) don't each require a 020 amendment.</p>
+    <p><strong>Derived-view category.</strong> <code>verify.html</code> is not a lifecycle <em>verb</em> — it
+    carries no own status (<a href="../021-verify-view/spec.html#FR-007">021 FR-007</a>) and is regenerated,
+    not authored. 020 likely needs a distinct "derived-view node" treatment (no status pill; a freshness /
+    trace-coverage metric) rather than forcing it into the verb-coloured flow. That's the spec decision the
+    proposal must make — hence <code>spec</code>, not a code-only patch.</p>
+  </details>
+</spec-triage>
+
+<spec-triage id="T-007" layer="spec">
+  <header>
+    <h4>Opened artifact panels don't identify their spec — 020's canvas appears to "show 021's artifacts"</h4>
+    <span class="meta">
+      <span class="layer-pill">Spec</span>
+      <span class="regen" data-result="fail">upstream</span>
+    </span>
+  </header>
+
+  <p class="headline">Debugging the canvas (correctly on 020 — the spec node reads <em>21 reqs</em>, matching 020)
+  appearing to "show 021's artifacts", root cause is a spec gap, not a path bug: clicking a node opens the
+  <em>right</em> file, but <code>openArtifact</code> (<span class="path">packages/vscode/src/host/open-artifact.ts</span>:21)
+  titles every panel by the bare verb basename (<code>path.basename(path,'.html')</code> → "spec"/"plan"/"tasks"),
+  carries no spec id, and <code>createWebviewPanel</code> runs per-click with no per-artifact reuse or
+  cross-spec reconciliation — so the 021 panels opened when the canvas first defaulted to 021 (the
+  most-recently-modified spec, via <code>defaultSpec()</code>) stay open and indistinguishable from 020's
+  after switching; regeneration <strong>fails</strong> — 020's spec never constrains panel identity, so any
+  rebuild reproduces the ambiguity.</p>
+
+  <dl>
+    <dt>Expected</dt> <dd>With the canvas on 020, opened artifacts are identifiably 020's; re-opening or switching specs does not leave indistinguishable panels (<a href="./spec.html#FR-003">FR-003</a>).</dd>
+    <dt>Actual</dt>   <dd>Panels are titled "spec"/"plan"/"tasks" with no spec id; each click stacks a new panel; switching the canvas spec leaves prior specs' panels open — so a leftover 021 "tasks" panel reads as if the 020 view opened it.</dd>
+    <dt>Diagnosis</dt><dd><a href="./spec.html#FR-003">FR-003</a> mandates "open the artifact on click" but is silent on panel <em>identity</em> and <em>reuse</em>; <code>open-artifact.ts</code> titles by bare basename and never reuses/reconciles. Amplified by <code>defaultSpec()</code> opening the most-recently-modified spec (021) first.</dd>
+    <dt>Fix</dt>      <dd><span class="path">specs/020-vscode-extension/spec.html</span> — amend <a href="./spec.html#FR-003">FR-003</a> (or add an FR) requiring an opened artifact to identify its spec (title carries the spec id) and to reuse a single panel per artifact path; then update <code>open-artifact.ts</code> + <code>extension.ts</code>. Author via <code>/spectastic.propose</code> against 020. (Minimal mitigation — title = <code>&lt;spec-id&gt; · &lt;verb&gt;</code> — is a one-line impl change, but the requirement is the upstream gap a regen reproduces.)</dd>
+  </dl>
+
+  <details>
+    <summary>Deep dive — spec gap, defaultSpec interaction</summary>
+    <p><strong>Not a path bug.</strong> Node→file resolution is correct (<code>scanner.ts</code> builds each
+    path from <code>ctx.specDir</code>); a 020 node opens a 020 file. The confusion is purely panel
+    <em>identity</em> + <em>persistence</em>.</p>
+    <p><strong>Scope of the requirement (surfaced, not pre-decided).</strong> The FR should mandate (1) the
+    panel identifies its spec and (2) re-opening the same artifact reuses its panel. Whether switching the
+    canvas spec should <em>auto-close</em> other specs' panels is a separate design choice — some authors
+    want several artifacts open at once — so the proposal should decide it explicitly rather than assume.</p>
+  </details>
+</spec-triage>
+
+<spec-triage id="T-008" layer="implementation">
+  <header>
+    <h4>After switching specs, clicking a node opens the previous spec's artifact (stale click closure)</h4>
+    <span class="meta">
+      <span class="layer-pill">Implementation</span>
+      <span class="regen" data-result="pass">code</span>
+    </span>
+  </header>
+
+  <p class="headline">Debugging the canvas correctly showing <code>002-validate-cli</code> but clicking any
+  node opening the <code>020-vscode-extension</code> artifact, root cause was a stale closure: the webview
+  reconciles nodes <em>by id</em> (<code>spec</code>/<code>plan</code>/<code>tasks</code> are identical ids
+  for every spec, <span class="path">main.ts</span>), so a spec switch <em>reuses</em> the DOM node and
+  <code>updateNode</code> refreshes its text — but the click handler set in <code>renderNode</code> still
+  closed over the first render's <code>node.path</code>; fixed by reading the live path from
+  <code>el.dataset.path</code> (refreshed every reconcile) at click time; regeneration <strong>passes</strong>
+  — <a href="./spec.html#FR-003">FR-003</a> is correct, the gap was code-only (the closure-over-reused-DOM
+  family of <a href="../019-explain-course/triage-log.html">019</a>'s quiz-gate bug).</p>
+
+  <dl>
+    <dt>Expected</dt> <dd>With a spec selected, clicking a node opens <em>that</em> spec's artifact (<a href="./spec.html#FR-003">FR-003</a>).</dd>
+    <dt>Actual</dt>   <dd>After switching to another spec, clicking a reused node (spec/plan/tasks) opened the <em>previous</em> spec's file — the click handler's path was frozen at first render.</dd>
+    <dt>Diagnosis</dt><dd><code>renderNode</code> bound <code>() =&gt; onOpen(node.path)</code>, closing over the render-time node; <code>updateNode</code> reconciled content by id but never rebound the handler, so reused nodes kept the old path. Not a path-derivation bug in the scanner (paths are correct per spec); a webview reconciliation slip.</dd>
+    <dt>Fix</dt>      <dd><span class="path">packages/vscode/src/webview/node.ts</span> — <code>updateNode</code> writes <code>el.dataset.path = node.path</code>; the click/Enter handler reads <code>el.dataset.path</code> at invocation. Regression: <span class="path">tests/vscode/canvas-open.spec.ts</span> switches specs and asserts the open targets the new path (32/32 Playwright).</dd>
+  </dl>
+
+  <spec-diff>
+<del>  const open = (): void => onOpen(node.path);            // frozen at first render</del>
+<ins>  const open = (): void => { const p = el.dataset.path; if (p) onOpen(p); };  // live</ins>
+  </spec-diff>
+
+  <details>
+    <summary>Deep dive — none required</summary>
+    <p>No cross-spec contract, no invariant, no hotfix-before-amendment. Distinct from <a href="#T-007">T-007</a>
+    (panel identity/reuse): that was about which panel a correct path opens into; this is the path itself being
+    stale. Both surfaced from the same multi-spec-switch session; T-007 is spec-layer (panel identity), T-008 is
+    implementation (stale handler).</p>
+  </details>
+</spec-triage>
+
 </spec-triage-log>
 </section>
 
@@ -199,6 +317,9 @@
 <h2>Change log</h2>
 <spec-changelog>
 <ol>
+  <li><time datetime="2026-06-24">24 Jun 2026</time><span>T-008 added + fixed — after a spec switch, clicking a node opened the previous spec's artifact (stale click closure over a reused, reconciled-by-id node). <code>implementation</code>, regen <code>pass</code>: <code>node.ts</code> now reads the live path from <code>el.dataset.path</code> at click time; regression added (<code>canvas-open.spec.ts</code>, 32/32).</span></li>
+  <li><time datetime="2026-06-24">24 Jun 2026</time><span>T-007 added — opened artifact panels don't identify their spec (bare-verb titles, no reuse), so 020's canvas appears to "show 021's artifacts" after a spec switch. <code>spec</code>, regen <code>fail</code>: FR-003 is silent on panel identity/reuse; needs a <code>/spectastic.propose</code> against 020, not just a title rename.</span></li>
+  <li><time datetime="2026-06-24">24 Jun 2026</time><span>T-006 added — canvas omits the <code>verify.html</code> artifact (no verify node). <code>spec</code>, regen <code>fail</code>: 020's FR-001 node set + the scanner's hardcoded artifact list predate the 021 derived view; needs a <code>/spectastic.propose</code> against 020 to add a derived-view node, not a code patch.</span></li>
   <li><time datetime="2026-06-23">23 Jun 2026</time><span>T-005 added — plan node falsely flagged needs-attention by a "None outstanding" open-questions placeholder. <code>cross-spec</code>, regen <code>fail</code>: the fix is upstream (define a canonical empty <code>&lt;spec-questions&gt;</code> at generation), not a 020 patch.</span></li>
   <li><time datetime="2026-06-22">22 Jun 2026</time><span>Triage log scaffolded; T-001..T-004 backfilled — node crop/overspill, popover clipping, missing in-view spec picker, install scaffolding gaps. All <code>implementation</code>, regen <code>pass</code>; each fixed and verified (Playwright regressions added for T-001/T-002).</span></li>
 </ol>

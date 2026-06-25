@@ -1,0 +1,248 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Canvas: derived-view nodes + artifact-panel identity · Change proposal</title>
+<link rel="stylesheet" href="../../../../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../../../../assets/favicon.svg">
+<script src="../../../../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Change proposal · 020-vscode-extension</p>
+  <h1>Canvas: derived-view nodes + artifact-panel identity</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    Teach the lifecycle canvas about derived views (verify.html) and make every opened artifact say which spec it belongs to.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>     <span><spec-status value="applied">Applied</spec-status></span>
+    <b>Change ID</b>  <span>2026-06-24-canvas-derived-views-panel-identity</span>
+    <b>Spec</b>       <span><a href="../../../spec.html">020-vscode-extension</a></span>
+    <b>Source</b>     <span><a href="../../../triage-log.html#T-006">T-006</a> · <a href="../../../triage-log.html#T-007">T-007</a></span>
+    <b>Author</b>     <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Created</b>    <span><time datetime="2026-06-24">2026-06-24</time></span>
+    <b>Targets</b>    <span>4 requirements — 1 added, 3 modified</span>
+    <b>Read time</b>  <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-tldr>
+    <p>The canvas was specified before two things existed: the <code>verify.html</code> derived view (spec
+    <a href="../../../../021-verify-view/spec.html">021</a>) and the lived reality of switching between specs with
+    artifacts open. So it omits verify nodes entirely (<a href="../../../triage-log.html#T-006">T-006</a>), and its
+    artifact panels — titled by bare verb with no spec id and never reused — make a leftover panel from one spec
+    read as if it belongs to the spec currently on the canvas (<a href="../../../triage-log.html#T-007">T-007</a>).
+    This change updates the canvas's spec/artifact model: <strong>MODIFY <a href="#FR-001">FR-001</a></strong> to
+    include derived views in the node set, <strong>ADD <a href="#FR-014">FR-014</a></strong> naming a statusless
+    derived-view node category (with <strong>MODIFY <a href="#FR-002">FR-002</a></strong> scoping its fixed-colour
+    mandate to verb nodes), and <strong>MODIFY <a href="#FR-003">FR-003</a></strong> so every opened panel
+    identifies its spec and reuses one panel per artifact.</p>
+  </spec-tldr>
+</header>
+
+
+<spec-change id="2026-06-24-canvas-derived-views-panel-identity" status="applied">
+
+<header>
+  <h3>Canvas: derived-view nodes + artifact-panel identity</h3>
+  <span class="meta"><spec-status value="applied">Applied</spec-status></span>
+</header>
+
+
+<section id="intent">
+<h2>1 · Intent</h2>
+<p>020 shipped a canvas that draws one node per lifecycle artifact and opens each on click. Two gaps surfaced
+once it ran against a real, evolving project. First, spec <a href="../../../../021-verify-view/spec.html">021</a>
+introduced <code>verify.html</code> — a <em>derived view</em> that is regenerated, not authored, and carries no
+status of its own. <a href="#FR-001">FR-001</a>'s node set and the scanner's hardcoded artifact list predate it,
+so a spec's <code>verify.html</code> is invisible on the canvas (<a href="../../../triage-log.html#T-006">T-006</a>).
+Second, opened artifact panels are titled by bare verb basename (<code>spec</code>/<code>plan</code>/<code>tasks</code>)
+with no spec id and are never reused, so after the canvas defaults to one spec and you switch to another, the
+first spec's panels linger and read as if they belong to the spec now shown
+(<a href="../../../triage-log.html#T-007">T-007</a>).</p>
+<p>Both are spec-layer gaps — the implementation faithfully built what the spec said; the spec simply didn't
+anticipate derived views or multi-spec panel use. This proposal closes both by extending the canvas's
+spec/artifact model rather than patching the symptoms in code.</p>
+</section>
+
+
+<section id="scope">
+<h2>2 · Scope</h2>
+
+<spec-goals>
+  <h3>In scope</h3>
+  <ul>
+    <li>Broaden <a href="#FR-001">FR-001</a>'s node set to include derived-view artifacts (e.g. <code>verify.html</code>).</li>
+    <li>Add <a href="#FR-014">FR-014</a>: a statusless <em>derived-view node</em> category — no status pill, a freshness/coverage metric, visually distinct from the verb-coloured spine.</li>
+    <li>Amend <a href="#FR-003">FR-003</a>: an opened panel identifies its spec (title carries the spec id) and reuses one panel per artifact path; panels from other specs stay open across a spec switch.</li>
+  </ul>
+</spec-goals>
+
+<spec-non-goals>
+  <h3>Out of scope</h3>
+  <ul>
+    <li defer-to="never">Auto-closing other specs' artifact panels when the canvas spec changes — deliberately rejected so cross-spec comparison stays possible; disambiguation is by title instead.</li>
+    <li defer-to="TBD-verify-node-metric">A <em>richer</em> derived-view metric (e.g. a trace-coverage percentage) beyond FR-014's required binary stale indicator — deferred; the MUST is already satisfied by the stale signal 021 emits.</li>
+    <li defer-to="never">Building <code>verify.html</code> itself — shipped by <a href="../../../../021-verify-view/spec.html">021</a>; this change only teaches the canvas to render it.</li>
+  </ul>
+</spec-non-goals>
+</section>
+
+
+<section id="approach">
+<h2>3 · Approach</h2>
+<p>Two seams, each isolated. <strong>Node model:</strong> <a href="#FR-001">FR-001</a> gains "plus derived views";
+new <a href="#FR-014">FR-014</a> names the category so <a href="#FR-002">FR-002</a>'s verb-node contract (icon,
+title, status pill, one metric, fixed 017 colours) stays intact rather than absorbing a special case. In code
+the scanner gains a <code>verify</code> candidate and a derived-view node kind, and the webview renders it
+without a status pill and with a freshness metric, attached adjacent to its source. <strong>Artifact panels:</strong>
+<a href="#FR-003">FR-003</a> gains identity + reuse — <code>openArtifact</code> titles each panel
+<code>&lt;spec-id&gt; · &lt;verb&gt;</code> and keys a reuse map by artifact path so re-opening reveals the
+existing panel; cross-spec panels are left open. Touches <code>scanner.ts</code>, <code>messaging.ts</code>,
+the webview node renderer, and <code>open-artifact.ts</code>/<code>extension.ts</code>.</p>
+</section>
+
+
+<section id="deltas">
+<h2>4 · Deltas</h2>
+<p>One <code>&lt;spec-delta&gt;</code> per requirement touched. <code>target=</code> links to the live spec;
+<code>op=</code> is one of <code>added | modified | removed | renamed</code>.</p>
+
+<spec-delta op="modified" target="FR-001">
+  <p><strong>What changes:</strong> the node set now also includes any derived-view artifacts the bundle carries (e.g. <code>verify.html</code>), rendered per FR-014 and associated with the spec rather than placed inline in the verb sequence.</p>
+  <spec-requirement id="FR-001" priority="must">
+  <p>The panel <spec-rule>MUST</spec-rule> render the selected spec's lifecycle as a canvas of nodes —
+  one node per existing artifact file — ordered along the lifecycle sequence <code>principles → spec →
+  plan → tasks → implement → propose → apply → triage</code> (laid out in the orientation set by FR-004),
+  <strong>plus any derived-view artifacts the bundle carries (e.g. <code>verify.html</code>), rendered per
+  <a href="#FR-014">FR-014</a> and associated with the spec rather than placed inline in the verb sequence</strong>.
+  A missing artifact simply has no node, which is itself information.</p>
+  </spec-requirement>
+</spec-delta>
+
+<spec-delta op="modified" target="FR-002">
+  <p><strong>What changes:</strong> scope FR-002's fixed-colour mandate to <em>lifecycle-verb</em> nodes, so derived-view nodes (FR-014) sitting outside the 017 verb palette don't read as a contradiction of "MUST NOT be recoloured".</p>
+  <spec-requirement id="FR-002" priority="must">
+  <p>Each minimal node <spec-rule>MUST</spec-rule> show a verb icon, a title (spec id / name), a status
+  pill, and exactly one key metric, colour-coded by node type using the fixed per-verb colour order of
+  <a href="../../../../017-brand-logo/spec.html">017-brand-logo</a> — which <spec-rule>MUST NOT</spec-rule> be
+  shuffled, recoloured, or dropped. <strong>This fixed-colour mandate binds lifecycle-verb nodes; derived-view
+  nodes (<a href="#FR-014">FR-014</a>) sit outside the verb palette and take a deliberately distinct, non-verb
+  treatment.</strong></p>
+  </spec-requirement>
+</spec-delta>
+
+<spec-delta op="added" target="FR-014">
+  <spec-requirement id="FR-014" priority="must">
+  <p>A <em>derived-view</em> artifact — a regenerated, statusless view of the bundle such as
+  <code>verify.html</code> — <spec-rule>MUST</spec-rule> render as a distinct node category. It
+  <spec-rule>MUST NOT</spec-rule> carry a status pill (it has no own lifecycle status; per
+  <a href="../../../../021-verify-view/spec.html#FR-007">021-verify-view FR-007</a> it derives the spec bundle's),
+  <spec-rule>MUST</spec-rule> show, in place of a verb metric, a <strong>freshness indicator</strong> — at
+  minimum a binary <em>stale</em> flag derived from the <code>verify-view-stale</code> signal
+  (<a href="../../../../021-verify-view/spec.html#FR-008">021 FR-008</a>), a value the bundle genuinely exposes — and
+  <spec-rule>MUST</spec-rule> be visually distinguishable from the verb-coloured lifecycle spine
+  (<a href="#FR-002">FR-002</a>, as scoped by this change). A richer measure (e.g. trace coverage)
+  <spec-rule level="may">MAY</spec-rule> follow. The node <spec-rule level="should">SHOULD</spec-rule> attach
+  adjacent to its source rather than inline in the verb sequence.</p>
+  <details><summary>Rationale</summary><p><code>verify.html</code> is the first derived view; naming the category keeps FR-002's verb-node contract intact (now explicitly verb-scoped by this change) and lets future derived views (e.g. a conformance index) reuse the treatment. The metric is pinned to a signal 021 actually emits (the stale rule), so the MUST is testable rather than aspirational.</p></details>
+  </spec-requirement>
+</spec-delta>
+
+<spec-delta op="modified" target="FR-003">
+  <p><strong>What changes:</strong> an opened artifact panel must identify its spec (title carries the spec id) and reuse one panel per artifact path; panels from other specs stay open across a spec switch (no auto-close).</p>
+  <spec-requirement id="FR-003" priority="must">
+  <p>Clicking a node <spec-rule>MUST</spec-rule> open that artifact's full rendered document in spectastic's
+  existing design system, in no more than one click. <strong>The opened panel <spec-rule>MUST</spec-rule>
+  identify its spec — its title <spec-rule>MUST</spec-rule> <em>lead</em> with the spec id (e.g.
+  <code>020-vscode-extension · spec</code>) so identity survives tab truncation, reinforced by the rendered
+  artifact's own header which already carries the spec id — and re-opening the same artifact
+  <spec-rule>MUST</spec-rule> reuse its existing panel rather than stacking a duplicate. Panels opened from other specs remain open across a spec switch (the canvas
+  <spec-rule>MUST NOT</spec-rule> auto-close them); disambiguation is by title, so artifacts from different
+  specs can be compared side by side.</strong></p>
+  </spec-requirement>
+</spec-delta>
+</section>
+
+
+<section id="risks">
+<h2>5 · Risk register</h2>
+<p>Adversarial pass fired (two <code>must</code>-tier requirements touched — FR-001, FR-003 — across two topic
+areas: the node model and the artifact-panel model). Three findings below; <code>status="identified"</code>
+until the author commits each to <code>mitigated</code> / <code>accepted</code> / <code>rejected</code>. Apply
+refuses while any remain identified.</p>
+
+<spec-risk-log>
+
+<spec-risk target="FR-003" status="mitigated">
+  <p class="claim">Never auto-closing cross-spec panels while resting identity on a tab title will, within 30 days of multi-spec use, pile up near-identical webview tabs that truncation makes indistinguishable — recreating the very confusion T-007 set out to kill.</p>
+  <p class="citation">"Panels opened from other specs remain open across a spec switch (the canvas <code>MUST NOT</code> auto-close them); disambiguation is by title".</p>
+  <div class="response"><p><strong>Author draft (recommend mitigated).</strong> The no-auto-close decision is kept — cross-spec comparison is a real need — but the identity signal was strengthened in place: FR-003 now requires the spec id to <em>lead</em> the title (so it survives VS Code's middle-out truncation) and notes the rendered artifact's own header independently carries the spec id, so identity no longer depends on an untruncated tab. A stronger affordance (a spec-id chip in the panel body) <span class="par">MAY</span> follow if pile-up still bites. Committed <code>mitigated</code>.</p></div>
+</spec-risk>
+
+<spec-risk target="FR-002" status="mitigated">
+  <p class="claim">FR-014's "visually distinguishable from the verb-coloured lifecycle spine" sits in direct tension with live FR-002's absolute "the per-verb colour order MUST NOT be shuffled, recoloured, or dropped", and the original draft asserted reconciliation without making it.</p>
+  <p class="citation">FR-002: "MUST NOT be shuffled, recoloured, or dropped" vs FR-014: "visually distinguishable from the verb-coloured lifecycle spine".</p>
+  <div class="response"><p><strong>Author draft (recommend mitigated).</strong> Reconciled by adding a MODIFY <a href="#FR-002">FR-002</a> delta that scopes the fixed-colour mandate explicitly to <em>lifecycle-verb</em> nodes; derived-view nodes (FR-014) are stated to sit outside the verb palette with a distinct, non-verb treatment. The two MUSTs no longer overlap. (This is the same conflicting-MUSTs shape the 16/22 Jun adversarial passes caught — closed by construction here.) Committed <code>mitigated</code>.</p></div>
+</spec-risk>
+
+<spec-risk target="§2" status="mitigated">
+  <p class="claim">FR-014 made "show a freshness/coverage metric" a MUST while §2 deferred <em>what</em> the metric is — an untestable MUST pointed at a TBD, worsened by 021 not exposing a trace-coverage percentage as a first-class field.</p>
+  <p class="citation">§2 Out of scope: "the exact derived-view metric semantics … a plan/implementation detail" vs FR-014: "<code>MUST</code> show a freshness/coverage metric".</p>
+  <div class="response"><p><strong>Author draft (recommend mitigated).</strong> FR-014's MUST was pinned to a concrete, derivable signal: a binary <em>stale</em> flag off 021's <code>verify-view-stale</code> rule (<a href="../../../../021-verify-view/spec.html#FR-008">021 FR-008</a>) — something the bundle genuinely emits and a test can assert. The richer trace-coverage percentage was demoted to a <span class="par">MAY</span> and the §2 deferral reframed to cover only that richer measure, so no MUST points at a TBD. Committed <code>mitigated</code>.</p></div>
+</spec-risk>
+
+</spec-risk-log>
+</section>
+
+
+<section id="tasks">
+<h2>6 · Tasks</h2>
+<p>Scoped to this change. On <code>/spectastic.apply</code> these fold into 020's <code>tasks.html</code> as a
+provenance-linked phase.</p>
+
+<ul style="list-style:none;padding-left:0;">
+  <li><input type="checkbox"> Add a <code>verify</code> derived-view candidate to the scanner + a derived-view node kind <span class="path">packages/vscode/src/host/scanner.ts, packages/vscode/src/host/messaging.ts</span></li>
+  <li><input type="checkbox"> Render derived-view nodes distinctly — no status pill, freshness metric, distinct from the verb spine <span class="path">packages/vscode/src/webview/node.ts, packages/vscode/src/webview/canvas.css</span></li>
+  <li><input type="checkbox"> Title artifact panels <code>&lt;spec-id&gt; · &lt;verb&gt;</code> and reuse one panel per artifact path (re-click reveals) <span class="path">packages/vscode/src/host/open-artifact.ts, packages/vscode/src/host/extension.ts</span></li>
+  <li><input type="checkbox"> Tests: a verify node appears + is statusless; a panel title carries the spec id + re-open reuses (no duplicate) <span class="path">tests/vscode/</span></li>
+</ul>
+</section>
+
+
+<section id="questions">
+<h2>7 · Open questions</h2>
+<spec-questions>
+<p>None outstanding — every decision was anchored in the interview: a dedicated derived-view FR (over overloading
+FR-002); panels identify + reuse but cross-spec panels stay open (auto-close deliberately rejected); ship at
+approved. The exact derived-view metric is a plan/implementation detail (§2 Out of scope), not an open question.</p>
+</spec-questions>
+</section>
+
+
+<section id="changelog">
+<h2>8 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-06-24">2026-06-24</time><span>Proposal authored from <a href="../../../triage-log.html#T-006">T-006</a> + <a href="../../../triage-log.html#T-007">T-007</a>. Initially 3 deltas (MODIFY FR-001, ADD FR-014, MODIFY FR-003).</span></li>
+  <li><time datetime="2026-06-24">2026-06-24</time><span>Adversarial pass produced 3 risks (FR-003 title-truncation pile-up; FR-002 vs FR-014 conflicting colour MUSTs; FR-014 MUST pointed at a TBD metric). Mitigated in place: added MODIFY FR-002 (scope fixed-colour mandate to verb nodes); pinned FR-014's metric to a concrete stale flag off 021's verify-view-stale rule (richer coverage → MAY); FR-003 title now leads with the spec id. Now 4 deltas (1 added, 3 modified). All 3 risks left <code>identified</code> for author commitment.</span></li>
+  <li><time datetime="2026-06-24">2026-06-24</time><span>All 3 risks committed <code>mitigated</code> by the author; proposal approved for apply.</span></li>
+  <li><time datetime="2026-06-24">2026-06-24</time><span>Applied. 4 deltas folded into <a href="../../../spec.html">020 spec.html</a> (FR-001/FR-002/FR-003 modified, FR-014 added); folder moved <code>changes/</code> → <code>changes/archive/</code>; relative paths rewritten for the new depth.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+</spec-change>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  2026-06-24-canvas-derived-views-panel-identity · authored 2026-06-24 ·
+  <button data-theme-toggle style="background:none;border:none;color:var(--c-link);cursor:pointer;font:inherit;padding:0;border-bottom:1px solid currentColor;">toggle theme</button>
+</footer>
+
+</main>
+<script src="../../../../../assets/spec.js"></script>
+</body>
+</html>

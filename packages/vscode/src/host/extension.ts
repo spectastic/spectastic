@@ -35,6 +35,8 @@ class CanvasViewProvider implements vscode.WebviewViewProvider {
   private specId: string | undefined;
   private watcher: vscode.Disposable | undefined;
   private orientation: Orientation;
+  /** Open artifact panels keyed by path — reuse one per artifact (FR-003, D-009). */
+  private readonly panels = new Map<string, vscode.WebviewPanel>();
 
   constructor(private readonly context: vscode.ExtensionContext) {
     this.orientation =
@@ -112,7 +114,7 @@ class CanvasViewProvider implements vscode.WebviewViewProvider {
   private async handleOpen(artifactPath: string): Promise<void> {
     const root = workspaceRoot();
     const roots = root ? [vscode.Uri.file(root)] : [];
-    await openArtifact(artifactPath, roots);
+    await openArtifact(artifactPath, roots, this.panels);
   }
 
   private post(message: HostMessage): void {

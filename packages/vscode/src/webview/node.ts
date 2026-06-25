@@ -25,7 +25,13 @@ export function renderNode(node: ArtifactNode, pos: NodePos, onOpen: OpenHandler
       <div class="nmeta"><span class="pill"></span> <span class="metric"></span></div>
     </div>`;
 
-  const open = (): void => onOpen(node.path);
+  // Read the path from the element at click time, not a render-time closure:
+  // the node is reused (reconciled by id) across spec switches, so the closed-
+  // over node.path would stay stale and open the previous spec's file.
+  const open = (): void => {
+    const p = el.dataset.path;
+    if (p) onOpen(p);
+  };
   el.addEventListener('click', open);
   el.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' || e.key === ' ') {
@@ -47,20 +53,28 @@ export function updateNode(el: HTMLElement, node: ArtifactNode, pos: NodePos): v
   // title or extra row never overspills the border (and the ring isn't cropped).
   el.style.minHeight = `${pos.h}px`;
   el.style.position = 'absolute';
-  el.style.setProperty('--verb-color', `var(${VERB_TOKEN[node.verb]})`);
+  // Derived-view nodes (FR-014) sit outside the fixed verb palette (FR-002): a
+  // muted, non-verb colour rather than VERB_TOKEN[verb].
+  el.style.setProperty(
+    '--verb-color',
+    node.derived ? 'var(--c-muted)' : `var(${VERB_TOKEN[node.verb]})`,
+  );
 
+  el.dataset.path = node.path;
+  el.dataset.derived = String(Boolean(node.derived));
   el.dataset.attention = String(node.attention);
   el.dataset.stale = String(node.stale);
   el.dataset.unknown = String(node.unknown);
   el.setAttribute('aria-label', ariaLabel(node));
 
-  setText(el, '.verb-label', node.verb);
+  setText(el, '.verb-label', node.derived ? node.id : node.verb);
   setText(el, '.title', node.title);
   setText(el, '.metric', node.metric);
 
   const pill = el.querySelector<HTMLElement>('.pill');
   if (pill) {
-    const status = node.health.status;
+    // A derived view has no lifecycle status of its own (FR-014) — never a pill.
+    const status = node.derived ? null : node.health.status;
     pill.textContent = status ?? '';
     pill.hidden = !status;
     if (status) pill.dataset.status = status;

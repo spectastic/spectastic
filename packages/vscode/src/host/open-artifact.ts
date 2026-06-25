@@ -13,13 +13,37 @@ import * as path from 'node:path';
  * This started as the T-004 spike that retired the riskiest unknown in the plan
  * and was hardened in T-210 (nonce-free external scripts, read failure surfaced).
  */
-export async function openArtifact(artifactPath: string, roots: vscode.Uri[]): Promise<void> {
-  const artifactDir = path.dirname(artifactPath);
-  const title = path.basename(artifactPath, '.html');
+/**
+ * Panel title that identifies the artifact's spec (FR-003, D-009): the spec id
+ * LEADS the title so it survives VS Code's middle-out tab truncation, e.g.
+ * `020-vscode-extension · spec`. Falls back to the bare verb off the spec tree.
+ */
+export function artifactPanelTitle(artifactPath: string): string {
+  const verb = path.basename(artifactPath, '.html');
+  const specId = /(?:^|\/)specs\/([^/]+)\//.exec(artifactPath)?.[1];
+  return specId ? `${specId} · ${verb}` : verb;
+}
 
+/**
+ * Open a rendered artifact. With a `panels` registry (the provider's), re-opening
+ * the same artifact reveals its existing panel instead of stacking a duplicate
+ * (FR-003, D-009); panels from other specs stay open (no auto-close).
+ */
+export async function openArtifact(
+  artifactPath: string,
+  roots: vscode.Uri[],
+  panels?: Map<string, vscode.WebviewPanel>,
+): Promise<void> {
+  const existing = panels?.get(artifactPath);
+  if (existing) {
+    existing.reveal();
+    return;
+  }
+
+  const artifactDir = path.dirname(artifactPath);
   const panel = vscode.window.createWebviewPanel(
     'spectastic.artifact',
-    title,
+    artifactPanelTitle(artifactPath),
     { viewColumn: vscode.ViewColumn.Active, preserveFocus: false },
     {
       enableScripts: true,
@@ -27,6 +51,8 @@ export async function openArtifact(artifactPath: string, roots: vscode.Uri[]): P
       localResourceRoots: roots,
     },
   );
+  panels?.set(artifactPath, panel);
+  panel.onDidDispose(() => panels?.delete(artifactPath));
 
   try {
     const raw = await readFile(artifactPath, 'utf8');
