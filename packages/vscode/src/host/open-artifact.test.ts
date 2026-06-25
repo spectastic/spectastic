@@ -5,6 +5,10 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 vi.mock('vscode', () => ({
   Uri: {
     file: (p: string) => ({ fsPath: p, toString: () => `file://${p}` }),
+    joinPath: (base: { fsPath: string }, ...segs: string[]) => ({
+      fsPath: [base.fsPath, ...segs].join('/'),
+      toString: () => `file://${[base.fsPath, ...segs].join('/')}`,
+    }),
   },
   ViewColumn: { Active: 1 },
   window: { createWebviewPanel: vi.fn() },
@@ -84,5 +88,20 @@ describe('panel identity + reuse (FR-003, D-009)', () => {
     await open('/repo/specs/020-vscode-extension/spec.html', [], registry);
     expect(vscode.window.createWebviewPanel).toHaveBeenCalledTimes(1);
     expect(reveal).toHaveBeenCalledTimes(1);
+  });
+
+  it('brands the panel tab with the favicon when an extensionUri is given (I-037)', async () => {
+    const panel = makePanel();
+    vi.mocked(vscode.window.createWebviewPanel).mockReturnValue(panel);
+    const open = openArtifact as unknown as (
+      p: string,
+      r: unknown[],
+      m: Map<string, unknown> | undefined,
+      ext: { fsPath: string },
+    ) => Promise<void>;
+    await open('/repo/specs/020-vscode-extension/spec.html', [], undefined, { fsPath: '/ext' });
+    expect((panel as { iconPath?: { fsPath: string } }).iconPath?.fsPath).toBe(
+      '/ext/media/favicon.svg',
+    );
   });
 });

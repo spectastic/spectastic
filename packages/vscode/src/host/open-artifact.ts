@@ -33,6 +33,7 @@ export async function openArtifact(
   artifactPath: string,
   roots: vscode.Uri[],
   panels?: Map<string, vscode.WebviewPanel>,
+  extensionUri?: vscode.Uri,
 ): Promise<void> {
   const existing = panels?.get(artifactPath);
   if (existing) {
@@ -51,6 +52,10 @@ export async function openArtifact(
       localResourceRoots: roots,
     },
   );
+  // Brand the tab with the spectastic favicon, matching the activity-bar icon (I-037).
+  if (extensionUri) {
+    panel.iconPath = vscode.Uri.joinPath(extensionUri, 'media', 'favicon.svg');
+  }
   panels?.set(artifactPath, panel);
   panel.onDidDispose(() => panels?.delete(artifactPath));
 

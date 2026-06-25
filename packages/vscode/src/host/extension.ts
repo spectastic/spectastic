@@ -114,7 +114,7 @@ class CanvasViewProvider implements vscode.WebviewViewProvider {
   private async handleOpen(artifactPath: string): Promise<void> {
     const root = workspaceRoot();
     const roots = root ? [vscode.Uri.file(root)] : [];
-    await openArtifact(artifactPath, roots, this.panels);
+    await openArtifact(artifactPath, roots, this.panels, this.context.extensionUri);
   }
 
   private post(message: HostMessage): void {
