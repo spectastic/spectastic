@@ -116,6 +116,11 @@ export async function applyCommand(
 
   await fs.writeFile(specPath, liveSpec);
 
+  // Fold the proposal's §6 tasks into the target tracker (REQ-CHANGE-007). Runs
+  // on the in-memory §6 BEFORE the archive move, so a fold failure leaves the
+  // proposal in changes/ for a clean retry rather than a half-applied state.
+  const foldedPhase = await foldProposalTasks(proposalHtml, input, ctx, fs);
+
   // Move folder to archive.
   const archiveDir = `${ctx.cwd}/specs/${input.specId}/changes/archive/${input.slug}`;
   await fs.rename(proposalDir, archiveDir);
@@ -126,7 +131,107 @@ export async function applyCommand(
     deltas,
     changelogEntry,
     crossSpecWarnings: [],
+    foldedPhase,
   };
+}
+
+/**
+ * The §6 task-fold (REQ-CHANGE-007 / REQ-CHANGE-006). Deterministic: transcribe
+ * each §6 `<li>` into a `<spec-task>` per REQ-LIFECYCLE-003, append a
+ * provenance-linked phase to the target tracker (creating it from the template
+ * if absent), with IDs continued in a fresh hundred-range above the current max.
+ * Returns `null` for an empty §6 (owes no phase).
+ */
+async function foldProposalTasks(
+  proposalHtml: string,
+  input: ApplyInput,
+  ctx: KernelContext,
+  fs: NonNullable<KernelContext['fs']>,
+): Promise<NonNullable<ApplyResult['foldedPhase']> | null> {
+  const tasks = extractSixTasks(proposalHtml);
+  if (tasks.length === 0) return null;
+
+  const trackerPath = `${ctx.cwd}/specs/${input.specId}/tasks.html`;
+  let tracker: string;
+  let created = false;
+  try {
+    tracker = await fs.readFile(trackerPath, 'utf8');
+  } catch {
+    const template = await fs.readFile(`${ctx.cwd}/templates/tasks.html`, 'utf8');
+    tracker = scaffoldTracker(template, input.specId);
+    created = true;
+  }
+
+  // Fresh hundred-range above the current max, so IDs never collide.
+  const base = (Math.floor(maxTaskId(tracker) / 100) + 1) * 100;
+  const taskIds = tasks.map((_, i) => `T-${base + i}`);
+  const taskEls = tasks
+    .map(
+      (t, i) =>
+        `<spec-task id="${taskIds[i]}"${t.parallel ? ' parallel' : ''}>\n  <input type="checkbox">\n  <div>${t.content}</div>\n</spec-task>`,
+    )
+    .join('\n');
+
+  const title = changeTitle(proposalHtml) ?? input.slug;
+  const phaseId = `phase-${input.slug}`;
+  const phaseNum = (tracker.match(/class="phase"/g) ?? []).length + 1;
+  const phase =
+    `<section id="${phaseId}" class="phase">\n` +
+    `<h2>${phaseNum} · ${title} <span class="par">(applied change ` +
+    `<a href="./changes/archive/${input.slug}/proposal.html">${input.slug}</a>)</span></h2>\n` +
+    `<p>Folded from the applied proposal's §6 (the archive is frozen).</p>\n${taskEls}\n</section>\n\n\n`;
+
+  // Bump the changelog section heading, then insert the phase before it.
+  let out = tracker.replace(
+    /<h2>(\d+)(\s*·\s*Change log<\/h2>)/i,
+    (_m, n: string, rest: string) => `<h2>${Number(n) + 1}${rest}`,
+  );
+  const idx = out.indexOf('<section id="changelog">');
+  if (idx === -1) {
+    const mainEnd = out.lastIndexOf('</main>');
+    out = mainEnd === -1 ? out + phase : `${out.slice(0, mainEnd)}${phase}${out.slice(mainEnd)}`;
+  } else {
+    out = `${out.slice(0, idx)}${phase}${out.slice(idx)}`;
+  }
+
+  await fs.writeFile(trackerPath, out);
+  return { trackerPath, phaseId, taskIds, created };
+}
+
+/** Each §6 `<li>` (those carrying a checkbox), stripped of the checkbox; `[P]` → parallel. */
+function extractSixTasks(proposalHtml: string): { content: string; parallel: boolean }[] {
+  const section = /<section id=["']tasks["']>([\s\S]*?)<\/section>/i.exec(proposalHtml)?.[1] ?? '';
+  const out: { content: string; parallel: boolean }[] = [];
+  for (const li of section.matchAll(/<li\b[^>]*>([\s\S]*?)<\/li>/gi)) {
+    let inner = li[1] ?? '';
+    if (!/<input[^>]*type=["']checkbox["']/i.test(inner)) continue;
+    inner = inner.replace(/<input[^>]*type=["']checkbox["'][^>]*>/i, '').trim();
+    out.push({ content: inner, parallel: /\[P\]/.test(inner) });
+  }
+  return out;
+}
+
+/** The highest `T-NNN` id already in the tracker (0 if none). */
+function maxTaskId(tracker: string): number {
+  let max = 0;
+  for (const m of tracker.matchAll(/<spec-task[^>]*\bid=["']T-(\d+)["']/g)) {
+    max = Math.max(max, Number(m[1]));
+  }
+  return max;
+}
+
+/** The change's title, from the `<spec-change>` `<h3>` (markup stripped). */
+function changeTitle(proposalHtml: string): string | null {
+  const m = /<spec-change[^>]*>[\s\S]*?<h3>([\s\S]*?)<\/h3>/i.exec(proposalHtml);
+  return m ? m[1]!.replaceAll(/<[^>]+>/g, '').trim() : null;
+}
+
+/** Create a tracker from the template: deeper asset paths, no placeholder phases. */
+function scaffoldTracker(template: string, specId: string): string {
+  return template
+    .replaceAll(/(["'])\.\.\/assets\//g, '$1../../assets/')
+    .replaceAll(/<section id="phase-[^"]*" class="phase">[\s\S]*?<\/section>\s*/gi, '')
+    .replaceAll('[SPEC_ID]', specId);
 }
 
 async function doWithdraw(

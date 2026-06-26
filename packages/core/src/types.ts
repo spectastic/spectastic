@@ -288,6 +288,21 @@ export interface ApplyResult {
   changelogEntry: string;
   /** Cross-spec references the apply touched but didn't rewrite; surfaced for follow-up. */
   crossSpecWarnings: string[];
+  /**
+   * The §6 task-fold (REQ-CHANGE-007). `null` when the proposal had no §6 tasks
+   * (an empty §6 owes no phase). Apply only routes — `/spectastic.implement`
+   * drains the folded phase.
+   */
+  foldedPhase?: {
+    /** The target tracker the phase was folded into. */
+    trackerPath: string;
+    /** The new `<section>` id, `phase-<slug>`. */
+    phaseId: string;
+    /** The `T-NNN` ids assigned to the folded tasks. */
+    taskIds: string[];
+    /** True when the tracker did not exist and was created from the template. */
+    created: boolean;
+  } | null;
 }
 
 // --- spec (verb 011) + plan (verb 012) ---------------------------------
