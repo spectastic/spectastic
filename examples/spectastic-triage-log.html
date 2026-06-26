@@ -118,6 +118,75 @@
   </details>
 </spec-triage>
 
+<spec-triage id="T-004" layer="implementation">
+  <header>
+    <h4>Apply skipped the §6 task-fold; the budget-bands implementation is orphaned</h4>
+    <span class="meta">
+      <span class="layer-pill">Implementation</span>
+      <span class="regen" data-result="pass">code</span>
+    </span>
+  </header>
+
+  <p class="headline">Debugging why the spec-budget-bands implementation never landed; root cause was an
+  <strong>implementation</strong> drift — the <code>2026-06-25-spec-budget-bands</code> apply run executed
+  the delta-fold and archive (steps 1–7) but omitted <a href="./spectastic-spec.html#REQ-CHANGE-006">REQ-CHANGE-006</a>
+  step 8 (fold §6 into the target's <code>tasks.html</code>), so <code>/spectastic.implement</code> never saw the
+  eight tasks; fixed by running the catch-up fold into <a href="./spectastic-tasks.html">spectastic-tasks.html</a>;
+  regeneration <strong>passes</strong> — the apply contract is correct and three prior applies folded as specified.</p>
+
+  <dl>
+    <dt>Expected</dt> <dd>On apply, the proposal's §6 tasks fold into <code>examples/spectastic-tasks.html</code> as a new provenance-linked phase (a Phase 4 alongside the three prior folds) that <code>/spectastic.implement</code> then drains.</dd>
+    <dt>Actual</dt>   <dd>Apply folded the two deltas (REQ-FORMAT-004 added, FR-008 modified) and archived the folder, but wrote no phase to the tracker. The eight tasks are orphaned: <code>assets/spec.js</code> still bands at 70% (line 98) and still ships the fabricated <em>"Larson: specs over 1,500 words must be split"</em> citation (line 121); <code>CLAUDE.md</code> still carries the false Larson row; authored-words + the two mitigation tasks never landed.</dd>
+    <dt>Diagnosis</dt><dd>The apply run honoured steps 1–7 of <code>commands/spectastic.apply.md</code> but skipped <strong>step 8</strong> (the <a href="./spectastic-spec.html#REQ-CHANGE-006">REQ-CHANGE-006</a> task-fold); the command contract is correct and complete, so this is execution drift, not a <code>spec</code> or <code>plan</code> gap.</dd>
+    <dt>Fix</dt>      <dd><code>examples/spectastic-tasks.html</code> — append the archived proposal's §6 (eight tasks) as a provenance-linked <code>&lt;spec-task&gt;</code> phase per apply step 8, then <code>/spectastic.implement</code> drains it. No upstream amendment.</dd>
+  </dl>
+
+  <details>
+    <summary>Deep dive — live shipping concern (hotfix-worthy)</summary>
+    <p>No cross-spec contract is broken by the fix (it touches one tracker file), and no requirement is missing —
+    but two notes that change ordering and recurrence:</p>
+    <dl>
+      <dt>Hotfix now?</dt> <dd>Effectively yes for one task. The fabricated <em>"Larson: specs over 1,500 words must be split"</em> citation is <strong>live in <code>assets/spec.js</code> right now</strong> — a shipping violation of the project's own no-invented-citations voice rule, which is the whole reason the proposal exists. Drain the <code>spec.js</code> task first; the band change and tests follow in the same drain.</dd>
+      <dt>Recurrence</dt>  <dd>Nothing <em>verifies</em> that an applied proposal's §6 was folded, so a skipped step 8 is silent. A <code>spectastic validate</code> rule that flags an archived/applied proposal whose §6 tasks have no matching folded phase in the target tracker — modelled on the existing <code>verify-view-stale</code> drift-guard — would catch this class. Surfaced as a candidate enhancement; <strong>not promoted</strong> into this card's fix, since the laddering gate confirms the contract itself is correct (regen passes), not missing.</dd>
+      <dt>Scope</dt>       <dd>In scope — the fold is the documented behaviour the apply run owed; the catch-up implements nothing the proposal didn't already authorise.</dd>
+    </dl>
+  </details>
+</spec-triage>
+
+<spec-triage id="T-005" layer="spec">
+  <header>
+    <h4>No guard detects a skipped task-fold — a silent apply step 8 is undetectable</h4>
+    <span class="meta">
+      <span class="layer-pill">Spec</span>
+      <span class="regen" data-result="fail">upstream</span>
+    </span>
+  </header>
+
+  <p class="headline">Debugging how the budget-bands fold (<a href="#T-004">T-004</a>) went unnoticed until a human asked;
+  root cause was a <strong>spec</strong> gap — <a href="./spectastic-spec.html#REQ-CHANGE-006">REQ-CHANGE-006</a>
+  mandates the fold but no requirement makes its <em>omission</em> detectable, so a skipped step 8 leaves no
+  failing signal; fixed by adding a validate rule (and its owning requirement) that flags an applied proposal whose
+  §6 has no matching folded phase; regeneration <strong>fails</strong> — given the current meta-spec, the next
+  session has no contract telling it the guard should exist, so the blind spot persists.</p>
+
+  <dl>
+    <dt>Expected</dt> <dd><code>spectastic validate</code> flags an applied/archived proposal whose §6 tasks have no matching provenance-linked phase in the target's <code>tasks.html</code> — the same way <code>verify-view-stale</code> flags a drifted verify view — so a skipped fold fails loudly instead of silently.</dd>
+    <dt>Actual</dt>   <dd>No such rule and no requirement mandating one. The fold is governed only by <a href="./spectastic-spec.html#REQ-CHANGE-006">REQ-CHANGE-006</a>'s procedural step; when an apply run skips it, nothing in the corpus is in a detectably-wrong state, so the gap surfaces only by a human noticing the implementation never landed (here, weeks could have passed with the fabricated Larson citation shipping).</dd>
+    <dt>Diagnosis</dt><dd>REQ-CHANGE-006 specifies the fold as an <em>action</em> but defines no <em>checkable post-condition</em>; the enforcement requirement (a validate rule asserting fold-completeness) is genuinely missing, so this is a <code>spec</code> gap, not the <code>implementation</code> drift of <a href="#T-004">T-004</a>.</dd>
+    <dt>Fix</dt>      <dd><code>/spectastic.propose</code> against the meta-spec — add <code>REQ-CHANGE-007</code>: an applied proposal's §6 tasks MUST appear as a provenance-linked folded phase in the target tracker, enforced by a <code>fold-gap</code> validate rule. Implement as <span class="path">packages/schema/src/rules/proposal-tasks-unfolded.ts</span> + one registry entry, modelled on <span class="path">packages/schema/src/rules/verify-view-stale.ts</span>.</dd>
+  </dl>
+
+  <details>
+    <summary>Deep dive — cascade + relationship to T-004</summary>
+    <dl>
+      <dt>Cascade</dt>     <dd><code>/spectastic.propose</code> → <code>/spectastic.apply</code> folds the rule's own implementation tasks → <code>/spectastic.implement</code> drains them (the new rule + fixture + registry entry).</dd>
+      <dt>vs T-004</dt>    <dd><a href="#T-004">T-004</a> is the one-off execution miss (regen passes — the contract was correct); T-005 is the structural prevention for its whole class (regen fails — the detectability contract is missing). Fixing T-004 alone lets the next skipped fold recur unseen; T-005 makes the omission self-evident.</dd>
+      <dt>Scope</dt>       <dd>Scoped to the fold post-condition. Do <strong>not</strong> over-generalise to "validate every apply step" — the fold is the step with a checkable artifact (a phase that is present or absent); other apply steps (archive move, status flip) already have their own guards or are self-evident.</dd>
+      <dt>Principles</dt>  <dd>No new principle — this is the format/change-management contract, not a project-wide invariant. It does instantiate the existing drift-guard pattern (<code>verify-view-stale</code>) one more time.</dd>
+    </dl>
+  </details>
+</spec-triage>
+
 </spec-triage-log>
 </section>
 
@@ -131,6 +200,8 @@
   <li><time datetime="2026-06-16">16 Jun 2026</time><span>T-002 added — plan.html and tasks.html status never transitions; REQ-LIFECYCLE-004 left a gap between the tasks-driven trigger (covers spec.html) and the tasks-less clause (covers principles/meta-spec/triage/inbox). Audit shows nine artifacts that should be Accepted are sitting in Draft. <code>spec</code> layer; regen <code>fail</code>.</span></li>
   <li><time datetime="2026-06-16">16 Jun 2026</time><span>T-002 closed — applied <a href="./changes/archive/2026-06-16-lifecycle-sibling-bundling/proposal.html">2026-06-16-lifecycle-sibling-bundling</a> adding REQ-LIFECYCLE-005 (sibling-bundling rule). Three risks surfaced + mitigated before apply (predicate scoped to Draft; hotfix shrunk 9 → 4 artifacts; 004 bundle waits on T-905). <code>commands/spectastic.implement.md</code> step 8 tightened to evaluate the predicate after every tick taken while Draft.</span></li>
   <li><time datetime="2026-06-23">23 Jun 2026</time><span>T-003 added — triage defaults to the symptom/presentation layer instead of laddering to the highest layer that must change (the no-open-questions case reached <code>cross-spec</code> only after pushback). <code>spec</code> layer, regen <code>fail</code>. Needs <code>/spectastic.propose</code> against the meta-spec adding a root-cause-laddering step to <code>commands/spectastic.triage.md</code>.</span></li>
+  <li><time datetime="2026-06-26">26 Jun 2026</time><span>T-004 added — the <code>2026-06-25-spec-budget-bands</code> apply skipped <a href="./spectastic-spec.html#REQ-CHANGE-006">REQ-CHANGE-006</a> step 8 (the §6 task-fold), orphaning eight implementation tasks; the fabricated Larson citation and the 70% band still ship in <code>assets/spec.js</code>. <code>implementation</code> layer, regen <code>pass</code> — the contract is correct (three prior applies folded as specified); fix is the catch-up fold into <code>spectastic-tasks.html</code>, then <code>/spectastic.implement</code>.</span></li>
+  <li><time datetime="2026-06-26">26 Jun 2026</time><span>T-005 added — no guard detects a skipped task-fold, so a silent apply step 8 (the cause of T-004) is undetectable until a human notices. <code>spec</code> layer, regen <code>fail</code> — the fold has a procedural step (<a href="./spectastic-spec.html#REQ-CHANGE-006">REQ-CHANGE-006</a>) but no checkable post-condition. Fix: <code>/spectastic.propose</code> adding <code>REQ-CHANGE-007</code> + a <code>fold-gap</code> validate rule modelled on <code>verify-view-stale</code>.</span></li>
 </ol>
 </spec-changelog>
 </section>

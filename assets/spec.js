@@ -95,9 +95,15 @@
     const reqBudget    = +el.getAttribute('reqs')    || 20;
     const minBudget    = +el.getAttribute('minutes') || 12;
     const reqCount     = document.querySelectorAll('spec-requirement').length;
-    const band = pct => pct <= 70 ? 'green' : pct <= 100 ? 'amber' : 'red';
+    /* authored-words: exclude the auto-built <spec-conformance> index — it is
+       generated, not written, so it must not count against the budget (REQ-FORMAT-004).
+       read-time (above) deliberately keeps the whole-document count. */
+    const conformanceWc = [...document.querySelectorAll('spec-conformance')]
+      .reduce((n, idx) => { const t = idx.innerText.trim(); return n + (t ? t.split(/\s+/).length : 0); }, 0);
+    const authoredWc = Math.max(0, wc - conformanceWc);
+    const band = pct => pct <= 80 ? 'green' : pct <= 100 ? 'amber' : 'red';
     const rows = [
-      ['Words',        wc,       wordBudget,   `${wc.toLocaleString()} / ${wordBudget.toLocaleString()}`],
+      ['Words',        authoredWc, wordBudget, `${authoredWc.toLocaleString()} / ${wordBudget.toLocaleString()}`],
       ['Requirements', reqCount, reqBudget,    `${reqCount} / ${reqBudget}`],
       ['Read time',    min,      minBudget,    `${min} / ${minBudget} min`]
     ];
@@ -118,8 +124,8 @@
     const hint = worstBand === 'red'
       ? `Over budget. Consider splitting: see the parent spec or extract slices via <code>/spectastic.spec</code>.`
       : worstBand === 'amber'
-        ? `Approaching the slicing threshold (Larson: specs over 1,500 words must be split).`
-        : `Healthy size — under the 70% threshold.`;
+        ? `In the amber band (over 80% of budget). Consider moving material out of scope or splitting into a sibling spec.`
+        : `Healthy size — under the 80% threshold.`;
     el.insertAdjacentHTML('beforeend', `<div class="hint">${hint}</div>`);
   });
 

@@ -4,6 +4,7 @@ import { deltaOpRequiredRule } from './delta-op-required.js';
 import { deltaTargetRequiredRule } from './delta-target-required.js';
 import { emptyDocumentRule } from './empty-document.js';
 import { fileTooLargeRule } from './file-too-large.js';
+import { formatBandCouplingRule } from './format-band-coupling.js';
 import { investRowFailedRule } from './invest-row-failed.js';
 import { noBrokenDeferToRule } from './no-broken-defer-to.js';
 import { noDuplicateIdsRule } from './no-duplicate-ids.js';
@@ -54,4 +55,5 @@ export const rules: readonly Rule[] = [
   noBrokenDeferToRule,
   parentChildReciprocityRule,
   verifyViewStaleRule,
+  formatBandCouplingRule,
 ];

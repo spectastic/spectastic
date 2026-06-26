@@ -38,7 +38,7 @@ When evaluating any future design influence, capture the *principle* version her
 | --- | --- | --- |
 | Tufte CSS | Margin notes, small-caps openers, data-ink ratio | "Margin note", "small-caps section opener", "data-ink ratio" |
 | Maggie Appleton's site | Warm cream, serif-led essay feel | "Calm typographic system" |
-| Will Larson, *An Elegant Puzzle* ch. 4 | Specs over ~1,500 words must split | "Specs that cross the threshold are signalled for splitting" |
+| Will Larson, ["good engineering strategy is boring"](https://lethain.com/good-engineering-strategy-is-boring/) | Brevity — "most people don't read long documents"; aim for one to two pages. The principle is brevity, **not** a "1,500-word rule" (he never set a word count — that attribution was fabricated and removed) | "Specs that cross the threshold are signalled for splitting" |
 | Bill Wake, INVEST (2003) | Six story-quality criteria | "INVEST self-check" (acronym is the principle) |
 | DORA / Reinertsen / Humble | Small batches reduce lead time and error | "Small-batches discipline" |
 | Mike Cohn / Gojko Adzic | Vertical slicing, "How would you demo just this?" | "Smallest demoable" prompt |
@@ -96,6 +96,8 @@ The lifecycle's heavy ceremony is still there for items that genuinely need it �
 ## Sizing discipline (implemented)
 
 Tier 1 components added — `<spec-budget>`, `<spec-out-of-scope>` with required `defer-to=`, `<spec-parent>`, `<dl class="invest">`. Existing commands gained behavioural upgrades (smallest-demoable prompt in specify, estimability gate in plan, budget-aware splitting nudge in propose). No new verbs. See `README.md` for the retrofit recipe.
+
+The sizing-budget contract is owned by `REQ-FORMAT-004` (meta-spec): RAG bands are **green ≤ 80%, amber 80–100%, red > 100%**, and the **Words** row counts *authored* prose — the auto-built `<spec-conformance>` index is excluded (it's generated, not written), while read-time keeps the whole-document count. The amber band sits at the industry-standard 80% "approaching limit" warn point (AWS CloudWatch / queueing theory), not the earlier 70% — that band fired on 67% of specs and was overridden as routine (alert fatigue). The `assets/spec.js` band value is drift-guarded against `REQ-FORMAT-004` by a schema rule.
 
 ## Verification discipline
 
