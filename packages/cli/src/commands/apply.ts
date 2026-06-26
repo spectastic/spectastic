@@ -9,11 +9,12 @@ export function registerApply(program: Command): void {
     .argument('<slug>', 'change folder slug, e.g. 2026-06-16-add-oauth')
     .option('--withdraw', 'withdraw mode: reject the proposal instead of applying')
     .option('--reason <reason>', 'rejection reason (required with --withdraw)')
+    .option('--summary <text>', 'author-supplied one-line changelog summary (apply mode)')
     .action(
       async (
         specId: string,
         slug: string,
-        opts: { withdraw?: boolean; reason?: string },
+        opts: { withdraw?: boolean; reason?: string; summary?: string },
       ) => {
         const [{ applyCommand }, { nodeFs }, { gateOnQuarantine }, fs] = await Promise.all([
           import('@spectastic/core/commands/apply'),
@@ -36,7 +37,7 @@ export function registerApply(program: Command): void {
 
         const input = opts.withdraw
           ? ({ kind: 'withdraw' as const, specId, slug, reason: opts.reason! })
-          : ({ kind: 'apply' as const, specId, slug });
+          : ({ kind: 'apply' as const, specId, slug, summary: opts.summary });
 
         const result = await applyCommand(input, { cwd: process.cwd(), fs: nodeFs });
 
