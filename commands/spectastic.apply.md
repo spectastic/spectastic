@@ -46,63 +46,53 @@ Before withdrawing, verify all of these. **Stop and report** if any check fails:
 
 ## Procedure
 
+Apply mode's mechanical work — folding each delta into the live spec, the live-spec changelog
+entry, the §6 task-fold, the proposal status flip, the archived-proposal path-rewrite, and the
+archive move — is performed **deterministically by the kernel** (`spectastic apply`, per
+`REQ-CHANGE-007` / `REQ-CHANGE-008`), not by hand. Your job is the judgment around it: the
+preconditions, the author-voiced summary, the cross-spec exception, and the routing nudges.
+(Withdraw mode is still done by hand — see the Withdraw procedure below.)
+
 1. **Locate** the proposal at `specs/<spec-id>/changes/<date>-<slug>/proposal.html`.
 
-2. **Verify preconditions** above. Report any failures and stop; do not proceed with a partial
-   apply.
+2. **Verify preconditions** above. **Stop and report** if any fail — do not invoke the kernel on a
+   proposal that won't pass. In particular, run the `REQ-CHANGE-004` risk gate yourself: if any
+   `<spec-risk status="identified">` remains, refuse and **list them by `target=` value** so the
+   author knows exactly what to transition. The kernel re-enforces this gate authoritatively (it
+   throws on an identified risk); listing them here is the human-readable pre-check.
 
-3. **Read the live spec** at `specs/<spec-id>/spec.html`. Build a mental map of where each
-   targeted requirement lives (which `<h3>` topic-group, which `<spec-requirement>` block).
+3. **Confirm the kernel is available.** Check that `spectastic apply` resolves — the CLI is built
+   and on `PATH`, or use the repo-local `packages/cli/bin/spectastic`. If it doesn't resolve, stop
+   and report (build `packages/cli` first). Apply is **keyless** — the kernel is deterministic and
+   needs no `ANTHROPIC_API_KEY`.
 
-4. **Apply each delta in order**:
+4. **Compose the changelog summary.** Write one rich line in the author's voice — what landed and
+   why — to pass as `--summary`. This preserves the changelog's human voice; without it the kernel
+   falls back to a terse delta count.
 
-   - **added** — find the topic-group that matches the new ID's prefix (e.g. `REQ-CHANGE-*`
-     under a `Change management` `<h3>`). If the topic-group doesn't exist, add a new `<h3>`
-     in topic order. Insert the new `<spec-requirement>` at the end of the group, copying it
-     verbatim from inside the delta.
-   - **modified** — locate the existing `<spec-requirement id="…">` in the live spec, replace
-     its entire body with the post-state `<spec-requirement>` inside the delta.
-   - **removed** — delete the `<spec-requirement id="…">` block from the live spec. Do not
-     leave a placeholder. The proposal preserves the removal context; the spec stays clean.
-   - **renamed** — change the `id="…"` attribute of the existing requirement and, if the body
-     was also updated, replace it with the proposal's post-state. Search the entire live spec
-     (and the auto-built conformance index) for cross-references to the old ID and update
-     them. Do **not** rewrite archived proposals — preserved verbatim is preserved verbatim.
+5. **Invoke the kernel** via Bash:
 
-5. **Append a `<spec-changelog>` entry** in the live spec:
-
-   ```html
-   <li><time datetime="YYYY-MM-DD">DD Mon YYYY</time>
-       <span>Applied <a href="./changes/archive/&lt;date&gt;-&lt;slug&gt;/proposal.html">&lt;slug&gt;</a>:
-       &lt;one-line summary&gt;.</span></li>
+   ```bash
+   spectastic apply <spec-id> <date>-<slug> --summary "<your one-line summary>"
    ```
 
-6. **Move the change folder** from `specs/<spec-id>/changes/<date>-<slug>/` to
-   `specs/<spec-id>/changes/archive/<date>-<slug>/`. The directory move is atomic; do not
-   copy-then-delete in two steps unless the user explicitly approves.
+   This single call deterministically: applies each delta into the live `spec.html` (ADD / MODIFY /
+   REMOVE / RENAME, with intra-spec reference rewrites on rename); appends the live-spec
+   `<spec-changelog>` entry using your `--summary`; folds the proposal's §6 into the target's
+   `tasks.html` as a provenance-linked phase in a fresh hundred-range (`REQ-CHANGE-006`),
+   implementing none of them; flips the archived proposal's `<spec-status>` / `<spec-change>` to
+   `applied` and records its apply entry; deepens the archived proposal's relative paths for the
+   new depth; and moves the folder to `changes/archive/<date>-<slug>/`. The fold runs **before**
+   the move, so a fold failure leaves the proposal in place for a clean retry.
 
-7. **Update the proposal's status** in the archived copy to `applied`, and add a final entry
-   to the proposal's own `<spec-changelog>` recording the apply date.
+   **Cross-spec exception (markdown-handled).** The kernel applies **same-spec deltas only**. If a
+   delta's `target` lives in another spec, the kernel leaves it untouched — apply those by hand per
+   the "Cross-spec drift" Discipline note below and flag them to the user. This is the one
+   mechanical step that stays with the markdown.
 
-8. **Fold the proposal's §6 Tasks into the target's `tasks.html`** (per `REQ-CHANGE-006`). Apply
-   accepts-and-routes; it **never implements** the tasks — `/spectastic.implement` does that.
-
-   - **Resolve the target's `tasks.html`.** For a spec target — including the meta-spec, which is a
-     normal slice at `specs/000-spectastic/` — `specs/<spec-id>/tasks.html`. The only tasks-less target
-     is `principles` (no spec dir): its sibling tracker is `principles-tasks.html`. **If it doesn't exist, create it** from
-     `templates/tasks.html` (rewrite asset paths for its depth; strip the placeholder phases — the
-     folded phase is its content). The tracker on a tasks-less artifact is **execution-only** and
-     does not pull the artifact into a status bundle (`REQ-LIFECYCLE-004`/`REQ-LIFECYCLE-005`).
-   - **Append a new phase.** Add `<section id="phase-<slug>" class="phase">` with an `<h2>` naming
-     the change and an inline `(applied change <a href="./changes/archive/<date>-<slug>/proposal.html">…</a>)`
-     provenance link; a one-line "Folded from the applied proposal's §6 (archive frozen)" `<p>`; each
-     §6 `<li>` transcribed to a `<spec-task id="T-NNN">` (per `REQ-LIFECYCLE-003`) preserving any
-     `parallel` marker and the `<span class="path">`; and a closing `<spec-note>` linking the
-     requirement IDs the change closed. **IDs continue in a fresh hundred-range above the current
-     max** so they never collide (model on Phase 5 of `specs/020-vscode-extension/tasks.html`).
-   - **Leave the archived proposal §6 frozen/unticked** — it is the intent record, not the execution
-     surface. Do not implement, and do not tick proposal checkboxes in place.
-   - If the proposal has **no §6 tasks**, skip this step.
+6. **Report the kernel's result.** Read its stdout — deltas applied, the archived path, and the
+   fold's `T-NNN` range — into the Output section below. If `spectastic apply` exits non-zero,
+   surface its error verbatim and stop; never paper over a partial apply.
 
 ## Withdraw procedure
 
@@ -162,15 +152,21 @@ Suggest opening the live spec in a browser to confirm the apply rendered cleanly
 
 Per `REQ-CHANGE-003` of the meta-spec, after `/spectastic.apply` lands a change, the user needs to know where the follow-up implementation work lives. Always name the routing rule explicitly in the per-apply console report:
 
-The proposal's §6 tasks have already been **folded into the target's `tasks.html`** as a new provenance-linked phase (step 8). Apply implemented nothing — `/spectastic.implement` drains the folded phase.
+The proposal's §6 tasks have already been **folded into the target's `tasks.html`** as a new provenance-linked phase (by the kernel, step 5). Apply implemented nothing — `/spectastic.implement` drains the folded phase.
 
 - **Small change** — one or two requirements, behavioural addition, no new ADRs. Run `/spectastic.implement` to drain the folded phase.
 - **Large change** — multi-requirement, architectural shift, new topic group. You may instead re-run `/spectastic.plan` against the updated spec to revisit ADRs, then `/spectastic.tasks` to derive a fresh breakdown — which regenerates `tasks.html` and **supersedes the folded phase** — then `/spectastic.implement`.
 
 The boundary heuristic: **more than one new ADR would land → large**. State the rule as guidance, not a guardrail — apply always folds (it never self-classifies); the large-change re-plan is the author's choice, not apply's.
 
-## Optional: CLI dispatch
+## Note on the kernel
 
-Per 006 FR-009: for deterministic dispatch outside Claude Code (CI scripts, raw shell automation), the LLM MAY invoke `spectastic apply` via Bash. This bypasses LLM-driven file handling and routes through `@spectastic/core/commands/apply` directly. The markdown procedure above remains canonical; the CLI is an alternate code path.
+Apply mode's procedure above **is** the kernel path — the slash command invokes `spectastic apply`
+as its engine (per `REQ-CHANGE-008`), rather than re-deriving the mechanical edits by hand each
+time. For deterministic dispatch outside Claude Code (CI scripts, raw shell automation), invoke the
+same `spectastic apply <spec-id> <date>-<slug> --summary "…"` directly; only the preconditions,
+the author summary, the cross-spec exception, and the routing nudges need a human (or the slash
+command) in the loop.
 
-The CLI requires `ANTHROPIC_API_KEY` in the environment for AI-coupled verbs; the slash-command path uses the in-host Claude session and needs no key.
+Apply and withdraw are **keyless** — the kernel is deterministic and needs no `ANTHROPIC_API_KEY`.
+Only the AI-coupled verbs (`spec`, `plan`) require the key (006 FR-009).
