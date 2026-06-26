@@ -26,6 +26,7 @@ import type {
   KernelContext,
   WithdrawInput,
 } from '../types.js';
+import { deepenArchivePaths } from '../archive-paths.js';
 
 const IDENTIFIED_RISK_RE = /<spec-risk[^>]*\bstatus=["']identified["']/i;
 const DELTA_RE =
@@ -336,18 +337,6 @@ function appendChangelogEntry(html: string, entry: string): string {
   const closing = html.lastIndexOf('</ol>');
   if (closing === -1) return html + `\n<spec-changelog><ol>\n${entry}\n</ol></spec-changelog>`;
   return `${html.slice(0, closing)}  ${entry}\n${html.slice(closing)}`;
-}
-
-/**
- * On archive the proposal moves one level deeper (`changes/<slug>/` →
- * `changes/archive/<slug>/`), so every `../`-relative `href`/`src` needs one
- * more `../` to resolve from the new depth — fulfilling REQ-CHANGE-008's
- * "archive-folder move MUST be performed by the kernel". A target reached by k
- * `../` from the old dir sits k+1 up from the (one-level-deeper) new dir, so
- * prepending a single `../` is correct for every relative link.
- */
-function deepenArchivePaths(html: string): string {
-  return html.replaceAll(/((?:href|src)=")(\.\.\/)/g, '$1../$2');
 }
 
 function extractInner(html: string, tag: string): string | null {

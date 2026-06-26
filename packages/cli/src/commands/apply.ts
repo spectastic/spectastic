@@ -37,7 +37,13 @@ export function registerApply(program: Command): void {
 
         const input = opts.withdraw
           ? ({ kind: 'withdraw' as const, specId, slug, reason: opts.reason! })
-          : ({ kind: 'apply' as const, specId, slug, summary: opts.summary });
+          : ({
+              kind: 'apply' as const,
+              specId,
+              slug,
+              // Include `summary` only when given — exactOptionalPropertyTypes rejects an explicit undefined.
+              ...(opts.summary ? { summary: opts.summary } : {}),
+            });
 
         const result = await applyCommand(input, { cwd: process.cwd(), fs: nodeFs });
 

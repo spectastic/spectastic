@@ -29,6 +29,12 @@ export interface FileSystem {
   stat(path: string): Promise<{ isFile: boolean; isDirectory: boolean }>;
   /** Atomic move; added in 010-core-apply per its plan D-003. */
   rename(from: string, to: string): Promise<void>;
+  /**
+   * Recursive, force remove (no error if absent). Added in 023-explore-graduation
+   * per its plan D-003: the graduation rollback deletes a partial `specs/<id>/`
+   * so a failed graduation leaves no residue and retry is clean (SC-003).
+   */
+  rm(path: string): Promise<void>;
 }
 
 // --- AI ----------------------------------------------------------------
@@ -538,12 +544,18 @@ export interface QuarantineMarker {
   /** The one-line intent this build is trying to answer. */
   intent: string;
   /**
-   * Always `"quarantined"` in this slice. The only exits are graduation
-   * (deferred) or deletion — there is no "abandoned" terminal state (FR-009).
+   * `"quarantined"` while live; flipped to `"graduated"` by the graduation
+   * transaction (spec 023, FR-007). There is no "abandoned" terminal state
+   * (022 FR-009). The verb gate + validate leg both pass on any non-quarantined
+   * status, so the flip alone lifts the guard.
    */
-  status: 'quarantined';
+  status: 'quarantined' | 'graduated';
   /** ISO date (YYYY-MM-DD) the exploration was scaffolded. */
   created: string;
+  /** Set by graduation (spec 023, FR-002/FR-008): how the build was classified. Frozen in the archive. */
+  classify?: GraduationClass;
+  /** ISO date (YYYY-MM-DD) the exploration graduated; set with `status: "graduated"`. */
+  graduated?: string;
 }
 
 /**
@@ -576,4 +588,43 @@ export interface ExploreResult {
   ledgerHtml: string;
   /** The tracked quarantine marker, serialized by the CLI to `quarantine.json`. */
   marker: QuarantineMarker;
+}
+
+// --- graduate (verb 023, the discovery graduation — back half) ---------
+
+/**
+ * How a graduated exploration was classified (spec 023, FR-002 / D-2). A
+ * `spike` keeps only the learning (clean rebuild); a `tracer-bullet` keeps the
+ * code (refactor-to-comply). Decides the restore-task path; frozen in the
+ * archived marker so it cannot be quietly reversed.
+ */
+export type GraduationClass = 'spike' | 'tracer-bullet';
+
+/**
+ * Input to the pure graduation transaction kernel (spec 023, D-002). The extract
+ * leg has already produced the bundle; this kernel performs the deterministic,
+ * atomic mutations. The CLI supplies the date so the kernel stays pure.
+ */
+export interface GraduateTransactionInput {
+  /** The quarantined exploration id, reused verbatim for `specs/<id>/`. */
+  specId: string;
+  /** spike (clean rebuild) | tracer-bullet (refactor-to-comply). */
+  classification: GraduationClass;
+  /** The extracted Draft `spec.html` (from the extract leg). */
+  specHtml: string;
+  /** The restore `tasks.html` seeded by classification (US2). */
+  tasksHtml: string;
+  /** ISO date (YYYY-MM-DD); caller-supplied to keep the kernel deterministic. */
+  date: string;
+}
+
+export interface GraduateTransactionResult {
+  /** The graduated id. */
+  specId: string;
+  /** Path of the written live spec (`specs/<id>/spec.html`). */
+  specPath: string;
+  /** Path of the archived, frozen exploration (`explorations/archive/<id>/`). */
+  archivedPath: string;
+  /** The recorded classification. */
+  classification: GraduationClass;
 }

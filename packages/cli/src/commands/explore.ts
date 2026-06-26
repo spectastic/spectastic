@@ -18,8 +18,28 @@ export function registerExplore(program: Command): void {
     .description(
       'Scaffold a quarantined exploration under explorations/<id>/ (a git-ignored ledger + a tracked quarantine marker) to build loosely. Graduate or delete — nothing ships un-graduated.',
     )
-    .argument('<intent>', 'a one-line description of what you want to find out')
-    .action(async (intent: string) => {
+    .argument('[intent]', 'a one-line description of what you want to find out (scaffold mode)')
+    .option(
+      '--graduate <id>',
+      'graduate an existing quarantined exploration into a spec instead of scaffolding (spec 023)',
+    )
+    .action(async (intent: string | undefined, opts: { graduate?: string }) => {
+      // Mode select: exactly one of <intent> (scaffold) or --graduate <id>.
+      if (opts.graduate) {
+        if (intent) {
+          process.stderr.write('explore: pass either <intent> (scaffold) or --graduate <id>, not both.\n');
+          process.exit(2);
+        }
+        process.stderr.write(
+          `explore --graduate ${opts.graduate}: graduation is not yet wired — it lands in spec 023-explore-graduation (T-311).\n`,
+        );
+        process.exit(2);
+      }
+      if (!intent) {
+        process.stderr.write('explore: needs an <intent> to scaffold, or --graduate <id> to graduate one.\n');
+        process.exit(2);
+      }
+
       const { exploreScaffold } = await import('@spectastic/core/commands/explore');
 
       const cwd = process.cwd();
