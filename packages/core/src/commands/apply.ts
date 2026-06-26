@@ -110,8 +110,13 @@ export async function applyCommand(
     }
   }
 
-  // Append changelog entry.
-  const changelogEntry = `<li><time datetime="${today}">${todayHuman}</time><span>Applied <a href="./changes/archive/${input.slug}/proposal.html">${input.slug}</a>: ${deltas.length} delta${deltas.length === 1 ? '' : 's'} (${deltas.filter((d) => d.result === 'success').length} successful).</span></li>`;
+  // Append changelog entry — the author-supplied summary (REQ-CHANGE-008)
+  // preserves the changelog's human voice; raw CLI use falls back to a terse
+  // delta count.
+  const summary =
+    input.summary ??
+    `${deltas.length} delta${deltas.length === 1 ? '' : 's'} (${deltas.filter((d) => d.result === 'success').length} successful)`;
+  const changelogEntry = `<li><time datetime="${today}">${todayHuman}</time><span>Applied <a href="./changes/archive/${input.slug}/proposal.html">${input.slug}</a>: ${summary}.</span></li>`;
   liveSpec = appendChangelogEntry(liveSpec, changelogEntry);
 
   await fs.writeFile(specPath, liveSpec);
@@ -120,6 +125,17 @@ export async function applyCommand(
   // on the in-memory §6 BEFORE the archive move, so a fold failure leaves the
   // proposal in changes/ for a clean retry rather than a half-applied state.
   const foldedPhase = await foldProposalTasks(proposalHtml, input, ctx, fs);
+
+  // Flip the proposal's own status to applied and record its apply entry (the
+  // markdown's old step 7), written before the archive move so the archived copy
+  // carries the applied status.
+  const archivedProposal = appendChangelogEntry(
+    proposalHtml
+      .replaceAll(/<spec-status value=["'][^"']+["']>[^<]*<\/spec-status>/g, '<spec-status value="applied">Applied</spec-status>')
+      .replaceAll(/(<spec-change\b[^>]*?)\sstatus=["'][^"']+["']/g, '$1 status="applied"'),
+    `<li><time datetime="${today}">${todayHuman}</time><span>Applied on ${todayHuman} — ${summary}.</span></li>`,
+  );
+  await fs.writeFile(proposalPath, archivedProposal);
 
   // Move folder to archive.
   const archiveDir = `${ctx.cwd}/specs/${input.specId}/changes/archive/${input.slug}`;

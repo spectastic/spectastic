@@ -261,6 +261,13 @@ export interface ApplyInput {
   specId: string;
   /** Slug like "2026-06-16-add-oauth"; resolves to changes/<slug>/. */
   slug: string;
+  /**
+   * Optional author-supplied one-line summary for the live-spec changelog entry
+   * (REQ-CHANGE-008). When omitted, the kernel falls back to a terse delta count
+   * — so the slash command can preserve the changelog's human voice by passing
+   * the rich one-liner, while raw CLI use still gets a valid entry.
+   */
+  summary?: string;
 }
 
 export interface WithdrawInput {
