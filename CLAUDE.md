@@ -60,6 +60,14 @@ Eight slash commands. Don't add more without a good reason — OpenSpec's small 
 - `/spectastic.apply` — apply approved proposal (moves to changes/archive/ as a side effect); refuses if any `<spec-risk status="identified">` remains. Withdraw mode `--withdraw <YYYY-MM-DD>-<slug> --reason="…"` rejects an authored proposal (moves to changes/withdrawn/, parallel to archive/, with a "Considered, withdrew" entry on the live spec changelog)
 - `/spectastic.triage` — single-defect classification *or* list-intake mode (paste a list; one card per item; appends to `inbox.html`); inbox cards MAY carry `data-status="rejected"` for the pre-propose rejection path
 
+**Keep `.claude/commands/` in sync with `commands/`.** The slash commands the harness actually loads live in `.claude/commands/*.md` — these are **gitignored, one-time copies** of the source-of-truth in `commands/*.md`. They do **not** auto-sync. So whenever you edit a `commands/*.md` source (or a proposal lands a change to one, e.g. apply step 8 / `REQ-CHANGE-006`), re-sync immediately:
+
+```bash
+cp commands/*.md .claude/commands/
+```
+
+Skip this and the running slash command is stale — which is exactly meta-spec triage **T-006**: a 13 Jun `.claude/commands/spectastic.apply.md` copy predated the fold step, so an apply silently skipped the §6 fold (T-004 reproduced live). Until `spectastic init --tools` owns install/sync (deferred), this re-copy is manual.
+
 ## Interview discipline in commands
 
 Slash commands that gather requirements (`spec`, `plan`, `propose`, `triage`) follow a **two-phase interview**:
