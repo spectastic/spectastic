@@ -20,8 +20,9 @@ import type { CrossFileRule, Finding, ParsedDocument } from '../types.js';
  *
  * Scope note: this guards the HTML↔HTML coupling the validate engine can see.
  * It does NOT guard the `assets/spec.js` gauge value — that JS asset is in no
- * validated bundle, so the engine never parses it; a vitest backstop would be
- * the place for that check.
+ * validated bundle, so the engine never parses it. That check lives in a vitest
+ * backstop instead (packages/schema/test/spec-js-band.test.ts), which reads the
+ * JS source and asserts its band() threshold matches REQ-FORMAT-004.
  */
 
 const SSOT_ID = 'REQ-FORMAT-004';
