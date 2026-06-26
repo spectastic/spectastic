@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Make the task-fold deterministic (REQ-CHANGE-007) · Change proposal</title>
+<title>Fold §6 in the apply kernel (REQ-CHANGE-007) · Change proposal</title>
 <link rel="stylesheet" href="../../../../assets/spec.css">
 <link rel="icon" type="image/svg+xml" href="../../../../assets/favicon.svg">
 <script src="../../../../assets/theme-boot.js"></script>
@@ -13,10 +13,10 @@
 
 <header>
   <p class="small-caps">Change proposal · 000-spectastic</p>
-  <h1>Make the task-fold deterministic</h1>
+  <h1>Fold §6 in the apply kernel</h1>
   <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
-    The §6 fold lives only in skippable LLM prose — which is exactly why T-004 happened. Move it into the apply
-    kernel, verify the phase landed, and route both apply paths through it.
+    The §6 fold lives only in skippable LLM prose — the root of T-004. Give it a deterministic, fidelity-checked
+    implementation in the apply kernel. Routing the slash-command path onto it is a sibling change.
   </p>
 
   <spec-meta>
@@ -30,16 +30,18 @@
   </spec-meta>
 
   <spec-tldr>
-    <p>Closes meta-spec triage <a href="../../triage-log.html#T-005">T-005</a>. <a href="../../spec.html#REQ-CHANGE-006">REQ-CHANGE-006</a>
-    mandates the §6 fold but defines it only as an action — and today that action lives <em>only</em> in the LLM
-    slash-command prose (<a href="../../../../commands/spectastic.apply.md"><code>spectastic.apply.md</code></a>
-    step 8); the apply kernel (<code>apply.ts</code>) never touches <code>tasks.html</code>. So when the
-    <code>2026-06-25-spec-budget-bands</code> apply skipped it (triage <a href="../../triage-log.html#T-004">T-004</a>),
-    nothing was detectably wrong. This change <strong>ADDs REQ-CHANGE-007</strong>: move the fold into the kernel
-    as deterministic code, have the kernel <strong>confirm the phase is present before returning success</strong>
-    (completing it if absent), and route <em>both</em> the slash-command and CLI apply paths through it — so the
-    guarantee no longer depends on an LLM run remembering a prose step. A deliberate, narrow exception to the
-    markdown-is-canonical rule, justified because the fold needs no AI judgment.</p>
+    <p><strong>Foundation</strong> for meta-spec triage <a href="../../triage-log.html#T-005">T-005</a> — it does
+    not by itself prevent T-004's in-host slash path (which keeps prose-folding until the sibling routes it onto
+    this kernel fold); it builds the deterministic fold that fix depends on. <a href="../../spec.html#REQ-CHANGE-006">REQ-CHANGE-006</a>
+    mandates the §6 fold but it lives <em>only</em> in the LLM slash-command prose; the apply kernel
+    (<code>apply.ts</code>) has <strong>zero</strong> <code>tasks.html</code> code, so the one step that orphans
+    work when skipped has no deterministic implementation — the <code>2026-06-25-spec-budget-bands</code> failure
+    (<a href="../../triage-log.html#T-004">T-004</a>). This change <strong>ADDs REQ-CHANGE-007</strong>: implement
+    the §6 fold in the kernel as deterministic code, and have the kernel confirm the phase faithfully carries the
+    §6 work — a <code>&lt;spec-task&gt;</code> for <em>every</em> item, not merely that a phase exists — before
+    returning success. The CLI apply path inherits this immediately. Bringing the in-host slash-command path onto
+    the same kernel fold (which has an API-key wiring question of its own) is a deliberately separate sibling
+    change, so this safe foundation can land on its own.</p>
   </spec-tldr>
 </header>
 
@@ -47,7 +49,7 @@
 <spec-change id="2026-06-26-fold-gap-guard" status="under-review">
 
 <header>
-  <h3>Make the task-fold deterministic</h3>
+  <h3>Fold §6 in the apply kernel</h3>
   <span class="meta"><spec-status value="in-review">Under review</spec-status></span>
 </header>
 
@@ -56,20 +58,21 @@
 <h2>1 · Intent</h2>
 <p><a href="../../spec.html#REQ-CHANGE-006">REQ-CHANGE-006</a> makes <code>/spectastic.apply</code> fold a
 proposal's §6 tasks into the target's <code>tasks.html</code> as a provenance-linked phase. But it specifies the
-fold only as something apply <em>does</em>, with no post-condition — and crucially, the fold today is implemented
-<em>only</em> in the slash-command markdown (step 8). The apply kernel folds the <code>&lt;spec-delta&gt;</code>
-blocks, writes the changelog, and archives the folder, but has <strong>zero</strong> code touching
-<code>tasks.html</code>. So the one mechanical step that orphans real work when skipped is exactly the step with
-no deterministic implementation.</p>
-<p>That is why <code>2026-06-25-spec-budget-bands</code> failed (triage <a href="../../triage-log.html#T-004">T-004</a>):
-an LLM apply run skipped a prose step, the deltas folded, the folder archived, the status read <code>applied</code>,
-and eight tasks were orphaned with a fabricated citation still shipping — nothing detectably wrong. A self-check
-written into the <em>same</em> prose would be no stronger: the run that skips the fold is the run that skips
-checking it (the point an adversarial pass made against three earlier drafts of this change).</p>
-<p>The durable fix is to stop depending on prose adherence for a mechanical step. The fold needs no AI judgment —
-it transcribes §6 list items into <code>&lt;spec-task&gt;</code> elements. So put it in the kernel, make the kernel
-verify the phase landed, and route both apply paths through it. The guarantee then holds by construction, on the
-path that actually failed.</p>
+fold only as an action, and that action is implemented <em>only</em> in the slash-command markdown (step 8). The
+apply kernel folds the <code>&lt;spec-delta&gt;</code> blocks, writes the changelog, and archives the folder, but
+has <strong>zero</strong> code touching <code>tasks.html</code>. So the one mechanical step that orphans real work
+when skipped is exactly the step with no deterministic implementation — which is why
+<code>2026-06-25-spec-budget-bands</code> failed (triage <a href="../../triage-log.html#T-004">T-004</a>): an LLM
+run skipped a prose step, and nothing was detectably wrong.</p>
+<p>The foundation for fixing that is a deterministic fold. The §6 fold needs no AI <em>judgment</em> — which items,
+ID continuation, where the tracker lives are all determined — but it is real format work (parse free-form §6
+<code>&lt;li&gt;</code>, preserve <code>parallel</code> markers and path spans, create-the-tracker-from-template,
+continue IDs in a fresh hundred-range). So it belongs in code, with a post-condition that checks the result is
+<em>faithful</em>, not merely present. This change builds and verifies that kernel fold; the CLI apply path picks
+it up at once. Routing the in-host slash-command path through it — the path that actually failed — is the natural
+next step, but it re-architects how the slash command relates to the kernel and carries its own wiring question
+(the in-host path has no API key; the AI-coupled CLI requires one), so it is a separate, sibling change rather than
+riding this one.</p>
 </section>
 
 
@@ -79,24 +82,24 @@ path that actually failed.</p>
 <spec-goals>
   <h3>In scope</h3>
   <ul>
-    <li>ADD <code>REQ-CHANGE-007</code>: the §6 fold MUST be performed by the apply kernel (deterministic code), the
-    kernel MUST confirm the new provenance-linked phase is present before returning success, and both the
-    slash-command and CLI apply paths MUST route the fold through the kernel.</li>
-    <li>Implementing the fold in <code>packages/core/src/commands/apply.ts</code> (it does not exist there today),
-    and narrowing the slash-command step 8 to invoke it rather than transcribe §6 in prose.</li>
+    <li>ADD <code>REQ-CHANGE-007</code>: the §6 fold MUST be implemented in the apply kernel as deterministic code,
+    and the kernel MUST confirm the folded phase faithfully carries the §6 work (a <code>&lt;spec-task&gt;</code>
+    for every item, preserving <code>parallel</code> markers and paths) before returning success.</li>
+    <li>The kernel implementation in <code>packages/core/src/commands/apply.ts</code> (none exists today) and its
+    tests. The CLI apply path, which already calls the kernel, thereby folds deterministically.</li>
   </ul>
 </spec-goals>
 
 <spec-non-goals>
   <h3>Out of scope</h3>
   <ul>
+    <li defer-to="TBD-route-fold-through-kernel">Routing the <strong>slash-command</strong> apply path through the
+    kernel fold (so it stops transcribing §6 in prose). That re-architects a <code>must</code>-tier action's
+    ownership and carries an API-key wiring question (in-host slash path has no key; the AI-coupled CLI requires
+    one) — it gets its own proposal, which depends on the kernel fold this change builds.</li>
     <li defer-to="never">A <code>spectastic validate</code> "fold-gap" rule. Evaluated across three adversarial
     passes and rejected as unsound: a validate rule reads only in-set artifacts, but the "a fold was owed" signal
-    lives in the archived §6 that <code>validate</code> ignores — so it can only check self-consistency, which
-    misses a wholesale skip and risks false-positives. Recorded so it is not re-proposed.</li>
-    <li defer-to="never">Moving the <em>interactive</em> parts of apply into the kernel. Precondition and risk-gate
-    decisions, and the apply report, stay in the markdown procedure; only the mechanical §6 fold becomes
-    kernel-authoritative.</li>
+    lives in the archived §6 that <code>validate</code> ignores. Recorded so it is not re-proposed.</li>
     <li defer-to="never">Verifying other apply steps. Only the fold has a checkable present/absent artifact; the
     archive move and status flip are self-evident from the folder location and the status pill.</li>
   </ul>
@@ -106,24 +109,22 @@ path that actually failed.</p>
 
 <section id="approach">
 <h2>3 · Approach</h2>
-<p><strong>Move the fold into the kernel.</strong> Today <code>apply.ts</code> handles deltas, changelog, and the
-archive move, but nothing for <code>tasks.html</code>; the §6 fold is hand-described in
+<p><strong>Add the fold to the kernel, checked for fidelity.</strong> Today <code>apply.ts</code> handles deltas,
+changelog, and the archive move; the §6 fold is hand-described in
 <a href="../../../../commands/spectastic.apply.md"><code>spectastic.apply.md</code></a> step 8. This change adds a
-deterministic fold to the kernel: parse the applied proposal's §6 list, resolve-or-create the target tracker from
-<code>templates/tasks.html</code>, append a provenance-linked <code>&lt;spec-task&gt;</code> phase with
-ID-continuation per <a href="../../spec.html#REQ-CHANGE-006">REQ-CHANGE-006</a>, and — the post-condition —
-re-read the tracker to confirm the phase is present before returning success, completing it if absent. Because the
-fold is now code, the verify is trivially deterministic in the same function.</p>
-<p><strong>Route both paths through it.</strong> The CLI path already calls the kernel, so it inherits the fold and
-its check for free. The slash-command path is narrowed: step 8 stops transcribing §6 in prose and instead invokes
-the kernel fold (directly, or via <code>spectastic apply</code>), then reports the verified result. This closes the
-T-004 path — the guarantee no longer rides on the LLM executing a prose step.</p>
-<p><strong>The one tension, named.</strong> <a href="../../spec.html#REQ-CHANGE-006">REQ-CHANGE-006</a>'s lineage
-(006) holds that "the markdown procedure remains the source of truth the LLM reads." Making the kernel authoritative
-for the fold is a deliberate, <em>narrow</em> exception: the fold is purely mechanical (no AI judgment), and its
-prose-only form is precisely what a non-deterministic run skipped. The markdown stays canonical for everything that
-needs judgment (preconditions, the risk gate, the report); only this one transcription step moves to code, where it
-belongs. The §6 task list owns reconciling the docblock/canonical note accordingly.</p>
+deterministic kernel fold: parse the applied proposal's §6 list, resolve-or-create the target tracker from
+<code>templates/tasks.html</code> (strip placeholder phases, rewrite asset paths for depth), append a
+provenance-linked <code>&lt;spec-task&gt;</code> phase with ID-continuation per
+<a href="../../spec.html#REQ-CHANGE-006">REQ-CHANGE-006</a>, and — the post-condition — confirm the phase carries a
+<code>&lt;spec-task&gt;</code> for <em>every</em> §6 item (presence is not containment, per <code>CLAUDE.md</code>
+and P-7), completing it if any are missing before returning success.</p>
+<p><strong>Why this is the safe half to land first.</strong> The fifth adversarial pass on the bundled version
+showed it was really two changes; this is the half with no contestable boundary: it only <em>adds</em> a kernel
+capability, so the CLI apply path (which already calls the kernel) folds correctly for the first time, and the
+slash command is untouched — it keeps its prose fold until the sibling change routes it onto this kernel one. No
+ownership seam is opened here (REQ-CHANGE-006's "markdown is canonical" rule still holds for the slash path); that
+question moves with the routing change. The transitional cost is that the two paths fold via different code for one
+cycle — acceptable, because the kernel fold is tested for fidelity against the same shape the prose produces.</p>
 </section>
 
 
@@ -135,27 +136,30 @@ belongs. The §6 task list owns reconciling the docblock/canonical note accordin
 <spec-delta op="added" target="REQ-CHANGE-007">
   <spec-requirement id="REQ-CHANGE-007" priority="should">
     <p>The §6 task-fold mandated by <a href="../../spec.html#REQ-CHANGE-006">REQ-CHANGE-006</a>
-    <spec-rule>MUST</spec-rule> be performed by the apply <em>kernel</em> as deterministic code — not by
-    LLM-authored prose alone — and the kernel <spec-rule>MUST</spec-rule> confirm the new provenance-linked phase is
-    present in the target tracker before returning the apply successful. When §6 carries tasks and the phase is
-    absent, the kernel <spec-rule>MUST</spec-rule> complete the fold rather than return success; it
-    <spec-rule>MUST NOT</spec-rule> leave a half-applied state. An empty §6 owes no phase and is skipped per
+    <spec-rule>MUST</spec-rule> have a deterministic implementation in the apply <em>kernel</em> (it has none
+    today). The fold <spec-rule>MUST</spec-rule> run on the §6 content apply has already read, <em>before</em> the
+    archive-folder move, so a fold or fidelity failure leaves the proposal in <code>changes/</code> for a clean
+    retry rather than a half-applied state. When the kernel folds, it <spec-rule>MUST</spec-rule> confirm the
+    resulting phase faithfully carries the §6 work — a <code>&lt;spec-task&gt;</code> for <em>every</em> §6 item,
+    carrying over each item's <code>&lt;span class="path"&gt;</code> and, where the §6 item declares it (the
+    <code>[P]</code> convention), its <code>parallel</code> marker, in the <code>&lt;spec-task&gt;</code> shape
+    <a href="../../spec.html#REQ-LIFECYCLE-003">REQ-LIFECYCLE-003</a> defines — before reporting success. Mere
+    presence of a phase is insufficient (presence is not containment). A missing or incomplete phase
+    <spec-rule>MUST</spec-rule> be completed, not returned as success. An empty §6 owes no phase and is skipped per
     REQ-CHANGE-006.</p>
-    <p>Both apply paths <spec-rule>MUST</spec-rule> route the §6 fold through the kernel: the CLI already calls it,
-    and the slash-command procedure <spec-rule>MUST</spec-rule> invoke the kernel fold rather than transcribe §6 in
-    prose — so the post-condition holds regardless of LLM adherence (the path that failed in T-004).</p>
-    <p>This is a deliberate, narrow exception to the rule that the markdown procedure is the LLM's source of truth
-    (006): the fold is purely mechanical and needs no AI judgment, so it is kernel-authoritative; the interactive
-    parts of apply (preconditions, risk gate, report) remain markdown-canonical.</p>
+    <p>This adds a kernel capability; it does not change which path performs the fold. The CLI apply path, which
+    already calls the kernel, folds deterministically as a result. Bringing the slash-command path onto the kernel
+    fold is a separate change (it re-architects the markdown-canonical boundary and has an API-key wiring question),
+    tracked as <code>TBD-route-fold-through-kernel</code> and dependent on this one.</p>
     <details><summary>Rationale</summary><p>REQ-CHANGE-006 specifies the fold as an action but defines no
     post-condition, and the action lives only in slash-command prose — <code>apply.ts</code> has no
     <code>tasks.html</code> code at all. So the one step that orphans real work when skipped is the one with no
-    deterministic implementation, which is the <code>2026-06-25-spec-budget-bands</code> failure (triage
-    <a href="../../triage-log.html#T-004">T-004</a>). A self-check in the same prose is no stronger — the run that
-    skips the fold skips the check. Putting the fold (and thus its verify) in the kernel makes the guarantee hold by
-    construction on both paths. A <code>validate</code> backstop was evaluated across three passes and rejected: it
-    cannot know a fold was owed without the archived §6 it ignores. Priority <code>should</code>, codifying from one
-    incident, matching <a href="../../spec.html#REQ-CHANGE-004">REQ-CHANGE-004</a> /
+    deterministic implementation: the <code>2026-06-25-spec-budget-bands</code> failure (triage
+    <a href="../../triage-log.html#T-004">T-004</a>). A fidelity check (not mere presence) is required because the
+    fold is real format work and a present-but-wrong phase would otherwise pass — the project's own
+    presence-is-not-containment lesson. A <code>validate</code> backstop was evaluated across three passes and
+    rejected (it cannot know a fold was owed without the archived §6 it ignores). Priority <code>should</code>,
+    codifying from one incident, matching <a href="../../spec.html#REQ-CHANGE-004">REQ-CHANGE-004</a> /
     <a href="../../spec.html#REQ-CHANGE-005">REQ-CHANGE-005</a>; re-evaluate after a few real applies.</p></details>
   </spec-requirement>
 </spec-delta>
@@ -170,22 +174,22 @@ change-management family <a href="../../spec.html#REQ-CHANGE-006">REQ-CHANGE-006
 apply.</p>
 
 <spec-risk-log>
-<spec-risk target="§2" status="identified">
-  <p class="claim">Too broad for one <code>should</code> requirement: REQ-CHANGE-007 fuses three independently-contestable commitments — <em>build</em> the kernel fold, make it <em>self-verify</em>, and <em>re-route both apply paths</em> through it — so the clearly-correct half (kernel owns + verifies the fold, which closes T-004 alone) is held hostage to the contestable half (re-architecting the slash command's relationship to the kernel).</p>
-  <p class="citation">"the §6 fold MUST be performed by the apply kernel … and both the slash-command and CLI apply paths MUST route the fold through the kernel."</p>
-  <div class="response"><strong>Draft (status is the author's to set).</strong> The strongest structural critique, and it lands. Recommend splitting: land "the kernel owns and verifies the §6 fold" as REQ-CHANGE-007 now (deterministic, closes T-004 on the CLI path and gives the slash path something real to call); track "route the slash-command fold through the kernel" as a sibling change. The split also isolates a genuine wiring question that deserves its own review: the slash command runs in-host with no API key, while the AI-coupled <code>spectastic apply</code> CLI requires <code>ANTHROPIC_API_KEY</code> — so the slash path needs a non-AI way to invoke the kernel fold, which the current draft waves at ("directly, or via <code>spectastic apply</code>"). Disposition: split, or accept the broader scope knowingly.</div>
-</spec-risk>
-
-<spec-risk target="REQ-CHANGE-006" status="identified">
-  <p class="claim">A <code>should</code>-tier requirement carves a piece of a <code>must</code>-tier action (REQ-CHANGE-006's indivisible fold) into code and leaves the rest prose-owned, but records the new boundary only by asserting a "narrow exception" and deferring reconciliation to an implementation task — so ownership of the fold's contract becomes split and undefined.</p>
-  <p class="citation">"This is a deliberate, narrow exception to the rule that the markdown procedure is the LLM's source of truth (006)" + §3's "The §6 task list owns reconciling the docblock/canonical note accordingly."</p>
-  <div class="response"><strong>Draft (status is the author's to set).</strong> Fair — the seam can't live in a task checkbox. Fix: REQ-CHANGE-007 must state the boundary <em>in the requirement</em> (kernel owns the mechanical fold; markdown owns preconditions, risk gate, and the report), not defer it. Whether to additionally MODIFY REQ-CHANGE-006 / 006 FR-008 to record the carve-out (a second delta) or let -007 own it explicitly is a disposition choice; recommend -007 owns it with the boundary named, avoiding a second delta. Either way the "defer to a task" language goes.</div>
-</spec-risk>
-
 <spec-risk target="REQ-CHANGE-007" status="identified">
-  <p class="claim">The premise that the fold "needs no AI judgment" and is "purely mechanical" is overstated, and the post-condition only checks a phase is <em>present</em>, not that it faithfully transcribes §6 — the project's own "presence is not containment" trap (CLAUDE.md, P-7).</p>
-  <p class="citation">"the fold is purely mechanical (no AI judgment) … re-read the tracker to confirm the phase is present."</p>
-  <div class="response"><strong>Draft (status is the author's to set).</strong> Partly. The <em>decision-making</em> is mechanical (which items, ID continuation, tracker location — and the tracker-location worry the critic raised is resolved by the meta-spec migration: it is now the normal <code>specs/000-spectastic/tasks.html</code>). But the <em>format</em> work is real (parse free-form §6 <code>&lt;li&gt;</code>, preserve <code>parallel</code> + path spans, create-from-template, hundred-range IDs), and a present-but-wrong phase satisfies "a phase is present." Fix folded into the contract: the post-condition MUST confirm the phase carries a <code>&lt;spec-task&gt;</code> for <em>every</em> §6 item (fidelity, not presence), and the kernel fold MUST be tested for transcription fidelity — not assumed mechanical.</div>
+  <p class="claim">The kernel today archives the proposal folder (<code>fs.rename</code>) and returns with no tasks.html work, so a fold-and-verify bolted on "before returning success" would run <em>after</em> the irreversible archive move — the opposite of the "no half-applied state" the requirement promises, and it can't re-read §6 from <code>changes/</code> because the proposal is already in <code>archive/</code>.</p>
+  <p class="citation"><code>apply.ts</code>: "<code>await fs.rename(proposalDir, archiveDir); return {…}</code>" vs the delta's "MUST NOT leave a half-applied state".</p>
+  <div class="response"><strong>Draft (status is the author's to set).</strong> Caught a real sequencing gap. The requirement now states it: the fold runs on the §6 apply has <em>already read</em> (in memory) and is sequenced <strong>before</strong> the archive <code>fs.rename</code>, so a fold/fidelity failure leaves the proposal in <code>changes/</code> for a clean retry — atomic, no archived-but-unfolded state. §6 task 1 names the sequencing. This is a small re-order of the existing flow, not the must-tier boundary change the split deferred.</div>
+</spec-risk>
+
+<spec-risk target="REQ-LIFECYCLE-003" status="identified">
+  <p class="claim">"Preserving each item's <code>parallel</code> marker" presumes §6 items already carry one, but proposal §6 lists are bare <code>&lt;li&gt;</code> with no <code>parallel</code> attribute — so a "parallel preserved" check passes trivially (none→none) while the fold may never emit a <code>parallel</code> task, under-honouring REQ-LIFECYCLE-003's required <code>&lt;spec-task&gt;</code> shape.</p>
+  <p class="citation">"preserving each item's <code>parallel</code> marker" vs REQ-LIFECYCLE-003: "<code>parallel</code> (boolean attribute) — present when the task can run alongside its in-flight peers (the existing <code>[P]</code> convention)".</p>
+  <div class="response"><strong>Draft (status is the author's to set).</strong> Right — <code>parallel</code> is carried <em>over</em> from the §6 author's <code>[P]</code> marking, not transcribed from an attribute. Reworded: the fidelity check confirms a <code>&lt;spec-task&gt;</code> per §6 item carrying its path and, where the §6 item declares <code>[P]</code>, its <code>parallel</code> marker, in the shape REQ-LIFECYCLE-003 defines. The fold transcribes the author's parallelism call; it does not invent it. Testable on count, path, and <code>[P]</code>-carry.</div>
+</spec-risk>
+
+<spec-risk target="§2" status="identified">
+  <p class="claim">The kernel fold ships exercised only by the CLI path and its own tests, while T-004's actual path (the in-host slash command) keeps prose-folding — so the change risks reading as "T-004 fixed" when the failing path is untouched, and the two fold implementations could drift with no test asserting they agree.</p>
+  <p class="citation">In-scope "the CLI apply path … thereby folds deterministically" paired with out-of-scope <code>defer-to="TBD-route-fold-through-kernel"</code>.</p>
+  <div class="response"><strong>Draft (status is the author's to set).</strong> Honest and now reflected in the copy: the tldr and changelog say <em>foundation, not fix</em> — this builds the deterministic fold the fix depends on and does not by itself prevent T-004's in-host path. The drift concern is real for one cycle; the sibling change retires the prose fold entirely, and until then the kernel fold's fidelity tests pin it to the same shape the prose produces. Accepted as the cost of small-batching; the alternative (the bundled version) is what the fifth pass rejected.</div>
 </spec-risk>
 </spec-risk-log>
 </section>
@@ -199,9 +203,9 @@ that <code>/spectastic.implement</code> drains — this list is then the frozen 
 <code>REQ-CHANGE-007</code> requirement body itself lands via apply's delta-fold, not as a task.)</p>
 
 <ul style="list-style:none;padding-left:0;">
-  <li><input type="checkbox"> Implement the §6 fold in the apply kernel: parse the applied proposal's §6 tasks, resolve-or-create the target <code>tasks.html</code> from <code>templates/tasks.html</code> (asset-path rewrite for depth), append a provenance-linked <code>&lt;spec-task&gt;</code> phase with ID-continuation per REQ-CHANGE-006, and confirm the phase is present before returning — completing it if absent. <span class="path">packages/core/src/commands/apply.ts</span></li>
-  <li><input type="checkbox"> Narrow slash-command step 8: invoke the kernel fold (or <code>spectastic apply</code>) and report the verified result, instead of transcribing §6 in prose; note the kernel-authoritative-fold exception to markdown-canonical. <span class="path">commands/spectastic.apply.md</span></li>
-  <li><input type="checkbox"> Kernel unit tests: the fold transcribes §6 correctly and continues IDs; it creates the tracker when absent; the post-condition completes a missing phase rather than returning success; an empty §6 produces no phase. <span class="path">packages/core/test/apply.fold.test.ts</span></li>
+  <li><input type="checkbox"> Implement the §6 fold in the apply kernel: parse the applied proposal's §6 tasks (preserving each <code>parallel</code> marker and <code>&lt;span class="path"&gt;</code>), resolve-or-create the target <code>tasks.html</code> from <code>templates/tasks.html</code> (strip placeholders, rewrite asset paths for depth), append a provenance-linked <code>&lt;spec-task&gt;</code> phase with hundred-range ID-continuation per REQ-CHANGE-006. Sequence it <strong>before</strong> the existing archive-folder <code>fs.rename</code> so the apply stays atomic. <span class="path">packages/core/src/commands/apply.ts</span></li>
+  <li><input type="checkbox"> Add the fidelity post-condition: after folding, confirm a <code>&lt;spec-task&gt;</code> exists for every §6 item (count + path + parallel preserved); complete a missing/incomplete phase rather than returning success. <span class="path">packages/core/src/commands/apply.ts</span></li>
+  <li><input type="checkbox"> Kernel unit tests: faithful transcription (every item, markers preserved), tracker created-when-absent, hundred-range IDs, complete-on-incomplete, empty-§6 yields no phase. <span class="path">packages/core/test/apply.fold.test.ts</span></li>
 </ul>
 </section>
 
@@ -209,17 +213,12 @@ that <code>/spectastic.implement</code> drains — this list is then the frozen 
 <section id="questions">
 <h2>7 · Open questions</h2>
 <spec-questions>
-<ol>
-  <li><strong>Split this change, or land it whole?</strong> The fifth adversarial pass (§5) argues REQ-CHANGE-007
-  bundles two things: the safe, clearly-correct "kernel owns and verifies the §6 fold" (closes T-004 by itself) and
-  the contestable "route the slash-command fold through the kernel" (re-architects a <code>must</code>-tier action's
-  ownership, and carries a real API-key wiring question — the in-host slash path has no key, the AI-coupled CLI
-  needs one). Decide: split (land the kernel-fold half now, track routing separately) or keep whole. Two refinements
-  apply in either shape and are not in question — the post-condition checks <em>fidelity</em> not just presence (§5
-  R-3), and the kernel/markdown boundary is stated <em>in</em> the requirement rather than deferred to a task (§5
-  R-2). The validate backstop stays rejected and recorded (§2); priority <code>should</code>; empty-§6 carve-out
-  inherited from REQ-CHANGE-006.</li>
-</ol>
+<p>None outstanding. Scope was split per the fifth adversarial pass: this change is the safe half (the kernel owns
+and fidelity-verifies the §6 fold; CLI path inherits it), and routing the slash-command path through the kernel is
+the sibling <code>TBD-route-fold-through-kernel</code>, which depends on this one and carries the API-key wiring
+question. The fidelity check (not mere presence) and the kernel/markdown boundary staying intact for the slash path
+this cycle are settled in §3 and the requirement. The validate backstop stays rejected and recorded (§2); priority
+<code>should</code>; empty-§6 carve-out inherited from REQ-CHANGE-006.</p>
 </spec-questions>
 </section>
 
@@ -228,7 +227,7 @@ that <code>/spectastic.implement</code> drains — this list is then the frozen 
 <h2>8 · Change log</h2>
 <spec-changelog>
 <ol>
-  <li><time datetime="2026-06-26">2026-06-26</time><span>Authored, then reshaped four times under the adversarial pass. Drafts 1–3 each tried a <code>validate</code> "fold-gap" rule and were killed for one invariant reason (validate cannot know a fold was owed without the archived §6 it ignores) — dropped and recorded out-of-scope. Draft 4 narrowed to an apply self-verify; the pass showed a same-run self-check is no stronger than the prose step it guards, and that the kernel is the only deterministic surface. This version takes that to its conclusion: the §6 fold (which today lives only in slash-command prose — <code>apply.ts</code> has no <code>tasks.html</code> code) moves into the kernel, the kernel verifies the phase before returning, and both apply paths route through it. A deliberate, narrow exception to markdown-is-canonical, since the fold needs no AI judgment. Closes triage T-005; originates from T-004.</span></li>
+  <li><time datetime="2026-06-26">2026-06-26</time><span>Authored and reshaped five times under the adversarial pass. Drafts 1–3 tried a <code>validate</code> "fold-gap" rule (killed: validate can't know a fold was owed without the archived §6 it ignores). Draft 4 narrowed to a same-run apply self-verify (killed: no stronger than the prose step it guards). Draft 5 moved the whole fold into the kernel and routed both paths through it; the fifth pass showed that was really two changes. <strong>Split here</strong>: this change is the safe half — the kernel gains a deterministic, fidelity-checked §6 fold (it had none; the CLI path now folds correctly) — and routing the slash-command path onto it is the sibling <code>TBD-route-fold-through-kernel</code>. The sixth pass (on this narrowed half) added three refinements, folded in: the fold sequences before the archive move (atomicity), <code>parallel</code> is carried over via the <code>[P]</code> convention not "preserved" (REQ-LIFECYCLE-003), and the framing is foundation-not-fix (T-004's in-host path stays prose-folded until the sibling lands). Foundation for triage T-005; originates from T-004.</span></li>
 </ol>
 </spec-changelog>
 </section>
@@ -236,7 +235,7 @@ that <code>/spectastic.implement</code> drains — this list is then the frozen 
 </spec-change>
 
 <footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
-  2026-06-26-fold-gap-guard · Make the task-fold deterministic · authored 2026-06-26
+  2026-06-26-fold-gap-guard · Fold §6 in the apply kernel · authored 2026-06-26
 </footer>
 
 </main>
