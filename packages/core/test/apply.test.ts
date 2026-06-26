@@ -121,6 +121,21 @@ describe('applyCommand (010)', () => {
     expect(proposal).toContain('Applied on'); // the proposal's own apply changelog entry
   });
 
+  it('apply mode: deepens the archived proposal\'s ../-relative paths one level (T-204)', async () => {
+    const withPaths = PROPOSAL_WITH_STATUS.replace(
+      '<body>',
+      '<head><link rel="stylesheet" href="../../../../assets/spec.css"></head><body><a href="../../spec.html">spec</a>',
+    );
+    const { fs, files } = stubFs({
+      '/specs/001/spec.html': LIVE_SPEC,
+      '/specs/001/changes/2026-06-16-foo/proposal.html': withPaths,
+    });
+    await applyCommand({ kind: 'apply', specId: '001', slug: '2026-06-16-foo' }, { cwd: '', fs });
+    const proposal = files.get('/specs/001/changes/2026-06-16-foo/proposal.html');
+    expect(proposal).toContain('href="../../../../../assets/spec.css"'); // 4-up → 5-up
+    expect(proposal).toContain('href="../../../spec.html"'); // 2-up → 3-up
+  });
+
   it('apply mode: uses the author-supplied summary in the live-spec changelog', async () => {
     const { fs, files } = stubFs({
       '/specs/001/spec.html': LIVE_SPEC,

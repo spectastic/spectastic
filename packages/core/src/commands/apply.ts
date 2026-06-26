@@ -129,11 +129,13 @@ export async function applyCommand(
   // Flip the proposal's own status to applied and record its apply entry (the
   // markdown's old step 7), written before the archive move so the archived copy
   // carries the applied status.
-  const archivedProposal = appendChangelogEntry(
-    proposalHtml
-      .replaceAll(/<spec-status value=["'][^"']+["']>[^<]*<\/spec-status>/g, '<spec-status value="applied">Applied</spec-status>')
-      .replaceAll(/(<spec-change\b[^>]*?)\sstatus=["'][^"']+["']/g, '$1 status="applied"'),
-    `<li><time datetime="${today}">${todayHuman}</time><span>Applied on ${todayHuman} — ${summary}.</span></li>`,
+  const archivedProposal = deepenArchivePaths(
+    appendChangelogEntry(
+      proposalHtml
+        .replaceAll(/<spec-status value=["'][^"']+["']>[^<]*<\/spec-status>/g, '<spec-status value="applied">Applied</spec-status>')
+        .replaceAll(/(<spec-change\b[^>]*?)\sstatus=["'][^"']+["']/g, '$1 status="applied"'),
+      `<li><time datetime="${today}">${todayHuman}</time><span>Applied on ${todayHuman} — ${summary}.</span></li>`,
+    ),
   );
   await fs.writeFile(proposalPath, archivedProposal);
 
@@ -334,6 +336,18 @@ function appendChangelogEntry(html: string, entry: string): string {
   const closing = html.lastIndexOf('</ol>');
   if (closing === -1) return html + `\n<spec-changelog><ol>\n${entry}\n</ol></spec-changelog>`;
   return `${html.slice(0, closing)}  ${entry}\n${html.slice(closing)}`;
+}
+
+/**
+ * On archive the proposal moves one level deeper (`changes/<slug>/` →
+ * `changes/archive/<slug>/`), so every `../`-relative `href`/`src` needs one
+ * more `../` to resolve from the new depth — fulfilling REQ-CHANGE-008's
+ * "archive-folder move MUST be performed by the kernel". A target reached by k
+ * `../` from the old dir sits k+1 up from the (one-level-deeper) new dir, so
+ * prepending a single `../` is correct for every relative link.
+ */
+function deepenArchivePaths(html: string): string {
+  return html.replaceAll(/((?:href|src)=")(\.\.\/)/g, '$1../$2');
 }
 
 function extractInner(html: string, tag: string): string | null {
