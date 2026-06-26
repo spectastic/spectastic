@@ -174,18 +174,23 @@ async function foldProposalTasks(
 
   const title = changeTitle(proposalHtml) ?? input.slug;
   const phaseId = `phase-${input.slug}`;
-  const phaseNum = (tracker.match(/class="phase"/g) ?? []).length + 1;
+  const phaseRe = new RegExp(String.raw`<section id="${phaseId}"[\s\S]*?</section>\s*`, 'i');
+  const phaseExisted = phaseRe.test(tracker);
+
+  // Replace any existing phase for this slug (idempotent — completes a partial
+  // prior fold rather than duplicating), then insert the complete phase.
+  let out = tracker.replace(phaseRe, '');
+  const phaseNum = (out.match(/class="phase"/g) ?? []).length + 1;
   const phase =
     `<section id="${phaseId}" class="phase">\n` +
     `<h2>${phaseNum} · ${title} <span class="par">(applied change ` +
     `<a href="./changes/archive/${input.slug}/proposal.html">${input.slug}</a>)</span></h2>\n` +
     `<p>Folded from the applied proposal's §6 (the archive is frozen).</p>\n${taskEls}\n</section>\n\n\n`;
 
-  // Bump the changelog section heading, then insert the phase before it.
-  let out = tracker.replace(
-    /<h2>(\d+)(\s*·\s*Change log<\/h2>)/i,
-    (_m, n: string, rest: string) => `<h2>${Number(n) + 1}${rest}`,
-  );
+  // Bump the changelog heading only when adding a new section (not replacing).
+  if (!phaseExisted) {
+    out = out.replace(/<h2>(\d+)(\s*·\s*Change log<\/h2>)/i, (_m, n: string, rest: string) => `<h2>${Number(n) + 1}${rest}`);
+  }
   const idx = out.indexOf('<section id="changelog">');
   if (idx === -1) {
     const mainEnd = out.lastIndexOf('</main>');
@@ -195,20 +200,59 @@ async function foldProposalTasks(
   }
 
   await fs.writeFile(trackerPath, out);
+
+  // Fidelity post-condition (REQ-CHANGE-007): re-read and confirm the phase
+  // faithfully carries every §6 item before reporting success. Runs before the
+  // archive move, so a failure leaves the proposal in changes/ for a clean
+  // retry — never half-applied.
+  const written = await fs.readFile(trackerPath, 'utf8');
+  const problems = verifyFoldFidelity(written, phaseId, taskIds, tasks);
+  if (problems.length > 0) {
+    throw new Error(`applyCommand: §6 fold for ${phaseId} is not faithful — ${problems.join('; ')}.`);
+  }
   return { trackerPath, phaseId, taskIds, created };
 }
 
-/** Each §6 `<li>` (those carrying a checkbox), stripped of the checkbox; `[P]` → parallel. */
-function extractSixTasks(proposalHtml: string): { content: string; parallel: boolean }[] {
+interface SixTask {
+  content: string;
+  parallel: boolean;
+  path: string | null;
+}
+
+/** Each §6 `<li>` (those carrying a checkbox), stripped of the checkbox; `[P]` → parallel; path captured. */
+function extractSixTasks(proposalHtml: string): SixTask[] {
   const section = /<section id=["']tasks["']>([\s\S]*?)<\/section>/i.exec(proposalHtml)?.[1] ?? '';
-  const out: { content: string; parallel: boolean }[] = [];
+  const out: SixTask[] = [];
   for (const li of section.matchAll(/<li\b[^>]*>([\s\S]*?)<\/li>/gi)) {
     let inner = li[1] ?? '';
     if (!/<input[^>]*type=["']checkbox["']/i.test(inner)) continue;
     inner = inner.replace(/<input[^>]*type=["']checkbox["'][^>]*>/i, '').trim();
-    out.push({ content: inner, parallel: /\[P\]/.test(inner) });
+    const path = /<span class=["']path["']>([\s\S]*?)<\/span>/i.exec(inner)?.[1]?.trim() ?? null;
+    out.push({ content: inner, parallel: /\[P\]/.test(inner), path });
   }
   return out;
+}
+
+/**
+ * The fidelity post-condition (REQ-CHANGE-007): every §6 item must have a
+ * `<spec-task>` in the folded phase, carrying its path. Returns the problems
+ * found (empty = faithful) — presence of a phase is not containment.
+ */
+function verifyFoldFidelity(tracker: string, phaseId: string, taskIds: string[], tasks: SixTask[]): string[] {
+  const phase = new RegExp(String.raw`<section id="${phaseId}"[\s\S]*?</section>`, 'i').exec(tracker)?.[0];
+  if (!phase) return [`phase ${phaseId} missing after write`];
+  const problems: string[] = [];
+  taskIds.forEach((id, i) => {
+    const tag = new RegExp(String.raw`<spec-task\b[^>]*\bid="${id}"[^>]*>`, 'i').exec(phase)?.[0];
+    if (!tag) {
+      problems.push(`no <spec-task> for ${id}`);
+      return;
+    }
+    const t = tasks[i];
+    if (t?.path && !phase.includes(t.path)) problems.push(`${id} dropped path "${t.path}"`);
+    if (t?.parallel && !/\bparallel\b/.test(tag)) problems.push(`${id} dropped parallel marker`);
+  });
+  return problems;
 }
 
 /** The highest `T-NNN` id already in the tracker (0 if none). */
