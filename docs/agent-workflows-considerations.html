@@ -1,0 +1,641 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Agentic Workflows — Considerations for Spectastic</title>
+<meta name="description" content="Where the spectastic lifecycle can be driven by multi-agent workflows — a cited read on the patterns and portable primitives, then six proposed spectastic workflows: hands-off pipeline, value-ranked slicing, and four more.">
+<link rel="stylesheet" href="../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../assets/favicon.svg">
+<script src="../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Considerations · Lifecycle automation</p>
+  <h1>Agentic Workflows</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    The lifecycle is already a pipeline of typed artifacts. That is exactly the shape a multi-agent
+    workflow orchestrates — and exactly where spectastic's gates become the guardrails that make autonomy safe.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>     <span><spec-status value="draft">Draft</spec-status></span>
+    <b>Type</b>       <span>Design brief (a <code>/doc</code> — research + considerations, feeds future <code>/spectastic.spec</code> slices)</span>
+    <b>Author</b>     <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Created</b>    <span><time datetime="2026-06-25">25 Jun 2026</time></span>
+    <b>Sources</b>    <span>Primary sources, fetched + quoted 25 Jun 2026 (see §2.6)</span>
+    <b>Read time</b>  <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-tldr>
+    <p>spectastic's lifecycle — <code>principles → spec → plan → tasks → implement → propose → apply →
+    triage</code> — is a chain of deterministic verbs, each reading and writing a typed, validatable
+    single-file artifact. That is the textbook substrate for <strong>agentic workflows</strong>: the seams are
+    explicit, the hand-offs are typed, and <code>spectastic validate</code> + the <em>done-means-verified</em>
+    principle already sit between every step. §2 is a cited read on the field — the workflow-vs-agent
+    distinction, the canonical pattern library, the primitives every orchestration framework shares, how to
+    rank work by business value, and how to keep autonomous pipelines safe. §3 distils a small,
+    <strong>tool-agnostic</strong> primitive vocabulary (the same six shapes appear in Claude's Workflow tool,
+    LangGraph, CrewAI, and the OpenAI Agents SDK). §4 proposes <strong>six spectastic workflows</strong>, led
+    by the two requested headliners — a <em>hands-off lifecycle pipeline</em> (submit a spec, walk away) and a
+    <em>value-ranked slicer</em> (one oversized spec → many slices, ordered by business value). §6 is the part
+    that matters most: spectastic's existing discipline (validate gates, P-7, the explore quarantine) is the
+    guardrail layer the research says autonomy requires. <strong>§9 is an addendum</strong> answering two
+    sharp questions: a checkpoint need not be a <em>human</em> — it is a configurable <strong>Decider</strong>
+    (human · grounded agent · panel + arbitrator) — and a single <strong>effort</strong> dial can scale the
+    whole pipeline from a cheap sequential pass to a voting panel, the same control Anthropic and OpenAI
+    already ship.</p>
+  </spec-tldr>
+
+  <spec-audience-map>
+    <dl>
+      <dt>Exec / PM</dt>   <dd>The TL;DR, then §<a href="#thesis">The opportunity</a> and §<a href="#workflows">Proposed workflows</a>.</dd>
+      <dt>Reviewer</dt>    <dd>§<a href="#research">What the field does</a> (cited), §<a href="#guardrails">Guardrails</a>, §<a href="#questions">Open questions</a>.</dd>
+      <dt>Implementer</dt> <dd>§<a href="#primitives">The primitive layer</a>, §<a href="#workflows">Proposed workflows</a>, §<a href="#map">Where each piece lives</a>.</dd>
+    </dl>
+  </spec-audience-map>
+</header>
+
+
+<!-- =======================================================
+     §1 The opportunity
+     ======================================================= -->
+<section id="thesis">
+<h2>1 · The opportunity — a lifecycle is a pipeline</h2>
+
+<p>Most teams reaching for agent orchestration have to <em>invent</em> the seams: where does one step hand off
+to the next, what shape does it pass, how do you know a step succeeded? spectastic was built with those seams
+already drawn. Each verb is a pure-ish transform over a typed artifact, and two checks already stand between
+every pair of steps:</p>
+
+<ul>
+  <li><strong>Typed hand-offs.</strong> <code>spec.html → plan.html → tasks.html</code> each carry stable IDs
+  (<a href="../principles.html#P-3">P-3</a>) and a machine-checkable structure — a downstream agent reads a
+  contract, not prose it has to re-interpret.</li>
+  <li><strong>A validator between steps.</strong> <code>spectastic validate</code> is a deterministic gate any
+  orchestration can run after each verb — the cheapest possible defence against the failure the research calls
+  <em>error compounding</em> (§<a href="#research">2.5</a>).</li>
+  <li><strong>A verification bar at the end.</strong> <a href="../principles.html#P-7">P-7</a> (done means
+  verified) is the project's name for the "human review remains crucial even when automated testing passes"
+  guardrail the field recommends.</li>
+</ul>
+
+<p>So the question this brief answers is not "could spectastic use agent workflows" — it is "<em>which</em>
+stretches of the lifecycle are worth handing to a workflow, and where do the human checkpoints belong." The
+answer turns on a distinction the field draws sharply, which §2 opens with.</p>
+</section>
+
+
+<!-- =======================================================
+     §2 What the field does (cited)
+     ======================================================= -->
+<section id="research">
+<h2>2 · What the field does</h2>
+<p>A grounded read, quoted from primary sources (listed in §2.6). The synthesis below was recovered by fetching
+each cited source directly.</p>
+
+<h3 id="r-1">2.1 · Workflows vs agents — the load-bearing distinction</h3>
+<p>Anthropic's <a href="https://www.anthropic.com/engineering/building-effective-agents"><em>Building Effective
+Agents</em></a> draws the line this brief turns on. <strong>Workflows</strong> are <em>"systems where LLMs and
+tools are orchestrated through predefined code paths."</em> <strong>Agents</strong> are <em>"systems where
+LLMs dynamically direct their own processes and tool usage, maintaining control over how they accomplish
+tasks."</em> The guidance is to prefer the former: <em>"find the simplest solution possible, and only
+increasing complexity when needed… add complexity only when it demonstrably improves outcomes."</em></p>
+<p>This matters for spectastic because the lifecycle is a <em>predefined code path</em> — the verb order is
+known. So most of what follows is <strong>workflow</strong>, not open-ended agent: deterministic orchestration
+of model calls along a path spectastic already defines. The one genuinely agentic step is implementation
+itself, and Anthropic flags exactly that case — <em>"resolving software engineering tasks"</em> — as where
+autonomous agents earn their cost.</p>
+
+<h3 id="r-2">2.2 · The pattern library</h3>
+<p>The same source catalogues the composable patterns. Each maps cleanly onto a spectastic need (§4):</p>
+<table>
+  <thead><tr><th>Pattern</th><th>What it is (quoted)</th><th>When to use</th></tr></thead>
+  <tbody>
+    <tr><td><strong>Prompt chaining</strong></td><td>Sequential steps where each call processes the previous output</td><td>"The task can be easily and cleanly decomposed into fixed subtasks" — trades latency for accuracy</td></tr>
+    <tr><td><strong>Routing</strong></td><td>Classify an input, direct it to a specialised path</td><td>"Complex tasks with distinct categories better handled separately"</td></tr>
+    <tr><td><strong>Parallelization</strong> — <em>sectioning</em></td><td>"Breaking a task into independent subtasks run in parallel"</td><td>Subtasks parallelize for speed</td></tr>
+    <tr><td><strong>Parallelization</strong> — <em>voting</em></td><td>"Running the same task multiple times to get diverse outputs"</td><td>"Multiple perspectives or attempts are needed for higher confidence" — they cite code-vulnerability review</td></tr>
+    <tr><td><strong>Orchestrator-workers</strong></td><td>A central LLM "dynamically breaks down tasks, delegates to workers, synthesizes results"</td><td>Complex tasks "where you can't predict the subtasks needed" — e.g. multi-file code changes</td></tr>
+    <tr><td><strong>Evaluator-optimizer</strong></td><td>One LLM generates, another evaluates + feeds back, in a loop</td><td>"Clear evaluation criteria, and… iterative refinement provides measurable value"</td></tr>
+    <tr><td><strong>Autonomous agent</strong></td><td>The model plans and acts with tools, taking environmental feedback each step</td><td>"Open-ended problems where it's difficult or impossible to predict the required number of steps"</td></tr>
+  </tbody>
+</table>
+
+<h3 id="r-3">2.3 · The primitives every framework shares</h3>
+<p>The Claude Agent SDK gives subagents two properties that recur across the field. <strong>Context
+isolation</strong>: <em>"Each subagent runs in its own fresh conversation. Intermediate tool calls and results
+stay inside the subagent; only its final message returns to the parent"</em>
+(<a href="https://code.claude.com/docs/en/agent-sdk/subagents">subagents docs</a>). <strong>Parallelization</strong>:
+<em>"independent subtasks finish in the time of the slowest one rather than the sum of all of them."</em> For
+fan-outs beyond a handful, the docs point at the <em>Workflow</em> tool, <em>"which moves the orchestration into
+a script the runtime executes outside the conversation context"</em> — the boundary between turn-by-turn
+delegation and a real pipeline.</p>
+<p>The same shapes appear under other names. CrewAI's
+<a href="https://docs.crewai.com/en/concepts/processes">processes</a> are either <em>sequential</em>
+("tasks… completed in an orderly progression," each output the next's context — a pipeline) or
+<em>hierarchical</em>, where a manager agent does "task planning &amp; delegation… output review… completion
+assessment" — the orchestrator-worker pattern with a built-in evaluator.
+<a href="https://docs.langchain.com/oss/python/langgraph/interrupts">LangGraph</a> models the human checkpoint
+as a first-class <code>interrupt</code> that pauses a stateful graph and resumes with injected state. The
+lesson: <strong>a small set of primitives — fan-out, pipeline, evaluator/judge, orchestrator-worker,
+human-checkpoint, bounded loop — is shared across every orchestrator.</strong> §3 turns that into spectastic's
+portable vocabulary.</p>
+
+<h3 id="r-4">2.4 · Ranking work by business value</h3>
+<p>The requested "order slices by business value" workflow has a well-established method behind it.
+<strong>WSJF</strong> (Weighted Shortest Job First, from SAFe) is the canonical formula
+(<a href="https://agility-at-scale.com/safe/lpm/wsjf-weighted-shortest-job-first/">SAFe / agility-at-scale</a>):</p>
+<blockquote style="border-left:3px solid var(--c-border);margin:var(--s-4) 0;padding-left:var(--s-4);color:var(--c-text-soft);font-style:italic;">
+  WSJF = (User-Business Value + Time Criticality + Risk Reduction / Opportunity Enablement) ÷ Job Size
+</blockquote>
+<p>The numerator is the <em>cost of delay</em>; the denominator is size, "typically scored using relative
+sizing" on a "modified Fibonacci scale (1, 2, 3, 5, 8, 13, 20)," with all items scored <em>relative to each
+other in one session</em>, never in isolation. That last property is the important one for an agent: WSJF is a
+<strong>comparative</strong> judgement over a set, which is exactly what an LLM judge does best — and worst.</p>
+<p>WSJF is not the only such rubric, and for <em>this</em> job it may not be the best. <strong>RICE</strong>
+(<a href="https://www.intercom.com/blog/rice-simple-prioritization-for-product-managers/">Reach × Impact ×
+Confidence ÷ Effort</a>) is the other canonical value-÷-effort formula — and the two are <em>not</em>
+interchangeable: <em>"RICE looks for the highest impact per effort. WSJF asks what brings the most urgent value
+now… pick one as your main tool and use the other for a gut check."</em> The standard layering puts WSJF at the
+portfolio level and <strong>RICE at the team backlog</strong> — and splitting one oversized spec into slices is
+a backlog-level decision, so RICE is the better default for the W-2 slicer (§<a href="#W-2">4</a>). It also has
+a property WSJF doesn't: an explicit <strong>Confidence</strong> term, which maps onto something spectastic
+already owns — the grounding ledger. §<a href="#rubrics">10</a> develops the rubric family, that mapping, and a
+way to slice <em>by</em> RICE contribution.</p>
+<p>The reliability caveat is real. An LLM acting as a judge carries documented biases — position/order bias,
+verbosity bias, and self-preference among them — so a naïve "score each slice 1–10" is fragile. The mitigations
+the field converges on (e.g. the
+<a href="https://www.confident-ai.com/blog/g-eval-the-definitive-guide">G-Eval</a> rubric-scoring approach) are:
+an <strong>explicit rubric</strong> (the WSJF components <em>are</em> that rubric), <strong>pairwise
+comparison</strong> with position-swapping rather than absolute scores, and a <strong>multi-vote panel</strong>
+to dampen any single judge's bias. spectastic's <em>judge panel</em> pattern (§3) is built to carry exactly
+these. Agile <a href="https://www.humanizingwork.com/the-humanizing-work-guide-to-splitting-user-stories/">vertical-slicing</a>
+supplies the complementary half — a slice should cut top-to-bottom and deliver end-to-end value, so each
+ranked slice is independently demoable (which is already spectastic's <em>smallest-demoable</em> prompt).</p>
+
+<h3 id="r-5">2.5 · Keeping autonomous pipelines safe</h3>
+<p>The strongest warning in <em>Building Effective Agents</em> is about exactly the hands-off case: <em>"The
+autonomous nature of agents means higher costs, and the potential for compounding errors. We recommend
+extensive testing in sandboxed environments, along with the appropriate guardrails."</em> They add that
+<em>"human review remains crucial"</em> even when automated testing passes, and that agents should be able to
+<em>"pause for human feedback at checkpoints or when encountering blockers."</em></p>
+<p>Read against spectastic, every one of those guardrails already has a home: <em>sandbox</em> → the explore
+<a href="../specs/022-explore/spec.html">quarantine</a>; <em>verification gate</em> → <code>validate</code> +
+<a href="../principles.html#P-7">P-7</a>; <em>checkpoint</em> → the <code>AskUserQuestion</code> decision phase
+the interview verbs already use; <em>error compounding</em> → the typed artifact + validate between every step.
+The design work in §4–§6 is mostly <em>wiring the guardrails spectastic already owns into the pipeline</em>,
+not inventing new ones.</p>
+
+<h3 id="r-6">2.6 · Sources &amp; method</h3>
+<p>This run fanned out searches across five angles and fetched 22 quality-graded sources; the automated
+synthesis degraded, so the claims above were recovered by fetching each primary source directly and quoting it.
+The load-bearing citations:</p>
+<table>
+  <thead><tr><th>Source</th><th>Quality</th><th>Used for</th></tr></thead>
+  <tbody>
+    <tr><td><a href="https://www.anthropic.com/engineering/building-effective-agents">Anthropic — Building Effective Agents</a></td><td>primary</td><td>workflow/agent distinction, pattern library, guardrails (§2.1, 2.2, 2.5)</td></tr>
+    <tr><td><a href="https://code.claude.com/docs/en/agent-sdk/subagents">Claude Agent SDK — Subagents</a></td><td>primary</td><td>context isolation, parallelization, Workflow-tool threshold (§2.3)</td></tr>
+    <tr><td><a href="https://docs.crewai.com/en/concepts/processes">CrewAI — Processes</a></td><td>primary</td><td>sequential vs hierarchical / manager agent (§2.3)</td></tr>
+    <tr><td><a href="https://docs.langchain.com/oss/python/langgraph/interrupts">LangGraph — Interrupts</a></td><td>primary</td><td>human-in-the-loop as a first-class primitive (§2.3)</td></tr>
+    <tr><td><a href="https://agility-at-scale.com/safe/lpm/wsjf-weighted-shortest-job-first/">SAFe — WSJF</a></td><td>secondary</td><td>business-value ranking formula (§2.4)</td></tr>
+    <tr><td><a href="https://www.humanizingwork.com/the-humanizing-work-guide-to-splitting-user-stories/">Humanizing Work — Splitting stories</a></td><td>primary</td><td>vertical slicing / end-to-end value (§2.4)</td></tr>
+    <tr><td><a href="https://www.confident-ai.com/blog/g-eval-the-definitive-guide">Confident AI — G-Eval</a></td><td>secondary</td><td>LLM-judge bias + rubric/pairwise mitigations (§2.4)</td></tr>
+  </tbody>
+</table>
+<spec-sidenote>Two arXiv URLs the search surfaced carried implausible future-dated identifiers and one was
+refuted in verification; they were dropped rather than cited. The LLM-judge bias claims are stated at the level
+the rubric/pairwise literature supports, not pinned to those papers.</spec-sidenote>
+</section>
+
+
+<!-- =======================================================
+     §3 The primitive layer (tool-agnostic)
+     ======================================================= -->
+<section id="primitives">
+<h2>3 · The primitive layer — write once, port anywhere</h2>
+
+<p>Rather than couple spectastic to one orchestrator, name the <strong>six primitives</strong> the field shares
+(§2.3) and treat any concrete tool as a backend. A workflow designed in this vocabulary runs on Claude's
+Workflow tool today and ports to LangGraph, CrewAI, or the OpenAI Agents SDK with no design change.</p>
+
+<table>
+  <thead><tr><th>Primitive</th><th>What it does</th><th>Claude Workflow tool</th><th>Elsewhere</th></tr></thead>
+  <tbody>
+    <tr><td><strong>fan-out</strong></td><td>Run N independent tasks at once (sectioning)</td><td><code>parallel()</code> / <code>pipeline()</code></td><td>LangGraph parallel edges · CrewAI parallel tasks · Agents-SDK concurrent calls</td></tr>
+    <tr><td><strong>pipeline</strong></td><td>Thread an item through ordered stages</td><td><code>pipeline()</code></td><td>LangGraph graph edges · CrewAI <em>sequential</em> process</td></tr>
+    <tr><td><strong>evaluator / judge</strong></td><td>Score or refute an output against criteria; vote</td><td><code>agent({schema})</code> + N-vote</td><td>CrewAI manager review · Agents-SDK guardrails</td></tr>
+    <tr><td><strong>orchestrator-worker</strong></td><td>A coordinator splits work, delegates, synthesises</td><td><code>phase()</code> + <code>agent()</code></td><td>CrewAI <em>hierarchical</em> (<code>manager_llm</code>) · LangGraph supervisor</td></tr>
+    <tr><td><strong>decider</strong> (checkpoint)</td><td>Consult the configured decider at a checkpoint — see §9.1</td><td><em>human</em>: between phases via <code>AskUserQuestion</code> · <em>agent/panel</em>: inline <code>agent()</code></td><td>LangGraph <code>interrupt()</code> · CrewAI human-input / manager</td></tr>
+    <tr><td><strong>bounded loop</strong></td><td>Repeat until done / dry / budget</td><td><code>while (budget…)</code></td><td>cyclic graph · run loop</td></tr>
+  </tbody>
+</table>
+<p style="font-size:0.9rem;color:var(--c-text-soft);">A single <strong><code>--effort</code></strong> dial scales this whole table at once — how wide the fan-out, how deep the decider, how long the loop. §9.2.</p>
+
+<spec-note>
+<p><strong>One constraint, with a way around it.</strong> A Claude workflow script runs <em>headless</em>,
+outside the conversation — it cannot itself stop to ask a <em>person</em>. So <em>human</em> checkpoints sit
+<em>between</em> workflow phases: a workflow runs an autonomous stretch, returns, the main loop surfaces an
+<code>AskUserQuestion</code> gate, and the next phase launches on the answer. But a checkpoint is really
+"consult the <strong>decider</strong>," and the decider need not be human — an <em>agent</em> or a
+<em>panel</em> decider runs <em>inline</em>, inside the script. §9.1 makes the checkpoint a configurable role,
+which is what turns "bursts bracketed by human gates" into a dial between fully-hands-off and fully-gated.</p>
+</spec-note>
+</section>
+
+
+<!-- =======================================================
+     §4 Proposed workflows
+     ======================================================= -->
+<section id="workflows">
+<h2>4 · Six workflows for spectastic</h2>
+
+<p>Led by the two requested headliners (W-1, W-2). Each is tagged with the pattern(s) it uses, the primitives
+it composes, where it would live, and the one guardrail it must not ship without.</p>
+
+<h3 id="W-1">W-1 · Hands-off lifecycle pipeline <spec-pill>headliner</spec-pill></h3>
+<p><em>Submit a spec, walk away.</em> After a human approves the spec, an orchestrator drives
+<code>slice → plan → tasks → implement → verify</code>, pausing only at the value-laden checkpoints.</p>
+<dl>
+  <dt>Patterns</dt> <dd>Prompt chaining (the lifecycle <em>is</em> the chain) + orchestrator-workers (implement) + evaluator-optimizer (the verify gate).</dd>
+  <dt>Primitives</dt><dd>pipeline (artifact → artifact) · evaluator (<code>validate</code> + P-7 between every step) · human-checkpoint (approve slices &amp; must-tier) · bounded loop (<code>implement --all</code> drains tasks).</dd>
+  <dt>Lives</dt>    <dd>An orchestration script calling the existing verb CLIs — the deferred action-detecting <code>/spectastic.next</code> composed into a loop. No new artifact types; the verbs already emit + validate them.</dd>
+  <dt>Guardrail</dt><dd><strong>Checkpoint before implement</strong> (and at slice priorities); <code>validate</code> after every step to stop error compounding; the P-7 verify gate before "done." This is the autonomous case Anthropic warns about (§2.5) — it ships sandboxed and gated or not at all.</dd>
+</dl>
+
+<h3 id="W-2">W-2 · Value-ranked slicer <spec-pill>headliner</spec-pill></h3>
+<p><em>One oversized spec → many slices, ordered by business value.</em> Take a spec that trips the amber/red
+<code>&lt;spec-budget&gt;</code> and emit sibling slice-specs, each with a <code>&lt;spec-parent&gt;</code>
+back-reference and a value-ranked index.</p>
+<dl>
+  <dt>Patterns</dt> <dd>Parallelization — sectioning (draft candidate slices) + voting (rank) — plus a completeness critic (did the slices cover the parent?).</dd>
+  <dt>Primitives</dt><dd>fan-out (draft each candidate slice) · judge-panel (score each by a <strong>pluggable rubric</strong> — default <strong>RICE</strong>, WSJF when time-criticality dominates, ICE for a quick pass — pairwise + multi-vote to dampen bias, §2.4) · orchestrator (merge + order) · human-checkpoint (confirm the ranking). A slice's <strong>Confidence</strong> is its <a href="../principles.html#P-7">grounding</a> status and its <strong>Reach × Impact</strong> is its smallest-demoable boundary (§<a href="#rubrics">10</a>).</dd>
+  <dt>Lives</dt>    <dd>The deferred <code>/spectastic.split</code> — already noted as composable from <code>spec + propose + apply</code>; this adds the ranking judge and the coverage critic on top.</dd>
+  <dt>Guardrail</dt><dd><strong>Business value is a human-owned call.</strong> The panel <em>proposes</em> a WSJF-ranked order; the user confirms via <code>AskUserQuestion</code>. The completeness critic must prove no parent requirement was dropped before any slice is written.</dd>
+</dl>
+
+<h3 id="W-3">W-3 · Adversarial proposal hardening</h3>
+<p>Scale the existing propose-time risk pass from one shot to a panel: N skeptics each try to <em>refute</em> a
+proposal or surface a risk; majority vote decides what becomes a <code>&lt;spec-risk&gt;</code>.</p>
+<dl>
+  <dt>Patterns</dt> <dd>Parallelization — voting / adversarial verify.</dd>
+  <dt>Primitives</dt><dd>fan-out skeptics · judge (majority-refute kills a weak risk; survivors are logged).</dd>
+  <dt>Lives</dt>    <dd><code>/spectastic.propose --adversarial</code> exists as a single pass — this widens it to a panel.</dd>
+  <dt>Guardrail</dt><dd>Risks land as <code>&lt;spec-risk status="identified"&gt;</code> and <a href="../specs/022-explore/spec.html">apply</a> already refuses while any remain unresolved — the human dispositions each. The panel proposes; it never auto-closes a risk.</dd>
+</dl>
+
+<h3 id="W-4">W-4 · Conformance &amp; drift sweep</h3>
+<p>A whole-repo audit: sweep every spec/plan/tasks/verify bundle for the judgement calls the deterministic
+validator cannot make — "does this plan actually satisfy its spec?", "has this verify view drifted?", "does
+this requirement still trace to a task?"</p>
+<dl>
+  <dt>Patterns</dt> <dd>Multi-modal sweep + completeness critic.</dd>
+  <dt>Primitives</dt><dd>fan-out (one agent per spec, or per check-dimension) · pipeline (find → adversarially verify) · completeness critic (what did we miss?).</dd>
+  <dt>Lives</dt>    <dd>An agentic layer <em>above</em> <code>spectastic validate</code> — the deterministic rules stay the cheap backstop; the workflow adds the semantic checks.</dd>
+  <dt>Guardrail</dt><dd>Findings are <strong>advisory</strong>: each becomes a <code>&lt;spec-triage&gt;</code> card, never a silent edit. The validator remains the source of truth for structural conformance.</dd>
+</dl>
+
+<h3 id="W-5">W-5 · Triage list-intake fan-out</h3>
+<p>Paste a long list of defects/ideas; one agent per item classifies its layer
+(<code>just-do</code> / <code>defer</code> / <code>spec</code> / …) in parallel; cards append to
+<code>inbox.html</code>.</p>
+<dl>
+  <dt>Patterns</dt> <dd>Parallelization — sectioning.</dd>
+  <dt>Primitives</dt><dd>fan-out (one classifier per item) · orchestrator (collect → append in order).</dd>
+  <dt>Lives</dt>    <dd><code>/spectastic.triage</code> list-intake mode runs this sequentially today — parallelizing it is a drop-in speedup.</dd>
+  <dt>Guardrail</dt><dd>The <code>just-do</code>-vs-<code>spec</code> boundary is the human-commit decision the triage discipline already routes through <code>AskUserQuestion</code>; the fan-out flags ambiguous items for that gate rather than guessing.</dd>
+</dl>
+
+<h3 id="W-6">W-6 · Explore graduation</h3>
+<p>The deferred back half of <a href="../specs/022-explore/spec.html">022-explore</a>: turn a quarantined
+build into a real spec/plan/tasks — classify spike vs tracer-bullet, extract the spec from what was built,
+restore the relaxed gates.</p>
+<dl>
+  <dt>Patterns</dt> <dd>Orchestrator-workers + evaluator (the run record becomes verified grounding).</dd>
+  <dt>Primitives</dt><dd>pipeline (extract → classify → restore) · human-checkpoint (classification is an honest call) · evaluator (promote the captured run to <code>grounding="verified"</code>).</dd>
+  <dt>Lives</dt>    <dd>The <code>TBD-explore-graduation</code> sibling slice of 022.</dd>
+  <dt>Guardrail</dt><dd>Quarantine + mandatory graduation is the anti-ship guard already shipped; the classification is recorded so it can't be silently reversed.</dd>
+</dl>
+
+<spec-note>
+<p>W-1 and W-2 are the only two that need genuinely new orchestration; W-3, W-4, W-5 <em>scale existing verbs</em>
+from one-shot to fan-out, and W-6 is a deferred slice that happens to be workflow-shaped. The cheapest path to
+value is W-5 (pure speedup, no new surface) and W-3 (the panel already has a home); the highest-value is W-1.</p>
+</spec-note>
+</section>
+
+
+<!-- =======================================================
+     §5 Where each piece lives
+     ======================================================= -->
+<section id="map">
+<h2>5 · Where each piece lives</h2>
+<table>
+  <thead><tr><th>Workflow</th><th>Backed by</th><th>New surface?</th><th>Human checkpoint</th></tr></thead>
+  <tbody>
+    <tr><td>W-1 hands-off pipeline</td><td>orchestration script over the verb CLIs (deferred <code>/spectastic.next</code> loop)</td><td>Yes — the orchestrator</td><td>Before implement; at slice priorities</td></tr>
+    <tr><td>W-2 value-ranked slicer</td><td>deferred <code>/spectastic.split</code> + ranking judge</td><td>Yes — the judge + critic</td><td>Confirm the ranking</td></tr>
+    <tr><td>W-3 adversarial hardening</td><td><code>/spectastic.propose --adversarial</code></td><td>No — widens an existing pass</td><td>Disposition each risk</td></tr>
+    <tr><td>W-4 conformance sweep</td><td>agentic layer over <code>spectastic validate</code></td><td>Partial — advisory layer</td><td>Findings → triage cards</td></tr>
+    <tr><td>W-5 triage fan-out</td><td><code>/spectastic.triage</code> list-intake</td><td>No — parallelizes existing</td><td>just-do vs spec boundary</td></tr>
+    <tr><td>W-6 explore graduation</td><td><code>TBD-explore-graduation</code> (022 sibling)</td><td>Yes — a deferred slice</td><td>spike vs tracer-bullet call</td></tr>
+  </tbody>
+</table>
+</section>
+
+
+<!-- =======================================================
+     §6 Guardrails
+     ======================================================= -->
+<section id="guardrails">
+<h2>6 · Guardrails — spectastic already owns them</h2>
+<p>The field's safety advice (§2.5) reads like a description of spectastic's existing discipline. The design
+job is to <em>wire</em> these into any workflow, not to invent them:</p>
+<dl>
+  <dt>Start simple</dt><dd>Prefer a <em>workflow</em> (predefined path) over an <em>agent</em> for every step except implementation. The lifecycle order is known — don't hand it to an open-ended planner.</dd>
+  <dt>Validate between steps</dt><dd>Run <code>spectastic validate</code> after every verb. A typed artifact that fails validation halts the pipeline before the error compounds into the next step.</dd>
+  <dt>Verify before "done"</dt><dd><a href="../principles.html#P-7">P-7</a> is the bar: tests pass, validate clean, runtime exercised. No workflow may report a step done on structural evidence alone.</dd>
+  <dt>Sandbox the risky stretch</dt><dd>Anything build-to-learn runs in the explore <a href="../specs/022-explore/spec.html">quarantine</a> — the anti-ship guard already refuses to ship un-graduated work.</dd>
+  <dt>Checkpoint the value calls</dt><dd>Business-value ranking (W-2), must-tier scope (W-1), risk disposition (W-3), and the spike/tracer-bullet call (W-6) are human decisions surfaced via <code>AskUserQuestion</code> between phases. The agent proposes; the person commits.</dd>
+  <dt>Bound every loop</dt><dd>Drain loops (<code>implement --all</code>) and discovery loops stop on a tasks-exhausted, dry, or budget condition — never an open-ended "keep going."</dd>
+</dl>
+</section>
+
+
+<!-- =======================================================
+     §7 Open questions
+     ======================================================= -->
+<section id="questions">
+<h2>7 · Open questions</h2>
+<spec-questions>
+<ol>
+  <li><strong>Orchestrator home.</strong> Does W-1 ship as a Claude Workflow script, a tool-agnostic CLI driver (<code>spectastic run &lt;spec-id&gt;</code>) that shells the verbs, or both — the script for the Claude surface, the CLI for portability? The primitive layer (§3) says the design is the same either way; the packaging is the call.</li>
+  <li><strong>Checkpoint granularity for W-1.</strong> One approval gate (before implement) or several (after slice, after plan, after tasks)? Fewer gates = more hands-off but more rework risk if an early step drifts. Likely a flag: <code>--checkpoints=minimal|each</code>.</li>
+  <li><strong>WSJF inputs for W-2.</strong> Does the judge infer the WSJF components from the spec text, or does the user supply business-value / time-criticality per candidate slice and the agent only computes + orders? The research (§2.4) says LLM ranking is most reliable as <em>pairwise comparison against a rubric</em>, not absolute scoring — which leans toward agent-proposes-pairwise, human-supplies-weights.</li>
+  <li><strong>Cost ceiling.</strong> A full hands-off run fans out many agents; what is the per-run budget cap, and does the pipeline degrade gracefully (fewer voters, shallower panels) as it approaches the ceiling rather than halting?</li>
+  <li><strong>Verb re-entrancy.</strong> W-1 assumes each verb is safe to run unattended on a Draft artifact (the P-6 in-place-edit path). Are all verbs idempotent enough that a re-run after a failed step is safe, or does the orchestrator need explicit checkpoint/rollback state?</li>
+</ol>
+</spec-questions>
+</section>
+
+
+<!-- =======================================================
+     §8 Out of scope
+     ======================================================= -->
+<section id="scope">
+<h2>8 · Out of scope (for this <code>/doc</code>)</h2>
+<spec-non-goals>
+  <ul>
+    <li><spec-out-of-scope defer-to="TBD-hands-off-pipeline">Building W-1, the orchestrator, or the <code>/spectastic.next</code> loop — this brief feeds a future <code>/spectastic.spec</code> slice.</spec-out-of-scope></li>
+    <li><spec-out-of-scope defer-to="TBD-value-ranked-slicer">Building W-2, the pluggable-rubric judge (RICE / WSJF — §10), a slice-decomposition algorithm, or the <code>/spectastic.split</code> retrofit.</spec-out-of-scope></li>
+    <li><spec-out-of-scope defer-to="TBD-explore-graduation">W-6 graduation mechanics — owned by the 022-explore back-half slice.</spec-out-of-scope></li>
+    <li><spec-out-of-scope defer-to="never">Adopting a specific third-party orchestration framework as a hard dependency — the primitive layer (§3) keeps spectastic backend-agnostic by design.</spec-out-of-scope></li>
+    <li><spec-out-of-scope defer-to="TBD-decider-effort">Implementing the <code>Decider</code> role or the <code>--effort</code> dial (§9) in the CLI/kernel — this brief feeds a future <code>/spectastic.spec</code> slice.</spec-out-of-scope></li>
+  </ul>
+</spec-non-goals>
+</section>
+
+
+<!-- =======================================================
+     §9 Addendum — tuning the autonomy surface
+     ======================================================= -->
+<section id="addendum">
+<h2>9 · Addendum — tuning the autonomy surface</h2>
+<p>Two refinements that the first draft under-served. They share a thesis: autonomy is not a switch but a
+<strong>surface with two dials</strong> — <em>who decides</em> at a checkpoint (§9.1) and <em>how much
+orchestration</em> a step spends (§9.2). Both are grounded below in primary sources, re-fetched and quoted.</p>
+
+<h3 id="a-decider">9.1 · The Decider — a checkpoint is a role, not a person</h3>
+<p>§3 said human checkpoints must bracket a headless workflow. True for <em>humans</em> — but a checkpoint is
+really <em>"consult the decider,"</em> and the decider is a <strong>configurable role</strong> on one
+interface, with three implementations:</p>
+<dl>
+  <dt><code>human</code> <spec-pill>default</spec-pill></dt>
+  <dd>An <code>AskUserQuestion</code> gate between phases. Highest trust, not inline. A checkpoint is opted
+  <em>down</em> from here — so full hands-off is a deliberate choice, never the silent default.</dd>
+  <dt><code>agent</code></dt>
+  <dd>One specialist agent that decides <em>inline</em>, grounded in a <strong>constitution</strong> and,
+  optionally, a knowledge source (a spec corpus, a knowledge graph). This is established: Anthropic's
+  <a href="https://arxiv.org/abs/2212.08073">Constitutional AI</a> trains preferences by having
+  <em>"a model… evaluate which of the two samples is better,"</em> and
+  <a href="https://arxiv.org/abs/2309.00267">RLAIF</a> shows AI feedback <em>"achieves comparable performance
+  to RLHF."</em> spectastic already ships the constitution: <a href="../principles.html">principles.html</a>.</dd>
+  <dt><code>panel</code></dt>
+  <dd>N <em>diverse</em> agents plus an arbitrator (majority vote, or a dedicated arbiter agent). The panel
+  paper <a href="https://arxiv.org/abs/2404.18796"><em>Replacing Judges with Juries</em></a> finds a panel of
+  smaller models <em>"outperforms a single large judge, exhibits less intra-model bias due to its composition
+  of disjoint model families… over seven times less expensive,"</em> and <a href="https://arxiv.org/abs/2305.14325">multi-agent
+  debate</a> improves factuality when an arbitrator resolves the exchange.</dd>
+</dl>
+
+<p>This maps straight onto spectastic's existing <code>AIProvider</code> interface
+(<code>packages/core/src/types.ts</code>), which already has <code>ask()</code> (bounded human choice) and
+<code>subagent()</code> (spawn a specialist) — a <code>Decider</code> is the small abstraction over both.</p>
+
+<spec-note>
+<p><strong>The guardrails the research demands</strong> — non-negotiable if a decider is not human:</p>
+<ul>
+  <li><strong>Never let an agent judge its own output.</strong> Self-preference bias is measured: LLM judges
+  <em>"assign significantly higher evaluations to outputs with lower perplexity… regardless of whether the
+  outputs were self-generated"</em> (<a href="https://arxiv.org/abs/2410.21819">Self-Preference Bias</a>).
+  Separate the author-agent from the decider-agent.</li>
+  <li><strong>A panel needs diverse lenses, not N copies.</strong> The panel's value <em>is</em> the disjoint
+  model families (above); N identical judges share their mistakes. Returns also diminish as voters grow —
+  cap the panel rather than scale it without limit.</li>
+  <li><strong>Keep <code>human</code> for high-stakes / irreversible calls</strong> — escalate by risk, the
+  pattern the field converges on. The agent proposes; for anything that can't be cheaply undone, the person
+  commits.</li>
+  <li><strong>Log every verdict.</strong> A decider's call and its grounds are recorded — which is just
+  spectastic's artifact-trail ethos applied to a non-human reviewer.</li>
+</ul>
+</spec-note>
+
+<h3 id="a-effort">9.2 · The effort dial — one knob, sequential pass to voting panel</h3>
+<p>The second dial answers "panel vs pipeline, sequential vs parallel" with a single
+<strong><code>--effort</code></strong> level (<code>low · medium · high · xhigh · max</code>). This is not a
+novel invention — it is exactly the control the platforms already ship. Anthropic's
+<a href="https://platform.claude.com/docs/en/build-with-claude/effort"><code>effort</code> parameter</a> lets
+you <em>"control how eager Claude is about spending tokens… with a single model,"</em> and crucially it
+<em>"can affect all token spend including tool calls. For example, lower effort would mean Claude makes fewer
+tool calls."</em> OpenAI's <a href="https://developers.openai.com/api/docs/guides/reasoning"><code>reasoning_effort</code></a>
+does the same, <em>"using fewer tokens for simpler tasks and thinking harder for complex tasks."</em></p>
+
+<p>spectastic's move is to extend that dial from <em>how hard one model thinks</em> to <em>how much
+orchestration the step uses</em> — scaling the whole §3 primitive table at once:</p>
+<table>
+  <thead><tr><th><code>--effort</code></th><th>Reasoning</th><th>Fan-out</th><th>Decider</th><th>Loop</th></tr></thead>
+  <tbody>
+    <tr><td><code>low</code></td><td>low</td><td>none — single sequential pass</td><td>single agent (or skip)</td><td>none</td></tr>
+    <tr><td><code>medium</code></td><td>medium</td><td>limited</td><td>single-vote</td><td>shallow</td></tr>
+    <tr><td><code>high</code></td><td>high</td><td>parallel</td><td>3-vote panel</td><td>loop-until-dry</td></tr>
+    <tr><td><code>xhigh</code> / <code>max</code></td><td>xhigh / max</td><td>wide fan-out</td><td>diverse panel + arbitrator + completeness critic</td><td>deep, budget-bounded</td></tr>
+  </tbody>
+</table>
+
+<p>The pattern is already live in this very tool: Claude Code's <em>ultracode</em> mode, per Anthropic's docs,
+<em>"pairs the <code>xhigh</code> effort level with standing permission… to launch multi-agent workflows"</em>
+— an effort level that scales <em>orchestration</em>, not just thinking. The accuracy case is well-established:
+<a href="https://arxiv.org/abs/2203.11171">self-consistency</a> (sample diverse reasoning paths, take the
+majority) lifts reasoning accuracy by up to ~18 points, and <a href="https://arxiv.org/abs/2408.03314">scaling
+test-time compute</a> can let inference-time effort substitute for a much larger model — but
+<em>"effectiveness… critically varies depending on the difficulty of the prompt,"</em> so resources should be
+allocated adaptively, not uniformly.</p>
+
+<p>That last finding is why the default is <strong><code>--effort=auto</code></strong>: derive the level from
+signals spectastic <em>already</em> computes. The <code>propose</code> adversarial pass is the prototype — it
+auto-fires on a must-tier touch, a removed op, or ≥2 topic prefixes
+(<code>packages/core/src/commands/propose.ts</code>); the <code>&lt;spec-budget&gt;</code> amber band is
+another. <code>auto</code> generalises these into one rule: <em>spend more orchestration when the change is
+riskier.</em> It also <strong>unifies the scattered knobs</strong> — <code>propose --adversarial</code>,
+<code>implement --all/--phase/--parallel</code> — into one coherent vocabulary, mapping straight onto the
+Workflow tool's existing per-agent <code>effort</code> + <code>budget</code>.</p>
+
+<h3 id="a-compose">9.3 · How they compose + open questions</h3>
+<p>The two dials are orthogonal but interact: <strong>effort selects the decider's depth.</strong> At
+<code>low</code>, a value-checkpoint consults a single agent (or, if <code>human</code>, defers cheaply); at
+<code>high</code>+, the same checkpoint convenes a diverse panel with an arbitrator. The headliner workflows
+inherit this directly — W-2's rubric ranking (§10) is a <code>high</code>-effort panel decider; W-5's triage
+classification is a <code>low</code>-effort single agent.</p>
+<spec-questions>
+<ol>
+  <li><strong>Where the Decider is configured.</strong> A per-run flag (<code>--decider=human|agent|panel</code>), per-checkpoint config in the spec/plan, or a project-level default in settings? Likely all three with precedence, mirroring how <code>--effort</code> overrides an <code>auto</code> default.</li>
+  <li><strong>The <code>auto</code> mapping.</strong> What exact signal → effort table does <code>--effort=auto</code> use, and is it per-verb (propose's heuristic differs from implement's)? This is the one piece that must be specified before W-1 can run unattended.</li>
+  <li><strong>Decider grounding for <code>agent</code>.</strong> Is the constitution just <a href="../principles.html">principles.html</a>, or also the spec bundle + grounding ledger? A richer ground reduces hallucinated verdicts but widens the agent's context cost.</li>
+</ol>
+</spec-questions>
+
+<h3 id="a-sources">9.4 · Addendum sources</h3>
+<p>All re-fetched and quoted 25 Jun 2026; foundational papers and official docs only (no unverified preprints).</p>
+<table>
+  <thead><tr><th>Source</th><th>Quality</th><th>Used for</th></tr></thead>
+  <tbody>
+    <tr><td><a href="https://platform.claude.com/docs/en/build-with-claude/effort">Anthropic — <code>effort</code> parameter</a></td><td>primary</td><td>the effort dial; affects tool-call count; ultracode = effort + workflows (§9.2)</td></tr>
+    <tr><td><a href="https://developers.openai.com/api/docs/guides/reasoning">OpenAI — <code>reasoning_effort</code></a></td><td>primary</td><td>single-dial precedent; adaptive allocation (§9.2)</td></tr>
+    <tr><td><a href="https://arxiv.org/abs/2212.08073">Bai et al. — Constitutional AI</a></td><td>primary</td><td>AI-as-decider grounded in a constitution (§9.1)</td></tr>
+    <tr><td><a href="https://arxiv.org/abs/2309.00267">RLAIF</a></td><td>primary</td><td>AI feedback ≈ human feedback (§9.1)</td></tr>
+    <tr><td><a href="https://arxiv.org/abs/2404.18796">Replacing Judges with Juries (PoLL)</a></td><td>primary</td><td>diverse panel &gt; single judge; arbitration (§9.1)</td></tr>
+    <tr><td><a href="https://arxiv.org/abs/2305.14325">Du et al. — Multi-agent debate</a></td><td>primary</td><td>arbitrated debate improves factuality (§9.1)</td></tr>
+    <tr><td><a href="https://arxiv.org/abs/2410.21819">Self-Preference Bias in LLM-as-a-Judge</a></td><td>primary</td><td>don't let an agent judge its own output (§9.1)</td></tr>
+    <tr><td><a href="https://arxiv.org/abs/2203.11171">Wang et al. — Self-consistency</a></td><td>primary</td><td>parallel voting → accuracy (§9.2)</td></tr>
+    <tr><td><a href="https://arxiv.org/abs/2408.03314">Snell et al. — Scaling test-time compute</a></td><td>primary</td><td>adaptive effort allocation by difficulty (§9.2)</td></tr>
+  </tbody>
+</table>
+</section>
+
+
+<!-- =======================================================
+     §10 Addendum II — ranking rubrics (RICE)
+     ======================================================= -->
+<section id="rubrics">
+<h2>10 · Addendum II — ranking rubrics: RICE, WSJF &amp; slicing by value</h2>
+<p>§2.4 leaned on WSJF; the W-2 slicer now defaults to <strong>RICE</strong>. This addendum says why, maps
+RICE's softest input onto something spectastic already owns, and proposes a way to slice <em>by</em> RICE
+contribution — flagged honestly, because the literature doesn't cover it.</p>
+
+<h3 id="ru-family">10.1 · The rubric is pluggable — RICE, WSJF, and the family</h3>
+<p>Prioritization rubrics are a <em>family</em>, not a winner. They divide by the question they answer:</p>
+<table>
+  <thead><tr><th>Rubric</th><th>Formula</th><th>Best when</th></tr></thead>
+  <tbody>
+    <tr><td><strong>RICE</strong></td><td>Reach × Impact × Confidence ÷ Effort</td><td>Team-backlog, feature-level ranking with an explicit uncertainty discount — the default here</td></tr>
+    <tr><td><strong>WSJF</strong></td><td>Cost of Delay ÷ Job Size</td><td>Portfolio sequencing where <em>time-criticality</em> and deadlines dominate</td></tr>
+    <tr><td><strong>ICE</strong></td><td>Impact × Confidence × Ease</td><td>A quick triage pass — RICE minus Reach; fast but blind to audience size</td></tr>
+    <tr><td><strong>MoSCoW</strong></td><td>Must / Should / Could / Won't</td><td>Scope negotiation within one release — buckets, not a ranking</td></tr>
+    <tr><td><strong>Kano</strong></td><td>delighters vs must-haves</td><td>Discovery — categorising by user emotion before any scoring</td></tr>
+  </tbody>
+</table>
+<p>RICE and WSJF are <em>not</em> interchangeable: <em>"They answer different questions, so pick one as your
+main tool and use the other for a gut check"</em>
+(<a href="https://product-blueprint.com/rice-vs-wsjf/">Product&nbsp;Blueprint</a>). The standard allocation is
+explicit — <em>"At the portfolio level… WSJF excels. At the team's backlog, RICE provides the quantitative
+rigor needed to rank 20–50 features"</em>
+(<a href="https://www.fygurs.com/blog/product-prioritization-frameworks-compared">Fygurs</a>). Splitting one
+oversized spec is a backlog decision, so <strong>RICE is W-2's default</strong>; WSJF is the opt-in when a slice
+carries a real deadline. Because the W-2 judge scores against <em>whatever rubric it's handed</em> (§4), the
+rubric is just config — and an effort dial (§9.2) decides how many judges score it.</p>
+
+<h3 id="ru-confidence">10.2 · Grounding <em>is</em> RICE's Confidence</h3>
+<p>RICE's softest term is <strong>Confidence</strong> — the multiplier that exists <em>"to curb enthusiasm for
+exciting but ill-defined ideas"</em> (<a href="https://www.intercom.com/blog/rice-simple-prioritization-for-product-managers/">Intercom</a>),
+scored 100% / 80% / 50% with anything lower a "moonshot." In most teams that number is a guess. In spectastic it
+is an artifact: the plan's <strong>grounding ledger</strong> already grades every design-bearing fact as
+<code>verified</code> ("opened the source this turn"), <code>spike</code> ("decidable only by a time-boxed
+investigation"), or <code>assumed</code> ("taken as true without verification"), per
+<a href="../examples/spectastic-spec.html#REQ-LIFECYCLE-006">REQ-LIFECYCLE-006</a>.</p>
+<table>
+  <thead><tr><th>Grounding status</th><th>→ RICE Confidence</th></tr></thead>
+  <tbody>
+    <tr><td><code>verified</code></td><td>100% — the fact was checked against real source</td></tr>
+    <tr><td><code>spike</code> (resolved)</td><td>80% — decidable by a bounded investigation that ran</td></tr>
+    <tr><td><code>assumed</code> / unresolved <code>spike</code></td><td>50% or below — a moonshot until grounded</td></tr>
+  </tbody>
+</table>
+<p>The fit is more than cosmetic. RICE says a high-reach, high-impact, <em>low-confidence</em> idea is a signal
+to <em>"do research… to learn more"</em> — which is precisely spectastic's <strong>spike</strong>: a named,
+time-boxed investigation that raises a fact's grounding. So a low-Confidence slice doesn't just score lower; it
+nominates its own spike. RICE's hand-waviest number becomes a typed, auditable input.</p>
+
+<h3 id="ru-decompose">10.3 · Slicing <em>by</em> RICE contribution</h3>
+<p>The sharpest question — can slices split into their RICE contribution? — turns out to be unanswered in the
+literature. Published guidance decomposes a feature only to estimate <em>Effort</em>; there is no standard method
+for rolling Reach and Impact across slices, nor for the double-counting that follows. So the proposal below is
+spectastic's own, offered with its caveats rather than as received practice.</p>
+<p>Score each candidate slice as its own RICE row and order by per-slice score — this naturally front-loads the
+high-reach, high-confidence, low-effort slices, which is exactly a value-ranked emission. Two honest hazards
+must be handled, and spectastic happens to hold the tools for both:</p>
+<dl>
+  <dt>Marginal, not additive, Reach</dt>
+  <dd>Slices share users, so summing each slice's Reach over-counts. Score a slice's <em>incremental</em> reach
+  given what's already shipped — the contribution, not the gross. (Unsolved in the literature; name it, don't
+  paper over it.)</dd>
+  <dt>Dependencies</dt>
+  <dd>RICE is documented-blind to ordering — it <em>"evaluates alternatives without considering dependencies."</em>
+  spectastic isn't: the <code>&lt;spec-parent&gt;</code> and <code>defer-to</code> graph already encodes which
+  slice unblocks which, so an enabling slice can take a ranking boost the bare RICE score would miss.</dd>
+</dl>
+<p>The result is a ranking that reads as "ship this slice next" with a defensible reason — Reach×Impact from the
+smallest-demoable boundary, Confidence from grounding, Effort from the plan, ordered with dependencies honoured.</p>
+
+<h3 id="ru-other">10.4 · Other homes, failure modes &amp; sources</h3>
+<p><strong>Where else value-scoring earns its keep in spectastic:</strong> ranking the <em>deferred-slice
+backlog</em> — the <code>defer-to="TBD-*"</code> items and inbox <code>layer="defer"</code> cards accumulate, and
+RICE answers "which deferred slice next?"; and the <code>&lt;spec-budget&gt;</code> amber-band split nudge, which
+already says "should some of this be its own slice?" — RICE ranks the resulting candidates.</p>
+<spec-note>
+<p><strong>Failure modes to respect</strong> (numeric rubrics invite false confidence): RICE <em>"weights all
+reach equally, treating a feature used once by a million users the same as one used daily by a thousand power
+users"</em> and <em>"does not account for time sensitivity or cost of delay"</em> (<a href="https://www.fygurs.com/blog/product-prioritization-frameworks-compared">Fygurs</a>)
+— which is the WSJF gap, and the reason the rubric stays pluggable. Multiplicative scores are gameable and
+falsely precise. spectastic mitigates two of these natively (grounding → an honest Confidence; the parent/defer
+graph → dependencies), but the human still owns the final order (W-2) — the rubric proposes, it does not decide.</p>
+</spec-note>
+<table>
+  <thead><tr><th>Source</th><th>Quality</th><th>Used for</th></tr></thead>
+  <tbody>
+    <tr><td><a href="https://www.intercom.com/blog/rice-simple-prioritization-for-product-managers/">Intercom — RICE</a></td><td>primary</td><td>formula, scales, Confidence as a check on ill-defined ideas (§10.1–10.2)</td></tr>
+    <tr><td><a href="https://product-blueprint.com/rice-vs-wsjf/">Product Blueprint — RICE vs WSJF</a></td><td>secondary</td><td>not interchangeable; "gut check" (§10.1)</td></tr>
+    <tr><td><a href="https://www.centercode.com/blog/rice-vs-wsjf-prioritization-framework">Centercode — RICE vs WSJF</a></td><td>secondary</td><td>when-each; time as effort-cost vs opportunity-cost (§10.1)</td></tr>
+    <tr><td><a href="https://www.fygurs.com/blog/product-prioritization-frameworks-compared">Fygurs — frameworks compared</a></td><td>blog</td><td>portfolio/backlog/sprint layering; RICE blind spots (§10.1, §10.4)</td></tr>
+    <tr><td><a href="https://framework.scaledagile.com/wsjf/">SAFe — WSJF</a></td><td>primary</td><td>WSJF as the time-criticality rubric (§10.1)</td></tr>
+  </tbody>
+</table>
+<spec-questions>
+<ol>
+  <li><strong>Where rubric inputs come from.</strong> Reach and Impact have no spectastic artifact yet (unlike Confidence=grounding, Effort=plan). Does W-2 interview them per slice, infer them from the spec text, or require a lightweight value model? Pairwise comparison against the rubric (§2.4) is more reliable than absolute scores here.</li>
+  <li><strong>Marginal-reach scoring.</strong> The §10.3 incremental-reach idea needs a concrete rule — is "incremental" computed against the already-emitted slices in document order, or against a user-supplied baseline?</li>
+</ol>
+</spec-questions>
+</section>
+
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  Agentic Workflows — considerations · design brief · drafted 25 Jun 2026 · §9 addendum 25 Jun 2026 · §10 addendum 25 Jun 2026 ·
+  <button data-theme-toggle style="background:none;border:none;color:var(--c-link);cursor:pointer;font:inherit;padding:0;border-bottom:1px solid currentColor;">light/dark</button>
+</footer>
+
+</main>
+<script src="../assets/spec.js"></script>
+</body>
+</html>

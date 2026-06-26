@@ -1,0 +1,447 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Expense — Considerations for Spectastic</title>
+<meta name="description" content="A proposed ex- verb that estimates the build-expense of lifecycle work — agent time, human time, token cost — as mode-conditioned ranges, built around the honest fact that this estimation is unreliable and AI makes intuition wrong.">
+<link rel="stylesheet" href="../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../assets/favicon.svg">
+<script src="../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Considerations · Lifecycle economics</p>
+  <h1>Expense</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    What will it cost — in agent time, human attention, and tokens — to build this? The honest answer is "it
+    depends, and your intuition is wrong." So <code>expense</code> estimates the way the evidence says you must:
+    in ranges, conditioned on the mode, and only as confidently as the data earns.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>     <span><spec-status value="draft">Draft</spec-status></span>
+    <b>Type</b>       <span>Design brief (a <code>/doc</code> — research + considerations, feeds a future <code>/spectastic.spec</code>)</span>
+    <b>Author</b>     <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Created</b>    <span><time datetime="2026-06-25">25 Jun 2026</time></span>
+    <b>Sources</b>    <span>Primary + foundational, fetched + quoted 25 Jun 2026 (§8)</span>
+    <b>Read time</b>  <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-tldr>
+    <p>spectastic already estimates one expense — a spec's <em>read</em> time — and sizes a spec's scope with
+    <code>&lt;spec-budget&gt;</code>. It cannot yet answer the question every adopter asks: <em>what will it
+    cost to build this?</em> <strong><code>expense</code></strong> is the proposed <code>ex-</code> verb
+    (explain · explore · expense) that estimates the <strong>build-expense</strong> of a spec, slice, or run
+    across three dimensions — <strong>agent wall-clock, human attention, and tokens/$</strong>. The design is
+    shaped by an uncomfortable evidence base: software estimation is chronically unreliable, large models are
+    <em>poorly calibrated about their own cost</em>, and with AI even experienced developers' intuition is
+    measurably backwards (METR: they expected a 24% speedup, were 19% slower, and still believed it helped). So
+    <code>expense</code> refuses the confident point estimate. It borrows the methods that admit uncertainty —
+    <strong>relative sizing</strong> against a <strong>reference class of recorded actuals</strong>,
+    <strong>probabilistic ranges</strong> not points, and a <strong>spike</strong> to tighten the estimate only
+    when the value of the information beats the spike's own cost. Crucially the estimate is a
+    <em>function of the run mode</em> (<code>--effort</code> × decider × hands-off), which is the part nobody
+    else models. It ships as a verb that computes + records actuals and a <code>&lt;spec-expense&gt;</code>
+    gauge that displays the range — and it answers the open "Cost ceiling" question in the
+    <a href="./agent-workflows-considerations.html#questions">workflows brief</a>.</p>
+  </spec-tldr>
+
+  <spec-audience-map>
+    <dl>
+      <dt>Exec / PM</dt>   <dd>The TL;DR, then §<a href="#opportunity">The opportunity</a> and §<a href="#design">The design</a>.</dd>
+      <dt>Reviewer</dt>    <dd>§<a href="#research">What the field does</a> (cited), §<a href="#guardrails">Guardrails</a>, §<a href="#questions">Open questions</a>.</dd>
+      <dt>Implementer</dt> <dd>§<a href="#design">The design</a>, §<a href="#form">Form &amp; where it lives</a>, §<a href="#guardrails">Guardrails</a>.</dd>
+    </dl>
+  </spec-audience-map>
+</header>
+
+
+<!-- =======================================================
+     §1 The opportunity
+     ======================================================= -->
+<section id="opportunity">
+<h2>1 · The opportunity — spectastic estimates one expense already</h2>
+<p>Every spectastic artifact carries a <code>data-reading-time</code> estimate — the wall-clock cost of a human
+<em>consuming</em> it — and a <code>&lt;spec-budget&gt;</code> gauge that sizes its scope (words, requirements,
+read-time) and flags an amber band at 70%. So the project already estimates a <em>read-expense</em> and already
+renders a live cost gauge. What it cannot yet answer is the <em>build-expense</em>: given this spec, what will it
+cost — in agent time, human attention, and tokens — to take it through <code>plan → tasks → implement</code>?</p>
+<p>That question is now load-bearing. The <a href="./agent-workflows-considerations.html">workflows brief</a>
+proposes hands-off pipelines and value-ranked slicing whose every dial (effort, decider, fan-out) moves cost —
+and it leaves an explicit open question: <em>"what is the per-run budget cap, and does the pipeline degrade
+gracefully as it approaches the ceiling?"</em> <code>expense</code> is the brief that answers it. But the answer
+has to begin by admitting how hard the question is.</p>
+</section>
+
+
+<!-- =======================================================
+     §2 What the field does
+     ======================================================= -->
+<section id="research">
+<h2>2 · What the field does</h2>
+<p>A grounded read, quoted from primary sources (§8). The theme is consistent and inconvenient: this is one of
+the least reliable numbers in software, and AI has made it <em>less</em> intuitive, not more.</p>
+
+<h3 id="r-1">2.1 · Estimation is unreliable — and AI makes intuition wrong</h3>
+<p>Start with the finding that should humble any estimate. In a randomized controlled trial of 16 experienced
+open-source developers across 246 real tasks, <a href="https://metr.org/blog/2025-07-10-early-2025-ai-experienced-os-dev-study/">METR</a>
+found that <em>"when developers are allowed to use AI tools, they take 19% longer to complete issues — a
+significant slowdown."</em> The striking part is the perception gap: the same developers <em>"expected AI to
+speed them up by 24%,"</em> and even after living through the slowdown <em>"still believed AI had sped them up
+by 20%."</em> A 40-point gap between felt and actual productivity — from the people doing the work.</p>
+<p>This sits on top of a deep base rate. The <strong>planning fallacy</strong> (Kahneman &amp; Tversky, 1979) is
+<em>"the tendency of people to underestimate the completion times and costs for difficult tasks"</em>
+(<a href="https://corporate.jasoncollins.blog/outside-view">outside view</a>), and it is robust even when you
+know about it. The <a href="https://en.wikipedia.org/wiki/Cone_of_Uncertainty">cone of uncertainty</a> adds the
+cruel timing: estimates are needed earliest, when they are least accurate. The lesson <code>expense</code> takes:
+a confident point estimate is not honesty, it's theatre.</p>
+
+<h3 id="r-2">2.2 · Token cost — meterable after, weakly predictable before</h3>
+<p>Tokens look like the easy dimension — they're counted exactly, after the fact. Before the fact they are not.
+A Stanford Digital Economy Lab study,
+<a href="https://digitaleconomy.stanford.edu/publication/how-do-ai-agents-spend-your-money-analyzing-and-predicting-token-consumption-in-agentic-coding-tasks/"><em>How
+Do AI Agents Spend Your Money?</em></a>, found that <em>"frontier models fail to accurately predict their own
+token usage (with weak-to-moderate correlations, up to 0.39)"</em> — and that <em>input</em> tokens, not output,
+are the primary cost driver in agentic tasks (context re-reading, tool results) and the harder one to foresee.
+The control lever the platforms ship is the <a href="https://platform.claude.com/docs/en/build-with-claude/effort">effort
+parameter</a> — <em>"control how many tokens Claude uses… trading off thoroughness for token efficiency"</em> —
+which is exactly why <code>expense</code> must condition on it (§3.2). The failure mode without a budget is a
+loop that re-queries and re-reads until a "simple" task has quietly spent a fortune.</p>
+
+<h3 id="r-3">2.3 · LLMs at effort estimation — moderate, and not magically comparative</h3>
+<p>Can the model just estimate its own effort? Moderately. Work on
+<a href="https://arxiv.org/abs/2603.06276">LLM story-point estimation</a> reports that zero-shot, <em>"LLMs can
+predict story points better than supervised deep learning models trained on 80% of the data"</em> — encouraging,
+but the absolute correlations are weak. And one tempting shortcut doesn't hold: <em>"it is not easier for LLMs to
+predict comparative judgments than to directly estimate the story points,"</em> though comparisons <em>"serve as
+few-shot examples to improve"</em> accuracy. Worth stating plainly, because the relative-sizing rationale below
+is a fact about <em>humans</em>, not a free win for models — for an agent, comparison is useful as <em>grounding
+examples</em>, not as an inherently easier task.</p>
+
+<h3 id="r-4">2.4 · The methods that transfer all admit uncertainty</h3>
+<dl>
+  <dt>Relative sizing</dt>
+  <dd>People estimate by comparison, not arithmetic: <em>"a team doesn't have to precisely estimate how long a
+  given product backlog item will take. Instead, the team only has to match it to other similarly sized items"</em>
+  (<a href="https://www.mountaingoatsoftware.com/agile/agile-estimation-estimating-with-story-points">Mountain
+  Goat</a>). Comparison is lower-variance than absolute guessing.</dd>
+  <dt>Reference-class forecasting (the outside view)</dt>
+  <dd>Forecast from a class of similar past cases, not bottom-up from this one's details — the
+  <em>"outside view… looks at whether there are similar situations — a reference class — that can provide a
+  statistical basis."</em> It is the documented antidote to the planning fallacy.</dd>
+  <dt>Probabilistic ranges, not points</dt>
+  <dd>The <code>#NoEstimates</code> / forecasting tradition: <em>"providing a range of outcomes along with the
+  likelihood of those outcomes will lead to better decision-making than providing a single value"</em>
+  (<a href="https://lizkeogh.com/2015/05/01/the-estimates-in-noestimates/">Keogh</a>). Monte-Carlo over recorded
+  throughput turns history into a distribution.</dd>
+  <dt>Spikes governed by the value of information</dt>
+  <dd>When uncertainty is too wide, buy information with a time-boxed spike — but only when it's worth it.
+  Decision theory is precise here: the <a href="https://en.wikipedia.org/wiki/Expected_value_of_perfect_information">Expected
+  Value of Perfect Information</a> is <em>"the price one would be willing to pay to gain access to perfect
+  information,"</em> and <em>"if one is offered knowledge for a price larger than EVPI, it would be better to
+  refuse the offer."</em> That is the rule for your "ironic" spike (§3.4).</dd>
+</dl>
+</section>
+
+
+<!-- =======================================================
+     §3 The design
+     ======================================================= -->
+<section id="design">
+<h2>3 · The design — <code>expense</code> for spectastic</h2>
+
+<h3 id="d-1">3.1 · Three dimensions, each a range</h3>
+<p><code>expense</code> reports three numbers, and not one of them is a point:</p>
+<ul>
+  <li><strong>Agent wall-clock</strong> — how long the autonomous stretches run.</li>
+  <li><strong>Human attention</strong> — time a person spends at checkpoints, reviews, and decisions. The
+  dimension everyone omits, the hardest to estimate, and itself a <em>range scaled by the reviewer's
+  proficiency</em>: an expert reads a plan at lower cognitive load and decides by pattern-recognition where a
+  novice deliberates. spectastic already has the axis — <a href="../specs/018-explain/spec.html">explain</a>'s
+  <code>wheels | completion | independent</code> ladder (§3.2, §3.6).</li>
+  <li><strong>Tokens / $</strong> — metered exactly after the run; estimated as a band before it. Tokens are the
+  stable unit; dollars are a display conversion that drifts with model pricing.</li>
+</ul>
+<p>Each renders as an interval with a stated confidence — <em>agent 8–20 min · human 5–15 min · 120k–340k tokens,
+80% CI</em> — never a bare "about 30 minutes."</p>
+
+<h3 id="d-2">3.2 · The estimate is a function of the mode</h3>
+<p>This is the part the literature doesn't model and the part you flagged: <code>expense = f(work, mode)</code>.
+The same work costs very differently depending on how the lifecycle is run, and the
+<a href="./agent-workflows-considerations.html#addendum">workflows brief</a> already names the dials. The
+estimate must be conditioned on them, not averaged over them:</p>
+<table>
+  <thead><tr><th>Mode dial</th><th>Setting</th><th>Agent time</th><th>Human time</th><th>Tokens / $</th></tr></thead>
+  <tbody>
+    <tr><td><code>--effort</code> (§9.2)</td><td><code>low → max</code></td><td>↑ (more thinking)</td><td>~</td><td>↑↑ — the dominant multiplier</td></tr>
+    <tr><td rowspan="2"><code>--decider</code> (§9.1)</td><td><code>human</code></td><td>+ wait at gates</td><td>↑↑ attention</td><td>~</td></tr>
+    <tr><td><code>agent</code> / <code>panel</code></td><td>↑</td><td>↓ (hands-off)</td><td>↑ (panel ≈ ×N voters)</td></tr>
+    <tr><td>Run shape</td><td>checkpointed vs hands-off</td><td>+ idle waits if gated</td><td>↑ if gated</td><td>~</td></tr>
+    <tr><td><code>--proficiency</code></td><td><code>wheels → independent</code></td><td>~</td><td>↓ &amp; band tightens (expert reviews faster)</td><td>~</td></tr>
+  </tbody>
+</table>
+<p><code>--effort</code> is the agent-side dial; <strong><code>--proficiency</code></strong> is its human-side
+counterpart, borrowing <a href="../specs/018-explain/spec.html">explain</a>'s ladder (default <code>wheels</code>,
+the conservative novice assumption — a wider human-time band). So <code>expense</code> doesn't answer "what will
+this cost" — it answers "what will this cost <em>at <code>--effort=high</code>, decider <code>human</code> at
+<code>wheels</code> proficiency, checkpointed</em>," and lets you compare modes. A hands-off, all-agent,
+<code>max</code> run and a gated, novice-reviewed, <code>low</code> run are different economic objects for the
+same spec.</p>
+
+<h3 id="d-3">3.3 · Relative sizing against a reference class of recorded actuals</h3>
+<p>Because absolute prediction is weak (§2.1–2.3), <code>expense</code> sizes the work by <em>comparison</em>:
+this slice is "about the size of" past slices, and those past runs have <em>recorded actuals</em>. That is the
+outside view, made mechanical. The first job of the verb is therefore not to estimate — it is to
+<strong>record</strong>: after every real run, capture the actual agent-time, human-time, and tokens for that
+unit of work, tagged by its mode. Over time the project grows its own reference class, and the estimate becomes
+"runs like this one, at this mode, landed in this band."</p>
+<spec-note>
+<p><strong>Honest prerequisite.</strong> spectastic records none of this today. The <code>AIProvider</code>
+interface (<code>packages/core/src/types.ts</code>) returns only text — no token counts, no timing. Building the
+reference class requires extending it to return usage metadata. Until then, <code>expense</code> can only do the
+weaker <em>a-priori</em> estimate; the strong version is gated on that instrumentation — designed in §<a href="#d-7">3.7</a>.</p>
+</spec-note>
+
+<h3 id="d-4">3.4 · Confidence, and the spike that costs to estimate</h3>
+<p>An estimate's width should reflect how much it's trusted. <code>expense</code> derives confidence from two
+things spectastic already has or is building: the <strong>grounding ledger</strong> (a plan resting on
+<code>assumed</code> facts deserves a wider band than one that's <code>verified</code>) and the
+<strong>depth of the reference class</strong> (three similar past runs beats zero). A low-confidence estimate is
+a <em>wide</em> estimate — and that is the signal to consider a <strong>spike</strong>.</p>
+<p>Here is your irony, made rigorous. A spike — a time-boxed investigation — can narrow the band, but it spends
+the very time and tokens you were trying to estimate. So <code>expense</code> doesn't always spike; it applies
+the EVPI rule (§2.4): run the spike only when the expected value of the information it buys exceeds its own cost.
+If a tighter estimate wouldn't change any decision — you're going to build it either way — the spike is waste,
+and refusing it <em>is</em> the right call. spectastic already owns the spike primitive (the grounding ledger's
+<code>spike</code> status); <code>expense</code> adds the decision rule for when pulling it is economical.</p>
+
+<h3 id="d-5">3.5 · The cone narrows down the lifecycle</h3>
+<p>One estimate is wrong; a re-estimate at each stage is a discipline. The band is widest at <code>spec</code>
+(scope only), tighter at <code>plan</code> (decisions + grounding known), tighter still at <code>tasks</code>
+(the work is enumerated). <code>expense</code> re-runs at each artifact and the gauge shows the cone closing —
+which doubles as a health signal: a band that <em>isn't</em> narrowing as you descend the lifecycle means the
+work is still genuinely uncertain, and that is worth knowing before <code>implement</code>.</p>
+
+<h3 id="d-6">3.6 · Attention is a budget</h3>
+<p>Human attention isn't just a per-checkpoint cost — it's a <em>finite, depletable reserve</em>, and the
+cleanest model for it is the one SRE already uses for reliability: the <strong>error budget</strong>. Google's
+is exact — <em>"an error budget is 1 minus the SLO of the service,"</em> and when a service
+<em>"has exceeded its error budget… we will halt all changes and releases other than P0 issues or security
+fixes"</em> (<a href="https://sre.google/workbook/error-budget-policy/">SRE workbook</a>). An attention budget
+is the human mirror: a session has only so much, and every checkpoint, review, and decision spends it.</p>
+<p>The mechanics are well-evidenced. Attention is the scarce resource — <em>"a wealth of information creates a
+poverty of attention"</em> (Simon, 1971) — and working memory is <em>"extremely limited in both capacity and
+duration"</em> (<a href="https://en.wikipedia.org/wiki/Cognitive_load">cognitive load theory</a>). Operations
+already names the failure: <strong>alert fatigue</strong> arises <em>"when alerting systems exceed the cognitive
+capacity of the people responsible for responding,"</em> because <em>"every alert requires a decision… over the
+course of a shift, they accumulate"</em> into decision fatigue, so that <em>"the effectiveness of alerting
+decreases as alert volume increases"</em> (<a href="https://www.signl4.com/blog/alert-fatigue-in-modern-it-operations/">SIGNL4</a>).
+A pipeline that gates a tired human at every step is an alert storm by another name.</p>
+<p>So <code>expense</code> estimates the <strong>attention draw</strong> of a run — roughly
+<em>checkpoints × decision-type × (1 / proficiency)</em> — and the actionable direction mirrors the token
+<em>degrade-gracefully</em> guardrail, on the human side: as a session's budget runs low, spend fewer gates and
+<strong>escalate the decider down</strong> (<a href="./agent-workflows-considerations.html#a-decider">human →
+agent → panel</a>). Decision fatigue is met the way alert fatigue is — by making fewer, higher-value demands.</p>
+<spec-note>
+<p><strong>What this is not, and what it can't yet do.</strong> The budget is <em>per-session</em>, not
+project-level — and its <em>starting reserve is unknown and variable</em>: someone arriving at the end of a long
+day may begin already depleted, and nothing here can measure that. Acting on a low budget also demands
+near-invisible ergonomics; a clumsy "you seem tired, shall an agent decide?" is worse than no prompt at all. So
+this slice commits only to the <em>framing</em> and the <em>estimable</em> part (the draw, from checkpoint count
+× proficiency); <strong>seeding/measuring the reserve and the ergonomics of acting on it are surveyed in
+§<a href="#d-8">3.8</a> — catalogued, deliberately not committed.</strong></p>
+</spec-note>
+<spec-sidenote>The budget framing rests on <em>cognitive load</em> and <em>alert/decision fatigue</em> — both
+operationally evidenced — and pointedly <strong>not</strong> on "ego depletion," whose finite-willpower claim
+failed large-scale replication. The reserve is real and bounded; the discredited mechanism is avoided.</spec-sidenote>
+
+<h3 id="d-7">3.7 · Measuring actuals — the usage record</h3>
+<p>§3.3 named the prerequisite: without recorded actuals the estimate stays the weak a-priori kind. The good
+news is that this half is <em>cheap and mechanical</em> — tokens are counted exactly, and spectastic is already
+throwing the count away. The Claude provider (<code>packages/core/src/providers/claude.ts</code>) receives the
+Anthropic response — which carries a <code>usage</code> object (<code>input_tokens</code>,
+<code>output_tokens</code>, <code>cache_creation_input_tokens</code>, <code>cache_read_input_tokens</code>) — and
+returns only the text, discarding it. Capturing it, plus a wall-clock measurement (the <code>bench/</code>
+<code>performance.now()</code> pattern), yields a per-call <strong>usage record</strong>.</p>
+<p>The shape should follow an existing standard rather than invent one. The
+<a href="https://opentelemetry.io/docs/specs/semconv/registry/attributes/gen-ai/">OpenTelemetry GenAI
+conventions</a> already name these fields — <code>gen_ai.usage.input_tokens</code> (<em>"the number of tokens
+used in the GenAI input (prompt)"</em>), <code>gen_ai.usage.output_tokens</code>,
+<code>gen_ai.usage.cache_read.input_tokens</code> (<em>"served from a provider-managed cache"</em>), and
+<code>gen_ai.request.model</code> — and every observability tool (Langfuse, OpenLLMetry) captures exactly this
+per trace:</p>
+<pre><code>UsageRecord = {
+  model,             // gen_ai.request.model
+  input_tokens,      // gen_ai.usage.input_tokens
+  output_tokens,     // …usage.output_tokens
+  cache_read_input_tokens?,
+  cache_creation_input_tokens?,
+  wall_clock_ms,     // span duration
+  cost_usd?          // derived at display, not stored
+}</code></pre>
+<p>Sum the records across a run, tag by mode (§3.2), and you have one reference-class entry — "a
+<code>022</code>-sized slice at <code>--effort=high</code> cost <em>this</em>." The brief stops at the record
+shape; the future spec fixes the exact <code>AIProvider</code> signature (today's <code>chat()</code> returns a
+bare string — it would return text + usage). Cost in dollars is derived at display from a per-model price table,
+never stored (pricing drifts, §5).</p>
+
+<h3 id="d-8">3.8 · The attention-budget mechanism — what the research says, and why we don't commit</h3>
+<p>§3.6 deferred the hard half: how to <em>seed</em> a per-session attention reserve and how to <em>act</em> on
+it. The research is real and points somewhere — but this is where the doc deliberately surveys rather than
+decides, because the subject of measurement is a person, not a token.</p>
+<dl>
+  <dt>You can only measure attention subjectively, and imperfectly</dt>
+  <dd>The standard instrument, <a href="https://www.nasa.gov/human-systems-integration-division/nasa-task-load-index-tlx/">NASA-TLX</a>,
+  is a <em>"subjective workload assessment tool"</em> — a <em>"weighted average of ratings on six subscales,"</em>
+  self-reported, and explicitly "not a measure of the true biological workload." Biometric alternatives are more
+  objective and more invasive. There is no cheap, accurate, non-creepy way to read a reserve.</dd>
+  <dt>Timing matters more than frequency</dt>
+  <dd>Interruptions cost far more mid-task than at a task boundary (<a href="https://interruptions.net/literature/Bailey-CHB06_1.pdf">Bailey
+  et al.</a>), and <em>attention residue</em> means a poorly-timed gate taxes the next task too. So <em>when</em>
+  a checkpoint fires is as important as how many.</dd>
+  <dt>The ergonomic moves are "change defaults," not "prompt"</dt>
+  <dd><a href="https://www.nngroup.com/articles/progressive-disclosure/">Progressive disclosure</a> — <em>"show
+  users only a few of the most important options… a larger set upon request"</em> — and the lean
+  <a href="https://blog.codinghorror.com/the-last-responsible-moment/">last responsible moment</a> (batch a
+  decision until deferring it would cost an option) both reduce load <em>without asking the human anything</em>.</dd>
+  <dt>The SRE burn-rate is the right signal shape</dt>
+  <dd><em>"Burn rate is how fast, relative to the SLO, the service consumes the error budget"</em>
+  (<a href="https://sre.google/workbook/alerting-on-slos/">SRE workbook</a>). An "attention burn-rate" —
+  decisions-per-hour against the session reserve — is a better trigger than a binary "budget spent."</dd>
+</dl>
+<p>A recommended <em>direction</em> falls out of this, <em>if</em> a future spec builds it: <strong>opt-in only;
+act by changing defaults and batching, never by prompting; time gates to task boundaries; trigger on a
+burn-rate, not a threshold.</strong> But the brief stops there on purpose. Seeding the reserve means either
+nagging the user (adds load) or inferring their state (privacy, creepiness, and an unreliable guess from §3.8's
+own evidence). Whether spectastic should infer a person's fatigue at all is a <em>values</em> decision, and it
+belongs to a spec with its owner in the room — not to a research brief.</p>
+<spec-sidenote>The asymmetry between §3.7 and §3.8 is deliberate. Measuring <em>tokens</em> is mechanical, exact,
+and standards-backed, so it's designed. Measuring <em>a person</em> is none of those, so it's only surveyed. The
+honest move is to let the two halves differ.</spec-sidenote>
+</section>
+
+
+<!-- =======================================================
+     §4 Form & where it lives
+     ======================================================= -->
+<section id="form">
+<h2>4 · Form &amp; where it lives</h2>
+<p>Two surfaces, mirroring the <code>&lt;spec-budget&gt;</code> precedent (a gauge backed by logic):</p>
+<dl>
+  <dt>The verb — <code>/spectastic.expense &lt;spec-id&gt; [--effort … --decider …]</code></dt>
+  <dd>An <code>ex-</code>-family extended verb (explain · explore · expense). It computes the mode-conditioned
+  ranges, and — after a real run — <em>records the actuals</em> back into the reference class. Opt-in, like its
+  siblings; it sits beside the lifecycle, not inside it.</dd>
+  <dt>The gauge — <code>&lt;spec-expense&gt;</code></dt>
+  <dd>A header component, sibling to <code>&lt;spec-budget&gt;</code>: where budget <em>sizes scope</em>,
+  expense <em>estimates build cost</em>. It renders the latest range for the artifact's current mode, with its
+  confidence band, and degrades (per <a href="../principles.html#P-4">P-4</a>) to plain text with JS off.</dd>
+</dl>
+<p>The verb is the engine; the gauge is the display. Both are gated on the usage instrumentation (§3.3), so the
+honest first slice is the a-priori estimator plus the actuals recorder — the reference class can only grow once
+runs are being measured.</p>
+</section>
+
+
+<!-- =======================================================
+     §5 Guardrails
+     ======================================================= -->
+<section id="guardrails">
+<h2>5 · Guardrails &amp; honest limits</h2>
+<dl>
+  <dt>Never sell a point as certain</dt><dd>Every figure is a range with a confidence. METR is the standing reminder that confident estimates here — even from the practitioners — are routinely, invisibly wrong.</dd>
+  <dt>The human owns the commitment</dt><dd><code>expense</code> informs; it does not promise. The planning fallacy is robust even when known, so a number from an agent is an input to a human's decision, never a contract.</dd>
+  <dt>Record actuals or stay weak</dt><dd>Without the measured reference class, every estimate is the unreliable a-priori kind. The instrumentation isn't a nice-to-have; it's the thing that makes the estimate improve.</dd>
+  <dt>Bounded budgets that degrade gracefully</dt><dd>This is the workflows brief's "cost ceiling" answer: a run carries a token/time budget and, as it nears the cap, the pipeline <em>degrades</em> — fewer voters, shallower panels, single-pass deciders — rather than halting mid-task. <code>expense</code> sizes the cap; the workflow honours it.</dd>
+  <dt>Tokens are the unit; dollars are a view</dt><dd>Store and reason in tokens (stable); convert to $ only at display, against current pricing, because pricing drifts.</dd>
+  <dt>Respect the attention budget</dt><dd>The human-side mirror of degrade-gracefully (§3.6): decision fatigue is met by fewer, higher-value gates — not by gating a depleting reviewer at every step. When a session's budget runs low, escalate the decider down before quality does.</dd>
+</dl>
+</section>
+
+
+<!-- =======================================================
+     §6 Open questions
+     ======================================================= -->
+<section id="questions">
+<h2>6 · Open questions</h2>
+<spec-questions>
+<ol>
+  <li><strong>Human-attention time — the estimable part and the residual.</strong> The <em>draw</em> is estimable: checkpoint count × decision-type, scaled by proficiency (§3.2, §3.6). What stays unknown is the <em>starting reserve</em> (a reviewer may begin a session already depleted, and nothing here measures that), raw availability/interruption, and whether the band can ever be tight enough to commit to. The proficiency tier narrows it; it does not close it.</li>
+  <li><strong>Should spectastic infer a person's attention at all?</strong> §<a href="#d-8">3.8</a> surveys the mechanism (opt-in self-report + proxies; act by changing defaults; burn-rate trigger) but deliberately stops short of committing — seeding the reserve means either nagging the user or inferring their fatigue, and whether to do the latter is a <em>values</em> call for a spec, not a research brief. The estimable <em>draw</em> ships; the <em>reserve</em> stays a documented choice.</li>
+  <li><strong>Where do recorded actuals live?</strong> A new reference-class ledger artifact, a sidecar per spec, or a project-level store? It must survive across specs to be an outside view, which pulls toward a project-level file — but that is a new persistent surface to design.</li>
+  <li><strong>The EVPI threshold.</strong> "Spike only when the information is worth it" needs an operational rule: how is the value of a tighter estimate quantified when the downstream decision (build / defer / split) is itself fuzzy?</li>
+  <li><strong>Cross-project reference classes.</strong> A shared corpus of actuals would forecast far better than one project's history — but that crosses a privacy and comparability line (every team's "medium slice" differs). In-project only, by default?</li>
+  <li><strong>Unit drift.</strong> If dollars are a display conversion, where does the pricing table live, and how stale is too stale before a shown "$" misleads?</li>
+</ol>
+</spec-questions>
+</section>
+
+
+<!-- =======================================================
+     §7 Out of scope
+     ======================================================= -->
+<section id="scope">
+<h2>7 · Out of scope (for this <code>/doc</code>)</h2>
+<spec-non-goals>
+  <ul>
+    <li><spec-out-of-scope defer-to="TBD-expense-spec">Building <code>/spectastic.expense</code>, the <code>&lt;spec-expense&gt;</code> gauge, or the reference-class store — this brief feeds a future <code>/spectastic.spec</code>.</spec-out-of-scope></li>
+    <li><spec-out-of-scope defer-to="TBD-usage-instrumentation"><em>Building</em> the <code>AIProvider</code> usage-capture change — the record shape is designed in §3.7; the interface change itself feeds a future <code>/spectastic.spec</code>.</spec-out-of-scope></li>
+    <li><spec-out-of-scope defer-to="TBD-attention-budget"><em>Committing to</em> an attention-budget mechanism — §3.8 catalogues the research + a recommended direction, but any design that infers user state is deliberately left to a future spec with its owner in the room.</spec-out-of-scope></li>
+    <li><spec-out-of-scope defer-to="never">Promising a precise single-number estimate — the evidence (§2) makes that a non-goal by design, not an omission.</spec-out-of-scope></li>
+  </ul>
+</spec-non-goals>
+</section>
+
+
+<!-- =======================================================
+     §8 Sources
+     ======================================================= -->
+<section id="sources">
+<h2>8 · Sources</h2>
+<p>Fetched + quoted 25 Jun 2026; foundational work and re-verified pages only. Vendor anecdotes and unverifiable
+figures were dropped.</p>
+<table>
+  <thead><tr><th>Source</th><th>Quality</th><th>Used for</th></tr></thead>
+  <tbody>
+    <tr><td><a href="https://metr.org/blog/2025-07-10-early-2025-ai-experienced-os-dev-study/">METR — early-2025 AI dev productivity RCT</a></td><td>primary</td><td>the perception gap: expected +24%, actual −19%, perceived +20% (§2.1)</td></tr>
+    <tr><td><a href="https://digitaleconomy.stanford.edu/publication/how-do-ai-agents-spend-your-money-analyzing-and-predicting-token-consumption-in-agentic-coding-tasks/">Stanford — How Do AI Agents Spend Your Money?</a></td><td>primary</td><td>models fail to predict own token use (≤0.39); input tokens dominate (§2.2)</td></tr>
+    <tr><td><a href="https://platform.claude.com/docs/en/build-with-claude/effort">Anthropic — <code>effort</code> parameter</a></td><td>primary</td><td>the token-cost lever the estimate conditions on (§2.2, §3.2)</td></tr>
+    <tr><td><a href="https://arxiv.org/abs/2603.06276">Story Point Estimation Using LLMs</a></td><td>primary</td><td>LLM effort estimation is moderate; comparison isn't inherently easier (§2.3)</td></tr>
+    <tr><td><a href="https://www.mountaingoatsoftware.com/agile/agile-estimation-estimating-with-story-points">Mountain Goat — story points</a></td><td>secondary</td><td>relative sizing: match, don't calculate (§2.4)</td></tr>
+    <tr><td><a href="https://corporate.jasoncollins.blog/outside-view">The outside view</a></td><td>secondary</td><td>planning fallacy + reference-class forecasting (§2.1, §2.4)</td></tr>
+    <tr><td><a href="https://lizkeogh.com/2015/05/01/the-estimates-in-noestimates/">Keogh — the estimates in #NoEstimates</a></td><td>blog</td><td>ranges beat single values (§2.4)</td></tr>
+    <tr><td><a href="https://en.wikipedia.org/wiki/Expected_value_of_perfect_information">EVPI</a></td><td>secondary</td><td>when buying information (a spike) is worth its cost (§2.4, §3.4)</td></tr>
+    <tr><td><a href="https://en.wikipedia.org/wiki/Cone_of_Uncertainty">Cone of uncertainty</a></td><td>secondary</td><td>estimates needed earliest, accurate latest (§2.1, §3.5)</td></tr>
+    <tr><td><a href="https://en.wikipedia.org/wiki/Expertise_reversal_effect">Expertise reversal effect</a> (Kalyuga)</td><td>secondary</td><td>guidance essential for novices can hinder experts → proficiency scales attention (§3.1)</td></tr>
+    <tr><td><a href="https://en.wikipedia.org/wiki/Recognition-primed_decision">Recognition-primed decision</a> (Klein)</td><td>secondary</td><td>experts decide by pattern-recognition; novices deliberate (§3.1)</td></tr>
+    <tr><td><a href="https://arxiv.org/abs/2312.17236">Factoring Expertise into Code Review</a></td><td>primary</td><td>reviewer expertise is a first-class factor in review assignment/quality (§3.1)</td></tr>
+    <tr><td><a href="https://sre.google/workbook/error-budget-policy/">Google SRE — error-budget policy</a></td><td>primary</td><td>the budget analogy: 1 − SLO; halt changes when exhausted (§3.6)</td></tr>
+    <tr><td>Simon, 1971 — <em>Designing Organizations for an Information-Rich World</em></td><td>primary</td><td>"a wealth of information creates a poverty of attention" (§3.6)</td></tr>
+    <tr><td><a href="https://en.wikipedia.org/wiki/Cognitive_load">Cognitive load theory</a> (Sweller)</td><td>secondary</td><td>working memory is finite; three load types (§3.6)</td></tr>
+    <tr><td><a href="https://www.signl4.com/blog/alert-fatigue-in-modern-it-operations/">SIGNL4 — alert fatigue</a></td><td>blog</td><td>alerts exceed cognitive capacity; decision fatigue; effectiveness falls as volume rises (§3.6)</td></tr>
+    <tr><td><a href="https://psnet.ahrq.gov/primer/alert-fatigue">AHRQ PSNet — alert fatigue</a></td><td>secondary</td><td>clinicians desensitised by alert volume (§3.6, corroboration)</td></tr>
+    <tr><td><a href="https://opentelemetry.io/docs/specs/semconv/registry/attributes/gen-ai/">OpenTelemetry — GenAI semantic conventions</a></td><td>primary</td><td>standard usage-record fields (<code>gen_ai.usage.*</code>) (§3.7)</td></tr>
+    <tr><td><a href="https://platform.claude.com/docs/en/api/messages">Anthropic — Messages API <code>usage</code></a></td><td>primary</td><td>the provider already returns input/output/cache token counts (§3.7)</td></tr>
+    <tr><td><a href="https://langfuse.com/docs/observability/features/token-and-cost-tracking">Langfuse — token &amp; cost tracking</a></td><td>blog</td><td>observability tools capture tokens+cost+latency per trace (§3.7)</td></tr>
+    <tr><td><a href="https://www.nasa.gov/human-systems-integration-division/nasa-task-load-index-tlx/">NASA-TLX</a></td><td>primary</td><td>workload is measured subjectively (self-report), not objectively (§3.8)</td></tr>
+    <tr><td><a href="https://interruptions.net/literature/Bailey-CHB06_1.pdf">Bailey et al. — attention-aware systems</a></td><td>primary</td><td>mid-task interruptions cost far more than boundary-timed (§3.8)</td></tr>
+    <tr><td><a href="https://www.nngroup.com/articles/progressive-disclosure/">NN/g — progressive disclosure</a></td><td>secondary</td><td>reduce load by deferring options, no prompt needed (§3.8)</td></tr>
+    <tr><td><a href="https://blog.codinghorror.com/the-last-responsible-moment/">The last responsible moment</a> (Poppendieck)</td><td>blog</td><td>batch/defer a decision until deferral costs an option (§3.8)</td></tr>
+    <tr><td><a href="https://sre.google/workbook/alerting-on-slos/">Google SRE — alerting on SLOs (burn rate)</a></td><td>primary</td><td>"burn rate is how fast… the service consumes the error budget" → attention burn-rate (§3.8)</td></tr>
+  </tbody>
+</table>
+</section>
+
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  Expense — considerations · design brief · drafted 25 Jun 2026 ·
+  <button data-theme-toggle style="background:none;border:none;color:var(--c-link);cursor:pointer;font:inherit;padding:0;border-bottom:1px solid currentColor;">light/dark</button>
+</footer>
+
+</main>
+<script src="../assets/spec.js"></script>
+</body>
+</html>
