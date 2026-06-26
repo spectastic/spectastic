@@ -1,0 +1,226 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Grounded planning — plan rests on verified truth · Change proposal</title>
+<link rel="stylesheet" href="../../../../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../../../../assets/favicon.svg">
+<script src="../../../../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Change proposal · spectastic-spec</p>
+  <h1>Grounded planning — the plan rests on verified truth</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    Make <code>/spectastic.plan</code> read the real ground before deciding, so discoveries land at planning, not implementation.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>     <span><spec-status value="applied">Applied</spec-status></span>
+    <b>Change ID</b>  <span>2026-06-22-plan-grounding</span>
+    <b>Spec</b>       <span><a href="../../../spec.html">spectastic-spec</a></span>
+    <b>Author</b>     <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Created</b>    <span><time datetime="2026-06-22">2026-06-22</time></span>
+    <b>Targets</b>    <span>1 requirement (1 added)</span>
+    <b>Read time</b>  <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-tldr>
+    <p>Dogfooding surfaced a real gap: <code>/spectastic.plan</code> is spec- and interview-driven but never
+    reads the real code, APIs, or constraints a design rests on — so unverified assumptions are
+    structurally indistinguishable from verified facts in <code>plan.html</code>, and they leak into
+    implementation as surprise discoveries. This change adds <a href="../../../spec.html#REQ-LIFECYCLE-006">REQ-LIFECYCLE-006</a>:
+    the plan procedure SHOULD ground every design-bearing fact against real source before the interview
+    and record each in an evidence ledger (<code>verified | spike | assumed</code>), and MUST NOT hand off
+    to <code>/spectastic.tasks</code> while a <code>must</code>-tier decision rests on an unverified
+    assumption the author hasn't accepted (the gate is the binding clause; the grounding discipline is
+    SHOULD, mirroring REQ-CHANGE-004). Reuses the <code>/spectastic.explain</code> grounding
+    discipline and the adversarial-pass risk-gate shape — no new verb, no new element.</p>
+  </spec-tldr>
+</header>
+
+
+<spec-change id="2026-06-22-plan-grounding" status="approved">
+
+<header>
+  <h3>Grounded planning — the plan rests on verified truth</h3>
+  <span class="meta"><spec-status value="applied">Applied</spec-status></span>
+</header>
+
+
+<section id="intent">
+<h2>1 · Intent</h2>
+<p>The lifecycle's promise is that each phase de-risks the next. Today it breaks at the plan→implement
+seam. <code>commands/spectastic.plan.md</code> reads the spec in full and runs a two-phase interview, but
+its only contact with the codebase is step 6 "Skip what's known", which checks the <em>file tree,
+<code>package.json</code>, and lockfiles</em> — metadata, never file contents or API signatures.
+Decisions, technical context, the alternatives matrix, and risks are all narrative judgment. The ADR
+shape is enforced; evidence is not. So a plan can assert "the schema already exposes X" or "this library
+supports Y" without anyone having opened X or Y — and the implementation phase pays for it with
+discoveries that should have been caught at planning.</p>
+<p>The fix is the field's consensus and spectastic already owns it as a pattern: move investigation into
+planning, backed by evidence. <code>/spectastic.explain</code> already mandates "resolve every target
+against real source… cite only references you have confirmed exist this turn." This change lifts that
+discipline into <code>/spectastic.plan</code> and makes the evidence — and any ungrounded decision —
+structurally visible, the way a missing delta <code>op</code> renders <code>MISSING OP</code>.</p>
+</section>
+
+
+<section id="scope">
+<h2>2 · Scope</h2>
+
+<spec-goals>
+  <h3>In scope</h3>
+  <ul>
+    <li>A grounding phase in <code>/spectastic.plan</code> — read real consuming code, dependency signatures (at the resolved lockfile version), platform constraints, and existing patterns <em>before</em> the interview.</li>
+    <li>An evidence ledger in <code>plan.html</code>: every design-bearing fact as <code>verified | spike | assumed</code> with its source.</li>
+    <li>A <code>grounding=</code> attribute on each <code>&lt;spec-decision&gt;</code>; an ungrounded one renders the <code>UNGROUNDED</code> visible-failure.</li>
+    <li>A grounding gate: no hand-off to <code>/spectastic.tasks</code> while a decision rests on an unverified assumption the user hasn't accepted as a <code>&lt;spec-risk&gt;</code>.</li>
+    <li>Time-boxed spikes permitted during planning to convert "we think" → "we know".</li>
+  </ul>
+</spec-goals>
+
+<spec-non-goals>
+  <h3>Out of scope</h3>
+  <ul>
+    <li>A mechanical citation-verification kernel in <code>spectastic validate</code> — deferred to a follow-on slice (reuses the <code>course.ts</code> ref-resolver when built).</li>
+    <li>A new verb — grounding folds into <code>/spectastic.plan</code>, the way clarification folds into its interview.</li>
+    <li>A new custom element — the status rides on an attribute (vocabulary budget untouched).</li>
+    <li>Version-aware symbol/signature checking — left to in-session LSP grounding.</li>
+  </ul>
+</spec-non-goals>
+</section>
+
+
+<section id="approach">
+<h2>3 · Approach</h2>
+<p>The contract lands here as <a href="../../../spec.html#REQ-LIFECYCLE-006">REQ-LIFECYCLE-006</a>;
+its implementation is the procedure + template + CSS. The grounding step sits <em>after</em> the
+estimability gate (which proves the spec is answerable) and <em>before</em> the interview (which now
+decides on verified ground rather than producing assumptions). Each design-bearing fact is classified
+<code>verified</code> (opened this turn — record <code>path:line</code> / symbol / <code>dep@version</code> /
+URL), <code>spike</code> (run the time-boxed investigation now, record the finding), or <code>assumed</code>
+(a tracked risk if a decision rests on it).</p>
+<p>The gate reuses the propose §8 status model verbatim: an assumption a decision rests on becomes a
+<code>&lt;spec-risk status="accepted"&gt;</code> only by the user's commitment. No new gate machinery, no
+new statuses, no new element — the ledger is a plain table reusing <code>&lt;spec-status&gt;</code> pills,
+and the decision carries a <code>grounding=</code> attribute whose absence renders <code>UNGROUNDED</code>.</p>
+</section>
+
+
+<section id="deltas">
+<h2>4 · Deltas</h2>
+<p>One <code>&lt;spec-delta&gt;</code>. <code>target=</code> links the live meta-spec; <code>op="added"</code>.</p>
+
+<spec-delta op="added" target="REQ-LIFECYCLE-006">
+  <spec-requirement id="REQ-LIFECYCLE-006" priority="must">
+    <p>The <code>/spectastic.plan</code> procedure <spec-rule level="should">SHOULD</spec-rule> ground
+    every design-bearing fact against real source before its interview — opening the actual consuming
+    code, the dependency's signature at the resolved lockfile version, and quantified platform
+    constraints, not the file tree alone — and <spec-rule level="should">SHOULD</spec-rule> record each
+    fact in an evidence ledger as one of <code>verified</code> (opened this turn, with a cited source),
+    <code>spike</code> (resolved by a time-boxed investigation run during planning, with its finding), or
+    <code>assumed</code> (unverified).</p>
+    <p>Each <code>&lt;spec-decision&gt;</code> <spec-rule level="should">SHOULD</spec-rule> declare its
+    grounding and cite a <code>verified</code> or spike-resolved source in its Context; a decision that
+    rests on an unverified assumption <spec-rule level="should">SHOULD</spec-rule> render as a visible
+    failure (the planning analogue of <a href="../../../spec.html#REQ-AUTHOR-001">REQ-AUTHOR-001</a>'s
+    render-broken-when-malformed discipline).</p>
+    <p>The gate is the binding clause: the plan <spec-rule>MUST NOT</spec-rule> be declared ready for
+    <code>/spectastic.tasks</code> while a <code>must</code>-tier decision rests on an <code>assumed</code>
+    or unresolved <code>spike</code> fact, unless the author has accepted it as a tracked
+    <code>&lt;spec-risk&gt;</code> whose <code>status</code> the author commits (per
+    <a href="../../../spec.html#REQ-CHANGE-004">REQ-CHANGE-004</a>'s author-owned-status model).
+    This gate is a plan→tasks readiness affirmation, not a Draft content-lock — it mirrors the existing
+    estimability gate, and pure-judgment decisions with no external fact are exempt.</p>
+    <details><summary>Rationale</summary><p>Implementation surprises come from planning under unverified
+    assumption. The grounding <em>discipline</em> ships as <code>SHOULD</code> — mirroring
+    <a href="../../../spec.html#REQ-CHANGE-004">REQ-CHANGE-004</a>, which shipped the adversarial
+    pass as guidance from one data point rather than a blanket MUST that hollows into theater. The
+    <em>gate</em> is the <code>MUST</code> that actually stops an ungrounded assumption from reaching
+    implementation silently; lifting the <code>/spectastic.explain</code> "cite only confirmed source"
+    discipline into planning makes "what the plan knows vs. assumes" structurally legible.</p></details>
+  </spec-requirement>
+</spec-delta>
+</section>
+
+
+<section id="risks">
+<h2>5 · Risk register</h2>
+<p>Populated by the adversarial risk pass (this ADD is <code>must</code>-tier, so the heuristic fires).
+Each <code>&lt;spec-risk&gt;</code> stays <code>status="identified"</code> until the author commits a
+transition; <code>/spectastic.apply</code> refuses while any remain <code>identified</code>.</p>
+
+<spec-risk-log>
+
+<spec-risk target="REQ-LIFECYCLE-006" status="mitigated">
+  <p class="claim">Making grounding a blanket MUST that opens "the actual consuming code, the dependency's signature at the resolved lockfile version, and any quantified platform constraint" for every design-bearing fact turns the authoring-only plan verb into a slow, source-tree-dependent investigation gate; within 30 days authors will routinely classify facts as "judgment" or hand-wave the ledger to escape it, hollowing the MUST into theater — exactly the failure REQ-CHANGE-004 hedged against by shipping as <code>should</code> "from one data point" rather than <code>must</code>.</p>
+  <p class="citation">"it MUST open the actual consuming code, the dependency's signature at the resolved lockfile version, and any quantified platform constraint — not the file tree alone"</p>
+  <div class="response">Strong point — this is the fork worth pausing on. The MUST is scoped to facts the plan "will touch or depend on" (not "open every file"), but the <a href="../../../spec.html#REQ-CHANGE-004">REQ-CHANGE-004</a> precedent — shipping the adversarial pass as <code>should</code> from one data point to avoid theater — is exactly on point, and this change rests on one dogfooding session. The teeth that actually prevent the leak are the <em>gate</em> (no hand-off with an ungrounded must-decision), not the obligation to open every file. Author to decide: keep the blanket MUST, or soften the grounding <em>discipline</em> to SHOULD while keeping the <em>gate</em> a MUST. Status left <code>identified</code> for that call.</div>
+</spec-risk>
+
+<spec-risk target="REQ-LIFECYCLE-001" status="mitigated">
+  <p class="claim">The proposal strains the plan verb's authoring-only nature by mandating time-boxed spikes "run during planning" — REQ-LIFECYCLE-001 establishes plan.html as one of five same-design-system authoring templates whose contract is a written artifact, and folding live code-execution/investigation into producing it crosses the same plan→implement seam the change claims to protect; it also brushes P-6 ("Draft is loose"), since the plan is authored in Draft yet REQ-LIFECYCLE-006 imposes a hard MUST-NOT hand-off gate on a loose-by-principle artifact.</p>
+  <p class="citation">REQ-LIFECYCLE-001 (five authoring templates, "Each MUST use the same design system") vs. the delta's "spike (resolved by a time-boxed investigation run during planning)"</p>
+  <div class="response">The gate is a plan→<code>/tasks</code> <em>readiness</em> gate, not a Draft content-lock: P-6 lets a Draft artifact accept in-place edits freely, and this mirrors the <em>existing</em> estimability gate that already refuses to plan while open <code>&lt;spec-question&gt;</code>s remain — a precedent the meta-spec already sanctions. Spikes-during-planning is a deliberate, author-accepted tradeoff (staff practice: de-risk before building); the spike's <em>output</em> is still a written ledger row, so the artifact stays an authoring artifact. Proposed transition: <strong>mitigated</strong>.</div>
+</spec-risk>
+
+<spec-risk target="§2" status="mitigated">
+  <p class="claim">Scope is too broad for one slice: bundling the grounding phase, the evidence-ledger artifact, a new <code>grounding=</code> attribute with an UNGROUNDED visible-failure renderer, AND a hand-off gate gives a single must-tier ADD four independently-riskable surfaces (procedure, template, CSS, gate) — the visible-failure/CSS-rendering surface in particular is exactly the class of interactive/structural artifact the CLAUDE.md verification-discipline note says needs its own browser-level test.</p>
+  <p class="citation">§Scope in-scope item: "A <code>grounding=</code> attribute on each <code>&lt;spec-decision&gt;</code>; an ungrounded one renders the UNGROUNDED visible-failure."</p>
+  <div class="response">The four surfaces are one cohesive contract (the requirement is meaningless without its rendering + gate), so splitting risks an artifact-ordering trap. Conceded on testing: the UNGROUNDED rendering is CSS-driven visible-failure and gets a browser-level check (computed <code>::after</code> content on an ungrounded vs. grounded decision) per the CLAUDE.md "presence is not containment" discipline — already named in the verification plan. Proposed transition: <strong>mitigated</strong>.</div>
+</spec-risk>
+
+</spec-risk-log>
+</section>
+
+
+<section id="tasks">
+<h2>6 · Tasks</h2>
+<p>Scoped to this change only.</p>
+
+<ul style="list-style:none;padding-left:0;">
+  <li><input type="checkbox"> Apply the ADD of <code>REQ-LIFECYCLE-006</code> to <span class="path">specs/000-spectastic/spec.html</span> (after REQ-LIFECYCLE-005, in the Lifecycle topic group).</li>
+  <li><input type="checkbox"> Add the grounding step + grounding gate + decision-<code>grounding=</code> discipline + grounding re-walk to <span class="path">commands/spectastic.plan.md</span>.</li>
+  <li><input type="checkbox"> Add §Grounding &amp; evidence (table) and <code>grounding=</code> on the decision template to <span class="path">templates/plan.html</span>.</li>
+  <li><input type="checkbox"> Add the <code>UNGROUNDED</code> visible-failure + evidence-table / grounding-pill styling to <span class="path">assets/spec.css</span>.</li>
+  <li><input type="checkbox"> Note grounded planning in the lifecycle prose of <span class="path">README.md</span> (no vocabulary-count change).</li>
+</ul>
+</section>
+
+
+<section id="questions">
+<h2>7 · Open questions</h2>
+<spec-questions>
+<ol>
+  <li>None — scope (full behavior + contract), carrier (attribute, not element), spikes-during-planning (yes), and kernel deferral are all decided.</li>
+</ol>
+</spec-questions>
+</section>
+
+
+<section id="changelog">
+<h2>8 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-06-22">2026-06-22</time><span>Applied to the meta-spec; status → applied. REQ-LIFECYCLE-006 folded in after REQ-LIFECYCLE-005.</span></li>
+  <li><time datetime="2026-06-22">2026-06-22</time><span>Adversarial pass: 3 risks. Risk 1 (blanket MUST → theater, citing REQ-CHANGE-004's SHOULD precedent) resolved by re-pitching the grounding discipline as SHOULD with the hand-off gate as the binding MUST; risks 2–3 mitigated. All three author-transitioned to <code>mitigated</code>.</span></li>
+  <li><time datetime="2026-06-22">2026-06-22</time><span>Proposal authored — ADD REQ-LIFECYCLE-006 (grounded planning).</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+</spec-change>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  2026-06-22-plan-grounding · Grounded planning · authored 2026-06-22 ·
+  <button data-theme-toggle style="background:none;border:none;color:var(--c-link);cursor:pointer;font:inherit;padding:0;border-bottom:1px solid currentColor;">light/dark</button>
+</footer>
+
+</main>
+<script src="../../../../../assets/spec.js"></script>
+</body>
+</html>

@@ -9,7 +9,7 @@ You are drafting (or amending) the **project principles** as a single-file HTML 
 
 ## What spectastic is
 
-Spectastic is a single-file HTML spec-authoring system. The lifecycle has four core phases (principles → spec → plan → tasks) plus ongoing change management (propose → apply) and triage. Each artifact is a self-contained `.html` file that uses a small vocabulary of semantic custom elements (`<spec-requirement>`, `<spec-decision>`, `<spec-status>`, etc.) styled by `assets/spec.css`. Read `examples/spectastic-spec.html` to see what a finished artifact looks like.
+Spectastic is a single-file HTML spec-authoring system. The lifecycle has four core phases (principles → spec → plan → tasks) plus ongoing change management (propose → apply) and triage. Each artifact is a self-contained `.html` file that uses a small vocabulary of semantic custom elements (`<spec-requirement>`, `<spec-decision>`, `<spec-status>`, etc.) styled by `assets/spec.css`. Read `specs/000-spectastic/spec.html` to see what a finished artifact looks like.
 
 ## Inputs
 

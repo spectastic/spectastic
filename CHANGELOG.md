@@ -174,7 +174,7 @@ Republish that ships the I-019 / I-020 / T-002 follow-ups already on disk.
 - **`spectastic -V` now reports the actually-installed version** (I-020). Previously the CLI read its version from a hard-coded literal; now it reads the package's own `package.json` at runtime via `import.meta.url`. Cosmetic but it removes a foot-gun: the CLI is no longer able to lie about its identity.
 - The CLI's top-level description was updated to "Single-file HTML spec tooling: bootstrap a project with `init`; validate spec-html artifacts with `validate`." in v0.1.0-pre.4; this republish bundles the updated commands directory under `_bundled/.claude/commands/` so `spectastic init` writes the tightened step 8 prose to new projects.
 
-No runtime behavior changes for the `validate` or `init` subcommands themselves. Spec [meta-spec](./examples/spectastic-spec.html#REQ-LIFECYCLE-005); proposal [2026-06-16-lifecycle-sibling-bundling](./examples/changes/archive/2026-06-16-lifecycle-sibling-bundling/proposal.html).
+No runtime behavior changes for the `validate` or `init` subcommands themselves. Spec [meta-spec](./specs/000-spectastic/spec.html#REQ-LIFECYCLE-005); proposal [2026-06-16-lifecycle-sibling-bundling](./specs/000-spectastic/changes/archive/2026-06-16-lifecycle-sibling-bundling/proposal.html).
 
 ## v0.1.0-pre.4 — 2026-06-16
 

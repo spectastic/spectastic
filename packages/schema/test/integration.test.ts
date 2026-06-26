@@ -21,8 +21,9 @@ const PATTERNS = [
   'plan.html',
   'inbox.html',
   'index.html',
-  'examples/spectastic-spec.html',
-  'examples/triage-log.html',
+  'examples/*.html',
+  // The meta-spec is a normal spec bundle now (specs/000-spectastic/), so
+  // specs/**/*.html sweeps it with every other slice — no per-file entry.
   'specs/**/*.html',
   // Templates are scaffolds with bracket-placeholder IDs ([NEW_REQ_ID], etc.)
   // by design — they're tools, not artifacts. Exclude.

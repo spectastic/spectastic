@@ -19,7 +19,7 @@ User input (from `$ARGUMENTS`), in order of precedence:
 3. A Spec ID (e.g. `001-auth`) — implement the next unchecked task in `specs/<id>/tasks.html`.
 4. Empty — drain order:
    a. Project-root `inbox.html`: pick the oldest `<spec-triage layer="just-do">` card *without* `data-status="done"`.
-   b. If no `just-do` cards remain, fall back to the most recently modified `tasks.html` with unchecked work and pick the first unchecked task. **Discovery covers every `tasks.html` tracker**, not just `specs/**/tasks.html`: also the meta-spec / principles execution-only trackers folded by `/spectastic.apply` (`examples/spectastic-tasks.html`, `principles-tasks.html`, per `REQ-CHANGE-006`).
+   b. If no `just-do` cards remain, fall back to the most recently modified `tasks.html` with unchecked work and pick the first unchecked task. **Discovery covers every `tasks.html` tracker.** `specs/**/tasks.html` now sweeps the meta-spec's own execution-only tracker (`specs/000-spectastic/tasks.html`) along with every other slice; the only tracker outside that glob is the root-level `principles-tasks.html` folded by `/spectastic.apply` (per `REQ-CHANGE-006`).
 
 ### Drain modes (opt-in)
 
@@ -42,7 +42,7 @@ Flags can appear in any order in `$ARGUMENTS`. A non-flag token (`T-NNN`, `I-NNN
    - Read the card's `<dl>` for the `Target` field — that's the file or directory the work touches.
 
    **B. Tasks file** (if `$ARGUMENTS` is `T-NNN`, a spec ID, or empty with no inbox cards):
-   - Resolve to `specs/<spec-id>/tasks.html` — or, for a tasks-less target, its execution-only tracker (`examples/spectastic-tasks.html` for the meta-spec, `principles-tasks.html` for principles). If you can't unambiguously pick one, list candidates and ask.
+   - Resolve to `specs/<spec-id>/tasks.html` (the meta-spec resolves normally, to `specs/000-spectastic/tasks.html`) — or, for the tasks-less `principles` target, its execution-only tracker `principles-tasks.html`. If you can't unambiguously pick one, list candidates and ask.
 
 2. **Pick the target task.** Each task is a `<li>` with an `<input type="checkbox">` and a unique `T-NNN` ID-like label in the visible text. Find the first unchecked task (or the one matching `$ARGUMENTS` if a task ID was given). If the user passed a task ID that's already ticked, report it and pick the next unchecked one with confirmation.
 

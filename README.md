@@ -4,7 +4,7 @@
 
 Spectastic runs a structured spec lifecycle — `principles → spec → plan → tasks → implement → propose → apply → triage` — and emits a single self-contained `.html` file per artifact. The file uses a small vocabulary of semantic custom elements styled by a calm typographic system, so a spec reads like a quiet essay yet packs tables, diagrams, diffs, decision matrices, and progressive disclosure that markdown can't.
 
-**See it first:** open [`index.html`](./index.html) in a browser for the landing page, then [`examples/spectastic-spec.html`](./examples/spectastic-spec.html) for a worked example — the spec for spectastic itself.
+**See it first:** open [`index.html`](./index.html) in a browser for the landing page, then [`specs/000-spectastic/spec.html`](./specs/000-spectastic/spec.html) for a worked example — the spec for spectastic itself.
 
 ## Why
 
@@ -38,10 +38,11 @@ spectastic/
 │   ├── tasks.html                ordered task breakdown scaffold
 │   ├── proposal.html             change-proposal scaffold
 │   └── inbox.html                small-batch inbox scaffold
+├── specs/
+│   └── 000-spectastic/           spectastic's own spec, dogfooded — spec · tasks · triage-log · changes/
 ├── examples/
-│   ├── spectastic-spec.html      worked example — the spec for spectastic itself
 │   ├── triage-log.html           worked example — debug triage log
-│   └── changes/archive/          archived change proposals against the worked spec
+│   └── slicing-gaps.html         worked example — spec-splitting walkthrough
 ├── commands/
 │   ├── spectastic.principles.md
 │   ├── spectastic.spec.md
@@ -99,24 +100,24 @@ The format makes three load-bearing choices:
 2. **Typed `op` attribute** rather than hash-counted markdown headers. The four ops (`added`, `modified`, `removed`, `renamed`) are machine-readable; mis-typed ops fail loudly with a visible `MISSING OP` label.
 3. **Inline rendered preview.** ADD and MODIFY deltas embed the post-state `<spec-requirement>` exactly as it'll appear when archived. Reviewers see what they're approving without running `git diff`.
 
-See [`examples/changes/archive/2026-06-12-add-change-proposal/proposal.html`](./examples/changes/archive/2026-06-12-add-change-proposal/proposal.html) for a worked, archived proposal that exercised all four delta ops — applied verbatim against [`examples/spectastic-spec.html`](./examples/spectastic-spec.html).
+See [`specs/000-spectastic/changes/archive/2026-06-12-add-change-proposal/proposal.html`](./specs/000-spectastic/changes/archive/2026-06-12-add-change-proposal/proposal.html) for a worked, archived proposal that exercised all four delta ops — applied verbatim against [`specs/000-spectastic/spec.html`](./specs/000-spectastic/spec.html).
 
 #### Adversarial risk pass
 
-[`REQ-CHANGE-004`](./examples/spectastic-spec.html#REQ-CHANGE-004) wires an adversarial risk pass into `/spectastic.propose` so first-draft proposals don't ship without critical pushback. The heuristic auto-fires when the proposal touches a `must`-tier requirement, contains an `op="removed"` delta, or spans two or more topic prefixes; flag overrides are `--adversarial` (force on) and `--no-adversarial` (force off). A spawned Agent identifies exactly three risks (regret-in-30-days, contradiction with the live spec, scope concern); each lands as a `<spec-risk>` block under a new §5 Risk register inside the proposal artifact, with `target=` citing a delta ID / REQ ID / `§n` anchor and `status` defaulting to `identified`. `/spectastic.apply` refuses if any risk is still `identified` — gating on the user-confirmed status field only; apply never re-runs the heuristic or re-spawns the critic.
+[`REQ-CHANGE-004`](./specs/000-spectastic/spec.html#REQ-CHANGE-004) wires an adversarial risk pass into `/spectastic.propose` so first-draft proposals don't ship without critical pushback. The heuristic auto-fires when the proposal touches a `must`-tier requirement, contains an `op="removed"` delta, or spans two or more topic prefixes; flag overrides are `--adversarial` (force on) and `--no-adversarial` (force off). A spawned Agent identifies exactly three risks (regret-in-30-days, contradiction with the live spec, scope concern); each lands as a `<spec-risk>` block under a new §5 Risk register inside the proposal artifact, with `target=` citing a delta ID / REQ ID / `§n` anchor and `status` defaulting to `identified`. `/spectastic.apply` refuses if any risk is still `identified` — gating on the user-confirmed status field only; apply never re-runs the heuristic or re-spawns the critic.
 
-The lineage is [ISO 31000](https://www.iso.org/iso-31000-risk-management.html)'s risk register: risks raised at design time become statused artifacts (`identified | accepted | mitigated | rejected`), not chat. The first worked example was the proposal that introduced REQ-CHANGE-004 itself — three findings opened, two mitigated via pre-apply revisions, one accepted — see [`examples/changes/archive/2026-06-13-adversarial-risk-pass/proposal.html`](./examples/changes/archive/2026-06-13-adversarial-risk-pass/proposal.html).
+The lineage is [ISO 31000](https://www.iso.org/iso-31000-risk-management.html)'s risk register: risks raised at design time become statused artifacts (`identified | accepted | mitigated | rejected`), not chat. The first worked example was the proposal that introduced REQ-CHANGE-004 itself — three findings opened, two mitigated via pre-apply revisions, one accepted — see [`specs/000-spectastic/changes/archive/2026-06-13-adversarial-risk-pass/proposal.html`](./specs/000-spectastic/changes/archive/2026-06-13-adversarial-risk-pass/proposal.html).
 
 #### Rejection — both lifecycle surfaces
 
-[`REQ-CHANGE-005`](./examples/spectastic-spec.html#REQ-CHANGE-005) codifies how the lifecycle records "considered, decided against." Rejection preserves history at both surfaces — nothing is deleted; the artifact stays discoverable.
+[`REQ-CHANGE-005`](./specs/000-spectastic/spec.html#REQ-CHANGE-005) codifies how the lifecycle records "considered, decided against." Rejection preserves history at both surfaces — nothing is deleted; the artifact stays discoverable.
 
 - **Inbox cards (pre-propose)** — a `<spec-triage>` card may carry `data-status="rejected"` and a `<dt>Rejected because</dt>` row. The card stays in `inbox.html` with a REJECTED pill + muted body + struck title, mirroring the existing `data-status="done"` convention.
-- **Authored proposals (post-propose)** — `/spectastic.apply --withdraw <YYYY-MM-DD>-<slug> --reason="<one-line>"` flips status to `withdrawn` and moves the folder to `examples/changes/withdrawn/<YYYY-MM-DD>-<slug>/` (parallel to `archive/`, not nested — applied and withdrawn are different terminal states). The live spec's `<spec-changelog>` records "Considered, withdrew" so future-you reaches the rejected idea via the spec, not by walking `changes/`. Withdraw is intended as terminal — there's no `--unwithdraw`; manual recovery via git revert is unsupported but not forbidden.
+- **Authored proposals (post-propose)** — `/spectastic.apply --withdraw <YYYY-MM-DD>-<slug> --reason="<one-line>"` flips status to `withdrawn` and moves the folder to `specs/000-spectastic/changes/withdrawn/<YYYY-MM-DD>-<slug>/` (parallel to `archive/`, not nested — applied and withdrawn are different terminal states). The live spec's `<spec-changelog>` records "Considered, withdrew" so future-you reaches the rejected idea via the spec, not by walking `changes/`. Withdraw is intended as terminal — there's no `--unwithdraw`; manual recovery via git revert is unsupported but not forbidden.
 
 #### Post-apply routing — small vs. large
 
-[`REQ-CHANGE-003`](./examples/spectastic-spec.html#REQ-CHANGE-003) names the rule for *where the follow-up implementation work lives* after `/spectastic.apply` lands a change:
+[`REQ-CHANGE-003`](./specs/000-spectastic/spec.html#REQ-CHANGE-003) names the rule for *where the follow-up implementation work lives* after `/spectastic.apply` lands a change:
 
 - **Small change** (one or two requirements, behavioural addition, no new ADRs) → drive the inline task list inside the archived proposal. `/spectastic.implement` can target those tasks directly.
 - **Large change** (multi-requirement, architectural shift, new topic group) → re-run `/spectastic.plan` then `/spectastic.tasks` against the updated spec to derive a fresh breakdown.
@@ -204,7 +205,7 @@ Twelve-ish custom elements cover the spec shape. Tag name is schema.
 | `<spec-sidenote>` | Margin note for asides that would interrupt the reading flow. |
 | `<spec-newthought>` | Small-caps section opener. |
 | `<spec-triage>` / `<spec-triage-log>` | Single-card debug triage with Y-statement headline, layer-coloured accent, regen-test pill, and conditional deep-dive. |
-| `<spec-task id="T-NNN" parallel>` | Task entry in a `tasks.html` artifact. `id` is the stable `T-NNN`; boolean `parallel` renders the `[P]` pill via CSS; the inner `<input type="checkbox">` is the completion state, read by `:has(input:checked)` for the strike-through. Required per [`REQ-LIFECYCLE-003`](./examples/spectastic-spec.html#REQ-LIFECYCLE-003). |
+| `<spec-task id="T-NNN" parallel>` | Task entry in a `tasks.html` artifact. `id` is the stable `T-NNN`; boolean `parallel` renders the `[P]` pill via CSS; the inner `<input type="checkbox">` is the completion state, read by `:has(input:checked)` for the strike-through. Required per [`REQ-LIFECYCLE-003`](./specs/000-spectastic/spec.html#REQ-LIFECYCLE-003). |
 | `<spec-change>` | Change-proposal wrapper. Holds intent / scope / approach / deltas / tasks. Status pill flows the proposal lifecycle (`proposed → under-review → approved → applied → withdrawn`). |
 | `<spec-delta op="…" target="…">` | One change to one requirement. `op` is `added \| modified \| removed \| renamed`; `target` is the requirement ID. Missing/invalid `op` renders the visible label `MISSING OP`. ADD/MODIFY embed a post-state `<spec-requirement>` inline. |
 | `<spec-risk-log>` | Container for the adversarial risk pass findings in a proposal. Lineage: [ISO 31000](https://www.iso.org/iso-31000-risk-management.html) risk register. |
@@ -405,6 +406,6 @@ These keep the source LLM-editable and diff-friendly:
 
 ## Status
 
-v0.1. Templates, design system, and four slash commands shipped. The spec for spectastic itself (`examples/spectastic-spec.html`) is the canonical reference for what a finished artifact looks like.
+v0.1. Templates, design system, and four slash commands shipped. The spec for spectastic itself (`specs/000-spectastic/spec.html`) is the canonical reference for what a finished artifact looks like.
 
-Open questions are tracked in §9 of [the spec](./examples/spectastic-spec.html#questions).
+Open questions are tracked in §9 of [the spec](./specs/000-spectastic/spec.html#questions).

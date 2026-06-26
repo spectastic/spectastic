@@ -17,9 +17,9 @@ threefold:
 
 `/spectastic.apply` runs in one of two modes:
 
-**Apply mode (default).** User input is `<date>-<slug>` or empty (defaults to the most recently modified `changes/<…>/proposal.html` with status `approved`). Folds the proposal's deltas into the live spec; folder moves to `examples/changes/archive/<slug>/`.
+**Apply mode (default).** User input is `<date>-<slug>` or empty (defaults to the most recently modified `changes/<…>/proposal.html` with status `approved`). Folds the proposal's deltas into the live spec; folder moves to `specs/000-spectastic/changes/archive/<slug>/`.
 
-**Withdraw mode.** `--withdraw <YYYY-MM-DD>-<slug> --reason="<one-line>"`. Both `<slug>` and `--reason="…"` are required. The proposal is rejected post-authorship: status flips to `withdrawn`, folder moves to `examples/changes/withdrawn/<YYYY-MM-DD>-<slug>/` (parallel to `archive/`), and the live spec's `<spec-changelog>` records "Considered `<slug>`, withdrew on `<date>` because `<reason>`." Withdraw is terminal — to revive a withdrawn proposal, author a new one.
+**Withdraw mode.** `--withdraw <YYYY-MM-DD>-<slug> --reason="<one-line>"`. Both `<slug>` and `--reason="…"` are required. The proposal is rejected post-authorship: status flips to `withdrawn`, folder moves to `specs/000-spectastic/changes/withdrawn/<YYYY-MM-DD>-<slug>/` (parallel to `archive/`), and the live spec's `<spec-changelog>` records "Considered `<slug>`, withdrew on `<date>` because `<reason>`." Withdraw is terminal — to revive a withdrawn proposal, author a new one.
 
 ## Preconditions
 
@@ -40,7 +40,7 @@ Before applying, verify all of these. **Stop and report** if any check fails:
 
 Before withdrawing, verify all of these. **Stop and report** if any check fails:
 
-- The proposal exists at `examples/changes/<YYYY-MM-DD>-<slug>/proposal.html` (i.e. is not already archived under `archive/` or withdrawn under `withdrawn/`).
+- The proposal exists at `specs/000-spectastic/changes/<YYYY-MM-DD>-<slug>/proposal.html` (i.e. is not already archived under `archive/` or withdrawn under `withdrawn/`).
 - The proposal's `<spec-status>` is one of `proposed | under-review | approved` — **not** `applied` and **not** already `withdrawn`. Withdraw is one-way.
 - `--reason="<one-line>"` is non-empty. Empty rejection reason is not substantive; refuse.
 
@@ -87,9 +87,9 @@ Before withdrawing, verify all of these. **Stop and report** if any check fails:
 8. **Fold the proposal's §6 Tasks into the target's `tasks.html`** (per `REQ-CHANGE-006`). Apply
    accepts-and-routes; it **never implements** the tasks — `/spectastic.implement` does that.
 
-   - **Resolve the target's `tasks.html`.** For a spec target: `specs/<spec-id>/tasks.html`. For a
-     tasks-less target: the sibling tracker — `examples/spectastic-tasks.html` for the meta-spec,
-     `principles-tasks.html` for principles. **If it doesn't exist, create it** from
+   - **Resolve the target's `tasks.html`.** For a spec target — including the meta-spec, which is a
+     normal slice at `specs/000-spectastic/` — `specs/<spec-id>/tasks.html`. The only tasks-less target
+     is `principles` (no spec dir): its sibling tracker is `principles-tasks.html`. **If it doesn't exist, create it** from
      `templates/tasks.html` (rewrite asset paths for its depth; strip the placeholder phases — the
      folded phase is its content). The tracker on a tasks-less artifact is **execution-only** and
      does not pull the artifact into a status bundle (`REQ-LIFECYCLE-004`/`REQ-LIFECYCLE-005`).
@@ -108,13 +108,13 @@ Before withdrawing, verify all of these. **Stop and report** if any check fails:
 
 When invoked with `--withdraw <YYYY-MM-DD>-<slug> --reason="<one-line>"`:
 
-1. **Locate** the proposal at `examples/changes/<YYYY-MM-DD>-<slug>/proposal.html`. Refuse if it already lives under `archive/` or `withdrawn/`.
+1. **Locate** the proposal at `specs/000-spectastic/changes/<YYYY-MM-DD>-<slug>/proposal.html`. Refuse if it already lives under `archive/` or `withdrawn/`.
 
 2. **Verify Withdraw-mode preconditions** above. Report any failure; do not partially withdraw.
 
 3. **Flip the proposal status** in place from `proposed | under-review | approved` to `withdrawn`. Both the `<spec-status>` pill and the `<spec-change status="…">` wrapper attribute must agree.
 
-4. **Move the change folder** from `examples/changes/<YYYY-MM-DD>-<slug>/` to `examples/changes/withdrawn/<YYYY-MM-DD>-<slug>/`. Atomic move; do not copy-then-delete. Create `examples/changes/withdrawn/` if it does not yet exist. The date-prefixed folder name is preserved per `REQ-CHANGE-001`.
+4. **Move the change folder** from `specs/000-spectastic/changes/<YYYY-MM-DD>-<slug>/` to `specs/000-spectastic/changes/withdrawn/<YYYY-MM-DD>-<slug>/`. Atomic move; do not copy-then-delete. Create `specs/000-spectastic/changes/withdrawn/` if it does not yet exist. The date-prefixed folder name is preserved per `REQ-CHANGE-001`.
 
 5. **Rewrite the moved proposal's relative paths** for the new depth (same depth as `archive/`, so `../assets/` → `../../../../assets/`, sibling spec link → `../../../spectastic-spec.html`, etc.). The path-rewrite shape mirrors what Apply mode does on archive.
 

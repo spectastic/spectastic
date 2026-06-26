@@ -13,7 +13,7 @@ const REPO_ROOT = resolve(here, '..', '..', '..');
  * canonical reference set, collect timings, and assert p95.
  */
 const TARGETS = [
-  'examples/spectastic-spec.html',
+  'specs/000-spectastic/spec.html',
   'principles.html',
   'specs/002-validate-cli/spec.html',
   'specs/002-validate-cli/plan.html',

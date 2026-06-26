@@ -115,7 +115,7 @@ Rules of thumb:
 
 ## Things deferred
 
-Captured in `docs/openspec-considerations.html` and `examples/spectastic-spec.html` §2 (Out of scope):
+Captured in `docs/openspec-considerations.html` and `specs/000-spectastic/spec.html` §2 (Out of scope):
 - `spectastic init --tools` installer
 - `spectastic validate --strict` CLI for CI
 - Cross-tool installers (Cursor / Aider / Copilot)

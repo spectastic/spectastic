@@ -19,7 +19,7 @@ import { describe, expect, it } from 'vitest';
 const here = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(here, '..', '..', '..');
 const SPEC_JS = join(REPO_ROOT, 'assets', 'spec.js');
-const META_SPEC = join(REPO_ROOT, 'examples', 'spectastic-spec.html');
+const META_SPEC = join(REPO_ROOT, 'specs', '000-spectastic', 'spec.html');
 
 /** The green upper bound REQ-FORMAT-004 declares ("green ≤ 80%"). */
 function reqFormatThreshold(html: string): number | undefined {

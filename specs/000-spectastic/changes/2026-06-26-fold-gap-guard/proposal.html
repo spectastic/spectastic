@@ -1,0 +1,241 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Detect a skipped task-fold (REQ-CHANGE-007) · Change proposal</title>
+<link rel="stylesheet" href="../../../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../../../assets/favicon.svg">
+<script src="../../../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Change proposal · 000-spectastic</p>
+  <h1>Detect a skipped task-fold</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    REQ-CHANGE-006 makes apply fold a proposal's §6 tasks, but defines the fold as an action with no checkable
+    post-condition — so a skipped fold is silent. Add the post-condition, verified at apply time and by validate.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>     <span><spec-status value="in-review">Under review</spec-status></span>
+    <b>Change ID</b>  <span>2026-06-26-fold-gap-guard</span>
+    <b>Spec</b>       <span><a href="../../spec.html">000-spectastic</a> (meta-spec)</span>
+    <b>Author</b>     <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Created</b>    <span><time datetime="2026-06-26">2026-06-26</time></span>
+    <b>Targets</b>    <span>1 requirement (1 added)</span>
+    <b>Read time</b>  <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-tldr>
+    <p>Closes meta-spec triage <a href="../../triage-log.html#T-005">T-005</a>. <a href="../../spec.html#REQ-CHANGE-006">REQ-CHANGE-006</a>
+    mandates that apply fold a proposal's §6 into the target's <code>tasks.html</code>, but defines the fold as an
+    <em>action</em> with no checkable <em>post-condition</em>. When the <code>2026-06-25-spec-budget-bands</code>
+    apply skipped it (triage <a href="../../triage-log.html#T-004">T-004</a>), eight tasks were orphaned
+    and a fabricated citation kept shipping — nothing was in a detectably-wrong state. This change <strong>ADDs
+    REQ-CHANGE-007</strong>: the fold gets a post-condition enforced at two points that both operate on artifacts
+    <em>in the validated set</em> (the live spec + its tracker) — never the archived proposal, which
+    <code>validate</code> deliberately ignores. <strong>(a)</strong> apply confirms the phase landed and records
+    the fold in the spec's changelog; <strong>(b)</strong> <code>spectastic validate</code> raises an error when a
+    recorded fold has no matching tracker phase.</p>
+  </spec-tldr>
+</header>
+
+
+<spec-change id="2026-06-26-fold-gap-guard" status="under-review">
+
+<header>
+  <h3>Detect a skipped task-fold</h3>
+  <span class="meta"><spec-status value="in-review">Under review</spec-status></span>
+</header>
+
+
+<section id="intent">
+<h2>1 · Intent</h2>
+<p><a href="../../spec.html#REQ-CHANGE-006">REQ-CHANGE-006</a> makes <code>/spectastic.apply</code> a
+uniform accept-and-route step: it folds a proposal's §6 tasks into the target's <code>tasks.html</code> as a
+provenance-linked phase, and <code>/spectastic.implement</code> drains them. But the requirement specifies the
+fold only as something apply <em>does</em> — there is no <em>post-condition</em> a later check can test. So when an
+apply run omits the fold, the corpus contains no malformed artifact: the deltas are in the spec, the folder is in
+<code>archive/</code>, the status reads <code>applied</code>. Everything looks done.</p>
+<p>That is exactly what happened on 26 Jun 2026 with <code>2026-06-25-spec-budget-bands</code> (meta-spec triage
+<a href="../../triage-log.html#T-004">T-004</a>): the deltas folded, the folder archived, but the §6
+task-fold was skipped. Eight implementation tasks were orphaned and a fabricated "Larson" citation kept shipping
+in <code>assets/spec.js</code> until a human asked where the work went. The failure was invisible because nothing
+<em>verifies</em> that an applied proposal was actually folded.</p>
+<p>The verification must work within the engine as it really is: <code>spectastic validate</code> default-ignores
+<code>**/archive/**</code> and <code>**/withdrawn/**</code> (archived proposals copy stable IDs and would trip
+<code>no-duplicate-ids</code>), so a guard cannot inspect the archived proposal at all. The signal it
+<em>can</em> reach is the pair already in the validated set: the <strong>live spec's <code>&lt;spec-changelog&gt;</code></strong>
+and its <strong>tracker</strong>.</p>
+</section>
+
+
+<section id="scope">
+<h2>2 · Scope</h2>
+
+<spec-goals>
+  <h3>In scope</h3>
+  <ul>
+    <li>ADD <code>REQ-CHANGE-007</code> — a checkable post-condition for the REQ-CHANGE-006 fold, enforced at two
+    points: <strong>(a)</strong> apply confirms the folded phase is present before reporting success and records
+    the fold (or explicit no-fold) in the target spec's <code>&lt;spec-changelog&gt;</code>; <strong>(b)</strong>
+    <code>spectastic validate</code> raises an error when a recorded fold has no matching tracker phase.</li>
+    <li>The requirement <em>contract</em> for both points. The apply-command change, the <code>fold-gap</code>
+    validate rule, its fixtures, and a docs cross-reference are the §6 tasks, drained by <code>/spectastic.implement</code>.</li>
+  </ul>
+</spec-goals>
+
+<spec-non-goals>
+  <h3>Out of scope</h3>
+  <ul>
+    <li defer-to="never">Inspecting the archived proposal. <code>validate</code> ignores <code>**/archive/**</code>
+    by design; the guard reads only the live spec changelog and the tracker, both already in the validated set.</li>
+    <li defer-to="never">Generalising to "verify every apply step". Only the fold has a checkable present/absent
+    artifact (a phase in the tracker); the archive move and the status flip are self-evident from the folder
+    location and the status pill.</li>
+  </ul>
+</spec-non-goals>
+</section>
+
+
+<section id="approach">
+<h2>3 · Approach</h2>
+<p><strong>Record, then verify.</strong> The reason a skipped fold is silent is that no in-set artifact <em>claims</em>
+the fold should exist. So apply gains a small obligation: when it folds, it appends the fold to the target spec's
+<code>&lt;spec-changelog&gt;</code> (naming the tracker phase it wrote); when a proposal legitimately produces no
+fold — an empty §6, or a large change whose re-plan regenerated <code>tasks.html</code> and superseded the phase
+(<a href="../../spec.html#REQ-CHANGE-003">REQ-CHANGE-003</a>) — it records that <em>no</em> phase was
+folded. Either way the changelog now states the expected post-condition, in the validated set, in plain sight.</p>
+<p><strong>Two enforcement points, defense in depth.</strong> Point (a) is an apply-time self-check: apply confirms
+the phase landed before declaring success, catching the omission the moment it would happen. But the T-004 failure
+mode is precisely that the apply <em>run itself</em> skipped a step — a self-check the same run also skips is no
+guarantee. So point (b) is the after-the-fact backstop: a <code>fold-gap</code> cross-file validate rule that, for
+each fold a live spec's changelog records, asserts the target tracker carries the matching phase — and never flags
+an apply that recorded no fold. It is the same live-comparison shape as <code>verify-view-stale</code>
+(re-derive the expected set from one in-set artifact, compare to another; no stored fingerprint, no archived
+input). One delta (<code>REQ-CHANGE-007</code>, priority <code>should</code>, matching
+<a href="../../spec.html#REQ-CHANGE-004">REQ-CHANGE-004</a> / <a href="../../spec.html#REQ-CHANGE-005">REQ-CHANGE-005</a>);
+the mechanics are §6 tasks.</p>
+</section>
+
+
+<section id="deltas">
+<h2>4 · Deltas</h2>
+<p>One <code>&lt;spec-delta&gt;</code> per requirement touched. <code>target=</code> links to the live spec;
+<code>op=</code> is one of <code>added | modified | removed | renamed</code>.</p>
+
+<spec-delta op="added" target="REQ-CHANGE-007">
+  <spec-requirement id="REQ-CHANGE-007" priority="should">
+    <p>The fold mandated by <a href="../../spec.html#REQ-CHANGE-006">REQ-CHANGE-006</a>
+    <spec-rule>MUST</spec-rule> carry a checkable post-condition, enforced at two points — neither of which reads
+    the archived proposal (<code>spectastic validate</code> default-ignores <code>changes/archive/</code>), so both
+    operate only on artifacts in the validated set.</p>
+    <p><strong>(a) At apply time.</strong> When <code>/spectastic.apply</code> folds a proposal's §6, it
+    <spec-rule>MUST</spec-rule> confirm the new provenance-linked phase is present in the target tracker before
+    reporting success, and <spec-rule>MUST</spec-rule> record the fold in the target spec's
+    <code>&lt;spec-changelog&gt;</code>, naming the tracker phase it wrote. A proposal that legitimately produces no
+    fold — an empty §6, or a large change whose re-plan regenerated <code>tasks.html</code> and superseded the
+    phase per <a href="../../spec.html#REQ-CHANGE-003">REQ-CHANGE-003</a> —
+    <spec-rule>MUST</spec-rule> instead record that no phase was folded, so the absence is intentional and legible.</p>
+    <p><strong>(b) After the fact.</strong> <code>spectastic validate</code>
+    <spec-rule level="should">SHOULD</spec-rule> enforce the post-condition: it <spec-rule>MUST</spec-rule> raise
+    an <strong>error</strong>-severity finding when a live spec's <code>&lt;spec-changelog&gt;</code> records a fold
+    for which the target tracker carries no matching folded phase (a <code>fold-gap</code> cross-file check over the
+    live spec + its tracker, both in the validated set). The check <spec-rule>MUST NOT</spec-rule> depend on the
+    archived proposal, and <spec-rule>MUST NOT</spec-rule> flag an apply that recorded no fold.</p>
+    <p>The post-condition is scoped to the fold alone: it <spec-rule>MUST NOT</spec-rule> attempt to verify other
+    apply steps (the archive move and the status flip are self-evident from the folder location and the status pill).</p>
+    <details><summary>Rationale</summary><p><a href="../../spec.html#REQ-CHANGE-006">REQ-CHANGE-006</a>
+    specifies the fold as an action but defines no checkable post-condition, so a skipped fold leaves the corpus
+    looking complete while the work is orphaned — the <code>2026-06-25-spec-budget-bands</code> failure (triage
+    <a href="../../triage-log.html#T-004">T-004</a>). The two points are deliberate defense in depth:
+    apply's self-check catches the common case at write time, and the validate backstop catches the case that
+    actually bit — an apply run that skipped the step (and would skip its own self-check too). Both read only the
+    live spec changelog and the tracker, because <code>validate</code> cannot see the archived proposal. Recording
+    the fold in the changelog is what lets the rule tell a <em>skipped</em> fold from a legitimate <em>no-fold</em>
+    apply without false positives. Error severity (not warning) because an unrecorded-but-expected fold means real
+    work was silently dropped — a correctness gap like <code>verify-view-stale</code>. Priority <code>should</code>
+    because we codify from one incident; re-evaluate after it has proven itself against a few real applies.</p></details>
+  </spec-requirement>
+</spec-delta>
+</section>
+
+
+<section id="risks">
+<h2>5 · Risk register</h2>
+<p>The adversarial pass ran (opt-in <code>--adversarial</code>; the change touches the must-tier
+change-management family <a href="../../spec.html#REQ-CHANGE-006">REQ-CHANGE-006</a> governs). Three
+findings; each <spec-rule>MUST</spec-rule> reach <code>accepted</code>, <code>mitigated</code>, or
+<code>rejected</code> before apply.</p>
+
+<spec-risk-log>
+<spec-risk target="§2" status="identified">
+  <p class="claim">Decisive feasibility gap: the canonical validated set contains <code>specs/000-spectastic/spec.html</code> but <strong>not</strong> <code>specs/000-spectastic/tasks.html</code> (no glob matches it), so the rule's two inputs never co-occur for the meta-spec — the exact spec where T-004 happened. The "no glob change needed" claim is wrong.</p>
+  <p class="citation">§6 task 3: "the live spec and its tracker are normally both validated, so no glob change is needed" — vs <code>integration.test.ts</code> <code>PATTERNS</code> = [<code>principles.html</code>, <code>plan.html</code>, <code>inbox.html</code>, <code>index.html</code>, <code>specs/000-spectastic/spec.html</code>, <code>examples/triage-log.html</code>, <code>specs/**/*.html</code>] — none match <code>specs/000-spectastic/tasks.html</code>.</p>
+  <div class="response"><strong>Draft (status is the author's to set).</strong> Confirmed on disk. <code>verify-view-stale</code> only works because <code>specs/**/*.html</code> sweeps each slice's spec+tasks together; the meta-spec's tracker sits outside <code>specs/</code>, so the analogy breaks for 000 specifically. Concrete fix: add <code>examples/*-tasks.html</code> (and <code>principles-tasks.html</code>) to the canonical set — safe, since trackers don't copy stable IDs, so no <code>no-duplicate-ids</code> interaction. But that is the glob change the scope ruled out; it must move <em>into</em> scope and §6. Same infeasibility shape as the withdrawn first draft, re-expressed against the tracker.</div>
+</spec-risk>
+
+<spec-risk target="REQ-CHANGE-007" status="identified">
+  <p class="claim">The "record an explicit no-fold line" obligation is itself an unverifiable honor-system step: an apply run that skips writing <em>any</em> changelog line is indistinguishable from a legitimate no-fold to the rule, so the silent gap is moved one level up rather than closed.</p>
+  <p class="citation">"A proposal that legitimately produces no fold … MUST instead record that no phase was folded" — the rule fires only on recorded folds, so a missing record (the T-004 failure mode) yields zero findings.</p>
+  <div class="response"><strong>Draft (status is the author's to set).</strong> Real, and partly inherent. After-the-fact detection needs an independent signal that "a fold was owed" — but the only artifact that knows §6 was non-empty is the proposal, which <code>validate</code> ignores. So a guard that reads only in-set artifacts <em>cannot</em> catch a wholesale skip (no phase, no line); it can only catch a recorded-but-unfulfilled fold and apply's own self-check (point a). That is a <strong>bounded</strong> guarantee, strictly better than today but not the "fully detectable" the intent implies. The requirement should state the bound honestly, or accept that apply-time self-verify (point a) is the real guarantee and validate is a secondary net.</div>
+</spec-risk>
+
+<spec-risk target="REQ-CHANGE-003" status="identified">
+  <p class="claim">The rule raises a hard error on the large-change path REQ-CHANGE-003 blesses: apply folds a phase (writes a fold line), then a <em>later</em> <code>/plan</code>+<code>/tasks</code> regenerates the tracker and supersedes that phase — leaving a fold line whose phase no longer exists, which <code>fold-gap</code> flags as error.</p>
+  <p class="citation">REQ-CHANGE-003: "regenerates <code>tasks.html</code> and supersedes the folded phase" — the no-fold escape hatch only covers "apply produced no fold", not "a later re-plan removed a real fold".</p>
+  <div class="response"><strong>Draft (status is the author's to set).</strong> Genuine false-positive path. Apply can't know at fold-time that a change will later be re-planned, so it correctly writes a fold line; the supersession happens later and decoupled. Mitigation: the contract must cover the re-plan path too — <code>/spectastic.tasks</code> regeneration MUST append a "superseded fold &lt;slug&gt;" changelog line that the rule treats as clearing the obligation. That widens the change beyond apply, into the tasks verb — a real scope question, currently unaddressed.</div>
+</spec-risk>
+</spec-risk-log>
+</section>
+
+
+<section id="tasks">
+<h2>6 · Tasks</h2>
+<p>Scoped to this change only. On <code>/spectastic.apply</code> these fold into the target's
+<code>tasks.html</code> as a new provenance-linked phase (per <a href="../../spec.html#REQ-CHANGE-006">REQ-CHANGE-006</a>)
+that <code>/spectastic.implement</code> drains — this list is then the frozen intent record. (The
+<code>REQ-CHANGE-007</code> requirement body itself lands via apply's delta-fold, not as a task.)</p>
+
+<ul style="list-style:none;padding-left:0;">
+  <li><input type="checkbox"> Point (a) — apply self-verify + changelog record. After folding, confirm the new phase is present in the target tracker before reporting success; append a fold line (naming the phase) to the target spec's <code>&lt;spec-changelog&gt;</code>, or an explicit "no fold (empty §6 / re-plan superseded)" line. <span class="path">commands/spectastic.apply.md · packages/core/src/commands/apply.ts</span></li>
+  <li><input type="checkbox"> Point (b) — the <code>fold-gap</code> cross-file validate rule. For each fold a live spec's <code>&lt;spec-changelog&gt;</code> records, assert the target tracker carries the matching folded phase; error severity when absent; never flag a recorded no-fold. Register it; add positive/negative directory fixtures. <span class="path">packages/schema/src/rules/fold-gap.ts</span></li>
+  <li><input type="checkbox"> Confirm the rule's inputs co-occur in the canonical validated set — the live spec and its tracker are normally both validated, so no glob change is needed (unlike the archive-reading design this replaced); add an integration assertion. <span class="path">packages/schema/test/integration.test.ts</span></li>
+  <li><input type="checkbox"> Cross-reference <code>REQ-CHANGE-007</code> from the fold step so the post-condition is discoverable where the action is documented. <span class="path">commands/spectastic.apply.md</span></li>
+</ul>
+</section>
+
+
+<section id="questions">
+<h2>7 · Open questions</h2>
+<spec-questions>
+<ol>
+  <li><strong>What does REQ-CHANGE-007 actually promise — full or bounded detection?</strong> The adversarial pass (§5) shows a validate guard reading only in-set artifacts <em>cannot</em> catch a wholesale skip (no phase + no changelog line), because the only artifact that knows a fold was owed is the archived proposal, which <code>validate</code> ignores. So the achievable guarantee is bounded: apply-time self-verify (point a) catches the common case; validate catches recorded-but-unfulfilled folds, not silent skips. Decide whether to (i) ship the bounded guarantee and state it honestly, (ii) make apply-time self-verify the primary guarantee and demote validate to a secondary net, or (iii) reconsider whether validate is the right enforcement layer at all.</li>
+  <li><strong>Does the change extend beyond apply?</strong> Closing the §5 risks pulls in scope the current draft excludes: adding <code>examples/*-tasks.html</code> to the canonical validated set (R-1), and a "superseded fold" changelog line written by <code>/spectastic.tasks</code> regeneration to avoid false-positives on the REQ-CHANGE-003 large-change path (R-3). Confirm whether REQ-CHANGE-007 should own those, or whether they split into sibling changes.</li>
+</ol>
+</spec-questions>
+</section>
+
+
+<section id="changelog">
+<h2>8 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-06-26">2026-06-26</time><span>Proposal re-authored after a first draft was found infeasible — its <code>fold-gap</code> rule keyed on archived proposals, which <code>validate</code> default-ignores, so it could never fire (caught by the adversarial pass). Reshaped to read only the in-set live spec changelog + tracker, with apply recording the fold so a skipped fold is distinguishable from a legitimate no-fold. Adds REQ-CHANGE-007 (apply self-verify + validate backstop). Closes triage T-005; originates from the T-004 incident.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+</spec-change>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  2026-06-26-fold-gap-guard · Detect a skipped task-fold · authored 2026-06-26
+</footer>
+
+</main>
+<script src="../../../../assets/spec.js"></script>
+</body>
+</html>

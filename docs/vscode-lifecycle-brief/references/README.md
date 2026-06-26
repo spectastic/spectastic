@@ -28,6 +28,6 @@ connector curvature, and node layout against the brief rather than guessing.
 
 - `assets/spec.css` — authoritative tokens: `:root` (light), `[data-mode="dark"]` (dark),
   `--spec-1…8` (the per-verb brand colours).
-- `examples/spectastic-spec.html`, `specs/*/spec.html` — real rendered artifacts (what the
+- `specs/000-spectastic/spec.html`, `specs/*/spec.html` — real rendered artifacts (what the
   "full webview" fidelity reuses).
 - `specs/017-brand-logo/` — the spectrum-asterisk mark and its fixed per-verb colour order.
