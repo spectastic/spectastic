@@ -13,7 +13,7 @@ describe('init: plan builder (T-100, FR-002)', () => {
     const inventory = resolveBundle();
     const cwd = mkdtempSync(join(tmpdir(), 'spectastic-init-plan-'));
     const plan = buildPlan({ inventory, cwd });
-    expect(plan.length).toBe(19);
+    expect(plan.length).toBe(20);
     expect(plan.every((d) => d.action === 'write')).toBe(true);
     expect(plan.every((d) => d.preExisting === false)).toBe(true);
   });

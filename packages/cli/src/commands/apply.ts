@@ -15,10 +15,19 @@ export function registerApply(program: Command): void {
         slug: string,
         opts: { withdraw?: boolean; reason?: string },
       ) => {
-        const [{ applyCommand }, { nodeFs }] = await Promise.all([
+        const [{ applyCommand }, { nodeFs }, { gateOnQuarantine }, fs] = await Promise.all([
           import('@spectastic/core/commands/apply'),
           import('@spectastic/core/providers/node-fs'),
+          import('../state-gate.js'),
+          import('node:fs/promises'),
         ]);
+
+        // Anti-ship guard (022-explore, FR-006): refuse to advance a quarantined exploration.
+        const quarantine = await gateOnQuarantine(fs, process.cwd(), specId);
+        if (quarantine) {
+          process.stderr.write(`${quarantine.message}\n`);
+          process.exit(2);
+        }
 
         if (opts.withdraw && !opts.reason) {
           process.stderr.write('--withdraw requires --reason "<one-line reason>"\n');

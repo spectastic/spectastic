@@ -85,6 +85,7 @@ spectastic init --with explain      # also install the extended `explain` verb
 | --- | --- | --- |
 | explain | `/spectastic.explain <target> [--proficiency=wheels\|completion\|independent]` | A grounded, in-chat coaching read of a spec, requirement, decision, or file. Ephemeral — writes no artifact, cites only real source, pulled on demand. |
 | explain --course | `/spectastic.explain --course <target> [--keep]` | Generates a persistent, grounded **course** — a handful of objectives, each a reading + a quiz, on a mastery ledger. Every reference is verified to exist and every quiz item is checked to be unanswerable without the source. Courses are ephemeral: written under `.spectastic/courses/`, git-ignored by default (`--keep` retains). Backed by the `spectastic course` engine. |
+| explore | `/spectastic.explore <intent>` | **Vibe to learn, spec to keep.** Scaffolds a *quarantined* exploration under `explorations/<id>/` — a git-ignored `explore.html` ledger plus a tracked `quarantine.json` marker — that you build loosely (SDD ceremony off, a thin P-1+P-2 floor on). The marker is the anti-ship gate: **`spectastic validate` errors while any exploration is quarantined**, so an un-graduated build can never merge (your branch is red by design until you *graduate* or *delete* it). Graduation — turning the build into a real spec/plan/tasks — is a deferred sibling slice. |
 
 ### Change proposals (`/spectastic.propose` + `/spectastic.apply`)
 

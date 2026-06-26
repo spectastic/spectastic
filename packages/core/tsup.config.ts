@@ -25,6 +25,7 @@ export default defineConfig({
     'src/commands/implement.ts',
     'src/commands/course.ts',
     'src/commands/verify.ts',
+    'src/commands/explore.ts',
     'src/providers/node-fs.ts',
     'src/providers/claude.ts',
     'src/providers/stub.ts',

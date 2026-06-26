@@ -17,8 +17,14 @@ export function registerSpec(program: Command): void {
     .option('--reentry <spec-id>', 'sharpen the existing spec at this ID (hints Sharpen-vs-Author phrasing)')
     .option('--force', 'bypass the past-Draft refuse with a warning')
     .action(async (description: string, opts: { reentry?: string; force?: boolean }) => {
-      const [{ specCommand }, { createAIProvider }, { nodeFs }, { gateOnDestinationState }, fs, path] =
-        await Promise.all([
+      const [
+        { specCommand },
+        { createAIProvider },
+        { nodeFs },
+        { gateOnDestinationState, gateOnQuarantine },
+        fs,
+        path,
+      ] = await Promise.all([
           import('@spectastic/core/commands/spec'),
           import('../ai-factory.js'),
           import('@spectastic/core/providers/node-fs'),
@@ -33,6 +39,16 @@ export function registerSpec(program: Command): void {
         : null;
 
       let existingSpec: string | undefined;
+      if (reentryPath && opts.reentry) {
+        // Anti-ship guard (022-explore, FR-006): refuse to sharpen a quarantined
+        // exploration's id. (Fresh authoring picks a new id, so there is nothing
+        // to gate there.)
+        const quarantine = await gateOnQuarantine(fs, process.cwd(), opts.reentry);
+        if (quarantine) {
+          process.stderr.write(`${quarantine.message}\n`);
+          process.exit(2);
+        }
+      }
       if (reentryPath) {
         const decision = await gateOnDestinationState(fs, reentryPath, { force: opts.force });
         if (decision.kind === 'refuse') {

@@ -67,13 +67,13 @@ describe('init: smoke (T-102)', () => {
     ).toBe(true);
   });
 
-  it('empty dir → 19 files, exit 0, summary present (FR-001, FR-002, FR-006, FR-007)', async () => {
+  it('empty dir → 20 files, exit 0, summary present (FR-001, FR-002, FR-006, FR-007)', async () => {
     const tmpDir = mkdtempSync(join(tmpdir(), 'spectastic-init-smoke-'));
     const r = await runCLI(['init'], tmpDir);
     expect(r.code, `stderr: ${r.stderr}\nstdout: ${r.stdout}`).toBe(0);
 
     const files = listFilesRecursive(tmpDir).sort();
-    expect(files.length).toBe(19);
+    expect(files.length).toBe(20);
     expect(files).toContain('.claude/commands/spectastic.spec.md');
     expect(files).toContain('assets/theme-boot.js');
     expect(files).toContain('assets/favicon.svg');

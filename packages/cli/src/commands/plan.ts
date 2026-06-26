@@ -13,15 +13,29 @@ export function registerPlan(program: Command): void {
     .argument('<spec-id>')
     .option('--force', 'bypass the past-Draft refuse with a warning')
     .action(async (specId: string, opts: { force?: boolean }) => {
-      const [{ planCommand }, { createAIProvider }, { nodeFs }, { gateOnDestinationState }, fs, path] =
-        await Promise.all([
-          import('@spectastic/core/commands/plan'),
-          import('../ai-factory.js'),
-          import('@spectastic/core/providers/node-fs'),
-          import('../state-gate.js'),
-          import('node:fs/promises'),
-          import('node:path'),
-        ]);
+      const [
+        { planCommand },
+        { createAIProvider },
+        { nodeFs },
+        { gateOnDestinationState, gateOnQuarantine },
+        fs,
+        path,
+      ] = await Promise.all([
+        import('@spectastic/core/commands/plan'),
+        import('../ai-factory.js'),
+        import('@spectastic/core/providers/node-fs'),
+        import('../state-gate.js'),
+        import('node:fs/promises'),
+        import('node:path'),
+      ]);
+
+      // Anti-ship guard (022-explore, FR-006): refuse to advance a quarantined
+      // exploration. Fires before any read, since an exploration has no spec.html.
+      const quarantine = await gateOnQuarantine(fs, process.cwd(), specId);
+      if (quarantine) {
+        process.stderr.write(`${quarantine.message}\n`);
+        process.exit(2);
+      }
 
       const specPath = path.resolve(process.cwd(), 'specs', specId, 'spec.html');
       const planPath = path.resolve(process.cwd(), 'specs', specId, 'plan.html');

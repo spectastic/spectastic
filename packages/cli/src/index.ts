@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { Command } from 'commander';
 import { registerApply } from './commands/apply.js';
 import { registerCourse } from './commands/course.js';
+import { registerExplore } from './commands/explore.js';
 import { registerImplement } from './commands/implement.js';
 import { registerInit } from './commands/init.js';
 import { registerPlan } from './commands/plan.js';
@@ -51,6 +52,7 @@ registerPlan(program);
 registerPropose(program);
 registerImplement(program);
 registerVerify(program);
+registerExplore(program);
 
 if (process.argv.length <= 2) {
   program.outputHelp();

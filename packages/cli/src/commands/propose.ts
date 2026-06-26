@@ -14,13 +14,24 @@ export function registerPropose(program: Command): void {
         description: string,
         opts: { adversarial?: boolean },
       ) => {
-        const [{ proposeCommand }, { createAIProvider }, { nodeFs }, fs, path] = await Promise.all([
-          import('@spectastic/core/commands/propose'),
-          import('../ai-factory.js'),
-          import('@spectastic/core/providers/node-fs'),
-          import('node:fs/promises'),
-          import('node:path'),
-        ]);
+        const [{ proposeCommand }, { createAIProvider }, { nodeFs }, { gateOnQuarantine }, fs, path] =
+          await Promise.all([
+            import('@spectastic/core/commands/propose'),
+            import('../ai-factory.js'),
+            import('@spectastic/core/providers/node-fs'),
+            import('../state-gate.js'),
+            import('node:fs/promises'),
+            import('node:path'),
+          ]);
+
+        // Anti-ship guard (022-explore, FR-006): refuse to advance a quarantined
+        // exploration — before constructing the AI provider, so the refusal is
+        // reachable without an API key.
+        const quarantine = await gateOnQuarantine(fs, process.cwd(), specId);
+        if (quarantine) {
+          process.stderr.write(`${quarantine.message}\n`);
+          process.exit(2);
+        }
 
         const ai = await createAIProvider();
         const specPath = path.resolve(process.cwd(), 'specs', specId, 'spec.html');

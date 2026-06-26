@@ -499,3 +499,59 @@ export interface VerifyResult {
   /** The generated, self-contained verify.html (FR-001). */
   html: string;
 }
+
+// --- explore (verb 022, the discovery scaffolder — front half) ---------
+
+/**
+ * The tracked, machine-readable quarantine marker (spec 022-explore, D-002 /
+ * FR-004). Sits beside the git-ignored `explore.html` ledger as
+ * `explorations/<id>/quarantine.json`; it is what `spectastic validate` and the
+ * verb state-gate read, so the anti-ship guard stays visible to CI even though
+ * the rich ledger is local-only. JSON, not HTML, by deliberate choice (plan §9)
+ * — the cheapest machine read, precedented by the root `commands.json`.
+ */
+export interface QuarantineMarker {
+  /** Exploration id (NNN-kebab) — shares the scheme with specs; graduation reuses it. */
+  id: string;
+  /** The one-line intent this build is trying to answer. */
+  intent: string;
+  /**
+   * Always `"quarantined"` in this slice. The only exits are graduation
+   * (deferred) or deletion — there is no "abandoned" terminal state (FR-009).
+   */
+  status: 'quarantined';
+  /** ISO date (YYYY-MM-DD) the exploration was scaffolded. */
+  created: string;
+}
+
+/**
+ * Input to the deterministic `exploreScaffold` kernel (D-001). The CLI resolves
+ * the id, supplies today's date (keeping the kernel pure/deterministic given its
+ * input — the verify pattern), and passes the thin-floor ledger template it read
+ * from `templates/explore.html`.
+ */
+export interface ExploreInput {
+  /** The resolved exploration id (NNN-kebab). */
+  id: string;
+  /** The one-line intent. */
+  intent: string;
+  /** ISO date (YYYY-MM-DD); supplied by the caller so the kernel stays deterministic. */
+  created: string;
+  /** The `templates/explore.html` contents the ledger is rendered from. */
+  template: string;
+  /**
+   * Optional captured run, rendered into the ledger's Run/Demo block in the
+   * shared verify shape (FR-008 / D-004). Absent at scaffold time — the block
+   * renders loudly as "not recorded" until a run is captured.
+   */
+  capturedRun?: CapturedRun;
+}
+
+export interface ExploreResult {
+  /** The resolved exploration id. */
+  id: string;
+  /** The rendered, git-ignored `explore.html` ledger. */
+  ledgerHtml: string;
+  /** The tracked quarantine marker, serialized by the CLI to `quarantine.json`. */
+  marker: QuarantineMarker;
+}
