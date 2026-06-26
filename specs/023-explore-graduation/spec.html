@@ -1,0 +1,363 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>explore --graduate — vibe to learn, spec to keep (the back half) · Specification</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Specification · 023-explore-graduation</p>
+  <h1>explore --graduate — the back half of the loop</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    The graduation half of <a href="../022-explore/spec.html"><code>explore</code></a>:
+    <code>explore --graduate &lt;id&gt;</code> classifies a quarantined build, extracts a real spec from it with
+    the run as <em>verified</em> grounding, restores every relaxed gate, lifts the quarantine, and archives the
+    exploration as discovered-not-guessed history.
+  </p>
+
+  <spec-parent specid="022-explore"></spec-parent>
+
+  <spec-meta>
+    <b>Status</b>      <span><spec-status value="draft">Draft</spec-status></span>
+    <b>Spec ID</b>     <span>023-explore-graduation</span>
+    <b>Owner</b>       <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Reviewers</b>   <span>—</span>
+    <b>Created</b>     <span><time datetime="2026-06-26">2026-06-26</time></span>
+    <b>Principles</b><span><a href="../../principles.html">v1.2.0</a></span>
+    <b>Smallest demoable</b><span>One <code>explore --graduate &lt;id&gt;</code> run turns a quarantined exploration into a Draft <code>specs/&lt;id&gt;/</code> bundle under full rigor — classified, verified-grounded, restore-scaffolded — and archives the source. All-or-nothing.</span>
+    <b>Read time</b>   <span data-reading-time></span>
+  </spec-meta>
+
+  <!-- Live size gauge — green ≤80%, amber 80-100%, red over (REQ-FORMAT-004). Ceiling 2400 is raised over
+       the front-half sibling 022-explore (1900) by deliberate owner choice: this slice is the whole back half
+       (classify + extract + restore + lift + archive) rather than a single step. See INVEST · Small. -->
+  <spec-budget words="2400" reqs="20" minutes="15"></spec-budget>
+
+  <spec-tldr>
+    <p><a href="../022-explore/spec.html">022-explore</a> shipped the front half — scaffold a quarantined build
+    and refuse to ship it. This slice ships the <strong>back half</strong>: graduation. As an opt-in
+    <em>mode</em> of the same verb, <code>explore --graduate &lt;id&gt;</code> runs three steps —
+    <strong>classify</strong> (spike or tracer-bullet, recorded immutably), <strong>extract</strong> (read the
+    build into a Draft <code>spec.html</code>, seed the run's proven facts as <code>verified</code> grounding,
+    interview what the build never answered), and <strong>restore</strong> (generate the path-appropriate
+    rebuild/refactor tasks and turn every relaxed gate back on) — then lifts the quarantine and archives the
+    exploration. The deterministic legs are atomic; only the extract is AI-coupled. This is what makes 022's
+    anti-ship guard safe — nothing is forbidden, because everything can graduate.</p>
+  </spec-tldr>
+
+  <dl class="invest">
+    <dt><span class="letter">I</span> Independent</dt> <dd>Consumes 022's exploration tree, marker, and run record, <a href="../021-verify-view/spec.html">021</a>'s verify Run/Demo shape, and <a href="../000-spectastic/spec.html#REQ-LIFECYCLE-006">000 · REQ-LIFECYCLE-006</a>'s grounding ledger; feeds the existing <code>spec/plan/tasks</code> verbs. Sequential after 022, no shared mutable state.</dd>
+    <dt><span class="letter">N</span> Negotiable</dt>  <dd>Outcomes only. The CLI surface, the extraction prompt, and the restore-task templates are deferred to the plan.</dd>
+    <dt><span class="letter">V</span> Valuable</dt>    <dd>Unlocks <a href="#SC-001">SC-001</a> — completes the loop so a quarantined build is never stuck; it becomes a verified-grounded spec or nothing.</dd>
+    <dt><span class="letter">E</span> Estimable</dt>   <dd>Plan + tasks derivable; no open question blocks estimation (§<a href="#questions">7</a>).</dd>
+    <dt><span class="letter">S</span> Small</dt>       <dd><strong>The honest tension.</strong> The whole back half (three P1 stories) in one slice — larger than ideal, chosen deliberately over a thinner cut; the ceiling is raised to match. Bounded by deferring the think-first mode, a negative-result state, and re-graduation (§<a href="#requirements">3</a>). If the gauge crosses amber again, split US2.</dd>
+    <dt><span class="letter">T</span> Testable</dt>    <dd>Every requirement observable; <a href="#SC-003">SC-003</a> is the binary all-or-nothing guarantee and <a href="#NFR-001">NFR-001</a> draws the determinism boundary around the AI-coupled extract.</dd>
+  </dl>
+
+  <spec-audience-map>
+    <dl>
+      <dt>Exec / PM</dt>   <dd>§<a href="#context">Context</a>, §<a href="#scenarios">User scenarios</a>, §<a href="#success">Success criteria</a>.</dd>
+      <dt>Reviewer</dt>    <dd>§<a href="#requirements">Requirements</a>, §<a href="#assumptions">Assumptions</a>, §<a href="#questions">Open questions</a>.</dd>
+      <dt>Implementer</dt> <dd>§<a href="#requirements">Requirements</a>, §<a href="#data">Data model</a>, §<a href="#conformance">Conformance index</a>.</dd>
+    </dl>
+  </spec-audience-map>
+</header>
+
+
+<section id="context">
+<h2>1 · Context</h2>
+<p><a href="../022-explore/spec.html">022-explore</a> made half a promise: build to learn in a quarantined tree
+the core verbs and <code>validate</code> refuse to advance. It deferred the bridge back. Today a quarantined
+exploration has two exits — delete or graduate — and graduate doesn't exist, so every build-to-learn that
+worked is stranded.</p>
+
+<p>The brief (<a href="../../docs/explore-considerations.html">explore-considerations.html</a> §4) settles the
+shape: <strong>classify → extract → restore</strong>. The Pragmatic-Programmer taxonomy is the hinge — a
+<em>spike</em> is throwaway (keep the learning, rebuild clean); a <em>tracer-bullet</em> is a usable skeleton
+(keep the code, back-fill the spec, harden in place). The explorer classifies on the artifact, not a rule. The
+build's demonstrated behaviour is then read into a spec, the facts it proved enter the grounding ledger as
+<code>verified</code>, and every gate relaxed during explore comes back on. Stakeholders: explorers (whose
+working build must become a real spec without re-derivation) and reviewers (who must trust graduation is the
+only bridge and can't be gamed).</p>
+</section>
+
+
+<section id="scenarios">
+<h2>2 · User scenarios &amp; testing</h2>
+
+<p>Each story <strong>MUST</strong> be independently testable. All three are P1 — the owner chose the whole
+loop — sliced along the three steps so each verifies alone.</p>
+
+<h3 id="US1">US1 · Extract a spec from the build <spec-pill>P1</spec-pill></h3>
+<p>As an <strong>explorer</strong>, I want <strong>graduation to read my build into a real spec with the run as
+verified grounding</strong> so that <strong>the discovery I already proved becomes the spec's evidence, not a
+fresh guess</strong>.</p>
+<p><em>Acceptance:</em> <code>explore --graduate &lt;id&gt;</code> writes a Draft <code>specs/&lt;id&gt;/spec.html</code>
+(reusing the id) whose stories, requirements, and success criteria are drawn from the build's demonstrated
+behaviour; the run record's proven facts appear as <code>grounding="verified"</code> with no re-capture; and
+what the build never answered — intent, quantified NFRs, edge cases — is interviewed as a cold
+<code>/spectastic.spec</code> would.</p>
+
+<h3 id="US2">US2 · Restore the gates with a path-appropriate plan <spec-pill>P1</spec-pill></h3>
+<p>As an <strong>explorer</strong>, I want <strong>graduation to turn the relaxed rigor back on and hand me the
+right rebuild plan for my classification</strong> so that <strong>a tracer-bullet hardens in place and a spike
+rebuilds clean, with full SDD discipline either way</strong>.</p>
+<p><em>Acceptance:</em> for a <strong>tracer-bullet</strong>, graduation emits a refactor-to-comply task list
+against the principles + gate checks on the kept build; for a <strong>spike</strong>, a clean-rebuild tasks
+flow with the prototype marked for deletion (not auto-deleted); and the bundle is produced under full rigor
+(IDs, NFRs, SC, INVEST, grounding) so downstream verbs enforce estimability, test-first, and the adversarial
+pass.</p>
+
+<h3 id="US3">US3 · Lift, archive, and record immutably <spec-pill>P1</spec-pill></h3>
+<p>As a <strong>reviewer</strong>, I want <strong>graduation to clear the quarantine, archive the exploration,
+and record the classification where it can't be quietly reversed</strong> so that <strong>the lifecycle accepts
+the id while the discovered-not-guessed history stays provable</strong>.</p>
+<p><em>Acceptance:</em> on success the marker flips <code>quarantined</code> → <code>graduated</code> (the verbs
+and <code>validate</code> stop refusing the id); <code>explorations/&lt;id&gt;/</code> moves to
+<code>explorations/archive/&lt;id&gt;/</code>, frozen, recording <code>classify=spike|tracer</code>; and the
+spec's grounding ledger cites that archived source — so reversing the classification means editing a frozen
+archived artifact.</p>
+
+<h3>Edge cases</h3>
+<ul>
+  <li>Build never run — the run record is empty; graduation proceeds but seeds no <code>verified</code> facts (grounding stays <code>assumed</code>).</li>
+  <li>Extraction fails partway — nothing is committed: quarantine stays in force, no <code>specs/&lt;id&gt;/</code> is left, the exploration stays put (NFR-001).</li>
+  <li><code>--graduate</code> on an id with no quarantined exploration — refused; nothing to graduate.</li>
+  <li><code>specs/&lt;id&gt;/</code> already exists — refuse and report; graduation never overwrites a live spec.</li>
+  <li>Reversing a graduation — out of scope (§3); re-enter the resulting spec through the normal lifecycle instead.</li>
+</ul>
+</section>
+
+
+<section id="requirements">
+<h2>3 · Requirements</h2>
+
+<p>Conformance keywords (<spec-rule>MUST</spec-rule>, <spec-rule level="should">SHOULD</spec-rule>,
+<spec-rule level="may">MAY</spec-rule>) follow RFC 2119.</p>
+
+<h3>Functional</h3>
+
+<spec-requirement id="FR-001" priority="must">
+<p>Graduation <spec-rule>MUST</spec-rule> be an opt-in <em>mode</em> of the extended <code>explore</code> verb —
+<code>explore --graduate &lt;id&gt;</code> — operating on an existing quarantined exploration; it
+<spec-rule>MUST NOT</spec-rule> be a new core verb nor a fresh-start command — the back-half partner to
+<code>explore &lt;intent&gt;</code>, one loop under one verb.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-002" priority="must">
+<p>Graduation <spec-rule>MUST</spec-rule> require an explicit <code>spike</code> | <code>tracer-bullet</code>
+classification, captured before extraction, and that classification <spec-rule>MUST</spec-rule> decide the
+restore path: tracer-bullet keeps the code (refactor-to-comply), spike keeps only the learning (clean rebuild).</p>
+<details><summary>Rationale</summary><p>D-2: the interview classifies, it doesn't assume — the call between
+"I proved a question" and "I built a usable skeleton" is what the rest branches on.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-003" priority="must">
+<p>Graduation <spec-rule>MUST</spec-rule> extract a Draft <code>specs/&lt;id&gt;/spec.html</code>, reusing the
+exploration's id, by reading the build's demonstrated screens, flows, and behaviours into user stories,
+requirements, and success criteria — and <spec-rule>MUST</spec-rule> interview what the build never answered
+(intent, quantified NFRs, edge cases) exactly as a cold <code>/spectastic.spec</code> would. It
+<spec-rule>MUST</spec-rule> refuse if <code>specs/&lt;id&gt;/</code> already exists.</p>
+<details><summary>Rationale</summary><p>D-5: the prototype is the spec's source, not a replacement for the
+interview — a build can't surface intent or the NFRs it never exercised.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-004" priority="must">
+<p>The run record's proven facts <spec-rule>MUST</spec-rule> enter the extracted spec's grounding ledger as
+<code>grounding="verified"</code> (per <a href="../000-spectastic/spec.html#REQ-LIFECYCLE-006">000 ·
+REQ-LIFECYCLE-006</a>), reused from the <a href="../022-explore/spec.html#FR-008">022 · FR-008</a> /
+<a href="../021-verify-view/spec.html">021</a> verify-shaped record with no re-capture.</p>
+<details><summary>Rationale</summary><p>D-5: the run is the strongest grounding a spec can have; graduation
+promotes the existing record, it does not re-derive it.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-005" priority="must">
+<p>Graduation <spec-rule>MUST</spec-rule> generate path-appropriate restore tasks: for a tracer-bullet, a
+refactor-to-comply task list against the principles + gate checks on the kept build; for a spike, a
+clean-rebuild tasks flow with the prototype <strong>marked for deletion</strong> (the build is not auto-deleted).</p>
+<details><summary>Rationale</summary><p>Two real modes, two real plans; marking rather than deleting the spike
+build keeps graduation non-destructive — the deletion is a reviewable task the explorer runs.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-006" priority="must">
+<p>Graduation <spec-rule>MUST</spec-rule> restore the SDD rigor relaxed during explore: the extracted bundle is
+produced under full discipline (requirement IDs, NFRs, success criteria, INVEST, the grounding ledger, full
+principles compliance), and lifting the quarantine (FR-007) <spec-rule>MUST</spec-rule> return the id to the
+gates — so <code>plan</code> enforces estimability, <code>tasks</code> enforces test-first, and
+<code>propose</code> runs the adversarial pass when a must-tier requirement landed.</p>
+<details><summary>Rationale</summary><p>D-3: every relaxed gate comes back on. Graduation produces artifacts
+under the gates and clears the refusal so the normal verbs enforce the rest — it does not re-implement them.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-007" priority="must">
+<p>On success graduation <spec-rule>MUST</spec-rule> lift the quarantine — flipping the marker
+<code>quarantined</code> → <code>graduated</code> — so the core verbs and <code>spectastic validate</code> stop
+refusing the id (reversing the <a href="../022-explore/spec.html#FR-006">022 · FR-006</a> guard for this id only).</p>
+</spec-requirement>
+
+<spec-requirement id="FR-008" priority="must">
+<p>Graduation <spec-rule>MUST</spec-rule> archive the exploration — moving <code>explorations/&lt;id&gt;/</code>
+to <code>explorations/archive/&lt;id&gt;/</code>, preserving the ledger + run record — and the archived marker
+<spec-rule>MUST</spec-rule> record <code>classify=spike|tracer</code> and be frozen (immutable, like a
+<code>changes/archive/</code> proposal). The extracted spec's grounding ledger <spec-rule>MUST</spec-rule> cite
+that archived source, so reversing the classification requires editing a frozen archived artifact — visible in
+git.</p>
+<details><summary>Rationale</summary><p>Answers the brief's §6 irreversibility question: the archive is the
+immutable record and the live spec points back at it. Archiving rather than deleting keeps the run prose that
+justified the <code>verified</code> grounding.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-009" priority="should">
+<p>Graduation <spec-rule level="should">SHOULD</spec-rule> reuse the existing <code>spec</code> /
+<code>plan</code> / <code>tasks</code> interview machinery and the extended-verb packaging seams rather than
+forking them — graduation <em>feeds</em> the lifecycle, it does not replace it.</p>
+</spec-requirement>
+
+<h3>Non-functional</h3>
+
+<spec-requirement id="NFR-001" priority="must">
+<p>Graduation <spec-rule>MUST</spec-rule> be all-or-nothing: if any step (extract, restore-scaffold, lift,
+archive) fails, no change is committed — the quarantine stays in force, no partial <code>specs/&lt;id&gt;/</code>
+is left, and the exploration stays put for a clean retry. The deterministic legs (lift, archive, classification
+record) <spec-rule>MUST</spec-rule> be reproducible and side-effect-atomic; only the extract leg is AI-coupled.</p>
+<details><summary>Rationale</summary><p>The same fold-before-irreversible-move atomicity the apply kernel uses:
+do the fallible work and write the spec before the quarantine is lifted and the dir is moved, so a failure
+never leaves a half-graduated, silently-shippable state.</p></details>
+</spec-requirement>
+
+<spec-requirement id="NFR-002" priority="should">
+<p>Graduation is AI-coupled (the extract reads the build into requirements) and <spec-rule level="should">SHOULD</spec-rule>
+require <code>ANTHROPIC_API_KEY</code>, like <code>spec</code> / <code>plan</code> and unlike the deterministic
+<code>apply</code> — the slash-command path uses the in-host session and needs no key.</p>
+</spec-requirement>
+
+<h3>Out of scope (deferred to other slices)</h3>
+<spec-out-of-scope>
+  <ul>
+    <li defer-to="TBD-discovery-modes">A think-first discovery mode (think-to-learn) — a sibling at the front of the lifecycle, considered separately.</li>
+    <li defer-to="TBD-explore-negative-results">A negative-result / "abandoned" terminal state for an exploration that taught something but won't graduate (<a href="../022-explore/spec.html#FR-009">022 · FR-009</a> left it out).</li>
+    <li defer-to="never">Re-graduation / un-graduate — reversing a completed graduation. Graduation is one-way (like <code>apply</code>).</li>
+    <li defer-to="never">Adopting Kiro's EARS requirement notation — spectastic's RFC-2119 <code>&lt;spec-rule&gt;</code> form stands.</li>
+  </ul>
+</spec-out-of-scope>
+</section>
+
+
+<section id="data">
+<h2>4 · Data model</h2>
+
+<p>This slice reads one exploration (022's tree) and writes one spec dir (the normal bundle). It owns the
+graduation record; it reuses 022's run record and 000's grounding ledger.</p>
+
+<h3>Entities</h3>
+<dl>
+  <dt>Graduation</dt><dd>The act and its record: an <code>id</code> (reused from the exploration), a <code>classification</code>, a <code>source</code> (<code>explorations/archive/&lt;id&gt;/</code>), and a <code>target</code> (<code>specs/&lt;id&gt;/</code>). One-way and atomic.</dd>
+  <dt>Classification</dt><dd><code>spike</code> | <code>tracer-bullet</code>. Decides the restore path (FR-002); immutable once graduated, frozen in the archived marker (FR-008).</dd>
+  <dt>Extracted bundle</dt><dd>An ordinary Draft <code>spec.html</code> (the in-scope output) seeded from the build's demonstrated behaviour, its grounding ledger carrying the run's proven facts as <code>verified</code>.</dd>
+  <dt>Restore task set</dt><dd>The path-appropriate plan: a refactor-to-comply list (tracer-bullet) or a clean-rebuild flow with the prototype marked for deletion (spike).</dd>
+</dl>
+
+<spec-note>
+<p>The marker is the single status owner: <code>quarantined</code> (set by 022) → <code>graduated</code> (set
+here), frozen in <code>explorations/archive/&lt;id&gt;/</code>. The AI-coupled extract runs first and its
+failure aborts the whole graduation (NFR-001), so the marker only ever flips when a spec actually landed.</p>
+</spec-note>
+</section>
+
+
+<section id="success">
+<h2>5 · Success criteria</h2>
+
+<p>Technology-agnostic, measurable outcomes. These are how we know it worked.</p>
+
+<spec-requirement id="SC-001" priority="must">
+<p>100% of successful graduations produce a Draft <code>specs/&lt;id&gt;/</code> bundle under full rigor (every
+gate relaxed during explore back in force for the id) and leave the source exploration archived and no longer
+quarantined — the graduated id goes straight into <code>plan</code> with no quarantine refusal.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-002" priority="must">
+<p>Every graduation carries an immutable <code>spike</code>|<code>tracer-bullet</code> classification, and the
+run record's proven facts appear as <code>verified</code> grounding in the extracted spec — neither
+re-captured nor silently reversible (reversal requires editing a frozen archived artifact).</p>
+</spec-requirement>
+
+<spec-requirement id="SC-003" priority="must">
+<p>Zero partial graduations: after an injected mid-step failure, the marker is still <code>quarantined</code>
+and <code>specs/&lt;id&gt;/</code> does not exist — the exploration is exactly as it was, ready to retry.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-004" priority="should">
+<p>The discovered-not-guessed trail is traceable by id alone: for every graduated id,
+<code>explorations/archive/&lt;id&gt;/</code> and <code>specs/&lt;id&gt;/</code> both exist and reference each other.</p>
+</spec-requirement>
+</section>
+
+
+<section id="assumptions">
+<h2>6 · Assumptions</h2>
+
+<spec-assumption>
+<p>Graduation operates on an existing quarantined exploration created by <a href="../022-explore/spec.html">022 ·
+explore</a>; it is not a fresh-start verb and assumes 022's tree, marker, and run record are present.</p>
+</spec-assumption>
+
+<spec-assumption>
+<p>The exploration id is reused verbatim for <code>specs/&lt;id&gt;/</code> (shared <code>NNN-kebab</code> scheme),
+so the history is traceable by id.</p>
+</spec-assumption>
+
+<spec-assumption>
+<p>The run record is verify-shaped (022 · FR-008); when a build never ran it is empty, and graduation seeds no
+<code>verified</code> facts rather than failing.</p>
+</spec-assumption>
+
+<spec-assumption>
+<p>Graduation is one-way, like <code>apply</code> / <code>withdraw</code>; to revisit a graduated spec, edit it
+through the normal lifecycle.</p>
+</spec-assumption>
+</section>
+
+
+<section id="questions">
+<h2>7 · Open questions</h2>
+<spec-questions>
+<p>None outstanding — every decidable question was anchored in the interview. The brief's §6 graduation
+questions resolved as: irreversibility = the frozen archived marker + the spec's grounding-ledger back-reference
+(FR-008); spike-vs-tracer mechanics = two generated restore plans (FR-002, FR-005); run-capture reuse = the
+verify-shaped record promoted to <code>verified</code> grounding (FR-004). The think-first mode, a
+negative-result terminal state, and re-graduation are deferred, not open (§3).</p>
+</spec-questions>
+</section>
+
+
+<section id="conformance">
+<h2>8 · Conformance index</h2>
+<p>Auto-built from every <code>&lt;spec-requirement&gt;</code> in this document.</p>
+<spec-conformance></spec-conformance>
+</section>
+
+
+<section id="changelog">
+<h2>9 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-06-26">2026-06-26</time><span>Initial draft. Back-half slice (classify / extract / restore / lift / archive) of the explore loop, deferred from <a href="../022-explore/spec.html">022-explore</a> as <code>TBD-explore-graduation</code>; shape grounded in <a href="../../docs/explore-considerations.html">explore-considerations.html</a> §4. Budget ceiling raised to 2400 (whole back half in one slice, owner-chosen).</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  023-explore-graduation · explore --graduate — the back half of the loop · authored 2026-06-26
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>
