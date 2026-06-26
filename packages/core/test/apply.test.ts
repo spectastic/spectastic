@@ -98,4 +98,49 @@ describe('applyCommand (010)', () => {
     expect(updated).toContain('withdrew');
     expect(updated).toContain('shape was wrong');
   });
+
+  // T-201 (REQ-CHANGE-008): kernel completeness — proposal status flip + author summary.
+  const PROPOSAL_WITH_STATUS = `<!doctype html><html><body>
+<spec-change id="2026-06-16-foo" status="approved">
+<span class="meta"><spec-status value="accepted">Approved</spec-status></span>
+<spec-delta op="modified" target="FR-001"><spec-requirement id="FR-001" priority="must"><p>Updated.</p></spec-requirement></spec-delta>
+<section id="changelog"><spec-changelog><ol></ol></spec-changelog></section>
+</spec-change></body></html>`;
+
+  it('apply mode: flips the proposal status to applied + records its apply entry', async () => {
+    const { fs, files } = stubFs({
+      '/specs/001/spec.html': LIVE_SPEC,
+      '/specs/001/changes/2026-06-16-foo/proposal.html': PROPOSAL_WITH_STATUS,
+    });
+    await applyCommand({ kind: 'apply', specId: '001', slug: '2026-06-16-foo' }, { cwd: '', fs });
+    // The kernel writes the flipped proposal to the proposal path before the archive rename.
+    const proposal = files.get('/specs/001/changes/2026-06-16-foo/proposal.html');
+    expect(proposal).toContain('status="applied"');
+    expect(proposal).toContain('<spec-status value="applied">Applied</spec-status>');
+    expect(proposal).not.toContain('value="accepted">Approved');
+    expect(proposal).toContain('Applied on'); // the proposal's own apply changelog entry
+  });
+
+  it('apply mode: uses the author-supplied summary in the live-spec changelog', async () => {
+    const { fs, files } = stubFs({
+      '/specs/001/spec.html': LIVE_SPEC,
+      '/specs/001/changes/2026-06-16-foo/proposal.html': APPLY_PROPOSAL,
+    });
+    await applyCommand(
+      { kind: 'apply', specId: '001', slug: '2026-06-16-foo', summary: 'added FR-002, a rich human summary' },
+      { cwd: '', fs },
+    );
+    const updated = files.get('/specs/001/spec.html')!;
+    expect(updated).toContain('added FR-002, a rich human summary');
+    expect(updated).not.toContain('1 delta (1 successful)');
+  });
+
+  it('apply mode: falls back to a terse delta count when no summary is given', async () => {
+    const { fs, files } = stubFs({
+      '/specs/001/spec.html': LIVE_SPEC,
+      '/specs/001/changes/2026-06-16-foo/proposal.html': APPLY_PROPOSAL,
+    });
+    await applyCommand({ kind: 'apply', specId: '001', slug: '2026-06-16-foo' }, { cwd: '', fs });
+    expect(files.get('/specs/001/spec.html')).toContain('1 delta (1 successful)');
+  });
 });
