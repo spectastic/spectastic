@@ -48,6 +48,19 @@ User input (from `$ARGUMENTS`): a Spec ID such as `001-auth-service`, or empty (
 
 6. **Execution strategy**. Pick the tab in §1 that best fits the project — MVP-first for solo work or risky discovery; Incremental for normal team work; Parallel teams when staffing allows.
 
+## Restore mode (`--restore`)
+
+When a spec graduated from an exploration (via `explore --graduate`, 023), `--restore` derives **path-appropriate restore tasks** from the frozen classification in the archived marker `explorations/archive/<id>/quarantine.json` instead of a normal breakdown.
+
+The trigger is explicit, never silent (SC-001): the flag forces restore; without it, a detected graduated marker prompts on a TTY (restore vs. normal breakdown) and refuses-with-a-hint when piped or in CI (non-TTY) rather than guess the shape.
+
+Two paths by classification:
+
+- **`tracer-bullet`** → a refactor-to-comply list: bring the kept build up to the spec and reinstate the gates relaxed during explore — requirement IDs, INVEST, full principles, and the estimability + grounding gates.
+- **`spike`** → a clean-rebuild, test-first flow, including a task that **deletes** the discarded prototype at `explorations/archive/<id>/`. Mark it for the explorer to run; never auto-delete.
+
+The generated `tasks.html` carries a visible banner naming the classification and the source archive. CLI form: `spectastic tasks <id> --restore` (AI-coupled, like normal tasks).
+
 ## Output style
 
 - Replace every `[PLACEHOLDER]`.

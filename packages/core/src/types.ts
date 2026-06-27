@@ -245,6 +245,18 @@ export interface TasksInput {
   specPath: string;
   /** Path to the source plan.html (resolved). */
   planPath: string;
+  /**
+   * Restore mode (spec 024-explore-restore, FR-001). When set, the kernel
+   * generates path-appropriate *restore* tasks for a graduated bundle instead of
+   * a normal breakdown: the frozen `classification` picks the path — `tracer-bullet`
+   * → refactor-to-comply (keep the build), `spike` → clean-rebuild (discard it) —
+   * and `sourceArchive` is the archived exploration the banner names and the spike
+   * path deletes. Absent ⇒ the normal generation path.
+   */
+  restore?: {
+    classification: GraduationClass;
+    sourceArchive: string;
+  };
 }
 
 export interface TaskItem {

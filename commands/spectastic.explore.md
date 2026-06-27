@@ -80,11 +80,12 @@ lift the quarantine and archive the exploration as discovered-not-guessed histor
 **CLI:** `spectastic explore --graduate <id> --classify <spike|tracer-bullet>` (AI-coupled — needs
 `ANTHROPIC_API_KEY`; the slash path is keyless via the in-host session).
 
-**Next:** review the Draft spec + plan, then `/spectastic.tasks`. The **restore-task scaffolding**
-(refactor-to-comply / clean-rebuild) is the sibling slice **`TBD-explore-restore`**, not this verb.
+**Next:** review the Draft spec + plan, then `/spectastic.tasks`. After graduating, run
+`/spectastic.tasks <id> --restore` (spec **`024-explore-restore`**) to generate the path-appropriate
+**restore-task scaffolding** — refactor-to-comply for a tracer-bullet, clean-rebuild for a spike.
 
 ## Out of scope (this verb)
 
-- The restore-task generation (refactor-to-comply vs clean-rebuild) — split to **`TBD-explore-restore`**.
+- The restore-task generation (refactor-to-comply vs clean-rebuild) — landed in **`024-explore-restore`** as a `--restore` mode of `/spectastic.tasks`.
 - A think-first (think-to-learn) discovery mode — considered separately.
 - A negative-result / "abandoned" terminal state for an exploration that won't graduate.

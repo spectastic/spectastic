@@ -18,6 +18,7 @@ export default defineConfig({
     'src/commands/triage.ts',
     'src/commands/principles.ts',
     'src/commands/tasks.ts',
+    'src/commands/restore-marker.ts',
     'src/commands/apply.ts',
     'src/commands/spec.ts',
     'src/commands/plan.ts',
