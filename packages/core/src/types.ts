@@ -35,6 +35,14 @@ export interface FileSystem {
    * so a failed graduation leaves no residue and retry is clean (SC-003).
    */
   rm(path: string): Promise<void>;
+  /**
+   * Recursive, idempotent directory create (no error if it already exists).
+   * Added per REQ-CHANGE-007 / REQ-CHANGE-005: the kernel's archive and withdraw
+   * moves create their destination parent (`changes/archive|withdrawn/`) before
+   * `rename`, so a spec's first apply/withdraw does not ENOENT on a missing
+   * directory (triage T-007).
+   */
+  mkdir(path: string): Promise<void>;
 }
 
 // --- AI ----------------------------------------------------------------

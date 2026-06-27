@@ -140,7 +140,10 @@ export async function applyCommand(
   );
   await fs.writeFile(proposalPath, archivedProposal);
 
-  // Move folder to archive.
+  // Move folder to archive. Ensure the archive parent exists first — a spec's
+  // first apply has no changes/archive/ yet, and fs.rename cannot move into a
+  // missing parent (REQ-CHANGE-007 / triage T-007).
+  await fs.mkdir(`${ctx.cwd}/specs/${input.specId}/changes/archive`);
   const archiveDir = `${ctx.cwd}/specs/${input.specId}/changes/archive/${input.slug}`;
   await fs.rename(proposalDir, archiveDir);
 
@@ -312,7 +315,9 @@ async function doWithdraw(
     .replace(/<spec-status value=["'][^"']+["']>[^<]*<\/spec-status>/g, '<spec-status value="withdrawn">Withdrawn</spec-status>')
     .replace(/<spec-change([^>]*)\sstatus=["'][^"']+["']/g, '<spec-change$1 status="withdrawn"');
 
-  // Move folder to withdrawn/.
+  // Move folder to withdrawn/. Ensure the parent exists first — same first-use
+  // missing-dir case as archive (REQ-CHANGE-005 / triage T-007).
+  await fs.mkdir(`${ctx.cwd}/specs/${input.specId}/changes/withdrawn`);
   const withdrawnDir = `${ctx.cwd}/specs/${input.specId}/changes/withdrawn/${input.slug}`;
   await fs.writeFile(`${proposalDir}/proposal.html`, flipped);
   await fs.rename(proposalDir, withdrawnDir);

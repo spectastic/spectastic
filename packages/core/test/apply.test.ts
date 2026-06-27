@@ -2,9 +2,17 @@ import { describe, expect, it } from 'vitest';
 import { applyCommand } from '@spectastic/core/commands/apply';
 import type { FileSystem, KernelContext } from '@spectastic/core';
 
-function stubFs(initial: Record<string, string>): { fs: FileSystem; files: Map<string, string>; renames: Array<[string, string]> } {
+function stubFs(initial: Record<string, string>): {
+  fs: FileSystem;
+  files: Map<string, string>;
+  renames: Array<[string, string]>;
+  mkdirs: string[];
+  ops: string[];
+} {
   const files = new Map(Object.entries(initial));
   const renames: Array<[string, string]> = [];
+  const mkdirs: string[] = [];
+  const ops: string[] = []; // ordered op log, for asserting mkdir-before-rename (T-007)
   const fs: FileSystem = {
     async readFile(path) {
       const c = files.get(path);
@@ -21,12 +29,20 @@ function stubFs(initial: Record<string, string>): { fs: FileSystem; files: Map<s
       return { isFile: files.has(path), isDirectory: false };
     },
     async rename(from, to) {
+      ops.push(`rename:${to}`);
       renames.push([from, to]);
       files.set(to, files.get(from) ?? '');
       files.delete(from);
     },
+    async rm(path) {
+      files.delete(path);
+    },
+    async mkdir(path) {
+      ops.push(`mkdir:${path}`);
+      mkdirs.push(path);
+    },
   };
-  return { fs, files, renames };
+  return { fs, files, renames, mkdirs, ops };
 }
 
 const LIVE_SPEC = `<!doctype html><html><body>
@@ -157,5 +173,35 @@ describe('applyCommand (010)', () => {
     });
     await applyCommand({ kind: 'apply', specId: '001', slug: '2026-06-16-foo' }, { cwd: '', fs });
     expect(files.get('/specs/001/spec.html')).toContain('1 delta (1 successful)');
+  });
+
+  // T-302 (REQ-CHANGE-007 / triage T-007): the move creates its parent dir before
+  // the rename, so a spec's first apply/withdraw doesn't ENOENT on a missing dir.
+  it('apply mode: mkdirs changes/archive/ before the rename (first-archive, T-007)', async () => {
+    const { fs, mkdirs, ops } = stubFs({
+      '/specs/001/spec.html': LIVE_SPEC,
+      '/specs/001/changes/2026-06-16-foo/proposal.html': APPLY_PROPOSAL,
+    });
+    await applyCommand({ kind: 'apply', specId: '001', slug: '2026-06-16-foo' }, { cwd: '', fs });
+    expect(mkdirs).toContain('/specs/001/changes/archive');
+    // mkdir MUST precede the rename, or fs.rename ENOENTs on the missing parent.
+    expect(ops.indexOf('mkdir:/specs/001/changes/archive')).toBeLessThan(
+      ops.indexOf('rename:/specs/001/changes/archive/2026-06-16-foo'),
+    );
+  });
+
+  it('withdraw mode: mkdirs changes/withdrawn/ before the rename (T-007)', async () => {
+    const { fs, mkdirs, ops } = stubFs({
+      '/specs/001/spec.html': LIVE_SPEC,
+      '/specs/001/changes/2026-06-16-foo/proposal.html': APPLY_PROPOSAL,
+    });
+    await applyCommand(
+      { kind: 'withdraw', specId: '001', slug: '2026-06-16-foo', reason: 'shape was wrong' },
+      { cwd: '', fs },
+    );
+    expect(mkdirs).toContain('/specs/001/changes/withdrawn');
+    expect(ops.indexOf('mkdir:/specs/001/changes/withdrawn')).toBeLessThan(
+      ops.indexOf('rename:/specs/001/changes/withdrawn/2026-06-16-foo'),
+    );
   });
 });

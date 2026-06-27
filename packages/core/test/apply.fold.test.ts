@@ -26,6 +26,12 @@ function stubFs(initial: Record<string, string>): { fs: FileSystem; files: Map<s
       files.set(to, files.get(from) ?? '');
       files.delete(from);
     },
+    async rm(path) {
+      files.delete(path);
+    },
+    async mkdir() {
+      // no-op: the Map-based stub has no real directories.
+    },
   };
   return { fs, files };
 }

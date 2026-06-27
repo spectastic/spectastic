@@ -13,7 +13,7 @@
  * this module internally as the default — see each command file.
  */
 
-import { readFile, writeFile, readdir, stat, rename, rm } from 'node:fs/promises';
+import { readFile, writeFile, readdir, stat, rename, rm, mkdir } from 'node:fs/promises';
 import type { FileSystem } from '../types.js';
 
 export const nodeFs: FileSystem = {
@@ -35,5 +35,8 @@ export const nodeFs: FileSystem = {
   },
   async rm(path) {
     await rm(path, { recursive: true, force: true });
+  },
+  async mkdir(path) {
+    await mkdir(path, { recursive: true });
   },
 };
