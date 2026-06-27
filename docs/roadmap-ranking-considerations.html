@@ -38,14 +38,16 @@
     (W-1..W-6) and tier them <strong>foundation → headliners → others</strong> — which reveals that two of them
     (W-3 adversarial panel, W-5 triage fan-out) are <em>cheap, high-confidence quick wins that out-RICE
     <code>expense</code></em>, while the strategic spine (W-1 → W-2) is high-value but wants git-strategy's
-    guardrails underneath it first. W-6 already shipped this cycle as 023/024.</p>
+    guardrails underneath it first. W-6 already shipped this cycle as 023/024. §4 names the layer a score
+    <em>cannot</em> supply — <strong>dependency ordering</strong> (a DAG + priority-respecting topological sort) —
+    which is what makes "git-strategy before W-1" a constraint, not a preference, while keeping INVEST intact.</p>
   </spec-tldr>
 
   <spec-audience-map>
     <dl>
       <dt>Exec / PM</dt>   <dd>The TL;DR, §<a href="#ranking">Portfolio ranking</a>, §<a href="#reco">Recommendation</a>.</dd>
-      <dt>Reviewer</dt>    <dd>§<a href="#method">Method</a>, §<a href="#breakout">The agent-workflows breakout</a>.</dd>
-      <dt>Implementer</dt> <dd>§<a href="#breakout">Breakout</a> (the tiering), §<a href="#reco">Recommendation</a> (the sequence).</dd>
+      <dt>Reviewer</dt>    <dd>§<a href="#method">Method</a>, §<a href="#breakout">The agent-workflows breakout</a>, §<a href="#depends">Ordering is a graph</a>.</dd>
+      <dt>Implementer</dt> <dd>§<a href="#depends">Ordering is a graph</a> (the dependency method), §<a href="#reco">Recommendation</a> (the sequence).</dd>
     </dl>
   </spec-audience-map>
 </header>
@@ -123,13 +125,74 @@ backlog — a reminder to re-score a backlog against what actually shipped.</p>
 </section>
 
 
+<section id="depends">
+<h2>4 · Ordering is a graph, not a score</h2>
+
+<p>The §3 tiering quietly leaned on a word the rubrics can't supply: <em>enablement</em>. "git-strategy must
+precede W-1" is not a value comparison — it is a <strong>precedence constraint</strong>, and no scalar score can
+express one. This section makes that precise, because the <a href="./agent-workflows-considerations.html#W-2">W-2
+slicer</a> will need it: the slicer must order slices by <em>dependency-respecting</em> value, not value alone.</p>
+
+<h3>The gap — a rubric is one number</h3>
+<p>RICE and WSJF each collapse a candidate to a single score and sort by it; neither has a notion of "must come
+before." Intercom, RICE's authors, say so plainly: <em>"One project may be a dependency for another project, so
+it needs to happen first"</em> (<a href="https://www.intercom.com/blog/rice-simple-prioritization-for-product-managers/">Intercom</a>) — a reason to override the score, not derive it. WSJF folds enablement into one term of its
+numerator (<em>Risk Reduction / Opportunity Enablement</em>, <a href="https://framework.scaledagile.com/wsjf">SAFe</a>):
+it <em>nudges</em> a foundation's score upward but never <em>forces</em> its order. Precedence is structural; a
+score is not.</p>
+
+<h3>The method — a DAG + a priority-respecting topological sort</h3>
+<p>The deterministic, research-backed answer is to model precedence as a <strong>directed acyclic graph</strong>
+(each edge = "X before Y") and <strong>topologically sort</strong> it: a linear order where, for every edge
+<code>(u,v)</code>, <em>"u appears before v in the ordering"</em>
+(<a href="https://www.baeldung.com/cs/dag-topological-sort">Kahn's algorithm</a>, O(V+E)). A <em>cycle</em> means
+the constraints contradict each other — it is surfaced as an error, never silently ordered. Value re-enters as
+the <strong>tie-breaker</strong>: among the slices whose dependencies are already satisfied ("ready"), pick the
+highest RICE/WSJF — a <em>priority-respecting</em> topological sort
+(<a href="https://arxiv.org/pdf/1903.01154">weighted-priority scheduling</a>). Hard precedence from the graph;
+soft value within it.</p>
+
+<h3>Foundational-first lowers the cost of the rest</h3>
+<p>Ordering ready nodes by their <em>own</em> value isn't enough either — a foundation should be elevated by the
+value of the work it <em>unblocks</em>. That is the <a href="https://www.atlassian.com/work-management/project-management/critical-path-method">critical path</a>: items on the longest dependency chain set the floor, so they
+go first. It is also why effort is <em>conditional</em> — a slice's Effort (RICE's denominator) shrinks once its
+prerequisites exist, so building the foundation makes every dependent cheaper. SAFe names this foundational work
+<em>enablers / architectural runway</em>; Reinertsen grounds the economics in Cost of Delay — <em>"almost all
+economic factors can be traced back to managing delay."</em> A foundation isn't just lower-cost to do early — it
+buys down the cost of the whole subtree behind it.</p>
+
+<h3>INVEST is preserved — declared, acyclic, vertical</h3>
+<p>This does not break INVEST. "Independent" (<a href="https://www.industriallogic.com/blog/invest-in-good-stories-and-smart-tasks/">Bill Wake</a>) is an <em>ideal</em> — <em>"we'd like to be able to schedule and implement
+them in any order"</em> — not a ban on dependencies; the discipline is to <strong>minimize, declare, and keep
+them acyclic</strong>. The real anti-pattern is <strong>horizontal slicing</strong> (a database story, then an API
+story) — which fails "Valuable" because no layer ships value alone. The guard is the <em>vertical slice</em>: a
+foundation must still be a thin end-to-end <a href="https://wiki.c2.com/?WalkingSkeleton">walking skeleton</a>
+(Patton's backbone is ordered by necessity, not prioritized) that is itself demoable. Spectastic already enforces
+this: the INVEST <strong>I</strong> row admits <em>"at most 2 named upstream specs; anti-pattern: hidden
+coupling,"</em> and the <strong>smallest-demoable</strong> + <strong>Valuable</strong> gates force every slice
+vertical. A dependency edge simply turns that <em>hidden</em> coupling into a <em>declared, validated, acyclic</em>
+one.</p>
+
+<spec-decision id="R-002">
+  <h4>R-002 · Order by dependency-respecting value, not value alone</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="review">Recommend</spec-status></dd>
+    <dt>Context</dt>      <dd>RICE/WSJF are scalar — they rank, they don't sequence. The roadmap (and the W-2 slicer) need hard "X before Y" ordering that elevates cost-reducing foundations, without regressing slices into horizontal layers.</dd>
+    <dt>Decision</dt>     <dd>Layer ordering as: <strong>(1)</strong> a precedence <strong>DAG</strong> over slices; <strong>(2)</strong> a <strong>priority-respecting topological sort</strong> — RICE/WSJF breaks ties among dependency-ready slices; <strong>(3)</strong> elevate by the <strong>critical-path value of the unblocked subtree</strong>; <strong>(4)</strong> a <strong>vertical-slice + acyclicity guard</strong> (a cycle is an error; a foundation is a walking skeleton, not a layer).</dd>
+    <dt>Consequences</dt> <dd>+ Deterministic, research-backed ordering that the value rubrics can't provide alone. + Formalizes the latent "enabler" prose into a checkable graph. − Adds a graph to author + validate. <strong>Method-level here</strong>: the concrete form — a typed dependency edge, an acyclicity (no-cycles) validation rule joining <code>packages/schema/src/rules/</code>, and the topo-sort in the slicer — is <em>deferred to a future spec</em>. This section sets the position.</dd>
+  </dl>
+</spec-decision>
+</section>
+
+
 <section id="reco">
-<h2>4 · The insight &amp; recommendation</h2>
+<h2>5 · The insight &amp; recommendation</h2>
 
 <p><strong>Raw RICE ranks the cheap speedups (W-5, W-3) highest</strong> — its built-in bias toward low effort.
 The WSJF / foundation-first lens corrects for that: a workflow's <em>enablement</em> (does it unblock others?)
 and a candidate's <em>time-criticality</em> (is the cost of delay real now?) are what elevate the strategic
-spine. So the two rubrics together, not either alone, give the order.</p>
+spine. The two rubrics together give the <em>value</em>; §<a href="#depends">4</a>'s dependency edge gives the
+<em>order</em> — <code>git-strategy → W-1</code> is a topological edge, not just a value call.</p>
 
 <spec-decision id="R-001">
   <h4>R-001 · Pick up git-strategy next; grab W-3 + W-5 as cheap wins; sequence the spine W-1 → W-2</h4>
