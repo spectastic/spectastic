@@ -609,6 +609,20 @@ export interface ExploreResult {
 export type GraduationClass = 'spike' | 'tracer-bullet';
 
 /**
+ * What the AI-coupled extract leg produces (spec 023, FR-003 / D-002): a Draft
+ * spec + plan. The run record's proven facts are seeded as `verified` rows in the
+ * plan's §3 evidence ledger (FR-004 / REQ-LIFECYCLE-006 — grounding is a plan
+ * artifact). The restore-task generation split to TBD-explore-restore, so no
+ * `tasks.html` here.
+ */
+export interface GraduateExtract {
+  /** The extracted Draft `spec.html`. */
+  specHtml: string;
+  /** The extracted Draft `plan.html`, carrying the verified evidence ledger. */
+  planHtml: string;
+}
+
+/**
  * Input to the pure graduation transaction kernel (spec 023, D-002). The extract
  * leg has already produced the bundle; this kernel performs the deterministic,
  * atomic mutations. The CLI supplies the date so the kernel stays pure.
@@ -618,10 +632,8 @@ export interface GraduateTransactionInput {
   specId: string;
   /** spike (clean rebuild) | tracer-bullet (refactor-to-comply). */
   classification: GraduationClass;
-  /** The extracted Draft `spec.html` (from the extract leg). */
-  specHtml: string;
-  /** The restore `tasks.html` seeded by classification (US2). */
-  tasksHtml: string;
+  /** The extracted Draft `spec.html` + `plan.html` (from the extract leg). */
+  extract: GraduateExtract;
   /** ISO date (YYYY-MM-DD); caller-supplied to keep the kernel deterministic. */
   date: string;
 }

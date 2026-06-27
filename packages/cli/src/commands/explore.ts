@@ -23,17 +23,16 @@ export function registerExplore(program: Command): void {
       '--graduate <id>',
       'graduate an existing quarantined exploration into a spec instead of scaffolding (spec 023)',
     )
-    .action(async (intent: string | undefined, opts: { graduate?: string }) => {
+    .option('--classify <kind>', 'spike | tracer-bullet (required with --graduate)')
+    .action(async (intent: string | undefined, opts: { graduate?: string; classify?: string }) => {
       // Mode select: exactly one of <intent> (scaffold) or --graduate <id>.
       if (opts.graduate) {
         if (intent) {
           process.stderr.write('explore: pass either <intent> (scaffold) or --graduate <id>, not both.\n');
           process.exit(2);
         }
-        process.stderr.write(
-          `explore --graduate ${opts.graduate}: graduation is not yet wired — it lands in spec 023-explore-graduation (T-311).\n`,
-        );
-        process.exit(2);
+        await runGraduate(opts.graduate, opts.classify);
+        return;
       }
       if (!intent) {
         process.stderr.write('explore: needs an <intent> to scaffold, or --graduate <id> to graduate one.\n');
@@ -123,4 +122,48 @@ function slugify(intent: string): string {
     .slice(0, 6)
     .join('-');
   return slug || 'exploration';
+}
+
+/**
+ * Graduate mode (spec 023-explore-graduation): read the exploration ledger,
+ * AI-extract a Draft spec + plan, then run the deterministic transaction (write
+ * bundle, lift quarantine, archive). The CLI path uses the AIProvider factory;
+ * the slash-command path orchestrates the same legs in-host (keyless).
+ */
+async function runGraduate(id: string, classify: string | undefined): Promise<void> {
+  if (classify !== 'spike' && classify !== 'tracer-bullet') {
+    process.stderr.write('explore --graduate requires --classify <spike|tracer-bullet>.\n');
+    process.exit(2);
+  }
+  const cwd = process.cwd();
+  let ledger: string;
+  try {
+    ledger = await readFile(join(cwd, 'explorations', id, 'explore.html'), 'utf8');
+  } catch {
+    process.stderr.write(`explore --graduate ${id}: no explorations/${id}/explore.html ledger found.\n`);
+    process.exit(2);
+  }
+  try {
+    const [{ graduateExtract, graduateTransaction }, { nodeFs }, { createAIProvider }] = await Promise.all([
+      import('@spectastic/core/commands/graduate'),
+      import('@spectastic/core/providers/node-fs'),
+      import('../ai-factory.js'),
+    ]);
+    const ai = await createAIProvider();
+    const extract = await graduateExtract({ specId: id, classification: classify, ledger }, { cwd, ai });
+    const date = new Date().toISOString().slice(0, 10);
+    const result = await graduateTransaction(
+      { specId: id, classification: classify, extract, date },
+      { cwd, fs: nodeFs },
+    );
+    process.stdout.write(
+      `Graduated ${id} (${classify}) → ${result.specPath}\n` +
+        `  exploration archived → ${result.archivedPath} (frozen)\n` +
+        `  Next: review the Draft spec + plan, then /spectastic.tasks. Restore-scaffold: TBD-explore-restore.\n`,
+    );
+    process.exit(0);
+  } catch (err) {
+    process.stderr.write(`explore --graduate ${id}: ${(err as Error).message}\n`);
+    process.exit(1);
+  }
 }
