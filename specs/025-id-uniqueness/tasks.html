@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ID uniqueness · Tasks</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Tasks · 025-id-uniqueness</p>
+  <h1>ID uniqueness — collision-safe stable ids</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    Ordered, parallelizable work. Tests precede implementation. Drive through with
+    <code>/spectastic.implement</code> — one task per invocation.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>     <span><spec-status value="draft">Draft</spec-status></span>
+    <b>Spec</b>       <span><a href="./spec.html">025-id-uniqueness</a></span>
+    <b>Plan</b>       <span><a href="./plan.html">plan</a></span>
+    <b>Branch</b>     <span><code>main</code></span>
+    <b>Created</b>    <span><time datetime="2026-06-27">2026-06-27</time></span>
+    <b>Read time</b>  <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-tldr>
+    <p>7 tasks across three phases (no US3). Foundational (register both rules as stubs so the fixture harness
+    exercises them) → US1 (<code>spec-id-unique</code>) → US2 (<code>id-within-file-unique</code>) → Polish. Each
+    story is test-first: the <strong>fixtures are the failing test</strong> — a positive fixture the harness asserts
+    fires, written before the rule body exists. Tasks marked <span class="par">[P]</span> touch distinct files and
+    run in parallel.</p>
+  </spec-tldr>
+</header>
+
+
+<section id="strategy">
+<h2>1 · Execution strategy</h2>
+<spec-tabs>
+  <spec-tab label="Incremental">
+    <p>Foundational stub-registration → US1 → US2 → Polish. Each rule's fixtures land (red), then its body (green).
+    Best fit — the two rules are independent once registered.</p>
+  </spec-tab>
+  <spec-tab label="MVP-first">
+    <p>Foundational + US1 (<code>spec-id-unique</code>, the multi-dev headline) end-to-end, then US2. Viable —
+    US1 is the higher-value half.</p>
+  </spec-tab>
+  <spec-tab label="Parallel teams">
+    <p>After Foundational, US1 and US2 touch distinct files (their own rule + fixtures) — one engineer per rule,
+    no coordination needed.</p>
+  </spec-tab>
+</spec-tabs>
+</section>
+
+
+<section id="phase-foundation" class="phase">
+<h2>2 · Phase 1 — Foundational</h2>
+<p>The shared wiring both stories need before their fixtures can run.</p>
+
+<spec-task id="T-010">
+  <input type="checkbox">
+  <div><strong>Register both rules as stubs</strong> — create <code>spec-id-unique.ts</code> (CrossFileRule) and <code>id-within-file-unique.ts</code> (PerFileRule), each with <code>check</code> returning <code>[]</code>, and append both to the <code>rules</code> array so <code>rules.test.ts</code> discovers their fixtures (<a href="./spec.html#FR-003">FR-003</a>). <span class="path">packages/schema/src/rules/index.ts</span></div>
+</spec-task>
+</section>
+
+
+<section id="phase-us1" class="phase">
+<h2>3 · Phase 2a — US1 · Catch a cross-branch number collision</h2>
+
+<h3>Tests (write &amp; fail first)</h3>
+<spec-task id="T-100" parallel>
+  <input type="checkbox">
+  <div><strong>Add the spec-id-unique fixtures</strong> — <code>positive/specs/025-foo/spec.html</code> + <code>positive/specs/025-bar/spec.html</code> (same <code>NNN</code> → must fire) and <code>negative/specs/025-foo/spec.html</code> + <code>negative/specs/026-bar/spec.html</code> (distinct <code>NNN</code> → clean). Red until T-110 (<a href="./spec.html#SC-001">SC-001</a>). <span class="path">packages/schema/fixtures/spec-id-unique/</span></div>
+</spec-task>
+
+<h3>Implementation</h3>
+<spec-task id="T-110" parallel>
+  <input type="checkbox">
+  <div><strong>Implement <code>spec-id-unique</code></strong> — derive the spec-dir via the <code>specs/([^/]+)/spec.html</code> regex, group <em>distinct</em> dir names by numeric prefix (<code>/^(\d+)-/</code>); a prefix held by 2+ dirs emits one <code>error</code> per site with related locations + a P-3 <code>fixHint</code> (<a href="./spec.html#FR-001">FR-001</a>, <a href="./spec.html#FR-005">FR-005</a>). <span class="path">packages/schema/src/rules/spec-id-unique.ts</span></div>
+</spec-task>
+
+<spec-note>
+<p>Closes <a href="./spec.html#FR-001">FR-001</a>; contributes <a href="./spec.html#FR-005">FR-005</a>; verifies <a href="./spec.html#SC-001">SC-001</a>. Explorations/archive/withdrawn are excluded for free (the regex + the glob).</p>
+</spec-note>
+</section>
+
+
+<section id="phase-us2" class="phase">
+<h2>4 · Phase 2b — US2 · Catch a within-file id double</h2>
+
+<h3>Tests (write &amp; fail first)</h3>
+<spec-task id="T-200" parallel>
+  <input type="checkbox">
+  <div><strong>Add the id-within-file-unique fixtures</strong> — <code>positive.html</code> (<code>FR-001</code> on two <code>&lt;spec-requirement&gt;</code> → must fire) + <code>negative.html</code> (all-distinct spec-local ids <em>and</em> a qualified <code>REQ-AUTH-001</code> declared twice → this rule must emit 0, pinning the no-overlap boundary). Red until T-210 (<a href="./spec.html#SC-002">SC-002</a>). <span class="path">packages/schema/fixtures/id-within-file-unique/</span></div>
+</spec-task>
+
+<h3>Implementation</h3>
+<spec-task id="T-210" parallel>
+  <input type="checkbox">
+  <div><strong>Implement <code>id-within-file-unique</code></strong> — walk <code>&lt;spec-requirement/decision/task&gt;</code>, collect ids matching the spec-local <code>/^[A-Z]+-[0-9]+$/</code> into a <code>Map&lt;id, Element[]&gt;</code>; any id on 2+ elements emits one <code>error</code> per site + a <code>fixHint</code> (<a href="./spec.html#FR-002">FR-002</a>, <a href="./spec.html#FR-005">FR-005</a>). <span class="path">packages/schema/src/rules/id-within-file-unique.ts</span></div>
+</spec-task>
+
+<spec-note>
+<p>Closes <a href="./spec.html#FR-002">FR-002</a>; contributes <a href="./spec.html#FR-005">FR-005</a>; verifies <a href="./spec.html#SC-002">SC-002</a>. The negative fixture's qualified-id-twice case is the no-overlap guard (plan risk 2) — the harness filters by <code>rule===id</code>, so <code>no-duplicate-ids</code> firing there is fine.</p>
+</spec-note>
+</section>
+
+
+<section id="phase-polish" class="phase">
+<h2>5 · Phase 3 — Polish</h2>
+
+<spec-task id="T-900">
+  <input type="checkbox">
+  <div><strong>Verify the whole-project clean run</strong> — with both rules registered, <code>spectastic validate "specs/**/*.html" "docs/*.html" "principles.html"</code> reports zero new findings (the real tree has no collisions), and <code>pnpm -C packages/schema test</code> is green — deterministic, repeatable (<a href="./spec.html#SC-003">SC-003</a>, <a href="./spec.html#FR-004">FR-004</a>). <span class="path">packages/schema/</span></div>
+</spec-task>
+<spec-task id="T-901" parallel>
+  <input type="checkbox">
+  <div><strong>Confirm no perf regression</strong> — <code>perf.test.ts</code> p95 &lt; 100 ms/file still passes with both rules in the default set (<a href="./spec.html#NFR-001">NFR-001</a>). <span class="path">packages/schema/test/perf.test.ts</span></div>
+</spec-task>
+</section>
+
+
+<section id="dependencies">
+<h2>6 · Dependencies</h2>
+<pre><code>T-010 (register stubs)   → US1, US2   (the harness needs the rules registered to run their fixtures)
+US1: T-100 → T-110        US2: T-200 → T-210   (test-first; the two stories are independent — distinct files)
+US1, US2                 → Polish (T-900 needs both; T-901 [P])
+</code></pre>
+</section>
+
+
+<section id="changelog">
+<h2>7 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-06-27">2026-06-27</time><span>Initial task breakdown — 7 tasks (5 parallel). Stub-register both rules, then two test-first stories (spec-id-unique, id-within-file-unique), then a whole-project clean run + perf check. Fixtures are the failing tests.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  Tasks for 025-id-uniqueness · ID uniqueness · authored 2026-06-27
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>

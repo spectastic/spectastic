@@ -1,0 +1,261 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ID uniqueness — collision-safe stable ids across branches and within a file · Specification</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Specification · 025-id-uniqueness</p>
+  <h1>ID uniqueness — collision-safe stable ids across branches and within a file</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    Two small, pure validation rules that make stable ids collision-safe: no two spec directories may share a
+    number, and no id may be declared twice inside one file. The foundation the branch-per-spec model rests on.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>      <span><spec-status value="draft">Draft</spec-status></span>
+    <b>Spec ID</b>     <span>025-id-uniqueness</span>
+    <b>Owner</b>       <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Reviewers</b>   <span>—</span>
+    <b>Created</b>     <span><time datetime="2026-06-27">2026-06-27</time></span>
+    <b>Principles</b><span><a href="../../principles.html">v1.2.0</a></span>
+    <b>Smallest demoable</b><span>Two new schema rules — <code>spec-id-unique</code> (two <code>specs/</code> dirs sharing an <code>NNN</code> → error) + <code>id-within-file-unique</code> (a spec-local id declared twice in one file → error) — registered in the default <code>spectastic validate</code> set.</span>
+    <b>Read time</b>   <span data-reading-time></span>
+  </spec-meta>
+
+  <!-- Green ≤80%, amber 80-100%, red over (REQ-FORMAT-004). A focused two-rule slice. -->
+  <spec-budget words="1500" reqs="20" minutes="9"></spec-budget>
+
+  <spec-tldr>
+    <p><a href="../../docs/git-strategy-considerations.html#ids">git-strategy's <code>G-001</code></a> keeps the
+    readable <code>NNN</code> ids and makes the rare cross-branch collision <em>loud at merge</em>. This slice is
+    that gate's engine — the roadmap's foundation-first pickup. Two pure rules join
+    <code>packages/schema/src/rules/</code>: <strong><code>spec-id-unique</code></strong> fails when two distinct
+    <code>specs/&lt;NNN&gt;-slug/</code> dirs share a number (the collision two branches each grabbing
+    <code>025</code> make on merge); <strong><code>id-within-file-unique</code></strong> fails when a spec-local id
+    (<code>FR/NFR/SC/D/T</code>) is declared twice in one file (the gap a re-entry edit opens). Both
+    <code>error</code> severity; no new CI tooling — the existing validate-on-PR + branch-protection "up to date
+    with main" already makes the gate bite at the second PR.</p>
+  </spec-tldr>
+
+  <dl class="invest">
+    <dt><span class="letter">I</span> Independent</dt> <dd>Depends only on the existing schema package (the rule types, the <code>walk</code>/<code>getAttr</code> parser helpers, the <code>specs/(…)/</code> path regex) and the validate contract (<a href="../002-validate-cli/spec.html">002</a>). No upstream spec changes; standalone (no shared mutable state).</dd>
+    <dt><span class="letter">N</span> Negotiable</dt>  <dd>Outcomes only. The exact regexes, the per-rule file layout, and the test fixtures are deferred to the plan.</dd>
+    <dt><span class="letter">V</span> Valuable</dt>    <dd>Unlocks <a href="#SC-001">SC-001</a> — id collisions become loud at merge, the safety net the whole branch-per-spec multi-dev story rests on.</dd>
+    <dt><span class="letter">E</span> Estimable</dt>   <dd>The rule pattern is established — <code>no-duplicate-ids</code> is the working template (§<a href="#assumptions">6</a>); no open question blocks estimation.</dd>
+    <dt><span class="letter">S</span> Small</dt>       <dd>Two ~50-line pure rules + their unit tests + one line of registration. Deliberately the smallest foundation slice.</dd>
+    <dt><span class="letter">T</span> Testable</dt>    <dd>Every requirement observable: fixture dirs/files in → exact findings out (<a href="#SC-001">SC-001</a>–<a href="#SC-003">SC-003</a>).</dd>
+  </dl>
+
+  <spec-audience-map>
+    <dl>
+      <dt>Exec / PM</dt>   <dd>§<a href="#context">Context</a>, §<a href="#scenarios">User scenarios</a>, §<a href="#success">Success criteria</a>.</dd>
+      <dt>Reviewer</dt>    <dd>§<a href="#requirements">Requirements</a>, §<a href="#assumptions">Assumptions</a>, §<a href="#questions">Open questions</a>.</dd>
+      <dt>Implementer</dt> <dd>§<a href="#requirements">Requirements</a>, §<a href="#data">Data model</a>, §<a href="#conformance">Conformance index</a>.</dd>
+    </dl>
+  </spec-audience-map>
+</header>
+
+
+<section id="context">
+<h2>1 · Context</h2>
+<p>Stable ids are a spectastic contract (<a href="../../principles.html#P-3">P-3</a>). The
+<a href="../../docs/git-strategy-considerations.html">git-strategy brief</a>'s <code>G-001</code> chose to keep
+the readable, sortable, branch-aligned <code>NNN</code> directory ids and treat the one real race — two
+developers on two branches both running <code>resolveNextId</code> (which has no atomicity) and both minting
+<code>025</code> — as a <em>merge-time</em> concern: caught loudly by CI, never silent.</p>
+
+<p>The existing validator already detects duplicate <em>project-wide qualified</em> ids
+(<code>REQ-TOPIC-NNN</code>) across files (<code>no-duplicate-ids</code>, <a href="../002-validate-cli/spec.html#FR-011">002 · FR-011</a>). But two gaps remain, and they are exactly the gaps the branch model exposes:
+<strong>(1)</strong> nothing flags two <em>directories</em> sharing an <code>NNN</code> — the cross-branch
+collision; <strong>(2)</strong> nothing flags a <em>spec-local</em> id (<code>FR-001</code>) declared twice
+<em>within one file</em> — the gap a <code>/spectastic.spec</code> re-entry edit can silently open. This slice
+closes both with two pure rules — the foundation every later git-strategy slice (branch automation,
+<code>init --tools</code>, the split work) assumes.</p>
+</section>
+
+
+<section id="scenarios">
+<h2>2 · User scenarios &amp; testing</h2>
+
+<p>Each story <strong>MUST</strong> be independently testable. Both are P1 — the two halves of id-collision safety.</p>
+
+<h3 id="US1">US1 · Catch a cross-branch number collision <spec-pill>P1</spec-pill></h3>
+<p>As <strong>CI / a reviewer</strong>, I want <strong>two specs that grabbed the same <code>NNN</code> on
+different branches to fail validation when they meet</strong> so that <strong>a collision is loud at merge, never
+a silent double-claim of an id</strong>.</p>
+<p><em>Acceptance:</em> a tree containing <code>specs/025-foo/</code> and <code>specs/025-bar/</code> (two distinct
+directories, same number) produces an <code>error</code> finding on each, citing the other. The real tree (no
+two dirs share a number) and a graduated spec (<code>explorations/023/</code> → <code>specs/023/</code> reuse the
+id by design) produce <em>no</em> finding.</p>
+
+<h3 id="US2">US2 · Catch a within-file id double <spec-pill>P1</spec-pill></h3>
+<p>As a <strong>spec author</strong>, I want <strong>a spec-local id declared twice inside one document
+flagged</strong> so that <strong>a re-entry edit can't silently give two requirements the same anchor</strong>.</p>
+<p><em>Acceptance:</em> a <code>spec.html</code> declaring <code>FR-001</code> on two
+<code>&lt;spec-requirement&gt;</code> elements produces an <code>error</code> on each, citing the other. A file
+with all-distinct ids produces none.</p>
+
+<h3>Edge cases</h3>
+<ul>
+  <li>The three bundle files in one dir (<code>spec.html</code> + <code>plan.html</code> + <code>tasks.html</code> under <code>025-foo/</code>) share the dir id <code>025-foo</code> — that is the bundle, <em>not</em> a collision. The rule groups by <em>distinct directory name</em>, then by number.</li>
+  <li>Archived / withdrawn proposals (<code>**/archive/**</code>, <code>**/withdrawn/**</code>) are excluded, exactly as <code>no-duplicate-ids</code> already excludes them.</li>
+</ul>
+</section>
+
+
+<section id="requirements">
+<h2>3 · Requirements</h2>
+
+<p>Keywords (<spec-rule>MUST</spec-rule>, <spec-rule level="should">SHOULD</spec-rule>) follow RFC 2119.</p>
+
+<h3>Functional</h3>
+
+<spec-requirement id="FR-001" priority="must">
+<p>A new cross-file rule <code>spec-id-unique</code> <spec-rule>MUST</spec-rule> emit an <code>error</code> when
+two <em>distinct</em> <code>specs/&lt;NNN&gt;-slug/</code> directories share the same numeric <code>NNN</code>
+prefix. The directory id is derived from each document's path (the existing <code>specs/([^/]+)/</code> regex);
+documents are grouped by distinct directory name, then by number. Each colliding site cites the other(s) via
+related locations.</p>
+<details><summary>Scope</summary><p><code>specs/</code> only; <code>explorations/</code> excluded (graduation reuses the id by design); <code>**/archive/**</code> + <code>**/withdrawn/**</code> excluded, as <code>no-duplicate-ids</code> does.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-002" priority="must">
+<p>A new per-file rule <code>id-within-file-unique</code> <spec-rule>MUST</spec-rule> emit an <code>error</code>
+when a <em>spec-local</em> id (the two-segment form <code>FR/NFR/SC-NNN</code> on <code>&lt;spec-requirement&gt;</code>,
+<code>D-NNN</code> on <code>&lt;spec-decision&gt;</code>, <code>T-NNN</code> on <code>&lt;spec-task&gt;</code>)
+appears on two or more elements within a single document. Each duplicate site cites the other(s).</p>
+<details><summary>Scope</summary><p>Spec-local ids only; qualified <code>REQ-TOPIC-NNN</code> dups (within a file or across) stay with <code>no-duplicate-ids</code>, so the two rules don't overlap.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-003" priority="must">
+<p>Both rules <spec-rule>MUST</spec-rule> be registered in <code>packages/schema/src/rules/index.ts</code> so the
+default <code>spectastic validate</code> run includes them at <code>error</code> severity — no flag required.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-004" priority="should">
+<p>Both rules <spec-rule level="should">SHOULD</spec-rule> be pure and deterministic — given the same document
+set they produce identical findings, with no AI and no network. This is what lets the <em>existing</em>
+validate-on-PR CI (<code>docs/ci-examples/github-actions.yml</code>) plus branch-protection "require up to date
+with main" make <code>spec-id-unique</code> bite at the second PR, with no new CI tooling.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-005" priority="should">
+<p>Each finding <spec-rule level="should">SHOULD</spec-rule> name every colliding site (the related locations)
+and carry a <code>fixHint</code> grounded in <a href="../../principles.html#P-3">P-3</a> — renumber the colliding
+directory, or give the duplicate a fresh id; stable ids are never reused.</p>
+</spec-requirement>
+
+<h3>Non-functional</h3>
+
+<spec-requirement id="NFR-001" priority="should">
+<p>The two rules <spec-rule level="should">SHOULD</spec-rule> add no measurable regression to validation
+performance — they operate on the already-parsed AST and the file path, reading no extra files — keeping within
+the validate budget of <a href="../002-validate-cli/spec.html">002</a> (p95 under 100 ms per file).</p>
+</spec-requirement>
+
+<h3>Out of scope (deferred to other slices)</h3>
+<spec-out-of-scope>
+  <ul>
+    <li defer-to="TBD-init-tools">The CI workflow / branch-protection config itself — the existing <code>docs/ci-examples/</code> + the deferred <code>spectastic init --tools</code> (git-strategy §6 ④) own the wiring; this slice ships only the rules.</li>
+    <li defer-to="TBD-git-branch-commit">Branch/commit automation and remote-aware id allocation (<code>git fetch</code>-then-scan) — git-strategy <code>G-002</code>/<code>G-003</code>. This slice is the safety net, not the allocator.</li>
+    <li defer-to="TBD-spec-depends-on">The dependency-graph rules (a typed dependency edge + an acyclicity / no-cycles check) — the dependency-ordering layer (roadmap §4 / <code>R-002</code>).</li>
+  </ul>
+</spec-out-of-scope>
+</section>
+
+
+<section id="data">
+<h2>4 · Data model</h2>
+<p>No new entities. Two rule objects join the existing registry; each consumes the already-parsed document(s) and
+emits standard <code>Finding</code>s.</p>
+<dl>
+  <dt><code>spec-id-unique</code></dt><dd>A <code>CrossFileRule</code>: maps each doc's path → its <code>specs/&lt;dir&gt;/</code> name → the numeric prefix; a prefix held by 2+ distinct dir names yields one finding per site.</dd>
+  <dt><code>id-within-file-unique</code></dt><dd>A per-file rule: walks one document's AST, collects spec-local ids per id-bearing element, and yields a finding for any id seen on 2+ elements.</dd>
+</dl>
+</section>
+
+
+<section id="success">
+<h2>5 · Success criteria</h2>
+
+<p>Technology-agnostic, measurable outcomes.</p>
+
+<spec-requirement id="SC-001" priority="must">
+<p>Given two distinct <code>specs/</code> directories sharing an <code>NNN</code> prefix, validate emits an
+<code>error</code> on each (citing the other); given the real project tree and any graduated spec
+(<code>explorations</code>→<code>specs</code> id reuse), it emits <em>zero</em> such findings.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-002" priority="must">
+<p>Given a document declaring a spec-local id twice (e.g. two <code>FR-001</code>), validate emits an
+<code>error</code> on each duplicate; a document with all-distinct ids emits none.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-003" priority="must">
+<p>Both rules run in the default <code>spectastic validate</code> set at <code>error</code> severity (no flag),
+and the full project (<code>specs/**</code> + <code>docs/*</code>) continues to validate clean with them enabled —
+no false positive on the existing tree, no measurable per-file p95 regression.</p>
+</spec-requirement>
+</section>
+
+
+<section id="assumptions">
+<h2>6 · Assumptions</h2>
+
+<spec-assumption>
+<p>The working template is <code>packages/schema/src/rules/no-duplicate-ids.ts</code> — same
+<code>CrossFileRule</code> shape, the same <code>walk</code>/<code>getAttr</code>/<code>getLocation</code>
+helpers, and the same <code>specs/([^/]+)/spec.html</code> path-derivation already used by
+<code>no-broken-defer-to</code> and <code>parent-child-reciprocity</code>.</p>
+</spec-assumption>
+
+<spec-assumption>
+<p>The existing <code>docs/ci-examples/github-actions.yml</code> already runs <code>spectastic validate</code> on
+pull requests over <code>specs/**</code>; with branch-protection "require branches up to date before merging,"
+the second colliding PR validates against an updated base and fails — so no new CI machinery is in scope.</p>
+</spec-assumption>
+</section>
+
+
+<section id="questions">
+<h2>7 · Open questions</h2>
+<spec-questions>
+<p>None outstanding — every decision was anchored in the interview (the two-rule scope, the
+two-dirs-same-<code>NNN</code> semantics, spec-local-ids-only for the within-file rule, and error severity with
+CI already wired).</p>
+</spec-questions>
+</section>
+
+
+<section id="conformance">
+<h2>8 · Conformance index</h2>
+<p>Auto-built from every <code>&lt;spec-requirement&gt;</code> in this document.</p>
+<spec-conformance></spec-conformance>
+</section>
+
+
+<section id="changelog">
+<h2>9 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-06-27">2026-06-27</time><span>Initial draft. The id-collision-safety schema rules — git-strategy <code>G-001</code>'s engine and the roadmap's foundation-first pickup. Two pure rules: <code>spec-id-unique</code> (two <code>specs/</code> dirs, same <code>NNN</code>) + <code>id-within-file-unique</code> (spec-local id twice in one file).</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  025-id-uniqueness · ID uniqueness — collision-safe stable ids · authored 2026-06-27
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>
