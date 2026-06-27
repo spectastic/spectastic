@@ -1,0 +1,379 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Git Strategy — Considerations for Spectastic</title>
+<meta name="description" content="An opinionated commit and branch strategy for spectastic projects: secure stable IDs against parallel-branch collisions, project the lifecycle onto git (branch = spec slice, commit = verb), and derive attribution trailers (Reviewed-by, Acked-by) from spec review and authorship. Opt-in, default off.">
+<link rel="stylesheet" href="../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../assets/favicon.svg">
+<script src="../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Considerations · Version control</p>
+  <h1>Git Strategy</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    The lifecycle already projects onto git — verb is the commit type, spec id is the scope, the slice is the
+    branch. The work is to formalize that projection, not invent a parallel bureaucracy.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>     <span><spec-status value="draft">Draft</spec-status></span>
+    <b>Type</b>       <span>Design brief (a <code>/doc</code> — research + considerations, feeds future meta-spec slices)</span>
+    <b>Author</b>     <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Created</b>    <span><time datetime="2026-06-27">27 Jun 2026</time></span>
+    <b>Sources</b>    <span>Repo evidence (cited inline) + primary specs: Conventional Commits, git-interpret-trailers, spec-kit (see §2)</span>
+    <b>Read time</b>  <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-tldr>
+    <p>Three questions drive this brief: how to <strong>secure stable ids</strong> when many developers branch in
+    parallel; how to make <strong>smart branch/commit choices</strong> after each verb without the developer
+    thinking about it; and how to carry <strong>git attribution</strong> (<code>Reviewed-by</code>,
+    <code>Acked-by</code>) that falls out of spectastic's own review and authorship. The key finding is that
+    spectastic already has a <em>latent git grammar</em> — its commit history follows
+    <code>&lt;verb&gt;(NNN):</code> (verb = type, spec id = scope), its historical branches
+    (<code>018-explain</code>, <code>019-explain-course</code>) already match their spec directories, and its
+    proposals already use collision-resistant <code>&lt;date&gt;-&lt;slug&gt;</code> ids. The recommendation is
+    to make that grammar explicit and <strong>opt-in</strong> (default off — the house enforcement stance from
+    <a href="./openspec-considerations.html">C-005</a>): <strong>feature-branch-per-spec</strong>, a verb→git
+    commit map, a <strong>CI collision gate</strong> that keeps the readable <code>NNN</code> ids safe across
+    branches, and attribution trailers derived from the <code>&lt;spec-meta&gt;</code> author/reviewer fields and
+    the adversarial risk pass. §3–§5 are the three answers as decision cards (<code>G-001</code>..<code>G-004</code>);
+    §6 names the downstream meta-spec slices this brief feeds; §7 is the guardrails and open questions.</p>
+  </spec-tldr>
+
+  <spec-audience-map>
+    <dl>
+      <dt>Exec / PM</dt>   <dd>The TL;DR, then §<a href="#thesis">The opportunity</a> and §<a href="#map">Where each piece lands</a>.</dd>
+      <dt>Reviewer</dt>    <dd>§<a href="#priorart">Prior art</a> (cited), §<a href="#attribution">Attribution</a>, §<a href="#questions">Guardrails &amp; open questions</a>.</dd>
+      <dt>Implementer</dt> <dd>§<a href="#ids">Securing ids</a>, §<a href="#branch">Branch &amp; commit model</a>, §<a href="#map">Where each piece lands</a>.</dd>
+    </dl>
+  </spec-audience-map>
+</header>
+
+
+<!-- =======================================================
+     §1 The opportunity
+     ======================================================= -->
+<section id="thesis">
+<h2>1 · The opportunity — the lifecycle already projects onto git</h2>
+
+<p>Most teams adopting a spec workflow have to <em>bolt</em> git onto it: invent a branch convention, agree a
+commit format, decide who reviews what. spectastic was built with those seams already cut — and, without anyone
+designing it, the project has been <em>using</em> a git grammar all along. Four pieces of evidence from this very
+repository:</p>
+
+<ul>
+  <li><strong>Commit type = verb, scope = spec id.</strong> The history reads
+  <code>spec(024)</code>, <code>plan(024)</code>, <code>tasks(024)</code>, <code>implement(024)</code>,
+  <code>propose(…)</code>, <code>apply(…)</code>, <code>triage(…)</code> — that <em>is</em>
+  <a href="https://www.conventionalcommits.org/">Conventional Commits</a>, where each lifecycle verb is the
+  commit type and the spec id is the scope. The grammar exists; it is just unwritten.</li>
+  <li><strong>Branch = spec slice.</strong> The repo has carried branches named <code>018-explain</code> and
+  <code>019-explain-course</code> — identical to <code>specs/018-explain/</code> and
+  <code>specs/019-explain-course/</code>. The slice id already doubles as the branch name in practice.</li>
+  <li><strong>Collision-resistant ids already exist — for proposals.</strong> A change folder is
+  <code>changes/&lt;YYYY-MM-DD&gt;-&lt;slug&gt;/</code> (<code>REQ-CHANGE-001</code>). Two developers proposing on
+  the same day rarely collide; the date prefix sorts and disambiguates. Only the global spec <code>NNN</code>
+  races.</li>
+  <li><strong>CI is already PR-shaped.</strong> <code>docs/ci-examples/github-actions.yml</code> runs
+  <code>spectastic validate</code> and uploads SARIF on <code>pull_request</code> over <code>specs/**</code> — so
+  findings already land as inline annotations on a PR diff. The review surface is assumed to be a PR.</li>
+</ul>
+
+<p>Two checks already stand at the seams a git workflow cares about: <code>spectastic validate</code> (a
+deterministic gate any pre-commit hook or CI job can run) and <a href="../principles.html#P-7">P-7</a>
+(<em>done means verified</em>, the merge bar). And one discipline already constrains the design: the verb surface
+is deliberately small (<a href="../specs/000-spectastic/spec.html">eight core verbs</a>; "don't add more without a
+good reason"). So this strategy adds <strong>no new verbs</strong> — it layers git onto the verbs that exist.</p>
+
+<spec-newthought>The thesis</spec-newthought>
+<p>Treat the artifacts as the source of truth and git as a <em>projection</em> of the lifecycle:
+<strong>branch = spec slice, commit = verb, trailers = artifact metadata</strong>. Everything below follows from
+making that projection explicit, opinionated, and opt-in.</p>
+</section>
+
+
+<!-- =======================================================
+     §2 Prior art
+     ======================================================= -->
+<section id="priorart">
+<h2>2 · Prior art (cited)</h2>
+
+<p>The strategy borrows four established conventions and one deliberate gap. None require inventing notation.</p>
+
+<dl>
+  <dt><a href="https://github.com/github/spec-kit">spec-kit</a> — branch-per-feature, numbered dirs</dt>
+  <dd>spec-kit creates a numbered feature branch and houses the feature under a matching numbered directory; the
+  branch <em>is</em> the unit of work and the unit of review. spectastic's latent <code>018-explain</code>
+  pattern is the same shape — this brief adopts it as the default (<code>G-002</code>).</dd>
+
+  <dt><a href="https://www.conventionalcommits.org/">Conventional Commits</a> — <code>type(scope): subject</code></dt>
+  <dd>A machine-readable commit grammar. spectastic's verbs map onto it with zero translation: the verb is the
+  type, the spec id is the scope (<code>G-003</code>).</dd>
+
+  <dt><a href="https://git-scm.com/docs/git-interpret-trailers">Git trailers</a> — <code>Reviewed-by</code>, <code>Acked-by</code>, <code>Co-authored-by</code></dt>
+  <dd>Structured key-value lines in a commit footer, parsed by <code>git interpret-trailers</code> and surfaced by
+  forges. The Linux kernel's <a href="https://www.kernel.org/doc/html/latest/process/submitting-patches.html">submitting-patches</a>
+  process defines <code>Reviewed-by</code> / <code>Acked-by</code> as exactly the review signal spectastic
+  produces — but does not yet record by <em>name</em> (<code>G-004</code>).</dd>
+
+  <dt><a href="./openspec-considerations.html">OpenSpec's deliberate no-enforcement gap</a> (<code>C-005</code>)</dt>
+  <dd>The most-cited limitation of comparable tools is that agents ignore the specs because nothing forces them
+  to. The house response, already on record, is an <em>opt-in</em> Claude Code hook running
+  <code>spectastic validate --strict</code> before a commit — <strong>default off, documented loudly</strong>.
+  This brief inherits that stance verbatim (<code>G-003</code>).</dd>
+</dl>
+</section>
+
+
+<!-- =======================================================
+     §3 Securing ids
+     ======================================================= -->
+<section id="ids">
+<h2>3 · Securing stable ids against parallel-branch collisions</h2>
+
+<p>spectastic's ids are contracts (<a href="../principles.html#P-3">P-3</a>): stable, human-meaningful, never
+reused. That is a solo-developer comfort that becomes a multi-developer hazard the moment two branches mint ids
+without seeing each other. The collision surface, graded:</p>
+
+<table>
+  <thead><tr><th>Id</th><th>How it's minted</th><th>Parallel-branch risk</th></tr></thead>
+  <tbody>
+    <tr><td><strong>Spec dir <code>NNN</code></strong></td><td><code>resolveNextId</code> scans <code>specs/</code> + <code>explorations/</code>, takes <code>max+1</code> (<code>packages/cli/src/commands/explore.ts:85-95</code>) — no atomicity</td><td><strong>High</strong> — two branches both grab <code>025</code></td></tr>
+    <tr><td><code>FR/NFR/SC/D-NNN</code></td><td>AI-generated, <em>spec-local</em> (per-slice)</td><td><strong>Low across specs</strong> (namespaced by slice); a within-spec re-entry can silently double <code>FR-001</code></td></tr>
+    <tr><td><code>T-NNN</code> (tasks)</td><td>Deterministic formula from FR count (<code>packages/core/src/commands/tasks.ts</code>)</td><td><strong>None</strong> — regeneration is idempotent</td></tr>
+    <tr><td><code>REQ-TOPIC-NNN</code> (project-wide)</td><td>Hand-authored, 3+ dash segments</td><td><strong>Low</strong> — already caught by the cross-file <code>no-duplicate-ids</code> rule</td></tr>
+    <tr><td><code>T/I-NNN</code> (triage/inbox)</td><td>Offset-based from a caller-supplied start</td><td><strong>Medium</strong> — needs the start coordinated</td></tr>
+  </tbody>
+</table>
+
+<p>Only the spec dir <code>NNN</code> is a genuine, unmitigated race. The instinct is to make it collision-proof
+by switching to a date or hash id — but that throws away what makes <code>NNN</code> good: it is readable,
+sortable, and already aligns with the branch name. The better move keeps <code>NNN</code> and makes the rare
+collision <em>safe and loud</em> rather than impossible.</p>
+
+<spec-decision id="G-001">
+  <h4>G-001 · Keep <code>NNN</code>; make the branch the reservation and CI the safety net</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Adopt</spec-status></dd>
+    <dt>Context</dt>      <dd>The spec dir <code>NNN</code> races (<code>resolveNextId</code>,
+    <code>explore.ts:85-95</code>); <code>FR/SC/D</code> are spec-local so parallel <em>specs</em> don't collide,
+    but a within-spec edit can double an id, and nothing checks that today
+    (<code>no-duplicate-ids</code> only checks 3+-segment qualified ids cross-file).</dd>
+    <dt>Decision</dt>     <dd>Three parts. <strong>(a) Branch = reservation:</strong> allocate the next
+    <code>NNN</code> against the remote default branch (<code>git fetch</code>, then scan
+    <code>origin/&lt;default&gt;</code>) at branch-creation, and name the branch <code>NNN-slug</code> — the
+    branch holding the directory <em>is</em> the claim. <strong>(b) CI collision gate:</strong> a new schema rule
+    <code>spec-id-unique</code> (extending <code>packages/schema/src/rules/no-duplicate-ids.ts</code> to spec
+    <em>directory</em> ids) runs on the PR against the merge base and hard-fails when two branches grabbed the
+    same <code>NNN</code> — caught at merge, never silent; renumbering pre-merge is cheap because dir ids aren't
+    referenced cross-spec until merged. <strong>(c) Within-spec duplicate check:</strong> a cheap per-file rule so
+    a re-entry can't silently double <code>FR-001</code>.</dd>
+    <dt>Consequences</dt> <dd>+ Keeps readable, sortable, branch-aligned ids. + The common case is safe (the
+    branch reserves), the rare case is loud (CI fails), and the fix is a one-line renumber.
+    − A late renumber is friction on a long-lived branch. − Requires a <code>git fetch</code> at allocation time
+    when the integration is enabled. <strong>Rejected:</strong> a tracked <code>specs/.ids</code> registry —
+    every branch edits it, so it becomes its own merge-conflict hotspot and duplicates what CI already checks.</dd>
+  </dl>
+</spec-decision>
+</section>
+
+
+<!-- =======================================================
+     §4 Branch & commit model
+     ======================================================= -->
+<section id="branch">
+<h2>4 · Branch &amp; commit model</h2>
+
+<p>The "didn't have to think about branches and commits" feel comes from the verb knowing its own git shape: a
+verb has just written a typed artifact, so it already knows its commit <em>type</em> (itself), its
+<em>scope</em> (the spec id in the artifact), and which <em>branch</em> the slice lives on. The map below is
+deterministic — there is nothing for the developer to decide.</p>
+
+<table>
+  <thead><tr><th>Verb</th><th>Branch action</th><th>Commit</th></tr></thead>
+  <tbody>
+    <tr><td><code>spec</code> (new slice)</td><td>create + switch to <code>NNN-slug</code> off the default branch</td><td><code>spec(NNN): &lt;title&gt;</code></td></tr>
+    <tr><td><code>plan</code> / <code>tasks</code></td><td>stay on <code>NNN-slug</code></td><td><code>plan(NNN): …</code> / <code>tasks(NNN): …</code></td></tr>
+    <tr><td><code>implement</code></td><td>stay on <code>NNN-slug</code></td><td><code>implement(NNN): T-xxx …</code> per task or per drain</td></tr>
+    <tr><td>Draft → Accepted flip</td><td><code>NNN-slug</code></td><td><code>spec(NNN): accept</code> + mark the PR ready for review</td></tr>
+    <tr><td><code>propose</code></td><td>create <code>change/NNN-&lt;date&gt;-&lt;slug&gt;</code></td><td><code>propose(NNN): …</code></td></tr>
+    <tr><td><code>apply</code></td><td>on the change branch (or the slice)</td><td><code>apply(NNN): …</code> (deltas + the <code>changes/archive/</code> move)</td></tr>
+    <tr><td><code>triage</code> (list)</td><td>main or the active slice</td><td><code>triage: &lt;summary&gt;</code> (inbox is project-root)</td></tr>
+  </tbody>
+</table>
+
+<spec-decision id="G-002">
+  <h4>G-002 · Feature-branch-per-spec; merge to main when Accepted/Applied</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Adopt</spec-status></dd>
+    <dt>Context</dt>      <dd>The repo already carried <code>018-explain</code> / <code>019-explore-course</code>
+    branches matching their spec dirs, and the CI is already PR-shaped
+    (<code>docs/ci-examples/github-actions.yml</code>). A slice is the natural unit of review.</dd>
+    <dt>Decision</dt>     <dd>Each spec slice is a branch named <code>NNN-slug</code>; a proposal is a short-lived
+    <code>change/NNN-&lt;date&gt;-&lt;slug&gt;</code> branch. The slice merges to the default branch when the spec
+    flips Accepted (its bundle is green); a proposal branch merges when Applied. Reviews, id-collision checks, and
+    attribution all attach to the PR.</dd>
+    <dt>Consequences</dt> <dd>+ A clean review boundary; the PR is where <code>validate</code> + SARIF + the
+    <code>spec-id-unique</code> gate run. + Matches the latent pattern and spec-kit's proven shape.
+    − A heavier flow than committing straight to main for tiny work — mitigated by leaving <code>just-do</code> /
+    <code>triage</code> / hotfixes on main (the brief does not force a branch for one-file revert-safe work).</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="G-003">
+  <h4>G-003 · Commit grammar = the verb; delivered opt-in, default OFF</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Adopt</spec-status></dd>
+    <dt>Context</dt>      <dd>The history already speaks <code>&lt;verb&gt;(NNN):</code>. There is no git
+    automation in code today, and the house enforcement stance (<a href="./openspec-considerations.html">C-005</a>)
+    is opt-in, default off, documented loudly.</dd>
+    <dt>Decision</dt>     <dd>Formalize <code>&lt;verb&gt;(NNN): &lt;subject&gt;</code>
+    (<a href="https://www.conventionalcommits.org/">Conventional Commits</a>) as the commit grammar, and ship the
+    automation as an <strong>opt-in layer</strong>, never a new verb: a config switch
+    (<code>git.auto = off | commit | branch+commit</code>, default <code>off</code>), an opt-in Claude Code hook,
+    and <code>spectastic init --tools</code> as the installer — giving the
+    <a href="../specs/000-spectastic/spec.html">already-deferred</a> installer a concrete payload (the hook + the
+    CI workflow from <code>docs/ci-examples/</code> + a commit-message template). Each verb's "After" step gains a
+    <code>--commit</code>/<code>--no-commit</code> escape hatch. When enabled, the verb derives type, scope, and
+    branch from the artifact it just wrote.</dd>
+    <dt>Consequences</dt> <dd>+ The "didn't have to think about it" feel, without surprising developers who run
+    their own git flow (off by default). + No verb-surface growth. + One grammar for humans, hooks, and forges.
+    − Two code paths (manual + automated) to keep coherent. − The hook must compose with the existing P-6
+    state-gate and the explore quarantine (§7).</dd>
+  </dl>
+</spec-decision>
+</section>
+
+
+<!-- =======================================================
+     §5 Attribution
+     ======================================================= -->
+<section id="attribution">
+<h2>5 · Attribution from review &amp; authorship</h2>
+
+<p>spectastic already captures authorship and produces a review signal — they just don't reach git. The
+<code>&lt;spec-meta&gt;</code> block carries <code>Owner</code> (specs) and <code>Author</code> (proposals) as
+<em>name · handle</em>; the adversarial risk pass (<code>REQ-CHANGE-004</code>) produces dispositions a human
+confirms (<code>&lt;spec-risk status="identified|accepted|mitigated|rejected"&gt;</code>); and every status
+transition appends a dated <code>&lt;spec-changelog&gt;</code> entry. The mapping to
+<a href="https://git-scm.com/docs/git-interpret-trailers">trailers</a> is direct — with one gap to close.</p>
+
+<table>
+  <thead><tr><th>Trailer</th><th>Source in the artifact</th></tr></thead>
+  <tbody>
+    <tr><td><code>Author:</code></td><td>The <code>&lt;spec-meta&gt;</code> <code>Owner</code> / <code>Author</code> — the human</td></tr>
+    <tr><td><code>Co-authored-by:</code></td><td>Additional <em>human</em> authors (e.g. a proposal <code>Author</code> ≠ committer)</td></tr>
+    <tr><td><code>Reviewed-by:</code></td><td>The sign-off person on <strong>In Review → Accepted</strong> — <em>not captured today</em> (the gap)</td></tr>
+    <tr><td><code>Acked-by:</code></td><td>The human who dispositioned the adversarial risk pass (<code>REQ-CHANGE-004</code>)</td></tr>
+    <tr><td><code>Refs:</code></td><td>The archived proposal / changelog entry — making artifact ↔ commit bidirectional</td></tr>
+  </tbody>
+</table>
+
+<spec-sidenote><strong>No machine attribution.</strong> Per the project rule, spectastic commits carry
+<em>no</em> AI co-author trailer. Attribution names humans only — author and reviewer. The AI is the tool, not a
+contributor of record.</spec-sidenote>
+
+<spec-decision id="G-004">
+  <h4>G-004 · Derive trailers from metadata; first close the reviewer-capture gap</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="review">Adopt — pending a lifecycle amendment</spec-status></dd>
+    <dt>Context</dt>      <dd>Review is <em>status-driven, not person-driven</em>: <code>REQ-LIFECYCLE-004</code>
+    says "In Review → Accepted: reviewer sign-off" but records no <em>who</em>; the <code>Reviewers</code>
+    <code>&lt;spec-meta&gt;</code> field is present but empty in every live spec; the changelog entry names the
+    triggering condition, not the person.</dd>
+    <dt>Decision</dt>     <dd>Map the trailers above on the relevant commits (the flip commit carries
+    <code>Reviewed-by</code>; the <code>apply</code> commit carries <code>Acked-by</code> from the risk-pass
+    dispositioner; both carry <code>Refs:</code>). To make <code>Reviewed-by</code> real, propose a small
+    amendment to <code>REQ-LIFECYCLE-004</code>: the In Review → Accepted transition MUST record the reviewer's
+    identity — filling the <code>Reviewers</code> field and naming them in the changelog entry — which then flows
+    into the trailer. Until that lands, <code>Reviewed-by</code> is omitted rather than faked.</dd>
+    <dt>Consequences</dt> <dd>+ Review and authorship become first-class, queryable git history derived from the
+    spec, not re-keyed by hand. + Closes a real lifecycle gap (who reviewed) worth closing regardless of git.
+    − Adds one required field to a transition (mild ceremony). − <code>Acked-by</code> from an automated critic
+    needs care: it names the human who <em>dispositioned</em> the finding, never the critic agent.</dd>
+  </dl>
+</spec-decision>
+</section>
+
+
+<!-- =======================================================
+     §6 Where each piece lands
+     ======================================================= -->
+<section id="map">
+<h2>6 · Where each piece lands (downstream slices)</h2>
+
+<p>This brief is a <code>/doc</code> — it argues the strategy; it builds nothing. Each decision feeds a named
+meta-spec slice, to be specified, built, and behaviorally tested through the normal lifecycle. Sequenced by
+foundation-first:</p>
+
+<dl>
+  <dt>① Schema rules — the CI safety net (<code>G-001</code>)</dt>
+  <dd>A <code>spec-id-unique</code> rule (extend <code>packages/schema/src/rules/no-duplicate-ids.ts</code> to
+  spec directory ids) + a per-file within-spec duplicate rule. Pure, deterministic, unit-testable; ships ahead of
+  any automation and is valuable on its own. Wire into <code>docs/ci-examples/</code> against the merge base.</dd>
+
+  <dt>② <code>REQ-GIT-*</code> on the meta-spec (<code>G-002</code>, <code>G-003</code>)</dt>
+  <dd>A <code>/spectastic.propose</code> against <code>specs/000-spectastic/</code> adding the branch/commit
+  contract: the <code>NNN-slug</code> branch model, the <code>&lt;verb&gt;(NNN):</code> grammar, the verb→git map,
+  and the opt-in default-off delivery. The risk pass fires (must-tier, lifecycle-touching).</dd>
+
+  <dt>③ The <code>REQ-LIFECYCLE-004</code> reviewer amendment (<code>G-004</code>)</dt>
+  <dd>A small proposal making the In Review → Accepted transition record the reviewer — the prerequisite for an
+  honest <code>Reviewed-by</code>. Worth doing on its own merits.</dd>
+
+  <dt>④ <code>spectastic init --tools</code> + the git layer (<code>G-003</code>)</dt>
+  <dd>The opt-in installer (already deferred in the meta-spec §2 out-of-scope) gains a concrete payload: the
+  config switch, the Claude Code hook (validate-before-commit, per <code>C-005</code>), the CI workflow, and a
+  commit-message template that renders the trailers from <code>&lt;spec-meta&gt;</code>. Each verb's "After" step
+  gains the <code>--commit</code> hook.</dd>
+</dl>
+</section>
+
+
+<!-- =======================================================
+     §7 Guardrails & open questions
+     ======================================================= -->
+<section id="questions">
+<h2>7 · Guardrails &amp; open questions</h2>
+
+<ul>
+  <li><strong>Opt-in, default off.</strong> Nothing here touches a developer's git unless they enable it. The
+  grammar and the CI gate are valuable even with automation off; the automation is the cherry, not the cake.</li>
+  <li><strong>Compose with the P-6 state-gate.</strong> The apply/tasks state-gate already refuses to overwrite a
+  past-Draft artifact. The opt-in commit hook must run <em>after</em> that gate, never around it — a commit is the
+  reward for a clean verb, not a way past its refusal.</li>
+  <li><strong>Respect the explore quarantine.</strong> A quarantined exploration must stay un-committable to a
+  shippable branch by the same guard that already makes <code>validate</code> fail — the git layer reads, never
+  weakens, that signal.</li>
+  <li><strong>Full history on main — no squash by default.</strong> The project keeps full per-commit history on
+  the default branch; this strategy must <em>not</em> propose squash-on-merge as a default. Per-verb commits are
+  the point: they are the legible record of the lifecycle.</li>
+  <li><strong>Open: monorepo vs per-project.</strong> The meta-spec lives in the same repo as the engine; a
+  consuming project has only <code>specs/</code>. The <code>NNN-slug</code> branch model fits both, but
+  <code>init --tools</code> must detect which it is installing into.</li>
+  <li><strong>Open: the <code>just-do</code> / triage exception.</strong> Small, revert-safe work stays on main
+  by design (<code>G-002</code>). The exact boundary ("one file, no contract change") is the same line the
+  <code>just-do</code> triage layer already draws — reuse it, don't invent a second one.</li>
+</ul>
+
+<p>Recommended order: ① the schema rules (foundation, independently valuable), then ③ the reviewer amendment
+(small, unblocks attribution), then ② the <code>REQ-GIT-*</code> contract, then ④ the installer that ties it
+together.</p>
+</section>
+
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  Git Strategy — considerations · design brief · drafted 27 Jun 2026 ·
+  <button data-theme-toggle style="background:none;border:none;color:var(--c-link);cursor:pointer;font:inherit;padding:0;border-bottom:1px solid currentColor;">light/dark</button>
+</footer>
+
+</main>
+<script src="../assets/spec.js"></script>
+</body>
+</html>
