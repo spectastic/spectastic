@@ -55,12 +55,36 @@ relaxation is safe *because* it is bounded.
    Update the ledger's built/tried/worked/didn't log as you go.
 4. **Record the run.** Capture the commands you actually ran in §3 of the ledger (the Run/Demo shape) so the
    facts the build proved are ready for graduation's grounding ledger.
-5. **Exit.** When you know the answer: **graduate** (turn it into a real spec/plan/tasks — deferred sibling)
-   or **delete** the `explorations/<id>/` directory. Do not try to ship it un-graduated; the guard won't let
-   you, and that's deliberate.
+5. **Exit.** When you know the answer: **graduate** it (`--graduate <id>`, see below) or **delete** the
+   `explorations/<id>/` directory. Do not try to ship it un-graduated; the guard won't let you, deliberately.
 
-## Out of scope (this slice)
+## Graduate mode (`--graduate <id>`, spec 023-explore-graduation)
 
-- The graduation interview (classify / extract / restore) — a deferred sibling.
-- Spike-vs-tracer-bullet classification and the refactor-to-comply vs clean-rebuild paths.
+The back half of the loop: turn a quarantined exploration into a real, verified-grounded **spec + plan**, then
+lift the quarantine and archive the exploration as discovered-not-guessed history. Three steps:
+
+1. **Classify.** Ask the explorer (via `AskUserQuestion`) whether the build is a **spike** (threw it together to
+   answer a question — keep the *learning*, rebuild clean) or a **tracer-bullet** (a usable skeleton — keep the
+   *code*, back-fill the spec, harden in place). Recorded immutably in the archived marker; it decides the
+   restore path.
+2. **Extract.** Read the build's demonstrated behaviour into a Draft `specs/<id>/spec.html` + `plan.html`,
+   reusing the id. The run record's proven facts (the ledger's §3) become `verified` rows in the **plan's** §3
+   evidence ledger — the grounding ledger is a plan artifact, `REQ-LIFECYCLE-006` — citing the archived
+   exploration. Interview what the build never answered (intent, quantified NFRs, edge cases) exactly as a cold
+   `/spectastic.spec` + `/spectastic.plan` would (D-007).
+3. **Lift + archive.** The deterministic transaction writes the bundle, archives `explorations/<id>/` →
+   `explorations/archive/<id>/` (deepening the ledger's paths), and flips the marker `quarantined` →
+   `graduated` **last**. All-or-nothing: a failure leaves the exploration quarantined and refusable with no
+   partial `specs/<id>/` (`SC-003`). Refuses if `specs/<id>/` exists or the exploration is not quarantined.
+
+**CLI:** `spectastic explore --graduate <id> --classify <spike|tracer-bullet>` (AI-coupled — needs
+`ANTHROPIC_API_KEY`; the slash path is keyless via the in-host session).
+
+**Next:** review the Draft spec + plan, then `/spectastic.tasks`. The **restore-task scaffolding**
+(refactor-to-comply / clean-rebuild) is the sibling slice **`TBD-explore-restore`**, not this verb.
+
+## Out of scope (this verb)
+
+- The restore-task generation (refactor-to-comply vs clean-rebuild) — split to **`TBD-explore-restore`**.
 - A think-first (think-to-learn) discovery mode — considered separately.
+- A negative-result / "abandoned" terminal state for an exploration that won't graduate.
