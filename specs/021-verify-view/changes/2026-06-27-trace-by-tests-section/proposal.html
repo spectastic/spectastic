@@ -1,0 +1,212 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Trace test tasks by the Tests subsection, not by file path · Change proposal</title>
+<link rel="stylesheet" href="../../../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../../../assets/favicon.svg">
+<script src="../../../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Change proposal · 021-verify-view</p>
+  <h1>Trace test tasks by the Tests subsection, not by file path</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    Identify a "test task" structurally (the story's Tests subsection), and make validate fail loudly on an empty trace.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>     <span><spec-status value="accepted">Approved</spec-status></span>
+    <b>Change ID</b>  <span>2026-06-27-trace-by-tests-section</span>
+    <b>Spec</b>       <span><a href="../../spec.html">021-verify-view</a></span>
+    <b>Author</b>     <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Source</b>     <span>Triage <a href="../../triage-log.html">021 · T-001</a> (surfaced via 025's empty verify trace)</span>
+    <b>Created</b>    <span><time datetime="2026-06-27">2026-06-27</time></span>
+    <b>Targets</b>    <span>2 requirements (modified)</span>
+    <b>Read time</b>  <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-tldr>
+    <p>The verify view's SC→test trace (<a href="../../spec.html#FR-003">FR-003</a>) came up <em>empty</em> for
+    <code>025-id-uniqueness</code> because the implementation identifies a "test task" purely by file path
+    (<code>TEST_PATH</code>), and fixture-driven test tasks — how every schema rule is tested
+    (<code>fixtures/&lt;rule&gt;/</code>) — don't match. And <a href="../../spec.html#FR-008">FR-008</a>'s drift
+    check stayed silent, because it verifies <em>consistency</em> (empty == empty), not <em>completeness</em>.
+    Two must-tier MODIFYs: pin "test task" to the story's <code>&lt;h3&gt;Tests&lt;/h3&gt;</code> subsection
+    (path-independent), and extend the validator to fail when a closed SC resolves to no test task. The silent
+    pass is what let this ship — that is the part worth closing.</p>
+  </spec-tldr>
+</header>
+
+
+<spec-change id="2026-06-27-trace-by-tests-section" status="approved">
+
+<header>
+  <h3>Trace test tasks by the Tests subsection, not by file path</h3>
+  <span class="meta"><spec-status value="accepted">Approved</spec-status></span>
+</header>
+
+
+<section id="intent">
+<h2>1 · Intent</h2>
+<p>Spec <code>021-verify-view</code> promises a success-criterion → test-task trace as the artifact form of P-7
+(<em>done means verified</em>). On <code>025-id-uniqueness</code> that trace rendered completely empty — all three
+SCs showed "— no test task cites this SC —" — even though the feature is thoroughly tested. The cause is a
+too-narrow notion of "test task": both the generator (<code>verify.ts:62</code>) and the validator
+(<code>verify-view-stale.ts:25</code>) identify one by file path (<code>/(?:(?:^|\/)tests?\/)|(?:\.(?:test|spec)\.[tj]sx?$)/</code>),
+so <strong>fixture-driven test tasks</strong> — paths under <code>fixtures/</code>, which is how spectastic's own
+schema rules are tested — never match.</p>
+<p>Worse, nothing complained: <code>spectastic validate</code> was clean because the anti-drift rule
+(<a href="../../spec.html#FR-008">FR-008</a>) only checks that the view's links are <em>consistent</em> with the
+bundle (empty matches empty) — it never checks that a trace is <em>complete</em>. A silent green on an empty
+proof view is exactly the "presence is not containment" failure the project has paid for before. This proposal
+fixes both: identify a test task <em>structurally</em>, and make the empty trace <em>loud</em>.</p>
+</section>
+
+
+<section id="scope">
+<h2>2 · Scope</h2>
+
+<spec-goals>
+  <h3>In scope</h3>
+  <ul>
+    <li>MODIFY <a href="../../spec.html#FR-003">FR-003</a> — identify a test task by the user story's <code>Tests (write &amp; fail first)</code> subsection, independent of file path.</li>
+    <li>MODIFY <a href="../../spec.html#FR-008">FR-008</a> — the validator also fails when a closed SC resolves to no test task (an empty / incomplete trace), not only on drift.</li>
+  </ul>
+</spec-goals>
+
+<spec-non-goals>
+  <h3>Out of scope</h3>
+  <ul>
+    <li>Re-authoring <code>025</code>'s <code>verify.html</code> — it is a derived view; it regenerates correctly once this lands (no <code>025</code> change owed).</li>
+    <li>Removing the path heuristic as a <em>fallback</em> hint — the subsection is authoritative, but a <code>tests/</code> path may still corroborate; this proposal does not forbid it.</li>
+    <li>Recognising test patterns beyond the structured tasks.html (e.g. inferring tests from source) — that is a larger change.</li>
+  </ul>
+</spec-non-goals>
+</section>
+
+
+<section id="approach">
+<h2>3 · Approach</h2>
+<p>The signal already exists in every <code>tasks.html</code>: the <code>/spectastic.tasks</code> convention opens
+each story with an <code>&lt;h3&gt;Tests (write &amp; fail first)&lt;/h3&gt;</code> subsection. Make that the
+authoritative marker — a <code>&lt;spec-task&gt;</code> under a story's Tests heading is a test task, whatever its
+file path. Both implementations of the contract change in lockstep: <code>packages/core/src/commands/verify.ts</code>
+(the generator's SC→test join) and <code>packages/schema/src/rules/verify-view-stale.ts</code> (the validator's
+expected-set computation), so the two never disagree on what a test task is. Then add one finding to the validator:
+a closed SC (one cited by a US-phase note) with zero resolving test-task links is reported, naming the gap and the
+regeneration fix — the completeness check that turns the silent pass loud.</p>
+</section>
+
+
+<section id="deltas">
+<h2>4 · Deltas</h2>
+<p>Two MODIFY deltas, both <code>must</code>-tier; <code>target=</code> links to the live spec.</p>
+
+<spec-delta op="modified" target="FR-003">
+  <p><strong>What changes:</strong> define how a "test task" is identified — structurally, by the story's Tests subsection, not by file path.</p>
+  <spec-requirement id="FR-003" priority="must">
+    <p>The aggregation <spec-rule>MUST</spec-rule> trace each <code>SC-NNN</code> to its acceptance scenario and to
+    the test task(s) that verify it — where a <strong>test task</strong> is any <code>&lt;spec-task&gt;</code> under
+    the user story's <code>&lt;h3&gt;Tests (write &amp; fail first)&lt;/h3&gt;</code> subsection, identified by that
+    structural position and <strong>independent of its file path</strong> (so fixture-driven test tasks, whose
+    paths live under <code>fixtures/</code>, are recognised). These traces <spec-rule>MUST</spec-rule> be
+    materialised as static links at generation time, with no cross-file fetching at render time.</p>
+    <details><summary>Rationale</summary><p>Single-file HTML cannot fetch siblings (P-1, P-4); generation is the
+    only moment siblings are read. The earlier path-only heuristic (<code>tests/</code> / <code>.test.</code>)
+    silently excluded the fixture-driven tests spectastic itself uses, producing an empty trace (triage
+    <a href="../../triage-log.html">021 · T-001</a>). The Tests subsection is the authoring convention's own signal
+    — already present in every <code>tasks.html</code>.</p></details>
+  </spec-requirement>
+</spec-delta>
+
+<spec-delta op="modified" target="FR-008">
+  <p><strong>What changes:</strong> the validator also fails on an empty/incomplete trace, not only on drift — completeness, not just consistency.</p>
+  <spec-requirement id="FR-008" priority="must">
+    <p><code>spectastic validate</code> <spec-rule>MUST</spec-rule> report a finding when a <code>verify.html</code>'s
+    derived links no longer match the current <code>SC-NNN</code>, acceptance, or test-task IDs in its sibling
+    bundle, <strong>or when a closed <code>SC-NNN</code> resolves to no test task</strong> (an empty or incomplete
+    trace); the finding <spec-rule>MUST</spec-rule> name the divergence or the gap and the regeneration fix.</p>
+    <details><summary>Rationale</summary><p>Anti-drift <em>and</em> anti-empty, made loud (the linter-is-not-noise
+    discipline). The prior rule checked only that the view was <em>consistent</em> with the bundle, so an
+    all-empty trace passed silently — a "presence is not containment" green (P-7). Completeness closes that gap:
+    a proof view with no proof is itself a finding.</p></details>
+  </spec-requirement>
+</spec-delta>
+</section>
+
+
+<section id="risks">
+<h2>5 · Risk register</h2>
+<p>The adversarial risk pass ran (the proposal touches <code>must</code>-tier requirements, per <code>REQ-CHANGE-004</code>). Three findings, each <code>status="identified"</code> — the author dispositions each to <code>accepted</code>, <code>mitigated</code>, or <code>rejected</code> before apply.</p>
+
+<spec-risk-log>
+
+<spec-risk target="FR-003" status="identified">
+  <p class="claim">Dropping the path filter without <em>bounding collection to the Tests subsection's DOM range</em> over-traces: <code>collectTestTasks</code> scans the whole <code>phase-usN</code> section, which holds both the <code>&lt;h3&gt;Tests&lt;/h3&gt;</code> and <code>&lt;h3&gt;Implementation&lt;/h3&gt;</code> subsections — so impl tasks (T-110, T-210) get pulled in as "proof," and the new FR-008 completeness check goes <em>green</em> on the wrong-but-full trace.</p>
+  <p class="citation">FR-003 delta: "any <code>&lt;spec-task&gt;</code> under the user story's Tests subsection … independent of its file path"; grounded in <code>verify.ts</code> <code>collectTestTasks</code> + the per-phase join, which today is narrowed only by <code>TEST_PATH</code>.</p>
+  <div class="response">Author (draft): the contract must say a test task is a <code>&lt;spec-task&gt;</code> whose <em>nearest preceding <code>&lt;h3&gt;</code> is the Tests heading</em> (subsection-scoped), not merely "in the phase". Add a fixture asserting an Implementation-subsection task does <strong>not</strong> appear in the proof leg. The inverse of the heading-match worry — the match succeeds but collection isn't bounded.</div>
+</spec-risk>
+
+<spec-risk target="NFR-002" status="identified">
+  <p class="claim">Strengthening FR-008 to fail on an empty proof leg will newly <em>fail</em> every pre-existing <code>verify.html</code> — all generated under the old path-only rule with tests under <code>fixtures/</code> — on the next <code>validate</code>, breaking the clean tree on day one and undermining NFR-002's "rebuild-and-diff is a meaningful drift signal."</p>
+  <p class="citation">NFR-002: "running the generator twice … yields a byte-identical <code>verify.html</code>, so a CI rebuild-and-diff is a meaningful drift signal" — vs the new finding firing on every legacy view. (Note: <a href="../../spec.html#SC-002">SC-002</a> already implied completeness — "each as a resolving link to … its closing test task(s)" — specified but unenforced.)</p>
+  <div class="response">Author (draft): scope the rollout — add a §6 task to regenerate <em>all extant</em> <code>verify.html</code> files in this same change so CI isn't broken by the strengthened rule landing ahead of the regenerations; alternatively gate the finding to fire only on an already-stale view. This is the apply-time hazard to disposition before merge.</div>
+</spec-risk>
+
+<spec-risk target="§2" status="identified">
+  <p class="claim">§2 scopes only mirroring test-task <em>identification</em> across the two impls, but the real divergence is the SC-closure <em>join</em>: the validator collects test tasks as a flat order-independent union (<code>verify-view-stale</code>) while the generator maps them <em>per-SC</em> — and the new completeness check makes that per-SC join load-bearing in the validator for the first time, so the two can agree on "what is a test task" yet disagree on "is <em>this SC</em> covered."</p>
+  <p class="citation">§2 in-scope: "the validator also fails when a closed SC resolves to no test task"; §6 task 2: "Mirror the identical identification …" — the join is never named, though the triage deep-dive flagged generator/validator drift.</p>
+  <div class="response">Author (draft): widen the §2 FR-008 item (and a §6 task) to require the validator to compute the trace <em>per-SC</em>, not a flat union — so completeness reasons over the same SC→tasks mapping the generator renders. Identification parity is necessary but not sufficient.</div>
+</spec-risk>
+
+</spec-risk-log>
+</section>
+
+
+<section id="tasks">
+<h2>6 · Tasks</h2>
+<p>Scoped to this change; fold into <code>021</code>'s <code>tasks.html</code> on apply (<code>REQ-CHANGE-006</code>).</p>
+
+<ul style="list-style:none;padding-left:0;">
+  <li><input type="checkbox"> Replace the path-only test-task gate with the Tests-subsection signal (tolerant leading-"Tests" match within <code>phase-usN</code>), dropping <code>TEST_PATH</code> as the authority — <code>packages/core/src/commands/verify.ts</code></li>
+  <li><input type="checkbox"> Mirror the identical identification in the validator's expected-set computation — <code>packages/schema/src/rules/verify-view-stale.ts</code></li>
+  <li><input type="checkbox"> Add the completeness finding (a closed SC with no resolving test task), gated on the bundle declaring ≥1 test task — <code>packages/schema/src/rules/verify-view-stale.ts</code></li>
+  <li><input type="checkbox"> Fixtures + tests: a fixture-driven verify trace populates; an empty-trace bundle (SCs + Tests subsection, no test task) fails validate — <code>packages/schema/fixtures/verify-view-stale/</code> + <code>packages/core/test/</code></li>
+  <li><input type="checkbox"> Regenerate <code>specs/025-id-uniqueness/verify.html</code> and confirm SC-001/002/003 trace to their test tasks — <code>specs/025-id-uniqueness/verify.html</code></li>
+</ul>
+</section>
+
+
+<section id="questions">
+<h2>7 · Open questions</h2>
+<spec-questions>
+<p>None outstanding — the scope (both FRs), the structural signal (the Tests subsection), and the
+completeness-check direction were anchored in the interview. The three risk dispositions are the author's to
+commit before apply.</p>
+</spec-questions>
+</section>
+
+
+<section id="changelog">
+<h2>8 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-06-27">2026-06-27</time><span>Proposal authored — 2 MODIFY (FR-003 identification by Tests subsection; FR-008 completeness check). Independent adversarial pass: 3 risks identified — over-broad collection if not subsection-bounded (FR-003), strengthened FR-008 newly fails every legacy verify.html / NFR-002 (the apply-time hazard), and the generator/validator SC-join (not just identification) left unscoped (§2). Status approved; risks await disposition before apply.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+</spec-change>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  2026-06-27-trace-by-tests-section · Trace test tasks by the Tests subsection · authored 2026-06-27
+</footer>
+
+</main>
+<script src="../../../../assets/spec.js"></script>
+</body>
+</html>
