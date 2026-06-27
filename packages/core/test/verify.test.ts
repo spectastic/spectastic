@@ -38,6 +38,22 @@ describe('readBundle: the SC -> US join (T-010, D-002)', () => {
     });
     expect(t.find((r) => r.scId === 'SC-002')).toMatchObject({ usNum: 2, testTaskIds: ['T-200'] });
   });
+
+  // 021 trace-by-tests-section change: a test task is identified by the story's Tests
+  // subsection, not by file path.
+  it('traces a fixture-driven test task — identification is path-independent (FR-003)', () => {
+    // T-100's path becomes a non-tests/ path; the old TEST_PATH heuristic would have missed it.
+    const tasks = TASKS.replace('tests/first.spec.ts', 'fixtures/first/');
+    const t = readBundle(SPEC, tasks, '999-fixture').trace;
+    expect(t.find((r) => r.scId === 'SC-001')?.testTaskIds).toEqual(['T-100']);
+  });
+
+  it('excludes an Implementation-subsection task even with a test-y path (subsection-bounded)', () => {
+    // T-110 lives under <h3>Implementation>; a test-y path must NOT pull it into the proof leg.
+    const tasks = TASKS.replace('src/first.ts', 'tests/sneaky.test.ts');
+    const t = readBundle(SPEC, tasks, '999-fixture').trace;
+    expect(t.find((r) => r.scId === 'SC-001')?.testTaskIds).toEqual(['T-100']);
+  });
 });
 
 describe('renderRunBlock: captured commands -> typed elements (T-101, FR-004)', () => {

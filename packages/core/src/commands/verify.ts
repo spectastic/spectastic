@@ -59,7 +59,10 @@ const SC_ID = /^SC-\d+$/;
 const US_ANCHOR = /^US(\d+)$/;
 const PHASE_US = /^phase-us(\d+)$/;
 const SC_HREF = /#(SC-\d+)\b/;
-const TEST_PATH = /(?:(?:^|\/)tests?\/)|(?:\.(?:test|spec)\.[tj]sx?$)/;
+// A test task is identified structurally — by the story's Tests subsection — not by
+// file path (021 FR-003), so fixture-driven tests (paths under fixtures/) are
+// recognised. Tolerant leading-"Tests" match so a reworded heading suffix is fine.
+const TESTS_HEADING = /^tests\b/i;
 
 /** What a phase closes + the test tasks that prove it (the SC -> US join). */
 interface PhaseHit {
@@ -86,14 +89,6 @@ function readTitle(ast: Document, fallback: string): string {
   return h1 ? textOf(h1) : fallback;
 }
 
-/** The `class="path"` text of a task, used to tell a test task from an impl task. */
-function taskPath(task: Element): string {
-  for (const span of findAll(task, 'span')) {
-    if (getAttr(span, 'class') === 'path') return textOf(span);
-  }
-  return '';
-}
-
 /** Every `SC-NNN` requirement id in the spec, in document order. */
 function extractScIds(ast: Document): string[] {
   const ids: string[] = [];
@@ -114,13 +109,23 @@ function extractUsAnchors(ast: Document): Set<number> {
   return set;
 }
 
-/** The test-task ids inside one phase section (path looks like a test). */
+/**
+ * The test-task ids inside one phase section — the tasks under the story's
+ * `<h3>Tests …</h3>` subsection (021 FR-003), DOM-bounded: a `<spec-task>` counts
+ * only while the nearest preceding `<h3>` is the Tests heading, so Implementation-
+ * subsection tasks are excluded. Independent of file path.
+ */
 function collectTestTasks(section: Element): string[] {
   const ids: string[] = [];
-  for (const task of findAll(section, 'spec-task')) {
-    const id = getAttr(task, 'id');
-    if (id && TEST_PATH.test(taskPath(task))) ids.push(id);
-  }
+  let inTests = false;
+  walk(section, (el) => {
+    if (el.tagName === 'h3') {
+      inTests = TESTS_HEADING.test(textOf(el));
+    } else if (el.tagName === 'spec-task' && inTests) {
+      const id = getAttr(el, 'id');
+      if (id) ids.push(id);
+    }
+  });
   return ids;
 }
 
