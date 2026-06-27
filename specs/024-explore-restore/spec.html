@@ -1,0 +1,271 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>explore restore — refactor or rebuild a graduated build to spec · Specification</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Specification · 024-explore-restore</p>
+  <h1>explore restore — refactor or rebuild a graduated build to spec</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    The restore half of graduation, split out of <a href="../023-explore-graduation/spec.html">023</a>:
+    <code>/spectastic.tasks &lt;id&gt; --restore</code> turns a graduated <code>spec + plan</code> into a
+    path-appropriate <code>tasks.html</code> — refactor-to-comply for a tracer-bullet, clean-rebuild for a spike —
+    reading the frozen classification, test-first either way.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>      <span><spec-status value="draft">Draft</spec-status></span>
+    <b>Spec ID</b>     <span>024-explore-restore</span>
+    <b>Owner</b>       <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Reviewers</b>   <span>—</span>
+    <b>Created</b>     <span><time datetime="2026-06-27">2026-06-27</time></span>
+    <b>Principles</b><span><a href="../../principles.html">v1.2.0</a></span>
+    <b>Smallest demoable</b><span><code>/spectastic.tasks &lt;id&gt; --restore</code> generates a path-appropriate restore <code>tasks.html</code> for a graduated bundle — refactor-to-comply (tracer) or clean-rebuild (spike) — reading the archived classify, opening each path with failing test tasks.</span>
+    <b>Read time</b>   <span data-reading-time></span>
+  </spec-meta>
+
+  <!-- Live size gauge — green ≤80%, amber 80-100%, red over (REQ-FORMAT-004). Ceiling 1500: a focused slice,
+       the restore-task generation only (the back-half-of-the-back-half, split from 023 for budget). -->
+  <spec-budget words="1500" reqs="20" minutes="10"></spec-budget>
+
+  <spec-tldr>
+    <p><a href="../023-explore-graduation/spec.html">023-explore-graduation</a> graduates a quarantined build into
+    a Draft <code>spec + plan</code> and records an immutable <code>classify=spike|tracer-bullet</code> in the
+    archived marker. It split off the <strong>restore-task generation</strong> when its budget went red. This is
+    that sibling: a <em>mode of the existing</em> <code>/spectastic.tasks</code> verb (no new verb — graduation
+    feeds the existing lifecycle) that, given a graduated id, generates the path-appropriate restore tasks. A
+    <strong>tracer-bullet</strong> gets a refactor-to-comply list (bring the kept build up to the spec + the
+    relaxed gates); a <strong>spike</strong> gets a clean-rebuild flow with the prototype marked for deletion.
+    Both open test-first. The restore path is always <em>explicit</em> — a <code>--restore</code> flag or an
+    announced prompt — never a silent branch, and the output is banner-labelled with its classification.</p>
+  </spec-tldr>
+
+  <dl class="invest">
+    <dt><span class="letter">I</span> Independent</dt> <dd>Consumes a bundle produced by <a href="../023-explore-graduation/spec.html">023</a>'s graduate (the spec + plan + the archived <code>classify</code> marker) and reuses the <code>/spectastic.tasks</code> machinery. Sequential after 023; no shared mutable state.</dd>
+    <dt><span class="letter">N</span> Negotiable</dt>  <dd>Outcomes only. The exact refactor-to-comply task templates and the prompt wording are deferred to the plan.</dd>
+    <dt><span class="letter">V</span> Valuable</dt>    <dd>Unlocks <a href="#SC-001">SC-001</a> — closes the explore loop's final step: a graduated build gets a real, path-appropriate rebuild plan, test-first.</dd>
+    <dt><span class="letter">E</span> Estimable</dt>   <dd>Plan + tasks derivable; no open question blocks estimation (§<a href="#questions">7</a>).</dd>
+    <dt><span class="letter">S</span> Small</dt>       <dd>One mode on one existing verb, two paths, reusing <code>/tasks</code> — deliberately the small slice 023's INVEST·Small trigger carved out.</dd>
+    <dt><span class="letter">T</span> Testable</dt>    <dd>Every requirement observable; <a href="#SC-001">SC-001</a> is the binary never-the-wrong-shape-silently guarantee.</dd>
+  </dl>
+
+  <spec-audience-map>
+    <dl>
+      <dt>Exec / PM</dt>   <dd>§<a href="#context">Context</a>, §<a href="#scenarios">User scenarios</a>, §<a href="#success">Success criteria</a>.</dd>
+      <dt>Reviewer</dt>    <dd>§<a href="#requirements">Requirements</a>, §<a href="#assumptions">Assumptions</a>, §<a href="#questions">Open questions</a>.</dd>
+      <dt>Implementer</dt> <dd>§<a href="#requirements">Requirements</a>, §<a href="#data">Data model</a>, §<a href="#conformance">Conformance index</a>.</dd>
+    </dl>
+  </spec-audience-map>
+</header>
+
+
+<section id="context">
+<h2>1 · Context</h2>
+<p><a href="../023-explore-graduation/spec.html">023</a> ships graduation's front half: classify a quarantined
+build, extract a Draft <code>spec + plan</code> with verified grounding, lift the quarantine, archive the
+exploration. Its budget went red, so it split the <strong>restore-task generation</strong> to this sibling — the
+last step of the explore loop (<em>intent → build loosely → graduate → restore rigor</em>).</p>
+
+<p>"Restore" is path-appropriate (Pragmatic-Programmer, brief D-2): a <strong>tracer-bullet</strong> kept its code
+(refactor-to-comply), a <strong>spike</strong> kept only the learning (clean rebuild + retire the prototype). The
+classification was frozen at graduation; restore <em>honours</em> it, never re-asks. The judgment on where this
+lives — a mode of the existing <code>/spectastic.tasks</code> (reuse the lifecycle, don't fork it), made explicit
+so it can never silently emit the wrong shape — was settled by an adversarial judge over the brief's reuse
+principle.</p>
+</section>
+
+
+<section id="scenarios">
+<h2>2 · User scenarios &amp; testing</h2>
+
+<p>Each story <strong>MUST</strong> be independently testable. Both are P1 — the two real restore modes.</p>
+
+<h3 id="US1">US1 · Refactor a tracer-bullet to comply <spec-pill>P1</spec-pill></h3>
+<p>As an <strong>explorer</strong>, I want <strong>restore to generate the tasks that bring my kept build up to
+the graduated spec</strong> so that <strong>a usable skeleton hardens in place under full rigor, nothing thrown
+away</strong>.</p>
+<p><em>Acceptance:</em> for a <code>tracer-bullet</code>, <code>/spectastic.tasks &lt;id&gt; --restore</code>
+writes a <code>tasks.html</code> of refactor-to-comply work — failing tests first for each requirement, then the
+changes to bring the kept build to the spec + the gates relaxed during explore (requirement IDs, INVEST, full
+principles, estimability + grounding) — each task naming a concrete file. The build is kept.</p>
+
+<h3 id="US2">US2 · Rebuild a spike clean <spec-pill>P1</spec-pill></h3>
+<p>As an <strong>explorer</strong>, I want <strong>restore to generate a clean-rebuild plan against the new
+spec</strong> so that <strong>a throwaway spike becomes a proper build, with the prototype retired honestly</strong>.</p>
+<p><em>Acceptance:</em> for a <code>spike</code>, restore writes a normal test-first <code>tasks.html</code>
+against the spec, plus an explicit task to <strong>delete</strong> <code>explorations/archive/&lt;id&gt;/</code>.
+The prototype is <em>marked for deletion</em> (a reviewable task the explorer runs), never auto-deleted.</p>
+
+<h3>Edge cases</h3>
+<ul>
+  <li>Plain <code>/spectastic.tasks &lt;id&gt;</code> on a graduated id (no flag) — the archived <code>classify</code> marker is detected and an <strong>announced prompt</strong> offers restore vs a normal breakdown; it never silently emits the restore shape.</li>
+  <li><code>--restore</code> on a non-graduated id (no archived marker) — refused; there is no classification to honour.</li>
+  <li>A graduated id whose <code>specs/&lt;id&gt;/tasks.html</code> already exists — refuse or confirm overwrite; never silently clobber a hand-edited tracker.</li>
+</ul>
+</section>
+
+
+<section id="requirements">
+<h2>3 · Requirements</h2>
+
+<p>Conformance keywords (<spec-rule>MUST</spec-rule>, <spec-rule level="should">SHOULD</spec-rule>,
+<spec-rule level="may">MAY</spec-rule>) follow RFC 2119.</p>
+
+<h3>Functional</h3>
+
+<spec-requirement id="FR-001" priority="must">
+<p>Restore-task generation <spec-rule>MUST</spec-rule> be a mode of the existing <code>/spectastic.tasks</code>
+verb, not a new verb. <code>/spectastic.tasks &lt;id&gt; --restore</code> forces it; absent the flag, a graduated
+marker (<code>explorations/archive/&lt;id&gt;/quarantine.json</code> carrying <code>classify</code>)
+<spec-rule>MUST</spec-rule> trigger an <em>announced</em> prompt (restore vs a normal breakdown) before
+generating — and <spec-rule>MUST NOT</spec-rule> branch silently.</p>
+<details><summary>Rationale</summary><p>Graduation feeds the existing verbs (don't fork the lifecycle); the
+explicit flag + announced prompt close the one hazard of overloading <code>/tasks</code> — a silently
+wrong-shaped breakdown. Adjudicated by an adversarial judge over the brief's reuse principle.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-002" priority="must">
+<p>For a <code>tracer-bullet</code>, restore <spec-rule>MUST</spec-rule> generate a refactor-to-comply task list:
+test-first tasks per requirement, then tasks bringing the <em>kept</em> build up to the extracted spec and the
+gates relaxed during explore (requirement IDs, INVEST, full principles compliance, the estimability + grounding
+gates). Each task names a concrete file or directory.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-003" priority="must">
+<p>For a <code>spike</code>, restore <spec-rule>MUST</spec-rule> generate a clean-rebuild test-first task flow
+against the new spec, and <spec-rule>MUST</spec-rule> include a task to delete the archived prototype
+(<code>explorations/archive/&lt;id&gt;/</code>) — <em>marked</em> for the explorer to run, never auto-deleted.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-004" priority="must">
+<p>The classification <spec-rule>MUST</spec-rule> be read from the frozen archived marker (per
+<a href="../023-explore-graduation/spec.html#FR-008">023 · FR-008</a>), not re-chosen — restore honours
+graduation's immutable <code>spike|tracer-bullet</code> call.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-005" priority="must">
+<p>The generated <code>tasks.html</code> <spec-rule>MUST</spec-rule> carry a visible banner naming its
+classification and the source archive, so a reader sees why the tasks are restore-shaped (the
+anti-silent-wrong-shape guarantee made legible).</p>
+</spec-requirement>
+
+<spec-requirement id="FR-006" priority="should">
+<p>Restore <spec-rule level="should">SHOULD</spec-rule> reuse the existing <code>/spectastic.tasks</code>
+test-first machinery — each path opens with failing test tasks before implementation — rather than fork a
+parallel generator.</p>
+</spec-requirement>
+
+<h3>Non-functional</h3>
+
+<spec-requirement id="NFR-001" priority="should">
+<p>Restore is AI-coupled (it reads the extracted spec + plan to derive the tasks) and <spec-rule level="should">SHOULD</spec-rule>
+require <code>ANTHROPIC_API_KEY</code> like <code>/spectastic.tasks</code> — the slash-command path uses the
+in-host session and needs no key.</p>
+</spec-requirement>
+
+<h3>Out of scope (deferred to other slices)</h3>
+<spec-out-of-scope>
+  <ul>
+    <li defer-to="023-explore-graduation">Restoring the non-task gates — the bundle's full rigor and the quarantine-lift returning the id to the gates (023 · FR-006). This slice generates the restore <em>tasks</em> only.</li>
+    <li defer-to="never">Re-classification or re-graduation — the <code>classify</code> is frozen at graduation (023 · FR-008); restore reads it, never re-decides.</li>
+    <li defer-to="TBD-discovery-modes">A think-first discovery mode — a sibling at the front of the lifecycle, considered separately.</li>
+  </ul>
+</spec-out-of-scope>
+</section>
+
+
+<section id="data">
+<h2>4 · Data model</h2>
+
+<p>This slice reads a graduated bundle + the archived classification and writes one tasks.html. It owns no new
+persistent entity.</p>
+
+<h3>Entities</h3>
+<dl>
+  <dt>Classification</dt><dd><code>spike</code> | <code>tracer-bullet</code>, read from <code>explorations/archive/&lt;id&gt;/quarantine.json</code> (frozen at graduation). Decides the restore path.</dd>
+  <dt>Restore task set</dt><dd>The generated <code>specs/&lt;id&gt;/tasks.html</code> — a refactor-to-comply list (tracer) or a clean-rebuild flow with a prototype-deletion task (spike). Test-first; banner-labelled with the classification + source.</dd>
+</dl>
+</section>
+
+
+<section id="success">
+<h2>5 · Success criteria</h2>
+
+<p>Technology-agnostic, measurable outcomes.</p>
+
+<spec-requirement id="SC-001" priority="must">
+<p>100% of graduated bundles get a path-appropriate restore <code>tasks.html</code> — tracer → refactor-to-comply,
+spike → clean-rebuild — and the wrong shape is <em>never</em> emitted silently: the <code>--restore</code> flag or
+the announced prompt always gates the restore branch.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-002" priority="must">
+<p>Every restore <code>tasks.html</code> names its classification and source archive (the banner) and opens each
+path with failing test tasks — the test-first gate, relaxed during explore, is back on.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-003" priority="must">
+<p>The spike path always includes a prototype-deletion task, and no graduated build is auto-deleted — the
+explorer runs the deletion deliberately.</p>
+</spec-requirement>
+</section>
+
+
+<section id="assumptions">
+<h2>6 · Assumptions</h2>
+
+<spec-assumption>
+<p>Restore operates on a bundle produced by <a href="../023-explore-graduation/spec.html">023</a>'s graduate: the
+<code>specs/&lt;id&gt;/spec.html</code> + <code>plan.html</code> and the archived <code>quarantine.json</code>
+carrying <code>classify</code> are all present.</p>
+</spec-assumption>
+
+<spec-assumption>
+<p>The classification is immutable (023 · FR-008); restore reads it rather than re-running the spike/tracer
+interview.</p>
+</spec-assumption>
+</section>
+
+
+<section id="questions">
+<h2>7 · Open questions</h2>
+<spec-questions>
+<p>None outstanding — every decidable question was anchored in the interview, including the load-bearing
+verb-shape call (a mode of <code>/spectastic.tasks</code>, made explicit via flag + announced prompt) settled by
+an adversarial judge over the brief's "graduation feeds the existing verbs" principle.</p>
+</spec-questions>
+</section>
+
+
+<section id="conformance">
+<h2>8 · Conformance index</h2>
+<p>Auto-built from every <code>&lt;spec-requirement&gt;</code> in this document.</p>
+<spec-conformance></spec-conformance>
+</section>
+
+
+<section id="changelog">
+<h2>9 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-06-27">2026-06-27</time><span>Initial draft. The restore-task generation, split from <a href="../023-explore-graduation/spec.html">023-explore-graduation</a> (its INVEST·Small budget trigger). Verb shape — a mode of <code>/spectastic.tasks</code>, explicit via <code>--restore</code> + an announced prompt — settled by an adversarial judge over the brief's reuse principle.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  024-explore-restore · explore restore — refactor or rebuild a graduated build to spec · authored 2026-06-27
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>
