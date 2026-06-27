@@ -5,6 +5,7 @@ import { deltaTargetRequiredRule } from './delta-target-required.js';
 import { emptyDocumentRule } from './empty-document.js';
 import { fileTooLargeRule } from './file-too-large.js';
 import { formatBandCouplingRule } from './format-band-coupling.js';
+import { idWithinFileUniqueRule } from './id-within-file-unique.js';
 import { investRowFailedRule } from './invest-row-failed.js';
 import { noBrokenDeferToRule } from './no-broken-defer-to.js';
 import { noDuplicateIdsRule } from './no-duplicate-ids.js';
@@ -15,6 +16,7 @@ import { parentChildReciprocityRule } from './parent-child-reciprocity.js';
 import { requirementIdRequiredRule } from './requirement-id-required.js';
 import { riskStatusRequiredRule } from './risk-status-required.js';
 import { riskTargetRequiredRule } from './risk-target-required.js';
+import { specIdUniqueRule } from './spec-id-unique.js';
 import { specParentWellFormedRule } from './spec-parent-well-formed.js';
 import { taskIdRequiredRule } from './task-id-required.js';
 import { verifyViewStaleRule } from './verify-view-stale.js';
@@ -39,6 +41,7 @@ export const rules: readonly Rule[] = [
   riskStatusRequiredRule,
   requirementIdRequiredRule,
   taskIdRequiredRule,
+  idWithinFileUniqueRule,
   specParentWellFormedRule,
 
   // Status-dependent rules (per-file).
@@ -56,4 +59,5 @@ export const rules: readonly Rule[] = [
   parentChildReciprocityRule,
   verifyViewStaleRule,
   formatBandCouplingRule,
+  specIdUniqueRule,
 ];
