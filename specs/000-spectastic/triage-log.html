@@ -215,6 +215,34 @@
   </details>
 </spec-triage>
 
+<spec-triage id="T-007" layer="spec">
+  <header>
+    <h4>Kernel apply ENOENTs on a spec's first archive (<code>changes/archive/</code> missing)</h4>
+    <span class="meta">
+      <span class="layer-pill">Spec</span>
+      <span class="regen" data-result="fail">upstream</span>
+    </span>
+  </header>
+
+  <p class="headline">Debugging a partial apply on 023's first proposal, root cause was a <strong>spec</strong> gap — <a href="./spec.html#REQ-CHANGE-007">REQ-CHANGE-007</a> mandates the kernel's archive-folder move but never requires it to <em>create</em> <code>changes/archive/</code> if absent, so a bare <code>fs.rename</code> ENOENTs on a spec's first apply; fixed by a spec clause + a code hotfix (<code>FileSystem.mkdir</code> + mkdir-before-rename); regeneration <strong>fails</strong> — another LLM implementing the current wording writes the same bare rename.</p>
+
+  <dl>
+    <dt>Expected</dt> <dd>A spec's first <code>/spectastic.apply</code> archives the proposal cleanly — creating <code>specs/&lt;id&gt;/changes/archive/</code> as needed and moving the folder atomically (<a href="./spec.html#REQ-CHANGE-007">REQ-CHANGE-007</a>).</dd>
+    <dt>Actual</dt>   <dd><code>ENOENT: rename …/changes/&lt;slug&gt; → …/changes/archive/&lt;slug&gt;</code> — <code>fs.rename</code> can't move into a missing parent. It threw <em>after</em> applying deltas + folding §6 + flipping the proposal to <code>applied</code> + deepening paths, leaving a partial state (recovered by hand: <code>mkdir archive</code> + <code>mv</code>). Hit on 023-explore-graduation's first proposal; the meta-spec never reproduced it because <code>changes/archive/</code> always existed.</dd>
+    <dt>Diagnosis</dt><dd><a href="./spec.html#REQ-CHANGE-007">REQ-CHANGE-007</a> specifies "before the archive-folder move" but not that the kernel MUST create the destination parent; the <code>FileSystem</code> abstraction also has no <code>mkdir</code>; <code>apply.ts</code> does a bare <code>fs.rename</code> at the archive (<code>:145</code>) and withdraw (<code>:318</code>) moves.</dd>
+    <dt>Fix</dt>      <dd><code>/spectastic.propose</code> against <code>specs/000-spectastic/spec.html</code>: amend <a href="./spec.html#REQ-CHANGE-007">REQ-CHANGE-007</a> so the kernel's archive (and withdraw) move MUST create <code>changes/archive|withdrawn/</code> if absent. <strong>Hotfix:</strong> add <code>FileSystem.mkdir</code> + <code>nodeFs</code> impl, and mkdir-before-rename at <code>packages/core/src/commands/apply.ts:145</code> &amp; <code>:318</code>.</dd>
+  </dl>
+
+  <details>
+    <summary>Deep dive — hotfix-now + atomicity note</summary>
+    <dl>
+      <dt>Hotfix now?</dt> <dd>Yes — the code hotfix (mkdir-before-rename for both moves) can land immediately; it's safe and unblocks every future first-apply. The spec amendment formalises the requirement via <code>/propose</code>.</dd>
+      <dt>Atomicity</dt>   <dd>The failure exposed a gap in <a href="./spec.html#REQ-CHANGE-007">REQ-CHANGE-007</a>'s fold-before-rename atomicity: deltas, changelog, §6 fold, and the proposal-flip all committed <em>before</em> the rename, so a rename failure leaves a half-applied state — not the intended "proposal stays in <code>changes/</code> for a clean retry." Making the move robust (it can't fail on a missing dir) closes the one path that breaks the guarantee.</dd>
+      <dt>Infra</dt>       <dd><code>FileSystem.mkdir</code> is the third primitive this domain has needed — after <code>rename</code> (apply) and <code>rm</code> (023 graduation rollback). The abstraction grows one method per genuinely-new fs need; the right cadence.</dd>
+    </dl>
+  </details>
+</spec-triage>
+
 </spec-triage-log>
 </section>
 
@@ -230,6 +258,7 @@
   <li><time datetime="2026-06-23">23 Jun 2026</time><span>T-003 added — triage defaults to the symptom/presentation layer instead of laddering to the highest layer that must change (the no-open-questions case reached <code>cross-spec</code> only after pushback). <code>spec</code> layer, regen <code>fail</code>. Needs <code>/spectastic.propose</code> against the meta-spec adding a root-cause-laddering step to <code>commands/spectastic.triage.md</code>.</span></li>
   <li><time datetime="2026-06-26">26 Jun 2026</time><span>T-004 added — the <code>2026-06-25-spec-budget-bands</code> apply skipped <a href="./spec.html#REQ-CHANGE-006">REQ-CHANGE-006</a> step 8 (the §6 task-fold), orphaning eight implementation tasks; the fabricated Larson citation and the 70% band still ship in <code>assets/spec.js</code>. <code>implementation</code> layer, regen <code>pass</code> — the contract is correct (three prior applies folded as specified); fix is the catch-up fold into <code>spectastic-tasks.html</code>, then <code>/spectastic.implement</code>.</span></li>
   <li><time datetime="2026-06-26">26 Jun 2026</time><span>T-005 added — no guard detects a skipped task-fold, so a silent apply step 8 (the cause of T-004) is undetectable until a human notices. <code>spec</code> layer, regen <code>fail</code> — the fold has a procedural step (<a href="./spec.html#REQ-CHANGE-006">REQ-CHANGE-006</a>) but no checkable post-condition. Fix: <code>/spectastic.propose</code> adding <code>REQ-CHANGE-007</code> + a <code>fold-gap</code> validate rule modelled on <code>verify-view-stale</code>.</span></li>
+  <li><time datetime="2026-06-26">26 Jun 2026</time><span>T-007 added — kernel apply ENOENTs on a spec's FIRST archive: <a href="./spec.html#REQ-CHANGE-007">REQ-CHANGE-007</a> mandates the move but not <em>creating</em> <code>changes/archive/</code>, so a bare <code>fs.rename</code> fails and leaves a half-applied state. <code>spec</code> layer, regen <code>fail</code>. Fix: <code>/propose</code> amending REQ-CHANGE-007 + a <code>FileSystem.mkdir</code> + mkdir-before-rename hotfix (<code>apply.ts:145</code> &amp; <code>:318</code>). Surfaced applying 023's grounding-in-plan.</span></li>
   <li><time datetime="2026-06-26">26 Jun 2026</time><span>T-006 added — installed <code>.claude/commands/*.md</code> are stale one-time copies (apply is a 13 Jun copy predating <a href="./spec.html#REQ-CHANGE-006">REQ-CHANGE-006</a>'s fold step), so the <code>/spectastic.apply</code> the harness ran skipped the fold — T-004 reproduced live during this very session's apply. <code>spec</code> layer, regen <code>fail</code> — no sync mechanism keeps installed commands current; the durable owner (<code>init --tools</code>) is deferred. Hotfix: re-sync <code>.claude/commands/</code> from <code>commands/</code>.</span></li>
 </ol>
 </spec-changelog>
