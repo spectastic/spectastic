@@ -1,0 +1,208 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>The kernel's archive + withdraw moves create their parent dir · Change proposal</title>
+<link rel="stylesheet" href="../../../../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../../../../assets/favicon.svg">
+<script src="../../../../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Change proposal · 000-spectastic</p>
+  <h1>The kernel's archive + withdraw moves create their parent dir</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    A spec's first apply ENOENTs: the kernel's <code>fs.rename</code> can't move into a
+    <code>changes/archive/</code> that doesn't exist yet — and fails after the deltas already committed.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>     <span><spec-status value="applied">Applied</spec-status></span>
+    <b>Change ID</b>  <span>2026-06-26-archive-dir-creation</span>
+    <b>Spec</b>       <span><a href="../../../spec.html">000-spectastic</a></span>
+    <b>Author</b>     <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Created</b>    <span><time datetime="2026-06-26">2026-06-26</time></span>
+    <b>Targets</b>    <span>2 requirements</span>
+    <b>Read time</b>  <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-tldr>
+    <p>Two MODIFY deltas making the kernel's folder-moves <strong>create their parent dir if absent</strong>:
+    <a href="../../../spec.html#REQ-CHANGE-007">REQ-CHANGE-007</a> for the archive move (<code>changes/archive/</code>)
+    and <a href="../../../spec.html#REQ-CHANGE-005">REQ-CHANGE-005</a> for the withdraw move
+    (<code>changes/withdrawn/</code>). Today a spec's <em>first</em> apply ENOENTs on <code>fs.rename</code> (the
+    dir doesn't exist yet) — and, as the last kernel step, fails <em>after</em> the deltas already committed.
+    Surfaced live by triage <a href="../../../triage-log.html#T-007">T-007</a> applying 023's grounding-in-plan; the
+    adversarial pass then split the withdraw clause onto its proper requirement and trimmed an atomicity
+    overclaim.</p>
+  </spec-tldr>
+</header>
+
+
+<spec-change id="2026-06-26-archive-dir-creation" status="applied">
+
+<header>
+  <h3>The kernel's archive + withdraw moves create their parent dir</h3>
+  <span class="meta"><spec-status value="applied">Applied</spec-status></span>
+</header>
+
+
+<section id="intent">
+<h2>1 · Intent</h2>
+<p>Applying 023-explore-graduation's first proposal threw <code>ENOENT: rename …/changes/&lt;slug&gt; →
+…/changes/archive/&lt;slug&gt;</code>: <code>fs.rename</code> cannot move a folder into a parent that does not
+exist, and <code>changes/archive/</code> is created lazily — it is absent until a spec's <em>first</em> apply.
+The meta-spec never reproduced this because its <code>changes/archive/</code> has existed for dozens of applies.</p>
+<p>The damage is worse than a clean failure. The rename is the <em>last</em> kernel step, so it threw
+<em>after</em> the deltas, changelog, §6 fold, and proposal status-flip had all committed — a half-applied
+state recovered only by hand (<code>mkdir archive</code> + <code>mv</code>).
+<a href="../../../spec.html#REQ-CHANGE-007">REQ-CHANGE-007</a> promises the fold-before-move ordering yields "a
+clean retry rather than a half-applied state" — but that guarantee only holds if the move itself cannot fail.
+A move that ENOENTs on a missing parent is exactly the hole. Triage <a href="../../../triage-log.html#T-007">T-007</a>
+classified this <code>spec</code>-layer (regen <em>fails</em>: another LLM implementing the current wording
+writes the same bare rename).</p>
+</section>
+
+
+<section id="scope">
+<h2>2 · Scope</h2>
+
+<spec-goals>
+  <h3>In scope</h3>
+  <ul>
+    <li>Amend REQ-CHANGE-007 (archive move → <code>changes/archive/</code>) and REQ-CHANGE-005 (withdraw move → <code>changes/withdrawn/</code>): each MUST create its destination parent if absent.</li>
+    <li>The hotfix (§6): add <code>FileSystem.mkdir</code> + <code>nodeFs</code> impl; mkdir-before-rename at both move sites; a kernel test for the first-archive case.</li>
+  </ul>
+</spec-goals>
+
+<spec-non-goals>
+  <h3>Out of scope</h3>
+  <ul>
+    <li>Full transactional apply (true all-or-nothing rollback) — this closes the one missing-dir failure path, not every conceivable mid-sequence failure.</li>
+    <li>Routing the slash apply through the kernel — already landed (<a href="../../../spec.html#REQ-CHANGE-008">REQ-CHANGE-008</a>).</li>
+  </ul>
+</spec-non-goals>
+</section>
+
+
+<section id="approach">
+<h2>3 · Approach</h2>
+<p>A sentence each on REQ-CHANGE-007 (archive move) and REQ-CHANGE-005 (withdraw move) — both stating the move
+creates its destination parent if absent, cross-referencing the shared create-the-destination-if-absent pattern
+REQ-CHANGE-006 already carries for the tracker. The kernel gains a
+<code>mkdir</code> primitive — the third the <code>FileSystem</code> abstraction has needed, after
+<code>rename</code> (apply) and <code>rm</code> (023 graduation rollback) — and both move sites ensure their
+parent before renaming. A recursive, force <code>mkdir</code> is idempotent, so it's safe whether or not the
+dir already exists (the common case).</p>
+</section>
+
+
+<section id="deltas">
+<h2>4 · Deltas</h2>
+<p>Two <code>&lt;spec-delta&gt;</code>s. <code>target=</code> links to the live spec.</p>
+
+<spec-delta op="modified" target="REQ-CHANGE-007">
+  <p><strong>What changes:</strong> add one sentence — the archive-folder move MUST create <code>changes/archive/</code> if absent. (The withdraw move's mkdir lands on <a href="../../../spec.html#REQ-CHANGE-005">REQ-CHANGE-005</a>, its proper home — see the 2nd delta.) The rest of REQ-CHANGE-007 (the deterministic fold + fidelity) is unchanged.</p>
+  <spec-requirement id="REQ-CHANGE-007" priority="should">
+  <p>The §6 task-fold mandated by <a href="../../../spec.html#REQ-CHANGE-006">REQ-CHANGE-006</a> <spec-rule>MUST</spec-rule> have a deterministic implementation in the apply <em>kernel</em> (it has none today). The fold <spec-rule>MUST</spec-rule> run on the §6 content apply has already read, <em>before</em> the archive-folder move, so a fold or fidelity failure leaves the proposal in <code>changes/</code> for a clean retry rather than a half-applied state. The archive-folder move <spec-rule>MUST</spec-rule> create its destination parent (<code>changes/archive/</code>) if it does not yet exist, so a spec's <em>first</em> apply does not ENOENT at the move step — the same create-the-destination-if-absent obligation <a href="../../../spec.html#REQ-CHANGE-006">REQ-CHANGE-006</a> places on the tracker and <a href="../../../spec.html#REQ-CHANGE-005">REQ-CHANGE-005</a> on the withdrawn-folder move. When the kernel folds, it <spec-rule>MUST</spec-rule> confirm the resulting phase faithfully carries the §6 work — a <code>&lt;spec-task&gt;</code> for <em>every</em> §6 item, carrying over each item's <code>&lt;span class="path"&gt;</code> and, where the §6 item declares it (the <code>[P]</code> convention), its <code>parallel</code> marker, in the <code>&lt;spec-task&gt;</code> shape <a href="../../../spec.html#REQ-LIFECYCLE-003">REQ-LIFECYCLE-003</a> defines — before reporting success. Mere presence of a phase is insufficient (presence is not containment). A missing or incomplete phase <spec-rule>MUST</spec-rule> be completed, not returned as success. An empty §6 owes no phase and is skipped per REQ-CHANGE-006.</p>
+  <p>This adds a kernel capability; it does not change which path performs the fold. The CLI apply path, which already calls the kernel, folds deterministically as a result. Bringing the slash-command path onto the kernel fold is a separate change (it re-architects the markdown-canonical boundary and has an API-key wiring question), tracked as <code>TBD-route-fold-through-kernel</code> and dependent on this one.</p>
+  <details><summary>Rationale</summary><p>REQ-CHANGE-006 specifies the fold as an action but defines no post-condition, and the action lives only in slash-command prose — <code>apply.ts</code> has no <code>tasks.html</code> code at all. So the one step that orphans real work when skipped is the one with no deterministic implementation: the <code>2026-06-25-spec-budget-bands</code> failure (triage <a href="../../../triage-log.html#T-004">T-004</a>). A fidelity check (not mere presence) is required because the fold is real format work and a present-but-wrong phase would otherwise pass — the project's own presence-is-not-containment lesson. A <code>validate</code> backstop was evaluated across three passes and rejected (it cannot know a fold was owed without the archived §6 it ignores). The move-creates-parent clause codifies triage <a href="../../../triage-log.html#T-007">T-007</a>: the kernel's bare <code>fs.rename</code> ENOENT'd on 023's first apply (<code>changes/archive/</code> absent), failing after the deltas, fold, and proposal-flip had committed — the one path that breaks the fold-before-move atomicity this requirement promises. Priority <code>should</code>, codifying from incidents, matching <a href="../../../spec.html#REQ-CHANGE-004">REQ-CHANGE-004</a> / <a href="../../../spec.html#REQ-CHANGE-005">REQ-CHANGE-005</a>; re-evaluate after a few real applies.</p></details>
+  </spec-requirement>
+</spec-delta>
+
+<spec-delta op="modified" target="REQ-CHANGE-005">
+  <p><strong>What changes:</strong> the withdraw move MUST create <code>changes/withdrawn/</code> if absent — the withdraw counterpart of the archive-move clause, placed on the requirement that owns withdraw (the adversarial pass's topic-group catch). Only the folder-move bullet changes.</p>
+  <spec-requirement id="REQ-CHANGE-005" priority="should">
+  <p>Items considered but decided against <spec-rule>MUST</spec-rule> be preserved as history, not deleted. The lifecycle <spec-rule level="should">SHOULD</spec-rule> support rejection at both surfaces:</p>
+  <p><strong>Surface A — Inbox cards (pre-propose).</strong> A <code>&lt;spec-triage&gt;</code> card in <code>inbox.html</code> <spec-rule level="may">MAY</spec-rule> carry <code>data-status="rejected"</code> and a <code>&lt;dt&gt;Rejected because&lt;/dt&gt;</code> row inside its <code>&lt;dl&gt;</code>. The card stays in <code>inbox.html</code> (mirrors the existing <code>data-status="done"</code> convention for just-do cards). CSS renders a REJECTED pill, muted body, and strikethrough title.</p>
+  <p><strong>Surface B — Authored proposals (post-propose).</strong> <code>/spectastic.apply</code> <spec-rule level="should">SHOULD</spec-rule> accept a withdrawal mode invoked as <code>--withdraw &lt;YYYY-MM-DD&gt;-&lt;slug&gt; --reason="&lt;one-line&gt;"</code>. The mode:</p>
+  <ul>
+    <li>Refuses if the proposal status is already <code>applied</code> or <code>withdrawn</code>.</li>
+    <li>Refuses if <code>--reason</code> is empty.</li>
+    <li>Flips status to <code>withdrawn</code>.</li>
+    <li>Moves the folder from <code>specs/000-spectastic/changes/&lt;YYYY-MM-DD&gt;-&lt;slug&gt;/</code> to <code>specs/000-spectastic/changes/withdrawn/&lt;YYYY-MM-DD&gt;-&lt;slug&gt;/</code> (a sibling of <code>archive/</code>, not nested), <spec-rule>MUST</spec-rule> creating <code>changes/withdrawn/</code> if it does not yet exist (mirroring the archive-move obligation, <a href="../../../spec.html#REQ-CHANGE-007">REQ-CHANGE-007</a>, so a spec's first withdraw does not ENOENT at the move step). The date-prefixed folder name is preserved in both terminal states (applied and withdrawn) per <a href="../../../spec.html#REQ-CHANGE-001">REQ-CHANGE-001</a>.</li>
+    <li>Appends a <code>&lt;spec-changelog&gt;</code> entry to the live spec it targeted: "Considered <code>&lt;YYYY-MM-DD&gt;-&lt;slug&gt;</code>, withdrew on <code>&lt;DD Mon YYYY&gt;</code> because <code>&lt;reason&gt;</code>."</li>
+    <li>Appends a changelog entry to the moved proposal recording the withdrawal date and reason verbatim.</li>
+  </ul>
+  <p>Withdraw is <em>intended</em> as terminal: there is no <code>--unwithdraw</code> command. If you withdrew by accident or under time pressure, restoring the folder and status manually is unsupported but not forbidden — git-revert the move and flip the status field. If your thinking has actually updated since the withdrawal, author a new proposal instead so the lineage stays legible. Implementation ownership: Surface A in <code>commands/spectastic.triage.md</code>; Surface B's procedure in <code>commands/spectastic.apply.md</code>'s Withdraw procedure section.</p>
+  <details><summary>Rationale</summary><p>The <code>&lt;spec-status value="withdrawn"&gt;</code> vocabulary has existed since v0.1 but has had no workflow behind it — an authored proposal the author decided against would either sit in <code>changes/&lt;YYYY-MM-DD&gt;-&lt;slug&gt;/</code> indefinitely or get manually deleted. Inbox cards had no terminal-rejected state for routed layers. The lifecycle had no way to record "considered, decided against." This requirement closes both gaps with one discipline — preserve, don't delete — and one apply-mode extension. The withdrawn-folder mkdir-if-absent (added here) is the create-the-destination-if-absent obligation REQ-CHANGE-006 (tracker) and REQ-CHANGE-007 (archive) also carry — placed with the operation it governs. Priority <code>should</code> rather than <code>must</code> because we're codifying from zero applications; re-evaluate after ≥3 worked rejections.</p></details>
+  </spec-requirement>
+</spec-delta>
+</section>
+
+
+<section id="risks">
+<h2>5 · Risk register</h2>
+<p>Adversarial pass ran (opt-in <code>--adversarial</code>; REQ-CHANGE-007 is should-tier so the heuristic
+wouldn't auto-trigger). One <code>&lt;spec-risk&gt;</code> per finding; <code>status=</code> defaults to
+<code>identified</code>; apply refuses until each transitions to <code>accepted</code>, <code>mitigated</code>,
+or <code>rejected</code>.</p>
+
+<spec-risk-log>
+<spec-risk target="REQ-CHANGE-007" status="mitigated">
+  <p class="claim">The clause overstates atomicity: mkdir-before-rename closes only the ENOENT-at-the-move hole, but <code>apply.ts:123</code> writes the live spec <em>before</em> the fold (<code>:128</code>), proposal-flip (<code>:141</code>), and rename (<code>:145</code>) — so a fold-fidelity throw still leaves the spec mutated and the proposal un-archived, a half-applied state the wording implies is now gone.</p>
+  <p class="citation">"so a spec's <em>first</em> apply or withdraw cannot fail mid-sequence on a missing directory; the fold-before-move ordering only guarantees a clean retry when the move itself cannot ENOENT on an absent parent".</p>
+  <div class="response">Mitigated — reworded: the clause now claims only that the move "does not ENOENT at the move step," and cross-references the create-if-absent pattern (006 tracker / 005 withdrawn). Full transactional apply stays explicitly out of scope (§2); the clause no longer implies it.</div>
+</spec-risk>
+
+<spec-risk target="§2" status="mitigated">
+  <p class="claim">REQ-CHANGE-007 is exclusively about the §6 task-fold (its title, body, and rationale never mention withdraw); withdraw has no fold and no fold-before-move atomicity promise to repair. Welding withdraw's <code>changes/withdrawn/</code> mkdir onto 007 is the wrong topic group — the obligation belongs on REQ-CHANGE-005, which created <code>changes/withdrawn/</code>.</p>
+  <p class="citation">§2 In scope — "the archive <strong>and withdraw</strong> moves MUST create their destination parent if absent".</p>
+  <div class="response">Mitigated — split done: the withdraw-move mkdir is now a 2nd MODIFY delta on REQ-CHANGE-005 (which owns withdraw and created <code>changes/withdrawn/</code>); REQ-CHANGE-007 covers the archive move only. The proposal grew from 1 to 2 MODIFY deltas to place each obligation correctly.</div>
+</spec-risk>
+
+<spec-risk target="REQ-CHANGE-006" status="mitigated">
+  <p class="claim">REQ-CHANGE-006 already mandates the tracker be "created from <code>templates/tasks.html</code> if absent" — the same create-the-destination-if-absent obligation. Spelling mkdir-before-rename as a separate MUST on 007 fragments one principle across requirements; a future reader may treat archive-dir creation and tracker creation as unrelated guarantees.</p>
+  <p class="citation">REQ-CHANGE-006 — "created from <code>templates/tasks.html</code> if absent".</p>
+  <div class="response">Mitigated — the reworded 007 clause and the new 005 delta both cross-reference the shared create-the-destination-if-absent pattern (006 tracker, 007 archive, 005 withdrawn), so the three read as one principle placed with each operation rather than three unrelated guarantees.</div>
+</spec-risk>
+</spec-risk-log>
+</section>
+
+
+<section id="tasks">
+<h2>6 · Tasks</h2>
+<p>Scoped to this change only. On <code>/spectastic.apply</code> these fold into <a href="../../../tasks.html">tasks.html</a>
+as a new provenance-linked phase that <code>/spectastic.implement</code> drains.</p>
+
+<ul style="list-style:none;padding-left:0;">
+  <li><input type="checkbox"> Add a recursive <code>mkdir</code> to the <code>FileSystem</code> interface + <code>nodeFs</code> impl (force/idempotent), beside <code>rm</code> <span class="path">packages/core/src/types.ts · providers/node-fs.ts</span></li>
+  <li><input type="checkbox"> mkdir-before-rename: ensure <code>changes/archive/</code> exists before the archive rename and <code>changes/withdrawn/</code> before the withdraw rename <span class="path">packages/core/src/commands/apply.ts</span></li>
+  <li><input type="checkbox"> Kernel test: applying (and withdrawing) into a spec with no <code>changes/archive|withdrawn/</code> succeeds — no ENOENT, the proposal lands in the archive <span class="path">packages/core/test/apply.test.ts</span></li>
+</ul>
+</section>
+
+
+<section id="questions">
+<h2>7 · Open questions</h2>
+<spec-questions>
+<p>None outstanding — shape (corrective, 1 MODIFY), status (approved), and phrasing (specific to the archive +
+withdraw moves) were anchored in the interview.</p>
+</spec-questions>
+</section>
+
+
+<section id="changelog">
+<h2>8 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-06-26">2026-06-26</time><span>Proposal authored. 1 MODIFY on REQ-CHANGE-007 — the kernel's archive + withdraw moves MUST create their parent dir if absent (closes the ENOENT-on-first-apply path). Originates from triage <a href="../../../triage-log.html#T-007">T-007</a>.</span></li>
+  <li><time datetime="2026-06-26">2026-06-26</time><span>Adversarial pass (3 risks) dispositioned by owner, all <em>mitigated</em>: the withdraw-mkdir split onto a <strong>2nd MODIFY delta on REQ-CHANGE-005</strong> (its proper topic home, §2 risk); the REQ-CHANGE-007 clause reworded to drop an atomicity overclaim (007 risk); both deltas cross-reference the shared create-if-absent pattern (006 risk). Now 2 MODIFY; no risk remains <code>identified</code>.</span></li>
+  <li><time datetime="2026-06-27">26 Jun 2026</time><span>Applied on 26 Jun 2026 — The kernel's archive (REQ-CHANGE-007) and withdraw (REQ-CHANGE-005) moves MUST create their parent dir if absent — closes the ENOENT-on-first-apply path (triage T-007); the adversarial pass split the withdraw clause onto REQ-CHANGE-005 and trimmed an atomicity overclaim.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+</spec-change>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  2026-06-26-archive-dir-creation · The kernel's archive + withdraw moves create their parent dir · authored 2026-06-26
+</footer>
+
+</main>
+<script src="../../../../../assets/spec.js"></script>
+</body>
+</html>
