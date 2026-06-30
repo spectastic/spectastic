@@ -1,0 +1,336 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Value-ranked slicer · Specification</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Specification · 029-value-ranked-slicer</p>
+  <h1>The value-ranked slicer</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    One oversized spec, proposed as many. The slicer reads an over-budget spec and appends a split proposal —
+    covering child slices, RICE-ranked and dependency-ordered — that a human reviews before anything is minted.
+    The nudges flag "too big"; this does the split, on paper first.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>      <span><spec-status value="draft">Draft</spec-status></span>
+    <b>Spec ID</b>     <span>029-value-ranked-slicer</span>
+    <b>Owner</b>       <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Reviewers</b>   <span>—</span>
+    <b>Created</b>     <span><time datetime="2026-06-30">2026-06-30</time></span>
+    <b>Principles</b><span><a href="../../principles.html">v1.2.0</a></span>
+    <b>Smallest demoable</b><span>Run <code>/spectastic.spec</code> on an over-budget Draft spec: it appends a <code>&lt;spec-split&gt;</code> section proposing N covering child slices, RICE-ranked and R-002 dependency-ordered, with a coverage partition — minting no files, creating no branches.</span>
+    <b>Read time</b>   <span data-reading-time></span>
+  </spec-meta>
+
+  <!-- RICE for this slice's own future ordering (028 FR-003). reach: any author of an over-budget spec;
+       impact: high (the headliner the arc was built for); confidence 0.7 (agentic judge/critic carry method risk);
+       effort 8 (multi-agent, two new agentic pieces). -->
+  <spec-rice reach="3" impact="3" confidence="0.7" effort="8"></spec-rice>
+
+  <!-- Green ≤80%, amber 80-100%, red over (REQ-FORMAT-004). The slicer is itself a candidate for slicing —
+       the dry-run boundary (no mint, no git) is what keeps v1 in budget; the irreversible half is deferred. -->
+  <spec-budget words="1700" reqs="20" minutes="12"></spec-budget>
+
+  <spec-tldr>
+    <p>spectastic <em>nudges</em> when a spec is too big but cannot do the split. <strong>W-2</strong> does — on paper.
+    Given an over-budget parent, it composes the existing verbs plus two new agentic pieces (a <strong>ranking judge
+    panel</strong> and a <strong>coverage critic</strong>) to append a <em>split proposal</em>: candidate child slices,
+    each carrying reciprocal stubs so <a href="../028-dependency-ordering/spec.html">R-002</a> orders them, RICE-ranked,
+    with a coverage report proving every parent requirement lands in exactly one child. It mints nothing and branches
+    nothing in this slice — the human reviews the proposal; minting and the git fan-out are deferred. When no clean
+    split exists, it says so.</p>
+  </spec-tldr>
+
+  <dl class="invest">
+    <dt><span class="letter">I</span> Independent</dt> <dd>Depends on principles + <a href="../028-dependency-ordering/spec.html">028 (R-002)</a> for ordering; reuses the <code>spec</code>/<code>propose</code> verbs. No other hard upstream.</dd>
+    <dt><span class="letter">N</span> Negotiable</dt>  <dd>The contract is <em>"a covering, ranked, dependency-ordered proposal"</em>. Panel structure, critic prompts, and slice heuristics are the plan's.</dd>
+    <dt><span class="letter">V</span> Valuable</dt>    <dd>Unlocks <a href="#SC-001">SC-001</a> — a defensible, coverage-proven decomposition of an oversized spec, before any irreversible mint.</dd>
+    <dt><span class="letter">E</span> Estimable</dt>   <dd>The P1 core (single decomposition + coverage) is fully derivable. The one unbuilt dependency — the effort-level primitive — touches only the P2 rival-weighing SHOULD, so it doesn't block the estimate.</dd>
+    <dt><span class="letter">S</span> Small</dt>       <dd>Held under budget by the dry-run boundary: no minting, no git. 16 requirements.</dd>
+    <dt><span class="letter">T</span> Testable</dt>    <dd>Coverage is a checkable partition (<a href="#SC-001">SC-001</a>); order satisfies R-002's edge invariant (<a href="#SC-003">SC-003</a>); the don't-split verdict is observable.</dd>
+  </dl>
+
+  <spec-audience-map>
+    <dl>
+      <dt>Exec / PM</dt>   <dd>§<a href="#context">Context</a>, §<a href="#scenarios">User scenarios</a>, §<a href="#success">Success criteria</a>.</dd>
+      <dt>Reviewer</dt>    <dd>§<a href="#requirements">Requirements</a>, §<a href="#assumptions">Assumptions</a>, §<a href="#questions">Open questions</a>.</dd>
+      <dt>Implementer</dt> <dd>§<a href="#requirements">Requirements</a>, §<a href="#data">Data model</a>, §<a href="#conformance">Conformance index</a>.</dd>
+    </dl>
+  </spec-audience-map>
+</header>
+
+
+<section id="context">
+<h2>1 · Context</h2>
+<p>spectastic ships nudges that flag an oversized spec — the smallest-demoable prompt, the amber/red budget band, the
+propose-time splitting nudge. None of them <em>do</em> the split; the author still has to decompose by hand, decide the
+build order, and convince themselves nothing was dropped. That is exactly the work an agent can do — and the work this
+slice automates.</p>
+<p>Two foundations the slicer needed now exist. <a href="../028-dependency-ordering/spec.html">R-002</a> supplies the
+dependency-respecting, value-ranked ordering (the slicer consumes it rather than inventing sequencing from scores), and
+the opt-in git layer (<a href="../026-git-strategy/spec.html">026</a>/<a href="../027-git-trailers/spec.html">027</a>)
+ships the branch/PR guardrails the eventual mint will fan out onto. This slice is the build-side complement to the
+nudges: <strong>it produces the split, as a reviewable proposal, before anything irreversible happens.</strong></p>
+<p><strong>Who it's for:</strong> a spec author holding an over-budget spec who wants a defensible decomposition; and a
+maintainer who needs proof the split loses nothing.</p>
+</section>
+
+
+<section id="scenarios">
+<h2>2 · User scenarios &amp; testing</h2>
+
+<p>Each story <strong>MUST</strong> be independently testable. US1 + US2 are the MVP: a covering, ranked proposal you
+can trust. US3 and US4 sharpen it.</p>
+
+<h3 id="US1">US1 · The split proposal <spec-pill>P1</spec-pill></h3>
+<p>As a <strong>spec author</strong> with an over-budget spec, I want to <strong>run <code>/spectastic.spec</code> and
+get a proposed decomposition into ranked, dependency-ordered child slices appended to my spec</strong> so that
+<strong>I can see how to split it without minting or branching anything yet</strong>.</p>
+<p><em>Acceptance:</em> a <code>&lt;spec-split&gt;</code> section is appended naming ≥2 candidate children, each with a
+title, scope, assigned parent-requirement IDs, and a reciprocal stub; the children are presented in R-002's order. No
+new files; no branches.</p>
+
+<h3 id="US2">US2 · Coverage proof <spec-pill>P1</spec-pill></h3>
+<p>As a <strong>maintainer</strong>, I want <strong>the proposal to prove the children cover the parent — nothing
+dropped, nothing duplicated</strong> so that <strong>I can trust the split instead of re-checking it by hand</strong>.</p>
+<p><em>Acceptance:</em> a coverage report shows every parent FR/NFR/SC mapped to exactly one child (a total, disjoint
+partition); any unassigned or duplicated requirement is flagged; a semantic pass confirms each child is a real vertical
+slice.</p>
+
+<h3 id="US3">US3 · Rival-decomposition panel <spec-pill>P2</spec-pill></h3>
+<p>As a <strong>spec author</strong>, I want <strong>a judge panel to weigh more than one way to slice and pick the
+best</strong> so that <strong>the proposed split is defensible, not the first arbitrary cut</strong>.</p>
+<p><em>Acceptance:</em> the panel scores up to N rival decompositions (N from the effort level; default ≤2) and selects
+one; the ranking is produced by multiple independent scorers, not a single judge, to resist LLM-as-judge bias.</p>
+
+<h3 id="US4">US4 · Auto-offer on the red band <spec-pill>P3</spec-pill></h3>
+<p>As a <strong>spec author</strong>, I want <strong>the slicer offered automatically when my spec crosses the red
+budget band</strong> so that <strong>I'm prompted to split at the moment the spec is demonstrably too big</strong>.</p>
+<p><em>Acceptance:</em> crossing the red band surfaces the split offer (extending the propose-time splitting nudge);
+the author still confirms — nothing runs unprompted.</p>
+
+<h3>Edge cases</h3>
+<ul>
+  <li>The parent is <strong>Accepted</strong>, not Draft — the proposal must not be appended in place (<a href="#FR-008">FR-008</a>); it routes through <code>/spectastic.propose</code>.</li>
+  <li><strong>No clean split</strong> — the spec is cohesive, or every candidate leaves a child still over budget — W-2 returns a "don't split" verdict, not a forced cut (<a href="#FR-007">FR-007</a>).</li>
+  <li>A proposed child is <strong>itself over budget</strong> — flagged as a recursive-split risk, not silently recommended (<a href="#FR-007">FR-007</a>).</li>
+  <li>The parent has 0–1 requirements — too small to partition; W-2 returns the don't-split verdict.</li>
+  <li>RICE estimates are unconfirmed — the ranking is presented as provisional until the human confirms (<a href="#FR-004">FR-004</a>).</li>
+</ul>
+</section>
+
+
+<section id="requirements">
+<h2>3 · Requirements</h2>
+
+<p>Conformance keywords (<spec-rule>MUST</spec-rule>, <spec-rule level="should">SHOULD</spec-rule>,
+<spec-rule level="may">MAY</spec-rule>) follow RFC 2119.</p>
+
+<h3>Functional</h3>
+
+<spec-requirement id="FR-001" priority="must">
+<p>Run against an over-budget spec, the slicer <spec-rule>MUST</spec-rule> produce a split proposal — a decomposition
+into at least two candidate child slices — as a <code>&lt;spec-split&gt;</code> section appended to the parent. It
+<spec-rule>MUST</spec-rule> run as a workflow initiated by <code>/spectastic.spec</code>, not a new slash command, and
+<spec-rule>MUST NOT</spec-rule> mint child files or create branches in this slice.</p>
+<details><summary>Rationale</summary><p>The dry-run boundary is what keeps the slicer in budget and revert-safe; the irreversible half (mint + git) is deferred. Keeping it inside <code>spec</code> preserves the eight-verb surface.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-002" priority="must">
+<p>Each candidate child <spec-rule>MUST</spec-rule> carry a proposed reciprocal stub — a <code>&lt;spec-parent&gt;</code>
+plus the parent's reciprocal <code>defer-to</code>, and any inter-child reciprocity — so that R-002's existing inference
+orders the children unchanged.</p>
+<details><summary>Rationale</summary><p>The children are hypothetical, so the slicer emits the exact link shape <a href="../028-dependency-ordering/spec.html#FR-001">R-002</a> already reads, rather than a parallel edge format.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-003" priority="must">
+<p>The proposal <spec-rule>MUST</spec-rule> rank the candidate children by RICE and present them in R-002's
+dependency-respecting order.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-004" priority="must">
+<p>RICE inputs for candidate children <spec-rule>MUST</spec-rule> be agent-estimated and surfaced for human
+confirmation; the ranking <spec-rule>MUST</spec-rule> be presented as provisional until the inputs are confirmed.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-005" priority="must">
+<p>The proposal <spec-rule>MUST</spec-rule> include a coverage report mapping every parent requirement (FR/NFR/SC) to
+exactly one child — a total, disjoint partition — and <spec-rule>MUST</spec-rule> flag any unassigned or duplicated
+requirement.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-006" priority="should">
+<p>The coverage report <spec-rule level="should">SHOULD</spec-rule> add a semantic critic pass asserting that nothing
+meaningful is dropped and each child is a genuine vertical slice (the smallest-demoable bar, per child).</p>
+</spec-requirement>
+
+<spec-requirement id="FR-007" priority="must">
+<p>When no candidate decomposition both covers the parent and leaves every child within budget, the slicer
+<spec-rule>MUST</spec-rule> emit an explicit "don't split" verdict with reasons rather than a forced split, and
+<spec-rule>MUST</spec-rule> flag any proposed child that itself exceeds budget.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-008" priority="must">
+<p>The slicer <spec-rule>MUST</spec-rule> append the proposal in place only to a <strong>Draft</strong> parent (adding a
+<code>&lt;spec-changelog&gt;</code> entry, per P-6) and <spec-rule>MUST NOT</spec-rule> mutate a terminal-state
+(Accepted/Superseded/Deprecated) parent in place; against such a parent it <spec-rule level="should">SHOULD</spec-rule>
+author the split through <code>/spectastic.propose</code> so it lands via change-management.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-009" priority="must">
+<p>The ranking <spec-rule>MUST</spec-rule> be produced by a judge panel of independent scorers, not a single scorer, to
+counter LLM-as-judge bias (position, verbosity, self-preference). The slicer <spec-rule level="should">SHOULD</spec-rule>
+weigh up to N rival decompositions (N governed by an effort level; default medium = ≤ 2) and have the panel select the
+best.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-010" priority="should">
+<p>When a spec crosses the red budget band, the slicer <spec-rule level="should">SHOULD</spec-rule> offer itself
+(extending the propose-time splitting nudge); the author still confirms — it <spec-rule>MUST NOT</spec-rule> run
+unprompted.</p>
+</spec-requirement>
+
+<h3>Non-functional</h3>
+
+<spec-requirement id="NFR-001" priority="should">
+<p>The ranking panel <spec-rule level="should">SHOULD</spec-rule> use at least three independent scorers (or an
+equivalent structured anti-bias protocol), so a single biased judgment cannot decide the order.</p>
+</spec-requirement>
+
+<spec-requirement id="NFR-002" priority="must">
+<p>Appending the <code>&lt;spec-split&gt;</code> section <spec-rule>MUST</spec-rule> be additive: existing parent
+requirements and their stable IDs are left untouched; only the section and one changelog line are added.</p>
+</spec-requirement>
+
+<h3>Out of scope (deferred to other slices)</h3>
+<spec-out-of-scope>
+  <ul>
+    <li defer-to="TBD-w2-mint">Minting the proposed children as real <code>spec.html</code> files and superseding the parent (reciprocal <code>defer-to</code> / <code>&lt;spec-parent&gt;</code>) — the confirmed second step after the dry-run proposal.</li>
+    <li defer-to="TBD-w2-git">The git fan-out (G-005): a branch per child off main and the topological merge sequence. Rides the 026/027 layer; speced when minting lands.</li>
+    <li defer-to="TBD-rice-estimation">A general agent RICE-estimation primitive. W-2 estimates inline for its own children (<a href="#FR-004">FR-004</a>); the reusable primitive is its own slice.</li>
+    <li defer-to="TBD-effort-levels">The effort-level primitive that governs the rival-decomposition count (<a href="#FR-009">FR-009</a>); until it lands, the default ≤ 2 holds.</li>
+  </ul>
+</spec-out-of-scope>
+</section>
+
+
+<section id="data">
+<h2>4 · Data model</h2>
+
+<p>One new element; three derived concepts it carries.</p>
+
+<h3>Entities</h3>
+<dl>
+  <dt><code>&lt;spec-split&gt;</code> <em>(new)</em></dt><dd>The appended proposal section: the candidate children, their ranking + R-002 order, the coverage report, and the verdict. Additive to the parent (<a href="#NFR-002">NFR-002</a>); reviewed, then a later slice mints from it.</dd>
+  <dt>Candidate child slice</dt><dd>A proposed child: title, scope, the parent-requirement IDs assigned to it, its reciprocal stub (<a href="#FR-002">FR-002</a>), and its estimated RICE (<a href="#FR-004">FR-004</a>). Hypothetical — no file exists yet.</dd>
+  <dt>Coverage report</dt><dd>The requirement → child partition table (<a href="#FR-005">FR-005</a>) plus the semantic critic's verdict (<a href="#FR-006">FR-006</a>).</dd>
+  <dt>Decomposition</dt><dd>A full candidate set of children covering the parent. The panel weighs rivals (<a href="#FR-009">FR-009</a>) and selects one.</dd>
+</dl>
+
+<spec-note>
+<p>The slicer reuses the existing disciplines rather than inventing parallel ones: the per-child INVEST self-check and
+smallest-demoable bar judge a slice; R-002 orders; the <code>&lt;spec-budget&gt;</code> bands decide "still too big".
+The only genuinely new machinery is the two agentic pieces — the ranking panel and the coverage critic.</p>
+</spec-note>
+</section>
+
+
+<section id="success">
+<h2>5 · Success criteria</h2>
+
+<p>Technology-agnostic, measurable outcomes.</p>
+
+<spec-requirement id="SC-001" priority="must">
+<p>For a parent with K requirements, the proposal's coverage partition assigns <strong>100%</strong> of the K to exactly
+one child each — <strong>0</strong> unassigned, <strong>0</strong> duplicated — verifiable mechanically against the
+parent's requirement IDs.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-002" priority="must">
+<p>Every candidate child in an accepted proposal passes the smallest-demoable / INVEST bar (independently demoable); any
+child that does not is flagged, never silently recommended.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-003" priority="must">
+<p>The proposed child order satisfies <strong>100%</strong> of the proposed reciprocal precedence edges (R-002's
+invariant) — re-checking the order against the stubs finds zero violations.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-004" priority="should">
+<p>On a cohesive spec that should not be split, the slicer returns a "don't split" verdict with reasons rather than a
+forced decomposition, and a reviewer agrees the verdict is reasonable.</p>
+</spec-requirement>
+</section>
+
+
+<section id="assumptions">
+<h2>6 · Assumptions</h2>
+
+<spec-assumption>
+<p><a href="../028-dependency-ordering/spec.html">R-002</a> is the ordering engine W-2 consumes. The reciprocal-stub
+shape (<a href="#FR-002">FR-002</a>) feeds R-002's existing inference unchanged — the slicer produces links, R-002
+sequences them.</p>
+</spec-assumption>
+
+<spec-assumption>
+<p>The effort-level primitive that bounds the rival-decomposition count is not yet built; W-2's rival-weighing
+(<a href="#FR-009">FR-009</a>, a P2 SHOULD) references it and defaults to ≤ 2 until it lands. This does not block the P1
+estimate.</p>
+</spec-assumption>
+
+<spec-assumption>
+<p>Specs needing a split are usually Draft (an over-budget spec is typically still being authored); the
+Accepted-parent → <code>propose</code> path (<a href="#FR-008">FR-008</a>) is the lawful exception, not the common case.</p>
+</spec-assumption>
+
+<spec-assumption>
+<p>The panel's bias resistance follows the LLM-as-judge literature (position/verbosity/self-preference effects); the
+concrete panel structure is the plan's to design.</p>
+</spec-assumption>
+</section>
+
+
+<section id="questions">
+<h2>7 · Open questions</h2>
+<spec-questions>
+<p>None outstanding — every decidable fork (smallest demoable, invocation via <code>spec</code>, trigger, coverage-proof
+mechanism, candidate-edge source, RICE sourcing, proposal form, judge scope, the P-6 guard, the no-split verdict, the
+rival bound) was anchored in the interview. The effort-level primitive is a deferred dependency recorded as an
+assumption + out-of-scope item, not an open question.</p>
+</spec-questions>
+</section>
+
+
+<section id="conformance">
+<h2>8 · Conformance index</h2>
+<p>Auto-built from every <code>&lt;spec-requirement&gt;</code> in this document.</p>
+<spec-conformance></spec-conformance>
+</section>
+
+
+<section id="changelog">
+<h2>9 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-06-30">2026-06-30</time><span>Initial draft. W-2 scoped as a dry-run split-proposal workflow under <code>/spectastic.spec</code>: appends a <code>&lt;spec-split&gt;</code> section (candidate children with reciprocal stubs, RICE-ranked, R-002-ordered, coverage-partitioned) to a Draft parent; mint + git fan-out deferred; rival-decomposition panel + auto-offer P2/P3. Consumes 028 (R-002).</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  029-value-ranked-slicer · The value-ranked slicer · authored 2026-06-30
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>
