@@ -180,6 +180,50 @@ A single defect produces one `<spec-triage>` card appended to the spec's triage 
 
 The format pairs with the `spectastic-debugger` skill — both routes produce the same schema. See [`examples/triage-log.html`](./examples/triage-log.html) for a worked log.
 
+### Git automation (opt-in, off by default)
+
+The lifecycle already projects onto git — the verb is the commit type, the spec id is the scope, the slice is the branch. Spectastic can drive that projection for you, so each verb derives its own branch and commit from the artifact it just wrote. It is **off by default**: a developer running their own git flow is unaffected.
+
+Enable it with a `spectastic.json` at your project root. An absent file or key means the defaults apply (off):
+
+```json
+{
+  "git": {
+    "auto": "off"
+  }
+}
+```
+
+`git.auto` is a tri-state:
+
+- **`off`** (default) — no verb performs any git action. Your repository's git state is unchanged by running a verb.
+- **`commit`** — after a verb writes its artifact, spectastic commits it on the **current** branch. No branch is created.
+- **`branch+commit`** — additionally, when `spec` opens a new slice, spectastic creates and switches to the `NNN-slug` branch off the default branch before committing.
+
+Auto-commit subjects follow Conventional Commits — `<verb>(NNN): <subject>`, verb as type and spec id as scope:
+
+```
+spec(026): git strategy — the opt-in git layer
+```
+
+Each verb accepts `--commit` / `--no-commit` to override the configured behaviour for a single invocation.
+
+Each verb knows its own git shape — the type is the verb, the scope is the spec id, and only `spec` opens a branch:
+
+| Verb | Branch | Commit subject |
+| --- | --- | --- |
+| `spec` (new slice) | creates `NNN-slug` | `spec(NNN): <title>` |
+| `plan` / `tasks` / `propose` / `apply` | stays on the current branch | `<verb>(NNN): <subject>` |
+| `implement` (spec task) | stays put | `implement(NNN): <summary>` — one commit per run |
+| `triage` (list) / `principles` / `implement` (inbox card) | stays put | `<verb>: <subject>` — unscoped, no spec id |
+
+Two guarantees hold regardless of the setting:
+
+- **Small, revert-safe work stays put.** `just-do` cards, triage-list intake, and one-file hotfixes commit on the current branch — never a new branch — even under `branch+commit`, reusing the same boundary the small-batch loop already draws.
+- **A failing artifact is never committed.** The commit runs only after a clean `spectastic validate`; on any finding there is no commit and the failure is surfaced loudly. Per-verb commits are the legible record — spectastic does not squash or rewrite history.
+
+Setting `git.auto` is currently a hand edit; an installer that writes it for you is a separate, not-yet-shipped slice.
+
 ## Component vocabulary
 
 Twelve-ish custom elements cover the spec shape. Tag name is schema.

@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+**The opt-in git layer (026-git-strategy).** spectastic can now drive git for you, **off by default**. A root `spectastic.json` `git.auto` switch (`off` | `commit` | `branch+commit`) lets each verb derive its own branch and Conventional-Commits subject from the artifact it just wrote: `spec` opens the `NNN-slug` branch and commits `spec(NNN): <title>`; the other verbs commit on the current branch. Spec-less verbs (`triage` list-intake, `principles`, an inbox-card `implement` drain) use the unscoped `<verb>: <subject>` form — scope omitted, never faked (FR-002/FR-007). The commit is gated on a clean in-process `spectastic validate` (a quarantined exploration or any finding ⇒ no commit, surfaced loudly), composes after the P-6 state-gate, stages only the verb's own paths (never a blanket `git add -A`), and never squashes or rewrites history. New-slice id allocation is origin-aware (`git fetch` + `origin/<default>` scan) with a local-scan fallback when there's no remote; the shipped 025 `spec-id-unique` gate remains the cross-branch safety net. Every verb gained `--commit` / `--no-commit`. The `init --tools` installer and attribution trailers are sibling slices, not yet shipped.
+
 ## v0.1.0-pre.16 — 2026-06-23
 
 First published build since pre.14 — pre.15 (StubAIProvider) was changelogged but never released, so this rolls it up. The bulk is the theme system and four new/expanded slices, plus a run of meta-spec lifecycle hardening.
