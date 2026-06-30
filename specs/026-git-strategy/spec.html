@@ -1,0 +1,325 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Git strategy — the opt-in git layer · Specification</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Specification · 026-git-strategy</p>
+  <h1>Git strategy — the opt-in git layer</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    The lifecycle already projects onto git — verb is the commit type, spec id is the scope, the slice is the
+    branch. This slice makes that projection automatic: a config switch, default off, that lets each verb derive
+    its own branch and commit from the artifact it just wrote.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>      <span><spec-status value="accepted">Accepted</spec-status></span>
+    <b>Spec ID</b>     <span>026-git-strategy</span>
+    <b>Owner</b>       <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Reviewers</b>   <span>—</span>
+    <b>Created</b>     <span><time datetime="2026-06-29">2026-06-29</time></span>
+    <b>Principles</b><span><a href="../../principles.html">v1.2.0</a></span>
+    <b>Smallest demoable</b><span>Set <code>git.auto=branch+commit</code>, run <code>spec</code> on a new feature, and watch it create branch <code>NNN-slug</code> and commit <code>spec(NNN): &lt;title&gt;</code> — with zero manual git commands.</span>
+    <b>Read time</b>   <span data-reading-time></span>
+  </spec-meta>
+
+  <!-- Green ≤80%, amber 80-100%, red over (REQ-FORMAT-004). Core layer only — trailers + installer are siblings. -->
+  <spec-budget words="1500" reqs="20" minutes="12"></spec-budget>
+
+  <spec-tldr>
+    <p><a href="../../docs/git-strategy-considerations.html">git-strategy</a> found that spectastic already
+    speaks a latent git grammar — its history reads <code>spec(NNN):</code> / <code>plan(NNN):</code>. This slice
+    makes it <em>automatic and opt-in</em>: a <code>git.auto</code> switch (default <strong>off</strong>) that
+    lets a verb derive its branch and its <code>&lt;verb&gt;(NNN):</code> commit, gated on a clean
+    <code>validate</code>. The collision floor (<a href="../025-id-uniqueness/spec.html"><code>G-001</code></a>)
+    already shipped; trailers (<code>G-004</code>), the <code>init --tools</code> installer, and splitting
+    (<code>G-005</code>) are siblings.</p>
+  </spec-tldr>
+
+  <dl class="invest">
+    <dt><span class="letter">I</span> Independent</dt> <dd>Builds on <a href="../025-id-uniqueness/spec.html">025-id-uniqueness</a> (the collision gate) and the existing config + verb infrastructure; the layer reads artifacts and config, writes git.</dd>
+    <dt><span class="letter">N</span> Negotiable</dt>  <dd>Outcomes contract only. The git client, how the gate is invoked, and the fetch timeout are the plan's to decide.</dd>
+    <dt><span class="letter">V</span> Valuable</dt>    <dd>Unlocks <a href="#SC-001">SC-001</a> — verbs commit the lifecycle on the right branch with zero manual git.</dd>
+    <dt><span class="letter">E</span> Estimable</dt>   <dd>Every decision was anchored in the interview; plan and tasks derive without further questions.</dd>
+    <dt><span class="letter">S</span> Small</dt>       <dd>One opt-in layer over the eight existing verbs — no new verb; 14 requirements.</dd>
+    <dt><span class="letter">T</span> Testable</dt>    <dd>Every requirement is observable in a real repo; success criteria are quantified.</dd>
+  </dl>
+
+  <spec-audience-map>
+    <dl>
+      <dt>Exec / PM</dt>   <dd>§<a href="#context">Context</a>, §<a href="#scenarios">User scenarios</a>, §<a href="#success">Success criteria</a>.</dd>
+      <dt>Reviewer</dt>    <dd>§<a href="#requirements">Requirements</a>, §<a href="#assumptions">Assumptions</a>, §<a href="#questions">Open questions</a>.</dd>
+      <dt>Implementer</dt> <dd>§<a href="#requirements">Requirements</a>, §<a href="#data">Data model</a>, §<a href="#conformance">Conformance index</a>.</dd>
+    </dl>
+  </spec-audience-map>
+</header>
+
+
+<section id="context">
+<h2>1 · Context</h2>
+<p>spectastic's artifacts are the source of truth; git has always been a side effect a human performs by hand.
+Yet the history already follows a grammar nobody designed — <code>spec(NNN):</code>, <code>plan(NNN):</code>,
+<code>implement(NNN): T-xxx</code> (verb as type, spec id as scope) — and branches like <code>018-explain</code>
+matched their spec dirs. The <a href="../../docs/git-strategy-considerations.html">git-strategy brief</a>
+formalizes that projection into several slices; this is the core automation slice (<code>G-002</code> +
+<code>G-003</code>).</p>
+<p>The foundation already landed: <a href="../025-id-uniqueness/spec.html">025-id-uniqueness</a> shipped the
+<code>spec-id-unique</code> CI gate (<code>G-001</code>) that keeps the readable <code>NNN</code> ids safe when
+two branches race. What's missing is the part that lets a developer stop thinking about branches and commits: a
+layer that, switched on, derives each verb's git shape from the artifact it just wrote. The users are spectastic
+adopters who want their git history to <em>be</em> the lifecycle record without hand-typing it.</p>
+</section>
+
+
+<section id="scenarios">
+<h2>2 · User scenarios &amp; testing</h2>
+
+<p>The slice carries a single story; trailers and the installer are sibling slices (§3, out of scope).</p>
+
+<h3 id="US1">US1 · Verbs commit themselves <spec-pill>P1</spec-pill></h3>
+<p>As a <strong>spectastic user</strong>, I want to <strong>turn on the git layer and have each verb create the
+right branch and commit for me</strong> so that <strong>my git history is the legible record of the lifecycle
+without me typing a single git command</strong>.</p>
+<p><em>Acceptance:</em> With <code>git.auto=branch+commit</code>, running <code>spec</code> on a new feature
+creates branch <code>NNN-slug</code> off the default branch and commits the artifact as
+<code>spec(NNN): &lt;title&gt;</code>. With <code>commit</code> it lands on the current branch, no branch. With
+<code>off</code> (the default) nothing git happens. <code>--commit</code>/<code>--no-commit</code> overrides per
+invocation.</p>
+
+<h3>Edge cases</h3>
+<ul>
+  <li><strong>No remote / offline.</strong> Branch allocation fetches <code>origin/&lt;default&gt;</code>; with no
+  remote or a timed-out fetch, it falls back to a local scan of <code>specs/</code>.</li>
+  <li><strong>Validate fails.</strong> The artifact doesn't pass <code>spectastic validate</code> — no commit, and
+  the failure is surfaced loudly.</li>
+  <li><strong>Quarantined exploration.</strong> A quarantined build fails <code>validate</code> by design, so the
+  layer cannot commit it to a shippable branch.</li>
+  <li><strong>Small revert-safe work.</strong> <code>just-do</code>, triage-list intake, and one-file hotfixes
+  stay on the current branch even under <code>branch+commit</code>.</li>
+</ul>
+</section>
+
+
+<section id="requirements">
+<h2>3 · Requirements</h2>
+
+<p>Conformance keywords (<spec-rule>MUST</spec-rule>, <spec-rule level="should">SHOULD</spec-rule>,
+<spec-rule level="may">MAY</spec-rule>) follow RFC 2119.</p>
+
+<h3>Functional</h3>
+
+<spec-requirement id="FR-001" priority="must">
+<p>When <code>git.auto</code> is <code>commit</code> or <code>branch+commit</code>, after a verb writes its
+artifact and clears the existing P-6 state-gate, spectastic <spec-rule>MUST</spec-rule> run
+<code>spectastic validate</code> and commit only if it passes; on failure it <spec-rule>MUST</spec-rule> produce
+no commit and surface the failure loudly.</p>
+<details><summary>Rationale</summary><p>A commit is the reward for a clean verb, not a way past its refusal.
+The gate runs <em>after</em> the state-gate, never around it (brief §7).</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-002" priority="must">
+  <p>An auto-commit's subject <spec-rule>MUST</spec-rule> follow <code>&lt;verb&gt;(NNN): &lt;subject&gt;</code>
+  (Conventional Commits) whenever a spec id is in play — verb as type, the artifact's spec id as scope. When a
+  verb runs <em>without</em> a spec id — <code>triage</code> list-intake, <code>principles</code>, or an
+  <code>implement</code> run draining an inbox <code>just-do</code> card — the subject <spec-rule>MUST</spec-rule>
+  instead follow the unscoped <code>&lt;verb&gt;: &lt;subject&gt;</code> form. The Conventional Commits scope is
+  <em>omitted</em>, never faked with a placeholder.</p>
+  <details><summary>Rationale</summary><p>Some verbs own no spec id, so a mandatory <code>(NNN)</code> is
+  unsatisfiable for them; the git-strategy brief §4 already writes <code>triage: &lt;summary&gt;</code> unscoped,
+  and Conventional Commits treats the scope as optional. Stating the rule generally ("no spec id → unscoped")
+  also covers the inbox-card <code>implement</code> case — which means FR-007 must move in step (next delta).</p></details>
+  </spec-requirement>
+
+<spec-requirement id="FR-003" priority="must">
+<p>Under <code>git.auto=branch+commit</code>, when <code>spec</code> opens a new slice spectastic
+<spec-rule>MUST</spec-rule> create and switch to a branch named <code>NNN-slug</code> off the default branch
+before committing.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-004" priority="must">
+<p><code>git.auto</code> <spec-rule>MUST</spec-rule> default to <code>off</code>, and with <code>off</code> no
+verb <spec-rule>MUST</spec-rule> perform any git action. Every verb <spec-rule>MUST</spec-rule> accept
+<code>--commit</code>/<code>--no-commit</code> to override the configured behavior per invocation.</p>
+<details><summary>Rationale</summary><p>The house enforcement stance (C-005): opt-in, default off, documented
+loudly. A developer running their own git flow is never surprised.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-005" priority="must">
+<p><code>just-do</code> work, triage-list intake, and one-file revert-safe hotfixes <spec-rule>MUST</spec-rule>
+stay on the current branch — no branch creation — even under <code>branch+commit</code>, reusing the existing
+<code>just-do</code> boundary; they <spec-rule level="may">MAY</spec-rule> still receive a commit.</p>
+<details><summary>Rationale</summary><p>Reuse the line the triage layer already draws ("one file, no contract
+change, revert-safe"); don't invent a second boundary (brief §7).</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-006" priority="should">
+<p>When opening a new-slice branch under <code>branch+commit</code>, spectastic <spec-rule level="should">SHOULD</spec-rule>
+allocate <code>NNN</code> by fetching and scanning <code>origin/&lt;default&gt;</code>; if no remote exists or the
+fetch exceeds its timeout, it <spec-rule>MUST</spec-rule> fall back to a local scan of <code>specs/</code>.</p>
+<details><summary>Rationale</summary><p>The branch is the reservation (G-001a); the 025 <code>spec-id-unique</code>
+gate stays the cross-branch safety net when the rare race still slips through.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-007" priority="must">
+  <p>With the git layer on, <code>/spectastic.implement</code> <spec-rule>MUST</spec-rule> emit exactly one commit
+  per drain invocation, not one per ticked task. When the drain advances a spec's <code>tasks.html</code>, the
+  subject is the scoped <code>implement(NNN): &lt;summary&gt;</code>; when it drains an inbox <code>just-do</code>
+  card — which has no spec id — the subject is the unscoped <code>implement: &lt;summary&gt;</code>, consistent
+  with FR-002.</p>
+  <details><summary>Rationale</summary><p>An inbox <code>just-do</code> card belongs to no spec, so the same
+  no-spec-id-means-unscoped rule FR-002 sets must apply here too; without this delta the two MUST requirements
+  would disagree on the inbox-card commit (the adversarial finding in §5).</p></details>
+  </spec-requirement>
+
+<spec-requirement id="FR-008" priority="must">
+<p>The git layer <spec-rule>MUST</spec-rule> honor the explore quarantine: a quarantined exploration that fails
+<code>validate</code> <spec-rule>MUST NOT</spec-rule> be committable to a shippable branch by this layer. The
+layer reads that signal, never weakens it.</p>
+</spec-requirement>
+
+<h3>Non-functional</h3>
+
+<spec-requirement id="NFR-001" priority="must">
+<p>The git layer's own work (staging, commit) <spec-rule>MUST</spec-rule> add ≤ 1 s at p95 to a verb's runtime,
+measured excluding network. A remote fetch <spec-rule>MUST</spec-rule> be bounded by its own timeout that falls
+back to local allocation (FR-006).</p>
+</spec-requirement>
+
+<spec-requirement id="NFR-002" priority="must">
+<p>The layer <spec-rule>MUST NOT</spec-rule> introduce squash-on-merge as a default and
+<spec-rule>MUST NOT</spec-rule> rewrite or squash existing default-branch history; full per-commit history is the
+legible record and is preserved.</p>
+</spec-requirement>
+
+<h3>Out of scope (deferred to other slices)</h3>
+<spec-out-of-scope>
+  <ul>
+    <li defer-to="TBD">Attribution trailers (<code>G-004</code>) — <code>git.trailers</code> and the
+    <code>Author</code>/<code>Acked-by</code>/<code>Refs</code> mapping from <code>&lt;spec-meta&gt;</code> — a
+    sibling slice, after the lifecycle reviewer-capture amendment.</li>
+    <li defer-to="TBD">The <code>spectastic init --tools</code> installer (brief's ④) — config, hook, CI workflow,
+    commit template, monorepo-vs-project detection — a sibling slice; until it ships, <code>git.auto</code> is set
+    by hand.</li>
+    <li defer-to="000-spectastic">The house-level <code>REQ-GIT-*</code> contract (the grammar as a meta-spec
+    rule, brief's ②) — a separate <code>/spectastic.propose</code> against the meta-spec.</li>
+    <li defer-to="TBD">Splitting under the branch model (<code>G-005</code>) — contiguous N-id reservation, the
+    parent <em>Superseded</em> flip, the merge sequence, <code>--stacked</code> — owned by the W-2 slicer /
+    <code>/spectastic.split</code>.</li>
+  </ul>
+</spec-out-of-scope>
+</section>
+
+
+<section id="data">
+<h2>4 · Data model</h2>
+
+<p>This slice owns one new configuration key and introduces no new artifact type.</p>
+
+<h3>Entities</h3>
+<dl>
+  <dt>Git config (<code>git.auto</code>)</dt><dd>One key in the project config:
+  <code>git.auto</code> ∈ {<code>off</code> (default), <code>commit</code>, <code>branch+commit</code>}. The plan
+  owns where it lives. (<code>git.trailers</code> arrives with the trailers sibling.)</dd>
+  <dt>Verb→git derivation</dt><dd>The deterministic map from a just-written artifact to its git shape: the verb
+  is the commit type, the artifact's spec id is the scope, the slice id is the branch. Nothing for the developer
+  to decide — it falls out of the artifact.</dd>
+</dl>
+
+<spec-note>
+<p>The layer is strictly a projection: it reads artifacts and config and writes git, never mutating an artifact.
+It composes <em>after</em> the P-6 state-gate and the explore quarantine — reading those signals, never relaxing
+them.</p>
+</spec-note>
+</section>
+
+
+<section id="success">
+<h2>5 · Success criteria</h2>
+
+<p>Technology-agnostic, measurable outcomes. These are how we know it worked.</p>
+
+<spec-requirement id="SC-001" priority="must">
+<p>With <code>git.auto=branch+commit</code>, running <code>spec</code> on a new feature produces branch
+<code>NNN-slug</code> and a commit whose subject is exactly <code>spec(NNN): &lt;title&gt;</code> — with zero
+manual git commands.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-002" priority="must">
+<p>With <code>git.auto=off</code> (the default), no verb performs any git operation; a repository's existing git
+state is byte-for-byte unchanged by running a verb.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-003" priority="must">
+<p>A verb whose artifact fails <code>spectastic validate</code> produces no commit, and the validation failure is
+surfaced to the user.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-004" priority="should">
+<p>The git layer adds ≤ 1 s at p95 to a verb's runtime, measured excluding network round-trips.</p>
+</spec-requirement>
+</section>
+
+
+<section id="assumptions">
+<h2>6 · Assumptions</h2>
+
+<spec-assumption>
+<p>The project already has a config mechanism the <code>git.auto</code> key can live in; this slice adds a key,
+it does not invent the config system.</p>
+</spec-assumption>
+
+<spec-assumption>
+<p>The 025 <code>spec-id-unique</code> CI gate remains the cross-branch safety net, so the reservation (FR-006)
+only needs to make collisions <em>rare</em>, not impossible.</p>
+</spec-assumption>
+
+<spec-assumption>
+<p>Until the <code>init --tools</code> sibling ships, a user enables the layer by setting <code>git.auto</code>
+by hand — acceptable for an opt-in, documented value.</p>
+</spec-assumption>
+</section>
+
+
+<section id="questions">
+<h2>7 · Open questions</h2>
+<spec-questions>
+<p>None outstanding — every decision was anchored in the interview, and the scope was split (trailers + installer
+moved to siblings) to keep this slice within budget and independently demoable.</p>
+</spec-questions>
+</section>
+
+
+<section id="conformance">
+<h2>8 · Conformance index</h2>
+<p>Auto-built from every <code>&lt;spec-requirement&gt;</code> in this document.</p>
+<spec-conformance></spec-conformance>
+</section>
+
+
+<section id="changelog">
+<h2>9 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-06-29">2026-06-29</time><span>Initial draft — the core opt-in git layer (git-strategy brief G-002/G-003); trailers (G-004) and the init --tools installer split to siblings.</span></li>
+  <li><time datetime="2026-06-29">29 Jun 2026</time><span>Applied <a href="./changes/archive/2026-06-29-unscoped-commit-spec-less-verbs/proposal.html">2026-06-29-unscoped-commit-spec-less-verbs</a>: Amended FR-002 + FR-007 to allow the unscoped <verb>: <subject> commit form for spec-less verbs (triage list, principles, inbox-card implement); scoped <verb>(NNN): stays where a spec id exists..</span></li>
+  <li><time datetime="2026-06-29">29 Jun 2026</time><span>Status flipped Draft → Accepted on 29 Jun 2026 — zero remaining unchecked tasks; tests verified passing per author confirmation (329 green, SC-001..004). Sibling bundle (REQ-LIFECYCLE-005).</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  026-git-strategy · Git strategy — the opt-in git layer · authored 2026-06-29
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>
