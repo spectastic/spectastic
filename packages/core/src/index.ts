@@ -48,4 +48,5 @@ export type {
   ProposeResult,
   ImplementInput,
   ImplementResult,
+  GraduationClass,
 } from './types.js';
