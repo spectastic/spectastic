@@ -9,10 +9,12 @@ export function registerImplement(program: Command): void {
     .option('--phase <id>', 'phase drain (DEFERRED)')
     .option('--parallel', 'parallel drain (DEFERRED)')
     .option('-y, --yes', 'auto-confirm bundled flip prompt without TTY interaction')
+    .option('--commit', 'force a git commit for this run (overrides git.auto)')
+    .option('--no-commit', 'skip the git commit for this run (overrides git.auto)')
     .action(
       async (
         target: string,
-        opts: { all?: boolean; phase?: string; parallel?: boolean; yes?: boolean },
+        opts: { all?: boolean; phase?: string; parallel?: boolean; yes?: boolean; commit?: boolean },
       ) => {
         if (opts.all || opts.phase || opts.parallel) {
           process.stderr.write(
@@ -94,6 +96,7 @@ export function registerImplement(program: Command): void {
         );
 
         // Bundled-flip prompt per REQ-LIFECYCLE-005.
+        let flipped = false;
         if (result.flipPromptFired && specDir && tasksHtml && specHtml) {
           process.stdout.write(
             '\nLast task ticked on a Draft spec. The bundled flip will set status="accepted" on spec.html, plan.html, and tasks.html.\n',
@@ -103,13 +106,29 @@ export function registerImplement(program: Command): void {
           const confirmed = opts.yes ? true : await confirmStdin('Flip the bundle Draft → Accepted? [y/N] ');
           if (confirmed) {
             await flipBundle(specDir, fs, path);
+            flipped = true;
             process.stdout.write(`Flipped spec + plan + tasks → Accepted in ${specDir}\n`);
           } else {
             process.stdout.write('Skipped flip. Run again with --yes to auto-confirm.\n');
           }
         }
 
-        process.exit(0);
+        // Opt-in git layer (spec 026): one commit per invocation (FR-007). A task tick
+        // scopes to the spec id; an inbox just-do card has none → unscoped `implement:`.
+        // A bundled flip widens the staged paths to the whole spec bundle.
+        const { commitVerbAndExit } = await import('../git/index.js');
+        const implPaths =
+          flipped && specDir
+            ? ['spec.html', 'plan.html', 'tasks.html'].map((f) => path.join(specDir, f))
+            : [targetFile];
+        await commitVerbAndExit({
+          verb: 'implement',
+          cwd: process.cwd(),
+          specId: specDir ? path.basename(specDir) : '',
+          paths: implPaths,
+          subject: result.ticked.id,
+          ...(opts.commit === undefined ? {} : { commit: opts.commit }),
+        });
       },
     );
 }

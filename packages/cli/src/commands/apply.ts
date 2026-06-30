@@ -10,17 +10,20 @@ export function registerApply(program: Command): void {
     .option('--withdraw', 'withdraw mode: reject the proposal instead of applying')
     .option('--reason <reason>', 'rejection reason (required with --withdraw)')
     .option('--summary <text>', 'author-supplied one-line changelog summary (apply mode)')
+    .option('--commit', 'force a git commit for this run (overrides git.auto)')
+    .option('--no-commit', 'skip the git commit for this run (overrides git.auto)')
     .action(
       async (
         specId: string,
         slug: string,
-        opts: { withdraw?: boolean; reason?: string; summary?: string },
+        opts: { withdraw?: boolean; reason?: string; summary?: string; commit?: boolean },
       ) => {
-        const [{ applyCommand }, { nodeFs }, { gateOnQuarantine }, fs] = await Promise.all([
+        const [{ applyCommand }, { nodeFs }, { gateOnQuarantine }, fs, path] = await Promise.all([
           import('@spectastic/core/commands/apply'),
           import('@spectastic/core/providers/node-fs'),
           import('../state-gate.js'),
           import('node:fs/promises'),
+          import('node:path'),
         ]);
 
         // Anti-ship guard (022-explore, FR-006): refuse to advance a quarantined exploration.
@@ -59,7 +62,18 @@ export function registerApply(program: Command): void {
             `  ${result.crossSpecWarnings.length} cross-spec warning(s); follow-up may be needed\n`,
           );
         }
-        process.exit(0);
+
+        // Opt-in git layer (spec 026): stage the whole spec dir so the commit captures
+        // the spec patch, the tasks-fold, and the changes→archive move (D-006).
+        const { commitVerbAndExit } = await import('../git/index.js');
+        await commitVerbAndExit({
+          verb: 'apply',
+          cwd: process.cwd(),
+          specId,
+          paths: [path.resolve(process.cwd(), 'specs', specId)],
+          subject: slug,
+          ...(opts.commit === undefined ? {} : { commit: opts.commit }),
+        });
       },
     );
 }

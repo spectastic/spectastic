@@ -16,12 +16,18 @@ export function registerSpec(program: Command): void {
     .argument('<description>', 'feature description or spec ID for re-entry')
     .option('--reentry <spec-id>', 'sharpen the existing spec at this ID (hints Sharpen-vs-Author phrasing)')
     .option('--force', 'bypass the past-Draft refuse with a warning')
-    .action(async (description: string, opts: { reentry?: string; force?: boolean }) => {
+    .option('--commit', 'force a git commit for this run (overrides git.auto)')
+    .option('--no-commit', 'skip the git commit for this run (overrides git.auto)')
+    .action(async (description: string, opts: { reentry?: string; force?: boolean; commit?: boolean }) => {
       const [
         { specCommand },
         { createAIProvider },
         { nodeFs },
         { gateOnDestinationState, gateOnQuarantine },
+        { commitForVerb, reportGitOutcome, effectiveAuto, parseCommitOverride },
+        { loadGitConfig },
+        { resolveNextSpecId },
+        { gitRunner },
         fs,
         path,
       ] = await Promise.all([
@@ -29,14 +35,31 @@ export function registerSpec(program: Command): void {
           import('../ai-factory.js'),
           import('@spectastic/core/providers/node-fs'),
           import('../state-gate.js'),
+          import('../git/index.js'),
+          import('../git/config.js'),
+          import('../git/allocate.js'),
+          import('../git/run.js'),
           import('node:fs/promises'),
           import('node:path'),
         ]);
 
+      // The per-invocation git override (FR-004): --commit → force, --no-commit → skip.
+      const gitOverride = parseCommitOverride(opts.commit);
+
+      const cwd = process.cwd();
+
       // If --reentry given, resolve to its known path; otherwise the kernel decides the ID.
       const reentryPath = opts.reentry
-        ? path.resolve(process.cwd(), 'specs', opts.reentry, 'spec.html')
+        ? path.resolve(cwd, 'specs', opts.reentry, 'spec.html')
         : null;
+
+      // Branch reservation (FR-006/D-004): under branch+commit, fresh authoring
+      // allocates an origin-aware NNN so the new NNN-slug branch is the claim.
+      const gitAuto = effectiveAuto(loadGitConfig(cwd).auto, gitOverride);
+      let allocatedId: string | undefined;
+      if (!reentryPath && gitAuto === 'branch+commit') {
+        allocatedId = await resolveNextSpecId(cwd, description, { runner: gitRunner(cwd) });
+      }
 
       let existingSpec: string | undefined;
       if (reentryPath && opts.reentry) {
@@ -71,13 +94,14 @@ export function registerSpec(program: Command): void {
       // informative refuse/warn message reachable when ANTHROPIC_API_KEY is missing.
       const ai = await createAIProvider();
 
+      const specIdInput = opts.reentry ?? allocatedId;
       const input = {
         description,
-        ...(opts.reentry ? { specId: opts.reentry } : {}),
+        ...(specIdInput ? { specId: specIdInput } : {}),
         ...(existingSpec ? { existingSpec } : {}),
       };
-      const result = await specCommand(input, { cwd: process.cwd(), fs: nodeFs, ai });
-      const outPath = path.resolve(process.cwd(), 'specs', result.specId, 'spec.html');
+      const result = await specCommand(input, { cwd, fs: nodeFs, ai });
+      const outPath = path.resolve(cwd, 'specs', result.specId, 'spec.html');
 
       // Fresh-authoring path: gate the resolved output too, in case the kernel
       // chose a spec ID that collides with an existing past-Draft artifact.
@@ -100,6 +124,17 @@ export function registerSpec(program: Command): void {
         `Wrote ${outPath} (${result.requirementsCount} reqs${result.warnings.length ? `; ${result.warnings.length} warning(s)` : ''}).\n`,
       );
       for (const w of result.warnings) process.stderr.write(`  warn: ${w}\n`);
-      process.exit(0);
+
+      // Opt-in git layer (spec 026): branch + commit the artifact when git.auto is on.
+      const outcome = await commitForVerb({
+        verb: 'spec',
+        cwd,
+        specId: result.specId,
+        paths: [outPath],
+        subject: description,
+        newSlice: !reentryPath,
+        ...(gitOverride ? { override: gitOverride } : {}),
+      });
+      process.exit(reportGitOutcome(outcome));
     });
 }

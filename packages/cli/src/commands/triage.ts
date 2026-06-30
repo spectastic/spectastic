@@ -21,15 +21,18 @@ export function registerTriage(program: Command): void {
     .option('--spec <spec-id>', 'spec ID for single-card mode; ignored for list-intake')
     .option('--mode <mode>', 'force "single" | "list"; default auto-detect')
     .option('--format <fmt>', 'output format: human (default) | json', 'human')
+    .option('--commit', 'force a git commit for this run (overrides git.auto)')
+    .option('--no-commit', 'skip the git commit for this run (overrides git.auto)')
     .action(
       async (
         descArg: string | undefined,
-        opts: { spec?: string; mode?: 'single' | 'list'; format: string },
+        opts: { spec?: string; mode?: 'single' | 'list'; format: string; commit?: boolean },
       ) => {
-        const [{ triageCommand }, { createAIProvider }, { nodeFs }] = await Promise.all([
+        const [{ triageCommand }, { createAIProvider }, { nodeFs }, path] = await Promise.all([
           import('@spectastic/core/commands/triage'),
           import('../ai-factory.js'),
           import('@spectastic/core/providers/node-fs'),
+          import('node:path'),
         ]);
 
         const description = descArg ?? (await readStdin());
@@ -54,7 +57,19 @@ export function registerTriage(program: Command): void {
         } else {
           process.stdout.write(humanFormat(result.cards));
         }
-        process.exit(0);
+
+        // Opt-in git layer (spec 026): single mode (--spec) scopes + stages the spec
+        // dir; list-intake has no spec id → unscoped `triage:` and stages inbox.html.
+        const { commitVerbAndExit } = await import('../git/index.js');
+        const cwd = process.cwd();
+        await commitVerbAndExit({
+          verb: 'triage',
+          cwd,
+          specId: opts.spec ?? '',
+          paths: [opts.spec ? path.resolve(cwd, 'specs', opts.spec) : path.resolve(cwd, 'inbox.html')],
+          subject: `${result.cards.length} card(s)`,
+          ...(opts.commit === undefined ? {} : { commit: opts.commit }),
+        });
       },
     );
 }

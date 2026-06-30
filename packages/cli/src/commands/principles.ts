@@ -19,6 +19,8 @@ export function registerPrinciples(program: Command): void {
     .option('--count <n>', 'number of principles', '5')
     .option('--force', 'bypass the past-Draft refuse with a warning')
     .option('--output <path>', 'output path', './principles.html')
+    .option('--commit', 'force a git commit for this run (overrides git.auto)')
+    .option('--no-commit', 'skip the git commit for this run (overrides git.auto)')
     .action(
       async (opts: {
         name?: string;
@@ -26,6 +28,7 @@ export function registerPrinciples(program: Command): void {
         count: string;
         force?: boolean;
         output: string;
+        commit?: boolean;
       }) => {
         const [{ principlesCommand }, { createAIProvider }, { nodeFs }, { gateOnDestinationState }, fs] =
           await Promise.all([
@@ -65,7 +68,17 @@ export function registerPrinciples(program: Command): void {
         process.stdout.write(
           `Wrote ${opts.output} (${result.principlesCount} principles).\n`,
         );
-        process.exit(0);
+
+        // Opt-in git layer (spec 026): principles has no spec id → unscoped `principles: <subject>`.
+        const { commitVerbAndExit } = await import('../git/index.js');
+        await commitVerbAndExit({
+          verb: 'principles',
+          cwd: process.cwd(),
+          specId: '',
+          paths: [opts.output],
+          subject: opts.name ?? 'project principles',
+          ...(opts.commit === undefined ? {} : { commit: opts.commit }),
+        });
       },
     );
 }

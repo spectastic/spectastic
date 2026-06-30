@@ -23,7 +23,9 @@ export function registerTasks(program: Command): void {
       '--restore',
       'generate path-appropriate restore tasks for a graduated exploration (spec 024); else a graduated marker prompts (TTY) or refuses (piped)',
     )
-    .action(async (specId: string, opts: { force?: boolean; restore?: boolean }) => {
+    .option('--commit', 'force a git commit for this run (overrides git.auto)')
+    .option('--no-commit', 'skip the git commit for this run (overrides git.auto)')
+    .action(async (specId: string, opts: { force?: boolean; restore?: boolean; commit?: boolean }) => {
       const [
         { tasksCommand },
         { readArchivedClassify },
@@ -85,7 +87,17 @@ export function registerTasks(program: Command): void {
       process.stdout.write(
         `Wrote ${tasksPath} (${result.totalTasks} tasks, ${result.parallelTasks} parallel${suffix}).\n`,
       );
-      process.exit(0);
+
+      // Opt-in git layer (spec 026): commit on the current branch (tasks does not branch).
+      const { commitVerbAndExit, slugOf } = await import('../git/index.js');
+      await commitVerbAndExit({
+        verb: 'tasks',
+        cwd: process.cwd(),
+        specId,
+        paths: [tasksPath],
+        subject: slugOf(specId),
+        ...(opts.commit === undefined ? {} : { commit: opts.commit }),
+      });
     });
 }
 

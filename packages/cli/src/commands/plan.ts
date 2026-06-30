@@ -12,7 +12,9 @@ export function registerPlan(program: Command): void {
     .description('Generate plan.html for a spec; auto-re-enter Draft plans in place, refuse past-Draft.')
     .argument('<spec-id>')
     .option('--force', 'bypass the past-Draft refuse with a warning')
-    .action(async (specId: string, opts: { force?: boolean }) => {
+    .option('--commit', 'force a git commit for this run (overrides git.auto)')
+    .option('--no-commit', 'skip the git commit for this run (overrides git.auto)')
+    .action(async (specId: string, opts: { force?: boolean; commit?: boolean }) => {
       const [
         { planCommand },
         { createAIProvider },
@@ -91,6 +93,16 @@ export function registerPlan(program: Command): void {
       process.stdout.write(
         `Wrote ${planPath} (${result.decisionsCount} ADRs; principles: ${result.principlesCheck.ok} OK / ${result.principlesCheck.exceptions} exc).\n`,
       );
-      process.exit(0);
+
+      // Opt-in git layer (spec 026): commit on the current branch (plan does not branch).
+      const { commitVerbAndExit, slugOf } = await import('../git/index.js');
+      await commitVerbAndExit({
+        verb: 'plan',
+        cwd: process.cwd(),
+        specId,
+        paths: [planPath],
+        subject: slugOf(specId),
+        ...(opts.commit === undefined ? {} : { commit: opts.commit }),
+      });
     });
 }

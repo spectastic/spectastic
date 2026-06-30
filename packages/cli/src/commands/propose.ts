@@ -8,11 +8,13 @@ export function registerPropose(program: Command): void {
     .argument('<description>', 'one-line change description')
     .option('--adversarial', 'force adversarial pass on (overrides heuristic)')
     .option('--no-adversarial', 'force adversarial pass off')
+    .option('--commit', 'force a git commit for this run (overrides git.auto)')
+    .option('--no-commit', 'skip the git commit for this run (overrides git.auto)')
     .action(
       async (
         specId: string,
         description: string,
-        opts: { adversarial?: boolean },
+        opts: { adversarial?: boolean; commit?: boolean },
       ) => {
         const [{ proposeCommand }, { createAIProvider }, { nodeFs }, { gateOnQuarantine }, fs, path] =
           await Promise.all([
@@ -59,7 +61,17 @@ export function registerPropose(program: Command): void {
         process.stdout.write(
           `Wrote ${path.join(dir, 'proposal.html')} (${result.deltasCount} deltas${result.risks.length ? `; ${result.risks.length} risks identified` : ''}).\n`,
         );
-        process.exit(0);
+
+        // Opt-in git layer (spec 026): scoped to the parent spec; stage the change dir.
+        const { commitVerbAndExit } = await import('../git/index.js');
+        await commitVerbAndExit({
+          verb: 'propose',
+          cwd: process.cwd(),
+          specId,
+          paths: [dir],
+          subject: description,
+          ...(opts.commit === undefined ? {} : { commit: opts.commit }),
+        });
       },
     );
 }
