@@ -1,0 +1,336 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Dependency-respecting value order · Specification</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Specification · 028-dependency-ordering</p>
+  <h1>Order by dependency-respecting value</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    RICE and WSJF <em>rank</em>; they don't <em>sequence</em>. This is the foundation that does both — it infers a
+    precedence graph from the links specs already carry, then emits a topological order that breaks ties by value and
+    lifts cheap foundations above expensive leaves. The primitive the value-ranked slicer (W-2) will stand on.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>      <span><spec-status value="accepted">Accepted</spec-status></span>
+    <b>Spec ID</b>     <span>028-dependency-ordering</span>
+    <b>Owner</b>       <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Reviewers</b>   <span>—</span>
+    <b>Created</b>     <span><time datetime="2026-06-30">2026-06-30</time></span>
+    <b>Principles</b><span><a href="../../principles.html">v1.2.0</a></span>
+    <b>Smallest demoable</b><span>Point it at <code>specs/</code>: it reads each spec's <code>defer-to</code> / <code>&lt;spec-parent&gt;</code> links and RICE block, then emits a dependency-respecting, value-ranked order — as a printed list <em>and</em> a self-contained roadmap view — naming any cycle as a hard error.</span>
+    <b>Read time</b>   <span data-reading-time></span>
+  </spec-meta>
+
+  <!-- Green ≤80%, amber 80-100%, red over (REQ-FORMAT-004). Words row counts authored prose, excludes the
+       conformance index. Held to the default 1500-word target: this is a deliberately small foundation slice. -->
+  <spec-budget words="1500" reqs="20" minutes="12"></spec-budget>
+
+  <!-- RICE inputs this slice's own ordering reads (FR-003). reach: roadmap
+       maintainers + the future W-2 slicer; impact: high (a foundation);
+       confidence 0.8; effort 3. The only live spec annotated so far — the
+       Accepted corpus stays unannotated until change-management touches it (P-6). -->
+  <spec-rice reach="3" impact="3" confidence="0.8" effort="3"></spec-rice>
+
+  <spec-tldr>
+    <p>The roadmap and the slicer both need to answer <em>"what order do we build these in?"</em> — and value alone
+    can't, because a high-value leaf may depend on a cheap foundation that scores lower. This slice builds the
+    <strong>dependency-ordering primitive</strong>: it infers a precedence DAG from the corpus, breaks ties among
+    dependency-ready specs by RICE, lifts foundations by the value of the subtree they unblock, and refuses to emit
+    anything when the graph contains a cycle — naming the offending nodes. It ships both a CLI order (for callers like
+    W-2) and a self-contained roadmap view (the standalone value). It does not slice anything itself.</p>
+  </spec-tldr>
+
+  <dl class="invest">
+    <dt><span class="letter">I</span> Independent</dt> <dd>Reads only artifacts that already exist (<code>defer-to</code>, <code>&lt;spec-parent&gt;</code>) plus one new authored block. No hard upstream spec; W-2 is downstream, not a dependency.</dd>
+    <dt><span class="letter">N</span> Negotiable</dt>  <dd>The contract is <em>"order respects every edge, ranks ready peers by value"</em>. Graph library, sort implementation, and view layout are the plan's to choose.</dd>
+    <dt><span class="letter">V</span> Valuable</dt>    <dd>Unlocks <a href="#SC-001">SC-001</a> — a dependency-respecting, value-ranked roadmap order anyone can read, independent of the slicer.</dd>
+    <dt><span class="letter">E</span> Estimable</dt>   <dd>Plan + tasks derivable now. The one correctness call — the precedence each link induces — is defined in §4 and confirmed by the plan; it does not block estimation.</dd>
+    <dt><span class="letter">S</span> Small</dt>       <dd>Under the 1,500-word target; 16 requirements. One new element, one algorithm, two output forms.</dd>
+    <dt><span class="letter">T</span> Testable</dt>    <dd>Every requirement is observable against the emitted order; success criteria are checkable invariants (edges satisfied, every spec present, identical re-runs).</dd>
+  </dl>
+
+  <spec-audience-map>
+    <dl>
+      <dt>Exec / PM</dt>   <dd>§<a href="#context">Context</a>, §<a href="#scenarios">User scenarios</a>, §<a href="#success">Success criteria</a>.</dd>
+      <dt>Reviewer</dt>    <dd>§<a href="#requirements">Requirements</a>, §<a href="#assumptions">Assumptions</a>, §<a href="#questions">Open questions</a>.</dd>
+      <dt>Implementer</dt> <dd>§<a href="#requirements">Requirements</a>, §<a href="#data">Data model</a>, §<a href="#conformance">Conformance index</a>.</dd>
+    </dl>
+  </spec-audience-map>
+</header>
+
+
+<section id="context">
+<h2>1 · Context</h2>
+<p>spectastic already <em>nudges</em> when a spec is too big — the smallest-demoable prompt, the amber/red budget
+band, the propose-time splitting nudge. What it cannot do is say <strong>what order</strong> a set of related specs
+should be built in. RICE and WSJF each collapse a spec to one number; a number ranks, but it cannot express <em>"X
+must come before Y"</em>. A high-value leaf that depends on an unbuilt foundation will out-rank that foundation on
+score alone, and a naive value sort would schedule it first — to be blocked on day one.</p>
+<p>The corpus already encodes the missing structure. Specs carry <code>defer-to=</code> on out-of-scope items and
+<code>&lt;spec-parent specid&gt;</code> on slices — a latent precedence graph nobody reads as one. This slice reads
+it, sequences it, and ranks the ties. It is the foundation the handover named: the value-ranked slicer (W-2) consumes
+this ordering rather than inventing sequencing from scores, and a roadmap maintainer gets a defensible build order out
+of the box.</p>
+<p><strong>Who it's for:</strong> the roadmap maintainer ordering a backlog, and — downstream — the W-2 slicer
+sequencing the children of one split.</p>
+</section>
+
+
+<section id="scenarios">
+<h2>2 · User scenarios &amp; testing</h2>
+
+<p>Each story <strong>MUST</strong> be independently testable: if you implemented only US1, you would still have a
+viable MVP.</p>
+
+<h3 id="US1">US1 · A dependency-respecting build order <spec-pill>P1</spec-pill></h3>
+<p>As a <strong>roadmap maintainer</strong>, I want to <strong>point the tool at <code>specs/</code> and get back a
+single ordered sequence</strong> so that <strong>I can build in an order where nothing is blocked by unbuilt work and
+ties go to the higher-value spec</strong>.</p>
+<p><em>Acceptance:</em> every inferred precedence edge is satisfied in the emitted order; among specs whose
+dependencies are all already placed, the next one out is the highest-RICE candidate. Re-checking the order against the
+graph finds zero violations.</p>
+
+<h3 id="US2">US2 · A named cycle, not a wrong order <spec-pill>P1</spec-pill></h3>
+<p>As a <strong>roadmap maintainer</strong>, I want <strong>a hard failure that names the specs in a precedence
+cycle</strong> so that <strong>I fix the offending link instead of trusting a silently-broken sequence</strong>.</p>
+<p><em>Acceptance:</em> a corpus containing A→B→A produces no order and a diagnostic listing exactly the nodes on the
+cycle; the message alone is enough to locate the bad link.</p>
+
+<h3 id="US3">US3 · Foundations lifted above leaves <spec-pill>P2</spec-pill></h3>
+<p>As a <strong>roadmap maintainer</strong>, I want <strong>a cheap foundation that unblocks a lot of value to rank
+ahead of a high-value leaf</strong> so that <strong>the order reflects leverage, not just a spec's own score</strong>.</p>
+<p><em>Acceptance:</em> given a low-RICE foundation whose unblocked subtree carries high total value, it appears ahead
+of a higher-RICE leaf that unlocks nothing; the elevation is visible and re-derivable from the scores.</p>
+
+<h3>Edge cases</h3>
+<ul>
+  <li>A spec with no RICE block — placed by dependency, ordered after ranked ready peers, flagged <em>unranked</em>; never dropped (<a href="#FR-006">FR-006</a>).</li>
+  <li>A <code>defer-to</code> / <code>&lt;spec-parent&gt;</code> pointing at a spec ID that does not exist — reported as a dangling edge; it must not crash the scan or silently vanish (<a href="#FR-010">FR-010</a>).</li>
+  <li>Two ready specs with identical RICE scores — broken deterministically by spec ID so output is stable across runs (<a href="#NFR-001">NFR-001</a>).</li>
+  <li>A corpus with no edges at all — degenerates to a pure value ranking; still valid output.</li>
+</ul>
+</section>
+
+
+<section id="requirements">
+<h2>3 · Requirements</h2>
+
+<p>Conformance keywords (<spec-rule>MUST</spec-rule>, <spec-rule level="should">SHOULD</spec-rule>,
+<spec-rule level="may">MAY</spec-rule>) follow RFC 2119.</p>
+
+<h3>Functional</h3>
+
+<spec-requirement id="FR-001" priority="must">
+<p>The tool <spec-rule>MUST</spec-rule> infer a precedence DAG from the spec corpus by reading <code>defer-to=</code>
+and <code>&lt;spec-parent specid&gt;</code> reciprocity across <code>specs/*/spec.html</code>; nodes are specs and edges
+are those links. It <spec-rule>MUST NOT</spec-rule> require any separately-authored edge list.</p>
+<details><summary>Rationale</summary><p>The structure already exists in the corpus; re-authoring it as a <code>&lt;spec-dag&gt;</code> would duplicate a source of truth and drift from it.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-002" priority="must">
+<p>The tool <spec-rule>MUST</spec-rule> emit a priority-respecting topological order: no spec appears before a spec it
+depends on, and among dependency-ready specs the next emitted <spec-rule>MUST</spec-rule> be the one with the highest
+RICE score.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-003" priority="must">
+<p>Each spec <spec-rule>MUST</spec-rule> be able to carry one authored RICE annotation (reach, impact, confidence,
+effort); the tool reads it and derives the value score as <code>reach × impact × confidence ÷ effort</code>.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-004" priority="should">
+<p>The tool <spec-rule level="should">SHOULD</spec-rule> elevate a spec by the critical-path value of the subtree it
+unblocks, so a low-scoring foundation that unlocks high total value ranks ahead of a higher-scoring leaf that unlocks
+nothing.</p>
+<details><summary>Rationale</summary><p>This is the "dependency-respecting <em>value</em>" the handover names: leverage, not just a spec's own RICE. SHOULD (not MUST) so a simpler value-only fallback is still conformant if the subtree computation is deferred.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-005" priority="must">
+<p>On any precedence cycle the tool <spec-rule>MUST</spec-rule> hard-error, name every spec on the cycle, and emit no
+order. It <spec-rule>MUST NOT</spec-rule> drop an edge to produce a best-effort sequence.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-006" priority="must">
+<p>A spec lacking a RICE annotation <spec-rule>MUST</spec-rule> still appear in the order — placed consistent with its
+dependencies, after ranked ready peers — and be flagged <em>unranked</em>. It <spec-rule>MUST NOT</spec-rule> be
+silently dropped or silently treated as zero-value.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-007" priority="must">
+<p>The tool <spec-rule>MUST</spec-rule> emit both forms of the result: a machine-readable ordered list of spec IDs (for
+callers such as W-2) and a self-contained HTML roadmap view rendering the sequence, the inferred edges, and any
+unranked flags.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-008" priority="should">
+<p>The roadmap view <spec-rule level="should">SHOULD</spec-rule> compute a WSJF cross-check alongside the RICE order
+and flag the specs where the two methods disagree on position.</p>
+<details><summary>Rationale</summary><p>RICE is the primary ranking; WSJF is a portfolio sanity-check. Surfacing only the divergences keeps it a check, not a competing order.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-009" priority="must">
+<p>The tool <spec-rule>MUST</spec-rule> be read-only over the corpus: it derives and emits the order and view, and
+<spec-rule>MUST NOT</spec-rule> modify any spec it reads.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-010" priority="should">
+<p>A <code>defer-to</code> / <code>&lt;spec-parent&gt;</code> referencing a non-existent spec ID <spec-rule level="should">SHOULD</spec-rule>
+be reported as a dangling edge and excluded from the graph, without aborting the scan.</p>
+</spec-requirement>
+
+<h3>Non-functional</h3>
+
+<spec-requirement id="NFR-001" priority="must">
+<p>Output <spec-rule>MUST</spec-rule> be deterministic: the same corpus yields an identical order and an identical view
+(modulo a generation timestamp). Residual ties after RICE break by spec ID ascending.</p>
+</spec-requirement>
+
+<spec-requirement id="NFR-002" priority="should">
+<p>The tool <spec-rule level="should">SHOULD</spec-rule> order the full live corpus (≥ 28 specs) and write both outputs
+in under 2 seconds on a developer machine.</p>
+</spec-requirement>
+
+<spec-requirement id="NFR-003" priority="should">
+<p>The roadmap view <spec-rule level="should">SHOULD</spec-rule> be a single self-contained HTML file using the shared
+design system, consistent with every other spectastic artifact.</p>
+</spec-requirement>
+
+<h3>Out of scope (deferred to other slices)</h3>
+<spec-out-of-scope>
+  <ul>
+    <li defer-to="TBD-w2-slicer">Slicing a parent spec into children, the ranking judge panel, and the coverage critic — W-2 consumes this ordering; it does not live here.</li>
+    <li defer-to="TBD-w2-slicer">A mechanical "walking skeleton vs horizontal layer" gate. The vertical-slice expectation is a documented authoring guideline; acyclicity is the only hard structural gate here. The judgement, if automated, belongs to W-2's coverage critic.</li>
+    <li defer-to="TBD-rice-estimation">Agent-estimated RICE inputs with a confirm gate. v1 reads authored RICE only.</li>
+    <li defer-to="TBD-corpus-scope">Pulling <code>defer-to</code> edges from inbox cards and triage logs. v1's graph is specs-only.</li>
+  </ul>
+</spec-out-of-scope>
+</section>
+
+
+<section id="data">
+<h2>4 · Data model</h2>
+
+<p>Three entities, one of them new to the design system.</p>
+
+<h3>Entities</h3>
+<dl>
+  <dt>Precedence DAG</dt><dd>Nodes are specs (<code>specs/*/spec.html</code>). Directed edges are <em>inferred</em>, not authored — see the edge semantics below. The graph is acyclic by contract; a cycle is an error (<a href="#FR-005">FR-005</a>), not a state.</dd>
+  <dt><code>&lt;spec-rice&gt;</code> <em>(new)</em></dt><dd>An authored per-spec block carrying <code>reach</code>, <code>impact</code>, <code>confidence</code>, <code>effort</code>. The tool reads it for the value score (<a href="#FR-003">FR-003</a>). Absent ⇒ the spec is <em>unranked</em> but still ordered (<a href="#FR-006">FR-006</a>).</dd>
+  <dt>Ordering</dt><dd>The emitted result: a sequence of spec IDs, each tagged <em>ranked</em>, <em>unranked</em>, or <em>elevated</em> (lifted by subtree value). Rendered two ways — a list for callers, a view for humans (<a href="#FR-007">FR-007</a>).</dd>
+</dl>
+
+<spec-note>
+<p><strong>Edge semantics (the one correctness call — confirmed by the plan).</strong> A precedence edge <strong>P → C</strong>
+exists <em>only</em> where a <code>defer-to</code> and a <code>&lt;spec-parent&gt;</code> <strong>reciprocate</strong>:
+child C carries <code>&lt;spec-parent specid="P"&gt;</code> <em>and</em> parent P carries <code>defer-to="C"</code> — the
+relation the <code>parent-child-reciprocity</code> validate rule already enforces. The edge points parent → child (the
+parent is the established foundation; the child is the work that builds on it). A <em>bare</em>, unreciprocated
+<code>defer-to</code> (e.g. a sibling see-also) is <strong>not</strong> a precedence edge and is excluded.</p>
+<p>This corrects an earlier draft that treated any <code>defer-to</code> as an edge: a grounding spike over the live
+corpus found sibling defer-tos are symmetric (007↔008) and children defer back to parents (012→006), so the naive read
+makes the corpus cyclic and <a href="#FR-005">FR-005</a> would refuse all output. See <a href="./plan.html#D-001">plan D-001</a>.</p>
+</spec-note>
+</section>
+
+
+<section id="success">
+<h2>5 · Success criteria</h2>
+
+<p>Technology-agnostic, measurable outcomes. These are how we know it worked.</p>
+
+<spec-requirement id="SC-001" priority="must">
+<p>For the live corpus, the emitted order satisfies <strong>100%</strong> of inferred precedence edges — re-checking
+each edge against the order finds zero cases where a spec precedes one it depends on.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-002" priority="must">
+<p>A corpus seeded with a precedence cycle produces <strong>no order</strong> and a diagnostic naming every spec on the
+cycle; a reviewer can identify the offending link from the message alone.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-003" priority="should">
+<p>Among dependency-ready specs, the order is non-increasing in RICE score except where <a href="#FR-004">FR-004</a>
+elevation applies, and every position is re-derivable by a reviewer from the published scores.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-004" priority="must">
+<p>Every spec in the corpus appears <strong>exactly once</strong> in the output — ranked specs in value order, unranked
+specs present and flagged — with <strong>zero</strong> specs dropped.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-005" priority="should">
+<p>Two runs over an unchanged corpus produce byte-identical order and view (modulo the generation timestamp),
+verifiable by diff.</p>
+</spec-requirement>
+</section>
+
+
+<section id="assumptions">
+<h2>6 · Assumptions</h2>
+
+<spec-assumption>
+<p>The edge semantics in §4 hold: a precedence edge is a <em>reciprocated</em> <code>defer-to</code>↔<code>&lt;spec-parent&gt;</code>
+pair (parent → child); bare defer-tos are see-also, not edges. Verified against the live corpus by the plan's grounding
+spike (<a href="./plan.html#D-001">D-001</a>) and aligned with the existing <code>parent-child-reciprocity</code> rule.</p>
+</spec-assumption>
+
+<spec-assumption>
+<p>W-2 (the value-ranked slicer) is the downstream consumer of this ordering. Whether W-2 is a workflow initiated by an
+existing verb (e.g. <code>/spectastic.spec</code> owning splits) rather than a ninth slash command is W-2's decision to
+make — it does not constrain this foundation, which is callable from either shape.</p>
+</spec-assumption>
+
+<spec-assumption>
+<p>RICE inputs authored on a spec are trusted as given. Validating or estimating them is out of scope (deferred to
+<code>TBD-rice-estimation</code>).</p>
+</spec-assumption>
+</section>
+
+
+<section id="questions">
+<h2>7 · Open questions</h2>
+<spec-questions>
+<p>None outstanding — every decidable fork (spec scope, DAG inference vs authoring, RICE source, output forms, WSJF
+cross-check, cycle policy, the missing-RICE and corpus-scope edge cases) was anchored in the interview. The single
+correctness call — the precedence each link induces — is defined in §4 and recorded as an assumption for the plan to
+confirm, not left open.</p>
+</spec-questions>
+</section>
+
+
+<section id="conformance">
+<h2>8 · Conformance index</h2>
+<p>Auto-built from every <code>&lt;spec-requirement&gt;</code> in this document.</p>
+<spec-conformance></spec-conformance>
+</section>
+
+
+<section id="changelog">
+<h2>9 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-06-30">2026-06-30</time><span>Initial draft. Scoped as R-002 (the dependency-ordering foundation) ahead of W-2, per the slicer handover; DAG inferred from corpus reciprocity, RICE from a new authored block, dual CLI + view output, WSJF as a SHOULD cross-check.</span></li>
+  <li><time datetime="2026-06-30">2026-06-30</time><span>Draft edit during planning (P-6): corrected §4 edge semantics + the §6 assumption from the naive "any defer-to is an edge" to <em>reciprocated</em> defer-to↔spec-parent pairing (parent → child), after the plan's grounding spike found the naive read makes the live corpus cyclic. Requirement IDs unchanged. See <a href="./plan.html#D-001">plan D-001</a>.</span></li>
+  <li><time datetime="2026-06-30">2026-06-30</time><span>Status flipped Draft → Accepted — zero remaining unchecked tasks; tests verified passing per author confirmation (367 vitest + 6 Playwright, validate clean). Sibling bundle with plan.html + tasks.html (REQ-LIFECYCLE-005).</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  028-dependency-ordering · Order by dependency-respecting value · authored 2026-06-30
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>

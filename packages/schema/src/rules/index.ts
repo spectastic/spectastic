@@ -14,6 +14,7 @@ import { noPlaceholderQuestionRule } from './no-placeholder-question.js';
 import { noUnresolvedQuestionRule } from './no-unresolved-question.js';
 import { parentChildReciprocityRule } from './parent-child-reciprocity.js';
 import { requirementIdRequiredRule } from './requirement-id-required.js';
+import { riceWellFormedRule } from './rice-well-formed.js';
 import { riskStatusRequiredRule } from './risk-status-required.js';
 import { riskTargetRequiredRule } from './risk-target-required.js';
 import { specIdUniqueRule } from './spec-id-unique.js';
@@ -43,6 +44,7 @@ export const rules: readonly Rule[] = [
   taskIdRequiredRule,
   idWithinFileUniqueRule,
   specParentWellFormedRule,
+  riceWellFormedRule,
 
   // Status-dependent rules (per-file).
   noUnresolvedQuestionRule,

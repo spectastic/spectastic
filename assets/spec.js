@@ -137,6 +137,22 @@
     if (!dt) console.warn(`<spec-out-of-scope> item ${i + 1} missing defer-to attribute:`, li.textContent.trim().slice(0, 60));
   });
 
+  /* ---- 5d. spec-rice — RICE value gauge (spec 028-dependency-ordering) --- */
+  /* Compute reach×impact×confidence/effort from the authored attributes and
+     surface it; a malformed block (non-numeric, or effort<=0) is flagged so the
+     value isn't silently dropped (FR-003 / FR-006). */
+  document.querySelectorAll('spec-rice').forEach(el => {
+    const read = name => Number.parseFloat(el.getAttribute(name));
+    const reach = read('reach'), impact = read('impact'), confidence = read('confidence'), effort = read('effort');
+    const ok = [reach, impact, confidence, effort].every(Number.isFinite) && effort > 0;
+    if (!ok) { el.setAttribute('data-rice', 'malformed'); return; }
+    const value = (reach * impact * confidence) / effort;
+    el.setAttribute('data-rice', 'ok');
+    el.innerHTML =
+      `<span class="rice-score">RICE ${value.toFixed(1)}</span>` +
+      `<span class="rice-parts">R ${reach} · I ${impact} · C ${confidence} · E ${effort}</span>`;
+  });
+
   /* ---- 6. spec-delta target click-through -------------------------- */
   document.querySelectorAll('spec-delta[target]').forEach(el => {
     el.style.cursor = 'pointer';

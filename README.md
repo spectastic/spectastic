@@ -345,6 +345,12 @@ spectastic validate --format sarif "specs/**/*.html" > spectastic.sarif
 # /spectastic.implement also materialises it on completion, grounding the
 # Run/Demo block in the commands it actually ran.
 spectastic verify 021-verify-view
+
+# Order the spec corpus by dependency-respecting value: print the ordered spec
+# ids (for scripting / the future slicer) and write a self-contained roadmap.html.
+# Edges are inferred from reciprocated defer-to ↔ <spec-parent> pairs; ties break
+# by RICE value (authored in each spec's <spec-rice> block); a cycle errors loudly.
+spectastic order --out roadmap.html
 ```
 
 Two example CI workflows are under [`docs/ci-examples/`](./docs/ci-examples/): one for GitHub Actions (uploads SARIF to Code Scanning), one for GitLab CI (exposes SARIF as a SAST report). Both surface findings as inline PR/MR annotations.

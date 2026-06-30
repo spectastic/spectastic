@@ -7,6 +7,7 @@ import { registerCourse } from './commands/course.js';
 import { registerExplore } from './commands/explore.js';
 import { registerImplement } from './commands/implement.js';
 import { registerInit } from './commands/init.js';
+import { registerOrder } from './commands/order.js';
 import { registerPlan } from './commands/plan.js';
 import { registerPrinciples } from './commands/principles.js';
 import { registerPropose } from './commands/propose.js';
@@ -52,6 +53,7 @@ registerPlan(program);
 registerPropose(program);
 registerImplement(program);
 registerVerify(program);
+registerOrder(program);
 registerExplore(program);
 
 if (process.argv.length <= 2) {

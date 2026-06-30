@@ -120,6 +120,48 @@ function extractHeaderFields(doc: ParsedDocument): {
   };
 }
 
+/**
+ * The authored RICE inputs on a spec's `<spec-rice>` block (spec
+ * 028-dependency-ordering, FR-003). The value score is `reach × impact ×
+ * confidence ÷ effort`; consumers compute it via {@link riceValue} so the
+ * arithmetic lives in one place.
+ */
+export interface RiceInputs {
+  reach: number;
+  impact: number;
+  confidence: number;
+  effort: number;
+}
+
+/**
+ * Read the first `<spec-rice reach impact confidence effort>` block on a spec
+ * into its numeric inputs, or `null` when the block is absent OR malformed
+ * (any non-finite input, a negative, or `effort <= 0`). A `null` makes the spec
+ * *unranked* but still orderable (028 FR-006); the `rice-well-formed` validate
+ * rule separately surfaces a malformed block so the gap is loud, not silent.
+ */
+export function extractRice(htmlOrDoc: string | ParsedDocument): RiceInputs | null {
+  const doc = typeof htmlOrDoc === 'string' ? parse(htmlOrDoc, '<inline>') : htmlOrDoc;
+  const el = findAll(doc.ast, 'spec-rice')[0];
+  if (!el) return null;
+  const read = (name: string): number => {
+    const raw = getAttr(el, name);
+    return raw === undefined ? Number.NaN : Number(raw);
+  };
+  const reach = read('reach');
+  const impact = read('impact');
+  const confidence = read('confidence');
+  const effort = read('effort');
+  const finite = [reach, impact, confidence, effort].every((n) => Number.isFinite(n) && n >= 0);
+  if (!finite || effort <= 0) return null;
+  return { reach, impact, confidence, effort };
+}
+
+/** The RICE value score: `reach × impact × confidence ÷ effort`. */
+export function riceValue(r: RiceInputs): number {
+  return (r.reach * r.impact * r.confidence) / r.effort;
+}
+
 export type BudgetBand = 'green' | 'amber' | 'red';
 
 export interface ArtifactHealth {
