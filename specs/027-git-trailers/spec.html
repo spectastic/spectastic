@@ -1,0 +1,320 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Git trailers — attribution from the artifact · Specification</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Specification · 027-git-trailers</p>
+  <h1>Git trailers — attribution from the artifact</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    spectastic already captures who authored, reviewed, and acked the work — in the artifact. This slice projects
+    that attribution into the commit footer as git trailers, names humans as authors, and acknowledges the AI as a
+    tool, never an author of record.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>      <span><spec-status value="draft">Draft</spec-status></span>
+    <b>Spec ID</b>     <span>027-git-trailers</span>
+    <b>Owner</b>       <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Reviewers</b>   <span>—</span>
+    <b>Created</b>     <span><time datetime="2026-06-29">2026-06-29</time></span>
+    <b>Principles</b><span><a href="../../principles.html">v1.2.0</a></span>
+    <b>Smallest demoable</b><span>With <code>git.trailers=on</code>, flip a reviewed spec and watch the commit footer carry <code>Author:</code> + <code>Reviewed-by:</code> + <code>Refs:</code>, derived from <code>&lt;spec-meta&gt;</code> with zero re-keying.</span>
+    <b>Read time</b>   <span data-reading-time></span>
+  </spec-meta>
+
+  <!-- Green ≤80%, amber 80-100%, red over (REQ-FORMAT-004). Deliberately larger target: this slice
+       carries 5 trailers + 2 contract amendments — the author accepted the bigger scope over a split
+       (amber-by-design). The Acked-by + dispositioner half remains splittable if it grows further. -->
+  <spec-budget words="1700" reqs="20" minutes="12"></spec-budget>
+
+  <spec-tldr>
+    <p>The opt-in git layer (<a href="../026-git-strategy/spec.html">026</a>) ships commits but omits attribution —
+    it named the <code>git.trailers</code> key and deferred the behaviour here. This slice renders trailers from
+    <code>&lt;spec-meta&gt;</code> and the lifecycle — <code>Author</code>, <code>Reviewed-by</code>,
+    <code>Co-authored-by</code>, <code>Acked-by</code>, <code>Refs</code> (humans only) — adds a distinct
+    <code>Assisted-by: &lt;model&gt;</code> for the AI, and carries two contract changes: a meta-spec amendment
+    capturing the risk-pass dispositioner (the <code>Acked-by</code> source) and a CONTRIBUTING update permitting
+    <code>Assisted-by</code>.</p>
+  </spec-tldr>
+
+  <dl class="invest">
+    <dt><span class="letter">I</span> Independent</dt> <dd>Builds on <a href="../026-git-strategy/spec.html">026</a> (emits the commit) + the live <a href="../../spec.html#REQ-LIFECYCLE-004">REQ-LIFECYCLE-004</a> (the Reviewers source). Reads artifacts, writes trailer lines.</dd>
+    <dt><span class="letter">N</span> Negotiable</dt>  <dd>Outcomes only. The model-id source, the rendering call, and the dispositioner-capture markup are the plan's.</dd>
+    <dt><span class="letter">V</span> Valuable</dt>    <dd>Unlocks <a href="#SC-001">SC-001</a> — review and authorship become queryable git history, not re-keyed by hand.</dd>
+    <dt><span class="letter">E</span> Estimable</dt>   <dd>Decisions anchored; the two contract amendments are named, scoped deliverables.</dd>
+    <dt><span class="letter">S</span> Small</dt>       <dd>The largest slice in the family — five trailers + two amendments. Amber by design; the Acked-by + dispositioner half can split to a sibling if needed.</dd>
+    <dt><span class="letter">T</span> Testable</dt>    <dd>Every trailer is observable in a real commit footer; presence/absence and the human-only rule assert cleanly.</dd>
+  </dl>
+
+  <spec-audience-map>
+    <dl>
+      <dt>Exec / PM</dt>   <dd>§<a href="#context">Context</a>, §<a href="#scenarios">User scenarios</a>, §<a href="#success">Success criteria</a>.</dd>
+      <dt>Reviewer</dt>    <dd>§<a href="#requirements">Requirements</a>, §<a href="#assumptions">Assumptions</a>, §<a href="#questions">Open questions</a>.</dd>
+      <dt>Implementer</dt> <dd>§<a href="#requirements">Requirements</a>, §<a href="#data">Data model</a>, §<a href="#conformance">Conformance index</a>.</dd>
+    </dl>
+  </spec-audience-map>
+</header>
+
+
+<section id="context">
+<h2>1 · Context</h2>
+<p>spectastic produces attribution as a side effect of its lifecycle — <code>&lt;spec-meta&gt;</code> carries
+<code>Owner</code>/<code>Author</code> and (now) <code>Reviewers</code>, the risk pass
+(<a href="../../spec.html#REQ-CHANGE-004">REQ-CHANGE-004</a>) produces human-confirmed dispositions, every archive
+leaves a proposal + changelog — but none of it reaches git. <a href="../026-git-strategy/spec.html">026</a> ships
+the commits and deferred trailers to this slice; it omitted <code>Reviewed-by</code> because no field carried the
+reviewer until the just-applied <a href="../../spec.html#REQ-LIFECYCLE-004">REQ-LIFECYCLE-004</a> amendment.</p>
+<p>The trailer→source mapping is the git-strategy brief's (see §4). The values stance is refined here: human
+authorship of record stays human, but the AI is acknowledged distinctly as <code>Assisted-by: &lt;model&gt;</code>
+— a tool, not a contributor of record. The users are maintainers who want "who wrote / reviewed / acked this"
+answerable from git history without re-keying.</p>
+</section>
+
+
+<section id="scenarios">
+<h2>2 · User scenarios &amp; testing</h2>
+
+<h3 id="US1">US1 · Human attribution from the artifact <spec-pill>P1</spec-pill></h3>
+<p>As a <strong>maintainer</strong>, I want to <strong>have commits carry the human authorship and review trailers
+derived from <code>&lt;spec-meta&gt;</code></strong> so that <strong>who wrote and reviewed the work is queryable
+git history, never re-keyed and never an AI</strong>.</p>
+<p><em>Acceptance:</em> With <code>git.trailers=on</code>, an auto-commit carries <code>Author:</code> (from Owner),
+<code>Refs:</code> (the provenance link on apply), <code>Reviewed-by:</code> (when Reviewers is populated), and
+<code>Co-authored-by:</code> (when the artifact's human author isn't the git committer). Each absent source omits
+its trailer; none is ever faked.</p>
+
+<h3 id="US2">US2 · The AI is acknowledged, not credited as author <spec-pill>P2</spec-pill></h3>
+<p>As a <strong>project lead</strong>, I want to <strong>acknowledge the assisting model distinctly from human
+authorship</strong> so that <strong>attribution is honest about the tool without overclaiming it as a contributor
+of record</strong>.</p>
+<p><em>Acceptance:</em> A commit for an AI-coupled verb carries <code>Assisted-by: &lt;model&gt;</code>; a
+deterministic verb's commit carries none. No AI identity ever appears as <code>Author</code>,
+<code>Co-authored-by</code>, <code>Reviewed-by</code>, or <code>Acked-by</code>.</p>
+
+<h3 id="US3">US3 · Design-time sign-off is attributable <spec-pill>P3</spec-pill></h3>
+<p>As a <strong>reviewer</strong>, I want to <strong>have the apply commit name the human who dispositioned the
+adversarial risk pass</strong> so that <strong>risk sign-off is attributable, not anonymous</strong>.</p>
+<p><em>Acceptance:</em> Once the risk-pass disposition records its author, an apply commit carries
+<code>Acked-by:</code> naming that human; absent a recorded dispositioner, it is omitted.</p>
+
+<h3>Edge cases</h3>
+<ul>
+  <li><strong>Empty / missing field.</strong> No Owner, empty Reviewers, no dispositioner → the corresponding
+  trailer is omitted; the commit still succeeds (the artifact write already did).</li>
+  <li><strong>Author is the committer.</strong> No <code>Co-authored-by</code> — it would duplicate
+  <code>Author</code>.</li>
+  <li><strong>Stub / unknown model.</strong> When the assisting model can't be identified, <code>Assisted-by</code>
+  is omitted rather than guessed.</li>
+</ul>
+</section>
+
+
+<section id="requirements">
+<h2>3 · Requirements</h2>
+
+<p>Conformance keywords (<spec-rule>MUST</spec-rule>, <spec-rule level="should">SHOULD</spec-rule>,
+<spec-rule level="may">MAY</spec-rule>) follow RFC 2119.</p>
+
+<h3>Functional</h3>
+
+<spec-requirement id="FR-001" priority="must">
+<p><code>git.trailers</code> <spec-rule>MUST</spec-rule> default to <code>off</code> and take effect only when
+<code>git.auto</code> produces a commit (<code>commit</code> or <code>branch+commit</code>); with no commit there
+are no trailers. It is an independent opt-in toggle, not coupled to <code>git.auto</code>'s value beyond that.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-002" priority="must">
+<p>When <code>git.trailers=on</code>, an auto-commit <spec-rule>MUST</spec-rule> carry <code>Author:</code> derived
+from the artifact's <code>&lt;spec-meta&gt;</code> <code>Owner</code>/<code>Author</code> (a human), and
+<code>Refs:</code> pointing at the archived proposal/changelog when the verb has a provenance link (e.g. apply).</p>
+</spec-requirement>
+
+<spec-requirement id="FR-003" priority="must">
+<p>When the committed spec's <code>Reviewers</code> field is populated (per
+<a href="../../spec.html#REQ-LIFECYCLE-004">REQ-LIFECYCLE-004</a>), the commit <spec-rule>MUST</spec-rule> carry
+<code>Reviewed-by:</code> derived from it; an empty <code>Reviewers</code> field <spec-rule>MUST</spec-rule> omit
+the trailer — never faked.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-004" priority="should">
+<p>When the artifact's human author differs from the git committer identity, the commit
+<spec-rule level="should">SHOULD</spec-rule> carry <code>Co-authored-by:</code> naming that human.
+<code>Co-authored-by</code> is human-only.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-005" priority="must">
+<p>For a commit whose verb invoked an AI provider to generate the artifact (the AI-coupled verbs: <code>spec</code>,
+<code>plan</code>, <code>tasks</code>, <code>triage</code>, <code>principles</code>, <code>propose</code>), the
+commit <spec-rule>MUST</spec-rule> carry <code>Assisted-by: &lt;model&gt;</code> naming the assisting model.
+Deterministic verbs (<code>apply</code>, an <code>implement</code> tick) emit no <code>Assisted-by</code>.</p>
+<details><summary>Rationale</summary><p>The trailer attributes the assistance that actually happened on that
+artifact; a deterministic verb used no AI, so claiming assistance would be false.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-006" priority="must">
+<p>spectastic <spec-rule>MUST NOT</spec-rule> emit any AI/model identity as <code>Author</code>,
+<code>Co-authored-by</code>, <code>Reviewed-by</code>, or <code>Acked-by</code>. AI attribution is confined to
+<code>Assisted-by</code> — the AI is a tool acknowledged, never a contributor of record.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-007" priority="should">
+<p>When <code>git.trailers=on</code>, an apply commit <spec-rule level="should">SHOULD</spec-rule> carry
+<code>Acked-by:</code> naming the human who dispositioned the adversarial risk pass; absent a recorded
+dispositioner the trailer <spec-rule>MUST</spec-rule> be omitted, never faked.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-008" priority="must">
+<p>This slice <spec-rule>MUST</spec-rule> deliver a meta-spec amendment (a <code>/spectastic.propose</code> against
+<a href="../../spec.html">000-spectastic</a> amending <a href="../../spec.html#REQ-CHANGE-004">REQ-CHANGE-004</a>)
+so the human who dispositions each <code>&lt;spec-risk&gt;</code> is recorded — the source FR-007 reads.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-009" priority="must">
+<p>This slice <spec-rule>MUST</spec-rule> amend <code>CONTRIBUTING.md</code>'s "no AI-attribution trailers" rule to
+permit <code>Assisted-by</code> as a tool acknowledgment, while preserving "no AI as author of record"
+(<code>Author</code>/<code>Co-authored-by</code> stay human).</p>
+<details><summary>Rationale</summary><p>The standing rule banned all AI attribution; this refines it — authorship
+stays human, a distinct <code>Assisted-by</code> semantic acknowledges the tool. The change is explicit, not a
+silent reversal.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-010" priority="must">
+<p>Any trailer whose source is absent <spec-rule>MUST</spec-rule> be omitted (never a placeholder or faked value),
+and a missing source <spec-rule>MUST NOT</spec-rule> fail the commit.</p>
+</spec-requirement>
+
+<h3>Non-functional</h3>
+
+<spec-requirement id="NFR-001" priority="should">
+<p>Trailer rendering <spec-rule level="should">SHOULD</spec-rule> add no measurable network cost and stay within
+026's ≤ 1 s p95 git-layer budget — it parses an artifact the layer already read.</p>
+</spec-requirement>
+
+<h3>Out of scope (deferred to other slices)</h3>
+<spec-out-of-scope>
+  <ul>
+    <li defer-to="TBD">A <code>validate</code> rule enforcing a non-empty <code>Reviewers</code> field — honesty
+    rests on omit-when-absent (FR-003/FR-010), not static enforcement.</li>
+    <li defer-to="000-spectastic">Signing / <code>Signed-off-by</code> (DCO) trailers — a separate governance
+    concern, not attribution from the artifact.</li>
+    <li defer-to="TBD">Splitting under the branch model (git-strategy <code>G-005</code>).</li>
+  </ul>
+</spec-out-of-scope>
+</section>
+
+
+<section id="data">
+<h2>4 · Data model</h2>
+
+<p>One new config key; the rest is read from existing structures. No new artifact type.</p>
+
+<h3>Entities</h3>
+<dl>
+  <dt>Git config (<code>git.trailers</code>)</dt><dd><code>off</code> (default) | <code>on</code> — named by 026,
+  behaviour owned here.</dd>
+  <dt>Trailer → source map</dt><dd><code>Author</code> ← <code>&lt;spec-meta&gt;</code> Owner/Author;
+  <code>Co-authored-by</code> ← a human author ≠ committer; <code>Reviewed-by</code> ← Reviewers;
+  <code>Acked-by</code> ← the risk-pass dispositioner; <code>Refs</code> ← archived proposal/changelog;
+  <code>Assisted-by</code> ← the assisting model (AI-coupled verbs only).</dd>
+  <dt>Risk-pass dispositioner (new, via FR-008)</dt><dd>The human who set each <code>&lt;spec-risk&gt;</code>
+  status — recorded by the REQ-CHANGE-004 amendment so <code>Acked-by</code> has a source.</dd>
+</dl>
+
+<spec-note>
+<p>Human trailers name humans; the AI appears only as <code>Assisted-by</code> — distinct semantics, enforced by
+FR-006.</p>
+</spec-note>
+</section>
+
+
+<section id="success">
+<h2>5 · Success criteria</h2>
+
+<p>Technology-agnostic, measurable outcomes.</p>
+
+<spec-requirement id="SC-001" priority="must">
+<p>With <code>git.trailers=on</code>, committing a reviewed spec produces a footer carrying <code>Author:</code> and
+<code>Reviewed-by:</code> taken verbatim from the populated <code>&lt;spec-meta&gt;</code> fields, with zero manual
+re-keying.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-002" priority="must">
+<p>With <code>git.trailers=off</code> (default), no commit carries any trailer.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-003" priority="must">
+<p>A commit for an AI-coupled verb carries exactly one <code>Assisted-by: &lt;model&gt;</code> line; a deterministic
+verb's commit carries none.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-004" priority="must">
+<p>No commit carries an AI/model identity in an <code>Author</code>, <code>Co-authored-by</code>,
+<code>Reviewed-by</code>, or <code>Acked-by</code> line — auditable across a corpus of generated commits.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-005" priority="should">
+<p>A trailer whose source field is absent does not appear, and its absence never fails the commit (verified by
+committing an artifact with an empty Reviewers / no dispositioner).</p>
+</spec-requirement>
+</section>
+
+
+<section id="assumptions">
+<h2>6 · Assumptions</h2>
+
+<spec-assumption>
+<p>The git committer identity (git <code>user.name</code>/<code>user.email</code>) is available to compare against
+the artifact's human author for the <code>Co-authored-by</code> decision (FR-004).</p>
+</spec-assumption>
+
+<spec-assumption>
+<p>The assisting model's identity is obtainable at commit time (from the AI provider in use, or config) for
+<code>Assisted-by</code>; when it isn't, the trailer is omitted (FR-005 edge case). The two contract amendments
+(FR-008, FR-009) land via the normal propose/apply path as this slice's tasks.</p>
+</spec-assumption>
+</section>
+
+
+<section id="questions">
+<h2>7 · Open questions</h2>
+<spec-questions>
+<p>None outstanding — the trailer set, the AI-attribution refinement (<code>Assisted-by</code>, humans stay
+authors), the <code>git.trailers</code> default, and the two folded contract amendments were all anchored in the
+interview.</p>
+</spec-questions>
+</section>
+
+
+<section id="conformance">
+<h2>8 · Conformance index</h2>
+<p>Auto-built from every <code>&lt;spec-requirement&gt;</code> in this document.</p>
+<spec-conformance></spec-conformance>
+</section>
+
+
+<section id="changelog">
+<h2>9 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-06-29">2026-06-29</time><span>Initial draft — attribution trailers from the artifact (G-004): human Author/Reviewed-by/Co-authored-by/Acked-by/Refs, a distinct Assisted-by for the AI, and two folded contract amendments.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  027-git-trailers · Git trailers — attribution from the artifact · authored 2026-06-29
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>
