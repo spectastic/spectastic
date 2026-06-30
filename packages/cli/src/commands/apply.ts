@@ -65,6 +65,19 @@ export function registerApply(program: Command): void {
 
         // Opt-in git layer (spec 026): stage the whole spec dir so the commit captures
         // the spec patch, the tasks-fold, and the changes→archive move (D-006).
+        // Acked-by source (spec 027 FR-007): the human who dispositioned the risk
+        // pass, read from the applied proposal's first `<spec-risk by="…">`. Absent
+        // (no risk pass, or no by=) → the trailer is omitted.
+        let dispositioner: string | undefined;
+        if (!opts.withdraw) {
+          try {
+            const proposalHtml = await fs.readFile(path.join(result.archivedPath, 'proposal.html'), 'utf8');
+            dispositioner = /<spec-risk[^>]*\bby="([^"]+)"/.exec(proposalHtml)?.[1];
+          } catch {
+            // no readable proposal → omit Acked-by
+          }
+        }
+
         const { commitVerbAndExit } = await import('../git/index.js');
         await commitVerbAndExit({
           verb: 'apply',
@@ -72,6 +85,8 @@ export function registerApply(program: Command): void {
           specId,
           paths: [path.resolve(process.cwd(), 'specs', specId)],
           subject: slug,
+          refs: result.archivedPath, // Refs trailer (spec 027 FR-002)
+          ...(dispositioner === undefined ? {} : { dispositioner }),
           ...(opts.commit === undefined ? {} : { commit: opts.commit }),
         });
       },

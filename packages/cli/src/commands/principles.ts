@@ -73,6 +73,7 @@ export function registerPrinciples(program: Command): void {
         const { commitVerbAndExit } = await import('../git/index.js');
         await commitVerbAndExit({
           verb: 'principles',
+          model: ai.model, // Assisted-by (spec 027 FR-005)
           cwd: process.cwd(),
           specId: '',
           paths: [opts.output],

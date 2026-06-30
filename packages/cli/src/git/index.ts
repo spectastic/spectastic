@@ -11,7 +11,8 @@
 
 import { loadGitConfig } from './config.js';
 import { branchName, commitSubject, shouldCreateBranch } from './derive.js';
-import { gitRunner, type GitRunner } from './run.js';
+import { gitRunner, type GitRunner, type Trailer } from './run.js';
+import { gatherTrailers } from './trailers.js';
 
 /** The `git.auto` config switch (spec 026 §4; default `off`, FR-004). */
 export type GitAuto = 'off' | 'commit' | 'branch+commit';
@@ -48,6 +49,12 @@ export interface CommitContext {
   newSlice?: boolean;
   /** Per-invocation override of the configured `git.auto` (`--commit` / `--no-commit`, FR-004). */
   override?: 'commit' | 'no-commit';
+  /** Provenance link for the `Refs` trailer — the archived proposal/changelog (apply). */
+  refs?: string;
+  /** The assisting model for `Assisted-by` — set only by AI-coupled verbs (spec 027). */
+  model?: string;
+  /** The risk-pass dispositioner for `Acked-by` — set by apply (spec 027). */
+  dispositioner?: string;
   /** Injected runner (tests); defaults to a real `git` runner over `cwd`. */
   runner?: GitRunner;
 }
@@ -92,6 +99,12 @@ export async function commitVerbAndExit(opts: {
   subject: string;
   newSlice?: boolean;
   commit?: boolean;
+  /** Provenance for the `Refs` trailer (apply). */
+  refs?: string;
+  /** The assisting model for `Assisted-by` (AI-coupled verbs). */
+  model?: string;
+  /** The risk-pass dispositioner for `Acked-by` (apply). */
+  dispositioner?: string;
 }): Promise<never> {
   const override = parseCommitOverride(opts.commit);
   const outcome = await commitForVerb({
@@ -102,6 +115,9 @@ export async function commitVerbAndExit(opts: {
     subject: opts.subject,
     newSlice: opts.newSlice ?? false,
     ...(override ? { override } : {}),
+    ...(opts.refs === undefined ? {} : { refs: opts.refs }),
+    ...(opts.model === undefined ? {} : { model: opts.model }),
+    ...(opts.dispositioner === undefined ? {} : { dispositioner: opts.dispositioner }),
   });
   process.exit(reportGitOutcome(outcome));
 }
@@ -155,7 +171,8 @@ async function countBlockingFindings(cwd: string, paths: string[]): Promise<numb
  * commit `<verb>(NNN): <subject>`.
  */
 export async function commitForVerb(ctx: CommitContext): Promise<CommitOutcome> {
-  const auto = effectiveAuto(loadGitConfig(ctx.cwd).auto, ctx.override);
+  const cfg = loadGitConfig(ctx.cwd);
+  const auto = effectiveAuto(cfg.auto, ctx.override);
   if (auto === 'off') return { committed: false, reason: 'git.auto=off' };
 
   // Validate gate — the commit is the reward for a clean verb (FR-001/FR-008).
@@ -178,9 +195,57 @@ export async function commitForVerb(ctx: CommitContext): Promise<CommitOutcome> 
 
   await runner.add(ctx.paths);
   const subject = commitSubject(ctx.verb, ctx.specId, ctx.subject);
-  await runner.commit(subject);
+
+  // Attribution trailers (spec 027) — only when git.trailers=on.
+  const trailers = cfg.trailers === 'on' ? await gatherCommitTrailers(ctx, runner) : [];
+  await runner.commit(subject, trailers);
 
   return { committed: true, commitSubject: subject, ...(branch ? { branch } : {}) };
+}
+
+/**
+ * Gather the attribution trailers for a commit (spec 027): read the artifact's
+ * `<spec-meta>` (Owner/Author/Reviewers), the local committer, and the verb's
+ * provenance/model/dispositioner from the context. The spec.html is the meta
+ * source — the verb's own html path, else `specs/<specId>/spec.html`. A missing
+ * source yields no meta (and so no human trailers), never an error.
+ */
+async function gatherCommitTrailers(ctx: CommitContext, runner: GitRunner): Promise<Trailer[]> {
+  const [{ extractSpecMetadata }, { readFile }, { join }] = await Promise.all([
+    import('@spectastic/schema'),
+    import('node:fs/promises'),
+    import('node:path'),
+  ]);
+
+  // Attribution (Owner/Reviewers) lives on the spec, so the spec.html is the
+  // canonical source whatever verb is committing; spec-less verbs (no specId)
+  // fall back to the verb's own html, if any.
+  const htmlPath = ctx.specId
+    ? join(ctx.cwd, 'specs', ctx.specId, 'spec.html')
+    : ctx.paths.find((p) => p.endsWith('.html'));
+
+  let meta: { owner: string | null; author: string | null; reviewers: string | null } = {
+    owner: null,
+    author: null,
+    reviewers: null,
+  };
+  if (htmlPath) {
+    try {
+      const md = extractSpecMetadata(await readFile(htmlPath, 'utf8'));
+      meta = { owner: md.owner, author: md.author, reviewers: md.reviewers };
+    } catch {
+      // no readable artifact meta → no human trailers (FR-010)
+    }
+  }
+
+  const committer = await runner.committer();
+  return gatherTrailers({
+    meta,
+    committer,
+    refs: ctx.refs,
+    model: ctx.model,
+    dispositioner: ctx.dispositioner,
+  });
 }
 
 /**

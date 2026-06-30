@@ -64,6 +64,7 @@ export function registerTriage(program: Command): void {
         const cwd = process.cwd();
         await commitVerbAndExit({
           verb: 'triage',
+          model: ai.model, // Assisted-by (spec 027 FR-005)
           cwd,
           specId: opts.spec ?? '',
           paths: [opts.spec ? path.resolve(cwd, 'specs', opts.spec) : path.resolve(cwd, 'inbox.html')],

@@ -23,24 +23,36 @@ afterEach(() => {
 });
 
 describe('loadGitConfig (T-010)', () => {
-  it('absent spectastic.json → auto:"off" (FR-004 default)', () => {
-    expect(loadGitConfig(tmpProject())).toEqual({ auto: 'off' });
+  it('absent spectastic.json → defaults (auto+trailers off)', () => {
+    expect(loadGitConfig(tmpProject())).toEqual({ auto: 'off', trailers: 'off' });
   });
 
-  it('present file with no git section → off', () => {
-    expect(loadGitConfig(tmpProject('{ "unrelated": true }'))).toEqual({ auto: 'off' });
+  it('present file with no git section → defaults', () => {
+    expect(loadGitConfig(tmpProject('{ "unrelated": true }'))).toEqual({ auto: 'off', trailers: 'off' });
   });
 
-  it('git section with no auto key → off', () => {
-    expect(loadGitConfig(tmpProject('{ "git": {} }'))).toEqual({ auto: 'off' });
+  it('git section with no keys → defaults', () => {
+    expect(loadGitConfig(tmpProject('{ "git": {} }'))).toEqual({ auto: 'off', trailers: 'off' });
   });
 
   it.each(['off', 'commit', 'branch+commit'] as const)('parses git.auto=%s', (auto) => {
-    expect(loadGitConfig(tmpProject(`{ "git": { "auto": "${auto}" } }`))).toEqual({ auto });
+    expect(loadGitConfig(tmpProject(`{ "git": { "auto": "${auto}" } }`))).toEqual({ auto, trailers: 'off' });
+  });
+
+  // T-003: the git.trailers key (spec 027, FR-001).
+  it.each(['off', 'on'] as const)('parses git.trailers=%s', (trailers) => {
+    expect(loadGitConfig(tmpProject(`{ "git": { "trailers": "${trailers}" } }`))).toEqual({
+      auto: 'off',
+      trailers,
+    });
   });
 
   it('rejects an unknown git.auto value loudly', () => {
     expect(() => loadGitConfig(tmpProject('{ "git": { "auto": "yolo" } }'))).toThrow(GitConfigError);
+  });
+
+  it('rejects an unknown git.trailers value loudly', () => {
+    expect(() => loadGitConfig(tmpProject('{ "git": { "trailers": "maybe" } }'))).toThrow(GitConfigError);
   });
 
   it('rejects malformed JSON loudly', () => {

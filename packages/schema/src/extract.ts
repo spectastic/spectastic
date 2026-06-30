@@ -21,6 +21,12 @@ export interface Requirement {
 export interface SpecMetadata {
   /** Spec ID extracted from <p class="small-caps">Specification · <id></p>. */
   specId: string | null;
+  /** `<spec-meta>` Owner field (the human owner), or null. */
+  owner: string | null;
+  /** `<spec-meta>` Author field (proposals use Author rather than Owner), or null. */
+  author: string | null;
+  /** `<spec-meta>` Reviewers field — may be an empty placeholder (e.g. "—"); or null when absent. */
+  reviewers: string | null;
   /** Functional requirements (FR-NNN). */
   fr: Requirement[];
   /** Non-functional requirements (NFR-NNN). */
@@ -64,6 +70,9 @@ export function extractSpecMetadata(htmlOrDoc: string | ParsedDocument): SpecMet
     }
   }
 
+  // <spec-meta> header fields (spec 027-git-trailers, D-002).
+  const { owner, author, reviewers } = extractHeaderFields(doc);
+
   const fr: Requirement[] = [];
   const nfr: Requirement[] = [];
   const sc: Requirement[] = [];
@@ -79,7 +88,36 @@ export function extractSpecMetadata(htmlOrDoc: string | ParsedDocument): SpecMet
     else if (SC_RE.test(id)) sc.push(entry);
   }
 
-  return { specId, fr, nfr, sc };
+  return { specId, owner, author, reviewers, fr, nfr, sc };
+}
+
+/**
+ * The `<spec-meta>` header fields (spec 027-git-trailers, D-002): the block is
+ * alternating `<b>Label</b><span>value</span>` pairs, so zip the `<b>` labels
+ * against the `<span>` values. Owner/Author/Reviewers feed the attribution
+ * trailers; an absent field is null (an empty placeholder like "—" is kept
+ * verbatim so the trailer gatherer can treat it as absent).
+ */
+function extractHeaderFields(doc: ParsedDocument): {
+  owner: string | null;
+  author: string | null;
+  reviewers: string | null;
+} {
+  const metaEl = findAll(doc.ast, 'spec-meta')[0];
+  if (!metaEl) return { owner: null, author: null, reviewers: null };
+
+  const labels = findAll(metaEl, 'b').map((b) => textOf(b).trim());
+  const values = findAll(metaEl, 'span').map((s) => textOf(s).trim());
+  const fields: Record<string, string> = {};
+  for (let i = 0; i < Math.min(labels.length, values.length); i++) {
+    const label = labels[i];
+    if (label) fields[label] = values[i] ?? '';
+  }
+  return {
+    owner: fields['Owner'] ?? null,
+    author: fields['Author'] ?? null,
+    reviewers: fields['Reviewers'] ?? null,
+  };
 }
 
 export type BudgetBand = 'green' | 'amber' | 'red';

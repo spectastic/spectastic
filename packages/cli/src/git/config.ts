@@ -22,14 +22,20 @@ export class GitConfigError extends Error {
   }
 }
 
+/** `git.trailers` (spec 027-git-trailers, FR-001): attribution trailers in the
+ * commit footer. Default `off`; takes effect only when `git.auto` commits. */
+export type GitTrailers = 'off' | 'on';
+
 export interface GitConfig {
   auto: GitAuto;
+  trailers: GitTrailers;
 }
 
 const VALID_AUTO: readonly GitAuto[] = ['off', 'commit', 'branch+commit'];
+const VALID_TRAILERS: readonly GitTrailers[] = ['off', 'on'];
 
 /** The defaults applied when `spectastic.json` (or its `git` section) is absent. */
-export const DEFAULT_GIT_CONFIG: GitConfig = { auto: 'off' };
+export const DEFAULT_GIT_CONFIG: GitConfig = { auto: 'off', trailers: 'off' };
 
 /**
  * Read `<cwd>/spectastic.json` and extract the `git` section. Absent file →
@@ -63,12 +69,21 @@ export function loadGitConfig(cwd: string): GitConfig {
     throw new GitConfigError('spectastic.json "git" must be an object.');
   }
 
-  const auto = (git as Record<string, unknown>)['auto'] ?? 'off';
+  const gitObj = git as Record<string, unknown>;
+
+  const auto = gitObj['auto'] ?? 'off';
   if (typeof auto !== 'string' || !VALID_AUTO.includes(auto as GitAuto)) {
     throw new GitConfigError(
       `spectastic.json "git.auto" must be one of ${VALID_AUTO.join(', ')} (got ${JSON.stringify(auto)}).`,
     );
   }
 
-  return { auto: auto as GitAuto };
+  const trailers = gitObj['trailers'] ?? 'off';
+  if (typeof trailers !== 'string' || !VALID_TRAILERS.includes(trailers as GitTrailers)) {
+    throw new GitConfigError(
+      `spectastic.json "git.trailers" must be one of ${VALID_TRAILERS.join(', ')} (got ${JSON.stringify(trailers)}).`,
+    );
+  }
+
+  return { auto: auto as GitAuto, trailers: trailers as GitTrailers };
 }

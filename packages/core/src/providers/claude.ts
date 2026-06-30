@@ -52,7 +52,8 @@ export interface ClaudeProviderOptions {
 
 export class ClaudeProvider implements AIProvider {
   private readonly client: Anthropic;
-  private readonly model: string;
+  /** Public per the AIProvider contract (the `Assisted-by` source, spec 027). */
+  readonly model: string;
   private readonly apiKey: string;
 
   constructor(options: ClaudeProviderOptions = {}) {

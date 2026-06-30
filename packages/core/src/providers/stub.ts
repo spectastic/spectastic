@@ -45,6 +45,8 @@ export interface StubScript {
 }
 
 export class StubAIProvider implements AIProvider {
+  /** Deterministic id so the `Assisted-by` trailer is testable (spec 027, D-003). */
+  readonly model = 'stub-model';
   private chatIdx = 0;
   private askIdx = 0;
   private subagentIdx = 0;

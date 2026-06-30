@@ -128,6 +128,7 @@ export function registerSpec(program: Command): void {
       // Opt-in git layer (spec 026): branch + commit the artifact when git.auto is on.
       const outcome = await commitForVerb({
         verb: 'spec',
+        model: ai.model, // Assisted-by (spec 027 FR-005)
         cwd,
         specId: result.specId,
         paths: [outPath],

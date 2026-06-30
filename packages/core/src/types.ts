@@ -106,6 +106,9 @@ export interface SubagentResult {
  * implementation; 013 wires up subagent().
  */
 export interface AIProvider {
+  /** The model identifier this provider invokes — the `Assisted-by` trailer
+   * source (spec 027-git-trailers, D-003). A stub reports a deterministic id. */
+  readonly model: string;
   /** Freeform model invocation. */
   chat(prompt: string, opts?: ChatOpts): Promise<string>;
   /** Typed bounded-choice prompt. */

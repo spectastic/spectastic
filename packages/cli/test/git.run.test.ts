@@ -40,6 +40,46 @@ describe('gitRunner wrappers (T-014)', () => {
     expect(flat).not.toMatch(/--amend|--squash|rebase|reset/);
   });
 
+  it('commit appends one --trailer per entry (T-014, spec 027 D-001)', async () => {
+    const { calls, exec } = recorder();
+    await gitRunner('/repo', exec).commit('spec(027): x', [
+      { key: 'Author', value: 'Brian Corbin <b@x>' },
+      { key: 'Assisted-by', value: 'stub-model' },
+    ]);
+    expect(calls[0]!.args).toEqual([
+      'commit',
+      '-m',
+      'spec(027): x',
+      '--trailer',
+      'Author: Brian Corbin <b@x>',
+      '--trailer',
+      'Assisted-by: stub-model',
+    ]);
+  });
+
+  it('falls back to a -m footer block when --trailer is unsupported (T-902/R1)', async () => {
+    const calls: { args: string[] }[] = [];
+    const exec: GitExec = vi.fn(async (args: string[]) => {
+      calls.push({ args });
+      // Simulate old git: the --trailer attempt fails, the plain retry succeeds.
+      if (args.includes('--trailer')) throw new Error("unknown option `trailer'");
+      return { stdout: '', stderr: '' };
+    });
+    await gitRunner('/repo', exec).commit('spec(027): x', [{ key: 'Author', value: 'B <b@x>' }]);
+    expect(calls).toHaveLength(2);
+    expect(calls[1]!.args).toEqual(['commit', '-m', 'spec(027): x', '-m', 'Author: B <b@x>']);
+  });
+
+  it('committer reads user.name/email; empty when unset', async () => {
+    const ok = recorder((args) => (args[1] === 'user.name' ? 'Brian Corbin' : 'b@x'));
+    expect(await gitRunner('/repo', ok.exec).committer()).toEqual({ name: 'Brian Corbin', email: 'b@x' });
+
+    const unset: GitExec = vi.fn(async () => {
+      throw new Error('no such key');
+    });
+    expect(await gitRunner('/repo', unset).committer()).toEqual({ name: '', email: '' });
+  });
+
   it('createBranch uses checkout -b', async () => {
     const { calls, exec } = recorder();
     await gitRunner('/repo', exec).createBranch('026-git-strategy');

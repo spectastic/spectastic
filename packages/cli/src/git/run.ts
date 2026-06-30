@@ -32,11 +32,26 @@ const realExec: GitExec = async (args, opts) => {
   return { stdout: String(stdout), stderr: String(stderr) };
 };
 
+/** A commit-footer trailer (spec 027-git-trailers). Rendered as `key: value`. */
+export interface Trailer {
+  key: string;
+  value: string;
+}
+
+/** The local git committer identity (for the Co-authored-by author≠committer test). */
+export interface Committer {
+  name: string;
+  email: string;
+}
+
 export interface GitRunner {
   currentBranch(): Promise<string>;
   headSubject(): Promise<string>;
   add(paths: string[]): Promise<void>;
-  commit(subject: string): Promise<void>;
+  /** Commit `subject`, appending one `--trailer` per entry (spec 027, D-001). */
+  commit(subject: string, trailers?: readonly Trailer[]): Promise<void>;
+  /** The local `user.name`/`user.email`; empty strings when unset. */
+  committer(): Promise<Committer>;
   createBranch(name: string): Promise<void>;
   /** The remote default branch (e.g. `main`), or null when undeterminable. */
   defaultBranch(): Promise<string | null>;
@@ -63,8 +78,30 @@ export function gitRunner(cwd: string, exec: GitExec = realExec): GitRunner {
       await exec(['add', '--', ...paths], { cwd });
     },
 
-    async commit(subject) {
-      await exec(['commit', '-m', subject], { cwd });
+    async commit(subject, trailers = []) {
+      const args = ['commit', '-m', subject];
+      for (const t of trailers) args.push('--trailer', `${t.key}: ${t.value}`);
+      try {
+        await exec(args, { cwd });
+      } catch (err) {
+        if (trailers.length === 0) throw err; // not a `--trailer` problem
+        // Fallback for git < 2.32 (no `--trailer`, T-902/R1): fold the trailers
+        // into a trailing footer paragraph — git parses it as trailers anyway.
+        const block = trailers.map((t) => `${t.key}: ${t.value}`).join('\n');
+        await exec(['commit', '-m', subject, '-m', block], { cwd });
+      }
+    },
+
+    async committer() {
+      const read = async (key: string): Promise<string> => {
+        try {
+          return (await exec(['config', key], { cwd })).stdout.trim();
+        } catch {
+          return ''; // unset identity → empty; the gatherer omits Co-authored-by
+        }
+      };
+      const [name, email] = await Promise.all([read('user.name'), read('user.email')]);
+      return { name, email };
     },
 
     async createBranch(name) {

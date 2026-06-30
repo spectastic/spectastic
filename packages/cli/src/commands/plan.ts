@@ -98,6 +98,7 @@ export function registerPlan(program: Command): void {
       const { commitVerbAndExit, slugOf } = await import('../git/index.js');
       await commitVerbAndExit({
         verb: 'plan',
+        model: ai.model, // Assisted-by (spec 027 FR-005)
         cwd: process.cwd(),
         specId,
         paths: [planPath],
