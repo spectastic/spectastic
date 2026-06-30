@@ -13,6 +13,12 @@ Spectastic is at v0.1. The methodology is still reshaping itself, so the contrib
 
 PRs that bypass `/spectastic.propose` for non-trivial methodology changes will be asked to re-route. The proposal cycle isn't ceremony — it carries the typed deltas, risk register, and migration prose that `/spectastic.apply` depends on.
 
+## Reviewing & accepting
+
+When you flip a spec from **In Review → Accepted**, record *who* reviewed it (per `REQ-LIFECYCLE-004`): name the human reviewer in the spec's `<spec-meta>` **Reviewers** field and in the `<spec-changelog>` entry for that transition. The recorded reviewer is always a human — never an automated agent. The recording shape is yours (a name, a handle, or both, the way `Owner` is written); the rule is that a reviewer is *named*, not the exact format.
+
+This doesn't apply to the **Draft → Accepted** flip — that's you confirming your own completed work, with no separate reviewer to record.
+
 ## Voice rule
 
 Spectastic stands on its own. Shipping copy describes the product in its own terms — not as an "alternative to X", not as "inspired by Y", not through named individuals. Canonical links to authoritative sources (RFCs, standards bodies, GitHub Docs, the [data-ink-ratio](https://en.wikipedia.org/wiki/Data-ink_ratio) Wikipedia page) are welcome where they're load-bearing.
