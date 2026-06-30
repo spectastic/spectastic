@@ -27,7 +27,9 @@ The private aesthetic lineage lives in `CLAUDE.md`; the public surface stays pri
 
 ## Commit messages
 
-Plain commit messages. No `Co-Authored-By: Claude` or other AI-attribution trailers. If a `Co-Authored-By:` line is warranted (pair work with another human), use the standard format.
+Plain commit messages. **Authorship of record names humans only** — no AI as `Author` or `Co-authored-by`. If a `Co-authored-by:` line is warranted (pair work with another human), use the standard format.
+
+The assisting model *is* acknowledged, but distinctly: as an `Assisted-by: <model>` trailer — a tool acknowledgment, not a claim of authorship. So the line spectastic's own git layer adds (when `git.trailers` is on, per spec `027-git-trailers`) is `Assisted-by:`, never `Co-Authored-By: Claude`. The AI is the tool; the humans are the authors and reviewers of record.
 
 ## Writing CLI integration tests for AI-using verbs
 

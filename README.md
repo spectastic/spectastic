@@ -224,6 +224,26 @@ Two guarantees hold regardless of the setting:
 
 Setting `git.auto` is currently a hand edit; an installer that writes it for you is a separate, not-yet-shipped slice.
 
+### Attribution trailers (`git.trailers`)
+
+With `git.trailers = on` (default off; it only acts when `git.auto` commits), the layer derives commit-footer trailers from the artifact's `<spec-meta>` and the lifecycle:
+
+```
+spec(027): git trailers — attribution from the artifact
+
+Author: Brian Corbin · @briancorbinxyz
+Reviewed-by: Jane Reviewer · @jane
+Acked-by: the human who dispositioned the risk pass
+Assisted-by: claude-…
+Refs: changes/archive/2026-…-slug
+```
+
+`Author`, `Reviewed-by`, `Co-authored-by` (when the artifact author isn't the committer), `Acked-by`, and `Refs` name **humans only** — a missing source is omitted, never faked. The assisting model is acknowledged distinctly as **`Assisted-by:`** — a tool acknowledgment, never authorship — and is the only trailer the AI ever appears on. `Assisted-by` is emitted on AI-coupled verb commits (`spec`/`plan`/`tasks`/`triage`/`principles`/`propose`); deterministic verbs (`apply`, an `implement` tick) carry none.
+
+```json
+{ "git": { "auto": "branch+commit", "trailers": "on" } }
+```
+
 ## Component vocabulary
 
 Twelve-ish custom elements cover the spec shape. Tag name is schema.
