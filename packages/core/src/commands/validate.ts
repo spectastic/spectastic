@@ -1,9 +1,56 @@
 import { validateMany } from '@spectastic/schema';
+import type { Finding } from '@spectastic/schema';
 import type {
   KernelContext,
   ValidateInput,
   ValidateResult,
 } from '../types.js';
+
+/**
+ * The three structured invocation-metadata keys REQ-TOOL-004 (spec
+ * 000-spectastic) requires in the source frontmatter of every command
+ * spectastic surfaces as a skill. They are the machine-checkable contract
+ * and skill-creator's inputs; the tuned `description` is the router surface.
+ */
+export const REQUIRED_SKILL_KEYS = ['triggers', 'use-when', 'sibling-boundary'] as const;
+
+/**
+ * `skill-metadata-shape` (REQ-TOOL-004). A command surfaced as a skill MUST
+ * declare structured invocation metadata (`triggers`, `use-when`,
+ * `sibling-boundary`) in its source frontmatter. This is a markdown/YAML
+ * check — like the explore quarantine scan, it can't live in the HTML-bound
+ * schema rule registry, so the finding is built here and the CLI globs the
+ * command files and folds the results in.
+ *
+ * Returns a `warning`-severity finding when the frontmatter is absent or
+ * missing any of the three keys; `null` when the shape is complete. Warning,
+ * not error, so the ten existing commands can be brought up to the bar
+ * without a red build (the eval floor and a future hard gate escalate it).
+ *
+ * Key presence is checked with a line-anchored regex rather than a YAML
+ * parse: the keys are top-level, so `^<key>:` is sufficient and keeps the
+ * kernel dependency-free.
+ */
+export function skillMetadataFinding(content: string, file: string): Finding | null {
+  const match = /^---\n([\s\S]*?)\n---/.exec(content);
+  const frontmatter = match?.[1];
+  const missing =
+    frontmatter === undefined
+      ? [...REQUIRED_SKILL_KEYS]
+      : REQUIRED_SKILL_KEYS.filter((key) => !new RegExp(`^${key}:`, 'm').test(frontmatter));
+  if (missing.length === 0) return null;
+  const detail =
+    frontmatter === undefined ? 'has no YAML frontmatter' : `is missing key(s): ${missing.join(', ')}`;
+  return {
+    file,
+    line: 1,
+    column: 1,
+    rule: 'skill-metadata-shape',
+    severity: 'warning',
+    message: `Command ${file} ${detail} — skill-invocation metadata (${REQUIRED_SKILL_KEYS.join(', ')}) is required (REQ-TOOL-004).`,
+    fixHint: `Add ${missing.join(', ')} to the frontmatter so the skill router and validate can find it.`,
+  };
+}
 
 /**
  * Validate spec-html artifacts against the schema rules.

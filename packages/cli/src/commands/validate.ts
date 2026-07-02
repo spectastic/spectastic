@@ -37,6 +37,35 @@ async function scanQuarantineMarkers(cwd: string): Promise<Finding[]> {
 }
 
 /**
+ * Scan the project's own command definitions (`commands/spectastic.*.md`) for the
+ * structured skill-invocation metadata REQ-TOOL-004 (spec 000-spectastic) requires:
+ * `triggers`, `use-when`, `sibling-boundary`. Warning findings, folded into every
+ * validate run like the quarantine scan — a frontmatter/markdown check that can't
+ * live in the HTML-bound schema rule registry. In a consumer project (no `commands/`
+ * sources) the glob matches nothing, so it's a no-op there.
+ */
+async function scanSkillMetadata(): Promise<Finding[]> {
+  const [{ expandGlobs }, { skillMetadataFinding }, { readFile }] = await Promise.all([
+    import('../glob.js'),
+    import('@spectastic/core/commands/validate'),
+    import('node:fs/promises'),
+  ]);
+  const commandFiles = await expandGlobs(['commands/spectastic.*.md']);
+  const findings: Finding[] = [];
+  for (const file of commandFiles) {
+    let content: string;
+    try {
+      content = await readFile(file, 'utf8');
+    } catch {
+      continue; // an unreadable command file has nothing to shape-check
+    }
+    const finding = skillMetadataFinding(content, file);
+    if (finding) findings.push(finding);
+  }
+  return findings;
+}
+
+/**
  * Register the `validate` subcommand. Implements FR-001, FR-002, FR-014
  * of specs/002-validate-cli/spec.html.
  *
@@ -79,7 +108,11 @@ export function registerValidate(program: Command): void {
       // quarantine markers and fold their findings in, regardless of the path
       // args, so an un-graduated exploration can never pass validate.
       const quarantineFindings = await scanQuarantineMarkers(process.cwd());
-      const findings = [...result.findings, ...quarantineFindings];
+      // The skill-metadata-shape rule (REQ-TOOL-004): warn on any command whose
+      // frontmatter is missing the structured invocation keys. Warning-only, so it
+      // never changes the exit code — advisory until the eval floor / hard gate land.
+      const skillMetadataFindings = await scanSkillMetadata();
+      const findings = [...result.findings, ...quarantineFindings, ...skillMetadataFindings];
       const exitCode = findings.some((f) => f.severity === 'error') ? 1 : result.exitCode;
 
       let output: string;
