@@ -1,0 +1,267 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>The guarantee layer — enforcing mandatory steps around LLM agents</title>
+<link rel="stylesheet" href="../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../assets/favicon.svg">
+<script src="../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Considerations · Reliability architecture</p>
+  <h1>The guarantee layer</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    A verb loaded as a skill is advisory. If a step must happen, its guarantee cannot live in the markdown.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>     <span><spec-status value="draft">Draft</spec-status></span>
+    <b>Type</b>       <span>Research synthesis</span>
+    <b>Author</b>     <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Created</b>    <span><time datetime="2026-07-02">2 Jul 2026</time></span>
+    <b>Sources</b>    <span>~20 primary, verified 2 Jul 2026</span>
+    <b>Prompted by</b><span>meta-spec <a href="../specs/000-spectastic/triage-log.html#T-008">T-008</a> / <a href="../specs/000-spectastic/triage-log.html#T-009">T-009</a></span>
+    <b>Read time</b>  <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-tldr>
+    <p>Spectastic's verbs are markdown slash-commands loaded as skills. Their steps — the pre-verb
+    <em>interview</em>, the post-verb <em>git commit</em> — are prose the model can skip. That is not a
+    tuning problem; it is <strong>structural</strong>: an instruction to an LLM is never a guarantee. A step
+    is guaranteed only when deterministic code the model can't skip runs it and can say <em>deny</em>. The good
+    news: spectastic already made the right bet — the <strong>kernel</strong> is that deterministic layer, and
+    everything reliable today (apply's fold + auto-commit, the validate rules) lives there, not in the markdown.
+    The reliability incidents (<a href="../specs/000-spectastic/triage-log.html#T-004">T-004</a>,
+    <a href="../specs/000-spectastic/triage-log.html#T-006">T-006</a>,
+    <a href="../specs/000-spectastic/triage-log.html#T-008">T-008</a>) were all steps that lived <em>outside</em>
+    the kernel. This doc surveys what other tools can and can't enforce, and concludes that the two deferred
+    items — <code>init --tools</code> and <code>validate --strict</code> — <em>are</em> the guarantee layer, and
+    should be reframed as such.</p>
+  </spec-tldr>
+</header>
+
+
+<!-- ======================================================= -->
+<section id="distinction">
+<h2>1 · The one distinction</h2>
+<p>A step is <strong>guaranteed</strong> only if both hold:</p>
+<ol>
+  <li><strong>The harness — not the model — invokes it.</strong> Deterministic code runs it whether or not the model cooperates.</li>
+  <li><strong>It can say <em>deny</em>.</strong> A pre-action gate that can abort the tool call, not a post-action observer that fires after the damage.</li>
+</ol>
+<p>Everything else is the same class, no matter how it's dressed: command markdown, skill descriptions,
+<code>.cursor/rules</code>, <code>copilot-instructions.md</code>, conventions files, MCP tool descriptions.
+All of it is <em>advisory prose the model can skip, reorder, or half-satisfy</em>. Spectastic's current design —
+mandatory steps written into <code>commands/*.md</code> — has, by construction, <strong>zero enforcement</strong>.
+That single sentence is the whole T-004 / T-006 / T-008 arc: every incident was a mandatory step that lived in
+markdown and got skipped.</p>
+
+<spec-note>This is why <a href="../specs/000-spectastic/spec.html#REQ-TOOL-004">REQ-TOOL-004</a> (better
+skill-invocation descriptions) is a <em>UX nudge, not a guarantee</em> — and that's fine, as long as the
+guarantee lives elsewhere. Two empirical pilots (skill-creator's <code>run_loop</code> against the tuned
+<code>spec</code> description) confirmed descriptions can't carry the load: sibling boundaries measured perfectly,
+but positive triggering is dominated by "the model just does the task directly," not by description quality.</spec-note>
+</section>
+
+
+<!-- ======================================================= -->
+<section id="two-problems">
+<h2>2 · Two asks, two different answers</h2>
+<p>The post-verb side effect and the pre-verb judgment gate are <em>not</em> the same problem and don't have the
+same solution.</p>
+
+<table>
+  <thead>
+    <tr><th></th><th>Post-verb side effect (git commit)</th><th>Pre-verb judgment gate (the interview)</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>Guaranteeable?</strong></td>
+      <td>Yes — it's a deterministic side effect.</td>
+      <td>No — not the way it's tempting to think.</td>
+    </tr>
+    <tr>
+      <td><strong>Why</strong></td>
+      <td>A <code>git commit</code> is pure code; a hook or the kernel can just run it, model-independent.</td>
+      <td>A hook can block the write <em>until a marker exists</em> — but if the LLM writes the marker, it fakes the gate. Hooks enforce tool <em>execution</em>, never model <em>reasoning</em>. You cannot force a <em>good</em> interview.</td>
+    </tr>
+    <tr>
+      <td><strong>Where the guarantee lives</strong></td>
+      <td>Deterministic code: the <strong>kernel</strong> (already true for apply), a <code>Stop</code>/<code>agentStop</code> hook running <code>git commit</code>, or a git <code>pre-commit</code>/CI check.</td>
+      <td><strong>Make the output checkable, then reject bad output.</strong> An unresolved <code>&lt;spec-question&gt;</code> in the finished artifact <em>is</em> the "interview failed" signal — gate on it in <code>validate</code> + CI. Post-hoc artifact validation, not pre-hoc write-gating.</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>The interview insight is the subtle one: <strong>stop gating the write; gate the artifact.</strong>
+Spectastic already has the bones — the <code>no-unresolved-question</code> validate rule and the CLAUDE.md
+discipline that "an open <code>&lt;spec-question&gt;</code> in a finished artifact signals the interview failed."
+That is exactly the pattern the research points to. It just needs to become an <em>unbypassable</em> gate (CI),
+not advisory guidance.</p>
+</section>
+
+
+<!-- ======================================================= -->
+<section id="landscape">
+<h2>3 · Cross-tool landscape</h2>
+<p>Every tool with a <em>real</em> guarantee shares one property: an external, harness-invoked process that can
+return <strong>deny</strong>. Everything that only reshapes the prompt is best-effort.</p>
+
+<div style="overflow-x:auto;">
+<table>
+  <thead>
+    <tr><th>Tool</th><th>Mechanism</th><th>Blocks pre-action?</th><th>Real guarantee?</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Cursor 1.7+</td><td><code>.cursor/hooks.json</code>; <code>preToolUse</code>/<code>beforeShellExecution</code> return <code>deny</code>, exit-2 blocks</td><td>Yes</td><td><strong>Yes</strong></td></tr>
+    <tr><td>Aider</td><td>Native auto-commit (deterministic); unofficial <code>Coder</code> Python API to self-orchestrate</td><td>N/A (no hook events)</td><td><strong>Yes</strong> for post-commit</td></tr>
+    <tr><td>GitHub Copilot (CLI + cloud agent)</td><td><code>.github/hooks/</code> <code>preToolUse</code> deny; <em>installable git pre-commit hooks in the agent env</em>; firewall/allowlist</td><td>Yes</td><td><strong>Yes</strong></td></tr>
+    <tr><td>Windsurf / Cascade</td><td><code>hooks.json</code>; <code>pre_*</code> events block via exit 2</td><td>Yes</td><td><strong>Yes</strong></td></tr>
+    <tr><td>Cline</td><td><code>.clinerules/hooks/</code>; <code>PreToolUse</code> returns <code>{cancel:true}</code></td><td>Yes</td><td><strong>Yes</strong> (macOS/Linux)</td></tr>
+    <tr><td>Claude Code</td><td><code>PreToolUse</code> exit-2 deny; <code>Stop</code> runs deterministic shell; <code>PostToolUse</code> observes</td><td>Yes</td><td><strong>Yes</strong></td></tr>
+    <tr><td>Continue.dev</td><td>Prompt rules + coarse tool policies (auto/ask/exclude)</td><td>No</td><td>No — advisory</td></tr>
+    <tr><td>MCP (tools/sampling/elicitation)</td><td>Server-offered primitives; the model decides invocation; elicitation is client-<code>SHOULD</code>, may <code>decline</code></td><td>No</td><td>No — advisory, no ordering</td></tr>
+    <tr><td>LangGraph (orchestrator)</td><td>Deterministic state machine; LLM calls are nodes, control flow is code</td><td>Yes (structural)</td><td><strong>Yes</strong> — guarantee in your code</td></tr>
+    <tr><td>git hooks</td><td><code>pre-commit</code>/<code>pre-push</code> abort on non-zero; server <code>pre-receive</code> unbypassable</td><td>Yes</td><td><strong>Yes</strong> (client-side bypassable; server not)</td></tr>
+    <tr><td>CI gates</td><td>Required checks / branch protection, server-side</td><td>Yes (at merge)</td><td><strong>Yes</strong> — unbypassable</td></tr>
+  </tbody>
+</table>
+</div>
+
+<p><strong>The skeptical finding worth internalising: MCP gives you nothing here.</strong> The spec is explicit
+that the host/LLM decides which tools to call and when; tools, sampling, and even <em>elicitation</em> (the
+closest thing to a "required interview") are advisory — the client only <em>SHOULD</em> honor them and every
+request can be declined. MCP is the wrong layer to seek a sequencing guarantee.</p>
+
+<spec-warning>The enforcement primitive (blocking hooks) is <strong>per-harness</strong> — different event names,
+config paths, and return schemas per tool — and the one cross-tool protocol (MCP) can't enforce. So there is
+<strong>no single portable in-agent mechanism</strong> that guarantees pre/post steps across all tools. Portability
+has to come from below the agent (VCS/CI) or from owning the loop.</spec-warning>
+</section>
+
+
+<!-- ======================================================= -->
+<section id="options">
+<h2>4 · The four options, ranked</h2>
+<ol>
+  <li><strong>Own the loop with a deterministic orchestrator.</strong> LLM calls are nodes; control flow is code (LangGraph is the reference; a plain script driving the steps also counts). One enforcement point, fully portable, guarantee in <em>your</em> code. <em>Strongest.</em> <strong>Spectastic already owns this: the kernel.</strong></li>
+  <li><strong>Push to VCS/CI.</strong> Server-side <code>pre-receive</code> / required status checks. Client <code>pre-commit</code> is bypassable (<code>--no-verify</code>); server-side/CI is <strong>unbypassable</strong> and harness-independent.</li>
+  <li><strong>Per-harness hook adapters.</strong> Ship <code>.cursor/hooks.json</code>, <code>.github/hooks/</code>, <code>.claude/settings.json</code>, etc., each calling <em>one shared script</em>. Real enforcement, N configs to maintain, nothing for hook-less tools.</li>
+  <li><strong>Prompt-only</strong> (today). A UX nudge, never a guarantee. Fine layered on top of 1–3; never the guarantee itself.</li>
+</ol>
+</section>
+
+
+<!-- ======================================================= -->
+<section id="spectastic">
+<h2>5 · What this means for spectastic</h2>
+<p><strong>The kernel is your deterministic orchestrator — you already own option 1.</strong> Everything that
+reliably works today lives there, not in markdown: <code>spectastic apply</code> folds deltas and auto-commits
+(<a href="../specs/000-spectastic/spec.html#REQ-CHANGE-007">REQ-CHANGE-007</a> / -008, <code>git.auto</code>),
+the fold-gap guard, the validate rules. The research doesn't ask you to adopt something new — it says
+<strong>finish moving guarantees off the markdown and into the kernel + CI</strong>.</p>
+
+<p>Two items already on the deferred list <em>are</em> the guarantee layer, and should be reframed as such:</p>
+
+<spec-decision>
+  <h3><code>spectastic init --tools</code> → the hook-adapter + git-hook installer</h3>
+  <p><strong>Context.</strong> Deferred as an installer convenience. <strong>Decision.</strong> Reframe it as the
+  home for option 3 (per-harness hook adapters) <em>and</em> for installing a git <code>pre-commit</code> hook that
+  calls <code>spectastic validate</code>. Each harness's hook config is a thin adapter that calls one shared
+  <code>spectastic</code> gate command. <strong>Consequence.</strong> This is exactly Copilot's documented pattern
+  ("install a pre-commit hook so the agent can't commit without the check, even if it ignores the instruction").
+  It also owns the <code>.claude/commands/</code> sync that T-006 needs.</p>
+</spec-decision>
+
+<spec-decision>
+  <h3><code>spectastic validate --strict</code> → the unbypassable CI gate</h3>
+  <p><strong>Context.</strong> Deferred as a CI convenience. <strong>Decision.</strong> This is where
+  "artifact has an open <code>&lt;spec-question&gt;</code> → the interview was skipped → reject the merge" and
+  "the commit/fold shape is wrong" become <em>guaranteed</em>, harness-independent, and unbypassable.
+  <strong>Consequence.</strong> The interview guarantee is achieved here — not by gating the write, but by
+  rejecting the artifact. Post-verb commit <em>quality</em> is guaranteed here too.</p>
+</spec-decision>
+
+<p>For post-verb commits specifically: route the hand-run paths through the kernel (or a thin <code>Stop</code>-hook
+adapter that calls <code>spectastic</code>), so the commit is code, not an LLM's good intention. The kernel already
+does this for apply; implement's hand-run path is the gap.</p>
+</section>
+
+
+<!-- ======================================================= -->
+<section id="recommendation">
+<h2>6 · Recommendation</h2>
+<p>This is a distinct architectural concern — <em>the guarantee layer</em> — bigger than any one verb. The
+candidate invariant, worth a principle:</p>
+<blockquote style="font-family:var(--font-serif);border-left:3px solid var(--c-accent-sea,#04a5bb);padding-left:var(--s-4);color:var(--c-text-soft);">
+  A mandatory step's guarantee MUST live in the kernel or in CI, never in command markdown. Markdown is advisory;
+  the kernel and CI are the enforcement. Any step whose omission is a defect must have a deterministic owner that
+  can run it or reject its absence.
+</blockquote>
+<p>Concrete path: capture as a meta-spec triage card
+(<a href="../specs/000-spectastic/triage-log.html#T-009">T-009</a>, <code>principles</code> layer) → a principle
+amendment → a spec that pulls <code>init --tools</code> and <code>validate --strict</code> forward as the guarantee
+layer. <code>REQ-TOOL-004</code>'s descriptions stay as the UX nudge on top.</p>
+</section>
+
+
+<!-- ======================================================= -->
+<section id="caveats">
+<h2>7 · Caveats on the sources</h2>
+<ul>
+  <li>The <strong>Claude Code hook-event catalog</strong> returned by research included some speculative event
+  names. The load-bearing mechanics are solid and independently corroborated: <code>PreToolUse</code> can deny via
+  exit 2; <code>Stop</code> can run deterministic shell; <code>PostToolUse</code> only observes. <strong>Verify exact
+  event names against the live docs before wiring any <code>.claude/settings.json</code>.</strong></li>
+  <li>Aider's Python orchestration API is explicitly "not officially supported… could change without backwards
+  compatibility." Treat orchestration-via-aider as unstable.</li>
+  <li>Continue.dev's "no blocking hooks" is absence-of-evidence; re-check directly before relying on it.</li>
+</ul>
+</section>
+
+
+<!-- ======================================================= -->
+<section id="sources">
+<h2>8 · Sources</h2>
+<ol style="font-family:var(--font-sans);font-size:0.85rem;">
+  <li>Claude Code — Hooks reference &amp; guide: <a href="https://code.claude.com/docs/en/hooks">code.claude.com/docs/en/hooks</a></li>
+  <li>Cursor — Hooks: <a href="https://cursor.com/docs/hooks">cursor.com/docs/hooks</a></li>
+  <li>Aider — Git integration (auto-commit): <a href="https://aider.chat/docs/git.html">aider.chat/docs/git.html</a>; Scripting: <a href="https://aider.chat/docs/scripting.html">aider.chat/docs/scripting.html</a></li>
+  <li>GitHub Copilot — Hooks configuration: <a href="https://docs.github.com/en/copilot/reference/hooks-configuration">docs.github.com/…/hooks-configuration</a>; Build guardrails (pre-commit in agent env): <a href="https://docs.github.com/en/copilot/tutorials/cloud-agent/build-guardrails">docs.github.com/…/build-guardrails</a></li>
+  <li>Windsurf — Cascade Hooks: <a href="https://docs.windsurf.com/windsurf/cascade/hooks">docs.windsurf.com/windsurf/cascade/hooks</a></li>
+  <li>Cline — Hooks: <a href="https://docs.cline.bot/customization/hooks">docs.cline.bot/customization/hooks</a></li>
+  <li>Continue.dev — Agent: <a href="https://docs.continue.dev/agent/how-to-use-it">docs.continue.dev/agent/how-to-use-it</a></li>
+  <li>MCP — Architecture: <a href="https://modelcontextprotocol.io/docs/learn/architecture">modelcontextprotocol.io/docs/learn/architecture</a>; Elicitation: <a href="https://modelcontextprotocol.io/specification/2025-06-18/client/elicitation">…/client/elicitation</a></li>
+  <li>LangGraph: <a href="https://www.langchain.com/langgraph">langchain.com/langgraph</a></li>
+  <li>Git hooks: <a href="https://git-scm.com/book/en/v2/Customizing-Git-Git-Hooks">git-scm.com/book/…/Git-Hooks</a></li>
+</ol>
+</section>
+
+
+<!-- ======================================================= -->
+<section id="changelog">
+<h2>9 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-07-02">2 Jul 2026</time><span>Initial synthesis. Two parallel research passes (Claude Code hooks; cross-tool + general pattern), ~20 primary sources. Prompted by the T-008/T-603 finding that skill descriptions are advisory and can't carry a reliability guarantee.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  Spectastic · The guarantee layer · 2 Jul 2026 ·
+  <a href="../index.html">home</a> ·
+  <a href="../specs/000-spectastic/spec.html">spec</a> ·
+  <a href="../specs/000-spectastic/triage-log.html#T-009">T-009</a> ·
+  <button data-theme-toggle style="background:none;border:none;color:var(--c-link);cursor:pointer;font:inherit;padding:0;border-bottom:1px solid currentColor;">light/dark</button>
+</footer>
+
+</main>
+<script src="../assets/spec.js"></script>
+</body>
+</html>
