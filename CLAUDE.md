@@ -68,6 +68,18 @@ cp commands/*.md .claude/commands/
 
 Skip this and the running slash command is stale — which is exactly meta-spec triage **T-006**: a 13 Jun `.claude/commands/spectastic.apply.md` copy predated the fold step, so an apply silently skipped the §6 fold (T-004 reproduced live). Until `spectastic init --tools` owns install/sync (deferred), this re-copy is manual.
 
+### Command frontmatter: the skill-invocation metadata contract
+
+Per `REQ-TOOL-004`, every command surfaced as a skill carries **structured invocation metadata** in its source frontmatter, alongside `description` and `argument-hint`:
+
+- `triggers:` — a list of the intents/phrasings that should invoke the verb.
+- `use-when:` — a one-line framing of when to reach for it.
+- `sibling-boundary:` — what disambiguates it from adjacent verbs (spec vs plan vs explore; propose vs apply vs triage).
+
+The keys are the **machine-checkable contract** (the `skill-metadata-shape` validate rule warns on any missing one) and skill-creator's inputs. The `description` is the **fixed, `/skill-creator`-tuned trigger surface** the harness router actually reads — authored and committed, *not* generated from the keys at sync time (so the string that gets evaluated is the one that ships). Where a key and the `description` diverge, the `description` is authoritative. When adding a new verb, author all three keys and tune the description; `spectastic validate` flags the omission.
+
+**Reliability caveat (T-009).** These descriptions are a *UX nudge for triggering, not a guarantee* — a skill is advisory to the model. Two `run_loop` pilots confirmed descriptions can't force invocation, and nothing in the markdown can force the interview to happen or the commit to run. Guarantees for mandatory steps live in the **kernel or CI**, never in command markdown — see [`docs/guarantee-layer-considerations.html`](docs/guarantee-layer-considerations.html) and triage T-009.
+
 ## Interview discipline in commands
 
 Slash commands that gather requirements (`spec`, `plan`, `propose`, `triage`) follow a **two-phase interview**:
