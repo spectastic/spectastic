@@ -1,0 +1,270 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Skill-optimized command invocation metadata · Change proposal</title>
+<link rel="stylesheet" href="../../../../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../../../../assets/favicon.svg">
+<script src="../../../../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Change proposal · 000-spectastic</p>
+  <h1>Skill-optimized command invocation metadata</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    Commands surfaced to an agent host as skills must carry router-matchable trigger metadata, not just a human summary — with a measurable eval floor for "reliable".
+  </p>
+
+  <spec-meta>
+    <b>Status</b>     <span><spec-status value="applied">Applied</spec-status></span>
+    <b>Change ID</b>  <span>2026-07-02-skill-invocation-metadata</span>
+    <b>Spec</b>       <span><a href="../../../spec.html">000-spectastic</a></span>
+    <b>Author</b>     <span>Brian Corbin</span>
+    <b>Created</b>    <span><time datetime="2026-07-02">2026-07-02</time></span>
+    <b>Targets</b>    <span>2 requirements (1 added, 1 modified)</span>
+    <b>Read time</b>  <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-tldr>
+    <p>Spectastic's verbs load into Claude Code as skills, but their frontmatter <code>description</code>s
+    are written as human documentation, so the skill router fires them unreliably. This change adds
+    <strong>REQ-TOOL-004</strong>: every command surfaced as a skill MUST declare <em>structured</em>
+    invocation metadata (<code>triggers</code>, <code>use-when</code>, <code>sibling-boundary</code>) in its
+    frontmatter as a machine-checkable contract, alongside a <em>fixed, <code>/skill-creator</code>-tuned</em>
+    <code>description</code> that is the trigger surface the router reads and the eval measures — no generation at
+    sync, so the committed output is exactly what gets evaluated. <code>spectastic validate</code> gains a
+    <code>skill-metadata-shape</code> rule (<code>warning</code>) that flags a command missing the keys, and
+    descriptions SHOULD clear a <strong>≥90% <code>/skill-creator</code> eval</strong> (a default target,
+    baselined on first run). It also modifies <strong>REQ-TOOL-001</strong> to correct the command count (eight
+    lifecycle commands MUST, extended verbs MAY). From meta-spec triage <a href="../../../triage-log.html#T-008">T-008</a>.</p>
+  </spec-tldr>
+</header>
+
+
+<spec-change id="2026-07-02-skill-invocation-metadata" status="applied">
+
+<header>
+  <h3>Skill-optimized command invocation metadata</h3>
+  <span class="meta"><spec-status value="applied">Applied</spec-status></span>
+</header>
+
+
+<section id="intent">
+<h2>1 · Intent</h2>
+<p>Claude Code loads spectastic's ten verbs as skills, and the harness selects a skill from its
+frontmatter — the <code>description</code> and <code>argument-hint</code> lines. Those lines were authored
+as prose for a human reader (<em>"Write a feature specification — what to build, for whom, and how we know
+it worked."</em>), not as router-matchable signal: no explicit trigger cues, no "use when" framing, no
+boundary against sibling verbs. The result, reported in triage <a href="../../../triage-log.html#T-008">T-008</a>,
+is that the verbs "do not invoke reliably enough" — a user's intent frequently fails to fire the command
+that owns it.</p>
+
+<p>The regeneration test on T-008 <strong>fails</strong> at the code layer: rewriting the ten descriptions by
+hand fixes today's copies but recurs on the next regeneration, because no requirement encodes a triggering
+bar. This proposal closes that gap at the layer T-008 laddered to — a central meta-spec requirement that every
+command owns, parallel to how <a href="../../../spec.html#REQ-FORMAT-004">REQ-FORMAT-004</a> owns the sizing
+bands centrally rather than per-spec.</p>
+</section>
+
+
+<section id="scope">
+<h2>2 · Scope</h2>
+
+<spec-goals>
+  <h3>In scope</h3>
+  <ul>
+    <li>Add <code>REQ-TOOL-004</code>: <em>structured</em> invocation metadata (<code>triggers</code>, <code>use-when</code>, <code>sibling-boundary</code>) is a <code>must</code> in the frontmatter of every command spectastic surfaces as a skill — a machine-checkable contract and the input skill-creator tunes from.</li>
+    <li>The frontmatter <code>description</code> is the <em>fixed, <code>/skill-creator</code>-tuned</em> output: the trigger surface the router reads and the eval measures. It is <strong>not generated at sync</strong> — the committed description is exactly what gets evaluated. Keys and description coexist; the description is authoritative on conflict.</li>
+    <li>A <code>spectastic validate</code> rule (<code>skill-metadata-shape</code>, <strong>warning</strong> severity) that flags a command missing the required keys — the enforcement mechanism for the <code>must</code>.</li>
+    <li>A measurable definition of "reliable": a <code>/skill-creator</code> eval with a ≥90% trigger-accuracy <em>default target</em>, as a <code>should</code>, baselined on the first run; the hard gate waits on CI tooling.</li>
+    <li>Modify <a href="../../../spec.html#REQ-TOOL-001">REQ-TOOL-001</a>: correct the stale "eight commands" enumeration — eight lifecycle commands <code>must</code> ship, extended verbs (<code>explain</code>, <code>explore</code>) <code>may</code>.</li>
+    <li>Task list: the structured-key authoring + <code>/skill-creator</code> tuning of the fixed descriptions across all ten <code>commands/*.md</code>, the eval baseline, the <code>validate</code> rule, and the <code>.claude/commands/</code> re-sync.</li>
+  </ul>
+</spec-goals>
+
+<spec-non-goals>
+  <h3>Out of scope</h3>
+  <ul>
+    <li>An automated harness that runs the <code>/skill-creator</code> eval in CI. The eval floor ships as a <code>should</code> precisely because this harness does not exist yet. <span class="small-caps">defer-to</span> <code>init --tools</code> (meta-spec §2 Out of scope).</li>
+    <li>Promoting the <code>skill-metadata-shape</code> rule from <code>warning</code> to a hard <code>error</code>, or the eval floor to a gated <code>must</code>. Both wait on the ten commands being brought up to the bar first. <span class="small-caps">defer-to</span> <code>TBD-skill-metadata-gate</code>.</li>
+  </ul>
+</spec-non-goals>
+</section>
+
+
+<section id="approach">
+<h2>3 · Approach</h2>
+<p>Two deltas, single <code>REQ-TOOL-*</code> topic: an additive <code>REQ-TOOL-004</code> for the metadata contract,
+and a corrective <code>REQ-TOOL-001</code> to fix its stale command count (folded in per the risk pass rather than
+left as a dangling contradiction the new requirement leans on).</p>
+
+<p>The load-bearing choice is that the <code>description</code> is a <strong>fixed, committed, skill-creator-tuned
+output</strong> — <em>not</em> generated from the keys at sync time. Composing it downstream was rejected: the whole
+point of <code>/skill-creator</code> is to tune a description against its eval and iterate, so the artifact that gets
+evaluated must be the artifact that is committed and shipped. Generating it at sync would make the evaluated string a
+moving target that never lives in the repo. So the structured keys (<code>triggers</code> / <code>use-when</code> /
+<code>sibling-boundary</code>) are the machine-checkable contract and skill-creator's <em>inputs</em>; the tuned
+<code>description</code> is the fixed output that the router reads and the eval measures. Keys and description coexist
+in the frontmatter; where they diverge, the description — the thing actually evaluated and loaded — is authoritative.
+<code>spectastic validate</code>'s new <code>skill-metadata-shape</code> rule checks the keys are present.</p>
+
+<p>The requirement is deliberately <strong>two-tier on enforcement</strong>. The metadata <em>shape</em> is a hard
+<code>MUST</code> backed by the validate rule (at <code>warning</code> severity while the ten commands are brought up
+to the bar). The <em>eval floor</em> is a <code>SHOULD</code> with a ≥90% default target — honest about tooling, since
+spectastic has no harness to run a <code>/skill-creator</code> eval in CI; the first eval run establishes the baseline
+the number is checked against before any future promotion to a gate.</p>
+
+<spec-note>The tuned <code>description</code> is inert until <code>.claude/commands/</code> is re-synced: the harness
+loads the installed copies, which drift from <code>commands/*.md</code> source (triage
+<a href="../../../triage-log.html#T-006">T-006</a>). The sync stays a plain <code>cp commands/*.md .claude/commands/</code>
+(no generation) — the task list makes that re-sync an explicit step, not an afterthought.</spec-note>
+</section>
+
+
+<section id="deltas">
+<h2>4 · Deltas</h2>
+<p>Two deltas — one ADD, one MODIFY, both on <code>REQ-TOOL-*</code>. REQ-TOOL-002 is burnt per the stable-IDs
+invariant, so the next free ID is REQ-TOOL-004.</p>
+
+<spec-delta op="added" target="REQ-TOOL-004">
+  <spec-requirement id="REQ-TOOL-004" priority="must">
+    <p>Every command spectastic surfaces to an agent host as a skill — the lifecycle commands enumerated in
+    <a href="../../../spec.html#REQ-TOOL-001">REQ-TOOL-001</a> and any extended verb it ships (e.g.
+    <code>/spectastic.explain</code>, <code>/spectastic.explore</code>) — <spec-rule>MUST</spec-rule> declare
+    <em>structured invocation metadata</em> in its source frontmatter as the source of truth for how the skill
+    router selects it. The metadata <spec-rule>MUST</spec-rule> comprise three keys:</p>
+    <ul>
+      <li><code>triggers</code> — the intents and phrasings that should invoke the command;</li>
+      <li><code>use-when</code> — a one-line framing of when to reach for it;</li>
+      <li><code>sibling-boundary</code> — what disambiguates it from adjacent verbs (e.g. <code>propose</code> vs <code>plan</code>, <code>spec</code> vs <code>explore</code>).</li>
+    </ul>
+    <p>The harness router reads only the frontmatter <code>description</code>. That <code>description</code>
+    <spec-rule>MUST</spec-rule> be a <em>fixed, committed output tuned against <code>/skill-creator</code>'s eval</em>
+    — the same string the router loads and the eval measures — and <spec-rule>MUST NOT</spec-rule> be generated from
+    the keys at sync time (a generated description makes the evaluated artifact a moving target that never lives in
+    the repo). The structured keys are the machine-checkable contract and the input skill-creator tunes from; the
+    <code>description</code> is the resulting trigger surface. Where a key and the <code>description</code> diverge,
+    the <code>description</code> is authoritative. <code>spectastic validate</code> <spec-rule>MUST</spec-rule> carry
+    a <code>skill-metadata-shape</code> rule that flags a command whose source frontmatter is missing any of the three
+    keys; the rule ships at <code>warning</code> severity.</p>
+
+    <p>Command descriptions <spec-rule level="should">SHOULD</spec-rule> be validated with
+    <code>/skill-creator</code>'s eval against a <strong>≥90% trigger-accuracy default target</strong> (the command
+    fires correctly on ≥90% of its intent cases) whenever the metadata changes; a command measured below the target
+    <spec-rule level="should">SHOULD</spec-rule> be re-tuned before it ships. The target is a <code>SHOULD</code>,
+    not a hard gate — the first eval run establishes the baseline it is checked against — until spectastic ships a
+    harness that can run the eval automatically (deferred to <code>init --tools</code>), at which point the check
+    <spec-rule level="may">MAY</spec-rule> be promoted to a gated <code>must</code> by a future change.</p>
+
+    <details><summary>Rationale</summary><p>Commands load as skills but invoke unreliably because their
+    frontmatter is authored for a human reader, and no requirement encodes a triggering bar (triage
+    <a href="../../../triage-log.html#T-008">T-008</a>, <code>spec</code> layer, regen <code>fail</code>). Structured
+    keys make the bar machine-checkable; the <code>description</code> stays a fixed, tuned output so the exact string
+    skill-creator evaluates is the one committed and loaded — generating it at sync would break that eval loop. The
+    validate rule gives the <code>must</code> teeth (starting as a <code>warning</code> so the ten existing commands
+    can be brought up to the bar without a red build); the eval <code>should</code> makes "reliable" measurable
+    rather than asserted, baselined on first run so the ≥90% figure is checked against reality before it ever hardens
+    into a gate.</p></details>
+  </spec-requirement>
+</spec-delta>
+
+<spec-delta op="modified" target="REQ-TOOL-001">
+  <p><strong>What changes:</strong> the enumeration said spectastic ships "eight" commands and named only the eight
+    lifecycle verbs; it now ships extended verbs too. Correct the count so REQ-TOOL-004 doesn't lean on a stale
+    inventory — eight lifecycle commands <code>must</code> ship; extended verbs <code>may</code>.</p>
+  <spec-requirement id="REQ-TOOL-001" priority="must">
+    <p>Spectastic <spec-rule>MUST</spec-rule> ship eight Claude Code slash commands across the lifecycle —
+    <code>/spectastic.principles</code>, <code>/spectastic.spec</code>, <code>/spectastic.plan</code>,
+    <code>/spectastic.tasks</code>, <code>/spectastic.implement</code>, <code>/spectastic.propose</code>,
+    <code>/spectastic.apply</code>, <code>/spectastic.triage</code> — that drive the templates without introducing a
+    separate CLI. It <spec-rule level="may">MAY</spec-rule> additionally ship <em>extended</em>, opt-in verbs
+    upstream of or alongside the lifecycle (e.g. <code>/spectastic.explain</code>, <code>/spectastic.explore</code>);
+    extended verbs are not required to ship, but any command spectastic <em>does</em> surface as a skill is bound by
+    <a href="#REQ-TOOL-004">REQ-TOOL-004</a>.</p>
+  </spec-requirement>
+</spec-delta>
+</section>
+
+
+<section id="risks">
+<h2>5 · Risk register</h2>
+<p>Populated by the adversarial risk pass — the proposal's ADD post-state declares <code>priority="must"</code>,
+which fires the <a href="../../../spec.html#REQ-CHANGE-004">REQ-CHANGE-004</a> heuristic. One <code>&lt;spec-risk&gt;</code>
+per finding; <code>status="identified"</code> until the author commits a transition.</p>
+
+<spec-risk-log>
+<spec-risk target="REQ-TOOL-004" status="mitigated">
+  <p class="claim">The <code>≥90%</code> floor is baked into the spec body as the definition of "reliable" with no measured baseline of what the ten verbs score today, so in 30 days it reads as invented precision — trivially cleared or unreachable — the same unenforceable-magic-number class this project already paid for (the fabricated Larson "1,500-word" citation; the 70%→80% alert-fatigue band).</p>
+  <p class="citation">"validated with <code>/skill-creator</code>'s eval against a trigger-accuracy floor of ≥90%" — a number chosen without a baseline, shipped as a <code>SHOULD</code> nothing can yet run.</p>
+  <div class="response"><strong>Mitigated (user-committed).</strong> The requirement body now frames ≥90% as a <em>default target</em>, not a measured fact, and states explicitly that the first eval run establishes the baseline it is checked against before any promotion to a gate. The eval task is the baseline run. The number is a <code>SHOULD</code> default, so the magic-number failure mode doesn't apply.</div>
+</spec-risk>
+
+<spec-risk target="REQ-TOOL-001" status="mitigated">
+  <p class="claim">REQ-TOOL-004's scope premise cites REQ-TOOL-001 — the only requirement that enumerates the command surface — yet REQ-TOOL-001 says spectastic MUST ship <em>eight</em> commands and names neither <code>explain</code> nor <code>explore</code>, so the new requirement leans on an inventory contract the proposal itself concedes is stale.</p>
+  <p class="citation">Live spec <a href="../../../spec.html#REQ-TOOL-001">REQ-TOOL-001</a> (spec.html:655–661): "Spectastic MUST ship eight Claude Code slash commands … principles, spec, plan, tasks, implement, propose, apply, triage" — no extended verbs.</p>
+  <div class="response"><strong>Mitigated (user-committed).</strong> Fixed at the source rather than deferred: this proposal now carries a MODIFY delta on REQ-TOOL-001 that keeps the eight lifecycle commands as <code>must</code> and adds that extended verbs (<code>explain</code>, <code>explore</code>) <code>may</code> ship — with any surfaced command bound by REQ-TOOL-004. No residual contradiction; the <code>TBD-tool-001-command-count</code> defer is dropped.</div>
+</spec-risk>
+
+<spec-risk target="§2" status="mitigated">
+  <p class="claim">Too narrow — the proposal defers the one enforcement mechanism (a <code>validate</code> rule for the metadata shape) that would give the <code>MUST</code> teeth, so REQ-TOOL-004 lands with both halves unenforced: no harness for the eval <code>SHOULD</code>, no validator for the shape <code>MUST</code> — reproducing the T-005 lesson that a requirement with no checkable post-condition drifts silently, the exact regen-fail T-008 laddered to the spec layer to prevent.</p>
+  <p class="citation">§2 out-of-scope: "A <code>spectastic validate</code> rule that checks the metadata shape is present … <span class="small-caps">defer-to</span> <code>TBD-skill-metadata-validate-rule</code>" — deferred despite the Approach section justifying the shape as a MUST "precisely because a validator can enforce it once written".</p>
+  <div class="response"><strong>Mitigated (user-committed).</strong> The <code>skill-metadata-shape</code> validate rule is pulled into scope (§2 in-scope, Task list) and named in REQ-TOOL-004 as a <code>must</code>, at <code>warning</code> severity so the ten commands can be brought up to the bar without a red build. The keys are <em>structured</em> (not prose) so the rule checks presence rather than guessing intent — sidestepping the REQ-CHANGE-007 "a rule can't know intent" failure mode. The keys are a machine-checkable contract; the fixed <code>description</code> (not a sync-generated one) carries the tuned trigger surface skill-creator evaluates. The shape MUST is machine-enforced, not review-only.</div>
+</spec-risk>
+</spec-risk-log>
+</section>
+
+
+<section id="tasks">
+<h2>6 · Tasks</h2>
+<p>Scoped to this change. On <code>/spectastic.apply</code> these fold into <code>tasks.html</code> as a new
+provenance-linked phase (per <a href="../../../spec.html#REQ-CHANGE-006">REQ-CHANGE-006</a>) that
+<code>/spectastic.implement</code> drains.</p>
+
+<ul style="list-style:none;padding-left:0;">
+  <li><input type="checkbox"> Add the structured <code>triggers</code> / <code>use-when</code> / <code>sibling-boundary</code> keys to the source frontmatter of all ten <code>commands/*.md</code>.</li>
+  <li><input type="checkbox"> Tune each command's <code>description</code> via <code>/skill-creator</code> into a fixed, committed trigger surface; commit the keys and the tuned description together.</li>
+  <li><input type="checkbox"> Add the <code>skill-metadata-shape</code> rule to <code>spectastic validate</code> (in <code>packages/core</code>) — <code>warning</code> severity, flags a command whose source frontmatter is missing any of the three keys; add a vitest covering present/missing cases.</li>
+  <li><input type="checkbox"> Run <code>/skill-creator</code> eval per command against the committed <code>description</code>; record the first-run scores as the <strong>baseline</strong>; re-tune any command below the ≥90% default target.</li>
+  <li><input type="checkbox"> Re-sync installed copies: <code>cp commands/*.md .claude/commands/</code> (plain copy, no generation); confirm the router fires each verb from intent (closes the <a href="../../../triage-log.html#T-006">T-006</a> drift for this change).</li>
+  <li><input type="checkbox"> Document the structured-metadata contract (the three keys + the fixed skill-creator-tuned description) in the command-authoring notes so future verbs inherit the bar.</li>
+</ul>
+</section>
+
+
+<section id="questions">
+<h2>7 · Open questions</h2>
+<spec-questions>
+<p>None outstanding — every decision was anchored across two interview passes: eval force (two-tier), the ≥90%
+default target (baselined on first run), structured keys as a parallel contract with a fixed
+skill-creator-tuned description (no sync composition), the validate rule and its
+<code>warning</code> severity, the REQ-TOOL-001 count fix (eight <code>must</code> + extended <code>may</code>),
+and the ship status. All three risk-pass findings resolved to <code>mitigated</code>.</p>
+</spec-questions>
+</section>
+
+
+<section id="changelog">
+<h2>8 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-07-02">2026-07-02</time><span>Proposal authored — adds REQ-TOOL-004 (skill-optimized invocation metadata + ≥90% eval floor); from triage T-008.</span></li>
+  <li><time datetime="2026-07-02">2026-07-02</time><span>Revised after the interview: metadata made <em>structured</em> (triggers / use-when / sibling-boundary); added the <code>skill-metadata-shape</code> validate rule (warning); ≥90% reframed as a baselined default target; folded in a REQ-TOOL-001 MODIFY (count fix — eight must + extended may). All three risk findings resolved to <code>mitigated</code>.</span></li>
+  <li><time datetime="2026-07-02">2026-07-02</time><span>Dropped compose-on-sync: the <code>description</code> is now a fixed, <code>/skill-creator</code>-tuned output (not generated at sync) so the evaluated string is the committed one; structured keys stay as a parallel machine-checkable contract + skill-creator inputs, description authoritative on conflict; sync returns to a plain <code>cp</code>.</span></li>
+  <li><time datetime="2026-07-02">2 Jul 2026</time><span>Applied on 2 Jul 2026 — Added REQ-TOOL-004 — every command surfaced as a skill MUST carry structured invocation metadata (triggers/use-when/sibling-boundary) as a machine-checkable contract, with a fixed /skill-creator-tuned description as the trigger surface (no sync composition, so the evaluated string is the committed one) and a skill-metadata-shape validate rule at warning severity; descriptions SHOULD clear a ≥90% /skill-creator eval (a default target, baselined on first run). Modified REQ-TOOL-001 to correct the stale command count — eight lifecycle commands MUST ship, extended verbs (explain, explore) MAY. From meta-spec triage T-008; all three adversarial-pass risks mitigated..</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+</spec-change>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  2026-07-02-skill-invocation-metadata · Skill-optimized command invocation metadata · authored 2026-07-02
+</footer>
+
+</main>
+<script src="../../../../../assets/spec.js"></script>
+</body>
+</html>

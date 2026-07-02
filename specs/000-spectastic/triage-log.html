@@ -243,6 +243,34 @@
   </details>
 </spec-triage>
 
+<spec-triage id="T-008" layer="spec">
+  <header>
+    <h4>Commands load as skills but don't invoke reliably — descriptions aren't tuned for the skill router</h4>
+    <span class="meta">
+      <span class="layer-pill">Spec</span>
+      <span class="regen" data-result="fail">upstream</span>
+    </span>
+  </header>
+
+  <p class="headline">Debugging the ten verbs firing inconsistently when Claude Code loads them as skills, root cause was a <strong>spec</strong> gap — <a href="./spec.html#REQ-TOOL-001">REQ-TOOL-001</a> mandates the markdown procedure but nothing requires the frontmatter to carry skill-invocation metadata (explicit trigger cues / "use when…" phrasing the router keys on), so the human-facing <code>description</code> lines give the skill router too little signal; fixed by a new <code>REQ-TOOL-*</code> clause plus a <code>/skill-creator</code> sweep of all ten commands; regeneration <strong>fails</strong> — another LLM regenerating commands from their specs writes reader-facing prose again.</p>
+
+  <dl>
+    <dt>Expected</dt> <dd>The ten spectastic verbs, loaded by the Claude Code harness as skills, fire reliably — both on an explicit <code>/spectastic.&lt;verb&gt;</code> and when user intent matches the verb's job — because each command's frontmatter gives the skill router strong, unambiguous triggering signal.</dd>
+    <dt>Actual</dt>   <dd>Commands load as skills but "do not invoke reliably enough." The frontmatter <code>description</code> + <code>argument-hint</code> (e.g. <code>commands/spectastic.spec.md</code>: <em>"Write a feature specification — what to build, for whom, and how we know it worked."</em>) reads as human documentation, not as router-matchable trigger metadata — no explicit "use when", no keyword cues, no negative boundaries against sibling verbs.</dd>
+    <dt>Diagnosis</dt><dd>Command frontmatter is authored for a human reader, not for skill-invocation matching, and no requirement encodes a triggering bar. <a href="./spec.html#REQ-TOOL-001">REQ-TOOL-001</a> makes the markdown body the source of truth but is silent on the <em>metadata</em> the harness uses to <em>select</em> a skill; the verbs predate commands being surfaced as skills, so the gap was never specified.</dd>
+    <dt>Fix</dt>      <dd><code>/spectastic.propose</code> against <code>specs/000-spectastic/spec.html</code>: add a <code>REQ-TOOL-*</code> clause requiring every command to ship skill-optimized invocation metadata (trigger cues + "use when" phrasing + sibling-boundary hints, ideally with a <code>/skill-creator</code> eval floor). <strong>Then implement:</strong> run <code>/skill-creator</code> across all ten <code>commands/*.md</code> to tune the descriptions, and re-sync <code>.claude/commands/</code> (<a href="./triage-log.html#T-006">T-006</a>) so the tuned copies are the ones the harness loads.</dd>
+  </dl>
+
+  <details>
+    <summary>Deep dive — cross-spec cascade + T-006 sync dependency</summary>
+    <dl>
+      <dt>Cross-spec cascade</dt> <dd>The individual verbs are owned by their own specs (<code>007-core-triage</code> … <code>014-core-implement</code>, plus <code>011-core-spec</code>, <code>018-explain</code>, <code>022-explore</code>). A meta-spec <code>REQ-TOOL-*</code> triggering bar is a cross-cutting contract those specs inherit — the meta-spec is the right owner (parallels how <a href="./spec.html#REQ-FORMAT-004">REQ-FORMAT-004</a> owns the sizing bands centrally rather than per-spec), so no per-verb spec change is needed, only conformance.</dd>
+      <dt>T-006 dependency</dt>   <dd>Enhancing <code>commands/*.md</code> does nothing until <code>.claude/commands/</code> is re-synced — the harness loads the installed copies, which drift (<a href="./triage-log.html#T-006">T-006</a>). The <code>/skill-creator</code> sweep MUST be followed by <code>cp commands/*.md .claude/commands/</code>; the durable fix rides on the deferred <code>init --tools</code> installer.</dd>
+      <dt>Measurement</dt>        <dd>Not symptom-patchable by eyeballing wording — <code>/skill-creator</code> ships an eval/benchmark that measures triggering accuracy with variance analysis. The proposed requirement should cite a measurable floor (trigger-accuracy target) so "reliable invocation" is checkable, not asserted.</dd>
+    </dl>
+  </details>
+</spec-triage>
+
 </spec-triage-log>
 </section>
 
@@ -260,6 +288,7 @@
   <li><time datetime="2026-06-26">26 Jun 2026</time><span>T-005 added — no guard detects a skipped task-fold, so a silent apply step 8 (the cause of T-004) is undetectable until a human notices. <code>spec</code> layer, regen <code>fail</code> — the fold has a procedural step (<a href="./spec.html#REQ-CHANGE-006">REQ-CHANGE-006</a>) but no checkable post-condition. Fix: <code>/spectastic.propose</code> adding <code>REQ-CHANGE-007</code> + a <code>fold-gap</code> validate rule modelled on <code>verify-view-stale</code>.</span></li>
   <li><time datetime="2026-06-26">26 Jun 2026</time><span>T-007 added — kernel apply ENOENTs on a spec's FIRST archive: <a href="./spec.html#REQ-CHANGE-007">REQ-CHANGE-007</a> mandates the move but not <em>creating</em> <code>changes/archive/</code>, so a bare <code>fs.rename</code> fails and leaves a half-applied state. <code>spec</code> layer, regen <code>fail</code>. Fix: <code>/propose</code> amending REQ-CHANGE-007 + a <code>FileSystem.mkdir</code> + mkdir-before-rename hotfix (<code>apply.ts:145</code> &amp; <code>:318</code>). Surfaced applying 023's grounding-in-plan.</span></li>
   <li><time datetime="2026-06-26">26 Jun 2026</time><span>T-007 closed — applied <a href="changes/archive/2026-06-26-archive-dir-creation/proposal.html">2026-06-26-archive-dir-creation</a> (REQ-CHANGE-007 + REQ-CHANGE-005: the archive and withdraw moves MUST create their parent dir if absent) and landed the <code>FileSystem.mkdir</code> + mkdir-before-rename hotfix (T-300–302). A real-fs smoke confirms a brand-new spec's first apply no longer ENOENTs; 266 tests green.</span></li>
+  <li><time datetime="2026-07-02">02 Jul 2026</time><span>T-008 added — the ten verbs load as skills but don't invoke reliably; frontmatter <code>description</code>s are human-facing docs, not skill-router trigger metadata, and no requirement encodes a triggering bar. <code>spec</code> layer, regen <code>fail</code>. Fix: <code>/spectastic.propose</code> adding a <code>REQ-TOOL-*</code> triggering-metadata clause, then a <code>/skill-creator</code> sweep of all ten <code>commands/*.md</code> + re-sync <code>.claude/commands/</code> (<a href="./triage-log.html#T-006">T-006</a>).</span></li>
   <li><time datetime="2026-06-26">26 Jun 2026</time><span>T-006 added — installed <code>.claude/commands/*.md</code> are stale one-time copies (apply is a 13 Jun copy predating <a href="./spec.html#REQ-CHANGE-006">REQ-CHANGE-006</a>'s fold step), so the <code>/spectastic.apply</code> the harness ran skipped the fold — T-004 reproduced live during this very session's apply. <code>spec</code> layer, regen <code>fail</code> — no sync mechanism keeps installed commands current; the durable owner (<code>init --tools</code>) is deferred. Hotfix: re-sync <code>.claude/commands/</code> from <code>commands/</code>.</span></li>
 </ol>
 </spec-changelog>

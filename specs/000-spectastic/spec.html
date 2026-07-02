@@ -162,6 +162,46 @@ spectastic makes.</p>
   <a href="../../../026-git-strategy/spec.html#FR-001">026 FR-001</a>/<a href="../../../026-git-strategy/spec.html#FR-004">FR-004</a>/<a href="../../../026-git-strategy/spec.html#NFR-002">NFR-002</a>
   (git-strategy <code>G-003</code> §7 guardrails).</p></details>
   </spec-requirement>
+
+<spec-requirement id="REQ-TOOL-004" priority="must">
+    <p>Every command spectastic surfaces to an agent host as a skill — the lifecycle commands enumerated in
+    <a href="../../spec.html#REQ-TOOL-001">REQ-TOOL-001</a> and any extended verb it ships (e.g.
+    <code>/spectastic.explain</code>, <code>/spectastic.explore</code>) — <spec-rule>MUST</spec-rule> declare
+    <em>structured invocation metadata</em> in its source frontmatter as the source of truth for how the skill
+    router selects it. The metadata <spec-rule>MUST</spec-rule> comprise three keys:</p>
+    <ul>
+      <li><code>triggers</code> — the intents and phrasings that should invoke the command;</li>
+      <li><code>use-when</code> — a one-line framing of when to reach for it;</li>
+      <li><code>sibling-boundary</code> — what disambiguates it from adjacent verbs (e.g. <code>propose</code> vs <code>plan</code>, <code>spec</code> vs <code>explore</code>).</li>
+    </ul>
+    <p>The harness router reads only the frontmatter <code>description</code>. That <code>description</code>
+    <spec-rule>MUST</spec-rule> be a <em>fixed, committed output tuned against <code>/skill-creator</code>'s eval</em>
+    — the same string the router loads and the eval measures — and <spec-rule>MUST NOT</spec-rule> be generated from
+    the keys at sync time (a generated description makes the evaluated artifact a moving target that never lives in
+    the repo). The structured keys are the machine-checkable contract and the input skill-creator tunes from; the
+    <code>description</code> is the resulting trigger surface. Where a key and the <code>description</code> diverge,
+    the <code>description</code> is authoritative. <code>spectastic validate</code> <spec-rule>MUST</spec-rule> carry
+    a <code>skill-metadata-shape</code> rule that flags a command whose source frontmatter is missing any of the three
+    keys; the rule ships at <code>warning</code> severity.</p>
+
+    <p>Command descriptions <spec-rule level="should">SHOULD</spec-rule> be validated with
+    <code>/skill-creator</code>'s eval against a <strong>≥90% trigger-accuracy default target</strong> (the command
+    fires correctly on ≥90% of its intent cases) whenever the metadata changes; a command measured below the target
+    <spec-rule level="should">SHOULD</spec-rule> be re-tuned before it ships. The target is a <code>SHOULD</code>,
+    not a hard gate — the first eval run establishes the baseline it is checked against — until spectastic ships a
+    harness that can run the eval automatically (deferred to <code>init --tools</code>), at which point the check
+    <spec-rule level="may">MAY</spec-rule> be promoted to a gated <code>must</code> by a future change.</p>
+
+    <details><summary>Rationale</summary><p>Commands load as skills but invoke unreliably because their
+    frontmatter is authored for a human reader, and no requirement encodes a triggering bar (triage
+    <a href="../../triage-log.html#T-008">T-008</a>, <code>spec</code> layer, regen <code>fail</code>). Structured
+    keys make the bar machine-checkable; the <code>description</code> stays a fixed, tuned output so the exact string
+    skill-creator evaluates is the one committed and loaded — generating it at sync would break that eval loop. The
+    validate rule gives the <code>must</code> teeth (starting as a <code>warning</code> so the ten existing commands
+    can be brought up to the bar without a red build); the eval <code>should</code> makes "reliable" measurable
+    rather than asserted, baselined on first run so the ≥90% figure is checked against reality before it ever hardens
+    into a gate.</p></details>
+  </spec-requirement>
 </section>
 
 
@@ -653,13 +693,15 @@ a fresh contributor tweaks a token.</p></details>
 <h3>Tooling</h3>
 
 <spec-requirement id="REQ-TOOL-001" priority="must">
-<p>Spectastic <spec-rule>MUST</spec-rule> ship eight Claude Code slash commands across the
-lifecycle — <code>/spectastic.principles</code>, <code>/spectastic.spec</code>,
-<code>/spectastic.plan</code>, <code>/spectastic.tasks</code>,
-<code>/spectastic.implement</code>, <code>/spectastic.propose</code>,
-<code>/spectastic.apply</code>, <code>/spectastic.triage</code> — that drive the templates
-without introducing a separate CLI.</p>
-</spec-requirement>
+    <p>Spectastic <spec-rule>MUST</spec-rule> ship eight Claude Code slash commands across the lifecycle —
+    <code>/spectastic.principles</code>, <code>/spectastic.spec</code>, <code>/spectastic.plan</code>,
+    <code>/spectastic.tasks</code>, <code>/spectastic.implement</code>, <code>/spectastic.propose</code>,
+    <code>/spectastic.apply</code>, <code>/spectastic.triage</code> — that drive the templates without introducing a
+    separate CLI. It <spec-rule level="may">MAY</spec-rule> additionally ship <em>extended</em>, opt-in verbs
+    upstream of or alongside the lifecycle (e.g. <code>/spectastic.explain</code>, <code>/spectastic.explore</code>);
+    extended verbs are not required to ship, but any command spectastic <em>does</em> surface as a skill is bound by
+    <a href="#REQ-TOOL-004">REQ-TOOL-004</a>.</p>
+  </spec-requirement>
 
 <spec-requirement id="REQ-TOOL-003" priority="must">
 <p>The <code>/spectastic.implement</code> command <spec-rule>MUST</spec-rule> default to <em>one task per invocation</em>. It <spec-rule level="may">MAY</spec-rule> accept three opt-in drain modes that the user must type explicitly:</p>
@@ -1045,6 +1087,7 @@ disabled, fall back to <a href="#requirements">§4 Requirements</a>.</p>
   <li><time datetime="2026-06-30">29 Jun 2026</time><span>Applied <a href="./changes/archive/2026-06-29-record-reviewer-on-accept/proposal.html">2026-06-29-record-reviewer-on-accept</a>: Amended REQ-LIFECYCLE-004: In Review → Accepted MUST record the reviewer (a human) in the Reviewers field + changelog — unblocks honest Reviewed-by trailers (G-004)..</span></li>
   <li><time datetime="2026-06-30">30 Jun 2026</time><span>Applied <a href="./changes/archive/2026-06-30-risk-dispositioner-capture/proposal.html">2026-06-30-risk-dispositioner-capture</a>: Add by= (the human dispositioner) to REQ-CHANGE-004's &lt;spec-risk&gt; contract — design-time risk sign-off becomes attributable; the Acked-by trailer source for spec 027.</span></li>
   <li><time datetime="2026-06-30">30 Jun 2026</time><span>Applied <a href="./changes/archive/2026-06-30-req-git-contract/proposal.html">2026-06-30-req-git-contract</a>: Ratify the opt-in git model as the REQ-GIT family — REQ-GIT-001 branch model, REQ-GIT-002 commit message contract (verb(NNN): / unscoped grammar + humans-only authorship, Assisted-by for the AI), REQ-GIT-003 opt-in default-off delivery. The contract version of 026 + 027 (git-strategy brief, downstream slice 2). Adversarial pass: 3 findings, all mitigated pre-apply (merge trigger dropped, no-squash scoped to the layer, attribution reframed)..</span></li>
+  <li><time datetime="2026-07-02">2 Jul 2026</time><span>Applied <a href="./changes/archive/2026-07-02-skill-invocation-metadata/proposal.html">2026-07-02-skill-invocation-metadata</a>: Added REQ-TOOL-004 — every command surfaced as a skill MUST carry structured invocation metadata (triggers/use-when/sibling-boundary) as a machine-checkable contract, with a fixed /skill-creator-tuned description as the trigger surface (no sync composition, so the evaluated string is the committed one) and a skill-metadata-shape validate rule at warning severity; descriptions SHOULD clear a ≥90% /skill-creator eval (a default target, baselined on first run). Modified REQ-TOOL-001 to correct the stale command count — eight lifecycle commands MUST ship, extended verbs (explain, explore) MAY. From meta-spec triage T-008; all three adversarial-pass risks mitigated..</span></li>
 </ol>
 </spec-changelog>
 </section>
