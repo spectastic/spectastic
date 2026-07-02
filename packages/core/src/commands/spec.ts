@@ -13,6 +13,9 @@
  * The kernel returns the rendered HTML; the caller writes it.
  */
 
+import { extractHealth } from '@spectastic/schema';
+import { sliceCommand, appendSplitToParent } from './slice.js';
+import { shouldAutoOffer } from '../slice/gate.js';
 import type {
   KernelContext,
   SpecInput,
@@ -27,6 +30,28 @@ export async function specCommand(
     throw new Error('specCommand requires ctx.ai');
   }
   const specId = input.specId ?? deriveSpecId(input.description);
+
+  // Split-mode (spec 029, FR-001): run the slicer on the parent and append the
+  // proposal in place. The caller has already gated on Draft state (FR-008 / P-6).
+  if (input.split) {
+    if (!input.existingSpec) {
+      throw new Error('specCommand: split mode requires the existing parent spec (existingSpec)');
+    }
+    const slice = await sliceCommand(
+      { parentSpecId: specId, parentHtml: input.existingSpec },
+      ctx,
+    );
+    const html = appendSplitToParent(input.existingSpec, slice.splitSection);
+    const warnings =
+      slice.verdict.kind === 'dont-split'
+        ? [`don't-split verdict: ${slice.verdict.reasons.join('; ')}`]
+        : [];
+    if (!slice.model.coverage.isTotalAndDisjoint) {
+      warnings.push('coverage partition is incomplete — see the <spec-split> coverage table');
+    }
+    return { html, specId, requirementsCount: slice.model.orderedChildren.length, warnings };
+  }
+
   const isReentry = !!input.existingSpec;
 
   const prompt = [
@@ -58,6 +83,14 @@ export async function specCommand(
   const warnings: string[] = [];
   if (reqCount > 20) warnings.push(`requirements count ${reqCount} exceeds 20 — consider splitting`);
   if (!parsed.smallestDemoable) warnings.push('smallest-demoable not surfaced; spec interview may have failed');
+
+  // Auto-offer the slicer when the authored spec crosses the red budget band
+  // (spec 029, FR-010). Only surfaces the offer — the author still confirms.
+  if (shouldAutoOffer(extractHealth(html).budgetBand)) {
+    warnings.push(
+      `over the red budget band — consider splitting: run the value-ranked slicer with \`spectastic spec ${specId} --split\` (spec 029).`,
+    );
+  }
 
   return { html, specId, requirementsCount: reqCount, warnings };
 }

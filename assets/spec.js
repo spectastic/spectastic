@@ -153,6 +153,21 @@
       `<span class="rice-parts">R ${reach} · I ${impact} · C ${confidence} · E ${effort}</span>`;
   });
 
+  /* ---- 5e. spec-split — the slicer's split proposal (spec 029-value-ranked-slicer) --- */
+  /* The proposal renders as static HTML (children, coverage, verdict — readable JS-off).
+     JS adds a progressive count badge; the embedded <spec-rice> gauges are decorated by 5d. */
+  document.querySelectorAll('spec-split').forEach(el => {
+    const header = el.querySelector('header');
+    if (!header || header.querySelector('.child-count')) return;
+    const count = el.querySelectorAll('[data-child]').length;
+    if (count > 0) {
+      const badge = document.createElement('span');
+      badge.className = 'child-count';
+      badge.textContent = ` · ${count} candidate ${count === 1 ? 'child' : 'children'}`;
+      header.appendChild(badge);
+    }
+  });
+
   /* ---- 6. spec-delta target click-through -------------------------- */
   document.querySelectorAll('spec-delta[target]').forEach(el => {
     el.style.cursor = 'pointer';

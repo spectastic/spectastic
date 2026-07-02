@@ -350,6 +350,12 @@ export interface SpecInput {
   specId?: string;
   /** Existing spec.html content (for re-entry); caller reads it. */
   existingSpec?: string;
+  /**
+   * Split-mode (spec 029-value-ranked-slicer, FR-001): instead of authoring, run
+   * the value-ranked slicer on `existingSpec` and append a `<spec-split>` proposal.
+   * Requires `existingSpec` (the over-budget parent). Mints nothing.
+   */
+  split?: boolean;
 }
 
 export interface SpecResult {

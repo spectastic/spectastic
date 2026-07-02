@@ -18,7 +18,8 @@ export function registerSpec(program: Command): void {
     .option('--force', 'bypass the past-Draft refuse with a warning')
     .option('--commit', 'force a git commit for this run (overrides git.auto)')
     .option('--no-commit', 'skip the git commit for this run (overrides git.auto)')
-    .action(async (description: string, opts: { reentry?: string; force?: boolean; commit?: boolean }) => {
+    .option('--split', 'run the value-ranked slicer (spec 029): append a <spec-split> proposal to an over-budget Draft spec')
+    .action(async (description: string, opts: { reentry?: string; force?: boolean; commit?: boolean; split?: boolean }) => {
       const [
         { specCommand },
         { createAIProvider },
@@ -47,6 +48,11 @@ export function registerSpec(program: Command): void {
       const gitOverride = parseCommitOverride(opts.commit);
 
       const cwd = process.cwd();
+
+      // Split-mode (spec 029, FR-001): append a <spec-split> proposal to a Draft parent.
+      if (opts.split) {
+        await handleSplitMode(opts.reentry ?? description, opts, cwd);
+      }
 
       // If --reentry given, resolve to its known path; otherwise the kernel decides the ID.
       const reentryPath = opts.reentry
@@ -138,4 +144,76 @@ export function registerSpec(program: Command): void {
       });
       process.exit(reportGitOutcome(outcome));
     });
+}
+
+/**
+ * Split-mode handler (spec 029, FR-001): read the parent, enforce the Draft-only
+ * P-6 guard (FR-008), run the slicer through `specCommand`, write the appended
+ * proposal back, and commit. Always exits the process.
+ */
+async function handleSplitMode(
+  splitSpecId: string,
+  opts: { force?: boolean; commit?: boolean },
+  cwd: string,
+): Promise<never> {
+  const [
+    { specCommand },
+    { createAIProvider },
+    { nodeFs },
+    { extractSpecStatus },
+    { commitForVerb, reportGitOutcome, parseCommitOverride },
+    fs,
+    path,
+  ] = await Promise.all([
+    import('@spectastic/core/commands/spec'),
+    import('../ai-factory.js'),
+    import('@spectastic/core/providers/node-fs'),
+    import('@spectastic/schema'),
+    import('../git/index.js'),
+    import('node:fs/promises'),
+    import('node:path'),
+  ]);
+
+  const parentPath = path.resolve(cwd, 'specs', splitSpecId, 'spec.html');
+  let parentHtml: string;
+  try {
+    parentHtml = await fs.readFile(parentPath, 'utf8');
+  } catch {
+    process.stderr.write(`spec --split: no spec found at ${parentPath}\n`);
+    process.exit(2);
+  }
+
+  const status = extractSpecStatus(parentHtml);
+  if (status !== 'draft' && !opts.force) {
+    process.stderr.write(
+      `${parentPath} is <spec-status value="${status ?? 'unknown'}"> — past-Draft per P-6. The slicer appends only to a Draft parent; author the split via /spectastic.propose, or pass --force.\n`,
+    );
+    process.exit(2);
+  }
+
+  const ai = await createAIProvider();
+  const result = await specCommand(
+    { description: splitSpecId, specId: splitSpecId, existingSpec: parentHtml, split: true },
+    { cwd, fs: nodeFs, ai },
+  );
+  await fs.writeFile(parentPath, result.html, 'utf8');
+
+  const warnSuffix = result.warnings.length > 0 ? `; ${result.warnings.length} warning(s)` : '';
+  process.stdout.write(
+    `Appended <spec-split> to specs/${splitSpecId}/spec.html (${result.requirementsCount} candidate children${warnSuffix}).\n`,
+  );
+  for (const w of result.warnings) process.stderr.write(`  warn: ${w}\n`);
+
+  const override = parseCommitOverride(opts.commit);
+  const outcome = await commitForVerb({
+    verb: 'spec',
+    model: ai.model,
+    cwd,
+    specId: splitSpecId,
+    paths: [parentPath],
+    subject: `append split proposal to ${splitSpecId}`,
+    newSlice: false,
+    ...(override ? { override } : {}),
+  });
+  process.exit(reportGitOutcome(outcome));
 }

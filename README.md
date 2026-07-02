@@ -351,6 +351,14 @@ spectastic verify 021-verify-view
 # Edges are inferred from reciprocated defer-to ↔ <spec-parent> pairs; ties break
 # by RICE value (authored in each spec's <spec-rice> block); a cycle errors loudly.
 spectastic order --out roadmap.html
+
+# Value-ranked slicer (spec 029): propose a split of an over-budget Draft spec.
+# The `spec --split` mode appends a <spec-split> proposal — candidate children,
+# RICE-ranked and R-002 dependency-ordered, with a coverage partition proving
+# every requirement lands in exactly one child — and mints nothing. A cohesive
+# spec gets an explicit "don't split" verdict. A past-Draft parent is refused
+# in place and pointed at /spectastic.propose (P-6).
+spectastic spec 012-editor-ui --split
 ```
 
 Two example CI workflows are under [`docs/ci-examples/`](./docs/ci-examples/): one for GitHub Actions (uploads SARIF to Code Scanning), one for GitLab CI (exposes SARIF as a SAST report). Both surface findings as inline PR/MR annotations.
