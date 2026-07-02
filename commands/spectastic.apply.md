@@ -1,6 +1,14 @@
 ---
-description: Apply an approved change proposal — fold deltas into the live spec, move the change folder to archive.
+description: Apply an approved change proposal — fold its deltas into the live spec and archive the change folder (or withdraw an authored proposal). Use when landing or merging an approved proposal, or withdrawing one — not authoring the proposal (/spectastic.propose) or draining the folded tasks (/spectastic.implement).
 argument-hint: [<date>-<slug>, defaults to most recent approved proposal]
+triggers:
+  - "apply the approved proposal"
+  - "land the change into the live spec"
+  - "fold the deltas in and archive the change"
+  - "merge the proposal"
+  - "withdraw an authored proposal"
+use-when: "Folding an approved proposal's deltas into the live spec and archiving the change folder — or withdrawing an authored proposal."
+sibling-boundary: "Not propose (which authors the proposal apply consumes); not implement (which drains the tasks apply folds into tasks.html)."
 ---
 
 # /spectastic.apply

@@ -1,6 +1,14 @@
 ---
-description: Build to learn — scaffold a quarantined exploration you build loosely (SDD ceremony off, thin principles floor on) that the lifecycle refuses to ship until it graduates. Extended (opt-in) verb, upstream of spec.
+description: Build to learn — scaffold a quarantined exploration you build loosely (SDD ceremony off, thin principles floor) that the lifecycle refuses to ship until it graduates. Extended verb, upstream of spec. Use when spiking an idea, prototyping to find out if something's feasible, or exploring before committing to a spec — deliberately throwaway, unlike the committed requirements of /spectastic.spec.
 argument-hint: <intent> — a one-line description of what you want to find out
+triggers:
+  - "build a throwaway prototype to learn"
+  - "spike this idea before speccing"
+  - "quarantined experiment"
+  - "find out if this approach is feasible"
+  - "explore before committing to a spec"
+use-when: "Building loosely to learn — a quarantined exploration (SDD ceremony off, thin principles floor) upstream of a spec, that the lifecycle refuses to ship until it graduates."
+sibling-boundary: "Extended, upstream of spec — unlike spec it produces no committed requirements; explore is deliberately throwaway until it graduates."
 ---
 
 # /spectastic.explore

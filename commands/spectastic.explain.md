@@ -1,6 +1,14 @@
 ---
-description: Explain a spec, requirement, decision, or file — a grounded, in-chat coaching read; --course generates a persistent grounded course. Extended (opt-in) verb.
+description: Explain a spec, requirement, decision, or file — a grounded, in-chat coaching read; --course generates a persistent course. Extended, read-only verb. Use when you want to understand an artifact, be coached through a spec, or learn why a requirement exists — it teaches an existing artifact, it doesn't author or change one (/spectastic.spec, /spectastic.propose).
 argument-hint: <target…> [--proficiency=wheels|completion|independent] [--course [--keep]]
+triggers:
+  - "explain this spec, requirement, or decision"
+  - "help me understand this file"
+  - "coach me through the spec"
+  - "generate a course for this artifact"
+  - "why does this requirement exist"
+use-when: "Getting a grounded, in-chat coaching read of a spec, requirement, decision, or file — or generating a persistent course with --course."
+sibling-boundary: "Extended, read-only — unlike spec/plan/propose it authors nothing; explain teaches an existing artifact, it does not change it."
 ---
 
 # /spectastic.explain

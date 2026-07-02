@@ -1,6 +1,15 @@
 ---
-description: Triage a defect against an existing spec/plan/principles and append a single triage card to the spec's triage log.
+description: Triage a defect (or intake a pasted list of small items) — classify it to the layer that owns the fix and append one triage card. Use when a bug appears, when deciding which layer a fix belongs to, or when dumping a list of small to-dos — triage decides where a fix belongs; it doesn't make the fix (/spectastic.implement) or author the spec change (/spectastic.propose).
 argument-hint: <short failure description, or paste the error / stack>
+triggers:
+  - "triage a defect"
+  - "classify this bug"
+  - "which layer owns this failure"
+  - "intake a list of small items"
+  - "where does this fix belong"
+  - "root-cause this and file a card"
+use-when: "Classifying a single defect (or a pasted list of small items) to the layer that owns the fix, writing one triage card per item."
+sibling-boundary: "Not implement (which does the just-do work triage routes); not propose (which authors the spec change triage may recommend) — triage decides where a fix belongs, it does not make the fix."
 ---
 
 # /spectastic.triage

@@ -1,6 +1,14 @@
 ---
-description: Author or amend the project principles — the non-negotiable rules every downstream spec must honor.
+description: Author or amend the project principles — the non-negotiable, project-wide rules every downstream spec must honor. Use when setting up a project's constitution, adding or changing a cross-cutting invariant, or deciding what rules every spec must obey — not a single feature's requirements (that's /spectastic.spec).
 argument-hint: [project name | amendment description]
+triggers:
+  - "set up the project principles"
+  - "author the non-negotiable rules"
+  - "amend a principle"
+  - "define project-wide invariants"
+  - "what rules must every spec honor"
+use-when: "Establishing or amending the project-wide invariants every downstream spec must honor — the constitution, authored once and changed rarely."
+sibling-boundary: "Not spec (a single feature's requirements) — principles are cross-cutting rules above any one feature."
 ---
 
 # /spectastic.principles

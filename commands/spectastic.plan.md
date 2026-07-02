@@ -1,6 +1,14 @@
 ---
-description: Produce the implementation plan for an existing spec — stack, architecture, decisions, risks.
+description: Produce the implementation plan for an existing spec — stack, architecture, decisions, risks, ADRs. Use when deciding how to build an approved spec, choosing a stack or architecture, or recording technical decisions — after the spec's what, before the task breakdown (/spectastic.tasks).
 argument-hint: [spec-id, defaults to most recent]
+triggers:
+  - "plan the implementation"
+  - "choose the stack and architecture"
+  - "write the ADRs for this spec"
+  - "how should we build this spec"
+  - "technical approach for the feature"
+use-when: "Turning an approved spec into a technical approach — stack, architecture, decisions, risks — before breaking it into tasks."
+sibling-boundary: "Not spec (the what, not the how); not tasks (the ordered breakdown that comes after the plan)."
 ---
 
 # /spectastic.plan

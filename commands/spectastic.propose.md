@@ -1,6 +1,14 @@
 ---
-description: Author a change proposal for an existing spec — intent, scope, deltas, tasks. One file per change, PR-shaped.
+description: Author a change proposal for an existing spec — intent, scope, typed deltas, tasks; one PR-shaped file per change. Use when changing an already-written spec: adding, modifying, or removing a requirement — not a brand-new feature (/spectastic.spec), landing an approved proposal (/spectastic.apply), or classifying a defect first (/spectastic.triage).
 argument-hint: <change name or one-line description>
+triggers:
+  - "propose a change to a spec"
+  - "author a change proposal"
+  - "add, modify, or remove a requirement"
+  - "change an existing spec"
+  - "PR-shaped spec change"
+use-when: "Changing an already-written spec — intent, scope, typed deltas, and a scoped task list — one PR-shaped proposal per change."
+sibling-boundary: "Not spec (a brand-new feature, not a change to an existing one); not apply (which lands an approved proposal); not triage (which classifies a defect before a proposal is even warranted)."
 ---
 
 # /spectastic.propose
@@ -102,6 +110,8 @@ User input (from `$ARGUMENTS`): a change name or one-line description ("add OAut
    **Embed the findings** in the proposal's §5 Risk register as one `<spec-risk target="…" status="identified">` per finding. Every `<spec-risk>` MUST carry a `target=` (delta ID, REQ ID, or `§<n>` anchor); missing renders the visible label `MISSING TARGET`.
 
    **Author response discipline:** the propose-session LLM MAY draft an initial response into `<div class="response">` per risk, BUT the LLM MUST leave `status="identified"`. Status transitions — to `accepted`, `mitigated`, or `rejected` — are the user's commitment, not the LLM's. The user-authored status field is the gate; LLM drafts are starting points.
+
+   **Record the dispositioner (`by=`, per `REQ-CHANGE-004`).** When a `<spec-risk>` status leaves `identified` for `accepted | mitigated | rejected`, the disposition MUST record `by=` on that `<spec-risk>` — the human who dispositioned the finding (`name · handle`, the recording shape the author's choice), never an automated agent. It stays empty while `identified`. This is the source the `Acked-by` trailer reads (spec 027). The propose-session LLM MUST NOT fill `by=` with itself: like the status field, `by=` is the user's commitment. If the user commits a transition in the same session (e.g. via the decision interview), record `by=` naming them; otherwise leave it empty for the user to fill when they disposition.
 
 9. **Budget-aware splitting nudge.** Before finalising the proposal, count the deltas. If the proposal contains **more than ~5 deltas**, or touches deltas across **more than 2 topic prefixes** (e.g. `REQ-AUTH-*` and `REQ-RENDER-*`), stop and ask the user: *"Would these read better as two or three smaller proposals?"* The cost of a small proposal is one extra archive call; the cost of an oversize proposal is review fatigue and merge ambiguity. The default answer is "yes, split" unless the deltas truly share a single intent.
 

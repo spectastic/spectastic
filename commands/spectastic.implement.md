@@ -1,6 +1,15 @@
 ---
-description: Implement the next unchecked task from tasks.html — read context, do the work, tick the box.
+description: Implement the next unchecked task from tasks.html (or an inbox just-do card) — read context, do the work, tick the box; loop to drain. Use when building the next task, working through tasks.html, or draining just-do items — not producing the task list (/spectastic.tasks) or changing a spec's contract (/spectastic.propose).
 argument-hint: [<T-NNN> | spec-id, defaults to next unchecked task in the most recent spec]
+triggers:
+  - "implement the next task"
+  - "do the next unchecked task"
+  - "drain the task list"
+  - "work through tasks.html"
+  - "tick off the next item"
+  - "build the next just-do card"
+use-when: "Executing the next unchecked task (or an inbox just-do card) — read context, do the work, tick the box; loop to drain."
+sibling-boundary: "Not tasks (which produces the list this consumes); not propose (a contract change, not executing tasks that already exist)."
 ---
 
 # /spectastic.implement
