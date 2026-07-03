@@ -1,0 +1,250 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Kernel-owned principles apply · Specification</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Specification · 030-kernel-principles-apply · guarantee layer slice 1</p>
+  <h1>Kernel-owned principles apply</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    <code>spectastic apply principles &lt;slug&gt;</code> lands a principle amendment end-to-end in the kernel — the first slice where P-8 grows teeth.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>      <span><spec-status value="draft">Draft</spec-status></span>
+    <b>Spec ID</b>     <span>030-kernel-principles-apply</span>
+    <b>Owner</b>       <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Reviewers</b>   <span>—</span>
+    <b>Created</b>     <span><time datetime="2026-07-02">2 Jul 2026</time></span>
+    <b>Principles</b><span><a href="../../principles.html">v1.3.0</a> (<a href="../../principles.html#P-8">P-8</a>)</span>
+    <b>Smallest demoable</b><span><code>spectastic apply principles &lt;slug&gt;</code> folds an approved principles proposal — principle + version + changelog + archive — with zero hand-edits to <code>principles.html</code>.</span>
+    <b>Read time</b>   <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-budget words="1500" reqs="20" minutes="12"></spec-budget>
+
+  <spec-tldr>
+    <p><a href="../../principles.html#P-8">P-8</a> (principles v1.3.0) says a mandatory step's guarantee must live in the
+    kernel or CI, never in prose. Applying a <em>principles</em> amendment breaks that rule today: <code>apply.ts</code>
+    hardcodes <code>specs/&lt;id&gt;/</code>, so P-6, P-7, and P-8 were all applied <strong>by hand</strong> — a live
+    instance of the exact gap P-8 names, exposed when P-8 itself was hand-applied this session. This slice moves the
+    principles-apply guarantee into the kernel: a reserved <code>principles</code> target lets
+    <code>spectastic apply principles &lt;slug&gt;</code> fold the principle, bump the version, update the changelog,
+    substitute the tagline + TL;DR from proposal-declared fields, and archive — deterministically, with no hand-editing
+    of the ratified artifact. The other guarantee-layer pieces (a <code>validate --strict</code> CI gate; an
+    <code>init --tools</code> hook installer) are deferred siblings.</p>
+  </spec-tldr>
+
+  <dl class="invest">
+    <dt><span class="letter">I</span> Independent</dt> <dd>Depends on <a href="../../principles.html#P-8">P-8</a> and the existing apply kernel (<a href="../010-core-apply/spec.html">010-core-apply</a>). No new shared data model.</dd>
+    <dt><span class="letter">N</span> Negotiable</dt>  <dd>Outcomes contract. The proposal-field shape, the insert position mechanics, and error wording are deferred to the plan.</dd>
+    <dt><span class="letter">V</span> Valuable</dt>    <dd>Unlocks <a href="#SC-001">SC-001</a> — a principle amendment lands deterministically, ending three releases of hand-application.</dd>
+    <dt><span class="letter">E</span> Estimable</dt>   <dd>Plan + tasks derivable now; every decision anchored in the interview, no open questions.</dd>
+    <dt><span class="letter">S</span> Small</dt>       <dd>One kernel path extension reusing spec-apply machinery; 7 FRs, well under budget.</dd>
+    <dt><span class="letter">T</span> Testable</dt>    <dd>Every requirement is observable via exit code + <code>git diff</code>; success criteria are diff-verified (<a href="#SC-001">SC-001</a>).</dd>
+  </dl>
+
+  <spec-audience-map>
+    <dl>
+      <dt>Exec / PM</dt>   <dd>§<a href="#context">Context</a>, §<a href="#scenarios">Scenarios</a>, §<a href="#success">Success criteria</a>.</dd>
+      <dt>Reviewer</dt>    <dd>§<a href="#requirements">Requirements</a>, §<a href="#assumptions">Assumptions</a>.</dd>
+      <dt>Implementer</dt> <dd>§<a href="#requirements">Requirements</a>, §<a href="#data">Data model</a>.</dd>
+    </dl>
+  </spec-audience-map>
+</header>
+
+
+<section id="context">
+<h2>1 · Context</h2>
+<p>The apply kernel (<a href="../010-core-apply/spec.html">010-core-apply</a>, <a href="../000-spectastic/spec.html#REQ-CHANGE-008">REQ-CHANGE-008</a>)
+deterministically folds an approved proposal's deltas into a live spec, appends the changelog, folds §6 into the tasks
+tracker, flips the proposal to <code>applied</code>, and archives it. But it is <strong>spec-scoped</strong>:
+<code>packages/core/src/commands/apply.ts</code> hardcodes <code>specs/&lt;specId&gt;/spec.html</code>,
+<code>specs/&lt;specId&gt;/changes/</code>, and <code>specs/&lt;specId&gt;/tasks.html</code>.</p>
+<p>A <em>principles</em> amendment lives at repo root: its proposal is <code>changes/&lt;slug&gt;/proposal.html</code> and
+its target is <code>principles.html</code>. The kernel has no path for this, so every principle change — P-6, P-7, and
+P-8 — was applied by hand. That is precisely the defect <a href="../../principles.html#P-8">P-8</a> names: a mandatory
+step (applying the amendment) whose guarantee lives in hand-execution, not deterministic code. The
+<a href="../../docs/guarantee-layer-considerations.html">guarantee-layer survey</a> ranks "own the loop" (the kernel)
+as the strongest enforcement; this slice extends that ownership to the one artifact it doesn't yet cover.</p>
+</section>
+
+
+<section id="scenarios">
+<h2>2 · User scenarios &amp; testing</h2>
+
+<p>Each story is independently testable: US1 alone is a viable MVP.</p>
+
+<h3 id="US1">US1 · Apply a principles amendment via the kernel <spec-pill>P1</spec-pill></h3>
+<p>As a <strong>spectastic author</strong>, I want to <strong>run <code>spectastic apply principles &lt;slug&gt;</code> on an approved principles proposal</strong> so that <strong>the amendment lands deterministically with no hand-editing of the ratified <code>principles.html</code></strong>.</p>
+<p><em>Acceptance:</em> given an approved proposal at <code>changes/&lt;slug&gt;/</code> with one ADD delta targeting <code>P-N</code>, a declared target version, and declared replacement tagline + TL;DR fields — running the command inserts <code>P-N</code> after the last existing principle, updates the version in all three places, substitutes the tagline + TL;DR, appends a changelog entry, flips the proposal to <code>applied</code>, archives it with deepened paths, and commits. <code>git diff principles.html</code> touches only those regions.</p>
+
+<h3 id="US2">US2 · Refuse an unsafe or stale apply <spec-pill>P2</spec-pill></h3>
+<p>As a <strong>spectastic author</strong>, I want <strong>principles apply to refuse when the proposal is unsafe</strong> so that <strong>I can't silently corrupt the ratified constitution</strong>.</p>
+<p><em>Acceptance:</em> apply exits non-zero and mutates nothing if any <code>&lt;spec-risk status="identified"&gt;</code> remains (same gate as spec apply), if the proposal's declared from-version does not match the live <code>principles.html</code> version (stale guard), or if a required replacement field (tagline / TL;DR) is absent.</p>
+
+<h3>Edge cases</h3>
+<ul>
+  <li>Root <code>changes/archive/</code> does not exist on the first principles apply — the move MUST create it (the <a href="../000-spectastic/spec.html#REQ-CHANGE-007">REQ-CHANGE-007</a> mkdir-before-rename discipline, applied at root depth).</li>
+  <li>The ADD delta's <code>P-N</code> already exists in <code>principles.html</code> — refuse (an ADD target must not pre-exist), same as spec apply.</li>
+  <li>A MODIFY delta on an existing principle (not just ADD) — the fold MUST replace the principle body in place, mirroring spec-apply MODIFY semantics.</li>
+</ul>
+</section>
+
+
+<section id="requirements">
+<h2>3 · Requirements</h2>
+
+<p>Conformance keywords (<spec-rule>MUST</spec-rule>, <spec-rule level="should">SHOULD</spec-rule>,
+<spec-rule level="may">MAY</spec-rule>) follow RFC 2119.</p>
+
+<h3>Functional</h3>
+
+<spec-requirement id="FR-001" priority="must">
+<p><code>spectastic apply</code> <spec-rule>MUST</spec-rule> accept <code>principles</code> as a reserved <code>&lt;spec-id&gt;</code> that resolves the proposal to <code>changes/&lt;slug&gt;/proposal.html</code> and the target to <code>principles.html</code>, both at repo root — applying the same approval-status and risk-gate preconditions as a spec apply.</p>
+<details><summary>Rationale</summary><p>Keeps the existing <code>apply &lt;spec-id&gt; &lt;slug&gt;</code> arity verbatim; no new flag or second code path. <code>principles</code> is the only root-level artifact with a proposal lifecycle.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-002" priority="must">
+<p>The kernel <spec-rule>MUST</spec-rule> fold the proposal's delta into <code>principles.html</code> — inserting an ADD'd principle after the last principle in the Core principles section, or replacing a MODIFY'd principle's body in place — and <spec-rule>MUST NOT</spec-rule> create or require a tasks tracker: a principles proposal's §6 is the apply mechanics the kernel performs, and stays frozen in the archived proposal.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-003" priority="must">
+<p>The kernel <spec-rule>MUST</spec-rule> update <code>principles.html</code>'s version in all three places it appears (the small-caps pill, the <code>&lt;spec-meta&gt;</code> Version, the footer) to the proposal's declared target version, set the "Last amended" date to today, and append a <code>&lt;spec-changelog&gt;</code> entry naming the archived proposal.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-004" priority="must">
+<p>The kernel <spec-rule>MUST</spec-rule> substitute <code>principles.html</code>'s tagline and TL;DR from explicit replacement fields the proposal declares, and <spec-rule>MUST NOT</spec-rule> infer or rewrite that prose itself. If a required replacement field is absent, apply <spec-rule>MUST</spec-rule> refuse with a clear error and mutate nothing.</p>
+<details><summary>Rationale</summary><p>Structural edits are deterministic; the tagline count ("Seven" → "Eight") and the TL;DR sentence are content the author writes. The kernel substitutes author-written prose; it never guesses prose (brittle, and it would put a guarantee's <em>content</em> outside the author's control).</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-005" priority="must">
+<p>Principles apply <spec-rule>MUST</spec-rule> refuse — non-zero exit, no mutation — if any <code>&lt;spec-risk status="identified"&gt;</code> remains, or if the proposal's declared from-version does not match the live <code>principles.html</code> version (a stale-proposal guard).</p>
+</spec-requirement>
+
+<spec-requirement id="FR-006" priority="must">
+<p>On success the kernel <spec-rule>MUST</spec-rule> flip the archived proposal to <code>applied</code>, move the folder to <code>changes/archive/&lt;slug&gt;/</code> (creating the parent if absent, per the <a href="../000-spectastic/spec.html#REQ-CHANGE-007">REQ-CHANGE-007</a> mkdir-before-rename discipline), deepen its relative paths for the new depth, and commit per the git layer — the same archive semantics as spec apply, and keeping <code>principles.html</code> schema-valid.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-007" priority="should">
+<p>The <code>/spectastic.apply</code> slash command <spec-rule level="should">SHOULD</spec-rule> pass the <code>principles</code> sentinel automatically when the proposal targets <code>principles.html</code>, so the author types the same verb regardless of target.</p>
+</spec-requirement>
+
+<h3>Non-functional</h3>
+
+<spec-requirement id="NFR-001" priority="must">
+<p>Principles apply <spec-rule>MUST</spec-rule> be keyless (no <code>ANTHROPIC_API_KEY</code>) and deterministic — the same input proposal yields byte-identical output — matching spec apply.</p>
+</spec-requirement>
+
+<spec-requirement id="NFR-002" priority="should">
+<p>The principles-apply path <spec-rule level="should">SHOULD</spec-rule> reuse the existing spec-apply machinery (delta fold, risk gate, archive move, path rewrite) rather than a parallel copy, so the two cannot drift.</p>
+</spec-requirement>
+
+<h3>Out of scope (deferred to other slices)</h3>
+<spec-out-of-scope>
+  <ul>
+    <li defer-to="TBD-guarantee-layer-validate-strict"><code>spectastic validate --strict</code> as an unbypassable CI gate (guarantee-layer slice 2). Plain <code>validate</code> already errors on open <code>&lt;spec-question&gt;</code>s; strict promotes advisory rules and is spec'd separately.</li>
+    <li defer-to="TBD-guarantee-layer-init-tools"><code>spectastic init --tools</code> — the per-harness hook adapters + a git <code>pre-commit</code> calling <code>spectastic validate</code> (guarantee-layer slice 3).</li>
+    <li defer-to="TBD-principles-propose-fields">Updating <code>/spectastic.propose</code> to auto-emit the replacement tagline + TL;DR fields for principles proposals. For this slice they are authored in the proposal (authoring — not hand-editing the applied artifact).</li>
+    <li defer-to="never">Generalizing apply to arbitrary non-spec targets via auto-detection. <code>principles</code> is the only root-level target today; a reserved sentinel is enough (YAGNI).</li>
+  </ul>
+</spec-out-of-scope>
+</section>
+
+
+<section id="data">
+<h2>4 · Data model</h2>
+
+<p>This slice adds no persistent entities; it introduces one reserved identifier and one proposal-side field group.</p>
+
+<h3>Entities</h3>
+<dl>
+  <dt>Reserved spec-id <code>principles</code></dt><dd>A sentinel <code>&lt;spec-id&gt;</code> that resolves to root <code>changes/&lt;slug&gt;/</code> + <code>principles.html</code>. It has no <code>spec.html</code> and no <code>tasks.html</code>; the kernel branches on it.</dd>
+  <dt>Proposal replacement fields</dt><dd>The declared <em>target version</em> (already in the proposal's <code>&lt;spec-meta&gt;</code> / §Targets) plus a <em>new tagline</em> and <em>new TL;DR</em> the kernel substitutes verbatim. Field shape (attributes vs a structured block) is a plan decision.</dd>
+</dl>
+
+<spec-note>
+<p>The kernel already has <code>FileSystem.mkdir</code> + mkdir-before-rename (from the archive-dir-creation fix, <a href="../000-spectastic/spec.html#REQ-CHANGE-007">REQ-CHANGE-007</a>); the root <code>changes/archive/</code> case reuses it. This is P-8 in miniature: the guarantee (a principle lands correctly) moves from a human's hands into a deterministic function.</p>
+</spec-note>
+</section>
+
+
+<section id="success">
+<h2>5 · Success criteria</h2>
+
+<p>Technology-agnostic, measurable outcomes.</p>
+
+<spec-requirement id="SC-001" priority="must">
+<p>Running <code>spectastic apply principles &lt;slug&gt;</code> on an approved principles proposal produces a <code>principles.html</code> that contains the new/updated principle, shows the declared version in all three places, shows the substituted tagline + TL;DR, and carries a new changelog entry — with a <code>git diff</code> that touches only those regions; the proposal is archived and the run is committed. Zero hand-edits.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-002" priority="must">
+<p>A principles proposal with an identified risk, a stale declared from-version, or a missing replacement field is refused with a non-zero exit and <code>principles.html</code> left byte-identical.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-003" priority="should">
+<p>A principles apply creates no <code>principles-tasks.html</code> and folds no §6 phase.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-004" priority="must">
+<p>After a successful apply, <code>spectastic validate principles.html</code> reports zero findings (the <a href="../../principles.html#P-7">P-7</a> done-means-verified bar).</p>
+</spec-requirement>
+</section>
+
+
+<section id="assumptions">
+<h2>6 · Assumptions</h2>
+
+<spec-assumption>
+<p><code>principles.html</code> is the only root-level artifact with a change-proposal lifecycle; the meta-spec (<code>000-spectastic</code>) and every feature spec live under <code>specs/</code> and are already handled by spec apply.</p>
+</spec-assumption>
+
+<spec-assumption>
+<p>Principles proposals carry a single ADD or MODIFY delta targeting a principle ID (<code>P-N</code>), matching the P-6 / P-7 / P-8 precedent. Multi-delta or REMOVE principle proposals are rare and can extend this path later.</p>
+</spec-assumption>
+</section>
+
+
+<section id="questions">
+<h2>7 · Open questions</h2>
+<spec-questions>
+<p>None outstanding — every decision was anchored in the interview: the smallest demoable (kernel principles-apply over the strict-CI and hook-installer slices), the invocation surface (<code>principles</code> sentinel), the §6-fold behaviour (no fold), and the hands-off boundary (structural in the kernel, prose from proposal fields).</p>
+</spec-questions>
+</section>
+
+
+<section id="conformance">
+<h2>8 · Conformance index</h2>
+<p>Auto-built from every <code>&lt;spec-requirement&gt;</code> in this document.</p>
+<spec-conformance></spec-conformance>
+</section>
+
+
+<section id="changelog">
+<h2>9 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-07-02">2 Jul 2026</time><span>Initial draft. Guarantee-layer slice 1 (of <a href="../../principles.html#P-8">P-8</a>): move the principles-apply path into the kernel via a reserved <code>principles</code> target. Scoped by interview — smallest demoable of three candidate slices; the <code>validate --strict</code> CI gate and <code>init --tools</code> installer deferred to siblings. Sourced from the live hand-apply gap this session exposed and <a href="../../docs/guarantee-layer-considerations.html">guarantee-layer-considerations.html</a> / <a href="../000-spectastic/triage-log.html#T-009">T-009</a>.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  030-kernel-principles-apply · Kernel-owned principles apply · authored 2 Jul 2026 ·
+  <a href="../../index.html">home</a> ·
+  <a href="../../principles.html#P-8">P-8</a> ·
+  <button data-theme-toggle style="background:none;border:none;color:var(--c-link);cursor:pointer;font:inherit;padding:0;border-bottom:1px solid currentColor;">light/dark</button>
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>
