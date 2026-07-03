@@ -93,6 +93,14 @@ preconditions, the author-voiced summary, the cross-spec exception, and the rout
    new depth; and moves the folder to `changes/archive/<date>-<slug>/`. The fold runs **before**
    the move, so a fold failure leaves the proposal in place for a clean retry.
 
+   **Principles proposals (spec 030).** When the proposal targets `principles.html` — its folder is the
+   root-level `changes/<date>-<slug>/` and its `<spec-meta>` `Spec` row points at `principles.html` — pass the
+   reserved spec-id `principles`: `spectastic apply principles <date>-<slug> --summary "…"`. The kernel then
+   resolves root paths, inserts the principle bare, substitutes the version/tagline/TL;DR from the proposal's
+   `<spec-principles-apply>` block, and archives — no `tasks.html` fold (a principles proposal's §6 is the apply
+   mechanics). The proposal MUST carry a `<spec-principles-apply>` block (`<version from="…">…</version>`,
+   `<tagline>`, `<tldr>`) or the kernel refuses.
+
    **Cross-spec exception (markdown-handled).** The kernel applies **same-spec deltas only**. If a
    delta's `target` lives in another spec, the kernel leaves it untouched — apply those by hand per
    the "Cross-spec drift" Discipline note below and flag them to the user. This is the one

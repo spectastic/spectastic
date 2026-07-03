@@ -83,7 +83,12 @@ export function registerApply(program: Command): void {
           verb: 'apply',
           cwd: process.cwd(),
           specId,
-          paths: [path.resolve(process.cwd(), 'specs', specId)],
+          // Principles amendments (spec 030) live at repo root, not under specs/<id>/ —
+          // stage principles.html + the archived proposal folder, not a specs dir.
+          paths:
+            specId === 'principles'
+              ? [path.resolve(process.cwd(), 'principles.html'), result.archivedPath]
+              : [path.resolve(process.cwd(), 'specs', specId)],
           subject: slug,
           refs: result.archivedPath, // Refs trailer (spec 027 FR-002)
           ...(dispositioner === undefined ? {} : { dispositioner }),

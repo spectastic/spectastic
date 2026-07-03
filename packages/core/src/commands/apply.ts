@@ -40,6 +40,13 @@ export async function applyCommand(
   const today = new Date().toISOString().slice(0, 10);
   const todayHuman = formatHumanDate(new Date());
 
+  // Guarantee-layer slice 1 (spec 030 / P-8): a principles amendment is applied by
+  // the kernel, not by hand. The reserved `principles` spec-id resolves to root paths
+  // and runs the principles-specific fold; everything else is reused (D-001, D-005).
+  if (input.kind === 'apply' && input.specId === 'principles') {
+    return applyPrinciples(input, ctx, fs, today, todayHuman);
+  }
+
   const specPath = `${ctx.cwd}/specs/${input.specId}/spec.html`;
   const proposalDir = `${ctx.cwd}/specs/${input.specId}/changes/${input.slug}`;
   const proposalPath = `${proposalDir}/proposal.html`;
@@ -335,6 +342,169 @@ async function doWithdraw(
     changelogEntry,
     crossSpecWarnings: [],
   };
+}
+
+const PRINCIPLES_APPLY_RE = /<spec-principles-apply>([\s\S]*?)<\/spec-principles-apply>/i;
+
+interface PrinciplesFields {
+  from: string;
+  to: string;
+  tagline: string;
+  tldr: string;
+}
+
+/**
+ * Apply a principles amendment (spec 030-kernel-principles-apply). Reuses the risk gate,
+ * appendChangelogEntry, deepenArchivePaths, and the mkdir-before-rename move; adds only the
+ * principles-specific fold — a bare-principle insert + version/tagline/TL;DR substitution
+ * from the proposal's <spec-principles-apply> block — and skips the §6 fold (FR-002). All
+ * paths are root-relative (principles.html lives at repo root, not under specs/).
+ */
+async function applyPrinciples(
+  input: ApplyInput,
+  ctx: KernelContext,
+  fs: NonNullable<KernelContext['fs']>,
+  today: string,
+  todayHuman: string,
+): Promise<ApplyResult> {
+  const proposalDir = `${ctx.cwd}/changes/${input.slug}`;
+  const proposalPath = `${proposalDir}/proposal.html`;
+  const targetPath = `${ctx.cwd}/principles.html`;
+  const proposalHtml = await fs.readFile(proposalPath, 'utf8');
+
+  if (IDENTIFIED_RISK_RE.test(proposalHtml)) {
+    throw new Error(
+      `applyCommand: proposal at ${proposalPath} contains <spec-risk status="identified">. Transition each to accepted/mitigated/rejected before apply.`,
+    );
+  }
+
+  const fields = parsePrinciplesApply(proposalHtml);
+  let live = await fs.readFile(targetPath, 'utf8');
+
+  // Stale guard (FR-005): the live version must equal the proposal's declared from-version.
+  const liveVer = /<b>Version<\/b>\s*<span>([^<]+)<\/span>/i.exec(live)?.[1]?.trim();
+  if (liveVer !== fields.from) {
+    throw new Error(
+      `applyCommand: stale principles proposal — declares from-version ${fields.from} but principles.html is at ${liveVer ?? '(unknown)'}.`,
+    );
+  }
+
+  const deltas = foldPrinciplesDeltas(proposalHtml, (updated) => {
+    live = updated(live);
+  });
+
+  live = substitutePrinciplesHeader(live, fields, today, todayHuman);
+
+  const summary =
+    input.summary ??
+    `${deltas.length} delta${deltas.length === 1 ? '' : 's'} (${deltas.filter((d) => d.result === 'success').length} successful)`;
+  const changelogEntry = `<li><time datetime="${today}">${todayHuman}</time><span>Applied <a href="./changes/archive/${input.slug}/proposal.html">${input.slug}</a>: ${summary}.</span></li>`;
+  live = appendChangelogEntry(live, changelogEntry);
+  await fs.writeFile(targetPath, live);
+
+  // Flip status + deepen paths (reused), then archive at root (mkdir-before-rename, T-007).
+  const archivedProposal = deepenArchivePaths(
+    appendChangelogEntry(
+      proposalHtml
+        .replaceAll(/<spec-status value=["'][^"']+["']>[^<]*<\/spec-status>/g, '<spec-status value="applied">Applied</spec-status>')
+        .replaceAll(/(<spec-change\b[^>]*?)\sstatus=["'][^"']+["']/g, '$1 status="applied"'),
+      `<li><time datetime="${today}">${todayHuman}</time><span>Applied on ${todayHuman} — ${summary}.</span></li>`,
+    ),
+  );
+  await fs.writeFile(proposalPath, archivedProposal);
+
+  await fs.mkdir(`${ctx.cwd}/changes/archive`);
+  const archiveDir = `${ctx.cwd}/changes/archive/${input.slug}`;
+  await fs.rename(proposalDir, archiveDir);
+
+  return { liveSpec: targetPath, archivedPath: archiveDir, deltas, changelogEntry, crossSpecWarnings: [], foldedPhase: null };
+}
+
+/** Parse + validate the proposal's <spec-principles-apply> block (FR-004). Throws if absent/incomplete. */
+function parsePrinciplesApply(proposalHtml: string): PrinciplesFields {
+  const block = PRINCIPLES_APPLY_RE.exec(proposalHtml)?.[1];
+  if (block === undefined) {
+    throw new Error('applyCommand: principles proposal is missing its <spec-principles-apply> block (spec 030 FR-004).');
+  }
+  const from = /<version\b[^>]*\bfrom=["']([^"']+)["']/i.exec(block)?.[1];
+  const to = /<version\b[^>]*>([^<]+)<\/version>/i.exec(block)?.[1]?.trim();
+  const tagline = /<tagline>([\s\S]*?)<\/tagline>/i.exec(block)?.[1]?.trim();
+  const tldr = /<tldr>([\s\S]*?)<\/tldr>/i.exec(block)?.[1]?.trim();
+  if (from === undefined || !to || tagline === undefined || tldr === undefined) {
+    throw new Error('applyCommand: <spec-principles-apply> needs <version from="…">…</version>, <tagline>, <tldr> (spec 030 FR-004).');
+  }
+  return { from, to, tagline, tldr };
+}
+
+/** Fold each ADD/MODIFY delta as a bare principle; `mutate` applies each transform to the live doc. */
+function foldPrinciplesDeltas(proposalHtml: string, mutate: (fn: (live: string) => string) => void): DeltaApplication[] {
+  const deltas: DeltaApplication[] = [];
+  for (const match of proposalHtml.matchAll(DELTA_RE)) {
+    const op = match[1] as DeltaApplication['op'];
+    const target = match[2]!;
+    const bare = setPrincipleId(extractRequirementInner(match[3] ?? ''), target);
+    if (op === 'added') {
+      mutate((live) => insertPrincipleAtEndOfCore(live, bare));
+      deltas.push({ target, op, result: 'success' });
+    } else if (op === 'modified') {
+      let found = false;
+      mutate((live) => {
+        const replaced = replacePrinciple(live, target, bare);
+        found = replaced !== null;
+        return replaced ?? live;
+      });
+      deltas.push(found ? { target, op, result: 'success' } : { target, op, result: 'gate-blocked', reason: 'principle not found' });
+    } else {
+      deltas.push({ target, op, result: 'gate-blocked', reason: `op ${op} unsupported for principles` });
+    }
+  }
+  return deltas;
+}
+
+/** The inner of a delta's <spec-requirement> (the bare <h3> + <p> body), or the raw body. */
+function extractRequirementInner(body: string): string {
+  const m = /<spec-requirement[^>]*>([\s\S]*?)<\/spec-requirement>/i.exec(body);
+  return (m?.[1] ?? body).trim();
+}
+
+/** Ensure the principle's <h3> carries id="P-N" (principles use bare <h3 id>; the delta's h3 has none). */
+function setPrincipleId(inner: string, id: string): string {
+  if (/<h3\b[^>]*\bid=/i.test(inner)) {
+    return inner.replace(/(<h3\b[^>]*\bid=["'])[^"']*(["'])/i, `$1${id}$2`);
+  }
+  return inner.replace(/<h3\b/i, `<h3 id="${id}"`);
+}
+
+/** Insert a bare principle just before the close of <section id="core-principles"> (after the last principle). */
+function insertPrincipleAtEndOfCore(live: string, bare: string): string {
+  const secStart = live.indexOf('<section id="core-principles">');
+  if (secStart === -1) throw new Error('applyCommand: principles.html is missing <section id="core-principles">.');
+  const secEnd = live.indexOf('</section>', secStart);
+  return `${live.slice(0, secEnd)}\n${bare}\n${live.slice(secEnd)}`;
+}
+
+/** Replace an existing principle block (its <h3 id> up to the next <h3> or </section>). Null if absent. */
+function replacePrinciple(live: string, id: string, bare: string): string | null {
+  const re = new RegExp(String.raw`<h3\b[^>]*\bid=["']` + id + String.raw`["'][\s\S]*?(?=<h3\b|</section>)`, 'i');
+  return re.test(live) ? live.replace(re, bare + '\n\n') : null;
+}
+
+/** Substitute the version (pill + meta + footer), amended date, tagline, and TL;DR. */
+function substitutePrinciplesHeader(live: string, f: PrinciplesFields, today: string, todayHuman: string): string {
+  const fromV = escapeRegExp(f.from);
+  return live
+    .replace(new RegExp(String.raw`(Principles · v)` + fromV), `$1${f.to}`)
+    .replace(/(<b>Version<\/b>\s*<span>)[^<]+(<\/span>)/i, `$1${f.to}$2`)
+    .replace(new RegExp(String.raw`(Principles v)` + fromV), `$1${f.to}`)
+    .replace(/(<b>Last amended<\/b>\s*<span><time datetime=")[^"]*(">)[^<]*(<\/time>)/i, `$1${today}$2${todayHuman}$3`)
+    .replace(/(<footer[^>]*>[\s\S]*?amended [^·<]*?)(\s·)/i, `$1, ${todayHuman}$2`)
+    .replace(/(<p style="[^"]*font-size:1\.25rem[^"]*">)[\s\S]*?(<\/p>)/i, `$1\n    ${f.tagline}\n  $2`)
+    .replace(/(<spec-tldr>)[\s\S]*?(<\/spec-tldr>)/i, `$1\n    ${f.tldr}\n  $2`);
+}
+
+/** Escape a string for literal use inside a RegExp. */
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
 }
 
 function appendChangelogEntry(html: string, entry: string): string {
