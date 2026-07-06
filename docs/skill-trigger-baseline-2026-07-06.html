@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Skill-trigger accuracy baseline · 06 Jul 2026</title>
+<link rel="stylesheet" href="../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../assets/favicon.svg">
+<script src="../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Baseline · Skill triggering</p>
+  <h1>Skill-trigger accuracy baseline</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    The first recorded measurement of how reliably the ten command descriptions cause an LLM router to invoke
+    the right verb — and what it reveals about where guarantees can and cannot live.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>     <span><spec-status value="accepted">Accepted</spec-status></span>
+    <b>Type</b>       <span>Measurement record (first baseline)</span>
+    <b>Author</b>     <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Created</b>    <span><time datetime="2026-07-06">06 Jul 2026</time></span>
+    <b>Method</b>     <span><code>skill-creator</code> <code>run_eval</code>, 20 queries/verb, 3 runs/query (~600 <code>claude -p</code> calls)</span>
+    <b>Prompted by</b><span>meta-spec <a href="../specs/000-spectastic/tasks.html">T-603</a> / <a href="../specs/000-spectastic/spec.html#REQ-TOOL-004">REQ-TOOL-004</a></span>
+    <b>Read time</b>  <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-tldr>
+    <p>Across all 10 commands the trigger accuracy is a flat ~49%. The reason is mechanical: the descriptions
+    reject a sibling's intent <strong>perfectly (0 false triggers in 98 negatives)</strong> but clear a
+    should-trigger query <strong>never at a 2-of-3 majority (0 of 102)</strong> — only ~35% fired even once. The
+    floor is uniform across every verb, so it does <em>not</em> rank description quality; it measures the general
+    skill-under-triggering effect. Empirically, this is the guarantee-layer principle
+    (<a href="../principles.html#P-8">P-8</a>) in data: the description trigger surface cannot carry guarantees.</p>
+  </spec-tldr>
+</header>
+
+
+<section id="results">
+<h2>1 · Per-command baseline</h2>
+<p>Accuracy = (should-trigger queries that reached a ≥2/3 trigger rate + should-not-trigger queries that stayed
+below it) ÷ 20. Recall counts should-trigger queries at the same 2/3 bar; "fired ≥1/3" counts those that
+triggered at least once across the three runs.</p>
+
+<div style="overflow-x:auto;">
+<table>
+  <thead><tr><th>Command</th><th>Accuracy</th><th>Recall (2/3)</th><th>Fired ≥1/3</th><th>False triggers</th></tr></thead>
+  <tbody>
+    <tr><td><code>spec</code></td>       <td>50%</td><td>0/10</td><td>4/10</td><td>0/10</td></tr>
+    <tr><td><code>plan</code></td>       <td>50%</td><td>0/10</td><td>7/10</td><td>0/10</td></tr>
+    <tr><td><code>tasks</code></td>      <td>50%</td><td>0/10</td><td>2/10</td><td>0/10</td></tr>
+    <tr><td><code>implement</code></td>  <td>45%</td><td>0/11</td><td>4/11</td><td>0/9</td></tr>
+    <tr><td><code>propose</code></td>    <td>50%</td><td>0/10</td><td>3/10</td><td>0/10</td></tr>
+    <tr><td><code>apply</code></td>      <td>50%</td><td>0/10</td><td>3/10</td><td>0/10</td></tr>
+    <tr><td><code>triage</code></td>     <td>50%</td><td>0/10</td><td>3/10</td><td>0/10</td></tr>
+    <tr><td><code>principles</code></td> <td>50%</td><td>0/10</td><td>4/10</td><td>0/10</td></tr>
+    <tr><td><code>explain</code></td>    <td>45%</td><td>0/11</td><td>2/11</td><td>0/9</td></tr>
+    <tr><td><code>explore</code></td>    <td>50%</td><td>0/10</td><td>4/10</td><td>0/10</td></tr>
+  </tbody>
+  <tfoot><tr><td><strong>Total</strong></td><td><strong>~49%</strong></td><td><strong>0/102</strong></td><td><strong>36/102 (35%)</strong></td><td><strong>0/98</strong></td></tr></tfoot>
+</table>
+</div>
+</section>
+
+
+<section id="reading">
+<h2>2 · What it says (and doesn't)</h2>
+<p><spec-newthought>Precision is perfect.</spec-newthought> Not one description fired on a sibling's intent
+across 98 near-miss negatives — the <code>sibling-boundary</code> metadata (<a href="../specs/000-spectastic/spec.html#REQ-TOOL-004">REQ-TOOL-004</a>)
+does its job on the "don't grab the wrong verb" side. That is a real, positive result.</p>
+
+<p><spec-newthought>Recall is floored, and the floor is not description quality.</spec-newthought> It is a uniform
+0%-at-majority across all ten verbs, with ~35% one-off firing. That uniformity is the tell: if wording drove the
+number, the verbs would spread. Instead they flatline, which points at the documented behaviour that a router
+consults a skill only for work it can't already do inline — most substantive-but-doable lifecycle intents get
+handled directly. Tuning the copy cannot move a metric that floors independent of it.</p>
+
+<p><spec-newthought>This is P-8 in data.</spec-newthought> 0 of 102 is about as clean a demonstration as exists
+that the trigger-by-description surface cannot carry <em>guarantees</em>. It is an ergonomic nudge — pleasant when
+it fires ~1-in-3 — not an invariant. Guarantees must live where a deterministic program, not an LLM's discretion,
+decides that a step runs: the kernel (<a href="../specs/000-spectastic/spec.html#REQ-CHANGE-008">REQ-CHANGE-008</a>)
+and CI. See <a href="./guarantee-layer-considerations.html">the guarantee layer</a>.</p>
+</section>
+
+
+<section id="caveats">
+<h2>3 · Why this is a floor, not a verdict on the copy</h2>
+<p>The local harness measures a proxy, not the production path. Three limits pull the number down uniformly and
+would need the deferred automated harness to remove:</p>
+<ul>
+  <li><strong>Command, not skill.</strong> <code>run_eval</code> installs each description as a <code>.claude/commands/*.md</code> slash-command, which a router consults less autonomously than a first-class Skill.</li>
+  <li><strong>Isolated, no competition.</strong> Each verb is tested alone — the real question ("given all ten present, does the <em>right</em> one win?") is never posed, so the family-competition signal the metadata is built for is untested here.</li>
+  <li><strong>Coarse threshold.</strong> A 2-of-3 majority on three runs buckets a genuine ~30% trigger probability to a hard fail; more runs would surface a gradient.</li>
+</ul>
+<p>A faithful measurement — all ten surfaced as real skills, competing, over more runs — is exactly the automated
+eval <a href="../specs/000-spectastic/spec.html#REQ-TOOL-004">REQ-TOOL-004</a> defers to <code>init --tools</code>.
+Accordingly the "re-tune any command below the ≥90% target" leg of T-603 is <strong>not actionable against this
+signal</strong> (there is nothing to tune toward); it is deferred with the harness, and the ≥90% target remains a
+<code>SHOULD</code>. This document is the baseline that future, faithful runs are checked against.</p>
+</section>
+
+
+<section id="footer-links">
+<h2>4 · See also</h2>
+<ul>
+  <li><a href="./guarantee-layer-considerations.html">The guarantee layer</a> — the reliability architecture this baseline is evidence for (<a href="../principles.html#P-8">P-8</a>).</li>
+  <li><a href="../specs/000-spectastic/triage-log.html#T-008">Meta-spec T-008</a> / <a href="../specs/000-spectastic/triage-log.html#T-009">T-009</a> — the reliability arc that produced <code>REQ-TOOL-004</code> and P-8.</li>
+  <li>Raw per-query results and <code>baseline.json</code> live in the eval workspace (not committed — regenerable via the harness).</li>
+</ul>
+</section>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  Skill-trigger accuracy baseline · first run <time datetime="2026-07-06">06 Jul 2026</time> ·
+  <button data-theme-toggle style="background:none;border:none;color:var(--c-link);cursor:pointer;font:inherit;padding:0;border-bottom:1px solid currentColor;">light/dark</button>
+</footer>
+
+</main>
+<script src="../assets/spec.js"></script>
+</body>
+</html>
