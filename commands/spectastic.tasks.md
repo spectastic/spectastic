@@ -39,16 +39,21 @@ User input (from `$ARGUMENTS`): a Spec ID such as `001-auth-service`, or empty (
 
 4. **Task discipline**:
    - Each task is a `<spec-task>` element (per `REQ-LIFECYCLE-003` of the meta-spec) with `id="T-NNN"`, the boolean `parallel` attribute when applicable, and an inner `<input type="checkbox">` for completion state. **Never** use `<div class="task">` + class-spans — that form is a `REQ-AUTHOR-001` violation.
-   - One task = one **concrete file or directory**. Show the path inline using `<span class="path">src/auth/session.ts</span>`.
+   - **Emphasis is a short title, not the whole line** (per `REQ-LIFECYCLE-003`). The leading `<strong>` wraps a short imperative *task title only*; any supplementary detail follows in **plain-weight prose**, conventionally after an em-dash. Bolding the entire detailed sentence turns the task list into a wall of bold with no title/detail contrast — the `task-title-bold-scope` validate rule warns when it sees it.
+   - One task = one **concrete file or directory**. Show the path inline using a trailing `<span class="path">src/auth/session.ts</span>` (`path` is an exempt layout class, not a component).
    - Mark `parallel` only when the task touches a distinct file and has no dependency on another in-flight task. Omit the attribute otherwise — CSS hides the marker column when absent.
    - Task IDs are stable forever. Completed tasks are not deleted; their inner checkbox gains `checked` and the row strikes through via `:has(input:checked)` in `assets/spec.css`.
 
-   Example task entry:
+   Example task entries — a bare title, and a title with plain-weight detail after the em-dash (the `<strong>` stays on the title in both):
 
    ```html
    <spec-task id="T-001" parallel>
      <input type="checkbox">
      <div><strong>Implement session expiry middleware</strong> <span class="path">src/auth/session.ts</span></div>
+   </spec-task>
+   <spec-task id="T-002">
+     <input type="checkbox">
+     <div><strong>Add the refresh-token rotation guard</strong> — reject a reused token and revoke its family; return 401 with a <code>token_reuse</code> code. <span class="path">src/auth/refresh.ts</span></div>
    </spec-task>
    ```
 

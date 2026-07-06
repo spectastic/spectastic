@@ -21,6 +21,7 @@ import { riskTargetRequiredRule } from './risk-target-required.js';
 import { specIdUniqueRule } from './spec-id-unique.js';
 import { specParentWellFormedRule } from './spec-parent-well-formed.js';
 import { taskIdRequiredRule } from './task-id-required.js';
+import { taskTitleBoldScopeRule } from './task-title-bold-scope.js';
 import { verifyViewStaleRule } from './verify-view-stale.js';
 
 /**
@@ -43,6 +44,7 @@ export const rules: readonly Rule[] = [
   riskStatusRequiredRule,
   requirementIdRequiredRule,
   taskIdRequiredRule,
+  taskTitleBoldScopeRule,
   idWithinFileUniqueRule,
   specParentWellFormedRule,
   riceWellFormedRule,
