@@ -37,11 +37,14 @@ export async function openArtifact(
 ): Promise<void> {
   const existing = panels?.get(artifactPath);
   if (existing) {
+    // Reveal the reused panel AND repaint it from the current file, so a reopen
+    // reflects edits made since it was first shown (T-009). D-009's reuse kept
+    // the panel but left its content frozen — reveal without re-read is stale.
     existing.reveal();
+    await paint(existing, artifactPath);
     return;
   }
 
-  const artifactDir = path.dirname(artifactPath);
   const panel = vscode.window.createWebviewPanel(
     'spectastic.artifact',
     artifactPanelTitle(artifactPath),
@@ -59,13 +62,34 @@ export async function openArtifact(
   panels?.set(artifactPath, panel);
   panel.onDidDispose(() => panels?.delete(artifactPath));
 
+  await paint(panel, artifactPath);
+}
+
+/** Read the artifact and render it into the panel (or a loud error page). Shared
+ *  by the first open and the reuse-reveal path so both surface read errors and
+ *  carry the doc-path identically. */
+async function paint(panel: vscode.WebviewPanel, artifactPath: string): Promise<void> {
   try {
     const raw = await readFile(artifactPath, 'utf8');
-    panel.webview.html = rewriteForWebview(raw, panel.webview, artifactDir);
+    panel.webview.html = rewriteForWebview(
+      raw,
+      panel.webview,
+      path.dirname(artifactPath),
+      docPathOf(artifactPath),
+    );
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     panel.webview.html = errorPage(panel.webview, artifactPath, message);
   }
+}
+
+/** The artifact's spec-relative path for the in-page sticky header (T-010):
+ *  `<spec-id>/<file>`, e.g. `027-git-trailers/tasks.html`. A webview loads the
+ *  HTML as a string, so the page's own `location` is synthetic (…/index.html) —
+ *  the host must tell the page its real path via `<body data-doc-path>`, which
+ *  the shared header JS already prefers over `location.pathname`. */
+function docPathOf(artifactPath: string): string {
+  return `${path.basename(path.dirname(artifactPath))}/${path.basename(artifactPath)}`;
 }
 
 /**
@@ -78,6 +102,7 @@ export function rewriteForWebview(
   html: string,
   webview: Pick<vscode.Webview, 'asWebviewUri' | 'cspSource'>,
   artifactDir: string,
+  docPath?: string,
 ): string {
   const toUri = (rel: string): string =>
     webview.asWebviewUri(vscode.Uri.file(path.resolve(artifactDir, rel))).toString();
@@ -98,7 +123,17 @@ export function rewriteForWebview(
     `font-src ${webview.cspSource} https: data:; ` +
     `script-src ${webview.cspSource};">`;
 
-  return rewritten.replace(/<head>/i, `<head>\n${csp}`);
+  let out = rewritten.replace(/<head>/i, `<head>\n${csp}`);
+  // Tell the page its real spec-relative path so the sticky header shows it
+  // instead of the webview's synthetic index.html (T-010). The header JS reads
+  // document.body.dataset.docPath in preference to location.pathname.
+  if (docPath) {
+    out = out.replace(
+      /<body(\s[^>]*)?>/i,
+      (_m, attrs: string | undefined) => `<body${attrs ?? ''} data-doc-path="${escapeHtml(docPath)}">`,
+    );
+  }
+  return out;
 }
 
 function errorPage(

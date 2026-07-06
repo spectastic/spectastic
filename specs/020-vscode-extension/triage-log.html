@@ -309,7 +309,7 @@
   </details>
 </spec-triage>
 
-<spec-triage id="T-009" layer="implementation">
+<spec-triage id="T-009" layer="implementation" data-status="done">
   <header>
     <h4>Reclicking an already-open artifact reveals stale content — the panel never re-reads the file</h4>
     <span class="meta">
@@ -330,6 +330,7 @@
     <dt>Actual</dt>   <dd>The panel keeps the HTML from first open; the tab must be closed and reopened to see updates. Observed live while reviewing the task-row re-authoring edits.</dd>
     <dt>Diagnosis</dt><dd><code>open-artifact.ts:38–42</code> — the existing-panel branch calls <code>existing.reveal()</code> and returns, never reassigning <code>panel.webview.html</code>. <code>watcher.ts</code> (<code>watchLifecycle</code>) watches <code>*.html</code> but only posts a rebuilt <code>graph</code> to the <em>canvas</em> webview (FR-009 freshness is canvas-scoped); nothing repaints an open artifact panel. So reveal-of-a-stale-panel is a code omission, not a wrong contract.</dd>
     <dt>Fix</dt>      <dd><span class="path">packages/vscode/src/host/open-artifact.ts</span> — on the existing-panel branch, re-read the file and reassign <code>webview.html</code> via <code>rewriteForWebview</code> (reveal + refresh), reusing the initial open's read-error handling. Regression: <span class="path">tests/vscode/</span> — open, mutate the file, reveal, assert the webview HTML reflects the change.</dd>
+    <dt>Fixed</dt>    <dd>Factored a shared <code>paint(panel, artifactPath)</code> that both the first open and the reuse-reveal path call, so a reopen repaints from the current file. Regression added in <span class="path">packages/vscode/src/host/open-artifact.test.ts</span> (temp file, mutate between opens, assert the reused panel shows <code>VERSION_TWO</code> not <code>VERSION_ONE</code>); 9/9 host tests green.</dd>
   </dl>
 
   <spec-diff>
@@ -345,7 +346,7 @@
   </details>
 </spec-triage>
 
-<spec-triage id="T-010" layer="implementation">
+<spec-triage id="T-010" layer="implementation" data-status="done">
   <header>
     <h4>Artifact sticky header reads <code>index.html</code> in the webview instead of the spec-relative path</h4>
     <span class="meta">
@@ -367,6 +368,7 @@
     <dt>Actual</dt>   <dd>It always reads <code>index.html</code>. The webview has no real document URL, so the header's last-two-segments derivation resolves against the webview's synthetic origin.</dd>
     <dt>Diagnosis</dt><dd><code>assets/spec.js:262</code> builds the header label from <code>location.pathname.split('/').filter(Boolean).slice(-2).join('/')</code> — valid under <code>file:</code>/<code>http</code>, wrong in a webview where the document has no real path. <code>open-artifact.ts</code> assigns <code>panel.webview.html</code> but conveys nothing about the artifact's identity to the page, so the header falls back to the webview's <code>index.html</code>. Cross-component (host ↔ shared asset), code-only.</dd>
     <dt>Fix</dt>      <dd><span class="path">packages/vscode/src/host/open-artifact.ts</span> — inject the artifact's real spec-relative path before assigning <code>webview.html</code> (a <code>&lt;meta name="spectastic-path"&gt;</code> or a page global); <span class="path">assets/spec.js</span> — prefer that host-provided path (or the artifact <code>&lt;title&gt;</code>) over <code>location.pathname</code> when present. Add a webview assertion that the header shows the spec-relative path.</dd>
+    <dt>Fixed</dt>    <dd>Host-side only, as it turned out — <span class="path">assets/spec.js</span> <em>already</em> prefers <code>document.body.dataset.docPath</code> over <code>location.pathname</code>. <code>rewriteForWebview</code> now stamps <code>&lt;body data-doc-path="&lt;spec-id&gt;/&lt;file&gt;"&gt;</code> (e.g. <code>027-git-trailers/tasks.html</code>), so the header shows the real path; no <code>spec.js</code> change needed. Unit test asserts the stamp; 9/9 host tests green.</dd>
   </dl>
 
   <details>
@@ -387,6 +389,7 @@
 <h2>Change log</h2>
 <spec-changelog>
 <ol>
+  <li><time datetime="2026-07-06">06 Jul 2026</time><span>T-009 + T-010 fixed — <code>open-artifact.ts</code> now shares a <code>paint()</code> that repaints a reused panel on reopen (T-009) and stamps <code>&lt;body data-doc-path&gt;</code> so the sticky header shows the real spec-relative path (T-010; <code>spec.js</code> already preferred it). 3 host unit tests added, 9/9 green.</span></li>
   <li><time datetime="2026-07-06">06 Jul 2026</time><span>T-010 added — the in-artifact sticky header reads <code>index.html</code> in the webview instead of the spec-relative path; <code>assets/spec.js</code> derives it from <code>location.pathname</code>, meaningless in a webview loaded via <code>panel.webview.html</code>. <code>implementation</code>, regen <code>pass</code>: the host must convey the artifact's real path (or spec.js prefer the <code>&lt;title&gt;</code>). Distinct from T-007 (tab title).</span></li>
   <li><time datetime="2026-07-06">06 Jul 2026</time><span>T-009 added — reclicking an already-open artifact reveals stale content; <code>openArtifact</code> reveals the existing panel without re-reading, and the watcher only refreshes the canvas graph, not artifact panels. <code>implementation</code>, regen <code>pass</code>: wire a re-read + re-render on the reveal path. Observed live during the task-row re-authoring review.</span></li>
   <li><time datetime="2026-06-24">24 Jun 2026</time><span>T-008 added + fixed — after a spec switch, clicking a node opened the previous spec's artifact (stale click closure over a reused, reconciled-by-id node). <code>implementation</code>, regen <code>pass</code>: <code>node.ts</code> now reads the live path from <code>el.dataset.path</code> at click time; regression added (<code>canvas-open.spec.ts</code>, 32/32).</span></li>

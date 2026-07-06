@@ -1,4 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { mkdtemp, writeFile, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join, basename } from 'node:path';
 
 // open-artifact imports 'vscode', which only exists in the extension host. Mock
 // the slice we use so the pure rewrite (plan D-005) runs under vitest.
@@ -48,6 +51,17 @@ describe('rewriteForWebview', () => {
     expect(out).toContain('Content-Security-Policy');
     expect(out).toContain("style-src vscode-webview://unit 'unsafe-inline'");
     expect(out).toContain('script-src vscode-webview://unit');
+  });
+
+  // T-010: the sticky header reads document.body.dataset.docPath in preference
+  // to the webview's synthetic location, so the host must stamp the real path.
+  it('stamps the spec-relative path onto <body data-doc-path> when given', () => {
+    const withPath = rewriteForWebview(html, webview, '/repo/specs/099-demo', '099-demo/tasks.html');
+    expect(withPath).toContain('data-doc-path="099-demo/tasks.html"');
+  });
+
+  it('omits data-doc-path when no docPath is supplied (backward compatible)', () => {
+    expect(out).not.toContain('data-doc-path');
   });
 });
 
@@ -103,5 +117,36 @@ describe('panel identity + reuse (FR-003, D-009)', () => {
     expect((panel as { iconPath?: { fsPath: string } }).iconPath?.fsPath).toBe(
       '/ext/media/favicon.svg',
     );
+  });
+
+  // T-009: re-opening a reused panel must repaint from the current file, not
+  // leave the first render frozen. Uses a real temp file so paint() actually
+  // re-reads; the content changes between opens to prove the refresh.
+  it('repaints the reused panel from the current file on reopen', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'spectastic-open-'));
+    const file = join(dir, 'tasks.html');
+    try {
+      await writeFile(file, '<!doctype html><head></head><body><h1>VERSION_ONE</h1></body>');
+      const panel = makePanel();
+      vi.mocked(vscode.window.createWebviewPanel).mockReturnValue(panel);
+      const registry = new Map<string, unknown>();
+      const open = openArtifact as unknown as (
+        p: string,
+        r: unknown[],
+        m: Map<string, unknown>,
+      ) => Promise<void>;
+
+      await open(file, [], registry);
+      expect(panel.webview.html).toContain('VERSION_ONE');
+      expect(panel.webview.html).toContain(`data-doc-path="${basename(dir)}/tasks.html"`);
+
+      await writeFile(file, '<!doctype html><head></head><body><h1>VERSION_TWO</h1></body>');
+      await open(file, [], registry);
+      expect(vscode.window.createWebviewPanel).toHaveBeenCalledTimes(1); // reused, not stacked
+      expect(panel.webview.html).toContain('VERSION_TWO'); // refreshed, not frozen
+      expect(panel.webview.html).not.toContain('VERSION_ONE');
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
   });
 });
