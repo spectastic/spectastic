@@ -1,5 +1,6 @@
 import type { Rule } from '../types.js';
 
+import { dateFormatRule } from './date-format.js';
 import { deltaOpRequiredRule } from './delta-op-required.js';
 import { deltaTargetRequiredRule } from './delta-target-required.js';
 import { emptyDocumentRule } from './empty-document.js';
@@ -45,6 +46,7 @@ export const rules: readonly Rule[] = [
   requirementIdRequiredRule,
   taskIdRequiredRule,
   taskTitleBoldScopeRule,
+  dateFormatRule,
   idWithinFileUniqueRule,
   specParentWellFormedRule,
   riceWellFormedRule,
