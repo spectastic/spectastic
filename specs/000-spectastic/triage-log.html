@@ -300,7 +300,7 @@
   </details>
 </spec-triage>
 
-<spec-triage id="T-010" layer="spec">
+<spec-triage id="T-010" layer="spec" data-status="done">
   <header>
     <h4>Task rows wrap the whole line in <code>&lt;strong&gt;</code>, so <code>tasks.html</code> reads as a wall of bold</h4>
     <span class="meta">
@@ -323,6 +323,7 @@
     <dt>Actual</dt>   <dd>From <a href="../026-git-strategy/tasks.html">026</a> onward (026–030), the <em>entire</em> task sentence — parentheticals, clauses, and all — sits inside <code>&lt;strong&gt;</code>. e.g. 029 T-001: <code>&lt;strong&gt;Scaffold the slice module with typed interfaces (CandidateChild, Decomposition, …)&lt;/strong&gt;</code>. No title/detail contrast; the whole list reads as one bold block.</dd>
     <dt>Diagnosis</dt><dd>The format contract under-specifies the emphasis scope. <code>templates/tasks.html</code>'s placeholder (<code>&lt;strong&gt;[SETUP_TASK_1]&lt;/strong&gt;</code>) and the <code>commands/spectastic.tasks.md</code> example (<code>&lt;strong&gt;Implement session expiry middleware&lt;/strong&gt;</code>) both <em>imply</em> a short title but neither <a href="./spec.html#REQ-LIFECYCLE-003">REQ-LIFECYCLE-003</a> nor <a href="./spec.html#REQ-AUTHOR-001">REQ-AUTHOR-001</a> nor any validate rule forbids bolding a full detailed line. Five consecutive specs drifting identically is the signature of an upstream contract gap, not one-off code drift — so the fix stops recurring only at the format contract, not the artifacts.</dd>
     <dt>Fix</dt>      <dd><code>/spectastic.propose</code> against <code>specs/000-spectastic/spec.html</code>: amend the task-row clause so <code>&lt;strong&gt;</code> MUST wrap a short imperative task title only, with supplementary detail in plain-weight prose after an em-dash. Update the <code>commands/spectastic.tasks.md</code> example + <code>templates/tasks.html</code> placeholder to model the title/detail split, and add a <code>task-title-bold-scope</code> validate rule (heuristic: a <code>&lt;strong&gt;</code> spanning most of the row, or containing sentence-ending punctuation, warns) modelled on the existing drift-guards. <strong>Cascade:</strong> re-author 026–030 <code>tasks.html</code> to the split form.</dd>
+    <dt>Closed by</dt><dd>Applied <a href="changes/archive/2026-07-06-task-row-emphasis-scope/proposal.html">2026-07-06-task-row-emphasis-scope</a> (MODIFY REQ-LIFECYCLE-003; 3 adversarial risks — 2 mitigated, 1 rejected). Implemented: the <code>task-title-bold-scope</code> warn rule + fixtures, command/template split, and the 026–030 re-author (all clear the rule); 70/70 schema tests green.</dd>
   </dl>
 
   <details>
@@ -335,7 +336,7 @@
   </details>
 </spec-triage>
 
-<spec-triage id="T-011" layer="spec">
+<spec-triage id="T-011" layer="spec" data-status="done">
   <header>
     <h4>Human-readable dates drift between formats — <code>2026-06-29</code> in one row, <code>29 Jun 2026</code> in the next</h4>
     <span class="meta">
@@ -356,6 +357,7 @@
     <dt>Actual</dt>   <dd>Mixed. In <a href="../026-git-strategy/spec.html">026</a> the <code>Created</code> row renders <code>&lt;time datetime="2026-06-29"&gt;2026-06-29&lt;/time&gt;</code> (ISO display) while its changelog renders <code>&lt;time datetime="2026-06-29"&gt;29 Jun 2026&lt;/time&gt;</code> (DD Mon YYYY). Both display forms recur across the corpus, in meta rows and changelogs alike.</dd>
     <dt>Diagnosis</dt><dd>No meta-spec requirement governs the date <em>display</em> format. The <code>datetime=</code> attribute is uniform (ISO 8601) only by habit; the human-visible text is unowned, so templates and authoring sessions diverge — an honest format-contract gap, not per-artifact drift.</dd>
     <dt>Fix</dt>      <dd><code>/spectastic.propose</code> against <code>specs/000-spectastic/spec.html</code> — add a <code>REQ-FORMAT-*</code> clause: <code>&lt;time&gt;</code> <code>datetime=</code> <spec-rule>MUST</spec-rule> be ISO 8601 and the visible text <spec-rule>MUST</spec-rule> match one canonical human form (settle "DD Mon YYYY" vs ISO at propose time). Back it with a <code>date-format</code> validate rule (warn) that flags a <code>&lt;time&gt;</code> whose display text is off-form, then normalize the drifted artifacts.</dd>
+    <dt>Closed by</dt><dd>Applied <a href="changes/archive/2026-07-06-date-format-contract/proposal.html">2026-07-06-date-format-contract</a> (ADD REQ-FORMAT-005 — ISO <code>datetime=</code> + zero-padded <code>DD Mon YYYY</code>; 3 adversarial risks all mitigated). Implemented: the <code>date-format</code> warn rule + fixtures, and a per-file <code>validate</code>-gated normalization of 166 <code>&lt;time&gt;</code> displays across 53 files (zero residuals); 70/70 schema tests green.</dd>
   </dl>
 
   <details>
@@ -365,6 +367,46 @@
       <dt>Decision to settle</dt> <dd>The canonical <em>display</em> format is a genuine choice for the propose interview: "DD Mon YYYY" (the changelog convention, already the majority) vs ISO everywhere (machine-uniform but less readable). Not decided here — this card names the gap, not the resolution.</dd>
       <dt>Cleanup cascade</dt> <dd>The off-form artifacts (026's meta rows and any siblings) re-author once the rule lands, drained like <a href="#T-010">T-010</a>'s 026–030 cleanup — surfaced, not silently promoted.</dd>
     </dl>
+  </details>
+</spec-triage>
+
+<spec-triage id="T-012" layer="implementation">
+  <header>
+    <h4>A literal tag name in an apply <code>--summary</code> ships malformed changelog HTML</h4>
+    <span class="meta">
+      <span class="layer-pill">Implementation</span>
+      <span class="regen" data-result="pass">code</span>
+    </span>
+  </header>
+
+  <p class="headline">Debugging two live spec.html changelog entries whose apply-summary text contained raw
+  <code>&lt;time&gt;</code> and <code>&lt;strong&gt;</code> — the <code>&lt;time&gt;</code> even swallowed the rest
+  of its paragraph as parsed markup; root cause was an <strong>authoring</strong> slip, not a kernel defect —
+  <code>apply.ts:127</code> inserts <code>--summary</code> <em>verbatim</em> into the changelog
+  <code>&lt;span&gt;</code> <em>by design</em> (summaries legitimately carry <code>&lt;code&gt;</code>/<code>&lt;a&gt;</code>),
+  so a summary that <em>mentions</em> a tag name must escape it; fixed by escaping the two instances to
+  <code>&amp;lt;…&amp;gt;</code>; regeneration <strong>passes</strong> — the verbatim-HTML contract is correct.</p>
+
+  <dl>
+    <dt>Expected</dt> <dd>A changelog entry authored via <code>--summary</code> is well-formed HTML; a summary that refers to a tag name literally escapes it (<code>&amp;lt;time&amp;gt;</code>), the same discipline as the rest of the hand-authored changelog.</dd>
+    <dt>Actual</dt>   <dd>The <code>date-format-contract</code> and <code>task-row-emphasis</code> apply summaries contained raw <code>&lt;time&gt;</code> / <code>&lt;strong&gt;</code>; parse5 read them as real elements (the <code>&lt;time&gt;</code> with no <code>datetime=</code> absorbed the paragraph). Only surfaced because the new <code>date-format</code> rule tripped on the phantom <code>&lt;time&gt;</code>.</dd>
+    <dt>Diagnosis</dt><dd><code>apply.ts</code> (<a href="./spec.html#REQ-CHANGE-008">REQ-CHANGE-008</a>) inserts the summary verbatim so authors can format it — correct, and escaping in the kernel would break the intended <code>&lt;code&gt;</code>/<code>&lt;a&gt;</code>. The malformation was author-side, not a contract gap.</dd>
+    <dt>Fix</dt>      <dd><code>specs/000-spectastic/spec.html</code> — escaped both entries (done). No kernel change.</dd>
+  </dl>
+
+  <spec-diff>
+<del>  …every date is a <time> with an ISO 8601 datetime=…</del>
+<ins>  …every date is a &lt;time&gt; with an ISO 8601 datetime=…</ins>
+  </spec-diff>
+
+  <details>
+    <summary>Deep dive — detectability gap surfaced, not promoted</summary>
+    <p>The recurrence catch would be a validate rule for <em>well-formed authored HTML</em> in changelog spans (an
+    unclosed or stray tag), the way <a href="#T-005">T-005</a> made a skipped fold detectable. It is
+    <strong>surfaced, not promoted</strong>: the footgun is rare (only bites a summary that names a tag it doesn't
+    mean as markup), the <code>&lt;time&gt;</code> sub-case is now caught by the <code>date-format</code> rule, and a
+    general balanced-tag check on parse5's lenient tree is fuzzy enough to earn its own spec before it ships. No
+    cross-spec contract; no invariant. If a second instance recurs, promote the guard.</p>
   </details>
 </spec-triage>
 
@@ -388,6 +430,9 @@
   <li><time datetime="2026-07-02">02 Jul 2026</time><span>T-009 closed — the root cause (missing invariant) landed as <a href="../../principles.html#P-8">P-8 · Guarantees live in the kernel or CI</a> (principles v1.3.0). The mechanism (strict-CI gate, hook/pre-commit installer, kernel-owns-principles-apply) is the named follow-on <code>TBD-guarantee-layer-spec</code>.</span></li>
   <li><time datetime="2026-07-02">02 Jul 2026</time><span>T-009 added — mandatory workflow steps (interview gate, post-verb commit) live in command markdown, so nothing guarantees they run; the reliability arc (T-004/T-006/T-008) and two run_loop pilots all point at the same gap. <code>principles</code> layer, regen <code>fail</code> — no invariant states where a guarantee must live. Fix: amend principles ("guarantees live in the kernel or CI, never in markdown") → spec pulling <code>init --tools</code> (hook adapters + git pre-commit) and <code>validate --strict</code> (CI gate) forward as the guarantee layer. Backed by <a href="../../docs/guarantee-layer-considerations.html">guarantee-layer considerations</a>.</span></li>
   <li><time datetime="2026-07-02">02 Jul 2026</time><span>T-008 added — the ten verbs load as skills but don't invoke reliably; frontmatter <code>description</code>s are human-facing docs, not skill-router trigger metadata, and no requirement encodes a triggering bar. <code>spec</code> layer, regen <code>fail</code>. Fix: <code>/spectastic.propose</code> adding a <code>REQ-TOOL-*</code> triggering-metadata clause, then a <code>/skill-creator</code> sweep of all ten <code>commands/*.md</code> + re-sync <code>.claude/commands/</code> (<a href="./triage-log.html#T-006">T-006</a>).</span></li>
+  <li><time datetime="2026-07-06">06 Jul 2026</time><span>T-012 added + closed — a literal tag name in an apply <code>--summary</code> shipped malformed changelog HTML (two entries); <code>apply.ts</code> inserts the summary verbatim <em>by design</em>, so it was an authoring slip, not a kernel bug. <code>implementation</code>, regen <code>pass</code>. Escaped both; a well-formed-HTML validate guard surfaced but not promoted.</span></li>
+  <li><time datetime="2026-07-06">06 Jul 2026</time><span>T-011 closed — applied <a href="changes/archive/2026-07-06-date-format-contract/proposal.html">2026-07-06-date-format-contract</a> (REQ-FORMAT-005) + implemented: <code>date-format</code> warn rule, 166 <code>&lt;time&gt;</code> displays normalized across 53 files.</span></li>
+  <li><time datetime="2026-07-06">06 Jul 2026</time><span>T-010 closed — applied <a href="changes/archive/2026-07-06-task-row-emphasis-scope/proposal.html">2026-07-06-task-row-emphasis-scope</a> (REQ-LIFECYCLE-003) + implemented: <code>task-title-bold-scope</code> warn rule, 026–030 re-authored to the title/detail split.</span></li>
   <li><time datetime="2026-07-06">06 Jul 2026</time><span>T-011 added — human-readable dates drift between formats (<code>2026-06-29</code> vs <code>29 Jun 2026</code>) because no requirement owns the visible date-display format (the <code>datetime=</code> attr is ISO 8601 only by habit). <code>spec</code> layer, regen <code>fail</code>. Fix: <code>/spectastic.propose</code> adding a <code>REQ-FORMAT-*</code> date-format clause + a <code>date-format</code> validate rule, then normalize drifted artifacts.</span></li>
   <li><time datetime="2026-07-06">06 Jul 2026</time><span>T-010 added — task rows wrap the whole line in <code>&lt;strong&gt;</code>, so every <code>tasks.html</code> since 026 reads as a wall of bold; the format contract (<a href="./spec.html#REQ-LIFECYCLE-003">REQ-LIFECYCLE-003</a> / <a href="./spec.html#REQ-AUTHOR-001">REQ-AUTHOR-001</a> + <code>commands/spectastic.tasks.md</code> + <code>templates/tasks.html</code>) never bounds the emphasis to a short title. <code>spec</code> layer, regen <code>fail</code>. Fix: <code>/spectastic.propose</code> pinning <code>&lt;strong&gt;</code> to a short imperative title (detail in plain-weight prose, the pre-026 pattern) + a <code>task-title-bold-scope</code> validate rule; cascade re-authors 026–030.</span></li>
   <li><time datetime="2026-06-26">26 Jun 2026</time><span>T-006 added — installed <code>.claude/commands/*.md</code> are stale one-time copies (apply is a 13 Jun copy predating <a href="./spec.html#REQ-CHANGE-006">REQ-CHANGE-006</a>'s fold step), so the <code>/spectastic.apply</code> the harness ran skipped the fold — T-004 reproduced live during this very session's apply. <code>spec</code> layer, regen <code>fail</code> — no sync mechanism keeps installed commands current; the durable owner (<code>init --tools</code>) is deferred. Hotfix: re-sync <code>.claude/commands/</code> from <code>commands/</code>.</span></li>
