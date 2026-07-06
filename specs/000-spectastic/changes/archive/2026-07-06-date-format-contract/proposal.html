@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Date-format contract · Change proposal</title>
+<link rel="stylesheet" href="../../../../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../../../../assets/favicon.svg">
+<script src="../../../../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Change proposal · 000-spectastic</p>
+  <h1>One date format — ISO in the attribute, <code>DD Mon YYYY</code> on the page</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    The <code>datetime=</code> attribute is ISO 8601 only by habit and the visible date text is unowned, so it
+    drifts between <code>2026-06-29</code> and <code>29 Jun 2026</code>. Pin both.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>     <span><spec-status value="applied">Applied</spec-status></span>
+    <b>Change ID</b>  <span>2026-07-06-date-format-contract</span>
+    <b>Spec</b>       <span><a href="../../../spec.html">000-spectastic</a> (meta-spec)</span>
+    <b>Author</b>     <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Created</b>    <span><time datetime="2026-07-06">06 Jul 2026</time></span>
+    <b>Targets</b>    <span>1 requirement (1 added)</span>
+    <b>Read time</b>  <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-tldr>
+    <p>Closes meta-spec triage <a href="../../../triage-log.html#T-011">T-011</a>. Dates render in two forms across
+    the corpus — <code>Created</code> rows sometimes show <code>2026-06-29</code>, changelogs show
+    <code>29 Jun 2026</code> — because no requirement owns the <em>visible</em> date format (the
+    <code>&lt;time&gt;</code> <code>datetime=</code> attribute is uniform ISO 8601 only by convention). This change
+    <strong>ADDs REQ-FORMAT-005</strong>: a <code>&lt;time&gt;</code>'s <code>datetime=</code> MUST be ISO 8601 and
+    its visible text MUST render as <code>DD Mon YYYY</code> (e.g. <code>29 Jun 2026</code> — the corpus majority,
+    375 vs 215), backed by a warn-level <code>date-format</code> validate rule. §6 normalizes the ~215 off-form
+    displays and aligns the templates.</p>
+  </spec-tldr>
+</header>
+
+
+<spec-change id="2026-07-06-date-format-contract" status="applied">
+
+<header>
+  <h3>One date format — ISO in the attribute, <code>DD Mon YYYY</code> on the page</h3>
+  <span class="meta"><spec-status value="applied">Applied</spec-status></span>
+</header>
+
+
+<section id="intent">
+<h2>1 · Intent</h2>
+<p>Dates appear in nearly every artifact — <code>&lt;spec-meta&gt;</code> <code>Created</code>/<code>Updated</code>
+rows, <code>&lt;spec-changelog&gt;</code> entries, inline references. They are always wrapped in a
+<code>&lt;time&gt;</code> element and the <code>datetime=</code> attribute is, in practice, always ISO 8601. But
+the <em>visible</em> text is unowned: some rows render <code>2026-06-29</code>, others <code>29 Jun 2026</code>.
+The two forms sit side by side even within one spec (026's <code>Created</code> row vs its changelog), which
+reads as sloppiness in a tool whose whole point is calm, consistent artifacts.</p>
+<p>The cause is a format-contract gap, not per-artifact carelessness. No requirement names the canonical display
+form, so each template and authoring session picks one. Normalizing the existing dates without fixing the contract
+would let the drift return on the next generated artifact — so the fix has to be a requirement plus an enforcing
+rule, with the corpus cleanup riding behind it.</p>
+</section>
+
+
+<section id="scope">
+<h2>2 · Scope</h2>
+
+<spec-goals>
+  <h3>In scope</h3>
+  <ul>
+    <li>Add <a href="../../../spec.html#REQ-FORMAT-004">REQ-FORMAT-005</a>: <code>&lt;time&gt;</code> <code>datetime=</code> is ISO 8601; visible text is <code>DD Mon YYYY</code>; enforced by a warn-level <code>date-format</code> validate rule.</li>
+    <li>The <code>date-format</code> rule + positive/negative fixtures.</li>
+    <li>Normalize the off-form date displays to <code>DD Mon YYYY</code>, per-file with a <code>validate</code> re-check gate — the deterministic display-equals-ISO rewrite <em>and</em> a residual pass for any other shape the rule flags; "done" is zero <code>date-format</code> warnings, not a fixed count.</li>
+    <li>Align the lifecycle templates so newly-generated artifacts emit the canonical form.</li>
+  </ul>
+</spec-goals>
+
+<spec-non-goals>
+  <h3>Out of scope</h3>
+  <ul>
+    <li>Localised or alternate date formats (locale-aware rendering, relative "3 days ago") — one canonical form, full stop. <span class="path">defer-to=never</span></li>
+    <li>Timestamps with a time-of-day component — the contract covers calendar dates; a fuller ISO timestamp is permitted in <code>datetime=</code> where a time is meaningful, but no artifact needs one today. <span class="path">defer-to=TBD-time-of-day-stamps</span></li>
+    <li>Promoting the rule to an <code>error</code> / CI hard-fail — it ships at <code>warn</code> (the ~215 drifted displays would otherwise break the SC-001 integration gate before cleanup drains). <span class="path">defer-to=TBD-guarantee-layer-spec</span></li>
+  </ul>
+</spec-non-goals>
+</section>
+
+
+<section id="approach">
+<h2>3 · Approach</h2>
+<p>One ADD delta, sited in the <code>REQ-FORMAT-*</code> group beside the sibling it most resembles —
+<a href="../../../spec.html#REQ-FORMAT-004">REQ-FORMAT-004</a>, which likewise owns a format contract and names its
+own validate rule inline. The requirement fixes both halves of a date: the machine-readable
+<code>datetime=</code> attribute (ISO 8601, which consumers like reading-time and lifecycle sorting depend on) and
+the human-readable text (<code>DD Mon YYYY</code>).</p>
+<p><code>DD Mon YYYY</code> (zero-padded day) is chosen because it is already the corpus majority (375 occurrences vs 215
+ISO) and the established changelog convention — the smallest-migration, least-surprising choice.</p>
+<p>The requirement itself is a genuine <code>must</code>: a consumer that reads a date should be able to rely on
+both halves of the contract. That is a stronger commitment than <a href="../../../spec.html#REQ-FORMAT-004">REQ-FORMAT-004</a>'s
+advisory band, and this proposal does not borrow FORMAT-004's advisory authority for it. The <em>rule's</em>
+<strong>warn</strong> severity is a separate, migration-scoped choice, not a softening of the mandate: the ~215
+drifted displays exist right now, so an error-level rule would break the SC-001 "zero error findings" integration
+gate before §6's normalization drains. Once the corpus is clean, the severity can be revisited (a candidate for the
+deferred strict-CI gate) — the MUST stands regardless.</p>
+</section>
+
+
+<section id="deltas">
+<h2>4 · Deltas</h2>
+<p>One <code>&lt;spec-delta&gt;</code> per requirement touched. <code>target=</code> links to
+the live spec. <code>op=</code> is one of <code>added | modified | removed | renamed</code>;
+a missing or invalid op renders visibly broken.</p>
+
+<spec-delta op="added" target="REQ-FORMAT-005">
+  <spec-requirement id="REQ-FORMAT-005" priority="must">
+  <p>Every date in an artifact <spec-rule>MUST</spec-rule> be wrapped in a <code>&lt;time&gt;</code> element whose
+  <code>datetime=</code> attribute is a valid ISO 8601 date (<code>YYYY-MM-DD</code>, or a fuller ISO timestamp
+  where a time-of-day is meaningful) and whose <em>visible text</em> renders in the canonical human form
+  <code>DD Mon YYYY</code> — a <strong>zero-padded two-digit day</strong>, a three-letter title-case month, and a
+  four-digit year, e.g. <code>&lt;time datetime="2026-07-06"&gt;06 Jul 2026&lt;/time&gt;</code> (not <code>6 Jul 2026</code>).
+  This holds uniformly across <code>&lt;spec-meta&gt;</code> <code>Created</code>/<code>Updated</code> rows,
+  <code>&lt;spec-changelog&gt;</code> entries, and inline dates. A <code>date-format</code> validate rule
+  <spec-rule level="should">SHOULD</spec-rule> <strong>warn</strong> (not error) when a <code>&lt;time&gt;</code>'s
+  display text departs from <code>DD Mon YYYY</code> or its <code>datetime=</code> is not ISO 8601.</p>
+  <details><summary>Rationale</summary><p>The <code>datetime=</code> attribute was ISO 8601 only by habit and
+  the visible text was unowned, so the two forms drifted side by side — <code>2026-06-29</code> in one row,
+  <code>29 Jun 2026</code> in the next (<a href="../../../triage-log.html#T-011">T-011</a>). <code>DD Mon YYYY</code>
+  is the corpus majority (375 vs 215) and the changelog convention, so it is the least-migration canonical choice
+  (zero-padded day, e.g. <code>06 Jul 2026</code>); ISO stays in <code>datetime=</code> for machines. The requirement
+  is a genuine MUST; the rule's <em>warn</em> severity is a migration-scoped choice — it avoids breaking the SC-001
+  integration gate on the ~215 not-yet-normalized displays before the cleanup drains — not a softening of the
+  mandate.</p></details>
+  </spec-requirement>
+</spec-delta>
+</section>
+
+
+<section id="risks">
+<h2>5 · Risk register</h2>
+<p>Populated by the adversarial risk pass (this proposal's ADD post-state declares
+<code>priority="must"</code>). One <code>&lt;spec-risk&gt;</code> per finding. <code>status=</code> defaults to
+<code>identified</code>; apply refuses until each transitions to <code>accepted</code>, <code>mitigated</code>, or
+<code>rejected</code>, recording the dispositioner in <code>by=</code>.</p>
+
+<spec-risk-log>
+
+<spec-risk target="REQ-FORMAT-005" status="mitigated" by="Brian Corbin · @briancorbinxyz">
+  <p class="claim">The canonical form <code>DD Mon YYYY</code> never resolves day-<em>padding</em>, and the corpus is already split — so within 30 days the <code>date-format</code> rule either warns on roughly half of every artifact's dates or the normalization script silently rewrites the established convention.</p>
+  <p class="citation">Delta body — "<code>DD Mon YYYY</code> — e.g. <code>29 Jun 2026</code>"; yet this proposal's own <code>Created</code> row is <code>6 Jul 2026</code> (unpadded), <code>principles.html</code> uses <code>2 Jul 2026</code> (unpadded), and <a href="../../../triage-log.html#T-011">T-011</a> uses <code>06 Jul 2026</code> (padded). Every day 1–9 is ambiguous.</p>
+  <div class="response"><strong>Mitigated.</strong> Padding is now pinned: <code>DD</code> is a <em>zero-padded two-digit day</em> — the delta states it explicitly (<code>06 Jul 2026</code>, not <code>6 Jul 2026</code>), the §6 rule task warns on unpadded days, and the fixtures carry a single-digit-day boundary (<code>6 Jul 2026</code> warns / <code>06 Jul 2026</code> clean). The zero-padded form was chosen over non-padded so days column-align. The normalization zero-pads days 1–9, and this proposal's own <code>Created</code>/changelog/footer stamps were corrected to <code>06 Jul 2026</code> to conform.</div>
+</spec-risk>
+
+<spec-risk target="REQ-FORMAT-004" status="mitigated" by="Brian Corbin · @briancorbinxyz">
+  <p class="claim">The proposal grounds REQ-FORMAT-005 by invoking REQ-FORMAT-004's "advisory posture" as precedent, but FORMAT-004 makes its whole contract advisory while FORMAT-005 elevates the display form to a hard <code>priority="must"</code> — so the sibling parallel it leans on is false.</p>
+  <p class="citation">§3 / rationale — "mirroring REQ-FORMAT-004's advisory stance" / "to match REQ-FORMAT-004's advisory posture" — but FORMAT-004 says "the amber band is advisory … never a hard gate," whereas FORMAT-005 is a MUST.</p>
+  <div class="response"><strong>Mitigated.</strong> §3 and the delta rationale were reworded to own the MUST: the requirement is a genuine mandate; the <em>rule's</em> warn severity is a separate, migration-scoped choice (so the ~215 pre-cleanup displays don't break the SC-001 gate, revisitable once clean), not a softening. The FORMAT-004 advisory-band citation is no longer used as authority for the mandate — only for the sibling <em>shape</em> (a format contract that names its own rule).</div>
+</spec-risk>
+
+<spec-risk target="§2" status="mitigated" by="Brian Corbin · @briancorbinxyz">
+  <p class="claim">The cleanup is scoped strictly narrower than the requirement it satisfies — the transform only rewrites <code>&lt;time&gt;</code> whose display already equals the ISO attribute, so any date in a third shape (bare-text footer dates, <code>Jun 29 2026</code>, padding variants) is untouched, leaving warn residue the proposal claims it drains; and one blunt pass sweeps 67 files including system-of-record <code>principles.html</code>/<code>index.html</code>.</p>
+  <p class="citation">§2 in-scope bullet 3 + §6 task — "Normalize the ~215 off-form date displays … a mechanical, scriptable pass" whose precondition (display == ISO) is a strict subset of the delta's universal "Every date … MUST be wrapped in a <code>&lt;time&gt;</code> … canonical human form."</p>
+  <div class="response"><strong>Mitigated.</strong> The universal MUST stands; §2 bullet 3 and the §6 task were re-scoped to run the normalization <em>per-file with a <code>validate</code> re-check gate</em> — the deterministic display==ISO rewrite <em>plus</em> a residual pass for any other shape the rule flags (unpadded days, bare-text dates) — with "done" defined as zero <code>date-format</code> warnings, not a fixed count. The dropped "~215" figure no longer overpromises. System-of-record files (<code>principles.html</code>, <code>index.html</code>) run the same per-file gate, so a mis-rewrite of non-date <code>&lt;time&gt;</code> content is caught before commit.</div>
+</spec-risk>
+
+</spec-risk-log>
+</section>
+
+
+<section id="tasks">
+<h2>6 · Tasks</h2>
+<p>Scoped to this change only. On <code>/spectastic.apply</code> these fold into the target's
+<code>tasks.html</code> as a new provenance-linked phase (per <code>REQ-CHANGE-006</code>) that
+<code>/spectastic.implement</code> drains — this list is then the frozen intent record.</p>
+
+<ul style="list-style:none;padding-left:0;">
+  <li><input type="checkbox"> Add <code>date-format</code> fixtures — <code>positive.html</code> (a <code>&lt;time&gt;</code> with ISO display text, one with a non-ISO <code>datetime=</code>, <em>and</em> one with an unpadded single-digit day <code>6 Jul 2026</code> → all must warn) + <code>negative.html</code> (canonical zero-padded <code>DD Mon YYYY</code> — incl. a <code>06 Jul 2026</code> boundary — over an ISO <code>datetime=</code> → clean). Red until the rule lands. <span class="path">packages/schema/fixtures/date-format/</span></li>
+  <li><input type="checkbox"> Implement the <code>date-format</code> rule (warn severity): flag a <code>&lt;time&gt;</code> whose <code>datetime=</code> isn't ISO 8601, or whose display text isn't <code>DD Mon YYYY</code> with a <strong>zero-padded two-digit day</strong> (<code>6 Jul 2026</code> warns; <code>06 Jul 2026</code> clean); P-3 fixHint. Register it in the rules array. <span class="path">packages/schema/src/rules/date-format.ts</span></li>
+  <li><input type="checkbox"> Normalize the off-form displays <strong>per-file with a <code>validate</code> re-check gate</strong> — apply the deterministic display-equals-ISO rewrite (to zero-padded <code>DD Mon YYYY</code>), then a residual pass for any other shape the rule flags (unpadded days, bare-text dates); re-run <code>validate</code> after each file and stop at zero <code>date-format</code> warnings. Treat system-of-record files (<code>principles.html</code>, <code>index.html</code>) with the same gate so a mis-rewrite of non-date <code>&lt;time&gt;</code> content is caught before commit. <span class="path">specs/**/*.html, principles.html, plan.html, inbox.html, index.html</span></li>
+  <li><input type="checkbox"> Align the lifecycle templates so generated artifacts emit the canonical zero-padded display form (fix any placeholder <code>&lt;time&gt;</code> that models the ISO or unpadded display). <span class="path">templates/</span></li>
+</ul>
+</section>
+
+
+<section id="questions">
+<h2>7 · Open questions</h2>
+<spec-questions>
+<p>None outstanding — the gap was diagnosed in triage <a href="../../../triage-log.html#T-011">T-011</a>, and the
+canonical form (<code>DD Mon YYYY</code>), priority (<code>must</code>), cleanup scope (§6), rule severity
+(<code>warn</code>), and ship status (approved) were each anchored in the decision interview.</p>
+</spec-questions>
+</section>
+
+
+<section id="changelog">
+<h2>8 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-07-06">06 Jul 2026</time><span>Proposal authored — ADD REQ-FORMAT-005 pinning <code>&lt;time&gt;</code> to ISO 8601 <code>datetime=</code> + <code>DD Mon YYYY</code> display, backed by a warn-level <code>date-format</code> rule; closes T-011.</span></li>
+  <li><time datetime="2026-07-06">06 Jul 2026</time><span>Adversarial risk pass (must-tier ADD) landed 3 findings in §5 — day-padding undecided (REQ-FORMAT-005), false "advisory posture" parallel (REQ-FORMAT-004), cleanup scoped narrower than the MUST (§2). All <code>identified</code>; author to disposition before apply.</span></li>
+  <li><time datetime="2026-07-06">06 Jul 2026</time><span>Risks dispositioned (Brian Corbin) — all 3 <strong>mitigated</strong>: canonical form pinned to zero-padded <code>DD Mon YYYY</code> (delta + §6 rule/fixtures updated; proposal's own stamps corrected); §3/rationale reworded to own the MUST (rule-warn is migration-scoped); §6 normalization re-scoped to per-file with a <code>validate</code> re-check gate + residual pass. No <code>identified</code> risks remain — apply-clear.</span></li>
+  <li><time datetime="2026-07-06">6 Jul 2026</time><span>Applied on 6 Jul 2026 — Added REQ-FORMAT-005 — every date is a <time> with an ISO 8601 datetime= and a canonical zero-padded 'DD Mon YYYY' visible text (e.g. 06 Jul 2026), backed by a warn-level date-format validate rule; closes triage T-011 (the 2026-06-29 vs 29 Jun 2026 drift). Adversarial pass: 3 findings, all mitigated (padding pinned zero-padded; MUST owned, rule-warn migration-scoped; §6 cleanup re-scoped to a per-file validate re-check gate)..</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+</spec-change>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  2026-07-06-date-format-contract · Date-format contract · authored 06 Jul 2026
+</footer>
+
+</main>
+<script src="../../../../../assets/spec.js"></script>
+</body>
+</html>
