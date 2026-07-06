@@ -44,6 +44,17 @@ function escapeHtml(s: string): string {
     .replaceAll('"', '&quot;');
 }
 
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+/** Render an ISO `YYYY-MM-DD` date as the canonical `DD Mon YYYY` display form
+ *  (REQ-FORMAT-005) — the `<time>` keeps the ISO value in `datetime=`, the visible
+ *  text is zero-padded human. A non-ISO input is passed through unchanged. */
+function dmyDisplay(iso: string): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso);
+  if (!m) return iso;
+  return `${m[3]} ${MONTHS[Number(m[2]) - 1] ?? m[2]} ${m[1]}`;
+}
+
 /**
  * The typed Run/Demo block, identical in shape to verify.html's (FR-008). An
  * absent field stays an EMPTY element so CSS `:empty` renders it loudly as
@@ -81,6 +92,7 @@ export function renderLedger(input: ExploreInput): string {
     .replaceAll('../assets/', '../../assets/')
     .replaceAll('[EXPLORE_ID]', escapeHtml(input.id))
     .replaceAll('[INTENT]', escapeHtml(input.intent))
+    .replaceAll('[CREATED_DATE_DISPLAY]', escapeHtml(dmyDisplay(input.created)))
     .replaceAll('[CREATED_DATE]', escapeHtml(input.created))
     .replace(RUN_BLOCK_SLOT, renderExploreRunBlock(input.capturedRun));
 }

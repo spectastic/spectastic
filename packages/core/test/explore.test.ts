@@ -49,10 +49,12 @@ describe('exploreScaffold — T-100 (FR-002, FR-003, FR-007, FR-009)', () => {
     const { ledgerHtml } = exploreScaffold(base());
     expect(ledgerHtml).toContain('023-try-a-graph-view');
     expect(ledgerHtml).toContain('try a graph view for the canvas');
-    expect(ledgerHtml).toContain('2026-06-24');
+    expect(ledgerHtml).toContain('2026-06-24'); // ISO datetime= attribute
+    expect(ledgerHtml).toContain('24 Jun 2026'); // canonical DD Mon YYYY display (REQ-FORMAT-005)
     expect(ledgerHtml).not.toContain('[INTENT]');
     expect(ledgerHtml).not.toContain('[EXPLORE_ID]');
     expect(ledgerHtml).not.toContain('[CREATED_DATE]');
+    expect(ledgerHtml).not.toContain('[CREATED_DATE_DISPLAY]');
   });
 
   it('rewrites asset paths for the two-levels-deep ledger location', () => {
