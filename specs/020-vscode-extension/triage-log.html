@@ -309,6 +309,76 @@
   </details>
 </spec-triage>
 
+<spec-triage id="T-009" layer="implementation">
+  <header>
+    <h4>Reclicking an already-open artifact reveals stale content — the panel never re-reads the file</h4>
+    <span class="meta">
+      <span class="layer-pill">Implementation</span>
+      <span class="regen" data-result="pass">code</span>
+    </span>
+  </header>
+
+  <p class="headline">Debugging an open <code>tasks.html</code> panel still showing pre-edit content after the file
+  changed, root cause was an <strong>implementation</strong> gap — <code>openArtifact</code> reveals an
+  already-open panel <em>without re-reading the file</em>, and <code>watchLifecycle</code> only rebuilds the canvas
+  <em>graph</em> (never the artifact panels), so a reclick reveals frozen HTML; fixed by re-reading and
+  re-rendering on the reveal path; regeneration <strong>passes</strong> — <a href="./spec.html#FR-003">FR-003</a>'s
+  reveal-don't-duplicate is correct, the refresh step was simply never wired.</p>
+
+  <dl>
+    <dt>Expected</dt> <dd>Reopening (reclicking) an artifact whose file changed shows the current content — the revealed panel reflects the live file.</dd>
+    <dt>Actual</dt>   <dd>The panel keeps the HTML from first open; the tab must be closed and reopened to see updates. Observed live while reviewing the task-row re-authoring edits.</dd>
+    <dt>Diagnosis</dt><dd><code>open-artifact.ts:38–42</code> — the existing-panel branch calls <code>existing.reveal()</code> and returns, never reassigning <code>panel.webview.html</code>. <code>watcher.ts</code> (<code>watchLifecycle</code>) watches <code>*.html</code> but only posts a rebuilt <code>graph</code> to the <em>canvas</em> webview (FR-009 freshness is canvas-scoped); nothing repaints an open artifact panel. So reveal-of-a-stale-panel is a code omission, not a wrong contract.</dd>
+    <dt>Fix</dt>      <dd><span class="path">packages/vscode/src/host/open-artifact.ts</span> — on the existing-panel branch, re-read the file and reassign <code>webview.html</code> via <code>rewriteForWebview</code> (reveal + refresh), reusing the initial open's read-error handling. Regression: <span class="path">tests/vscode/</span> — open, mutate the file, reveal, assert the webview HTML reflects the change.</dd>
+  </dl>
+
+  <spec-diff>
+<del>  if (existing) { existing.reveal(); return; }</del>
+<ins>  if (existing) { existing.reveal(); await repaint(existing, artifactPath); return; }  // re-read + re-render</ins>
+  </spec-diff>
+
+  <details>
+    <summary>Deep dive — none required</summary>
+    <p>No cross-spec contract, no invariant, no hotfix-before-amendment. Distinct from <a href="#T-008">T-008</a>
+    (stale <em>click path</em> into a reused node) and <a href="#T-007">T-007</a> (panel <em>identity</em>/tab
+    title): this is the panel <em>content</em> going stale after a file edit.</p>
+  </details>
+</spec-triage>
+
+<spec-triage id="T-010" layer="implementation">
+  <header>
+    <h4>Artifact sticky header reads <code>index.html</code> in the webview instead of the spec-relative path</h4>
+    <span class="meta">
+      <span class="layer-pill">Implementation</span>
+      <span class="regen" data-result="pass">code</span>
+    </span>
+  </header>
+
+  <p class="headline">Debugging the in-artifact sticky header showing <code>index.html</code> rather than e.g.
+  <code>027-git-trailers/tasks.html</code> in the VS Code view, root cause was an <strong>implementation</strong>
+  gap — the shared sticky-header JS derives its label from <code>location.pathname</code> (correct in a browser),
+  but a webview loads the artifact as a <em>string</em> via <code>panel.webview.html</code>, so
+  <code>location.pathname</code> is the webview's synthetic URL ending in <code>index.html</code>; fixed by having
+  the host convey the artifact's real path to the page; regeneration <strong>passes</strong> — the header
+  derivation is browser-correct, the webview integration just never passes the path.</p>
+
+  <dl>
+    <dt>Expected</dt> <dd>In the VS Code artifact view the sticky header shows the artifact's real spec-relative path (e.g. <code>027-git-trailers/tasks.html</code>), matching the browser.</dd>
+    <dt>Actual</dt>   <dd>It always reads <code>index.html</code>. The webview has no real document URL, so the header's last-two-segments derivation resolves against the webview's synthetic origin.</dd>
+    <dt>Diagnosis</dt><dd><code>assets/spec.js:262</code> builds the header label from <code>location.pathname.split('/').filter(Boolean).slice(-2).join('/')</code> — valid under <code>file:</code>/<code>http</code>, wrong in a webview where the document has no real path. <code>open-artifact.ts</code> assigns <code>panel.webview.html</code> but conveys nothing about the artifact's identity to the page, so the header falls back to the webview's <code>index.html</code>. Cross-component (host ↔ shared asset), code-only.</dd>
+    <dt>Fix</dt>      <dd><span class="path">packages/vscode/src/host/open-artifact.ts</span> — inject the artifact's real spec-relative path before assigning <code>webview.html</code> (a <code>&lt;meta name="spectastic-path"&gt;</code> or a page global); <span class="path">assets/spec.js</span> — prefer that host-provided path (or the artifact <code>&lt;title&gt;</code>) over <code>location.pathname</code> when present. Add a webview assertion that the header shows the spec-relative path.</dd>
+  </dl>
+
+  <details>
+    <summary>Deep dive — cross-component, no contract change</summary>
+    <p>Distinct from <a href="#T-007">T-007</a>, which fixed the VS Code <em>tab title</em> (<code>specId · verb</code>
+    via <code>artifactPanelTitle</code>) — this is the <em>in-page</em> sticky header rendered by <code>assets/spec.js</code>.
+    The fix straddles the host (<code>open-artifact.ts</code>) and the shared design-system asset
+    (<code>spec.js</code>) but adds no requirement: the host owes the page its identity, and <code>spec.js</code>
+    should degrade gracefully when <code>location</code> is synthetic. No cross-spec contract; no invariant.</p>
+  </details>
+</spec-triage>
+
 </spec-triage-log>
 </section>
 
@@ -317,6 +387,8 @@
 <h2>Change log</h2>
 <spec-changelog>
 <ol>
+  <li><time datetime="2026-07-06">06 Jul 2026</time><span>T-010 added — the in-artifact sticky header reads <code>index.html</code> in the webview instead of the spec-relative path; <code>assets/spec.js</code> derives it from <code>location.pathname</code>, meaningless in a webview loaded via <code>panel.webview.html</code>. <code>implementation</code>, regen <code>pass</code>: the host must convey the artifact's real path (or spec.js prefer the <code>&lt;title&gt;</code>). Distinct from T-007 (tab title).</span></li>
+  <li><time datetime="2026-07-06">06 Jul 2026</time><span>T-009 added — reclicking an already-open artifact reveals stale content; <code>openArtifact</code> reveals the existing panel without re-reading, and the watcher only refreshes the canvas graph, not artifact panels. <code>implementation</code>, regen <code>pass</code>: wire a re-read + re-render on the reveal path. Observed live during the task-row re-authoring review.</span></li>
   <li><time datetime="2026-06-24">24 Jun 2026</time><span>T-008 added + fixed — after a spec switch, clicking a node opened the previous spec's artifact (stale click closure over a reused, reconciled-by-id node). <code>implementation</code>, regen <code>pass</code>: <code>node.ts</code> now reads the live path from <code>el.dataset.path</code> at click time; regression added (<code>canvas-open.spec.ts</code>, 32/32).</span></li>
   <li><time datetime="2026-06-24">24 Jun 2026</time><span>T-007 added — opened artifact panels don't identify their spec (bare-verb titles, no reuse), so 020's canvas appears to "show 021's artifacts" after a spec switch. <code>spec</code>, regen <code>fail</code>: FR-003 is silent on panel identity/reuse; needs a <code>/spectastic.propose</code> against 020, not just a title rename.</span></li>
   <li><time datetime="2026-06-24">24 Jun 2026</time><span>T-006 added — canvas omits the <code>verify.html</code> artifact (no verify node). <code>spec</code>, regen <code>fail</code>: 020's FR-001 node set + the scanner's hardcoded artifact list predate the 021 derived view; needs a <code>/spectastic.propose</code> against 020 to add a derived-view node, not a code patch.</span></li>
