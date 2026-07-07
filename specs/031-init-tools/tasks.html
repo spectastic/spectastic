@@ -1,0 +1,223 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>The guarantee-layer installer (init --tools) · Tasks</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Tasks · 031-init-tools</p>
+  <h1>The guarantee-layer installer — <code>init --tools</code></h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    Ordered, parallelizable work. Tests precede implementation. Drive through with
+    <code>/spectastic.implement</code> — one task per invocation.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>     <span><spec-status value="draft">Draft</spec-status></span>
+    <b>Spec</b>       <span><a href="./spec.html">031-init-tools</a></span>
+    <b>Plan</b>       <span><a href="./plan.html">plan</a></span>
+    <b>Branch</b>     <span><code>031-init-tools</code></span>
+    <b>Created</b>    <span><time datetime="2026-07-07">07 Jul 2026</time></span>
+    <b>Read time</b>  <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-tldr>
+    <p>23 tasks across five phases for two stories — US1 the pre-commit validate gate, US2 the drift-proof adapters.
+    Test-first: each story's integration + unit tests are written and failing before its implementation. Tasks
+    marked <span class="par">[P]</span> touch distinct files and parallelize. US2's drift-block depends on US1's
+    gate, so US1 lands first; US1 alone is a viable MVP.</p>
+  </spec-tldr>
+</header>
+
+
+<section id="strategy">
+<h2>1 · Execution strategy</h2>
+
+<spec-tabs>
+  <spec-tab label="MVP-first">
+    <p>The natural fit — solo work, one keystone story. Build the foundational orchestrator, land US1 (the gate)
+    end-to-end so <a href="./spec.html#SC-001">SC-001</a> is provable, then add US2's generated adapters and the
+    <code>commands-drift</code> block that the gate enforces.</p>
+  </spec-tab>
+  <spec-tab label="Incremental">
+    <p>Setup → Foundational → US1 → US2 → Polish, closing each story's tests before its implementation and the US1
+    integration suite before US2 opens.</p>
+  </spec-tab>
+  <spec-tab label="Parallel teams">
+    <p>Overkill for one installer. If staffed, split the hook writer (US1) from the adapter generator (US2) after
+    the foundational orchestrator lands — distinct files — then converge on <code>--uninstall</code>.</p>
+  </spec-tab>
+</spec-tabs>
+</section>
+
+
+<section id="phase-setup" class="phase">
+<h2>2 · Phase 1 — Setup</h2>
+
+<spec-task id="T-001" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Scaffold the tools orchestrator module</strong> — the entry the <code>--tools</code> flag delegates to; stub the install/uninstall plan. <span class="path">packages/cli/src/commands/init/tools.ts</span></div>
+</spec-task>
+<spec-task id="T-002" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Extend the temp-git-repo test harness</strong> — seed a minimal spectastic project (<code>specs/</code>, <code>commands/</code>, <code>spectastic.json</code>) so tools tests run against a real repo. <span class="path">tests/helpers/tmp-git-repo.ts</span></div>
+</spec-task>
+</section>
+
+
+<section id="phase-foundation" class="phase">
+<h2>3 · Phase 2 — Foundational</h2>
+<p>Shared plumbing both stories feed into: the flag surface, the install-plan model, the idempotent reconcile.</p>
+
+<spec-task id="T-010">
+  <input type="checkbox" checked>
+  <div><strong>Wire the <code>--tools</code> flag surface</strong> — add <code>--tools</code>, <code>--hooks-only</code>, <code>--commands-only</code>, <code>--uninstall</code>; delegate to the orchestrator with idempotent reconcile + a report of what changed (<a href="./spec.html#FR-001">FR-001</a>, <a href="./plan.html#D-004">D-004</a>). <span class="path">packages/cli/src/commands/init.ts</span></div>
+</spec-task>
+<spec-task id="T-011">
+  <input type="checkbox" checked>
+  <div><strong>Define the tools write-decision model</strong> — install-hook / generate-adapters / uninstall decisions + a summary printer, reusing the init conflict/summary UX. <span class="path">packages/cli/src/commands/init/tools.ts</span></div>
+</spec-task>
+</section>
+
+
+<section id="phase-us1" class="phase">
+<h2>4 · Phase 3a — US1 · Pre-commit validate gate</h2>
+
+<h3>Tests (write &amp; fail first)</h3>
+<spec-task id="T-100">
+  <input type="checkbox">
+  <div><strong>Integration test — error blocks, clean passes</strong> — after <code>init --tools</code>, a commit including a validate-erroring artifact exits non-zero with a message; a clean commit succeeds (<a href="./spec.html#SC-001">SC-001</a>). <span class="path">packages/cli/test/init.tools.integration.test.ts</span></div>
+</spec-task>
+<spec-task id="T-101">
+  <input type="checkbox">
+  <div><strong>Integration test — Accepted-only open-question gate</strong> — an open <code>&lt;spec-question&gt;</code> in an <em>Accepted</em> spec blocks the commit; the same in a <em>Draft</em> spec does not (<a href="./spec.html#SC-002">SC-002</a>, <a href="./spec.html#FR-004">FR-004</a>). <span class="path">packages/cli/test/init.tools.integration.test.ts</span></div>
+</spec-task>
+<spec-task id="T-102">
+  <input type="checkbox">
+  <div><strong>Integration test — existing hook preserved</strong> — with a prior <code>pre-commit</code> present, after <code>init --tools</code> both it and the spectastic gate run on commit (<a href="./spec.html#SC-006">SC-006</a>, <a href="./spec.html#FR-006">FR-006</a>). <span class="path">packages/cli/test/init.tools.integration.test.ts</span></div>
+</spec-task>
+<spec-task id="T-103" parallel>
+  <input type="checkbox">
+  <div><strong>Unit-test the generated hook script</strong> — shellout to <code>spectastic validate</code>, chain call, and <code>core.hooksPath</code> target are well-formed. <span class="path">packages/cli/test/hook.test.ts</span></div>
+</spec-task>
+
+<h3>Implementation</h3>
+<spec-task id="T-110">
+  <input type="checkbox">
+  <div><strong>Write the executable pre-commit hook</strong> — install to <code>.git/hooks/pre-commit</code>, <code>chmod +x</code> (<a href="./spec.html#FR-002">FR-002</a>, <a href="./plan.html#D-003">D-003</a>). <span class="path">packages/cli/src/commands/init/hook.ts</span></div>
+</spec-task>
+<spec-task id="T-111">
+  <input type="checkbox">
+  <div><strong>Chain a preserved existing hook</strong> — move any prior hook aside, call it first, propagate its exit; never overwrite (<a href="./spec.html#FR-006">FR-006</a>). <span class="path">packages/cli/src/commands/init/hook.ts</span></div>
+</spec-task>
+<spec-task id="T-112">
+  <input type="checkbox">
+  <div><strong>Author the gate script body</strong> — shell <code>spectastic validate &lt;artifact globs&gt;</code> and block on non-zero exit; <code>--no-verify</code> is git's own bypass, no custom escape (<a href="./spec.html#FR-002">FR-002</a>/<a href="./spec.html#FR-003">003</a>/<a href="./spec.html#FR-004">004</a>/<a href="./spec.html#FR-005">005</a>, <a href="./plan.html#D-002">D-002</a>). <span class="path">packages/cli/src/commands/init/hook.ts</span></div>
+</spec-task>
+<spec-task id="T-113">
+  <input type="checkbox">
+  <div><strong>Honour <code>core.hooksPath</code></strong> — install into the configured dir when set, else <code>.git/hooks</code> (<a href="./plan.html#D-003">D-003</a>). <span class="path">packages/cli/src/commands/init/hook.ts</span></div>
+</spec-task>
+<spec-task id="T-114">
+  <input type="checkbox">
+  <div><strong>Handle the non-git case</strong> — skip the hook with a loud warning and still install the adapters (<a href="./spec.html#FR-009">FR-009</a>). <span class="path">packages/cli/src/commands/init/tools.ts</span></div>
+</spec-task>
+
+<spec-note>
+<p>Closes <a href="./spec.html#FR-002">FR-002</a>, <a href="./spec.html#FR-003">FR-003</a>, <a href="./spec.html#FR-004">FR-004</a>, <a href="./spec.html#FR-005">FR-005</a>, <a href="./spec.html#FR-006">FR-006</a>, <a href="./spec.html#FR-009">FR-009</a>; <a href="./spec.html#SC-001">SC-001</a>, <a href="./spec.html#SC-002">SC-002</a>, <a href="./spec.html#SC-006">SC-006</a>.</p>
+</spec-note>
+</section>
+
+
+<section id="phase-us2" class="phase">
+<h2>5 · Phase 3b — US2 · Drift-proof command adapters</h2>
+
+<h3>Tests (write &amp; fail first)</h3>
+<spec-task id="T-200">
+  <input type="checkbox">
+  <div><strong>Integration test — source edit reaches the adapter</strong> — editing a <code>commands/*.md</code> source is reflected in the installed adapter with no manual copy, and a stale adapter can't be committed (<a href="./spec.html#SC-003">SC-003</a>). <span class="path">packages/cli/test/init.tools.integration.test.ts</span></div>
+</spec-task>
+<spec-task id="T-201" parallel>
+  <input type="checkbox">
+  <div><strong>Add the <code>commands-drift</code> fixtures</strong> — positive (installed adapter ≠ source → error) + negative (adapter == source → clean). Red until the check lands. <span class="path">packages/cli/test/fixtures/commands-drift/</span></div>
+</spec-task>
+<spec-task id="T-202" parallel>
+  <input type="checkbox">
+  <div><strong>Unit-test the adapter generator</strong> — reproduces source verbatim, including the committed skill-tuned <code>description</code> (<a href="./spec.html#FR-008">FR-008</a>). <span class="path">packages/cli/test/adapters.test.ts</span></div>
+</spec-task>
+
+<h3>Implementation</h3>
+<spec-task id="T-210" parallel>
+  <input type="checkbox">
+  <div><strong>Implement the adapter generator</strong> — regenerate <code>.claude/commands/*.md</code> from <code>commands/*.md</code> on each run, description verbatim (<a href="./spec.html#FR-007">FR-007</a>/<a href="./spec.html#FR-008">008</a>, <a href="./plan.html#D-001">D-001</a>). <span class="path">packages/cli/src/commands/init/adapters.ts</span></div>
+</spec-task>
+<spec-task id="T-211" parallel>
+  <input type="checkbox">
+  <div><strong>Add the <code>commands-drift</code> check to validate</strong> — compare installed adapters against source, emit an <code>error</code> on divergence, modelled on the quarantine-marker scan so the gate blocks a stale commit (<a href="./plan.html#D-001">D-001</a>). <span class="path">packages/cli/src/commands/validate.ts</span></div>
+</spec-task>
+<spec-task id="T-213">
+  <input type="checkbox">
+  <div><strong>Implement <code>--uninstall</code></strong> — remove the hook (restoring any chained prior) and the generated adapters, reversibly (<a href="./spec.html#FR-010">FR-010</a>). <span class="path">packages/cli/src/commands/init/tools.ts</span></div>
+</spec-task>
+
+<spec-note>
+<p>Closes <a href="./spec.html#FR-007">FR-007</a>, <a href="./spec.html#FR-008">FR-008</a>, <a href="./spec.html#FR-010">FR-010</a>; <a href="./spec.html#SC-003">SC-003</a>.</p>
+</spec-note>
+</section>
+
+
+<section id="phase-polish" class="phase">
+<h2>6 · Phase 4 — Polish</h2>
+<spec-task id="T-900" parallel>
+  <input type="checkbox">
+  <div><strong>Assert the gate latency budget</strong> — a perf test holds the gate to ≤ 1 s p95 on a ≤ 200-artifact project (<a href="./spec.html#NFR-001">NFR-001</a>, <a href="./spec.html#SC-005">SC-005</a>). <span class="path">packages/cli/test/init.tools.perf.test.ts</span></div>
+</spec-task>
+<spec-task id="T-901" parallel>
+  <input type="checkbox">
+  <div><strong>Test idempotent re-run</strong> — <code>init --tools</code> twice produces identical state and reports no changes on the second run (<a href="./spec.html#SC-004">SC-004</a>, <a href="./spec.html#FR-001">FR-001</a>). <span class="path">packages/cli/test/init.tools.integration.test.ts</span></div>
+</spec-task>
+<spec-task id="T-902" parallel>
+  <input type="checkbox">
+  <div><strong>Document <code>init --tools</code></strong> — flags, the gate, <code>--no-verify</code>, the non-git behaviour; move it out of the meta-spec deferred list. <span class="path">README.md</span></div>
+</spec-task>
+<spec-task id="T-903" parallel>
+  <input type="checkbox">
+  <div><strong>Rebuild the CLI bundle + confirm keyless</strong> — the new surface runs with no <code>ANTHROPIC_API_KEY</code> (<a href="./spec.html#NFR-002">NFR-002</a>); integration tests exercise the macOS/Linux shells (<a href="./spec.html#NFR-003">NFR-003</a>). <span class="path">packages/cli/_bundled/</span></div>
+</spec-task>
+</section>
+
+
+<section id="dependencies">
+<h2>7 · Dependencies</h2>
+<pre><code>Setup           → Foundational
+Foundational    → US1 (gate)
+US1 (gate)      → US2 (drift-block enforced by the gate)
+US1, US2        → Polish
+</code></pre>
+</section>
+
+
+<section id="changelog">
+<h2>8 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-07-07">07 Jul 2026</time><span>Initial task breakdown — 23 tasks, test-first: US1 pre-commit validate gate (T-100–T-114), US2 drift-proof adapters (T-200–T-213), polish (T-900–T-903).</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  Tasks for 031-init-tools · The guarantee-layer installer (init --tools) · authored 07 Jul 2026
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>
