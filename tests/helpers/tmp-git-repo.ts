@@ -31,7 +31,7 @@
  */
 
 import { execFile, execFileSync, spawn } from 'node:child_process';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -132,6 +132,13 @@ export interface TmpGitRepo {
    */
   writeFile(relPath: string, contents: string): void;
 
+  /**
+   * Seed a minimal spectastic project (spectastic.json, a commands/ source, and
+   * an Accepted + a Draft spec artifact) so `init --tools` (spec 031) has a real
+   * project to install into. Parent dirs are created automatically.
+   */
+  seedProject(): void;
+
   /** `rm -rf` the temp dir. Idempotent; safe to call in `afterEach`/`finally`. */
   cleanup(): void;
 }
@@ -211,7 +218,29 @@ export function createTmpGitRepo(): TmpGitRepo {
   };
 
   const writeFile = (relPath: string, contents: string): void => {
-    writeFileSync(resolve(dir, relPath), contents, 'utf8');
+    const abs = resolve(dir, relPath);
+    mkdirSync(dirname(abs), { recursive: true });
+    writeFileSync(abs, contents, 'utf8');
+  };
+
+  /**
+   * Seed a minimal spectastic project into the repo — a `spectastic.json`, a
+   * `commands/spectastic.spec.md` source, and two spec artifacts (one Accepted,
+   * one Draft) — enough for the 031 `init --tools` tests to install into and for
+   * the gate to have both a status that gates open questions and one that doesn't.
+   */
+  const seedProject = (): void => {
+    writeFile('spectastic.json', JSON.stringify({ version: 1 }, null, 2));
+    writeFile(
+      'commands/spectastic.spec.md',
+      '---\ndescription: Write a feature specification.\ntriggers: [spec]\nuse-when: "starting a feature"\nsibling-boundary: "not plan"\n---\n\n# spectastic.spec\n',
+    );
+    const artifact = (status: string, body: string): string =>
+      `<!doctype html><html><head><meta charset="utf-8"><title>t</title></head><body><main>` +
+      `<header><spec-meta><b>Status</b><span><spec-status value="${status}">${status}</spec-status></span></spec-meta></header>` +
+      `${body}</main></body></html>`;
+    writeFile('specs/900-accepted/spec.html', artifact('accepted', '<section id="questions"><spec-questions><p>None.</p></spec-questions></section>'));
+    writeFile('specs/901-draft/spec.html', artifact('draft', '<section id="questions"><spec-questions><p>None.</p></spec-questions></section>'));
   };
 
   const cleanup = (): void => {
@@ -228,6 +257,7 @@ export function createTmpGitRepo(): TmpGitRepo {
     isClean,
     stagedPaths,
     writeFile,
+    seedProject,
     cleanup,
   };
 }
