@@ -1,0 +1,328 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>The guarantee-layer installer (init --tools) · Specification</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Specification · 031-init-tools</p>
+  <h1>The guarantee-layer installer — <code>init --tools</code></h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    An explicit, idempotent installer that moves mandatory workflow steps out of advisory command markdown and
+    into git — a pre-commit <code>validate</code> gate and drift-proof command adapters — so a guarantee is
+    enforced, not asked for.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>      <span><spec-status value="draft">Draft</spec-status></span>
+    <b>Spec ID</b>     <span>031-init-tools</span>
+    <b>Owner</b>       <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Reviewers</b>   <span>—</span>
+    <b>Created</b>     <span><time datetime="2026-07-07">07 Jul 2026</time></span>
+    <b>Principles</b><span><a href="../../principles.html">v1.3.0</a></span>
+    <b>Smallest demoable</b><span>Run <code>spectastic init --tools</code>, then a commit that includes a validate-erroring artifact is rejected.</span>
+    <b>Read time</b>   <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-budget words="2500" reqs="20" minutes="15"></spec-budget>
+
+  <spec-tldr>
+    <p>Today spectastic's mandatory steps are advisory: the installed Claude Code commands are one-time copies that
+    drift from source (the T-006 footgun that made <a href="../000-spectastic/triage-log.html#T-004">T-004</a>
+    reproduce live), and nothing stops a malformed or unresolved artifact from being committed.
+    <a href="../../principles.html#P-8">P-8</a> says a guarantee must live in the kernel or CI, never in the prompt.
+    <code>spectastic init --tools</code> is that mechanism: it installs a git <strong>pre-commit gate</strong> that
+    rejects a commit when <code>spectastic validate</code> finds an error (or an open question in an
+    <em>Accepted</em> spec), and it installs the Claude Code command adapters so they <strong>cannot drift</strong>
+    from source. For spectastic maintainers working in a Claude Code project.</p>
+  </spec-tldr>
+
+  <dl class="invest">
+    <dt><span class="letter">I</span> Independent</dt> <dd>Builds on <a href="../../principles.html#P-8">P-8</a> plus two upstream specs — <a href="../026-git-strategy/spec.html">026-git-strategy</a> (git wrappers) and <a href="../002-validate-cli/spec.html">002-validate-cli</a> (the validate engine). No new shared data model.</dd>
+    <dt><span class="letter">N</span> Negotiable</dt>  <dd>Outcomes only — "installed commands cannot drift", "a bad commit is rejected". The <em>how</em> (symlink vs generated adapters, hook shell, chaining mechanism) is the plan's call.</dd>
+    <dt><span class="letter">V</span> Valuable</dt>    <dd>Unlocks <a href="#SC-001">SC-001</a> — a malformed or unresolved artifact can no longer be committed, making P-8's guarantee real rather than aspirational.</dd>
+    <dt><span class="letter">E</span> Estimable</dt>   <dd>Every decision was anchored in the interview; no open questions. Plan + tasks derive without further clarification.</dd>
+    <dt><span class="letter">S</span> Small</dt>       <dd>Tool-shape spec (2,500-word budget); two stories, ~10 functional requirements, one installer surface.</dd>
+    <dt><span class="letter">T</span> Testable</dt>    <dd>Every requirement is observable at the git boundary; success criteria are quantified (<a href="#SC-005">≤ 1 s</a>, idempotent, commit rejected/allowed). Anchored to <a href="#US1">US1</a>'s acceptance.</dd>
+  </dl>
+
+  <spec-audience-map>
+    <dl>
+      <dt>Exec / PM</dt>   <dd>§<a href="#context">Context</a>, §<a href="#scenarios">User scenarios</a>, §<a href="#success">Success criteria</a>.</dd>
+      <dt>Reviewer</dt>    <dd>§<a href="#requirements">Requirements</a>, §<a href="#assumptions">Assumptions</a>, §<a href="#questions">Open questions</a>.</dd>
+      <dt>Implementer</dt> <dd>§<a href="#requirements">Requirements</a>, §<a href="#data">Data model</a>, §<a href="#conformance">Conformance index</a>.</dd>
+    </dl>
+  </spec-audience-map>
+</header>
+
+
+<section id="context">
+<h2>1 · Context</h2>
+<p>spectastic's source of truth for its verbs is <code>commands/*.md</code>. The harness, however, loads gitignored
+<em>copies</em> at <code>.claude/commands/*.md</code>, and nothing keeps them current — the manual
+<code>cp commands/*.md .claude/commands/</code> re-sync is a footgun (<a href="../000-spectastic/triage-log.html#T-006">T-006</a>)
+that already shipped a real defect: a stale <code>apply</code> copy skipped the §6 fold and reproduced
+<a href="../000-spectastic/triage-log.html#T-004">T-004</a> live. Separately, the steps whose omission is a defect —
+the decision-phase interview, the post-verb commit — are instructions in advisory markdown an LLM can skip; the
+<a href="../000-spectastic/triage-log.html#T-603">skill-trigger baseline</a> confirmed even invocation itself can't
+be guaranteed by description.</p>
+<p><a href="../../principles.html#P-8">P-8</a> settled where the guarantee must live: the kernel or CI, never the
+prompt. <a href="../000-spectastic/triage-log.html#T-009">T-009</a> landed the principle and named the mechanism as
+the follow-on (<code>TBD-guarantee-layer-spec</code>). This spec is that mechanism, scoped to its keystone: an
+installer that makes the guarantees real at the one portable, unbypassable boundary a project already has — a git
+commit. The users are spectastic maintainers running the lifecycle inside a Claude Code project.</p>
+</section>
+
+
+<section id="scenarios">
+<h2>2 · User scenarios &amp; testing</h2>
+
+<p>Each story <strong>MUST</strong> be independently testable: if you implemented only US1, you would still have a
+viable MVP — the guarantee gate.</p>
+
+<h3 id="US1">US1 · Pre-commit validate gate <spec-pill>P1</spec-pill></h3>
+<p>As a <strong>spectastic maintainer</strong>, I want <strong><code>init --tools</code> to install a git
+pre-commit hook that validates the project's artifacts</strong> so that <strong>a malformed or unresolved artifact
+cannot be committed — the guarantee holds without my remembering to run anything</strong>.</p>
+<p><em>Acceptance:</em> after <code>spectastic init --tools</code>, a <code>git commit</code> whose artifact set
+contains a validate <em>error</em> exits non-zero with a message naming the file and finding; a commit of a clean
+set succeeds; <code>git commit --no-verify</code> is the only path that bypasses the gate.</p>
+
+<h3 id="US2">US2 · Drift-proof command adapters <spec-pill>P2</spec-pill></h3>
+<p>As a <strong>spectastic maintainer</strong>, I want <strong><code>init --tools</code> to install the Claude Code
+command adapters from source so they cannot go stale</strong> so that <strong>I never hand-run the
+<code>cp</code> re-sync again and a stale verb can't silently skip a step (closing T-006)</strong>.</p>
+<p><em>Acceptance:</em> after <code>init --tools</code>, an edit to a <code>commands/*.md</code> source is reflected
+in the installed <code>.claude/commands/</code> adapter with no manual copy; an installed adapter is never observed
+stale against its source.</p>
+
+<h3>Edge cases</h3>
+<ul>
+  <li><strong>Not a git repo</strong> (or git disabled) — the command-adapter half installs; the hook is skipped with a loud warning that the gate needs git (<a href="#FR-009">FR-009</a>), never a silent no-op.</li>
+  <li><strong>A pre-commit hook already exists</strong> — it is preserved and chained, never overwritten (<a href="#FR-006">FR-006</a>).</li>
+  <li><strong>A Draft spec carries open questions</strong> — this does <em>not</em> block commits; the open-question gate applies only to <em>Accepted</em> specs (<a href="#FR-004">FR-004</a>), so active drafting is unimpeded.</li>
+  <li><strong>A pre-existing error elsewhere in the repo</strong> — because the gate validates the whole artifact set, an unrelated error blocks the commit; the accepted contract is that the corpus stays clean, and the message names the offending file.</li>
+  <li><strong>Re-running <code>init --tools</code></strong> — idempotent: it reconciles to the same state and reports no spurious changes (<a href="#SC-004">SC-004</a>).</li>
+</ul>
+</section>
+
+
+<section id="requirements">
+<h2>3 · Requirements</h2>
+
+<p>Conformance keywords (<spec-rule>MUST</spec-rule>, <spec-rule level="should">SHOULD</spec-rule>,
+<spec-rule level="may">MAY</spec-rule>) follow RFC 2119.</p>
+
+<h3>Functional</h3>
+
+<spec-requirement id="FR-001" priority="must">
+<p><code>spectastic init --tools</code> <spec-rule>MUST</spec-rule> be an explicit, idempotent command that installs
+the guarantee-layer tooling into the current spectastic project and <spec-rule>MUST</spec-rule> report what it
+installed or changed; re-running it <spec-rule>MUST</spec-rule> reconcile to the same state without duplicating
+what is already present.</p>
+<details><summary>Rationale</summary><p>Opt-in and idempotent so it is safe to run in CI, in a fresh clone, or after an upgrade. The report is the audit trail P-8's "deterministic, inspectable" bar implies.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-002" priority="must">
+<p><code>init --tools</code> <spec-rule>MUST</spec-rule> install a git pre-commit hook that runs
+<code>spectastic validate</code> over the project's whole artifact set on each commit.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-003" priority="must">
+<p>The pre-commit hook <spec-rule>MUST</spec-rule> fail the commit — non-zero exit, a message naming the offending
+file and finding — when <code>validate</code> reports <em>any error</em> anywhere in the artifact set, regardless of
+the artifact's lifecycle status.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-004" priority="must">
+<p>The hook <spec-rule>MUST</spec-rule> additionally fail the commit when an artifact whose status is
+<em>Accepted</em> carries an unresolved <code>&lt;spec-question&gt;</code>. Open questions in a
+<em>Draft</em> or <em>In&nbsp;Review</em> artifact <spec-rule>MUST NOT</spec-rule> block the commit.</p>
+<details><summary>Rationale</summary><p>An open question in a <em>finished</em> artifact is the signal that the interview failed (the discipline behind <a href="../000-spectastic/spec.html#REQ-AUTHOR-005">REQ-AUTHOR-005</a>); an open question in a Draft is normal work in progress. Gating only Accepted specs makes the guarantee real without taxing active drafting.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-005" priority="should">
+<p>The gate <spec-rule level="should">SHOULD NOT</spec-rule> be bypassable except through git's standard
+<code>--no-verify</code> escape hatch, so the gate holds on the normal commit path and any bypass is an explicit,
+auditable author choice rather than a silent skip.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-006" priority="must">
+<p>When a pre-commit hook already exists, <code>init --tools</code> <spec-rule>MUST</spec-rule> preserve it —
+chaining the spectastic gate alongside the existing hook — and <spec-rule>MUST NOT</spec-rule> overwrite or discard
+the prior hook.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-007" priority="must">
+<p><code>init --tools</code> <spec-rule>MUST</spec-rule> install the Claude Code command adapters
+(<code>.claude/commands/spectastic.*.md</code>) from the <code>commands/*.md</code> source such that an installed
+adapter <em>cannot</em> drift from its source — a stale installed copy <spec-rule>MUST</spec-rule> be structurally
+impossible (generated or linked on demand, not a one-time copy).</p>
+<details><summary>Rationale</summary><p>The direct fix for <a href="../000-spectastic/triage-log.html#T-006">T-006</a>: the class of bug is "installed copy diverged from source"; removing the copy removes the class.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-008" priority="should">
+<p>The installed adapters <spec-rule level="should">SHOULD</spec-rule> present the committed, skill-tuned
+<code>description</code> from source verbatim — not regenerated at install — so the string the harness router
+evaluates is the one that shipped (<a href="../000-spectastic/spec.html#REQ-TOOL-004">REQ-TOOL-004</a>).</p>
+</spec-requirement>
+
+<spec-requirement id="FR-009" priority="should">
+<p>In a project that is not a git repository (or with git disabled), <code>init --tools</code>
+<spec-rule level="should">SHOULD</spec-rule> install the command-adapter half and skip the hook with a clear
+warning that the pre-commit gate requires git — a partial install, not a refusal.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-010" priority="may">
+<p><code>init --tools</code> <spec-rule level="may">MAY</spec-rule> support selective install and removal (e.g.
+<code>--hooks-only</code>, <code>--commands-only</code>, <code>--uninstall</code>) so the tooling is reversible and
+composable; the default installs both halves.</p>
+</spec-requirement>
+
+<h3>Non-functional</h3>
+
+<spec-requirement id="NFR-001" priority="must">
+<p>The pre-commit gate <spec-rule>MUST</spec-rule> add ≤ 1 s to commit time at p95 on a project of ≤ 200 artifacts.</p>
+</spec-requirement>
+
+<spec-requirement id="NFR-002" priority="must">
+<p><code>init --tools</code> and the installed hook <spec-rule>MUST</spec-rule> be deterministic and keyless — no
+<code>ANTHROPIC_API_KEY</code> — matching the kernel verbs (<code>apply</code>, <code>validate</code>); they are
+tooling, not AI-coupled.</p>
+</spec-requirement>
+
+<spec-requirement id="NFR-003" priority="should">
+<p>The installed hook <spec-rule level="should">SHOULD</spec-rule> be portable across the macOS and Linux shells
+spectastic targets; Windows support is deferred.</p>
+</spec-requirement>
+
+<h3>Out of scope (deferred to other slices)</h3>
+<spec-out-of-scope>
+  <ul>
+    <li defer-to="TBD-validate-strict">A general <code>spectastic validate --strict</code> flag + CI recipes for pipeline use (GitHub Actions, etc.). This spec applies the errors + Accepted-open-question rejection <em>at the pre-commit gate</em>; the standalone strict flag for non-hook CI is the sibling.</li>
+    <li defer-to="TBD-cross-tool-installers">Adapters for other harnesses (Cursor / Aider / Copilot), and Windows hook support. v1 targets Claude Code on macOS/Linux only.</li>
+    <li defer-to="never">Forcing a judgment step to <em>happen</em> (e.g. making the decision-phase interview run). Unenforceable by construction (<a href="../000-spectastic/triage-log.html#T-009">T-009</a>) — this spec rejects the <em>artifact</em> that shows a skipped interview (open questions in an Accepted spec), it does not force the interview.</li>
+  </ul>
+</spec-out-of-scope>
+</section>
+
+
+<section id="data">
+<h2>4 · Data model</h2>
+
+<p>The feature owns a small amount of install-time state; it changes no spec-artifact schema.</p>
+
+<h3>Entities</h3>
+<dl>
+  <dt>Pre-commit gate</dt><dd>The installed git hook that runs <code>validate</code> — its presence, and the chaining wrapper that preserves any prior hook (FR-006).</dd>
+  <dt>Command adapter link</dt><dd>The drift-proof binding from each <code>commands/spectastic.*.md</code> source to its <code>.claude/commands/</code> adapter (FR-007) — a link/generation, not a copy.</dd>
+  <dt>Install record</dt><dd>What <code>init --tools</code> installed, sufficient to reconcile idempotently (FR-001) and to reverse via <code>--uninstall</code> (FR-010).</dd>
+</dl>
+
+<spec-note>
+<p>Lifecycle of an install: <em>absent → installed → (re-run) reconciled → (uninstall) removed</em>. The gate and
+the adapters install and uninstall independently, so <code>--hooks-only</code> / <code>--commands-only</code> are
+coherent partial states, not half-broken ones.</p>
+</spec-note>
+</section>
+
+
+<section id="success">
+<h2>5 · Success criteria</h2>
+
+<p>Technology-agnostic, measurable outcomes. These are how we know it worked.</p>
+
+<spec-requirement id="SC-001" priority="must">
+<p>After <code>spectastic init --tools</code>, a <code>git commit</code> whose artifact set contains a validate
+error is rejected (non-zero exit, message naming the finding); a commit of a clean artifact set succeeds.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-002" priority="must">
+<p>After <code>init --tools</code>, a commit that includes an <em>Accepted</em> spec carrying an open
+<code>&lt;spec-question&gt;</code> is rejected; the same open question in a <em>Draft</em> spec does not block the
+commit.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-003" priority="must">
+<p>After <code>init --tools</code>, editing a <code>commands/*.md</code> source is reflected in the installed Claude
+Code adapter with no manual copy step, and an installed adapter is never observed stale against its source.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-004" priority="should">
+<p><code>spectastic init --tools</code> run twice in succession produces identical installed state and reports no
+changes on the second run.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-005" priority="should">
+<p>The pre-commit gate adds ≤ 1 s to commit time at p95 on a ≤ 200-artifact project.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-006" priority="should">
+<p>With a pre-existing pre-commit hook present, after <code>init --tools</code> both the prior hook and the
+spectastic gate run on commit, and the prior hook's behavior is unchanged.</p>
+</spec-requirement>
+</section>
+
+
+<section id="assumptions">
+<h2>6 · Assumptions</h2>
+
+<spec-assumption>
+<p>The target is a spectastic project (has <code>specs/</code> + <code>spectastic.json</code>) and, for the gate, a
+git repository — consistent with the existing git layer (<a href="../026-git-strategy/spec.html">026</a>).</p>
+</spec-assumption>
+
+<spec-assumption>
+<p><code>spectastic validate</code>'s exit code already distinguishes an error-bearing run from a clean one, and its
+findings carry file + rule + severity (per <a href="../002-validate-cli/spec.html">002</a>) — the gate consumes
+that contract rather than re-deriving it.</p>
+</spec-assumption>
+
+<spec-assumption>
+<p>Contributors commit through git; <code>--no-verify</code> is an occasional, deliberate escape, not the default
+path. A contributor who routinely bypasses the gate is outside the guarantee by choice.</p>
+</spec-assumption>
+</section>
+
+
+<section id="questions">
+<h2>7 · Open questions</h2>
+<spec-questions>
+<p>None outstanding — every decision (smallest demoable, the cannot-drift sync guarantee, the errors + Accepted-open-question
+gate, whole-repo validate scope, the ≤ 1 s budget, hook chaining, and the non-git partial install) was anchored in
+the interview.</p>
+</spec-questions>
+</section>
+
+
+<section id="conformance">
+<h2>8 · Conformance index</h2>
+<p>Auto-built from every <code>&lt;spec-requirement&gt;</code> in this document.</p>
+<spec-conformance></spec-conformance>
+</section>
+
+
+<section id="changelog">
+<h2>9 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-07-07">07 Jul 2026</time><span>Initial draft — the guarantee-layer installer (init --tools): US1 pre-commit validate gate, US2 drift-proof command adapters. Scoped to Claude Code; validate --strict and cross-tool installers deferred.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  031-init-tools · The guarantee-layer installer (init --tools) · authored 07 Jul 2026
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>
