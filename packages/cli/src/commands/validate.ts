@@ -66,6 +66,41 @@ async function scanSkillMetadata(): Promise<Finding[]> {
 }
 
 /**
+ * Scan init-tools-managed command adapters for drift (spec 031, FR-007 / D-001).
+ * When `.claude/commands` is managed (the marker is present), every source
+ * `commands/spectastic.*.md` must match its installed adapter byte-for-byte; a
+ * missing or divergent adapter is an error, so the pre-commit gate blocks a
+ * stale-adapter commit. A no-op in an unmanaged project (no marker) — a project
+ * that never ran `init --tools --commands-only` is never judged.
+ */
+async function scanCommandsDrift(cwd: string): Promise<Finding[]> {
+  const [{ commandsDriftFinding }, { adaptersManaged, driftPairs }, { readFile }] = await Promise.all([
+    import('@spectastic/core/commands/validate'),
+    import('./init/adapters.js'),
+    import('node:fs/promises'),
+  ]);
+  if (!adaptersManaged(cwd)) return [];
+  const findings: Finding[] = [];
+  for (const pair of driftPairs(cwd)) {
+    let source: string;
+    try {
+      source = await readFile(pair.source, 'utf8');
+    } catch {
+      continue; // an unreadable source has nothing to compare against
+    }
+    let adapter: string | null = null;
+    try {
+      adapter = await readFile(pair.adapter, 'utf8');
+    } catch {
+      adapter = null; // missing adapter = drift
+    }
+    const finding = commandsDriftFinding(source, adapter, pair.rel);
+    if (finding) findings.push(finding);
+  }
+  return findings;
+}
+
+/**
  * Register the `validate` subcommand. Implements FR-001, FR-002, FR-014
  * of specs/002-validate-cli/spec.html.
  *
@@ -112,7 +147,15 @@ export function registerValidate(program: Command): void {
       // frontmatter is missing the structured invocation keys. Warning-only, so it
       // never changes the exit code — advisory until the eval floor / hard gate land.
       const skillMetadataFindings = await scanSkillMetadata();
-      const findings = [...result.findings, ...quarantineFindings, ...skillMetadataFindings];
+      // The commands-drift gate (spec 031, FR-007): a managed adapter that has
+      // drifted from source is an error, so the pre-commit gate blocks it.
+      const commandsDriftFindings = await scanCommandsDrift(process.cwd());
+      const findings = [
+        ...result.findings,
+        ...quarantineFindings,
+        ...skillMetadataFindings,
+        ...commandsDriftFindings,
+      ];
       const exitCode = findings.some((f) => f.severity === 'error') ? 1 : result.exitCode;
 
       let output: string;

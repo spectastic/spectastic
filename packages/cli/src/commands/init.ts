@@ -6,6 +6,7 @@ import {
   UserCancelError,
   resolveConflicts,
 } from './init/prompt.js';
+import { currentCliEntry } from './init/hook.js';
 import { printSummary } from './init/summary.js';
 import { ToolsError, runTools } from './init/tools.js';
 import { executeWrites } from './init/write.js';
@@ -41,6 +42,7 @@ async function runToolsMode(options: InitOptions): Promise<void> {
       commands,
       uninstall: options.uninstall === true,
       force: options.force ?? false,
+      cliEntry: currentCliEntry(),
     });
     for (const d of summary.decisions) process.stdout.write(`✓ ${d.detail}\n`);
     for (const n of summary.notes) process.stdout.write(`⚠ ${n}\n`);

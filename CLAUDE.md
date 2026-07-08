@@ -136,8 +136,8 @@ Rules of thumb:
 ## Things deferred
 
 Captured in `docs/openspec-considerations.html` and `specs/000-spectastic/spec.html` §2 (Out of scope):
-- `spectastic init --tools` installer
-- `spectastic validate --strict` CLI for CI
+- ~~`spectastic init --tools` installer~~ — **now specced + built as `031-init-tools`** (the guarantee-layer installer: pre-commit validate gate + drift-proof command adapters, closing the T-006 `.claude/commands` sync footgun)
+- `spectastic validate --strict` CLI for CI (the sibling still deferred → `TBD-validate-strict`)
 - Cross-tool installers (Cursor / Aider / Copilot)
 - Action-detecting `/spectastic.next`
 - A `/spectastic.split` retrofit command (the workflow does this with existing verbs)

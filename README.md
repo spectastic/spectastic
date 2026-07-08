@@ -90,6 +90,20 @@ spectastic init --with explain      # also install the extended `explain` verb
 | explore --graduate | `/spectastic.explore --graduate <id>` | **The back half of the loop.** Turns a quarantined exploration into a real, verified-grounded **spec + plan**, then lifts the quarantine and archives the exploration. Three steps: *classify* (spike → rebuild clean, or tracer-bullet → harden in place; recorded immutably), *extract* (read the build into a Draft spec + plan, the run record's proven facts seeded as `verified` rows in the **plan's** evidence ledger), and *lift + archive* (all-or-nothing: a failure leaves the build quarantined, no partial spec). Restore tasks for the graduated build are the sibling slice — see `tasks --restore`. |
 | tasks --restore | `spectastic tasks <id> --restore` | **The other back half of graduation.** Generates path-appropriate restore tasks for a graduated exploration, reading the frozen classification from the archived marker: *refactor-to-comply* for a tracer-bullet (keep the build, harden it in place) or *clean-rebuild* for a spike (prototype marked for deletion). Output is banner-labelled. The trigger is always explicit — a flag, or an announced prompt on a TTY, and a refuse when piped — so it never emits the wrong task shape silently. |
 
+### The guarantee layer — `init --tools`
+
+Command markdown is advisory; a mandatory step written into it is a step an LLM can skip ([P-8](./principles.html#P-8)). `spectastic init --tools` moves the guarantees to where they can't be skipped — the git boundary:
+
+```sh
+spectastic init --tools            # install both halves (the default)
+spectastic init --tools --hooks-only      # just the pre-commit gate
+spectastic init --tools --commands-only   # just the drift-proof adapters
+spectastic init --tools --uninstall       # remove what it installed (reversible)
+```
+
+- **Pre-commit gate.** Installs a git `pre-commit` hook that runs `spectastic validate` over the corpus and **rejects the commit** on any error — including an open `<spec-question>` in an *Accepted* spec (a Draft's open questions never block). It chains and preserves any existing hook, honours `core.hooksPath`, and adds well under a second to a commit. `git commit --no-verify` is the only, deliberate bypass. In a non-git project the gate is skipped with a warning and the adapter half still installs.
+- **Drift-proof adapters.** Generates `.claude/commands/spectastic.*.md` from the `commands/*.md` source and a `commands-drift` check that makes the gate reject a commit while an installed adapter has drifted from source — closing the manual `cp` re-sync footgun for good. Deterministic and keyless.
+
 ### Change proposals (`/spectastic.propose` + `/spectastic.apply`)
 
 Spec evolution happens via PR-shaped proposal artifacts. Each change is a folder

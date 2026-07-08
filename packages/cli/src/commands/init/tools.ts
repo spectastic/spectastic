@@ -1,4 +1,6 @@
 import { execFileSync } from 'node:child_process';
+import { generateAdapters, removeAdapters } from './adapters.js';
+import { installHook, uninstallHook } from './hook.js';
 
 /**
  * Orchestrator for `init --tools` (spec 031-init-tools, plan D-004).
@@ -29,6 +31,8 @@ export interface ToolsOptions {
   uninstall: boolean;
   /** Overwrite without prompting (mirrors init --force). */
   force: boolean;
+  /** Absolute CLI entry the installed hook should invoke (see hook.currentCliEntry). */
+  cliEntry: string;
 }
 
 /** A single planned action, mirroring init's FileWriteDecision shape (D-004). */
@@ -103,11 +107,27 @@ export async function runTools(opts: ToolsOptions): Promise<ToolsSummary> {
   const summary = planTools(opts);
   for (const decision of summary.decisions) {
     switch (decision.kind) {
-      case 'install-hook':
-      case 'remove-hook':
-      case 'generate-adapters':
-      case 'remove-adapters':
-        throw new ToolsError(`init --tools: "${decision.kind}" executor not yet implemented (see 031 tasks).`);
+      case 'install-hook': {
+        const { chained } = installHook(opts.cwd, opts.cliEntry);
+        if (chained) summary.notes.push('preserved and chained an existing pre-commit hook (FR-006).');
+        break;
+      }
+      case 'remove-hook': {
+        const { restored } = uninstallHook(opts.cwd);
+        if (restored) summary.notes.push('restored the previously-chained pre-commit hook.');
+        break;
+      }
+      case 'generate-adapters': {
+        const { generated } = generateAdapters(opts.cwd);
+        summary.adaptersGenerated = generated;
+        if (generated === 0) summary.notes.push('no commands/ source found — no adapters generated.');
+        break;
+      }
+      case 'remove-adapters': {
+        const { removed } = removeAdapters(opts.cwd);
+        summary.notes.push(`removed ${removed} managed command adapter(s).`);
+        break;
+      }
     }
   }
   return summary;

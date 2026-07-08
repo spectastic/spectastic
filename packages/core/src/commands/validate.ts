@@ -15,6 +15,33 @@ import type {
 export const REQUIRED_SKILL_KEYS = ['triggers', 'use-when', 'sibling-boundary'] as const;
 
 /**
+ * `commands-drift` (spec 031-init-tools, FR-007 / plan D-001). An init-tools
+ * managed command adapter (`.claude/commands/spectastic.*.md`) MUST match its
+ * `commands/*.md` source byte-for-byte — generate-on-demand means "can't ship
+ * stale", enforced by the pre-commit gate. Returns an `error` finding when the
+ * adapter is missing or diverges; `null` when it matches. Like the skill and
+ * quarantine scans, this compares gitignored markdown, so it lives here rather
+ * than the HTML-bound schema rule registry, and the CLI folds it in.
+ */
+export function commandsDriftFinding(
+  source: string,
+  adapter: string | null,
+  file: string,
+): Finding | null {
+  if (adapter === source) return null;
+  const detail = adapter === null ? 'is missing' : 'has drifted from its source';
+  return {
+    file,
+    line: 1,
+    column: 1,
+    rule: 'commands-drift',
+    severity: 'error',
+    message: `Managed command adapter ${file} ${detail} — regenerate it (spec 031 FR-007).`,
+    fixHint: 'Run `spectastic init --tools --commands-only` to regenerate the adapters from source.',
+  };
+}
+
+/**
  * `skill-metadata-shape` (REQ-TOOL-004). A command surfaced as a skill MUST
  * declare structured invocation metadata (`triggers`, `use-when`,
  * `sibling-boundary`) in its source frontmatter. This is a markdown/YAML
