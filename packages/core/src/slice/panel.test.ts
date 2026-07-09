@@ -3,6 +3,7 @@ import { panelScore } from './panel.js';
 import { decomposeRivals, selectBestDecomposition } from './rivals.js';
 import { sliceStub } from './stub-ai.js';
 import type { CandidateChild, Decomposition } from './types.js';
+import type { AIProvider, ChatOpts, Question, SubagentOpts, SubagentResult } from '../types.js';
 
 /**
  * US3 (T-300): the bias-resistant ranking panel (median resists an outlier judge,
@@ -39,6 +40,60 @@ describe('panelScore', () => {
     const ai = sliceStub({ agents: ['{}', '{}', '{}'] });
     const scored = await panelScore([child('001-a', [3, 3, 1, 1])], { cwd: '.', ai }, 3);
     expect(scored[0]!.rice.reach).toBe(3);
+  });
+});
+
+/** A scorer stub that counts invocations + peak concurrency (spec 035). */
+class ScoreStub implements AIProvider {
+  readonly model = 'stub-score';
+  public calls = 0;
+  private inFlight = 0;
+  public peak = 0;
+  constructor(
+    private readonly score: string,
+    private readonly delayMs = 0,
+  ) {}
+  async chat(_p: string, _o?: ChatOpts): Promise<string> {
+    return '{}';
+  }
+  async ask<T extends Record<string, string>>(_q: ReadonlyArray<Question>): Promise<T> {
+    return {} as T;
+  }
+  async subagent(_p: string, _o?: SubagentOpts): Promise<SubagentResult> {
+    this.calls += 1;
+    this.inFlight += 1;
+    this.peak = Math.max(this.peak, this.inFlight);
+    if (this.delayMs) await new Promise((r) => setTimeout(r, this.delayMs));
+    this.inFlight -= 1;
+    return { output: this.score };
+  }
+}
+
+describe('panelScore · Decider adoption (035)', () => {
+  const SCORE = '{"001-a":{"reach":3,"impact":3,"confidence":1,"effort":1}}';
+
+  it('default sizes to 3 scorers via the high floor (SC-001/SC-002, FR-002)', async () => {
+    const ai = new ScoreStub(SCORE);
+    await panelScore([child('001-a', [3, 3, 1, 1])], { cwd: '.', ai });
+    expect(ai.calls).toBe(3);
+  });
+
+  it('effort=max sizes to 5 scorers (SC-001, FR-001)', async () => {
+    const ai = new ScoreStub(SCORE);
+    await panelScore([child('001-a', [3, 3, 1, 1])], { cwd: '.', ai }, { effort: 'max' });
+    expect(ai.calls).toBe(5);
+  });
+
+  it('an explicit count still wins (FR-006, 029 back-compat)', async () => {
+    const ai = new ScoreStub(SCORE);
+    await panelScore([child('001-a', [3, 3, 1, 1])], { cwd: '.', ai }, 2);
+    expect(ai.calls).toBe(2);
+  });
+
+  it('scorers run concurrently, not serially (SC-003, FR-004)', async () => {
+    const ai = new ScoreStub(SCORE, 20);
+    await panelScore([child('001-a', [3, 3, 1, 1])], { cwd: '.', ai });
+    expect(ai.peak).toBeGreaterThan(1);
   });
 });
 

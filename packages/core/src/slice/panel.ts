@@ -2,22 +2,23 @@
  * The bias-resistant ranking panel (spec 029, FR-009 / NFR-001 / plan D-006). N
  * independent scorer subagents rate each child's RICE inputs; the panel takes the
  * MEDIAN of each input, so no single outlier/biased judge decides the order.
- * Extends propose's single-subagent precedent to a panel (P2). With no provider
- * or no votes, a child keeps its original estimate.
+ *
+ * Per spec 035-decider-rollout this panel is a Decider adopter: its scorer count
+ * comes from the Decider effort table (floored at `high` = 3, preserving 029's
+ * ≥ 3 rule; up to 5), the scorers fan out under 032's bounded pool, and the
+ * aggregation shares the Decider's numeric arbitration (median) — the second
+ * checkpoint to consume the Decider, proving it verb-agnostic.
  */
 
 import type { RiceInputs } from '@spectastic/schema';
 import type { CandidateChild } from './types.js';
 import type { KernelContext } from '../types.js';
+import { median } from '../decider/panel.js';
+import { effortToDepth } from '../decider/effort.js';
+import { resolveEffort, type RequestedEffort } from '../decider/auto.js';
+import { mapPool } from '../helpers/map-pool.js';
 
-function median(nums: number[]): number {
-  const s = [...nums].sort((a, b) => a - b);
-  const mid = Math.floor(s.length / 2);
-  if (s.length === 0) return 0;
-  return s.length % 2 === 1 ? s[mid]! : (s[mid - 1]! + s[mid]!) / 2;
-}
-
-/** Median of each RICE input across a panel's votes. */
+/** Median of each RICE input across a panel's votes (shared Decider median, 035 FR-005). */
 export function medianRice(votes: RiceInputs[]): RiceInputs {
   return {
     reach: median(votes.map((v) => v.reach)),
@@ -31,23 +32,37 @@ const SCORER_SYSTEM =
   'You are one independent RICE scorer on a panel. Score each candidate child slice on reach, impact, confidence (0-1), and effort (>0). Judge on the merits; ignore ordering and verbosity. Return ONLY JSON: { "<specId>": { "reach": n, "impact": n, "confidence": n, "effort": n }, ... }.';
 
 /**
- * Re-score the children with `scorers` independent panellists and median-aggregate
- * each RICE input (NFR-001 ≥ 3). A child with no valid votes keeps its estimate.
+ * Re-score the children with N independent panellists and median-aggregate each
+ * RICE input. `opts` is either an explicit scorer count (029 back-compat) or a
+ * Decider config `{ effort }` — absent, the count is Decider-resolved from the
+ * candidate breadth with a `high` floor (spec 035 FR-001/002/003). Scorers fan
+ * out concurrently (FR-004). A child with no valid votes keeps its estimate.
  */
 export async function panelScore(
   children: readonly CandidateChild[],
   ctx: KernelContext,
-  scorers = 3,
+  opts?: number | { effort?: RequestedEffort },
 ): Promise<CandidateChild[]> {
-  if (!ctx.ai || children.length === 0) return [...children];
+  const ai = ctx.ai;
+  if (!ai || children.length === 0) return [...children];
+
+  const scorers =
+    typeof opts === 'number'
+      ? opts
+      : effortToDepth(
+          resolveEffort(opts?.effort ?? 'auto', { irreversible: false, breadth: children.length }, 'high').level,
+        ).voters;
+
+  const roster = children.map((c) => `- ${c.specId} "${c.title}": ${c.scope}`).join('\n');
+  const scoreOnce = async (i: number): Promise<Record<string, unknown>> => {
+    const res = await ai.subagent(`${SCORER_SYSTEM}\n\nChildren:\n${roster}`, { task: `ranking-scorer-${i}` });
+    return parseScores(res.output);
+  };
+  // Fan the scorers out under the bounded pool (spec 032) instead of a serial loop.
+  const results = await mapPool(Array.from({ length: scorers }, (_, i) => i), scoreOnce, scorers);
 
   const votes = new Map<string, RiceInputs[]>(children.map((c) => [c.specId, []]));
-  const roster = children.map((c) => `- ${c.specId} "${c.title}": ${c.scope}`).join('\n');
-  for (let i = 0; i < scorers; i++) {
-    const res = await ctx.ai.subagent(`${SCORER_SYSTEM}\n\nChildren:\n${roster}`, {
-      task: `ranking-scorer-${i}`,
-    });
-    const scored = parseScores(res.output);
+  for (const scored of results) {
     for (const c of children) {
       const r = scored[c.specId];
       if (isRice(r)) votes.get(c.specId)!.push(r);

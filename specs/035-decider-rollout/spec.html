@@ -1,0 +1,235 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Decider rollout · Specification</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Specification · 035-decider-rollout</p>
+  <h1>Decider rollout</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    Prove the Decider is verb-agnostic: a second checkpoint — the slicer's scoring panel — adopts it, exercising
+    the numeric arbitration path the propose critic never touched.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>      <span><spec-status value="accepted">Accepted</spec-status></span>
+    <b>Spec ID</b>     <span>035-decider-rollout</span>
+    <b>Owner</b>       <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Reviewers</b>   <span>—</span>
+    <b>Created</b>     <span><time datetime="2026-07-09">09 Jul 2026</time></span>
+    <b>Principles</b><span><a href="../../principles.html">v1.3.0</a></span>
+    <b>Parent</b>     <span><spec-parent specid="033-decider-effort"><a href="../033-decider-effort/spec.html">Configurable decider</a></spec-parent></span>
+    <b>Smallest demoable</b><span>The slicer's <code>panelScore</code> sizes its scorers from the Decider effort table (floor <code>high</code>) and runs them concurrently.</span>
+    <b>Read time</b>   <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-budget words="1500" reqs="20" minutes="12"></spec-budget>
+
+  <spec-tldr>
+    <p>033 proved the <strong>Decider</strong> at propose's adversarial pass — a <em>categorical</em> checkpoint.
+    This slice makes the <a href="../029-value-ranked-slicer/spec.html">slicer</a>'s RICE scoring panel
+    (<code>slice/panel.ts</code>) a second adopter, exercising the <em>numeric</em> (median) arbitration path
+    (033 FR-005) that propose never used. The panel's scorer count comes from the Decider effort table with a
+    <code>high</code> floor — so it stays ≥ 3 (029's rule) and can dial to 5, and <code>--effort=auto</code>
+    (034) sizes it. The scorers run concurrently under the cap (reusing 032's bounded pool), and the two panels
+    share one median. The decision-phase interviews stay advisory markdown (not kernel-wrappable) — out of scope.</p>
+  </spec-tldr>
+
+  <dl class="invest">
+    <dt><span class="letter">I</span> Independent</dt> <dd>Depends on <a href="../033-decider-effort/spec.html">033</a> (Decider), <a href="../034-effort-auto/spec.html">034</a> (auto/floor), <a href="../032-triage-fanout/spec.html">032</a> (mapPool). No new upstreams.</dd>
+    <dt><span class="letter">N</span> Negotiable</dt>  <dd>Contracts that the slicer panel is Decider-sized, floored at high, concurrent, and shares the median. Internal call shape is the plan's.</dd>
+    <dt><span class="letter">V</span> Valuable</dt>    <dd>Unlocks <a href="#SC-001">SC-001</a> — the Decider is proven verb-agnostic, and the slicer panel gains config + auto + a concurrency speedup.</dd>
+    <dt><span class="letter">E</span> Estimable</dt>   <dd>Both panels exist; the change is delegation + a floor + concurrency. Bounded.</dd>
+    <dt><span class="letter">S</span> Small</dt>       <dd>One adopter, one shared median, one signal. Under budget.</dd>
+    <dt><span class="letter">T</span> Testable</dt>    <dd>Observable with the slice stub — count scorers per effort, assert the high floor, assert concurrency; <a href="#SC-001">SC-001</a>–<a href="#SC-004">SC-004</a> quantified.</dd>
+  </dl>
+</header>
+
+
+<section id="context">
+<h2>1 · Context</h2>
+<p><a href="../033-decider-effort/spec.html">033</a> shipped the Decider but wired only propose's adversarial
+pass — a <em>categorical</em> checkpoint (which risks survive?). Its <em>numeric</em> arbitration branch (median
+of N votes, 033 FR-005) shipped untested by a real caller. Meanwhile the slicer
+(<a href="../029-value-ranked-slicer/spec.html">029</a>) has its own hand-rolled scoring panel
+(<code>slice/panel.ts</code>): a fixed 3 scorers, a serial loop, a private median.</p>
+<p>These are the same shape. This slice makes the slicer panel a Decider adopter — proving the abstraction is
+verb-agnostic (033's whole premise) and retiring the duplicate. The Decider's numeric path finally has a real
+consumer, and the slicer panel inherits config, <code>auto</code>, and concurrency for free.</p>
+<p><strong>Who this is for:</strong> the maintainer slicing an oversized spec who wants the ranking panel to obey
+the same one dial as every other checkpoint — and to run faster.</p>
+</section>
+
+
+<section id="scenarios">
+<h2>2 · User scenarios &amp; testing</h2>
+<p>Each story is independently testable: implementing only US1 still yields a viable MVP.</p>
+
+<h3 id="US1">US1 · The slicer panel is Decider-sized <spec-pill>P1</spec-pill></h3>
+<p>As a <strong>maintainer</strong>, I want <strong>the slicer's scorer count to come from the effort dial</strong>
+so that <strong>ranking rigour obeys the same knob as every other checkpoint</strong>.</p>
+<p><em>Acceptance:</em> the scorer count is <code>effortToDepth(effort).voters</code> with a <code>high</code>
+floor — so it is ≥ 3 (029's rule) and dials to 5 at <code>max</code>; <code>--effort=auto</code> resolves via the
+slicer's signal.</p>
+
+<h3 id="US2">US2 · Scorers run concurrently and share one median <spec-pill>P1</spec-pill></h3>
+<p>As a <strong>maintainer</strong>, I want <strong>the panel's scorers fanned out, not serial, and the two
+panels to share one median</strong> so that <strong>ranking is faster and there's one arbitration to trust</strong>.</p>
+<p><em>Acceptance:</em> the N scorers run under 032's bounded pool; per-RICE-input aggregation uses the shared
+Decider median; the slicer's private median is retired.</p>
+
+<h3>Edge cases</h3>
+<ul>
+  <li><strong>029 parity.</strong> At the default (floor high → 3 scorers), the panel behaves as 029 shipped — same count, same median.</li>
+  <li><strong>Explicit count.</strong> A caller passing an explicit scorer count still gets exactly that (back-compat with 029's tests).</li>
+  <li><strong>Interviews.</strong> The decision-phase interviews (spec/plan/propose/triage) consult a human via the harness, not a kernel <code>AIProvider</code> call — they can't be Decider-wrapped; out of scope.</li>
+  <li><strong><code>confirmRice</code>.</strong> The slicer's RICE-accept gate stays a human confirmation; only the scoring panel adopts the Decider in this slice.</li>
+</ul>
+</section>
+
+
+<section id="requirements">
+<h2>3 · Requirements</h2>
+<p>Conformance keywords (<spec-rule>MUST</spec-rule>, <spec-rule level="should">SHOULD</spec-rule>,
+<spec-rule level="may">MAY</spec-rule>) per RFC 2119.</p>
+
+<h3>Functional</h3>
+
+<spec-requirement id="FR-001" priority="must">
+<p>The slicer's scoring panel <spec-rule>MUST</spec-rule> derive its scorer count from the Decider effort table
+(<code>effortToDepth(effort).voters</code>), config-driven, rather than a hard-coded constant.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-002" priority="must">
+<p>The slicer panel <spec-rule>MUST</spec-rule> apply a <code>high</code> floor — the resolved count is never
+below 3 — preserving 029's ≥ 3-scorer rule (<a href="../029-value-ranked-slicer/spec.html">029</a> NFR-001).</p>
+</spec-requirement>
+
+<spec-requirement id="FR-003" priority="must">
+<p>The slicer <spec-rule>MUST</spec-rule> register an auto-effort signal (breadth = candidate count) so
+<code>--effort=auto</code> sizes its panel; with the <code>high</code> floor it resolves to ≥ high.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-004" priority="must">
+<p>The N scorers <spec-rule>MUST</spec-rule> run concurrently under a bounded pool (spec 032's <code>mapPool</code>)
+rather than a serial loop, preserving input-order aggregation.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-005" priority="must">
+<p>Both panels <spec-rule>MUST</spec-rule> share one median implementation — the slicer's private median is
+retired in favour of the Decider's, exercising 033's numeric arbitration (<a href="../033-decider-effort/spec.html#FR-005">033 FR-005</a>).</p>
+</spec-requirement>
+
+<spec-requirement id="FR-006" priority="should">
+<p>A caller passing an explicit scorer count <spec-rule level="should">SHOULD</spec-rule> still receive exactly
+that count — 029's existing tests and callers are unbroken.</p>
+</spec-requirement>
+
+<h3>Non-functional</h3>
+
+<spec-requirement id="NFR-001" priority="should">
+<p>Config precedence (flag &gt; project &gt; default) <spec-rule level="should">SHOULD</spec-rule> apply to the
+slicer panel exactly as to propose — one resolution path, not two.</p>
+</spec-requirement>
+
+<h3>Out of scope (deferred)</h3>
+<spec-out-of-scope>
+  <ul>
+    <li defer-to="never">Wrapping the decision-phase interviews in the Decider — they consult a human via the harness's <code>AskUserQuestion</code>, not a kernel <code>AIProvider</code> call, so there is no kernel seam to wrap (advisory by nature, per T-009).</li>
+    <li defer-to="TBD">Making <code>confirmRice</code> (the RICE-accept gate) Decider-configurable — a human confirmation today; a later slice if a non-human accept is ever wanted.</li>
+    <li defer-to="TBD-hands-off-pipeline">W-1 consuming the now-uniform checkpoints to run unattended.</li>
+  </ul>
+</spec-out-of-scope>
+</section>
+
+
+<section id="data">
+<h2>4 · Data model</h2>
+<p>No new entity — the slicer panel is re-expressed over the existing Decider effort table + median.</p>
+<h3>Entities</h3>
+<dl>
+  <dt>Slicer signal</dt><dd>The auto-effort signal for the slicer: <code>{ irreversible: false, breadth: candidateCount }</code> (FR-003).</dd>
+  <dt>Scorer</dt><dd>Unchanged from 029 — one panellist rating each child's RICE inputs; the panel now sizes and runs them via the Decider.</dd>
+</dl>
+<spec-note>
+<p>The two arbitration types now have one home each: <strong>categorical</strong> (propose risks — majority vote)
+and <strong>numeric</strong> (slicer RICE — median), both in the Decider module. This slice is what makes
+"type-dependent arbitration" (033 FR-005) real rather than latent.</p>
+</spec-note>
+</section>
+
+
+<section id="success">
+<h2>5 · Success criteria</h2>
+<spec-requirement id="SC-001" priority="must">
+<p>The slicer panel runs <code>effortToDepth(effort).voters</code> scorers, floored at 3 — observable by counting
+scorer invocations at <code>high</code> (3) and <code>max</code> (5).</p>
+</spec-requirement>
+<spec-requirement id="SC-002" priority="must">
+<p>At the default, the panel runs exactly 3 scorers and produces the same median ranking as 029 shipped (parity).</p>
+</spec-requirement>
+<spec-requirement id="SC-003" priority="must">
+<p>The scorers run concurrently — observed peak concurrency &gt; 1 under the bounded pool, not a serial 1.</p>
+</spec-requirement>
+<spec-requirement id="SC-004" priority="should">
+<p>A grep confirms one median implementation remains in the codebase — the slicer's private copy is gone.</p>
+</spec-requirement>
+</section>
+
+
+<section id="assumptions">
+<h2>6 · Assumptions</h2>
+<spec-assumption>
+<p>029's <code>panelScore</code> per-RICE-input median semantics are unchanged; only the sizing, concurrency, and
+median <em>source</em> change. The ranking output at 3 scorers is identical.</p>
+</spec-assumption>
+<spec-assumption>
+<p>The Decider's <code>median</code> (033) and the slicer's <code>medianRice</code> compute the same value per
+input, so consolidating them is behaviour-preserving.</p>
+</spec-assumption>
+</section>
+
+
+<section id="questions">
+<h2>7 · Open questions</h2>
+<spec-questions>
+<p>None outstanding — the adopter (slicer panel), the floor, the concurrency, and the median consolidation are
+all determined by the parent (033/034) contracts and the 029 code. The interviews and <code>confirmRice</code>
+are documented out of scope with reasons.</p>
+</spec-questions>
+</section>
+
+
+<section id="conformance">
+<h2>8 · Conformance index</h2>
+<p>Auto-built from every <code>&lt;spec-requirement&gt;</code> in this document.</p>
+<spec-conformance></spec-conformance>
+</section>
+
+
+<section id="changelog">
+<h2>9 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-07-09">09 Jul 2026</time><span>Initial draft. Peeled from 033 — the second Decider adopter (the slicer panel), exercising numeric arbitration.</span></li>
+  <li><time datetime="2026-07-09">09 Jul 2026</time><span>Planned, tasked, implemented, verified — slicer panel now Decider-sized (floor high), concurrent, shares one median; 4 new + 467 full-suite green, 029 parity held. Status → Accepted.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  035-decider-rollout · Decider rollout · authored 09 Jul 2026
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>
