@@ -197,6 +197,10 @@ export interface TriageInput {
    * 'chat' (default — the CLI backend) or 'subagent' (the Workflow backend).
    */
   backend?: 'chat' | 'subagent';
+  /** Decider role for the hedge gate (spec 036). Absent → 'human' (parity). */
+  decider?: 'human' | 'agent' | 'panel';
+  /** Effort sizing a panel hedge-gate decider (spec 033/034). Absent → 'medium'. */
+  effort?: 'low' | 'medium' | 'high' | 'xhigh' | 'max' | 'auto';
 }
 
 /** One produced triage card. */

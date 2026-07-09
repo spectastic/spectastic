@@ -17,6 +17,8 @@
  */
 
 import type { AIProvider, Question, TriageCard, TriageInput, TriageLayer } from '../types.js';
+import { decideChoice } from '../decider/choice.js';
+import type { DeciderConfig } from '../decider/types.js';
 
 export const ALL_LAYERS: ReadonlyArray<TriageLayer> = [
   'spec',
@@ -82,14 +84,18 @@ export async function classifyItem(
 }
 
 /**
- * The human-commit gate (spec FR-006). Uses `ai.ask` and so MUST run outside the
- * concurrent pass — the fan-out collects hedged/failed items and runs this in one
- * consolidated post-pass. Unchanged in behaviour from the original inline escalation.
+ * The human-commit gate (spec FR-006). Uses the bounded-choice Decider and so MUST
+ * run outside the concurrent pass — the fan-out collects hedged/failed items and
+ * runs this in one consolidated post-pass. Per spec 036 the two asks route through
+ * `decideChoice` (`cfg`, default human): a human, agent, or panel resolves the
+ * category then the layer. Human default is behaviour-identical to the prior inline
+ * `ai.ask` escalation.
  */
 export async function escalateLayer(
   description: string,
   hedged: string,
   ai: AIProvider,
+  cfg: DeciderConfig = { role: 'human', effort: 'medium' },
 ): Promise<TriageLayer> {
   const q1: Question = {
     question: `Defect description: "${description.slice(0, 200)}". The first-pass classification was ambiguous (hedged: "${hedged}"). Is this a diagnostic-layer defect (spec / plan / implementation / cross-spec / principles / platform) or a routing-exit item (just-do / defer)?`,
@@ -99,9 +105,9 @@ export async function escalateLayer(
       { label: 'routing', description: 'Not a classic defect — just-do (implement immediately) or defer (back-burner).' },
     ],
   };
-  const a1 = await ai.ask<{ category: 'diagnostic' | 'routing' }>([q1]);
+  const a1 = await decideChoice(cfg, [q1], ai);
 
-  if (a1.category === 'routing') {
+  if (a1['category'] === 'routing') {
     const q2: Question = {
       question: 'Which routing exit?',
       header: 'layer',
@@ -110,8 +116,8 @@ export async function escalateLayer(
         { label: 'defer', description: 'Back-burner with a defer-to target.' },
       ],
     };
-    const a2 = await ai.ask<{ layer: TriageLayer }>([q2]);
-    return a2.layer;
+    const a2 = await decideChoice(cfg, [q2], ai);
+    return a2['layer'] as TriageLayer;
   }
 
   const q2: Question = {
@@ -124,8 +130,8 @@ export async function escalateLayer(
       { label: 'cross-spec', description: 'Two specs disagree on a shared contract.' },
     ],
   };
-  const a2 = await ai.ask<{ layer: TriageLayer }>([q2]);
-  return a2.layer;
+  const a2 = await decideChoice(cfg, [q2], ai);
+  return a2['layer'] as TriageLayer;
 }
 
 /**

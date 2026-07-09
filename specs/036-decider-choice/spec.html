@@ -1,0 +1,255 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Decider-routed choices · Specification</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Specification · 036-decider-choice</p>
+  <h1>Decider-routed choices</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    A bounded-choice checkpoint is a role too. Route the kernel's hard-coded <code>ai.ask</code> gates through the
+    Decider, so a human, an agent, or a panel can answer — not just a human.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>      <span><spec-status value="accepted">Accepted</spec-status></span>
+    <b>Spec ID</b>     <span>036-decider-choice</span>
+    <b>Owner</b>       <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Reviewers</b>   <span>—</span>
+    <b>Created</b>     <span><time datetime="2026-07-09">09 Jul 2026</time></span>
+    <b>Principles</b><span><a href="../../principles.html">v1.3.0</a></span>
+    <b>Parent</b>     <span><spec-parent specid="035-decider-rollout"><a href="../035-decider-rollout/spec.html">Decider rollout</a></spec-parent></span>
+    <b>Smallest demoable</b><span><code>confirmRice --decider=panel</code> convenes voters who answer Accept/Adjust by majority instead of a hard-coded human prompt.</span>
+    <b>Read time</b>   <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-budget words="1500" reqs="20" minutes="12"></spec-budget>
+
+  <spec-tldr>
+    <p>033 made the <em>critic</em> checkpoint (propose's risk pass) a configurable Decider, and 035 the
+    <em>scoring</em> panel. But the kernel's <strong>bounded-choice</strong> gates — <code>confirmRice</code>
+    ("Accept the RICE inputs?") and the triage hedge gate <code>escalateLayer</code> — still hard-code
+    <code>ai.ask</code>, i.e. always a human. This slice adds <strong><code>decideChoice</code></strong>, the
+    ask-shaped sibling of <code>decide</code>: <code>human</code> → <code>ai.ask</code> (unchanged default),
+    <code>agent</code> → one subagent picks, <code>panel</code> → N vote by majority (effort-sized). The two
+    checkpoints route through it. The no-self-judging guardrail matters here: an <code>agent</code> accepting its
+    <em>own</em> RICE estimates would be circular, so the choice-decider is a distinct invocation from the author.
+    The slash-command interviews stay out — they call the harness tool, not the kernel.</p>
+  </spec-tldr>
+
+  <dl class="invest">
+    <dt><span class="letter">I</span> Independent</dt> <dd>Depends on <a href="../033-decider-effort/spec.html">033</a> (Decider), <a href="../034-effort-auto/spec.html">034</a> (effort). Touches the slicer + triage checkpoints; no new upstream.</dd>
+    <dt><span class="letter">N</span> Negotiable</dt>  <dd>Contracts that a choice checkpoint is decider-routed, human-default, effort-sized, and self-judge-safe. The subagent choice-prompt shape is the plan's.</dd>
+    <dt><span class="letter">V</span> Valuable</dt>    <dd>Unlocks <a href="#SC-001">SC-001</a> — every kernel checkpoint, critic or choice, obeys one "who decides" dial; a hands-off pipeline needs the choice gates answerable without a human.</dd>
+    <dt><span class="letter">E</span> Estimable</dt>   <dd>The Decider, effort, and both call sites exist; this adds one method + two rewires.</dd>
+    <dt><span class="letter">S</span> Small</dt>       <dd>One capability, two adopters, human-default parity. Under budget.</dd>
+    <dt><span class="letter">T</span> Testable</dt>    <dd>Observable with the stub — assert ask at human, vote count at panel, distinct-invocation for no-self-judging; <a href="#SC-001">SC-001</a>–<a href="#SC-004">SC-004</a> quantified.</dd>
+  </dl>
+</header>
+
+
+<section id="context">
+<h2>1 · Context</h2>
+<p>033's premise — "a checkpoint is a role, not a person" — was proven for the two <em>generative</em>
+checkpoints: propose's adversarial critic (033) and the slicer's scoring panel (035). But the kernel also has
+<em>bounded-choice</em> checkpoints that ask a person to pick an option: <code>confirmRice</code>
+(<code>slice/rank.ts</code>) asks "Accept the estimated RICE inputs?"; <code>escalateLayer</code>
+(<code>triage/classify.ts</code>) asks a hedged item's diagnostic-vs-routing category and then its layer. Both
+hard-code <code>ctx.ai.ask</code> — always a human.</p>
+<p>035 wrongly deferred these as "stays a human confirmation." They are exactly the "who decides" seam the
+Decider exists for — just answering a <em>choice</em> rather than producing findings. This slice corrects that:
+the choice checkpoints become decider-routed, so a hands-off run can let an agent or panel answer while a human
+stays the default.</p>
+<p><strong>Who this is for:</strong> the maintainer configuring an unattended pipeline who needs the RICE-accept
+and triage-hedge gates answerable by an agent or panel — with a human still the default, and never an agent
+rubber-stamping its own work.</p>
+</section>
+
+
+<section id="scenarios">
+<h2>2 · User scenarios &amp; testing</h2>
+<p>Each story is independently testable: implementing only US1 still yields a viable MVP.</p>
+
+<h3 id="US1">US1 · A choice checkpoint has a configurable decider <spec-pill>P1</spec-pill></h3>
+<p>As a <strong>maintainer</strong>, I want <strong>the RICE-accept and triage-hedge gates to consult the
+configured decider</strong> so that <strong>a human, agent, or panel can answer, not just a human</strong>.</p>
+<p><em>Acceptance:</em> <code>decideChoice</code> answers a bounded choice by role — <code>human</code> via
+<code>ai.ask</code>, <code>agent</code> via one subagent, <code>panel</code> via N effort-sized subagents whose
+majority option wins; <code>confirmRice</code> and <code>escalateLayer</code> route through it.</p>
+
+<h3 id="US2">US2 · The default stays human, unchanged <spec-pill>P1</spec-pill></h3>
+<p>As a <strong>maintainer</strong>, I want <strong>the default behaviour to be exactly today's human
+prompt</strong> so that <strong>nothing regresses for anyone not opting in</strong>.</p>
+<p><em>Acceptance:</em> with no decider config, both checkpoints call <code>ai.ask</code> with the same questions
+as today and return the same result shape (029 + triage parity).</p>
+
+<h3 id="US3">US3 · No agent judges its own work <spec-pill>P1</spec-pill></h3>
+<p>As a <strong>maintainer trusting an agent decider</strong>, I want <strong>the choice-decider to be a
+distinct invocation from the author</strong> so that <strong>an agent can't rubber-stamp the estimates it
+produced</strong>.</p>
+<p><em>Acceptance:</em> when <code>confirmRice</code> runs an <code>agent</code>/<code>panel</code> decider, the
+decider subagent(s) are separate calls from the RICE estimator; the guardrail holds by construction.</p>
+
+<h3>Edge cases</h3>
+<ul>
+  <li><strong>Panel of one.</strong> A <code>panel</code> at an effort yielding 1 voter degrades to a single agent — no empty vote.</li>
+  <li><strong>Tie.</strong> A tied choice vote resolves to the first option in declared order (deterministic), or escalates to human under the escalation guardrail.</li>
+  <li><strong>No provider.</strong> Without an <code>AIProvider</code>, <code>agent</code>/<code>panel</code> fall back to <code>human</code>.</li>
+  <li><strong>Slash-command interviews.</strong> The spec/plan/propose/triage decision-phase interviews call the harness <code>AskUserQuestion</code> tool, not a kernel <code>ai.ask</code> — no seam to route; unchanged, out of scope.</li>
+</ul>
+</section>
+
+
+<section id="requirements">
+<h2>3 · Requirements</h2>
+<p>Conformance keywords (<spec-rule>MUST</spec-rule>, <spec-rule level="should">SHOULD</spec-rule>,
+<spec-rule level="may">MAY</spec-rule>) per RFC 2119.</p>
+
+<h3>Functional</h3>
+
+<spec-requirement id="FR-001" priority="must">
+<p>A <code>decideChoice(cfg, questions, ai)</code> capability <spec-rule>MUST</spec-rule> answer a bounded-choice
+checkpoint by role: <code>human</code> → <code>ai.ask</code>; <code>agent</code> → one subagent selects an
+option; <code>panel</code> → N effort-sized subagents whose majority option per question wins.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-002" priority="must">
+<p><code>confirmRice</code> <spec-rule>MUST</spec-rule> route its Accept/Adjust question through
+<code>decideChoice</code>.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-003" priority="must">
+<p><code>escalateLayer</code> <spec-rule>MUST</spec-rule> route its diagnostic-vs-routing and layer questions
+through <code>decideChoice</code>.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-004" priority="must">
+<p>An <code>agent</code>/<code>panel</code> choice-decider <spec-rule>MUST</spec-rule> be a distinct invocation
+from the author whose output it judges — an agent <spec-rule>MUST NOT</spec-rule> accept its own RICE estimates
+(no self-judging, per <a href="../033-decider-effort/spec.html#FR-006">033 FR-006</a>).</p>
+</spec-requirement>
+
+<spec-requirement id="FR-005" priority="must">
+<p>Choice deciders <spec-rule>MUST</spec-rule> resolve role + effort through the same precedence and effort table
+as the critic checkpoints — one resolution path (<a href="../033-decider-effort/spec.html#FR-002">033 FR-002</a>,
+<a href="../034-effort-auto/spec.html">034</a>), not a parallel one.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-006" priority="should">
+<p>With no decider config, both checkpoints <spec-rule level="should">SHOULD</spec-rule> behave exactly as today
+— the same <code>ai.ask</code> questions, the same result — so nothing regresses at the default.</p>
+</spec-requirement>
+
+<h3>Non-functional</h3>
+
+<spec-requirement id="NFR-001" priority="should">
+<p>Panel choice voting <spec-rule level="should">SHOULD</spec-rule> be deterministic given fixed votes: a stable
+majority with a declared-order tie-break.</p>
+</spec-requirement>
+
+<h3>Out of scope (deferred)</h3>
+<spec-out-of-scope>
+  <ul>
+    <li defer-to="never">The slash-command decision-phase interviews — they call the harness <code>AskUserQuestion</code> tool from the in-host LLM, not a kernel <code>AIProvider.ask</code>, so there is no seam to route.</li>
+    <li defer-to="TBD">Per-verb <code>--decider</code>/<code>--effort</code> flags on the slice and triage CLIs — this slice reads the project <code>decider</code> config for the choice checkpoints; flags can follow.</li>
+    <li defer-to="TBD-hands-off-pipeline">W-1 consuming the now-uniform choice + critic checkpoints to run unattended.</li>
+  </ul>
+</spec-out-of-scope>
+</section>
+
+
+<section id="data">
+<h2>4 · Data model</h2>
+<p>No new persisted entity — <code>decideChoice</code> is a role-dispatch over the existing <code>Question</code>
+type and <code>AIProvider</code>.</p>
+<h3>Entities</h3>
+<dl>
+  <dt>Choice</dt><dd>A bounded question (the existing <code>Question</code>: prompt, header, labelled options) plus the role's answer (the chosen label per question).</dd>
+  <dt>Choice verdict</dt><dd>The chosen option(s) + who chose (role, and for a panel the vote tally) — the ask-shaped analogue of the critic <code>Verdict</code>.</dd>
+</dl>
+<spec-note>
+<p>The Decider now spans both shapes it always implied: <strong>generate-and-arbitrate</strong>
+(<code>decide</code> — critics, scorers) and <strong>choose</strong> (<code>decideChoice</code> — bounded gates).
+Same roles, same effort table, same guardrails; two answer shapes.</p>
+</spec-note>
+</section>
+
+
+<section id="success">
+<h2>5 · Success criteria</h2>
+<spec-requirement id="SC-001" priority="must">
+<p>With <code>--decider=panel</code>, <code>confirmRice</code> convenes the effort-sized voters and returns the
+majority option — observable by counting subagent invocations and the returned choice.</p>
+</spec-requirement>
+<spec-requirement id="SC-002" priority="must">
+<p>At the default (human, no config), <code>confirmRice</code> and <code>escalateLayer</code> call
+<code>ai.ask</code> with the same questions and return the same result as before this slice (parity).</p>
+</spec-requirement>
+<spec-requirement id="SC-003" priority="must">
+<p>Under an <code>agent</code> decider, <code>confirmRice</code>'s accept decision is a distinct subagent
+invocation from the RICE estimator — no self-judging, observable.</p>
+</spec-requirement>
+<spec-requirement id="SC-004" priority="should">
+<p><code>escalateLayer</code>'s hedged-layer resolution honours the configured decider — an agent/panel resolves
+the layer instead of a human, when configured.</p>
+</spec-requirement>
+</section>
+
+
+<section id="assumptions">
+<h2>6 · Assumptions</h2>
+<spec-assumption>
+<p>The existing <code>Question</code> type (prompt / header / labelled options) is a sufficient contract for a
+subagent to answer a bounded choice; the agent returns a chosen label per header.</p>
+</spec-assumption>
+<spec-assumption>
+<p>Routing <code>confirmRice</code>/<code>escalateLayer</code> through <code>decideChoice</code> with a
+<code>human</code> default is behaviour-identical to the current direct <code>ai.ask</code> — the human path is a
+pass-through.</p>
+</spec-assumption>
+</section>
+
+
+<section id="questions">
+<h2>7 · Open questions</h2>
+<spec-questions>
+<p>None outstanding — the capability shape, the two call sites, the human default, the self-judging guardrail,
+and the shared resolution path were fixed by the parent (033/034) contracts and the user's correction that
+prompted this slice. The subagent choice-prompt wording is the plan's.</p>
+</spec-questions>
+</section>
+
+
+<section id="conformance">
+<h2>8 · Conformance index</h2>
+<p>Auto-built from every <code>&lt;spec-requirement&gt;</code> in this document.</p>
+<spec-conformance></spec-conformance>
+</section>
+
+
+<section id="changelog">
+<h2>9 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-07-09">09 Jul 2026</time><span>Initial draft. Corrects 035's over-deferral — the kernel ai.ask choice checkpoints become decider-routed.</span></li>
+  <li><time datetime="2026-07-09">09 Jul 2026</time><span>Planned, tasked, implemented, verified — decideChoice added; confirmRice + escalateLayer routed through it; 8 new + 475 full-suite green, human-default parity held. Status → Accepted.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  036-decider-choice · Decider-routed choices · authored 09 Jul 2026
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>

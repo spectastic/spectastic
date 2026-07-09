@@ -63,12 +63,18 @@ export function registerTriage(program: Command): void {
           process.exit(2);
         }
 
+        // Hedge-gate decider from the project config (spec 036); default human.
+        const { loadDeciderConfig } = await import('../config/decider.js');
+        const projectDecider = loadDeciderConfig(process.cwd());
+
         const input: Parameters<typeof triageCommand>[0] = {
           description,
           ...(opts.spec ? { specId: opts.spec } : {}),
           ...(opts.mode ? { mode: opts.mode } : {}),
           ...(concurrency === undefined ? {} : { concurrency }),
           ...(opts.fanout === undefined ? {} : { backend: opts.fanout }),
+          ...(projectDecider.role ? { decider: projectDecider.role } : {}),
+          ...(projectDecider.effort ? { effort: projectDecider.effort } : {}),
         };
 
         const result = await triageCommand(input, ctx);

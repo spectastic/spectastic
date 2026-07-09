@@ -20,12 +20,15 @@
 import type { AIProvider, TriageCard, TriageInput } from '../types.js';
 import { mapPool } from '../helpers/map-pool.js';
 import { applyLayer, classifyItem, escalateLayer, formatId, isRoutingExit } from './classify.js';
+import type { DeciderConfig } from '../decider/types.js';
 
 export interface FanoutOpts {
   /** Max concurrent classifications (spec FR-007). Default 8. */
   concurrency?: number;
   /** Provider method the shared core calls (spec D-001). Default 'chat'. */
   backend?: 'chat' | 'subagent';
+  /** Decider for the consolidated hedge gate (spec 036). Default human. */
+  decider?: DeciderConfig;
 }
 
 export const DEFAULT_CONCURRENCY = 8;
@@ -58,7 +61,7 @@ export async function triageFanout(
     if (r.status === 'ok') {
       drafts.push(r.draft);
     } else {
-      const layer = await escalateLayer(items[i]!, r.hedgedFrom ?? r.draft.layer, ai);
+      const layer = await escalateLayer(items[i]!, r.hedgedFrom ?? r.draft.layer, ai, opts.decider);
       drafts.push(applyLayer(r.draft, layer, r.deferTo));
     }
   }

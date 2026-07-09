@@ -29,6 +29,7 @@ import type { KernelContext, TriageInput, TriageResult } from '../types.js';
 import { detectMode } from '../helpers/detect-mode.js';
 import { applyLayer, classifyItem, escalateLayer, formatId } from '../triage/classify.js';
 import { triageFanout } from '../triage/fanout.js';
+import { resolveDecider } from '../decider/index.js';
 
 export async function triageCommand(
   input: TriageInput,
@@ -39,6 +40,17 @@ export async function triageCommand(
   }
   const mode = input.mode ?? detectMode(input.description);
 
+  // Resolve the hedge-gate decider (spec 036): flag/config → role, default human
+  // (parity). Effort sizes a panel gate.
+  const gateCfg = resolveDecider(
+    undefined,
+    {
+      ...(input.decider ? { role: input.decider } : {}),
+      ...(input.effort && input.effort !== 'auto' ? { effort: input.effort } : {}),
+    },
+    'human',
+  );
+
   if (mode === 'single') {
     // Classify + gate recombined so single-item behaviour is unchanged (032 D-003).
     const r = await classifyItem(input, ctx.ai, 'single');
@@ -47,7 +59,7 @@ export async function triageCommand(
         ? r.draft
         : applyLayer(
             r.draft,
-            await escalateLayer(input.description, r.hedgedFrom ?? r.draft.layer, ctx.ai),
+            await escalateLayer(input.description, r.hedgedFrom ?? r.draft.layer, ctx.ai, gateCfg),
             r.deferTo,
           );
     const id = formatId(draft.layer, input.startingIdT ?? 0, input.startingIdI ?? 0, 1);
@@ -58,6 +70,7 @@ export async function triageCommand(
   const cards = await triageFanout(items, input, ctx.ai, {
     ...(input.concurrency === undefined ? {} : { concurrency: input.concurrency }),
     ...(input.backend === undefined ? {} : { backend: input.backend }),
+    decider: gateCfg,
   });
   return { cards };
 }

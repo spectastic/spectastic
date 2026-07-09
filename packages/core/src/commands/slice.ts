@@ -11,6 +11,7 @@
 
 import { decompose } from '../slice/decompose.js';
 import { confirmRice, orderChildren } from '../slice/rank.js';
+import { resolveDecider } from '../decider/index.js';
 import { buildCoverage } from '../slice/coverage.js';
 import { runCoverageCritic } from '../slice/critic.js';
 import { decideVerdict, overBudgetChildren } from '../slice/verdict.js';
@@ -43,6 +44,10 @@ export interface SliceInput {
    * scripts no critic).
    */
   runCritic?: boolean;
+  /** Decider for the RICE-accept gate (spec 036). Absent → 'human' (parity). */
+  decider?: 'human' | 'agent' | 'panel';
+  /** Effort sizing a panel accept gate (spec 033/034). Absent → 'medium'. */
+  effort?: 'low' | 'medium' | 'high' | 'xhigh' | 'max';
 }
 
 export interface SliceResult {
@@ -58,7 +63,12 @@ export async function sliceCommand(input: SliceInput, ctx: KernelContext): Promi
   if (!ctx.ai) throw new Error('sliceCommand requires ctx.ai');
 
   const { children } = await decompose(input.parentHtml, ctx);
-  const confirmed = await confirmRice(children, ctx);
+  const acceptCfg = resolveDecider(
+    undefined,
+    { ...(input.decider ? { role: input.decider } : {}), ...(input.effort ? { effort: input.effort } : {}) },
+    'human',
+  );
+  const confirmed = await confirmRice(children, ctx, acceptCfg);
   const ordered = await orderChildren(confirmed, ctx);
 
   const partition = buildCoverage(input.parentHtml, ordered);

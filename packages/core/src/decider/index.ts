@@ -18,3 +18,4 @@ export type { EffortDepth } from './effort.js';
 export { LENSES, runCritic, arbitrateCategorical, median, parseFindings } from './panel.js';
 export { resolveEffort } from './auto.js';
 export type { RequestedEffort, EffortSignal, ResolvedEffort } from './auto.js';
+export { decideChoice } from './choice.js';
