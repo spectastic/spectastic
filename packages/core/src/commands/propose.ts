@@ -19,8 +19,8 @@ import type {
   ProposeResult,
   RiskFinding,
 } from '../types.js';
-
-const CRITIC_SYSTEM = `You are an adversarial reviewer of a software change proposal. Identify exactly three concrete risks. For each: name the affected delta/requirement, explain the worry in one paragraph, and frame the 30-day regret. Return ONLY JSON: { "risks": [ { "target": string, "concern": string }, ... ] }.`;
+import { decide, resolveDecider } from '../decider/index.js';
+import type { Verdict } from '../decider/index.js';
 
 export async function proposeCommand(
   input: ProposeInput,
@@ -54,17 +54,42 @@ export async function proposeCommand(
         topicPrefixCount(deltas) >= 2 ||
         touchesMustTier(deltas, input.specHtml)));
 
+  // Irreversible signal for the escalation guardrail (spec 033 FR-008): a
+  // removed-op or must-tier change keeps disposition with a human.
+  const irreversible =
+    deltas.some((d) => d.op === 'removed') || touchesMustTier(deltas, input.specHtml);
+
   let risks: RiskFinding[] = [];
+  let verdict: Verdict | undefined;
   if (shouldAdversarial) {
-    const proposalDraft = JSON.stringify(draft, null, 2);
-    const subResult = await ctx.ai.subagent(
-      `Review this draft proposal against the spec and identify 3 risks.\n\nSpec excerpt:\n${input.specHtml.slice(0, 3000)}\n\nDraft proposal:\n${proposalDraft}`,
-      { task: 'adversarial-risk-pass' },
+    // The adversarial checkpoint is agent-led by default (013 parity); effort
+    // sizes a panel. Config precedence (flag > project) is resolved by the caller
+    // into input.decider/effort; the checkpoint-default is 'agent' (spec 033 D-003).
+    const cfg = resolveDecider(
+      undefined,
+      { ...(input.decider ? { role: input.decider } : {}), ...(input.effort ? { effort: input.effort } : {}) },
+      'agent',
     );
-    risks = parseRisks(subResult.output);
+    const proposalDraft = JSON.stringify(draft, null, 2);
+    verdict = await decide(
+      cfg,
+      {
+        reviewPrompt: `Review this draft proposal against the spec and identify concrete risks.\n\nSpec excerpt:\n${input.specHtml.slice(0, 3000)}\n\nDraft proposal:\n${proposalDraft}`,
+        irreversible,
+        maxFindings: 3,
+      },
+      ctx.ai,
+    );
+    // Findings are proposed, never auto-dispositioned — status stays 'identified'
+    // for the human (apply refuses while any remain); FR-008/FR-009.
+    risks = verdict.survivors.map((s) => ({
+      target: s.target,
+      status: 'identified' as const,
+      concern: s.concern,
+    }));
   }
 
-  const html = renderProposalHtml(input.specId, input.description, draft, risks);
+  const html = renderProposalHtml(input.specId, input.description, draft, risks, verdict);
   return { html, deltasCount: deltas.length, risks };
 }
 
@@ -78,20 +103,6 @@ interface ParsedDraft {
 function tryParse(raw: string): ParsedDraft | null {
   const stripped = raw.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
   try { return JSON.parse(stripped) as ParsedDraft; } catch { return null; }
-}
-
-function parseRisks(raw: string): RiskFinding[] {
-  const stripped = raw.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
-  try {
-    const p = JSON.parse(stripped) as { risks?: Array<{ target: string; concern: string }> };
-    return (p.risks ?? []).slice(0, 3).map((r) => ({
-      target: r.target,
-      status: 'identified' as const, // defensively forced per 013 D-005
-      concern: r.concern,
-    }));
-  } catch {
-    return [];
-  }
 }
 
 function topicPrefixCount(deltas: Delta[]): number {
@@ -117,14 +128,23 @@ function renderProposalHtml(
   description: string,
   draft: ParsedDraft,
   risks: RiskFinding[],
+  verdict?: Verdict,
 ): string {
   const today = new Date().toISOString().slice(0, 10);
   const deltaBlocks = (draft.deltas ?? []).map((d) =>
     `<spec-delta op="${d.op}" target="${d.target}">${d.postState ? `<spec-requirement id="${d.target}" priority="must"><p>${esc(d.postState)}</p></spec-requirement>` : ''}${d.reason ? `<div class="reason-block"><p><strong>Reason.</strong> ${esc(d.reason)}</p></div>` : ''}${d.migration ? `<div class="migration-block"><p><strong>Migration.</strong> ${esc(d.migration)}</p></div>` : ''}</spec-delta>`,
   ).join('\n');
-  const riskBlocks = risks.map((r) =>
-    `<spec-risk target="${r.target}" status="identified"><header><h4>${esc(r.concern.slice(0, 80))}</h4></header><p><strong>Concern.</strong> ${esc(r.concern)}</p><div class="response"><em>Author response not yet recorded.</em></div></spec-risk>`,
-  ).join('\n');
+  // Verdict attribution on each risk (spec 033 FR-009): who decided, at what
+  // effort, and the grounds (the per-finding vote tally).
+  const deciderAttr = verdict && verdict.role !== 'human'
+    ? ` decider="${verdict.role}" effort="${verdict.effort}"`
+    : '';
+  const riskBlocks = risks.map((r, i) => {
+    const grounds = verdict?.tally[i]
+      ? `<div class="grounds"><p><strong>Decider.</strong> ${esc(verdict.role)} · ${esc(verdict.effort)} · ${esc(verdict.tally[i])}</p></div>`
+      : '';
+    return `<spec-risk target="${r.target}" status="identified"${deciderAttr}><header><h4>${esc(r.concern.slice(0, 80))}</h4></header><p><strong>Concern.</strong> ${esc(r.concern)}</p>${grounds}<div class="response"><em>Author response not yet recorded.</em></div></spec-risk>`;
+  }).join('\n');
 
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><title>${esc(description)} · Change proposal</title>

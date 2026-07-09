@@ -1,0 +1,311 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Configurable decider Â· Specification</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Specification Â· 033-decider-effort</p>
+  <h1>Configurable decider</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    A checkpoint is a role, not a person. Make <em>who decides</em> a configurable knob â human, agent, or
+    panel â with one effort level for how deep the panel goes, and the guardrails that keep autonomy honest.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>      <span><spec-status value="accepted">Accepted</spec-status></span>
+    <b>Spec ID</b>     <span>033-decider-effort</span>
+    <b>Owner</b>       <span>Brian Corbin Â· @briancorbinxyz</span>
+    <b>Reviewers</b>   <span>â</span>
+    <b>Created</b>     <span><time datetime="2026-07-09">09 Jul 2026</time></span>
+    <b>Principles</b><span><a href="../../principles.html">v1.3.0</a></span>
+    <b>Smallest demoable</b><span><code>propose --decider=panel --effort=high</code> convenes a 3-voter arbitrated risk pass; the verdict + grounds land on each <code>&lt;spec-risk&gt;</code>.</span>
+    <b>Read time</b>   <span data-reading-time></span>
+  </spec-meta>
+
+  <!-- Live size gauge â green at <80%, amber 80-100%, red over. Words row counts authored prose (excludes the conformance index) per REQ-FORMAT-004. -->
+  <spec-budget words="1500" reqs="20" minutes="12"></spec-budget>
+
+  <spec-tldr>
+    <p>Checkpoints hard-code <em>who</em> resolves them â a human (<code>AskUserQuestion</code>) or a fixed agent
+    (propose's one-shot critic). This spec (<a href="../../docs/agent-workflows-considerations.html#a-decider">Â§9.1</a>
+    of the workflow brief) makes that a <strong>Decider</strong> role: <code>human</code> (default) Â·
+    <code>agent</code> Â· <code>panel</code>, chosen by config that resolves flag&nbsp;&gt;&nbsp;project&nbsp;&gt;&nbsp;default
+    like <code>git.auto</code>. One explicit <strong>effort</strong> level scales the panel's depth
+    (<a href="#FR-004">Â§3 table</a>). Four guardrails hold when the decider isn't human: never judge your own
+    output, panels use diverse lenses and are capped, irreversible changes escalate to a human, every verdict is
+    logged with its grounds. v1 proves it at propose's adversarial pass; the <code>auto</code> mapping and the
+    roll-out to other checkpoints are siblings (Â§3).</p>
+  </spec-tldr>
+
+  <dl class="invest">
+    <dt><span class="letter">I</span> Independent</dt> <dd>Depends on <a href="../../principles.html">principles v1.3.0</a> and the existing <code>AIProvider</code> (<code>ask</code>/<code>subagent</code>). Generalizes the critic already in <a href="../013-core-propose/spec.html">013-propose</a>; the slicer panel is a reference, not a dependency.</dd>
+    <dt><span class="letter">N</span> Negotiable</dt>  <dd>Contracts the roles, the effortâdepth table, the guardrails, and config precedence. The <code>Decider</code> interface shape is the plan's.</dd>
+    <dt><span class="letter">V</span> Valuable</dt>    <dd>Unlocks <a href="#SC-001">SC-001</a> â a checkpoint's rigour becomes a dial, from a cheap agent to a diverse arbitrated panel, without editing the call site.</dd>
+    <dt><span class="letter">E</span> Estimable</dt>   <dd>Roles, arbitration, effort table, guardrails, and grounding scope were all anchored in the interview.</dd>
+    <dt><span class="letter">S</span> Small</dt>       <dd>Scoped to one checkpoint (propose) with explicit effort; the <code>auto</code> mapping and cross-verb rollout are deferred siblings (Â§3).</dd>
+    <dt><span class="letter">T</span> Testable</dt>    <dd>Observable with the stub <code>AIProvider</code> â count panellists, assert precedence, force escalation; <a href="#SC-001">SC-001</a>â<a href="#SC-005">SC-005</a> are quantified.</dd>
+  </dl>
+
+  <spec-audience-map>
+    <dl>
+      <dt>Exec / PM</dt>   <dd>Â§<a href="#context">Context</a>, Â§<a href="#scenarios">User scenarios</a>, Â§<a href="#success">Success criteria</a>.</dd>
+      <dt>Reviewer</dt>    <dd>Â§<a href="#requirements">Requirements</a>, Â§<a href="#assumptions">Assumptions</a>, Â§<a href="#questions">Open questions</a>.</dd>
+      <dt>Implementer</dt> <dd>Â§<a href="#requirements">Requirements</a>, Â§<a href="#data">Data model</a>, Â§<a href="#conformance">Conformance index</a>.</dd>
+    </dl>
+  </spec-audience-map>
+</header>
+
+
+<section id="context">
+<h2>1 Â· Context</h2>
+<p>Propose's adversarial pass runs a single fixed critic; the slicer a fixed median panel; the interviews a
+human. None is <em>configurable</em> â you can't opt a low-stakes checkpoint down to an agent, or dial a risky
+one up to a diverse panel, and there's no single control for how hard a checkpoint works.</p>
+<p>The brief (<a href="../../docs/agent-workflows-considerations.html#a-decider">Â§9.1</a>) reframes a checkpoint
+as "consult the <strong>Decider</strong>" â a configurable role â with one <strong>effort</strong> level scaling
+its depth. It is grounded in the field (Constitutional AI, RLAIF, jury-of-models) and is the prerequisite the
+brief names before a hands-off pipeline (W-1) can run unattended. It serves the maintainer who wants to opt a
+checkpoint <em>down</em> when stakes are low and dial rigour <em>up</em> when they're not â deliberately, never
+silently.</p>
+</section>
+
+
+<section id="scenarios">
+<h2>2 Â· User scenarios &amp; testing</h2>
+
+<p>Each story is independently testable: implementing only US1 still yields a viable MVP.</p>
+
+<h3 id="US1">US1 Â· Choose who decides <spec-pill>P1</spec-pill></h3>
+<p>As a <strong>maintainer</strong>, I want to <strong>set a checkpoint's decider to human, agent, or
+panel</strong> so that <strong>low-stakes decisions run without me and risky ones convene real scrutiny</strong>.</p>
+<p><em>Acceptance:</em> <code>--decider=agent|panel|human</code> selects the role; absent a flag it resolves from
+project <code>spectastic.json</code>, then the <code>human</code> default; a <code>panel</code> convenes diverse
+agents and arbitrates their verdicts.</p>
+
+<h3 id="US2">US2 Â· One dial for how deep <spec-pill>P1</spec-pill></h3>
+<p>As a <strong>maintainer</strong>, I want <strong>one <code>--effort</code> level to set the panel's
+depth</strong> so that <strong>I pick rigour with a single knob instead of per-checkpoint plumbing</strong>.</p>
+<p><em>Acceptance:</em> <code>--effort=low|medium|high|xhigh|max</code> sets the voter count + arbitration per the
+Â§3 table, resolved by the same flag&nbsp;&gt;&nbsp;project&nbsp;&gt;&nbsp;default precedence.</p>
+
+<h3 id="US3">US3 Â· The guardrails hold <spec-pill>P1</spec-pill></h3>
+<p>As a <strong>maintainer trusting a non-human decider</strong>, I want <strong>the safety rails the research
+demands</strong> so that <strong>autonomy never quietly lowers the bar</strong>.</p>
+<p><em>Acceptance:</em> no decider judges its own output; a panel uses diverse lenses and is capped; an
+irreversible change (removed-op / must-tier) routes to a human regardless of config; every non-human verdict is
+logged with its grounds on the artifact it touched.</p>
+
+<h3>Edge cases</h3>
+<ul>
+  <li><strong>Panel of one.</strong> <code>panel</code> at an effort level yielding 1 voter degrades to a single <code>agent</code> â no empty arbitration.</li>
+  <li><strong>No provider.</strong> Without an <code>AIProvider</code>, <code>agent</code>/<code>panel</code> fall back to <code>human</code> rather than failing.</li>
+  <li><strong>Tie in a categorical vote.</strong> A tie escalates one level (toward arbiter, then human), never resolves arbitrarily.</li>
+</ul>
+</section>
+
+
+<section id="requirements">
+<h2>3 Â· Requirements</h2>
+
+<p>Conformance keywords (<spec-rule>MUST</spec-rule>, <spec-rule level="should">SHOULD</spec-rule>,
+<spec-rule level="may">MAY</spec-rule>) per RFC 2119.</p>
+
+<h3>Functional â the Decider</h3>
+
+<spec-requirement id="FR-001" priority="must">
+<p>A checkpoint <spec-rule>MUST</spec-rule> resolve through a configured <strong>Decider</strong> role â
+<code>human</code>, <code>agent</code>, or <code>panel</code> â not a hard-coded reviewer. Default <code>human</code>;
+non-human deciders are opted <em>down</em> to, never assumed.</p>
+<details><summary>Rationale</summary><p><a href="../../docs/agent-workflows-considerations.html#a-decider">Â§9.1</a> â <code>AIProvider.ask</code> backs <code>human</code>; <code>subagent</code> backs <code>agent</code>/<code>panel</code>.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-002" priority="must">
+<p>Decider and effort <spec-rule>MUST</spec-rule> resolve by precedence: per-run flag &gt; project
+<code>spectastic.json</code> &gt; built-in default â the <code>effectiveAuto(cfg, override)</code> shape already
+shipped for <code>git.auto</code>.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-003" priority="must">
+<p>An <code>agent</code>/<code>panel</code> decider <spec-rule>MUST</spec-rule> be grounded on the constitution
+(<a href="../../principles.html">principles.html</a>), the artifact under review, and the plan's grounding ledger
+â to rule on the merits, not invariants alone.</p>
+</spec-requirement>
+
+<h3>Functional â the effort dial</h3>
+
+<spec-requirement id="FR-004" priority="must">
+<p>An explicit <strong>effort</strong> level <spec-rule>MUST</spec-rule> scale the decider's depth per this table
+(default <code>medium</code>):</p>
+<dl>
+  <dt><code>low</code></dt><dd>human-defer, or 1 agent</dd>
+  <dt><code>medium</code></dt><dd>1 agent (single vote)</dd>
+  <dt><code>high</code></dt><dd>3-voter panel</dd>
+  <dt><code>xhigh</code> / <code>max</code></dt><dd>5-voter diverse panel + arbiter + completeness critic</dd>
+</dl>
+</spec-requirement>
+
+<spec-requirement id="FR-005" priority="must">
+<p>A <code>panel</code> decider <spec-rule>MUST</spec-rule> arbitrate <strong>type-dependently</strong>:
+categorical verdicts by majority vote, numeric verdicts (RICE) by median â matching <code>slice/panel.ts</code>.</p>
+</spec-requirement>
+
+<h3>Functional â the guardrails (non-negotiable for non-human deciders)</h3>
+
+<spec-requirement id="FR-006" priority="must">
+<p>A decider <spec-rule>MUST NOT</spec-rule> judge its own output â the decider invocation MUST be distinct from
+any author invocation at the checkpoint.</p>
+<details><summary>Rationale</summary><p>Self-preference bias is measured (<a href="https://arxiv.org/abs/2410.21819">Â§9.1</a>); separating author from decider is the mitigation.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-007" priority="must">
+<p>A panel <spec-rule>MUST</spec-rule> use <strong>diverse lenses</strong> (distinct prompts), not N identical
+copies, and <spec-rule>MUST</spec-rule> be capped at 5 voters.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-008" priority="must">
+<p>An <strong>irreversible / high-stakes</strong> decision â detected by the signals that fire the adversarial
+pass (removed-op, must-tier) â <spec-rule>MUST</spec-rule> route to a <code>human</code> regardless of the
+configured decider.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-009" priority="must">
+<p>Every non-human decider verdict <spec-rule>MUST</spec-rule> be logged with its grounds on the artifact it
+touched â propose's <code>&lt;spec-risk&gt;</code> gains decider attribution (role, level, grounds), extending the
+existing register, not a new log.</p>
+</spec-requirement>
+
+<h3>Non-functional</h3>
+
+<spec-requirement id="NFR-001" priority="must">
+<p>A decider <spec-rule>MUST NOT</spec-rule> exceed its effort level's voter cap in agent invocations â bounding
+cost and concurrent provider calls.</p>
+</spec-requirement>
+
+<spec-requirement id="NFR-002" priority="should">
+<p>Config resolution <spec-rule level="should">SHOULD</spec-rule> be deterministic and auditable: identical
+flags + project config + default resolve to the same decider and effort every time.</p>
+</spec-requirement>
+
+<h3>Out of scope (deferred to other slices)</h3>
+<spec-out-of-scope>
+  <ul>
+    <li defer-to="TBD-effort-auto">The <code>--effort=auto</code> signal-mapping (per-verb risk signals â level). Peeled to stay estimable; <a href="#FR-008">FR-008</a>'s escalation signals are the seed.</li>
+    <li defer-to="TBD-decider-rollout">Wiring the Decider into the other checkpoints (decision-phase interviews, slicer ranking) â v1 proves the verb-agnostic seam at propose.</li>
+    <li defer-to="TBD">Scaling fan-out <em>width</em> and loop <em>depth</em> by effort (full Â§9.2 table) â this spec scales the <em>decider's</em> depth; width is <a href="../032-triage-fanout/spec.html">032</a>'s.</li>
+    <li defer-to="TBD-hands-off-pipeline">W-1 consuming these dials to run unattended â this spec provides the knobs.</li>
+  </ul>
+</spec-out-of-scope>
+</section>
+
+
+<section id="data">
+<h2>4 Â· Data model</h2>
+
+<p>No new persisted entity â config extends <code>spectastic.json</code>; verdicts extend the existing
+<code>&lt;spec-risk&gt;</code> register. Three shapes:</p>
+
+<h3>Entities</h3>
+<dl>
+  <dt>Decider</dt><dd>A role â <code>human | agent | panel</code> â plus its resolved effort level. Backed by <code>AIProvider.ask</code> (human) or <code>subagent</code> (agent/panel).</dd>
+  <dt>Effort level</dt><dd><code>low | medium | high | xhigh | max</code> â a voter count + arbitration mode (FR-004). Default <code>medium</code>.</dd>
+  <dt>Verdict</dt><dd>A decider's decision + grounds (role, level, the vote/median tally, the reasoning), recorded on the touched register (FR-009).</dd>
+</dl>
+
+<spec-note>
+<p>The safe-degradation ladder: a tie escalates one level (panel â arbiter â human); a 1-voter panel degrades
+to a single agent; a missing provider degrades to <code>human</code>. Under ambiguity the bar only moves
+<em>up</em>, never silently down.</p>
+</spec-note>
+</section>
+
+
+<section id="success">
+<h2>5 Â· Success criteria</h2>
+
+<p>Technology-agnostic, measurable outcomes.</p>
+
+<spec-requirement id="SC-001" priority="must">
+<p>With <code>--decider=panel --effort=high</code>, propose convenes exactly 3 diverse panellists, arbitrates
+type-appropriately (vote / median), and records the verdict + grounds on each <code>&lt;spec-risk&gt;</code>.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-002" priority="must">
+<p>Precedence is observable end-to-end: a per-run flag overrides a project-config setting, which overrides the
+<code>human</code> default â verified at all three levels.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-003" priority="must">
+<p>A removed-op or must-tier change routes to a <code>human</code> even under <code>--decider=panel</code> â the
+escalation guardrail is observable, not advisory.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-004" priority="must">
+<p>Each effort level yields its table voter count â <code>medium</code>â1, <code>high</code>â3,
+<code>max</code>â5+arbiter â observable by counting panellist invocations.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-005" priority="should">
+<p>At the wired checkpoint the author and decider are distinct invocations â no decider is handed its own output
+to judge.</p>
+</spec-requirement>
+</section>
+
+
+<section id="assumptions">
+<h2>6 Â· Assumptions</h2>
+
+<spec-assumption>
+<p>The existing <code>AIProvider</code> (<code>ask</code> for human, <code>subagent</code> for agent/panel) is a
+sufficient backing for all three roles; a <code>Decider</code> is a thin abstraction over it, not a new provider.</p>
+</spec-assumption>
+
+<spec-assumption>
+<p>Propose's adversarial critic (<code>propose.ts</code>) and the slicer panel (<code>slice/panel.ts</code>) are
+the reference behaviours the seam generalizes â preserved, then hoisted.</p>
+</spec-assumption>
+</section>
+
+
+<section id="questions">
+<h2>7 Â· Open questions</h2>
+<spec-questions>
+<p>None outstanding â roles, config precedence, the effortâdepth table, arbitration, the four guardrail
+mechanisms, and grounding scope were anchored in the interview; the <code>auto</code> mapping and cross-verb
+rollout were deliberately peeled to siblings. The <code>Decider</code> interface shape is the plan's.</p>
+</spec-questions>
+</section>
+
+
+<section id="conformance">
+<h2>8 Â· Conformance index</h2>
+<p>Auto-built from every <code>&lt;spec-requirement&gt;</code> in this document.</p>
+<spec-conformance></spec-conformance>
+</section>
+
+
+<section id="changelog">
+<h2>9 Â· Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-07-09">09 Jul 2026</time><span>Initial draft. Â§9.1 of the agentic-workflows brief â Decider role + explicit effort + four guardrails at propose; auto-mapping and cross-verb rollout peeled to siblings to hold the budget.</span></li>
+  <li><time datetime="2026-07-09">09 Jul 2026</time><span>Planned, tasked, implemented, verified — core Decider module wired into propose; 12 decider + 453 full-suite tests green; panel path exercised end-to-end. Status → Accepted.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  033-decider-effort Â· Configurable decider Â· authored 09 Jul 2026
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>

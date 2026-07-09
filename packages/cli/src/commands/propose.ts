@@ -8,13 +8,20 @@ export function registerPropose(program: Command): void {
     .argument('<description>', 'one-line change description')
     .option('--adversarial', 'force adversarial pass on (overrides heuristic)')
     .option('--no-adversarial', 'force adversarial pass off')
+    .option('--decider <role>', 'adversarial checkpoint decider: human | agent | panel (spec 033)')
+    .option('--effort <level>', 'panel depth: low | medium | high | xhigh | max (spec 033)')
     .option('--commit', 'force a git commit for this run (overrides git.auto)')
     .option('--no-commit', 'skip the git commit for this run (overrides git.auto)')
     .action(
       async (
         specId: string,
         description: string,
-        opts: { adversarial?: boolean; commit?: boolean },
+        opts: {
+          adversarial?: boolean;
+          decider?: 'human' | 'agent' | 'panel';
+          effort?: 'low' | 'medium' | 'high' | 'xhigh' | 'max';
+          commit?: boolean;
+        },
       ) => {
         const [{ proposeCommand }, { createAIProvider }, { nodeFs }, { gateOnQuarantine }, fs, path] =
           await Promise.all([
@@ -35,6 +42,22 @@ export function registerPropose(program: Command): void {
           process.exit(2);
         }
 
+        // Resolve the decider by precedence: per-run flag > project config
+        // (spectastic.json) — the core applies the 'agent' checkpoint-default and
+        // 'medium' effort fallback (spec 033 FR-002 / D-002).
+        const { loadDeciderConfig } = await import('../config/decider.js');
+        const projectDecider = loadDeciderConfig(process.cwd());
+        const role = opts.decider ?? projectDecider.role;
+        const effort = opts.effort ?? projectDecider.effort;
+        if (opts.decider && !['human', 'agent', 'panel'].includes(opts.decider)) {
+          process.stderr.write('propose: --decider must be human | agent | panel.\n');
+          process.exit(2);
+        }
+        if (opts.effort && !['low', 'medium', 'high', 'xhigh', 'max'].includes(opts.effort)) {
+          process.stderr.write('propose: --effort must be low | medium | high | xhigh | max.\n');
+          process.exit(2);
+        }
+
         const ai = await createAIProvider();
         const specPath = path.resolve(process.cwd(), 'specs', specId, 'spec.html');
         const specHtml = await fs.readFile(specPath, 'utf8');
@@ -49,6 +72,8 @@ export function registerPropose(program: Command): void {
               : opts.adversarial === true
                 ? { adversarial: true as const }
                 : { adversarial: 'auto' as const }),
+            ...(role ? { decider: role } : {}),
+            ...(effort ? { effort } : {}),
           },
           { cwd: process.cwd(), fs: nodeFs, ai },
         );
