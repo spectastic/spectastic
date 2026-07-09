@@ -1,0 +1,301 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Triage list-intake fan-out · Specification</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Specification · 032-triage-fanout</p>
+  <h1>Triage list-intake fan-out</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    Paste a long list; classify every item at once instead of one after another — a drop-in speedup over
+    triage list-intake that keeps every card, ID, and human gate in place.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>      <span><spec-status value="accepted">Accepted</spec-status></span>
+    <b>Spec ID</b>     <span>032-triage-fanout</span>
+    <b>Owner</b>       <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Reviewers</b>   <span>—</span>
+    <b>Created</b>     <span><time datetime="2026-07-08">08 Jul 2026</time></span>
+    <b>Principles</b><span><a href="../../principles.html">v1.3.0</a></span>
+    <b>Smallest demoable</b><span>A 10-item paste classifies concurrently and writes 10 input-ordered cards in the wall-clock of one item.</span>
+    <b>Read time</b>   <span data-reading-time></span>
+  </spec-meta>
+
+  <!-- Live size gauge — green at <80%, amber 80-100%, red over. Words row counts authored prose (excludes the conformance index) per REQ-FORMAT-004. -->
+  <spec-budget words="1500" reqs="20" minutes="12"></spec-budget>
+
+  <spec-tldr>
+    <p>Triage's <strong>list-intake mode</strong> classifies each pasted item into one
+    <code>&lt;spec-triage&gt;</code> card — but <em>serially</em>, one blocking call after the next. Workflow
+    <strong>W-5</strong> parallelizes that loop: one classifier per item under a bounded cap, results collected
+    back into <em>input order</em>, on <strong>two backends off one shared design</strong> (the CLI verb and a
+    Claude Workflow script). The <em>output</em> is unchanged — N in, N out; IDs stay sequential; the
+    <code>just-do</code>-vs-<code>spec</code> gate is preserved, now gathering ambiguous items into one decision
+    phase. Pure speedup: no change to how a single item is judged.</p>
+  </spec-tldr>
+
+  <dl class="invest">
+    <dt><span class="letter">I</span> Independent</dt> <dd>Depends only on <a href="../../principles.html">principles v1.3.0</a> and the triage verb (<a href="../007-core-triage/spec.html">007-core-triage</a>). Reuses the current <code>TriageCard</code> and <code>I-NNN</code> scheme unchanged.</dd>
+    <dt><span class="letter">N</span> Negotiable</dt>  <dd>Contracts outcomes (order, completeness, gate, speedup). Shared-core shape and pool implementation are deferred to the plan.</dd>
+    <dt><span class="letter">V</span> Valuable</dt>    <dd>Unlocks <a href="#SC-001">SC-001</a> — a long list classifies in the time of its slowest item, not the sum.</dd>
+    <dt><span class="letter">E</span> Estimable</dt>   <dd>Every concurrency-model decision (scope, gate, failure, cap, target) was anchored in the interview.</dd>
+    <dt><span class="letter">S</span> Small</dt>       <dd>15 requirements; orchestration <em>around</em> per-item classification, not the classification itself.</dd>
+    <dt><span class="letter">T</span> Testable</dt>    <dd>Every requirement is observable with the stub <code>AIProvider</code> (inject delays / a mid-list failure); <a href="#SC-001">SC-001</a>–<a href="#SC-004">SC-004</a> are quantified.</dd>
+  </dl>
+
+  <spec-audience-map>
+    <dl>
+      <dt>Exec / PM</dt>   <dd>§<a href="#context">Context</a>, §<a href="#scenarios">User scenarios</a>, §<a href="#success">Success criteria</a>.</dd>
+      <dt>Reviewer</dt>    <dd>§<a href="#requirements">Requirements</a>, §<a href="#assumptions">Assumptions</a>, §<a href="#questions">Open questions</a>.</dd>
+      <dt>Implementer</dt> <dd>§<a href="#requirements">Requirements</a>, §<a href="#data">Data model</a>, §<a href="#conformance">Conformance index</a>.</dd>
+    </dl>
+  </spec-audience-map>
+</header>
+
+
+<section id="context">
+<h2>1 · Context</h2>
+<p>Triage's <strong>list-intake mode</strong> turns "a few small things" into one classified
+<code>&lt;spec-triage&gt;</code> card per item in <code>inbox.html</code>. Today it is <em>serial</em> — the CLI
+walks a blocking <code>for … await</code> loop (<code>packages/core/src/commands/triage.ts</code>) and the
+slash-command path classifies items one after another. Each waits on the one before, so a 20-item paste is
+twenty sequential round-trips even though the items are wholly independent.</p>
+<p>The agentic-workflows brief (<a href="../../docs/agent-workflows-considerations.html#W-5">W-5</a>) names it —
+"one classifier per item in parallel" — and calls it the cheapest of the six workflows: items are already
+independent, per-item classification is unchanged, and the <code>just-do</code>-vs-<code>spec</code> guardrail
+already exists. Only the fan-out is missing. It serves the small-batch author triaging a backlog of typos,
+broken anchors and half-ideas in one pass.</p>
+</section>
+
+
+<section id="scenarios">
+<h2>2 · User scenarios &amp; testing</h2>
+
+<p>Each story is independently testable: implementing only US1 still yields a viable MVP.</p>
+
+<h3 id="US1">US1 · Fan out a pasted list <spec-pill>P1</spec-pill></h3>
+<p>As a <strong>maintainer dumping a backlog</strong>, I want <strong>every item classified at once</strong> so
+that <strong>the batch is triaged in the time of one item, not the sum</strong>.</p>
+<p><em>Acceptance:</em> N items (N ≤ cap) are classified concurrently and written as N input-ordered cards to
+<code>inbox.html</code> with sequential <code>I-NNN</code> IDs; wall-clock is bounded by the slowest item plus
+overhead, not the serial sum.</p>
+
+<h3 id="US2">US2 · Decide the ambiguous ones in one pass <spec-pill>P1</spec-pill></h3>
+<p>As a <strong>maintainer</strong>, I want <strong>the low-confidence items gathered into a single decision
+phase</strong> so that <strong>I commit the <code>just-do</code>-vs-<code>spec</code> calls together, not
+interrupted item by item</strong>.</p>
+<p><em>Acceptance:</em> given several hedged items, the fan-out finishes classification first, then surfaces
+their layer-commit questions as one consolidated gate; no prompt interleaves with the parallel pass; a confident
+item never reaches the gate.</p>
+
+<h3 id="US3">US3 · Survive a bad item <spec-pill>P2</spec-pill></h3>
+<p>As a <strong>maintainer</strong>, I want <strong>one item's failure not to sink the batch</strong> so that
+<strong>a single transient error never loses the rest</strong>.</p>
+<p><em>Acceptance:</em> when one item fails to classify (provider error, unparseable response), it still becomes
+a card — flagged and routed to the human gate — while every other item lands normally; N in still yields N out.</p>
+
+<h3>Edge cases</h3>
+<ul>
+  <li><strong>List longer than the cap.</strong> Excess items queue and run as slots free; order and IDs unaffected.</li>
+  <li><strong>Single item.</strong> Uses the existing serial path — nothing to fan out — byte-for-byte the current behaviour.</li>
+  <li><strong>Mixed kinds.</strong> A diagnostic-layer item routes to its per-spec triage log, not <code>inbox.html</code> (unchanged).</li>
+  <li><strong>Duplicate / empty items.</strong> Blank lines dropped (<code>splitList</code>); duplicates each get their own card.</li>
+</ul>
+</section>
+
+
+<section id="requirements">
+<h2>3 · Requirements</h2>
+
+<p>Conformance keywords (<spec-rule>MUST</spec-rule>, <spec-rule level="should">SHOULD</spec-rule>,
+<spec-rule level="may">MAY</spec-rule>) per RFC 2119.</p>
+
+<h3>Functional</h3>
+
+<spec-requirement id="FR-001" priority="must">
+<p>List-intake classification <spec-rule>MUST</spec-rule> run items concurrently rather than in a blocking
+serial loop, on <strong>two backends sharing one classification design</strong> — the CLI <code>triage</code>
+verb and a Claude Workflow / subagent script. Both <spec-rule>MUST</spec-rule> use the same prompt, layer
+taxonomy, and routing, so a classification is independent of the backend that ran it.</p>
+<details><summary>Rationale</summary><p>The brief (§3) holds the fan-out <em>design</em> is identical across orchestrators; only packaging differs. One shared core makes "two backends" a packaging choice, not two implementations that drift — and is where the classification guarantee lives (FR-006).</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-002" priority="must">
+<p>Cards <spec-rule>MUST</spec-rule> be emitted in <strong>input order</strong> with sequential
+<code>I-NNN</code> IDs by input position, regardless of completion order. Re-running on the same input
+<spec-rule>MUST</spec-rule> produce the same IDs in the same order.</p>
+<details><summary>Rationale</summary><p><a href="../../principles.html#P-3">P-3</a> — IDs are contracts. Completion order is nondeterministic; the artifact is not.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-003" priority="must">
+<p>N input items <spec-rule>MUST</spec-rule> yield exactly N cards — no item dropped, merged, or truncated.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-004" priority="must">
+<p>If an item fails to classify (provider error, unparseable response), the fan-out <spec-rule>MUST</spec-rule>
+still emit a card for it — flagged and routed to the human gate — and <spec-rule>MUST NOT</spec-rule> abort the
+batch or affect any other card.</p>
+<details><summary>Rationale</summary><p>A single transient error must never cost the author the rest of a long paste; degrade-and-flag keeps the N-in-N-out contract (FR-003) honest under failure.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-005" priority="must">
+<p>Hedged items (e.g. <code>just-do</code>-vs-<code>spec</code>) <spec-rule>MUST</spec-rule> be collected during
+the parallel pass and their layer-commit questions surfaced as a <strong>single consolidated decision phase
+after classification completes</strong> — never interleaved with the concurrent pass.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-006" priority="must">
+<p>The fan-out <spec-rule>MUST NOT</spec-rule> auto-commit a hedged layer boundary: a confident item is written
+directly, an ambiguous one routed to the gate (FR-005), never a guess. The test of <em>whether</em> an item is
+hedged <spec-rule>MUST</spec-rule> live in the shared core, not in either backend's orchestration prose.</p>
+<details><summary>Rationale</summary><p><a href="../../principles.html#P-8">P-8</a> — guarantees live in the kernel, not advisory markdown. Because both backends call one shared core, the human-commit gate fires deterministically wherever the fan-out runs; the Workflow backend cannot skip it independently.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-007" priority="must">
+<p>Concurrency <spec-rule>MUST</spec-rule> be bounded by a default cap (proposed: 8) with a
+<code>--concurrency</code> override. Items beyond the cap queue and run as slots free.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-008" priority="should">
+<p>Per-card routing <spec-rule level="should">SHOULD</spec-rule> be unchanged: a routing-exit item appends to
+<code>inbox.html</code>; a diagnostic-layer item routes to its per-spec triage log.</p>
+</spec-requirement>
+
+<h3>Non-functional</h3>
+
+<spec-requirement id="NFR-001" priority="must">
+<p>The fan-out <spec-rule>MUST NOT</spec-rule> exceed the cap's concurrent provider calls at any instant —
+back-pressure against rate limits on long lists.</p>
+</spec-requirement>
+
+<spec-requirement id="NFR-002" priority="must">
+<p>The Workflow / subagent backend carries a runtime; verification <spec-rule>MUST</spec-rule> exercise the
+fan-out behaviourally (a real multi-item run), not on structural evidence alone.</p>
+<details><summary>Rationale</summary><p><a href="../../principles.html#P-7">P-7</a> — done means verified. A present-but-broken orchestration passes every structural check; the concurrency and ordering guarantees are real only if a run demonstrates them.</p></details>
+</spec-requirement>
+
+<spec-requirement id="NFR-003" priority="should">
+<p>The write to <code>inbox.html</code> (ID assignment + append) <spec-rule level="should">SHOULD</spec-rule>
+be a single ordered step after collection, so concurrent classification never races the
+<code>I-NNN</code> counter.</p>
+</spec-requirement>
+
+<h3>Out of scope (deferred to other slices)</h3>
+<spec-out-of-scope>
+  <ul>
+    <li defer-to="TBD-decider-effort">Scaling a classifier to a multi-vote panel or an <code>--effort</code> dial — this ships <em>one</em> classifier per item; the panel/effort surface is the §9 addendum's slice.</li>
+    <li defer-to="029-value-ranked-slicer">Ranking the resulting cards by value — that is W-2; W-5 only classifies and appends.</li>
+    <li defer-to="TBD">A provider-advertised concurrency cap (an <code>AIProvider</code> interface change) — this slice uses a fixed default plus override.</li>
+  </ul>
+</spec-out-of-scope>
+</section>
+
+
+<section id="data">
+<h2>4 · Data model</h2>
+
+<p>No new persisted entity — it reuses <code>TriageCard</code> and the <code>I-NNN</code> scheme, adding two
+transient shapes around the loop.</p>
+
+<h3>Entities</h3>
+<dl>
+  <dt>Classification task</dt><dd>A list item plus its <strong>input index</strong> — the ordering key that survives nondeterministic completion (FR-002).</dd>
+  <dt>Classification result</dt><dd>The <code>TriageCard</code> draft, its index, and a status: <code>ok</code>, <code>hedged</code> (gate, FR-005), or <code>failed</code> (degraded, FR-004). The write phase orders by index, assigns <code>I-NNN</code>, appends.</dd>
+</dl>
+
+<spec-note>
+<p>The invariant that makes concurrency safe: a <em>pure fan-out</em> (each task reads only its item, writes
+only its result) with a <strong>single writer</strong> — the <code>I-NNN</code> counter and
+<code>inbox.html</code> append are touched once after collection, in input order (NFR-003).</p>
+</spec-note>
+</section>
+
+
+<section id="success">
+<h2>5 · Success criteria</h2>
+
+<p>Technology-agnostic, measurable outcomes. These are how we know it worked.</p>
+
+<spec-requirement id="SC-001" priority="must">
+<p>For N items at or under the cap, total wall-clock is <strong>≤ the slowest item's time + a fixed
+overhead</strong> — sublinear against the serial baseline. Measured with the stub <code>AIProvider</code>
+injecting per-item delays (one slow item among fast ones completes in ≈ the slow item's time).</p>
+</spec-requirement>
+
+<spec-requirement id="SC-002" priority="must">
+<p>N input items produce exactly N cards, in input order, with sequential <code>I-NNN</code> IDs — identical
+across repeated runs on the same input.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-003" priority="must">
+<p>An injected mid-list failure yields a flagged, gate-routed card for that item and correct cards for every
+other; the batch neither aborts nor drops.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-004" priority="should">
+<p>Given multiple hedged items, their layer-commit questions surface as a <strong>single</strong> consolidated
+gate after classification; no confident item reaches the gate.</p>
+</spec-requirement>
+</section>
+
+
+<section id="assumptions">
+<h2>6 · Assumptions</h2>
+
+<spec-assumption>
+<p>The stub and real <code>AIProvider</code> implementations are safe to call concurrently —
+<code>chat()</code> / <code>subagent()</code> are re-entrant with no per-call shared mutable state.</p>
+</spec-assumption>
+
+<spec-assumption>
+<p>Per-item classification (<code>characterise</code>, the <code>escalateLayer</code> hedge test, the
+regeneration ladder) is unchanged — this slice reorders <em>when</em> items classify, not <em>how</em> one is
+judged. The existing <code>splitList</code> item boundary is adequate fan-out input.</p>
+</spec-assumption>
+</section>
+
+
+<section id="questions">
+<h2>7 · Open questions</h2>
+<spec-questions>
+<p>None outstanding — every concurrency-model decision (scope &amp; backends, ambiguous-gate batching, failure
+isolation, cap, speedup target) was anchored in the interview. Remaining "how" choices (shared-core shape, pool
+vs <code>Promise.all</code>) belong to the plan, not the spec.</p>
+</spec-questions>
+</section>
+
+
+<section id="conformance">
+<h2>8 · Conformance index</h2>
+<p>Auto-built from every <code>&lt;spec-requirement&gt;</code> in this document.</p>
+<spec-conformance></spec-conformance>
+</section>
+
+
+<section id="changelog">
+<h2>9 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-07-08">08 Jul 2026</time><span>Initial draft. W-5 from the agentic-workflows brief; concurrency model anchored in interview.</span></li>
+  <li><time datetime="2026-07-09">09 Jul 2026</time><span>Planned, tasked, implemented and verified — bounded fan-out engine (two backends off one core), batched gate, degrade-and-flag failures; every FR/NFR/SC met with behavioural tests. Status → Accepted.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  032-triage-fanout · Triage list-intake fan-out · authored 08 Jul 2026
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>

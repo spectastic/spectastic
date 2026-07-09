@@ -1,0 +1,327 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Triage list-intake fan-out · Plan</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Implementation plan · 032-triage-fanout</p>
+  <h1>Triage list-intake fan-out</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    How we will build it.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>     <span><spec-status value="accepted">Accepted</spec-status></span>
+    <b>Spec</b>       <span><a href="./spec.html">032-triage-fanout</a></span>
+    <b>Owner</b>      <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Branch</b>     <span><code>032-triage-fanout</code></span>
+    <b>Created</b>    <span><time datetime="2026-07-09">09 Jul 2026</time></span>
+    <b>Read time</b>  <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-tldr>
+    <p>Replace triage's serial list loop with <strong>one fan-out engine in <code>@spectastic/core</code></strong>
+    — a hand-rolled bounded pool that maps each item through a shared <code>classifyItem</code> (a total function:
+    <code>chat</code>+parse, no gate), collects results in <em>input order</em>, then runs one post-pass that
+    resolves hedged items and assigns <code>I-NNN</code> IDs. The engine is parameterized by provider method, so
+    the same code is both backends: <code>ai.chat</code> (CLI) and <code>ai.subagent</code> (Workflow). Biggest
+    risk: we own input-order + back-pressure correctness by hand — bought down by test-first behavioural specs
+    over a new concurrency-safe stub.</p>
+  </spec-tldr>
+</header>
+
+
+<section id="principles-check">
+<h2>1 · Principles check</h2>
+<p>Against <a href="../../principles.html">v1.3.0</a>. This plan is new work post-v1.3.0, so <a href="../../principles.html#P-8">P-8</a> binds.</p>
+
+<table>
+  <thead><tr><th>Principle</th><th>Compliance</th><th>Notes</th></tr></thead>
+  <tbody>
+    <tr><td>P-1 · Source order is reading order</td><td><spec-pill>OK</spec-pill></td><td>Kernel/CLI change; the spec &amp; plan artifacts keep source order.</td></tr>
+    <tr><td>P-2 · Semantic tags over class soup</td><td><spec-pill>OK</spec-pill></td><td>The cards written to <code>inbox.html</code> stay <code>&lt;spec-triage&gt;</code> — unchanged.</td></tr>
+    <tr><td>P-3 · IDs are contracts</td><td><spec-pill>OK</spec-pill></td><td><a href="./spec.html#FR-002">FR-002</a> — <code>I-NNN</code> assigned in input order, deterministic across runs (D-003).</td></tr>
+    <tr><td>P-4 · Progressive enhancement</td><td><spec-pill>OK</spec-pill></td><td>N/A — no browser runtime; a CLI/kernel fan-out.</td></tr>
+    <tr><td>P-5 · Calm density</td><td><spec-pill>OK</spec-pill></td><td>N/A to code.</td></tr>
+    <tr><td>P-6 · Draft is loose</td><td><spec-pill>OK</spec-pill></td><td>Spec is Draft; this plan authored in place, IDs preserved.</td></tr>
+    <tr><td>P-7 · Done means verified</td><td><spec-pill>OK</spec-pill></td><td><a href="./spec.html#NFR-002">NFR-002</a> — the subagent backend gets a real multi-item behavioural run, not a structural check (D-004).</td></tr>
+    <tr><td>P-8 · Guarantees in the kernel</td><td><spec-pill>OK</spec-pill></td><td>The hedge gate + ordering live in the shared engine (kernel), not command markdown; both backends inherit them (<a href="./spec.html#FR-006">FR-006</a>, D-001/D-003).</td></tr>
+  </tbody>
+</table>
+</section>
+
+
+<section id="technical-context">
+<h2>2 · Technical context</h2>
+<dl>
+  <dt>Language(s)</dt>      <dd>TypeScript, Node ≥ 20, ESM (<code>"type":"module"</code>) — <code>package.json:5-7</code>.</dd>
+  <dt>Frameworks</dt>       <dd>None. Native <code>Promise</code>; no framework, no new runtime dep (D-002).</dd>
+  <dt>Storage</dt>          <dd><code>inbox.html</code> file append — no database. Single-writer, post-collection (<a href="./spec.html#NFR-003">NFR-003</a>).</dd>
+  <dt>Testing</dt>          <dd>vitest, test-first. A new concurrency-safe stub (keyed responses + per-item delay) drives the behavioural specs. No Playwright — no browser surface; behavioural = a real multi-item engine run.</dd>
+  <dt>Perf targets</dt>     <dd><a href="./spec.html#SC-001">SC-001</a> — total wall-clock ≤ slowest item + fixed overhead (bounded fan-out, not serial sum).</dd>
+  <dt>Constraints</dt>      <dd>Keep <code>@spectastic/core</code> dependency-minimal (no new runtime dep). Single-item mode stays byte-for-byte current behaviour.</dd>
+</dl>
+</section>
+
+
+<section id="grounding">
+<h2>3 · Grounding &amp; evidence</h2>
+<p>Every design-bearing fact this plan rests on, and how it was confirmed (per <code>REQ-LIFECYCLE-006</code>).
+All rows <code>verified</code> — each source was opened this turn.</p>
+
+<table class="evidence">
+  <thead>
+    <tr><th>Claim the design rests on</th><th>Source</th><th>Status</th><th>Finding / note</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>AIProvider exposes both <code>chat()</code> and <code>subagent()</code> — enables D-001's dual mode</td>
+        <td><code>packages/core/src/types.ts:113,119</code></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td>Both methods present on the interface; one engine can pick either.</td></tr>
+    <tr><td>The serial list loop is the bottleneck to replace</td>
+        <td><code>packages/core/src/commands/triage.ts:67</code></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td><code>for (const item of items) { await characterise(…) }</code> — one blocking call per item.</td></tr>
+    <tr><td>The hedge gate is inline mid-loop — must move to a post-pass</td>
+        <td><code>triage.ts:100-103, 117-159</code></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td><code>escalateLayer</code> calls <code>ai.ask</code> inside <code>characterise</code>; can't interleave under concurrency (<a href="./spec.html#FR-005">FR-005</a>).</td></tr>
+    <tr><td>IDs are assigned interleaved in loop order — must become one post-pass</td>
+        <td><code>triage.ts:73-80</code></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td><code>iCount</code>/<code>tCount</code> incremented per iteration; needs single-writer post-collection (<a href="./spec.html#NFR-003">NFR-003</a>).</td></tr>
+    <tr><td>p-map is a dev/CI transitive only, not a runtime dep — informed the hand-roll choice</td>
+        <td><code>pnpm-lock.yaml:2597</code> (via <code>@secretlint/node</code>)</td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td>Zero <code>p-map</code> imports in our code; promoting would add a real runtime dep. Owner chose dependency-minimal.</td></tr>
+    <tr><td>The pool semantics to replicate: results in input order + a concurrency cap</td>
+        <td><code>node_modules/.pnpm/p-map@7.0.4/…/index.d.ts:9,74</code></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td>p-map's documented contract is the reference the hand-rolled pool mirrors.</td></tr>
+    <tr><td>No existing concurrent-AI pattern to extend — <code>panel.ts</code> fan-out is itself serial</td>
+        <td><code>packages/core/src/slice/panel.ts:46</code></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td><code>for (let i…) await ctx.ai.subagent(…)</code>. This plan introduces the first bounded pool; <code>panel.ts</code> is the subagent-shape precedent.</td></tr>
+    <tr><td>The stub AIProvider blocks the behavioural tests as-is</td>
+        <td><code>packages/core/src/providers/stub.ts:2-3,90</code></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td>Responses consumed sequentially by index, no delay hook — response↔item mapping is nondeterministic under concurrency, and SC-001 delays are unsupported. Drives D-004 + the first task.</td></tr>
+    <tr><td>The inbox write is already a single post-command step (startingId scan → append)</td>
+        <td><code>packages/cli/src/commands/triage.ts</code></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td>Highest <code>I-NNN</code> read once; cards appended once. The single-writer invariant is preserved, not invented.</td></tr>
+  </tbody>
+</table>
+</section>
+
+
+<section id="approach">
+<h2>4 · Approach</h2>
+
+<p>Extract a <strong>shared classification core</strong> from today's <code>characterise</code>:
+<code>classifyItem(item, ai, {mode})</code> does the <code>ai.chat</code> call + <code>parseCard</code> and returns
+a <strong>total</strong> result — <code>{ draft, status: 'ok' | 'hedged' | 'failed' }</code> — never calling
+<code>ai.ask</code> and never throwing (a parse/provider error becomes <code>failed</code>, satisfying
+<a href="./spec.html#FR-004">FR-004</a>). A tiny <code>mapPool(items, mapper, concurrency)</code> runs it over the
+list, returning results <strong>indexed by input position</strong> (<a href="./spec.html#FR-002">FR-002</a>) under
+a hard cap (<a href="./spec.html#FR-007">FR-007</a>/<a href="./spec.html#NFR-001">NFR-001</a>).</p>
+
+<p>After the pool drains, a single <strong>post-pass</strong> (a) resolves every <code>hedged</code> item through the
+existing <code>escalateLayer</code> gate — now grouped, after classification, never interleaved
+(<a href="./spec.html#FR-005">FR-005</a>) — and (b) assigns <code>I-NNN</code>/<code>T-NNN</code> in input order as
+the single writer (<a href="./spec.html#NFR-003">NFR-003</a>). The engine is parameterized by which provider
+method it calls, so <strong>the same code is both backends</strong>: <code>chat</code> (CLI default — cheap,
+concurrent API calls) and <code>subagent</code> (the Workflow reading — isolated context per item). Single-item
+mode recombines classify+gate to stay byte-for-byte identical.</p>
+
+<spec-arch>
+<figure>
+<svg viewBox="0 0 720 220" role="img" aria-label="Fan-out pipeline: items enter a bounded pool that runs classifyItem per item via chat or subagent, results collect in input order, a post-pass resolves hedged items and assigns IDs, then a single append to inbox.html.">
+  <style>
+    .box { fill:var(--c-surface); stroke:var(--c-border); stroke-width:1.3; }
+    .acc { fill:var(--c-surface); stroke:var(--c-salmon); stroke-width:2; }
+    .label { font: 700 10px Lato, sans-serif; fill:var(--c-text); letter-spacing:0.05em; text-transform:uppercase; }
+    .body { font: 400 11px "Source Serif 4", Georgia, serif; fill:var(--c-text-soft); }
+    .arr { stroke:var(--c-muted); stroke-width:1.3; fill:none; }
+  </style>
+  <defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="var(--c-muted)"/></marker></defs>
+  <rect class="box" x="12" y="86" width="96" height="48" rx="4"/>
+  <text class="label" x="26" y="106">items</text>
+  <text class="body"  x="26" y="123">splitList</text>
+  <rect class="acc" x="150" y="60" width="150" height="100" rx="5"/>
+  <text class="label" x="164" y="80">mapPool · cap</text>
+  <text class="body"  x="164" y="100">classifyItem ×N</text>
+  <text class="body"  x="164" y="118">chat | subagent</text>
+  <text class="body"  x="164" y="136">total fn → status</text>
+  <rect class="box" x="344" y="86" width="120" height="48" rx="4"/>
+  <text class="label" x="358" y="106">collect</text>
+  <text class="body"  x="358" y="123">input order</text>
+  <rect class="acc" x="504" y="86" width="118" height="48" rx="4"/>
+  <text class="label" x="518" y="106">post-pass</text>
+  <text class="body"  x="518" y="123">gate · assign IDs</text>
+  <rect class="box" x="640" y="86" width="70" height="48" rx="4"/>
+  <text class="label" x="652" y="106">inbox</text>
+  <text class="body"  x="652" y="123">append</text>
+  <path class="arr" d="M108 110 L148 110" marker-end="url(#a)"/>
+  <path class="arr" d="M300 110 L342 110" marker-end="url(#a)"/>
+  <path class="arr" d="M464 110 L502 110" marker-end="url(#a)"/>
+  <path class="arr" d="M622 110 L638 110" marker-end="url(#a)"/>
+</svg>
+<figcaption>One engine: the bounded pool fans <code>classifyItem</code> over items (via <code>chat</code> or <code>subagent</code>), results collect in input order, and a single post-pass resolves hedged items and assigns IDs before one append. The gate + ordering live here, in the kernel (P-8).</figcaption>
+</figure>
+</spec-arch>
+</section>
+
+
+<section id="alternatives">
+<h2>5 · Alternatives considered — backend realization</h2>
+
+<spec-matrix>
+<table>
+  <thead>
+    <tr><th>Option</th><th>Shared code (drift-proof)</th><th>Faithful to brief</th><th>Simplicity</th><th>Testability</th><th class="score">Total</th></tr>
+  </thead>
+  <tbody>
+    <tr data-winner><td>One engine, two provider methods</td><td>5</td><td>4</td><td>4</td><td>5</td><td class="score">18</td></tr>
+    <tr><td>Separate Workflow script + prompt module</td><td>2</td><td>5</td><td>2</td><td>3</td><td class="score">12</td></tr>
+    <tr><td>Workflow shells the CLI</td><td>4</td><td>2</td><td>5</td><td>4</td><td class="score">15</td></tr>
+  </tbody>
+</table>
+</spec-matrix>
+<p>The separate-script option scores highest on brief-fidelity ("literal subagents") but the sandboxed Workflow
+runtime can't import <code>@spectastic/core</code>, so the prompt/taxonomy would fork — a drift risk needing its own
+validate guard. One engine keeps a single source of truth and still reaches subagent semantics via the provider
+method.</p>
+</section>
+
+
+<section id="decisions">
+<h2>6 · Decisions</h2>
+
+<spec-decision id="D-001" grounding="verified">
+  <h4>D-001 · One fan-out engine, parameterized by provider method</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>FR-001 needs "two backends off one shared design." <code>AIProvider</code> already exposes <code>chat()</code> and <code>subagent()</code> (<code>types.ts:113,119</code>); <code>panel.ts:46</code> is the subagent precedent. The sandboxed Workflow runtime can't import core, so a separate script would fork the prompt.</dd>
+    <dt>Decision</dt>     <dd>A single <code>triageFanout</code> engine in <code>@spectastic/core</code>, parameterized by <code>mode: 'chat' | 'subagent'</code>. CLI backend uses <code>chat</code>; the Workflow backend is the same engine in <code>subagent</code> mode. Prompt, taxonomy, routing, and gate live once.</dd>
+    <dt>Consequences</dt> <dd>+ FR-001's "shared design" is genuinely shared code; drift-proof; the gate lives in one place (P-8/FR-006).<br>+ No Workflow-import problem — runs in-process under either method.<br>− <code>subagent</code> mode is heavier (isolated context per item) — <code>chat</code> stays the default; subagent opt-in (see §8).</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-002" grounding="verified">
+  <h4>D-002 · Hand-rolled bounded-concurrency pool (no new runtime dep)</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>The serial loop at <code>triage.ts:67</code> needs bounding. p-map@7.0.4 is the obvious library but is only a dev/CI transitive via <code>@secretlint/node</code> (<code>pnpm-lock.yaml:2597</code>) — promoting it adds a real runtime dep to the published package. Owner chose to keep <code>@spectastic/core</code> dependency-minimal.</dd>
+    <dt>Decision</dt>     <dd>A ~30-line internal <code>mapPool(items, mapper, concurrency)</code> that returns results indexed by input position under a hard cap — replicating the two semantics documented in <code>p-map/index.d.ts:9,74</code> (input-order results, concurrency cap). Default cap 8, <code>--concurrency</code> override.</dd>
+    <dt>Consequences</dt> <dd>+ No new runtime dependency on the shipped package; full control.<br>− We own input-order + back-pressure correctness — bought down by the test-first ordering &amp; failure specs (D-004, §8 R-1).</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-003" grounding="verified">
+  <h4>D-003 · Split <code>classifyItem</code> from the gate; single post-pass for gate + IDs</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>Today <code>characterise</code> (<code>triage.ts:85-115</code>) bundles chat + inline <code>escalateLayer</code> (<code>ai.ask</code>, line 102) + return, and IDs are assigned interleaved in the loop (<code>triage.ts:73-80</code>). Neither survives concurrency.</dd>
+    <dt>Decision</dt>     <dd>Extract <code>classifyItem</code> = chat + parse, a <strong>total function</strong> returning <code>{draft, status: ok|hedged|failed}</code> with no <code>ai.ask</code> and no throw. Run it through the pool; then one post-pass resolves <code>hedged</code> items via <code>escalateLayer</code> and assigns <code>I-NNN</code>/<code>T-NNN</code> in input order (single writer). Single-item mode recombines the two to preserve current behaviour.</dd>
+    <dt>Consequences</dt> <dd>+ Satisfies FR-005 (gate after the pass), FR-002 (deterministic order), FR-004 (failure is a status, not a throw), NFR-003 (single-writer IDs).<br>− <code>escalateLayer</code> moves out of <code>characterise</code>; the single-item path must re-wrap it to avoid a behaviour change (covered by the existing 007 tests).</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-004" grounding="verified">
+  <h4>D-004 · Test-first over a concurrency-safe stub</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>The stub AIProvider (<code>stub.ts:90</code>) consumes responses sequentially by index with no delay hook, so under concurrency the response↔item mapping is nondeterministic and SC-001's per-item delay is unsupported.</dd>
+    <dt>Decision</dt>     <dd>Build a test stub keying responses by item content with an optional per-item delay, then write failing tests first: ordering/determinism (<a href="./spec.html#SC-002">SC-002</a>), slowest-item bound (<a href="./spec.html#SC-001">SC-001</a>), failure isolation (<a href="./spec.html#SC-003">SC-003</a>), batched gate (<a href="./spec.html#SC-004">SC-004</a>). The <code>subagent</code> backend gets a real multi-item run (P-7/NFR-002).</dd>
+    <dt>Consequences</dt> <dd>+ Behavioural guarantees, not structural — the failure modes concurrency actually causes are covered.<br>− The stub upgrade is a prerequisite (the first task).</dd>
+  </dl>
+</spec-decision>
+</section>
+
+
+<section id="project-structure">
+<h2>7 · Project structure</h2>
+
+<pre><code>packages/core/src/
+  commands/triage.ts        # list branch → triageFanout; single branch unchanged
+  triage/
+    classify.ts             # NEW · classifyItem (total fn) + prompt/parse/taxonomy (extracted)
+    fanout.ts               # NEW · triageFanout(items, ai, {concurrency, mode}) + post-pass gate + IDs
+  helpers/map-pool.ts       # NEW · mapPool(items, mapper, concurrency) — ordered, bounded
+packages/core/test/
+  triage-fanout.test.ts     # NEW · ordering, slowest-item bound, failure isolation, batched gate
+  helpers/keyed-stub.ts     # NEW · concurrency-safe stub (keyed responses + per-item delay)
+packages/cli/src/commands/
+  triage.ts                 # --concurrency &lt;n&gt; and --fanout=chat|subagent flags
+</code></pre>
+</section>
+
+
+<section id="risks">
+<h2>8 · Risks &amp; mitigations</h2>
+
+<table>
+  <thead><tr><th>Risk</th><th>Likelihood</th><th>Impact</th><th>Mitigation</th></tr></thead>
+  <tbody>
+    <tr><td><strong>R-1</strong> · Hand-rolled pool mis-orders results or leaks back-pressure</td><td>M</td><td>M</td><td>Mirror p-map's documented contract (<code>index.d.ts:74</code>); test-first ordering + a slow-item-among-fast case; index-by-position, never push-on-complete.</td></tr>
+    <tr><td><strong>R-2</strong> · <code>subagent</code> backend cost/latency (isolated context per item) is much higher than <code>chat</code></td><td>M</td><td>M</td><td><code>chat</code> is the default; subagent is opt-in; the cap bounds concurrent spend. Flagged for measurement in the behavioural run.</td></tr>
+    <tr><td><strong>R-3</strong> · Concurrency-safe stub is new ground (owner set risk = Medium)</td><td>M</td><td>L</td><td>Build it as task 1, small and isolated; it only keys responses + optionally delays.</td></tr>
+    <tr><td><strong>R-4</strong> · Single-item mode regresses when <code>escalateLayer</code> moves out of <code>characterise</code></td><td>L</td><td>M</td><td>Recombine classify+gate for the single path; the existing 007 triage tests are the guard.</td></tr>
+  </tbody>
+</table>
+</section>
+
+
+<section id="complexity">
+<h2>9 · Complexity tracking</h2>
+<spec-assumption>
+<p>The only added surface beyond a straight loop-swap is the <code>classify</code>/gate split (D-003) — required
+by FR-005 (a batched gate can't share a function with per-item classification) and FR-004 (a total function can't
+throw). It is spec-driven, not gold-plating.</p>
+</spec-assumption>
+<spec-assumption>
+<p><strong>Grounding gate (plan→tasks readiness).</strong> All must-tier decisions (D-001, D-002, D-003) are
+<code>grounding="verified"</code>; D-004 likewise. No <code>assumed</code> or unresolved-<code>spike</code>
+must-tier fact remains, so the plan is ready for <code>/spectastic.tasks</code>.</p>
+</spec-assumption>
+</section>
+
+
+<section id="questions">
+<h2>10 · Open questions</h2>
+<spec-questions>
+<p>None outstanding — backend realization, concurrency mechanism, test style, and risk tolerance were anchored in
+the interview; the p-map-vs-hand-roll trade was resolved (hand-roll) after grounding its provenance. Every
+must-tier decision is verified.</p>
+</spec-questions>
+</section>
+
+
+<section id="changelog">
+<h2>11 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-07-09">09 Jul 2026</time><span>Initial plan. One engine / two provider methods (D-001); hand-rolled bounded pool, no new runtime dep (D-002); classify/gate split (D-003); test-first over a concurrency-safe stub (D-004).</span></li>
+  <li><time datetime="2026-07-09">09 Jul 2026</time><span>Implemented and verified — all four decisions realised as planned; 441-test suite green, no regressions. Status → Accepted.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  Plan for 032-triage-fanout · Triage list-intake fan-out · authored 09 Jul 2026
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>

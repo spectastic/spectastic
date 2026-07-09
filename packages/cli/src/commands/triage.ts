@@ -21,12 +21,21 @@ export function registerTriage(program: Command): void {
     .option('--spec <spec-id>', 'spec ID for single-card mode; ignored for list-intake')
     .option('--mode <mode>', 'force "single" | "list"; default auto-detect')
     .option('--format <fmt>', 'output format: human (default) | json', 'human')
+    .option('--concurrency <n>', 'list-intake fan-out cap (spec 032; default 8)')
+    .option('--fanout <backend>', 'list-intake backend: "chat" (default) | "subagent" (spec 032)')
     .option('--commit', 'force a git commit for this run (overrides git.auto)')
     .option('--no-commit', 'skip the git commit for this run (overrides git.auto)')
     .action(
       async (
         descArg: string | undefined,
-        opts: { spec?: string; mode?: 'single' | 'list'; format: string; commit?: boolean },
+        opts: {
+          spec?: string;
+          mode?: 'single' | 'list';
+          format: string;
+          concurrency?: string;
+          fanout?: 'chat' | 'subagent';
+          commit?: boolean;
+        },
       ) => {
         const [{ triageCommand }, { createAIProvider }, { nodeFs }, path] = await Promise.all([
           import('@spectastic/core/commands/triage'),
@@ -44,10 +53,22 @@ export function registerTriage(program: Command): void {
         const ai = await createAIProvider();
         const ctx = { cwd: process.cwd(), fs: nodeFs, ai };
 
+        const concurrency = opts.concurrency === undefined ? undefined : Number(opts.concurrency);
+        if (concurrency !== undefined && (!Number.isFinite(concurrency) || concurrency < 1)) {
+          process.stderr.write('triage: --concurrency must be a positive integer.\n');
+          process.exit(2);
+        }
+        if (opts.fanout !== undefined && opts.fanout !== 'chat' && opts.fanout !== 'subagent') {
+          process.stderr.write('triage: --fanout must be "chat" or "subagent".\n');
+          process.exit(2);
+        }
+
         const input: Parameters<typeof triageCommand>[0] = {
           description,
           ...(opts.spec ? { specId: opts.spec } : {}),
           ...(opts.mode ? { mode: opts.mode } : {}),
+          ...(concurrency === undefined ? {} : { concurrency }),
+          ...(opts.fanout === undefined ? {} : { backend: opts.fanout }),
         };
 
         const result = await triageCommand(input, ctx);

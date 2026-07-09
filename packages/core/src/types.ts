@@ -187,6 +187,16 @@ export interface TriageInput {
   startingIdT?: number;
   /** Highest existing I-NNN in the destination inbox (caller scans). */
   startingIdI?: number;
+  /**
+   * List-intake fan-out concurrency cap (spec 032-triage-fanout FR-007).
+   * Default 8; ignored in single mode.
+   */
+  concurrency?: number;
+  /**
+   * Which provider method the shared classification core calls (spec 032 D-001):
+   * 'chat' (default — the CLI backend) or 'subagent' (the Workflow backend).
+   */
+  backend?: 'chat' | 'subagent';
 }
 
 /** One produced triage card. */
