@@ -19,7 +19,7 @@ import type {
   ProposeResult,
   RiskFinding,
 } from '../types.js';
-import { decide, resolveDecider } from '../decider/index.js';
+import { decide, resolveDecider, resolveEffort } from '../decider/index.js';
 import type { Verdict } from '../decider/index.js';
 
 export async function proposeCommand(
@@ -62,12 +62,19 @@ export async function proposeCommand(
   let risks: RiskFinding[] = [];
   let verdict: Verdict | undefined;
   if (shouldAdversarial) {
-    // The adversarial checkpoint is agent-led by default (013 parity); effort
-    // sizes a panel. Config precedence (flag > project) is resolved by the caller
-    // into input.decider/effort; the checkpoint-default is 'agent' (spec 033 D-003).
+    // Resolve the requested effort (default 'auto') from the change's risk signal
+    // (spec 034): irreversible → high, breadth ≥ 2 → medium, else the floor.
+    const { level, reason } = resolveEffort(
+      input.effort ?? 'auto',
+      { irreversible, breadth: topicPrefixCount(deltas) },
+      input.floor ?? 'low',
+    );
+    // The adversarial checkpoint is agent-led by default (013 parity); the resolved
+    // effort sizes a panel. Config precedence (flag > project) is resolved by the
+    // caller into input.decider; the checkpoint-default is 'agent' (spec 033 D-003).
     const cfg = resolveDecider(
       undefined,
-      { ...(input.decider ? { role: input.decider } : {}), ...(input.effort ? { effort: input.effort } : {}) },
+      { ...(input.decider ? { role: input.decider } : {}), effort: level },
       'agent',
     );
     const proposalDraft = JSON.stringify(draft, null, 2);
@@ -77,6 +84,7 @@ export async function proposeCommand(
         reviewPrompt: `Review this draft proposal against the spec and identify concrete risks.\n\nSpec excerpt:\n${input.specHtml.slice(0, 3000)}\n\nDraft proposal:\n${proposalDraft}`,
         irreversible,
         maxFindings: 3,
+        effortReason: reason,
       },
       ctx.ai,
     );
@@ -140,8 +148,9 @@ function renderProposalHtml(
     ? ` decider="${verdict.role}" effort="${verdict.effort}"`
     : '';
   const riskBlocks = risks.map((r, i) => {
+    const effortNote = verdict?.effortReason ? ` (${esc(verdict.effortReason)})` : '';
     const grounds = verdict?.tally[i]
-      ? `<div class="grounds"><p><strong>Decider.</strong> ${esc(verdict.role)} · ${esc(verdict.effort)} · ${esc(verdict.tally[i])}</p></div>`
+      ? `<div class="grounds"><p><strong>Decider.</strong> ${esc(verdict.role)} · ${esc(verdict.effort)}${effortNote} · ${esc(verdict.tally[i])}</p></div>`
       : '';
     return `<spec-risk target="${r.target}" status="identified"${deciderAttr}><header><h4>${esc(r.concern.slice(0, 80))}</h4></header><p><strong>Concern.</strong> ${esc(r.concern)}</p>${grounds}<div class="response"><em>Author response not yet recorded.</em></div></spec-risk>`;
   }).join('\n');

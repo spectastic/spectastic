@@ -39,4 +39,6 @@ export interface Verdict {
   tally: string[];
   /** True when a guardrail forced the decision to a human (spec FR-008). */
   escalatedToHuman: boolean;
+  /** How the effort level was chosen (spec 034 FR-005), e.g. "auto: irreversible". */
+  effortReason?: string;
 }

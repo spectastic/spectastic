@@ -9,7 +9,7 @@ export function registerPropose(program: Command): void {
     .option('--adversarial', 'force adversarial pass on (overrides heuristic)')
     .option('--no-adversarial', 'force adversarial pass off')
     .option('--decider <role>', 'adversarial checkpoint decider: human | agent | panel (spec 033)')
-    .option('--effort <level>', 'panel depth: low | medium | high | xhigh | max (spec 033)')
+    .option('--effort <level>', 'panel depth: auto (default) | low | medium | high | xhigh | max (spec 033/034)')
     .option('--commit', 'force a git commit for this run (overrides git.auto)')
     .option('--no-commit', 'skip the git commit for this run (overrides git.auto)')
     .action(
@@ -19,7 +19,7 @@ export function registerPropose(program: Command): void {
         opts: {
           adversarial?: boolean;
           decider?: 'human' | 'agent' | 'panel';
-          effort?: 'low' | 'medium' | 'high' | 'xhigh' | 'max';
+          effort?: 'low' | 'medium' | 'high' | 'xhigh' | 'max' | 'auto';
           commit?: boolean;
         },
       ) => {
@@ -49,12 +49,13 @@ export function registerPropose(program: Command): void {
         const projectDecider = loadDeciderConfig(process.cwd());
         const role = opts.decider ?? projectDecider.role;
         const effort = opts.effort ?? projectDecider.effort;
+        const floor = projectDecider.floor;
         if (opts.decider && !['human', 'agent', 'panel'].includes(opts.decider)) {
           process.stderr.write('propose: --decider must be human | agent | panel.\n');
           process.exit(2);
         }
-        if (opts.effort && !['low', 'medium', 'high', 'xhigh', 'max'].includes(opts.effort)) {
-          process.stderr.write('propose: --effort must be low | medium | high | xhigh | max.\n');
+        if (opts.effort && !['low', 'medium', 'high', 'xhigh', 'max', 'auto'].includes(opts.effort)) {
+          process.stderr.write('propose: --effort must be auto | low | medium | high | xhigh | max.\n');
           process.exit(2);
         }
 
@@ -74,6 +75,7 @@ export function registerPropose(program: Command): void {
                 : { adversarial: 'auto' as const }),
             ...(role ? { decider: role } : {}),
             ...(effort ? { effort } : {}),
+            ...(floor ? { floor } : {}),
           },
           { cwd: process.cwd(), fs: nodeFs, ai },
         );

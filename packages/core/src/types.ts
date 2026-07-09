@@ -425,8 +425,10 @@ export interface ProposeInput {
   adversarial?: boolean | 'auto';
   /** Decider role for the adversarial checkpoint (spec 033 FR-001). Absent → checkpoint-default 'agent'. */
   decider?: 'human' | 'agent' | 'panel';
-  /** Effort level sizing a panel decider (spec 033 FR-004). Absent → 'medium' (1 critic). */
-  effort?: 'low' | 'medium' | 'high' | 'xhigh' | 'max';
+  /** Effort sizing a panel decider (spec 033 FR-004; 034 adds 'auto', the default). */
+  effort?: 'low' | 'medium' | 'high' | 'xhigh' | 'max' | 'auto';
+  /** Auto-effort floor (spec 034 FR-003). Absent → 'low'. */
+  floor?: 'low' | 'medium' | 'high' | 'xhigh' | 'max';
 }
 
 export interface ProposeResult {

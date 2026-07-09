@@ -7,7 +7,7 @@
 
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import type { DeciderConfig, DeciderRole, EffortLevel } from '@spectastic/core/decider';
+import type { DeciderRole, EffortLevel, RequestedEffort } from '@spectastic/core/decider';
 
 export class DeciderConfigError extends Error {
   constructor(message: string) {
@@ -16,15 +16,23 @@ export class DeciderConfigError extends Error {
   }
 }
 
+/** The `decider` file config — effort may be 'auto' (034); floor is a concrete level. */
+export interface DeciderFileConfig {
+  role?: DeciderRole;
+  effort?: RequestedEffort;
+  floor?: EffortLevel;
+}
+
 const VALID_ROLES: readonly DeciderRole[] = ['human', 'agent', 'panel'];
-const VALID_EFFORTS: readonly EffortLevel[] = ['low', 'medium', 'high', 'xhigh', 'max'];
+const VALID_LEVELS: readonly EffortLevel[] = ['low', 'medium', 'high', 'xhigh', 'max'];
+const VALID_EFFORTS: readonly RequestedEffort[] = ['low', 'medium', 'high', 'xhigh', 'max', 'auto'];
 
 /**
  * Read `<cwd>/spectastic.json` and extract the `decider` section as a partial
- * config (role and/or effort may be absent). Malformed JSON or an out-of-range
- * value throws loudly.
+ * config (role, effort, and/or floor may be absent). Malformed JSON or an
+ * out-of-range value throws loudly.
  */
-export function loadDeciderConfig(cwd: string): Partial<DeciderConfig> {
+export function loadDeciderConfig(cwd: string): DeciderFileConfig {
   let raw: string;
   try {
     raw = readFileSync(join(cwd, 'spectastic.json'), 'utf8');
@@ -45,7 +53,7 @@ export function loadDeciderConfig(cwd: string): Partial<DeciderConfig> {
     throw new DeciderConfigError('spectastic.json "decider" must be an object');
   }
 
-  const out: Partial<DeciderConfig> = {};
+  const out: DeciderFileConfig = {};
   const role = (section as { role?: unknown }).role;
   if (role !== undefined) {
     if (!VALID_ROLES.includes(role as DeciderRole)) {
@@ -55,10 +63,17 @@ export function loadDeciderConfig(cwd: string): Partial<DeciderConfig> {
   }
   const effort = (section as { effort?: unknown }).effort;
   if (effort !== undefined) {
-    if (!VALID_EFFORTS.includes(effort as EffortLevel)) {
+    if (!VALID_EFFORTS.includes(effort as RequestedEffort)) {
       throw new DeciderConfigError(`decider.effort must be one of ${VALID_EFFORTS.join(' | ')}`);
     }
-    out.effort = effort as EffortLevel;
+    out.effort = effort as RequestedEffort;
+  }
+  const floor = (section as { floor?: unknown }).floor;
+  if (floor !== undefined) {
+    if (!VALID_LEVELS.includes(floor as EffortLevel)) {
+      throw new DeciderConfigError(`decider.floor must be one of ${VALID_LEVELS.join(' | ')}`);
+    }
+    out.floor = floor as EffortLevel;
   }
   return out;
 }

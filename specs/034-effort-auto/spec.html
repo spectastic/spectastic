@@ -1,0 +1,235 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Auto effort · Specification</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Specification · 034-effort-auto</p>
+  <h1>Auto effort</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    Spend more scrutiny when the change is riskier. Derive the decider's effort level from signals the verb
+    already computes — so the default is <em>adaptive</em>, not fixed.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>      <span><spec-status value="accepted">Accepted</spec-status></span>
+    <b>Spec ID</b>     <span>034-effort-auto</span>
+    <b>Owner</b>       <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Reviewers</b>   <span>—</span>
+    <b>Created</b>     <span><time datetime="2026-07-09">09 Jul 2026</time></span>
+    <b>Principles</b><span><a href="../../principles.html">v1.3.0</a></span>
+    <b>Parent</b>     <span><spec-parent specid="033-decider-effort"><a href="../033-decider-effort/spec.html">Configurable decider</a></spec-parent></span>
+    <b>Smallest demoable</b><span><code>propose</code> at default <code>--effort=auto</code>: a removed-op change fires a high-effort panel; a trivial one stays low.</span>
+    <b>Read time</b>   <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-budget words="1500" reqs="20" minutes="12"></spec-budget>
+
+  <spec-tldr>
+    <p>033 shipped an explicit effort dial (<code>low…max</code>) with a fixed <code>medium</code> default. This
+    slice adds <code>--effort=auto</code> — the brief's §9.3 Q2, the piece it names as required before a hands-off
+    pipeline (W-1) can run unattended. <code>auto</code> resolves to a concrete level from <strong>per-verb risk
+    signals over a shared floor</strong>: each verb supplies its own rule (propose's is its existing must-tier /
+    removed-op / ≥2-prefix heuristic), clamped so <code>auto</code> never drops below a configurable floor. The
+    chosen level and its reason are logged, so an adaptive decision is auditable. <code>auto</code> becomes the
+    default; an explicit level always wins.</p>
+  </spec-tldr>
+
+  <dl class="invest">
+    <dt><span class="letter">I</span> Independent</dt> <dd>Extends <a href="../033-decider-effort/spec.html">033</a>'s effort dial; depends on it plus principles v1.3.0. No other coupling.</dd>
+    <dt><span class="letter">N</span> Negotiable</dt>  <dd>Contracts the resolution rule (signals → level, floor-clamped, override-beats-auto) and its audit. The per-verb signal function's internals are the plan's.</dd>
+    <dt><span class="letter">V</span> Valuable</dt>    <dd>Unlocks <a href="#SC-001">SC-001</a> — rigour tracks risk automatically, the control an unattended pipeline needs.</dd>
+    <dt><span class="letter">E</span> Estimable</dt>   <dd>The signal source (propose's heuristic) already exists; the mapping is small and bounded.</dd>
+    <dt><span class="letter">S</span> Small</dt>       <dd>One resolver + one verb's signal rule + the audit line. Under budget.</dd>
+    <dt><span class="letter">T</span> Testable</dt>    <dd>Observable with the stub — assert the level a given change resolves to, and the logged reason; <a href="#SC-001">SC-001</a>–<a href="#SC-004">SC-004</a> quantified.</dd>
+  </dl>
+</header>
+
+
+<section id="context">
+<h2>1 · Context</h2>
+<p><a href="../033-decider-effort/spec.html">033</a> made effort an explicit knob but left the default fixed at
+<code>medium</code> — so a trivial typo-fix proposal and a must-tier-removing one get the same scrutiny. The
+workflow brief (<a href="../../docs/agent-workflows-considerations.html#a-effort">§9.2</a>) argues the default
+should be <strong><code>auto</code></strong>: derive the level from signals the tool already computes, because
+"effectiveness varies with the difficulty of the prompt" — allocate effort adaptively, not uniformly.</p>
+<p>The signal already exists: propose's adversarial pass auto-fires on must-tier / removed-op / ≥2-prefix
+(<code>propose.ts</code>). This slice reuses that as the <em>depth</em> signal, not just the fire/skip one, and
+frames it as a per-verb rule other verbs can supply later.</p>
+<p><strong>Who this is for:</strong> the maintainer running propose (and, later, an unattended pipeline) who
+wants heavy scrutiny to appear exactly when the change earns it — without setting a level by hand each time.</p>
+</section>
+
+
+<section id="scenarios">
+<h2>2 · User scenarios &amp; testing</h2>
+<p>Each story is independently testable: implementing only US1 still yields a viable MVP.</p>
+
+<h3 id="US1">US1 · Effort tracks risk <spec-pill>P1</spec-pill></h3>
+<p>As a <strong>maintainer</strong>, I want <strong><code>auto</code> to pick the effort level from the change's
+own risk</strong> so that <strong>a risky change gets a panel and a trivial one doesn't, with no manual knob</strong>.</p>
+<p><em>Acceptance:</em> at <code>--effort=auto</code>, a removed-op / must-tier propose resolves to
+<code>high</code>; a ≥2-prefix change to <code>medium</code>; an otherwise-trivial change to the floor.</p>
+
+<h3 id="US2">US2 · The adaptive choice is auditable <spec-pill>P1</spec-pill></h3>
+<p>As a <strong>reviewer</strong>, I want <strong>the resolved level and its reason recorded</strong> so that
+<strong>an automatic decision can be inspected, not just trusted</strong>.</p>
+<p><em>Acceptance:</em> the verdict grounds name the level and the signal that chose it (e.g. "effort=high —
+auto: must-tier touched").</p>
+
+<h3>Edge cases</h3>
+<ul>
+  <li><strong>Explicit beats auto.</strong> <code>--effort=high</code> on a trivial change still runs high — an explicit level always wins over <code>auto</code>.</li>
+  <li><strong>Floor clamps.</strong> <code>auto</code> never resolves below the configured floor, even for a no-signal change.</li>
+  <li><strong>Human decider.</strong> With <code>--decider=human</code>, effort is moot — no panel to size; <code>auto</code> is a no-op.</li>
+  <li><strong>Unknown verb.</strong> A verb with no signal rule falls back to the floor (never errors).</li>
+</ul>
+</section>
+
+
+<section id="requirements">
+<h2>3 · Requirements</h2>
+<p>Conformance keywords (<spec-rule>MUST</spec-rule>, <spec-rule level="should">SHOULD</spec-rule>,
+<spec-rule level="may">MAY</spec-rule>) per RFC 2119.</p>
+
+<h3>Functional</h3>
+
+<spec-requirement id="FR-001" priority="must">
+<p><code>--effort=auto</code> <spec-rule>MUST</spec-rule> resolve to a concrete level (<code>low…max</code>)
+<em>before</em> the decider runs, via a per-verb signal→level rule. <code>auto</code> becomes the default effort.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-002" priority="must">
+<p>Each verb <spec-rule>MUST</spec-rule> supply its own signal rule. Propose's <spec-rule>MUST</spec-rule> reuse
+its existing heuristic: removed-op or must-tier → <code>high</code>; ≥2 topic prefixes → <code>medium</code>;
+otherwise the floor.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-003" priority="must">
+<p>A configurable <strong>floor</strong> <spec-rule>MUST</spec-rule> bound <code>auto</code> from below — the
+resolved level is never lower than the floor. Default floor <code>low</code>.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-004" priority="must">
+<p>An explicit effort level <spec-rule>MUST</spec-rule> override <code>auto</code> — <code>--effort=high</code>
+on a trivial change resolves to <code>high</code>.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-005" priority="must">
+<p>The resolved level and the signal that chose it <spec-rule>MUST</spec-rule> be recorded on the verdict grounds
+(e.g. "effort=high — auto: removed-op"), so an adaptive decision is auditable.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-006" priority="should">
+<p>A verb with no registered signal rule <spec-rule level="should">SHOULD</spec-rule> resolve <code>auto</code>
+to the floor rather than erroring.</p>
+</spec-requirement>
+
+<h3>Non-functional</h3>
+
+<spec-requirement id="NFR-001" priority="should">
+<p>Resolution <spec-rule level="should">SHOULD</spec-rule> be pure and deterministic — the same change + config
+resolves to the same level and reason every time.</p>
+</spec-requirement>
+
+<h3>Out of scope (deferred)</h3>
+<spec-out-of-scope>
+  <ul>
+    <li defer-to="TBD-decider-rollout">Signal rules for verbs other than propose — those arrive as each verb adopts the Decider (035).</li>
+    <li defer-to="TBD">Scaling fan-out width / loop depth by auto (the full §9.2 primitive table) — this slice resolves the <em>decider's</em> level only.</li>
+    <li defer-to="TBD-hands-off-pipeline">W-1 consuming <code>auto</code> to run unattended — this slice provides the resolver.</li>
+  </ul>
+</spec-out-of-scope>
+</section>
+
+
+<section id="data">
+<h2>4 · Data model</h2>
+<p>No new persisted entity — <code>auto</code> is a resolution step over 033's config and effort levels.</p>
+<h3>Entities</h3>
+<dl>
+  <dt>Signal rule</dt><dd>A per-verb pure function: (change signals) → an effort level. Registered by verb name; propose's is the reference.</dd>
+  <dt>Resolution</dt><dd>The output of <code>auto</code>: the concrete level + a one-line reason (the signal that chose it), floor-clamped, override-beaten.</dd>
+</dl>
+<spec-note>
+<p>Precedence within effort: an explicit level &gt; <code>auto</code>'s signal-derived level &gt; the floor. This
+nests inside 033's config precedence (flag &gt; project &gt; default) — <code>auto</code> is what the "default"
+now is.</p>
+</spec-note>
+</section>
+
+
+<section id="success">
+<h2>5 · Success criteria</h2>
+<spec-requirement id="SC-001" priority="must">
+<p>At <code>--effort=auto</code>, a removed-op / must-tier propose runs a <code>high</code> (3-voter) panel and a
+trivial one runs at the floor — observable by counting panellist invocations.</p>
+</spec-requirement>
+<spec-requirement id="SC-002" priority="must">
+<p>An explicit <code>--effort=high</code> on a trivial change still runs 3 voters — override beats <code>auto</code>.</p>
+</spec-requirement>
+<spec-requirement id="SC-003" priority="must">
+<p><code>auto</code> never resolves below the floor — a no-signal change at floor <code>medium</code> runs ≥ 1 voter
+per the medium level, not <code>low</code>.</p>
+</spec-requirement>
+<spec-requirement id="SC-004" priority="should">
+<p>The verdict grounds name the resolved level and its signal reason for an <code>auto</code> run.</p>
+</spec-requirement>
+</section>
+
+
+<section id="assumptions">
+<h2>6 · Assumptions</h2>
+<spec-assumption>
+<p>033's effort levels and the panel sizing they drive are unchanged; <code>auto</code> only chooses <em>which</em>
+level, then defers to 033's <code>effortToDepth</code>.</p>
+</spec-assumption>
+<spec-assumption>
+<p>Propose's existing signal predicates (removed-op, must-tier, topic-prefix count) are the right depth signals,
+not just fire/skip signals — reusing them keeps one heuristic, not two.</p>
+</spec-assumption>
+</section>
+
+
+<section id="questions">
+<h2>7 · Open questions</h2>
+<spec-questions>
+<p>None outstanding — the resolution rule, floor, override precedence, and audit were fixed by the parent (033)
+interview when this slice was peeled; the per-verb signal internals are the plan's.</p>
+</spec-questions>
+</section>
+
+
+<section id="conformance">
+<h2>8 · Conformance index</h2>
+<p>Auto-built from every <code>&lt;spec-requirement&gt;</code> in this document.</p>
+<spec-conformance></spec-conformance>
+</section>
+
+
+<section id="changelog">
+<h2>9 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-07-09">09 Jul 2026</time><span>Initial draft. Peeled from 033 (§9.3 Q2) — the auto effort resolver.</span></li>
+  <li><time datetime="2026-07-09">09 Jul 2026</time><span>Planned, tasked, implemented, verified — pure resolveEffort + propose wiring; 10 auto tests + 463 full-suite green, 013 parity held, auto exercised end-to-end. Status → Accepted.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  034-effort-auto · Auto effort · authored 09 Jul 2026
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>

@@ -43,6 +43,8 @@ export interface DecideRequest {
   irreversible: boolean;
   /** Max findings to keep after arbitration. */
   maxFindings?: number;
+  /** How the effort level was chosen (spec 034 FR-005); recorded on the verdict. */
+  effortReason?: string;
 }
 
 /**
@@ -58,7 +60,7 @@ export async function decide(
   const max = req.maxFindings ?? 3;
 
   if (cfg.role === 'human') {
-    return blankVerdict('human', cfg.effort, true);
+    return { ...blankVerdict('human', cfg.effort, true), ...(req.effortReason ? { effortReason: req.effortReason } : {}) };
   }
 
   const voters = cfg.role === 'agent' ? 1 : effortToDepth(cfg.effort).voters;
@@ -78,6 +80,7 @@ export async function decide(
     tally,
     // A non-human decider proposes; on an irreversible change the human still commits (FR-008).
     escalatedToHuman: req.irreversible,
+    ...(req.effortReason ? { effortReason: req.effortReason } : {}),
   };
 }
 
