@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Hands-off pipeline — handover (W-1) · spectastic</title>
+<meta name="description" content="How the hands-off lifecycle pipeline (W-1) answers decisions without a human: the Decider (033–036) is the answerer, enforced by the orchestrator — code, not markdown. The design brief that feeds the W-1 spec.">
+<link rel="stylesheet" href="../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../assets/favicon.svg">
+<script src="../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Handover · hands-off pipeline (W-1)</p>
+  <h1>Answering decisions without a human</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    The unblocker W-1 was waiting on is built. This handover nails the one design question that stops a
+    lifecycle from running unattended: <em>who answers the decisions, and what makes that a guarantee.</em>
+  </p>
+
+  <spec-meta>
+    <b>Status</b>     <span><spec-status value="draft">Draft</spec-status></span>
+    <b>Type</b>       <span>Handover (a <code>/doc</code> — synthesises 033–036 into the W-1 spec kickoff)</span>
+    <b>Author</b>     <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Created</b>    <span><time datetime="2026-07-09">09 Jul 2026</time></span>
+    <b>Feeds</b>      <span>A future <code>spec.html</code> for W-1 (the hands-off lifecycle pipeline)</span>
+    <b>Read time</b>  <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-tldr>
+    <p><strong>W-1</strong> — the hands-off pipeline (<a href="./agent-workflows-considerations.html#W-1">agent-workflows §4</a>)
+    — orchestrates <code>slice → plan → tasks → implement → verify</code> and pauses only at value-laden
+    checkpoints. The brief named one prerequisite: the decider + effort dial. That is now built and landed
+    (<strong>033–036</strong>). This handover records the design that makes W-1 <em>run unattended honestly</em>:
+    every decision the lifecycle takes is answered by the configured <strong>Decider</strong> — human, agent, or
+    panel — and the answer is <strong>enforced by the orchestrator (code), never by command markdown</strong>.
+    The kernel's fixed gates already route through the Decider; the adaptive interviews are answered by injecting
+    a decider-backed <code>AIProvider</code> (CLI home) or by the workflow script convening the decider per
+    decision (Workflow home). Both are code, so P-8 holds. The punchline: <code>decideChoice</code> (036) already
+    <em>is</em> the interview-answerer — W-1's auto-answerer is a one-line wrapper over it.</p>
+  </spec-tldr>
+</header>
+
+
+<section id="what">
+<h2>1 · What W-1 is</h2>
+<p>From the brief: "<em>Submit a spec, walk away.</em> After a human approves the spec, an orchestrator drives
+<code>slice → plan → tasks → implement → verify</code>, pausing only at the value-laden checkpoints." It composes
+patterns spectastic already has (prompt-chaining the verbs, orchestrator-workers for implement, evaluator for the
+verify gate) and needs no new artifact types — the verbs already emit and validate them. Its one hard dependency
+was the "who decides" question, which the brief spun out as the decider + effort work.</p>
+<p>That dependency is discharged. 033–036 built the Decider and wired it into every <em>kernel</em> checkpoint.
+What remains for W-1 is the <strong>orchestration</strong> — and the single design decision this handover exists
+to settle: how the lifecycle's decisions get answered when there is no human in the loop.</p>
+</section>
+
+
+<section id="unblocker">
+<h2>2 · The unblocker — decisions without a human</h2>
+
+<p>A lifecycle is a chain of decisions. Some are <strong>fixed bounded-choice gates</strong> in kernel code
+(propose's risk disposition, the slicer's RICE-accept, triage's hedge gate). Others are <strong>adaptive
+interviews</strong> — the decision-phase <code>AskUserQuestion</code> passes in the slash commands, where the
+model chooses what to ask from the live conversation. A hands-off run has to answer <em>both</em> without a
+person, and — this is the load-bearing part — it has to do so as a <strong>guarantee</strong>, not a suggestion
+(<a href="../principles.html#P-8">P-8</a>).</p>
+
+<h3 id="gates">2.1 · The fixed gates are already solved</h3>
+<p>033–036 routed every kernel <code>ai.ask</code> / critic gate through the Decider:</p>
+<ul>
+  <li><strong>033</strong> — propose's adversarial critic → <code>human</code> / <code>agent</code> / <code>panel</code>, with the four guardrails in the kernel.</li>
+  <li><strong>034</strong> — <code>--effort=auto</code> sizes the decider's depth from the change's own risk.</li>
+  <li><strong>035</strong> — the slicer's scoring panel adopts the Decider (numeric arbitration).</li>
+  <li><strong>036</strong> — <code>decideChoice</code>: the bounded-choice gates (<code>confirmRice</code>, <code>escalateLayer</code>) answer by role. Human is the default; agent/panel answer unattended.</li>
+</ul>
+<p>So in a hands-off run configured <code>decider=agent</code> (or <code>panel</code>), these gates <em>already</em>
+resolve without a human, deterministically, in kernel code. Nothing more is needed for them.</p>
+
+<h3 id="interviews">2.2 · The adaptive interviews — answer them by injection, not by markdown</h3>
+<p>The slash-command interviews can't be kernel gates — the model calls the harness <code>AskUserQuestion</code>
+tool directly, and the interview is adaptive by design (that flexibility is <em>why</em> it lives in markdown).
+Telling the markdown "if <code>decider=agent</code>, decide it yourself" would work sometimes and fail silently
+others — an advisory nudge, exactly the T-009 reliability gap. So the orchestrator answers them instead, two
+ways, both enforceable because the orchestrator is <strong>code</strong>:</p>
+
+<spec-arch>
+<figure>
+<svg viewBox="0 0 720 250" role="img" aria-label="Two orchestrator homes: a CLI driver injects a decider-backed AIProvider whose ask() calls decideChoice; a Workflow script convenes the decider per decision. Both route to decideChoice, human answers escalated between phases.">
+  <style>
+    .box{fill:var(--c-surface);stroke:var(--c-border);stroke-width:1.3}
+    .acc{fill:var(--c-surface);stroke:var(--c-salmon);stroke-width:2}
+    .label{font:700 10px Lato,sans-serif;fill:var(--c-text);letter-spacing:.05em;text-transform:uppercase}
+    .body{font:400 11px "Source Serif 4",Georgia,serif;fill:var(--c-text-soft)}
+    .arr{stroke:var(--c-muted);stroke-width:1.3;fill:none}
+  </style>
+  <defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="var(--c-muted)"/></marker></defs>
+  <rect class="box" x="12" y="30" width="180" height="52" rx="4"/><text class="label" x="26" y="50">CLI driver</text><text class="body" x="26" y="68">inject AIProvider.ask</text>
+  <rect class="box" x="12" y="150" width="180" height="52" rx="4"/><text class="label" x="26" y="170">Workflow script</text><text class="body" x="26" y="188">convene per decision</text>
+  <rect class="acc" x="270" y="90" width="170" height="56" rx="5"/><text class="label" x="286" y="112">decideChoice (036)</text><text class="body" x="286" y="130">human · agent · panel</text>
+  <rect class="box" x="520" y="34" width="180" height="44" rx="4"/><text class="body" x="534" y="60">agent / panel answer</text>
+  <rect class="acc" x="520" y="158" width="180" height="44" rx="4"/><text class="body" x="534" y="184">human — irreversible only</text>
+  <path class="arr" d="M192 56 C240 60, 250 100, 268 108" marker-end="url(#a)"/>
+  <path class="arr" d="M192 176 C240 172, 250 132, 268 128" marker-end="url(#a)"/>
+  <path class="arr" d="M440 110 L518 70" marker-end="url(#a)"/>
+  <path class="arr" d="M440 122 L518 176" marker-end="url(#a)"/>
+</svg>
+<figcaption>Two orchestrator homes, one answerer. Both route decisions through <code>decideChoice</code>; irreversible ones escalate to a human between phases. The guarantee lives in which answerer the orchestrator wires — code, not prose.</figcaption>
+</figure>
+</spec-arch>
+
+<dl>
+  <dt>CLI driver home</dt>
+  <dd>The pipeline runs the verbs through their kernel/CLI path (006 FR-009) and injects an
+  <strong>auto-answering <code>AIProvider</code></strong> — one whose <code>ask(questions)</code> delegates to
+  <code>decideChoice(cfg, questions, base)</code> instead of prompting a person. Every kernel interview point
+  (the <code>ai.ask&lt;T&gt;()</code> surface documented on <code>PrinciplesInput</code> and used by the choice
+  gates) is then answered by the configured agent/panel. The kernel just calls <code>ask()</code>; the guarantee
+  is that the <em>orchestrator chose the provider</em>.</dd>
+  <dt>Workflow script home</dt>
+  <dd>A Claude Workflow script runs headless and <em>cannot</em> stop to ask a person (brief §3 note), so it must
+  answer decisions itself. It convenes the Decider per decision — one <code>agent()</code> for
+  <code>agent</code>, a voting fan-out for <code>panel</code> — the same roles, expressed as the script's own
+  calls. The script is code, so the role is enforced, not suggested.</dd>
+</dl>
+
+<spec-note>
+<p><strong>The punchline.</strong> <code>decideChoice</code> (036) already answers a <code>Question</code> batch
+by role. The CLI home's auto-answering provider is a one-line wrapper:
+<code>ask = (qs) =&gt; decideChoice(cfg, qs, base)</code>. So 036 did not just wire two gates — it built the exact
+primitive W-1's interview-answerer needs. W-1 is now assembly, not invention.</p>
+</spec-note>
+
+<h3 id="escalate">2.3 · The human never fully leaves — escalation is the safety rail</h3>
+<p>"Hands-off" is not "no human ever." The Decider's escalation guardrail
+(<a href="../specs/033-decider-effort/spec.html#FR-008">033 FR-008</a>) already forces
+<strong>irreversible / high-stakes</strong> decisions to a human regardless of configured role. In a pipeline,
+those escalations surface <em>between phases</em>: the orchestrator runs an autonomous stretch, and when an
+irreversible call arises it returns, the main loop raises a real <code>AskUserQuestion</code> gate, and the next
+phase launches on the answer. This is the brief's "bursts bracketed by human gates," now with a precise trigger
+(the risk signals) rather than a guess.</p>
+</section>
+
+
+<section id="consumes">
+<h2>3 · What W-1 consumes (already built)</h2>
+<table>
+  <thead><tr><th>Need</th><th>Provided by</th></tr></thead>
+  <tbody>
+    <tr><td>Who answers a decision (human/agent/panel)</td><td><a href="../specs/033-decider-effort/spec.html">033</a> Decider + <a href="../specs/036-decider-choice/spec.html">036</a> <code>decideChoice</code></td></tr>
+    <tr><td>How deep the answer goes; adaptive by risk</td><td><a href="../specs/034-effort-auto/spec.html">034</a> effort + <code>auto</code></td></tr>
+    <tr><td>Concurrency for fan-out stretches</td><td><a href="../specs/032-triage-fanout/spec.html">032</a> <code>mapPool</code></td></tr>
+    <tr><td>Escalate irreversible calls to a human</td><td><a href="../specs/033-decider-effort/spec.html#FR-008">033 FR-008</a></td></tr>
+    <tr><td>Validate gate between steps; P-7 verify gate</td><td>existing <code>validate</code> + <a href="../principles.html#P-7">P-7</a></td></tr>
+    <tr><td>Sandbox for build-to-learn stretches</td><td>the explore quarantine (022)</td></tr>
+  </tbody>
+</table>
+<p>W-1 adds only the <strong>orchestration</strong>: the driver that chains the verbs, injects/convenes the
+decider, runs <code>validate</code> between steps, and brackets the run with the human escalation gate.</p>
+</section>
+
+
+<section id="questions">
+<h2>4 · Open questions for the W-1 spec</h2>
+<spec-questions>
+<ol>
+  <li><strong>Orchestrator home.</strong> CLI driver (<code>spectastic run &lt;spec-id&gt;</code> with an injected decider-provider), Claude Workflow script, or both — the CLI for portability, the script for the Claude surface? The answerer design above works for either; the packaging is the call (brief §7 Q1).</li>
+  <li><strong>Interview fidelity on the CLI path.</strong> The kernel/CLI interview surface (the <code>ai.ask</code> fallback on inputs like <code>PrinciplesInput</code>) is thinner than the slash-command's adaptive interview. Does an unattended run accept the thinner interview, or does W-1 need the decider to drive a richer question set? This is the sharpest spec question.</li>
+  <li><strong>Checkpoint granularity.</strong> One human-escalation gate (before implement) or several (after slice, plan, tasks)? Likely a flag, <code>--checkpoints=minimal|each</code> (brief §7 Q2).</li>
+  <li><strong>Cost ceiling &amp; graceful degradation.</strong> A full run fans out many deciders; what is the per-run budget, and does the pipeline degrade (shallower panels, fewer voters) as it approaches it rather than halting? (brief §7 Q4)</li>
+  <li><strong>Re-entrancy.</strong> Is each verb safe to re-run unattended on a Draft artifact (the P-6 in-place path) after a failed step, or does the orchestrator need explicit checkpoint/rollback state? (brief §7 Q5)</li>
+  <li><strong>Verdict logging across the run.</strong> Each decider answer already records its grounds on the touched artifact (033 FR-009 / 036). Does W-1 also emit a per-run decision log so a walked-away human can audit what was decided and why?</li>
+</ol>
+</spec-questions>
+</section>
+
+
+<section id="scope">
+<h2>5 · Out of scope / not this</h2>
+<spec-non-goals>
+  <ul>
+    <li><spec-out-of-scope defer-to="never">Making the slash-command markdown interviews "use <code>decideChoice</code>" directly — the answerer is injected/convened by the orchestrator, never asserted in prose (that would demote the guarantee; the whole point of §2.2).</li>
+    <li><spec-out-of-scope defer-to="TBD-value-ranked-slicer">The slicer internals — W-1 calls <code>slice</code> as a step; 029/035 own it.</li>
+    <li><spec-out-of-scope defer-to="TBD">A richer decider-driven interview question set (open question 2), if the thin CLI interview proves insufficient — could be its own slice.</li>
+  </ul>
+</spec-non-goals>
+</section>
+
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  Hands-off pipeline — handover (W-1) · design brief · authored 09 Jul 2026 ·
+  <button data-theme-toggle style="background:none;border:none;color:var(--c-link);cursor:pointer;font:inherit;padding:0;border-bottom:1px solid currentColor;">light/dark</button>
+</footer>
+
+</main>
+<script src="../assets/spec.js"></script>
+</body>
+</html>
