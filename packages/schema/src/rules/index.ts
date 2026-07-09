@@ -23,6 +23,7 @@ import { specIdUniqueRule } from './spec-id-unique.js';
 import { specParentWellFormedRule } from './spec-parent-well-formed.js';
 import { taskIdRequiredRule } from './task-id-required.js';
 import { taskTitleBoldScopeRule } from './task-title-bold-scope.js';
+import { verifyViewMissingRule } from './verify-view-missing.js';
 import { verifyViewStaleRule } from './verify-view-stale.js';
 
 /**
@@ -66,6 +67,7 @@ export const rules: readonly Rule[] = [
   noBrokenDeferToRule,
   parentChildReciprocityRule,
   verifyViewStaleRule,
+  verifyViewMissingRule,
   formatBandCouplingRule,
   specIdUniqueRule,
 ];
