@@ -56,6 +56,33 @@ describe('readBundle: the SC -> US join (T-010, D-002)', () => {
   });
 });
 
+describe('readBundle: path fallback when a phase declares no Tests subsection (FR-003)', () => {
+  // Strip the Tests/Implementation <h3> headings so a phase carries no subsection signal
+  // (the shape of a hand-authored tasks.html — 034–036).
+  const flat = (html: string): string =>
+    html.replaceAll(/<h3>Tests[^<]*<\/h3>/g, '').replaceAll('<h3>Implementation</h3>', '');
+
+  it('recognises a flat test task by its .test./.spec. path', () => {
+    const t = readBundle(SPEC, flat(TASKS), '999-fixture').trace;
+    // T-100 (tests/first.spec.ts) and T-200 (tests/second.spec.ts) match by path.
+    expect(t.find((r) => r.scId === 'SC-001')?.testTaskIds).toEqual(['T-100']);
+    expect(t.find((r) => r.scId === 'SC-002')?.testTaskIds).toEqual(['T-200']);
+  });
+
+  it('does not admit a flat impl task (non-test path)', () => {
+    // T-110 (src/first.ts) is flat alongside T-100 but must stay out of the proof leg.
+    const t = readBundle(SPEC, flat(TASKS), '999-fixture').trace;
+    expect(t.find((r) => r.scId === 'SC-001')?.testTaskIds).not.toContain('T-110');
+  });
+
+  it('renders a loud gap when a subsection-less phase has no test-path task', () => {
+    // Remove the headings AND turn the only test path into an impl path → no recognised test.
+    const noTest = flat(TASKS).replace('tests/first.spec.ts', 'src/first-extra.ts');
+    const t = readBundle(SPEC, noTest, '999-fixture').trace;
+    expect(t.find((r) => r.scId === 'SC-001')?.testTaskIds).toEqual([]);
+  });
+});
+
 describe('renderRunBlock: captured commands -> typed elements (T-101, FR-004)', () => {
   const captured: CapturedRun = {
     run: 'pnpm --filter @spectastic/core build',

@@ -64,3 +64,36 @@ describe('verify-view-stale: completeness (021 FR-008, amended)', () => {
     expect(stale(spec, tasks, verify)).toHaveLength(0);
   });
 });
+
+/** A `phase-usN` with NO Tests subsection — tasks are flat; test-hood decided by path (FR-003 fallback). */
+const flatPhase = (
+  n: number,
+  sc: string,
+  opts: { testId?: string; implId?: string },
+): string =>
+  `<section id="phase-us${n}" class="phase"><h2>US${n}</h2>
+${opts.testId ? `<spec-task id="${opts.testId}"><input type="checkbox"><div><strong>test</strong> <span class="path">packages/core/test/x.test.ts</span></div></spec-task>` : ''}
+${opts.implId ? `<spec-task id="${opts.implId}"><input type="checkbox"><div><strong>impl</strong> <span class="path">packages/core/src/x.ts</span></div></spec-task>` : ''}
+<spec-note><p>Closes <a href="./spec.html#${sc}">${sc}</a>.</p></spec-note></section>`;
+
+describe('verify-view-stale: path fallback for subsection-less phases (021 FR-003, mirrors the generator)', () => {
+  it('recognises a flat .test. task by path, so a consistent view stays clean', () => {
+    const spec = SPEC(['SC-001']);
+    const tasks = TASKS(flatPhase(1, 'SC-001', { testId: 'T-100', implId: 'T-110' }));
+    const verify = VERIFY(['SC-001'], ['T-100']); // proof leg = T-100 by path; T-110 excluded
+    expect(stale(spec, tasks, verify)).toHaveLength(0);
+  });
+
+  it('fires completeness when a subsection-less phase resolves to only an impl task', () => {
+    // Bundle is test-bearing (phase 1 has a .test. task) but SC-002's phase is impl-only.
+    const spec = SPEC(['SC-001', 'SC-002']);
+    const tasks = TASKS(
+      flatPhase(1, 'SC-001', { testId: 'T-100' }),
+      flatPhase(2, 'SC-002', { implId: 'T-210' }),
+    );
+    const verify = VERIFY(['SC-001', 'SC-002'], ['T-100']);
+    const f = stale(spec, tasks, verify);
+    expect(f).toHaveLength(1);
+    expect(f[0]!.message).toMatch(/SC-002/);
+  });
+});

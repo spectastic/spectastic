@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Path-fallback for subsection-less test tasks · Change proposal · 021-verify-view</title>
+<link rel="stylesheet" href="../../../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../../../assets/favicon.svg">
+<script src="../../../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Change proposal · 021-verify-view</p>
+  <h1>Path-fallback for subsection-less test tasks</h1>
+  <p style="font-family:var(--font-serif);font-size:1.1rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    Let the trace see a test task in a hand-authored <code>tasks.html</code> that never wrote a
+    <code>&lt;h3&gt;Tests&lt;/h3&gt;</code> subsection — without re-opening the fixture-exclusion hole
+    <a href="../../triage-log.html#T-001">T-001</a> closed.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>     <span><spec-status value="accepted">Applied</spec-status></span>
+    <b>Spec</b>       <span><a href="../../spec.html">021-verify-view</a></span>
+    <b>Change</b>     <span>2026-07-09-verify-trace-path-fallback</span>
+    <b>Created</b>    <span><time datetime="2026-07-09">09 Jul 2026</time></span>
+    <b>Origin</b>     <span>Triage <a href="../../triage-log.html#T-002">021/T-002</a> (trace-join half)</span>
+  </spec-meta>
+
+  <spec-tldr>
+    <p>Modify <strong>FR-003</strong>: the Tests subsection stays the <em>primary</em> signal, but when a story
+    phase declares no such subsection, the aggregation falls back to identifying a test task by file path
+    (<code>.test.</code>&nbsp;/&nbsp;<code>.spec.</code>). This makes 034–036 — hand-authored bundles whose test
+    tasks sit flat in the <code>phase-usN</code> section — trace their proof leg instead of rendering an empty,
+    <em>falsely-green</em> trace. The fallback fires only where there is no subsection, so it cannot re-exclude the
+    fixture-driven tasks T-001 restored.</p>
+  </spec-tldr>
+</header>
+
+<spec-change id="2026-07-09-verify-trace-path-fallback" status="accepted">
+
+<section id="scope">
+<h2>1 · Scope</h2>
+<p>One modified requirement — FR-003 — mirrored in the two implementations that share its join key: the generator
+(<code>packages/core/src/commands/verify.ts</code>) and the drift rule
+(<code>packages/schema/src/rules/verify-view-stale.ts</code>). No other requirement changes; the completeness gate
+(FR-008) and presence rule (FR-010) are untouched. The change is additive — every bundle that already traced under
+the subsection convention traces identically.</p>
+</section>
+
+<section id="approach">
+<h2>2 · Approach</h2>
+<p><code>collectTestTasks(section)</code> keeps its DOM-bounded subsection scan as the primary path. Only when a
+<code>phase-usN</code> section contains <em>no</em> <code>&lt;h3&gt;Tests…&lt;/h3&gt;</code> heading does it fall
+back to scanning that section's <code>&lt;spec-task&gt;</code>s and admitting the ones whose
+<code>&lt;span class="path"&gt;</code> matches a test-file pattern (<code>/\.(test|spec)\./</code>). The pattern and
+the two-tier logic are defined once and copied byte-for-byte into both call sites, exactly as the existing
+subsection scan already is — the cross-impl cascade T-001 named. Because the fallback is gated on the <em>absence</em>
+of a subsection, a phase that <em>does</em> use the convention (where fixture tasks live) never reaches the
+path test, so the <code>fixtures/</code> exclusion T-001 fixed cannot recur.</p>
+</section>
+
+<section id="deltas">
+<h2>3 · Deltas</h2>
+
+<spec-delta op="modified" target="FR-003">
+  <spec-requirement id="FR-003" priority="must">
+    <p>The aggregation <spec-rule>MUST</spec-rule> trace each <code>SC-NNN</code> to its acceptance scenario and to
+    the test task(s) that verify it. The <strong>primary</strong> signal for a <strong>test task</strong> is a
+    <code>&lt;spec-task&gt;</code> whose nearest preceding heading is the story's
+    <code>&lt;h3&gt;Tests (write &amp; fail first)&lt;/h3&gt;</code> subsection — identified by that structural
+    position and <strong>independent of its file path</strong> (so fixture-driven test tasks, whose paths live under
+    <code>fixtures/</code>, are recognised; a task under the story's <em>Implementation</em> subsection is not).
+    When a story phase declares <strong>no</strong> Tests subsection, the aggregation
+    <spec-rule>MUST</spec-rule> fall back to identifying test tasks by file path — a <code>&lt;spec-task&gt;</code>
+    whose declared path matches a test-file pattern (<code>.test.</code>&nbsp;/&nbsp;<code>.spec.</code>). The path
+    fallback applies <strong>only</strong> to phases without a Tests subsection, so it cannot re-exclude the
+    fixture tasks the subsection signal recognises. These traces <spec-rule>MUST</spec-rule> be materialised as
+    static links at generation time, with no cross-file fetching at render time.</p>
+    <details><summary>Rationale</summary><p>Single-file HTML cannot fetch siblings (P-1, P-4); generation is the
+    only moment siblings are read. The subsection is the authoring convention's own signal, and stays primary so the
+    path-only heuristic that once excluded fixture-driven tests (triage
+    <a href="../../triage-log.html">021 · T-001</a>) cannot return. But a hand-authored <code>tasks.html</code> that
+    never wrote the subsection (034–036) had <em>no</em> signal at all, so its trace rendered every proof leg empty
+    and — reading as test-less — dodged the FR-008 completeness gate entirely: a hollow trace that passed
+    <code>validate</code> (triage 021/T-002, trace-join half). The path fallback gives those bundles a signal
+    without weakening the one fixtures rely on.</p></details>
+  </spec-requirement>
+  <div class="reason-block"><p><strong>Reason.</strong> 034–036 rendered a fully-empty verification trace yet
+  passed <code>validate</code>, because the whole-bundle completeness exemption (<code>expectedTasks.length === 0</code>)
+  treats a bundle with no <em>recognised</em> test task as genuinely test-less. They are not test-less — their tests
+  sit flat in the <code>phase-usN</code> section. P-7: a green trace must mean verified, not un-seen.</p></div>
+</spec-delta>
+</section>
+
+<section id="risks">
+<h2>4 · Risk register</h2>
+<spec-risk-log>
+
+<spec-risk target="FR-003" status="mitigated">
+  <header><h4>Fallback re-opens the T-001 fixture-exclusion hole</h4></header>
+  <p><strong>Concern.</strong> The path heuristic (<code>.test.</code>&nbsp;/&nbsp;<code>.spec.</code>) is exactly
+  what T-001 removed for silently dropping fixture-driven tests whose paths sit under <code>fixtures/</code>.</p>
+  <div class="response"><p><strong>Response.</strong> Mitigated by gating: the path test runs <em>only</em> for a
+  phase with no Tests subsection. Every fixture-driven task lives under a subsection (that is how T-001 restored it),
+  so it is matched by the primary scan and never reaches the fallback. The fallback is a floor for the
+  no-signal case, not a replacement for the subsection.</p></div>
+</spec-risk>
+
+<spec-risk target="FR-003" status="mitigated">
+  <header><h4>Generator and rule drift apart</h4></header>
+  <p><strong>Concern.</strong> <code>collectTestTasks</code> is implemented twice — in the generator and the drift
+  rule. A fallback added to one and not the other makes <code>validate</code> disagree with the rendered trace.</p>
+  <div class="response"><p><strong>Response.</strong> The same cross-impl cascade T-001 flagged: both copies are
+  edited in the same change with byte-identical logic and pattern constant, and both are covered — the generator by
+  <code>verify.test.ts</code>, the rule by a positive/negative fixture pair — so a future one-sided edit reddens a
+  test.</p></div>
+</spec-risk>
+
+<spec-risk target="FR-003" status="mitigated">
+  <header><h4>Rollout: completeness flips on and reddens Accepted bundles</h4></header>
+  <p><strong>Concern.</strong> Once a bundle gains a recognised test task, the FR-008 completeness gate stops being
+  exempt — so any success criterion that no phase closes now becomes a loud finding, potentially reddening
+  <code>validate</code> across 034–036.</p>
+  <div class="response"><p><strong>Response.</strong> Intended, and handled in the same change: 034–036's
+  <code>tasks.html</code> are authored so every SC is closed by a <code>phase-usN</code> note whose phase holds a
+  path-recognised test, and all five verify.html (032–036) are regenerated with their real Run/Demo block. The
+  landing gate is the full suite + <code>spectastic validate</code> clean — a hollow trace can no longer pass.</p></div>
+</spec-risk>
+
+</spec-risk-log>
+</section>
+
+<section id="changelog">
+<h2>5 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-07-09">09 Jul 2026</time><span>Proposal authored from triage 021/T-002 (trace-join half). One modified requirement (FR-003) — path fallback when a phase declares no Tests subsection. Adversarial pass: 3 risks, all mitigated.</span></li>
+  <li><time datetime="2026-07-09">09 Jul 2026</time><span>Applied — FR-003 folded into 021 spec; generator + rule broadened in lockstep; 034–036 closures authored; 032–036 verify.html regenerated with real runs.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+</spec-change>
+</main>
+<script src="../../../../assets/spec.js"></script>
+</body>
+</html>

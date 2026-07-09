@@ -25,6 +25,10 @@ const TASK_HREF = /tasks\.html#(T-\d+)\b/;
 // Mirror the generator: a test task is identified by the story's Tests subsection,
 // not by file path (021 FR-003). Tolerant leading-"Tests" match.
 const TESTS_HEADING = /^tests\b/i;
+// FR-003 fallback (mirrors the generator): when a phase declares NO Tests subsection,
+// a task whose declared path matches this pattern is a test task. Gated on absence,
+// so fixtures (under a subsection) never reach it.
+const TEST_PATH = /\.(test|spec)\./;
 
 /** A spec slice's bundle docs, grouped by spec id. */
 interface Bundle {
@@ -76,19 +80,45 @@ function specScIds(spec: ParsedDocument): string[] {
   return [...ids].sort((a, b) => a.localeCompare(b));
 }
 
-/** Test-task ids under one phase's Tests subsection (DOM-bounded), mirroring the generator. */
+/** The declared path of a task — the text of its `<span class="path">`, if any. */
+function taskPath(task: Element): string {
+  let path = '';
+  walk(task, (el) => {
+    if (el.tagName === 'span' && /\bpath\b/.test(getAttr(el, 'class') ?? '')) {
+      path = textOf(el);
+    }
+  });
+  return path;
+}
+
+/**
+ * Test-task ids in one phase (021 FR-003), mirroring the generator. PRIMARY: the
+ * tasks under the story's Tests subsection (DOM-bounded). FALLBACK: when the phase
+ * declares no Tests subsection, identify by path (`.test.` / `.spec.`) — gated on
+ * the subsection's absence, so fixtures are never path-filtered.
+ */
 function collectTestTasks(section: Element): string[] {
-  const ids: string[] = [];
+  const subsection: string[] = [];
+  let hasTestsHeading = false;
   let inTests = false;
   walk(section, (el) => {
     if (el.tagName === 'h3') {
       inTests = TESTS_HEADING.test(textOf(el));
+      if (inTests) hasTestsHeading = true;
     } else if (el.tagName === 'spec-task' && inTests) {
       const id = getAttr(el, 'id');
-      if (id) ids.push(id);
+      if (id) subsection.push(id);
     }
   });
-  return ids;
+  if (hasTestsHeading) return subsection;
+  const byPath: string[] = [];
+  walk(section, (el) => {
+    if (el.tagName === 'spec-task') {
+      const id = getAttr(el, 'id');
+      if (id && TEST_PATH.test(taskPath(el))) byPath.push(id);
+    }
+  });
+  return byPath;
 }
 
 /**

@@ -63,6 +63,10 @@ const SC_HREF = /#(SC-\d+)\b/;
 // file path (021 FR-003), so fixture-driven tests (paths under fixtures/) are
 // recognised. Tolerant leading-"Tests" match so a reworded heading suffix is fine.
 const TESTS_HEADING = /^tests\b/i;
+// FR-003 fallback: when a phase declares NO Tests subsection, a task whose declared
+// path matches this test-file pattern is recognised as a test task. Gated on the
+// subsection's absence, so fixtures (which live under a subsection) never reach it.
+const TEST_PATH = /\.(test|spec)\./;
 
 /** What a phase closes + the test tasks that prove it (the SC -> US join). */
 interface PhaseHit {
@@ -109,24 +113,48 @@ function extractUsAnchors(ast: Document): Set<number> {
   return set;
 }
 
+/** The declared path of a task — the text of its `<span class="path">`, if any. */
+function taskPath(task: Element): string {
+  let path = '';
+  walk(task, (el) => {
+    if (el.tagName === 'span' && /\bpath\b/.test(getAttr(el, 'class') ?? '')) {
+      path = textOf(el);
+    }
+  });
+  return path;
+}
+
 /**
- * The test-task ids inside one phase section — the tasks under the story's
- * `<h3>Tests …</h3>` subsection (021 FR-003), DOM-bounded: a `<spec-task>` counts
- * only while the nearest preceding `<h3>` is the Tests heading, so Implementation-
- * subsection tasks are excluded. Independent of file path.
+ * The test-task ids inside one phase section (021 FR-003). PRIMARY: the tasks
+ * under the story's `<h3>Tests …</h3>` subsection, DOM-bounded — a `<spec-task>`
+ * counts only while the nearest preceding `<h3>` is the Tests heading, so
+ * Implementation-subsection tasks are excluded and fixture-driven paths trace.
+ * FALLBACK: when the phase declares NO Tests subsection, identify test tasks by
+ * path (`.test.` / `.spec.`). Gated on the subsection's absence, so fixtures —
+ * which live under a subsection — are never path-filtered here.
  */
 function collectTestTasks(section: Element): string[] {
-  const ids: string[] = [];
+  const subsection: string[] = [];
+  let hasTestsHeading = false;
   let inTests = false;
   walk(section, (el) => {
     if (el.tagName === 'h3') {
       inTests = TESTS_HEADING.test(textOf(el));
+      if (inTests) hasTestsHeading = true;
     } else if (el.tagName === 'spec-task' && inTests) {
       const id = getAttr(el, 'id');
-      if (id) ids.push(id);
+      if (id) subsection.push(id);
     }
   });
-  return ids;
+  if (hasTestsHeading) return subsection;
+  const byPath: string[] = [];
+  walk(section, (el) => {
+    if (el.tagName === 'spec-task') {
+      const id = getAttr(el, 'id');
+      if (id && TEST_PATH.test(taskPath(el))) byPath.push(id);
+    }
+  });
+  return byPath;
 }
 
 /**
