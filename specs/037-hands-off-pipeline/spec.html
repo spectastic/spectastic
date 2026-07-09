@@ -1,0 +1,311 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Hands-off pipeline · Specification</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Specification · 037-hands-off-pipeline</p>
+  <h1>Hands-off pipeline</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    Submit an approved spec, walk away: an orchestrator drives plan → tasks → implement → verify, answering every
+    decision through the configured Decider — enforced in code, not prose.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>      <span><spec-status value="draft">Draft</spec-status></span>
+    <b>Spec ID</b>     <span>037-hands-off-pipeline</span>
+    <b>Owner</b>       <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Reviewers</b>   <span>—</span>
+    <b>Created</b>     <span><time datetime="2026-07-09">09 Jul 2026</time></span>
+    <b>Principles</b><span><a href="../../principles.html">v1.3.0</a></span>
+    <b>Smallest demoable</b><span><code>spectastic run &lt;spec-id&gt;</code> drives plan→tasks→implement→verify on an approved spec, decider=agent, one escalation gate.</span>
+    <b>Read time</b>   <span data-reading-time></span>
+  </spec-meta>
+
+  <!-- Live size gauge — green at <80%, amber 80-100%, red over. Words row counts authored prose (excludes the conformance index) per REQ-FORMAT-004. -->
+  <spec-budget words="1500" reqs="20" minutes="12"></spec-budget>
+
+  <spec-tldr>
+    <p>W-1 runs the lifecycle unattended. A human approves a spec; the orchestrator chains
+    <code>plan → tasks → implement → verify</code>, runs <code>validate</code> between steps, and answers every
+    decision through the configured <strong>Decider</strong> (human / agent / panel). The load-bearing guarantee is
+    <strong>P-8</strong>: the answerer is chosen by orchestrator <em>code</em> — injected on the CLI, convened by
+    the script on the Workflow surface — never asserted in markdown. Irreversible calls escalate to a human between
+    phases. Assembly, not invention: <code>decideChoice</code> (036) already <em>is</em> the answerer.</p>
+  </spec-tldr>
+
+  <dl class="invest">
+    <dt><span class="letter">I</span> Independent</dt> <dd>Consumes only the <em>landed</em> decider arc (<a href="../033-decider-effort/spec.html">033</a>–<a href="../036-decider-choice/spec.html">036</a>) + existing <code>validate</code> — all Accepted, no in-flight coupling. Adds orchestration alone.</dd>
+    <dt><span class="letter">N</span> Negotiable</dt>  <dd>Contracts the run's behaviour and the P-8 guarantee; leaves the driver's internal structure to the plan.</dd>
+    <dt><span class="letter">V</span> Valuable</dt>    <dd>Unlocks <a href="#SC-001">SC-001</a> — a spec runs to a verified feature with no human in the loop but the escalation rail.</dd>
+    <dt><span class="letter">E</span> Estimable</dt>   <dd>Every decision anchored in the interview; the unattended interview reuses each verb's existing decision-phase taxonomy, so no new interview design is required.</dd>
+    <dt><span class="letter">S</span> Small</dt>       <dd>The cost ceiling, the slice step, a run-level log, and open-ended interview generation are deferred to siblings (§3 Out of scope) to keep this the walk-away core.</dd>
+    <dt><span class="letter">T</span> Testable</dt>    <dd>Each requirement is observable against a fixture spec — verdict roles, escalation pause/resume, and CLI/Workflow home parity are all countable.</dd>
+  </dl>
+
+  <spec-audience-map>
+    <dl>
+      <dt>Exec / PM</dt>   <dd>§<a href="#context">Context</a>, §<a href="#scenarios">User scenarios</a>, §<a href="#success">Success criteria</a>.</dd>
+      <dt>Reviewer</dt>    <dd>§<a href="#requirements">Requirements</a>, §<a href="#assumptions">Assumptions</a>, §<a href="#questions">Open questions</a>.</dd>
+      <dt>Implementer</dt> <dd>§<a href="#requirements">Requirements</a>, §<a href="#data">Data model</a>, §<a href="#conformance">Conformance index</a>.</dd>
+    </dl>
+  </spec-audience-map>
+</header>
+
+
+<section id="context">
+<h2>1 · Context</h2>
+<p>Driving a feature from approved spec to verified implementation is still a human clicking through
+<code>plan → tasks → implement → verify</code> and answering every decision-phase question by hand. The
+<a href="../../docs/hands-off-handover.html">W-1 handover</a> settled the one design question that blocked
+automating that chain — <em>who answers the decisions with no human</em> — and the answer, the Decider
+(<a href="../033-decider-effort/spec.html">033</a>–<a href="../036-decider-choice/spec.html">036</a>), is built
+and landed. What remains is the orchestration. This spec is for the operator who wants to <strong>submit a spec and
+walk away</strong>, and the maintainer who needs that walk-away to be <em>honest</em>: every autonomous decision
+made by the configured role, recorded, with irreversible calls handed back to a person.</p>
+</section>
+
+
+<section id="scenarios">
+<h2>2 · User scenarios &amp; testing</h2>
+
+<p>Each story <strong>MUST</strong> be independently testable: US1 alone is a viable MVP.</p>
+
+<h3 id="US1">US1 · Submit a spec, walk away <spec-pill>P1</spec-pill></h3>
+<p>As an <strong>operator</strong>, I want to <strong>run <code>spectastic run &lt;spec-id&gt;</code> on an approved
+spec</strong> so that <strong>the pipeline drives plan→tasks→implement→verify to a verified feature without my
+input</strong>.</p>
+<p><em>Acceptance:</em> on a fixture spec with <code>decider=agent</code>, the run completes all four verbs in
+order, <code>validate</code> is clean between every step, and no human interaction occurs outside escalation
+gates.</p>
+
+<h3 id="US2">US2 · The unattended interview is faithful <spec-pill>P1</spec-pill></h3>
+<p>As a <strong>maintainer</strong>, I want <strong>the run to answer each verb's own decision-phase questions
+through the Decider</strong> so that <strong>an unattended run makes the same bounded decisions a human path
+would</strong>.</p>
+<p><em>Acceptance:</em> for each verb the orchestrator poses that verb's existing decision-phase taxonomy
+(smallest-demoable, priorities, test-style, op-type, layer…) to the decider — not an open-ended generated set —
+and the chosen answers drive the artifact.</p>
+
+<h3 id="US3">US3 · The human never fully leaves <spec-pill>P1</spec-pill></h3>
+<p>As an <strong>operator</strong>, I want <strong>irreversible decisions handed back to me</strong> so that
+<strong>a walk-away run can't take a high-stakes call on its own</strong>.</p>
+<p><em>Acceptance:</em> a decision that trips the 033 FR-008 escalation guardrail pauses the run between phases,
+raises a real <code>AskUserQuestion</code> gate, and resumes the next phase on my answer;
+<code>--checkpoints=minimal|each</code> (default <code>minimal</code>) sets how many planned gates bracket the
+run.</p>
+
+<h3 id="US4">US4 · The same run, headless on the Claude surface <spec-pill>P1</spec-pill></h3>
+<p>As a <strong>Claude-surface user</strong>, I want <strong>a Workflow script to drive the same chain</strong> so
+that <strong>the pipeline runs where I already work, with the same answerer semantics</strong>.</p>
+<p><em>Acceptance:</em> the Workflow home convenes the decider per decision (one <code>agent()</code> for
+<code>agent</code>, a voting fan-out for <code>panel</code>) and produces the same decisions the CLI home would for
+the same spec + config.</p>
+
+<h3>Edge cases</h3>
+<ul>
+  <li>The spec is not approved (still Draft / has open blockers): the run refuses up front, like <code>plan</code>'s estimability gate — it does not silently proceed.</li>
+  <li><code>decider=human</code> on an unattended run: the run cannot answer autonomously, so it refuses (a human decider defeats the purpose) rather than escalating every decision.</li>
+  <li>A verb step fails with a non-<code>validate</code> error (e.g. an AI/provider error): the run escalates once rather than retry-looping.</li>
+  <li>A step fails mid-chain: an idempotent re-run resumes on the Draft in-place path (<a href="#FR-009">FR-009</a>) — no rollback state to reconcile.</li>
+</ul>
+</section>
+
+
+<section id="requirements">
+<h2>3 · Requirements</h2>
+
+<p>Conformance keywords (<spec-rule>MUST</spec-rule>, <spec-rule level="should">SHOULD</spec-rule>,
+<spec-rule level="may">MAY</spec-rule>) follow RFC 2119.</p>
+
+<h3>Functional</h3>
+
+<spec-requirement id="FR-001" priority="must">
+<p>The orchestrator <spec-rule>MUST</spec-rule> drive <code>plan → tasks → implement → verify</code> in order on an
+approved (non-blocked) spec, run <code>spectastic validate</code> after each step, and halt-and-escalate on a
+validate error rather than proceeding — the validate gate is the P-7 evaluator that keeps a bad artifact from
+propagating.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-002" priority="must">
+<p>On the autonomous path the orchestrator <spec-rule>MUST</spec-rule> answer every decision the run reaches
+through the configured Decider (resolved by the 033 precedence: flag &gt; project config &gt; default), and
+<spec-rule>MUST NOT</spec-rule> prompt a person except at an escalation gate (<a href="#FR-006">FR-006</a>).</p>
+</spec-requirement>
+
+<spec-requirement id="FR-003" priority="must">
+<p>The orchestrator <spec-rule>MUST</spec-rule> be the enforcer of the answerer: the decider is <em>injected</em>
+(CLI) or <em>convened</em> (Workflow) by orchestrator code, never selected by command markdown. No command
+markdown is relied upon to route a decision to the decider.</p>
+<details><summary>Rationale</summary><p>The load-bearing P-8 requirement. A markdown "if decider=agent, decide it yourself" is advisory and fails silently (T-009); code that chooses the provider is a guarantee. This is why "make the slash-command interviews use decideChoice" is explicitly a non-goal.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-004" priority="must">
+<p>The CLI home (<code>spectastic run &lt;spec-id&gt;</code>) <spec-rule>MUST</spec-rule> inject an auto-answering
+<code>AIProvider</code> whose <code>ask(questions)</code> delegates to <code>decideChoice(cfg, questions, base)</code>,
+so every kernel interview point is answered by the configured role.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-005" priority="must">
+<p>For each verb the orchestrator <spec-rule>MUST</spec-rule> pose that verb's own decision-phase question
+taxonomy — the bounded set the slash command already defines — to the decider, and <spec-rule>MUST NOT</spec-rule>
+generate an open-ended question set at run time (which keeps the slice estimable and the run's decisions consistent
+with the human path).</p>
+</spec-requirement>
+
+<spec-requirement id="FR-006" priority="must">
+<p>An irreversible / high-stakes decision (per <a href="../033-decider-effort/spec.html#FR-008">033 FR-008</a>)
+<spec-rule>MUST</spec-rule> escalate to a human between phases: the orchestrator returns, the main loop raises a
+real <code>AskUserQuestion</code> gate, and the next phase launches on the answer.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-007" priority="must">
+<p><code>--checkpoints=minimal|each</code> (default <code>minimal</code>) <spec-rule>MUST</spec-rule> control planned
+human-gate granularity: <code>minimal</code> = one gate before <code>implement</code>; <code>each</code> = a gate
+after each generative verb. Irreversible escalations (<a href="#FR-006">FR-006</a>) fire regardless of this flag.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-008" priority="must">
+<p>The Workflow-script home <spec-rule>MUST</spec-rule> drive the same chain headless, convening the decider per
+decision (one <code>agent()</code> for <code>agent</code>; a voting fan-out for <code>panel</code>) with the same
+role semantics as the CLI home.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-009" priority="must">
+<p>Each verb <spec-rule>MUST</spec-rule> be safe to re-run unattended on the Draft in-place path (P-6): a failed
+step is recovered by re-running the verb, gated by <code>validate</code>. The orchestrator <spec-rule>MUST
+NOT</spec-rule> require a separate run-state / rollback machine — the artifacts are the state.</p>
+</spec-requirement>
+
+<h3>Non-functional</h3>
+
+<spec-requirement id="NFR-001" priority="must">
+<p>Every decision the run takes <spec-rule>MUST</spec-rule> be attributable: its decider role, effort, and grounds
+are recorded on the touched artifact (leaning on <a href="../033-decider-effort/spec.html#FR-009">033 FR-009</a> /
+036), so a walked-away human can reconstruct the run from the artifacts alone.</p>
+</spec-requirement>
+
+<spec-requirement id="NFR-002" priority="must">
+<p>The escalation gate <spec-rule>MUST</spec-rule> be a hard stop: the run cannot complete an escalated decision's
+phase without a recorded human answer — no autonomous fall-through on timeout or error.</p>
+</spec-requirement>
+
+<h3>Out of scope (deferred to other slices)</h3>
+<spec-out-of-scope>
+  <ul>
+    <li defer-to="TBD-run-budget">A per-run cost ceiling with graceful degradation (<code>--budget</code>; degrade decider depth at 80%, halt + escalate at 100%) — peeled to keep this slice estimable; the immediate next sibling.</li>
+    <li defer-to="TBD-run-from-slice">The <code>slice</code> step at the head of the chain — this run starts from an approved spec; driving <code>slice → …</code> is a follow-up.</li>
+    <li defer-to="never">A separate run-level decision-log artifact — the per-artifact grounds (<a href="#NFR-001">NFR-001</a>) are the audit trail by decision.</li>
+    <li defer-to="TBD-richer-run-interview">Open-ended, model-generated interview questions beyond each verb's decision-phase taxonomy (<a href="#FR-005">FR-005</a>).</li>
+    <li defer-to="never">Asserting the answerer in slash-command markdown — the guarantee is that the orchestrator injects/convenes it (<a href="#FR-003">FR-003</a>).</li>
+  </ul>
+</spec-out-of-scope>
+</section>
+
+
+<section id="data">
+<h2>4 · Data model</h2>
+
+<p>The run owns almost no new state — the artifacts are the state (<a href="#FR-009">FR-009</a>).</p>
+
+<h3>Entities</h3>
+<dl>
+  <dt>Run</dt><dd><code>{ specId, home: 'cli' | 'workflow', decider, effort, checkpoints: 'minimal' | 'each', budget }</code> — the resolved configuration that drives the verb sequence.</dd>
+  <dt>Auto-answering provider (CLI)</dt><dd>An <code>AIProvider</code> whose <code>ask()</code> delegates to <code>decideChoice</code> — the injected answerer (<a href="#FR-004">FR-004</a>). The kernel calls <code>ask()</code>; the orchestrator chose the provider.</dd>
+  <dt>Escalation</dt><dd>An irreversible decision surfaced between phases — carries the question set and the phase to resume, consumed by the main-loop <code>AskUserQuestion</code> gate (<a href="#FR-006">FR-006</a>).</dd>
+</dl>
+
+<spec-note>
+<p>Invariant: on the autonomous path, a decision is answered by exactly one of — the injected/convened decider, or a human escalation gate. There is no third, markdown-driven path (<a href="#FR-003">FR-003</a>).</p>
+</spec-note>
+</section>
+
+
+<section id="success">
+<h2>5 · Success criteria</h2>
+
+<p>Technology-agnostic, measurable outcomes.</p>
+
+<spec-requirement id="SC-001" priority="must">
+<p>On an approved fixture spec with <code>decider=agent</code>, <code>spectastic run</code> completes
+plan→tasks→implement→verify with <strong>zero</strong> human interactions outside escalation gates, and
+<code>validate</code> is clean between every step.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-002" priority="must">
+<p>No autonomous decision is answered by command markdown: swapping the decider config changes the recorded role
+of <strong>every</strong> decision the run takes — observable proof the injected/convened decider is the answerer
+(<a href="#FR-003">FR-003</a>).</p>
+</spec-requirement>
+
+<spec-requirement id="SC-003" priority="must">
+<p>A decision that trips the 033 FR-008 escalation guardrail pauses the run between phases and resumes the next
+phase on the human answer — observable on a fixture that triggers the guardrail.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-004" priority="must">
+<p>The Workflow home and the CLI home produce the same decisions (same roles answering) for the same spec +
+config — observable by running both on a fixture and comparing recorded verdicts.</p>
+</spec-requirement>
+</section>
+
+
+<section id="assumptions">
+<h2>6 · Assumptions</h2>
+
+<spec-assumption>
+<p>Every decision a verb reaches on its kernel/CLI path (006 FR-009) is exposed through the decider-answerable
+surface (<code>ai.ask&lt;T&gt;()</code> / the <code>decideChoice</code> gates). A decision point <em>not</em> routed
+through that surface cannot be answered by the injected provider — see <a href="#questions">Open questions</a> if
+one is found.</p>
+</spec-assumption>
+
+<spec-assumption>
+<p><code>decideChoice</code> (036) is a sufficient primitive for the CLI auto-answerer — the handover's "one-line
+wrapper" holds, needing no new decision primitive.</p>
+</spec-assumption>
+</section>
+
+
+<section id="questions">
+<h2>7 · Open questions</h2>
+<spec-questions>
+<p>None outstanding — every decision was anchored across three interview batches. The one residual unknown —
+whether any verb has a decision point <em>outside</em> the decider-answerable surface — is an assumption for the
+plan's grounding pass to verify against real source, not an open decision.</p>
+</spec-questions>
+</section>
+
+
+<section id="conformance">
+<h2>8 · Conformance index</h2>
+<p>Auto-built from every <code>&lt;spec-requirement&gt;</code> in this document.</p>
+<spec-conformance></spec-conformance>
+</section>
+
+
+<section id="changelog">
+<h2>9 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-07-09">09 Jul 2026</time><span>Initial draft from the <a href="../../docs/hands-off-handover.html">W-1 handover</a>. 11 requirements, 4 success criteria, zero open questions; ten decisions anchored across three interview batches. US5 (per-run budget) peeled to the <code>TBD-run-budget</code> sibling to keep the slice estimable.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  037-hands-off-pipeline · Hands-off pipeline · authored 09 Jul 2026
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>
