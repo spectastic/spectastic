@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>042-profile-enforcement · Triage log</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Triage log · 042-profile-enforcement</p>
+  <h1>042-profile-enforcement — triage log</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    Defects against the <code>042-profile-enforcement</code> spec. Cards append-only; IDs stable.
+  </p>
+
+  <spec-meta>
+    <b>Spec</b>      <span><a href="./spec.html">042-profile-enforcement</a></span>
+    <b>Created</b>   <span><time datetime="2026-07-10">10 Jul 2026</time></span>
+    <b>Read time</b> <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-tldr>
+    <p>One card per debug session. See <a href="../../examples/triage-log.html">examples/triage-log.html</a> for the
+    canonical look + the protocol (<code>TRIAGE-001</code>..<code>TRIAGE-006</code>).</p>
+  </spec-tldr>
+</header>
+
+
+<section id="cards">
+<h2>Cards</h2>
+<spec-triage-log>
+
+<spec-triage id="T-001" layer="implementation">
+  <header>
+    <h4>042's deterministic detection + policy live in the CLI, not the core kernel</h4>
+    <span class="meta">
+      <span class="layer-pill">Implementation</span>
+      <span class="regen" data-result="pass">code</span>
+    </span>
+  </header>
+
+  <p class="headline">Debugging a placement inconsistency surfaced while reviewing 043, root cause was drift from the
+  fat-core / thin-CLI convention — 042's pure detection (<code>SIGNALS</code>, <code>detectTooling</code>,
+  <code>detectEcosystems</code>) and policy diff (<code>evaluateEnforcement</code>) sit in the CLI package though they're
+  deterministic kernel logic; fixed by moving them to <code>@spectastic/core</code> and keeping only the commander
+  registration CLI-thin; regeneration passes — behaviour is correct, the fix is code placement, not an upstream gap.</p>
+
+  <dl>
+    <dt>Expected</dt> <dd>Deterministic logic lives in <code>@spectastic/core</code> (every verb's core is there); the CLI is a thin wrapper that registers the command and calls core — and P-8: a guarantee belongs in the kernel.</dd>
+    <dt>Actual</dt>   <dd><code>packages/cli/src/commands/init/detect.ts</code> (signal table + <code>detectTooling</code>/<code>detectEcosystems</code>) and <code>enforce.ts</code>'s pure <code>evaluateEnforcement</code> are CLI-local; three CLI files (<code>init.ts</code>, <code>enforce.ts</code>, <code>gitignore.ts</code>) import detect from there.</dd>
+    <dt>Diagnosis</dt><dd>042 shipped correct behaviour but placed its deterministic pieces in the CLI. The convention (fat core / thin CLI) isn't written as a principle or a validate rule, so nothing caught the drift — and 041, 042, and 043's first pass all drifted the same way. Behaviour-neutral; purely organisational (<a href="./spec.html#NFR-001">NFR-001</a> "deterministic core" is met either way, but the kernel isn't its home).</dd>
+    <dt>Fix</dt>      <dd>Move the signal table + <code>detectTooling</code>/<code>detectEcosystems</code> and <code>evaluateEnforcement</code> (+ the shared <code>EnforcementCategory</code>/<code>EnforceGate</code>/<code>Signal</code> types) to <code>packages/core/src/</code> with tsup entries + package.json exports; repoint the three CLI importers; keep <code>registerEnforce</code> CLI-thin. Mirrors the 043 review fix (<code>0cb5330</code>). No behaviour change; tests move with the code.</dd>
+  </dl>
+
+  <details>
+    <summary>Deep dive — the convention isn't written down (surfaced, not promoted)</summary>
+    <p>No cross-spec contract; no hotfix. The recurrence is the real signal: 041, 042, and 043-as-first-authored all
+    put deterministic logic in the CLI, because "fat core / thin CLI" lives only as an unwritten habit — not a
+    principle, not a <code>validate</code> rule, not a lint boundary. The immediate fix is this <code>implementation</code>
+    move for 042. Whether to <em>prevent</em> recurrence — a one-line convention in <code>CLAUDE.md</code>, or an
+    architectural boundary check (e.g. an ESLint rule that CLI command modules may only register + delegate) — is a
+    separate, higher-layer question surfaced here, not silently promoted into this card's scope. 043's own core logic
+    now sits correctly in <code>@spectastic/core/gitignore</code>; this card brings 042 in line.</p>
+  </details>
+</spec-triage>
+
+</spec-triage-log>
+</section>
+
+
+<section id="changelog">
+<h2>Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-07-10">10 Jul 2026</time><span>T-001 added — 042's detection (<code>detect.ts</code>) + policy (<code>evaluateEnforcement</code>) are CLI-local, against the fat-core/thin-CLI convention + P-8. <code>implementation</code>, regen <code>pass</code>: move the deterministic pieces to <code>@spectastic/core</code>, keep the command thin (mirrors the 043 review fix). Recurrence across 041/042/043 suggests writing the convention down — surfaced in the deep-dive, not promoted.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  042-profile-enforcement triage log · scaffolded 10 Jul 2026
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>
