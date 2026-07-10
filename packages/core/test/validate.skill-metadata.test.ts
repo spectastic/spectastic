@@ -66,4 +66,11 @@ describe('skillMetadataFinding', () => {
     const content = withKeys(['triggers']);
     expect(skillMetadataFinding(content, FILE)).toEqual(skillMetadataFinding(content, FILE));
   });
+
+  it('tolerates the optional model: key — its presence is not a finding (spec 044 / REQ-TOOL-004)', () => {
+    // The frontmatter contract permits model:; skill-metadata-shape checks only
+    // the three required keys and must never flag the optional model: key.
+    const withModel = ['---', 'description: do a thing', 'triggers: t', 'use-when: w', 'sibling-boundary: s', 'model: sonnet', '---', '', '# body'].join('\n');
+    expect(skillMetadataFinding(withModel, FILE)).toBeNull();
+  });
 });

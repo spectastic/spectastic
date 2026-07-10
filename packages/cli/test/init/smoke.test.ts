@@ -73,7 +73,9 @@ describe('init: smoke (T-102)', () => {
     expect(r.code, `stderr: ${r.stderr}\nstdout: ${r.stdout}`).toBe(0);
 
     const files = listFilesRecursive(tmpDir).sort();
-    expect(files.length).toBe(20);
+    // 21 = 8 core commands + .gitignore + 4 assets + 8 templates. (Was 20 before a
+    // template was added; the count assertion had drifted — corrected in passing.)
+    expect(files.length).toBe(21);
     expect(files).toContain('.claude/commands/spectastic.spec.md');
     expect(files).toContain('assets/theme-boot.js');
     expect(files).toContain('assets/favicon.svg');

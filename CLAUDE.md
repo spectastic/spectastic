@@ -64,9 +64,10 @@ Eight slash commands. Don't add more without a good reason — OpenSpec's small 
 
 ```bash
 cp commands/*.md .claude/commands/
+cp agents/*.md .claude/agents/   # subagent definitions (spec 044), same footing
 ```
 
-Skip this and the running slash command is stale — which is exactly meta-spec triage **T-006**: a 13 Jun `.claude/commands/spectastic.apply.md` copy predated the fold step, so an apply silently skipped the §6 fold (T-004 reproduced live). Until `spectastic init --tools` owns install/sync (deferred), this re-copy is manual.
+Skip this and the running slash command is stale — which is exactly meta-spec triage **T-006**: a 13 Jun `.claude/commands/spectastic.apply.md` copy predated the fold step, so an apply silently skipped the §6 fold (T-004 reproduced live). Until `spectastic init --tools` owns install/sync (deferred), this re-copy is manual. The `agents/*.md` subagent definitions (spec `044-verb-model-policy`) sync the same way to `.claude/agents/` (both gitignored copies); `prebuild.mjs` bundles both into `_bundled/.claude/` for `init` to ship.
 
 ### Command frontmatter: the skill-invocation metadata contract
 
@@ -77,6 +78,8 @@ Per `REQ-TOOL-004`, every command surfaced as a skill carries **structured invoc
 - `sibling-boundary:` — what disambiguates it from adjacent verbs (spec vs plan vs explore; propose vs apply vs triage).
 
 The keys are the **machine-checkable contract** (the `skill-metadata-shape` validate rule warns on any missing one) and skill-creator's inputs. The `description` is the **fixed, `/skill-creator`-tuned trigger surface** the harness router actually reads — authored and committed, *not* generated from the keys at sync time (so the string that gets evaluated is the one that ships). Where a key and the `description` diverge, the `description` is authoritative. When adding a new verb, author all three keys and tune the description; `spectastic validate` flags the omission.
+
+**Optional `model:` key — the verb model policy (spec `044-verb-model-policy`, `REQ-TOOL-004`).** A command MAY additionally carry an optional `model:` key declaring the model tier it runs on — an alias (`opus` / `sonnet` / `haiku` / `inherit`), never a pinned id. It is not one of the three required keys; the `skill-metadata-shape` rule ignores it. The tiers are the single source of truth in `@spectastic/core/model-policy` (`VERB_MODEL_POLICY`): **implement / apply / tasks → `sonnet`** (single-turn autonomous verbs take a clean turn-scoped downgrade); **spec / plan / propose / triage / explain / principles / explore → `inherit`** (reasoning-and-interview verbs stay on the session model — a frontmatter override would leak across their multi-turn chat interviews anyway). The `verb-model-policy` validate rule (P-8, the enforcement half) errors on an illegal alias or a value that disagrees with the map, so the permitted key never lacks machine coverage. Subagent tiers live the same way in `agents/*.md`: `spectastic-classifier` and `spectastic-impl-task` on `sonnet`, `spectastic-critic` on `inherit`. `implement --model opus` escalates a hard task by delegating its authoring to the Opus-pinned impl-task subagent. Headless (`spectastic <verb>`): `--model <tier>` / `SPECTASTIC_MODEL` / the `spectastic.json` `models` section resolve through the same precedence into the provider and the `Assisted-by:` trailer.
 
 **Reliability caveat (T-009).** These descriptions are a *UX nudge for triggering, not a guarantee* — a skill is advisory to the model. Two `run_loop` pilots confirmed descriptions can't force invocation, and nothing in the markdown can force the interview to happen or the commit to run. Guarantees for mandatory steps live in the **kernel or CI**, never in command markdown — see [`docs/guarantee-layer-considerations.html`](docs/guarantee-layer-considerations.html) and triage T-009.
 
