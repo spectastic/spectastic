@@ -133,6 +133,14 @@ Rules of thumb:
 
 **The per-feature view is generated, not written.** Spec `021-verify-view` adds `verify.html` — a derived per-spec view that aggregates the SC → acceptance → test-task trace (by reference) and a Run/Demo block grounded in the real run, materialised by `/spectastic.implement` on completion or regenerated with `spectastic verify <spec-id>`. This is the *artifact* form of P-7; the rules of thumb above are how you clear the bar before that view can honestly say "done". `spectastic validate` flags a `verify.html` whose links have drifted from its bundle (the `verify-view-stale` rule) — treat that finding like any other, not as noise.
 
+## Architecture — fat core, thin CLI
+
+**Deterministic logic lives in `@spectastic/core`; a `packages/cli` command module is thin — it registers the commander command and delegates.** The kernel (`packages/core/src/`) owns the pure, reusable, deterministic units — parsers, detectors, policy diffs, file merges, artifact composition. The CLI (`packages/cli/src/commands/*.ts`) is the edge: a `register<Verb>` that parses args, calls core, and prints/exits. This is P-8 restated at the package boundary — the *guarantee* is the kernel, the CLI is just how you invoke it — and it keeps logic testable without spawning a binary.
+
+The boundary is a **judgment call, not a mechanical rule**: cross-cutting deterministic logic another verb could reuse belongs in core (e.g. `enforce/detect`, `enforce/policy`, `gitignore/apply`); helpers that are purely one command's own scaffolding/orchestration may stay CLI-local under `commands/<verb>/` (e.g. `init/`'s profile prompt, conflict loop, bundle plan). Ask: *"would a second caller — another verb, a Workflow, a test — want this without the CLI?"* If yes, it's core. Adding a core module is cheap: a `tsup.config.ts` entry + a `package.json` `exports` subpath.
+
+**This scar is paid for.** 041, 042, and 043's first pass all drifted deterministic logic into the CLI because the convention lived only as an unwritten habit — caught in review (`042/T-001`, the 043 move `0cb5330`). There is deliberately **no lint rule** for it: a mechanical "no non-`register*` export in `commands/`" check would false-positive on the legitimate CLI-local `init/` helpers, and the real distinction (kernel-worthy vs command-scaffolding) can't be linted without judgment. So it's **review-caught** — that a machine can't enforce it is itself flagged as a meta-spec triage (`000/T-016`), not hidden.
+
 ## Things deferred
 
 Captured in `docs/openspec-considerations.html` and `specs/000-spectastic/spec.html` §2 (Out of scope):
