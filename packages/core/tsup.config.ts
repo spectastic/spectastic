@@ -15,6 +15,7 @@ export default defineConfig({
   entry: [
     'src/index.ts',
     'src/decider/index.ts',
+    'src/model-policy/index.ts',
     'src/commands/validate.ts',
     'src/commands/triage.ts',
     'src/commands/principles.ts',

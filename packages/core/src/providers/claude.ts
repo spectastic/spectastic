@@ -29,8 +29,12 @@ import type {
   SubagentOpts,
   SubagentResult,
 } from '../types.js';
+// Pure constants (no heavy deps) — safe on this lazy-loaded path, unlike the SDK.
+import { DEFAULT_MODEL_ID } from '../model-policy/index.js';
 
-const DEFAULT_MODEL = 'claude-sonnet-4-6';
+// The refreshed default (spec 044 D-007). Sourced from the one alias→id table so
+// the stale 'claude-sonnet-4-6' can't reappear and there is a single id literal.
+const DEFAULT_MODEL = DEFAULT_MODEL_ID;
 
 export class ClaudeProviderError extends Error {
   public override readonly cause?: unknown;
