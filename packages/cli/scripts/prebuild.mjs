@@ -27,6 +27,9 @@ const TMP = join(PACKAGE_ROOT, '_bundled.tmp');
 const SOURCES = [
   // (sourceRelativeToRepoRoot, destinationRelativeToBundleRoot)
   ['commands', '.claude/commands'],
+  // Subagent definitions (spec 044-verb-model-policy) — the isolated model-pinned
+  // fan-out agents (critic/classifier/impl-task). Same install shape as commands.
+  ['agents', '.claude/agents'],
   ['assets', 'assets'],
   ['templates', 'templates'],
   // Verb tier manifest — read by init to keep extended verbs out of the

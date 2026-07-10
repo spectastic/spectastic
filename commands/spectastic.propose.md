@@ -99,7 +99,7 @@ User input (from `$ARGUMENTS`): a change name or one-line description ("add OAut
 
    **Flag overrides:** `--no-adversarial` skips even when the heuristic fires; `--adversarial` runs even when it doesn't.
 
-   **Spawn the critic Agent** with these inputs: the drafted proposal HTML, the live spec, `./principles.html`, and (if known) the originating inbox card path. Use this prompt verbatim:
+   **Spawn the critic Agent** — via the Agent tool with `subagent_type: spectastic-critic`, so it runs on the model that definition pins (`inherit` — the session model; adversarial risk-finding is the one fan-out kept on the strong model, spec 044 US3). Inputs: the drafted proposal HTML, the live spec, `./principles.html`, and (if known) the originating inbox card path. Use this prompt verbatim:
 
    > Identify exactly three risks in this proposal:
    > 1. The single change most likely to be regretted in 30 days. Cite the specific `<spec-delta>` target or quote the phrase being objected to.
