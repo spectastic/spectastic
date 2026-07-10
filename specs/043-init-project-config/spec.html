@@ -1,0 +1,264 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Init project config — ignore files · Specification</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Specification · 043-init-project-config</p>
+  <h1>Init project config — ignore files</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    A bootstrapped project should not commit build output and tool noise on day one.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>      <span><spec-status value="draft">Draft</spec-status></span>
+    <b>Spec ID</b>     <span>043-init-project-config</span>
+    <b>Owner</b>       <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Reviewers</b>   <span>—</span>
+    <b>Created</b>     <span><time datetime="2026-07-10">10 Jul 2026</time></span>
+    <b>Principles</b><span><a href="../../principles.html">v1.4.0</a></span>
+    <b>Follows</b>    <span><a href="../041-init-profiles/spec.html">041</a> / <a href="../042-profile-enforcement/spec.html">042</a> — same init-policy → plan-resolves split</span>
+    <b>Smallest demoable</b><span><code>init</code> on an empty dir writes a base <code>.gitignore</code> (spectastic ephemera); <code>plan</code> appends the detected stack's build-artifact ignores.</span>
+    <b>Read time</b>   <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-budget words="1500" reqs="20" minutes="12"></spec-budget>
+
+  <spec-tldr>
+    <p><code>spectastic init</code> scaffolds commands, assets, templates, and (with a profile) principles + agent
+    guidance — but no <code>.gitignore</code>, so a freshly-bootstrapped project commits spectastic's own ephemera and
+    the stack's build output by default (dogfooding <a href="../000-spectastic/triage-log.html#T-015">T-015</a>). This
+    spec adds ignore-file scaffolding in two phases, mirroring the 041→042 pattern: <code>init</code> writes a
+    <strong>base</strong> <code>.gitignore</code> (spectastic's ephemeral outputs — deterministic, no stack knowledge),
+    and the profile-aware <code>plan</code> verb appends <strong>stack-specific</strong> entries resolved from the
+    detected ecosystem (reusing 042's detection). All spectastic-managed lines live in a marked block, so a brownfield
+    <code>.gitignore</code> is <em>appended to, never clobbered</em>, and re-runs are idempotent.</p>
+  </spec-tldr>
+
+  <dl class="invest">
+    <dt><span class="letter">I</span> Independent</dt> <dd>Builds on the <code>init</code> pipeline (<a href="../041-init-profiles/spec.html">041</a>) and 042's detection; US1 (base at init) ships alone.</dd>
+    <dt><span class="letter">N</span> Negotiable</dt>  <dd>Outcomes only — exact base entries, block markers, and the ecosystem→ignore table are the plan's to decide.</dd>
+    <dt><span class="letter">V</span> Valuable</dt>    <dd>Unlocks <a href="#SC-001">SC-001</a> — a bootstrapped project has a correct <code>.gitignore</code> without hand-maintenance.</dd>
+    <dt><span class="letter">E</span> Estimable</dt>   <dd>Every decision anchored in the interview; no open question blocks estimation.</dd>
+    <dt><span class="letter">S</span> Small</dt>       <dd>One file type (<code>.gitignore</code>); deterministic writer + a plan-time append. 13 requirements.</dd>
+    <dt><span class="letter">T</span> Testable</dt>    <dd>File-content + idempotency assertions, filesystem-only, drivable in CI with no model.</dd>
+  </dl>
+
+  <spec-audience-map>
+    <dl>
+      <dt>Exec / PM</dt>   <dd>§<a href="#context">Context</a>, §<a href="#scenarios">User scenarios</a>, §<a href="#success">Success criteria</a>.</dd>
+      <dt>Reviewer</dt>    <dd>§<a href="#requirements">Requirements</a>, §<a href="#assumptions">Assumptions</a>, §<a href="#questions">Open questions</a>.</dd>
+      <dt>Implementer</dt> <dd>§<a href="#requirements">Requirements</a>, §<a href="#data">Data model</a>, §<a href="#conformance">Conformance index</a>.</dd>
+    </dl>
+  </spec-audience-map>
+</header>
+
+
+<section id="context">
+<h2>1 · Context</h2>
+<p><code>init</code> writes a project's lifecycle files but never a <code>.gitignore</code>. A scoped precedent exists —
+<code>course.ts</code> maintains <code>.spectastic/.gitignore</code> for ephemeral courses — but nothing covers the
+project as a whole, so spectastic's generated ephemera and the stack's build artifacts are committable from the first
+commit (<a href="../000-spectastic/triage-log.html#T-015">T-015</a>).</p>
+<p>The shape follows the established lineage: an ignore <em>policy</em> that <code>init</code> can seed deterministically
+(spectastic's own ephemera — known without the stack), and <em>stack-specific</em> entries the profile-aware
+<code>plan</code> verb resolves once the ecosystem is known — exactly how <a href="../041-init-profiles/spec.html">041</a>
+carries a policy that <a href="../042-profile-enforcement/spec.html">042</a> resolves at plan time.</p>
+<p><strong>Users:</strong> developers bootstrapping a new project (greenfield) or retrofitting spectastic onto an
+existing one (brownfield).</p>
+</section>
+
+
+<section id="scenarios">
+<h2>2 · User scenarios &amp; testing</h2>
+<p>Each story <strong>MUST</strong> be independently testable: US1 alone is a viable MVP.</p>
+
+<h3 id="US1">US1 · Base ignore at init <spec-pill>P1</spec-pill></h3>
+<p>As a <strong>developer bootstrapping a project</strong>, I want <strong><code>init</code> to write a base
+<code>.gitignore</code></strong> so that <strong>spectastic's own ephemeral output isn't committed by accident</strong>.</p>
+<p><em>Acceptance:</em> <code>init</code> on an empty directory writes a <code>.gitignore</code> whose spectastic block
+ignores spectastic's ephemeral outputs (e.g. generated courses) but not its tracked config (the profile marker). No
+model call.</p>
+
+<h3 id="US2">US2 · Stack ignores at plan <spec-pill>P2</spec-pill></h3>
+<p>As a <strong>developer</strong>, I want <strong>the <code>plan</code> verb to append my stack's build-artifact
+ignores</strong> so that <strong>I don't hand-maintain <code>node_modules/</code>, <code>__pycache__/</code>,
+<code>target/</code>, and friends</strong>.</p>
+<p><em>Acceptance:</em> <code>plan</code> on a project of a detected ecosystem appends that ecosystem's ignore entries
+to the spectastic block, reusing 042's detection.</p>
+
+<h3 id="US3">US3 · Brownfield append, never clobber <spec-pill>P2</spec-pill></h3>
+<p>As a <strong>developer with an existing <code>.gitignore</code></strong>, I want <strong>spectastic to add only its
+missing entries under a marked block</strong> so that <strong>my own rules are never touched and re-runs don't
+churn</strong>.</p>
+<p><em>Acceptance:</em> against a hand-written <code>.gitignore</code>, every existing line is preserved and only absent
+spectastic entries are added inside the marked block; a second run changes nothing.</p>
+
+<h3>Edge cases</h3>
+<ul>
+  <li><strong>An existing spectastic block</strong> → entries are merged into it (not a second block); removed-upstream entries are not re-added.</li>
+  <li><strong>Undetectable / polyglot stack at plan</strong> → the base block stands; stack entries are skipped with a note, never guessed.</li>
+  <li><strong>Non-git project</strong> → the file is still written (it's harmless), consistent with init writing files regardless of VCS.</li>
+  <li><strong><code>--no-gitignore</code></strong> → opt out of the write entirely.</li>
+</ul>
+</section>
+
+
+<section id="requirements">
+<h2>3 · Requirements</h2>
+<p>Conformance keywords (<spec-rule>MUST</spec-rule>, <spec-rule level="should">SHOULD</spec-rule>,
+<spec-rule level="may">MAY</spec-rule>) follow RFC 2119.</p>
+
+<h3>Functional</h3>
+
+<spec-requirement id="FR-001" priority="must">
+<p><code>init</code> <spec-rule>MUST</spec-rule> write a project <code>.gitignore</code> containing spectastic's base
+ephemera entries, deterministically and with <strong>no model call</strong>.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-002" priority="must">
+<p>All spectastic-managed entries <spec-rule>MUST</spec-rule> live inside a <strong>marked block</strong>
+(sentinel-delimited) so the managed region is bounded, mergeable, and idempotent — distinct from any lines the user
+authored.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-003" priority="must">
+<p>The base block <spec-rule>MUST</spec-rule> ignore spectastic's <em>ephemeral</em> outputs (e.g. generated courses)
+and <spec-rule>MUST NOT</spec-rule> ignore its tracked config (the <code>.spectastic/profile.json</code> marker, 041).</p>
+</spec-requirement>
+
+<spec-requirement id="FR-004" priority="must">
+<p>On a project that already has a <code>.gitignore</code>, the writer <spec-rule>MUST</spec-rule> append only missing
+entries into the spectastic block and <spec-rule>MUST NOT</spec-rule> modify or reorder any line outside it — never a
+blind overwrite (parallels 041 amend).</p>
+</spec-requirement>
+
+<spec-requirement id="FR-005" priority="should">
+<p>The <code>/spectastic.plan</code> verb <spec-rule level="should">SHOULD</spec-rule> detect the project's ecosystem
+(reusing 042's detection) and append the stack's build-artifact ignore entries to the spectastic block.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-006" priority="should">
+<p>The ecosystem → ignore-entries mapping <spec-rule level="should">SHOULD</spec-rule> be data (a table alongside
+042's detection signals), so adding a stack's ignores is a data edit, not code.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-007" priority="may">
+<p><code>init</code> <spec-rule level="may">MAY</spec-rule> accept <code>--no-gitignore</code> to skip the write.</p>
+</spec-requirement>
+
+<h3>Non-functional</h3>
+
+<spec-requirement id="NFR-001" priority="must">
+<p>Writing and merging <spec-rule>MUST</spec-rule> be deterministic and filesystem-only — no network, no model — so CI
+drives it with fixtures.</p>
+</spec-requirement>
+
+<spec-requirement id="NFR-002" priority="must">
+<p>The write <spec-rule>MUST</spec-rule> be idempotent: re-running <code>init</code>/<code>plan</code> adds no duplicate
+entries and leaves an already-current block byte-unchanged.</p>
+</spec-requirement>
+
+<h3>Out of scope (deferred)</h3>
+<spec-out-of-scope>
+  <ul>
+    <li defer-to="TBD">Other bootstrap config — <code>.gitattributes</code>, <code>.editorconfig</code>. A later slice if wanted.</li>
+    <li defer-to="TBD">Recommended harness/agent config (<code>.claude/settings.json</code>, effort/subagent defaults) — a separate, contested capability (the item-2 concern from the same dogfooding pass).</li>
+    <li defer-to="never">Non-git VCS ignore files (<code>.hgignore</code>, …) — spectastic assumes git (031).</li>
+  </ul>
+</spec-out-of-scope>
+</section>
+
+
+<section id="data">
+<h2>4 · Data model</h2>
+<h3>Entities</h3>
+<dl>
+  <dt>Spectastic ignore block</dt><dd>A sentinel-delimited region of <code>.gitignore</code> (a start/end marker pair) that spectastic owns and merges into; everything outside it is the user's.</dd>
+  <dt>Base entries</dt><dd>Spectastic's stack-agnostic ephemera to ignore — known at init, excluding tracked config.</dd>
+  <dt>Stack ignore map</dt><dd>Data mapping a detected ecosystem to its build-artifact ignore entries; consumed by plan (FR-005/006).</dd>
+</dl>
+<spec-note>
+<p><strong>Invariant:</strong> spectastic only ever reads/writes <em>inside</em> its marked block; a user line outside it
+is never touched. Merges are set-union within the block (idempotent), never a rewrite of the whole file.</p>
+</spec-note>
+</section>
+
+
+<section id="success">
+<h2>5 · Success criteria</h2>
+
+<spec-requirement id="SC-001" priority="must">
+<p><code>init</code> on an empty directory produces a <code>.gitignore</code> whose spectastic block ignores the
+ephemeral outputs and leaves the profile marker trackable; <code>git check-ignore</code> confirms the ephemera are
+ignored and the marker is not. <em>(The smallest demoable base.)</em></p>
+</spec-requirement>
+
+<spec-requirement id="SC-002" priority="should">
+<p><code>plan</code> on a fixture project of a detected ecosystem appends that ecosystem's build-artifact ignores to
+the spectastic block (e.g. Node → <code>node_modules/</code>, Python → <code>__pycache__/</code>).</p>
+</spec-requirement>
+
+<spec-requirement id="SC-003" priority="must">
+<p>Against a hand-written <code>.gitignore</code>, every pre-existing line survives and only missing spectastic entries
+are added inside the block; a second run is a no-op (idempotent).</p>
+</spec-requirement>
+
+<spec-requirement id="SC-004" priority="should">
+<p>The whole path runs green in CI with no model invoked.</p>
+</spec-requirement>
+</section>
+
+
+<section id="assumptions">
+<h2>6 · Assumptions</h2>
+<spec-assumption>
+<p>The two-phase split (base at init, stack at plan) is the right shape, matching 041→042; the base is knowable without the stack, the stack only at plan time.</p>
+</spec-assumption>
+<spec-assumption>
+<p>042's detection (config-signal table) is a good enough ecosystem oracle to key stack ignores off, as it is for enforcement.</p>
+</spec-assumption>
+</section>
+
+
+<section id="questions">
+<h2>7 · Open questions</h2>
+<spec-questions>
+<p>None outstanding — smallest demoable, scope (ignore files only), stack-resolution home (plan-time), and the
+brownfield strategy (append-only, marked block) were anchored in the interview.</p>
+</spec-questions>
+</section>
+
+
+<section id="conformance">
+<h2>8 · Conformance index</h2>
+<p>Auto-built from every <code>&lt;spec-requirement&gt;</code> in this document.</p>
+<spec-conformance></spec-conformance>
+</section>
+
+
+<section id="changelog">
+<h2>9 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-07-10">10 Jul 2026</time><span>Initial draft. From meta-spec triage <a href="../000-spectastic/triage-log.html#T-015">T-015</a> (init scaffolds no <code>.gitignore</code>). Two-phase (base at init + stack at plan) mirroring 041→042; scope held to ignore files; brownfield append-only under a marked block. Four decisions anchored via interview.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  043-init-project-config · Init project config — ignore files · authored 10 Jul 2026
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>
