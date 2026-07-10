@@ -59,7 +59,7 @@ export function registerPropose(program: Command): void {
           process.exit(2);
         }
 
-        const ai = await createAIProvider();
+        const ai = await createAIProvider({ verb: 'propose' });
         const specPath = path.resolve(process.cwd(), 'specs', specId, 'spec.html');
         const specHtml = await fs.readFile(specPath, 'utf8');
 

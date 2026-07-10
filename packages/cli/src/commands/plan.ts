@@ -71,7 +71,7 @@ export function registerPlan(program: Command): void {
 
       // Construct AI provider only after the gate decides to proceed — keeps the gate's
       // informative refuse/warn message reachable when ANTHROPIC_API_KEY is missing.
-      const ai = await createAIProvider();
+      const ai = await createAIProvider({ verb: 'plan' });
 
       const result = await planCommand(
         {

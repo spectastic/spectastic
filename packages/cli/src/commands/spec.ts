@@ -98,7 +98,7 @@ export function registerSpec(program: Command): void {
 
       // Construct AI provider only after the gate decides to proceed — keeps the gate's
       // informative refuse/warn message reachable when ANTHROPIC_API_KEY is missing.
-      const ai = await createAIProvider();
+      const ai = await createAIProvider({ verb: 'spec' });
 
       const specIdInput = opts.reentry ?? allocatedId;
       const input = {
@@ -191,7 +191,7 @@ async function handleSplitMode(
     process.exit(2);
   }
 
-  const ai = await createAIProvider();
+  const ai = await createAIProvider({ verb: 'spec' });
   const result = await specCommand(
     { description: splitSpecId, specId: splitSpecId, existingSpec: parentHtml, split: true },
     { cwd, fs: nodeFs, ai },

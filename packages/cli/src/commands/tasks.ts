@@ -75,7 +75,7 @@ export function registerTasks(program: Command): void {
       const classify = await readArchivedClassify(nodeFs, process.cwd(), specId);
       const restore = await resolveRestoreMode(specId, classify, opts.restore === true);
 
-      const ai = await createAIProvider();
+      const ai = await createAIProvider({ verb: 'tasks' });
       const ctx = { cwd: process.cwd(), fs: nodeFs, ai };
 
       const result = await tasksCommand(

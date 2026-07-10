@@ -42,7 +42,20 @@ program
   .description(
     'Single-file HTML spec tooling: bootstrap a project with `init`; validate spec-html artifacts with `validate`; triage defects into structured cards with `triage`.',
   )
-  .version(pkg.version);
+  .version(pkg.version)
+  // Per-run model override (spec 044-verb-model-policy, Tier D / FR-006). A legal
+  // tier alias the AI-coupled verbs resolve to; the most-specific per-run override,
+  // above SPECTASTIC_MODEL, project config, and the per-verb map.
+  .option('--model <tier>', 'model tier for AI verbs (opus | sonnet | haiku | inherit)');
+
+// The flag is the top per-run override; surface it to createAIProvider via the
+// env it already reads, so no thread-through every command action is needed.
+// A flag beats a pre-existing SPECTASTIC_MODEL (both are per-run, the flag is
+// the more explicit one).
+program.hook('preAction', (thisCommand) => {
+  const model = thisCommand.opts()['model'] as string | undefined;
+  if (model) process.env['SPECTASTIC_MODEL'] = model;
+});
 
 registerInit(program);
 registerValidate(program);

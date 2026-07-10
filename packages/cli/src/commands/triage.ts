@@ -50,7 +50,7 @@ export function registerTriage(program: Command): void {
           process.exit(2);
         }
 
-        const ai = await createAIProvider();
+        const ai = await createAIProvider({ verb: 'triage' });
         const ctx = { cwd: process.cwd(), fs: nodeFs, ai };
 
         const concurrency = opts.concurrency === undefined ? undefined : Number(opts.concurrency);

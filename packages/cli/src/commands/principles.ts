@@ -54,7 +54,7 @@ export function registerPrinciples(program: Command): void {
           process.stderr.write(note);
         }
 
-        const ai = await createAIProvider();
+        const ai = await createAIProvider({ verb: 'principles' });
         const ctx = { cwd: process.cwd(), fs: nodeFs, ai };
 
         const input = {

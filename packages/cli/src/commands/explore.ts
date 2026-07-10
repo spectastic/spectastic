@@ -149,7 +149,7 @@ async function runGraduate(id: string, classify: string | undefined): Promise<vo
       import('@spectastic/core/providers/node-fs'),
       import('../ai-factory.js'),
     ]);
-    const ai = await createAIProvider();
+    const ai = await createAIProvider({ verb: 'explore' });
     const extract = await graduateExtract({ specId: id, classification: classify, ledger }, { cwd, ai });
     const date = new Date().toISOString().slice(0, 10);
     const result = await graduateTransaction(

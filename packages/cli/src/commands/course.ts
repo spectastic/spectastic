@@ -45,7 +45,7 @@ export function registerCourse(program: Command): void {
       }
 
       const cwd = process.cwd();
-      const ai = await createAIProvider();
+      const ai = await createAIProvider({ verb: 'course' });
       const ctx = { cwd, fs: nodeFs, ai };
 
       let result;
