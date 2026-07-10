@@ -135,4 +135,18 @@ export function detectTooling(cwd: string): Set<EnforcementCategory> {
   return covered;
 }
 
+/**
+ * The set of ecosystems present in the project (spec 043) — any ecosystem with
+ * a matching signal. Reuses the same signal table as detectTooling so stack
+ * ignore-resolution and enforcement detection can't drift.
+ */
+export function detectEcosystems(cwd: string): Set<string> {
+  const found = new Set<string>();
+  for (const sig of SIGNALS) {
+    if (found.has(sig.ecosystem)) continue;
+    if (signalMatches(cwd, sig)) found.add(sig.ecosystem);
+  }
+  return found;
+}
+
 export { ALL_CATEGORIES };

@@ -106,7 +106,9 @@ async function ensureGitignore(
   try {
     content = await fsp.readFile(path, 'utf8');
   } catch {
-    content = '# spectastic courses are ephemeral by default — regenerate, don\'t track.\n*\n!.gitignore\n';
+    // Ephemeral by default, EXCEPT the tracked profile marker (041) — otherwise
+    // this ignore-all would hide `.spectastic/profile.json` (spec 043 T-310).
+    content = '# spectastic courses are ephemeral by default — regenerate, don\'t track.\n*\n!.gitignore\n!profile.json\n';
   }
   if (keep) {
     const marker = `!courses/${slug}/`;

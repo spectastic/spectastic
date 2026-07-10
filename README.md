@@ -129,6 +129,18 @@ spectastic enforce            # Verified/Enterprise with a gap → exit 1, names
 
 It's deterministic and filesystem-only, so it drops straight into CI or a pre-commit hook (`spectastic enforce || exit 1`). Detection reports *gaps* — it never dictates a tool you already chose, and a brownfield `init --profile` tailors the generated `AGENTS.md` enforcement section to only what's missing (`--replace-tools` to override). This is [spec 042](./specs/042-profile-enforcement/spec.html), the enforcement half of profiles.
 
+### Ignore files — `init` + `spectastic gitignore`
+
+A bootstrapped project shouldn't commit build output or tool noise. `init` writes a base `.gitignore` covering spectastic's own ephemera (generated courses; *not* the tracked profile marker), and — once the stack is known at plan time — `spectastic gitignore --stack` appends the ecosystem's build-artifact ignores:
+
+```sh
+spectastic init                 # writes the base .gitignore block
+spectastic gitignore --stack    # detects the stack, adds node_modules/, __pycache__/, target/, …
+spectastic init --no-gitignore  # opt out
+```
+
+Every spectastic entry lives inside a marked block, so a brownfield `.gitignore` is **appended to, never clobbered** — your own rules outside the block are untouched, and re-runs are idempotent. This is [spec 043](./specs/043-init-project-config/spec.html), mirroring the same init-writes-base / plan-resolves-stack split as profiles→enforcement.
+
 ### Change proposals (`/spectastic.propose` + `/spectastic.apply`)
 
 Spec evolution happens via PR-shaped proposal artifacts. Each change is a folder

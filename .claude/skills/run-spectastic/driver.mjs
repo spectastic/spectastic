@@ -160,6 +160,21 @@ let initDir;
   check('enforce: Verified fully tooled -> exit 0', ok.code === 0 && /all required/.test(ok.stdout), `code=${ok.code}`);
 }
 
+// --- 3d. gitignore: base at init + --stack (spec 043) ----------------------
+{
+  const dir = mkTmp('spectastic-gi-');
+  cli(['init'], { cwd: dir });
+  const gi = join(dir, '.gitignore');
+  const base = existsSync(gi) && /\.spectastic\/courses\//.test(readFileSync(gi, 'utf8'));
+  check('init -> writes base .gitignore (spectastic ephemera)', base);
+
+  writeFileSync(join(dir, 'package.json'), '{}');
+  writeFileSync(join(dir, 'tsconfig.json'), '{}');
+  const r = cli(['gitignore', '--stack'], { cwd: dir });
+  const stacked = r.code === 0 && /node_modules\//.test(readFileSync(gi, 'utf8'));
+  check('gitignore --stack -> appends detected stack ignores', stacked, `code=${r.code}`);
+}
+
 // --- 4. AI verb via the stub provider (no real LLM) ------------------------
 {
   // principles reads its whole conversation from the stub fixture; asserts a

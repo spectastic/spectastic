@@ -28,6 +28,8 @@ import {
 } from './init/compose.js';
 import { readMarker, writeMarker } from './init/marker.js';
 import { detectTooling } from './init/detect.js';
+import { applyGitignore } from './gitignore/apply.js';
+import { BASE_ENTRIES } from './gitignore/entries.js';
 import type { FileWriteDecision } from './init/types.js';
 
 interface InitOptions {
@@ -39,6 +41,7 @@ interface InitOptions {
   uninstall?: boolean;
   profile?: string;
   replaceTools?: boolean;
+  gitignore?: boolean;
 }
 
 const MONTHS = [
@@ -118,6 +121,7 @@ export function registerInit(program: Command): void {
     .option('--uninstall', 'remove what init --tools installed (reversible)')
     .option('--profile <name>', 'seed principles + AGENTS.md from a profile: lean | standard | verified | enterprise (spec 041)')
     .option('--replace-tools', 'with --profile: ignore existing toolchain when tailoring the AGENTS.md enforcement floor (spec 042 FR-006)')
+    .option('--no-gitignore', 'skip writing the base .gitignore block (spec 043)')
     .action(async (options: InitOptions) => {
       if (options.tools || options.hooksOnly || options.commandsOnly || options.uninstall) {
         await runToolsMode(options);
@@ -166,6 +170,13 @@ export function registerInit(program: Command): void {
       if (resolvedProfile) {
         await writeMarker(cwd, resolvedProfile.name);
         process.stdout.write(`✓ profile: ${resolvedProfile.name}\n`);
+      }
+      // Spec 043: write the base .gitignore block (spectastic ephemera). Stack
+      // entries come later via `spectastic gitignore --stack` at plan time.
+      // --no-gitignore (commander sets options.gitignore=false) opts out.
+      if (options.gitignore !== false) {
+        const wrote = await applyGitignore(cwd, BASE_ENTRIES);
+        if (wrote) process.stdout.write('✓ wrote .gitignore (spectastic ephemera)\n');
       }
       // Spec 031 T-001: make the guarantee layer discoverable. Interactive init
       // offers to install it (auto-commits + the pre-commit gate); non-interactive
