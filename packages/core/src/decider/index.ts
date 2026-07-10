@@ -19,3 +19,4 @@ export { LENSES, runCritic, arbitrateCategorical, median, parseFindings } from '
 export { resolveEffort } from './auto.js';
 export type { RequestedEffort, EffortSignal, ResolvedEffort } from './auto.js';
 export { decideChoice } from './choice.js';
+export { DECISION_TAXONOMY, answerDecisions } from './taxonomy.js';

@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Verb decision taxonomy · Plan</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Implementation plan · 039-verb-decision-taxonomy</p>
+  <h1>Verb decision taxonomy</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">How we will build it.</p>
+
+  <spec-meta>
+    <b>Status</b>     <span><spec-status value="accepted">Accepted</spec-status></span>
+    <b>Spec</b>       <span><a href="./spec.html">039-verb-decision-taxonomy</a></span>
+    <b>Owner</b>      <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Branch</b>     <span><code>039-verb-decision-taxonomy</code></span>
+    <b>Created</b>    <span><time datetime="2026-07-09">09 Jul 2026</time></span>
+    <b>Read time</b>  <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-tldr>
+    <p>A single <code>packages/core/src/decider/taxonomy.ts</code>: a frozen <code>DECISION_TAXONOMY</code> registry
+    (plan → test-style + risk-tolerance; tasks → execution-strategy, labels mirrored from the command markdown) and an
+    <code>answerDecisions(verb, cfg, ai)</code> that looks up the verb and delegates to the landed
+    <code>decideChoice</code>. No generation kernel is touched. Biggest risk: registry drift from the markdown —
+    mitigated by a parity test asserting the exact labels.</p>
+  </spec-tldr>
+</header>
+
+
+<section id="principles-check">
+<h2>1 · Principles check</h2>
+<p>Verify against <a href="../../principles.html">v1.3.0</a>.</p>
+<table>
+  <thead><tr><th>Principle</th><th>Compliance</th><th>Notes</th></tr></thead>
+  <tbody>
+    <tr><td>P-1 · Source order is reading order</td><td><spec-pill>OK</spec-pill></td><td>n-a — code only.</td></tr>
+    <tr><td>P-2 · Semantic tags over class soup</td><td><spec-pill>OK</spec-pill></td><td>n-a.</td></tr>
+    <tr><td>P-3 · IDs are contracts</td><td><spec-pill>OK</spec-pill></td><td>Registry keys = verb names; question headers stable.</td></tr>
+    <tr><td>P-4 · Progressive enhancement</td><td><spec-pill>OK</spec-pill></td><td>n-a.</td></tr>
+    <tr><td>P-5 · Calm density</td><td><spec-pill>OK</spec-pill></td><td>n-a.</td></tr>
+    <tr><td>P-6 · Draft is loose, ratified is locked</td><td><spec-pill>OK</spec-pill></td><td>Additive; no ratified artifact mutated.</td></tr>
+    <tr><td>P-7 · Done means verified</td><td><spec-pill>OK</spec-pill></td><td>Role dispatch + parity covered by tests against the Decider stub.</td></tr>
+    <tr><td>P-8 · Guarantees live in the kernel or CI</td><td><spec-pill>OK</spec-pill></td><td>The taxonomy is now code (a registry), not markdown-only prose — the whole point.</td></tr>
+  </tbody>
+</table>
+</section>
+
+
+<section id="technical-context">
+<h2>2 · Technical context</h2>
+<dl>
+  <dt>Language(s)</dt>      <dd>TypeScript (ESM); <code>@spectastic/core</code>.</dd>
+  <dt>Frameworks</dt>       <dd>None new — reuses <code>decideChoice</code> + <code>Question</code>/<code>DeciderConfig</code>.</dd>
+  <dt>Storage</dt>          <dd>None — a frozen in-code constant.</dd>
+  <dt>Testing</dt>          <dd>vitest, TDD; the Decider stub (<code>StubAIProvider</code>) for role dispatch.</dd>
+  <dt>Perf targets</dt>     <dd>None — correctness only.</dd>
+  <dt>Constraints</dt>      <dd>Change no existing verb kernel (<a href="./spec.html#NFR-001">NFR-001</a>).</dd>
+</dl>
+</section>
+
+
+<section id="grounding">
+<h2>3 · Grounding &amp; evidence</h2>
+<p>Facts this plan rests on (<code>REQ-LIFECYCLE-006</code>).</p>
+<table class="evidence">
+  <thead><tr><th>Claim</th><th>Source</th><th>Status</th><th>Finding</th></tr></thead>
+  <tbody>
+    <tr><td><code>decideChoice(cfg, questions, ai)</code> answers a Question[] by role, keyed by header</td>
+        <td><code>core/src/decider/choice.ts:22</code></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td>human → <code>ai.ask</code>; agent → 1 subagent; panel → N vote; out-of-range → first option. Exactly the answerer needed.</td></tr>
+    <tr><td>The plan decision-phase options: test-style + risk-tolerance</td>
+        <td><code>commands/spectastic.plan.md</code> (decision phase)</td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td>Read this turn: "TDD / integration-first / smoke-only"; "Low — proven path / Medium — some unknowns / High — experimental".</td></tr>
+    <tr><td>The tasks decision-phase option: execution-strategy</td>
+        <td><code>commands/spectastic.tasks.md</code> step 6</td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td>Read this turn: "MVP-first / Incremental / Parallel teams".</td></tr>
+    <tr><td>spec's decisions are context-dependent (not liftable to a fixed set)</td>
+        <td><code>commands/spectastic.spec.md</code> (smallest-demoable, per-story priorities)</td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td>The framings/priorities are generated from the artifact — no fixed option list; correctly excluded (FR-004).</td></tr>
+  </tbody>
+</table>
+</section>
+
+
+<section id="approach">
+<h2>4 · Approach</h2>
+<p>One new file, <code>packages/core/src/decider/taxonomy.ts</code>, exported from the decider index. It declares a
+<code>DECISION_TAXONOMY: Readonly&lt;Record&lt;string, Question[]&gt;&gt;</code> with entries for <code>plan</code> and
+<code>tasks</code> only, each <code>Question</code> mirroring the command markdown's header + option labels +
+descriptions. <code>answerDecisions(verb, cfg, ai)</code> looks up the verb; if absent it returns <code>{}</code>
+without calling the Decider; otherwise it returns <code>decideChoice(cfg, DECISION_TAXONOMY[verb], ai)</code>. No
+generation kernel imports this — 037 will.</p>
+</section>
+
+
+<section id="alternatives">
+<h2>5 · Alternatives considered</h2>
+<spec-matrix>
+<table>
+  <thead><tr><th>Option</th><th>Faithfulness</th><th>Coupling</th><th>Simplicity</th><th class="score">Total</th></tr></thead>
+  <tbody>
+    <tr data-winner><td>Central registry + answerDecisions (this)</td><td>5</td><td>5</td><td>5</td><td class="score">15</td></tr>
+    <tr><td>Per-verb kernel gains its own decision method</td><td>4</td><td>2</td><td>3</td><td class="score">9</td></tr>
+    <tr><td>Generate questions from the artifact at run time</td><td>3</td><td>3</td><td>2</td><td class="score">8</td></tr>
+  </tbody>
+</table>
+</spec-matrix>
+<p>A central registry keeps the lift additive (no kernel touched, NFR-001) and reviewable in one place; embedding a
+method per kernel couples generation to the Decider prematurely; run-time generation is the deferred
+context-dependent case, not the bounded one.</p>
+</section>
+
+
+<section id="decisions">
+<h2>6 · Decisions</h2>
+
+<spec-decision id="D-001" grounding="verified">
+  <h4>D-001 · A central frozen registry, mirrored from the command markdown</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>The option copy exists in <code>commands/spectastic.{plan,tasks}.md</code> (read this turn, §3).</dd>
+    <dt>Decision</dt>     <dd><code>DECISION_TAXONOMY</code> holds one <code>Question[]</code> per liftable verb; labels/descriptions mirror the markdown verbatim. A parity test (SC-003) guards drift.</dd>
+    <dt>Consequences</dt> <dd>+ one reviewable source; + additive. − two copies of the option copy (markdown + code) — the parity test is the reconciler.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-002" grounding="verified">
+  <h4>D-002 · answerDecisions delegates wholesale to decideChoice</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd><code>decideChoice</code> (<code>choice.ts:22</code>) already dispatches by role, sizes the panel by effort, and defaults out-of-range labels.</dd>
+    <dt>Decision</dt>     <dd><code>answerDecisions</code> is a thin lookup + <code>decideChoice</code> call; it re-implements no dispatch (FR-003). Absent verb → <code>{}</code>, no Decider call.</dd>
+    <dt>Consequences</dt> <dd>+ inherits 036's guardrails + tests; − none of note.</dd>
+  </dl>
+</spec-decision>
+</section>
+
+
+<section id="project-structure">
+<h2>7 · Project structure</h2>
+<pre><code>packages/core/src/decider/
+  taxonomy.ts          # DECISION_TAXONOMY + answerDecisions
+  index.ts             # + export taxonomy
+packages/core/test/
+  taxonomy.test.ts     # role dispatch (SC-001/002), parity (SC-003), empty (SC-004)
+</code></pre>
+</section>
+
+
+<section id="risks">
+<h2>8 · Risks &amp; mitigations</h2>
+<table>
+  <thead><tr><th>Risk</th><th>Likelihood</th><th>Impact</th><th>Mitigation</th></tr></thead>
+  <tbody>
+    <tr><td>Registry drifts from the command markdown</td><td>M</td><td>M</td><td>Parity test (SC-003) asserts the exact labels; the markdown is the source of truth the test pins to.</td></tr>
+    <tr><td>Over-lifting a context-dependent decision</td><td>L</td><td>M</td><td>FR-004 forbids it; spec has no entry, and the empty-return test (SC-004) proves nothing is invented.</td></tr>
+  </tbody>
+</table>
+</section>
+
+
+<section id="complexity">
+<h2>9 · Complexity tracking</h2>
+<p>No complexity introduced — one constant and one three-line function.</p>
+<spec-assumption>
+<p>The option descriptions may be abbreviated from the markdown's prose for the <code>Question.description</code>
+field; the <em>labels</em> (what <code>decideChoice</code> returns) are verbatim, which is what SC-003 pins.</p>
+</spec-assumption>
+</section>
+
+
+<section id="questions">
+<h2>10 · Open questions</h2>
+<spec-questions>
+<p>None outstanding — grounded against the command markdown and the landed <code>decideChoice</code>; the grounding
+gate is clear (all facts verified this turn).</p>
+</spec-questions>
+</section>
+
+
+<section id="changelog">
+<h2>11 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-07-09">09 Jul 2026</time><span>Initial plan. Two decisions, all grounding verified (option copy read from the command markdown; <code>decideChoice</code> signature confirmed). Grounding gate clear.</span></li>
+<li><time datetime="2026-07-09">09 Jul 2026</time><span>Status → Accepted alongside the bundle — both decisions implemented as planned.</span></li></ol>
+</spec-changelog>
+</section>
+
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  Plan for 039-verb-decision-taxonomy · authored 09 Jul 2026
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>

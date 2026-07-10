@@ -1,0 +1,264 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Verb decision taxonomy · Specification</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Specification · 039-verb-decision-taxonomy</p>
+  <h1>Verb decision taxonomy</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    Lift each generation verb's bounded decision-phase questions into a code registry the Decider can answer — so an
+    unattended run decides them by role, not a human by hand.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>      <span><spec-status value="accepted">Accepted</spec-status></span>
+    <b>Spec ID</b>     <span>039-verb-decision-taxonomy</span>
+    <b>Owner</b>       <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Reviewers</b>   <span>—</span>
+    <b>Created</b>     <span><time datetime="2026-07-09">09 Jul 2026</time></span>
+    <b>Principles</b><span><a href="../../principles.html">v1.3.0</a></span>
+    <b>Smallest demoable</b><span><code>answerDecisions('plan', {role:agent}, ai)</code> returns a chosen test-style + risk-tolerance from the declared options via the Decider.</span>
+    <b>Read time</b>   <span data-reading-time></span>
+  </spec-meta>
+
+  <!-- Live size gauge — green at <80%, amber 80-100%, red over. Words row counts authored prose (excludes the conformance index) per REQ-FORMAT-004. -->
+  <spec-budget words="1500" reqs="20" minutes="12"></spec-budget>
+
+  <spec-tldr>
+    <p>Grounding for <a href="../037-hands-off-pipeline/spec.html">037</a> found each verb's decision-phase questions
+    live only in the slash-command markdown — unreachable by an injected Decider. This spec lifts the
+    <strong>verb-generic, bounded</strong> ones into a code <strong>registry</strong>: plan's <em>test-style</em> and
+    <em>risk-tolerance</em>, tasks' <em>execution-strategy</em>. An <code>answerDecisions(verb, cfg, ai)</code> helper
+    answers a verb's questions through <code>decideChoice</code> (036), honouring the configured role (human / agent /
+    panel). Context-dependent decisions (smallest-demoable framings, per-story priorities) are <em>not</em> liftable —
+    they're generated from the artifact and stay the adaptive interview (deferred). This is the FR-005 primitive 037
+    consumes; it changes no existing verb's behaviour.</p>
+  </spec-tldr>
+
+  <dl class="invest">
+    <dt><span class="letter">I</span> Independent</dt> <dd>Additive over the landed Decider (<a href="../036-decider-choice/spec.html">036</a> <code>decideChoice</code>); touches no generation kernel.</dd>
+    <dt><span class="letter">N</span> Negotiable</dt>  <dd>Contracts the registry's shape + the answerer's role-honouring; leaves the exact option copy to the source markdown it mirrors.</dd>
+    <dt><span class="letter">V</span> Valuable</dt>    <dd>Unlocks <a href="#SC-001">SC-001</a> — an unattended run can decide the generation verbs' bounded choices by the configured role.</dd>
+    <dt><span class="letter">E</span> Estimable</dt>   <dd>A registry + one helper, both deterministic against the Decider stub; the option set is a small, known list.</dd>
+    <dt><span class="letter">S</span> Small</dt>       <dd>Only the verb-generic bounded decisions; context-dependent interviews are deferred (§3).</dd>
+    <dt><span class="letter">T</span> Testable</dt>    <dd>Role dispatch, returned choices, and option-parity with the source markdown are all observable against the stub.</dd>
+  </dl>
+
+  <spec-audience-map>
+    <dl>
+      <dt>Exec / PM</dt>   <dd>§<a href="#context">Context</a>, §<a href="#scenarios">User scenarios</a>, §<a href="#success">Success criteria</a>.</dd>
+      <dt>Reviewer</dt>    <dd>§<a href="#requirements">Requirements</a>, §<a href="#assumptions">Assumptions</a>, §<a href="#questions">Open questions</a>.</dd>
+      <dt>Implementer</dt> <dd>§<a href="#requirements">Requirements</a>, §<a href="#data">Data model</a>, §<a href="#conformance">Conformance index</a>.</dd>
+    </dl>
+  </spec-audience-map>
+</header>
+
+
+<section id="context">
+<h2>1 · Context</h2>
+<p>The grounding pass for <a href="../037-hands-off-pipeline/spec.html">037</a> established that only three decisions
+are reachable in kernel code (propose's adversarial <code>decide</code>, the slicer's <code>confirmRice</code>,
+triage's <code>escalateLayer</code>) — all already Decider-answerable. Every other verb decision — plan's test-style,
+tasks' execution strategy — lives only in the slash-command markdown's <code>AskUserQuestion</code> passes, which a
+CLI/Workflow orchestrator cannot inject a Decider into. For a hands-off run to decide them by role, the bounded ones
+must exist in code.</p>
+<p>This spec is for the orchestrator (037) that needs to answer those decisions unattended, and the maintainer who
+wants the code registry to stay faithful to the human interview it mirrors.</p>
+</section>
+
+
+<section id="scenarios">
+<h2>2 · User scenarios &amp; testing</h2>
+
+<p>Each story <strong>MUST</strong> be independently testable: US1 alone is a viable MVP.</p>
+
+<h3 id="US1">US1 · The generation verbs' bounded decisions live in code <spec-pill>P1</spec-pill></h3>
+<p>As an <strong>orchestrator author</strong>, I want <strong>each generation verb's bounded decision-phase questions
+as a code registry answerable by the Decider</strong> so that <strong>an unattended run decides them by the configured
+role instead of prompting a person</strong>.</p>
+<p><em>Acceptance:</em> <code>answerDecisions('plan', cfg, ai)</code> answers plan's test-style + risk-tolerance and
+<code>answerDecisions('tasks', cfg, ai)</code> answers tasks' execution-strategy, each returning a chosen option label
+per question via <code>decideChoice</code>.</p>
+
+<h3 id="US2">US2 · The answerer honours the configured role <spec-pill>P1</spec-pill></h3>
+<p>As a <strong>maintainer</strong>, I want <strong>the answerer to route by the resolved Decider role</strong> so that
+<strong>human is the default (parity with the slash-command interview) and agent/panel answer unattended</strong>.</p>
+<p><em>Acceptance:</em> at role <code>human</code> the answerer calls <code>ai.ask</code> with the verb's questions;
+at <code>agent</code>/<code>panel</code> it convenes the Decider — the same dispatch <code>decideChoice</code> already
+guarantees.</p>
+
+<h3>Edge cases</h3>
+<ul>
+  <li>A verb with no liftable bounded decisions (e.g. spec — its decisions are context-dependent): the registry has no entry, and <code>answerDecisions</code> returns an empty result rather than inventing questions.</li>
+  <li>An unknown verb name: the answerer returns empty (no throw) — the orchestrator simply has nothing to inject for it.</li>
+  <li>The Decider returns an out-of-range label: <code>decideChoice</code> already defaults to the first declared option (036 NFR-001) — inherited, not re-specified here.</li>
+</ul>
+</section>
+
+
+<section id="requirements">
+<h2>3 · Requirements</h2>
+
+<p>Conformance keywords (<spec-rule>MUST</spec-rule>, <spec-rule level="should">SHOULD</spec-rule>,
+<spec-rule level="may">MAY</spec-rule>) follow RFC 2119.</p>
+
+<h3>Functional</h3>
+
+<spec-requirement id="FR-001" priority="must">
+<p>A <code>DECISION_TAXONOMY</code> registry <spec-rule>MUST</spec-rule> map each generation verb to its bounded,
+verb-generic decision-phase questions as a <code>Question[]</code>: <code>plan</code> → <em>test-style</em>
+(TDD / integration-first / smoke-only) + <em>risk-tolerance</em> (Low / Medium / High); <code>tasks</code> →
+<em>execution-strategy</em> (MVP-first / Incremental / Parallel).</p>
+<details><summary>Rationale</summary><p>These are the decisions a verb's slash-command decision phase asks that are the same regardless of the specific artifact — so they can be a fixed, reviewable code registry. The option copy mirrors the command markdown (FR-004).</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-002" priority="must">
+<p><code>answerDecisions(verb, cfg, ai)</code> <spec-rule>MUST</spec-rule> answer that verb's registry questions by
+delegating to <code>decideChoice(cfg, questions, ai)</code> (036), returning the chosen option label per question keyed
+by its header.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-003" priority="must">
+<p><code>answerDecisions</code> <spec-rule>MUST</spec-rule> honour the resolved Decider role — <code>human</code> routes
+to <code>ai.ask</code>, <code>agent</code>/<code>panel</code> convene the Decider — inheriting
+<code>decideChoice</code>'s dispatch and guardrails rather than re-implementing them.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-004" priority="must">
+<p>The registry's questions and option labels <spec-rule>MUST</spec-rule> mirror the corresponding slash-command
+decision-phase options; a verb whose decisions are <strong>context-dependent</strong> (spec's smallest-demoable
+framings, per-story priorities) <spec-rule>MUST NOT</spec-rule> be given a fixed registry entry.</p>
+<details><summary>Rationale</summary><p>Faithfulness to the human interview (the registry is not a new taxonomy, it's the same one in code); and honesty about what is liftable — a context-dependent decision has no fixed option set.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-005" priority="should">
+<p><code>answerDecisions</code> <spec-rule>SHOULD</spec-rule> return an empty result for a verb with no registry entry
+(including an unknown verb), never throwing — the orchestrator simply injects nothing for it.</p>
+</spec-requirement>
+
+<h3>Non-functional</h3>
+
+<spec-requirement id="NFR-001" priority="must">
+<p>This spec <spec-rule>MUST NOT</spec-rule> change any existing verb kernel's behaviour: the registry + answerer are
+additive; wiring the answers into a verb's generation is <a href="../037-hands-off-pipeline/spec.html">037</a>'s
+integration, not this slice's.</p>
+</spec-requirement>
+
+<h3>Out of scope (deferred to other slices)</h3>
+<spec-out-of-scope>
+  <ul>
+    <li defer-to="TBD-richer-run-interview">Context-dependent decisions (smallest-demoable framings, per-story priorities, quantified NFR targets) — generated from the artifact, they stay the adaptive interview.</li>
+    <li defer-to="037-hands-off-pipeline">Threading the answered decisions into each verb's generation prompt — the orchestrator that consumes this registry owns that.</li>
+    <li defer-to="never">Re-implementing role dispatch or panel voting — inherited wholesale from <a href="../036-decider-choice/spec.html">036</a> <code>decideChoice</code>.</li>
+  </ul>
+</spec-out-of-scope>
+</section>
+
+
+<section id="data">
+<h2>4 · Data model</h2>
+
+<p>One registry constant and one helper; both reuse the landed <code>Question</code> / <code>DeciderConfig</code>
+types.</p>
+
+<h3>Entities</h3>
+<dl>
+  <dt>DECISION_TAXONOMY</dt><dd><code>Record&lt;VerbName, Question[]&gt;</code> — the bounded, verb-generic decision-phase questions per generation verb (only the liftable ones have an entry).</dd>
+  <dt>answerDecisions</dt><dd><code>(verb: string, cfg: DeciderConfig, ai: AIProvider) =&gt; Promise&lt;Record&lt;string,string&gt;&gt;</code> — the registry lookup + <code>decideChoice</code> call; empty for an absent verb.</dd>
+</dl>
+
+<spec-note>
+<p>Invariant: the registry holds exactly the decisions that are the same across artifacts. A decision whose options
+depend on the artifact is definitionally not in the registry (<a href="#FR-004">FR-004</a>).</p>
+</spec-note>
+</section>
+
+
+<section id="success">
+<h2>5 · Success criteria</h2>
+
+<p>Technology-agnostic, measurable outcomes.</p>
+
+<spec-requirement id="SC-001" priority="must">
+<p>With role <code>agent</code>, <code>answerDecisions('plan', cfg, ai)</code> returns a chosen <em>test-style</em> and
+<em>risk-tolerance</em> — each a declared option label — via one subagent per question, and
+<code>answerDecisions('tasks', …)</code> returns a chosen <em>execution-strategy</em>; observable by the returned map
+and the subagent invocation count.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-002" priority="must">
+<p>At role <code>human</code>, <code>answerDecisions</code> calls <code>ai.ask</code> with the verb's registry questions
+and returns its answer — parity with the slash-command interview shape; observable via a stub recording the
+<code>ask</code> call.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-003" priority="must">
+<p>The registry's question headers and option labels match the corresponding slash-command decision-phase options
+exactly — observable by asserting the declared labels (no drift from the source markdown).</p>
+</spec-requirement>
+
+<spec-requirement id="SC-004" priority="should">
+<p><code>answerDecisions</code> on a verb with no entry (e.g. <code>spec</code> or an unknown name) returns an empty map
+and makes no Decider call — observable via the stub.</p>
+</spec-requirement>
+</section>
+
+
+<section id="assumptions">
+<h2>6 · Assumptions</h2>
+
+<spec-assumption>
+<p><code>decideChoice</code> (036) is a sufficient answerer for a batch of bounded <code>Question</code>s — verified
+during 037's grounding (it dispatches by role, sizes the panel by effort, and defaults out-of-range labels).</p>
+</spec-assumption>
+
+<spec-assumption>
+<p>The three verb-generic decisions named (plan test-style + risk-tolerance, tasks execution-strategy) are the
+complete liftable set today; a future verb-generic decision is an additive registry entry, not a reshape.</p>
+</spec-assumption>
+</section>
+
+
+<section id="questions">
+<h2>7 · Open questions</h2>
+<spec-questions>
+<p>None outstanding — the liftable/unliftable boundary is settled (verb-generic vs context-dependent), the answerer
+reuses <code>decideChoice</code> wholesale, and the option copy is a faithful mirror of the command markdown.</p>
+</spec-questions>
+</section>
+
+
+<section id="conformance">
+<h2>8 · Conformance index</h2>
+<p>Auto-built from every <code>&lt;spec-requirement&gt;</code> in this document.</p>
+<spec-conformance></spec-conformance>
+</section>
+
+
+<section id="changelog">
+<h2>9 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-07-09">09 Jul 2026</time><span>Initial draft — the taxonomy-lift pre-work for 037, additive over 036 <code>decideChoice</code>. 6 requirements, 4 success criteria, zero open questions.</span></li>
+  <li><time datetime="2026-07-09">09 Jul 2026</time><span>Status → Accepted. Registry + <code>answerDecisions</code> implemented; parity pinned to the command markdown, role dispatch inherited from <code>decideChoice</code>. 505 tests green, validate 0 errors; no verb kernel touched.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  039-verb-decision-taxonomy · Verb decision taxonomy · authored 09 Jul 2026
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>
