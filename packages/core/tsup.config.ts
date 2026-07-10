@@ -41,6 +41,8 @@ export default defineConfig({
     'src/run/pipeline.ts',
     'src/run/steps.ts',
     'src/run/budget.ts',
+    'src/gitignore/apply.ts',
+    'src/gitignore/entries.ts',
   ],
   format: ['esm'],
   dts: true,

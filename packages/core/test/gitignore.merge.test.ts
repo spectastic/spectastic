@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { BLOCK_END, BLOCK_START, mergeBlock } from '../src/commands/gitignore/apply.js';
-import { stackEntries } from '../src/commands/gitignore/entries.js';
+import { BLOCK_END, BLOCK_START, mergeBlock } from '../src/gitignore/apply.js';
+import { stackEntries } from '../src/gitignore/entries.js';
 
 /** Unit tests for the sentinel-block merge (spec 043 T-101 / T-300). */
 

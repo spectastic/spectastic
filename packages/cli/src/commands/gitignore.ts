@@ -1,6 +1,6 @@
 import type { Command } from 'commander';
-import { applyGitignore } from './gitignore/apply.js';
-import { BASE_ENTRIES, stackEntries } from './gitignore/entries.js';
+import { applyGitignore } from '@spectastic/core/gitignore/apply';
+import { BASE_ENTRIES, stackEntries } from '@spectastic/core/gitignore/entries';
 import { detectEcosystems } from './init/detect.js';
 
 /**
