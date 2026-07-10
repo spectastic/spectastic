@@ -381,6 +381,38 @@
   </details>
 </spec-triage>
 
+<spec-triage id="T-011" layer="spec">
+  <header>
+    <h4>Cross-artifact anchor links escape the webview and open as external <code>vscode-resource</code> URLs</h4>
+    <span class="meta">
+      <span class="layer-pill">Spec</span>
+      <span class="regen" data-result="fail">upstream</span>
+    </span>
+  </header>
+
+  <p class="headline">Debugging a dead SC link in tasks.html opened inside the extension, root cause was a spec gap —
+  020 never specified how an intra-corpus link (<code>spec.html#SC-002</code>) resolves <em>within</em> the webview;
+  fixed by a requirement that the host intercepts same-corpus links (open the target artifact panel, scroll to the
+  anchor); regeneration fails at implementation — nothing tells the webview to intercept, so the default file+
+  resource escape recurs.</p>
+
+  <dl>
+    <dt>Expected</dt> <dd>Clicking an <code>#SC-002</code> link in the tasks panel opens the corresponding <code>spec.html</code> artifact in the extension and scrolls to the <code>SC-002</code> entry.</dd>
+    <dt>Actual</dt>   <dd>The link resolved to <code>https://file+.vscode-resource.vscode-cdn.net/…/spec.html%23SC-002</code> and launched externally (broken), because relative anchors resolve against the webview resource origin, not the corpus.</dd>
+    <dt>Diagnosis</dt><dd>020's navigation contract (cf. <a href="./spec.html#FR-003">FR-003</a>, which governs panel identity/reuse) is silent on <em>intra-corpus link interception</em> — a <code>&lt;a href="../…/spec.html#SC-002"&gt;</code> clicked inside a webview has no handler, so VS Code treats it as an external resource URI.</dd>
+    <dt>Fix</dt>      <dd><code>specs/020-vscode-extension/spec.html</code> — add a requirement (via <code>/spectastic.propose</code>) that the host intercepts same-corpus artifact links and routes them through the existing <code>open-artifact</code> path with an anchor to scroll to; then plan/tasks re-run.</dd>
+  </dl>
+
+  <details>
+    <summary>Deep dive — sibling of T-006/T-007 (also spec-level nav gaps)</summary>
+    <p>No cross-spec contract, no invariant. This joins the family of 020 navigation gaps (T-006 missing verify node,
+    T-007 panel identity) where FR-003's node/panel model predates a richer navigation need and requires a propose,
+    not a code patch. The webview needs a link router: a <code>message</code> from a clicked corpus link → host resolves
+    the artifact path + anchor → <code>open-artifact</code> reveals/paints and posts the anchor for <code>spec.js</code>
+    to scroll to. No deferred scope promoted.</p>
+  </details>
+</spec-triage>
+
 </spec-triage-log>
 </section>
 
@@ -389,6 +421,7 @@
 <h2>Change log</h2>
 <spec-changelog>
 <ol>
+  <li><time datetime="2026-07-10">10 Jul 2026</time><span>T-011 added — cross-artifact anchor links escape the webview as external <code>vscode-resource</code> URLs instead of navigating to the target artifact's anchor. <code>spec</code>, regen <code>fail</code>: 020's nav contract is silent on intra-corpus link interception; needs a <code>/spectastic.propose</code>. From dogfooding on spec-tictactoe-2.</span></li>
   <li><time datetime="2026-07-06">06 Jul 2026</time><span>T-009 + T-010 fixed — <code>open-artifact.ts</code> now shares a <code>paint()</code> that repaints a reused panel on reopen (T-009) and stamps <code>&lt;body data-doc-path&gt;</code> so the sticky header shows the real spec-relative path (T-010; <code>spec.js</code> already preferred it). 3 host unit tests added, 9/9 green.</span></li>
   <li><time datetime="2026-07-06">06 Jul 2026</time><span>T-010 added — the in-artifact sticky header reads <code>index.html</code> in the webview instead of the spec-relative path; <code>assets/spec.js</code> derives it from <code>location.pathname</code>, meaningless in a webview loaded via <code>panel.webview.html</code>. <code>implementation</code>, regen <code>pass</code>: the host must convey the artifact's real path (or spec.js prefer the <code>&lt;title&gt;</code>). Distinct from T-007 (tab title).</span></li>
   <li><time datetime="2026-07-06">06 Jul 2026</time><span>T-009 added — reclicking an already-open artifact reveals stale content; <code>openArtifact</code> reveals the existing panel without re-reading, and the watcher only refreshes the canvas graph, not artifact panels. <code>implementation</code>, regen <code>pass</code>: wire a re-read + re-render on the reveal path. Observed live during the task-row re-authoring review.</span></li>
