@@ -5,6 +5,7 @@ export function registerImplement(program: Command): void {
     .command('implement')
     .description('Drive one task (T-NNN) or inbox just-do card (I-NNN).')
     .argument('<target>', 'T-NNN, I-NNN, or spec-id')
+    .option('--drain', 'drain all unchecked tasks in <spec-id> via the coding-agent runtime (038)')
     .option('--all', 'drain mode (DEFERRED to TBD-core-implement-drain)')
     .option('--phase <id>', 'phase drain (DEFERRED)')
     .option('--parallel', 'parallel drain (DEFERRED)')
@@ -14,8 +15,20 @@ export function registerImplement(program: Command): void {
     .action(
       async (
         target: string,
-        opts: { all?: boolean; phase?: string; parallel?: boolean; yes?: boolean; commit?: boolean },
+        opts: {
+          drain?: boolean;
+          all?: boolean;
+          phase?: string;
+          parallel?: boolean;
+          yes?: boolean;
+          commit?: boolean;
+        },
       ) => {
+        if (opts.drain) {
+          await runDrain(target);
+          return;
+        }
+
         if (opts.all || opts.phase || opts.parallel) {
           process.stderr.write(
             'Drain modes (--all / --phase / --parallel) are deferred to TBD-core-implement-drain. Single-task only in v0.1.\n',
@@ -131,6 +144,47 @@ export function registerImplement(program: Command): void {
         });
       },
     );
+}
+
+/** `implement --drain <spec-id>` — the coding-agent runtime (038): drain unchecked tasks into tested code. */
+async function runDrain(specId: string): Promise<void> {
+  const [{ drainTasks }, factory, fs, path] = await Promise.all([
+    import('@spectastic/core/coding/runtime'),
+    import('../coding-factory.js'),
+    import('node:fs/promises'),
+    import('node:path'),
+  ]);
+
+  const specDir = path.resolve(process.cwd(), 'specs', specId);
+  const tasksFile = path.join(specDir, 'tasks.html');
+  let tasksHtml: string;
+  try {
+    tasksHtml = await fs.readFile(tasksFile, 'utf8');
+  } catch {
+    process.stderr.write(`implement --drain: no tasks.html at specs/${specId}/\n`);
+    process.exit(2);
+  }
+  let specHtml: string | undefined;
+  let planHtml: string | undefined;
+  try { specHtml = await fs.readFile(path.join(specDir, 'spec.html'), 'utf8'); } catch { /* optional */ }
+  try { planHtml = await fs.readFile(path.join(specDir, 'plan.html'), 'utf8'); } catch { /* optional */ }
+
+  const [coding, sandbox] = await Promise.all([factory.createCodingAgent(), factory.createSandbox()]);
+  const result = await drainTasks(
+    { tasksHtml, ...(specHtml ? { specHtml } : {}), ...(planHtml ? { planHtml } : {}) },
+    { cwd: process.cwd(), coding, sandbox, verify: factory.createVerifyRunner() },
+  );
+
+  if (result.ticked.length > 0) {
+    await fs.writeFile(tasksFile, result.tasksHtml, 'utf8');
+  }
+  process.stdout.write(
+    `Drained ${specId}: ticked ${result.ticked.length} task(s) [${result.ticked.join(', ')}]; ${result.remainingUnchecked} unchecked remaining\n`,
+  );
+  if (result.halted) {
+    process.stderr.write(`Halted on ${result.halted.taskId}: ${result.halted.reason}\n`);
+    process.exit(1);
+  }
 }
 
 async function confirmStdin(prompt: string): Promise<boolean> {
