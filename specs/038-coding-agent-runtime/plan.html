@@ -1,0 +1,305 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Coding-agent runtime · Plan</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Implementation plan · 038-coding-agent-runtime</p>
+  <h1>Coding-agent runtime</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    How we will build it.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>     <span><spec-status value="draft">Draft</spec-status></span>
+    <b>Spec</b>       <span><a href="./spec.html">038-coding-agent-runtime</a></span>
+    <b>Owner</b>      <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Branch</b>     <span><code>038-coding-agent-runtime</code></span>
+    <b>Created</b>    <span><time datetime="2026-07-09">09 Jul 2026</time></span>
+    <b>Read time</b>  <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-tldr>
+    <p>A deterministic <code>drainTasks</code> runtime in core walks the unchecked <code>&lt;spec-task&gt;</code>s,
+    hands each to an injected <code>CodingAgent</code> that works inside a throwaway git worktree, runs the task's
+    verify there, and ticks (reusing the 014 kernel) only on a pass. CI wires a script-replay stub; a thin subprocess
+    adapter over the headless <code>claude</code> CLI is the local-only real agent. Biggest risk: deriving each task's
+    verify command — mitigated by reading it from the task's declared test-file path.</p>
+  </spec-tldr>
+</header>
+
+
+<section id="principles-check">
+<h2>1 · Principles check</h2>
+<p>Verify this plan respects every principle in <a href="../../principles.html">v1.3.0</a>. Any violation requires a
+principles amendment or a logged exception.</p>
+
+<table>
+  <thead><tr><th>Principle</th><th>Compliance</th><th>Notes</th></tr></thead>
+  <tbody>
+    <tr><td>P-1 · Source order is reading order</td><td><spec-pill>OK</spec-pill></td><td>No artifact HTML changes; the runtime is code.</td></tr>
+    <tr><td>P-2 · Semantic tags over class soup</td><td><spec-pill>OK</spec-pill></td><td>n-a — no new markup.</td></tr>
+    <tr><td>P-3 · IDs are contracts</td><td><spec-pill>OK</spec-pill></td><td>The tick targets the existing <code>T-NNN</code> ids; the seam adds none.</td></tr>
+    <tr><td>P-4 · Progressive enhancement</td><td><spec-pill>OK</spec-pill></td><td>n-a — no client JS.</td></tr>
+    <tr><td>P-5 · Calm density</td><td><spec-pill>OK</spec-pill></td><td>n-a.</td></tr>
+    <tr><td>P-6 · Draft is loose, ratified is locked</td><td><spec-pill>OK</spec-pill></td><td>The drain resumes in-place on the Draft path (<a href="./spec.html#FR-005">FR-005</a>); no ratified artifact is mutated.</td></tr>
+    <tr><td>P-7 · Done means verified</td><td><spec-pill>OK</spec-pill></td><td>Core to the design: a task is ticked only when its tests pass (<a href="./spec.html#NFR-002">NFR-002</a>). The runtime <em>is</em> a P-7 gate.</td></tr>
+    <tr><td>P-8 · Guarantees live in the kernel or CI</td><td><spec-pill>OK</spec-pill></td><td>The verify-before-tick gate and worktree isolation are kernel code, not advisory prose.</td></tr>
+  </tbody>
+</table>
+</section>
+
+
+<section id="technical-context">
+<h2>2 · Technical context</h2>
+<dl>
+  <dt>Language(s)</dt>      <dd>TypeScript (ESM), Node ≥ 18; pnpm monorepo (<code>@spectastic/core</code>, <code>@spectastic/cli</code>).</dd>
+  <dt>Frameworks</dt>       <dd>commander (CLI); no runtime deps added for the core runtime. Real adapter shells out to the <code>claude</code> CLI.</dd>
+  <dt>Storage</dt>          <dd>None — the ticked <code>tasks.html</code> is the state; the worktree is ephemeral.</dd>
+  <dt>Testing</dt>          <dd>vitest, TDD (tests written &amp; failing first — the project convention). Stub CodingAgent for CI; a <code>test:smoke</code>-tier spec for the real adapter (local-only).</dd>
+  <dt>Perf targets</dt>     <dd>None quantified — correctness (verify-gated tick, worktree isolation), not latency.</dd>
+  <dt>Constraints</dt>      <dd>CI offline + deterministic (no real agent, no network); the real agent never runs in CI (<a href="./spec.html#NFR-001">NFR-001</a>).</dd>
+</dl>
+</section>
+
+
+<section id="grounding">
+<h2>3 · Grounding &amp; evidence</h2>
+<p>Every design-bearing fact this plan rests on, and how it was confirmed (<code>REQ-LIFECYCLE-006</code>). A
+<code>must</code>-tier decision may not rest on an <code>assumed</code>/unresolved-<code>spike</code> fact unless
+accepted as a <code>&lt;spec-risk&gt;</code> (§8).</p>
+
+<table class="evidence">
+  <thead>
+    <tr><th>Claim the design rests on</th><th>Source</th><th>Status</th><th>Finding / note</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>The implement kernel only ticks a checkbox; it never codes and ignores <code>ctx</code></td>
+        <td><code>core/src/commands/implement.ts:30-68</code></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td><code>_ctx</code> unused; pure regex tick + <code>flipPromptFired</code>. The seam this plan reuses for the tick is <code>implementCommand</code>.</td></tr>
+    <tr><td>The AIProvider is text-only (no tools/files), so coding needs a different seam</td>
+        <td><code>core/src/types.ts:108-120</code> · <code>core/src/providers/claude.ts:131-149</code></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td><code>subagent()</code> is one <code>messages.create</code> returning text; no tool-use.</td></tr>
+    <tr><td>A stub/real provider is selected by env — the pattern to mirror for the CodingAgent seam</td>
+        <td><code>cli/src/ai-factory.ts:15</code></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td><code>createAIProvider()</code> returns <code>StubAIProvider</code> when <code>SPECTASTIC_AI_STUB</code> is set, else Claude. CodingAgent mirrors this.</td></tr>
+    <tr><td>A git worktree is creatable + removable cleanly, isolating edits from the primary tree</td>
+        <td>spike this turn: <code>git worktree add --detach … HEAD</code> → edit → <code>git worktree remove --force</code></td>
+        <td><spec-status value="review">spike</spec-status></td>
+        <td><strong>Ran clean</strong> — worktree created at HEAD, listed files, removed with no residue in the primary tree.</td></tr>
+    <tr><td>A tool-using coding agent is invokable as a subprocess (the real adapter mechanism)</td>
+        <td>spike this turn: <code>command -v claude</code></td>
+        <td><spec-status value="review">spike</spec-status></td>
+        <td><strong><code>/opt/homebrew/bin/claude</code> v2.1.153 present</strong> — headless <code>claude -p</code> confined to the worktree cwd is the v1 real adapter. Local-only (never CI), so this is a <code>should</code>-tier smoke dependency, not a build blocker.</td></tr>
+    <tr><td>A task's verify command is derivable from its declared test-file path</td>
+        <td><code>core/src/commands/verify.ts</code> trace-join; tasks.html <code>&lt;span class="path"&gt;</code> convention</td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td>A test task carries its test-file path (e.g. <code>…/foo.test.ts</code>); the runtime runs <code>vitest run &lt;path&gt;</code> as the task verify.</td></tr>
+  </tbody>
+</table>
+</section>
+
+
+<section id="approach">
+<h2>4 · Approach</h2>
+
+<p>A new <code>packages/core/src/coding/</code> module holds the deterministic runtime. <code>drainTasks(input, ctx)</code>
+scans <code>tasks.html</code> for the first unchecked <code>&lt;spec-task&gt;</code>, builds a <code>TaskWork</code>
+(id, title, path, bundle context), and hands it to <code>ctx.coding.perform(work)</code>. The CodingAgent works inside
+a git worktree created at HEAD; when it returns, the runtime runs the task's verify (derived from the task's test-file
+path) <em>in the worktree</em>. On a pass, the runtime accepts the changes and ticks via the existing
+<code>implementCommand</code>; on a fail/blocked/no-change outcome it removes the worktree (primary tree untouched)
+and returns an escalation. It then repeats for the next unchecked task until the list drains or one fails. The CLI
+wires <code>createCodingAgent()</code> (stub vs real, by env) exactly as it wires the AIProvider; the real adapter is a
+thin subprocess over <code>claude -p</code>.</p>
+
+<spec-arch>
+<figure>
+<svg viewBox="0 0 720 220" role="img" aria-label="drainTasks reads the first unchecked task, hands a TaskWork to the injected CodingAgent working in a git worktree, runs verify in the worktree, and on pass ticks via implementCommand; on fail removes the worktree and escalates.">
+  <style>
+    .box{fill:var(--c-surface);stroke:var(--c-border);stroke-width:1.3}
+    .acc{fill:var(--c-surface);stroke:var(--c-salmon);stroke-width:2}
+    .label{font:700 10px Lato,sans-serif;fill:var(--c-text);letter-spacing:.05em;text-transform:uppercase}
+    .body{font:400 11px "Source Serif 4",Georgia,serif;fill:var(--c-text-soft)}
+    .arr{stroke:var(--c-muted);stroke-width:1.3;fill:none}
+  </style>
+  <defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="var(--c-muted)"/></marker></defs>
+  <rect class="box" x="12" y="86" width="150" height="48" rx="4"/><text class="label" x="26" y="106">drainTasks</text><text class="body" x="26" y="124">first unchecked task</text>
+  <rect class="acc" x="210" y="86" width="150" height="48" rx="4"/><text class="label" x="224" y="106">CodingAgent</text><text class="body" x="224" y="124">perform · in worktree</text>
+  <rect class="box" x="408" y="86" width="130" height="48" rx="4"/><text class="label" x="422" y="106">verify</text><text class="body" x="422" y="124">tests in worktree</text>
+  <rect class="acc" x="585" y="34" width="122" height="44" rx="4"/><text class="body" x="599" y="60">pass → tick</text>
+  <rect class="box" x="585" y="142" width="122" height="44" rx="4"/><text class="body" x="599" y="168">fail → escalate</text>
+  <path class="arr" d="M162 110 L208 110" marker-end="url(#a)"/>
+  <path class="arr" d="M360 110 L406 110" marker-end="url(#a)"/>
+  <path class="arr" d="M538 104 L583 66" marker-end="url(#a)"/>
+  <path class="arr" d="M538 116 L583 158" marker-end="url(#a)"/>
+</svg>
+<figcaption>The runtime is a P-7 gate: verify runs in the worktree; the tick fires only on a pass, the worktree is discarded on a fail.</figcaption>
+</figure>
+</spec-arch>
+</section>
+
+
+<section id="alternatives">
+<h2>5 · Alternatives considered</h2>
+
+<spec-matrix>
+<table>
+  <thead>
+    <tr><th>Sandbox option</th><th>Isolation</th><th>Revert cost</th><th>Complexity</th><th class="score">Total</th></tr>
+  </thead>
+  <tbody>
+    <tr data-winner><td>Git worktree at HEAD</td><td>5</td><td>5</td><td>4</td><td class="score">14</td></tr>
+    <tr><td>Edit primary tree + git stash/reset on fail</td><td>2</td><td>3</td><td>4</td><td class="score">9</td></tr>
+    <tr><td>Copy repo to a temp dir (no git)</td><td>4</td><td>4</td><td>2</td><td class="score">10</td></tr>
+  </tbody>
+</table>
+</spec-matrix>
+<p>The worktree wins: native git isolation, free revert (remove the worktree), and it shares object storage so
+creation is cheap. Editing the primary tree risks a half-applied change surviving a crash; a bare copy loses git
+context the agent (and tests) may need.</p>
+</section>
+
+
+<section id="decisions">
+<h2>6 · Decisions</h2>
+
+<spec-decision id="D-001" grounding="verified">
+  <h4>D-001 · The CodingAgent seam mirrors the AIProvider/stub pattern</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>CI must stay offline + deterministic (<code>cli/src/ai-factory.ts:15</code> shows the established stub-by-env seam).</dd>
+    <dt>Decision</dt>     <dd>Define <code>CodingAgent { perform(work): Promise&lt;TaskOutcome&gt; }</code>; <code>createCodingAgent()</code> returns a script-replay <code>StubCodingAgent</code> when <code>SPECTASTIC_CODING_STUB</code> is set, else the real subprocess adapter.</dd>
+    <dt>Consequences</dt> <dd>+ CI deterministic; + one swappable boundary. − the real path is untested in CI (accepted: smoke tier).</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-002" grounding="spike">
+  <h4>D-002 · Sandbox = a git worktree created at HEAD</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>The W-1 guardrail requires isolation; the spike (§3) created + removed a worktree cleanly this turn.</dd>
+    <dt>Decision</dt>     <dd>Each drain step creates a detached worktree at HEAD; the agent + verify run there; on pass the diff is accepted into the primary tree, on fail the worktree is removed. Primary tree byte-unchanged on failure (<a href="./spec.html#FR-004">FR-004</a>).</dd>
+    <dt>Consequences</dt> <dd>+ native isolation + free revert; − requires a git repo (edge case: refuse when absent).</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-003" grounding="verified">
+  <h4>D-003 · Verify-before-tick derives the test command from the task's path</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>A task carries its test-file path in <code>&lt;span class="path"&gt;</code> (the verify trace-join convention, <code>core/src/commands/verify.ts</code>).</dd>
+    <dt>Decision</dt>     <dd>For a test-bearing task the runtime runs <code>vitest run &lt;path&gt;</code> in the worktree as the verify; a task with no test path is treated as blocked (can't verify → can't tick). The tick fires iff the verify passes (<a href="./spec.html#NFR-002">NFR-002</a>).</dd>
+    <dt>Consequences</dt> <dd>+ reuses the existing path convention; − a mis-declared path blocks the task (loud, not silent).</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-004" grounding="spike">
+  <h4>D-004 · Real adapter = subprocess over the headless <code>claude</code> CLI</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>Spike found <code>claude</code> v2.1.153 on PATH; the AIProvider SDK is text-only so a tool-using agent must be external.</dd>
+    <dt>Decision</dt>     <dd>The real adapter runs <code>claude -p &lt;task-prompt&gt;</code> with the worktree as cwd (v1). Smoke-tier only (<a href="./spec.html#FR-006">FR-006</a>); an in-process SDK tool-loop is the documented fallback if the subprocess proves unfit.</dd>
+    <dt>Consequences</dt> <dd>+ reuses a real, capable agent; − couples the smoke tier to a local <code>claude</code> install (acceptable — local-only).</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-005" grounding="verified">
+  <h4>D-005 · Idempotent resume — no run-state machine</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>The implement kernel already resumes from the first unchecked task (<code>implement.ts</code>); P-6 makes the Draft artifact the state.</dd>
+    <dt>Decision</dt>     <dd><code>drainTasks</code> re-scans <code>tasks.html</code> each run; a partial drain resumes at the first unchecked task (<a href="./spec.html#FR-005">FR-005</a>). No persisted run state.</dd>
+    <dt>Consequences</dt> <dd>+ crash-safe + simple; − no cross-run memory of a previously-failing task (re-attempted — acceptable).</dd>
+  </dl>
+</spec-decision>
+</section>
+
+
+<section id="project-structure">
+<h2>7 · Project structure</h2>
+
+<pre><code>packages/core/src/coding/
+  types.ts          # CodingAgent, TaskWork, TaskOutcome
+  runtime.ts        # drainTasks(input, ctx) — the P-7-gated drain
+  stub.ts           # StubCodingAgent — script-replay for CI
+  worktree.ts       # create/remove a detached worktree at HEAD; accept-diff on pass
+packages/core/test/
+  coding-runtime.test.ts       # US1/US3 tick-on-pass, halt-on-fail, done-but-fail (stub)
+  coding-worktree.test.ts      # US2 isolation — primary tree byte-unchanged on fail
+packages/cli/src/
+  coding-factory.ts            # createCodingAgent() — stub vs real by env
+  adapters/claude-code.ts      # real subprocess adapter (smoke only)
+  commands/implement.ts        # extend: --drain wires drainTasks
+packages/core/test/            # (smoke, local-only)
+  coding-runtime.smoke.test.ts # SC-004 real adapter performs a real edit
+</code></pre>
+</section>
+
+
+<section id="risks">
+<h2>8 · Risks &amp; mitigations</h2>
+
+<table>
+  <thead><tr><th>Risk</th><th>Likelihood</th><th>Impact</th><th>Mitigation</th></tr></thead>
+  <tbody>
+    <tr><td>Real adapter untestable in CI → regressions slip</td><td>M</td><td>M</td><td>Stub covers all runtime logic in CI; the real adapter is a thin, well-bounded subprocess call with a local smoke test (by design, NFR-001).</td></tr>
+    <tr><td>Agent edits escape the worktree (touches primary tree)</td><td>L</td><td>H</td><td>Subprocess cwd = worktree; assert (SC-002) the primary tree is byte-unchanged after a failing run; refuse when not a git repo.</td></tr>
+    <tr><td>Verify command mis-derived (wrong/missing test path)</td><td>M</td><td>M</td><td>Derive from the declared path; a task with no test path is a loud blocked outcome, never a silent tick (D-003).</td></tr>
+    <tr><td>Worktree drift from a moving HEAD across steps</td><td>L</td><td>M</td><td>Create the worktree at the current HEAD each step; accept the diff before the next step so HEAD advances coherently.</td></tr>
+  </tbody>
+</table>
+</section>
+
+
+<section id="complexity">
+<h2>9 · Complexity tracking</h2>
+<p>The worktree lifecycle (create/accept/remove) is the one non-trivial addition beyond the spec's plain statement.</p>
+<spec-assumption>
+<p>Accepting a worktree's diff into the primary tree is done by applying the worktree's committed/staged changes (or a
+<code>git</code> merge of the detached commit) — the concrete acceptance mechanism is a tasks-phase detail, bounded by
+"primary tree ends with exactly the worktree's passing changes." Justified: isolating this in <code>worktree.ts</code>
+keeps <code>drainTasks</code> a clean gate.</p>
+</spec-assumption>
+</section>
+
+
+<section id="questions">
+<h2>10 · Open questions</h2>
+<spec-questions>
+<p>None outstanding — the seam, sandbox, verify-gate, and CI-stub decisions are grounded (two spikes ran this turn).
+The real adapter's subprocess-vs-SDK-tool-loop choice is settled to subprocess for v1 with a documented fallback
+(D-004), a <code>should</code>-tier smoke concern, not a build blocker.</p>
+</spec-questions>
+</section>
+
+
+<section id="changelog">
+<h2>11 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-07-09">09 Jul 2026</time><span>Initial plan. Five decisions; grounding = 4 verified + 2 spikes run this turn (worktree clean, <code>claude</code> present). No must-tier decision rests on an unresolved assumption — the grounding gate is clear for tasks.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  Plan for 038-coding-agent-runtime · Coding-agent runtime · authored 09 Jul 2026
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>
