@@ -97,8 +97,10 @@ describe('init --profile: US3 brownfield (SC-003, SC-004)', () => {
     const after = readFileSync(p, 'utf8');
     expect(after).toContain('<!-- KEEP -->'); // SC-003: edit survived
     expect(after).toContain('Done means verified'); // SC-004: verified principle added
+    // Contiguous P-1..P-N after the additive lean→verified upgrade (count-agnostic).
     const ids = [...after.matchAll(/id="P-(\d+)"/g)].map((m) => Number(m[1]));
-    expect(ids).toEqual([1, 2, 3, 4, 5, 6, 7]);
+    expect(ids).toEqual(ids.map((_, i) => i + 1));
+    expect(ids.length).toBeGreaterThanOrEqual(7);
 
     const marker = JSON.parse(readFileSync(join(dir, '.spectastic', 'profile.json'), 'utf8'));
     expect(marker.profile).toBe('verified');

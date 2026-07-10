@@ -53,7 +53,9 @@ describe('compose: renderPrinciplesHtml', () => {
   it('numbers principles P-1..P-N sequentially with the end sentinel', () => {
     const html = renderPrinciplesHtml(opts('verified'));
     const ids = [...html.matchAll(/id="P-(\d+)"/g)].map((m) => Number(m[1]));
-    expect(ids).toEqual([1, 2, 3, 4, 5, 6, 7]);
+    const expected = combinedPrinciples(manifest, resolveProfile(manifest, 'verified')).length;
+    // Contiguous P-1..P-N, one per combined principle (count-agnostic).
+    expect(ids).toEqual(Array.from({ length: expected }, (_, i) => i + 1));
     expect(html).toContain(PRINCIPLES_END);
   });
 
@@ -92,7 +94,8 @@ describe('compose: spliceUpgrade (FR-007)', () => {
     const merged = spliceUpgrade(lean, verifiedPrinciples);
     expect(merged).not.toBeNull();
     const ids = [...merged!.matchAll(/id="P-(\d+)"/g)].map((m) => Number(m[1]));
-    expect(ids).toEqual([1, 2, 3, 4, 5, 6, 7]);
+    // Contiguous P-1..P-N after the additive splice (count-agnostic).
+    expect(ids).toEqual(Array.from({ length: verifiedPrinciples.length }, (_, i) => i + 1));
     expect(merged).toContain('Done means verified');
   });
 
