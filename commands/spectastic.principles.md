@@ -29,6 +29,8 @@ User input (from `$ARGUMENTS`): either the project name to ratify a new principl
 
    **Adjust asset paths on copy.** The template's `<link>` and `<script>` use `../assets/spec.css` (one level up — correct for in-place preview from `templates/`). The destination here is the project root (zero levels up), so on copy rewrite `../assets/` → `./assets/` for both the stylesheet and the script.
 
+   **Profile-aware seeding (spec 042).** If `.spectastic/profile.json` exists, the project was scaffolded with a profile (spec 041) and `principles.html` is already seeded with that profile's preset. Read it first: refine and ratify those seeded principles rather than starting blank, and let the profile's rigor (e.g. Verified's "done means verified") inform the interview depth.
+
 2. **Interview** the user (only if needed — skip questions whose answers are already in `$ARGUMENTS` or in an existing principles document). Capture:
    - Project name and one-line tagline
    - One-paragraph purpose (the TL;DR)

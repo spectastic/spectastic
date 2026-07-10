@@ -105,6 +105,27 @@ describe('compose: spliceUpgrade (FR-007)', () => {
   });
 });
 
+describe('compose: brownfield enforcement gap-fill (042 FR-006 / SC-004)', () => {
+  it('marks a covered category as "do not replace", not "to wire"', () => {
+    const md = renderAgentsMd(
+      manifest,
+      resolveProfile(manifest, 'verified'),
+      new Set(['linter', 'formatter']),
+    );
+    expect(md).toContain('## Enforcement floor');
+    expect(md).toMatch(/Already covered — do not replace:.*linter/);
+    // linter is covered → it must NOT appear in the "still to wire" list.
+    const need = md.split('Still to wire')[1] ?? '';
+    expect(need).not.toContain('linter');
+    expect(need).toMatch(/type-checker|security/); // uncovered ones remain
+  });
+
+  it('omits the enforcement block for a profile with no required categories (lean)', () => {
+    const md = renderAgentsMd(manifest, resolveProfile(manifest, 'lean'), new Set());
+    expect(md).not.toContain('## Enforcement floor');
+  });
+});
+
 describe('compose: composeArtifacts', () => {
   it('emits three content-based decisions (no source path)', () => {
     const decisions = composeArtifacts(opts('standard'));

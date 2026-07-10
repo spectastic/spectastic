@@ -116,7 +116,18 @@ spectastic init --profile enterprise    # + feature toggles, supply-chain, groun
 spectastic init                          # in a terminal, prompts you to choose
 ```
 
-Each profile is a preset composition of axes (verification rigor, enforcement posture, feature-toggle policy, grounding depth, framework expectations), declared as data in [`profiles.json`](./profiles.json). It's brownfield-safe: re-running amends in place through the same conflict prompt and never blind-overwrites, and re-running with a higher profile (say `lean` → `verified`) adds the new principles **additively** — your edits survive. The [`AGENTS.md` standard](https://agents.md) stays lean and points at your gates; making those gates real is the follow-on ([spec 042](./specs/042-profile-enforcement/spec.html)).
+Each profile is a preset composition of axes (verification rigor, enforcement posture, feature-toggle policy, grounding depth, framework expectations), declared as data in [`profiles.json`](./profiles.json). It's brownfield-safe: re-running amends in place through the same conflict prompt and never blind-overwrites, and re-running with a higher profile (say `lean` → `verified`) adds the new principles **additively** — your edits survive. The [`AGENTS.md` standard](https://agents.md) stays lean and points at your gates.
+
+### The enforcement floor — `spectastic enforce`
+
+A profile's rigor is only real if a gate can fail on it ([P-8](./principles.html#P-8)). `spectastic enforce` reads the project's profile marker, detects which enforcement categories your toolchain actually covers (formatter · linter · type-checker · security · supply-chain · test-runner, across Python/JS/Java/Go/Rust/Swift/C++), and exits non-zero when a hard-gate profile has a gap:
+
+```sh
+spectastic enforce            # Verified/Enterprise with a gap → exit 1, names the missing category
+                              # Standard → warns but exits 0; Lean / no profile → no-op
+```
+
+It's deterministic and filesystem-only, so it drops straight into CI or a pre-commit hook (`spectastic enforce || exit 1`). Detection reports *gaps* — it never dictates a tool you already chose, and a brownfield `init --profile` tailors the generated `AGENTS.md` enforcement section to only what's missing (`--replace-tools` to override). This is [spec 042](./specs/042-profile-enforcement/spec.html), the enforcement half of profiles.
 
 ### Change proposals (`/spectastic.propose` + `/spectastic.apply`)
 

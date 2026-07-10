@@ -15,14 +15,35 @@ export interface Principle {
   statement: string;
 }
 
+/** An enforcement category (spec 042). Detection + policy speak in these. */
+export type EnforcementCategory =
+  | 'formatter'
+  | 'linter'
+  | 'type-checker'
+  | 'security'
+  | 'supply-chain'
+  | 'test-runner';
+
+/** How hard the enforcement floor gates (spec 042, D-003). */
+export type EnforceGate = 'none' | 'soft' | 'hard';
+
+export interface EnforcePolicy {
+  gate: EnforceGate;
+  required: EnforcementCategory[];
+}
+
 export interface Profile {
   name: string;
   axes: Record<string, string>;
+  /** Enforcement floor: required categories + gate severity (spec 042, FR-003). */
+  enforce: EnforcePolicy;
   /** Extra principles this profile adds on top of the base set (deduped by name). */
   principles: Principle[];
   /** Profile-specific AGENTS.md lines appended under "Definition of done". */
   agents: string[];
 }
+
+const NO_ENFORCE: EnforcePolicy = { gate: 'none', required: [] };
 
 export interface ProfileManifest {
   schema: number;
@@ -59,9 +80,14 @@ export function loadProfiles(bundleRoot: string): ProfileManifest {
     const raw = JSON.parse(readFileSync(path, 'utf8')) as Partial<ProfileManifest>;
     const profiles: Record<string, Profile> = {};
     for (const [name, p] of Object.entries(raw.profiles ?? {})) {
+      const enforce = p?.enforce;
       profiles[name] = {
         name,
         axes: p?.axes ?? {},
+        enforce:
+          enforce && (enforce.gate === 'soft' || enforce.gate === 'hard' || enforce.gate === 'none')
+            ? { gate: enforce.gate, required: Array.isArray(enforce.required) ? enforce.required : [] }
+            : NO_ENFORCE,
         principles: Array.isArray(p?.principles) ? p.principles : [],
         agents: Array.isArray(p?.agents) ? p.agents : [],
       };

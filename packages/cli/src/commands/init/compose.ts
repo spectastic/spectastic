@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { FileWriteDecision } from './types.js';
-import type { Principle, Profile, ProfileManifest } from './profiles.js';
+import type { EnforcementCategory, Principle, Profile, ProfileManifest } from './profiles.js';
 
 /**
  * Compose the three profile artifacts (spec 041, D-003 / D-004).
@@ -27,6 +27,13 @@ export interface ComposeOptions {
   date: string;
   /** Human date (DD Mon YYYY) for visible text. */
   displayDate: string;
+  /**
+   * Enforcement categories already covered by the project's toolchain (spec
+   * 042, FR-006). When provided, the AGENTS.md gate section is tailored to the
+   * gaps — acknowledging existing tools rather than telling the agent to add
+   * one it already has. Omit for greenfield (nothing detected yet).
+   */
+  covered?: ReadonlySet<EnforcementCategory>;
 }
 
 function escapeHtml(s: string): string {
@@ -114,9 +121,34 @@ export function renderPrinciplesHtml(opts: ComposeOptions): string {
   return html;
 }
 
-/** Render the lean, command-first AGENTS.md for a profile. */
-export function renderAgentsMd(manifest: ProfileManifest, profile: Profile): string {
-  const lines = [...manifest.base.agents, ...profile.agents, ''];
+/**
+ * Render the lean, command-first AGENTS.md for a profile. When `covered` is
+ * given (brownfield, spec 042 FR-006), append an enforcement-status block that
+ * names which required categories are already covered vs. still to wire — so
+ * the agent isn't told to add a tool the project already has.
+ */
+export function renderAgentsMd(
+  manifest: ProfileManifest,
+  profile: Profile,
+  covered?: ReadonlySet<EnforcementCategory>,
+): string {
+  const lines = [...manifest.base.agents, ...profile.agents];
+  const required = profile.enforce.required;
+  if (covered !== undefined && required.length > 0) {
+    const have = required.filter((c) => covered.has(c));
+    const need = required.filter((c) => !covered.has(c));
+    const block = [
+      '',
+      '## Enforcement floor',
+      '',
+      `This project's profile (${profile.name}, ${profile.enforce.gate} gate) requires an enforcement gate for: ${required.join(', ')}.`,
+      ...(have.length > 0 ? [`- Already covered — do not replace: ${have.join(', ')}.`] : []),
+      ...(need.length > 0 ? [`- Still to wire (add a tool + CI gate): ${need.join(', ')}.`] : []),
+      'Run `spectastic enforce` to check the floor.',
+    ];
+    lines.push(...block);
+  }
+  lines.push('');
   return lines.join('\n');
 }
 
@@ -161,7 +193,7 @@ export function spliceUpgrade(
 export function composeArtifacts(opts: ComposeOptions): FileWriteDecision[] {
   const files: Array<[string, string]> = [
     ['principles.html', renderPrinciplesHtml(opts)],
-    ['AGENTS.md', renderAgentsMd(opts.manifest, opts.profile)],
+    ['AGENTS.md', renderAgentsMd(opts.manifest, opts.profile, opts.covered)],
     ['CLAUDE.md', renderClaudeMd(opts.manifest)],
   ];
   return files.map(([rel, content]) => {

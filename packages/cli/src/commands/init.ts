@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import type { Command } from 'commander';
 import { resolveBundle } from './init/bundle.js';
@@ -26,6 +26,7 @@ import {
   spliceUpgrade,
 } from './init/compose.js';
 import { readMarker, writeMarker } from './init/marker.js';
+import { detectTooling } from './init/detect.js';
 import type { FileWriteDecision } from './init/types.js';
 
 interface InitOptions {
@@ -36,6 +37,7 @@ interface InitOptions {
   commandsOnly?: boolean;
   uninstall?: boolean;
   profile?: string;
+  replaceTools?: boolean;
 }
 
 const MONTHS = [
@@ -114,6 +116,7 @@ export function registerInit(program: Command): void {
     .option('--commands-only', 'with --tools/--uninstall: only the command-adapter half')
     .option('--uninstall', 'remove what init --tools installed (reversible)')
     .option('--profile <name>', 'seed principles + AGENTS.md from a profile: lean | standard | verified | enterprise (spec 041)')
+    .option('--replace-tools', 'with --profile: ignore existing toolchain when tailoring the AGENTS.md enforcement floor (spec 042 FR-006)')
     .action(async (options: InitOptions) => {
       if (options.tools || options.hooksOnly || options.commandsOnly || options.uninstall) {
         await runToolsMode(options);
@@ -203,6 +206,10 @@ async function appendProfile(
 
   const profile = resolveProfile(manifest, name); // throws UnknownProfileError
   const { iso, display } = today();
+  // FR-006: detect the existing toolchain so the AGENTS.md enforcement floor
+  // acknowledges what's already covered (brownfield respect). --replace-tools
+  // ignores it and treats everything as a gap.
+  const covered = options.replaceTools ? new Set<never>() : detectTooling(cwd);
   const composed = composeArtifacts({
     bundleRoot,
     manifest,
@@ -211,6 +218,7 @@ async function appendProfile(
     projectName: basename(cwd),
     date: iso,
     displayDate: display,
+    covered,
   });
 
   // FR-007: additive upgrade. If the marker records a different prior profile

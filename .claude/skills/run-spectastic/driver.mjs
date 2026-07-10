@@ -146,6 +146,20 @@ let initDir;
   check('init --profile <unknown> -> exit 2', bad.code === 2 && /lean, standard/.test(bad.stderr), `code=${bad.code}`);
 }
 
+// --- 3c. enforce: the profile enforcement floor (spec 042) -----------------
+{
+  const dir = mkTmp('spectastic-enforce-');
+  cli(['init', '--profile', 'verified'], { cwd: dir });
+  // Untooled Verified project → hard gate → exit 1 naming gaps.
+  const gap = cli(['enforce'], { cwd: dir });
+  check('enforce: Verified gap -> exit 1 + missing categories', gap.code === 1 && /missing/.test(gap.stdout), `code=${gap.code}`);
+
+  // Add the tools it wants → exit 0.
+  writeFileSync(join(dir, 'pyproject.toml'), '[tool.ruff]\n[tool.mypy]\n[tool.bandit]\n[tool.pytest.ini_options]\n');
+  const ok = cli(['enforce'], { cwd: dir });
+  check('enforce: Verified fully tooled -> exit 0', ok.code === 0 && /all required/.test(ok.stdout), `code=${ok.code}`);
+}
+
 // --- 4. AI verb via the stub provider (no real LLM) ------------------------
 {
   // principles reads its whole conversation from the stub fixture; asserts a
