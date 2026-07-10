@@ -234,7 +234,16 @@ export function renderRunBlock(captured: VerifyInput['capturedRun']): string {
   const field = (val?: string): string => (val ? escapeHtml(val) : '');
   const cites = (ids?: string[]): string =>
     ids && ids.length > 0 ? ` cites="${escapeHtml(ids.join(' '))}"` : '';
-  return `<spec-runblock>
+  // Spec 021 T-003: a block whose commands were NOT run is marked suggested so
+  // it never presents unverified commands with the authority of verified ones
+  // (P-7). Default is verified (a /implement capture ran them); only an explicit
+  // verified:false downgrades the block.
+  const suggested = c.verified === false;
+  const status = suggested ? ' data-status="suggested"' : '';
+  const banner = suggested
+    ? '\n  <spec-note><strong>Suggested — not yet run.</strong> These commands were authored, not executed; verify them before trusting the result (<a href="../../principles.html#P-7">P-7</a>).</spec-note>'
+    : '';
+  return `<spec-runblock${status}>${banner}
   <spec-run>${field(c.run)}</spec-run>
   <spec-toggle>${field(c.toggle)}</spec-toggle>
   <spec-tests${cites(c.testsCite)}>${field(c.tests)}</spec-tests>

@@ -569,6 +569,13 @@ export interface CapturedRun {
   demo?: string;
   /** The SC ids the demo path satisfies — `<spec-demo cites="…">` (FR-004). */
   demoCite?: string[];
+  /**
+   * Whether these commands were actually run (spec 021 T-003). Default true
+   * (a /implement capture ran them). Set explicitly `false` when the commands
+   * are suggested-but-unexecuted — the Run/Demo block then renders as
+   * "suggested — not yet run" rather than presenting them as verified (P-7).
+   */
+  verified?: boolean;
 }
 
 export interface VerifyInput {

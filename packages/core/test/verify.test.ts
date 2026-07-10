@@ -119,6 +119,17 @@ describe('renderRunBlock: captured commands -> typed elements (T-101, FR-004)', 
       '<spec-run>echo &quot;&lt;a&gt;&quot; &amp; b</spec-run>',
     );
   });
+
+  it('marks a verified:false block as suggested with a warning (021 T-003)', () => {
+    const html = renderRunBlock({ run: './gradlew test', verified: false });
+    expect(html).toContain('<spec-runblock data-status="suggested">');
+    expect(html).toMatch(/Suggested — not yet run/);
+  });
+
+  it('a verified (default / true) block carries no suggested marker', () => {
+    expect(renderRunBlock({ run: 'x', verified: true })).toContain('<spec-runblock>');
+    expect(renderRunBlock({ run: 'x' })).not.toContain('data-status="suggested"');
+  });
 });
 
 describe('renderVerifyHtml: shell discipline (T-013/T-101)', () => {

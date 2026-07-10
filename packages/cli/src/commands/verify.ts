@@ -51,13 +51,13 @@ export function registerVerify(program: Command): void {
  * non-TTY stdin: if no data begins arriving promptly, treat it as no capture.
  */
 async function readCapturedRun(): Promise<
-  { run?: string; toggle?: string; tests?: string; demo?: string } | undefined
+  { run?: string; toggle?: string; tests?: string; demo?: string; testsCite?: string[]; demoCite?: string[]; verified?: boolean } | undefined
 > {
   if (process.stdin.isTTY) return undefined;
   const raw = (await readStdin()).trim();
   if (raw === '') return undefined;
   try {
-    return JSON.parse(raw) as { run?: string; toggle?: string; tests?: string; demo?: string };
+    return JSON.parse(raw) as { run?: string; toggle?: string; tests?: string; demo?: string; testsCite?: string[]; demoCite?: string[]; verified?: boolean };
   } catch (err) {
     process.stderr.write(`verify: stdin is not valid JSON — ${(err as Error).message}\n`);
     process.exit(2);
