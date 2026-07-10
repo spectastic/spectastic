@@ -119,7 +119,7 @@ async function deriveAndDescribePhases(
   // Optional: enrich titles via ai.chat() in a single batched call. Kept
   // light (skipping AI when there's no spec.ai) so unit tests stay fast.
   try {
-    const enrichment = await enrichDescriptions(meta, ctx);
+    const enrichment = await enrichDescriptions(meta, ctx, input.decisions);
     for (const phase of phases) {
       for (const task of phase.tasks) {
         const enriched = enrichment[task.id];
@@ -158,18 +158,22 @@ function buildUsPhase(
 async function enrichDescriptions(
   meta: ReturnType<typeof extractSpecMetadata>,
   ctx: KernelContext,
+  decisions?: Record<string, string>,
 ): Promise<Record<string, string>> {
   if (!ctx.ai) return {};
   const reqList = [...meta.fr, ...meta.nfr, ...meta.sc]
     .map((r) => `${r.id} (${r.priority}): ${r.summary}`)
     .join('\n');
+  const decisionPairs = Object.entries(decisions ?? {}).map(([k, v]) => `${k}: ${v}`).join('; ');
+  const decisionsLine = decisionPairs ? `Chosen approach (honour it): ${decisionPairs}` : '';
   const raw = await ctx.ai.chat(
     [
       `For each requirement below, suggest a concise (≤ 12-word) task title that implements it.`,
+      decisionsLine,
       `Return JSON: { "T-XYZ": "task title", ... } where keys are task IDs T-110..T-3NN.`,
       `Requirements:`,
       reqList,
-    ].join('\n'),
+    ].filter(Boolean).join('\n'),
     {
       temperature: 0,
       system:

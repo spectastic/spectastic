@@ -21,6 +21,13 @@ const BLOCKER_PATTERNS: ReadonlyArray<{ name: string; re: RegExp }> = [
   { name: 'missing defer-to', re: /<spec-out-of-scope[^>]*>[\s\S]*?<li(?![^>]*\bdefer-to=)/i },
 ];
 
+/** Fold answered decisions (037 FR-005 / 039) into a prompt line; '' when absent (parity). */
+function formatDecisions(decisions?: Record<string, string>): string {
+  if (!decisions || Object.keys(decisions).length === 0) return '';
+  const pairs = Object.entries(decisions).map(([k, v]) => `${k}: ${v}`).join('; ');
+  return `\nDecisions already made (honour these): ${pairs}`;
+}
+
 export async function planCommand(
   input: PlanInput,
   ctx: KernelContext,
@@ -47,6 +54,7 @@ export async function planCommand(
       ? `Sharpen this plan. ADD or ENHANCE only; never remove existing ADRs.\nExisting plan:\n${input.existingPlan!.slice(0, 6000)}`
       : `Author an implementation plan for the spec below.\nSpec:\n${input.specHtml.slice(0, 6000)}`,
     input.principlesHtml ? `\nPrinciples to check:\n${input.principlesHtml.slice(0, 3000)}` : '',
+    formatDecisions(input.decisions),
     '',
     'Return JSON: { "approach": string, "decisions": [ { "id": "D-001", "title": string, "context": string, "decision": string, "consequences": string } ], "alternatives": [ { "name": string, "scores": [number, number, number], "isWinner": boolean } ], "risks": [ { "risk": string, "mitigation": string } ], "principles": [ { "id": "P-1", "status": "OK"|"EXCEPTION"|"VIOLATION", "note": string } ] }',
   ].filter(Boolean).join('\n');

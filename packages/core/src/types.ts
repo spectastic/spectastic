@@ -274,6 +274,12 @@ export interface TasksInput {
     classification: GraduationClass;
     sourceArchive: string;
   };
+  /**
+   * Bounded decisions already answered for this verb (spec 037 FR-005 / 039) —
+   * e.g. the chosen execution strategy. Folded into the (AI) title-enrichment
+   * prompt; absent ⇒ today's behaviour. The deterministic skeleton is unaffected.
+   */
+  decisions?: Record<string, string>;
 }
 
 export interface TaskItem {
@@ -392,6 +398,12 @@ export interface PlanInput {
   existingPlan?: string;
   /** Existing principles.html content (for the principles check). */
   principlesHtml?: string;
+  /**
+   * Bounded decisions already answered for this verb (spec 037 FR-005 / 039).
+   * Folded into the generation prompt so an unattended run's decisions shape the
+   * plan. Absent ⇒ today's behaviour, byte-for-byte.
+   */
+  decisions?: Record<string, string>;
 }
 
 export interface PlanResult {
