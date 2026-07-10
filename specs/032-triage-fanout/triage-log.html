@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>032-triage-fanout · Triage log</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Triage log · 032-triage-fanout</p>
+  <h1>032-triage-fanout — triage log</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    Defects against the <code>032-triage-fanout</code> spec. Cards append-only; IDs stable.
+  </p>
+
+  <spec-meta>
+    <b>Spec</b>      <span><a href="./spec.html">032-triage-fanout</a></span>
+    <b>Created</b>   <span><time datetime="2026-07-10">10 Jul 2026</time></span>
+    <b>Read time</b> <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-tldr>
+    <p>One card per debug session. See <a href="../../examples/triage-log.html">examples/triage-log.html</a> for the
+    canonical look + the protocol (<code>TRIAGE-001</code>..<code>TRIAGE-006</code>).</p>
+  </spec-tldr>
+</header>
+
+
+<section id="cards">
+<h2>Cards</h2>
+<spec-triage-log>
+
+<spec-triage id="T-001" layer="spec">
+  <header>
+    <h4>The interactive <code>/spectastic.triage</code> slash-command never fans out — only the CLI/core backends do</h4>
+    <span class="meta">
+      <span class="layer-pill">Spec</span>
+      <span class="regen" data-result="fail">upstream</span>
+    </span>
+  </header>
+
+  <p class="headline">Debugging why a dogfooded (and this repo's own) list-intake triage classified items serially,
+  root cause was a coverage gap — 032 built the fan-out core + both backends (<code>ai.chat</code> CLI,
+  <code>ai.subagent</code> Workflow) but never wired the <em>in-host slash-command</em> path everyone actually uses;
+  fixed by a slice that routes interactive list-intake through parallel classifier subagents (with the CLI as the
+  deterministic backend); regeneration fails at the spec — 032's FR-001 names the two backends but not the
+  interactive markdown, so a fresh session re-derives the serial loop.</p>
+
+  <dl>
+    <dt>Expected</dt> <dd>Running <code>/spectastic.triage</code> on a pasted list classifies the items concurrently (one classifier per item under the bounded cap), per 032's fan-out design.</dd>
+    <dt>Actual</dt>   <dd>The interactive command follows the serial per-item loop in <code>commands/spectastic.triage.md</code> — no fan-out step — so items classify one at a time. (Observed on the prior 6-item dogfooding triage and confirmed on this list.)</dd>
+    <dt>Diagnosis</dt><dd><a href="./spec.html#FR-001">FR-001</a> requires fan-out on "the CLI <code>triage</code> verb and a Claude Workflow / subagent script" — both shipped (15/15 tasks; <code>triageFanout</code> + <code>triage-fanout.subagent</code> test). But no 032 task touched <code>commands/spectastic.triage.md</code>, and the "Optional: CLI dispatch" note is advisory + <code>ANTHROPIC_API_KEY</code>-gated — so the in-host path (the default interactive one) never invokes the fan-out.</dd>
+    <dt>Fix</dt>      <dd>A slice (propose against 032, then implement): add an FR that <em>interactive</em> list-intake fans out, and update <code>commands/spectastic.triage.md</code> to instruct parallel classifier-subagent dispatch for a pasted list, routing the shared classification core (<code>triageFanout</code>, <code>backend: 'subagent'</code>).</dd>
+  </dl>
+
+  <details>
+    <summary>Deep dive — principles (P-8 / T-009): markdown fan-out is a nudge, not a guarantee</summary>
+    <p><strong>Principles invariant implicated.</strong> Per <a href="../../principles.html#P-8">P-8</a> and meta-spec
+    <a href="../000-spectastic/triage-log.html#T-009">T-009</a>, an instruction in command markdown is advisory — telling
+    the model "fan out" cannot <em>force</em> it to. The honest design: the deterministic <em>guarantee</em> of concurrent
+    classification lives in the CLI/core (<code>triageFanout</code>, already built), and the slash-command markdown is a
+    best-effort nudge to route through it. So the slice has two honest parts: (a) the markdown instructs subagent
+    fan-out (UX nudge), and (b) the guarantee stays the CLI/core backend for anyone who needs determinism. No
+    cross-spec contract beyond 032's own core; no hotfix. This is why the card is <code>spec</code> (a missing
+    requirement + slice), not <code>implementation</code>: 032 delivered exactly the two backends FR-001 named — the
+    interactive path was simply out of its declared scope.</p>
+  </details>
+</spec-triage>
+
+</spec-triage-log>
+</section>
+
+
+<section id="changelog">
+<h2>Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-07-10">10 Jul 2026</time><span>T-001 added — the interactive <code>/spectastic.triage</code> path never fans out (032 built the CLI + Workflow/subagent backends but not the in-host markdown route). <code>spec</code>, regen <code>fail</code>: needs a slice adding interactive-path fan-out; the guarantee stays the CLI/core per P-8/T-009. From dogfooding on spec-tictactoe-2.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  032-triage-fanout triage log · scaffolded 10 Jul 2026
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>
