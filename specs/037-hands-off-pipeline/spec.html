@@ -37,9 +37,11 @@
     <p>W-1 runs the lifecycle unattended. A human approves a spec; the orchestrator chains
     <code>plan → tasks → implement → verify</code>, runs <code>validate</code> between steps, and answers every
     decision through the configured <strong>Decider</strong> (human / agent / panel). The load-bearing guarantee is
-    <strong>P-8</strong>: the answerer is chosen by orchestrator <em>code</em> — injected on the CLI, convened by
-    the script on the Workflow surface — never asserted in markdown. Irreversible calls escalate to a human between
-    phases. Assembly, not invention: <code>decideChoice</code> (036) already <em>is</em> the answerer.</p>
+    <strong>P-8</strong>: the answerer is chosen by orchestrator <em>code</em> — the decider threaded as config on the
+    CLI (implement via <a href="../038-coding-agent-runtime/spec.html">038</a>, generation decisions via
+    <a href="../039-verb-decision-taxonomy/spec.html">039</a>), convened by the script on the Workflow surface — never
+    asserted in markdown. Irreversible calls escalate to a human between phases. Assembly over the landed 036/038/039
+    seams, not invention.</p>
   </spec-tldr>
 
   <dl class="invest">
@@ -142,23 +144,30 @@ through the configured Decider (resolved by the 033 precedence: flag &gt; projec
 </spec-requirement>
 
 <spec-requirement id="FR-003" priority="must">
-<p>The orchestrator <spec-rule>MUST</spec-rule> be the enforcer of the answerer: the decider is <em>injected</em>
-(CLI) or <em>convened</em> (Workflow) by orchestrator code, never selected by command markdown. No command
+<p>The orchestrator <spec-rule>MUST</spec-rule> be the enforcer of the answerer: the decider is <em>threaded as
+config</em> (CLI) or <em>convened</em> (Workflow) by orchestrator code, never selected by command markdown. No command
 markdown is relied upon to route a decision to the decider.</p>
 <details><summary>Rationale</summary><p>The load-bearing P-8 requirement. A markdown "if decider=agent, decide it yourself" is advisory and fails silently (T-009); code that chooses the provider is a guarantee. This is why "make the slash-command interviews use decideChoice" is explicitly a non-goal.</p></details>
 </spec-requirement>
 
 <spec-requirement id="FR-004" priority="must">
-<p>The CLI home (<code>spectastic run &lt;spec-id&gt;</code>) <spec-rule>MUST</spec-rule> inject an auto-answering
-<code>AIProvider</code> whose <code>ask(questions)</code> delegates to <code>decideChoice(cfg, questions, base)</code>,
-so every kernel interview point is answered by the configured role.</p>
+<p>The CLI home (<code>spectastic run &lt;spec-id&gt;</code>) <spec-rule>MUST</spec-rule> thread the resolved
+<code>DeciderConfig</code> through each step rather than injecting an <code>ask()</code> override: generation-verb
+decisions are answered via <code>answerDecisions</code> (<a href="../039-verb-decision-taxonomy/spec.html">039</a>);
+the <code>implement</code> step is performed by the coding-agent runtime
+(<a href="../038-coding-agent-runtime/spec.html">038</a> <code>drainTasks</code>), which codes and verify-gates each
+task; and the code-reachable checkpoints (propose's <code>decide</code>, the slicer's <code>confirmRice</code>,
+triage's <code>escalateLayer</code>) answer through their existing Decider seam.</p>
+<details><summary>Rationale</summary><p>Grounding found the kernel <code>AIProvider</code> is text-only and no verb calls <code>ask()</code> — an injected <code>ask()</code> would be inert. The decider reaches the verbs' decisions as <em>config</em> (the 038/039 seams), which is what actually makes them answerable.</p></details>
 </spec-requirement>
 
 <spec-requirement id="FR-005" priority="must">
-<p>For each verb the orchestrator <spec-rule>MUST</spec-rule> pose that verb's own decision-phase question
-taxonomy — the bounded set the slash command already defines — to the decider, and <spec-rule>MUST NOT</spec-rule>
-generate an open-ended question set at run time (which keeps the slice estimable and the run's decisions consistent
-with the human path).</p>
+<p>For each generation verb the orchestrator <spec-rule>MUST</spec-rule> answer that verb's bounded decision-phase
+questions via <code>answerDecisions(verb, cfg, ai)</code> over the <code>DECISION_TAXONOMY</code> registry
+(<a href="../039-verb-decision-taxonomy/spec.html">039</a>) and thread the chosen answers into that verb's generation;
+it <spec-rule>MUST NOT</spec-rule> generate an open-ended question set at run time. Context-dependent decisions
+(smallest-demoable framings, per-story priorities) are not in the registry and remain the adaptive interview
+(deferred).</p>
 </spec-requirement>
 
 <spec-requirement id="FR-006" priority="must">
@@ -219,7 +228,7 @@ phase without a recorded human answer — no autonomous fall-through on timeout 
 <h3>Entities</h3>
 <dl>
   <dt>Run</dt><dd><code>{ specId, home: 'cli' | 'workflow', decider, effort, checkpoints: 'minimal' | 'each', budget }</code> — the resolved configuration that drives the verb sequence.</dd>
-  <dt>Auto-answering provider (CLI)</dt><dd>An <code>AIProvider</code> whose <code>ask()</code> delegates to <code>decideChoice</code> — the injected answerer (<a href="#FR-004">FR-004</a>). The kernel calls <code>ask()</code>; the orchestrator chose the provider.</dd>
+  <dt>Threaded DeciderConfig (CLI)</dt><dd>The resolved <code>{ role, effort }</code> the run passes into each step — consumed by <code>answerDecisions</code> (039) for generation, <code>drainTasks</code> (038) for implement, and the existing <code>decideChoice</code>/<code>decide</code> checkpoints. The orchestrator chose the config; the seams answer by role (<a href="#FR-004">FR-004</a>).</dd>
   <dt>Escalation</dt><dd>An irreversible decision surfaced between phases — carries the question set and the phase to resume, consumed by the main-loop <code>AskUserQuestion</code> gate (<a href="#FR-006">FR-006</a>).</dd>
 </dl>
 
@@ -262,15 +271,16 @@ config — observable by running both on a fixture and comparing recorded verdic
 <h2>6 · Assumptions</h2>
 
 <spec-assumption>
-<p>Every decision a verb reaches on its kernel/CLI path (006 FR-009) is exposed through the decider-answerable
-surface (<code>ai.ask&lt;T&gt;()</code> / the <code>decideChoice</code> gates). A decision point <em>not</em> routed
-through that surface cannot be answered by the injected provider — see <a href="#questions">Open questions</a> if
-one is found.</p>
+<p>The verbs' decisions are now reachable in code — the reachability this spec once assumed was <em>discharged</em>
+by the pre-work: <code>implement</code> codes via <a href="../038-coding-agent-runtime/spec.html">038</a>
+<code>drainTasks</code>, and the generation verbs' bounded decisions live in
+<a href="../039-verb-decision-taxonomy/spec.html">039</a> <code>DECISION_TAXONOMY</code>. Threading the 039 answers
+into plan/tasks generation is this slice's work (FR-005).</p>
 </spec-assumption>
 
 <spec-assumption>
-<p><code>decideChoice</code> (036) is a sufficient primitive for the CLI auto-answerer — the handover's "one-line
-wrapper" holds, needing no new decision primitive.</p>
+<p><code>decideChoice</code> (036) + <code>answerDecisions</code> (039) + <code>drainTasks</code> (038) are the
+sufficient seams — the run is assembly over them, needing no new decision primitive.</p>
 </spec-assumption>
 </section>
 
@@ -297,6 +307,7 @@ plan's grounding pass to verify against real source, not an open decision.</p>
 <spec-changelog>
 <ol>
   <li><time datetime="2026-07-09">09 Jul 2026</time><span>Initial draft from the <a href="../../docs/hands-off-handover.html">W-1 handover</a>. 11 requirements, 4 success criteria, zero open questions; ten decisions anchored across three interview batches. US5 (per-run budget) peeled to the <code>TBD-run-budget</code> sibling to keep the slice estimable.</span></li>
+  <li><time datetime="2026-07-09">09 Jul 2026</time><span>Draft-loose correction (P-6) after the pre-work landed: FR-004 rewritten from the inert <code>ask()</code>-injection to <code>DeciderConfig</code>-threading (implement via 038 <code>drainTasks</code>, generation decisions via 039 <code>answerDecisions</code>); FR-005 points at the 039 registry; the reachability assumption discharged. Mechanism now matches how the kernel actually works.</span></li>
 </ol>
 </spec-changelog>
 </section>
