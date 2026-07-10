@@ -1,13 +1,14 @@
 import type { Command } from 'commander';
+import { detectTooling } from '@spectastic/core/enforce/detect';
+import { evaluateEnforcement } from '@spectastic/core/enforce/policy';
 import { resolveBundle } from './init/bundle.js';
-import { detectTooling } from './init/detect.js';
 import { readMarker } from './init/marker.js';
 import { loadProfiles } from './init/profiles.js';
-import type { EnforceGate, EnforcementCategory } from './init/profiles.js';
 
 /**
  * `spectastic enforce [path]` — the profile enforcement floor as a gate
- * (spec 042, FR-001 / FR-004).
+ * (spec 042, FR-001 / FR-004). Thin CLI over the core detection + policy diff
+ * (`@spectastic/core/enforce/*`, moved there in triage 042/T-001).
  *
  * Reads the project's `.spectastic/profile.json` marker (041), detects which
  * enforcement categories the toolchain covers, and diffs against the profile's
@@ -15,26 +16,8 @@ import type { EnforceGate, EnforcementCategory } from './init/profiles.js';
  *   none (Lean / no marker) → 0 always
  *   soft (Standard)         → 0, but warn on a gap
  *   hard (Verified/Ent.)    → 1 on any gap
- * So a pre-commit / CI gate can block precisely where it should. Deterministic,
- * filesystem-only — no network, no model (NFR-001).
+ * Deterministic, filesystem-only — no network, no model (NFR-001).
  */
-
-export interface EnforceEvaluation {
-  missing: EnforcementCategory[];
-  covered: EnforcementCategory[];
-  exitCode: 0 | 1;
-}
-
-/** Pure policy diff (spec 042, D-003) — unit-testable, no I/O. */
-export function evaluateEnforcement(
-  required: readonly EnforcementCategory[],
-  covered: ReadonlySet<EnforcementCategory>,
-  gate: EnforceGate,
-): EnforceEvaluation {
-  const missing = required.filter((c) => !covered.has(c));
-  const exitCode: 0 | 1 = gate === 'hard' && missing.length > 0 ? 1 : 0;
-  return { missing, covered: [...covered], exitCode };
-}
 
 export function registerEnforce(program: Command): void {
   program

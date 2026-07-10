@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { evaluateEnforcement } from '../src/commands/enforce.js';
-import type { EnforcementCategory } from '../src/commands/init/profiles.js';
+import { evaluateEnforcement } from '../src/enforce/policy.js';
+import type { EnforcementCategory } from '../src/enforce/types.js';
 
 /** Unit tests for the pure enforcement policy diff (spec 042 T-101, SC-003). */
 

@@ -15,17 +15,11 @@ export interface Principle {
   statement: string;
 }
 
-/** An enforcement category (spec 042). Detection + policy speak in these. */
-export type EnforcementCategory =
-  | 'formatter'
-  | 'linter'
-  | 'type-checker'
-  | 'security'
-  | 'supply-chain'
-  | 'test-runner';
-
-/** How hard the enforcement floor gates (spec 042, D-003). */
-export type EnforceGate = 'none' | 'soft' | 'hard';
+// Enforcement primitives live in the core kernel (triage 042/T-001); imported
+// for local use and re-exported so this module's consumers (compose.ts, …) keep
+// importing them from './profiles.js'.
+import type { EnforcementCategory, EnforceGate } from '@spectastic/core/enforce/types';
+export type { EnforcementCategory, EnforceGate };
 
 export interface EnforcePolicy {
   gate: EnforceGate;

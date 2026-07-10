@@ -27,7 +27,7 @@ import {
   spliceUpgrade,
 } from './init/compose.js';
 import { readMarker, writeMarker } from './init/marker.js';
-import { detectTooling } from './init/detect.js';
+import { detectTooling } from '@spectastic/core/enforce/detect';
 import { applyGitignore } from '@spectastic/core/gitignore/apply';
 import { BASE_ENTRIES } from '@spectastic/core/gitignore/entries';
 import type { FileWriteDecision } from './init/types.js';

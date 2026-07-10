@@ -1,6 +1,6 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import type { EnforcementCategory } from './profiles.js';
+import type { EnforcementCategory } from './types.js';
 
 /**
  * Ecosystem-aware enforcement-category detection (spec 042, D-002 / FR-002).

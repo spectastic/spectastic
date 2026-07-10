@@ -1,7 +1,7 @@
 import type { Command } from 'commander';
 import { applyGitignore } from '@spectastic/core/gitignore/apply';
 import { BASE_ENTRIES, stackEntries } from '@spectastic/core/gitignore/entries';
-import { detectEcosystems } from './init/detect.js';
+import { detectEcosystems } from '@spectastic/core/enforce/detect';
 
 /**
  * `spectastic gitignore [path] [--stack]` — scaffold/merge the spectastic-managed
