@@ -1,0 +1,276 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Profile enforcement · Specification</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Specification · 042-profile-enforcement</p>
+  <h1>Profile enforcement</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    A profile's promises become real when a gate can say <em>no</em> — not when the prose asks nicely.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>      <span><spec-status value="draft">Draft</spec-status></span>
+    <b>Spec ID</b>     <span>042-profile-enforcement</span>
+    <b>Owner</b>       <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Reviewers</b>   <span>—</span>
+    <b>Created</b>     <span><time datetime="2026-07-09">09 Jul 2026</time></span>
+    <b>Principles</b><span><a href="../../principles.html">v1.3.0</a></span>
+    <b>Parent</b>     <span><spec-parent specid="041-init-profiles"><a href="../041-init-profiles/spec.html">Init profiles</a></spec-parent></span>
+    <b>Smallest demoable</b><span><code>spectastic enforce</code> in a Verified-profile project with no linter exits 1 and names the missing category; a fully-tooled one exits 0.</span>
+    <b>Read time</b>   <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-budget words="1500" reqs="20" minutes="12"></spec-budget>
+
+  <spec-tldr>
+    <p><a href="../041-init-profiles/spec.html">041</a> made profiles <em>advise</em> — it seeds principles and a lean
+    <code>AGENTS.md</code> but its promises ("every level tested", "every feature toggled") live in prose an agent can
+    skip (<a href="../../principles.html#P-8">P-8</a>, T-009). 042 gives the enforcement floor <strong>teeth</strong>:
+    a deterministic <code>spectastic enforce</code> command that reads the project's profile marker, detects which
+    enforcement categories the toolchain actually covers, and exits non-zero when an enforcing profile's required
+    category is missing — so a pre-commit or CI gate can block on it. Because the toolchain is ecosystem-specific and
+    only knowable in the project, the profile carries a <em>policy</em> (required categories) and detection resolves it
+    to reality. Brownfield-safe: it reports what's <em>missing</em>, never dictating a tool a project already chose.</p>
+  </spec-tldr>
+
+  <dl class="invest">
+    <dt><span class="letter">I</span> Independent</dt> <dd>Builds on <a href="../041-init-profiles/spec.html">041</a>'s profile marker + manifest and 031's <code>--tools</code> gate. No new upstream.</dd>
+    <dt><span class="letter">N</span> Negotiable</dt>  <dd>Outcomes only — the detection signal table and the CLI's exact output are the plan's to decide.</dd>
+    <dt><span class="letter">V</span> Valuable</dt>    <dd>Unlocks <a href="#SC-001">SC-001</a> — the profile's enforcement promise becomes a gate that can fail a build.</dd>
+    <dt><span class="letter">E</span> Estimable</dt>   <dd>Every decision anchored; the one architectural fork (gate ≠ a spec-html validate rule) is resolved in §1.</dd>
+    <dt><span class="letter">S</span> Small</dt>       <dd>One command + one detector + a data field; the AI-heavy "build a checker" automation is deferred. 15 requirements.</dd>
+    <dt><span class="letter">T</span> Testable</dt>    <dd>Detection + exit codes are deterministic, filesystem-only, and drivable in CI with fixture projects — no model.</dd>
+  </dl>
+
+  <spec-audience-map>
+    <dl>
+      <dt>Exec / PM</dt>   <dd>§<a href="#context">Context</a>, §<a href="#scenarios">User scenarios</a>, §<a href="#success">Success criteria</a>.</dd>
+      <dt>Reviewer</dt>    <dd>§<a href="#requirements">Requirements</a>, §<a href="#assumptions">Assumptions</a>, §<a href="#questions">Open questions</a>.</dd>
+      <dt>Implementer</dt> <dd>§<a href="#requirements">Requirements</a>, §<a href="#data">Data model</a>, §<a href="#conformance">Conformance index</a>.</dd>
+    </dl>
+  </spec-audience-map>
+</header>
+
+
+<section id="context">
+<h2>1 · Context</h2>
+<p>041 ships the profile <em>skeleton</em>: a seeded <code>principles.html</code> and a lean <code>AGENTS.md</code>
+whose gate section says "run your checks." But nothing verifies the checks exist. A Verified project that promises
+"every level tested; build a checker when none exists" is, today, a sentence — exactly the advisory-prose gap
+<a href="../../principles.html#P-8">P-8</a> and the <a href="../../docs/init-profiles-considerations.html">considerations
+doc</a> warn about.</p>
+<p><strong>The architectural fork, resolved.</strong> The obvious home — a <code>spectastic validate</code> rule —
+does not fit: the validate engine parses <em>spec-html documents</em>, not project state (it never sees
+<code>pyproject.toml</code> or <code>.eslintrc</code>). So the gate is a new command, <code>spectastic enforce</code>,
+that inspects the <em>project</em> and can exit non-zero — installable into the 031 pre-commit gate, so the guarantee
+lives at the git/CI boundary where P-8 says it must.</p>
+<p><strong>Users:</strong> developers who chose a rigorous profile and want its floor to actually hold.</p>
+</section>
+
+
+<section id="scenarios">
+<h2>2 · User scenarios &amp; testing</h2>
+<p>Each story <strong>MUST</strong> be independently testable.</p>
+
+<h3 id="US1">US1 · The floor is a gate that can fail <spec-pill>P1</spec-pill></h3>
+<p>As a <strong>developer on a Verified project</strong>, I want <strong><code>spectastic enforce</code> to fail when
+my toolchain is missing an enforcement category the profile requires</strong> so that <strong>the profile's promise
+is real, not prose</strong>.</p>
+<p><em>Acceptance:</em> in a Verified-profile project with no linter/type-checker config, <code>spectastic enforce</code>
+exits 1 and names the missing categories; once they're present, it exits 0. This is the smallest demoable.</p>
+
+<h3 id="US2">US2 · Detection is ecosystem-aware and honest <spec-pill>P2</spec-pill></h3>
+<p>As a <strong>developer in any stack</strong>, I want <strong>enforcement categories detected from my project's real
+config</strong> so that <strong>the gate reflects what I actually run, not a guess</strong>.</p>
+<p><em>Acceptance:</em> detection classifies representative signals per ecosystem (Python, JS/TS, Java, Go, Rust,
+Swift, C++) into categories — formatter, linter, type-checker, security, supply-chain, test-runner.</p>
+
+<h3 id="US3">US3 · Respect a brownfield toolchain <spec-pill>P3</spec-pill></h3>
+<p>As a <strong>developer retrofitting a profile</strong>, I want <strong>the guidance to fill only the gaps</strong>
+so that <strong>a profile respects the tools I already chose instead of fighting them</strong>.</p>
+<p><em>Acceptance:</em> brownfield <code>init --profile</code> runs detection and the composed <code>AGENTS.md</code>
+gate section names only the <em>missing</em> categories; existing tools are acknowledged, not replaced (unless
+<code>--replace-tools</code>).</p>
+
+<h3>Edge cases</h3>
+<ul>
+  <li><strong>No profile marker</strong> → <code>enforce</code> is a no-op exit 0 with a note (nothing to enforce).</li>
+  <li><strong>Lean profile</strong> → no required categories; exit 0 always.</li>
+  <li><strong>Standard profile</strong> → a missing category warns but exits 0 (only Verified/Enterprise are hard gates).</li>
+  <li><strong>Unknown/polyglot ecosystem</strong> → detection reports what it can; an undetectable stack degrades to a warning, never a false failure.</li>
+</ul>
+</section>
+
+
+<section id="requirements">
+<h2>3 · Requirements</h2>
+<p>Conformance keywords (<spec-rule>MUST</spec-rule>, <spec-rule level="should">SHOULD</spec-rule>,
+<spec-rule level="may">MAY</spec-rule>) follow RFC 2119.</p>
+
+<h3>Functional</h3>
+
+<spec-requirement id="FR-001" priority="must">
+<p><code>spectastic enforce [path]</code> <spec-rule>MUST</spec-rule> read the project's
+<code>.spectastic/profile.json</code> marker and report the enforcement categories the profile requires against those
+the toolchain provides.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-002" priority="must">
+<p>Detection <spec-rule>MUST</spec-rule> classify present enforcement categories — formatter · linter · type-checker ·
+security · supply-chain · test-runner — from config/manifest signals across Python, JS/TS, Java, Go, Rust, Swift, and
+C++.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-003" priority="must">
+<p>Each profile <spec-rule>MUST</spec-rule> declare its required enforcement categories as data (an
+<code>enforce</code> field in <code>profiles.json</code>): Lean none, Standard a floor, Verified and Enterprise
+progressively more.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-004" priority="must">
+<p><code>enforce</code> <spec-rule>MUST</spec-rule> exit non-zero when a required category is unmet for a hard-gate
+profile (Verified/Enterprise); Standard <spec-rule>MUST</spec-rule> warn but exit 0; Lean and no-marker
+<spec-rule>MUST</spec-rule> exit 0 — so a pre-commit/CI gate can block precisely where it should.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-005" priority="should">
+<p><code>init --tools</code> (031) <spec-rule level="should">SHOULD</spec-rule> optionally wire
+<code>spectastic enforce</code> into the pre-commit gate so the floor holds at the git boundary.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-006" priority="should">
+<p>Brownfield <code>init --profile</code> <spec-rule level="should">SHOULD</spec-rule> run detection and tailor the
+composed <code>AGENTS.md</code> gate section to the missing categories, acknowledging existing tools;
+<code>--replace-tools</code> overrides.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-007" priority="should">
+<p>The <code>/spectastic.plan</code> verb <spec-rule level="should">SHOULD</spec-rule> read the profile marker and emit
+a "Toolchain / enforcement" section resolving the policy to the detected ecosystem's tools plus the escalation ladder
+(standard gate → custom rule → build a minimal checker).</p>
+</spec-requirement>
+
+<spec-requirement id="FR-008" priority="may">
+<p>The <code>/spectastic.principles</code> verb <spec-rule level="may">MAY</spec-rule> read the marker to tailor its
+interview to the chosen profile.</p>
+</spec-requirement>
+
+<h3>Non-functional</h3>
+
+<spec-requirement id="NFR-001" priority="must">
+<p><code>enforce</code> and detection <spec-rule>MUST</spec-rule> be deterministic and filesystem-only — no network,
+no model — so CI drives them with fixture projects.</p>
+</spec-requirement>
+
+<spec-requirement id="NFR-002" priority="should">
+<p>Detection <spec-rule level="should">SHOULD</spec-rule> read only shallow config signals (root manifests + known
+config files), completing well under 500&nbsp;ms on a typical project.</p>
+</spec-requirement>
+
+<h3>Out of scope (deferred)</h3>
+<spec-out-of-scope>
+  <ul>
+    <li defer-to="never">Installing tools or editing a project's package manifests — spectastic does not manage the user's package manager.</li>
+    <li defer-to="TBD">Auto-writing CI workflow files for the resolved gate.</li>
+    <li defer-to="never">Automating the "build a minimal checker when none exists" duty — that is agent behavior guided by <code>AGENTS.md</code>, not spectastic code.</li>
+    <li defer-to="TBD">A shipped per-language custom-rule pack (Semgrep/ast-grep) for spec invariants.</li>
+  </ul>
+</spec-out-of-scope>
+</section>
+
+
+<section id="data">
+<h2>4 · Data model</h2>
+<h3>Entities</h3>
+<dl>
+  <dt>Enforcement category</dt><dd>One of: formatter · linter · type-checker · security · supply-chain · test-runner. The unit both the profile policy and detection speak in.</dd>
+  <dt>Detection signal</dt><dd>A mapping from a config/manifest marker (e.g. <code>[tool.ruff]</code> in <code>pyproject.toml</code>, <code>.clang-tidy</code>, <code>deny.toml</code>) to the category it satisfies, per ecosystem. Ships as data.</dd>
+  <dt>Profile enforce policy</dt><dd>The <code>enforce</code> field on each profile: the required categories + gate severity (hard/soft/none).</dd>
+</dl>
+<spec-note>
+<p><strong>Invariant:</strong> a category is "covered" if <em>any</em> signal for it is present — detection reports gaps,
+never prescribes a specific tool (brownfield respect).</p>
+</spec-note>
+</section>
+
+
+<section id="success">
+<h2>5 · Success criteria</h2>
+
+<spec-requirement id="SC-001" priority="must">
+<p>In a Verified-profile fixture with no linter/type-checker, <code>spectastic enforce</code> exits 1 and names the
+missing categories; in a fully-tooled Verified fixture it exits 0. <em>(The smallest demoable.)</em></p>
+</spec-requirement>
+
+<spec-requirement id="SC-002" priority="must">
+<p>Detection classifies representative config files for each of the seven ecosystems into the correct category (a
+fixture per ecosystem).</p>
+</spec-requirement>
+
+<spec-requirement id="SC-003" priority="must">
+<p>Gate severity scales: Lean and no-marker exit 0 unconditionally; Standard with a gap warns and exits 0;
+Verified/Enterprise with a gap exit 1.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-004" priority="should">
+<p>Brownfield <code>init --profile</code> in a project that already has a linter configured produces an
+<code>AGENTS.md</code> whose gate section does not tell the agent to add a linter for that category.</p>
+</spec-requirement>
+</section>
+
+
+<section id="assumptions">
+<h2>6 · Assumptions</h2>
+<spec-assumption>
+<p>The 041 profile marker (<code>.spectastic/profile.json</code>) is the source of truth for which profile a project runs.</p>
+</spec-assumption>
+<spec-assumption>
+<p>Shallow config-signal detection is a good-enough proxy for "the category is enforced"; a project can suppress a
+false gap by pointing detection at its setup (a future refinement, not v1).</p>
+</spec-assumption>
+</section>
+
+
+<section id="questions">
+<h2>7 · Open questions</h2>
+<spec-questions>
+<p>None outstanding — the architectural fork (gate is a command, not a validate rule) is resolved in §1; scope,
+severity model, and the brownfield boundary were anchored against 041 and the considerations doc.</p>
+</spec-questions>
+</section>
+
+
+<section id="conformance">
+<h2>8 · Conformance index</h2>
+<p>Auto-built from every <code>&lt;spec-requirement&gt;</code> in this document.</p>
+<spec-conformance></spec-conformance>
+</section>
+
+
+<section id="changelog">
+<h2>9 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-07-09">09 Jul 2026</time><span>Initial draft. The 041 enforcement follow-on. Grounds the gate as <code>spectastic enforce</code> (not a validate rule — the engine sees only spec-html) so the guarantee lives at the git/CI boundary (P-8). Deferred: tool installation, CI-file authoring, and the AI "build a checker" duty.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  042-profile-enforcement · Profile enforcement · authored 09 Jul 2026
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>
