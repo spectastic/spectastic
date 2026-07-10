@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Add FR-015 — intercept cross-artifact links in the webview · Change proposal</title>
+<link rel="stylesheet" href="../../../../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../../../../assets/favicon.svg">
+<script src="../../../../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Change proposal · 020-vscode-extension</p>
+  <h1>Add FR-015 — intercept cross-artifact links in the webview</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    A link between artifacts should open the next artifact, not escape the extension.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>     <span><spec-status value="applied">Applied</spec-status></span>
+    <b>Change ID</b>  <span>2026-07-10-link-interception</span>
+    <b>Spec</b>       <span><a href="../../../spec.html">020-vscode-extension</a></span>
+    <b>Source</b>     <span>triage <a href="../../../triage-log.html#T-011">020/T-011</a> (dogfooding on spec-tictactoe-2)</span>
+    <b>Author</b>     <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Created</b>    <span><time datetime="2026-07-10">10 Jul 2026</time></span>
+    <b>Targets</b>    <span>1 added (FR-015, must)</span>
+    <b>Read time</b>  <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-tldr>
+    <p>An SC link in tasks.html, clicked inside the extension, opened
+    <code>file+.vscode-resource…/spec.html%23SC-002</code> externally instead of navigating to that spec's SC-002.
+    This change adds FR-015: a cross-artifact link clicked in a webview opens the target artifact in the extension and
+    scrolls to the anchor. Implemented by marking <code>.html</code> links (skip the <code>asWebviewUri</code> rewrite),
+    injecting a nonce'd interceptor that posts <code>openLink</code>, resolving the target against the source dir, and
+    baking the scroll anchor into the target panel. A single additive MUST requirement.</p>
+  </spec-tldr>
+</header>
+
+
+<spec-change id="2026-07-10-link-interception" status="applied">
+
+<header>
+  <h3>Add FR-015 — intercept cross-artifact links in the webview</h3>
+  <span class="meta"><spec-status value="applied">Applied</spec-status></span>
+</header>
+
+
+<section id="intent">
+<h2>1 · Intent</h2>
+<p>020's asset rewrite (<code>rewriteForWebview</code>) sends every relative <code>href</code> through
+<code>asWebviewUri</code> — including a cross-artifact link like <code>../001-x/spec.html#SC-002</code>, which becomes a
+<code>vscode-resource</code> URL that escapes the panel when clicked (the anchor percent-encoded to <code>%23</code>).
+Triage <a href="../../../triage-log.html#T-011">T-011</a>. 020's navigation contract (FR-003 governs panel identity)
+was silent on intra-corpus link interception — the same spec-gap family as T-006 (missing verify node) and T-007
+(panel identity). This change closes it.</p>
+</section>
+
+
+<section id="scope">
+<h2>2 · Scope</h2>
+<spec-goals>
+  <h3>In scope</h3>
+  <ul>
+    <li>ADD FR-015 (must): a cross-artifact link clicked in a webview opens the target artifact in the extension + scrolls to the anchor, never escaping to a <code>vscode-resource</code> URL.</li>
+    <li>Append a changelog entry citing T-011.</li>
+  </ul>
+</spec-goals>
+<spec-non-goals>
+  <h3>Out of scope</h3>
+  <ul>
+    <li><spec-out-of-scope defer-to="never">Intercepting genuinely external links (<code>http(s):</code>, <code>mailto:</code>) — those keep VS Code's default open-externally behaviour.</spec-out-of-scope></li>
+  </ul>
+</spec-non-goals>
+</section>
+
+
+<section id="approach">
+<h2>3 · Approach</h2>
+<p>One additive MUST delta. The host marks relative <code>.html</code> (optionally <code>#anchor</code>) links with
+<code>data-artifact-link</code>/<code>data-anchor</code> instead of URI-rewriting them, injects a nonce-authorised
+click interceptor that posts <code>{openLink}</code>, and resolves the target against the source artifact's directory.
+The anchor is baked into the target panel's <code>&lt;body data-scroll-to&gt;</code> for a race-free on-load scroll (no
+messaging round-trip). Each panel's handler closes over its own artifact path, so links resolve correctly per panel.</p>
+</section>
+
+
+<section id="deltas">
+<h2>4 · Deltas</h2>
+<spec-delta op="added" target="FR-015">
+  <p><strong>What's added:</strong> a must-tier requirement for intra-corpus link interception.</p>
+  <spec-requirement id="FR-015" priority="must">
+    <p>A <strong>cross-artifact link</strong> clicked inside an artifact webview — a relative <code>.html</code>
+    (optionally <code>#anchor</code>) reference to another corpus artifact — <spec-rule>MUST</spec-rule> open that
+    artifact <em>in the extension</em> and scroll to the anchor, not escape to an external <code>vscode-resource</code>
+    URL. The host <spec-rule>MUST NOT</spec-rule> rewrite such links through <code>asWebviewUri</code>; it
+    <spec-rule>MUST</spec-rule> intercept the click and resolve the target against the source artifact's directory.</p>
+  </spec-requirement>
+</spec-delta>
+</section>
+
+
+<section id="risks">
+<h2>5 · Risk register</h2>
+<p>Adversarial pass fires (must-tier requirement touched).</p>
+<spec-risk-log>
+<spec-risk target="FR-015" status="mitigated">
+  <header><h4>Intercepting all relative .html links could catch a non-corpus or intentionally-external target</h4></header>
+  <p><strong>Concern.</strong> A blanket "intercept every relative <code>.html</code>" could swallow a link to an HTML file that isn't a corpus artifact, or one a user meant to open externally, and a non-existent target would dead-end.</p>
+  <div class="response"><strong>Mitigated.</strong> Interception is scoped to same-corpus targets: the host resolves the link against the source dir under <code>localResourceRoots</code> (the workspace), and a missing target surfaces the existing loud error page rather than a silent failure. Absolute schemes (<code>http(s):</code>, <code>mailto:</code>, <code>vscode-</code>) are already excluded from the rewrite and stay externally-openable.</div>
+</spec-risk>
+<spec-risk target="§CSP" status="mitigated">
+  <header><h4>Injecting an inline interceptor script widens the panel's CSP</h4></header>
+  <p><strong>Concern.</strong> The artifact panel's CSP was <code>script-src ${cspSource}</code> (no inline). Adding an inline interceptor could force <code>'unsafe-inline'</code>, weakening the panel's script policy.</p>
+  <div class="response"><strong>Mitigated.</strong> The interceptor ships under a per-render <em>nonce</em> (<code>'nonce-…'</code>), not <code>'unsafe-inline'</code> — a single host-controlled script with no user input executed; the artifact's own <code>spec.js</code> still loads from <code>cspSource</code>. CSP is narrowed to a nonce, not broadened.</div>
+</spec-risk>
+</spec-risk-log>
+</section>
+
+
+<section id="tasks">
+<h2>6 · Tasks</h2>
+<ul style="list-style:none;padding-left:0;">
+  <li><input type="checkbox" checked> ADD FR-015 after FR-014 in <code>spec.html</code>.</li>
+  <li><input type="checkbox" checked> Implement in <code>open-artifact.ts</code>: mark links, nonce'd interceptor, per-panel handler, baked scroll anchor.</li>
+  <li><input type="checkbox" checked> vitest (marking + interceptor injection) + Playwright (click→post, scroll) regressions.</li>
+  <li><input type="checkbox" checked> Changelog entry citing T-011.</li>
+  <li><input type="checkbox" checked> Risks committed <code>mitigated</code>; status Applied; folder moved to <code>changes/archive/</code>.</li>
+</ul>
+</section>
+
+
+<section id="questions">
+<h2>7 · Open questions</h2>
+<spec-questions>
+<p>None. Retroactive archive of a change folded 10 Jul 2026 during triage-fix.</p>
+</spec-questions>
+</section>
+
+
+<section id="changelog">
+<h2>8 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-07-10">10 Jul 2026</time><span>Proposal authored + applied. Single ADD of FR-015 (must) for intra-corpus link interception, from triage <a href="../../../triage-log.html#T-011">T-011</a>. Adversarial pass produced two risks (over-broad interception; CSP widening), both mitigated (same-corpus scoping + loud error page; nonce not unsafe-inline). Retroactive archive authored to complete the propose→apply trail.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+</spec-change>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  2026-07-10-link-interception · Add FR-015 — intercept cross-artifact links in the webview · authored 10 Jul 2026 ·
+  <button data-theme-toggle style="background:none;border:none;color:var(--c-link);cursor:pointer;font:inherit;padding:0;border-bottom:1px solid currentColor;">toggle theme</button>
+</footer>
+
+</main>
+<script src="../../../../../assets/spec.js"></script>
+</body>
+</html>
