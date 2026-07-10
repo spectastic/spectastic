@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { readFile } from 'node:fs/promises';
+import { randomBytes } from 'node:crypto';
 import * as path from 'node:path';
 
 /**
@@ -34,6 +35,7 @@ export async function openArtifact(
   roots: vscode.Uri[],
   panels?: Map<string, vscode.WebviewPanel>,
   extensionUri?: vscode.Uri,
+  anchor?: string,
 ): Promise<void> {
   const existing = panels?.get(artifactPath);
   if (existing) {
@@ -41,7 +43,7 @@ export async function openArtifact(
     // reflects edits made since it was first shown (T-009). D-009's reuse kept
     // the panel but left its content frozen — reveal without re-read is stale.
     existing.reveal();
-    await paint(existing, artifactPath);
+    await paint(existing, artifactPath, anchor);
     return;
   }
 
@@ -62,13 +64,30 @@ export async function openArtifact(
   panels?.set(artifactPath, panel);
   panel.onDidDispose(() => panels?.delete(artifactPath));
 
-  await paint(panel, artifactPath);
+  // Intra-corpus link interception (spec 020 T-011): a cross-artifact link
+  // clicked inside this webview posts { openLink } instead of escaping to a
+  // vscode-resource URL. Resolve it against THIS artifact's dir and open the
+  // target in the extension, scrolling to the anchor. Handler closes over this
+  // panel's artifactPath, so each panel resolves links against its own file.
+  panel.webview.onDidReceiveMessage((msg: unknown) => {
+    const m = msg as { type?: string; link?: string; anchor?: string } | null;
+    if (m?.type === 'openLink' && typeof m.link === 'string') {
+      const target = path.resolve(path.dirname(artifactPath), m.link);
+      void openArtifact(target, roots, panels, extensionUri, m.anchor || undefined);
+    }
+  });
+
+  await paint(panel, artifactPath, anchor);
 }
 
 /** Read the artifact and render it into the panel (or a loud error page). Shared
  *  by the first open and the reuse-reveal path so both surface read errors and
  *  carry the doc-path identically. */
-async function paint(panel: vscode.WebviewPanel, artifactPath: string): Promise<void> {
+async function paint(
+  panel: vscode.WebviewPanel,
+  artifactPath: string,
+  anchor?: string,
+): Promise<void> {
   try {
     const raw = await readFile(artifactPath, 'utf8');
     panel.webview.html = rewriteForWebview(
@@ -76,6 +95,7 @@ async function paint(panel: vscode.WebviewPanel, artifactPath: string): Promise<
       panel.webview,
       path.dirname(artifactPath),
       docPathOf(artifactPath),
+      anchor,
     );
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
@@ -103,6 +123,7 @@ export function rewriteForWebview(
   webview: Pick<vscode.Webview, 'asWebviewUri' | 'cspSource'>,
   artifactDir: string,
   docPath?: string,
+  anchor?: string,
 ): string {
   const toUri = (rel: string): string =>
     webview.asWebviewUri(vscode.Uri.file(path.resolve(artifactDir, rel))).toString();
@@ -111,30 +132,79 @@ export function rewriteForWebview(
     /(href|src)="([^"]+)"/g,
     (match, attr: string, val: string) => {
       if (/^(?:https?:|data:|#|mailto:|vscode-|blob:)/.test(val)) return match;
+      // Cross-artifact link (spec 020 T-011): a relative href to a .html artifact
+      // (optionally #anchor). Rewriting it through asWebviewUri produces a
+      // vscode-resource URL that escapes the panel when clicked. Instead, mark it
+      // for the injected interceptor and neutralise native navigation.
+      const link = attr === 'href' ? /^([^#]*\.html)(?:#(.+))?$/.exec(val) : null;
+      if (link) {
+        const rel = link[1] ?? '';
+        const frag = link[2] ?? '';
+        return `href="#" data-artifact-link="${escapeHtml(rel)}" data-anchor="${escapeHtml(frag)}"`;
+      }
       return `${attr}="${toUri(val)}"`;
     },
   );
 
+  const nonce = randomBytes(16).toString('base64');
   const csp =
     `<meta http-equiv="Content-Security-Policy" content="` +
     `default-src 'none'; ` +
     `img-src ${webview.cspSource} data: https:; ` +
     `style-src ${webview.cspSource} 'unsafe-inline'; ` +
     `font-src ${webview.cspSource} https: data:; ` +
-    `script-src ${webview.cspSource};">`;
+    `script-src ${webview.cspSource} 'nonce-${nonce}';">`;
 
   let out = rewritten.replace(/<head>/i, `<head>\n${csp}`);
   // Tell the page its real spec-relative path so the sticky header shows it
-  // instead of the webview's synthetic index.html (T-010). The header JS reads
-  // document.body.dataset.docPath in preference to location.pathname.
-  if (docPath) {
+  // instead of the webview's synthetic index.html (T-010), and — when the panel
+  // was opened by following a cross-artifact link — the anchor to scroll to
+  // (T-011). Both ride on <body data-*>; the header JS reads data-doc-path.
+  const bodyAttrs =
+    (docPath ? ` data-doc-path="${escapeHtml(docPath)}"` : '') +
+    (anchor ? ` data-scroll-to="${escapeHtml(anchor)}"` : '');
+  if (bodyAttrs) {
     out = out.replace(
       /<body(\s[^>]*)?>/i,
-      (_m, attrs: string | undefined) => `<body${attrs ?? ''} data-doc-path="${escapeHtml(docPath)}">`,
+      (_m, attrs: string | undefined) => `<body${attrs ?? ''}${bodyAttrs}>`,
     );
   }
+  // Inject the link interceptor (T-011). Intercepts clicks on marked
+  // cross-artifact links → postMessage to the host; on load, scrolls to a baked
+  // data-scroll-to target. Nonce-authorised against the CSP above.
+  out = out.replace(
+    /<\/body>/i,
+    `<script nonce="${nonce}">${LINK_INTERCEPTOR}</script>\n</body>`,
+  );
   return out;
 }
+
+/**
+ * Webview-side link interceptor (spec 020 T-011). Runs inside the artifact panel:
+ * a click on a marked cross-artifact link posts { openLink } to the host instead
+ * of navigating; on load, scrolls to the body's data-scroll-to anchor (set when
+ * the panel was opened by following such a link). Kept as a string so it ships
+ * inline under a CSP nonce — no separate bundle.
+ */
+const LINK_INTERCEPTOR = `(function(){
+  var vscode = acquireVsCodeApi();
+  document.addEventListener('click', function(e){
+    var t = e.target;
+    var a = t && t.closest ? t.closest('a[data-artifact-link]') : null;
+    if(!a) return;
+    e.preventDefault();
+    vscode.postMessage({ type:'openLink', link: a.getAttribute('data-artifact-link'), anchor: a.getAttribute('data-anchor') || '' });
+  }, true);
+  function scrollToTarget(){
+    var id = document.body && document.body.dataset ? document.body.dataset.scrollTo : '';
+    if(!id) return;
+    var el = document.getElementById(id);
+    if(el) el.scrollIntoView({ behavior:'smooth', block:'start' });
+  }
+  if(document.readyState === 'loading'){
+    document.addEventListener('DOMContentLoaded', function(){ setTimeout(scrollToTarget, 0); });
+  } else { setTimeout(scrollToTarget, 0); }
+})();`;
 
 function errorPage(
   webview: Pick<vscode.Webview, 'cspSource'>,

@@ -63,6 +63,38 @@ describe('rewriteForWebview', () => {
   it('omits data-doc-path when no docPath is supplied (backward compatible)', () => {
     expect(out).not.toContain('data-doc-path');
   });
+
+  // T-011: cross-artifact links must NOT be rewritten to escaping vscode-resource
+  // URIs; they're marked for the injected interceptor instead.
+  describe('cross-artifact link interception (T-011)', () => {
+    const withLink = `<!doctype html><head></head><body>
+<a href="../001-x/spec.html#SC-002">SC</a>
+<a href="./tasks.html">tasks</a>
+<a href="../../assets/spec.css">asset</a></body></html>`;
+    const rendered = rewriteForWebview(withLink, webview, '/repo/specs/020-demo');
+
+    it('marks a cross-artifact link instead of asWebviewUri-rewriting it', () => {
+      expect(rendered).toContain('data-artifact-link="../001-x/spec.html"');
+      expect(rendered).toContain('data-anchor="SC-002"');
+      expect(rendered).not.toContain('https://webview/repo/specs/001-x/spec.html'); // did not escape
+    });
+
+    it('marks a same-dir .html link (no anchor)', () => {
+      expect(rendered).toContain('data-artifact-link="./tasks.html"');
+    });
+
+    it('still rewrites genuine assets and injects the nonce-authorised interceptor', () => {
+      expect(rendered).toContain('https://webview/repo/assets/spec.css'); // asset untouched by link rule
+      expect(rendered).toMatch(/<script nonce="[^"]+">/);
+      expect(rendered).toContain("type:'openLink'");
+      expect(rendered).toContain("script-src vscode-webview://unit 'nonce-");
+    });
+
+    it('bakes data-scroll-to onto <body> when an anchor is supplied', () => {
+      const scrolled = rewriteForWebview(withLink, webview, '/repo/specs/020-demo', undefined, 'SC-002');
+      expect(scrolled).toContain('data-scroll-to="SC-002"');
+    });
+  });
 });
 
 // T-501 (spec FR-003, plan D-009). Write-and-fail-first for artifact-panel
@@ -76,6 +108,8 @@ function makePanel(reveal: ReturnType<typeof vi.fn> = vi.fn()): vscode.WebviewPa
       html: '',
       asWebviewUri: (u: { fsPath: string }) => ({ toString: () => `https://wv${u.fsPath}` }),
       cspSource: 'x',
+      onDidReceiveMessage: vi.fn(),
+      postMessage: vi.fn(),
     },
     reveal,
     onDidDispose: vi.fn(),
