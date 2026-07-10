@@ -9,6 +9,20 @@
  */
 
 import type { Command } from 'commander';
+import type { DeciderConfig, DeciderRole, EffortLevel, RequestedEffort } from '@spectastic/core/decider';
+
+/**
+ * Build a `Partial<DeciderConfig>`, omitting a field when its value is absent.
+ * Pulled out of the run action's body to keep its cognitive complexity down
+ * (037 triage T-001 follow-up) — used for both the project-config and the
+ * per-run-override slots resolveDecider takes.
+ */
+function partialDeciderConfig(role?: DeciderRole, effort?: EffortLevel): Partial<DeciderConfig> {
+  const out: Partial<DeciderConfig> = {};
+  if (role) out.role = role;
+  if (effort) out.effort = effort;
+  return out;
+}
 
 export function registerRun(program: Command): void {
   program
@@ -25,18 +39,27 @@ export function registerRun(program: Command): void {
         specId: string,
         opts: { decider?: string; effort?: string; checkpoints?: string; budget?: string; yes?: boolean },
       ) => {
-      const [{ runPipeline }, { buildRunSteps }, { BudgetTracker, budgeted }, { resolveDecider }, cfgMod, factory, aiFactory, { nodeFs }, path] =
-        await Promise.all([
-          import('@spectastic/core/run/pipeline'),
-          import('@spectastic/core/run/steps'),
-          import('@spectastic/core/run/budget'),
-          import('@spectastic/core/decider'),
-          import('../config/decider.js'),
-          import('../coding-factory.js'),
-          import('../ai-factory.js'),
-          import('@spectastic/core/providers/node-fs'),
-          import('node:path'),
-        ]);
+      const [
+        { runPipeline },
+        { buildRunSteps },
+        { BudgetTracker, budgeted },
+        { resolveDecider, resolveEffort },
+        cfgMod,
+        factory,
+        aiFactory,
+        { nodeFs },
+        path,
+      ] = await Promise.all([
+        import('@spectastic/core/run/pipeline'),
+        import('@spectastic/core/run/steps'),
+        import('@spectastic/core/run/budget'),
+        import('@spectastic/core/decider'),
+        import('../config/decider.js'),
+        import('../coding-factory.js'),
+        import('../ai-factory.js'),
+        import('@spectastic/core/providers/node-fs'),
+        import('node:path'),
+      ]);
 
       const cwd = process.cwd();
       const specPath = path.resolve(cwd, 'specs', specId, 'spec.html');
@@ -54,12 +77,19 @@ export function registerRun(program: Command): void {
       }
 
       const project = cfgMod.loadDeciderConfig(cwd);
+      // Narrow effort: 'auto' -> a concrete EffortLevel (034) before resolveDecider,
+      // which expects an already-resolved level, not the config-file superset
+      // RequestedEffort (037 triage T-001). No per-run irreversible/breadth signal
+      // exists for this whole-pipeline checkpoint, so 'auto' resolves to the floor.
+      const projectEffort = project.effort
+        ? resolveEffort(project.effort, null, project.floor).level
+        : undefined;
+      const overrideEffort = opts.effort
+        ? resolveEffort(opts.effort as RequestedEffort, null, project.floor).level
+        : undefined;
       const decider = resolveDecider(
-        project,
-        {
-          ...(opts.decider ? { role: opts.decider as 'human' | 'agent' | 'panel' } : {}),
-          ...(opts.effort ? { effort: opts.effort as never } : {}),
-        },
+        partialDeciderConfig(project.role, projectEffort),
+        partialDeciderConfig(opts.decider as DeciderRole | undefined, overrideEffort),
         'agent', // checkpoint default for an unattended run
       );
       if (decider.role === 'human') {
