@@ -11,8 +11,18 @@
 export type FileAction = 'write' | 'overwrite' | 'skip';
 
 export interface FileWriteDecision {
-  /** Absolute path inside the bundle (the source content). */
-  source: string;
+  /**
+   * Absolute path inside the bundle (the source content). Present for
+   * copy-based writes (assets, templates, commands). Omitted when the
+   * decision carries `content` instead (composed profile artifacts, spec 041).
+   */
+  source?: string;
+  /**
+   * Literal file content to write, for composed artifacts that have no
+   * on-disk source (init --profile: principles.html/AGENTS.md/CLAUDE.md).
+   * The writer prefers this over `source` when present (D-002 of 041).
+   */
+  content?: string;
   /** CWD-relative path where the file will be written. */
   destination: string;
   /** Whether this destination existed before init started. */

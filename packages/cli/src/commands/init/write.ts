@@ -1,4 +1,4 @@
-import { copyFile, mkdir } from 'node:fs/promises';
+import { copyFile, mkdir, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import type { FileWriteDecision, InitSummary } from './types.js';
 
@@ -22,7 +22,17 @@ export async function executeWrites(
       continue;
     }
     await mkdir(dirname(decision.destination), { recursive: true });
-    await copyFile(decision.source, decision.destination);
+    // Composed artifacts (spec 041) carry literal content and have no source
+    // path; copy-based decisions carry a source. Prefer content when present.
+    if (decision.content !== undefined) {
+      await writeFile(decision.destination, decision.content, 'utf8');
+    } else if (decision.source !== undefined) {
+      await copyFile(decision.source, decision.destination);
+    } else {
+      throw new Error(
+        `init: write decision for ${decision.destination} has neither source nor content`,
+      );
+    }
     if (decision.action === 'overwrite') {
       overwrote += 1;
     } else {

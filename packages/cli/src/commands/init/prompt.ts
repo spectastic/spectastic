@@ -66,6 +66,27 @@ export function applyForce(conflicts: FileWriteDecision[]): void {
   for (const c of conflicts) c.action = 'overwrite';
 }
 
+/**
+ * Interactively choose a profile (spec 041, FR-005) when `init` is run with no
+ * `--profile` flag in a TTY. Returns the chosen name, or null if the user
+ * declines / cancels (init then proceeds with no profile). @clack is imported
+ * lazily so the flag-driven path never pays its cost.
+ */
+export async function selectProfile(names: string[]): Promise<string | null> {
+  if (names.length === 0) return null;
+  const p = await import('@clack/prompts');
+  const choice = await p.select({
+    message: 'Choose a project profile (or Skip):',
+    options: [
+      ...names.map((n) => ({ value: n, label: n })),
+      { value: '__skip__', label: 'Skip — no profile' },
+    ],
+    initialValue: names.includes('standard') ? 'standard' : names[0],
+  });
+  if (p.isCancel(choice) || choice === '__skip__') return null;
+  return choice as string;
+}
+
 export class NonTTYConflictError extends Error {
   constructor(public readonly conflictCount: number) {
     super(

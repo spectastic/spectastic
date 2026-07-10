@@ -47,9 +47,13 @@ export function buildPlan(opts: BuildPlanOptions): FileWriteDecision[] {
 }
 
 /**
- * Returns the subset of decisions that point at pre-existing files.
- * The prompt loop iterates these; entries without conflicts skip the loop.
+ * Returns the subset of decisions that point at pre-existing files AND are
+ * still unresolved (action === "write"). The prompt loop iterates these.
+ *
+ * The `action === "write"` guard lets the profile upgrade path (spec 041)
+ * pre-resolve a decision to "overwrite" — a safe additive splice that
+ * preserves the user's content — so it bypasses the y/N/skip prompt.
  */
 export function findConflicts(plan: readonly FileWriteDecision[]): FileWriteDecision[] {
-  return plan.filter((d) => d.preExisting);
+  return plan.filter((d) => d.preExisting && d.action === 'write');
 }

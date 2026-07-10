@@ -104,6 +104,20 @@ spectastic init --tools --uninstall       # remove what it installed (reversible
 - **Pre-commit gate.** Installs a git `pre-commit` hook that runs `spectastic validate` over the corpus and **rejects the commit** on any error — including an open `<spec-question>` in an *Accepted* spec (a Draft's open questions never block). It chains and preserves any existing hook, honours `core.hooksPath`, and adds well under a second to a commit. `git commit --no-verify` is the only, deliberate bypass. In a non-git project the gate is skipped with a warning and the adapter half still installs.
 - **Drift-proof adapters.** Generates `.claude/commands/spectastic.*.md` from the `commands/*.md` source and a `commands-drift` check that makes the gate reject a commit while an installed adapter has drifted from source — closing the manual `cp` re-sync footgun for good. Deterministic and keyless.
 
+### Profiles — `init --profile`
+
+A project's ambition is a dial, not a default. `spectastic init --profile <name>` seeds a profile-shaped `principles.html` plus a lean, command-first `AGENTS.md` (the canonical, cross-tool agent manual) and a thin `CLAUDE.md` that points at it — deterministically, no model call:
+
+```sh
+spectastic init --profile lean         # low ceremony: formatter + a smoke check
+spectastic init --profile standard      # lint + types + tests accompany behavior
+spectastic init --profile verified      # every level tested; build a checker when none exists
+spectastic init --profile enterprise    # + feature toggles, supply-chain, grounded decisions
+spectastic init                          # in a terminal, prompts you to choose
+```
+
+Each profile is a preset composition of axes (verification rigor, enforcement posture, feature-toggle policy, grounding depth, framework expectations), declared as data in [`profiles.json`](./profiles.json). It's brownfield-safe: re-running amends in place through the same conflict prompt and never blind-overwrites, and re-running with a higher profile (say `lean` → `verified`) adds the new principles **additively** — your edits survive. The [`AGENTS.md` standard](https://agents.md) stays lean and points at your gates; making those gates real is the follow-on ([spec 042](./specs/042-profile-enforcement/spec.html)).
+
 ### Change proposals (`/spectastic.propose` + `/spectastic.apply`)
 
 Spec evolution happens via PR-shaped proposal artifacts. Each change is a folder

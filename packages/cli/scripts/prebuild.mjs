@@ -33,6 +33,9 @@ const SOURCES = [
   // default install (specs/018-explain/plan.html D-002, T-312). Lives at the
   // bundle root, not under an installed subdir, so it is never written to cwd.
   ['commands.json', 'commands.json'],
+  // Init profile manifest — read by `init --profile` to compose principles/
+  // AGENTS/CLAUDE (spec 041). Bundle-root, read-only, never written to cwd.
+  ['profiles.json', 'profiles.json'],
 ];
 
 async function main() {
