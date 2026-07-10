@@ -1,0 +1,264 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Verb model policy · Specification</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Specification · 044-verb-model-policy</p>
+  <h1>Verb model policy</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    Assign each verb — and each verb's fan-out subagents — a Claude model tier, so cost tracks the work without dropping quality where reasoning pays off.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>      <span><spec-status value="draft">Draft</spec-status></span>
+    <b>Spec ID</b>     <span>044-verb-model-policy</span>
+    <b>Owner</b>       <span>Brian Corbin (me@briancorbin.co.uk)</span>
+    <b>Reviewers</b>   <span>—</span>
+    <b>Created</b>     <span><time datetime="2026-07-10">10 Jul 2026</time></span>
+    <b>Principles</b><span><a href="../../principles.html">v1.4.0</a></span>
+    <b>Smallest demoable</b><span>Run <code>/spectastic.implement</code> and see it execute on Sonnet, then revert to the session model on the next prompt.</span>
+    <b>Read time</b>   <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-budget words="1500" reqs="20" minutes="12"></spec-budget>
+
+  <spec-tldr>
+    <p>Today every verb runs on whatever the Claude Code session model is (Opus), and the CLI hardcodes one model — so a mechanical <code>apply</code> costs the same as a reasoning-dense <code>plan</code>, and the read-heavy <code>implement</code> (19% of weekly usage) burns Opus tokens on work Sonnet handles well. This feature makes model tier a deliberate, per-verb choice across three surfaces: slash-command frontmatter (Tier A), isolated subagent pins (Tier C), and the headless CLI's provider config (Tier D). The single most important outcome: routine, single-turn, or fan-out work runs cheaper; reasoning-and-interview verbs stay on the strong model; and an escape hatch escalates a hard task on demand.</p>
+  </spec-tldr>
+
+  <dl class="invest">
+    <dt><span class="letter">I</span> Independent</dt> <dd>Depends on principles + the <code>decider</code> config family (033–036) whose precedence path Tier D reuses. New model-tier axis; no shared-data coupling with the effort axis.</dd>
+    <dt><span class="letter">N</span> Negotiable</dt>  <dd>Outcomes contract. Exact env-var name, config-section placement, and the policy-map data structure are the plan's call, not fixed here.</dd>
+    <dt><span class="letter">V</span> Valuable</dt>    <dd>Unlocks <a href="#SC-001">SC-001</a> — the read-heavy and fan-out verbs run on a cheaper tier, cutting the two largest usage lines the panel flagged.</dd>
+    <dt><span class="letter">E</span> Estimable</dt>   <dd>Plan + tasks derivable now. Every knob (per-verb tier, escape-hatch behaviour, apply/critic tiers) was anchored in the interview.</dd>
+    <dt><span class="letter">S</span> Small</dt>       <dd><spec-sidenote>Deliberately at the upper bound: the owner chose to carry all three tiers in one slice rather than sequence Tier D as a sibling. Watched against the budget gauge; the coding-runtime <code>--model</code> passthrough and the budget×tier interlock are pushed out of scope to hold the line.</spec-sidenote>Three surfaces, one coherent policy. Near the ceiling by design — see the sidenote.</dd>
+    <dt><span class="letter">T</span> Testable</dt>    <dd>Every requirement observable: frontmatter parses and validates, the escalated run uses Opus, the CLI honours the override, the stale default is gone. Cost outcome measured against the usage panel.</dd>
+  </dl>
+
+  <spec-audience-map>
+    <dl>
+      <dt>Exec / PM</dt>   <dd>§<a href="#context">Context</a>, §<a href="#scenarios">User scenarios</a>, §<a href="#success">Success criteria</a>.</dd>
+      <dt>Reviewer</dt>    <dd>§<a href="#requirements">Requirements</a>, §<a href="#assumptions">Assumptions</a>, §<a href="#questions">Open questions</a>.</dd>
+      <dt>Implementer</dt> <dd>§<a href="#requirements">Requirements</a>, §<a href="#data">Data model</a>, §<a href="#conformance">Conformance index</a>.</dd>
+    </dl>
+  </spec-audience-map>
+</header>
+
+
+<section id="context">
+<h2>1 · Context</h2>
+<p>Spectastic's verbs run in two execution contexts. As <strong>slash commands</strong> inside the Claude Code host, a verb runs on the session model — today, uniformly Opus. As <strong>CLI commands</strong> (<code>spectastic &lt;verb&gt;</code>, for CI and headless automation), the verb's <code>AIProvider</code> is built with a hardcoded, now-stale model (<code>claude-sonnet-4-6</code>) and no way to change it. Neither context lets cost follow the shape of the work.</p>
+<p>The weekly usage panel made the gap concrete: <code>/spectastic.implement</code> is <strong>19%</strong> of usage and <strong>83%</strong> comes from subagent-heavy sessions — yet implement is largely context-read and mechanical bookkeeping, and its fan-out subagents (and those of <code>propose</code> and <code>triage</code>) all inherit Opus. Meanwhile the reasoning-and-interview verbs (<code>spec</code>, <code>plan</code>, <code>propose</code>, <code>triage</code>) genuinely need the strong model — and their multi-turn chat interviews would <em>leak</em> a frontmatter downgrade anyway (a slash-command <code>model:</code> override is turn-scoped and reverts on the next prompt).</p>
+<p>Stakeholders: the maintainer, who pays for the tokens; and every future contributor, who inherits whatever default tiering ships. This is the <strong>Claude</strong> case; the same policy shape is meant to generalise to the deferred cross-tool installers.</p>
+</section>
+
+
+<section id="scenarios">
+<h2>2 · User scenarios &amp; testing</h2>
+
+<p>Each story <strong>MUST</strong> be independently testable: if you implemented only US1, you would still have a viable MVP.</p>
+
+<h3 id="US1">US1 · Cheap tier for the read-heavy and mechanical verbs <spec-pill>P1</spec-pill></h3>
+<p>As the <strong>maintainer</strong>, I want <strong>implement, apply, and tasks to run on Sonnet</strong> so that <strong>the biggest cost line drops without me choosing a model each time</strong>.</p>
+<p><em>Acceptance:</em> invoking any of these verbs executes on Sonnet for that turn and reverts to the session model on the next prompt; the reasoning/interview verbs are untouched (<code>inherit</code>).</p>
+
+<h3 id="US2">US2 · Escalate a hard task on demand <spec-pill>P1</spec-pill></h3>
+<p>As the <strong>maintainer</strong>, I want <strong><code>/spectastic.implement --model opus</code> to run the task on Opus</strong> so that <strong>a gnarly task isn't stuck on the cheaper default</strong>.</p>
+<p><em>Acceptance:</em> with the flag, the task's code authoring is done by an Opus-pinned subagent while the Sonnet main loop orchestrates; without it, authoring is inline on Sonnet.</p>
+
+<h3 id="US3">US3 · Cheap fan-out subagents, strong adversary <spec-pill>P2</spec-pill></h3>
+<p>As the <strong>maintainer</strong>, I want <strong>the triage list-intake classifiers and implement <code>[P]</code> workers pinned to Sonnet, but the propose critic left on Opus</strong> so that <strong>the 83% subagent line drops while adversarial risk-finding keeps its depth</strong>.</p>
+<p><em>Acceptance:</em> classifier and impl-task subagents run on Sonnet; the critic runs on the session model; the main loop stays on its own model throughout.</p>
+
+<h3 id="US4">US4 · Configure the model for headless runs <spec-pill>P2</spec-pill></h3>
+<p>As a <strong>CI author</strong>, I want <strong><code>SPECTASTIC_MODEL</code> / <code>--model</code> to set the model for <code>spectastic &lt;verb&gt;</code></strong> so that <strong>headless runs aren't frozen on a stale hardcoded default</strong>.</p>
+<p><em>Acceptance:</em> the override resolves through the same precedence as the decider config and flows into the provider; absent an override, a per-verb default applies; the resulting model appears in the commit's <code>Assisted-by:</code> trailer.</p>
+
+<h3>Edge cases</h3>
+<ul>
+  <li>An <code>availableModels</code> allowlist excludes the requested tier — the session keeps its current model (documented Claude Code behaviour); the CLI path fails fast on an unknown alias.</li>
+  <li>A verb with <code>model: inherit</code> whose session is already Sonnet — no switch, no regression.</li>
+  <li>The <code>.claude/commands/</code> (or <code>.claude/agents/</code>) sync copy drifts from source — the running command is stale; the drift-guard/validate rule must catch a mismatched <code>model:</code>.</li>
+</ul>
+</section>
+
+
+<section id="requirements">
+<h2>3 · Requirements</h2>
+
+<p>Conformance keywords (<spec-rule>MUST</spec-rule>, <spec-rule level="should">SHOULD</spec-rule>,
+<spec-rule level="may">MAY</spec-rule>) follow RFC 2119.</p>
+
+<h3>Functional — Tier A (slash-command frontmatter)</h3>
+
+<spec-requirement id="FR-001" priority="must">
+<p>Each verb's slash command <spec-rule>MUST</spec-rule> carry a <code>model:</code> frontmatter key: <code>implement</code>, <code>apply</code>, and <code>tasks</code> set <code>sonnet</code>; <code>spec</code>, <code>plan</code>, <code>propose</code>, <code>triage</code>, <code>explain</code>, <code>principles</code>, and <code>explore</code> set <code>inherit</code>.</p>
+<details><summary>Rationale</summary><p>Single-turn autonomous verbs take a clean turn-scoped downgrade; the reasoning-and-interview verbs would leak the override across chat turns <em>and</em> want the strong model, so they self-select to <code>inherit</code>. Declaring <code>inherit</code> explicitly (rather than omitting the key) makes each command's model posture self-describing.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-002" priority="must">
+<p>Frontmatter and agent-definition model values <spec-rule>MUST</spec-rule> use aliases drawn from a single legal set — <code>opus</code>, <code>sonnet</code>, <code>haiku</code>, <code>inherit</code> — defined once as a core constant (the single source of truth referenced by the policy map, the validator, and the meta-spec contract), never pinned full model IDs, so they track the latest model without edits.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-003" priority="must">
+<p><code>/spectastic.implement --model opus</code> <spec-rule>MUST</spec-rule> escalate by delegating the task's code authoring to an Opus-pinned subagent while the Sonnet main loop orchestrates (context read, checkbox tick, status-flip). Without the flag, authoring is inline on Sonnet.</p>
+<details><summary>Rationale</summary><p>A frontmatter <code>model:</code> is fixed when the skill activates and a body argument cannot change the turn's model — so the only honest escape hatch is subagent delegation, which reuses the Tier C <code>impl-task</code> agent.</p></details>
+</spec-requirement>
+
+<h3>Functional — Tier C (subagent pins)</h3>
+
+<spec-requirement id="FR-004" priority="must">
+<p>The fan-out subagents <spec-rule>MUST</spec-rule> declare model pins via agent definitions: <code>spectastic-classifier</code> (triage list-intake) and <code>spectastic-impl-task</code> (implement <code>[P]</code> + escape hatch) set <code>sonnet</code>; <code>spectastic-critic</code> (propose adversarial pass) sets <code>inherit</code>. Agent-definition sources <spec-rule>MUST</spec-rule> be tracked and synced to <code>.claude/agents/</code>, mirroring the <code>commands/</code> → <code>.claude/commands/</code> convention.</p>
+<details><summary>Rationale</summary><p>Subagent model is isolated — the pinned tier runs independently while the main loop keeps its own model. The critic stays on the session model because adversarial risk-finding is where depth pays off and it runs rarely.</p></details>
+</spec-requirement>
+
+<h3>Functional — the frontmatter contract</h3>
+
+<spec-requirement id="FR-005" priority="must">
+<p>The command-frontmatter contract (REQ-TOOL-004, meta-spec) <spec-rule>MUST</spec-rule> permit an optional <code>model:</code> key, and the <code>skill-metadata-shape</code> validate rule <spec-rule>MUST</spec-rule> accept it without warning. The enforcement that a declared tier is well-formed <spec-rule>MUST</spec-rule> live in that validate rule, not in command prose.</p>
+<details><summary>Rationale</summary><p>Per P-8, a frontmatter <code>model:</code> is advisory — the harness can't be forced to honour it. The <em>guarantee</em> (the key is legal and well-formed) is a kernel/CI rule. Amends REQ-TOOL-004; landed as a companion delta on <code>000-spectastic</code>.</p></details>
+</spec-requirement>
+
+<h3>Functional — Tier D (CLI model config)</h3>
+
+<spec-requirement id="FR-006" priority="must">
+<p>For AI-coupled verbs run via the CLI, the model <spec-rule>MUST</spec-rule> be resolvable from a <code>--model</code> flag and a <code>SPECTASTIC_MODEL</code> environment variable, wired through to the <code>ClaudeProvider</code>; absent an override, a per-verb default from the model policy applies.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-007" priority="must">
+<p>Model-tier resolution <spec-rule>MUST</spec-rule> use the same precedence path as the decider config (per-run override &gt; project config &gt; verb default), not a parallel resolver, and its project-config surface <spec-rule>MUST</spec-rule> reuse the decider loader's fail-fast validation.</p>
+<details><summary>Rationale</summary><p>036 FR-006 established "one resolution path, not a parallel one." Model tier is an orthogonal axis to effort, but shares the resolver and config-loading discipline.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-008" priority="must">
+<p>The deterministic model policy (the per-verb tier map and its resolver) <spec-rule>MUST</spec-rule> live in <code>@spectastic/core</code>; the CLI command layer stays thin. The stale <code>DEFAULT_MODEL</code> (<code>claude-sonnet-4-6</code>) <spec-rule>MUST</spec-rule> be refreshed to a current model and centralised as a single source of truth.</p>
+<details><summary>Rationale</summary><p>Fat-core / thin-CLI (P-8, and the 000/T-016 convention): a second caller — another verb, a test, the frontmatter drift-guard — would want the policy map without the CLI.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-009" priority="must">
+<p>A single per-verb policy map <spec-rule>MUST</spec-rule> be the source of truth for per-verb tiers, and a validate (drift-guard) rule <spec-rule>MUST</spec-rule> flag a command whose frontmatter <code>model:</code> value is either not a legal alias (well-formedness) or disagrees with the map (drift), so the frontmatter and the policy cannot silently diverge and a permitted <code>model:</code> key never lacks machine coverage.</p>
+<details><summary>Rationale</summary><p>Promoted from <code>should</code> to <code>must</code> by the disposition of the <code>000-spectastic</code> contract proposal's adversarial pass: the meta-spec permits the optional <code>model:</code> key (REQ-TOOL-004) but delegates its enforcement here, so this rule is the guarantee that keeps the permission from being a P-8 "permission without enforcement." It ships in the same increment as the permission.</p></details>
+</spec-requirement>
+
+<h3>Non-functional</h3>
+
+<spec-requirement id="NFR-001" priority="must">
+<p>Downgrading implement, apply, and tasks <spec-rule>MUST</spec-rule> preserve their existing behavioural and structural tests — the tier change introduces no regression in the deterministic paths (checkbox ticking, kernel delegation, task derivation).</p>
+</spec-requirement>
+
+<spec-requirement id="NFR-002" priority="should">
+<p>Tier D tests <spec-rule level="should">SHOULD</spec-rule> exercise model resolution with the stub provider in CI; any real-model assertion lives only in the local <code>test:smoke</code> tier.</p>
+</spec-requirement>
+
+<h3>Out of scope (deferred to other slices)</h3>
+<spec-out-of-scope>
+  <ul>
+    <li defer-to="040-run-budget">Whether the run-budget <code>degrade</code> phase should also step the model tier down (a second cost lever alongside lowering effort) — left to the budget spec's own interview.</li>
+    <li defer-to="038-coding-agent-runtime">Passing <code>--model</code> to the headless <code>ClaudeCodeAgent</code> subprocess that <code>spectastic implement</code>/<code>run</code> shell out to.</li>
+    <li defer-to="TBD">Model policy for the cross-tool installers (Cursor / Aider / Copilot) — this spec is the Claude case; the shape is meant to generalise.</li>
+  </ul>
+</spec-out-of-scope>
+</section>
+
+
+<section id="data">
+<h2>4 · Data model</h2>
+
+<p>The feature introduces one policy map and one resolution precedence; it reuses the existing provider's per-call <code>model?</code> seams rather than adding new ones.</p>
+
+<h3>Entities</h3>
+<dl>
+  <dt>ModelTier</dt><dd>An alias: <code>opus</code> | <code>sonnet</code> | <code>haiku</code> | <code>inherit</code>. Resolves to the current concrete model at call time.</dd>
+  <dt>VERB_MODEL_POLICY</dt><dd>A frozen <code>Record&lt;verb, ModelTier&gt;</code> in <code>@spectastic/core</code>, alongside the <code>DECISION_TAXONOMY</code> map — the single source of truth for per-verb defaults.</dd>
+  <dt>Resolution precedence</dt><dd>per-run override (<code>--model</code> / <code>SPECTASTIC_MODEL</code>) → project config (<code>spectastic.json</code>) → verb default (the map). The same shape the decider uses.</dd>
+  <dt>Agent definition</dt><dd>A tracked markdown source with a <code>model:</code> pin, synced to <code>.claude/agents/</code>. New: <code>spectastic-classifier</code>, <code>spectastic-impl-task</code>, <code>spectastic-critic</code>.</dd>
+</dl>
+
+<spec-note>
+<p>Per-verb model flows into the spec-027 <code>Assisted-by:</code> trailer automatically via <code>ai.model</code> — the trailer value now varies by verb, and no 027 change is required.</p>
+</spec-note>
+</section>
+
+
+<section id="success">
+<h2>5 · Success criteria</h2>
+
+<p>Technology-agnostic, measurable outcomes. These are how we know it worked.</p>
+
+<spec-requirement id="SC-001" priority="must">
+<p>Invoking <code>implement</code>, <code>apply</code>, or <code>tasks</code> executes on Sonnet for that turn and reverts to the session model on the next prompt, while the reasoning/interview verbs remain on the session model — observable in each run and in the resulting <code>Assisted-by:</code> value.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-002" priority="must">
+<p><code>/spectastic.implement --model opus</code> completes the task with the authoring performed on Opus (visible as an Opus subagent), while an unescalated run performs it on Sonnet.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-003" priority="must">
+<p><code>spectastic validate</code> passes on every command file carrying a well-formed <code>model:</code> key (no <code>skill-metadata-shape</code> warning), and flags a command whose <code>model:</code> value is not a legal alias or disagrees with the policy map.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-004" priority="should">
+<p>Across a representative week after adoption, the <code>implement</code> and subagent-heavy shares of usage measurably fall (re-read from the usage panel) with no rise in rework or defects attributable to those verbs.</p>
+</spec-requirement>
+</section>
+
+
+<section id="assumptions">
+<h2>6 · Assumptions</h2>
+
+<spec-assumption>
+<p>A slash-command <code>model:</code> override is turn-scoped and reverts to the session model on the next prompt (documented Claude Code semantics); a subagent <code>model:</code> pin is isolated and does not change the main loop.</p>
+</spec-assumption>
+
+<spec-assumption>
+<p>Sonnet is a capable coder for routine implement tasks; the Opus escape hatch (US2) covers the exceptions, so the default downgrade does not degrade delivered quality on the mechanical paths.</p>
+</spec-assumption>
+
+<spec-assumption>
+<p>Model aliases resolve to current models at call time, so alias-based config needs no edit when the model line advances.</p>
+</spec-assumption>
+</section>
+
+
+<section id="questions">
+<h2>7 · Open questions</h2>
+<spec-questions>
+<p>None outstanding — the slice boundary, escape-hatch behaviour, and the apply and critic tiers were all anchored in the interview; the budget×tier and coding-runtime interactions are deferred as scoped out, not left open.</p>
+</spec-questions>
+</section>
+
+
+<section id="conformance">
+<h2>8 · Conformance index</h2>
+<p>Auto-built from every <code>&lt;spec-requirement&gt;</code> in this document.</p>
+<spec-conformance></spec-conformance>
+</section>
+
+
+<section id="changelog">
+<h2>9 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-07-10">10 Jul 2026</time><span>Initial draft.</span></li>
+  <li><time datetime="2026-07-10">10 Jul 2026</time><span>Refined after the 000 contract proposal's adversarial pass: FR-009 promoted to <code>must</code> (well-formedness + drift enforcement); alias set harmonised to a single core constant (FR-002, SC-003).</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  044-verb-model-policy · Verb model policy · authored 2026-07-10
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>
