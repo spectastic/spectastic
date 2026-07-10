@@ -47,7 +47,7 @@ export async function tasksCommand(
     return restoreTasks(meta, input.restore, ctx);
   }
 
-  const phases = await deriveAndDescribePhases(meta, planHtml, ctx);
+  const phases = await deriveAndDescribePhases(meta, planHtml, ctx, input.decisions);
   const referencedIds = collectReferenced(phases);
   const unreferenced = [...meta.fr, ...meta.nfr, ...meta.sc]
     .map((r) => r.id)
@@ -67,6 +67,7 @@ async function deriveAndDescribePhases(
   meta: ReturnType<typeof extractSpecMetadata>,
   planHtml: string,
   ctx: KernelContext,
+  decisions?: Record<string, string>,
 ): Promise<TaskPhase[]> {
   // Deterministic phase skeleton from FRs. Heuristic: first 3 FRs → US1,
   // next 3 → US2, rest → US3; NFRs + SCs map to polish; setup +
@@ -119,7 +120,7 @@ async function deriveAndDescribePhases(
   // Optional: enrich titles via ai.chat() in a single batched call. Kept
   // light (skipping AI when there's no spec.ai) so unit tests stay fast.
   try {
-    const enrichment = await enrichDescriptions(meta, ctx, input.decisions);
+    const enrichment = await enrichDescriptions(meta, ctx, decisions);
     for (const phase of phases) {
       for (const task of phase.tasks) {
         const enriched = enrichment[task.id];

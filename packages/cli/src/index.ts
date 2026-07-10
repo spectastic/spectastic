@@ -11,6 +11,7 @@ import { registerOrder } from './commands/order.js';
 import { registerPlan } from './commands/plan.js';
 import { registerPrinciples } from './commands/principles.js';
 import { registerPropose } from './commands/propose.js';
+import { registerRun } from './commands/run.js';
 import { registerSpec } from './commands/spec.js';
 import { registerTasks } from './commands/tasks.js';
 import { registerTriage } from './commands/triage.js';
@@ -55,6 +56,7 @@ registerImplement(program);
 registerVerify(program);
 registerOrder(program);
 registerExplore(program);
+registerRun(program);
 
 if (process.argv.length <= 2) {
   program.outputHelp();
