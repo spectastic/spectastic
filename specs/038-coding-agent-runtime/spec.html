@@ -1,0 +1,280 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Coding-agent runtime · Specification</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Specification · 038-coding-agent-runtime</p>
+  <h1>Coding-agent runtime</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    Make <code>implement</code> actually code: a runtime that drains tasks through an injectable coding-agent seam,
+    sandboxed in a worktree, ticking only past the verify gate.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>      <span><spec-status value="draft">Draft</spec-status></span>
+    <b>Spec ID</b>     <span>038-coding-agent-runtime</span>
+    <b>Owner</b>       <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Reviewers</b>   <span>—</span>
+    <b>Created</b>     <span><time datetime="2026-07-09">09 Jul 2026</time></span>
+    <b>Principles</b><span><a href="../../principles.html">v1.3.0</a></span>
+    <b>Smallest demoable</b><span>A stub coding-agent performs one fixture task end-to-end (perform → tests pass → tick); a failing outcome halts the drain with the box unticked.</span>
+    <b>Read time</b>   <span data-reading-time></span>
+  </spec-meta>
+
+  <!-- Live size gauge — green at <80%, amber 80-100%, red over. Words row counts authored prose (excludes the conformance index) per REQ-FORMAT-004. -->
+  <spec-budget words="1500" reqs="20" minutes="12"></spec-budget>
+
+  <spec-tldr>
+    <p>The <code>implement</code> kernel only ticks a checkbox — the actual coding lives outside the kernel, in the
+    harness agent following markdown. That is why a hands-off <code>run</code> (037) can't implement on its own. This
+    spec adds a <strong>coding-agent seam</strong>: an injectable <code>CodingAgent</code> the runtime hands one task
+    at a time, which performs the edits and runs the task's tests and reports a <em>verifiable</em> outcome. The
+    runtime ticks a task only when its tests pass (P-7). The coding runs in an isolated git <strong>worktree</strong>,
+    so a failed run never touches the primary tree. CI runs a deterministic <strong>stub</strong> agent (the AI-in-CI
+    discipline); the real tool-using adapter is a local-only smoke tier.</p>
+  </spec-tldr>
+
+  <dl class="invest">
+    <dt><span class="letter">I</span> Independent</dt> <dd>Extends the landed <code>implement</code> kernel (<a href="../014-core-implement/spec.html">014</a>) + the <code>AIProvider</code>/stub pattern (007); no in-flight coupling.</dd>
+    <dt><span class="letter">N</span> Negotiable</dt>  <dd>Contracts the seam, the sandbox guarantee, and the verify-before-tick rule; leaves the real adapter's mechanism (subprocess vs SDK tool-loop) to the plan's grounding.</dd>
+    <dt><span class="letter">V</span> Valuable</dt>    <dd>Unlocks <a href="#SC-001">SC-001</a> — a task list is drained into real, tested code with no human hand on the keyboard; the keystone <a href="../037-hands-off-pipeline/spec.html">037</a> waits on.</dd>
+    <dt><span class="letter">E</span> Estimable</dt>   <dd>The CI substance is the runtime + seam + stub + worktree + verify gate — all deterministic; the real adapter is a thin smoke-tested boundary.</dd>
+    <dt><span class="letter">S</span> Small</dt>       <dd>Single-agent, single-worktree drain. Parallel workers, cost budgets, and richer agent protocols are deferred (§3).</dd>
+    <dt><span class="letter">T</span> Testable</dt>    <dd>Tick-on-pass / halt-on-fail, worktree isolation (main tree byte-unchanged), and idempotent resume are all observable against a fixture bundle + stub.</dd>
+  </dl>
+
+  <spec-audience-map>
+    <dl>
+      <dt>Exec / PM</dt>   <dd>§<a href="#context">Context</a>, §<a href="#scenarios">User scenarios</a>, §<a href="#success">Success criteria</a>.</dd>
+      <dt>Reviewer</dt>    <dd>§<a href="#requirements">Requirements</a>, §<a href="#assumptions">Assumptions</a>, §<a href="#questions">Open questions</a>.</dd>
+      <dt>Implementer</dt> <dd>§<a href="#requirements">Requirements</a>, §<a href="#data">Data model</a>, §<a href="#conformance">Conformance index</a>.</dd>
+    </dl>
+  </spec-audience-map>
+</header>
+
+
+<section id="context">
+<h2>1 · Context</h2>
+<p>The <code>implement</code> kernel (<a href="../014-core-implement/spec.html">014</a>) is a checkbox-ticker: it
+regex-ticks a <code>&lt;spec-task&gt;</code> and reports the flip prompt — it never writes code (the
+<code>ctx</code> is unused). The real "read the task, write the code, run the tests" work lives in the slash-command
+markdown, performed by the tool-using harness agent. Grounding for <a href="../037-hands-off-pipeline/spec.html">037</a>
+(the hands-off pipeline) surfaced the consequence: a pure <code>spectastic run</code> can generate plan/tasks/verify
+but <em>cannot perform the implement step</em> — the kernel's <code>AIProvider</code> is text-only (no tools, no
+file edits).</p>
+<p>This spec closes that gap for the operator who wants <code>run</code> to code unattended, and for the maintainer
+who needs that coding to be <em>trustworthy</em>: sandboxed so a bad run can't corrupt the tree, and never marked
+done until its tests actually pass.</p>
+</section>
+
+
+<section id="scenarios">
+<h2>2 · User scenarios &amp; testing</h2>
+
+<p>Each story <strong>MUST</strong> be independently testable: US1 alone is a viable MVP.</p>
+
+<h3 id="US1">US1 · Drain a task list into tested code <spec-pill>P1</spec-pill></h3>
+<p>As an <strong>operator</strong>, I want <strong>the runtime to perform each unchecked task through a coding-agent
+and tick only the ones whose tests pass</strong> so that <strong>a task list becomes real, verified code without my
+keystrokes</strong>.</p>
+<p><em>Acceptance:</em> given a fixture bundle and a stub coding-agent, the runtime performs each task in order, runs
+its verify, ticks a task iff its outcome passes, and <strong>halts + escalates</strong> on the first failing outcome
+(box left unticked).</p>
+
+<h3 id="US2">US2 · A bad run can't corrupt the tree <spec-pill>P1</spec-pill></h3>
+<p>As a <strong>maintainer</strong>, I want <strong>the coding to run in an isolated git worktree, accepted only after
+the verify gate</strong> so that <strong>a failed or abandoned run leaves the primary working tree untouched</strong>.</p>
+<p><em>Acceptance:</em> a run whose task fails verify leaves the primary tree byte-for-byte unchanged; a passing task's
+changes are surfaced for acceptance (merge) only after its tests pass.</p>
+
+<h3 id="US3">US3 · The real agent behind the seam <spec-pill>P1</spec-pill></h3>
+<p>As a <strong>Claude-surface user</strong>, I want <strong>a real tool-using coding-agent adapter</strong> so that
+<strong>the runtime performs actual edits and tests, not just orchestrates a stub</strong>.</p>
+<p><em>Acceptance:</em> the real adapter performs a genuine edit on a fixture task and its tests pass — exercised by a
+local-only smoke tier; CI always uses the deterministic stub.</p>
+
+<h3>Edge cases</h3>
+<ul>
+  <li>The coding-agent returns "done" but the tests fail: the runtime treats it as a failure — no tick, halt + escalate (P-7; the agent's word is not trusted).</li>
+  <li>A task is already ticked: skipped; the drain resumes at the first unchecked task (idempotent).</li>
+  <li>The worktree can't be created (dirty index, not a git repo): the runtime refuses up front rather than editing the primary tree.</li>
+  <li>The agent produces no changes: treated as a blocked outcome — halt + escalate, not a silent pass.</li>
+</ul>
+</section>
+
+
+<section id="requirements">
+<h2>3 · Requirements</h2>
+
+<p>Conformance keywords (<spec-rule>MUST</spec-rule>, <spec-rule level="should">SHOULD</spec-rule>,
+<spec-rule level="may">MAY</spec-rule>) follow RFC 2119.</p>
+
+<h3>Functional</h3>
+
+<spec-requirement id="FR-001" priority="must">
+<p>The runtime <spec-rule>MUST</spec-rule> define an injectable <code>CodingAgent</code> seam — a
+<code>perform(task)</code> operation returning a typed outcome (status, changed files, the verify command it ran and
+its result) — selected the same way the <code>AIProvider</code> is (a stub when a <code>SPECTASTIC_*</code> env var
+points at a script, else the real adapter).</p>
+<details><summary>Rationale</summary><p>Mirrors the AIProvider/stub seam (007) so CI stays deterministic and offline (the AI-in-CI discipline), and the real agent is one swappable boundary.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-002" priority="must">
+<p>For each unchecked <code>&lt;spec-task&gt;</code> in <code>tasks.html</code>, in document order, the runtime
+<spec-rule>MUST</spec-rule> invoke the <code>CodingAgent</code>, run the task's verify, and tick the task (via the
+existing <a href="../014-core-implement/spec.html">014</a> tick) <strong>only</strong> when the verify passes.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-003" priority="must">
+<p>On a failed or blocked outcome (including "done but tests fail" and "no changes produced") the runtime
+<spec-rule>MUST</spec-rule> stop the drain and escalate — no tick, no further tasks, no silent skip.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-004" priority="must">
+<p>The coding <spec-rule>MUST</spec-rule> run in an isolated git <strong>worktree</strong>; a task's changes
+<spec-rule>MUST</spec-rule> be surfaced for acceptance only after its verify passes, and a failed or abandoned run
+<spec-rule>MUST</spec-rule> leave the primary working tree byte-for-byte unchanged.</p>
+<details><summary>Rationale</summary><p>The W-1 guardrail: an autonomous coding run ships sandboxed and gated or not at all. A worktree isolates edits without a bespoke sandbox and reverts for free.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-005" priority="must">
+<p>The runtime <spec-rule>MUST</spec-rule> be idempotent: re-running after a partial drain resumes at the first
+unchecked task (the P-6 Draft in-place path) — the ticked <code>tasks.html</code> is the state, no separate
+run-state machine.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-006" priority="should">
+<p>A real tool-using <code>CodingAgent</code> adapter <spec-rule>SHOULD</spec-rule> perform actual edits + tests
+behind the seam; it is exercised by a <strong>local-only smoke tier</strong>, never in CI. The adapter's concrete
+mechanism (subprocess to a headless agent vs an in-process tool-use loop) is a plan decision.</p>
+</spec-requirement>
+
+<h3>Non-functional</h3>
+
+<spec-requirement id="NFR-001" priority="must">
+<p>The real coding-agent adapter <spec-rule>MUST NOT</spec-rule> run in CI; CI <spec-rule>MUST</spec-rule> use the
+deterministic stub, so the suite is offline and reproducible.</p>
+</spec-requirement>
+
+<spec-requirement id="NFR-002" priority="must">
+<p>No coding-agent output <spec-rule>MUST</spec-rule> be trusted without the verify gate: a task is ticked only when
+its tests pass (P-7) — the agent's self-reported "done" is necessary but not sufficient.</p>
+</spec-requirement>
+
+<h3>Out of scope (deferred to other slices)</h3>
+<spec-out-of-scope>
+  <ul>
+    <li defer-to="TBD-coding-agent-parallel">Parallel workers draining multiple tasks at once — this slice is a single-agent, single-worktree drain.</li>
+    <li defer-to="TBD-run-budget">A per-run cost ceiling on the coding agent's token spend — owned by the run-budget sibling.</li>
+    <li defer-to="TBD-coding-agent-protocol">A richer agent protocol (multi-turn negotiation, partial-task handback) beyond perform → verifiable outcome.</li>
+  </ul>
+</spec-out-of-scope>
+</section>
+
+
+<section id="data">
+<h2>4 · Data model</h2>
+
+<p>The ticked <code>tasks.html</code> is the durable state (<a href="#FR-005">FR-005</a>); the runtime adds two
+transient shapes.</p>
+
+<h3>Entities</h3>
+<dl>
+  <dt>TaskWork</dt><dd><code>{ taskId, title, path, specHtml, planHtml, tasksHtml, cwd }</code> — the one task handed to the <code>CodingAgent</code>, with the bundle context it needs to do the work.</dd>
+  <dt>TaskOutcome</dt><dd><code>{ status: 'done' | 'failed' | 'blocked', filesChanged: string[], verifyCommand?, verifyPassed: boolean, summary }</code> — the verifiable result the runtime gates the tick on.</dd>
+  <dt>CodingAgent</dt><dd>The injected seam: <code>perform(work: TaskWork): Promise&lt;TaskOutcome&gt;</code>. Stub (CI) replays a script; real adapter does tool-using work in the worktree.</dd>
+</dl>
+
+<spec-note>
+<p>Invariant: a task is ticked ⟺ its <code>TaskOutcome.verifyPassed</code> is true. The tick and the pass are one gate,
+never two (<a href="#NFR-002">NFR-002</a>).</p>
+</spec-note>
+</section>
+
+
+<section id="success">
+<h2>5 · Success criteria</h2>
+
+<p>Technology-agnostic, measurable outcomes.</p>
+
+<spec-requirement id="SC-001" priority="must">
+<p>With the stub agent on a fixture bundle, the runtime ticks exactly the tasks whose outcome verifies and halts the
+drain (box unticked) on the first failing task — observable by the resulting <code>tasks.html</code> tick state.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-002" priority="must">
+<p>A coding run whose task fails verify leaves the primary working tree byte-for-byte unchanged — observable by a
+clean <code>git status</code> / unchanged file hashes after the failed run.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-003" priority="must">
+<p>An agent that self-reports "done" while its tests fail results in <strong>no</strong> tick and an escalation —
+observable proof the verify gate, not the agent's word, drives the tick (<a href="#NFR-002">NFR-002</a>).</p>
+</spec-requirement>
+
+<spec-requirement id="SC-004" priority="should">
+<p>The real adapter performs a genuine edit on a fixture task and its tests pass — observable in the local-only smoke
+tier (never CI).</p>
+</spec-requirement>
+</section>
+
+
+<section id="assumptions">
+<h2>6 · Assumptions</h2>
+
+<spec-assumption>
+<p>A tool-using coding agent can be invoked from a Node CLI process — whether as a subprocess (a headless agent
+binary) or an in-process SDK tool-use loop — and confined to a worktree. The concrete mechanism is a plan
+<code>spike</code>; this spec assumes at least one viable path exists.</p>
+</spec-assumption>
+
+<spec-assumption>
+<p>The project runs under git (a worktree is creatable). The runtime refuses rather than degrades when it is not
+(edge case), so no non-git fallback is specified.</p>
+</spec-assumption>
+</section>
+
+
+<section id="questions">
+<h2>7 · Open questions</h2>
+<spec-questions>
+<p>None outstanding — the seam, the sandbox (worktree), the verify-before-tick gate, the CI-stub discipline, and the
+single-agent scope were all settled. The real adapter's mechanism is deliberately a plan-time <code>spike</code>
+(recorded as an assumption), not an open spec decision.</p>
+</spec-questions>
+</section>
+
+
+<section id="conformance">
+<h2>8 · Conformance index</h2>
+<p>Auto-built from every <code>&lt;spec-requirement&gt;</code> in this document.</p>
+<spec-conformance></spec-conformance>
+</section>
+
+
+<section id="changelog">
+<h2>9 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-07-09">09 Jul 2026</time><span>Initial draft — the keystone pre-work for 037, from the grounding that found the implement kernel can't code and the AIProvider is text-only. 8 requirements, 4 success criteria, zero open questions.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  038-coding-agent-runtime · Coding-agent runtime · authored 09 Jul 2026
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>
