@@ -4,10 +4,10 @@ import { join } from 'node:path';
 /**
  * Init profile manifest loader (spec 041, D-001).
  *
- * Source of truth is repo-root `profiles.json`, copied into the bundle root by
- * prebuild alongside `commands.json`. A missing/malformed manifest yields an
- * empty profile set — under which every name is "unknown" — mirroring the
- * fail-safe posture of `loadManifest` (manifest.ts).
+ * Source of truth is repo-root `spectastic-profiles.json`, copied into the
+ * bundle root by prebuild alongside `commands.json`. A missing/malformed
+ * manifest yields an empty profile set — under which every name is "unknown" —
+ * mirroring the fail-safe posture of `loadManifest` (manifest.ts).
  */
 
 export interface Principle {
@@ -67,30 +67,38 @@ export class UnknownProfileError extends Error {
     super(
       valid.length > 0
         ? `init: unknown profile "${requested}". Valid profiles: ${valid.join(', ')}.`
-        : `init: no profiles available (profiles.json missing or malformed).`,
+        : `init: no profiles available (spectastic-profiles.json missing or malformed).`,
     );
   }
 }
 
-/** Load `profiles.json` from a bundle root. Fail-safe to an empty manifest. */
+/** The manifest filename at the bundle root (namespaced; sibling of commands.json). */
+const MANIFEST_FILE = 'spectastic-profiles.json';
+
+/** Parse one raw profile entry into a validated Profile (fail-safe per field). */
+function parseProfile(name: string, p: Partial<Profile> | undefined): Profile {
+  const enforce = p?.enforce;
+  const gateOk = enforce && ['none', 'soft', 'hard'].includes(enforce.gate);
+  return {
+    name,
+    axes: p?.axes ?? {},
+    enforce: gateOk
+      ? { gate: enforce.gate, required: Array.isArray(enforce.required) ? enforce.required : [] }
+      : NO_ENFORCE,
+    principles: Array.isArray(p?.principles) ? p.principles : [],
+    agents: Array.isArray(p?.agents) ? p.agents : [],
+  };
+}
+
+/** Load `spectastic-profiles.json` from a bundle root. Fail-safe to an empty manifest. */
 export function loadProfiles(bundleRoot: string): ProfileManifest {
-  const path = join(bundleRoot, 'profiles.json');
+  const path = join(bundleRoot, MANIFEST_FILE);
   if (!existsSync(path)) return EMPTY;
   try {
     const raw = JSON.parse(readFileSync(path, 'utf8')) as Partial<ProfileManifest>;
     const profiles: Record<string, Profile> = {};
     for (const [name, p] of Object.entries(raw.profiles ?? {})) {
-      const enforce = p?.enforce;
-      profiles[name] = {
-        name,
-        axes: p?.axes ?? {},
-        enforce:
-          enforce && (enforce.gate === 'soft' || enforce.gate === 'hard' || enforce.gate === 'none')
-            ? { gate: enforce.gate, required: Array.isArray(enforce.required) ? enforce.required : [] }
-            : NO_ENFORCE,
-        principles: Array.isArray(p?.principles) ? p.principles : [],
-        agents: Array.isArray(p?.agents) ? p.agents : [],
-      };
+      profiles[name] = parseProfile(name, p);
     }
     return {
       schema: typeof raw.schema === 'number' ? raw.schema : 1,

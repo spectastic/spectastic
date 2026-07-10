@@ -35,7 +35,7 @@ const SOURCES = [
   ['commands.json', 'commands.json'],
   // Init profile manifest — read by `init --profile` to compose principles/
   // AGENTS/CLAUDE (spec 041). Bundle-root, read-only, never written to cwd.
-  ['profiles.json', 'profiles.json'],
+  ['spectastic-profiles.json', 'spectastic-profiles.json'],
 ];
 
 async function main() {

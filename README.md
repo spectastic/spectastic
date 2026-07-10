@@ -116,7 +116,7 @@ spectastic init --profile enterprise    # + feature toggles, supply-chain, groun
 spectastic init                          # in a terminal, prompts you to choose
 ```
 
-Each profile is a preset composition of axes (verification rigor, enforcement posture, feature-toggle policy, grounding depth, framework expectations), declared as data in [`profiles.json`](./profiles.json). It's brownfield-safe: re-running amends in place through the same conflict prompt and never blind-overwrites, and re-running with a higher profile (say `lean` → `verified`) adds the new principles **additively** — your edits survive. The [`AGENTS.md` standard](https://agents.md) stays lean and points at your gates.
+Each profile is a preset composition of axes (verification rigor, enforcement posture, feature-toggle policy, grounding depth, framework expectations), declared as data in [`spectastic-profiles.json`](./spectastic-profiles.json). It's brownfield-safe: re-running amends in place through the same conflict prompt and never blind-overwrites, and re-running with a higher profile (say `lean` → `verified`) adds the new principles **additively** — your edits survive. The [`AGENTS.md` standard](https://agents.md) stays lean and points at your gates.
 
 ### The enforcement floor — `spectastic enforce`
 
