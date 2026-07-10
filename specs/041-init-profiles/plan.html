@@ -1,0 +1,328 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Init profiles &amp; agent guidance · Plan</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Implementation plan · 041-init-profiles</p>
+  <h1>Init profiles &amp; agent guidance</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    How we will build it.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>     <span><spec-status value="draft">Draft</spec-status></span>
+    <b>Spec</b>       <span><a href="./spec.html">041-init-profiles</a></span>
+    <b>Owner</b>      <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Branch</b>     <span><code>main</code></span>
+    <b>Created</b>    <span><time datetime="2026-07-09">09 Jul 2026</time></span>
+    <b>Read time</b>  <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-tldr>
+    <p>Extend the existing <code>init</code> pipeline (<code>buildPlan → resolveConflicts → executeWrites</code>) with a
+    <code>--profile</code> mode that <em>composes</em> three content-based writes from a data manifest
+    (<code>profiles.json</code>) — a profile-seeded <code>principles.html</code>, a lean <code>AGENTS.md</code>, and a
+    thin <code>CLAUDE.md</code> — reusing the current conflict prompt so it never blind-overwrites. The single biggest
+    risk is the additive Lean→Verified upgrade (FR-007): merging principle blocks into an existing HTML file is the one
+    non-trivial, fragile step, so it's marker-guarded and sentinel-anchored.</p>
+  </spec-tldr>
+</header>
+
+
+<section id="principles-check">
+<h2>1 · Principles check</h2>
+<p>Verify this plan respects every principle in <a href="../../principles.html">v1.3.0</a>. Any violation requires a
+principles amendment or a deliberate exception logged in §9.</p>
+
+<table>
+  <thead><tr><th>Principle</th><th>Compliance</th><th>Notes</th></tr></thead>
+  <tbody>
+    <tr><td>P-1 · Source order is reading order</td><td><spec-pill>OK</spec-pill></td><td>Composed <code>principles.html</code> follows the template's existing source order.</td></tr>
+    <tr><td>P-2 · Semantic tags over class soup</td><td><spec-pill>OK</spec-pill></td><td>Seeded principles use <code>&lt;spec-requirement&gt;</code>/heading anchors, not divs.</td></tr>
+    <tr><td>P-3 · IDs are contracts</td><td><spec-pill>OK</spec-pill></td><td>Profile principle presets carry stable <code>P-*</code> anchors; additive upgrade never reuses an ID.</td></tr>
+    <tr><td>P-4 · Progressive enhancement</td><td><spec-pill>OK</spec-pill></td><td>Generated artifacts render with JS off, like every other spectastic file.</td></tr>
+    <tr><td>P-5 · Calm density</td><td><spec-pill>OK</spec-pill></td><td>AGENTS.md capped at 150 lines / 32 KiB (NFR-002) — leanness is a first-class constraint.</td></tr>
+    <tr><td>P-6 · Draft is loose, ratified is locked</td><td><spec-pill>OK</spec-pill></td><td>Seeded <code>principles.html</code> is emitted as Draft v0.1.0; the user ratifies.</td></tr>
+    <tr><td>P-7 · Done means verified</td><td><spec-pill>OK</spec-pill></td><td>Interactive path gets a Playwright browser test (prompt + composed-file behaviour), not just structural asserts.</td></tr>
+    <tr><td>P-8 · Guarantees live in the kernel or CI</td><td><spec-pill>OK</spec-pill></td><td>041 is deterministic scaffolding only; the AGENTS.md points at gates rather than restating rules. The gates themselves are 042.</td></tr>
+  </tbody>
+</table>
+</section>
+
+
+<section id="technical-context">
+<h2>2 · Technical context</h2>
+<dl>
+  <dt>Language(s)</dt>      <dd>TypeScript (ESM), Node ≥ 20; pnpm 9.15 workspace.</dd>
+  <dt>Frameworks</dt>       <dd>commander (CLI), <code>@clack/prompts</code> (interactive prompt, already used by <code>init</code>'s conflict loop).</dd>
+  <dt>Storage</dt>          <dd>Files only — <code>profiles.json</code> (bundled data), a project-level <code>.spectastic/profile.json</code> marker.</dd>
+  <dt>Testing</dt>          <dd>vitest (unit + integration), the <code>run-spectastic</code> smoke driver, and one Playwright spec for the interactive prompt + composed-artifact behaviour. Stub-driven where any AI existed — but this path has none.</dd>
+  <dt>Perf targets</dt>     <dd>Profiled greenfield <code>init</code> adds &lt; 500 ms p95 over baseline (NFR-003).</dd>
+  <dt>Constraints</dt>      <dd>No AI/model call on the profiled path (NFR-001); AGENTS.md ≤ 150 lines / 32 KiB (NFR-002); backward-compatible with today's flag-less <code>init</code>.</dd>
+</dl>
+</section>
+
+
+<section id="grounding">
+<h2>3 · Grounding &amp; evidence</h2>
+<p>Every design-bearing fact this plan rests on, and how it was confirmed.</p>
+
+<table class="evidence">
+  <thead>
+    <tr><th>Claim the design rests on</th><th>Source</th><th>Status</th><th>Finding / note</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>init is a pure copy pipeline: <code>buildPlan → findConflicts → resolveConflicts → executeWrites</code>, each write a <code>copyFile</code>.</td>
+        <td><code>packages/cli/src/commands/init.ts:89-113</code>, <code>init/write.ts:19-31</code></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td>Read this turn. Writes have no content-substitution path today — must add one.</td></tr>
+    <tr><td><code>FileWriteDecision</code> carries a <code>source</code> path only; the writer <code>copyFile</code>s it.</td>
+        <td><code>init/types.ts:13-22</code></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td>Extending it with optional <code>content</code> is the least-invasive way to emit composed files.</td></tr>
+    <tr><td>Verb tiering already loads a bundled data manifest (<code>commands.json</code>) at init.</td>
+        <td><code>init/manifest.ts:24-36</code>, <code>commands.json</code></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td>The precedent for a bundled <code>profiles.json</code> sibling; same load/fail-safe pattern.</td></tr>
+    <tr><td>The conflict prompt already refuses to blind-overwrite (y/N/skip, non-TTY refusal).</td>
+        <td><code>init/prompt.ts</code> (<code>resolveConflicts</code>), <code>init.ts:97-109</code></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td>FR-006 "never blind-overwrite" falls out by routing composed writes through the same conflict path.</td></tr>
+    <tr><td>Additive HTML merge (insert new principle blocks into an existing <code>principles.html</code>) is safe against a stable sentinel.</td>
+        <td>Insert-before a <code>&lt;!-- spectastic:principles-end --&gt;</code> comment in the composed template</td>
+        <td><spec-status value="review">spike</spec-status></td>
+        <td>Spike during implement: confirm the seeded template carries the sentinel and a string-splice merge preserves user edits above it.</td></tr>
+    <tr><td>031 added a new init mode (<code>--tools</code>) by extending the same command without disturbing the bootstrap path.</td>
+        <td><code>specs/031-init-tools/plan.html</code> D-004, <code>init.ts:83-87</code></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td>The pattern this plan follows for <code>--profile</code>: a mode layered onto the existing pipeline.</td></tr>
+  </tbody>
+</table>
+</section>
+
+
+<section id="approach">
+<h2>4 · Approach</h2>
+
+<p>Add a <code>--profile &lt;name&gt;</code> option to <code>init</code>. When present (or chosen via an interactive
+prompt when a TTY session passes no flag), the action resolves the profile from a bundled <code>profiles.json</code>,
+<em>composes</em> three files in memory — a seeded <code>principles.html</code>, a lean <code>AGENTS.md</code>, a thin
+<code>CLAUDE.md</code> — and appends them to the write plan as <strong>content-based</strong> decisions. The existing
+<code>findConflicts → resolveConflicts → executeWrites</code> path runs unchanged, so pre-existing files trigger the
+current y/N/skip prompt (FR-006). A <code>.spectastic/profile.json</code> marker records the choice; on a re-run with a
+different profile it drives the additive upgrade (FR-007). The profiled path never touches the AI factory (NFR-001).</p>
+
+<spec-arch>
+<figure>
+<svg viewBox="0 0 700 240" role="img" aria-label="Profiled init data flow">
+  <style>
+    .box { fill:#fcfbf7; stroke:#c4c1bb; stroke-width:1.2; }
+    .label { font: 700 11px Lato, sans-serif; fill:#4a4a46; letter-spacing:0.06em; text-transform:uppercase; }
+    .body { font: 400 12px "Source Serif 4", Georgia, serif; fill:#353534; }
+    .arr { stroke:#73706d; stroke-width:1.2; fill:none; }
+  </style>
+  <rect class="box" x="24"  y="90" width="150" height="62" rx="4"/>
+  <text class="label" x="38" y="112">profiles.json</text>
+  <text class="body"  x="38" y="132">axes + presets</text>
+  <rect class="box" x="235" y="90" width="170" height="62" rx="4"/>
+  <text class="label" x="249" y="112">compose()</text>
+  <text class="body"  x="249" y="132">3 content writes</text>
+  <rect class="box" x="470" y="30" width="200" height="62" rx="4"/>
+  <text class="label" x="484" y="52">executeWrites</text>
+  <text class="body"  x="484" y="72">via conflict prompt</text>
+  <rect class="box" x="470" y="150" width="200" height="62" rx="4"/>
+  <text class="label" x="484" y="172">.spectastic/profile.json</text>
+  <text class="body"  x="484" y="192">marker (re-run/upgrade)</text>
+  <path class="arr" d="M174 121 L235 121" marker-end="url(#a)"/>
+  <path class="arr" d="M405 111 L470 70" marker-end="url(#a)"/>
+  <path class="arr" d="M405 131 L470 181" marker-end="url(#a)"/>
+  <defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#73706d"/></marker></defs>
+</svg>
+<figcaption>The profile manifest feeds a composer that emits content-based writes into the unchanged init pipeline; a marker records the choice for re-runs.</figcaption>
+</figure>
+</spec-arch>
+</section>
+
+
+<section id="alternatives">
+<h2>5 · Alternatives considered</h2>
+<p>How to represent and emit the four profiles (criteria scored 1–4, higher better).</p>
+
+<spec-matrix>
+<table>
+  <thead>
+    <tr><th>Option</th><th>Determinism</th><th>Maintainability</th><th>Leanness (P-5)</th><th class="score">Total</th></tr>
+  </thead>
+  <tbody>
+    <tr data-winner><td>Data manifest + compose (chosen)</td><td>4</td><td>4</td><td>4</td><td class="score">12</td></tr>
+    <tr><td>Four pre-authored file-sets, copied verbatim</td><td>4</td><td>2</td><td>2</td><td class="score">8</td></tr>
+    <tr><td>AI-generated at init</td><td>1</td><td>2</td><td>1</td><td class="score">4</td></tr>
+  </tbody>
+</table>
+</spec-matrix>
+<p>Verbatim file-sets duplicate the shared base four times (an upgrade would diff whole files); AI generation
+contradicts the research (generated guidance hurts) and breaks NFR-001. The manifest keeps the base shared and the
+per-profile delta small and additive.</p>
+</section>
+
+
+<section id="decisions">
+<h2>6 · Decisions</h2>
+
+<spec-decision id="D-001" grounding="verified">
+  <h4>D-001 · Profiles ship as a bundled data manifest</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>FR-003 requires profiles as data, editable without touching a verb. <code>commands.json</code> (<code>init/manifest.ts:24</code>) is the precedent.</dd>
+    <dt>Decision</dt>     <dd>A repo-root <code>profiles.json</code>, copied into the bundle by prebuild alongside <code>commands.json</code>. Each entry: <code>name</code>, <code>axes</code> (the five axis values), <code>principles</code> (ordered preset blocks, each with a stable <code>P-*</code> id + statement), <code>agents</code> (the profile-specific AGENTS.md section fragments). A missing/malformed manifest fails safe to "no profiles" (unknown-name error), mirroring <code>loadManifest</code>.</dd>
+    <dt>Consequences</dt> <dd>+ Adding/editing a profile is a data edit. + Shared base lives once. − A new bundled file the prebuild must copy (add to <code>bundle.ts</code> inventory + prebuild).</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-002" grounding="verified">
+  <h4>D-002 · Content-based writes extend FileWriteDecision</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>Profiles emit <em>composed</em> files; the writer only <code>copyFile</code>s a source path today (<code>init/write.ts:25</code>, <code>types.ts:13</code>).</dd>
+    <dt>Decision</dt>     <dd>Add optional <code>content?: string</code> to <code>FileWriteDecision</code>. <code>executeWrites</code> writes <code>content</code> via <code>writeFile</code> when present, else falls back to <code>copyFile(source)</code>. The composer produces content-based decisions; everything else (conflict detection, summary counts) is untouched.</dd>
+    <dt>Consequences</dt> <dd>+ Minimal, additive change to the wire format. + Composed files flow through the exact conflict path (FR-006 for free). − A decision must carry either <code>source</code> or <code>content</code>; enforce with a type guard + test.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-003" grounding="verified">
+  <h4>D-003 · Principles = shared base + additive per-profile blocks</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>SC-002 needs profiles to differ materially; FR-007 needs upgrades to be additive; the data-model invariant is "additive compositions of a shared base."</dd>
+    <dt>Decision</dt>     <dd>Compose <code>principles.html</code> from <code>templates/principles.html</code> filled with a base principle set plus the profile's extra blocks, inserted before a stable <code>&lt;!-- spectastic:principles-end --&gt;</code> sentinel. Emitted as Draft v0.1.0 (P-6). Verified/Enterprise carry a "done means verified / build a checker when none exists" principle that Lean omits.</dd>
+    <dt>Consequences</dt> <dd>+ One base to maintain. + Upgrade = splice new blocks at the sentinel. − Preset <em>content</em> must be authored once (in <code>profiles.json</code>); that copy is the feature's editorial surface.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-004" grounding="verified">
+  <h4>D-004 · AGENTS.md lean skeleton; CLAUDE.md fixed thin pointer</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>FR-004 + NFR-002: command-first, ≤150 lines, points at gates not rules; CLAUDE.md a thin pointer, not a duplicate.</dd>
+    <dt>Decision</dt>     <dd>AGENTS.md = a base skeleton (project overview · setup/build/test commands · code style · testing · "done" criteria) plus profile-specific lines from the manifest, assembled to markdown. CLAUDE.md is a constant ~5-line file pointing at <code>AGENTS.md</code>. A unit test asserts the line/byte ceiling.</dd>
+    <dt>Consequences</dt> <dd>+ Honours the "lean hand-written skeleton beats generated" evidence. − The base skeleton has placeholders the user fills (stack, exact commands) — acceptable; that's what a human refines.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-005" grounding="verified">
+  <h4>D-005 · Profile marker at <code>.spectastic/profile.json</code></h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>FR-009 + FR-007: re-runs need to know the current profile to upgrade additively.</dd>
+    <dt>Decision</dt>     <dd>Write <code>.spectastic/profile.json</code> = <code>{ "profile": "&lt;name&gt;", "schema": 1 }</code>. Read on re-run: same profile ⇒ refresh; different ⇒ additive upgrade path (D-006). The <code>.spectastic/</code> dir is a namespaced home for future tooling state.</dd>
+    <dt>Consequences</dt> <dd>+ Structured, discoverable, extensible. − A new project artifact to document.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-006" grounding="spike">
+  <h4>D-006 · Brownfield: conflict prompt for never-clobber; sentinel splice for upgrade</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>FR-006 (MUST, never blind-overwrite) and FR-007 (SHOULD, additive upgrade) are different-weight asks.</dd>
+    <dt>Decision</dt>     <dd>FR-006: route composed writes through the existing conflict prompt — a pre-existing file yields y/N/skip, no clobber. FR-007: when the marker shows a different prior profile and <code>principles.html</code> carries the sentinel, splice the new profile's blocks in before it, preserving everything above (the user's edits). If the sentinel is absent (hand-authored file), fall back to the conflict prompt rather than guess.</dd>
+    <dt>Consequences</dt> <dd>+ MUST-tier safety is reused, not reinvented. − The splice is the one fragile step; spike it (§3) and cover with an edit-survives test (SC-003/SC-004). Graceful fallback bounds the risk.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-007" grounding="verified">
+  <h4>D-007 · <code>--profile</code> plumbing; prompt-on-omit; orthogonal to <code>--tools</code></h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>FR-001/FR-005/FR-008: accept a name, prompt in a TTY when omitted, no-op in non-TTY, independent of the 031 installer.</dd>
+    <dt>Decision</dt>     <dd>Add <code>.option('--profile &lt;name&gt;')</code>. In the bootstrap action (after the <code>--tools</code> early-return, so the two are independent): resolve the name — explicit flag, else a <code>@clack</code> select when <code>process.stdout.isTTY</code>, else none (with a printed note). Unknown name ⇒ exit 2 listing valid names. A resolved profile appends composed decisions to the plan before <code>findConflicts</code>.</dd>
+    <dt>Consequences</dt> <dd>+ Backward-compatible (no flag, non-TTY ⇒ today's behaviour). + <code>--profile</code> and <code>--tools</code> compose by running independently. − One more branch in the action; keep resolution in a testable pure helper.</dd>
+  </dl>
+</spec-decision>
+</section>
+
+
+<section id="project-structure">
+<h2>7 · Project structure</h2>
+<pre><code>profiles.json                                  ← new: repo-root data manifest (bundled)
+templates/
+  agents/base.md                               ← new: AGENTS.md base skeleton
+  agents/claude-pointer.md                     ← new: thin CLAUDE.md
+packages/cli/src/commands/
+  init.ts                                       ← +--profile option, resolve + append
+  init/
+    types.ts                                    ← +content? on FileWriteDecision
+    write.ts                                     ← writeFile when content present
+    bundle.ts                                    ← inventory profiles.json + templates/agents
+    profiles.ts                                  ← new: load profiles.json, resolveProfile
+    compose.ts                                   ← new: compose principles/AGENTS/CLAUDE (+ splice upgrade)
+    marker.ts                                    ← new: read/write .spectastic/profile.json
+    prompt.ts                                    ← +selectProfile (TTY)
+packages/cli/test/init/
+  profiles.test.ts  compose.test.ts  marker.test.ts
+packages/cli/test/
+  init.profiles.integration.test.ts             ← greenfield + re-run/upgrade + non-TTY
+tests/
+  init.profiles.spec.ts                          ← Playwright: prompt + composed-artifact behaviour (P-7)</code></pre>
+</section>
+
+
+<section id="risks">
+<h2>8 · Risks &amp; mitigations</h2>
+<table>
+  <thead><tr><th>Risk</th><th>Likelihood</th><th>Impact</th><th>Mitigation</th></tr></thead>
+  <tbody>
+    <tr><td>Additive HTML splice corrupts a hand-edited <code>principles.html</code> (FR-007).</td><td>M</td><td>H</td><td>Marker + sentinel guard; fall back to the conflict prompt when the sentinel is absent; edit-survives test (SC-003/SC-004); spike first (§3).</td></tr>
+    <tr><td>AGENTS.md drifts over 150 lines as profiles accrete content.</td><td>M</td><td>M</td><td>A unit test asserts the NFR-002 ceiling per profile; CI catches regressions.</td></tr>
+    <tr><td>Bundled <code>profiles.json</code>/<code>templates/agents</code> not copied by prebuild → empty in production.</td><td>L</td><td>H</td><td>Extend <code>bundle.ts</code> inventory + prebuild; an integration test runs against the built bundle, not just dev fallback.</td></tr>
+    <tr><td>Non-TTY behaviour breaks existing CI <code>init</code> calls.</td><td>L</td><td>M</td><td>No flag + non-TTY ⇒ exactly today's path (regression test asserts byte-identical output to pre-041 <code>init</code>).</td></tr>
+  </tbody>
+</table>
+</section>
+
+
+<section id="complexity">
+<h2>9 · Complexity tracking</h2>
+<p>Where 041 adds complexity beyond a plain copy.</p>
+<spec-assumption>
+<p>The one genuine complexity is the additive-upgrade splice (D-006/FR-007, a SHOULD). It's justified because it is the
+mechanism that makes profiles a <em>dial</em> rather than a one-shot — the feature's stated value. It is bounded: guarded
+by a marker + sentinel, with a conflict-prompt fallback, and it is the only non-additive-safe operation in the spec.</p>
+</spec-assumption>
+</section>
+
+
+<section id="questions">
+<h2>10 · Open questions</h2>
+<spec-questions>
+<p>None outstanding — the spec's decisions were anchored in its interview; the one spike (additive-splice safety, §3) is
+scheduled for implement, not an unresolved design fork.</p>
+</spec-questions>
+</section>
+
+
+<section id="changelog">
+<h2>11 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-07-09">09 Jul 2026</time><span>Initial plan. Seven decisions grounded against the live init pipeline (<code>init.ts</code>, <code>write.ts</code>, <code>manifest.ts</code>, <code>bundle.ts</code>). One spike scheduled: additive-splice safety for the FR-007 upgrade path.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  Plan for 041-init-profiles · Init profiles &amp; agent guidance · authored 09 Jul 2026
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>
