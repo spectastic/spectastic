@@ -53,6 +53,12 @@ export interface RunContext {
   steps: ReadonlyArray<PipelineStep>;
   /** How the run surfaces a checkpoint to a human (the CLI raises AskUserQuestion; tests record). */
   escalate: EscalateFn;
+  /**
+   * Optional per-run cost budget (spec 040). When set, the run degrades the
+   * Decider effort at 80% of the ceiling and halts + escalates at 100%. Absent ⇒
+   * the run is unchanged (040 FR-004). Its `record` is fed by a `budgeted(ai)` wrap.
+   */
+  budget?: import('./budget.js').BudgetTracker;
 }
 
 export interface RunResult {

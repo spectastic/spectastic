@@ -18,12 +18,18 @@ export function registerRun(program: Command): void {
     .option('--decider <role>', 'human | agent | panel (default: agent; human refused)')
     .option('--effort <level>', 'low | medium | high | xhigh | max | auto')
     .option('--checkpoints <mode>', 'minimal | each (default: minimal)', 'minimal')
+    .option('--budget <tokens>', 'per-run output-token ceiling; 0 = unbounded (040)', '1000000')
     .option('-y, --yes', 'auto-approve planned checkpoints (unattended)')
-    .action(async (specId: string, opts: { decider?: string; effort?: string; checkpoints?: string; yes?: boolean }) => {
-      const [{ runPipeline }, { buildRunSteps }, { resolveDecider }, cfgMod, factory, aiFactory, { nodeFs }, path] =
+    .action(
+      async (
+        specId: string,
+        opts: { decider?: string; effort?: string; checkpoints?: string; budget?: string; yes?: boolean },
+      ) => {
+      const [{ runPipeline }, { buildRunSteps }, { BudgetTracker, budgeted }, { resolveDecider }, cfgMod, factory, aiFactory, { nodeFs }, path] =
         await Promise.all([
           import('@spectastic/core/run/pipeline'),
           import('@spectastic/core/run/steps'),
+          import('@spectastic/core/run/budget'),
           import('@spectastic/core/decider'),
           import('../config/decider.js'),
           import('../coding-factory.js'),
@@ -62,8 +68,10 @@ export function registerRun(program: Command): void {
       }
 
       const checkpoints = opts.checkpoints === 'each' ? 'each' : 'minimal';
+      const ceiling = Number.parseInt(opts.budget ?? '1000000', 10);
+      const budget = new BudgetTracker(Number.isFinite(ceiling) && ceiling > 0 ? ceiling : undefined);
       const [coding, sandbox] = await Promise.all([factory.createCodingAgent(), factory.createSandbox()]);
-      const ai = await aiFactory.createAIProvider();
+      const ai = budgeted(await aiFactory.createAIProvider(), budget);
       const steps = buildRunSteps(specId, {
         cwd,
         fs: nodeFs,
@@ -90,10 +98,11 @@ export function registerRun(program: Command): void {
         });
       };
 
-      const result = await runPipeline({ specId, decider, checkpoints }, { ai, steps, escalate });
+      const result = await runPipeline({ specId, decider, checkpoints }, { ai, steps, escalate, budget });
 
+      const spend = budget.ceiling ? ` · ~${budget.spent}/${budget.ceiling} est. tokens` : '';
       process.stdout.write(
-        `\nrun ${specId}: ${result.completed ? 'completed' : 'halted'} — ran [${result.ranSteps.join(' → ')}]\n`,
+        `\nrun ${specId}: ${result.completed ? 'completed' : 'halted'} — ran [${result.ranSteps.join(' → ')}]${spend}\n`,
       );
       for (const [phase, d] of Object.entries(result.decisions)) {
         const pairs = Object.entries(d).map(([k, v]) => `${k}=${v}`).join(', ');

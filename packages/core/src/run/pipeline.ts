@@ -11,6 +11,7 @@
  */
 
 import { answerDecisions } from '../decider/taxonomy.js';
+import { degradeEffort } from './budget.js';
 import type { RunContext, RunInput, RunResult } from './types.js';
 
 /** Does a planned human checkpoint precede `stepName` under `policy` (FR-007)? */
@@ -27,6 +28,18 @@ export class RunError extends Error {
   }
 }
 
+/** Answer a step's bounded decisions through the Decider, degrading effort under budget (040 FR-002). */
+async function answerStepDecisions(
+  step: RunContext['steps'][number],
+  input: RunInput,
+  ctx: RunContext,
+): Promise<Record<string, string>> {
+  if (!step.decisionVerb) return {};
+  const effort =
+    ctx.budget?.phase() === 'degrade' ? degradeEffort(input.decider.effort) : input.decider.effort;
+  return answerDecisions(step.decisionVerb, { ...input.decider, effort }, ctx.ai);
+}
+
 export async function runPipeline(input: RunInput, ctx: RunContext): Promise<RunResult> {
   if (input.decider.role === 'human') {
     // A human decider can't answer unattended; refuse rather than escalate every call.
@@ -37,6 +50,13 @@ export async function runPipeline(input: RunInput, ctx: RunContext): Promise<Run
   const decisions: Record<string, Record<string, string>> = {};
 
   for (const step of ctx.steps) {
+    // Budget hard ceiling (040 FR-003): halt + escalate before the next decision.
+    if (ctx.budget?.phase() === 'halt') {
+      const reason = `budget exhausted (~${ctx.budget.spent} est. output tokens)`;
+      await ctx.escalate({ phase: step.name, reason });
+      return { completed: false, ranSteps, decisions, halted: { phase: step.name, reason } };
+    }
+
     // Planned checkpoint before this step.
     if (needsCheckpoint(step.name, input.checkpoints)) {
       const answer = await ctx.escalate({ phase: step.name, reason: 'planned checkpoint' });
@@ -45,26 +65,22 @@ export async function runPipeline(input: RunInput, ctx: RunContext): Promise<Run
       }
     }
 
-    // Answer this step's bounded decisions through the Decider (039).
-    let stepDecisions: Record<string, string> = {};
-    if (step.decisionVerb) {
-      stepDecisions = await answerDecisions(step.decisionVerb, input.decider, ctx.ai);
-      decisions[step.name] = stepDecisions;
-    }
+    // Answer this step's bounded decisions through the Decider (039), degrading the
+    // effort under budget pressure (040 FR-002) — a run with no budget is unchanged.
+    const stepDecisions = await answerStepDecisions(step, input, ctx);
+    if (step.decisionVerb) decisions[step.name] = stepDecisions;
 
     const outcome = await step.run({ decisions: stepDecisions });
     ranSteps.push(step.name);
 
-    // validate gate (FR-001): an error finding halts + escalates.
-    if (outcome.findings && outcome.findings.length > 0) {
-      await ctx.escalate({ phase: step.name, reason: `validate error: ${outcome.findings.join('; ')}` });
-      return { completed: false, ranSteps, decisions, halted: { phase: step.name, reason: `validate error: ${outcome.findings.join('; ')}` } };
-    }
-
-    // drain halt (038): an unverified task halts + escalates.
-    if (outcome.halted) {
-      await ctx.escalate({ phase: step.name, reason: outcome.halted.reason });
-      return { completed: false, ranSteps, decisions, halted: { phase: step.name, reason: outcome.halted.reason } };
+    // validate gate (FR-001) + drain halt (038): an error/halt escalates + stops.
+    const stopReason =
+      outcome.findings && outcome.findings.length > 0
+        ? `validate error: ${outcome.findings.join('; ')}`
+        : outcome.halted?.reason;
+    if (stopReason) {
+      await ctx.escalate({ phase: step.name, reason: stopReason });
+      return { completed: false, ranSteps, decisions, halted: { phase: step.name, reason: stopReason } };
     }
   }
 

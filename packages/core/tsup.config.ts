@@ -40,6 +40,7 @@ export default defineConfig({
     'src/run/types.ts',
     'src/run/pipeline.ts',
     'src/run/steps.ts',
+    'src/run/budget.ts',
   ],
   format: ['esm'],
   dts: true,

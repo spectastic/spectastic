@@ -1,0 +1,245 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Run budget · Specification</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Specification · 040-run-budget</p>
+  <h1>Run budget</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    A per-run cost ceiling for the hands-off pipeline that degrades gracefully — shallower decisions as it nears the
+    limit — rather than dying mid-phase.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>      <span><spec-status value="accepted">Accepted</spec-status></span>
+    <b>Spec ID</b>     <span>040-run-budget</span>
+    <b>Parent</b>      <span><spec-parent specid="037-hands-off-pipeline"><a href="../037-hands-off-pipeline/spec.html">Hands-off pipeline</a></spec-parent></span>
+    <b>Owner</b>       <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Reviewers</b>   <span>—</span>
+    <b>Created</b>     <span><time datetime="2026-07-09">09 Jul 2026</time></span>
+    <b>Principles</b><span><a href="../../principles.html">v1.3.0</a></span>
+    <b>Smallest demoable</b><span>A run under a low <code>--budget</code> degrades the Decider effort at 80% of the ceiling and halts + escalates at 100%.</span>
+    <b>Read time</b>   <span data-reading-time></span>
+  </spec-meta>
+
+  <!-- Live size gauge — green at <80%, amber 80-100%, red over. Words row counts authored prose (excludes the conformance index) per REQ-FORMAT-004. -->
+  <spec-budget words="1500" reqs="20" minutes="12"></spec-budget>
+
+  <spec-tldr>
+    <p>The peeled US5 of <a href="../037-hands-off-pipeline/spec.html">037</a>. A full run fans out many Deciders; this
+    slice bounds the spend. A <strong>BudgetTracker</strong> accumulates the run's estimated output-token spend; the
+    run consults it before each decision and <strong>degrades the Decider effort</strong> (fewer voters, via the 034
+    dial) once spend crosses <strong>80%</strong> of the ceiling — the established amber "approaching limit" band
+    (<code>REQ-FORMAT-004</code>) — and <strong>halts + escalates</strong> at 100%. Default ceiling
+    <code>--budget 1000000</code> output tokens. Additive over 037's <code>runPipeline</code>: a run with no budget
+    behaves exactly as today.</p>
+  </spec-tldr>
+
+  <dl class="invest">
+    <dt><span class="letter">I</span> Independent</dt> <dd>Extends the landed <a href="../037-hands-off-pipeline/spec.html">037</a> run + the 034 effort dial; additive, no in-flight coupling.</dd>
+    <dt><span class="letter">N</span> Negotiable</dt>  <dd>Contracts the degrade-at-80 / halt-at-100 policy + the default ceiling; leaves the spend-estimate method to the plan.</dd>
+    <dt><span class="letter">V</span> Valuable</dt>    <dd>Unlocks <a href="#SC-001">SC-001</a> — a walk-away run has a cost guardrail and finishes shallower instead of overspending or dying.</dd>
+    <dt><span class="letter">E</span> Estimable</dt>   <dd>A tracker + a degrade function + a run hook, all deterministic against fed spend; the thresholds are fixed.</dd>
+    <dt><span class="letter">S</span> Small</dt>       <dd>One tracker, the effort-degrade, the run hook, the CLI flag. Real provider token-usage reporting is deferred (§3).</dd>
+    <dt><span class="letter">T</span> Testable</dt>    <dd>The 80% degrade and 100% halt are observable by feeding known spend and asserting the resolved effort / the halt.</dd>
+  </dl>
+
+  <spec-audience-map>
+    <dl>
+      <dt>Exec / PM</dt>   <dd>§<a href="#context">Context</a>, §<a href="#scenarios">User scenarios</a>, §<a href="#success">Success criteria</a>.</dd>
+      <dt>Reviewer</dt>    <dd>§<a href="#requirements">Requirements</a>, §<a href="#assumptions">Assumptions</a>, §<a href="#questions">Open questions</a>.</dd>
+      <dt>Implementer</dt> <dd>§<a href="#requirements">Requirements</a>, §<a href="#data">Data model</a>, §<a href="#conformance">Conformance index</a>.</dd>
+    </dl>
+  </spec-audience-map>
+</header>
+
+
+<section id="context">
+<h2>1 · Context</h2>
+<p>A hands-off run (<a href="../037-hands-off-pipeline/spec.html">037</a>) answers every decision through the Decider,
+which at higher effort convenes a panel of voters — each a model call. Over a full plan→tasks→implement→verify run
+that is a lot of spend, and today the run has no ceiling: it either completes at full effort or a provider limit kills
+it mid-phase. The 037 interview peeled this cost story to keep that slice estimable; it is this slice.</p>
+<p>This is for the operator running unattended who wants a predictable cost and a run that <em>degrades</em> —
+finishing at shallower Decider depth — rather than one that overspends or dies halfway.</p>
+</section>
+
+
+<section id="scenarios">
+<h2>2 · User scenarios &amp; testing</h2>
+
+<p>Each story <strong>MUST</strong> be independently testable: US1 alone is a viable MVP.</p>
+
+<h3 id="US1">US1 · The run degrades before it dies <spec-pill>P1</spec-pill></h3>
+<p>As an <strong>operator</strong>, I want <strong>the run to lower its Decider effort as it nears the budget</strong>
+so that <strong>a long run finishes shallower instead of overspending or halting mid-phase</strong>.</p>
+<p><em>Acceptance:</em> with a ceiling set, once estimated spend crosses 80% the effort the run passes to the Decider
+drops one band (fewer voters via the 034 dial); the run keeps going.</p>
+
+<h3 id="US2">US2 · The hard ceiling halts and hands back <spec-pill>P1</spec-pill></h3>
+<p>As an <strong>operator</strong>, I want <strong>the run to stop and escalate at 100% of the budget</strong> so that
+<strong>it never silently overspends</strong>.</p>
+<p><em>Acceptance:</em> when estimated spend reaches the ceiling the run halts before the next decision and escalates
+to a human, reporting the spend.</p>
+
+<h3>Edge cases</h3>
+<ul>
+  <li>No budget set (<code>--budget</code> unset): the tracker is unbounded and never degrades or halts — the run behaves exactly as 037 does today (parity).</li>
+  <li>Already past 80% at the first decision (a tiny budget): the first decision is already degraded; the run doesn't need to cross the band mid-run to degrade.</li>
+  <li>Effort already at the floor when degrading: it stays at the floor (can't go lower) rather than erroring.</li>
+</ul>
+</section>
+
+
+<section id="requirements">
+<h2>3 · Requirements</h2>
+
+<p>Conformance keywords (<spec-rule>MUST</spec-rule>, <spec-rule level="should">SHOULD</spec-rule>,
+<spec-rule level="may">MAY</spec-rule>) follow RFC 2119.</p>
+
+<h3>Functional</h3>
+
+<spec-requirement id="FR-001" priority="must">
+<p>A <code>BudgetTracker</code> <spec-rule>MUST</spec-rule> accumulate the run's estimated output-token spend and expose
+its <em>phase</em>: <code>normal</code> below 80% of the ceiling, <code>degrade</code> at ≥ 80%, <code>halt</code> at
+≥ 100%. With no ceiling it is always <code>normal</code>.</p>
+<details><summary>Rationale</summary><p>The 80% band is the established amber "approaching limit" threshold (REQ-FORMAT-004), reused so the run's cost warn point matches the project's convention.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-002" priority="must">
+<p>When the tracker is in <code>degrade</code>, the run <spec-rule>MUST</spec-rule> lower the effort it passes to the
+Decider by one band (via the 034 effort order), clamped at the floor — so decisions convene fewer voters.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-003" priority="must">
+<p>When the tracker reaches <code>halt</code>, the run <spec-rule>MUST</spec-rule> stop before the next decision and
+escalate to a human (the 037 escalation gate), reporting the spend — it <spec-rule>MUST NOT</spec-rule> silently
+exceed the ceiling.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-004" priority="must">
+<p>The budget integration <spec-rule>MUST</spec-rule> be additive to 037's <code>runPipeline</code>: a run with no
+budget behaves byte-for-byte as today (the tracker's <code>normal</code> phase changes nothing).</p>
+</spec-requirement>
+
+<spec-requirement id="FR-005" priority="should">
+<p><code>spectastic run --budget &lt;output-tokens&gt;</code> (default <code>1000000</code>)
+<spec-rule>SHOULD</spec-rule> set the ceiling; the run records each model response's estimated tokens against it.</p>
+</spec-requirement>
+
+<h3>Non-functional</h3>
+
+<spec-requirement id="NFR-001" priority="must">
+<p>Spend accounting <spec-rule>MUST</spec-rule> be deterministic given the same responses — the estimate is a pure
+function of output length, so tests and reruns agree.</p>
+</spec-requirement>
+
+<h3>Out of scope (deferred to other slices)</h3>
+<spec-out-of-scope>
+  <ul>
+    <li defer-to="TBD-provider-usage">Exact token accounting from provider usage reports — this slice estimates from output length; a real usage field on the AIProvider is a follow-up.</li>
+    <li defer-to="never">Degrading fan-out <em>width</em> (concurrency) — this slice degrades Decider <em>depth</em> (voters); width is 032's.</li>
+    <li defer-to="TBD-budget-resume">Persisting spend across a halted-then-resumed run — a fresh run starts the tracker at zero.</li>
+  </ul>
+</spec-out-of-scope>
+</section>
+
+
+<section id="data">
+<h2>4 · Data model</h2>
+
+<p>One tracker; it holds the only new state (transient, per run).</p>
+
+<h3>Entities</h3>
+<dl>
+  <dt>BudgetTracker</dt><dd><code>{ ceiling?: number, spent: number, record(text): void, phase(): 'normal'|'degrade'|'halt' }</code> — accumulates estimated output tokens; <code>phase</code> is derived from <code>spent / ceiling</code> against the 80% / 100% bands.</dd>
+  <dt>Degraded effort</dt><dd>The effort the run passes to the Decider = the base effort lowered one band when <code>phase()==='degrade'</code>, clamped at the floor (<a href="#FR-002">FR-002</a>).</dd>
+</dl>
+
+<spec-note>
+<p>Invariant: with no ceiling, <code>phase()</code> is always <code>normal</code> and the run is unchanged (<a href="#FR-004">FR-004</a>) — the guardrail is opt-in.</p>
+</spec-note>
+</section>
+
+
+<section id="success">
+<h2>5 · Success criteria</h2>
+
+<p>Technology-agnostic, measurable outcomes.</p>
+
+<spec-requirement id="SC-001" priority="must">
+<p>A run under a ceiling degrades the Decider effort by one band once estimated spend crosses 80% — observable by the
+effort passed to the Decider dropping (fewer voters) after the threshold, with the run continuing.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-002" priority="must">
+<p>A run halts and escalates when estimated spend reaches 100% of the ceiling — observable by the run stopping before
+the next decision with a spend-reporting escalation, never exceeding the ceiling.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-003" priority="must">
+<p>A run with no budget is byte-for-byte identical to a 037 run — observable by the tracker staying <code>normal</code>
+and the effort/decisions matching an un-budgeted run (parity, FR-004).</p>
+</spec-requirement>
+</section>
+
+
+<section id="assumptions">
+<h2>6 · Assumptions</h2>
+
+<spec-assumption>
+<p>The AIProvider does not report token usage today (verified in 037's grounding — <code>chat</code>/<code>subagent</code>
+return only text), so spend is estimated from output length (≈ chars ÷ 4). A real usage field is deferred
+(<code>TBD-provider-usage</code>); the estimate is enough to bound and degrade a run.</p>
+</spec-assumption>
+
+<spec-assumption>
+<p>The 034 effort order (<code>low &lt; medium &lt; high &lt; xhigh &lt; max</code>) is the band ladder degradation
+steps down; the floor is the run's configured floor (default low).</p>
+</spec-assumption>
+</section>
+
+
+<section id="questions">
+<h2>7 · Open questions</h2>
+<spec-questions>
+<p>None outstanding — the policy (degrade at 80, halt at 100), the default ceiling (1M output tokens), and the
+estimate-from-length method (with exact provider accounting deferred) were all settled in the 037 interview and this
+draft.</p>
+</spec-questions>
+</section>
+
+
+<section id="conformance">
+<h2>8 · Conformance index</h2>
+<p>Auto-built from every <code>&lt;spec-requirement&gt;</code> in this document.</p>
+<spec-conformance></spec-conformance>
+</section>
+
+
+<section id="changelog">
+<h2>9 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-07-09">09 Jul 2026</time><span>Initial draft — the peeled US5 of 037, additive over its runPipeline + the 034 effort dial. 6 requirements, 3 success criteria, zero open questions.</span></li>
+<li><time datetime="2026-07-09">09 Jul 2026</time><span>Status → Accepted. BudgetTracker + degradeEffort + budgeted wrapper + the additive runPipeline hook (degrade at 80%, halt at 100%) + CLI --budget; 7 budget tests green (SC-001 fewer voters, SC-002 halt, SC-003 parity). No un-budgeted 037 run changed.</span></li></ol>
+</spec-changelog>
+</section>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  040-run-budget · Run budget · authored 09 Jul 2026
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>
