@@ -61,6 +61,14 @@ describe('compose: renderPrinciplesHtml', () => {
     const html = renderPrinciplesHtml(opts('standard'));
     expect(html).not.toMatch(/\[[A-Z_]+/);
   });
+
+  it('uses root-relative asset paths, not ../assets (041 T-001 regression)', () => {
+    const html = renderPrinciplesHtml(opts('lean'));
+    // The file lands at the project root next to init-copied assets/.
+    expect(html).not.toContain('../assets/');
+    expect(html).toContain('href="assets/spec.css"');
+    expect(html).toContain('src="assets/spec.js"');
+  });
 });
 
 describe('compose: AGENTS.md + CLAUDE.md', () => {

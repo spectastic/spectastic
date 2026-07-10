@@ -84,6 +84,11 @@ function corePrinciplesSection(principles: Principle[]): string {
 export function renderPrinciplesHtml(opts: ComposeOptions): string {
   const templatePath = join(opts.bundleRoot, 'templates', 'principles.html');
   let html = readFileSync(templatePath, 'utf8');
+  // The template previews from templates/ (one level under root) so it links
+  // `../assets/…`. The composed file lands at the PROJECT ROOT next to the
+  // init-copied assets/ dir, so rewrite to a root-relative `assets/…` — the
+  // same rewrite the /spectastic.principles verb documents (spec 041 T-001 fix).
+  html = html.split('../assets/').join('assets/');
   const principles = combinedPrinciples(opts.manifest, opts.profile);
 
   // Replace the core-principles section body wholesale (its 5 template blocks).
