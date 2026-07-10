@@ -6,6 +6,7 @@ import { buildPlan, findConflicts } from './init/plan.js';
 import {
   NonTTYConflictError,
   UserCancelError,
+  confirmTools,
   resolveConflicts,
   selectProfile,
 } from './init/prompt.js';
@@ -166,8 +167,47 @@ export function registerInit(program: Command): void {
         await writeMarker(cwd, resolvedProfile.name);
         process.stdout.write(`✓ profile: ${resolvedProfile.name}\n`);
       }
+      // Spec 031 T-001: make the guarantee layer discoverable. Interactive init
+      // offers to install it (auto-commits + the pre-commit gate); non-interactive
+      // init prints a tip so a CI/scripted user learns it exists.
+      await offerTools(cwd, options.force ?? false);
       process.exit(0);
     });
+}
+
+/**
+ * Surface the 031 guarantee layer at init time (spec 031 T-001). In a TTY,
+ * prompt to install it now and run it on opt-in; otherwise (or on decline),
+ * print a one-line tip so `--tools` is never silently undiscovered.
+ */
+async function offerTools(cwd: string, force: boolean): Promise<void> {
+  const tip = 'tip: `spectastic init --tools` installs the guarantee layer (pre-commit gate + auto-commit) — off by default.';
+  if (!process.stdout.isTTY) {
+    process.stdout.write(`  ${tip}\n`);
+    return;
+  }
+  if (!(await confirmTools())) {
+    process.stdout.write(`  ${tip}\n`);
+    return;
+  }
+  try {
+    const toolsSummary = await runTools({
+      cwd,
+      hooks: true,
+      commands: true,
+      uninstall: false,
+      force,
+      cliEntry: currentCliEntry(),
+    });
+    for (const d of toolsSummary.decisions) process.stdout.write(`✓ ${d.detail}\n`);
+    for (const n of toolsSummary.notes) process.stdout.write(`⚠ ${n}\n`);
+  } catch (err) {
+    if (err instanceof ToolsError) {
+      process.stderr.write(`${err.message}\n`);
+      return;
+    }
+    throw err;
+  }
 }
 
 /**

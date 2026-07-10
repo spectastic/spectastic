@@ -115,5 +115,7 @@ describe('init --profile: US2 non-TTY backward compat (NFR-001)', () => {
     expect(existsSync(join(dir, '.claude', 'commands'))).toBe(true); // lifecycle installed
     expect(existsSync(join(dir, 'principles.html'))).toBe(false); // no profile scaffolding
     expect(existsSync(join(dir, '.spectastic'))).toBe(false); // no marker
+    // 031 T-001: --tools is discoverable — a non-interactive run still surfaces the tip.
+    expect(r.stdout).toMatch(/init --tools/);
   });
 });

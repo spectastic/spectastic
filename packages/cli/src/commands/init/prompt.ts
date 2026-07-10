@@ -87,6 +87,20 @@ export async function selectProfile(names: string[]): Promise<string | null> {
   return choice as string;
 }
 
+/**
+ * Offer the 031 guarantee layer during interactive init (spec 031 T-001).
+ * Returns true if the user opts in. @clack is imported lazily. Any cancel → false.
+ */
+export async function confirmTools(): Promise<boolean> {
+  const p = await import('@clack/prompts');
+  const yes = await p.confirm({
+    message: 'Install the guarantee layer now? (git pre-commit validate gate + auto-commit + drift-proof command adapters)',
+    initialValue: false,
+  });
+  if (p.isCancel(yes)) return false;
+  return yes === true;
+}
+
 export class NonTTYConflictError extends Error {
   constructor(public readonly conflictCount: number) {
     super(
