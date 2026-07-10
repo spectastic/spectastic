@@ -9,6 +9,7 @@ triggers:
   - "technical approach for the feature"
 use-when: "Turning an approved spec into a technical approach — stack, architecture, decisions, risks — before breaking it into tasks."
 sibling-boundary: "Not spec (the what, not the how); not tasks (the ordered breakdown that comes after the plan)."
+model: inherit
 ---
 
 # /spectastic.plan

@@ -9,6 +9,7 @@ triggers:
   - "explore before committing to a spec"
 use-when: "Building loosely to learn — a quarantined exploration (SDD ceremony off, thin principles floor) upstream of a spec, that the lifecycle refuses to ship until it graduates."
 sibling-boundary: "Extended, upstream of spec — unlike spec it produces no committed requirements; explore is deliberately throwaway until it graduates."
+model: inherit
 ---
 
 # /spectastic.explore

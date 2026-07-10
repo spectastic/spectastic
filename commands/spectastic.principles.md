@@ -9,6 +9,7 @@ triggers:
   - "what rules must every spec honor"
 use-when: "Establishing or amending the project-wide invariants every downstream spec must honor — the constitution, authored once and changed rarely."
 sibling-boundary: "Not spec (a single feature's requirements) — principles are cross-cutting rules above any one feature."
+model: inherit
 ---
 
 # /spectastic.principles

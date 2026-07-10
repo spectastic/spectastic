@@ -9,6 +9,7 @@ triggers:
   - "PR-shaped spec change"
 use-when: "Changing an already-written spec — intent, scope, typed deltas, and a scoped task list — one PR-shaped proposal per change."
 sibling-boundary: "Not spec (a brand-new feature, not a change to an existing one); not apply (which lands an approved proposal); not triage (which classifies a defect before a proposal is even warranted)."
+model: inherit
 ---
 
 # /spectastic.propose

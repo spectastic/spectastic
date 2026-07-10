@@ -10,6 +10,7 @@ triggers:
   - "build the next just-do card"
 use-when: "Executing the next unchecked task (or an inbox just-do card) — read context, do the work, tick the box; loop to drain."
 sibling-boundary: "Not tasks (which produces the list this consumes); not propose (a contract change, not executing tasks that already exist)."
+model: sonnet
 ---
 
 # /spectastic.implement

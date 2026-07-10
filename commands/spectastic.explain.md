@@ -9,6 +9,7 @@ triggers:
   - "why does this requirement exist"
 use-when: "Getting a grounded, in-chat coaching read of a spec, requirement, decision, or file — or generating a persistent course with --course."
 sibling-boundary: "Extended, read-only — unlike spec/plan/propose it authors nothing; explain teaches an existing artifact, it does not change it."
+model: inherit
 ---
 
 # /spectastic.explain

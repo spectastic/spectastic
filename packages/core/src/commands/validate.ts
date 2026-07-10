@@ -5,6 +5,7 @@ import type {
   ValidateInput,
   ValidateResult,
 } from '../types.js';
+import { MODEL_TIER_ALIASES, VERB_MODEL_POLICY, isModelTier } from '../model-policy/index.js';
 
 /**
  * The three structured invocation-metadata keys REQ-TOOL-004 (spec
@@ -77,6 +78,52 @@ export function skillMetadataFinding(content: string, file: string): Finding | n
     message: `Command ${file} ${detail} — skill-invocation metadata (${REQUIRED_SKILL_KEYS.join(', ')}) is required (REQ-TOOL-004).`,
     fixHint: `Add ${missing.join(', ')} to the frontmatter so the skill router and validate can find it.`,
   };
+}
+
+/**
+ * `verb-model-policy` — the drift-guard for the optional `model:` frontmatter key
+ * (spec 044-verb-model-policy, FR-009; the enforcement half of REQ-TOOL-004's
+ * permission). REQ-TOOL-004 permits the key and `skill-metadata-shape` deliberately
+ * ignores it (checks only the three required keys), so this rule is what gives the
+ * permitted key machine coverage — closing the P-8 "permission without enforcement"
+ * gap the 000 adversarial pass flagged. A present `model:` value that is (a) not a
+ * legal alias or (b) disagrees with the core `VERB_MODEL_POLICY` map is an error;
+ * an absent key is clean (the key is optional). Reads the one source of truth, so
+ * it can never disagree with the map. Like the skill and quarantine scans, it
+ * inspects gitignored markdown and folds into every validate run (P-9).
+ */
+export function verbModelPolicyFinding(content: string, file: string): Finding | null {
+  const fm = /^---\n([\s\S]*?)\n---/.exec(content)?.[1];
+  if (fm === undefined) return null; // no frontmatter → skill-metadata-shape owns that
+  const declared = /^model:[ \t]*(\S+)/m.exec(fm)?.[1];
+  if (declared === undefined) return null; // optional key absent → clean
+
+  const verb = /spectastic\.([a-z-]+)\.md$/.exec(file)?.[1] ?? '';
+  const expected = VERB_MODEL_POLICY[verb];
+
+  if (!isModelTier(declared)) {
+    return {
+      file,
+      line: 1,
+      column: 1,
+      rule: 'verb-model-policy',
+      severity: 'error',
+      message: `Command ${file} declares model: ${declared} — not a legal tier alias (${MODEL_TIER_ALIASES.join(' | ')}) (spec 044 FR-009).`,
+      fixHint: `Set model: to one of ${MODEL_TIER_ALIASES.join(', ')} — aliases only, never a pinned model id.`,
+    };
+  }
+  if (expected !== undefined && declared !== expected) {
+    return {
+      file,
+      line: 1,
+      column: 1,
+      rule: 'verb-model-policy',
+      severity: 'error',
+      message: `Command ${file} declares model: ${declared} but the policy assigns ${verb} → ${expected} (spec 044 FR-009 · VERB_MODEL_POLICY drift).`,
+      fixHint: `Set model: ${expected} to match the core policy map, or update VERB_MODEL_POLICY if the tier is meant to change.`,
+    };
+  }
+  return null;
 }
 
 /**

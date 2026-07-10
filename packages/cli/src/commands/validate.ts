@@ -66,6 +66,34 @@ async function scanSkillMetadata(): Promise<Finding[]> {
 }
 
 /**
+ * Scan the project's command frontmatter for a well-formed `model:` key that
+ * agrees with the core policy map (spec 044-verb-model-policy, FR-009 drift-guard).
+ * Error findings — the enforcement half of REQ-TOOL-004's optional-key permission —
+ * folded into every validate run like the skill-metadata scan. A no-op in a
+ * consumer project (no `commands/` sources).
+ */
+async function scanVerbModelPolicy(): Promise<Finding[]> {
+  const [{ expandGlobs }, { verbModelPolicyFinding }, { readFile }] = await Promise.all([
+    import('../glob.js'),
+    import('@spectastic/core/commands/validate'),
+    import('node:fs/promises'),
+  ]);
+  const commandFiles = await expandGlobs(['commands/spectastic.*.md']);
+  const findings: Finding[] = [];
+  for (const file of commandFiles) {
+    let content: string;
+    try {
+      content = await readFile(file, 'utf8');
+    } catch {
+      continue; // an unreadable command file has no model: to check
+    }
+    const finding = verbModelPolicyFinding(content, file);
+    if (finding) findings.push(finding);
+  }
+  return findings;
+}
+
+/**
  * Scan init-tools-managed command adapters for drift (spec 031, FR-007 / D-001).
  * When `.claude/commands` is managed (the marker is present), every source
  * `commands/spectastic.*.md` must match its installed adapter byte-for-byte; a
@@ -150,11 +178,16 @@ export function registerValidate(program: Command): void {
       // The commands-drift gate (spec 031, FR-007): a managed adapter that has
       // drifted from source is an error, so the pre-commit gate blocks it.
       const commandsDriftFindings = await scanCommandsDrift(process.cwd());
+      // The verb-model-policy drift-guard (spec 044, FR-009): a command whose
+      // optional model: key is not a legal alias or disagrees with the policy map
+      // is an error — the enforcement REQ-TOOL-004 delegates for the permitted key.
+      const verbModelPolicyFindings = await scanVerbModelPolicy();
       const findings = [
         ...result.findings,
         ...quarantineFindings,
         ...skillMetadataFindings,
         ...commandsDriftFindings,
+        ...verbModelPolicyFindings,
       ];
       const exitCode = findings.some((f) => f.severity === 'error') ? 1 : result.exitCode;
 

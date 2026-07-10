@@ -9,6 +9,7 @@ triggers:
   - "test-first task breakdown"
 use-when: "Deriving an ordered, parallelizable, test-first task list from an existing spec + plan — the executable breakdown implement drains."
 sibling-boundary: "Not plan (architecture and decisions, not the task list); not implement (which executes the tasks this produces)."
+model: sonnet
 ---
 
 # /spectastic.tasks

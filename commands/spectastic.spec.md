@@ -9,6 +9,7 @@ triggers:
   - "what should this feature do"
 use-when: "Capturing what a single feature must do, for whom, and how success is measured — before any implementation planning."
 sibling-boundary: "Not principles (project-wide rules, not one feature); not plan (the how); not explore (throwaway learning before a spec exists)."
+model: inherit
 ---
 
 # /spectastic.spec

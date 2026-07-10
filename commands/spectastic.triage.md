@@ -10,6 +10,7 @@ triggers:
   - "root-cause this and file a card"
 use-when: "Classifying a single defect (or a pasted list of small items) to the layer that owns the fix, writing one triage card per item."
 sibling-boundary: "Not implement (which does the just-do work triage routes); not propose (which authors the spec change triage may recommend) — triage decides where a fix belongs, it does not make the fix."
+model: inherit
 ---
 
 # /spectastic.triage
