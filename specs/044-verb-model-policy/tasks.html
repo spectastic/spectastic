@@ -1,0 +1,250 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Verb model policy · Tasks</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Tasks · 044-verb-model-policy</p>
+  <h1>Verb model policy</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    Ordered, parallelizable work. Tests precede implementation. Drive through with
+    <code>/spectastic.implement</code> — one task per invocation.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>     <span><spec-status value="draft">Draft</spec-status></span>
+    <b>Spec</b>       <span><a href="./spec.html">044-verb-model-policy</a></span>
+    <b>Plan</b>       <span><a href="./plan.html">plan</a></span>
+    <b>Branch</b>     <span><code>main</code></span>
+    <b>Created</b>    <span><time datetime="2026-07-10">10 Jul 2026</time></span>
+    <b>Read time</b>  <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-tldr>
+    <p>19 tasks across five phases. Setup → Foundational (the core policy module) → User stories
+    (US1 Tier A · US2 escape hatch · US3 subagents · US4 CLI) → Polish. Tasks marked
+    <span class="par">[P]</span> can run in parallel — different files, no dependency. Tests for a
+    story <strong>MUST</strong> be written and failing before its implementation tasks start.</p>
+  </spec-tldr>
+</header>
+
+
+<section id="strategy">
+<h2>1 · Execution strategy</h2>
+
+<spec-tabs>
+  <spec-tab label="MVP-first">
+    <p>Recommended (solo). Ship US1 (Tier A frontmatter + drift-guard) end-to-end — it captures the
+    19% implement cost line the panel flagged. Then US4 (CLI), US3 (subagents), US2 (escape hatch).</p>
+  </spec-tab>
+  <spec-tab label="Incremental">
+    <p>Setup → Foundational → US1 → US3 → US2 → US4 → Polish. US2's escape hatch reuses US3's
+    impl-task agent, so US3 precedes US2.</p>
+  </spec-tab>
+  <spec-tab label="Parallel teams">
+    <p>After Foundational: one track on US1 (frontmatter), one on US4 (CLI) — independent files.
+    US3 then US2 share the impl-task agent; keep them on one track.</p>
+  </spec-tab>
+</spec-tabs>
+</section>
+
+
+<section id="phase-setup" class="phase">
+<h2>2 · Phase 1 — Setup</h2>
+
+<spec-task id="T-001" parallel>
+  <input type="checkbox">
+  <div><strong>Register the model-policy module build</strong> — add the <code>src/model-policy/index.ts</code> tsup entry and the <code>./model-policy</code> exports subpath. <span class="path">packages/core/tsup.config.ts</span></div>
+</spec-task>
+</section>
+
+
+<section id="phase-foundation" class="phase">
+<h2>3 · Phase 2 — Foundational</h2>
+<p>The single source of truth every tier reads. Sequential — the module precedes its consumers.</p>
+
+<spec-task id="T-010">
+  <input type="checkbox">
+  <div><strong>Write the core policy tests (fail first)</strong> — <code>aliasToModelId</code> maps opus/sonnet/haiku to the current ids, <code>VERB_MODEL_POLICY</code> assigns each verb, and <code>resolveVerbModel</code> honours override &gt; project &gt; map precedence. <span class="path">packages/core/test/model-policy.test.ts</span></div>
+</spec-task>
+<spec-task id="T-011">
+  <input type="checkbox">
+  <div><strong>Implement the model-policy module</strong> — <code>MODEL_TIER_ALIASES</code> (opus/sonnet/haiku/inherit), <code>aliasToModelId</code> (<code>claude-opus-4-8</code>/<code>claude-sonnet-5</code>/<code>claude-haiku-4-5</code>), frozen <code>VERB_MODEL_POLICY</code>, and <code>resolveVerbModel</code> mirroring <code>resolveDecider</code>. <span class="path">packages/core/src/model-policy/index.ts</span></div>
+</spec-task>
+<spec-task id="T-012">
+  <input type="checkbox">
+  <div><strong>Refresh the stale provider default</strong> — source <code>DEFAULT_MODEL</code> from <code>aliasToModelId.sonnet</code> (<code>claude-sonnet-4-6</code> → <code>claude-sonnet-5</code>), no second literal. <span class="path">packages/core/src/providers/claude.ts</span></div>
+</spec-task>
+
+<spec-note>
+<p>Backs <a href="./spec.html#FR-002">FR-002</a> (single alias source) and <a href="./spec.html#FR-008">FR-008</a> (policy in core, default refreshed).</p>
+</spec-note>
+</section>
+
+
+<section id="phase-us1" class="phase">
+<h2>4 · Phase 3a — US1 · Cheap tier for the read-heavy and mechanical verbs</h2>
+
+<h3>Tests (write &amp; fail first)</h3>
+<spec-task id="T-100" parallel>
+  <input type="checkbox">
+  <div><strong>Test the drift-guard rule</strong> — a legal <code>model:</code> matching the map passes; an illegal alias or a map-mismatch each emits a <code>verb-model-policy</code> finding; a command with no <code>model:</code> is clean. <span class="path">packages/core/test/validate.verb-model-policy.test.ts</span></div>
+</spec-task>
+<spec-task id="T-101" parallel>
+  <input type="checkbox">
+  <div><strong>Test the frontmatter carries the policy</strong> — every <code>commands/spectastic.*.md</code> declares a <code>model:</code> equal to <code>VERB_MODEL_POLICY[verb]</code>, and the three copies (source, <code>.claude/</code>, <code>_bundled/</code>) agree byte-for-byte. <span class="path">packages/cli/test/frontmatter-model.test.ts</span></div>
+</spec-task>
+
+<h3>Implementation</h3>
+<spec-task id="T-110">
+  <input type="checkbox">
+  <div><strong>Add <code>model:</code> to the command sources</strong> — implement/apply/tasks → <code>sonnet</code>; spec/plan/propose/triage/explain/principles/explore → <code>inherit</code>. <span class="path">commands/spectastic.*.md</span></div>
+</spec-task>
+<spec-task id="T-111">
+  <input type="checkbox">
+  <div><strong>Sync the frontmatter to both copies</strong> — <code>cp commands/*.md .claude/commands/</code> and into the bundled tree. <span class="path">packages/cli/_bundled/.claude/commands/</span></div>
+</spec-task>
+<spec-task id="T-112">
+  <input type="checkbox">
+  <div><strong>Implement + register the drift-guard rule</strong> — <code>verbModelPolicyFinding</code> reading <code>MODEL_TIER_ALIASES</code>/<code>VERB_MODEL_POLICY</code>, folded into the always-run validate scan like <code>scanSkillMetadata</code>. <span class="path">packages/core/src/commands/validate.ts</span></div>
+</spec-task>
+
+<spec-note>
+<p>Closes <a href="./spec.html#FR-001">FR-001</a>, <a href="./spec.html#FR-002">FR-002</a>, <a href="./spec.html#FR-009">FR-009</a>, <a href="./spec.html#SC-001">SC-001</a>, <a href="./spec.html#SC-003">SC-003</a>. Exercises <a href="./spec.html#FR-005">FR-005</a> (the rule tolerates a legal <code>model:</code>; the <code>skill-metadata-shape</code> tolerance test is folded into <code>000/tasks.html</code>).</p>
+</spec-note>
+</section>
+
+
+<section id="phase-us2" class="phase">
+<h2>5 · Phase 3b — US2 · Escalate a hard task on demand</h2>
+<p>Depends on US3's <code>spectastic-impl-task</code> agent.</p>
+
+<spec-task id="T-200" parallel>
+  <input type="checkbox">
+  <div><strong>Test the escape-hatch wiring</strong> — <code>implement.md</code> documents that <code>--model opus</code> delegates authoring to the impl-task agent at the escalated tier while the main loop stays on <code>sonnet</code> (structural; the runtime behaviour is the manual host check in T-903). <span class="path">packages/cli/test/implement-escape-hatch.test.ts</span></div>
+</spec-task>
+<spec-task id="T-210">
+  <input type="checkbox">
+  <div><strong>Wire the <code>--model</code> escape hatch</strong> — <code>implement</code>'s body spawns <code>spectastic-impl-task</code> pinned (per-invocation) to the requested tier for the task's authoring; default stays inline Sonnet. Sync all three copies. <span class="path">commands/spectastic.implement.md</span></div>
+</spec-task>
+
+<spec-note>
+<p>Closes <a href="./spec.html#FR-003">FR-003</a>, <a href="./spec.html#SC-002">SC-002</a>.</p>
+</spec-note>
+</section>
+
+
+<section id="phase-us3" class="phase">
+<h2>6 · Phase 3c — US3 · Cheap fan-out subagents, strong adversary</h2>
+
+<spec-task id="T-300" parallel>
+  <input type="checkbox">
+  <div><strong>Test the agent definitions</strong> — <code>agents/*.md</code> exist with the pinned <code>model:</code> (critic <code>inherit</code>, classifier + impl-task <code>sonnet</code>) and are synced to <code>.claude/agents/</code> and the bundled tree. <span class="path">packages/cli/test/agents-defs.test.ts</span></div>
+</spec-task>
+<spec-task id="T-310">
+  <input type="checkbox">
+  <div><strong>Author the agent-definition sources</strong> — <code>spectastic-critic</code> (<code>inherit</code>), <code>spectastic-classifier</code> (<code>sonnet</code>), <code>spectastic-impl-task</code> (<code>sonnet</code> default). <span class="path">agents/</span></div>
+</spec-task>
+<spec-task id="T-311">
+  <input type="checkbox">
+  <div><strong>Sync agents to both copies</strong> — create <code>.claude/agents/</code> and <code>_bundled/.claude/agents/</code>; extend the CLAUDE.md sync note. <span class="path">packages/cli/_bundled/.claude/agents/</span></div>
+</spec-task>
+<spec-task id="T-312">
+  <input type="checkbox">
+  <div><strong>Point the fan-out spawns at the agent types</strong> — propose's critic and triage's list-intake classifier reference the new <code>agentType</code>s. Sync all three copies. <span class="path">commands/spectastic.propose.md</span></div>
+</spec-task>
+
+<spec-note>
+<p>Closes <a href="./spec.html#FR-004">FR-004</a>. Contributes to <a href="./spec.html#SC-004">SC-004</a> (the subagent-heavy usage line).</p>
+</spec-note>
+</section>
+
+
+<section id="phase-us4" class="phase">
+<h2>7 · Phase 3d — US4 · Configure the model for headless runs</h2>
+
+<spec-task id="T-400" parallel>
+  <input type="checkbox">
+  <div><strong>Test the config loader (fail first)</strong> — <code>loadModelsConfig</code> reads the top-level <code>models</code> section, defaults cleanly when absent, and throws on an unknown key or illegal alias (decider-style fail-fast). <span class="path">packages/cli/test/config-models.test.ts</span></div>
+</spec-task>
+<spec-task id="T-401" parallel>
+  <input type="checkbox">
+  <div><strong>Test the provider wiring (stub)</strong> — <code>--model</code> / <code>SPECTASTIC_MODEL</code> / project-config / map precedence resolves, and the resolved id reaches <code>provider.model</code> (hence the spec-027 <code>Assisted-by:</code> trailer). Stub-backed, CI-safe. <span class="path">packages/cli/test/ai-factory-model.test.ts</span></div>
+</spec-task>
+<spec-task id="T-410">
+  <input type="checkbox">
+  <div><strong>Implement the models config loader</strong> — <code>models: { default?, verbs? }</code>, mirroring <code>config/decider.ts</code>'s fail-fast validation. <span class="path">packages/cli/src/config/models.ts</span></div>
+</spec-task>
+<spec-task id="T-411">
+  <input type="checkbox">
+  <div><strong>Wire the model into <code>createAIProvider()</code></strong> — read the <code>--model</code> global option and <code>SPECTASTIC_MODEL</code>, resolve via <code>resolveVerbModel</code>, and pass the id to <code>new ClaudeProvider({ model })</code>. <span class="path">packages/cli/src/ai-factory.ts</span></div>
+</spec-task>
+
+<spec-note>
+<p>Closes <a href="./spec.html#FR-006">FR-006</a>, <a href="./spec.html#FR-007">FR-007</a>, <a href="./spec.html#FR-008">FR-008</a>. Makes the <code>Assisted-by:</code> trailer honest per verb.</p>
+</spec-note>
+</section>
+
+
+<section id="phase-polish" class="phase">
+<h2>8 · Phase 4 — Polish &amp; verification</h2>
+
+<spec-task id="T-900" parallel>
+  <input type="checkbox">
+  <div><strong>Document the model policy</strong> — add the <code>model:</code> key and the per-verb tiering table to the CLAUDE.md frontmatter-contract section, and the <code>agents/</code> → <code>.claude/agents/</code> sync to the sync note. <span class="path">CLAUDE.md</span></div>
+</spec-task>
+<spec-task id="T-901" parallel>
+  <input type="checkbox">
+  <div><strong>Confirm no regression on the downgraded verbs</strong> — full <code>pnpm test</code> + the run-spectastic driver green; implement/apply/tasks behavioural and structural tests unchanged. <span class="path">packages/</span></div>
+</spec-task>
+<spec-task id="T-902" parallel>
+  <input type="checkbox">
+  <div><strong>Add the real-model smoke assertion</strong> — a <code>test:smoke</code>-tier check (local-only) that <code>SPECTASTIC_MODEL</code> resolves to a real model id; not in the CI stub tier. <span class="path">packages/cli/test/smoke/</span></div>
+</spec-task>
+<spec-task id="T-903">
+  <input type="checkbox">
+  <div><strong>Verify end-to-end in the real host</strong> — run <code>/spectastic.implement</code> (observe Sonnet), then <code>--model opus</code> (observe the Opus subagent), confirm the session reverts on the next prompt; re-read the usage panel after a representative week. <span class="path">specs/044-verb-model-policy/verify.html</span></div>
+</spec-task>
+
+<spec-note>
+<p>Closes <a href="./spec.html#NFR-001">NFR-001</a>, <a href="./spec.html#NFR-002">NFR-002</a>, <a href="./spec.html#SC-004">SC-004</a>. T-903 is the P-7 behavioural bar for <a href="./spec.html#SC-001">SC-001</a>/<a href="./spec.html#SC-002">SC-002</a>.</p>
+</spec-note>
+</section>
+
+
+<section id="dependencies">
+<h2>9 · Dependencies</h2>
+<pre><code>Setup (T-001)            → Foundational (T-010..T-012)
+Foundational             → US1, US4        (independent files)
+US3 (impl-task agent)    → US2 (escape hatch reuses it)
+US1, US2, US3, US4       → Polish
+</code></pre>
+</section>
+
+
+<section id="changelog">
+<h2>10 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-07-10">10 Jul 2026</time><span>Initial task breakdown — 19 tasks, five phases, test-first per story.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  Tasks for 044-verb-model-policy · Verb model policy · authored 2026-07-10
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>
