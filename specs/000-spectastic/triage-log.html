@@ -543,6 +543,85 @@
   </details>
 </spec-triage>
 
+<spec-triage id="T-017" layer="principles" data-status="done">
+  <header>
+    <h4>User-facing copy leaks spectastic's own artifact ids</h4>
+    <span class="meta">
+      <span class="layer-pill">Principles</span>
+      <span class="regen" data-result="fail">upstream</span>
+    </span>
+  </header>
+
+  <p class="headline">Dogfooding <code>spectastic --help</code> surfaced the tool's own spec numbers to users — <code>run</code>
+  ended "…unattended <strong>(037)</strong>", <code>enforce</code> "…required enforcement categories <strong>(spec 042)</strong>",
+  <code>gitignore</code> "…build-artifact ignores). <strong>Spec 043.</strong>"; a full scan found <strong>30 sites</strong>
+  across four tiers. Root cause was a missing invariant — nothing said internal artifact ids stay off user surfaces — so
+  the ladder reaches <em>principles</em>. Fixed by ratifying <a href="../../principles.html#P-10">P-10</a>, scrubbing all 30
+  sites, and adding a <code>no-internal-id-in-copy</code> validate rule over the CLI's own help strings; regeneration still
+  fails for the review-caught remainder — nothing forces a message or generated line to omit its provenance.</p>
+
+  <dl>
+    <dt>Expected</dt> <dd>Tool output a user reads — <code>--help</code> text, error/diagnostic messages, and copy written
+    into files they read or commit (hook markers, managed-file stamps, generated changelog lines) — describes the
+    <em>behaviour</em>, never citing the spectastic artifact (spec number/slug, <code>REQ-*</code>, <code>FR-*</code>,
+    <code>T-*</code>, <code>P-*</code>) that introduced it. Provenance lives in comments and the artifact trail.</dd>
+    <dt>Actual</dt>   <dd>30 sites leaked ids: 16 CLI <code>--help</code> descriptions/options (e.g. <code>run.ts</code> <code>(037)</code>,
+    <code>enforce.ts</code> <code>(spec 042)</code>, <code>gitignore.ts</code> <code>Spec 043.</code>, four <code>init.ts</code> options,
+    <code>propose.ts</code> <code>(spec 033/034)</code>), 6 runtime finding/gate messages (<code>state-gate.ts</code>,
+    <code>core/commands/explore.ts</code>, four in <code>core/commands/validate.ts</code>), 5 ids baked into generated files/markers
+    (<code>init/hook.ts</code> hook marker, <code>init/adapters.ts</code> managed stamp, <code>implement.ts</code> + <code>graduate.ts</code>
+    generated changelog/plan copy), and 2 argument-example slugs (<code>verify.ts</code>'s own <code>021-verify-view</code>, <code>run.ts</code>'s
+    <code>041-foo</code>).</dd>
+    <dt>Diagnosis</dt><dd>No principle, no rule encoded "internal ids off user surfaces." The closest existing text — the
+    <code>CLAUDE.md</code> "Voice and copy" note — governs <em>personalities/attribution</em>, not ids, and
+    <a href="../../principles.html#P-3">P-3</a> points the opposite way (ids as durable anchors). So a leak read as normal. The
+    invariant is broad — it binds the meta-spec's tooling <em>and</em> every downstream project — but only partly machine-checkable:
+    spectastic can lint its own <code>.description</code>/<code>.option</code> help strings, but it cannot see a downstream project's
+    application copy, and a finding message citing the requirement it enforces (or a spec artifact citing its own ids per P-3) is a
+    legitimate use, not a leak — so a blanket scan would false-positive.</dd>
+    <dt>Fix</dt>      <dd>(a) Ratified <a href="../../principles.html#P-10">P-10 · Internal artifact ids stay out of user-facing copy</a>
+    (principles v1.5.0) as the invariant, and extended <code>CLAUDE.md</code> § Voice and copy. (b) Scrubbed the <em>tool-talking</em>
+    sites — help text, runtime messages, tool-managed markers — keeping each sentence's meaning; the 3 generated-<em>artifact</em>
+    changelog/prose sites were later restored (see the refinement note). (c) Added the <a href="../../principles.html#P-8">P-8</a>
+    guarantee: <code>copyLeakFindings</code> in <code>packages/core/src/commands/validate.ts</code> (comment- and string-aware, dependency-free),
+    folded in by the CLI's <code>scanCopyLeak</code> over <code>packages/cli/src/**/*.ts</code> — an <code>error</code> that the pre-commit
+    gate blocks, with a unit + CLI-level test (planted leak fires, clean repo passes). Runtime messages are review-caught permanently by
+    design, the honest ceiling recorded not hidden (the same posture as <a href="#T-016">T-016</a>'s fat-core/thin-CLI convention). ✓ done.</dd>
+    <dt>Closed by</dt> <dd>P-10 (principles v1.5.0, applied by hand — the kernel apply path does not yet own principles proposals),
+    the 30-site scrub, and the <code>no-internal-id-in-copy</code> rule + tests. Help sweep over every subcommand is clean; the planted-leak
+    check fires at the exact site with exit 1. A formal <code>REQ-FORMAT-006</code> owner on the meta-spec — the traceability parallel to
+    <a href="./spec.html#REQ-FORMAT-005">REQ-FORMAT-005</a>/<code>date-format</code> — is authored as change proposal
+    <a href="./changes/2026-07-10-no-internal-id-in-copy/proposal.html">2026-07-10-no-internal-id-in-copy</a> (approved; 3 adversarial
+    risks dispositioned mitigated), pending <code>/spectastic.apply</code>; the shipped rule rests on P-10 until it lands.
+    <strong>Refinement</strong> (from that proposal's adversarial pass): the rule was widened to scan <code>.argument</code> help
+    (a real slug like <code>021-verify-view</code> now fires; the neutral <code>001-auth-service</code> placeholder is allowlisted),
+    and the 3 generated-<em>artifact</em> scrubs — <code>implement.ts</code>'s bundle-flip changelog (<code>REQ-LIFECYCLE-005</code>),
+    <code>graduate.ts</code>'s spec changelog (<code>023-explore-graduation</code>) and plan grounding prose
+    (<code>REQ-LIFECYCLE-006</code>) — were reverted as legitimate provenance (an artifact citing its own governing ids per
+    <a href="../../principles.html#P-3">P-3</a> is the human's voice, not a leak; only the <em>tool talking</em> is scrubbed).</dd>
+  </dl>
+
+  <details>
+    <summary>Deep dive — the enforcement ceiling, named not hidden (P-8)</summary>
+    <p><strong>Principles invariant implicated.</strong> The defect had no invariant to point at, so the ladder terminates at
+    <a href="../../principles.html#P-10">P-10</a>, not at the CLI files where the symptom showed. The rule's scope is a deliberate,
+    recorded ceiling rather than an oversight: it enforces the one surface spectastic can mechanically see and unambiguously judge — its own
+    CLI <code>.description</code>/<code>.option</code> help copy, where an artifact id is never legitimate. It intentionally does
+    <em>not</em> scan finding <code>message:</code>/<code>fixHint:</code> fields (a rule citing the requirement it enforces is a
+    legitimate reference, e.g. "IDs are forever-contracts per P-3") nor a downstream project's application copy (unseeable). Those stay
+    <em>review-caught</em>, exactly the <a href="#T-016">T-016</a> / <a href="../../principles.html#P-8">P-8</a> posture — enforce the
+    tractable subset, ship the invariant as principle, and record the limit instead of pretending to a guarantee. If a low-false-positive
+    check for the message surface ever emerges, promote it then.</p>
+    <p><strong>Follow-on, authored inside the lifecycle.</strong> The formal <code>REQ-FORMAT-006</code> meta-spec owner is change
+    proposal <a href="./changes/2026-07-10-no-internal-id-in-copy/proposal.html">2026-07-10-no-internal-id-in-copy</a> (approved),
+    keeping the Accepted spec's contract change inside <code>/spectastic.propose</code> → <code>/spectastic.apply</code> rather than a
+    hand-edit. Its must-tier adversarial pass earned its keep: it caught that the first requirement wording froze commander method names
+    and forbade <em>all</em> "generated changelog lines" — contradicting <a href="./spec.html#REQ-CHANGE-008">REQ-CHANGE-008</a>'s
+    id-citing author summaries — which is what drove the tool-talking-vs-artifact refinement above (and the same sharpening back into
+    <a href="../../principles.html#P-10">P-10</a>'s wording). No cross-spec contract is touched by the shipped fix.</p>
+  </details>
+</spec-triage>
+
 </spec-triage-log>
 </section>
 
@@ -551,6 +630,8 @@
 <h2>Change log</h2>
 <spec-changelog>
 <ol>
+  <li><time datetime="2026-07-10">10 Jul 2026</time><span>T-017 added + done — user-facing copy leaked spectastic's own artifact ids (<code>spectastic --help</code> shipped <code>(037)</code>, <code>(spec 042)</code>, <code>Spec 043.</code>) across 30 sites in three tiers (CLI help, runtime messages, generated-file markers). <code>principles</code>, regen <code>fail</code>: the root was a missing invariant. Fixed by ratifying <a href="../../principles.html#P-10">P-10</a> (principles v1.5.0), scrubbing all 30 sites, and adding a <code>no-internal-id-in-copy</code> validate rule (<code>copyLeakFindings</code> + CLI <code>scanCopyLeak</code>, error, pre-commit-gated) over the CLI's own help strings — the machine-visible half; runtime messages / generated copy and downstream application copy are review-caught, the honest P-8 ceiling recorded. Formal <code>REQ-FORMAT-006</code> meta-spec owner deferred to <code>/spectastic.propose</code> (Accepted spec is P-6-locked).</span></li>
+  <li><time datetime="2026-07-10">10 Jul 2026</time><span>T-017 follow-on — authored change proposal <a href="./changes/2026-07-10-no-internal-id-in-copy/proposal.html">2026-07-10-no-internal-id-in-copy</a> (ADD <code>REQ-FORMAT-006</code>, the rule's contract owner; approved). Its must-tier adversarial pass drove three landed refinements: the requirement + <a href="../../principles.html#P-10">P-10</a> wording moved to the abstract <em>tool-talking vs artifact-provenance</em> line; the rule was widened to scan <code>.argument</code> help (real slug fires, <code>001-auth-service</code> allowlisted); and 3 generated-artifact changelog/prose scrubs were reverted as legitimate provenance (only the tool talking is scrubbed). Pending <code>/spectastic.apply</code>.</span></li>
   <li><time datetime="2026-07-10">10 Jul 2026</time><span>T-016 added + done — the "fat core / thin CLI" convention (deterministic logic in <code>@spectastic/core</code>, CLI thin) was unwritten, so 041/042/043 drifted; now documented in <code>CLAUDE.md</code> § Architecture. <code>principles</code>, regen <code>fail</code>: honestly review-caught, not machine-enforceable (the boundary is a judgment call; a mechanical lint would false-positive) — the P-8 limitation recorded, not hidden.</span></li>
   <li><time datetime="2026-07-10">10 Jul 2026</time><span>T-015 added — <code>init</code> scaffolds no project <code>.gitignore</code> (own ephemera or stack). <code>spec</code>, regen <code>fail</code>: needs a new follow-on spec <strong>043-init-project-config</strong> (base at init + stack-specific at plan time, mirroring 041→042). From dogfooding on spec-tictactoe-2.</span></li>
   <li><time datetime="2026-07-10">10 Jul 2026</time><span>T-013 resolved — added a "Language-idiom feasibility" grounding bullet to <code>commands/spectastic.plan.md</code> step 6 (sealed hierarchies, ownership, init/declaration ordering, toolchain-version support; ground as a spike when unsure). The plan phase now probes the constraints that caused the mid-drain propose. T-014 resolved — principles v1.4.0 P-9 + 042/041 cascade.</span></li>
