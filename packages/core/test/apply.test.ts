@@ -175,6 +175,62 @@ describe('applyCommand (010)', () => {
     expect(files.get('/specs/001/spec.html')).toContain('1 delta (1 successful)');
   });
 
+  // T-1102 (REQ-CHANGE-002 / REQ-CHANGE-008 / triage T-018): a data/content delta —
+  // a target naming manifest data (not a requirement ID), no embedded <spec-requirement> —
+  // leaves the requirements body unchanged (no fabricated requirement) while the changelog
+  // append + archive still run. A requirement-shaped target with no post-state gate-blocks.
+  const DATA_PROPOSAL = `<!doctype html><html><body>
+<spec-change id="2026-07-11-data" status="approved">
+<spec-delta op="added" target="standard/foo">
+  <spec-diff>+ contract-first interfaces</spec-diff>
+</spec-delta>
+<section id="changelog"><spec-changelog><ol></ol></spec-changelog></section>
+</spec-change></body></html>`;
+
+  const MALFORMED_REQ_PROPOSAL = `<!doctype html><html><body>
+<spec-change id="2026-07-11-oops" status="approved">
+<spec-delta op="added" target="FR-999"><spec-diff>+ forgot the spec-requirement</spec-diff></spec-delta>
+<section id="changelog"><spec-changelog><ol></ol></spec-changelog></section>
+</spec-change></body></html>`;
+
+  it('apply mode: a data/content delta leaves the requirements body unchanged (T-018)', async () => {
+    const { fs, files, renames } = stubFs({
+      '/specs/001/spec.html': LIVE_SPEC,
+      '/specs/001/changes/2026-07-11-data/proposal.html': DATA_PROPOSAL,
+    });
+    const result = await applyCommand(
+      { kind: 'apply', specId: '001', slug: '2026-07-11-data', summary: 'seed a manifest principle' },
+      { cwd: '', fs },
+    );
+
+    expect(result.deltas).toHaveLength(1);
+    expect(result.deltas[0]?.result).toBe('success');
+    expect(result.deltas[0]?.reason).toMatch(/data\/content/);
+    const updated = files.get('/specs/001/spec.html')!;
+    // No fabricated requirement, and the delta prose never reaches the requirements body.
+    expect(updated).not.toContain('id="standard/foo"');
+    expect(updated).not.toContain('contract-first interfaces');
+    expect(updated).toContain('<p>Original.</p>'); // FR-001 body untouched
+    // The changelog append still lands (every apply writes it), and archive still runs.
+    expect(updated).toContain('seed a manifest principle');
+    expect(renames[0]?.[1]).toBe('/specs/001/changes/archive/2026-07-11-data');
+  });
+
+  it('apply mode: a requirement-shaped target with no embedded requirement gate-blocks (T-018 guard)', async () => {
+    const { fs, files } = stubFs({
+      '/specs/001/spec.html': LIVE_SPEC,
+      '/specs/001/changes/2026-07-11-oops/proposal.html': MALFORMED_REQ_PROPOSAL,
+    });
+    const result = await applyCommand(
+      { kind: 'apply', specId: '001', slug: '2026-07-11-oops' },
+      { cwd: '', fs },
+    );
+    expect(result.deltas[0]?.result).toBe('gate-blocked');
+    expect(result.deltas[0]?.reason).toMatch(/missing <spec-requirement>/);
+    // Never fabricates FR-999 into the spec.
+    expect(files.get('/specs/001/spec.html')).not.toContain('id="FR-999"');
+  });
+
   // T-302 (REQ-CHANGE-007 / triage T-007): the move creates its parent dir before
   // the rename, so a spec's first apply/withdraw doesn't ENOENT on a missing dir.
   it('apply mode: mkdirs changes/archive/ before the rename (first-archive, T-007)', async () => {

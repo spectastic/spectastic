@@ -146,6 +146,10 @@ The boundary is a **judgment call, not a mechanical rule**: cross-cutting determ
 
 **This scar is paid for.** 041, 042, and 043's first pass all drifted deterministic logic into the CLI because the convention lived only as an unwritten habit — caught in review (`042/T-001`, the 043 move `0cb5330`). There is deliberately **no lint rule** for it: a mechanical "no non-`register*` export in `commands/`" check would false-positive on the legitimate CLI-local `init/` helpers, and the real distinction (kernel-worthy vs command-scaffolding) can't be linted without judgment. So it's **review-caught** — that a machine can't enforce it is itself flagged as a meta-spec triage (`000/T-016`), not hidden.
 
+### Data/content deltas — proposing a change to a manifest, not a requirement
+
+A change to profile *data* (`spectastic-profiles.json` — 041's principle presets, 042's enforce categories) is a proposal like any other, but its `<spec-delta>` is a **data/content delta**: `target=` names the manifest key/path (e.g. `standard/shape-of-system-principles`), and the delta embeds a `<spec-diff>`, **not** a `<spec-requirement>`. The apply kernel branches on that — a delta with no embedded `<spec-requirement>` makes **no change to the live spec's requirements body** (it still folds §6 tasks, appends the changelog, and archives); the real manifest edit is a §6 task drained by `/spectastic.implement`. This is the contract's answer to triage **T-018**, where an early data delta (no `<spec-requirement>`) was fabricated into a phantom `<spec-requirement priority="must">` and injected into 041's `spec.html`. A requirement-shaped `target=` (`^[A-Z]+-`) that forgets its embedded post-state is now an **error** (the `data-delta-shape` validate rule + the apply-time gate-block); a manifest-key target is unambiguously data. Owned by `REQ-CHANGE-002` / `REQ-CHANGE-008`; the pattern every 041/042 manifest proposal uses.
+
 ## Things deferred
 
 Captured in `docs/openspec-considerations.html` and `specs/000-spectastic/spec.html` §2 (Out of scope):

@@ -1,5 +1,6 @@
 import type { Rule } from '../types.js';
 
+import { dataDeltaShapeRule } from './data-delta-shape.js';
 import { dateFormatRule } from './date-format.js';
 import { deltaOpRequiredRule } from './delta-op-required.js';
 import { deltaTargetRequiredRule } from './delta-target-required.js';
@@ -42,6 +43,7 @@ export const rules: readonly Rule[] = [
   noMissingDeferToRule,
   deltaOpRequiredRule,
   deltaTargetRequiredRule,
+  dataDeltaShapeRule,
   riskTargetRequiredRule,
   riskStatusRequiredRule,
   requirementIdRequiredRule,
