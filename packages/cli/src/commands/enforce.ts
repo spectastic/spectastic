@@ -1,5 +1,5 @@
 import type { Command } from 'commander';
-import { detectTooling } from '@spectastic/core/enforce/detect';
+import { detectEcosystems, detectTooling } from '@spectastic/core/enforce/detect';
 import { evaluateEnforcement } from '@spectastic/core/enforce/policy';
 import { resolveBundle } from './init/bundle.js';
 import { readMarker } from './init/marker.js';
@@ -42,16 +42,25 @@ export function registerEnforce(program: Command): void {
       }
 
       const covered = detectTooling(cwd);
-      const { missing, exitCode } = evaluateEnforcement(
+      const ecosystems = detectEcosystems(cwd);
+      const { missing, warned, exitCode } = evaluateEnforcement(
         profile.enforce.required,
         covered,
         profile.enforce.gate,
+        ecosystems,
       );
 
       process.stdout.write(`enforce: profile ${profile.name} (${profile.enforce.gate} gate)\n`);
       process.stdout.write(`  covered: ${[...covered].sort().join(', ') || '(none)'}\n`);
+      if (warned.length > 0) {
+        // FR-010: required but structurally undetectable in this project's
+        // ecosystem(s) — never a blocking gap, regardless of gate severity.
+        process.stdout.write(
+          `  ⚠ undetectable in this ecosystem (not blocking): ${warned.join(', ')}\n`,
+        );
+      }
       if (missing.length === 0) {
-        process.stdout.write('  ✓ all required enforcement categories are covered.\n');
+        process.stdout.write('  ✓ all detectable required enforcement categories are covered.\n');
         process.exit(0);
       }
 

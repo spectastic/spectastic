@@ -79,3 +79,45 @@ describe('detectTooling: per-ecosystem classification', () => {
     expect(detectTooling(fixture({})).size).toBe(0);
   });
 });
+
+// spec 042, coverage-enforce-category change (T-018/FR-002 amendment, FR-010).
+describe('detectTooling: coverage is threshold-bearing, not bare-presence', () => {
+  it('Python: pyproject.toml with fail_under → coverage', () => {
+    const dir = fixture({ 'pyproject.toml': '[tool.coverage.report]\nfail_under = 90\n' });
+    expect(detectTooling(dir).has('coverage')).toBe(true);
+  });
+
+  it('JS/TS: jest coverageThreshold → coverage', () => {
+    const dir = fixture({ 'jest.config.js': 'module.exports = { coverageThreshold: { global: { lines: 90 } } };' });
+    expect(detectTooling(dir).has('coverage')).toBe(true);
+  });
+
+  it('JS/TS: vitest thresholds → coverage', () => {
+    const dir = fixture({ 'vitest.config.ts': 'export default { test: { coverage: { thresholds: { lines: 90 } } } };' });
+    expect(detectTooling(dir).has('coverage')).toBe(true);
+  });
+
+  it('Java: JaCoCo verification task in build.gradle → coverage', () => {
+    const dir = fixture({ 'build.gradle': "jacocoTestCoverageVerification {\n  violationRules { rule { limit { minimum = 0.9 } } }\n}\n" });
+    expect(detectTooling(dir).has('coverage')).toBe(true);
+  });
+
+  it('Rust: tarpaulin.toml with fail-under → coverage', () => {
+    const dir = fixture({ 'tarpaulin.toml': 'fail-under = 90\n', 'Cargo.toml': '[package]' });
+    expect(detectTooling(dir).has('coverage')).toBe(true);
+  });
+
+  it('a bare coverage library with no declared threshold is NOT classified as coverage', () => {
+    // package.json names @vitest/coverage-v8 but no coverageThreshold block anywhere —
+    // presence of the tool must not certify the floor (adversarial-pass Risk 1).
+    const dir = fixture({ 'package.json': '{"devDependencies":{"@vitest/coverage-v8":"^2.0.0"}}' });
+    expect(detectTooling(dir).has('coverage')).toBe(false);
+  });
+
+  it('Go: go.mod alone never signals coverage — go test -cover is a flag, not a config file (FR-002 recorded gap)', () => {
+    const dir = fixture({ 'go.mod': 'module x\n' });
+    const c = detectTooling(dir);
+    expect(c.has('test-runner')).toBe(true); // go test itself is still detected
+    expect(c.has('coverage')).toBe(false); // but coverage never is — no signal exists for it
+  });
+});

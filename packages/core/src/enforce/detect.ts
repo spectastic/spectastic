@@ -103,6 +103,29 @@ export const SIGNALS: readonly Signal[] = [
   { ecosystem: 'cpp', category: 'formatter', file: '.clang-format' },
   { ecosystem: 'cpp', category: 'linter', file: '.clang-tidy' },
   { ecosystem: 'cpp', category: 'linter', file: '.cppcheck' },
+
+  // --- Coverage (spec 042, FR-002 amendment) --------------------------------
+  // Threshold-bearing signals only — a bare coverage library does not imply a
+  // gate (measuring and gating are separable), so `contains` matches a
+  // declared threshold/check, never just the tool's presence. Go is a
+  // deliberate gap: `go test -cover` is a flag, not a config file, so coverage
+  // is not statically detectable there (FR-002 rationale; FR-010 keeps this
+  // from becoming a false hard-failure). Swift/C++ have no established static
+  // coverage-threshold config convention today — no signal, rather than a
+  // guessed one.
+  { ecosystem: 'python', category: 'coverage', file: 'pyproject.toml', contains: 'fail_under' },
+  { ecosystem: 'python', category: 'coverage', file: '.coveragerc', contains: 'fail_under' },
+  { ecosystem: 'python', category: 'coverage', file: 'tox.ini', contains: 'fail_under' },
+  { ecosystem: 'js', category: 'coverage', file: 'jest.config.js', contains: 'coverageThreshold' },
+  { ecosystem: 'js', category: 'coverage', file: 'jest.config.ts', contains: 'coverageThreshold' },
+  { ecosystem: 'js', category: 'coverage', file: 'package.json', contains: 'coverageThreshold' },
+  { ecosystem: 'js', category: 'coverage', file: 'vitest.config.ts', contains: 'thresholds' },
+  { ecosystem: 'js', category: 'coverage', file: 'vitest.config.js', contains: 'thresholds' },
+  { ecosystem: 'js', category: 'coverage', file: '.nycrc', contains: 'check-coverage' },
+  { ecosystem: 'java', category: 'coverage', file: 'build.gradle', contains: 'jacocoTestCoverageVerification' },
+  { ecosystem: 'java', category: 'coverage', file: 'pom.xml', contains: 'haltOnFailure' },
+  { ecosystem: 'rust', category: 'coverage', file: 'tarpaulin.toml', contains: 'fail-under' },
+  { ecosystem: 'rust', category: 'coverage', file: 'Cargo.toml', contains: 'fail-under' },
 ];
 
 const ALL_CATEGORIES: readonly EnforcementCategory[] = [
@@ -112,6 +135,7 @@ const ALL_CATEGORIES: readonly EnforcementCategory[] = [
   'security',
   'supply-chain',
   'test-runner',
+  'coverage',
 ];
 
 function signalMatches(cwd: string, sig: Signal): boolean {
