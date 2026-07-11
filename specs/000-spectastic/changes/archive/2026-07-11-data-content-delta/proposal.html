@@ -1,0 +1,240 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Recognise a data/content delta in the change-proposal contract · Change proposal</title>
+<link rel="stylesheet" href="../../../../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../../../../assets/favicon.svg">
+<script src="../../../../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Change proposal · 000-spectastic</p>
+  <h1>Recognise a data/content delta in the change-proposal contract</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    A delta that carries no requirement carries no requirement. Apply should fold and archive it — not fabricate one into the spec.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>     <span><spec-status value="applied">Applied</spec-status></span>
+    <b>Change ID</b>  <span>2026-07-11-data-content-delta</span>
+    <b>Spec</b>       <span><a href="../../../spec.html">000-spectastic</a></span>
+    <b>Source</b>     <span>triage <a href="../../../triage-log.html#T-018">000/T-018</a> (live on 041's profile-principle-catalog apply)</span>
+    <b>Author</b>     <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Created</b>    <span><time datetime="2026-07-11">11 Jul 2026</time></span>
+    <b>Targets</b>    <span>2 modified (<a href="../../../spec.html#REQ-CHANGE-002">REQ-CHANGE-002</a>, <a href="../../../spec.html#REQ-CHANGE-008">REQ-CHANGE-008</a>)</span>
+    <b>Read time</b>  <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-tldr>
+    <p>The change-proposal contract assumes every <code>&lt;spec-delta&gt;</code> touches a numbered requirement:
+    REQ-CHANGE-002 says <code>target</code> names "the requirement ID it touches," and REQ-CHANGE-008's kernel
+    <em>fabricates</em> a <code>&lt;spec-requirement&gt;</code> from any <code>op="added"</code> delta that embeds none
+    (<code>apply.ts:75-86</code>). But 041 and 042 legitimately propose changes to profile-manifest <em>data</em>
+    (<code>spectastic-profiles.json</code>), whose deltas name a JSON key and carry a <code>&lt;spec-diff&gt;</code>, not a
+    requirement. Applying one injects proposal prose into the live spec (triage <a href="../../../triage-log.html#T-018">T-018</a>,
+    hit live on 041). This change teaches the contract the distinction: a delta with an embedded
+    <code>&lt;spec-requirement&gt;</code> is a requirement delta (apply to <code>spec.html</code>); a delta without one is a
+    data/content delta (fold §6 tasks + changelog + archive, making no change to the requirements body). A shape guard
+    gate-blocks the one ambiguous case — a requirement-shaped target that forgot to embed its requirement — and a
+    <code>data-delta-shape</code> validate rule catches the same slip at authoring time.</p>
+  </spec-tldr>
+</header>
+
+
+<spec-change id="2026-07-11-data-content-delta" status="applied">
+
+<header>
+  <h3>Recognise a data/content delta in the change-proposal contract</h3>
+  <span class="meta"><spec-status value="applied">Applied</spec-status></span>
+</header>
+
+
+<section id="intent">
+<h2>1 · Intent</h2>
+<p>The change-proposal lifecycle was designed around requirement deltas — the whole point of a typed
+<code>&lt;spec-delta&gt;</code> is to fold a requirement's post-state into <code>spec.html</code>. But two specs (041
+init-profiles, 042 profile-enforcement) govern behaviour that lives as <em>data</em> in a JSON manifest, not as numbered
+requirements. A proposal that seeds a profile principle or an enforce category legitimately targets a manifest key
+(<code>standard/shape-of-system-principles</code>) and shows the change as a <code>&lt;spec-diff&gt;</code>. The contract
+has no word for that, so the kernel does the only thing it knows: it wraps the whole delta body in a fabricated
+<code>&lt;spec-requirement id="{target}" priority="must"&gt;</code> and injects it into the live spec — silent corruption,
+caught live on 041 (triage <a href="../../../triage-log.html#T-018">T-018</a>; hotfixed, apply commit amended).</p>
+<p>This is upstream of the code. REQ-CHANGE-002 mandates <code>target</code> = "the requirement ID it touches," and
+REQ-CHANGE-008 mandates the kernel apply each delta into <code>spec.html</code> — neither contemplates a data delta. So a
+code-only patch would drift back on the next regeneration. The fix is to name the data/content delta in the contract and
+give the kernel a deterministic branch, so every downstream data-proposal (041's remaining principle rows, 042's whole
+enforce-category cluster) applies cleanly instead of needing a manual scrub each time.</p>
+</section>
+
+
+<section id="scope">
+<h2>2 · Scope</h2>
+
+<spec-goals>
+  <h3>In scope</h3>
+  <ul>
+    <li>MODIFY <a href="../../../spec.html#REQ-CHANGE-002">REQ-CHANGE-002</a>: a delta <code>target</code> MAY name manifest
+      data (a JSON key/path), not only a requirement ID; a requirement delta embeds a <code>&lt;spec-requirement&gt;</code>,
+      a data/content delta does not.</li>
+    <li>MODIFY <a href="../../../spec.html#REQ-CHANGE-008">REQ-CHANGE-008</a>: the kernel branches on the embedded
+      <code>&lt;spec-requirement&gt;</code> — present → apply to <code>spec.html</code>; absent → data/content delta, make
+      no change to the requirements body (still fold §6 + changelog + archive), never fabricate one; and gate-block the
+      shape guard (requirement-shaped target with no embedded requirement).</li>
+    <li>ADD a <code>data-delta-shape</code> validate rule (the authoring-time half of the guard, pulled in from the
+      adversarial pass): a <code>&lt;spec-delta&gt;</code> whose <code>target</code> is requirement-ID-shaped
+      (<code>^[A-Z]+-</code>) but embeds no <code>&lt;spec-requirement&gt;</code> is an error. REQ-CHANGE-002 names it as
+      the enforcement.</li>
+    <li>Folded tasks: the <code>apply.ts</code> branch, the validate rule, and a kernel test proving a data delta leaves
+      the <em>requirements body</em> unchanged (only the changelog append lands) while the fold and archive still run.</li>
+  </ul>
+</spec-goals>
+
+<spec-non-goals>
+  <h3>Out of scope</h3>
+  <ul>
+    <li><spec-out-of-scope defer-to="TBD-kernel-cross-spec-apply">Cross-spec delta application — already the kernel's one
+      unhandled mechanical step per REQ-CHANGE-008; unchanged by this proposal.</spec-out-of-scope></li>
+    <li><spec-out-of-scope defer-to="never">Re-expressing 041's already-applied profile-principle-catalog. It was
+      hotfixed in place (phantom removed, apply commit amended); no rework needed.</spec-out-of-scope></li>
+  </ul>
+</spec-non-goals>
+</section>
+
+
+<section id="approach">
+<h2>3 · Approach</h2>
+<p>The distinguishing signal is <strong>content</strong>, not a new attribute: a delta that embeds a
+<code>&lt;spec-requirement&gt;</code> is a requirement delta; one that doesn't is data/content. This reuses the structure
+the template already prescribes (ADD/MODIFY embed the post-state) rather than adding a <code>surface="data"</code> marker
+authors must remember. The kernel's current fallback — <code>extractInner(body,'spec-requirement') ?? body.trim()</code> —
+is exactly the bug: the <code>?? body.trim()</code> is what fabricates a requirement. The fix replaces it with an explicit
+branch.</p>
+<p>One guard closes the opposite footgun: a requirement delta that <em>forgot</em> to embed its
+<code>&lt;spec-requirement&gt;</code> must not silently become a no-op. So when the target matches a requirement-ID shape
+(<code>^[A-Z]+-…</code>) but no requirement is embedded, the kernel gate-blocks it as malformed — the author sees a clear
+failure, not a silent skip. A slash-bearing or lowercase target with no embedded requirement is unambiguously a data
+delta and applies as a spec-<code>noop</code> + fold.</p>
+<spec-note>The data delta's real effect is its §6 tasks: <code>/spectastic.implement</code> edits the manifest
+(<code>spectastic-profiles.json</code>) during the drain. Apply's job for a data delta is purely to fold those tasks,
+append the changelog, and archive — the same lifecycle every proposal gets, minus the <em>requirements-body</em> mutation
+a data change never wanted (the changelog append still lands, as on every apply).</spec-note>
+</section>
+
+
+<section id="deltas">
+<h2>4 · Deltas</h2>
+<p>Two MODIFY deltas on the change-proposal contract. Both embed the full post-state.</p>
+
+<spec-delta op="modified" target="REQ-CHANGE-002">
+  <p><strong>What changes:</strong> a delta <code>target</code> may name manifest data, not only a requirement ID, and the
+  embedded-<code>&lt;spec-requirement&gt;</code> presence is what marks the two kinds apart.</p>
+  <spec-requirement id="REQ-CHANGE-002" priority="must">
+  <p>Each <code>&lt;spec-delta&gt;</code> <spec-rule>MUST</spec-rule> carry an <code>op</code> attribute equal to one of
+  <code>added | modified | removed | renamed</code>, and a <code>target</code> attribute naming what it touches: a
+  <strong>requirement ID</strong> (<code>FR-*</code>, <code>REQ-*</code>, <code>NFR-*</code>, <code>SC-*</code>,
+  <code>D-*</code>) for a <em>requirement delta</em>, or a <strong>manifest data key/path</strong> (e.g.
+  <code>standard/shape-of-system-principles</code> in <code>spectastic-profiles.json</code>) for a <em>data/content
+  delta</em>. A requirement delta <spec-rule>MUST</spec-rule> embed a <code>&lt;spec-requirement&gt;</code> showing the
+  post-state; a data/content delta <spec-rule>MUST NOT</spec-rule> — its post-state is the §6 tasks that edit the manifest,
+  and apply makes no change to the <em>requirements body</em> for it (the <code>&lt;spec-changelog&gt;</code> append still
+  lands, as on every apply; see <a href="../../../spec.html#REQ-CHANGE-008">REQ-CHANGE-008</a>). The
+  <code>data-delta-shape</code> validate rule enforces the pairing: a <code>target</code> of requirement-ID shape
+  (<code>^[A-Z]+-</code>) with no embedded <code>&lt;spec-requirement&gt;</code> is an error. For <code>op="removed"</code>,
+  the delta <spec-rule>MUST</spec-rule> also carry <code>reason</code> and <code>migration</code> fields — empty or
+  missing renders visibly broken.</p>
+  </spec-requirement>
+</spec-delta>
+
+<spec-delta op="modified" target="REQ-CHANGE-008">
+  <p><strong>What changes:</strong> a new paragraph gives the kernel a deterministic branch on the embedded
+  <code>&lt;spec-requirement&gt;</code> — present → inject; absent → data delta, no <code>spec.html</code> mutation, never
+  fabricate; requirement-shaped-but-unembedded → gate-block. The rest of the requirement is unchanged.</p>
+  <spec-requirement id="REQ-CHANGE-008" priority="should">
+  <p>The mechanical steps of <code>/spectastic.apply</code> — applying each <code>&lt;spec-delta&gt;</code>, the live-spec <code>&lt;spec-changelog&gt;</code> entry (the kernel <spec-rule>MUST</spec-rule> accept an author-supplied one-line summary, so the changelog's human voice is preserved rather than reduced to a delta count), the archive-folder move, the proposal status flip to <code>applied</code>, and the §6 task-fold (per <a href="../../../spec.html#REQ-CHANGE-006">REQ-CHANGE-006</a> / <a href="../../../spec.html#REQ-CHANGE-007">REQ-CHANGE-007</a>) — <spec-rule>MUST</spec-rule> be performed by the apply kernel (<code>spectastic apply</code>, which is deterministic and requires no <code>ANTHROPIC_API_KEY</code>), not re-implemented in the slash-command markdown. The apply markdown <spec-rule>MUST</spec-rule> run the preconditions — including the <a href="../../../spec.html#REQ-CHANGE-004">REQ-CHANGE-004</a> risk gate, listing any <code>status="identified"</code> risks by <code>target=</code> — and surface failures <em>before</em> invoking the kernel; the kernel's own gate is a deterministic backstop, not the user-facing refusal. It <spec-rule>MUST</spec-rule> also confirm <code>spectastic apply</code> resolves before invoking it, surfacing a missing or stale binary clearly rather than failing silently. Beyond the preconditions, the markdown owns only the post-apply routing nudge (<a href="../../../spec.html#REQ-CHANGE-003">REQ-CHANGE-003</a>) and the inbox-card nudge.</p>
+  <p>When applying each <code>&lt;spec-delta&gt;</code>, the kernel <spec-rule>MUST</spec-rule> branch on whether the delta embeds a <code>&lt;spec-requirement&gt;</code>. <strong>Present</strong> — it is a requirement delta: apply the post-state into <code>spec.html</code> (insert for <code>added</code>; replace the <code>id</code>-matched requirement for <code>modified | removed | renamed</code>). <strong>Absent</strong> — it is a <em>data/content delta</em> whose <code>target</code> names manifest data: the kernel <spec-rule>MUST</spec-rule> make no change to the requirements body (the mandated <code>&lt;spec-changelog&gt;</code> append still lands) and let the §6 task-fold carry the change; it <spec-rule>MUST NOT</spec-rule> fabricate a <code>&lt;spec-requirement&gt;</code> from the delta body. As a guard, if a delta's <code>target</code> matches a requirement-ID shape (<code>^[A-Z]+-</code>…) yet embeds no <code>&lt;spec-requirement&gt;</code>, the kernel <spec-rule>MUST</spec-rule> gate-block it as malformed rather than silently skip — a requirement delta that forgot its post-state is an error, not a no-op.</p>
+  <p>This is a deliberate, named exception to 006 FR-008 ("the markdown procedure remains the source of truth") and FR-009 ("slash commands MAY invoke the CLI but MUST NOT be required to") <em>for <code>apply</code></em>: its mechanical steps are pure and deterministic, and their prose-only form was the T-004 failure. Those general rules continue to govern the six verbs that need LLM judgment.</p>
+  <p>The obligation is scoped to <em>same-spec</em> applies. A <em>cross-spec</em> delta (whose <code>target</code> is a requirement in another spec) is the one mechanical step the kernel does not yet perform and <spec-rule level="may">MAY</spec-rule> remain markdown-handled until it does (<code>TBD-kernel-cross-spec-apply</code>).</p>
+  <details><summary>Rationale</summary><p>Apply's mechanical steps need no AI and the CLI runs key-free, so making the kernel authoritative for them removes the whole class of skipped-step bugs on the in-host path (T-004) without touching the verbs that need judgment. The data/content branch (T-018) extends the same principle: the kernel, not a fabrication fallback, decides what a delta means, so a manifest-data proposal (041 principles, 042 enforce categories) folds and archives without corrupting <code>spec.html</code>. Hosted as a meta-spec requirement — not a MODIFY of 006 FR-009 — because a cross-spec delta could not be applied by the kernel this very requirement mandates, and because apply's contract already lives in <code>REQ-CHANGE-*</code>. Priority <code>should</code>: codifying apply's kernel-authoritative path from incident, matching <a href="../../../spec.html#REQ-CHANGE-004">REQ-CHANGE-004</a> / <a href="../../../spec.html#REQ-CHANGE-007">REQ-CHANGE-007</a>; re-evaluate after a few real applies.</p></details>
+  </spec-requirement>
+</spec-delta>
+</section>
+
+
+<section id="risks">
+<h2>5 · Risk register</h2>
+<p>Populated by the adversarial risk pass (auto-fired: REQ-CHANGE-002 is <code>must</code>-tier, and this touches the
+meta-spec's core change contract). One <code>&lt;spec-risk&gt;</code> per finding; <code>status="identified"</code> until
+the author dispositions each. Apply refuses while any remains <code>identified</code>.</p>
+
+<spec-risk-log>
+<spec-risk target="REQ-CHANGE-008" status="mitigated" by="Brian Corbin · @briancorbinxyz">
+  <p class="claim">The proposal's claim that a data/content delta leaves <code>spec.html</code> "byte-identical" contradicts REQ-CHANGE-008's own retained MUST that the kernel append the live-spec <code>&lt;spec-changelog&gt;</code> entry — which <code>apply.ts:128-130</code> writes into <code>spec.html</code> unconditionally for every apply.</p>
+  <p class="citation">§6 task 2: "leaves <code>spec.html</code> <strong>byte-identical</strong>" and REQ-CHANGE-002 rewrite "apply leaves <code>spec.html</code> untouched for it" — versus REQ-CHANGE-008: "the live-spec <code>&lt;spec-changelog&gt;</code> entry … <spec-rule>MUST</spec-rule> be performed by the apply kernel" (<code>appendChangelogEntry</code> → unconditional <code>fs.writeFile(specPath, …)</code>).</p>
+  <div class="response"><strong>Mitigated.</strong> Confirmed against the kernel: the changelog line always lands. The invariant is narrowed throughout (REQ-CHANGE-002, REQ-CHANGE-008, §3, §6 task 2) to "the kernel makes no change to the <em>requirements body</em> — the mandated changelog append still lands, as on every apply." The test asserts the requirements body is unchanged, not the whole file. The changelog write is correct and stays.</div>
+</spec-risk>
+
+<spec-risk target="REQ-CHANGE-002" status="accepted" by="Brian Corbin · @briancorbinxyz">
+  <p class="claim">Discriminating requirement-vs-data deltas by the <em>absence</em> of an embedded <code>&lt;spec-requirement&gt;</code> — rather than an explicit marker — turns an authoring slip that drops or mis-nests the post-state into a silently-accepted "data delta" whenever the target isn't requirement-ID-shaped, re-introducing a symmetric silent failure on the branch opposite the one T-018 closed.</p>
+  <p class="citation">§3 Approach: "reuses the structure the template already prescribes … rather than adding a <code>surface="data"</code> marker"; and "A slash-bearing or lowercase target with no embedded requirement is <strong>unambiguously</strong> a data delta".</p>
+  <div class="response"><strong>Accepted.</strong> The residual gap is narrow: a requirement-ID-shaped target that forgets its post-state IS caught by the shape guard; only a <em>lowercase/slash</em> target secretly meant as a requirement slips through — two mistakes at once. Content + shape guard was chosen over an explicit marker (extra authoring burden) in the decision interview, and the residual is now closed at authoring time by the <code>data-delta-shape</code> validate rule pulled in-scope (next risk). No explicit marker.</div>
+</spec-risk>
+
+<spec-risk target="§2" status="mitigated" by="Brian Corbin · @briancorbinxyz">
+  <p class="claim">Deferring the authoring-time <code>validate</code> rule to <code>TBD-data-delta-validate</code> ships a contract whose only guard against a forgotten post-state is a regex-based apply gate with a known blind spot, so the new silent-no-op class has zero detection at propose/validate time — the earliest, cheapest checkpoint (P-8).</p>
+  <p class="citation">§2 Out of scope (draft): <q>An authoring-time <code>validate</code> rule that flags a requirement-shaped target with no embedded <code>&lt;spec-requirement&gt;</code> before apply … a cheap follow-on.</q></p>
+  <div class="response"><strong>Mitigated.</strong> The <code>data-delta-shape</code> validate rule is pulled in-scope (§2, §6): a <code>&lt;spec-delta&gt;</code> whose <code>target</code> is requirement-ID-shaped (<code>^[A-Z]+-</code>) but embeds no <code>&lt;spec-requirement&gt;</code> is an error, and REQ-CHANGE-002 names it as the enforcement. The propose/validate gate now catches the forgotten post-state before apply, closing the residual from the prior risk. The <code>TBD-data-delta-validate</code> defer is removed.</div>
+</spec-risk>
+</spec-risk-log>
+</section>
+
+
+<section id="tasks">
+<h2>6 · Tasks</h2>
+<p>Scoped to this change. On <code>/spectastic.apply</code> these fold into 000's <code>tasks.html</code> as a new phase
+that <code>/spectastic.implement</code> drains.</p>
+
+<ul style="list-style:none;padding-left:0;">
+  <li><input type="checkbox"> <code>packages/core/src/commands/apply.ts</code>: replace the <code>extractInner(body,'spec-requirement') ?? body.trim()</code> fallback with an explicit branch — embedded <code>&lt;spec-requirement&gt;</code> present → inject as today; absent + requirement-shaped target (<code>^[A-Z]+-</code>) → gate-block (<code>result: 'gate-blocked', reason: 'requirement delta missing &lt;spec-requirement&gt;'</code>); absent + data target → <code>result: 'success'</code> with no requirements-body mutation. Apply the branch across <code>added | modified | removed | renamed</code>.</li>
+  <li><input type="checkbox"> ADD the <code>data-delta-shape</code> validate rule in <code>packages/schema/src/rules/</code> (one rule file + one line in <code>index.ts</code>): a <code>&lt;spec-delta&gt;</code> whose <code>target</code> matches <code>^[A-Z]+-</code> but embeds no <code>&lt;spec-requirement&gt;</code> is an <code>error</code>. A unit test over a fixture proposal (one requirement-shaped-but-empty delta, one clean data delta).</li>
+  <li><input type="checkbox"> <code>packages/core/test/apply.test.ts</code>: add a case — a proposal with a data delta (target <code>standard/foo</code>, a <code>&lt;spec-diff&gt;</code>, no <code>&lt;spec-requirement&gt;</code>) leaves the <em>requirements body</em> unchanged (only the changelog line is appended) while the §6 fold + archive still run; and a requirement-shaped target with no embedded requirement gate-blocks.</li>
+  <li><input type="checkbox"> Rebuild <code>@spectastic/core</code> + <code>@spectastic/schema</code> + the CLI bundle; full test suite green.</li>
+  <li><input type="checkbox"> Note in <code>CLAUDE.md</code> (or leave to the triage-log close): the data/content-delta contract is the pattern profile-manifest proposals (041/042) use — target a JSON key, embed a <code>&lt;spec-diff&gt;</code> not a <code>&lt;spec-requirement&gt;</code>, do the real edit in §6 tasks; the <code>data-delta-shape</code> rule guards the slip.</li>
+</ul>
+</section>
+
+
+<section id="questions">
+<h2>7 · Open questions</h2>
+<spec-questions>
+<p>None outstanding. The distinguishing rule (content + shape guard) and ship status were anchored in the decision
+interview; the fix layer (spec contract, not code-only) was settled by the T-018 regeneration test.</p>
+</spec-questions>
+</section>
+
+
+<section id="changelog">
+<h2>8 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-07-11">11 Jul 2026</time><span>Proposal authored from triage <a href="../../../triage-log.html#T-018">T-018</a>. Two MODIFY deltas teach the change-proposal contract the data/content delta: REQ-CHANGE-002 (target may name manifest data; embedded <code>&lt;spec-requirement&gt;</code> marks the kind) and REQ-CHANGE-008 (kernel branches on it, never fabricates, shape-guard gate-blocks). Unblocks 041 P1b + the 042 enforce cluster.</span></li>
+  <li><time datetime="2026-07-11">11 Jul 2026</time><span>Adversarial pass (auto-fired, must-tier) returned three risks; all dispositioned. Risk 2 <em>mitigated</em> — corrected the "byte-identical" claim: apply appends the changelog unconditionally, so the invariant is "requirements body unchanged," reflected across REQ-CHANGE-002/008, §3 and the test. Risk 3 <em>mitigated</em> — pulled the <code>data-delta-shape</code> validate rule in-scope (was a defer) so the forgotten-post-state slip is caught at authoring time. Risk 1 <em>accepted</em> — content + shape guard kept (no explicit marker), residual now closed by that rule.</span></li>
+  <li><time datetime="2026-07-11">11 Jul 2026</time><span>Applied on 11 Jul 2026 — Recognise a data/content delta in the change contract (triage T-018): REQ-CHANGE-002 target may name manifest data and the embedded &lt;spec-requirement&gt; marks the kind; REQ-CHANGE-008 branches apply on it — no requirement embedded means data delta (fold+changelog+archive, requirements body untouched), never fabricate one, and a requirement-shaped target with no post-state gate-blocks. Adds the data-delta-shape validate rule. Unblocks 041/042 manifest-data proposals..</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+</spec-change>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  2026-07-11-data-content-delta · Recognise a data/content delta in the change-proposal contract · authored 11 Jul 2026 ·
+  <button data-theme-toggle style="background:none;border:none;color:var(--c-link);cursor:pointer;font:inherit;padding:0;border-bottom:1px solid currentColor;">toggle theme</button>
+</footer>
+
+</main>
+<script src="../../../../../assets/spec.js"></script>
+</body>
+</html>
