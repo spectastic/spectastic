@@ -126,6 +126,33 @@ export const SIGNALS: readonly Signal[] = [
   { ecosystem: 'java', category: 'coverage', file: 'pom.xml', contains: 'haltOnFailure' },
   { ecosystem: 'rust', category: 'coverage', file: 'tarpaulin.toml', contains: 'fail-under' },
   { ecosystem: 'rust', category: 'coverage', file: 'Cargo.toml', contains: 'fail-under' },
+
+  // --- Observability (spec 042, observability-enforce-category change) -------
+  // Match a metrics registry/exporter/starter dependency by its DELIBERATE
+  // export name — never the top-level `@opentelemetry/` namespace or a
+  // tracing-only core lib (`@opentelemetry/api`), which arrive transitively and
+  // would false-positive. Presence is a NECESSARY signal ("monitoring is
+  // possible"), not proof the /metrics endpoint is wired (FR-002 ceiling).
+  // Swift and C++ have no exporter-manifest convention → no signal; they take an
+  // FR-010 STRUCTURALLY_UNDETECTABLE entry (policy.ts) so they warn, not fail.
+  { ecosystem: 'java', category: 'observability', file: 'pom.xml', contains: 'micrometer-registry-prometheus' },
+  { ecosystem: 'java', category: 'observability', file: 'pom.xml', contains: 'spring-boot-starter-actuator' },
+  { ecosystem: 'java', category: 'observability', file: 'pom.xml', contains: 'quarkus-micrometer-registry-prometheus' },
+  { ecosystem: 'java', category: 'observability', file: 'pom.xml', contains: 'quarkus-opentelemetry' },
+  { ecosystem: 'java', category: 'observability', file: 'build.gradle', contains: 'micrometer-registry-prometheus' },
+  { ecosystem: 'java', category: 'observability', file: 'build.gradle', contains: 'spring-boot-starter-actuator' },
+  { ecosystem: 'java', category: 'observability', file: 'build.gradle', contains: 'quarkus-micrometer-registry-prometheus' },
+  { ecosystem: 'java', category: 'observability', file: 'build.gradle', contains: 'quarkus-opentelemetry' },
+  { ecosystem: 'go', category: 'observability', file: 'go.mod', contains: 'prometheus/client_golang' },
+  { ecosystem: 'go', category: 'observability', file: 'go.mod', contains: 'go.opentelemetry.io/otel/exporters/prometheus' },
+  { ecosystem: 'js', category: 'observability', file: 'package.json', contains: 'prom-client' },
+  { ecosystem: 'js', category: 'observability', file: 'package.json', contains: '@opentelemetry/exporter-prometheus' },
+  { ecosystem: 'js', category: 'observability', file: 'package.json', contains: '@opentelemetry/sdk-metrics' },
+  { ecosystem: 'python', category: 'observability', file: 'pyproject.toml', contains: 'prometheus-client' },
+  { ecosystem: 'python', category: 'observability', file: 'pyproject.toml', contains: 'opentelemetry-exporter-prometheus' },
+  { ecosystem: 'python', category: 'observability', file: 'requirements.txt', contains: 'prometheus-client' },
+  { ecosystem: 'python', category: 'observability', file: 'requirements.txt', contains: 'opentelemetry-exporter-prometheus' },
+  { ecosystem: 'rust', category: 'observability', file: 'Cargo.toml', contains: 'prometheus' },
 ];
 
 const ALL_CATEGORIES: readonly EnforcementCategory[] = [
@@ -136,6 +163,7 @@ const ALL_CATEGORIES: readonly EnforcementCategory[] = [
   'supply-chain',
   'test-runner',
   'coverage',
+  'observability',
 ];
 
 function signalMatches(cwd: string, sig: Signal): boolean {

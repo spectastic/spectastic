@@ -121,3 +121,47 @@ describe('detectTooling: coverage is threshold-bearing, not bare-presence', () =
     expect(c.has('coverage')).toBe(false); // but coverage never is — no signal exists for it
   });
 });
+
+// spec 042, observability-enforce-category change (FR-002 amendment): detect a
+// metrics exporter by its deliberate export name, never a transitive core lib.
+describe('detectTooling: observability is an exporter dependency, not a core/tracing lib', () => {
+  it('Java: micrometer-registry-prometheus in build.gradle → observability', () => {
+    const dir = fixture({ 'build.gradle': "implementation 'io.micrometer:micrometer-registry-prometheus'\n" });
+    expect(detectTooling(dir).has('observability')).toBe(true);
+  });
+
+  it('Java: spring-boot-starter-actuator in pom.xml → observability', () => {
+    const dir = fixture({ 'pom.xml': '<artifactId>spring-boot-starter-actuator</artifactId>' });
+    expect(detectTooling(dir).has('observability')).toBe(true);
+  });
+
+  it('Go: prometheus/client_golang in go.mod → observability', () => {
+    const dir = fixture({ 'go.mod': 'module x\nrequire github.com/prometheus/client_golang v1.19.0\n' });
+    expect(detectTooling(dir).has('observability')).toBe(true);
+  });
+
+  it('JS/TS: @opentelemetry/exporter-prometheus in package.json → observability', () => {
+    const dir = fixture({ 'package.json': '{"dependencies":{"@opentelemetry/exporter-prometheus":"^0.52.0"}}' });
+    expect(detectTooling(dir).has('observability')).toBe(true);
+  });
+
+  it('Python: prometheus-client in requirements.txt → observability', () => {
+    const dir = fixture({ 'requirements.txt': 'prometheus-client==0.20.0\n' });
+    expect(detectTooling(dir).has('observability')).toBe(true);
+  });
+
+  it('Rust: prometheus crate in Cargo.toml → observability', () => {
+    const dir = fixture({ 'Cargo.toml': '[dependencies]\nprometheus = "0.13"\n' });
+    expect(detectTooling(dir).has('observability')).toBe(true);
+  });
+
+  it('a tracing-only core lib (@opentelemetry/api) is NOT classified as observability (adversarial-pass Risk 1)', () => {
+    const dir = fixture({ 'package.json': '{"dependencies":{"@opentelemetry/api":"^1.9.0"}}' });
+    expect(detectTooling(dir).has('observability')).toBe(false);
+  });
+
+  it('a bare micrometer-core with no registry is NOT classified as observability', () => {
+    const dir = fixture({ 'build.gradle': "implementation 'io.micrometer:micrometer-core'\n" });
+    expect(detectTooling(dir).has('observability')).toBe(false);
+  });
+});

@@ -47,16 +47,32 @@ describe('enforce: US1 the floor is a gate (SC-001)', () => {
     expect(r.stdout).toMatch(/type-checker|linter/);
   });
 
-  it('Verified fully tooled (incl. a coverage threshold) → exit 0', async () => {
+  it('Verified fully tooled (incl. a coverage threshold + a metrics exporter) → exit 0', async () => {
     const dir = await project('verified', 'ok');
     writeFileSync(
       join(dir, 'pyproject.toml'),
       '[tool.ruff]\n[tool.mypy]\n[tool.bandit]\n[tool.pytest.ini_options]\n[tool.coverage.report]\nfail_under = 90\n',
       'utf8',
     );
+    // verified now also requires observability — a declared metrics exporter.
+    writeFileSync(join(dir, 'requirements.txt'), 'prometheus-client==0.20.0\n', 'utf8');
     const r = await runCLI(['enforce'], dir);
     expect(r.code, r.stdout).toBe(0);
     expect(r.stdout).toContain('all detectable required enforcement categories are covered');
+  });
+
+  it('Verified with everything but a metrics exporter → exit 1 naming observability (T-018 obs. change)', async () => {
+    const dir = await project('verified', 'no-obs');
+    writeFileSync(
+      join(dir, 'pyproject.toml'),
+      '[tool.ruff]\n[tool.mypy]\n[tool.bandit]\n[tool.pytest.ini_options]\n[tool.coverage.report]\nfail_under = 90\n',
+      'utf8',
+    );
+    // a bare @opentelemetry/api would be a tracing core lib, not an exporter — must NOT satisfy observability.
+    writeFileSync(join(dir, 'package.json'), '{"dependencies":{"@opentelemetry/api":"^1.9.0"}}', 'utf8');
+    const r = await runCLI(['enforce'], dir);
+    expect(r.code).toBe(1);
+    expect(r.stdout).toMatch(/✗ missing:[^\n]*observability/);
   });
 
   it('Verified with a bare coverage library but no threshold → coverage still counts as missing (T-018 change)', async () => {
@@ -90,6 +106,16 @@ describe('enforce: FR-010 a structurally-undetectable category warns, never fals
     // still a real gap — this fixture is intentionally not fully tooled; the assertion
     // that matters is that coverage never appears under "missing".
     expect(r.stdout).not.toMatch(/✗ missing:[^\n]*coverage/);
+  });
+
+  it('Swift verified project → observability warns (Swift has no exporter-manifest surface), never under missing', async () => {
+    const dir = await project('verified', 'swift');
+    writeFileSync(join(dir, 'Package.swift'), '// swift-tools-version:5.9\n', 'utf8');
+    writeFileSync(join(dir, '.swiftlint.yml'), '', 'utf8');
+    writeFileSync(join(dir, '.swiftformat'), '', 'utf8');
+    const r = await runCLI(['enforce'], dir);
+    expect(r.stdout).toMatch(/undetectable in this ecosystem \(not blocking\):[^\n]*observability/);
+    expect(r.stdout).not.toMatch(/✗ missing:[^\n]*observability/);
   });
 });
 

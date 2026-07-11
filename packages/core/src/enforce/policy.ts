@@ -28,6 +28,10 @@ export const STRUCTURALLY_UNDETECTABLE: Readonly<
   Partial<Record<EnforcementCategory, readonly string[]>>
 > = {
   coverage: ['go'],
+  // Swift and C++ have no standard metrics-exporter-in-manifest convention the
+  // way Java/Go/JS/Python/Rust do, so an observability exporter can't be
+  // presence-detected there — warn rather than false-fail a hard gate.
+  observability: ['swift', 'cpp'],
 };
 
 /**
