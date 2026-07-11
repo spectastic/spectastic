@@ -147,6 +147,11 @@ export function renderAgentsMd(
       '## Enforcement floor',
       '',
       `This project's profile (${profile.name}, ${profile.enforce.gate} gate) requires an enforcement gate for: ${required.join(', ')}.`,
+      ...(required.includes('coverage')
+        ? [
+            '- Coverage means a threshold/check is configured (e.g. fail_under, coverageThreshold) — that proves a gate is wired, not that CI blocks a coverage drop on a diff; the two are separable.',
+          ]
+        : []),
       ...(have.length > 0 ? [`- Already covered — do not replace: ${have.join(', ')}.`] : []),
       ...(need.length > 0 ? [`- Still to wire (add a tool + CI gate): ${need.join(', ')}.`] : []),
       'Run `spectastic enforce` to check the floor.',

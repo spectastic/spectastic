@@ -47,16 +47,49 @@ describe('enforce: US1 the floor is a gate (SC-001)', () => {
     expect(r.stdout).toMatch(/type-checker|linter/);
   });
 
-  it('Verified fully tooled → exit 0', async () => {
+  it('Verified fully tooled (incl. a coverage threshold) → exit 0', async () => {
     const dir = await project('verified', 'ok');
+    writeFileSync(
+      join(dir, 'pyproject.toml'),
+      '[tool.ruff]\n[tool.mypy]\n[tool.bandit]\n[tool.pytest.ini_options]\n[tool.coverage.report]\nfail_under = 90\n',
+      'utf8',
+    );
+    const r = await runCLI(['enforce'], dir);
+    expect(r.code, r.stdout).toBe(0);
+    expect(r.stdout).toContain('all detectable required enforcement categories are covered');
+  });
+
+  it('Verified with a bare coverage library but no threshold → coverage still counts as missing (T-018 change)', async () => {
+    const dir = await project('verified', 'bare-coverage');
     writeFileSync(
       join(dir, 'pyproject.toml'),
       '[tool.ruff]\n[tool.mypy]\n[tool.bandit]\n[tool.pytest.ini_options]\n',
       'utf8',
     );
+    // A coverage tool is "present" (pytest-cov listed) but no fail_under/threshold is
+    // declared — must not be certified as covered (adversarial-pass Risk 1).
+    writeFileSync(join(dir, 'requirements.txt'), 'pytest-cov==5.0.0\n', 'utf8');
     const r = await runCLI(['enforce'], dir);
-    expect(r.code, r.stdout).toBe(0);
-    expect(r.stdout).toContain('all required enforcement categories are covered');
+    expect(r.code).toBe(1);
+    expect(r.stdout).toContain('missing');
+    expect(r.stdout).toMatch(/coverage/);
+  });
+});
+
+describe('enforce: FR-010 a structurally-undetectable category warns, never false-fails', () => {
+  it('Go verified project with no coverage config → warns (exit 0), never hard-fails on coverage alone', async () => {
+    const dir = await project('verified', 'go');
+    // go.mod alone gives formatter/test-runner; add threshold-bearing config for
+    // the rest so the ONLY remaining gap is coverage — isolating FR-010's effect.
+    writeFileSync(join(dir, 'go.mod'), 'module x\n\ngo 1.22\n', 'utf8');
+    writeFileSync(join(dir, '.golangci.yml'), 'linters:\n  enable:\n    - gosec\n', 'utf8');
+    const r = await runCLI(['enforce'], dir);
+    expect(r.stdout).toContain('undetectable in this ecosystem (not blocking)');
+    expect(r.stdout).toMatch(/coverage/);
+    // type-checker has no Go signal at all (not in STRUCTURALLY_UNDETECTABLE), so it's
+    // still a real gap — this fixture is intentionally not fully tooled; the assertion
+    // that matters is that coverage never appears under "missing".
+    expect(r.stdout).not.toMatch(/✗ missing:[^\n]*coverage/);
   });
 });
 
