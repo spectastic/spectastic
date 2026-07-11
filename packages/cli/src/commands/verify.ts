@@ -19,7 +19,7 @@ export function registerVerify(program: Command): void {
     .description(
       'Generate specs/<id>/verify.html — the derived SC → acceptance → test trace plus the real-run Run/Demo block. Pipe captured run commands as JSON on stdin, or run bare to regenerate the links.',
     )
-    .argument('<spec-id>', 'the spec whose verify.html to generate (e.g. 021-verify-view)')
+    .argument('<spec-id>', 'the spec whose verify.html to generate (e.g. 001-auth-service)')
     .action(async (specId: string) => {
       // verify is deterministic — no AIProvider needed (unlike course/propose).
       const [{ verifyCommand }, { nodeFs }, fsp] = await Promise.all([

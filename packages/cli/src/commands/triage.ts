@@ -21,8 +21,8 @@ export function registerTriage(program: Command): void {
     .option('--spec <spec-id>', 'spec ID for single-card mode; ignored for list-intake')
     .option('--mode <mode>', 'force "single" | "list"; default auto-detect')
     .option('--format <fmt>', 'output format: human (default) | json', 'human')
-    .option('--concurrency <n>', 'list-intake fan-out cap (spec 032; default 8)')
-    .option('--fanout <backend>', 'list-intake backend: "chat" (default) | "subagent" (spec 032)')
+    .option('--concurrency <n>', 'list-intake fan-out cap (default 8)')
+    .option('--fanout <backend>', 'list-intake backend: "chat" (default) | "subagent"')
     .option('--commit', 'force a git commit for this run (overrides git.auto)')
     .option('--no-commit', 'skip the git commit for this run (overrides git.auto)')
     .action(

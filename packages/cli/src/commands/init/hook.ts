@@ -20,7 +20,7 @@ import { dirname, join, resolve } from 'node:path';
  */
 
 /** Marks a hook as ours, so re-install is idempotent and uninstall is precise. */
-export const HOOK_MARKER = '# spectastic guarantee-layer gate (spec 031-init-tools) — managed; do not edit by hand';
+export const HOOK_MARKER = '# spectastic guarantee-layer gate — managed; do not edit by hand';
 
 /** The artifact globs the gate validates — the whole corpus (FR-002). `*.html`
  *  at the root catches principles/index/inbox without erroring when absent. */

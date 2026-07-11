@@ -53,7 +53,7 @@ export function generateAdapters(cwd: string): { generated: number } {
   for (const file of sources) {
     writeFileSync(join(dest, file), readFileSync(join(sourceDir(cwd), file), 'utf8'), 'utf8');
   }
-  writeFileSync(join(dest, MANAGED_MARKER), 'init --tools managed (spec 031)\n', 'utf8');
+  writeFileSync(join(dest, MANAGED_MARKER), 'init --tools managed\n', 'utf8');
   return { generated: sources.length };
 }
 

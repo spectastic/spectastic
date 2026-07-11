@@ -75,6 +75,6 @@ export async function gateOnQuarantine(
   if (marker.status !== 'quarantined') return null;
   return {
     refused: true,
-    message: `${specId} is a quarantined exploration (explorations/${specId}/). Core verbs refuse to advance it — graduate it into a spec, or delete it. (spec 022-explore, FR-006)`,
+    message: `${specId} is a quarantined exploration (explorations/${specId}/). Core verbs refuse to advance it — graduate it into a spec, or delete it.`,
   };
 }

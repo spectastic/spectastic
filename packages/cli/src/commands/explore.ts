@@ -21,7 +21,7 @@ export function registerExplore(program: Command): void {
     .argument('[intent]', 'a one-line description of what you want to find out (scaffold mode)')
     .option(
       '--graduate <id>',
-      'graduate an existing quarantined exploration into a spec instead of scaffolding (spec 023)',
+      'graduate an existing quarantined exploration into a spec instead of scaffolding',
     )
     .option('--classify <kind>', 'spike | tracer-bullet (required with --graduate)')
     .action(async (intent: string | undefined, opts: { graduate?: string; classify?: string }) => {

@@ -37,7 +37,7 @@ export function commandsDriftFinding(
     column: 1,
     rule: 'commands-drift',
     severity: 'error',
-    message: `Managed command adapter ${file} ${detail} — regenerate it (spec 031 FR-007).`,
+    message: `Managed command adapter ${file} ${detail} — regenerate it.`,
     fixHint: 'Run `spectastic init --tools --commands-only` to regenerate the adapters from source.',
   };
 }
@@ -75,7 +75,7 @@ export function skillMetadataFinding(content: string, file: string): Finding | n
     column: 1,
     rule: 'skill-metadata-shape',
     severity: 'warning',
-    message: `Command ${file} ${detail} — skill-invocation metadata (${REQUIRED_SKILL_KEYS.join(', ')}) is required (REQ-TOOL-004).`,
+    message: `Command ${file} ${detail} — skill-invocation metadata (${REQUIRED_SKILL_KEYS.join(', ')}) is required.`,
     fixHint: `Add ${missing.join(', ')} to the frontmatter so the skill router and validate can find it.`,
   };
 }
@@ -108,7 +108,7 @@ export function verbModelPolicyFinding(content: string, file: string): Finding |
       column: 1,
       rule: 'verb-model-policy',
       severity: 'error',
-      message: `Command ${file} declares model: ${declared} — not a legal tier alias (${MODEL_TIER_ALIASES.join(' | ')}) (spec 044 FR-009).`,
+      message: `Command ${file} declares model: ${declared} — not a legal tier alias (${MODEL_TIER_ALIASES.join(' | ')}).`,
       fixHint: `Set model: to one of ${MODEL_TIER_ALIASES.join(', ')} — aliases only, never a pinned model id.`,
     };
   }
@@ -119,11 +119,180 @@ export function verbModelPolicyFinding(content: string, file: string): Finding |
       column: 1,
       rule: 'verb-model-policy',
       severity: 'error',
-      message: `Command ${file} declares model: ${declared} but the policy assigns ${verb} → ${expected} (spec 044 FR-009 · VERB_MODEL_POLICY drift).`,
+      message: `Command ${file} declares model: ${declared} but the policy assigns ${verb} → ${expected} — a policy drift.`,
       fixHint: `Set model: ${expected} to match the core policy map, or update VERB_MODEL_POLICY if the tier is meant to change.`,
     };
   }
   return null;
+}
+
+/**
+ * `no-internal-id-in-copy` (P-10, REQ-FORMAT-006). User-facing tool copy MUST NOT
+ * surface spectastic's own internal artifact ids — spec numbers/slugs, `REQ-*`,
+ * `FR-*`, `T-*`, `P-*`, `D-*`. The line the invariant draws: is this a spec/plan
+ * *artifact* citing its own governing ids as anchors (legitimate provenance per P-3
+ * — e.g. a generated changelog line), or is it the *tool talking* (help text, error
+ * messages, tool-managed markers)? The rule enforces the tool-talking half spectastic
+ * can mechanically see and judge without ambiguity: the string arguments of its own
+ * CLI `.description(...)` / `.option(...)` / `.argument(...)` help calls. The CLI globs
+ * its command sources and folds these findings in; in a consumer project (no
+ * `packages/cli` source) the glob matches nothing, so it's a no-op there.
+ *
+ * Reach is bounded *by design*, and permanently (P-8 honesty, recorded not hidden):
+ * runtime finding messages and generated-artifact prose are review-caught, never linted
+ * — a scan there would false-positive on a rule legitimately citing the requirement it
+ * enforces. There is no plan to lift that ceiling (defer-to=never); it is the current
+ * state made permanent, not a not-yet-built check.
+ *
+ * The scan is comment- and string-aware (not a blind regex): comments are masked first —
+ * so a `// … (spec 026)` provenance note is never flagged — then only `.description` /
+ * `.option` / `.argument` string args are checked. Legit help parens like `(default)`
+ * carry no id and never match. `.argument` help is now in scope; its illustrative slug
+ * uses the sanctioned neutral placeholder `001-auth-service` (allowlisted — indistinct
+ * from a real slug by pattern), so a real slug like `021-verify-view` still trips the
+ * rule while the placeholder passes. Kept dependency-free — no TS parser — to keep the
+ * kernel light.
+ */
+/** Internal-id shapes that must never appear in user-facing CLI copy. Split into a small
+ *  array rather than one mega-alternation so each shape stays legible (and under the
+ *  regex-complexity budget). All matched case-insensitively. */
+const INTERNAL_ID_PATTERNS: readonly RegExp[] = [
+  /\bspec\s+\d{3}\b/i, //          "spec 042", "Spec 043"
+  /\(\d{3}\)/, //                  bare "(037)"
+  /\bREQ-[A-Z]+-\d+\b/i, //        "REQ-TOOL-004"
+  /\b(?:FR|NFR|SC|D|T|I|P)-\d+\b/i, // "FR-006", "T-017", "P-10"
+  /\b\d{3}-[a-z][a-z0-9-]*\b/i, //  slug "021-verify-view"
+];
+
+/** Illustrative example slugs sanctioned for argument/help text — not leaks. The neutral
+ *  placeholder is indistinguishable from a real slug by pattern, so it is allowlisted rather
+ *  than matched-around; a real slug (e.g. `021-verify-view`) still trips the rule. */
+const SANCTIONED_EXAMPLE_SLUGS = new Set(['001-auth-service']);
+
+/** The first internal id in `text` that isn't a sanctioned example slug, or null. */
+function firstLeak(text: string): string | null {
+  for (const re of INTERNAL_ID_PATTERNS) {
+    const m = re.exec(text);
+    if (m !== null && !SANCTIONED_EXAMPLE_SLUGS.has(m[0].toLowerCase())) return m[0];
+  }
+  return null;
+}
+
+/** Replace `//` and block comments with spaces (newlines/length preserved), string-aware. */
+function maskComments(src: string): string {
+  const out = src.split('');
+  const n = src.length;
+  let i = 0;
+  while (i < n) {
+    const c = src[i];
+    if (c === '"' || c === "'" || c === '`') {
+      const q = c;
+      i++;
+      while (i < n) {
+        if (src[i] === '\\') {
+          i += 2;
+          continue;
+        }
+        if (src[i] === q) {
+          i++;
+          break;
+        }
+        i++;
+      }
+      continue;
+    }
+    if (c === '/' && src[i + 1] === '/') {
+      while (i < n && src[i] !== '\n') {
+        out[i] = ' ';
+        i++;
+      }
+      continue;
+    }
+    if (c === '/' && src[i + 1] === '*') {
+      out[i] = ' ';
+      out[i + 1] = ' ';
+      i += 2;
+      while (i < n && !(src[i] === '*' && src[i + 1] === '/')) {
+        if (src[i] !== '\n') out[i] = ' ';
+        i++;
+      }
+      if (i < n) {
+        out[i] = ' ';
+        out[i + 1] = ' ';
+        i += 2;
+      }
+      continue;
+    }
+    i++;
+  }
+  return out.join('');
+}
+
+/** String-literal arguments (with 1-based start line) of every `.description(…)`/`.option(…)`/`.argument(…)`
+ *  call in a comment-masked source. Paren depth is tracked outside strings, so `(default)`
+ *  inside a help string never closes the call early. */
+function helpStringArgs(masked: string): { text: string; line: number }[] {
+  const results: { text: string; line: number }[] = [];
+  const call = /\.(?:description|option|argument)\s*\(/g;
+  const n = masked.length;
+  let m: RegExpExecArray | null;
+  while ((m = call.exec(masked)) !== null) {
+    let i = m.index + m[0].length;
+    let depth = 1;
+    while (i < n && depth > 0) {
+      const c = masked[i];
+      if (c === '"' || c === "'" || c === '`') {
+        const q = c;
+        const startLine = masked.slice(0, i).split('\n').length;
+        i++;
+        let buf = '';
+        while (i < n) {
+          if (masked[i] === '\\') {
+            buf += masked[i + 1] ?? '';
+            i += 2;
+            continue;
+          }
+          if (masked[i] === q) {
+            i++;
+            break;
+          }
+          buf += masked[i];
+          i++;
+        }
+        results.push({ text: buf, line: startLine });
+        continue;
+      }
+      if (c === '(') depth++;
+      else if (c === ')') depth--;
+      i++;
+    }
+  }
+  return results;
+}
+
+/**
+ * Build a `no-internal-id-in-copy` finding for every CLI help string in `content`
+ * (a `.ts` source) that leaks an internal artifact id. Error severity — a leaked id
+ * on a user surface is a defect, and the pre-commit gate blocks it. Returns an empty
+ * array for a clean file. See the block comment above for scope and the P-8 ceiling.
+ */
+export function copyLeakFindings(content: string, file: string): Finding[] {
+  const masked = maskComments(content);
+  const findings: Finding[] = [];
+  for (const { text, line } of helpStringArgs(masked)) {
+    const leak = firstLeak(text);
+    if (leak === null) continue;
+    findings.push({
+      file,
+      line,
+      column: 1,
+      rule: 'no-internal-id-in-copy',
+      severity: 'error',
+      message: `User-facing help text leaks an internal artifact id "${leak}" — describe the behaviour, not its spec provenance.`,
+      fixHint: 'Remove the spec/requirement id (e.g. "(spec 042)", "(037)", "REQ-…") from the help string; keep provenance in comments and the artifact trail. An illustrative slug in argument help must use the neutral placeholder 001-auth-service.',
+    });
+  }
+  return findings;
 }
 
 /**

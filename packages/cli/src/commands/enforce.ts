@@ -23,7 +23,7 @@ export function registerEnforce(program: Command): void {
   program
     .command('enforce')
     .description(
-      "Check that the project's toolchain covers its profile's required enforcement categories (spec 042). Exits 1 when a hard-gate profile has a gap.",
+      "Check that the project's toolchain covers its profile's required enforcement categories. Exits 1 when a hard-gate profile has a gap.",
     )
     .argument('[path]', 'project root to inspect', '.')
     .action((path: string) => {

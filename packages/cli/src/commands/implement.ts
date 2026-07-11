@@ -5,7 +5,7 @@ export function registerImplement(program: Command): void {
     .command('implement')
     .description('Drive one task (T-NNN) or inbox just-do card (I-NNN).')
     .argument('<target>', 'T-NNN, I-NNN, or spec-id')
-    .option('--drain', 'drain all unchecked tasks in <spec-id> via the coding-agent runtime (038)')
+    .option('--drain', 'drain all unchecked tasks in <spec-id> via the coding-agent runtime')
     .option('--all', 'drain mode (DEFERRED to TBD-core-implement-drain)')
     .option('--phase <id>', 'phase drain (DEFERRED)')
     .option('--parallel', 'parallel drain (DEFERRED)')

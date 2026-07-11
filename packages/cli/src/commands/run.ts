@@ -27,12 +27,12 @@ function partialDeciderConfig(role?: DeciderRole, effort?: EffortLevel): Partial
 export function registerRun(program: Command): void {
   program
     .command('run')
-    .description('Drive an approved spec through plan→tasks→implement→verify unattended (037).')
-    .argument('<spec-id>', 'the approved spec to run (e.g. 041-foo)')
+    .description('Drive an approved spec through plan→tasks→implement→verify unattended.')
+    .argument('<spec-id>', 'the approved spec to run (e.g. 001-auth-service)')
     .option('--decider <role>', 'human | agent | panel (default: agent; human refused)')
     .option('--effort <level>', 'low | medium | high | xhigh | max | auto')
     .option('--checkpoints <mode>', 'minimal | each (default: minimal)', 'minimal')
-    .option('--budget <tokens>', 'per-run output-token ceiling; 0 = unbounded (040)', '1000000')
+    .option('--budget <tokens>', 'per-run output-token ceiling; 0 = unbounded', '1000000')
     .option('-y, --yes', 'auto-approve planned checkpoints (unattended)')
     .action(
       async (

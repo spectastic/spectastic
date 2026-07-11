@@ -8,8 +8,8 @@ export function registerPropose(program: Command): void {
     .argument('<description>', 'one-line change description')
     .option('--adversarial', 'force adversarial pass on (overrides heuristic)')
     .option('--no-adversarial', 'force adversarial pass off')
-    .option('--decider <role>', 'adversarial checkpoint decider: human | agent | panel (spec 033)')
-    .option('--effort <level>', 'panel depth: auto (default) | low | medium | high | xhigh | max (spec 033/034)')
+    .option('--decider <role>', 'adversarial checkpoint decider: human | agent | panel')
+    .option('--effort <level>', 'panel depth: auto (default) | low | medium | high | xhigh | max')
     .option('--commit', 'force a git commit for this run (overrides git.auto)')
     .option('--no-commit', 'skip the git commit for this run (overrides git.auto)')
     .action(

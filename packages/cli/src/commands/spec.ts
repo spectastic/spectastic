@@ -18,7 +18,7 @@ export function registerSpec(program: Command): void {
     .option('--force', 'bypass the past-Draft refuse with a warning')
     .option('--commit', 'force a git commit for this run (overrides git.auto)')
     .option('--no-commit', 'skip the git commit for this run (overrides git.auto)')
-    .option('--split', 'run the value-ranked slicer (spec 029): append a <spec-split> proposal to an over-budget Draft spec')
+    .option('--split', 'run the value-ranked slicer: append a <spec-split> proposal to an over-budget Draft spec')
     .action(async (description: string, opts: { reentry?: string; force?: boolean; commit?: boolean; split?: boolean }) => {
       const [
         { specCommand },

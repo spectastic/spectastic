@@ -21,7 +21,7 @@ export function registerTasks(program: Command): void {
     .option('--force', 'bypass the past-Draft refuse with a warning')
     .option(
       '--restore',
-      'generate path-appropriate restore tasks for a graduated exploration (spec 024); else a graduated marker prompts (TTY) or refuses (piped)',
+      'generate path-appropriate restore tasks for a graduated exploration; else a graduated marker prompts (TTY) or refuses (piped)',
     )
     .option('--commit', 'force a git commit for this run (overrides git.auto)')
     .option('--no-commit', 'skip the git commit for this run (overrides git.auto)')

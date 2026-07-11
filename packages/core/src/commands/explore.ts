@@ -130,7 +130,7 @@ export function quarantineFinding(
     column: 1,
     rule: 'explore-quarantined',
     severity: 'error',
-    message: `Exploration ${id} is quarantined — un-graduated work must not ship (spec 022-explore, FR-006).`,
+    message: `Exploration ${id} is quarantined — un-graduated work must not ship.`,
     fixHint: 'Graduate the exploration into a spec/plan/tasks, or delete explorations/' + id + '/ to clear.',
   };
 }

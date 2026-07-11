@@ -115,13 +115,13 @@ export function registerInit(program: Command): void {
       collectVerb,
       [],
     )
-    .option('--tools', 'install the guarantee layer: a pre-commit validate gate + drift-proof command adapters (spec 031)')
+    .option('--tools', 'install the guarantee layer: a pre-commit validate gate + drift-proof command adapters')
     .option('--hooks-only', 'with --tools/--uninstall: only the pre-commit gate half')
     .option('--commands-only', 'with --tools/--uninstall: only the command-adapter half')
     .option('--uninstall', 'remove what init --tools installed (reversible)')
-    .option('--profile <name>', 'seed principles + AGENTS.md from a profile: lean | standard | verified | enterprise (spec 041)')
-    .option('--replace-tools', 'with --profile: ignore existing toolchain when tailoring the AGENTS.md enforcement floor (spec 042 FR-006)')
-    .option('--no-gitignore', 'skip writing the base .gitignore block (spec 043)')
+    .option('--profile <name>', 'seed principles + AGENTS.md from a profile: lean | standard | verified | enterprise')
+    .option('--replace-tools', 'with --profile: ignore existing toolchain when tailoring the AGENTS.md enforcement floor')
+    .option('--no-gitignore', 'skip writing the base .gitignore block')
     .action(async (options: InitOptions) => {
       if (options.tools || options.hooksOnly || options.commandsOnly || options.uninstall) {
         await runToolsMode(options);

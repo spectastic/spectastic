@@ -14,7 +14,7 @@ export function registerGitignore(program: Command): void {
   program
     .command('gitignore')
     .description(
-      "Write/merge spectastic's managed .gitignore block (base ephemera; --stack also adds the detected stack's build-artifact ignores). Spec 043.",
+      "Write/merge spectastic's managed .gitignore block (base ephemera; --stack also adds the detected stack's build-artifact ignores).",
     )
     .argument('[path]', 'project root', '.')
     .option('--stack', 'also append the detected ecosystem(s) build-artifact ignores')

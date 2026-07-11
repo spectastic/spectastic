@@ -129,6 +129,33 @@ async function scanCommandsDrift(cwd: string): Promise<Finding[]> {
 }
 
 /**
+ * Scan spectastic's own CLI command sources for user-facing help copy that leaks
+ * an internal artifact id (P-10, `no-internal-id-in-copy`). Error findings, folded
+ * into every validate run like the other source scans — the P-8 guarantee for the
+ * copy invariant, scoped to what spectastic can see (its `.description`/`.option`
+ * help strings). A no-op in a consumer project, where `packages/cli/src` is absent.
+ */
+async function scanCopyLeak(): Promise<Finding[]> {
+  const [{ expandGlobs }, { copyLeakFindings }, { readFile }] = await Promise.all([
+    import('../glob.js'),
+    import('@spectastic/core/commands/validate'),
+    import('node:fs/promises'),
+  ]);
+  const sources = await expandGlobs(['packages/cli/src/**/*.ts'], ['**/*.test.ts']);
+  const findings: Finding[] = [];
+  for (const file of sources) {
+    let content: string;
+    try {
+      content = await readFile(file, 'utf8');
+    } catch {
+      continue; // an unreadable source has no copy to scan
+    }
+    findings.push(...copyLeakFindings(content, file));
+  }
+  return findings;
+}
+
+/**
  * Register the `validate` subcommand. Implements FR-001, FR-002, FR-014
  * of specs/002-validate-cli/spec.html.
  *
@@ -182,12 +209,17 @@ export function registerValidate(program: Command): void {
       // optional model: key is not a legal alias or disagrees with the policy map
       // is an error — the enforcement REQ-TOOL-004 delegates for the permitted key.
       const verbModelPolicyFindings = await scanVerbModelPolicy();
+      // The no-internal-id-in-copy gate (P-10): a CLI help string that leaks an
+      // internal artifact id (spec number/slug, REQ-*, FR-*, …) is an error, so
+      // the pre-commit gate blocks it. No-op outside the spectastic monorepo.
+      const copyLeakFindings = await scanCopyLeak();
       const findings = [
         ...result.findings,
         ...quarantineFindings,
         ...skillMetadataFindings,
         ...commandsDriftFindings,
         ...verbModelPolicyFindings,
+        ...copyLeakFindings,
       ];
       const exitCode = findings.some((f) => f.severity === 'error') ? 1 : result.exitCode;
 
