@@ -622,6 +622,55 @@
   </details>
 </spec-triage>
 
+<spec-triage id="T-018" layer="spec">
+  <header>
+    <h4>Kernel apply injects a profile-data delta as a phantom spec-requirement</h4>
+    <span class="meta">
+      <span class="layer-pill">Spec</span>
+      <span class="regen" data-result="fail">upstream</span>
+    </span>
+  </header>
+
+  <p class="headline">Applying 041's <a href="./../041-init-profiles/changes/archive/2026-07-11-profile-principle-catalog/proposal.html">2026-07-11-profile-principle-catalog</a> — whose single <code>&lt;spec-delta op="added"&gt;</code> targets
+  profile-manifest <em>data</em> (<code>standard/shape-of-system-principles</code> in <code>spectastic-profiles.json</code>) and
+  embeds a <code>&lt;spec-diff&gt;</code>, not a <code>&lt;spec-requirement&gt;</code> — silently injected the proposal prose,
+  <code>&lt;spec-diff&gt;</code> and all, as a fabricated <code>&lt;spec-requirement id="standard/shape-of-system-principles"
+  priority="must"&gt;</code> into the live spec's §1. Root cause is upstream of the code: <a href="./spec.html#REQ-CHANGE-002">REQ-CHANGE-002</a>
+  assumes every delta <code>target</code> names a requirement ID, and <a href="./spec.html#REQ-CHANGE-008">REQ-CHANGE-008</a>'s
+  kernel synthesizes one from any ADD delta lacking an embedded <code>&lt;spec-requirement&gt;</code> — so a data delta corrupts
+  <code>spec.html</code>. Fixed at spec layer by amending the two requirements; hotfixed in place (phantom removed, apply commit
+  amended). Regeneration fails: a fresh session building from the current contract would reproduce the fabrication.</p>
+
+  <dl>
+    <dt>Expected</dt> <dd>An ADD delta that targets manifest data (no embedded <code>&lt;spec-requirement&gt;</code>) folds §6 tasks + the changelog and archives, leaving <code>spec.html</code> untouched — the real edit is a §6 task drained by <code>/spectastic.implement</code>.</dd>
+    <dt>Actual</dt>   <dd>The kernel wrapped the whole delta body in <code>&lt;spec-requirement id="standard/shape-of-system-principles" priority="must"&gt;</code> (a slash-bearing id, default <code>must</code>) and inserted it before the next <code>&lt;/section&gt;</code> in 041's §1.</dd>
+    <dt>Diagnosis</dt><dd><a href="./spec.html#REQ-CHANGE-002">REQ-CHANGE-002</a> mandates <code>target</code> = "the requirement ID it touches", never contemplating a profile-data change; <a href="./spec.html#REQ-CHANGE-008">REQ-CHANGE-008</a>'s apply (<code>packages/core/src/commands/apply.ts:75-86</code>) does <code>extractInner(body,'spec-requirement') ?? body.trim()</code> then <code>wrapRequirement(target, …)</code>, fabricating a requirement whenever none is embedded.</dd>
+    <dt>Fix</dt>      <dd><code>packages/core/src/commands/apply.ts:75-86</code> + REQ-CHANGE-002/008: <code>/spectastic.propose</code> against 000 to recognise a data/content delta (target names a manifest key/path, not a requirement ID) whose apply is a no-op to <code>spec.html</code>. Hotfix already removed the phantom and amended apply commit <code>723361d</code>.</dd>
+  </dl>
+
+  <spec-diff>
+<del>  const requirementHtml = extractInner(body, 'spec-requirement') ?? body.trim();</del>
+<del>  // Naive: insert before the next &lt;/section&gt; — fabricates a requirement for any ADD</del>
+<ins>  const requirementHtml = extractInner(body, 'spec-requirement');</ins>
+<ins>  // No embedded &lt;spec-requirement&gt; =&gt; data/content delta: fold + archive, no spec.html injection.</ins>
+<ins>  if (requirementHtml == null) { deltas.push({ target, op, result: 'success' }); continue; }</ins>
+  </spec-diff>
+
+  <details>
+    <summary>Deep dive — hotfix-before-amendment + cross-cutting scope</summary>
+    <p><strong>Hotfix applied, amendment queued.</strong> The phantom <code>&lt;spec-requirement&gt;</code> was removed from
+    041's <code>spec.html</code> and apply commit <code>723361d</code> amended, so the catalog landed clean. The queued upstream
+    change is a <code>/spectastic.propose</code> against 000 amending <a href="./spec.html#REQ-CHANGE-002">REQ-CHANGE-002</a> (a
+    delta <code>target</code> MAY name manifest data, not only a requirement ID) and <a href="./spec.html#REQ-CHANGE-008">REQ-CHANGE-008</a>
+    (apply injects nothing into <code>spec.html</code> for a delta with no embedded <code>&lt;spec-requirement&gt;</code>) — mirroring
+    <a href="#T-007">T-007</a>'s "amend the contract + hotfix the kernel" shape.</p>
+    <p><strong>Cross-cutting.</strong> Every profile-data proposal hits this: 041's P1b (observability/SLO principles) and the whole
+    042 enforce-category cluster (coverage / observability / contract-first) all express manifest-data deltas. Those are sequenced
+    behind this fix — the diff above shows the intended one-line guard, but the durable form is the amended contract so a fresh
+    implementation can't reintroduce it (P-8).</p>
+  </details>
+</spec-triage>
+
 </spec-triage-log>
 </section>
 
@@ -630,6 +679,7 @@
 <h2>Change log</h2>
 <spec-changelog>
 <ol>
+  <li><time datetime="2026-07-11">11 Jul 2026</time><span>T-018 added — kernel <code>apply</code> injected a profile-data delta as a phantom <code>&lt;spec-requirement&gt;</code> into 041's <code>spec.html</code> (from <a href="./../041-init-profiles/changes/archive/2026-07-11-profile-principle-catalog/proposal.html">2026-07-11-profile-principle-catalog</a>, whose ADD delta targets <code>spectastic-profiles.json</code> data). <code>spec</code> layer, regen <code>fail</code> — <a href="./spec.html#REQ-CHANGE-002">REQ-CHANGE-002</a> assumes every <code>target</code> is a requirement ID and <a href="./spec.html#REQ-CHANGE-008">REQ-CHANGE-008</a>'s kernel (<code>apply.ts:75-86</code>) fabricates a requirement from any ADD lacking an embedded <code>&lt;spec-requirement&gt;</code>. Hotfixed (phantom removed, apply commit amended); fix is a <code>/spectastic.propose</code> against 000 defining a data/content delta that's a no-op to <code>spec.html</code>. Blocks P1b + the 042 enforce cluster.</span></li>
   <li><time datetime="2026-07-10">10 Jul 2026</time><span>T-017 added + done — user-facing copy leaked spectastic's own artifact ids (<code>spectastic --help</code> shipped <code>(037)</code>, <code>(spec 042)</code>, <code>Spec 043.</code>) across 30 sites in three tiers (CLI help, runtime messages, generated-file markers). <code>principles</code>, regen <code>fail</code>: the root was a missing invariant. Fixed by ratifying <a href="../../principles.html#P-10">P-10</a> (principles v1.5.0), scrubbing all 30 sites, and adding a <code>no-internal-id-in-copy</code> validate rule (<code>copyLeakFindings</code> + CLI <code>scanCopyLeak</code>, error, pre-commit-gated) over the CLI's own help strings — the machine-visible half; runtime messages / generated copy and downstream application copy are review-caught, the honest P-8 ceiling recorded. Formal <code>REQ-FORMAT-006</code> meta-spec owner deferred to <code>/spectastic.propose</code> (Accepted spec is P-6-locked).</span></li>
   <li><time datetime="2026-07-10">10 Jul 2026</time><span>T-017 follow-on — authored change proposal <a href="./changes/2026-07-10-no-internal-id-in-copy/proposal.html">2026-07-10-no-internal-id-in-copy</a> (ADD <code>REQ-FORMAT-006</code>, the rule's contract owner; approved). Its must-tier adversarial pass drove three landed refinements: the requirement + <a href="../../principles.html#P-10">P-10</a> wording moved to the abstract <em>tool-talking vs artifact-provenance</em> line; the rule was widened to scan <code>.argument</code> help (real slug fires, <code>001-auth-service</code> allowlisted); and 3 generated-artifact changelog/prose scrubs were reverted as legitimate provenance (only the tool talking is scrubbed). Pending <code>/spectastic.apply</code>.</span></li>
   <li><time datetime="2026-07-10">10 Jul 2026</time><span>T-016 added + done — the "fat core / thin CLI" convention (deterministic logic in <code>@spectastic/core</code>, CLI thin) was unwritten, so 041/042/043 drifted; now documented in <code>CLAUDE.md</code> § Architecture. <code>principles</code>, regen <code>fail</code>: honestly review-caught, not machine-enforceable (the boundary is a judgment call; a mechanical lint would false-positive) — the P-8 limitation recorded, not hidden.</span></li>
