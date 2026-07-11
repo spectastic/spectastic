@@ -1,0 +1,338 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Architecture patterns for agent-built code — Considerations for Spectastic</title>
+<meta name="description" content="Where the industry is converging on internal architecture patterns and stack for agent-generated code, how spec-driven tools handle it, and where spectastic should capture the decision.">
+<link rel="stylesheet" href="../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../assets/favicon.svg">
+<script src="../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Considerations · Architecture &amp; stack guidance</p>
+  <h1>Architecture patterns for agent-built code</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    The field hasn't crowned one pattern. Every serious spec-driven tool <em>prompts</em> for architecture rather than prescribing it — and splits the decision across two layers spectastic already has.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>     <span><spec-status value="draft">Draft</spec-status></span>
+    <b>Type</b>       <span>Research synthesis</span>
+    <b>Author</b>     <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Created</b>    <span><time datetime="2026-07-11">11 Jul 2026</time></span>
+    <b>Sources</b>    <span>20 primary, verified 11 Jul 2026</span>
+    <b>Read time</b>  <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-tldr>
+    <p>Two questions: <em>which</em> internal architecture patterns is the industry converging on for agent-built
+    code, and <em>where</em> should spectastic capture that guidance? On the first: Clean / Hexagonal / Onion have
+    consolidated into "known-good but frequently over-applied," while <strong>Vertical Slice</strong> and the
+    <strong>Modular Monolith</strong> rise as the pragmatic greenfield defaults — usually as a hybrid (dependency
+    discipline at the core, slices for features). On the second — the decisive finding — <strong>not one leading
+    spec-driven tool prescribes a house pattern</strong>. Spec Kit, Kiro, OpenSpec, Tessl, and BMAD all <em>prompt</em>
+    for architecture per-project, and they split it across two layers: a project-wide <em>constitution/steering</em>
+    for standing principles and stack rules, and a per-feature <em>plan/design</em> for the concrete decision.
+    Spectastic already has exactly that shape — <a href="../principles.html">principles</a> plus
+    <a href="../commands/spectastic.plan.md">plan</a> — but carries <strong>zero architecture-pattern vocabulary
+    anywhere in the repo</strong>. Recommendation: don't prescribe a pattern; add lightweight pattern-<em>awareness</em>
+    at the plan stage — a decision-phase choice that lands an ADR and shapes §6 Project structure — matching the
+    field and spectastic's own init(base)→plan(stack) split.</p>
+  </spec-tldr>
+
+  <spec-audience-map>
+    <dl>
+      <dt>Exec / PM</dt>   <dd>The TL;DR, then §<a href="#recommendation">6</a>.</dd>
+      <dt>Reviewer</dt>    <dd>§<a href="#sdd-tools">3</a> (how the leaders do it) + §<a href="#today">5</a> (our gap).</dd>
+      <dt>Implementer</dt> <dd>§<a href="#today">5</a> + §<a href="#recommendation">6</a> — where the change lands.</dd>
+      <dt>In a hurry</dt>  <dd>The crux is §<a href="#sdd-tools">3</a>: prompt, don't prescribe; split constitution vs plan.</dd>
+    </dl>
+  </spec-audience-map>
+</header>
+
+
+<!-- ======================================================= -->
+<section id="question">
+<h2>1 · The question</h2>
+<p>An agent building a downstream project has to land <em>somewhere</em> architecturally. If nothing tells it where,
+it picks — and the pick is driven by prompt phrasing, not deliberate design. So two sub-questions: <strong>(a)</strong>
+which internal architecture patterns is the industry actually converging on in 2025–2026, and <strong>(b)</strong>
+where in a spec-driven lifecycle should the pattern be captured — a project-wide rule, or a per-feature decision?
+The second question matters more to spectastic than the first: our job is not to have opinions about hexagonal
+architecture, it is to know <em>where the decision belongs</em>.</p>
+</section>
+
+
+<!-- ======================================================= -->
+<section id="landscape">
+<h2>2 · The pattern landscape (2024–2026)</h2>
+<p>There is no single winner, and the shape of the conversation has shifted from "which layered pattern" to "how much
+structure does this actually need."</p>
+
+<ul>
+  <li><strong>Clean / Hexagonal / Onion — consolidating, increasingly critiqued as over-engineering.</strong> The
+  recurring 2024–2025 framing is that these are valuable for complex, long-lived systems but produce "a lot of
+  unnecessary boilerplate," excess interfaces and adapters, and a steep learning curve on small services. They are
+  not being abandoned — they are demoted from automatic default to "earn it."<spec-sidenote>Hexagonal vs Clean
+  pros/cons and the over-engineering critique <a href="https://medium.com/@araxis/hexagonal-vs-clean-architecture-b11a6833136e">[2]</a>;
+  "start simple and let the architecture grow."</spec-sidenote></li>
+  <li><strong>Vertical Slice Architecture (VSA) — the rising alternative.</strong> Coined by Jimmy Bogard, VSA
+  organizes code by <em>feature</em> (each slice owns its API + logic + data access) rather than by technical layer,
+  explicitly "to fight the chaos that develops when Clean Architecture's intentions deteriorate under deadlines."
+  <spec-sidenote>N-layered vs Clean vs VSA as the live decision <a href="https://antondevtips.com/blog/n-layered-vs-clean-vs-vertical-slice-architecture">[3]</a>;
+  VSA-vs-Clean hybrid recommendation <a href="https://nadirbad.dev/vertical-slice-vs-clean-architecture">[4]</a>.</spec-sidenote></li>
+  <li><strong>Modular Monolith — the clearest convergence signal.</strong> Teams are re-evaluating the cost, latency,
+  and organizational complexity of distributed systems and treating the modular monolith as the "sweet spot," with
+  microservices reframed as "a destination, not a starting point."<spec-sidenote>Modular monolith as the 2025–26
+  default starting point <a href="https://enqcode.com/blog/rethinking-microservices-in-2026-when-modular-monolith-architecture-actually-win">[5]</a>,
+  <a href="https://florian-kraemer.net/software-architecture/2025/10/20/Microservices-are-rarely-what-you-need.html">[6]</a>.</spec-sidenote></li>
+</ul>
+
+<p>The modal 2025–2026 recommendation for a new greenfield service is a <strong>hybrid</strong>: Clean/Hexagonal
+dependency discipline at the domain core, vertical slices for feature delivery, packaged inside a modular monolith.
+"Screaming Architecture" (the directory structure should reflect the domain, not the framework) shows up as the
+<em>philosophy behind</em> VSA rather than a separately-adopted pattern.</p>
+
+<spec-note>The honest reading: the industry has converged on a <em>meta</em>-principle — "match structure to
+complexity; start simple; make dependency direction explicit" — far more than on any one named pattern. That is a
+strong argument against spectastic shipping a default pattern and a strong argument for making the choice a
+<em>deliberate, recorded</em> one.</spec-note>
+</section>
+
+
+<!-- ======================================================= -->
+<section id="sdd-tools">
+<h2>3 · How spec-driven tools handle it — the crux</h2>
+<p>This is the load-bearing finding. Across the leading spec-driven and agent-native tools, the pattern is unanimous:
+<strong>they prompt for architecture per-project; none prescribes a house pattern</strong>. And they consistently
+split the capture across two layers.</p>
+
+<div style="overflow-x:auto;">
+<table>
+  <thead><tr><th>Tool</th><th>Prescribe vs prompt</th><th>Where architecture is captured</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><strong>GitHub Spec Kit</strong></td>
+      <td>Prompts / defers — constitution ships <em>principles</em> (Simplicity, Anti-Abstraction, Library-First), not a pattern</td>
+      <td><strong>Split:</strong> <code>constitution</code> = project-wide principles + phase gates; <strong><code>/plan</code></strong> = the concrete tech-stack &amp; architecture decision</td>
+    </tr>
+    <tr>
+      <td><strong>Amazon Kiro</strong></td>
+      <td>Prompts / defers</td>
+      <td><strong>Split:</strong> project-wide <em>steering</em> (<code>tech.md</code>, <code>structure.md</code>) holds standing stack + structural conventions; per-feature <code>design.md</code> documents this feature's architecture</td>
+    </tr>
+    <tr>
+      <td><strong>OpenSpec</strong></td>
+      <td>Prompts / defers, deliberately non-prescriptive ("fluid not rigid")</td>
+      <td><strong>Split:</strong> project-wide <code>project.md</code>/<code>AGENTS.md</code> describe stack + patterns; per-change <code>design.md</code> holds the change's ADR-shaped decision</td>
+    </tr>
+    <tr>
+      <td><strong>Tessl</strong></td>
+      <td>Defers — architecture is emergent from behavior; "the same spec produces different code from different agents"</td>
+      <td>Specs describe <em>what</em>, not <em>how</em>; the Spec Registry is a reuse layer, not an architecture mandate</td>
+    </tr>
+    <tr>
+      <td><strong>BMAD-METHOD</strong></td>
+      <td>Prompts / generates bespoke — the Architect agent produces a project-specific <code>architecture.md</code></td>
+      <td>Project-wide but <em>in the planning phase, before stories</em> (Phase 3 "Solutioning") — so architecture shapes the work breakdown</td>
+    </tr>
+    <tr>
+      <td><strong>AGENTS.md standard</strong></td>
+      <td>Convention, not a prescriber</td>
+      <td>Project-wide: committed "project standards, tech choices, and architecture rules"; folder-level files for component rules</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+
+<p><spec-newthought>The two layers are strikingly consistent.</spec-newthought> A <strong>project-wide layer</strong>
+(Spec Kit <em>constitution</em> / Kiro <em>steering</em> / OpenSpec <em>project.md</em> / the <em>AGENTS.md</em>
+standard) holds <em>standing tech-stack rules and cross-cutting architectural principles</em> — the things true for
+every feature. A <strong>per-feature layer</strong> (Spec Kit <em>/plan</em> / Kiro <em>design.md</em> / OpenSpec
+per-change <em>design.md</em> / BMAD's pre-story <em>architecture.md</em>) holds the <em>concrete architecture
+decision for this unit of work</em> — chosen frameworks, component design, data flow, tradeoff rationale, often in
+explicit ADR shape.<spec-sidenote>Spec Kit constitution + <code>/plan</code> split
+<a href="https://github.com/github/spec-kit/blob/main/spec-driven.md">[1]</a>,
+<a href="https://roelantd.github.io/spec-kit-workshop/02-constitution-phase">[9]</a>; Kiro steering vs design
+<a href="https://kiro.dev/docs/steering/">[11]</a>, <a href="https://kiro.dev/docs/specs/">[14]</a>; OpenSpec
+<a href="https://github.com/Fission-AI/OpenSpec/blob/main/docs/concepts.md">[12]</a>.</spec-sidenote></p>
+
+<p>BMAD is the informative outlier: it puts the architecture decision in a <em>project-wide</em> doc that nonetheless
+lives in the <em>planning</em> phase, before stories — a reminder that "project-wide vs per-feature" is really
+"standing invariant vs decided-once-per-effort," and greenfield architecture is a once-per-project <em>decision</em>,
+not a per-story one.<spec-sidenote>BMAD architecture in Phase 3, before stories
+<a href="https://github.com/bmad-code-org/BMAD-METHOD/blob/main/docs/tutorials/getting-started.md">[18]</a>.</spec-sidenote></p>
+</section>
+
+
+<!-- ======================================================= -->
+<section id="agents">
+<h2>4 · Agents and architecture — does telling them help?</h2>
+<p>Agents have an implicit "house style," and it is driven by the prompt, not a stable pattern. The strongest primary
+source coins <strong>"vibe architecting"</strong> — architecture that emerges from natural-language prompts rather
+than deliberate design — and shows empirically that prompt phrasing alone yields structurally different systems for an
+identical task: <mark>141 LOC / 2 files vs 472 / 4 vs 827 / 6 across three prompt variants</mark> (a 5.9× code swing),
+warning that review "cannot keep pace with agent speed."<spec-sidenote><em>Architecture Without Architects</em> —
+vibe architecting, the 5.9× swing, the governance gap <a href="https://arxiv.org/html/2604.04990v1">[7]</a>.</spec-sidenote></p>
+
+<p>Does giving the agent an explicit architecture reduce that drift? Practitioner consensus is a confident <em>yes</em>
+— an agent "starts fresh each session" and "can systematically violate architecture decisions across every file
+because it never learned the rules," so the fix is explicit layer rules, naming conventions, and dependency directions
+in the files agents auto-read. But this is <strong>asserted in blogs, not empirically measured</strong> — the one
+academic source documents that drift <em>exists</em> without testing whether constraints fix it. The same practitioner
+sources add the honest belt-and-suspenders: prose conventions are "not perfect," so pair them with
+<strong>automated fitness functions</strong> (a check that fails the build on a violated dependency rule) — which is
+exactly spectastic's own P-8 posture (guarantees live in the kernel/CI, not the prose).<spec-sidenote>Explicit context
+helps but "not perfect"; fitness functions as the real defense
+<a href="https://techdebt.guru/ai-architecture-drift/">[8]</a>; Claude Code guidance: stack + the 3–5 dirs that
+matter, kept under ~200 lines <a href="https://code.claude.com/docs/en/best-practices">[13]</a>.</spec-sidenote></p>
+</section>
+
+
+<!-- ======================================================= -->
+<section id="today">
+<h2>5 · Where spectastic stands today</h2>
+<p>Spectastic already has the field's two-layer shape — a project-wide <a href="../principles.html">principles</a>
+constitution and a per-feature <a href="../commands/spectastic.plan.md">plan</a> that is explicitly "stack,
+architecture, decisions, risks, ADRs." What it lacks is any <em>architecture-pattern vocabulary</em>: a repo-wide
+search for <code>onion</code>, <code>hexagonal</code>, <code>clean architecture</code>, and
+<code>ports-and-adapters</code> returns <strong>zero hits</strong>. The nearest concept is "vertical slice," but only
+in the value-ranked slicer (decomposing <em>work</em>), never internal <em>code</em> architecture.</p>
+
+<p>Where architecture-adjacent decisions land today:</p>
+<div style="overflow-x:auto;">
+<table>
+  <thead><tr><th>Decision</th><th>Captured where</th></tr></thead>
+  <tbody>
+    <tr><td>Language / framework / storage / test stack</td><td>plan §2 Technical context (<code>templates/plan.html</code>); interviewed in <code>plan.md</code> step 7</td></tr>
+    <tr><td>Stack feasibility vs language constraints</td><td><code>plan.md</code> "Language-idiom feasibility" (sealed hierarchies, ownership, init ordering)</td></tr>
+    <tr><td>Architecture (module / code layout)</td><td>plan §6 Project structure + a required inline-SVG sketch in <code>&lt;spec-arch&gt;</code></td></tr>
+    <tr><td>Design decisions / ADRs</td><td>plan §5 Decisions — <code>&lt;spec-decision&gt;</code> <code>D-NNN</code> with <code>grounding=</code></td></tr>
+    <tr><td>Stack <em>ambition</em> posture</td><td>profiles' <code>frameworks</code> axis (minimal → conventional → staff-level)</td></tr>
+    <tr><td><strong>Named architecture pattern</strong></td><td><strong>Nowhere — the gap</strong></td></tr>
+  </tbody>
+</table>
+</div>
+
+<p>So the machinery is already in the right shape and in the right place: architecture is a <em>plan-stage</em>
+concern (§5 Decisions + §6 Project structure), which is exactly where the field puts the concrete decision. The gap is
+narrow — there is a slot for the decision but no prompt that makes an agent <em>make</em> it deliberately, and no
+vocabulary to make it with. Left unaddressed, "vibe architecting" is the default: the agent picks a shape from prompt
+phrasing and never records why.</p>
+</section>
+
+
+<!-- ======================================================= -->
+<section id="recommendation">
+<h2>6 · Recommendation</h2>
+
+<spec-decision id="D-001" grounding="verified">
+  <h4>D-001 · Prompt for the pattern at plan time; don't prescribe one</h4>
+  <dl>
+    <dt>Status</dt><dd><spec-status value="draft">Proposed</spec-status></dd>
+    <dt>Context</dt><dd>The industry has converged on a meta-principle ("match structure to complexity; make
+    dependencies explicit"), not a single pattern, and every leading spec-driven tool prompts for architecture rather
+    than prescribing it. Spectastic already captures architecture at plan §5/§6 but never makes the agent choose
+    deliberately, and has no pattern vocabulary.</dd>
+    <dt>Decision</dt><dd>Add lightweight architecture-pattern <em>awareness</em> to the <strong>plan</strong> stage —
+    not a house pattern. Concretely: a decision-phase <code>AskUserQuestion</code> ("architecture pattern") offering
+    domain- and stack-appropriate contenders (e.g. layered / hexagonal-ports-and-adapters / vertical-slice /
+    modular-monolith), landing an ADR in plan §5 (<code>&lt;spec-decision&gt;</code> with <code>grounding=</code>) that
+    shapes the §6 Project-structure sketch. Standing, cross-feature constraints (dependency-direction rules, "no
+    framework in the domain core") stay in <a href="../principles.html">principles</a> where a project wants them;
+    the profiles' <code>frameworks</code> posture axis is left as-is.</dd>
+    <dt>Consequences</dt><dd>+ Matches the field (Spec Kit / Kiro / OpenSpec) and spectastic's own init(base)→plan(stack)
+    split — architecture is domain/stack-specific, so it is plan-time, not a profile constant or a rigid principle.
+    + Turns "vibe architecting" into a recorded, grounded decision. + No new verb; reuses the existing decision-phase
+    + ADR machinery. − Prose guidance is advisory (P-8): the prompt nudges, it can't guarantee the agent honors the
+    pattern. The durable enforcement — an architecture <em>fitness function</em> (a dependency-rule check) — is a
+    larger, separate effort, flagged below.</dd>
+  </dl>
+</spec-decision>
+
+<spec-note><strong>Optional principle floor.</strong> A one-line principle — "architecture is a decided, grounded
+choice, not an emergent accident" — would give the plan prompt a constitution to trace to, echoing how P-7/P-8 were
+sourced. Worth considering but not required for the plan-stage change to land.</spec-note>
+
+<h3>Suggested next artifact</h3>
+<spec-out-of-scope>
+  <ul>
+    <li defer-to="TBD-plan-architecture-prompt">A <code>/spectastic.propose</code> against the meta-spec adding the plan-stage architecture-pattern prompt (a
+    <code>REQ-*</code> on the plan verb + a <code>commands/spectastic.plan.md</code> step + a
+    <code>templates/plan.html</code> §6 cue), then <code>/spectastic.implement</code>.</li>
+    <li defer-to="TBD-architecture-fitness-function">An architecture <em>fitness function</em> — a validate/CI check that enforces the chosen pattern's
+    dependency rules — is the P-8 guarantee half and a heavier, later effort; the practitioner evidence says prose
+    alone won't hold.</li>
+  </ul>
+</spec-out-of-scope>
+</section>
+
+
+<!-- ======================================================= -->
+<section id="caveats">
+<h2>7 · Caveats on the sources</h2>
+<ul>
+  <li><strong>"Explicit architecture reduces agent drift"</strong> is a strong practitioner prior, <em>not</em>
+  established fact — it appears in blogs with mechanism-and-reasoning; the one academic source documents drift's
+  existence and magnitude but explicitly does not test whether constraints reduce it.</li>
+  <li><strong>"Microservices are dead / modular monolith has won"</strong> is overstated by the punchy posts; the
+  careful reading is "modular monolith as the default <em>starting point</em>," with microservices still correct at
+  scale.</li>
+  <li><strong>VSA as <em>the</em> new default</strong> has real momentum but is concentrated in the .NET commentary
+  sphere; the Java/Go/Node worlds lean on the "hybrid" framing. Slightly ecosystem-skewed.</li>
+  <li>The elaborate five-tier <code>AGENTS.md</code> loading hierarchy came from a third-party site, not the
+  canonical <code>agents.md</code>, which describes a simpler single-file-plus-nesting model.</li>
+</ul>
+</section>
+
+
+<!-- ======================================================= -->
+<section id="sources">
+<h2>8 · Sources</h2>
+<p>Verified 11 Jul 2026. Primary sources fetched directly; a few search-surfaced items are noted as corroboration.</p>
+<ol>
+  <li>Spec Kit — <a href="https://github.com/github/spec-kit/blob/main/spec-driven.md">github.com/github/spec-kit/…/spec-driven.md</a>: constitution holds principles; <code>/plan</code> materializes tech + architecture; phase gates enforce.</li>
+  <li>Hexagonal vs Clean — <a href="https://medium.com/@araxis/hexagonal-vs-clean-architecture-b11a6833136e">medium.com/@araxis/…</a>: pros/cons, over-engineering/boilerplate critique.</li>
+  <li>N-layered vs Clean vs VSA — <a href="https://antondevtips.com/blog/n-layered-vs-clean-vs-vertical-slice-architecture">antondevtips.com/…</a>: the live default decision (.NET, 2025).</li>
+  <li>VSA vs Clean — <a href="https://nadirbad.dev/vertical-slice-vs-clean-architecture">nadirbad.dev/…</a>: VSA "fights the chaos" of decayed Clean; hybrid recommendation.</li>
+  <li>Modular monolith 2026 — <a href="https://enqcode.com/blog/rethinking-microservices-in-2026-when-modular-monolith-architecture-actually-win">enqcode.com/…</a>: modular monolith as default starting point.</li>
+  <li>Microservices rarely needed — <a href="https://florian-kraemer.net/software-architecture/2025/10/20/Microservices-are-rarely-what-you-need.html">florian-kraemer.net/…</a>: modular monolith first.</li>
+  <li>Architecture Without Architects — <a href="https://arxiv.org/html/2604.04990v1">arxiv.org/html/2604.04990v1</a>: "vibe architecting," 5.9× LOC swing by prompt, governance gap.</li>
+  <li>AI architecture drift — <a href="https://techdebt.guru/ai-architecture-drift/">techdebt.guru/ai-architecture-drift</a>: agents drift; explicit context helps but "not perfect"; fitness functions as primary defense.</li>
+  <li>Spec Kit constitution phase — <a href="https://roelantd.github.io/spec-kit-workshop/02-constitution-phase">roelantd.github.io/spec-kit-workshop/…</a>: constitution as project-wide "architectural DNA."</li>
+  <li>Kiro steering — <a href="https://kiro.dev/docs/steering/">kiro.dev/docs/steering</a>: <code>tech.md</code>/<code>structure.md</code> hold project-wide stack + architectural decisions.</li>
+  <li>OpenSpec concepts — <a href="https://github.com/Fission-AI/OpenSpec/blob/main/docs/concepts.md">github.com/Fission-AI/OpenSpec/…/concepts.md</a>: per-change <code>design.md</code> holds ADR-shaped architecture; non-prescriptive.</li>
+  <li>Claude Code best practices — <a href="https://code.claude.com/docs/en/best-practices">code.claude.com/docs/en/best-practices</a>: CLAUDE.md carries stack + the 3–5 dirs that matter; keep &lt;~200 lines.</li>
+  <li>Kiro specs — <a href="https://kiro.dev/docs/specs/">kiro.dev/docs/specs</a>: per-feature <code>design.md</code> = system architecture + component design; no prescribed pattern.</li>
+  <li>Tessl on specs — <a href="https://tessl.io/blog/spec-driven-development-10-things-you-need-to-know-about-specs/">tessl.io/blog/…</a>: specs describe behavior; architecture emergent, not prescribed.</li>
+  <li>BMAD getting started — <a href="https://github.com/bmad-code-org/BMAD-METHOD/blob/main/docs/tutorials/getting-started.md">github.com/bmad-code-org/BMAD-METHOD/…</a>: architecture in Phase 3, before stories; Architect generates bespoke doc.</li>
+  <li>AGENTS.md standard — <a href="https://agents.md/">agents.md</a>: "README for agents," 60k+ repos; teaches conventions/architecture so output fits the project.</li>
+</ol>
+</section>
+
+
+<!-- ======================================================= -->
+<section id="changelog">
+<h2>9 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-07-11">11 Jul 2026</time><span>Initial synthesis. One web-backed research pass (~20 primary sources) on architecture-pattern convergence + how spec-driven tools capture it, fused with a codebase audit (zero named-pattern vocabulary; plan §5/§6 is the existing slot). Recommends prompting for the pattern at plan time, not prescribing one.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  Spectastic · Architecture patterns for agent-built code · 11 Jul 2026 ·
+  <a href="../index.html">home</a> ·
+  <a href="../specs/000-spectastic/spec.html">spec</a> ·
+  <button data-theme-toggle style="background:none;border:none;color:var(--c-link);cursor:pointer;font:inherit;padding:0;border-bottom:1px solid currentColor;">light/dark</button>
+</footer>
+
+</main>
+<script src="../assets/spec.js"></script>
+</body>
+</html>

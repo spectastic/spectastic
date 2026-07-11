@@ -1,0 +1,329 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Observability &amp; SLOs from NFRs — Considerations for Spectastic</title>
+<meta name="description" content="Making the NFR → SLO → SLI → instrumentation chain first-class in spectastic's elevated profiles: an observability enforce category, a tiered SLO principle, SLOs linked to NFRs, and a verify-page observables trace — grounded in the Google SRE canon.">
+<link rel="stylesheet" href="../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../assets/favicon.svg">
+<script src="../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Considerations · Observability &amp; SLOs</p>
+  <h1>Observability &amp; SLOs from NFRs</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    A quantified NFR is an SLO in prose. It implies an SLI, which implies a metrics endpoint. Make that chain implicit at the elevated profiles — and give NFRs the proof leg they lack.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>     <span><spec-status value="draft">Draft</spec-status></span>
+    <b>Type</b>       <span>Research synthesis</span>
+    <b>Author</b>     <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Created</b>    <span><time datetime="2026-07-11">11 Jul 2026</time></span>
+    <b>Sources</b>    <span>20 primary, verified 11 Jul 2026</span>
+    <b>Companion</b>  <span><a href="./engineering-principles-considerations.html">engineering-principles</a> · <a href="./verify-considerations.html">verify</a></span>
+    <b>Read time</b>  <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-tldr>
+    <p>SLIs, SLOs, and observability obligations descend from the <strong>NFRs</strong> in a product spec: a
+    customer-facing non-functional requirement ("p95 &lt; 200 ms", "99.9% available") <em>is</em> an SLO in prose — it
+    implies an <strong>SLI</strong> (what you measure) which implies <strong>instrumentation</strong> (a metrics
+    endpoint). Spectastic already captures NFRs and its template even <em>prompts</em> a quantified one — but
+    <mark>nothing downstream consumes the number</mark>: <code>verify.html</code> traces only success criteria, so every
+    NFR (and its latent SLO) has no proof leg. This doc makes the chain first-class, especially at
+    <em>verified</em>/<em>enterprise</em>, via four moves: <strong>(1)</strong> a tiered observability/SLO
+    <em>principle</em>; <strong>(2)</strong> an <code>observability</code> <em>enforce category</em> that detects the
+    metrics stack (Micrometer/Actuator, Quarkus, OTel, Prometheus client) so "monitoring is possible" is a checkable
+    floor; <strong>(3)</strong> SLOs <em>linked to their NFR</em> in the artifact model (two representations, presented
+    not pre-decided); <strong>(4)</strong> a <code>verify.html</code> <em>observables trace</em> (SLO → SLI →
+    instrumentation) that finally gives NFRs a proof leg and extends P-7 "done means verified." On the taxonomy question:
+    categorize by the <strong>Four Golden Signals</strong> (Latency, Traffic, Errors, Saturation) as the default, with
+    <strong>RED</strong> for request services and <strong>USE</strong> for resources — complementary lenses, not rivals.
+    And yes: a Spring Boot / Quarkus / Go service under an elevated profile <em>would</em> carry the Prometheus/OTel
+    endpoints — that's exactly what the enforce category requires, and it is statically detectable.</p>
+  </spec-tldr>
+
+  <spec-audience-map>
+    <dl>
+      <dt>Exec / PM</dt>   <dd>The TL;DR, then §<a href="#recommendation">6</a>.</dd>
+      <dt>Reviewer</dt>    <dd>§<a href="#sre">2</a> (the taxonomy answer) + §<a href="#today">5</a> (our gap).</dd>
+      <dt>Implementer</dt> <dd>§<a href="#instrumentation">3</a> (detection signals) + §<a href="#recommendation">6</a> (the four moves).</dd>
+      <dt>In a hurry</dt>  <dd>§<a href="#chain">1</a> (the chain) + §<a href="#recommendation">6</a>.</dd>
+    </dl>
+  </spec-audience-map>
+</header>
+
+
+<!-- ======================================================= -->
+<section id="chain">
+<h2>1 · The chain — NFR → SLO → SLI → instrumentation</h2>
+<p>Reliability engineering runs on a decomposition the Google SRE book pins down precisely. An <strong>SLI</strong> is
+"a carefully defined quantitative measure of some aspect of the level of service"; an <strong>SLO</strong> is "a target
+value or range of values for a service level that is measured by an SLI"; an <strong>SLA</strong> is the outer contract
+that "includes consequences of meeting (or missing) the SLOs."<spec-sidenote>SLI/SLO/SLA definitions
+<a href="https://sre.google/sre-book/service-level-objectives/">[2]</a>.</spec-sidenote> The rung <em>above</em> the
+SLO, in a product spec, is the <strong>NFR</strong>: "the API must be fast and reliable" is refined into an SLI
+("fraction of requests served &lt; 300 ms"), bounded by an SLO ("99% over 28 days"), and each SLI is exactly what
+<em>instrumentation</em> emits. ISO/IEC 25010's <em>performance efficiency</em> (time behaviour, capacity) and
+<em>reliability</em> (availability, fault tolerance) are the canonical NFR quality attributes that operationalize into
+SLOs.<spec-sidenote>ISO/IEC 25010 quality characteristics as the NFR taxonomy
+<a href="https://quality.arc42.org/standards/iso-25010">[8]</a>; the standard defines the attributes but does not itself
+prescribe SLOs — the mapping is engineering practice.</spec-sidenote></p>
+<p>So the chain is: <strong>NFR</strong> (the product target) → <strong>SLO</strong> (the internal promise) →
+<strong>SLI</strong> (the measurement) → <strong>instrumentation</strong> (the metric that produces it). Spectastic
+already owns the first rung — it captures NFRs — but drops the chain there. The whole opportunity is to carry it
+through.</p>
+</section>
+
+
+<!-- ======================================================= -->
+<section id="sre">
+<h2>2 · The SRE grounding — and the taxonomy answer</h2>
+<p><spec-newthought>Error budgets convert reliability into a currency.</spec-newthought> The gap between 100% and the
+SLO is the <strong>error budget</strong> (error budget = 1 − SLO); when it is spent, "the development team focuses
+exclusively on reliability issues until the system is within SLO." That mechanism only works if the SLIs are chosen
+from what users actually feel, measured at percentiles (not averages, which "obscure a long tail").<spec-sidenote>Error
+budget = 100% − SLO; the freeze mechanism + a written error-budget policy
+<a href="https://sre.google/workbook/implementing-slos/">[3]</a>. An SLI is a ratio: good events ÷ valid events.</spec-sidenote></p>
+
+<p>On your question — "Saturation, Latency, Traffic, Errors, or some other way?" — the answer is: <strong>yes,
+categorize, and the Four Golden Signals are the right default</strong>, but they are one of three complementary lenses.</p>
+
+<div style="overflow-x:auto;">
+<table>
+  <thead><tr><th>Method</th><th>Metrics</th><th>Scope</th><th>Perspective</th></tr></thead>
+  <tbody>
+    <tr><td><strong>Four Golden Signals</strong> (Google SRE)</td><td>Latency · Traffic · Errors · Saturation</td><td>User-facing systems (the superset)</td><td>"Is the user experience good?"</td></tr>
+    <tr><td><strong>RED</strong> (Tom Wilkie)</td><td>Rate · Errors · Duration</td><td>Request-driven <em>services</em> (APIs, gateways)</td><td>"Are users happy?" — one dashboard per service</td></tr>
+    <tr><td><strong>USE</strong> (Brendan Gregg)</td><td>Utilization · Saturation · Errors</td><td>Every <em>resource</em> (CPU, memory, disk, queues)</td><td>"Are the machines healthy?"</td></tr>
+  </tbody>
+</table>
+</div>
+
+<p>The crisp synthesis: <strong>Golden Signals ≈ RED + Saturation</strong> — RED's Rate/Errors/Duration map to
+Golden's Traffic/Errors/Latency, and Golden adds Saturation.<spec-sidenote>Four Golden Signals — "if you can only
+measure four metrics of your user-facing system, focus on these four"
+<a href="https://sre.google/sre-book/monitoring-distributed-systems/">[1]</a>. RED = Rate/Errors/Duration, and the
+"USE for machines, RED for users, they're complimentary" framing
+<a href="https://grafana.com/blog/the-red-method-how-to-instrument-your-services/">[5]</a>. USE = Utilization/Saturation/Errors
+"for every resource" <a href="https://www.brendangregg.com/usemethod.html">[4]</a>.</spec-sidenote> Wilkie's own
+framing: "RED is about caring about your users… USE is about caring about your machines… two different views on the
+same system." The practical recommendation for spectastic: <strong>the Four Golden Signals are the default
+service-level SLI menu</strong>; use RED as the request-service specialization and USE for resource views. (One
+subtlety worth a footnote: "Saturation" in Golden Signals is closer to <em>Utilization</em> in USE — the same word
+means different things across frameworks.<spec-sidenote>Golden-vs-RED-vs-USE comparison; the Saturation/Utilization
+naming overlap <a href="https://www.sysdig.com/blog/golden-signals-kubernetes">[7]</a>.</spec-sidenote>)</p>
+
+<p>SLOs can be declared <em>as code</em>: <strong>OpenSLO</strong> is an open YAML spec (SLO / SLI / objectives /
+timeWindow / budgetingMethod) that fits Git and CI — the tooling counterpart to Google's written error-budget
+policy.<spec-sidenote>OpenSLO — declarative YAML SLOs, object model + budgeting methods
+<a href="https://github.com/OpenSLO/OpenSLO/blob/main/README.md">[6]</a>, <a href="https://openslo.com/">[6b]</a>.</spec-sidenote>
+That is a useful shape to keep in mind for how a spectastic <code>&lt;spec-slo&gt;</code> might look.</p>
+</section>
+
+
+<!-- ======================================================= -->
+<section id="instrumentation">
+<h2>3 · The instrumentation reality — Spring, Quarkus, Go</h2>
+<p>Your worked example: would a Java (Spring Boot / Quarkus) or Go service end up with the Prometheus endpoints that
+make monitoring possible? <strong>Yes — and largely for free.</strong> Across every mainstream stack, wiring up metrics
+converges on the same shape: add one named dependency, get a Prometheus/OTel-format metrics endpoint plus
+auto-instrumented HTTP-server metrics.</p>
+
+<div style="overflow-x:auto;">
+<table>
+  <thead><tr><th>Stack</th><th>Dependency (the signal)</th><th>Endpoint</th><th>Detectable in</th></tr></thead>
+  <tbody>
+    <tr><td>Spring Boot</td><td><code>spring-boot-starter-actuator</code> + <code>micrometer-registry-prometheus</code></td><td><code>/actuator/prometheus</code></td><td><code>pom.xml</code> / <code>build.gradle</code></td></tr>
+    <tr><td>Quarkus</td><td><code>quarkus-micrometer-registry-prometheus</code> / <code>quarkus-opentelemetry</code></td><td><code>/q/metrics</code> (or OTLP push)</td><td><code>pom.xml</code> / <code>build.gradle</code></td></tr>
+    <tr><td>Go</td><td><code>prometheus/client_golang</code> / <code>go.opentelemetry.io/otel</code></td><td><code>/metrics</code></td><td><code>go.mod</code></td></tr>
+    <tr><td>Node</td><td><code>prom-client</code> / <code>@opentelemetry/*</code></td><td><code>/metrics</code></td><td><code>package.json</code></td></tr>
+    <tr><td>Python</td><td><code>prometheus_client</code> / <code>opentelemetry-*</code></td><td><code>/metrics</code> (or OTLP)</td><td><code>pyproject.toml</code></td></tr>
+  </tbody>
+</table>
+</div>
+
+<p><strong>Auto-instrumentation delivers the golden signals without hand-written metric code.</strong> Spring Boot
+auto-configures an <code>http.server.requests</code> timer (rate + latency + errors, one meter); Quarkus auto-times
+<code>http_server_requests_seconds_*</code>; the OpenTelemetry Java agent is zero-code (bytecode injection captures HTTP
++ JVM telemetry with no application changes). The stable OTel HTTP semantic conventions define
+<code>http.server.request.duration</code> (a latency histogram), <code>http.server.active_requests</code>, and an
+<code>error.type</code> attribute — <em>latency, traffic, errors</em> out of the box.<spec-sidenote>Spring Actuator
+<code>/actuator/prometheus</code> + auto <code>http.server.requests</code>
+<a href="https://docs.spring.io/spring-boot/reference/actuator/metrics.html">[9]</a>; Quarkus Micrometer + <code>/q/metrics</code>
+<a href="https://quarkus.io/guides/telemetry-micrometer">[10]</a>; OTel Java zero-code agent
+<a href="https://opentelemetry.io/docs/zero-code/java/agent/">[11]</a>; OTel stable HTTP server metrics (duration
+histogram, active_requests, error.type) <a href="https://opentelemetry.io/docs/specs/semconv/http/http-metrics/">[12]</a>.</spec-sidenote></p>
+
+<p>Crucially for a detector: because instrumentation is <strong>dependency-gated</strong> (you cannot get the endpoint
+without the dep) and the dependency names are stable, distinctive substrings, <strong>"the metrics stack is present" is
+reliably detectable by substring-matching the root build manifest</strong> — and its <em>absence</em> is a strong "no
+observability at all" signal, exactly the useful direction for an enforcement floor.<spec-sidenote>Prometheus client
+libraries + the <code>/metrics</code> scrape convention
+<a href="https://prometheus.io/docs/instrumenting/clientlibs/">[13]</a>; OpenMetrics: the endpoint SHOULD be
+<code>/metrics</code>.</spec-sidenote></p>
+
+<spec-warning><strong>Presence ≠ working.</strong> A dependency can be on the classpath but not <em>wired</em> (Spring's
+endpoint must be exposed via <code>management.endpoints.web.exposure.include</code>; Go's <code>client_golang</code> is
+a library, not an auto-registered agent) and an <strong>OTLP-push service has no local <code>/metrics</code> endpoint at
+all</strong>. So the right test is "detect an observability dependency," not "detect a <code>/metrics</code> route,"
+and prefer registry/exporter/starter names (a deliberate export choice) over core-library names (which arrive
+transitively). Manifest-substring detection is <em>necessary-signal</em> detection; proving it's wired is a deeper
+config/runtime check — recorded, not hidden.</spec-warning>
+</section>
+
+
+<!-- ======================================================= -->
+<section id="today">
+<h2>4 · Where spectastic stands today</h2>
+<p>Spectastic captures NFRs but drops the chain immediately after:</p>
+<ul>
+  <li><strong>NFRs exist and are prompted to be quantified.</strong> They are <code>&lt;spec-requirement id="NFR-NNN"&gt;</code>
+  under an <code>&lt;h3&gt;Non-functional&lt;/h3&gt;</code> heading; <a href="../templates/spec.html">templates/spec.html</a> §3
+  literally prompts <em>"p95 latency &lt; 200 ms, not 'fast'."</em> Real latent SLOs already ship —
+  <a href="../specs/042-profile-enforcement/spec.html#NFR-002">042 NFR-002</a> ("well under 500 ms"),
+  <a href="../specs/026-git-strategy/spec.html#NFR-001">026 NFR-001</a> ("≤ 1 s p95").</li>
+  <li><strong>But nothing consumes the number.</strong> No SLO/SLI representation, no validate rule that an NFR be
+  measurable, and — the sharp gap — <mark>the <a href="../specs/021-verify-view/spec.html">verify.html</a> proof view
+  traces only <code>SC-NNN</code></mark> (success criteria). NFRs appear in <em>no</em> trace, so a quantified
+  reliability target has <strong>no proof leg at all</strong>.</li>
+  <li><strong>No observability anywhere.</strong> A repo-wide search for SLO / SLI / observability / metrics /
+  prometheus / "error budget" / "golden signal" returns only incidental hits (the word "observability" as a
+  Polish-phase cleanup bucket). Not a principle, not an enforce category, not a profile.</li>
+</ul>
+<p>The machinery to fix this is, however, <em>already shaped for it</em>. The <a href="../specs/042-profile-enforcement/spec.html">enforce</a>
+category system (<code>packages/core/src/enforce/</code>) is a string-literal union + a signal table keyed on
+root-config-file substrings — adding an <code>observability</code> category is a one-line union edit plus data rows, and
+<code>policy.ts</code>/<code>compose.ts</code> pick it up for free. The <code>verify.html</code> generator already has
+the exact reader machinery (it walks requirement ids and phase-closing notes) — an NFR-keyed trace mirrors the existing
+SC-keyed one. The gap is real; the surface to close it is small.</p>
+</section>
+
+
+<!-- ======================================================= -->
+<section id="recommendation">
+<h2>5 · Recommendation — four moves, tiered</h2>
+<p>Make the chain first-class, weighted to the elevated profiles, keeping the principle/enforce split spectastic
+already uses for coverage and contract-first: the <em>principle</em> states the intent, a <em>validate/enforce</em>
+check gives it teeth (P-8), and the <em>verify view</em> proves it (P-7).</p>
+
+<spec-decision id="D-001" grounding="verified">
+  <h4>D-001 · Carry NFR → SLO → SLI → instrumentation through the profiles and the verify view</h4>
+  <dl>
+    <dt>Status</dt><dd><spec-status value="draft">Proposed</spec-status></dd>
+    <dt>Context</dt><dd>SLIs/SLOs descend from NFRs; observability is what makes SLIs measurable. Spectastic captures NFRs but consumes nothing downstream, and its proof view ignores NFRs. The industry default categorization is the Four Golden Signals; instrumentation is dependency-gated and statically detectable.</dd>
+    <dt>Decision</dt><dd>Four moves:
+    <strong>(1) A tiered observability/SLO principle</strong> — <em>verified</em>: "observability is instrumented; the
+    golden signals (latency, traffic, errors, saturation) are emitted"; <em>enterprise</em>: "each customer-facing NFR
+    carries an SLO with an error budget." Added to <code>spectastic-profiles.json</code> <code>principles[]</code> at
+    those tiers.
+    <strong>(2) An <code>observability</code> enforce category</strong> — detect the metrics stack (Micrometer /
+    <code>spring-boot-starter-actuator</code> / <code>quarkus-micrometer</code> / <code>quarkus-opentelemetry</code> /
+    <code>go.opentelemetry.io/otel</code> / <code>prometheus/client_golang</code> / <code>@opentelemetry/</code> /
+    <code>prometheus_client</code>) in the root manifest — added to <em>verified</em>/<em>enterprise</em>
+    <code>enforce.required</code> so "monitoring is possible" is a checkable, hard-gated floor. Prefer registry/exporter
+    names over core-lib names; record that presence ≠ wired.
+    <strong>(3) SLOs linked to their NFR</strong> — <em>presented, not pre-decided</em>: either a first-class
+    <code>&lt;spec-slo target="NFR-NNN"&gt;</code> carrying its SLI + target + window (mirroring how
+    <code>&lt;spec-risk target&gt;</code> links a requirement, and shaped by OpenSLO), or an annotation on the NFR
+    itself. The follow-on spec picks one.
+    <strong>(4) A <code>verify.html</code> observables trace</strong> — a new <code>&lt;section id="observables"&gt;</code>
+    aggregating SLO → SLI → instrumentation, grounded in the real run (does the <code>/metrics</code> endpoint exist? are
+    the golden-signal SLIs emitted?). This gives NFRs the proof leg they lack and extends P-7.</dd>
+    <dt>Consequences</dt><dd>+ Turns a latent, unconsumed NFR number into a tiered principle, a machine-checkable floor,
+    and a proven line in the verify view. + Reuses the enforce-category + verify-trace machinery almost entirely (small
+    surface). + Answers "at what profile level" the same way the industry tiers rigor — observability is a
+    production-grade concern, so it lands at verified, SLOs+error-budgets at enterprise. − Static detection is
+    necessary-signal only (present ≠ wired; OTLP-push has no local endpoint) — an honest ceiling. − Principles are
+    advisory (T-009); the enforce category + verify trace are where the guarantee lives. − Adds an artifact element
+    (or NFR fields) — deferred to the follow-on to keep the schema change deliberate.</dd>
+  </dl>
+</spec-decision>
+
+<h3>Suggested next artifacts</h3>
+<spec-out-of-scope>
+  <ul>
+    <li defer-to="TBD-observability-enforce-category">A <code>/spectastic.propose</code> against <code>042-profile-enforcement</code> adding the <code>observability</code> enforcement category (union + <code>SIGNALS</code> rows + verified/enterprise <code>enforce.required</code>), then <code>/spectastic.implement</code> — the machine-check half.</li>
+    <li defer-to="TBD-observability-slo-principle">A <code>/spectastic.propose</code> against <code>041-init-profiles</code> adding the tiered observability + SLO principle to the profile manifest (verified + enterprise).</li>
+    <li defer-to="TBD-slo-nfr-artifact">A spec deciding the SLO representation — a first-class <code>&lt;spec-slo target="NFR-NNN"&gt;</code> (SLI + target + window, OpenSLO-shaped) vs annotating the NFR — plus a validate rule that a <em>verified</em>-tier NFR be quantified/measurable.</li>
+    <li defer-to="TBD-verify-slo-trace">Extend <code>verify.html</code> (<a href="../specs/021-verify-view/spec.html">021</a>) with the observables trace + a <code>CapturedRun</code> instrumentation field, and widen the <code>verify-view-stale</code> rule to guard the new NFR/SLO links.</li>
+  </ul>
+</spec-out-of-scope>
+</section>
+
+
+<!-- ======================================================= -->
+<section id="caveats">
+<h2>6 · Caveats on the sources</h2>
+<ul>
+  <li><strong>The SLI ratio wording</strong> — the SRE workbook renders it "good events / total events"; newer Google
+  material prefers "good events / <em>valid</em> events" (excludes events that shouldn't count). Treat as equivalent.</li>
+  <li><strong>The "NFR is the outer rung above SLO/SLI/SLA"</strong> framing is a common-practice interpretation; the
+  SLA/SLO/SLI distinction itself is canon (SRE book), but ISO 25010 "does not explicitly discuss SLOs" — the
+  attribute→SLO mapping is engineering practice.</li>
+  <li><strong>"Go gets the golden signals for free"</strong> is weaker than the JVM claim: the reliable Go path is an
+  explicit <code>otelhttp</code> handler wrap, not a zero-touch agent (eBPF auto-instrumentation is newer).</li>
+  <li><strong>Detectability</strong> is necessary-signal only: a manifest match can't see whether the endpoint is
+  exposed or the exporter started (Spring exposure config, Quarkus <code>quarkus.otel.metrics.enabled</code>), and an
+  OTLP-push service has no local <code>/metrics</code>. Prefer exporter/registry names; treat absence as the strong
+  signal.</li>
+</ul>
+</section>
+
+
+<!-- ======================================================= -->
+<section id="sources">
+<h2>7 · Sources</h2>
+<p>Verified 11 Jul 2026. Two web-backed research passes (SRE taxonomy + NFR→SLO; per-framework instrumentation).</p>
+<ol>
+  <li>Google SRE, <em>Monitoring Distributed Systems</em> — <a href="https://sre.google/sre-book/monitoring-distributed-systems/">sre.google/sre-book/monitoring-distributed-systems</a>: the Four Golden Signals (Latency/Traffic/Errors/Saturation) + "focus on these four."</li>
+  <li>Google SRE, <em>Service Level Objectives</em> — <a href="https://sre.google/sre-book/service-level-objectives/">sre.google/sre-book/service-level-objectives</a>: SLI/SLO/SLA definitions; percentiles over averages.</li>
+  <li>Google SRE workbook, <em>Implementing SLOs</em> — <a href="https://sre.google/workbook/implementing-slos/">sre.google/workbook/implementing-slos</a>: SLI ratio; error budget = 100% − SLO; the freeze + error-budget policy.</li>
+  <li>Brendan Gregg, USE Method — <a href="https://www.brendangregg.com/usemethod.html">brendangregg.com/usemethod.html</a>: Utilization/Saturation/Errors "for every resource."</li>
+  <li>Grafana / Tom Wilkie, RED Method — <a href="https://grafana.com/blog/the-red-method-how-to-instrument-your-services/">grafana.com/blog/the-red-method-…</a>: Rate/Errors/Duration; RED+Saturation ≈ Golden; USE/RED "complimentary."</li>
+  <li>OpenSLO spec — <a href="https://github.com/OpenSLO/OpenSLO/blob/main/README.md">github.com/OpenSLO/OpenSLO</a> · <a href="https://openslo.com/">openslo.com</a>: declarative YAML SLOs; SLI/SLO/objectives/timeWindow/budgetingMethod.</li>
+  <li>Sysdig, Golden Signals vs RED vs USE — <a href="https://www.sysdig.com/blog/golden-signals-kubernetes">sysdig.com/blog/golden-signals-kubernetes</a>: the comparison; Saturation-vs-Utilization naming overlap.</li>
+  <li>arc42, ISO/IEC 25010 — <a href="https://quality.arc42.org/standards/iso-25010">quality.arc42.org/standards/iso-25010</a>: the nine quality characteristics; performance efficiency + reliability as the NFR→SLO attributes.</li>
+  <li>Spring Boot Actuator metrics — <a href="https://docs.spring.io/spring-boot/reference/actuator/metrics.html">docs.spring.io/spring-boot/reference/actuator/metrics.html</a>: <code>/actuator/prometheus</code>, exposure config, auto <code>http.server.requests</code>.</li>
+  <li>Quarkus Micrometer telemetry — <a href="https://quarkus.io/guides/telemetry-micrometer">quarkus.io/guides/telemetry-micrometer</a>: <code>quarkus-micrometer-registry-prometheus</code>, <code>/q/metrics</code>, auto HTTP timers.</li>
+  <li>OpenTelemetry Java agent (zero-code) — <a href="https://opentelemetry.io/docs/zero-code/java/agent/">opentelemetry.io/docs/zero-code/java/agent</a>: bytecode auto-instrumentation, HTTP + JVM telemetry, no code changes.</li>
+  <li>OpenTelemetry HTTP metrics semconv — <a href="https://opentelemetry.io/docs/specs/semconv/http/http-metrics/">opentelemetry.io/docs/specs/semconv/http/http-metrics</a>: <code>http.server.request.duration</code> histogram, <code>active_requests</code>, <code>error.type</code>.</li>
+  <li>Prometheus client libraries — <a href="https://prometheus.io/docs/instrumenting/clientlibs/">prometheus.io/docs/instrumenting/clientlibs</a>: official libs + the <code>/metrics</code> scrape convention.</li>
+  <li>Prometheus Go guide — <a href="https://prometheus.io/docs/guides/go-application/">prometheus.io/docs/guides/go-application</a>: <code>client_golang</code>, <code>promhttp.Handler()</code> at <code>/metrics</code>.</li>
+  <li>OpenTelemetry Go — <a href="https://opentelemetry.io/docs/languages/go/">opentelemetry.io/docs/languages/go</a>: <code>go.opentelemetry.io/otel</code>; metrics Stable.</li>
+  <li>Micrometer Prometheus registry — <a href="https://docs.micrometer.io/micrometer/reference/implementations/prometheus.html">docs.micrometer.io/…/prometheus</a>: <code>micrometer-registry-prometheus</code>, <code>scrape()</code>, the <code>/prometheus</code> endpoint in Spring.</li>
+  <li>OTel <code>otelhttp</code> — <a href="https://pkg.go.dev/go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp">pkg.go.dev/…/otelhttp</a>: <code>NewHandler</code> wraps a handler with spans + metrics.</li>
+  <li>Quarkus OpenTelemetry — <a href="https://quarkus.io/guides/opentelemetry">quarkus.io/guides/opentelemetry</a>: OTLP push by default; metrics gated by <code>quarkus.otel.metrics.enabled</code>.</li>
+  <li>Prometheus exposition format — <a href="https://prometheus.io/docs/instrumenting/exposition_formats/">prometheus.io/docs/instrumenting/exposition_formats</a>: the text format 0.0.4 (<code># HELP</code>/<code># TYPE</code>).</li>
+  <li>OTel Python Prometheus exporter — <a href="https://opentelemetry-python.readthedocs.io/en/stable/exporter/prometheus/prometheus.html">opentelemetry-python.readthedocs.io/…/prometheus</a>: <code>prometheus_client</code> / <code>start_http_server</code>, default port 9464.</li>
+</ol>
+</section>
+
+
+<!-- ======================================================= -->
+<section id="changelog">
+<h2>8 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-07-11">11 Jul 2026</time><span>Initial synthesis. Two web-backed research passes (~20 primary sources): the SRE taxonomy + NFR→SLO chain (Four Golden Signals, RED, USE, SLI/SLO/error budget, OpenSLO, ISO 25010) and the per-framework instrumentation reality (Spring/Quarkus/Go → Prometheus/OTel, statically detectable). Fused with the codebase audit (NFRs captured but unconsumed; verify.html traces only SC; no observability anywhere; enforce-category + verify-trace machinery ready). Recommends four tiered moves: an observability/SLO principle, an <code>observability</code> enforce category, SLOs linked to NFRs (representation presented, not decided), and a verify-page observables trace. Taxonomy answer: Four Golden Signals default, RED for services, USE for resources.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  Spectastic · Observability &amp; SLOs from NFRs · 11 Jul 2026 ·
+  <a href="../index.html">home</a> ·
+  <a href="../specs/021-verify-view/spec.html">021</a> ·
+  <a href="../specs/042-profile-enforcement/spec.html">042</a> ·
+  <button data-theme-toggle style="background:none;border:none;color:var(--c-link);cursor:pointer;font:inherit;padding:0;border-bottom:1px solid currentColor;">light/dark</button>
+</footer>
+
+</main>
+<script src="../assets/spec.js"></script>
+</body>
+</html>

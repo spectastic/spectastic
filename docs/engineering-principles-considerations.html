@@ -1,0 +1,342 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Engineering-constitution principles, tiered by profile — Considerations for Spectastic</title>
+<meta name="description" content="Which downstream-project engineering principles (Library-First, contract/OpenAPI-first, and the broader canon) spectastic should offer, and at which profile tier — lean, standard, verified, enterprise.">
+<link rel="stylesheet" href="../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../assets/favicon.svg">
+<script src="../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Considerations · Profile principles</p>
+  <h1>Engineering principles, tiered by profile</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    Spec Kit ships its best principles as one untiered constitution. Spectastic's profiles can offer the same principles — laddered by rigor. That is the industry-correct answer, and no other spec-driven tool does it.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>     <span><spec-status value="draft">Draft</spec-status></span>
+    <b>Type</b>       <span>Research synthesis</span>
+    <b>Author</b>     <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Created</b>    <span><time datetime="2026-07-11">11 Jul 2026</time></span>
+    <b>Sources</b>    <span>24 primary, verified 11 Jul 2026</span>
+    <b>Companion</b>  <span><a href="./agent-architecture-considerations.html">agent-architecture</a></span>
+    <b>Read time</b>  <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-tldr>
+    <p>You love Spec Kit's <strong>Library-First</strong> and <strong>contract/OpenAPI-first data models</strong> —
+    rightly, because those two are the ones that generalize best to <em>agent-built</em> code: both replace open-ended
+    generation with <em>generation against a fixed, inspectable target</em>. The contract <em>is</em> the spec, and a
+    schema check is deterministic verification — exactly the objective pass/fail signal an agent needs to self-correct.
+    Beyond those two, the strongest candidates in the same spirit are <strong>Test-First</strong>,
+    <strong>structured observability</strong>, <strong>idempotency / safe retries</strong>, and
+    <strong>least-privilege</strong> — each gives the agent either a checkable target or a bounded blast radius; then
+    <strong>semantic versioning</strong>, <strong>secure-by-default</strong>, <strong>integration-first testing</strong>,
+    <strong>supply-chain hygiene</strong>, <strong>SLOs</strong>, and <strong>accessibility</strong> round out the canon.
+    The crux — "at what profile levels?" — has a clean answer: <mark>rigor is a ladder, not a switch</mark>. Every serious
+    maturity model tiers practice (DORA, OWASP SAMM's three levels, DSOMM's five, Well-Architected, Google's Production
+    Readiness Review), and YAGNI + Amazon's one-way/two-way doors say ceremony must scale to stakes and reversibility.
+    So most of these principles are "earn them at scale," not "always on." The differentiator: <strong>Spec Kit, Kiro,
+    and every SDD tool surveyed ship a single untiered constitution</strong> — a profile system that changes <em>which</em>
+    principles are mandatory by tier appears novel in the space. Spectastic already has that system; this doc recommends
+    what to add to each tier.</p>
+  </spec-tldr>
+
+  <spec-audience-map>
+    <dl>
+      <dt>Exec / PM</dt>   <dd>The TL;DR, then the mapping in §<a href="#recommendation">6</a>.</dd>
+      <dt>Reviewer</dt>    <dd>§<a href="#ladder">4</a> (why tier) + §<a href="#today">5</a> (what we have).</dd>
+      <dt>Implementer</dt> <dd>§<a href="#recommendation">6</a> — the per-tier additions to the profile manifest.</dd>
+      <dt>In a hurry</dt>  <dd>§<a href="#why-two">2</a> (why those two are special) + §<a href="#recommendation">6</a> (the table).</dd>
+    </dl>
+  </spec-audience-map>
+</header>
+
+
+<!-- ======================================================= -->
+<section id="question">
+<h2>1 · The question</h2>
+<p>Two parts. <strong>(a)</strong> Beyond Library-First and contract/OpenAPI-first, what other engineering
+"constitution" principles are worth offering a downstream project? <strong>(b)</strong> At which
+<a href="../specs/041-init-profiles/spec.html">profile</a> level — lean, standard, verified, enterprise — should each
+apply? The second part is where the real design judgment lives: a principle that is wisdom for a regulated service is
+<em>premature ceremony</em> for a weekend prototype, and imposing it there is itself a failure mode.</p>
+</section>
+
+
+<!-- ======================================================= -->
+<section id="why-two">
+<h2>2 · Why Library-First and contract-first are the right instinct</h2>
+<p><spec-newthought>Both give the agent a fixed target to generate against.</spec-newthought> That is the whole reason
+they feel so good for agent-built code, and it is worth naming precisely, because it tells you which <em>other</em>
+principles to reach for.</p>
+<ul>
+  <li><strong>The contract is the spec.</strong> An agent generating against a fixed OpenAPI / JSON-Schema / protobuf
+  definition has an unambiguous, checkable target — output either validates against the schema or it doesn't. This
+  turns "did the agent build the right thing?" from a judgment call into a <em>mechanical check</em>.<spec-sidenote>Design-first
+  vs code-first; the contract as a machine-checkable artifact, breaking changes caught at design time
+  <a href="https://blog.stoplight.io/api-first-api-design-first-or-code-first-which-should-you-choose">[4]</a>; Google's
+  resource-oriented, design-first API Design Guide (AIP) <a href="https://docs.cloud.google.com/apis/design">[5]</a>.</spec-sidenote></li>
+  <li><strong>Deterministic verification closes the agent loop.</strong> Schema validation, mock servers, and contract
+  tests give a fast, objective pass/fail signal — the ground truth an agent needs to self-correct, and precisely the
+  kind that structural-only "it renders" checks can't provide (spectastic's own <a href="../principles.html#P-7">P-7</a>
+  "presence ≠ verified").</li>
+  <li><strong>It decouples parallel agents and bounds hallucinated interfaces.</strong> A producer-agent and a
+  consumer-agent can work against the shared contract without reverse-engineering each other, and a fixed contract
+  stops an agent inventing endpoints or fields that drift from what consumers expect.</li>
+  <li><strong>Library-First is the same move, one level up.</strong> Building a feature as a standalone library with a
+  clear interface before wiring it into an app gives the agent a bounded module and testable seams — a target, not an
+  open field.</li>
+</ul>
+<p>So the selection heuristic for "what else": prefer principles that either <strong>give the agent a checkable
+target</strong> (contract-first, test-first, semver) or <strong>bound the blast radius of autonomous code</strong>
+(least-privilege, idempotency, ship-dark). Those two properties are what make a principle pull its weight when a
+machine, not a careful human, is writing the code.</p>
+</section>
+
+
+<!-- ======================================================= -->
+<section id="canon">
+<h2>3 · The principle canon</h2>
+<p>Spec Kit's constitution is a strong but opinionated starting point — its "nine articles" are really ~six fixed rules
+plus three project-defined slots, and reviewers note both that agents <em>ignore</em> the rules and that they
+<em>over-comply</em> (mechanically abstracting trivial features).<spec-sidenote>Spec Kit's articles
+<a href="https://github.com/github/spec-kit/blob/main/spec-driven.md">[1]</a>; the "powerful rules file… false sense of
+control," agents ignore/over-comply critique <a href="https://martinfowler.com/articles/exploring-gen-ai/sdd-3-tools.html">[3]</a>.</spec-sidenote>
+The lesson mirrors spectastic's own <a href="../specs/000-spectastic/triage-log.html#T-009">T-009</a>: offer principles
+as a <em>menu</em>, and put the real guarantee in the enforce floor / a validate rule, not the prose.</p>
+
+<p>The candidates worth offering, with the property that earns their keep for agent code:</p>
+<div style="overflow-x:auto;">
+<table>
+  <thead><tr><th>Principle</th><th>What it is</th><th>Why it matters for agent code</th></tr></thead>
+  <tbody>
+    <tr><td><strong>Library-First</strong> (Spec Kit I)</td><td>Build a feature as a standalone, reusable library before wiring it into an app.</td><td>A bounded module + interface to target; forces testable seams.</td></tr>
+    <tr><td><strong>Contract / API-first</strong> (OpenAPI, JSON Schema, protobuf)</td><td>Design the machine-readable interface before implementation.</td><td>The contract is a checkable spec; validation is deterministic. Fits agents best.</td></tr>
+    <tr><td><strong>Test-First / TDD</strong> (Spec Kit III)</td><td>Write failing tests before implementation; behavior defined by the test.</td><td>A failing test is an executable spec + an objective self-correction signal.</td></tr>
+    <tr><td><strong>Structured observability</strong> (OpenTelemetry)</td><td>Structured logs + metrics + traces, correlated by IDs.</td><td>An agent can only debug what it can see; structured telemetry is machine-parseable feedback.</td></tr>
+    <tr><td><strong>Idempotency / safe retries</strong></td><td>Same request repeated ⇒ same state; idempotency keys dedupe.</td><td>Agent-driven and auto-retried calls duplicate side effects (double charge) without it.</td></tr>
+    <tr><td><strong>Least privilege</strong> (NIST AC-6)</td><td>Grant the minimum access needed for the job.</td><td>Directly bounds the blast radius of autonomous code and its tools.</td></tr>
+    <tr><td><strong>Semantic versioning</strong></td><td>MAJOR.MINOR.PATCH as a compatibility contract.</td><td>Lets agents and dependents reason mechanically about whether an upgrade is safe.</td></tr>
+    <tr><td><strong>Secure-by-default</strong> (OWASP ASVS)</td><td>Security designed in; verified against ASVS L1/L2/L3.</td><td>Autonomous code needs guardrails it can't reason around; ASVS is a checkable target.</td></tr>
+    <tr><td><strong>Integration-first testing</strong> (Spec Kit IX)</td><td>Prefer real dependencies over mocks; contract tests before implementation.</td><td>Verifies the code works in realistic conditions, not theoretical ones.</td></tr>
+    <tr><td><strong>Dependency / supply-chain hygiene</strong></td><td>Pin, audit, prune deps; SBOM at the top end.</td><td>Agents pull transitive "forests"; hygiene bounds the supply-chain blast radius.</td></tr>
+    <tr><td><strong>SLOs / error budgets</strong> (Google SRE)</td><td>A reliability target; the budget (1 − SLO) governs release velocity.</td><td>An objective gate on how much agent-driven change/risk is acceptable per period.</td></tr>
+    <tr><td><strong>Accessibility</strong> (WCAG A/AA/AAA)</td><td>UI usable by people with disabilities; AA is the common/legal bar.</td><td>Agents omit a11y unless it's a stated default; AA is checkable and often legally required.</td></tr>
+    <tr><td><em>Simplicity / YAGNI · Anti-Abstraction</em> (Spec Kit VII/VIII)</td><td>Fewest moving parts; use frameworks directly; no future-proofing.</td><td>Curbs the agent's tendency to over-engineer and add speculative indirection.</td></tr>
+  </tbody>
+</table>
+</div>
+<spec-note><strong>Observability &amp; SLOs get a dedicated deep-dive.</strong> The <em>structured observability</em> and
+<em>SLOs / error budgets</em> rows above are treated in full — the NFR → SLO → SLI → instrumentation chain, an
+<code>observability</code> enforce category, and a verify-page observables trace — in
+<a href="./observability-slo-considerations.html">observability-slo-considerations</a>.</spec-note>
+</section>
+
+
+<!-- ======================================================= -->
+<section id="ladder">
+<h2>4 · Rigor is a ladder, not a switch</h2>
+<p>The "at what level?" question is already answered by how the industry structures engineering maturity: <strong>as
+explicit, cumulative tiers.</strong></p>
+<ul>
+  <li><strong>Security models ship the ladder.</strong> OWASP <em>SAMM</em> defines three maturity levels per practice
+  (foundational → mature → advanced); <em>DSOMM</em> defines up to five, and OWASP <em>ASVS</em> and <em>WCAG</em> are
+  cumulative (L1/L2/L3, A/AA/AAA) — you can borrow their rungs directly.<spec-sidenote>SAMM three-level ladder
+  <a href="https://owaspsamm.org/model/">[2]</a>; DSOMM five-level, skip-levels-where-not-meaningful, feature-toggles at
+  L4, blue/green at L5 <a href="https://codific.com/owasp-dsomm-a-comprehensive-introduction/">[9]</a>.</spec-sidenote></li>
+  <li><strong>Delivery maturity is tiered too.</strong> DORA sorts teams Elite/High/Medium/Low and studies which
+  <em>capabilities</em> (CI/CD, trunk-based, small batches, test automation, observability, loosely-coupled architecture)
+  move them up; AWS Well-Architected trades its six pillars against "your business context"; Google's Production
+  Readiness Review is the explicit gate before a service is operated.<spec-sidenote>DORA capabilities that ladder teams
+  up <a href="https://dora.dev/capabilities/">[8]</a>; Well-Architected pillars, tradeoffs by workload
+  <a href="https://docs.aws.amazon.com/wellarchitected/latest/framework/the-pillars-of-the-framework.html">[10]</a>;
+  Google SRE PRR <a href="https://sre.google/sre-book/evolving-sre-engagement-model/">[11]</a>.</spec-sidenote></li>
+  <li><strong>Ceremony must scale to stakes.</strong> YAGNI names the costs of building rigor ahead of need ("think
+  ahead, don't build ahead"), and Amazon's one-way/two-way doors tie process weight to <em>reversibility</em> — reversible
+  decisions get a light-weight process, and applying heavy process to reversible ones causes "slowness, unthoughtful
+  risk aversion, failure to experiment." Mis-tiering <em>upward</em> is a real failure mode, the cousin of alert
+  fatigue.<spec-sidenote>YAGNI's four costs; think-ahead-not-build-ahead
+  <a href="https://martinfowler.com/bliki/Yagni.html">[12]</a>; Amazon one-way/two-way doors
+  <a href="https://www.aboutamazon.com/news/company-news/2016-letter-to-shareholders">[5]</a>.</spec-sidenote></li>
+</ul>
+
+<spec-note><strong>The differentiator, stated plainly.</strong> The maturity-ladder <em>concept</em> is thoroughly
+precedented — but <strong>no spec-driven or agent tool surveyed applies it as selectable profiles that change which
+principles are mandatory.</strong> Spec Kit ships one untiered constitution; Kiro's steering is project-wide;
+Well-Architected is a review lens, not a profile. The closest analog — Spotify/Netflix "paved roads" — tiers by
+<em>engineering discipline</em>, not by stakes, with an opt-out-with-responsibility escape hatch. Spectastic's
+lean/standard/verified/enterprise profiles, each carrying a different principle bundle, are the structurally-novel move.
+This doc is about filling those bundles well.</spec-note>
+</section>
+
+
+<!-- ======================================================= -->
+<section id="today">
+<h2>5 · Where spectastic stands today</h2>
+<p>The <a href="../specs/041-init-profiles/spec.html">profile manifest</a> (<code>spectastic-profiles.json</code>)
+already carries a tiered principle set — but it is almost entirely <em>verification / enforcement / shipping</em>
+discipline, with none of the <em>shape-of-system</em> principles you're asking about.</p>
+<div style="overflow-x:auto;">
+<table>
+  <thead><tr><th>Tier</th><th>Principles today (beyond the shared base)</th></tr></thead>
+  <tbody>
+    <tr><td><strong>base</strong> (all tiers)</td><td>Clarity over cleverness · Small, reversible changes · Explicit over implicit · One set of conventions, enforced · Record the why</td></tr>
+    <tr><td><strong>lean</strong></td><td>— (base only)</td></tr>
+    <tr><td><strong>standard</strong></td><td>+ Tests accompany behavior</td></tr>
+    <tr><td><strong>verified</strong></td><td>+ Done means verified · The enforcement floor holds</td></tr>
+    <tr><td><strong>enterprise</strong></td><td>+ Ship dark by default · Decisions are grounded</td></tr>
+  </tbody>
+</table>
+</div>
+<p>So spectastic already covers, in its own words: <em>simplicity</em> (base "Clarity over cleverness" + "Small,
+reversible changes"), a light <em>test-first</em> (standard "Tests accompany behavior"), <em>done-means-verified</em>
+including integration testing (verified), <em>ship-dark</em> (enterprise), and <em>grounding</em> (enterprise
+"Decisions are grounded"). What it offers <strong>nothing</strong> on: <mark>Library-First, contract/API-first,
+observability, semantic versioning, secure-by-default, idempotency, least-privilege, supply-chain hygiene, SLOs, and
+accessibility</mark> — the entire "shape and contract of the system" family, including the two you named. The five
+axes (<code>verification · enforcement · toggles · grounding · frameworks</code>) give the tiering vocabulary; there is
+room for an <code>interfaces</code> or <code>contracts</code> axis alongside them.</p>
+</section>
+
+
+<!-- ======================================================= -->
+<section id="recommendation">
+<h2>6 · Recommendation — the additions, tiered</h2>
+<p>Add the principles at the <em>lowest tier where each starts earning its keep</em>, cumulative upward (a verified
+project inherits standard's set). Reading the ladder: <strong>lean</strong> stays near-empty (simplicity is already
+its base ethos); <strong>standard</strong> gets the "make it a real, contract-bearing product" bundle;
+<strong>verified</strong> gets the "operate it in production" bundle; <strong>enterprise</strong> ratchets each to
+audited/regulated strictness (SAMM L3 / DSOMM L5 / ASVS L3).</p>
+
+<div style="overflow-x:auto;">
+<table>
+  <thead><tr><th>Principle to add</th><th>Add at tier</th><th>Rationale (grounded)</th></tr></thead>
+  <tbody>
+    <tr><td><strong>Contract / API-first data models</strong></td><td><strong>standard</strong> (always-on if it exposes an interface)</td><td>The highest-value add: a checkable contract is the agent's spec. Once a second consumer exists, interface stability matters [4][5].</td></tr>
+    <tr><td><strong>Library-First / core-vs-interface separation</strong></td><td><strong>standard</strong></td><td>A throwaway spike doesn't need a reusable core; a maintained product does, to stay testable and shareable [1].</td></tr>
+    <tr><td><strong>Semantic versioning</strong></td><td><strong>standard</strong></td><td>Means something the moment others depend on your releases; lets agents reason about upgrade safety [7].</td></tr>
+    <tr><td><strong>Secure-by-default</strong> (baseline)</td><td><strong>standard</strong>, hardened at verified/enterprise</td><td>Baseline safe defaults (authn/secrets/no-hardcoded-creds) at team scale; ASVS L1→L2→L3 up the ladder [SAMM/ASVS].</td></tr>
+    <tr><td><strong>Least privilege</strong></td><td><strong>standard</strong></td><td>Bounds the blast radius of autonomous code — arguably always-on the moment an agent holds tools [NIST].</td></tr>
+    <tr><td><strong>Structured observability</strong></td><td><strong>verified</strong></td><td>A production-operation concern; DORA capability + a PRR gate. A team product can start with logs [8][11].</td></tr>
+    <tr><td><strong>Idempotency / safe retries</strong></td><td><strong>verified</strong> (near always-on for side-effecting ops)</td><td>Retried agent calls duplicate side effects without it; matters once real side effects exist.</td></tr>
+    <tr><td><strong>Integration-first testing</strong></td><td><strong>verified</strong></td><td>Partly present already ("Done means verified"); make the real-dependency + contract-test discipline explicit [Spec Kit IX].</td></tr>
+    <tr><td><strong>Supply-chain hygiene</strong> (pin → SBOM)</td><td>basic pin at <strong>standard</strong>; SBOM/attestation at <strong>enterprise</strong></td><td>Enterprise already enforces a <code>supply-chain</code> category; a principle to match [DSOMM L3+].</td></tr>
+    <tr><td><strong>SLOs / error budgets</strong></td><td><strong>verified</strong> → formal at enterprise</td><td>A production-grade SRE construct; meaningless for a prototype with no users [SRE].</td></tr>
+    <tr><td><strong>Accessibility</strong></td><td><strong>standard</strong> (baseline) → formal WCAG conformance at enterprise</td><td>Any user-facing product should meet baseline a11y; formal conformance is a regulated obligation [WCAG].</td></tr>
+  </tbody>
+</table>
+</div>
+
+<spec-decision id="D-001" grounding="verified">
+  <h4>D-001 · Offer the shape-of-system principles, tiered — as principles, with enforce/validate as the teeth</h4>
+  <dl>
+    <dt>Status</dt><dd><spec-status value="draft">Proposed</spec-status></dd>
+    <dt>Context</dt><dd>Library-First and contract-first are the agent-code standouts because they give the agent a
+    checkable target; the broader canon adds more targets and blast-radius bounds. The industry tiers all of this by
+    maturity, and no SDD tool ties principles to a selectable profile — which spectastic's profile system already does,
+    but its bundles carry none of these.</dd>
+    <dt>Decision</dt><dd>Extend the profile manifest's per-tier <code>principles[]</code> with the additions above,
+    placed at the lowest tier where each earns its keep. Lead with <strong>contract/API-first</strong> and
+    <strong>Library-First</strong> at <em>standard</em> (the two you value, the two that fit agents best). Consider an
+    <code>interfaces</code>/<code>contracts</code> axis alongside the existing five. Keep them <em>principles</em>
+    (advisory, per T-009 / P-8) — where a guarantee is warranted, the durable form is an <a href="../specs/042-profile-enforcement/spec.html">enforce</a>
+    category or a <code>validate</code> rule (e.g. an OpenAPI-present check), not the prose.</dd>
+    <dt>Consequences</dt><dd>+ Fills the one gap in spectastic's principle tiers with the highest-leverage family for
+    agent code. + Turns a genuinely novel capability (profile-tiered principles) into a differentiator. + Reuses the
+    existing 041 manifest + 042 enforce split — the contract-first <em>principle</em> at standard, a possible
+    contract-present <em>enforce category</em> at verified. − Principles are advisory; agents ignore/over-comply, so the
+    guarantee must live in enforce/validate for anything load-bearing. − Adds curation surface to the manifest; keep
+    each statement one crisp sentence, deduped by name like the existing ones.</dd>
+  </dl>
+</spec-decision>
+
+<h3>Suggested next artifact</h3>
+<spec-out-of-scope>
+  <ul>
+    <li defer-to="TBD-profile-principle-catalog">A <code>/spectastic.propose</code> against <code>041-init-profiles</code> adding the tiered principles to <code>spectastic-profiles.json</code> (contract-first + Library-First at standard first), then <code>/spectastic.implement</code>.</li>
+    <li defer-to="TBD-contract-first-enforce">A companion <code>enforce</code>/<code>validate</code> teeth for the contract-first principle — a "public interface has a checked-in OpenAPI/schema" category — mirroring the <a href="./coverage-enforcement-considerations.html">coverage</a> split (principle at standard, machine-check at verified).</li>
+    <li defer-to="TBD-profile-interfaces-axis">An <code>interfaces</code>/<code>contracts</code> profile axis alongside the existing five, expressing the contract-rigor posture per tier.</li>
+  </ul>
+</spec-out-of-scope>
+</section>
+
+
+<!-- ======================================================= -->
+<section id="caveats">
+<h2>7 · Caveats on the sources</h2>
+<ul>
+  <li><strong>Spec Kit's "nine articles"</strong> is partly scaffolding — Articles IV–VI are project-defined
+  placeholders, and the exact versioning token ("MAJOR.MINOR.BUILD") is reported, not verbatim in the fetched text.</li>
+  <li><strong>The cumulative maturity levels</strong> (SAMM L1–3, DSOMM L1–5, ASVS/WCAG) are corroborated across
+  sources but several level definitions came from reputable secondaries (Codific) rather than a fully-rendered primary
+  page.</li>
+  <li><strong>DORA thresholds shift yearly</strong> — treat Elite/High/Medium/Low cut-points as indicative, and the
+  capability catalog (not the numbers) as the durable part.</li>
+  <li><strong>"Profile-tiered principles are novel"</strong> is an absence-of-evidence claim — confirmed for Spec Kit,
+  Kiro, and Well-Architected, but "not found in the tools surveyed," not "proven novel anywhere."</li>
+  <li><strong>The accessibility → tier mapping</strong> is synthesis, not drawn from a primary a11y-maturity model —
+  lower confidence than the security rungs.</li>
+</ul>
+</section>
+
+
+<!-- ======================================================= -->
+<section id="sources">
+<h2>8 · Sources</h2>
+<p>Verified 11 Jul 2026. Two web-backed research passes (principle catalog; rigor tiering). Primary sources fetched
+directly; several standards pages surfaced via search and are flagged in §7.</p>
+<ol>
+  <li>Spec Kit articles — <a href="https://github.com/github/spec-kit/blob/main/spec-driven.md">github.com/github/spec-kit/…/spec-driven.md</a>: Library-First, CLI, Test-First, Simplicity, Anti-Abstraction, Integration-First + gates.</li>
+  <li>OWASP SAMM — <a href="https://owaspsamm.org/model/">owaspsamm.org/model</a>: 5 functions / 15 practices / 30 streams; three maturity levels (foundational → mature → advanced).</li>
+  <li>Fowler / Böckeler, SDD tools — <a href="https://martinfowler.com/articles/exploring-gen-ai/sdd-3-tools.html">martinfowler.com/articles/exploring-gen-ai/sdd-3-tools.html</a>: the constitution as a "powerful rules file," agents ignore/over-comply, "false sense of control."</li>
+  <li>API design-first — <a href="https://blog.stoplight.io/api-first-api-design-first-or-code-first-which-should-you-choose">blog.stoplight.io/…</a>: design-first vs code-first; machine-checkable contract, breaking changes caught at design time.</li>
+  <li>Amazon one-way/two-way doors — <a href="https://www.aboutamazon.com/news/company-news/2016-letter-to-shareholders">aboutamazon.com/…/2016-letter-to-shareholders</a>: reversible decisions get light-weight process; heavy process on reversible ones is a failure mode. (Also Google API Design Guide — <a href="https://docs.cloud.google.com/apis/design">docs.cloud.google.com/apis/design</a> [5, catalog].)</li>
+  <li>Spec Kit constitution template — <a href="https://raw.githubusercontent.com/github/spec-kit/main/.specify/memory/constitution.md">…/.specify/memory/constitution.md</a>: a single constitution, five core principles, SemVer governance, no maturity tiers.</li>
+  <li>SemVer — <a href="https://semver.org/">semver.org</a>: MAJOR.MINOR.PATCH as a backward-compatibility contract; declare a public API first.</li>
+  <li>DORA capabilities — <a href="https://dora.dev/capabilities/">dora.dev/capabilities</a>: the capability catalog (CI/CD, trunk-based, small batches, test automation, observability, loosely-coupled architecture) that ladders teams up.</li>
+  <li>DSOMM introduction — <a href="https://codific.com/owasp-dsomm-a-comprehensive-introduction/">codific.com/owasp-dsomm-a-comprehensive-introduction</a>: five dimensions, L1–L5 activity examples (feature toggles L4, blue/green L5, ASVS % by level).</li>
+  <li>AWS Well-Architected pillars — <a href="https://docs.aws.amazon.com/wellarchitected/latest/framework/the-pillars-of-the-framework.html">docs.aws.amazon.com/wellarchitected/…</a>: six pillars; tradeoffs driven by business context.</li>
+  <li>Google SRE, PRR — <a href="https://sre.google/sre-book/evolving-sre-engagement-model/">sre.google/sre-book/evolving-sre-engagement-model</a>: Production Readiness Review as the gate before SRE operates a service.</li>
+  <li>Fowler, YAGNI — <a href="https://martinfowler.com/bliki/Yagni.html">martinfowler.com/bliki/Yagni.html</a>: four costs of building ahead of need; think-ahead-not-build-ahead; hard-to-reverse exemption.</li>
+  <li>DORA metrics — <a href="https://dora.dev/guides/dora-metrics-four-keys/">dora.dev/guides/dora-metrics-four-keys</a>: the five metrics; speed and stability reinforce each other; Elite/High/Medium/Low tiers.</li>
+  <li>Twelve-Factor App — <a href="https://12factor.net/">12factor.net</a>: config-in-env, stateless disposable processes, logs as streams — the deployable-product baseline.</li>
+  <li>Google SRE, SLOs — <a href="https://sre.google/sre-book/service-level-objectives/">sre.google/sre-book/service-level-objectives</a>: SLO/SLI definitions; error budget = 1 − SLO governs release velocity.</li>
+  <li>OpenTelemetry primer — <a href="https://opentelemetry.io/docs/concepts/observability-primer/">opentelemetry.io/docs/concepts/observability-primer</a>: logs/metrics/traces correlated by trace/span IDs.</li>
+  <li>WCAG standards — <a href="https://www.w3.org/WAI/standards-guidelines/wcag/">w3.org/WAI/standards-guidelines/wcag</a>: A / AA / AAA cumulative levels; AA as the common legal bar.</li>
+  <li>NIST least privilege — <a href="https://csrc.nist.gov/glossary/term/least_privilege">csrc.nist.gov/glossary/term/least_privilege</a>: minimum access needed; bounds blast radius.</li>
+  <li>Pact (consumer-driven contracts) — <a href="https://docs.pact.io/">docs.pact.io</a>: consumer declares interactions; provider verifies; the pact file as a versioned artifact.</li>
+  <li>Data contracts — <a href="https://datacontract.com/">datacontract.com</a>: schema + quality + SLA + ownership between producers and consumers.</li>
+  <li>Spotify golden paths — <a href="https://engineering.atspotify.com/2020/08/how-we-use-golden-paths-to-solve-fragmentation-in-our-software-ecosystem">engineering.atspotify.com/…/golden-paths</a>: opinionated + supported paths, one per discipline, opt-out loses support.</li>
+</ol>
+</section>
+
+
+<!-- ======================================================= -->
+<section id="changelog">
+<h2>9 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-07-11">11 Jul 2026</time><span>Initial synthesis. Two web-backed research passes (~24 primary sources): the engineering-constitution principle catalog (Spec Kit, contract-first, the broader canon) and how the industry tiers rigor (DORA, SAMM/DSOMM, Well-Architected, YAGNI, one-way/two-way doors). Fused with the current <code>spectastic-profiles.json</code> tiers. Recommends adding the shape-of-system principles — led by contract-first + Library-First at <em>standard</em> — laddered across the profiles, with enforce/validate as the teeth.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  Spectastic · Engineering principles, tiered by profile · 11 Jul 2026 ·
+  <a href="../index.html">home</a> ·
+  <a href="../specs/041-init-profiles/spec.html">041</a> ·
+  <a href="../specs/000-spectastic/spec.html">spec</a> ·
+  <button data-theme-toggle style="background:none;border:none;color:var(--c-link);cursor:pointer;font:inherit;padding:0;border-bottom:1px solid currentColor;">light/dark</button>
+</footer>
+
+</main>
+<script src="../assets/spec.js"></script>
+</body>
+</html>
