@@ -74,4 +74,22 @@ describe('evaluateEnforcement: FR-010 undetectable-category → warn, never a fa
     expect(r.missing).toEqual(['formatter']);
     expect(r.exitCode).toBe(1);
   });
+
+  // observability is the second STRUCTURALLY_UNDETECTABLE user: Swift + C++ have
+  // no exporter-manifest convention, so a missing observability there warns.
+  it('Swift-only project missing observability → warned, not missing; hard gate exits 0', () => {
+    const req: EnforcementCategory[] = ['formatter', 'observability'];
+    const r = evaluateEnforcement(req, new Set(['formatter']), 'hard', new Set(['swift']));
+    expect(r.warned).toEqual(['observability']);
+    expect(r.missing).toEqual([]);
+    expect(r.exitCode).toBe(0);
+  });
+
+  it('JS project missing observability → a real gap (JS has exporter signals); hard gate exits 1', () => {
+    const req: EnforcementCategory[] = ['formatter', 'observability'];
+    const r = evaluateEnforcement(req, new Set(['formatter']), 'hard', new Set(['js']));
+    expect(r.warned).toEqual([]);
+    expect(r.missing).toEqual(['observability']);
+    expect(r.exitCode).toBe(1);
+  });
 });
