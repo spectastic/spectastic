@@ -32,6 +32,37 @@ describe('profiles: loadProfiles', () => {
   });
 });
 
+describe('profiles: principle drift guard', () => {
+  const manifest = loadProfiles(REPO_ROOT);
+
+  // The manifest has no cross-profile inheritance (combinedPrinciples composes
+  // base + this-profile, deduped by name), so a principle seeded at a lower tier
+  // is *repeated* into the higher tiers as a hand-maintained copy. This guards the
+  // one gap that repetition opens: a later wording fix to one copy silently diverging
+  // from the others. Any name appearing under more than one profile MUST carry an
+  // identical statement across all of them.
+  it('a principle repeated across tiers carries an identical statement', () => {
+    const byName = new Map<string, Map<string, string>>(); // name -> (profile -> statement)
+    for (const name of profileNames(manifest)) {
+      for (const p of resolveProfile(manifest, name).principles) {
+        const seen = byName.get(p.name) ?? new Map<string, string>();
+        seen.set(name, p.statement);
+        byName.set(p.name, seen);
+      }
+    }
+    const drifted: string[] = [];
+    for (const [principleName, byProfile] of byName) {
+      const statements = new Set(byProfile.values());
+      if (statements.size > 1) {
+        drifted.push(
+          `"${principleName}" diverges across ${[...byProfile.keys()].join(', ')}`,
+        );
+      }
+    }
+    expect(drifted, `principle statements drifted across tiers:\n${drifted.join('\n')}`).toEqual([]);
+  });
+});
+
 describe('profiles: resolveProfile', () => {
   const manifest = loadProfiles(REPO_ROOT);
 
