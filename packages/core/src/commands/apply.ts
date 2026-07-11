@@ -72,11 +72,38 @@ export async function applyCommand(
     const target = match[2]!;
     const body = match[3] ?? '';
 
+    // Requirement-vs-data branch (triage T-018 / REQ-CHANGE-002, REQ-CHANGE-008).
+    // A target of requirement-ID shape (^[A-Z]+-) touches a numbered requirement in
+    // spec.html; any other target (a manifest key/path like `standard/foo`) is a
+    // data/content delta whose post-state is its §6 tasks — apply makes no change to
+    // the requirements body for it (the changelog append below still lands).
+    const targetsRequirement = /^[A-Z]+-/.test(target);
+    if (!targetsRequirement) {
+      deltas.push({
+        target,
+        op,
+        result: 'success',
+        reason: 'data/content delta — requirements body unchanged',
+      });
+      continue;
+    }
+    // Shape guard: an added/modified requirement delta MUST embed its post-state.
+    // A missing one is the T-018 fabrication trap — gate-block, never synthesize a
+    // requirement from the delta body.
+    const embeddedRequirement = extractInner(body, 'spec-requirement');
+    if ((op === 'added' || op === 'modified') && embeddedRequirement == null) {
+      deltas.push({
+        target,
+        op,
+        result: 'gate-blocked',
+        reason: 'requirement delta missing <spec-requirement>',
+      });
+      continue;
+    }
+
     if (op === 'added') {
-      // Find the topic-group h3 matching target prefix; append.
-      const requirementHtml = extractInner(body, 'spec-requirement') ?? body.trim();
-      // Naive: insert before the next </section>.
-      const insertion = `\n${wrapRequirement(target, requirementHtml)}\n`;
+      // Insert the embedded post-state before the next </section>.
+      const insertion = `\n${wrapRequirement(target, embeddedRequirement!)}\n`;
       const closingSection = liveSpec.indexOf('</section>');
       if (closingSection === -1) {
         deltas.push({ target, op, result: 'gate-blocked', reason: 'no </section> anchor' });
@@ -85,7 +112,7 @@ export async function applyCommand(
       liveSpec = `${liveSpec.slice(0, closingSection)}${insertion}${liveSpec.slice(closingSection)}`;
       deltas.push({ target, op, result: 'success' });
     } else if (op === 'modified') {
-      const newBody = extractInner(body, 'spec-requirement') ?? body.trim();
+      const newBody = embeddedRequirement!;
       const re = new RegExp(`<spec-requirement[^>]*\\bid=["']${target}["'][\\s\\S]*?<\\/spec-requirement>`, 'i');
       if (re.test(liveSpec)) {
         liveSpec = liveSpec.replace(re, wrapRequirement(target, newBody));
