@@ -1,0 +1,248 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
+<title>SLO-from-NFR artifact model · Specification</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Specification · 047-slo-nfr-artifact</p>
+  <h1>SLO-from-NFR artifact model</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    A quantified NFR is an SLO in prose. This gives that SLO a first-class shape linked to its NFR — and makes an unquantified NFR fail at the tiers that promise reliability.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>      <span><spec-status value="accepted">Accepted</spec-status></span>
+    <b>Spec ID</b>     <span>047-slo-nfr-artifact</span>
+    <b>Owner</b>       <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Reviewers</b>   <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Created</b>     <span><time datetime="2026-07-12">12 Jul 2026</time></span>
+    <b>Principles</b><span><a href="../../principles.html">v1.7.0</a></span>
+    <b>Grounded in</b><span><a href="../../docs/observability-slo-considerations.html">observability-slo-considerations</a> (move 3)</span>
+    <b>Smallest demoable</b><span>A <code>&lt;spec-slo target="NFR-001"&gt;</code> renders linked to its NFR, and a malformed one fails <code>validate</code>.</span>
+    <b>Read time</b>   <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-budget words="1500" reqs="20" minutes="12"></spec-budget>
+
+  <spec-tldr>
+    <p>A customer-facing "p95 &lt; 200&nbsp;ms" <em>is</em> an SLO in prose, but spectastic captures the NFR and
+    <strong>consumes the number nowhere</strong>. This spec adds the artifact model, representation-first: a first-class
+    <strong><code>&lt;spec-slo target="NFR-NNN"&gt;</code></strong> element (OpenSLO-shaped — SLI, objective, window, budgeting method;
+    error budget derived), mirroring <code>&lt;spec-risk target&gt;</code>, with an optional golden-signal tag and an optional light
+    <code>slo=</code> annotation on the NFR for simple cases; two shape rules keep it well-formed. As a should-tier follow-in, a
+    <strong>profile-gated rule errors on a <em>verified</em>/<em>enterprise</em> NFR that is neither inline-quantified nor
+    SLO-linked</strong> — the "verified NFRs are quantified" check. The <code>verify.html</code> trace that would <em>prove</em> the SLO
+    at runtime stays the sibling <code>TBD-verify-slo-trace</code>.</p>
+  </spec-tldr>
+
+  <dl class="invest">
+    <dt><span class="letter">I</span> Independent</dt> <dd>Reuses the <a href="../002-validate-cli/spec.html">002</a> rule registry and the <code>&lt;spec-risk target&gt;</code> pattern; the observability principle + enforce category already landed. No shared-data coupling.</dd>
+    <dt><span class="letter">N</span> Negotiable</dt>  <dd>Outcome (an SLO has a shape linked to its NFR; an unquantified verified NFR is caught), not a named SLO library.</dd>
+    <dt><span class="letter">V</span> Valuable</dt>    <dd>Unlocks <a href="#SC-001">SC-001</a> — a latent NFR number becomes a first-class, reviewable, machine-consumable SLO.</dd>
+    <dt><span class="letter">E</span> Estimable</dt>   <dd>The element mirrors <code>&lt;spec-risk&gt;</code>; the rules mirror <code>risk-target-required</code> + the enforce-waiver profile scan. Plan derivable.</dd>
+    <dt><span class="letter">S</span> Small</dt>       <dd>Slice 1 is one element + two shape rules; the quantified rule + light annotation are should-tier.</dd>
+    <dt><span class="letter">T</span> Testable</dt>    <dd>Every requirement observable; <a href="#SC-001">SC-001</a>/<a href="#SC-002">SC-002</a> are validate- and browser-checkable.</dd>
+  </dl>
+</header>
+
+
+<section id="context">
+<h2>1 · Context</h2>
+<p>The reliability chain is <strong>NFR → SLO → SLI → instrumentation</strong>. A <a href="../../docs/observability-slo-considerations.html">research
+pass</a> found spectastic owns the first rung and drops the chain: NFRs are <code>&lt;spec-requirement id="NFR-NNN"&gt;</code> and the
+template prompts <em>"p95 &lt; 200 ms, not 'fast'"</em>, but nothing represents the latent SLO and no rule requires the number to exist.</p>
+<p>Two of that doc's four moves have landed — the tiered observability/SLO <strong>principle</strong> and the <code>observability</code>
+<strong>enforce category</strong>. This spec is the third: <strong>the SLO-from-NFR artifact model</strong>, which the research doc left for
+"the follow-on spec to pick." The fourth — a <code>verify.html</code> trace that <em>proves</em> the SLO at runtime — stays a sibling.</p>
+</section>
+
+
+<section id="scenarios">
+<h2>2 · User scenarios &amp; testing</h2>
+
+<h3 id="US1">US1 · An SLO has a first-class shape linked to its NFR <spec-pill>P1</spec-pill></h3>
+<p>As a <strong>spec author</strong>, I want to attach a structured SLO to an NFR so the reliability promise is a reviewable artifact, not
+prose a reader must infer.</p>
+<p><em>Acceptance:</em> a <code>&lt;spec-slo target="NFR-001"&gt;</code> carrying SLI, objective, window, and budgeting method renders linked
+to its NFR with click-through; a malformed one (no <code>target=</code>, a target that resolves to no NFR, or a missing required field)
+fails <code>validate</code>.</p>
+
+<h3 id="US2">US2 · A verified NFR must be quantified <spec-pill>P2</spec-pill></h3>
+<p>As a <strong>reviewer on a verified/enterprise project</strong>, I want an NFR with no measurable target to fail so a vague "fast"
+can't ship where reliability is promised.</p>
+<p><em>Acceptance:</em> at the verified/enterprise profile, an NFR that carries neither an inline measurable target (a number+unit,
+percentile, or threshold — in its prose or its <code>slo=</code> attribute) nor a linked <code>&lt;spec-slo&gt;</code> produces an
+<strong>error</strong>; below verified it is silent; a quantified or SLO-linked NFR passes at every tier.</p>
+
+<h3 id="US3">US3 · The simple case stays light <spec-pill>P3</spec-pill></h3>
+<p>As a <strong>spec author</strong>, I want a compact way to note a simple SLO without the full element so trivial targets don't demand
+ceremony.</p>
+<p><em>Acceptance:</em> an optional <code>slo=</code> attribute on <code>&lt;spec-requirement id="NFR-NNN"&gt;</code> carries a single-string
+SLO (e.g. <code>"99% &lt; 200ms / 28d"</code>); it satisfies US2's quantified check and is machine-readable for the future verify trace.</p>
+
+<h3>Edge cases</h3>
+<ul>
+  <li><strong>No profile marker.</strong> The quantified rule reads <code>.spectastic/profile.json</code>; with no marker it is a no-op — fail-safe (advisory, never a false hard-fail).</li>
+  <li><strong>Multiple SLOs per NFR.</strong> An NFR may carry several <code>&lt;spec-slo&gt;</code> (e.g. a latency and an availability objective); each is independently well-formed and linked.</li>
+  <li><strong>Legitimately-qualitative NFRs.</strong> Where an NFR isn't a single number (accessibility, a security posture), the quantified rule accepts a threshold, ratio, or conformance level, and an SLO link satisfies it — an escape hatch that isn't "fast".</li>
+</ul>
+</section>
+
+
+<section id="requirements">
+<h2>3 · Requirements</h2>
+
+<p>Conformance keywords (<spec-rule>MUST</spec-rule>, <spec-rule level="should">SHOULD</spec-rule>,
+<spec-rule level="may">MAY</spec-rule>) follow RFC 2119.</p>
+
+<h3>Functional</h3>
+
+<spec-requirement id="FR-001" priority="must">
+<p>A first-class <code>&lt;spec-slo&gt;</code> element <spec-rule>MUST</spec-rule> represent an SLO refining an NFR. It
+<spec-rule>MUST</spec-rule> carry a <code>target=</code> attribute naming the NFR id it refines, and <spec-rule>MUST</spec-rule> model the
+OpenSLO shape: an <strong>SLI</strong> (what is measured), an <strong>objective</strong> (the target, e.g. <code>99% &lt; 200&nbsp;ms</code>),
+a <strong>time window</strong>, and a <strong>budgeting method</strong>; the <strong>error budget</strong> (1 − objective)
+<spec-rule>MUST</spec-rule> be derived, never authored. It <spec-rule>MAY</spec-rule> carry an optional <code>signal=</code> attribute
+tagging the SLO by a Four Golden Signals value (<code>latency</code> / <code>traffic</code> / <code>errors</code> / <code>saturation</code>).
+It <spec-rule>MUST</spec-rule> render linked to its NFR with click-through (mirroring <code>&lt;spec-risk target&gt;</code>) and
+<spec-rule>MUST</spec-rule> degrade gracefully with JS disabled (P-4).</p>
+<details><summary>Canonical shape</summary>
+<pre><code>&lt;spec-slo target="NFR-001" signal="latency" window="28d" budgeting="occurrences"&gt;
+  &lt;dt&gt;SLI&lt;/dt&gt;&lt;dd&gt;fraction of requests served in &lt; 200 ms (good ÷ valid)&lt;/dd&gt;
+  &lt;dt&gt;Objective&lt;/dt&gt;&lt;dd&gt;99% (error budget 1% = derived)&lt;/dd&gt;
+&lt;/spec-slo&gt;</code></pre>
+<p>Attribute-vs-content split (which fields are attributes, which are content) is a plan decision; the required <em>information</em> is fixed here.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-002" priority="must">
+<p>Two schema validate rules <spec-rule>MUST</spec-rule> keep a <code>&lt;spec-slo&gt;</code> well-formed, at <strong>error</strong>
+severity: <code>slo-target-required</code> (a <code>&lt;spec-slo&gt;</code> that omits <code>target=</code> is flagged, mirroring
+<code>risk-target-required</code>), and <code>slo-well-formed</code> (its <code>target=</code> <spec-rule>MUST</spec-rule> resolve to an
+<code>NFR-*</code> requirement in the same document, and the required OpenSLO fields — SLI, objective, window, budgeting method —
+<spec-rule>MUST</spec-rule> be present; an unknown <code>signal=</code> value is flagged).</p>
+</spec-requirement>
+
+<spec-requirement id="FR-003" priority="should">
+<p>An optional <code>slo=</code> attribute on a <code>&lt;spec-requirement id="NFR-NNN"&gt;</code> <spec-rule level="should">SHOULD</spec-rule>
+carry a compact single-string SLO (e.g. <code>"99% &lt; 200ms / 28d"</code>) for the simple case, machine-readable so a downstream
+consumer (the verify observables trace) can read either the attribute or the full element.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-004" priority="should">
+<p>A profile-gated <strong>quantified-NFR</strong> rule <spec-rule level="should">SHOULD</spec-rule> resolve the project's profile from
+<code>.spectastic/profile.json</code> and, at the <em>verified</em>/<em>enterprise</em> tiers, flag at <strong>error</strong> severity any
+<code>NFR-*</code> requirement that is neither <em>inline-quantified</em> (a number+unit, percentile, or threshold in its prose or its
+<code>slo=</code> attribute) nor refined by a linked <code>&lt;spec-slo&gt;</code>. Below verified, or with no profile marker, it
+<spec-rule>MUST</spec-rule> be a no-op (fail safe in the advisory direction, mirroring the enforce-waiver scan).</p>
+<details><summary>Rationale</summary><p>Tier-gating needs the profile, which the schema engine never sees — so this is a folded CLI scan
+(like <code>enforce-waiver-well-formed</code>), not a schema <code>PerFileRule</code>. The inline-OR-linked acceptance keeps the heuristic
+from false-failing a legitimately SLO-linked or thresholded NFR.</p></details>
+</spec-requirement>
+
+<h3>Non-functional</h3>
+
+<spec-requirement id="NFR-001" priority="must" slo="none — deterministic, no runtime target">
+<p>The element and rules <spec-rule>MUST</spec-rule> be deterministic and add no runtime dependency, and <spec-rule>MUST NOT</spec-rule>
+break the rendering of any existing spec-family artifact — a document with no <code>&lt;spec-slo&gt;</code> renders and validates exactly as
+before.</p>
+</spec-requirement>
+
+<spec-requirement id="NFR-002" priority="should">
+<p>The <code>&lt;spec-slo&gt;</code> element <spec-rule level="should">SHOULD</spec-rule> render legibly in both themes and both light/dark
+modes (calm and vivid), consistent with the existing typed blocks (<code>&lt;spec-risk&gt;</code>, <code>&lt;spec-decision&gt;</code>).</p>
+</spec-requirement>
+
+<h3>Out of scope (deferred)</h3>
+<spec-out-of-scope>
+  <ul>
+    <li defer-to="TBD-verify-slo-trace">The <code>verify.html</code> observables trace (SLO → SLI → instrumentation) + a <code>CapturedRun</code> instrumentation field that <em>proves</em> the SLO at runtime (does <code>/metrics</code> exist? are the golden-signal SLIs emitted?). The sibling that gives NFRs a runtime proof leg (extends P-7).</li>
+    <li defer-to="TBD">Requiring an SLO on every verified NFR, or enforcing golden-signal coverage — advisory here; this spec only requires an NFR be <em>quantified</em>, not that it carry a full SLO.</li>
+    <li defer-to="TBD">Runtime probing of a live metrics endpoint, or OTLP-push detection — a runtime/config concern, not artifact shape (belongs to the verify trace).</li>
+  </ul>
+</spec-out-of-scope>
+</section>
+
+
+<section id="data">
+<h2>4 · Data model</h2>
+<p>One new artifact element and one optional attribute; no persistent entities.</p>
+<dl>
+  <dt><code>&lt;spec-slo&gt;</code></dt><dd>An SLO refining an NFR — the fields per FR-001, error budget derived.</dd>
+  <dt><code>slo=</code> on <code>&lt;spec-requirement&gt;</code></dt><dd>The optional light single-string SLO (FR-003).</dd>
+  <dt>Golden signal</dt><dd>The <code>signal=</code> enum: <code>latency</code>, <code>traffic</code>, <code>errors</code>, <code>saturation</code> (RED/USE are lenses onto these four).</dd>
+</dl>
+</section>
+
+
+<section id="success">
+<h2>5 · Success criteria</h2>
+
+<spec-requirement id="SC-001" priority="must">
+<p>A <code>&lt;spec-slo target="NFR-001"&gt;</code> with the full OpenSLO fields renders linked to its NFR (click-through to the requirement),
+and a malformed SLO — missing <code>target=</code>, a <code>target=</code> resolving to no NFR in the document, or a missing required field —
+<strong>fails</strong> <code>spectastic validate</code> at error severity.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-002" priority="should">
+<p>On a <em>verified</em>/<em>enterprise</em> project, an NFR carrying neither an inline measurable target nor a linked
+<code>&lt;spec-slo&gt;</code> <strong>fails</strong> <code>validate</code> (error); the same NFR passes below verified, passes with no profile
+marker, and passes once given an inline target, an <code>slo=</code> attribute, or a linked <code>&lt;spec-slo&gt;</code>.</p>
+</spec-requirement>
+</section>
+
+
+<section id="assumptions">
+<h2>6 · Assumptions</h2>
+<spec-assumption>
+<p>The profile marker (<code>.spectastic/profile.json</code>) and <code>loadProfiles</code> resolution used by the enforce-waiver scan are the same path FR-004 reads — a proven, existing mechanism, not new profile plumbing.</p>
+</spec-assumption>
+<spec-assumption>
+<p>The observability enforce category and the tiered SLO principle already shipped (042/041, 11 Jul 2026), so this spec adds only the artifact model + the quantified check, not the principle or the metrics-stack detection.</p>
+</spec-assumption>
+</section>
+
+
+<section id="questions">
+<h2>7 · Open questions</h2>
+<spec-questions>
+<p>None outstanding — the representation (hybrid: a first-class <code>&lt;spec-slo&gt;</code> element plus an optional light <code>slo=</code>
+annotation), the full OpenSLO field set, the optional golden-signal tag, the rule's profile-gated error gating, and the inline-OR-linked
+quantified definition were all anchored in the interview.</p>
+</spec-questions>
+</section>
+
+
+<section id="conformance">
+<h2>8 · Conformance index</h2>
+<p>Auto-built from every <code>&lt;spec-requirement&gt;</code> in this document.</p>
+<spec-conformance></spec-conformance>
+</section>
+
+
+<section id="changelog">
+<h2>9 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-07-12">12 Jul 2026</time><span>Initial spec. The SLO-from-NFR artifact model (move 3 of the observability-slo research doc): a first-class <code>&lt;spec-slo target&gt;</code> element (full OpenSLO shape + optional golden-signal tag, FR-001) with shape rules (FR-002), an optional light <code>slo=</code> NFR annotation (FR-003), and a profile-gated verified-NFR-quantified rule (FR-004). Sliced representation-first; the verify observables trace stays the sibling <code>TBD-verify-slo-trace</code>. Resolves <code>TBD-slo-nfr-artifact</code>.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  047-slo-nfr-artifact · SLO-from-NFR artifact model · authored 12 Jul 2026 ·
+  <button data-theme-toggle style="background:none;border:none;color:var(--c-link);cursor:pointer;font:inherit;padding:0;border-bottom:1px solid currentColor;">toggle theme</button>
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>

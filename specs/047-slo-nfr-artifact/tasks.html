@@ -1,0 +1,230 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
+<title>SLO-from-NFR artifact model · Tasks</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Tasks · 047-slo-nfr-artifact</p>
+  <h1>SLO-from-NFR artifact model</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    Ordered, parallelizable work. Tests precede implementation. Drive through with
+    <code>/spectastic.implement</code> — one task per invocation.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>     <span><spec-status value="draft">Draft</spec-status></span>
+    <b>Spec</b>       <span><a href="./spec.html">047-slo-nfr-artifact</a></span>
+    <b>Plan</b>       <span><a href="./plan.html">plan</a></span>
+    <b>Branch</b>     <span><code>slo-nfr-artifact</code></span>
+    <b>Created</b>    <span><time datetime="2026-07-12">12 Jul 2026</time></span>
+    <b>Read time</b>  <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-tldr>
+    <p>20 tasks across five phases. Setup → Foundational (the shared attribute-shape helper) → US1 (the
+    <code>&lt;spec-slo&gt;</code> element + shape rules) → US2 (the profile-gated quantified check) → US3 (the light
+    <code>slo=</code> annotation, which extends US2's scan) → Polish. Tasks marked <span class="par">[P]</span> touch
+    a distinct file with no in-flight dependency. Per story, tests are written and failing before implementation
+    starts (D-005 of the plan).</p>
+  </spec-tldr>
+</header>
+
+
+<section id="strategy">
+<h2>1 · Execution strategy</h2>
+
+<spec-tabs>
+  <spec-tab label="Incremental (recommended)">
+    <p>Setup → Foundational → US1 → US2 → US3 → Polish. US1 (the element + shape rules) is the load-bearing slice —
+    US2 and US3 both read the same <code>&lt;spec-slo target&gt;</code> shape US1 defines. Matches the plan's Low
+    risk-tolerance call (D-005): every locus copies a shipped pattern, so sequencing by dependency rather than
+    parallelizing across stories keeps the copy-verify loop tight.</p>
+  </spec-tab>
+  <spec-tab label="MVP-first">
+    <p>Ship US1 alone first (the representation — SC-001) and stop. US2/US3 (the quantified-NFR gate) land as a
+    second pass once the element has seen real use.</p>
+  </spec-tab>
+  <spec-tab label="Parallel teams">
+    <p>Not recommended here — US2's quantified scan reads the same target-resolution logic US1's shape rule defines,
+    and US3 extends US2's scan directly. The dependency chain is real, not just conventional.</p>
+  </spec-tab>
+</spec-tabs>
+</section>
+
+
+<section id="phase-setup" class="phase">
+<h2>2 · Phase 1 — Setup</h2>
+
+<spec-task id="T-001" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Scaffold the SLO rule fixture directories</strong> — empty <code>positive.html</code>/<code>negative.html</code> pairs, mirroring the <code>no-executable-content</code> convention. <span class="path">packages/schema/fixtures/slo-target-required/ + packages/schema/fixtures/slo-well-formed/</span></div>
+</spec-task>
+<spec-task id="T-002" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Add <code>spec-slo</code> to the shared typed-block selector lists</strong> — so it inherits the base card/spacing rules alongside <code>spec-risk</code>/<code>spec-decision</code> before its own styling lands (D-001). <span class="path">assets/spec.css:581,587</span></div>
+</spec-task>
+</section>
+
+
+<section id="phase-foundation" class="phase">
+<h2>3 · Phase 2 — Foundational</h2>
+<p>The one piece both US1's shape rule and US2/US3's quantified scan read: the definition of what counts as a
+"measurable target" in NFR prose, and the golden-signal enum. Shared, so it lands before any story.</p>
+
+<spec-task id="T-010">
+  <input type="checkbox" checked>
+  <div><strong>Define the quantified-target heuristic and golden-signal enum</strong> — a small shared module: a regex/heuristic for "carries a number+unit, percentile, or threshold" (D-004) and the four-value <code>signal=</code> enum (<code>latency</code>/<code>traffic</code>/<code>errors</code>/<code>saturation</code>). Consumed by <code>slo-well-formed</code> (US1, validates <code>signal=</code>) and the quantified scan (US2, judges NFR prose). <span class="path">packages/schema/src/slo-shared.ts</span></div>
+</spec-task>
+</section>
+
+
+<section id="phase-us1" class="phase">
+<h2>4 · Phase 3a — US1 · An SLO has a first-class shape linked to its NFR</h2>
+
+<h3>Tests (write &amp; fail first)</h3>
+<spec-task id="T-100" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Author <code>slo-target-required</code> fixtures + unit test</strong> — positive: a <code>&lt;spec-slo&gt;</code> missing <code>target=</code>; negative: one with it. <span class="path">packages/schema/fixtures/slo-target-required/*.html + packages/schema/test/slo-rules.test.ts</span></div>
+</spec-task>
+<spec-task id="T-101" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Author <code>slo-well-formed</code> fixtures + unit test</strong> — positive cases: a dangling <code>target=</code> (no matching NFR), a missing required field (objective/window/budgeting), an unknown <code>signal=</code> value; negative: a fully-formed SLO. <span class="path">packages/schema/fixtures/slo-well-formed/*.html + packages/schema/test/slo-rules.test.ts</span></div>
+</spec-task>
+<spec-task id="T-102" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Author the render + click-through Playwright spec</strong> — asserts a <code>&lt;spec-slo target="NFR-001"&gt;</code> renders as a styled card and clicking it scrolls to the NFR (mirrors <code>tests/theme.header.spec.ts</code>'s harness); written against the not-yet-existing CSS/JS so it fails first (SC-001). <span class="path">tests/slo.render.spec.ts</span></div>
+</spec-task>
+
+<h3>Implementation</h3>
+<spec-task id="T-110">
+  <input type="checkbox" checked>
+  <div><strong>Implement <code>slo-target-required</code></strong> — a <code>PerFileRule</code> cloned from <code>risk-target-required.ts</code>: flag any <code>&lt;spec-slo&gt;</code> missing <code>target=</code> (FR-002). <span class="path">packages/schema/src/rules/slo-target-required.ts</span></div>
+</spec-task>
+<spec-task id="T-111">
+  <input type="checkbox" checked>
+  <div><strong>Implement <code>slo-well-formed</code></strong> — <code>target=</code> must resolve to an <code>NFR-*</code> requirement in the same document; the required OpenSLO fields (SLI content, <code>objective</code>, <code>window</code>, <code>budgeting</code>) must be present; an unknown <code>signal=</code> is flagged (FR-002, using T-010's enum). <span class="path">packages/schema/src/rules/slo-well-formed.ts</span></div>
+</spec-task>
+<spec-task id="T-112">
+  <input type="checkbox" checked>
+  <div><strong>Register both rules</strong> in the schema registry under a new "SLO rules" comment. <span class="path">packages/schema/src/rules/index.ts</span></div>
+</spec-task>
+<spec-task id="T-113" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Style the <code>&lt;spec-slo&gt;</code> card</strong> — dedicated rule mirroring <code>spec-decision</code>'s card (border, spacing, dl layout for the attribute fields), in both calm/vivid themes (NFR-002). <span class="path">assets/spec.css</span></div>
+</spec-task>
+<spec-task id="T-114" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Wire the <code>spec-slo[target]</code> click-through</strong> — clone the <code>spec-delta[target]</code> block: same-doc <code>scrollIntoView</code>, cross-file <code>spec.html#id</code> fallback (FR-001). <span class="path">assets/spec.js</span></div>
+</spec-task>
+
+<spec-note>
+<p>Closes <a href="./spec.html#FR-001">FR-001</a>, <a href="./spec.html#FR-002">FR-002</a>, <a href="./spec.html#SC-001">SC-001</a>.</p>
+</spec-note>
+</section>
+
+
+<section id="phase-us2" class="phase">
+<h2>5 · Phase 3b — US2 · A verified NFR must be quantified</h2>
+
+<h3>Tests (write &amp; fail first)</h3>
+<spec-task id="T-200" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Author <code>quantifiedNfrFindings</code> unit tests</strong> — the pure core function: an unquantified NFR at <code>verified</code> errors; the same NFR at <code>standard</code> or with no tier passes; an inline-quantified NFR passes; an SLO-linked NFR passes. <span class="path">packages/core/test/validate.quantified-nfr.test.ts</span></div>
+</spec-task>
+<spec-task id="T-201" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Author the CLI scan integration test</strong> — a temp project (<code>mkdtempSync</code>, mirroring <code>packages/cli/test/enforce.integration.test.ts</code>) with a written <code>.spectastic/profile.json</code>: <code>verified</code> + an unquantified NFR fails <code>validate</code>; no marker is a no-op (SC-002). <span class="path">packages/cli/test/validate.quantified-nfr.integration.test.ts</span></div>
+</spec-task>
+
+<h3>Implementation</h3>
+<spec-task id="T-210">
+  <input type="checkbox" checked>
+  <div><strong>Implement <code>quantifiedNfrFindings</code></strong> — the pure core: given parsed docs + a resolved tier, flag an <code>NFR-*</code> requirement that is neither inline-quantified in its prose (T-010's heuristic) nor refined by a linked <code>&lt;spec-slo&gt;</code>, at <code>verified</code>/<code>enterprise</code> only (FR-004). <code>slo=</code> support lands in T-310 (US3). <span class="path">packages/core/src/commands/validate.ts</span></div>
+</spec-task>
+<spec-task id="T-211">
+  <input type="checkbox" checked>
+  <div><strong>Implement <code>scanQuantifiedNfr</code> + fold into <code>validate</code></strong> — reads <code>.spectastic/profile.json</code> via <code>readMarker</code>, resolves the profile, parses the target files, calls the core function, folds findings into the CLI's array (mirrors <code>scanEnforceWaivers</code>). No-op with no marker. <span class="path">packages/cli/src/commands/validate.ts</span></div>
+</spec-task>
+
+<spec-note>
+<p>Closes <a href="./spec.html#FR-004">FR-004</a>, <a href="./spec.html#SC-002">SC-002</a>.</p>
+</spec-note>
+</section>
+
+
+<section id="phase-us3" class="phase">
+<h2>6 · Phase 3c — US3 · The simple case stays light</h2>
+
+<h3>Tests (write &amp; fail first)</h3>
+<spec-task id="T-300" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Extend the quantified-scan tests for <code>slo=</code></strong> — an NFR with only a compact <code>slo="99% &lt; 200ms / 28d"</code> attribute (no prose number, no linked element) passes at <code>verified</code>. <span class="path">packages/core/test/validate.quantified-nfr.test.ts</span></div>
+</spec-task>
+
+<h3>Implementation</h3>
+<spec-task id="T-310">
+  <input type="checkbox" checked>
+  <div><strong>Read <code>slo=</code> in the quantified check</strong> — extend T-210's function to treat a non-empty <code>slo=</code> attribute as satisfying "inline-quantified" (FR-003), same as prose carrying a target. <span class="path">packages/core/src/commands/validate.ts</span></div>
+</spec-task>
+
+<spec-note>
+<p>Closes <a href="./spec.html#FR-003">FR-003</a>.</p>
+</spec-note>
+</section>
+
+
+<section id="phase-polish" class="phase">
+<h2>7 · Phase 4 — Polish</h2>
+<spec-task id="T-900" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Full-suite + no-break check (NFR-001)</strong> — run the whole test suite and <code>spectastic validate</code> over the shipped corpus; confirm zero regressions and that a document with no <code>&lt;spec-slo&gt;</code> renders/validates exactly as before. <span class="path">(verification run)</span></div>
+</spec-task>
+<spec-task id="T-901" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Browser-verify SC-001 on a real artifact</strong> — dogfood a <code>&lt;spec-slo&gt;</code> into this spec or a scratch artifact; confirm render + click-through in both themes (NFR-002), no console errors. <span class="path">(verification run)</span></div>
+</spec-task>
+<spec-task id="T-902" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Generate <code>verify.html</code> and record in the roadmap</strong> — run <code>spectastic verify 047-slo-nfr-artifact</code>; mark <code>TBD-slo-nfr-artifact</code> shipped in <code>docs/roadmap.html</code> + <code>CLAUDE.md</code>, noting <code>TBD-verify-slo-trace</code> as the still-open sibling. <span class="path">docs/roadmap.html + CLAUDE.md</span></div>
+</spec-task>
+</section>
+
+
+<section id="dependencies">
+<h2>8 · Dependencies</h2>
+<pre><code>Setup           → Foundational
+Foundational    → US1
+US1             → US2   (the quantified scan reads the same target-resolution shape US1 defines)
+US2             → US3   (the light annotation extends US2's scan function directly)
+US1, US2, US3   → Polish
+</code></pre>
+</section>
+
+
+<section id="changelog">
+<h2>9 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-07-12">12 Jul 2026</time><span>Initial task breakdown. 19 tasks across five phases; US1 (element + shape rules) is the load-bearing slice both US2 (profile-gated scan) and US3 (light annotation) build on, so Incremental is the recommended strategy over Parallel teams.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  Tasks for 047-slo-nfr-artifact · SLO-from-NFR artifact model · authored 12 Jul 2026
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>

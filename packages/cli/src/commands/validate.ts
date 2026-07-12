@@ -188,6 +188,28 @@ async function scanEnforceWaivers(cwd: string): Promise<Finding[]> {
 }
 
 /**
+ * The "verified NFRs are quantified" gate (spec 047-slo-nfr-artifact, FR-004).
+ * Resolves the project's tier from the `.spectastic/profile.json` marker (mirrors
+ * `scanEnforceWaivers`) and re-reads the validated files to check each `NFR-*`
+ * requirement. Tier gating (verified/enterprise only) and the no-marker no-op
+ * live in the core function, not here — this scan only resolves the tier and
+ * folds findings.
+ */
+async function scanQuantifiedNfr(files: readonly string[], cwd: string): Promise<Finding[]> {
+  if (files.length === 0) return [];
+  const [{ quantifiedNfrFindings }, { readMarker }, { readFile }] = await Promise.all([
+    import('@spectastic/core/commands/validate'),
+    import('./init/marker.js'),
+    import('node:fs/promises'),
+  ]);
+  const marker = readMarker(cwd);
+  const docs = await Promise.all(
+    files.map(async (file) => ({ html: await readFile(file, 'utf8'), file })),
+  );
+  return quantifiedNfrFindings(docs, { tier: marker?.profile });
+}
+
+/**
  * Register the `validate` subcommand. Implements FR-001, FR-002, FR-014
  * of specs/002-validate-cli/spec.html.
  *
@@ -249,6 +271,11 @@ export function registerValidate(program: Command): void {
       // dead, un-relaxable, or silently-expired waiver in spectastic.json is an
       // error, so the pre-commit gate blocks it. No-op when no waivers declared.
       const enforceWaiverFindings = await scanEnforceWaivers(process.cwd());
+      // The quantified-NFR gate (spec 047, FR-004): at verified/enterprise, an
+      // NFR with no measurable target and no linked <spec-slo> is an error, so
+      // the pre-commit gate blocks a vague reliability promise. No-op below
+      // verified and with no profile marker.
+      const quantifiedNfrScanFindings = await scanQuantifiedNfr(files, process.cwd());
       const findings = [
         ...result.findings,
         ...quarantineFindings,
@@ -257,6 +284,7 @@ export function registerValidate(program: Command): void {
         ...verbModelPolicyFindings,
         ...copyLeakFindings,
         ...enforceWaiverFindings,
+        ...quantifiedNfrScanFindings,
       ];
       const exitCode = findings.some((f) => f.severity === 'error') ? 1 : result.exitCode;
 
