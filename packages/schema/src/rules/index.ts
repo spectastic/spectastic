@@ -26,6 +26,7 @@ import { taskIdRequiredRule } from './task-id-required.js';
 import { taskTitleBoldScopeRule } from './task-title-bold-scope.js';
 import { verifyViewMissingRule } from './verify-view-missing.js';
 import { verifyViewStaleRule } from './verify-view-stale.js';
+import { noExecutableContentRule } from './no-executable-content.js';
 
 /**
  * The canonical spectastic rule registry.
@@ -63,6 +64,9 @@ export const rules: readonly Rule[] = [
   // Edge-case rules (per-file).
   emptyDocumentRule,
   fileTooLargeRule,
+
+  // Security rules (per-file) — spec 045-artifact-security.
+  noExecutableContentRule,
 
   // Cross-file rules.
   noDuplicateIdsRule,
