@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { evaluateEnforcement } from '../src/enforce/policy.js';
-import type { EnforcementCategory } from '../src/enforce/types.js';
+import type { EnforcementCategory, EnforceWaiver } from '../src/enforce/types.js';
 
 /** Unit tests for the pure enforcement policy diff (spec 042 T-101, SC-003). */
 
@@ -91,5 +91,102 @@ describe('evaluateEnforcement: FR-010 undetectable-category → warn, never a fa
     expect(r.warned).toEqual([]);
     expect(r.missing).toEqual(['observability']);
     expect(r.exitCode).toBe(1);
+  });
+});
+
+// spec 042 FR-004 / FR-011 / FR-012 (2026-07-11-relax-a-requirement): a per-category
+// waiver demotes a required-but-uncovered category to an advisory `relaxed` tally —
+// but only when active, well-formed, and waivable. Clock is injected (NFR-001).
+describe('evaluateEnforcement: FR-011 per-category waivers', () => {
+  const NOW = new Date('2026-07-11T00:00:00.000Z');
+  const reqEnt: EnforcementCategory[] = ['formatter', 'observability'];
+  const waiver = (o: Partial<EnforceWaiver> & { category: EnforcementCategory }): EnforceWaiver => ({
+    reason: 'OTLP push exporter; no local /metrics endpoint to detect. OPS-4127.',
+    until: '2026-10-01',
+    owner: 'me@briancorbin.co.uk',
+    ...o,
+  });
+
+  it('active, well-formed, waivable waiver → relaxed (not missing); hard gate exits 0', () => {
+    const r = evaluateEnforcement(reqEnt, new Set(['formatter']), 'hard', new Set(['js']), {
+      waivers: [waiver({ category: 'observability' })],
+      now: NOW,
+    });
+    expect(r.relaxed.map((x) => x.category)).toEqual(['observability']);
+    expect(r.missing).toEqual([]);
+    expect(r.expired).toEqual([]);
+    expect(r.exitCode).toBe(0);
+  });
+
+  it('expired waiver → auto-blocks (expired + missing); hard gate exits 1', () => {
+    const r = evaluateEnforcement(reqEnt, new Set(['formatter']), 'hard', new Set(['js']), {
+      waivers: [waiver({ category: 'observability', until: '2026-06-01' })],
+      now: NOW,
+    });
+    expect(r.relaxed).toEqual([]);
+    expect(r.expired.map((x) => x.category)).toEqual(['observability']);
+    expect(r.missing).toEqual(['observability']);
+    expect(r.exitCode).toBe(1);
+  });
+
+  it('un-relaxable category → waiver inert (stays missing); hard gate exits 1', () => {
+    const req: EnforcementCategory[] = ['formatter', 'security'];
+    const r = evaluateEnforcement(req, new Set(['formatter']), 'hard', new Set(['js']), {
+      waivers: [waiver({ category: 'security' })],
+      unwaivable: ['security', 'supply-chain'],
+      now: NOW,
+    });
+    expect(r.relaxed).toEqual([]);
+    expect(r.missing).toEqual(['security']);
+    expect(r.exitCode).toBe(1);
+  });
+
+  it('boilerplate reason → not relaxed (fail-closed); hard gate exits 1', () => {
+    const r = evaluateEnforcement(reqEnt, new Set(['formatter']), 'hard', new Set(['js']), {
+      waivers: [waiver({ category: 'observability', reason: 'todo' })],
+      now: NOW,
+    });
+    expect(r.relaxed).toEqual([]);
+    expect(r.missing).toEqual(['observability']);
+    expect(r.exitCode).toBe(1);
+  });
+
+  it('until more than 365 days out → not relaxed (fail-closed)', () => {
+    const r = evaluateEnforcement(reqEnt, new Set(['formatter']), 'hard', new Set(['js']), {
+      waivers: [waiver({ category: 'observability', until: '2027-08-01' })],
+      now: NOW,
+    });
+    expect(r.relaxed).toEqual([]);
+    expect(r.missing).toEqual(['observability']);
+  });
+
+  it('malformed until → not relaxed (fail-closed)', () => {
+    const r = evaluateEnforcement(reqEnt, new Set(['formatter']), 'hard', new Set(['js']), {
+      waivers: [waiver({ category: 'observability', until: 'soon' })],
+      now: NOW,
+    });
+    expect(r.relaxed).toEqual([]);
+    expect(r.missing).toEqual(['observability']);
+  });
+
+  it('FR-010 undetectable wins over a waiver (the honest state comes first)', () => {
+    // observability is structurally undetectable in swift → warned, not relaxed,
+    // even though a waiver is present.
+    const r = evaluateEnforcement(reqEnt, new Set(['formatter']), 'hard', new Set(['swift']), {
+      waivers: [waiver({ category: 'observability' })],
+      now: NOW,
+    });
+    expect(r.warned).toEqual(['observability']);
+    expect(r.relaxed).toEqual([]);
+    expect(r.exitCode).toBe(0);
+  });
+
+  it('relaxed is never folded into covered', () => {
+    const r = evaluateEnforcement(reqEnt, new Set(['formatter']), 'hard', new Set(['js']), {
+      waivers: [waiver({ category: 'observability' })],
+      now: NOW,
+    });
+    expect(r.covered).toEqual(['formatter']);
+    expect(r.relaxed.map((x) => x.category)).toEqual(['observability']);
   });
 });

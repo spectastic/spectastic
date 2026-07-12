@@ -24,6 +24,10 @@ export type { EnforcementCategory, EnforceGate };
 export interface EnforcePolicy {
   gate: EnforceGate;
   required: EnforcementCategory[];
+  /** Categories a waiver cannot relax (spec 042, FR-012). Enterprise marks
+   *  security + supply-chain un-relaxable; absent/empty means the whole floor
+   *  is waivable. */
+  unwaivable: EnforcementCategory[];
 }
 
 export interface Profile {
@@ -37,7 +41,7 @@ export interface Profile {
   agents: string[];
 }
 
-const NO_ENFORCE: EnforcePolicy = { gate: 'none', required: [] };
+const NO_ENFORCE: EnforcePolicy = { gate: 'none', required: [], unwaivable: [] };
 
 export interface ProfileManifest {
   schema: number;
@@ -77,7 +81,11 @@ function parseProfile(name: string, p: Partial<Profile> | undefined): Profile {
     name,
     axes: p?.axes ?? {},
     enforce: gateOk
-      ? { gate: enforce.gate, required: Array.isArray(enforce.required) ? enforce.required : [] }
+      ? {
+          gate: enforce.gate,
+          required: Array.isArray(enforce.required) ? enforce.required : [],
+          unwaivable: Array.isArray(enforce.unwaivable) ? enforce.unwaivable : [],
+        }
       : NO_ENFORCE,
     principles: Array.isArray(p?.principles) ? p.principles : [],
     agents: Array.isArray(p?.agents) ? p.agents : [],

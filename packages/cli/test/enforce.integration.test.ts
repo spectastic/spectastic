@@ -58,7 +58,74 @@ describe('enforce: US1 the floor is a gate (SC-001)', () => {
     writeFileSync(join(dir, 'requirements.txt'), 'prometheus-client==0.20.0\n', 'utf8');
     const r = await runCLI(['enforce'], dir);
     expect(r.code, r.stdout).toBe(0);
-    expect(r.stdout).toContain('all detectable required enforcement categories are covered');
+    expect(r.stdout).toContain('no blocking gaps');
+    expect(r.stdout).toContain('0 relaxed · 0 missing');
+  });
+
+  // spec 042 FR-004 / FR-011 (2026-07-11-relax-a-requirement): a per-category waiver.
+  it('Verified tooled except observability, with a valid waiver → relaxed, exit 0', async () => {
+    const dir = await project('verified', 'waiver');
+    // cover everything but observability (no metrics exporter dependency).
+    writeFileSync(
+      join(dir, 'pyproject.toml'),
+      '[tool.ruff]\n[tool.mypy]\n[tool.bandit]\n[tool.pytest.ini_options]\n[tool.coverage.report]\nfail_under = 90\n',
+      'utf8',
+    );
+    writeFileSync(
+      join(dir, 'spectastic.json'),
+      JSON.stringify({
+        enforce: {
+          waivers: [
+            {
+              category: 'observability',
+              reason: 'OTLP push exporter; no local /metrics endpoint to detect. OPS-4127.',
+              until: '2099-01-01',
+              owner: 'me@briancorbin.co.uk',
+            },
+          ],
+        },
+      }),
+      'utf8',
+    );
+    const r = await runCLI(['enforce'], dir);
+    // until is >365d out → fail-closed: the waiver does NOT relax, so it still blocks.
+    expect(r.code, r.stdout).toBe(1);
+    expect(r.stdout).toContain('missing: observability');
+  });
+
+  it('Verified tooled except observability, waiver within horizon → relaxed advisory, exit 0', async () => {
+    const dir = await project('verified', 'waiver-ok');
+    writeFileSync(
+      join(dir, 'pyproject.toml'),
+      '[tool.ruff]\n[tool.mypy]\n[tool.bandit]\n[tool.pytest.ini_options]\n[tool.coverage.report]\nfail_under = 90\n',
+      'utf8',
+    );
+    // a date the fixture keeps valid for a year from "now" — derived from today so the
+    // test never silently expires. (validate would flag a hardcoded past date; enforce
+    // reads the system clock here, which is the production path.)
+    const soon = new Date();
+    soon.setDate(soon.getDate() + 30);
+    const until = soon.toISOString().slice(0, 10);
+    writeFileSync(
+      join(dir, 'spectastic.json'),
+      JSON.stringify({
+        enforce: {
+          waivers: [
+            {
+              category: 'observability',
+              reason: 'OTLP push exporter; no local /metrics endpoint to detect. OPS-4127.',
+              until,
+              owner: 'me@briancorbin.co.uk',
+            },
+          ],
+        },
+      }),
+      'utf8',
+    );
+    const r = await runCLI(['enforce'], dir);
+    expect(r.code, r.stdout).toBe(0);
+    expect(r.stdout).toContain('relaxed (waived · advisory): observability');
+    expect(r.stdout).toContain('1 relaxed · 0 missing');
   });
 
   it('Verified with everything but a metrics exporter → exit 1 naming observability (T-018 obs. change)', async () => {
