@@ -145,6 +145,33 @@ lives at the git/CI boundary where P-8 says it must.</p>
   <em>silently-expired</em> waiver as an error is deliberate: an expired waiver that still sits in the file is a stale
   decision the author should remove or renew, not leave to rot.</p></details>
   </spec-requirement>
+
+<spec-requirement id="FR-014" priority="must">
+  <p>The <code>contract-first</code> category <spec-rule>MUST</spec-rule> be <em>interface-gated</em>: it is a gap only
+  when the project exposes a <em>detectable public interface</em> — an HTTP/RPC framework declared as a dependency (e.g.
+  <code>express</code>/<code>fastify</code>/<code>@nestjs</code>, <code>flask</code>/<code>fastapi</code>/<code>django</code>,
+  <code>spring-web</code>/<code>jakarta.ws.rs</code>, <code>gin</code>/<code>echo</code>,
+  <code>actix-web</code>/<code>axum</code>, or a gRPC/Protobuf toolchain) — <em>and</em> no checked-in contract is present.
+  A project with <em>no</em> detected interface framework <spec-rule>MUST</spec-rule> be treated as covered for
+  contract-first (there is nothing to contract) — <spec-rule>MUST NOT</spec-rule> hard-fail — so a CLI, batch job, or
+  internal library is never false-failed for lacking an API schema. This is categorically distinct from
+  <a href="#FR-010">FR-010</a> and does <spec-rule>NOT</spec-rule> override it: FR-010 warns when a category that
+  <em>does</em> apply cannot be expressed in the project's stack (an applicable-but-undetectable gap); contract-first's
+  applicability is itself <em>conditional</em> — "no interface detected" means the category may not apply at all, not that
+  an applicable category is invisible — so the correct posture is exempt, not warn. Warning on every interface-less
+  project (each CLI, batch job, and library) would be the warn-washing FR-010's demotion is expressly not meant to cause.
+  Because the gate fails safe on the antecedent, it requires no FR-010 undetectable entry; the residual is that an
+  interface exposed via a framework outside the signal set is <em>silently exempt</em> (a false-negative), which
+  <spec-rule level="should">SHOULD</spec-rule> be recorded as the honest ceiling rather than closed by widening the gate
+  into false failures.</p>
+  <details><summary>Rationale — fail safe on "does this even expose an interface?"</summary><p>The other eight categories
+  are unconditionally applicable at their tiers; contract-first is conditional on the project's nature. The choices are:
+  hard-require it everywhere (false-fails interface-less projects — the P-9 reflex), make it advisory (a weaker,
+  non-gating category), or gate it on a detectable antecedent. Interface-gating is the only option that keeps it a
+  <em>real</em> hard gate where a contract is genuinely owed while never false-failing where it isn't. The trade is a
+  false-negative on unlisted frameworks — deliberately preferred over a false-positive, because a false failure trains
+  teams to disable the gate, while a false-negative is a missed nudge the principle (advisory, at standard) still covers.</p></details>
+  </spec-requirement>
 </section>
 
 
@@ -197,30 +224,33 @@ the toolchain provides.</p>
 
 <spec-requirement id="FR-002" priority="must">
   <p>Detection <spec-rule>MUST</spec-rule> classify present enforcement categories — formatter · linter · type-checker ·
-  security · supply-chain · test-runner · coverage · observability — from config/manifest signals across Python, JS/TS,
-  Java, Go, Rust, Swift, and C++. For <code>coverage</code>, the signal <spec-rule>MUST</spec-rule> be a declared
-  threshold or check (e.g. <code>fail_under</code>, a <code>coverageThreshold</code> block, a JaCoCo <code>check</code>
-  rule), <em>not</em> a bare coverage library — because for coverage alone, presence of the tool does not imply a gate.
-  Detection proves a coverage threshold is <em>configured</em>; it <spec-rule>MUST NOT</spec-rule> be surfaced as proof
-  that a CI diff-gate blocks a coverage drop. For <code>observability</code>, the signal <spec-rule>MUST</spec-rule> be a
-  metrics registry/exporter/starter dependency matched by its <em>deliberate export name</em> (e.g.
-  <code>micrometer-registry-prometheus</code>, <code>spring-boot-starter-actuator</code>,
+  security · supply-chain · test-runner · coverage · observability · contract-first — from config/manifest signals across
+  Python, JS/TS, Java, Go, Rust, Swift, and C++. For <code>coverage</code>, the signal <spec-rule>MUST</spec-rule> be a
+  declared threshold or check (e.g. <code>fail_under</code>, a <code>coverageThreshold</code> block, a JaCoCo
+  <code>check</code> rule), <em>not</em> a bare coverage library — because for coverage alone, presence of the tool does
+  not imply a gate. Detection proves a coverage threshold is <em>configured</em>; it <spec-rule>MUST NOT</spec-rule> be
+  surfaced as proof that a CI diff-gate blocks a coverage drop. For <code>observability</code>, the signal
+  <spec-rule>MUST</spec-rule> be a metrics registry/exporter/starter dependency matched by its <em>deliberate export
+  name</em> (e.g. <code>micrometer-registry-prometheus</code>, <code>spring-boot-starter-actuator</code>,
   <code>prometheus/client_golang</code>, <code>@opentelemetry/exporter-prometheus</code>, <code>prometheus_client</code>,
   the Rust <code>prometheus</code> crate), <em>not</em> a transitively-arriving core library or a tracing-only package
   (e.g. <code>@opentelemetry/api</code>). Detection proves an observability exporter is a <em>declared dependency</em>
   ("monitoring is possible"); it <spec-rule>MUST NOT</spec-rule> be surfaced as proof that the <code>/metrics</code>
-  endpoint is wired or exposed.</p>
-  <details><summary>Rationale — thresholds, gaps, ceilings, and why observability hard-gates</summary><p>An
-  <code>.eslintrc</code> means lint runs, so most categories survive presence-detection; <strong>coverage</strong> breaks
-  that (measuring and gating separable → threshold-bearing signal; Go is a flag-only gap handled by
-  <a href="#FR-010">FR-010</a>). <strong>Observability</strong> has an exporter-manifest convention in Java/Go/JS/Python/Rust
-  but not Swift/C++, which take an FR-010 undetectable-category entry (warn, never a false failure). It shares coverage's
-  honesty limit — a dependency can be on the classpath but not wired (Spring's endpoint must be exposed; an OTLP-push
-  service has no local <code>/metrics</code>) — so the signal is the deliberate export choice and the claim is bounded to
-  "declared", not "live". It is nonetheless <em>hard</em>-gated at verified/enterprise: matching only a chosen exporter
-  (never a transitive core lib), a missing signal means the team never chose to export metrics — a real gap at the
-  operate-in-production tiers, on par with a missing security-scanner config, and the strongest floor obtainable without
-  the (deferred) verify-page proof leg.</p></details>
+  endpoint is wired or exposed. For <code>contract-first</code>, the signal <spec-rule>MUST</spec-rule> be a checked-in
+  interface contract — an OpenAPI/Swagger document, a <code>*.proto</code>, a GraphQL SDL, or an AsyncAPI document (a JSON
+  Schema counts <em>only</em> under an explicit <code>contracts/</code> directory, since a bare <code>*.schema.json</code>
+  is usually a config-validation schema, not an interface contract) — found at the project root or a conventional contract
+  directory — and the category is <em>interface-gated</em> per <a href="#FR-014">FR-014</a>. Detection proves a contract
+  is <em>checked in</em>; it
+  <spec-rule>MUST NOT</spec-rule> be surfaced as proof that the contract is valid, complete, or matches the running
+  interface.</p>
+  <details><summary>Rationale — thresholds, gaps, ceilings, and interface-gating</summary><p>An <code>.eslintrc</code>
+  means lint runs, so most categories survive presence-detection; <strong>coverage</strong> breaks that (threshold-bearing
+  signal; Go flag-only gap → <a href="#FR-010">FR-010</a>), and <strong>observability</strong> has an exporter-manifest
+  convention outside Swift/C++ (FR-010) with a "declared ≠ wired" ceiling. <strong>Contract-first</strong> breaks it
+  differently: a contract is only owed if an interface is exposed, so the signal is paired with an interface-gate
+  (<a href="#FR-014">FR-014</a>) rather than an FR-010 undetectable entry — the gate fails safe on "no interface
+  detected", and its ceiling is that a contract is <em>checked in</em>, not that it is correct.</p></details>
   </spec-requirement>
 
 <spec-requirement id="FR-003" priority="must">
@@ -384,6 +414,7 @@ severity model, and the brownfield boundary were anchored against 041 and the co
   <li><time datetime="2026-07-11">11 Jul 2026</time><span>Applied <a href="./changes/archive/2026-07-11-coverage-enforce-category/proposal.html">2026-07-11-coverage-enforce-category</a>: Add coverage as the 7th enforcement category, detected only from a declared threshold/check (never a bare library) so a green result means a configured gate. New FR-010 generalises 042's 'undetectable stack -> warn' rule to the category level, so coverage sits in the verified/enterprise hard floor without false-failing structurally-undetectable ecosystems (Go: go test -cover is flag-only). Manifest half rides the data/content-delta contract (T-018). Adversarial pass: 3 risks, all mitigated (threshold-bearing detection, FR-010 added, honest surfaced copy)..</span></li>
   <li><time datetime="2026-07-11">11 Jul 2026</time><span>Applied <a href="./changes/archive/2026-07-11-observability-enforce-category/proposal.html">2026-07-11-observability-enforce-category</a>: Add observability as an enforcement category (teeth for the P1b verified observability principle): MODIFY FR-002 to detect a metrics registry/exporter/starter dependency by its deliberate export name (never a transitive core/tracing lib like @opentelemetry/api), plus a data/content delta adding observability to the verified/enterprise floor + axis labels. Adversarial pass: 3 risks (exporter-specific signals; an FR-010 observability:['swift','cpp'] entry so unsupported stacks warn not false-fail — the second user of that machinery; kept the hard gate with an explicit deliberate-choice justification). Present != wired ceiling recorded..</span></li>
   <li><time datetime="2026-07-12">11 Jul 2026</time><span>Applied <a href="./changes/archive/2026-07-11-relax-a-requirement/proposal.html">2026-07-11-relax-a-requirement</a>: Relax a requirement: per-category enforcement waivers (spectastic.json enforce.waivers[]) that demote a floor category to an advisory 'relaxed' warning, with mandatory reason+owner and an auto-expiring 365-day horizon; security+supply-chain un-relaxable at enterprise; well-formed validate scan + fail-closed runtime. Adversarial pass: 3 risks (1 rejected, 2 mitigated incl. NFR-001 determinism scoped to filesystem+injected clock)..</span></li>
+  <li><time datetime="2026-07-12">11 Jul 2026</time><span>Applied <a href="./changes/archive/2026-07-11-contract-first-enforce/proposal.html">2026-07-11-contract-first-enforce</a>: Add contract-first as the 9th enforce category — detects a checked-in interface contract (OpenAPI/Swagger, *.proto, GraphQL SDL, AsyncAPI, or JSON Schema under contracts/), interface-gated (FR-014) so it's a gap only when a web/RPC framework is detected without a contract; a project with no interface is exempt (fails safe, no FR-010 entry needed). Verified/enterprise floor. Adversarial pass: 3 risks mitigated (dropped bare *.schema.json, reconciled FR-014 with FR-010, scoped subdir detection to contract signals only). Resolves TBD-contract-first-enforce..</span></li>
 </ol>
 </spec-changelog>
 </section>

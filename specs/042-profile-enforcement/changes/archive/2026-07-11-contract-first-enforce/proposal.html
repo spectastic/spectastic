@@ -1,0 +1,291 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Contract-first as the 9th enforcement category · Change proposal</title>
+<link rel="stylesheet" href="../../../../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../../../../assets/favicon.svg">
+<script src="../../../../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Change proposal · 042-profile-enforcement</p>
+  <h1>Contract-first as the 9th enforcement category</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    If you expose an interface, a consumer depends on it — so a checked-in contract is the floor. If you don't, there is nothing to contract, and the gate stays silent.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>     <span><spec-status value="applied">Applied</spec-status></span>
+    <b>Change ID</b>  <span>2026-07-11-contract-first-enforce</span>
+    <b>Spec</b>       <span><a href="../../../spec.html">042-profile-enforcement</a></span>
+    <b>Source</b>     <span>Considerations: <a href="../../../../../docs/engineering-principles-considerations.html">engineering-principles</a> (D-001) · the machine teeth for the contract-first principle + the <code>contracts</code> axis (<a href="../../../../041-init-profiles/changes/archive/2026-07-11-contracts-axis/proposal.html">2026-07-11-contracts-axis</a>); resolves <code>TBD-contract-first-enforce</code></span>
+    <b>Author</b>     <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Created</b>    <span><time datetime="2026-07-11">11 Jul 2026</time></span>
+    <b>Targets</b>    <span>1 modified (<a href="../../../spec.html#FR-002">FR-002</a>) + 1 added (FR-014) + 1 data/content delta (verified/enterprise floor + axis labels)</span>
+    <b>Read time</b>  <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-tldr>
+    <p>Contract-first landed as a <em>principle</em> at standard (the lean-four) and as a <code>contracts</code> axis; this
+    adds its machine teeth — a <strong>9th enforce category</strong> that detects a checked-in interface contract
+    (OpenAPI/Swagger, Protobuf, GraphQL SDL, JSON Schema, or AsyncAPI). But contract-first is unlike the other eight in one
+    load-bearing way: a contract only matters <em>if the project exposes an interface</em>. A CLI, a batch job, or an
+    internal library has none, and hard-failing it for lacking an API schema is precisely the false failure that
+    manufactures the disable-the-gate reflex P-9 forbids. So the category is <strong>interface-gated</strong> (new
+    <strong>FR-014</strong>): it is a gap <em>only</em> when a web/RPC framework is detected <em>and</em> no contract is
+    present; a project with no detected interface is treated as covered — nothing to contract. This makes the gate
+    fail <em>safe</em> on the antecedent, which is why — unlike coverage (Go) and observability (Swift/C++) — it needs no
+    FR-010 undetectable rule: an interface it cannot see is an interface it does not gate. Verified/enterprise floor;
+    manifest edits ride the data/content-delta contract (T-018).</p>
+  </spec-tldr>
+</header>
+
+
+<spec-change id="2026-07-11-contract-first-enforce" status="applied">
+
+<header>
+  <h3>Contract-first as the 9th enforcement category</h3>
+  <span class="meta"><spec-status value="applied">Applied</spec-status></span>
+</header>
+
+
+<section id="intent">
+<h2>1 · Intent</h2>
+<p>Contract-first is the highest-value principle for agent code — a checked-in schema is a fixed, inspectable target a
+producer and consumer (human or agent) can both bind to, and it bounds hallucinated interfaces. It landed as a principle
+at standard and as the <code>contracts</code> profile axis, but a principle is advisory (P-8); the durable guarantee is a
+machine check. This adds that check as the 9th enforce category, mirroring the coverage (7th) and observability (8th)
+splits: principle at standard, machine-check at verified/enterprise.</p>
+<p>The mirror is not exact, and the difference is the whole design. Coverage applies to every project (all code can be
+covered); observability applies to every service (all services can emit metrics). A <em>contract</em> applies only to a
+project that <em>exposes an interface</em>. Add contract-first to the hard floor naïvely and every CLI, batch job, and
+internal library on verified exits 1 for lacking an OpenAPI document it has no use for — a false failure that contradicts
+042's founding "never a false failure" guarantee and invites the very gate-disabling P-9 exists to prevent. This proposal
+ships the honest version: the category is <strong>interface-gated</strong> — required only when the project shows it
+exposes an interface — so it fails safe (a project with no detected interface is exempt), and a real gap (interface
+present, contract absent) still hard-fails where it should.</p>
+</section>
+
+
+<section id="scope">
+<h2>2 · Scope</h2>
+
+<spec-goals>
+  <h3>In scope</h3>
+  <ul>
+    <li>MODIFY <a href="../../../spec.html#FR-002">FR-002</a>: add <code>contract-first</code> to the detected categories; the signal is a checked-in interface contract (OpenAPI/Swagger · Protobuf · GraphQL SDL · JSON Schema · AsyncAPI), interface-gated per FR-014.</li>
+    <li>ADD <strong>FR-014</strong>: the interface-gated applicability rule — required only when a public-interface framework is detected; no interface → covered (never a hard failure); the unlisted-framework false-negative recorded as the honest ceiling.</li>
+    <li>ADD <code>contract-first</code> to the <strong>verified</strong> and <strong>enterprise</strong> <code>enforce.required</code> floor + refresh both <code>axes.enforcement</code> labels (a data/content delta).</li>
+    <li>Widen detection <strong>for the contract signals only</strong> from strictly-root to root + a small set of conventional contract directories (<code>api/</code>, <code>proto/</code>, <code>schema/</code>, <code>contracts/</code>). The other eight categories keep strict root-only detection, so <a href="../../../spec.html#NFR-002">NFR-002</a>'s shallow-detection invariant is unchanged for them — this is a scoped contract-detection concern, not a global detection-model change.</li>
+    <li>Core machinery (§6): the <code>EnforcementCategory</code> union, the contract <code>SIGNALS</code>, a small interface-framework signal set, the interface-gated resolution in <code>detectTooling</code>, honest <code>compose.ts</code> floor wording, fixtures + tests.</li>
+  </ul>
+</spec-goals>
+
+<spec-non-goals>
+  <h3>Out of scope</h3>
+  <ul>
+    <li><spec-out-of-scope defer-to="never">Validating the <em>content</em> of the contract (that the OpenAPI is well-formed, that it matches the running routes). Detection proves a contract is <em>checked in</em>, not that it is correct or current — the same "present ≠ wired" ceiling coverage and observability record.</spec-out-of-scope></li>
+    <li><spec-out-of-scope defer-to="TBD-contract-drift-check">A drift check that the checked-in contract matches the implemented interface (a generated-vs-committed diff, à la the commands-drift gate). A larger, separate effort.</spec-out-of-scope></li>
+    <li><spec-out-of-scope defer-to="never">Requiring contract-first at standard. The principle is at standard; the machine check hardens at verified/enterprise, matching the coverage/observability tier placement and the considerations doc ("machine-check at verified").</spec-out-of-scope></li>
+  </ul>
+</spec-non-goals>
+</section>
+
+
+<section id="approach">
+<h2>3 · Approach</h2>
+<p>Two of the three integration points are the uniform category machinery: the <code>EnforcementCategory</code> union and
+<code>ALL_CATEGORIES</code> gain <code>'contract-first'</code>. The contract <code>SIGNALS</code> match a checked-in
+contract file — <code>openapi.*</code>/<code>swagger.*</code>, <code>*.proto</code>, a GraphQL SDL
+(<code>schema.graphql</code>/<code>*.graphqls</code>), <code>asyncapi.*</code>, or a JSON Schema <em>only</em> under a
+<code>contracts/</code> directory (a bare <code>*.schema.json</code> is usually config validation, not an interface
+contract, so it does not certify the floor). Because contract files conventionally live one level down (<code>api/</code>,
+<code>proto/</code>, <code>schema/</code>, <code>contracts/</code>), detection widens — <strong>for the contract signals
+only</strong>, leaving the other eight categories strictly root-only — from root to root + those conventional dirs, a
+bounded, still-deterministic extension of the shallow rule (NFR-002), scoped as a first-class §2 item and a §6 task.</p>
+<p>The third point is what makes contract-first different: <strong>interface-gating</strong>. A second signal set detects
+that the project <em>exposes</em> an interface — a web/RPC framework declared as a dependency (<code>express</code>,
+<code>fastify</code>, <code>@nestjs/*</code>; <code>flask</code>, <code>fastapi</code>, <code>django</code>;
+<code>spring-web</code>/<code>jakarta.ws.rs</code>; <code>gin</code>, <code>echo</code>; <code>actix-web</code>,
+<code>axum</code>; a <code>grpc</code>/<code>protobuf</code> toolchain) — matched by dependency name exactly as the
+observability exporters are. <code>detectTooling</code> then resolves contract-first specially: covered if a contract is
+present, <em>or</em> if no interface framework is detected (nothing to contract); missing only when an interface is
+present and no contract is. So the gate fails <em>safe</em> on the antecedent, and — unlike coverage and observability —
+it needs no FR-010 entry: an interface spectastic cannot detect is one it does not require a contract for.</p>
+<spec-note>The honesty line, held wherever contract-first surfaces (FR-002, the <code>compose.ts</code> floor block): a green
+<code>contract-first</code> proves an interface contract is <em>checked in</em> — not that it is valid, complete, or
+matches the running routes. Content and drift validation are out of scope (§2). And the fail-safe cuts the other way as a
+recorded ceiling: a project exposing an interface via a framework not in the signal set is <em>silently exempt</em> (a
+false-negative), never false-failed — the deliberate trade, on par with observability's "declared ≠ wired".</spec-note>
+</section>
+
+
+<section id="deltas">
+<h2>4 · Deltas</h2>
+
+<spec-delta op="modified" target="FR-002">
+  <p><strong>What changes:</strong> <code>contract-first</code> joins the enumerated categories, detected from a checked-in
+  contract file and interface-gated per <a href="#FR-014">FR-014</a>.</p>
+  <spec-requirement id="FR-002" priority="must">
+  <p>Detection <spec-rule>MUST</spec-rule> classify present enforcement categories — formatter · linter · type-checker ·
+  security · supply-chain · test-runner · coverage · observability · contract-first — from config/manifest signals across
+  Python, JS/TS, Java, Go, Rust, Swift, and C++. For <code>coverage</code>, the signal <spec-rule>MUST</spec-rule> be a
+  declared threshold or check (e.g. <code>fail_under</code>, a <code>coverageThreshold</code> block, a JaCoCo
+  <code>check</code> rule), <em>not</em> a bare coverage library — because for coverage alone, presence of the tool does
+  not imply a gate. Detection proves a coverage threshold is <em>configured</em>; it <spec-rule>MUST NOT</spec-rule> be
+  surfaced as proof that a CI diff-gate blocks a coverage drop. For <code>observability</code>, the signal
+  <spec-rule>MUST</spec-rule> be a metrics registry/exporter/starter dependency matched by its <em>deliberate export
+  name</em> (e.g. <code>micrometer-registry-prometheus</code>, <code>spring-boot-starter-actuator</code>,
+  <code>prometheus/client_golang</code>, <code>@opentelemetry/exporter-prometheus</code>, <code>prometheus_client</code>,
+  the Rust <code>prometheus</code> crate), <em>not</em> a transitively-arriving core library or a tracing-only package
+  (e.g. <code>@opentelemetry/api</code>). Detection proves an observability exporter is a <em>declared dependency</em>
+  ("monitoring is possible"); it <spec-rule>MUST NOT</spec-rule> be surfaced as proof that the <code>/metrics</code>
+  endpoint is wired or exposed. For <code>contract-first</code>, the signal <spec-rule>MUST</spec-rule> be a checked-in
+  interface contract — an OpenAPI/Swagger document, a <code>*.proto</code>, a GraphQL SDL, or an AsyncAPI document (a JSON
+  Schema counts <em>only</em> under an explicit <code>contracts/</code> directory, since a bare <code>*.schema.json</code>
+  is usually a config-validation schema, not an interface contract) — found at the project root or a conventional contract
+  directory — and the category is <em>interface-gated</em> per <a href="#FR-014">FR-014</a>. Detection proves a contract
+  is <em>checked in</em>; it
+  <spec-rule>MUST NOT</spec-rule> be surfaced as proof that the contract is valid, complete, or matches the running
+  interface.</p>
+  <details><summary>Rationale — thresholds, gaps, ceilings, and interface-gating</summary><p>An <code>.eslintrc</code>
+  means lint runs, so most categories survive presence-detection; <strong>coverage</strong> breaks that (threshold-bearing
+  signal; Go flag-only gap → <a href="#FR-010">FR-010</a>), and <strong>observability</strong> has an exporter-manifest
+  convention outside Swift/C++ (FR-010) with a "declared ≠ wired" ceiling. <strong>Contract-first</strong> breaks it
+  differently: a contract is only owed if an interface is exposed, so the signal is paired with an interface-gate
+  (<a href="#FR-014">FR-014</a>) rather than an FR-010 undetectable entry — the gate fails safe on "no interface
+  detected", and its ceiling is that a contract is <em>checked in</em>, not that it is correct.</p></details>
+  </spec-requirement>
+</spec-delta>
+
+<spec-delta op="added" target="FR-014">
+  <p><strong>What's added:</strong> the interface-gated applicability rule that keeps contract-first from false-failing a
+  project with no public interface.</p>
+  <spec-requirement id="FR-014" priority="must">
+  <p>The <code>contract-first</code> category <spec-rule>MUST</spec-rule> be <em>interface-gated</em>: it is a gap only
+  when the project exposes a <em>detectable public interface</em> — an HTTP/RPC framework declared as a dependency (e.g.
+  <code>express</code>/<code>fastify</code>/<code>@nestjs</code>, <code>flask</code>/<code>fastapi</code>/<code>django</code>,
+  <code>spring-web</code>/<code>jakarta.ws.rs</code>, <code>gin</code>/<code>echo</code>,
+  <code>actix-web</code>/<code>axum</code>, or a gRPC/Protobuf toolchain) — <em>and</em> no checked-in contract is present.
+  A project with <em>no</em> detected interface framework <spec-rule>MUST</spec-rule> be treated as covered for
+  contract-first (there is nothing to contract) — <spec-rule>MUST NOT</spec-rule> hard-fail — so a CLI, batch job, or
+  internal library is never false-failed for lacking an API schema. This is categorically distinct from
+  <a href="#FR-010">FR-010</a> and does <spec-rule>NOT</spec-rule> override it: FR-010 warns when a category that
+  <em>does</em> apply cannot be expressed in the project's stack (an applicable-but-undetectable gap); contract-first's
+  applicability is itself <em>conditional</em> — "no interface detected" means the category may not apply at all, not that
+  an applicable category is invisible — so the correct posture is exempt, not warn. Warning on every interface-less
+  project (each CLI, batch job, and library) would be the warn-washing FR-010's demotion is expressly not meant to cause.
+  Because the gate fails safe on the antecedent, it requires no FR-010 undetectable entry; the residual is that an
+  interface exposed via a framework outside the signal set is <em>silently exempt</em> (a false-negative), which
+  <spec-rule level="should">SHOULD</spec-rule> be recorded as the honest ceiling rather than closed by widening the gate
+  into false failures.</p>
+  <details><summary>Rationale — fail safe on "does this even expose an interface?"</summary><p>The other eight categories
+  are unconditionally applicable at their tiers; contract-first is conditional on the project's nature. The choices are:
+  hard-require it everywhere (false-fails interface-less projects — the P-9 reflex), make it advisory (a weaker,
+  non-gating category), or gate it on a detectable antecedent. Interface-gating is the only option that keeps it a
+  <em>real</em> hard gate where a contract is genuinely owed while never false-failing where it isn't. The trade is a
+  false-negative on unlisted frameworks — deliberately preferred over a false-positive, because a false failure trains
+  teams to disable the gate, while a false-negative is a missed nudge the principle (advisory, at standard) still covers.</p></details>
+  </spec-requirement>
+</spec-delta>
+
+<spec-delta op="added" target="verified+enterprise/enforce-contract-first">
+  <p><strong>What's added:</strong> <code>contract-first</code> appended to the <code>verified</code> and
+  <code>enterprise</code> <code>enforce.required</code> arrays in <code>spectastic-profiles.json</code>, both
+  <code>axes.enforcement</code> labels refreshed. A data/content delta (target names the manifest, embeds a
+  <code>&lt;spec-diff&gt;</code>, no requirement-body change). Safe under the hard gate because FR-014 makes it
+  interface-gated.</p>
+  <spec-diff>
+<ins>  verified.enforce.required:   [… , "observability", "contract-first"]
+<ins>  verified.axes.enforcement:   "lint+types+tests+coverage+security+observability+contract+custom"
+<ins>
+<ins>  enterprise.enforce.required: [… , "observability", "contract-first"]
+<ins>  enterprise.axes.enforcement: "lint+types+tests+coverage+security+supply-chain+observability+contract+toggle+custom"</ins>
+  </spec-diff>
+  <details><summary>Rationale — why verified + enterprise</summary><p>Interface stability matters once a second consumer
+  exists — a verified/enterprise concern, matching the coverage/observability placement and the considerations doc's
+  "machine-check at verified". Standard keeps the contract-first <em>principle</em> (advisory); the hard check starts at
+  verified. With interface-gating, a green <code>contract-first</code> at these tiers means either a checked-in contract
+  or a project that exposes no interface — never a false failure.</p></details>
+</spec-delta>
+</section>
+
+
+<section id="risks">
+<h2>5 · Risk register</h2>
+<p>From the adversarial pass (auto-fired: FR-002 is <code>must</code>-tier). Three findings, all
+<strong>mitigated</strong> in the review interview; each records the human who committed the transition. The mitigations
+are folded into the deltas above.</p>
+<spec-risk-log>
+<spec-risk target="FR-002" status="mitigated" by="Brian Corbin · @briancorbinxyz">
+  <p class="claim">A bare <code>*.schema.json</code> is a ubiquitous <em>config-validation</em> artifact (settings schemas, tsconfig/package schemas), not an interface contract — so it will false-positively green <code>contract-first</code> on an interface-exposing project that has no API contract, exactly where the hard floor was meant to bite.</p>
+  <p class="citation">§4 FR-002 lists "a JSON Schema (<code>*.schema.json</code>)" as a contract signal and §6 widens matching into <code>schema/</code>/<code>contracts/</code> dirs; the first enterprise project with a <code>config.schema.json</code> + an Express API but no OpenAPI exits 0 and ships an ungated interface.</p>
+  <div class="response"><strong>Mitigated.</strong> Bare <code>*.schema.json</code> is dropped from the contract signal set (FR-002 + the §6 SIGNALS task). The signals are OpenAPI/Swagger, <code>*.proto</code>, GraphQL SDL, and AsyncAPI — all unambiguously interface contracts — plus a JSON Schema <em>only</em> under an explicit <code>contracts/</code> path, never a bare root/<code>schema/</code> match. A config schema can no longer certify the floor.</div>
+</spec-risk>
+<spec-risk target="FR-010" status="mitigated" by="Brian Corbin · @briancorbinxyz">
+  <p class="claim">FR-014's "an interface exposed via an unlisted framework is <em>silently exempt</em>" makes contract-first the only floor category whose undetectability yields green rather than a warning — straining against FR-010's rule that an undetectable required category MUST degrade to a <em>visible</em> warning, never pass silently.</p>
+  <p class="citation">Live <a href="../../../spec.html#FR-010">FR-010</a>: an undetectable required category "MUST degrade to a warning, never a hard failure"; FR-014 instead treats the no-interface-detected case as covered (green) and only "SHOULD record" the unlisted-framework gap.</p>
+  <div class="response"><strong>Mitigated.</strong> FR-014 now states the distinction explicitly and that it does NOT override FR-010: FR-010 warns when a category that <em>does</em> apply can't be expressed in the stack; contract-first's applicability is itself <em>conditional</em> — "no interface detected" means the category may not apply, not that an applicable category is undetectable — so the correct posture is exempt, not warn. Warning on every interface-less project would be the warn-washing FR-010's demotion is not meant to cause. The unlisted-framework false-negative stays the recorded ceiling.</div>
+</spec-risk>
+<spec-risk target="§2" status="mitigated" by="Brian Corbin · @briancorbinxyz">
+  <p class="claim">The change quietly alters a cross-cutting invariant: widening detection from strictly-root to root + conventional subdirs (<code>api/</code>, <code>proto/</code>, <code>schema/</code>, <code>contracts/</code>) touches the shallow root-only detection contract (NFR-002) shared by all nine categories, yet it rides inside a "Core machinery" §6 bullet rather than a first-class scope item.</p>
+  <p class="citation">§3 states detection "widens from strictly-root to root + a small set of conventional directories … recorded as a §6 task", but no <a href="../../../spec.html#NFR-002">NFR-002</a>-touching item appears in §2 In scope — unlike the coverage/observability additions, which touched only the uniform category machinery.</p>
+  <div class="response"><strong>Mitigated.</strong> The directory-widening is now scoped to <em>contract-first signals only</em> (a first-class §2 in-scope item + the §6 SIGNALS task): the other eight categories keep strict root-only detection, so NFR-002's shallow-detection invariant is unchanged for them. The shared invariant is not touched; only contract detection reaches into <code>api/</code>/<code>proto/</code>/<code>schema/</code>/<code>contracts/</code>.</div>
+</spec-risk>
+</spec-risk-log>
+</section>
+
+
+<section id="tasks">
+<h2>6 · Tasks</h2>
+<p>Scoped to this change. On <code>/spectastic.apply</code> these fold into 042's <code>tasks.html</code> as a new phase
+that <code>/spectastic.implement</code> drains.</p>
+
+<ul style="list-style:none;padding-left:0;">
+  <li><input type="checkbox"> Add <code>| 'contract-first'</code> to the <code>EnforcementCategory</code> union in <code>packages/core/src/enforce/types.ts</code> and to <code>ALL_CATEGORIES</code> in <code>detect.ts</code>.</li>
+  <li><input type="checkbox"> Add contract <code>SIGNALS</code> in <code>detect.ts</code>: OpenAPI/Swagger (<code>openapi.*</code>/<code>swagger.*</code>), Protobuf (<code>*.proto</code>), GraphQL SDL (<code>schema.graphql</code>/<code>*.graphqls</code>), AsyncAPI (<code>asyncapi.*</code>), and JSON Schema <strong>only</strong> under a <code>contracts/</code> path (never a bare <code>*.schema.json</code>, which is usually a config schema — R-1). Widen <strong>contract detection only</strong> from strictly-root to root + conventional dirs (<code>api/</code>, <code>proto/</code>, <code>schema/</code>, <code>contracts/</code>); the other eight categories stay root-only so NFR-002 is unchanged for them (R-3).</li>
+  <li><input type="checkbox"> Add an <code>INTERFACE_SIGNALS</code> set (web/RPC framework dependency names per ecosystem) and the interface-gated resolution in <code>detectTooling</code> (<code>packages/core/src/enforce/detect.ts</code>): contract-first is covered if a contract is present OR no interface framework is detected; missing only when interface present + contract absent. Per FR-014. Unit-test each branch.</li>
+  <li><input type="checkbox"> Honest surfaced copy: update the <code>compose.ts</code> "Enforcement floor" AGENTS block so a contract-first line reads "an interface contract is checked in (when an interface is exposed)", never "the contract is validated".</li>
+  <li><input type="checkbox"> Manifest: add <code>contract-first</code> to <code>verified.enforce.required</code> + <code>enterprise.enforce.required</code> and refresh both <code>axes.enforcement</code> labels in <code>spectastic-profiles.json</code>; rebuild the bundle so <code>_bundled/spectastic-profiles.json</code> matches.</li>
+  <li><input type="checkbox"> Fixtures + tests (extends <a href="../../../spec.html#SC-002">SC-002</a>): an interface-exposing fixture with a contract → covered; interface + no contract → missing (blocks at verified); no-interface fixture (a CLI) → covered/exempt (never blocks); a contract in a conventional subdir detected. Behavioral <code>spectastic enforce</code> per <a href="../../../spec.html#SC-001">SC-001</a>.</li>
+  <li><input type="checkbox"> Note in <code>CLAUDE.md</code>'s considerations index + <code>docs/roadmap.html</code>: <code>TBD-contract-first-enforce</code> resolved (9th category, interface-gated, verified/enterprise; the "checked-in ≠ valid" ceiling + the unlisted-framework false-negative recorded).</li>
+</ul>
+</section>
+
+
+<section id="questions">
+<h2>7 · Open questions</h2>
+<spec-questions>
+<p>None outstanding. The applicability model (interface-gated), tier placement (verified/enterprise), and the detected
+contract formats were anchored in the interview; content/drift validation and standard-tier gating are explicitly out of
+scope (§2).</p>
+</spec-questions>
+</section>
+
+
+<section id="changelog">
+<h2>8 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-07-11">11 Jul 2026</time><span>Proposal authored. MODIFY FR-002 (contract-first joins, checked-in-contract signal) + ADD FR-014 (interface-gated applicability) + a data/content delta adding contract-first to the verified/enterprise floor. Interface-gating fails safe (no interface → exempt), so no FR-010 entry is needed. Machine teeth for the contract-first principle + contracts axis; resolves <code>TBD-contract-first-enforce</code>.</span></li>
+  <li><time datetime="2026-07-11">11 Jul 2026</time><span>Adversarial pass (auto-fired, must-tier) returned three risks, all mitigated. Dropped bare <code>*.schema.json</code> from the contract signals (config schemas no longer certify the floor; JSON Schema only under <code>contracts/</code>); reconciled FR-014 with FR-010 (conditional applicability ≠ undetectable-but-applicable, so exempt-not-warn is correct and FR-010 is not overridden); and scoped the root→subdir detection widening to the contract signals only (the other eight categories stay root-only, NFR-002 unchanged), promoted to a first-class §2 item. Approved.</span></li>
+  <li><time datetime="2026-07-12">11 Jul 2026</time><span>Applied on 11 Jul 2026 — Add contract-first as the 9th enforce category — detects a checked-in interface contract (OpenAPI/Swagger, *.proto, GraphQL SDL, AsyncAPI, or JSON Schema under contracts/), interface-gated (FR-014) so it's a gap only when a web/RPC framework is detected without a contract; a project with no interface is exempt (fails safe, no FR-010 entry needed). Verified/enterprise floor. Adversarial pass: 3 risks mitigated (dropped bare *.schema.json, reconciled FR-014 with FR-010, scoped subdir detection to contract signals only). Resolves TBD-contract-first-enforce..</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+</spec-change>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  2026-07-11-contract-first-enforce · Contract-first as the 9th enforcement category · authored 11 Jul 2026 ·
+  <button data-theme-toggle style="background:none;border:none;color:var(--c-link);cursor:pointer;font:inherit;padding:0;border-bottom:1px solid currentColor;">toggle theme</button>
+</footer>
+
+</main>
+<script src="../../../../../assets/spec.js"></script>
+</body>
+</html>
