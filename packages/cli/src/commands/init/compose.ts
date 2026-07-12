@@ -152,6 +152,11 @@ export function renderAgentsMd(
             '- Coverage means a threshold/check is configured (e.g. fail_under, coverageThreshold) — that proves a gate is wired, not that CI blocks a coverage drop on a diff; the two are separable.',
           ]
         : []),
+      ...(required.includes('contract-first')
+        ? [
+            '- Contract-first is interface-gated: it applies only when the project exposes an interface (a web/RPC framework). When it does, a checked-in contract (OpenAPI, *.proto, GraphQL SDL, AsyncAPI) is required; a project with no interface is exempt. Detection proves the contract is checked in — not that it is valid or matches the running routes.',
+          ]
+        : []),
       ...(have.length > 0 ? [`- Already covered — do not replace: ${have.join(', ')}.`] : []),
       ...(need.length > 0 ? [`- Still to wire (add a tool + CI gate): ${need.join(', ')}.`] : []),
       'Run `spectastic enforce` to check the floor.',

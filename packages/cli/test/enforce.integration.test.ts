@@ -206,3 +206,35 @@ describe('enforce: US1 severity scaling (SC-003)', () => {
     expect(r.stdout).toContain('no profile marker');
   });
 });
+
+// spec 042 2026-07-11-contract-first-enforce (FR-002/FR-014): the 9th category,
+// interface-gated — a gap only when the project exposes an interface without a contract.
+describe('enforce: contract-first is interface-gated', () => {
+  it('Verified web service (express) with no contract → contract-first is a missing gap', async () => {
+    const dir = await project('verified', 'iface');
+    writeFileSync(join(dir, 'package.json'), '{"dependencies":{"express":"^4.19.0"}}', 'utf8');
+    const r = await runCLI(['enforce'], dir);
+    expect(r.code).toBe(1);
+    expect(r.stdout).toMatch(/✗ missing:[^\n]*contract-first/);
+  });
+
+  it('Verified web service (express) WITH a checked-in contract → contract-first not missing', async () => {
+    const dir = await project('verified', 'iface-ok');
+    writeFileSync(join(dir, 'package.json'), '{"dependencies":{"express":"^4.19.0"}}', 'utf8');
+    writeFileSync(join(dir, 'openapi.yaml'), 'openapi: 3.0.0\n', 'utf8');
+    const r = await runCLI(['enforce'], dir);
+    expect(r.stdout).not.toMatch(/missing:[^\n]*contract-first/);
+  });
+
+  it('Verified CLI (no interface framework) → contract-first is exempt, never a missing gap', async () => {
+    const dir = await project('verified', 'cli');
+    // a CLI package with no web/RPC framework: contract-first must NOT appear under missing,
+    // even though the project is otherwise untooled (other categories will be missing).
+    writeFileSync(join(dir, 'package.json'), '{"bin":{"mytool":"./cli.js"},"dependencies":{"commander":"^12"}}', 'utf8');
+    const r = await runCLI(['enforce'], dir);
+    // exempt = covered, never missing: contract-first must not be in the missing list…
+    expect(r.stdout).not.toMatch(/missing:[^\n]*contract-first/);
+    // …and it IS reported as covered (nothing to contract).
+    expect(r.stdout).toMatch(/covered:[^\n]*contract-first/);
+  });
+});

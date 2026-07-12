@@ -75,8 +75,12 @@ describe('detectTooling: per-ecosystem classification', () => {
     expect(c.has('test-runner')).toBe(true);
   });
 
-  it('empty project → nothing covered', () => {
-    expect(detectTooling(fixture({})).size).toBe(0);
+  it('empty project → only contract-first (exempt: no interface exposed, nothing to contract)', () => {
+    // Since 2026-07-11-contract-first-enforce, contract-first is interface-gated: a project
+    // with no detected interface is exempt (covered). An empty project exposes nothing, so
+    // contract-first is the one covered category; all others remain uncovered (FR-014).
+    const covered = detectTooling(fixture({}));
+    expect([...covered]).toEqual(['contract-first']);
   });
 });
 

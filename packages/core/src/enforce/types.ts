@@ -14,7 +14,8 @@ export type EnforcementCategory =
   | 'supply-chain'
   | 'test-runner'
   | 'coverage'
-  | 'observability';
+  | 'observability'
+  | 'contract-first';
 
 /** How hard the enforcement floor gates (spec 042, D-003). */
 export type EnforceGate = 'none' | 'soft' | 'hard';

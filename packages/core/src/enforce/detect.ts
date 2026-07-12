@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { EnforcementCategory } from './types.js';
 
@@ -155,6 +155,110 @@ export const SIGNALS: readonly Signal[] = [
   { ecosystem: 'rust', category: 'observability', file: 'Cargo.toml', contains: 'prometheus' },
 ];
 
+// --- Contract-first (spec 042, 2026-07-11-contract-first-enforce) -------------
+// Contract-first is NOT in SIGNALS: it is interface-gated (FR-014) — a gap only
+// when the project exposes a detectable interface AND no contract is checked in.
+// Two detection halves feed detectTooling's special case below.
+
+/** A file-match signal without a category — used for interface-framework detection. */
+type FileSignal = { file: string; contains?: string };
+
+// Conventional directories a checked-in contract lives in. Detection reaches ONE
+// level into these — a widening scoped to the contract signals ONLY (adversarial
+// R-3); the other eight categories stay strictly root-only, so NFR-002's
+// shallow-detection invariant is unchanged for them.
+const CONTRACT_DIRS = ['api', 'proto', 'schema', 'contracts'] as const;
+
+/** True if `name`, in directory `dir` ('' = root), is a checked-in interface contract. */
+function isContractFile(name: string, dir: string): boolean {
+  const lower = name.toLowerCase();
+  // OpenAPI / Swagger / AsyncAPI documents by conventional name.
+  if (/^(openapi|swagger|asyncapi)\.(ya?ml|json)$/.test(lower)) return true;
+  // Protobuf and GraphQL SDL by extension.
+  if (lower.endsWith('.proto') || lower.endsWith('.graphql') || lower.endsWith('.graphqls')) return true;
+  // A bare *.schema.json is usually a config-validation schema, not an interface
+  // contract, so JSON Schema counts ONLY under an explicit contracts/ dir (R-1).
+  if (dir === 'contracts' && lower.endsWith('.schema.json')) return true;
+  return false;
+}
+
+/** True if a directory (shallow, no recursion) holds a checked-in contract file. */
+function dirHasContract(cwd: string, dir: string): boolean {
+  try {
+    return readdirSync(dir === '' ? cwd : join(cwd, dir)).some((name) => isContractFile(name, dir));
+  } catch {
+    return false; // missing/unreadable dir → no contract there
+  }
+}
+
+/** True if a checked-in interface contract exists at the root or a conventional dir. */
+export function detectContract(cwd: string): boolean {
+  return dirHasContract(cwd, '') || CONTRACT_DIRS.some((dir) => dirHasContract(cwd, dir));
+}
+
+// A web/RPC framework declared as a dependency signals the project EXPOSES a
+// public interface (FR-014), matched by dependency name on the manifest exactly
+// like the observability exporters. An interface exposed via a framework outside
+// this set is silently exempt — a recorded false-negative, never a false failure.
+const INTERFACE_SIGNALS: readonly FileSignal[] = [
+  // JS/TS — quoted names avoid substring false-positives (e.g. "express" vs "expressive").
+  { file: 'package.json', contains: '"express"' },
+  { file: 'package.json', contains: '"fastify"' },
+  { file: 'package.json', contains: '"@nestjs/core"' },
+  { file: 'package.json', contains: '"koa"' },
+  { file: 'package.json', contains: '"@hapi/hapi"' },
+  { file: 'package.json', contains: '"@apollo/server"' },
+  { file: 'package.json', contains: '"apollo-server"' },
+  { file: 'package.json', contains: '"graphql-yoga"' },
+  { file: 'package.json', contains: '"@grpc/grpc-js"' },
+  // Python
+  { file: 'pyproject.toml', contains: 'fastapi' },
+  { file: 'pyproject.toml', contains: 'flask' },
+  { file: 'pyproject.toml', contains: 'django' },
+  { file: 'pyproject.toml', contains: 'starlette' },
+  { file: 'pyproject.toml', contains: 'aiohttp' },
+  { file: 'pyproject.toml', contains: 'grpcio' },
+  { file: 'pyproject.toml', contains: 'connexion' },
+  { file: 'requirements.txt', contains: 'fastapi' },
+  { file: 'requirements.txt', contains: 'flask' },
+  { file: 'requirements.txt', contains: 'django' },
+  { file: 'requirements.txt', contains: 'grpcio' },
+  // Java
+  { file: 'pom.xml', contains: 'spring-boot-starter-web' },
+  { file: 'pom.xml', contains: 'spring-webflux' },
+  { file: 'pom.xml', contains: 'jakarta.ws.rs' },
+  { file: 'pom.xml', contains: 'javax.ws.rs' },
+  { file: 'pom.xml', contains: 'grpc-' },
+  { file: 'pom.xml', contains: 'quarkus-resteasy' },
+  { file: 'build.gradle', contains: 'spring-boot-starter-web' },
+  { file: 'build.gradle', contains: 'spring-webflux' },
+  { file: 'build.gradle', contains: 'micronaut-http' },
+  { file: 'build.gradle', contains: 'grpc-' },
+  // Go
+  { file: 'go.mod', contains: 'gin-gonic/gin' },
+  { file: 'go.mod', contains: 'labstack/echo' },
+  { file: 'go.mod', contains: 'gofiber/fiber' },
+  { file: 'go.mod', contains: 'gorilla/mux' },
+  { file: 'go.mod', contains: 'go-chi/chi' },
+  { file: 'go.mod', contains: 'google.golang.org/grpc' },
+  // Rust
+  { file: 'Cargo.toml', contains: 'actix-web' },
+  { file: 'Cargo.toml', contains: 'axum' },
+  { file: 'Cargo.toml', contains: 'rocket' },
+  { file: 'Cargo.toml', contains: 'warp' },
+  { file: 'Cargo.toml', contains: 'tonic' },
+  { file: 'Cargo.toml', contains: 'poem' },
+  // Swift
+  { file: 'Package.swift', contains: 'Vapor' },
+  { file: 'Package.swift', contains: 'Hummingbird' },
+  { file: 'Package.swift', contains: 'grpc-swift' },
+];
+
+/** True if the project declares a web/RPC framework — i.e. it exposes a public interface (FR-014). */
+export function exposesInterface(cwd: string): boolean {
+  return INTERFACE_SIGNALS.some((sig) => signalMatches(cwd, sig));
+}
+
 const ALL_CATEGORIES: readonly EnforcementCategory[] = [
   'formatter',
   'linter',
@@ -164,9 +268,10 @@ const ALL_CATEGORIES: readonly EnforcementCategory[] = [
   'test-runner',
   'coverage',
   'observability',
+  'contract-first',
 ];
 
-function signalMatches(cwd: string, sig: Signal): boolean {
+function signalMatches(cwd: string, sig: FileSignal): boolean {
   const path = join(cwd, sig.file);
   if (!existsSync(path)) return false;
   if (sig.contains === undefined) return true;
@@ -184,6 +289,11 @@ export function detectTooling(cwd: string): Set<EnforcementCategory> {
     if (covered.has(sig.category)) continue;
     if (signalMatches(cwd, sig)) covered.add(sig.category);
   }
+  // contract-first (FR-014): interface-gated. Covered if a contract is checked in,
+  // OR the project exposes no detectable interface (nothing to contract). It is a
+  // gap only when an interface is exposed and no contract is present — so the gate
+  // fails safe on the antecedent (no interface → exempt), needing no FR-010 entry.
+  if (detectContract(cwd) || !exposesInterface(cwd)) covered.add('contract-first');
   return covered;
 }
 
