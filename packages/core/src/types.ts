@@ -576,6 +576,31 @@ export interface CapturedRun {
    * "suggested — not yet run" rather than presenting them as verified (P-7).
    */
   verified?: boolean;
+  /**
+   * The instrumentation evidence for the §Observables trace (spec
+   * 048-verify-slo-trace, FR-002) — grounds the NFR -> SLO -> SLI ->
+   * instrumentation chain in a real check, the same way `tests`/`demo`
+   * ground the SC trace. One per-project capture (plan D-002's granularity
+   * call): a single `/metrics`-class endpoint + the golden signals actually
+   * observed there, covering every `<spec-slo>` the run checked.
+   */
+  observables?: {
+    /** The metrics endpoint that was checked, e.g. "GET /metrics". */
+    endpoint?: string;
+    /** The golden-signal ids actually observed (a subset of the Four Golden Signals). */
+    signals?: string[];
+    /** The SLO/NFR ids this capture speaks to. */
+    slosCite?: string[];
+    /**
+     * Whether the endpoint was actually queried (independent of the
+     * top-level `verified` — Run/Demo and the observability check are
+     * separate real-world actions). Default true; `false` marks this
+     * capture "suggested — not yet run" and, per D-003, suppresses the
+     * declared-vs-observed signal cross-check (FR-003) — a check that
+     * wasn't run can't honestly flag a signal as "not observed".
+     */
+    verified?: boolean;
+  };
 }
 
 export interface VerifyInput {

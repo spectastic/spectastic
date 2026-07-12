@@ -50,14 +50,30 @@ export function registerVerify(program: Command): void {
  * regeneration path and preserves the existing block. Never blocks on an idle
  * non-TTY stdin: if no data begins arriving promptly, treat it as no capture.
  */
-async function readCapturedRun(): Promise<
-  { run?: string; toggle?: string; tests?: string; demo?: string; testsCite?: string[]; demoCite?: string[]; verified?: boolean } | undefined
-> {
+type ReadCapturedRunResult = {
+  run?: string;
+  toggle?: string;
+  tests?: string;
+  demo?: string;
+  testsCite?: string[];
+  demoCite?: string[];
+  verified?: boolean;
+  // The observables capture (048-verify-slo-trace, FR-002) — plain passthrough,
+  // no schema validation here, same as every other field on this type.
+  observables?: {
+    endpoint?: string;
+    signals?: string[];
+    slosCite?: string[];
+    verified?: boolean;
+  };
+};
+
+async function readCapturedRun(): Promise<ReadCapturedRunResult | undefined> {
   if (process.stdin.isTTY) return undefined;
   const raw = (await readStdin()).trim();
   if (raw === '') return undefined;
   try {
-    return JSON.parse(raw) as { run?: string; toggle?: string; tests?: string; demo?: string; testsCite?: string[]; demoCite?: string[]; verified?: boolean };
+    return JSON.parse(raw) as ReadCapturedRunResult;
   } catch (err) {
     process.stderr.write(`verify: stdin is not valid JSON — ${(err as Error).message}\n`);
     process.exit(2);

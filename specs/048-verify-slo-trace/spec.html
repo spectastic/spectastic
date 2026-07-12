@@ -1,0 +1,238 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
+<title>Verify-page observables trace · Specification</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Specification · 048-verify-slo-trace</p>
+  <h1>Verify-page observables trace</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    Today <code>verify.html</code> proves success criteria and ignores NFRs. This gives a reliability NFR a proof leg — SLO to SLI to the instrumentation that actually emitted it.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>      <span><spec-status value="accepted">Accepted</spec-status></span>
+    <b>Spec ID</b>     <span>048-verify-slo-trace</span>
+    <b>Owner</b>       <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Reviewers</b>   <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Created</b>     <span><time datetime="2026-07-12">12 Jul 2026</time></span>
+    <b>Principles</b><span><a href="../../principles.html">v1.7.0</a></span>
+    <b>Builds on</b>  <span><a href="../047-slo-nfr-artifact/spec.html">047</a> (<code>&lt;spec-slo&gt;</code>) · <a href="../021-verify-view/spec.html">021</a> (verify.html)</span>
+    <b>Smallest demoable</b><span>A reliability NFR renders in <code>verify.html</code> as SLO → SLI → the captured <code>/metrics</code> evidence; a declared signal the run didn't emit is a loud gap.</span>
+    <b>Read time</b>   <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-budget words="1500" reqs="20" minutes="12"></spec-budget>
+
+  <spec-tldr>
+    <p>The observability chain's last rung. <a href="../047-slo-nfr-artifact/spec.html">047</a> gave an NFR a first-class
+    <code>&lt;spec-slo&gt;</code>, but <a href="../021-verify-view/spec.html">verify.html</a> still traces only <code>SC-NNN</code> — a
+    reliability target has <strong>no proof leg</strong>. This adds a <strong>§Observables trace</strong>: each NFR → its
+    <code>&lt;spec-slo&gt;</code> (objective · window · SLI · signal) → the <strong>instrumentation that emitted it</strong>. Grounded,
+    like the Run/Demo block, in a real run — a structured <code>observables</code> capture (one per-project endpoint + the golden signals
+    observed) — and the trace <strong>cross-checks each SLO's declared <code>signal=</code> against what was seen</strong>: a claimed but
+    unobserved signal is a loud gap. Gaps are <em>quantified-aware</em> (047's heuristic): an SLO-less NFR that looks like a reliability
+    target is a loud gap; a non-quantified NFR a quiet <em>n/a</em>. <code>verify-view-stale</code> widens to guard the new links.
+    Extends P-7 to the NFR.</p>
+  </spec-tldr>
+
+  <dl class="invest">
+    <dt><span class="letter">I</span> Independent</dt> <dd>Consumes <a href="../047-slo-nfr-artifact/spec.html">047</a>'s <code>&lt;spec-slo&gt;</code> + the <code>@spectastic/schema/slo</code> heuristic; extends <a href="../021-verify-view/spec.html">021</a>'s generator. No shared-data coupling.</dd>
+    <dt><span class="letter">N</span> Negotiable</dt>  <dd>Outcome (an NFR's SLO is proven against real instrumentation), not a named metrics format or scraper.</dd>
+    <dt><span class="letter">V</span> Valuable</dt>    <dd>Unlocks <a href="#SC-001">SC-001</a> — a reliability NFR becomes a proven line in <code>verify.html</code>, not an unconsumed number.</dd>
+    <dt><span class="letter">E</span> Estimable</dt>   <dd>Every locus mirrors a shipped one: the SC-trace reader/renderer, the <code>CapturedRun</code> field, the <code>verify-view-stale</code> rule.</dd>
+    <dt><span class="letter">S</span> Small</dt>       <dd>One section on the generator, one capture field, one widened rule — a single verify.html slice.</dd>
+    <dt><span class="letter">T</span> Testable</dt>    <dd><a href="#SC-001">SC-001</a>/<a href="#SC-002">SC-002</a> are validate- and browser-observable on a fixture bundle.</dd>
+  </dl>
+</header>
+
+
+<section id="context">
+<h2>1 · Context</h2>
+<p>The chain is NFR → SLO → SLI → instrumentation. <a href="../047-slo-nfr-artifact/spec.html">047</a> built the SLO rung
+(<code>&lt;spec-slo target="NFR-NNN"&gt;</code> — SLI, objective, window, budgeting, golden signal). But
+<a href="../021-verify-view/spec.html">verify.html</a> — spectastic's P-7 proof view — derives a trace only for <code>SC-NNN</code>
+(success criterion → acceptance → test task). <mark>An NFR appears in no trace</mark>, so a quantified reliability target still has no
+proof leg: nothing shows that the promised SLO is backed by instrumentation that actually emits its signal.</p>
+<p>This is the fourth and final move of the <a href="../../docs/observability-slo-considerations.html">observability-slo</a> research —
+the other three (the principle, the enforce category, the <code>&lt;spec-slo&gt;</code> artifact) have shipped. It closes the loop by
+giving the NFR the same proof leg the SC already has.</p>
+</section>
+
+
+<section id="scenarios">
+<h2>2 · User scenarios &amp; testing</h2>
+
+<h3 id="US1">US1 · An NFR gets a proof leg <spec-pill>P1</spec-pill></h3>
+<p>As a <strong>reviewer</strong>, I want each NFR traced to its SLO and the instrumentation that emits it, so a reliability promise is
+proven, not asserted.</p>
+<p><em>Acceptance:</em> <code>verify.html</code> gains a §Observables section; an NFR with a linked <code>&lt;spec-slo&gt;</code> shows its
+objective · window · SLI · signal, plus the captured instrumentation; a <em>quantified</em> NFR (047's heuristic) with no SLO is a loud
+gap; a non-quantified NFR is a quiet <em>n/a</em>.</p>
+
+<h3 id="US2">US2 · The instrumentation is grounded in a real run <spec-pill>P1</spec-pill></h3>
+<p>As an <strong>implementer</strong>, I want to record the real <code>/metrics</code> check so the trace shows evidence, not intent.</p>
+<p><em>Acceptance:</em> a structured <code>observables</code> capture (one per-project endpoint + the golden signals observed, citing the
+SLO/NFR ids) fills the instrumentation column; absent, it renders loudly <em>not recorded</em>; unexecuted, it renders <em>suggested</em>
+(P-7), never as verified.</p>
+
+<h3 id="US3">US3 · A claimed signal that isn't emitted is caught <spec-pill>P2</spec-pill></h3>
+<p>As a <strong>reviewer</strong>, I want an SLO whose declared signal the run didn't observe flagged, so "present ≠ wired" can't hide.</p>
+<p><em>Acceptance:</em> for each SLO, its <code>signal=</code> is cross-checked against the observed-signals set; a declared-but-unobserved
+signal renders a loud gap in the trace.</p>
+
+<h3>Edge cases</h3>
+<ul>
+  <li><strong>No SLOs at all.</strong> A spec with no <code>&lt;spec-slo&gt;</code> renders <code>verify.html</code> as before — the §Observables section states "no SLOs declared", never a broken table (NFR-002).</li>
+  <li><strong>Multiple SLOs per NFR.</strong> Each linked <code>&lt;spec-slo&gt;</code> is its own row under the NFR; each cross-checks its own signal.</li>
+  <li><strong>No capture.</strong> The trace still derives from the bundle; only the instrumentation column is "not recorded" — the NFR → SLO → SLI legs are present.</li>
+</ul>
+</section>
+
+
+<section id="requirements">
+<h2>3 · Requirements</h2>
+
+<p>Conformance keywords (<spec-rule>MUST</spec-rule>, <spec-rule level="should">SHOULD</spec-rule>,
+<spec-rule level="may">MAY</spec-rule>) follow RFC 2119.</p>
+
+<h3>Functional</h3>
+
+<spec-requirement id="FR-001" priority="must">
+<p><code>verify.html</code> <spec-rule>MUST</spec-rule> gain a <strong>§Observables trace</strong> derived by reference from the bundle:
+one row per NFR, showing — for an NFR with a linked <code>&lt;spec-slo&gt;</code> — its objective, window, SLI, and signal (read from the
+<code>&lt;spec-slo&gt;</code>), plus the instrumentation column (FR-002). Gaps <spec-rule>MUST</spec-rule> be <em>quantified-aware</em>:
+an NFR with no linked <code>&lt;spec-slo&gt;</code> that is <em>quantified</em> (the <code>@spectastic/schema/slo</code> <code>isQuantifiedTarget</code>
+heuristic — it looks like a reliability target) renders a <strong>loud gap</strong>; a non-quantified NFR renders a quiet <em>n/a</em>.</p>
+<details><summary>Rationale</summary><p>The NFR analog of the SC → acceptance → test trace, extending P-7. Not every NFR is a reliability
+target, so — unlike the SC trace, where every SC is a loud gap without a test — the gap is gated on 047's quantified heuristic to avoid
+false alarms on security/determinism NFRs.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-002" priority="must">
+<p>A structured <code>observables</code> field <spec-rule>MUST</spec-rule> be added to the captured-run model: one <strong>per-project</strong>
+capture of the metrics <strong>endpoint</strong> and the golden <strong>signals observed</strong> (a subset of latency / traffic / errors /
+saturation), plus the SLO/NFR ids it <code>cites</code>. It fills the instrumentation column; when absent it <spec-rule>MUST</spec-rule>
+render loudly as <em>not recorded</em> (never a silent blank), and when marked unexecuted it <spec-rule>MUST</spec-rule> render as
+<em>suggested — not yet run</em>, mirroring the Run/Demo block's P-7 honesty.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-003" priority="must">
+<p>For each <code>&lt;spec-slo&gt;</code> carrying a <code>signal=</code>, the trace <spec-rule>MUST</spec-rule> cross-check that signal
+against the captured observed-signals set; a signal the SLO <strong>declares but the run did not observe</strong> <spec-rule>MUST</spec-rule>
+render a <strong>loud gap</strong> — the proof that the SLO's claimed observability is actually emitted. When no capture exists, the
+cross-check is skipped (the instrumentation column already reads "not recorded").</p>
+</spec-requirement>
+
+<spec-requirement id="FR-004" priority="must">
+<p>The <code>verify-view-stale</code> rule <spec-rule>MUST</spec-rule> widen to guard the new links: it derives the expected NFR/SLO id
+set the bundle declares and compares it to what <code>verify.html</code>'s §Observables trace links, flagging drift at <strong>error</strong>
+severity — the same drift-guard the SC/test-task trace already gets, so a changed <code>&lt;spec-slo&gt;</code> set without regeneration is
+caught.</p>
+</spec-requirement>
+
+<h3>Non-functional</h3>
+
+<spec-requirement id="NFR-001" priority="must">
+<p>Regeneration <spec-rule>MUST</spec-rule> stay deterministic and byte-identical on an unchanged bundle (no timestamps, stable order), and
+the captured <code>observables</code> block <spec-rule>MUST</spec-rule> be preserved on a links-only regeneration — mirroring the Run/Demo
+block's FR-006 behaviour. No new runtime dependency.</p>
+</spec-requirement>
+
+<spec-requirement id="NFR-002" priority="should">
+<p>A spec with no <code>&lt;spec-slo&gt;</code> <spec-rule level="should">SHOULD</spec-rule> render <code>verify.html</code> exactly as
+today apart from a "no SLOs declared" §Observables note — no broken table, no regression to the existing SC trace.</p>
+</spec-requirement>
+
+<h3>Out of scope (deferred)</h3>
+<spec-out-of-scope>
+  <ul>
+    <li defer-to="TBD">verify itself probing a live <code>/metrics</code> endpoint — the capture is recorded by whoever runs the check (like <code>tests</code>/<code>demo</code>), a real-run input, not something the deterministic generator fetches.</li>
+    <li defer-to="042-profile-enforcement">Gating on observability coverage — that is the shipped <code>observability</code> enforce category's job; this view proves, it does not gate.</li>
+    <li defer-to="TBD">Per-SLO / multi-service captures (different SLOs hitting different endpoints) — the per-project capture covers the common single-service spec.</li>
+  </ul>
+</spec-out-of-scope>
+</section>
+
+
+<section id="data">
+<h2>4 · Data model</h2>
+<p>Extends two existing models; owns no persistent entity.</p>
+<dl>
+  <dt>Observables trace row</dt><dd>An NFR id, its linked <code>&lt;spec-slo&gt;</code>(s) with objective/window/SLI/signal, and a status: <em>traced</em>, <em>loud gap</em> (quantified, no SLO, or a declared-but-unobserved signal), or <em>n/a</em> (non-quantified, no SLO).</dd>
+  <dt>Captured <code>observables</code></dt><dd>Per-project: the metrics endpoint, the observed golden-signal set, the cited SLO/NFR ids, and the executed/suggested flag. A field on the captured-run model beside <code>tests</code>/<code>demo</code>.</dd>
+  <dt>Golden signal</dt><dd>The Four Golden Signals enum (latency / traffic / errors / saturation), reused from <a href="../047-slo-nfr-artifact/spec.html">047</a>'s <code>@spectastic/schema/slo</code>.</dd>
+</dl>
+</section>
+
+
+<section id="success">
+<h2>5 · Success criteria</h2>
+
+<spec-requirement id="SC-001" priority="must">
+<p>For a bundle whose NFR has a linked <code>&lt;spec-slo&gt;</code>, <code>verify.html</code> renders a §Observables row tracing that NFR →
+its SLO (objective · window) → SLI → instrumentation; a quantified NFR lacking an SLO renders a <strong>loud gap</strong>; a non-quantified
+NFR renders a quiet <em>n/a</em>; and regeneration is byte-identical and guarded by <code>verify-view-stale</code>.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-002" priority="should">
+<p>The instrumentation column reflects the real captured run — its endpoint and observed signals — and an SLO whose declared
+<code>signal=</code> is not in the observed set renders a <strong>loud gap</strong>; with no capture the column reads loudly <em>not
+recorded</em>, never silently blank.</p>
+</spec-requirement>
+</section>
+
+
+<section id="assumptions">
+<h2>6 · Assumptions</h2>
+<spec-assumption>
+<p>The <code>&lt;spec-slo&gt;</code> shape (047) and the <code>isQuantifiedTarget</code> / golden-signal exports (<code>@spectastic/schema/slo</code>) are stable and available to the verify generator — both shipped 12 Jul 2026.</p>
+</spec-assumption>
+<spec-assumption>
+<p>The observability capture is trustworthy input recorded by the runner (the P-7 suggested/verified flag is its honesty control); verify does not itself confirm the endpoint is live.</p>
+</spec-assumption>
+</section>
+
+
+<section id="questions">
+<h2>7 · Open questions</h2>
+<spec-questions>
+<p>None outstanding — slice scope (all three parts), quantified-aware gap rendering, the structured per-project capture, the declared-vs-observed signal cross-check, and widening <code>verify-view-stale</code> were all anchored in the interview.</p>
+</spec-questions>
+</section>
+
+
+<section id="conformance">
+<h2>8 · Conformance index</h2>
+<p>Auto-built from every <code>&lt;spec-requirement&gt;</code> in this document.</p>
+<spec-conformance></spec-conformance>
+</section>
+
+
+<section id="changelog">
+<h2>9 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-07-12">12 Jul 2026</time><span>Initial spec. The observability chain's last rung: a verify.html §Observables trace (NFR → SLO → SLI → instrumentation, FR-001) grounded in a structured per-project <code>observables</code> capture (FR-002), a declared-vs-observed signal cross-check (FR-003), and a widened <code>verify-view-stale</code> guard (FR-004). Quantified-aware gaps reuse 047's heuristic. Resolves <code>TBD-verify-slo-trace</code>.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  048-verify-slo-trace · Verify-page observables trace · authored 12 Jul 2026 ·
+  <button data-theme-toggle style="background:none;border:none;color:var(--c-link);cursor:pointer;font:inherit;padding:0;border-bottom:1px solid currentColor;">toggle theme</button>
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>
