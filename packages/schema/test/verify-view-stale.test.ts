@@ -97,3 +97,74 @@ describe('verify-view-stale: path fallback for subsection-less phases (021 FR-00
     expect(f[0]!.message).toMatch(/SC-002/);
   });
 });
+
+/**
+ * The observables-drift leg (048-verify-slo-trace, FR-004): the expected NFR
+ * id set — every NFR referenced by a `<spec-slo target>` in spec.html — must
+ * match the NFR ids `verify.html`'s §observables section links. Written
+ * test-first (T-101): the drift case FAILS until the rule widens (T-111); an
+ * empty set (no SLOs) means no finding either way, so those cases already
+ * hold and stay held once the rule lands.
+ */
+const NFR_SPEC = (nfrId: string, hasSlo: boolean): string =>
+  `<!doctype html><html lang="en"><body><main>
+<header><p class="small-caps">Specification · 999-x</p></header>
+<spec-requirement id="${nfrId}" priority="must"><p>p95 latency &lt; 200 ms.</p></spec-requirement>
+${hasSlo ? `<spec-slo target="${nfrId}" objective="99%" window="28d" budgeting="occurrences">sli</spec-slo>` : ''}
+</main></body></html>`;
+
+const NO_NFR_SPEC = `<!doctype html><html lang="en"><body><main>
+<header><p class="small-caps">Specification · 999-x</p></header>
+</main></body></html>`;
+
+// A traced row: 4 plain <td>s, no colspan — mirrors the real generator's
+// sloRow output (packages/core/src/commands/verify.ts).
+const OBSERVABLES_VERIFY = (nfrIds: string[]): string =>
+  `<!doctype html><html lang="en"><body><main><header><h1>999-x verify</h1></header>
+<section id="observables"><table><tbody>${nfrIds
+    .map(
+      (id) =>
+        `<tr><td><a href="./spec.html#${id}">${id}</a></td><td>obj</td><td>sli</td><td>—</td></tr>`,
+    )
+    .join('')}</tbody></table></section>
+</main></body></html>`;
+
+describe('verify-view-stale: observables drift (048 FR-004)', () => {
+  it('fires when the spec’s <spec-slo target> NFR set does not match what §observables links', () => {
+    const spec = NFR_SPEC('NFR-001', true);
+    const verify = OBSERVABLES_VERIFY([]); // NFR-001 has an SLO; the view links nothing
+    const f = stale(spec, TASKS(), verify);
+    expect(f).toHaveLength(1);
+    expect(f[0]!.message).toMatch(/stale/i);
+    expect(f[0]!.message).toMatch(/NFR-001/);
+  });
+
+  it('stays clean when the §observables links match the spec’s <spec-slo> targets', () => {
+    const spec = NFR_SPEC('NFR-001', true);
+    const verify = OBSERVABLES_VERIFY(['NFR-001']);
+    expect(stale(spec, TASKS(), verify)).toHaveLength(0);
+  });
+
+  it('is exempt for a bundle with no <spec-slo> at all (NFR-002 — no false positive)', () => {
+    const verify = OBSERVABLES_VERIFY([]);
+    expect(stale(NO_NFR_SPEC, TASKS(), verify)).toHaveLength(0);
+  });
+
+  // Regression: a gap row STILL links its NFR id (readers can jump to the
+  // requirement even with no SLO — the real generator's observablesGapRow),
+  // so a naive any-anchor scan would wrongly count it as "linked with an
+  // SLO" and false-positive drift on a spec whose NFRs simply have no SLOs
+  // yet — caught live on 048's own dogfooded verify.html.
+  const GAP_ROW_VERIFY = (nfrIds: string[]): string =>
+    `<!doctype html><html lang="en"><body><main><header><h1>999-x verify</h1></header>
+<section id="observables"><table><tbody>${nfrIds
+      .map((id) => `<tr><td><a href="./spec.html#${id}">${id}</a></td><td colspan="3">n/a</td></tr>`)
+      .join('')}</tbody></table></section>
+</main></body></html>`;
+
+  it('a gap row’s NFR anchor link is NOT counted as "linked with an SLO" (regression)', () => {
+    const spec = NFR_SPEC('NFR-001', false); // NFR-001 exists but has no <spec-slo>
+    const verify = GAP_ROW_VERIFY(['NFR-001']); // the real generator still links the gap row's id
+    expect(stale(spec, TASKS(), verify)).toHaveLength(0);
+  });
+});

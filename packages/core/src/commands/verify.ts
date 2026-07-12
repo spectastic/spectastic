@@ -13,7 +13,8 @@
 import { join } from 'node:path';
 import { parse, findAll, getAttr, walk } from '@spectastic/schema/parser';
 import type { Document, Element } from '@spectastic/schema/parser';
-import type { FileSystem, KernelContext, VerifyInput, VerifyResult } from '../types.js';
+import { isQuantifiedTarget } from '@spectastic/schema/slo';
+import type { CapturedRun, FileSystem, KernelContext, VerifyInput, VerifyResult } from '../types.js';
 
 export class VerifyError extends Error {
   constructor(message: string) {
@@ -40,6 +41,42 @@ export interface TraceRow {
   testTaskIds: string[];
 }
 
+/**
+ * One `<spec-slo target="NFR-NNN">`'s read fields (047-slo-nfr-artifact
+ * FR-001). Attributes only where present — a malformed SLO (missing a
+ * required field) is `slo-well-formed`'s concern, not ours; we just surface
+ * whatever is there.
+ */
+export interface SloInfo {
+  target: string;
+  objective?: string;
+  window?: string;
+  budgeting?: string;
+  signal?: string;
+  /** The SLI — the element's own content. */
+  sli: string;
+}
+
+/**
+ * One row of the §Observables trace (048-verify-slo-trace, D-001): an NFR,
+ * the `<spec-slo>`(s) refining it (if any), and — when there are none — a
+ * quantified-aware gap classification (FR-001).
+ */
+export interface ObservablesRow {
+  nfrId: string;
+  /** SLOs targeting this NFR, in document order. Empty when none link here. */
+  slos: SloInfo[];
+  /**
+   * Set only when `slos` is empty: `'loud'` when the NFR reads as a
+   * measurable target (`isQuantifiedTarget` against its prose OR its `slo=`
+   * light annotation, 047 FR-003 — a bare `slo=` string satisfies 047's
+   * minimal quantified gate but still has no SLI/window/signal to trace
+   * here, so it is correctly a gap at this fuller bar), `'quiet'` otherwise
+   * (not a reliability target — an SLO would be optional enrichment).
+   */
+  gap?: 'loud' | 'quiet';
+}
+
 /** The structured bundle the renderer consumes. Pure derivation. */
 export interface BundleModel {
   specId: string;
@@ -51,6 +88,8 @@ export interface BundleModel {
   scIds: string[];
   /** The SC -> acceptance -> test trace. */
   trace: TraceRow[];
+  /** The NFR -> SLO §Observables trace (048), one row per NFR in document order. */
+  observables: ObservablesRow[];
 }
 
 // --- reader (T-010) ----------------------------------------------------
@@ -101,6 +140,58 @@ function extractScIds(ast: Document): string[] {
     if (id && SC_ID.test(id)) ids.push(id);
   }
   return ids;
+}
+
+const NFR_ID = /^NFR-\d+$/;
+
+/** Read one `<spec-slo>` element into its `SloInfo` (047 FR-001 shape). */
+function readSloInfo(slo: Element): SloInfo {
+  const objective = getAttr(slo, 'objective');
+  const window = getAttr(slo, 'window');
+  const budgeting = getAttr(slo, 'budgeting');
+  const signal = getAttr(slo, 'signal');
+  return {
+    target: getAttr(slo, 'target') ?? '',
+    sli: textOf(slo),
+    ...(objective !== undefined ? { objective } : {}),
+    ...(window !== undefined ? { window } : {}),
+    ...(budgeting !== undefined ? { budgeting } : {}),
+    ...(signal !== undefined ? { signal } : {}),
+  };
+}
+
+/** Every `<spec-slo target=…>`, grouped by the NFR id it refines. */
+function extractSlosByTarget(ast: Document): Map<string, SloInfo[]> {
+  const map = new Map<string, SloInfo[]>();
+  for (const slo of findAll(ast, 'spec-slo')) {
+    const target = getAttr(slo, 'target');
+    if (!target) continue; // no target= — slo-target-required's concern, not ours
+    const info = readSloInfo(slo);
+    const list = map.get(target);
+    if (list) list.push(info);
+    else map.set(target, [info]);
+  }
+  return map;
+}
+
+/**
+ * The §Observables trace (048, FR-001): one row per NFR, with its linked
+ * SLOs or — when there are none — a quantified-aware gap. `isQuantifiedTarget`
+ * is checked against the NFR's own prose AND its `slo=` attribute (047's
+ * combined check), so classification agrees with 047's own quantified-NFR
+ * gate about what "looks like a reliability target" means.
+ */
+function extractObservables(ast: Document): ObservablesRow[] {
+  const nfrs = findAll(ast, 'spec-requirement').filter((el) => NFR_ID.test(getAttr(el, 'id') ?? ''));
+  const slosByTarget = extractSlosByTarget(ast);
+  return nfrs.map((nfr) => {
+    const nfrId = getAttr(nfr, 'id') ?? '';
+    const slos = slosByTarget.get(nfrId) ?? [];
+    if (slos.length > 0) return { nfrId, slos };
+    const sloAttr = getAttr(nfr, 'slo') ?? '';
+    const quantified = isQuantifiedTarget(textOf(nfr)) || isQuantifiedTarget(sloAttr);
+    return { nfrId, slos, gap: quantified ? ('loud' as const) : ('quiet' as const) };
+  });
 }
 
 /** The set of user-story numbers the spec carries an `id="USn"` anchor for. */
@@ -206,6 +297,7 @@ export function readBundle(specHtml: string, tasksHtml: string, specId: string):
     title: readTitle(spec.ast, specId),
     scIds,
     trace,
+    observables: extractObservables(spec.ast),
   };
 }
 
@@ -251,6 +343,29 @@ export function renderRunBlock(captured: VerifyInput['capturedRun']): string {
 </spec-runblock>`;
 }
 
+/**
+ * The instrumentation evidence for the §Observables trace (048, FR-002).
+ * Clones `renderRunBlock`'s contract exactly — same empty-field / suggested
+ * mechanics — for the per-project metrics capture: one endpoint + the golden
+ * signals actually observed, covering every SLO the run checked.
+ */
+export function renderObserved(observables: CapturedRun['observables']): string {
+  const o = observables ?? {};
+  const field = (val?: string): string => (val ? escapeHtml(val) : '');
+  // slosCite isn't surfaced in this block — it identifies which SLOs the
+  // capture speaks to for the (future) cross-check logic, not a display
+  // citation the way tests/demo's cites are; the render stays simple.
+  const suggested = o.verified === false;
+  const status = suggested ? ' data-status="suggested"' : '';
+  const banner = suggested
+    ? '\n  <spec-note><strong>Suggested — not yet run.</strong> This endpoint was not actually queried; verify it before trusting the result (<a href="../../principles.html#P-7">P-7</a>).</spec-note>'
+    : '';
+  return `<spec-observed-block${status}>${banner}
+  <spec-observed-endpoint>${field(o.endpoint)}</spec-observed-endpoint>
+  <spec-observed-signals>${field(o.signals?.join(', '))}</spec-observed-signals>
+</spec-observed-block>`;
+}
+
 const TRACE_GAP =
   '<strong style="color:var(--c-deprecated,#b0392a);font-style:italic;">— no test task cites this SC —</strong>';
 
@@ -283,6 +398,78 @@ export function renderTrace(model: BundleModel): string {
     .join('\n');
   return `<table>
   <thead><tr><th>Success criterion</th><th>Acceptance</th><th>Proof (tests)</th></tr></thead>
+  <tbody>
+${rows}
+  </tbody>
+</table>`;
+}
+
+/** A loud gap in the §Observables trace, reusing TRACE_GAP's visual pattern with an NFR-specific message. */
+const observablesGap = (nfrId: string): string =>
+  `<strong style="color:var(--c-deprecated,#b0392a);font-style:italic;">— ${nfrId} is quantified but has no linked &lt;spec-slo&gt; —</strong>`;
+
+/** Compact display of an SLO's objective/window/budgeting fields. */
+function sloSummary(slo: SloInfo): string {
+  const bits: string[] = [];
+  if (slo.objective) bits.push(escapeHtml(slo.objective));
+  if (slo.window) bits.push(`over ${escapeHtml(slo.window)}`);
+  if (slo.budgeting) bits.push(`(${escapeHtml(slo.budgeting)})`);
+  return bits.length > 0 ? bits.join(' ') : '—';
+}
+
+/**
+ * The signal cell: the declared signal, cross-checked against the captured
+ * observed-signals set (048, FR-003, US3, D-003). `observedSignals` is
+ * `undefined` when the cross-check should NOT run — no capture, or the
+ * capture is suggested (`verified:false`): a signal the run never checked
+ * means "not checked", not "not emitted", so it renders plainly, never a gap.
+ */
+function signalCell(slo: SloInfo, observedSignals: Set<string> | undefined): string {
+  if (!slo.signal) return '<span style="color:var(--c-muted);">—</span>';
+  if (observedSignals && !observedSignals.has(slo.signal)) {
+    return `<strong style="color:var(--c-deprecated,#b0392a);font-style:italic;">— declared signal "${escapeHtml(slo.signal)}" was not observed —</strong>`;
+  }
+  return `<code>${escapeHtml(slo.signal)}</code>`;
+}
+
+/** One §Observables row for a linked SLO: NFR -> objective/window/budgeting -> SLI -> signal. */
+function sloRow(nfrId: string, slo: SloInfo, observedSignals: Set<string> | undefined): string {
+  const signal = signalCell(slo, observedSignals);
+  return `    <tr><td><a href="./spec.html#${nfrId}">${nfrId}</a></td><td>${sloSummary(slo)}</td><td>${escapeHtml(slo.sli)}</td><td>${signal}</td></tr>`;
+}
+
+/** One §Observables row for an NFR with no linked SLO — a loud or quiet gap (FR-001). */
+function observablesGapRow(row: ObservablesRow): string {
+  const cell =
+    row.gap === 'loud'
+      ? observablesGap(row.nfrId)
+      : '<span style="color:var(--c-muted);">n/a</span>';
+  return `    <tr><td><a href="./spec.html#${row.nfrId}">${row.nfrId}</a></td><td colspan="3">${cell}</td></tr>`;
+}
+
+/**
+ * The §Observables trace (048-verify-slo-trace, FR-001): each NFR -> its
+ * linked SLO(s) — one row per SLO, since multiple SLOs per NFR are each
+ * independently traced (US1 edge case) — or a quantified-aware gap. Mirrors
+ * `renderTrace`'s shape; a spec with zero NFRs (nothing to trace) renders a
+ * "no SLOs declared" note instead of an empty table (NFR-002) — an NFR that
+ * merely lacks an SLO still gets its real gap row, since burying that would
+ * hide exactly the signal FR-001 exists to surface.
+ */
+export function renderObservables(model: BundleModel, captured: VerifyInput['capturedRun']): string {
+  if (model.observables.length === 0) {
+    return '<p>No SLOs declared — this spec carries no <code>&lt;spec-slo&gt;</code>-eligible NFRs.</p>';
+  }
+  const obs = captured?.observables;
+  // undefined (no cross-check) unless a capture exists AND it was actually run.
+  const observedSignals = obs && obs.verified !== false ? new Set(obs.signals ?? []) : undefined;
+  const rows = model.observables
+    .flatMap((row) =>
+      row.slos.length > 0 ? row.slos.map((slo) => sloRow(row.nfrId, slo, observedSignals)) : [observablesGapRow(row)],
+    )
+    .join('\n');
+  return `<table>
+  <thead><tr><th>NFR</th><th>Objective</th><th>SLI</th><th>Signal</th></tr></thead>
   <tbody>
 ${rows}
   </tbody>
@@ -342,6 +529,14 @@ ${renderTrace(model)}
 </section>
 
 
+<section id="observables">
+<h2>3 · Observables trace</h2>
+<p>Every reliability NFR, traced to its SLO (objective, window, SLI, signal) and — for a quantified NFR with none — a loud gap. The instrumentation evidence below grounds it in the real run.</p>
+${renderObserved(captured?.observables)}
+${renderObservables(model, captured)}
+</section>
+
+
 <footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
   Verify · ${escapeHtml(model.specId)} · derived view ·
   <button data-theme-toggle style="background:none;border:none;color:var(--c-link);cursor:pointer;font:inherit;padding:0;border-bottom:1px solid currentColor;">light/dark</button>
@@ -357,10 +552,16 @@ ${renderTrace(model)}
 // --- command -----------------------------------------------------------
 
 const RUNBLOCK_RE = /<spec-runblock>[\s\S]*?<\/spec-runblock>/;
+const OBSERVABLES_BLOCK_RE = /<spec-observed-block>[\s\S]*?<\/spec-observed-block>/;
 
 /** Extract the authored Run/Demo block from an existing verify.html, if any. */
 function extractRunBlock(html: string): string | undefined {
   return RUNBLOCK_RE.exec(html)?.[0];
+}
+
+/** Extract the authored observables capture from an existing verify.html, if any (048 NFR-001). */
+function extractObservedBlock(html: string): string | undefined {
+  return OBSERVABLES_BLOCK_RE.exec(html)?.[0];
 }
 
 /** Read a file, returning undefined if it doesn't exist (no existing view yet). */
@@ -388,11 +589,14 @@ export async function verifyCommand(
   let html = renderVerifyHtml(model, input.capturedRun);
 
   // Links-only regeneration (no fresh capture): re-derive the trace but
-  // PRESERVE the Run/Demo block the last /implement captured (FR-006).
+  // PRESERVE the Run/Demo block the last /implement captured (FR-006), and
+  // likewise the observables capture (048 NFR-001).
   if (!input.capturedRun) {
     const existing = await readFileSafe(fs, join(dir, 'verify.html'));
-    const preserved = existing ? extractRunBlock(existing) : undefined;
-    if (preserved) html = html.replace(RUNBLOCK_RE, () => preserved);
+    const preservedRun = existing ? extractRunBlock(existing) : undefined;
+    if (preservedRun) html = html.replace(RUNBLOCK_RE, () => preservedRun);
+    const preservedObserved = existing ? extractObservedBlock(existing) : undefined;
+    if (preservedObserved) html = html.replace(OBSERVABLES_BLOCK_RE, () => preservedObserved);
   }
 
   return { specId: input.specId, html };

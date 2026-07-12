@@ -1,0 +1,215 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
+<title>Verify-page observables trace · Tasks</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Tasks · 048-verify-slo-trace</p>
+  <h1>Verify-page observables trace</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    Ordered, parallelizable work. Tests precede implementation. Drive through with
+    <code>/spectastic.implement</code> — one task per invocation.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>     <span><spec-status value="draft">Draft</spec-status></span>
+    <b>Spec</b>       <span><a href="./spec.html">048-verify-slo-trace</a></span>
+    <b>Plan</b>       <span><a href="./plan.html">plan</a></span>
+    <b>Branch</b>     <span><code>verify-slo-trace</code></span>
+    <b>Created</b>    <span><time datetime="2026-07-12">12 Jul 2026</time></span>
+    <b>Read time</b>  <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-tldr>
+    <p>17 tasks across five phases. Setup → Foundational (the shared <code>ObservablesRow</code> reader + the
+    <code>CapturedRun.observables</code> field, both loci every story reads) → US1 (the §Observables trace + the widened
+    stale-rule guard, since SC-001 requires both) → US2 (the run-grounded capture) → US3 (the signal cross-check) → Polish.
+    Tasks marked <span class="par">[P]</span> touch a distinct file with no in-flight dependency. Per story, tests are
+    written and failing before implementation starts (plan D-005).</p>
+  </spec-tldr>
+</header>
+
+
+<section id="strategy">
+<h2>1 · Execution strategy</h2>
+<spec-tabs>
+  <spec-tab label="Incremental (recommended)">
+    <p>Setup → Foundational → US1 → US2 → US3 → Polish. US2's capture rendering and US3's cross-check both read the
+    <code>ObservablesRow</code> shape US1 renders against, and the cross-check specifically needs the capture US2 adds —
+    a real dependency chain, matching the plan's Low risk-tolerance call (every locus extends shipped code, so sequencing
+    tight keeps the copy-verify loop short).</p>
+  </spec-tab>
+  <spec-tab label="MVP-first">
+    <p>Ship US1 alone (the derived trace + quantified gaps, no run-grounding) and stop. US2/US3 (the capture + the
+    cross-check) land as a second pass once the trace shape has seen review.</p>
+  </spec-tab>
+  <spec-tab label="Parallel teams">
+    <p>Not recommended — US3's cross-check is a direct extension of US2's capture-rendering code in the same function
+    (<code>renderVerifyHtml</code>'s §3), and both read the Foundational <code>ObservablesRow</code> shape US1 renders.</p>
+  </spec-tab>
+</spec-tabs>
+</section>
+
+
+<section id="phase-setup" class="phase">
+<h2>2 · Phase 1 — Setup</h2>
+<spec-task id="T-001" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Extend the existing verify-view-stale fixture pair with NFR/SLO content</strong> — the registry harness allows exactly one positive/negative bundle per rule; add an <code>&lt;spec-slo target="NFR-001"&gt;</code> to both <code>spec.html</code>s, drifted (unlinked) in the positive bundle and consistent (linked) in the negative, so the one pair exercises the observables-drift leg alongside the existing SC/task-drift leg. <span class="path">packages/schema/fixtures/verify-view-stale/{positive,negative}/specs/999-*/spec.html + verify.html</span></div>
+</spec-task>
+</section>
+
+
+<section id="phase-foundation" class="phase">
+<h2>3 · Phase 2 — Foundational</h2>
+<p>The two shared loci every story reads or writes: the reader's NFR/SLO derivation, and the capture's type shape.</p>
+
+<spec-task id="T-010">
+  <input type="checkbox" checked>
+  <div><strong>Add <code>ObservablesRow</code> + extend <code>readBundle</code></strong> — collect every <code>&lt;spec-slo&gt;</code> grouped by its <code>target</code> NFR and every <code>NFR-*</code> requirement into <code>BundleModel.observables</code>; classify each row as <em>traced</em> (has an SLO), <em>loud gap</em> (quantified via <code>isQuantifiedTarget</code>, no SLO), or <em>n/a</em> (D-001, D-003). <span class="path">packages/core/src/commands/verify.ts</span></div>
+</spec-task>
+<spec-task id="T-011" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Add <code>CapturedRun.observables</code></strong> — a structured field: <code>endpoint</code>, <code>signals</code> (golden-signal ids observed), <code>slosCite</code>, and the existing <code>verified</code> flag's scope extended to cover it (D-002). <span class="path">packages/core/src/types.ts</span></div>
+</spec-task>
+</section>
+
+
+<section id="phase-us1" class="phase">
+<h2>4 · Phase 3a — US1 · An NFR gets a proof leg</h2>
+
+<h3>Tests (write &amp; fail first)</h3>
+<spec-task id="T-100" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Author <code>readBundle</code>/render observables tests</strong> — an NFR with a linked <code>&lt;spec-slo&gt;</code> traces (objective/window/SLI/signal shown); a quantified NFR with no SLO is a loud gap; a non-quantified NFR is a quiet n/a. <span class="path">packages/core/test/verify.observables.test.ts</span></div>
+</spec-task>
+<spec-task id="T-101" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Author the widened <code>verify-view-stale</code> fixtures + test</strong> — positive: a bundle whose <code>&lt;spec-slo&gt;</code> target set no longer matches what <code>verify.html</code> links; negative: matching sets, and a bundle with no SLOs at all (NFR-002, no false positive). <span class="path">packages/schema/fixtures/verify-view-stale/*.html + packages/schema/test/verify-view-stale.test.ts</span></div>
+</spec-task>
+<spec-task id="T-102" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Author the §Observables Playwright spec</strong> — asserts the section renders, gap rows are visually distinct, and the table doesn't overflow its container; written against the not-yet-existing render so it fails first (SC-001). <span class="path">tests/verify.observables.spec.ts</span></div>
+</spec-task>
+
+<h3>Implementation</h3>
+<spec-task id="T-110">
+  <input type="checkbox" checked>
+  <div><strong>Render §3 Observables</strong> — <code>renderObservables</code> mirroring <code>renderTrace</code>'s table shape, consuming T-010's rows; quantified-aware gap styling reusing <code>TRACE_GAP</code> (FR-001). <span class="path">packages/core/src/commands/verify.ts</span></div>
+</spec-task>
+<spec-task id="T-111">
+  <input type="checkbox" checked>
+  <div><strong>Widen <code>verify-view-stale</code></strong> — derive the expected NFR-id set from the bundle's <code>&lt;spec-slo target&gt;</code>s, compare to the ids §Observables links, and emit an <code>observablesDriftFinding</code> (error) on mismatch, mirroring <code>driftFinding</code>; an empty set → no finding (FR-004). <span class="path">packages/schema/src/rules/verify-view-stale.ts</span></div>
+</spec-task>
+
+<spec-note>
+<p>Closes <a href="./spec.html#FR-001">FR-001</a>, <a href="./spec.html#FR-004">FR-004</a>, <a href="./spec.html#SC-001">SC-001</a>.</p>
+</spec-note>
+</section>
+
+
+<section id="phase-us2" class="phase">
+<h2>5 · Phase 3b — US2 · The instrumentation is grounded in a real run</h2>
+
+<h3>Tests (write &amp; fail first)</h3>
+<spec-task id="T-200" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Extend the observables tests for the capture</strong> — an <code>observables</code> capture fills the instrumentation column; absent renders loudly "not recorded"; <code>verified:false</code> renders "suggested"; a links-only regeneration preserves an existing capture. <span class="path">packages/core/test/verify.observables.test.ts</span></div>
+</spec-task>
+
+<h3>Implementation</h3>
+<spec-task id="T-210">
+  <input type="checkbox" checked>
+  <div><strong>Render the instrumentation column from the capture</strong> — the endpoint + observed signals, with the not-recorded/suggested affordances cloned from <code>renderRunBlock</code> (FR-002). <span class="path">packages/core/src/commands/verify.ts</span></div>
+</spec-task>
+<spec-task id="T-211">
+  <input type="checkbox" checked>
+  <div><strong>Preserve the capture on links-only regen</strong> — a new <code>OBSERVABLES_RE</code> extract/re-inject, mirroring <code>RUNBLOCK_RE</code> (NFR-001). <span class="path">packages/core/src/commands/verify.ts</span></div>
+</spec-task>
+<spec-task id="T-212" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Extend the CLI's captured-run cast</strong> — <code>readCapturedRun</code>'s inline type gains <code>observables</code> so it passes through from stdin JSON untouched. <span class="path">packages/cli/src/commands/verify.ts</span></div>
+</spec-task>
+
+<spec-note>
+<p>Closes <a href="./spec.html#FR-002">FR-002</a>; contributes to <a href="./spec.html#SC-002">SC-002</a> (fully closed by US3).</p>
+</spec-note>
+</section>
+
+
+<section id="phase-us3" class="phase">
+<h2>6 · Phase 3c — US3 · A claimed signal that isn't emitted is caught</h2>
+
+<h3>Tests (write &amp; fail first)</h3>
+<spec-task id="T-300" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Extend the observables tests for the signal cross-check</strong> — a verified capture missing a signal the SLO declares is a loud gap; the same missing signal on a <em>suggested</em> or absent capture produces no gap (D-003). <span class="path">packages/core/test/verify.observables.test.ts</span></div>
+</spec-task>
+
+<h3>Implementation</h3>
+<spec-task id="T-310">
+  <input type="checkbox" checked>
+  <div><strong>Implement the verified-only signal cross-check</strong> — for each SLO with <code>signal=</code>, compare against the capture's observed-signals set only when <code>verified !== false</code>; a declared-but-unobserved signal renders a loud gap (FR-003). <span class="path">packages/core/src/commands/verify.ts</span></div>
+</spec-task>
+
+<spec-note>
+<p>Closes <a href="./spec.html#FR-003">FR-003</a>, <a href="./spec.html#SC-002">SC-002</a>.</p>
+</spec-note>
+</section>
+
+
+<section id="phase-polish" class="phase">
+<h2>7 · Phase 4 — Polish</h2>
+<spec-task id="T-900" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Full-suite + no-break check (NFR-001, NFR-002)</strong> — run the whole test suite and <code>spectastic validate</code> over the shipped corpus; confirm zero regressions and that an SLO-less spec's <code>verify.html</code> is unchanged apart from the "no SLOs declared" note. <span class="path">(verification run)</span></div>
+</spec-task>
+<spec-task id="T-901" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Browser-verify SC-001/SC-002 on a fixture bundle</strong> — confirm the trace, gaps, and cross-check render correctly in both themes with zero console errors. <span class="path">(verification run)</span></div>
+</spec-task>
+<spec-task id="T-902" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Generate <code>verify.html</code> and record in the roadmap</strong> — run <code>spectastic verify 048-verify-slo-trace</code>; mark <code>TBD-verify-slo-trace</code> shipped in <code>docs/roadmap.html</code> + <code>CLAUDE.md</code>, closing the observability-slo research doc's four-move set. <span class="path">docs/roadmap.html + CLAUDE.md</span></div>
+</spec-task>
+</section>
+
+
+<section id="dependencies">
+<h2>8 · Dependencies</h2>
+<pre><code>Setup           → Foundational
+Foundational    → US1
+US1             → US2   (the capture renders into the same §3 the trace defines)
+US2             → US3   (the cross-check reads the capture US2 adds)
+US1, US2, US3   → Polish
+</code></pre>
+</section>
+
+
+<section id="changelog">
+<h2>9 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-07-12">12 Jul 2026</time><span>Initial task breakdown. 17 tasks across five phases; US1 (trace + stale-rule guard, since SC-001 requires both) is the load-bearing slice US2 (capture) and US3 (cross-check) build on in sequence.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  Tasks for 048-verify-slo-trace · Verify-page observables trace · authored 12 Jul 2026
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>
