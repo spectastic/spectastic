@@ -183,6 +183,21 @@
     });
   });
 
+  /* ---- 6b. spec-slo target click-through (047-slo-nfr-artifact) ---- */
+  document.querySelectorAll('spec-slo[target]').forEach(el => {
+    el.style.cursor = 'pointer';
+    el.title = `Jump to ${el.getAttribute('target')}`;
+    el.addEventListener('click', e => {
+      if (e.target.closest('a, button, summary, details, input, textarea')) return;
+      const id = el.getAttribute('target');
+      const t = document.getElementById(id);
+      if (t) { t.scrollIntoView({behavior: 'smooth', block: 'start'}); return; }
+      /* Cross-file target: link to spec.html#id */
+      const specHref = el.dataset.specHref || './spec.html';
+      location.href = `${specHref}#${id}`;
+    });
+  });
+
   /* ---- 7. Theme + mode switcher ------------------------------------ */
   /* Registry, persistence and legacy migration live in theme-boot.js
      (window.__spectastic), which already applied the saved theme + mode to

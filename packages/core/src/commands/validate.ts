@@ -1,5 +1,8 @@
 import { validateMany } from '@spectastic/schema';
 import type { Finding } from '@spectastic/schema';
+import { parse, findAll, getAttr, getLocation } from '@spectastic/schema/parser';
+import type { Element } from '@spectastic/schema/parser';
+import { isQuantifiedTarget } from '@spectastic/schema/slo';
 import type {
   KernelContext,
   ValidateInput,
@@ -386,6 +389,75 @@ export function enforceWaiverFindings(waivers: readonly RawWaiver[], ctx: Waiver
       findings.push({ file, line: 1, column: 1, rule: 'enforce-waiver-well-formed', severity: 'error', message, fixHint });
     }
   });
+  return findings;
+}
+
+/** The profile tiers at which a verified NFR must be quantified (FR-004). */
+const QUANTIFIED_NFR_GATED_TIERS = new Set(['verified', 'enterprise']);
+
+/** Collect an element's visible text, collapsed (mirrors slo-well-formed's textOf). */
+function textOf(el: Element): string {
+  let out = '';
+  const visit = (node: unknown): void => {
+    const n = node as { tagName?: string; value?: string; childNodes?: unknown[] };
+    if (n.tagName === undefined && typeof n.value === 'string') out += n.value;
+    if (n.childNodes) for (const child of n.childNodes) visit(child);
+  };
+  visit(el);
+  return out.replace(/\s+/g, ' ').trim();
+}
+
+/**
+ * The "verified NFRs are quantified" check (spec 047-slo-nfr-artifact, FR-004,
+ * US2). Given a set of already-read spec-html documents and the project's
+ * resolved profile tier, flag every `NFR-*` requirement that is neither
+ * inline-quantified in its own prose (T-010's heuristic — a measurable
+ * number/percentile/threshold) nor refined by a linked `<spec-slo target>` —
+ * but only at the `verified`/`enterprise` tiers. Below that, or with no
+ * resolved tier (no profile marker), this is a no-op — fail-safe in the
+ * advisory direction, mirroring `enforceWaiverFindings`.
+ *
+ * A non-empty `slo=` attribute (the light NFR annotation, FR-003) also
+ * satisfies "inline-quantified" — same acceptance as prose carrying a
+ * measurable target (T-310).
+ */
+export function quantifiedNfrFindings(
+  docs: readonly { html: string; file: string }[],
+  ctx: { tier: string | undefined },
+): Finding[] {
+  if (!ctx.tier || !QUANTIFIED_NFR_GATED_TIERS.has(ctx.tier)) return [];
+
+  const findings: Finding[] = [];
+  for (const { html, file } of docs) {
+    const doc = parse(html, file);
+    const nfrs = findAll(doc.ast, 'spec-requirement').filter((el) =>
+      (getAttr(el, 'id') ?? '').startsWith('NFR-'),
+    );
+    if (nfrs.length === 0) continue;
+
+    const linkedTargets = new Set(
+      findAll(doc.ast, 'spec-slo')
+        .map((el) => getAttr(el, 'target'))
+        .filter((t): t is string => typeof t === 'string'),
+    );
+
+    for (const nfr of nfrs) {
+      const id = getAttr(nfr, 'id') ?? '';
+      const sloAttr = getAttr(nfr, 'slo') ?? '';
+      if (isQuantifiedTarget(textOf(nfr)) || isQuantifiedTarget(sloAttr) || linkedTargets.has(id)) continue;
+
+      const loc = getLocation(nfr);
+      findings.push({
+        file,
+        line: loc.line,
+        column: loc.column,
+        rule: 'quantified-nfr-required',
+        severity: 'error',
+        message: `NFR "${id}" is not quantified at the ${ctx.tier} profile — no measurable target in its prose and no linked <spec-slo>`,
+        fixHint: `Add a measurable target to ${id}'s prose (e.g. "p95 < 200 ms"), or refine it with a <spec-slo target="${id}">.`,
+      });
+    }
+  }
   return findings;
 }
 

@@ -27,6 +27,8 @@ import { taskTitleBoldScopeRule } from './task-title-bold-scope.js';
 import { verifyViewMissingRule } from './verify-view-missing.js';
 import { verifyViewStaleRule } from './verify-view-stale.js';
 import { noExecutableContentRule } from './no-executable-content.js';
+import { sloTargetRequiredRule } from './slo-target-required.js';
+import { sloWellFormedRule } from './slo-well-formed.js';
 
 /**
  * The canonical spectastic rule registry.
@@ -67,6 +69,10 @@ export const rules: readonly Rule[] = [
 
   // Security rules (per-file) — spec 045-artifact-security.
   noExecutableContentRule,
+
+  // SLO rules (per-file) — spec 047-slo-nfr-artifact.
+  sloTargetRequiredRule,
+  sloWellFormedRule,
 
   // Cross-file rules.
   noDuplicateIdsRule,
