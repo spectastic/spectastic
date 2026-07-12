@@ -1,0 +1,345 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Relax a requirement — per-category enforcement waivers · Change proposal</title>
+<link rel="stylesheet" href="../../../../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../../../../assets/favicon.svg">
+<script src="../../../../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Change proposal · 042-profile-enforcement</p>
+  <h1>Relax a requirement — per-category enforcement waivers</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    A team may opt out of a floor category — but only out loud: a waiver with a reason and an expiry that warns, never a silent skip, and never for the categories that matter most.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>     <span><spec-status value="applied">Applied</spec-status></span>
+    <b>Change ID</b>  <span>2026-07-11-relax-a-requirement</span>
+    <b>Spec</b>       <span><a href="../../../spec.html">042-profile-enforcement</a></span>
+    <b>Author</b>     <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Created</b>    <span><time datetime="2026-07-11">11 Jul 2026</time></span>
+    <b>Targets</b>    <span>2 modified (<a href="../../../spec.html#FR-004">FR-004</a>, <a href="../../../spec.html#NFR-001">NFR-001</a>) + 3 added (FR-011, FR-012, FR-013) + 1 data/content delta (manifest <code>enterprise.enforce.unwaivable</code>)</span>
+    <b>Read time</b>  <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-tldr>
+    <p>Today the enforcement floor is all-or-nothing: a team on the verified/enterprise hard gate that wants to opt out of
+    one category (say <code>observability</code> because it ships metrics over a push exporter with no local endpoint to
+    detect) has only three coarse escapes — cover it with a tool it doesn't use, drop to a lower profile wholesale, or
+    delete the marker and disable <em>all</em> enforcement. Each is the silent gate-lowering <strong>P-9</strong> forbids.
+    This change adds the missing middle: a <strong>per-category waiver</strong> in <code>spectastic.json</code>
+    (<code>enforce.waivers[]</code>) carrying a <code>{category, reason, until, owner}</code>. An active, well-formed
+    waiver <strong>demotes</strong> its category from a blocking failure to an advisory warning surfaced as its own
+    <em>relaxed</em> tally — never folded into the passes, never silent (<strong>MODIFY FR-004</strong>,
+    <strong>ADD FR-011</strong>). Justification and expiry are part of the shape, not etiquette: a missing/boilerplate
+    reason or a past/over-horizon date is rejected, and a waiver auto-expires so "ignore forever" is impossible
+    (<strong>ADD FR-013</strong>). The highest-risk categories stay un-waivable — enterprise cannot relax
+    <code>security</code> or <code>supply-chain</code> (<strong>ADD FR-012</strong> + a data/content delta). Secure by
+    default throughout: absent, malformed, expired, or un-waivable → the gate fires. A coupled <strong>P-9</strong>
+    amendment (separate <code>/spectastic.principles</code> change, flagged below) names the waiver as the sanctioned
+    "recorded" form.</p>
+  </spec-tldr>
+</header>
+
+
+<spec-change id="2026-07-11-relax-a-requirement" status="applied">
+
+<header>
+  <h3>Relax a requirement — per-category enforcement waivers</h3>
+  <span class="meta"><spec-status value="applied">Applied</spec-status></span>
+</header>
+
+
+<section id="intent">
+<h2>1 · Intent</h2>
+<p>042 made the profile floor real by gating it. But a floor with no honest relief valve manufactures its own defeat: the
+only ways to skip a single category today are to fake coverage of a tool you don't run, lower the whole profile (dropping
+a bundle of unrelated principles and categories with it), or remove the marker and turn the gate off entirely. Every one
+of those is the quiet convenience <a href="../../../../../principles.html#P-9">P-9</a> exists to prevent — and because they
+are the <em>only</em> options, the floor pressures teams toward exactly the reflex it was built to stop. The gap is a
+<strong>legitimate, narrow, recorded</strong> opt-out.</p>
+<p>The governance literature converged on this shape long ago and it is worth borrowing wholesale. A compliance baseline
+is <em>tailored</em> to what applies, and every exclusion carries a justification (a Statement of Applicability marks each
+control applicable or not-applicable-<em>with-reason</em>). Policy-as-code engines count an exception as its own line in
+the report, not a silent pass, and disable exceptions by default while forbidding them for the highest-risk controls.
+Inline security-scanner suppressions bake the <em>reason</em> — and, at their best, an <em>expiry date</em> — into the
+token itself, because a justification that is merely conventional rots into boilerplate ("comply-or-explain" fails
+exactly when the explanations go unread). This proposal is that pattern, sized to spectastic: a waiver is a first-class,
+reason-bearing, auto-expiring, owned record; a relaxed category still warns; and some categories cannot be relaxed at
+all.</p>
+<spec-note><strong>Coupled principles amendment (flagged, not folded).</strong> <a href="../../../../../principles.html#P-9">P-9</a>
+today says weakening a gate "MUST be … explicit and recorded … never a silent convenience" but names no mechanism. A
+separate forward-only <code>/spectastic.principles</code> change amends P-9 to name the structured waiver as that
+sanctioned recorded form and to state the enterprise un-relaxable floor (<code>security</code> + <code>supply-chain</code>).
+It is deliberately <em>not</em> a delta here — principles ship through their own kernel apply path (spec 030), and this
+proposal's deltas are all against 042. Landing order: this proposal, then the P-9 bump.</spec-note>
+</section>
+
+
+<section id="scope">
+<h2>2 · Scope</h2>
+
+<spec-goals>
+  <h3>In scope</h3>
+  <ul>
+    <li>MODIFY <a href="../../../spec.html#FR-004">FR-004</a>: the exit-code rule accounts for waivers — a required-but-uncovered category with an active, well-formed, waivable waiver degrades to an advisory warning (a distinct <em>relaxed</em> tally), rather than a hard exit 1.</li>
+    <li>ADD <strong>FR-011</strong>: the waiver artifact — <code>spectastic.json</code> <code>enforce.waivers[]</code> of <code>{category, reason, until, owner}</code>, all fields required, secure-by-default.</li>
+    <li>ADD <strong>FR-012</strong>: un-relaxable categories per profile (<code>enforce.unwaivable</code>); enterprise forbids <code>security</code> + <code>supply-chain</code>; a waiver naming one is inert and flagged.</li>
+    <li>ADD <strong>FR-013</strong>: the <code>enforce-waiver-well-formed</code> validate scan (error severity) + <code>enforce</code> failing closed on a malformed/expired waiver at runtime — the two-guard, kernel/CI enforcement of P-8.</li>
+    <li>Data/content delta: add <code>enterprise.enforce.unwaivable: ["security","supply-chain"]</code> to <code>spectastic-profiles.json</code>; no <code>enforce.required</code> array changes.</li>
+    <li>Core machinery (§6): the <code>EnforceWaiver</code> type, a fail-safe <code>loadWaivers</code>, the <code>evaluateEnforcement</code> waiver/expiry/unwaivable resolution with a <em>relaxed</em>/<em>expired</em> result, the CLI tally, the validate scan, fixtures + tests.</li>
+  </ul>
+</spec-goals>
+
+<spec-non-goals>
+  <h3>Out of scope</h3>
+  <ul>
+    <li><spec-out-of-scope defer-to="TBD-waiver-register-artifact">A dedicated human-readable waiver <em>register</em> artifact (a Statement-of-Applicability-style <code>enforce-waivers.html</code>). The machine-read <code>spectastic.json</code> section is the v1 source of truth; a rendered register with its own lifecycle is a larger, separate effort.</spec-out-of-scope></li>
+    <li><spec-out-of-scope defer-to="TBD-waiver-approval">A dedicated separation-of-duties workflow — an approver distinct from the requester, tiered by risk. For v1 the waiver lives in git-tracked <code>spectastic.json</code>, so the <strong>PR review is the approval surface</strong> and the <code>owner</code> field records who accepted the risk (stated in FR-011); a first-class approver-vs-requester workflow is the deferred enhancement.</spec-out-of-scope></li>
+    <li><spec-out-of-scope defer-to="TBD-verify-waiver-trace">Surfacing active waivers in <code>verify.html</code> as part of the per-spec proof trace. This change makes <code>enforce</code> and <code>validate</code> waiver-aware; the verify-view trace is a follow-on.</spec-out-of-scope></li>
+  </ul>
+</spec-non-goals>
+</section>
+
+
+<section id="approach">
+<h2>3 · Approach</h2>
+<p>The waiver lives in the downstream project's <code>spectastic.json</code>, as a new typed <code>enforce</code> section —
+the fourth instance of the sanctioned section-per-feature config pattern (<code>git</code>, <code>decider</code>,
+<code>models</code> already follow it; a typed feature section with its own loader is the approved shape, not the "general
+settings bag" that convention forbids). It is <em>not</em> in the <code>.spectastic/profile.json</code> marker: the marker
+is tool-written state locked to <code>{profile, schema}</code>, whereas a waiver is a human decision — owner, reason,
+expiry — that belongs in the git-tracked, PR-reviewable file.</p>
+<p>The runtime change reuses machinery 042 already has. <code>evaluateEnforcement</code> (<code>packages/core/src/enforce/policy.ts</code>)
+already demotes a gap to a warning for the structurally-undetectable case (FR-010); a waiver is the second demotion path,
+resolved per gap in a fixed order: <strong>(1)</strong> structurally undetectable in every ecosystem → warn (FR-010, wins
+first — it is the honest state); <strong>(2)</strong> else an active (<code>until ≥ now</code>), well-formed waiver whose
+category is not <code>unwaivable</code> → <em>relaxed</em> (warn); <strong>(3)</strong> else a waiver exists but is expired
+→ <em>expired</em> and falls through to blocking; <strong>(4)</strong> else → missing. The exit rule is unchanged in
+spirit — <code>gate==='hard' &amp;&amp; missing.length &gt; 0</code> — but <em>relaxed</em> never counts toward
+<code>missing</code>, so it never blocks, while <em>expired</em> does. An injectable <code>now</code> keeps it
+deterministic and filesystem-only.</p>
+<p>Two guards, never one, keep a waiver honest — the P-8 "guarantee lives in the kernel or CI" split. At <strong>runtime</strong>,
+<code>loadWaivers</code> is fail-<em>safe</em>: any malformed entry is silently dropped, so a broken waiver can never
+<em>accidentally disable</em> a gate — a dropped waiver just means the category keeps gating. At the <strong>git/CI
+boundary</strong>, a new <code>enforce-waiver-well-formed</code> validate scan is fail-<em>loud</em>: it reads
+<code>spectastic.json</code> and errors on an unknown category, a category not in the profile's floor (a dead waiver), a
+category that is <code>unwaivable</code>, an empty or boilerplate reason, or a <code>until</code> that is missing, invalid,
+already past, or more than 365 days out. Neither guard trusts the waiver blindly; together they make "my waiver is broken"
+fast, specific feedback while a broken waiver never once weakens the floor.</p>
+<spec-note>The un-relaxable set is <em>data</em>, per-profile in <code>spectastic-profiles.json</code> — matching 042's
+"the floor is data" convention. Enterprise ships <code>unwaivable: ["security","supply-chain"]</code>; verified ships
+none (its lower-rigor floor is fully waivable); a waiver naming an unwaivable category is inert at runtime <em>and</em>
+flagged by validate.</spec-note>
+</section>
+
+
+<section id="deltas">
+<h2>4 · Deltas</h2>
+<p>One <code>&lt;spec-delta&gt;</code> per requirement touched, plus one data/content delta against the manifest. All
+target the enforcement topic on 042 — a single intent, no split warranted.</p>
+
+<spec-delta op="modified" target="FR-004">
+  <p><strong>What changes:</strong> the exit-code rule now recognises an active, well-formed, waivable waiver as an
+  advisory demotion (a distinct <em>relaxed</em> tally), not a hard failure — while expired, malformed, or un-waivable
+  waivers still block.</p>
+  <spec-requirement id="FR-004" priority="must">
+  <p><code>enforce</code> <spec-rule>MUST</spec-rule> exit non-zero when a required category is unmet for a hard-gate
+  profile (Verified/Enterprise); Standard <spec-rule>MUST</spec-rule> warn but exit 0; Lean and no-marker
+  <spec-rule>MUST</spec-rule> exit 0 — so a pre-commit/CI gate can block precisely where it should. A required-but-unmet
+  category that carries an <em>active, well-formed</em> waiver (<a href="#FR-011">FR-011</a>) whose category is not
+  un-relaxable for the profile (<a href="#FR-012">FR-012</a>) <spec-rule>MUST</spec-rule> degrade to an advisory warning
+  and <spec-rule>MUST</spec-rule> be reported as a distinct <em>relaxed</em> count, never folded into the covered
+  categories — so a relaxed floor is always visible, never silent. A waiver that is expired, malformed, or names an
+  un-relaxable category <spec-rule>MUST NOT</spec-rule> relax its category: the gate fires as if no waiver were present.</p>
+  <details><summary>Rationale — the honest middle between "cover it" and "turn it off"</summary><p>Without a per-category
+  demotion, a team's only opt-out is to lower the whole profile or delete the marker — the silent gate-lowering P-9
+  forbids. Making the relaxed category a <em>separate reported tally</em> (rather than counting it as covered) is the
+  load-bearing honesty: the floor a profile promises stays legible even when one category is deliberately relaxed. The
+  secure-by-default clause (expired/malformed/unwaivable → still blocks) means a waiver can only ever <em>weaken</em> the
+  gate when it is complete and current.</p></details>
+  </spec-requirement>
+</spec-delta>
+
+<spec-delta op="added" target="FR-011">
+  <p><strong>What's added:</strong> the waiver artifact and its required shape, secure-by-default.</p>
+  <spec-requirement id="FR-011" priority="must">
+  <p>A downstream project <spec-rule>MAY</spec-rule> relax a single enforcement category by declaring a waiver in
+  <code>spectastic.json</code> under <code>enforce.waivers[]</code>. Each waiver <spec-rule>MUST</spec-rule> carry four
+  fields: <code>category</code> (a valid enforcement category present in the project's profile floor), <code>reason</code>
+  (a non-empty, non-boilerplate justification), <code>until</code> (an ISO <code>YYYY-MM-DD</code> expiry no more than 365
+  days in the future), and <code>owner</code> (who accepted the risk). A waiver whose <code>until</code> has passed
+  <spec-rule>MUST</spec-rule> auto-expire — its category resumes gating with no further action. The mechanism
+  <spec-rule>MUST</spec-rule> be secure-by-default: an absent <code>enforce</code> section relaxes nothing, and a waiver
+  missing any field, carrying a boilerplate reason, or bearing an invalid/expired/over-horizon date
+  <spec-rule>MUST NOT</spec-rule> relax its category. Expiry <spec-rule>MUST</spec-rule> be evaluated against an
+  <em>injectable</em> clock (default: the current date) so a fixture project pins the clock for reproducible CI
+  (<a href="../../../spec.html#NFR-001">NFR-001</a>). A waiver is a change to git-tracked <code>spectastic.json</code>, so its
+  <strong>PR review is the v1 approval surface</strong> — a distinct approver-vs-requester workflow is deferred
+  (<code>TBD-waiver-approval</code>), and the <code>owner</code> field records who accepted the risk.</p>
+  <details><summary>Rationale — reason and expiry are shape, not etiquette</summary><p>Justification and expiry baked into
+  the token achieve near-total compliance; the same fields left conventional rot into boilerplate (the comply-or-explain
+  failure mode). A mandatory expiry with a hard horizon turns "ignore forever" into a dated decision that must be renewed
+  or fixed — the single most-cited control that keeps an exception mechanism from becoming a footgun. The section-per-feature
+  home (<code>enforce.waivers</code>) matches the established <code>git</code>/<code>decider</code>/<code>models</code>
+  config shape.</p></details>
+  </spec-requirement>
+</spec-delta>
+
+<spec-delta op="added" target="FR-012">
+  <p><strong>What's added:</strong> per-profile un-relaxable categories, so the highest-risk floor cannot be waived.</p>
+  <spec-requirement id="FR-012" priority="must">
+  <p>A profile <spec-rule>MAY</spec-rule> declare an <code>enforce.unwaivable</code> set of categories that a waiver
+  cannot relax. The <strong>enterprise</strong> profile <spec-rule>MUST</spec-rule> mark <code>security</code> and
+  <code>supply-chain</code> un-relaxable. A waiver naming an un-relaxable category <spec-rule>MUST</spec-rule> be inert —
+  its category keeps gating regardless of the waiver — and <spec-rule>MUST</spec-rule> be flagged by validation
+  (<a href="#FR-013">FR-013</a>) so the author learns the waiver has no effect rather than assuming relief.</p>
+  <details><summary>Rationale — some controls are not tailorable</summary><p>Mature governance forbids waiving the
+  highest-risk controls even as it allows tailoring the rest — the exception mechanism itself is gated. Enterprise's
+  <code>security</code> and <code>supply-chain</code> categories are the two whose silent relaxation would be most
+  regrettable, so they are removed from the waivable set entirely; verified, a lower-rigor tier, keeps its whole floor
+  waivable. Verified is deliberately the <em>lighter</em> hard-gate tier — full waiver latitude, including over
+  <code>security</code> and <code>supply-chain</code>, is precisely what distinguishes it from enterprise; a team that
+  needs an un-waivable security floor chooses enterprise, and the tier choice is itself the recorded, explicit decision.
+  Declaring the set as per-profile data (not code) keeps it on 042's "the floor is data" footing and lets the
+  set evolve without a code change.</p></details>
+  </spec-requirement>
+</spec-delta>
+
+<spec-delta op="added" target="FR-013">
+  <p><strong>What's added:</strong> the two-guard enforcement — a fail-loud validate scan plus fail-closed runtime — so a
+  broken waiver is caught early and never silently weakens the gate.</p>
+  <spec-requirement id="FR-013" priority="must">
+  <p><code>validate</code> <spec-rule>MUST</spec-rule> include an <code>enforce-waiver-well-formed</code> check that reads
+  the project's <code>spectastic.json</code> and reports, at <strong>error</strong> severity, any waiver that: names an
+  unknown category, names a category not in the project profile's floor (a dead waiver), names an un-relaxable category
+  (<a href="#FR-012">FR-012</a>), carries an empty or boilerplate <code>reason</code>, omits <code>owner</code>, or bears a
+  <code>until</code> that is missing, malformed, already past, or more than 365 days out. Independently, <code>enforce</code>
+  <spec-rule>MUST</spec-rule> fail closed: a malformed or expired waiver is ignored at runtime (the category keeps gating),
+  never trusted. The two guards are complementary — validate gives fast, specific authoring feedback; enforce guarantees a
+  broken waiver can never disable a gate even if validation is skipped.</p>
+  <details><summary>Rationale — the guarantee lives in the kernel or CI (P-8)</summary><p>A waiver is a gate-weakening
+  instrument, so its well-formedness is exactly the kind of invariant P-8 requires be machine-checked, not left to prose.
+  The scan is a folded repo-file check (it reads project state, so it joins the <code>skill-metadata</code> /
+  <code>no-internal-id-in-copy</code> family of CLI scans rather than the spec-HTML schema rules). Surfacing a
+  <em>silently-expired</em> waiver as an error is deliberate: an expired waiver that still sits in the file is a stale
+  decision the author should remove or renew, not leave to rot.</p></details>
+  </spec-requirement>
+</spec-delta>
+
+<spec-delta op="modified" target="NFR-001">
+  <p><strong>What changes:</strong> the determinism guarantee is scoped to <em>filesystem + an injected clock</em>, since a
+  waiver's mandatory expiry (<a href="#FR-011">FR-011</a>) makes an active waiver a function of the date. From the adversarial
+  pass: without this, a green fixture would turn red purely by the passage of time, contradicting "so CI drives them with
+  fixture projects."</p>
+  <spec-requirement id="NFR-001" priority="must">
+  <p><code>enforce</code> and detection <spec-rule>MUST</spec-rule> be deterministic given the filesystem and an injected
+  clock — no network, no model — so CI drives them with fixture projects. Where a result depends on the current date (a
+  waiver's expiry, <a href="#FR-011">FR-011</a>), the date <spec-rule>MUST</spec-rule> be an injectable parameter (default:
+  the system date) so a fixture pins it for a reproducible run.</p>
+  <details><summary>Rationale — bounded, declared clock dependency</summary><p>Auto-expiry is the anti-rot control, but it
+  makes an active waiver time-dependent, which would otherwise break the "fixture projects drive CI" promise. Scoping
+  determinism to the filesystem <em>and</em> a supplied clock keeps the guarantee honest: the only non-filesystem input is
+  a clock the caller controls, so a fixture that pins the date is fully reproducible, and production reads the system date
+  as expected. This is the same injectable-<code>now</code> discipline the policy layer already uses for testability.</p></details>
+  </spec-requirement>
+</spec-delta>
+
+<spec-delta op="added" target="enterprise/enforce-unwaivable">
+  <p><strong>What's added:</strong> <code>enterprise.enforce.unwaivable: ["security","supply-chain"]</code> in
+  <code>spectastic-profiles.json</code>. A data/content delta (target names the manifest key, embeds a
+  <code>&lt;spec-diff&gt;</code>, no requirement-body change). No <code>enforce.required</code> array is touched — purely
+  additive and revert-safe.</p>
+  <spec-diff>
+<ins>  enterprise.enforce.unwaivable: ["security", "supply-chain"]</ins>
+  (verified.enforce.unwaivable: absent — its whole floor stays waivable)
+  </spec-diff>
+  <details><summary>Rationale — why enterprise only</summary><p>The un-relaxable floor is a rigor concern that earns its
+  place at the top tier: enterprise is where <code>security</code> and <code>supply-chain</code> are hard-gated in the
+  first place, and where silently waiving them is most regrettable. Verified carries neither in an un-relaxable set, so a
+  verified project retains the full waiver latitude. The bundle (<code>_bundled/spectastic-profiles.json</code>) is
+  rebuilt so the shipped manifest matches.</p></details>
+</spec-delta>
+</section>
+
+
+<section id="risks">
+<h2>5 · Risk register</h2>
+<p>From the adversarial pass (auto-fired: FR-004 is <code>must</code>-tier, and three requirements are added). Three
+findings, all dispositioned in the review interview; each records the human who committed the transition.</p>
+<spec-risk-log>
+<spec-risk target="enterprise/enforce-unwaivable" status="rejected" by="Brian Corbin · @briancorbinxyz">
+  <p class="claim">Marking <code>security</code> + <code>supply-chain</code> un-relaxable at enterprise <em>only</em> leaves Verified — itself a hard-gate tier — able to relax its two highest-risk categories with a self-authored, self-owned waiver for up to a year.</p>
+  <p class="citation">The data/content delta <code><a href="#deltas">enterprise/enforce-unwaivable</a></code> and its §3 note: "verified ships none (its lower-rigor floor is fully waivable)", against live <a href="../../../spec.html#FR-004">FR-004</a>, which hard-gates Verified too.</p>
+  <div class="response"><strong>Rejected.</strong> The asymmetry is deliberate, not an oversight: Verified is the <em>lighter</em> hard-gate tier, and full waiver latitude is exactly what distinguishes it from Enterprise. A team needing an un-waivable security floor chooses Enterprise — and that profile choice is itself the explicit, recorded decision P-9 asks for. FR-012's rationale now states this defense; the un-relaxable set can still be extended to Verified later as data, without a code change, if the tier's meaning shifts.</div>
+</spec-risk>
+<spec-risk target="NFR-001" status="mitigated" by="Brian Corbin · @briancorbinxyz">
+  <p class="claim">A waiver's mandatory time-based expiry makes <code>enforce</code>'s exit code a function of the wall-clock date, so the same fixture project exits 0 today and 1 once <code>until</code> passes — with no filesystem change — contradicting NFR-001's "deterministic and filesystem-only … so CI drives them with fixture projects."</p>
+  <p class="citation">Live <a href="../../../spec.html#NFR-001">NFR-001</a> vs. the §3 rule <code>until ≥ now</code>: an injectable <code>now</code> rescues unit tests, but a real pre-commit/CI invocation reads the system clock, so a green build turns red purely by time.</p>
+  <div class="response"><strong>Mitigated.</strong> NFR-001 is MODIFY'd (§4) to scope determinism to <em>filesystem + an injected clock</em>: where a result depends on the date (waiver expiry), the date is an injectable parameter defaulting to the system date, so a fixture pins it for a reproducible run. Expiry stays a runtime demotion (D3 intact), but the clock dependency is now bounded and declared rather than a hidden contradiction — the same injectable-<code>now</code> discipline the policy layer already uses. FR-011 carries the injectable-clock clause.</div>
+</spec-risk>
+<spec-risk target="§2" status="mitigated" by="Brian Corbin · @briancorbinxyz">
+  <p class="claim">Deferring separation of duties leaves v1 a purely <em>self-approving</em> gate-lowering tool — one developer writes the reason, names themselves <code>owner</code>, and relaxes a hard gate for up to a year with no second party — thinner than the P-9 "recorded, never a silent convenience" bar the proposal invokes.</p>
+  <p class="citation">§2 Out of scope, <code>defer-to="TBD-waiver-approval"</code>, against <a href="../../../../../principles.html#P-9">P-9</a>: "recorded" without "reviewed" is weaker than the framing implies.</p>
+  <div class="response"><strong>Mitigated.</strong> The deferral stands, but the review surface is now named, not unstated: the waiver is a change to git-tracked <code>spectastic.json</code>, so the <strong>PR review is the v1 approval surface</strong> — recorded <em>and</em> reviewed by whoever approves the change. FR-011 and the §2 out-of-scope item now say so explicitly, making the self-approval limit an honest P-8 ceiling rather than a hidden gap; a first-class approver-vs-requester workflow stays <code>TBD-waiver-approval</code>.</div>
+</spec-risk>
+</spec-risk-log>
+</section>
+
+
+<section id="tasks">
+<h2>6 · Tasks</h2>
+<p>Scoped to this change. On <code>/spectastic.apply</code> these fold into 042's <code>tasks.html</code> as a new phase
+that <code>/spectastic.implement</code> drains.</p>
+
+<ul style="list-style:none;padding-left:0;">
+  <li><input type="checkbox"> Add <code>EnforceWaiver {category, reason, until, owner}</code> and a <code>RelaxedCategory</code> type to <code>packages/core/src/enforce/types.ts</code>; extend <code>EnforcePolicy</code> (<code>packages/cli/src/commands/init/profiles.ts</code>) with <code>unwaivable?: EnforcementCategory[]</code>, parsed fail-safe in <code>parseProfile</code>.</li>
+  <li><input type="checkbox"> New <code>packages/core/src/enforce/config.ts</code> exporting <code>loadWaivers(cwd): EnforceWaiver[]</code> — fail-<em>safe</em>, silently dropping any malformed entry (a broken waiver never disables a gate); add the tsup entry + <code>package.json</code> exports subpath.</li>
+  <li><input type="checkbox"> Refactor <code>evaluateEnforcement</code> (<code>packages/core/src/enforce/policy.ts</code>) to an options bag <code>{ undetectable?, waivers?, unwaivable?, now? }</code>; extend <code>EnforceEvaluation</code> with <code>relaxed: RelaxedCategory[]</code> and <code>expired: EnforceWaiver[]</code>; implement the four-step resolution (undetectable → waived-active → expired → missing) with injectable <code>now</code>. Unit-test each branch.</li>
+  <li><input type="checkbox"> Update <code>packages/cli/src/commands/enforce.ts</code> to load waivers + <code>unwaivable</code> and render a distinct tally (<code>→ N covered · M relaxed · K missing</code>), a <code>⚠ relaxed (waived · advisory): &lt;cat&gt; — "&lt;reason&gt;" (owner …, expires …)</code> line, and a loud <code>✗ waiver … expired …</code> line that contributes to exit 1.</li>
+  <li><input type="checkbox"> New folded <code>enforce-waiver-well-formed</code> scan in <code>packages/core/src/commands/validate.ts</code> (wired like <code>skill-metadata</code> / <code>no-internal-id-in-copy</code>): error on unknown/dead/un-relaxable category, empty/boilerplate reason (reject <code>n/a</code>, <code>todo</code>, <code>waived</code>, <code>temp</code>, …), missing <code>owner</code>, and a <code>until</code> that is missing/invalid/past/over-365-days.</li>
+  <li><input type="checkbox"> Manifest: add <code>enterprise.enforce.unwaivable: ["security","supply-chain"]</code> to <code>spectastic-profiles.json</code>; rebuild the bundle so <code>_bundled/spectastic-profiles.json</code> matches.</li>
+  <li><input type="checkbox"> Fixtures + tests: a valid <code>observability</code> waiver on an enterprise fixture warns (exit 0) with the relaxed tally; an expired waiver blocks (exit 1); a <code>security</code> waiver on enterprise stays blocking (unwaivable); a boilerplate reason and a &gt;365-day date are flagged by <code>validate</code>. Behavioral <code>spectastic enforce</code> + <code>spectastic validate</code> run per <a href="../../../spec.html#SC-001">SC-001</a> style.</li>
+  <li><input type="checkbox"> Coupled: amend <a href="../../../../../principles.html#P-9">P-9</a> via <code>/spectastic.principles</code> (forward-only version bump) to name the structured waiver as the sanctioned "recorded" form + the enterprise un-relaxable floor; note the mechanism in <code>CLAUDE.md</code>'s considerations/deferred index.</li>
+</ul>
+</section>
+
+
+<section id="questions">
+<h2>7 · Open questions</h2>
+<spec-questions>
+<p>None outstanding. Storage (<code>spectastic.json</code> <code>enforce.waivers[]</code>), the un-relaxable set
+(enterprise: <code>security</code> + <code>supply-chain</code>), and the expiry policy (mandatory, auto-expiring, 365-day
+horizon) were anchored in the interview; the adversarial dispositions are recorded in §5.</p>
+</spec-questions>
+</section>
+
+
+<section id="changelog">
+<h2>8 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-07-11">11 Jul 2026</time><span>Proposal authored. MODIFY FR-004 (waiver-aware exit rule) + ADD FR-011 (the waiver artifact) + ADD FR-012 (un-relaxable categories) + ADD FR-013 (well-formed validate scan + fail-closed runtime) + a data/content delta adding <code>enterprise.enforce.unwaivable</code>. Coupled P-9 amendment flagged as a separate principles change.</span></li>
+  <li><time datetime="2026-07-11">11 Jul 2026</time><span>Adversarial pass (auto-fired, must-tier) returned three risks, all dispositioned. <strong>Rejected</strong> the Verified-floor risk — the enterprise-only un-relaxable set is a deliberate tier distinction (FR-012 rationale now defends it). <strong>Mitigated</strong> the NFR-001 determinism contradiction by adding a MODIFY NFR-001 delta scoping determinism to filesystem + an injected clock (expiry stays a runtime demotion via an injectable <code>now</code>). <strong>Mitigated</strong> the self-approval scope concern by naming the PR review as the v1 approval surface in FR-011 + §2 (a first-class approver workflow stays <code>TBD-waiver-approval</code>). Approved.</span></li>
+  <li><time datetime="2026-07-12">11 Jul 2026</time><span>Applied on 11 Jul 2026 — Relax a requirement: per-category enforcement waivers (spectastic.json enforce.waivers[]) that demote a floor category to an advisory 'relaxed' warning, with mandatory reason+owner and an auto-expiring 365-day horizon; security+supply-chain un-relaxable at enterprise; well-formed validate scan + fail-closed runtime. Adversarial pass: 3 risks (1 rejected, 2 mitigated incl. NFR-001 determinism scoped to filesystem+injected clock)..</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+</spec-change>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  2026-07-11-relax-a-requirement · Relax a requirement — per-category enforcement waivers · authored 11 Jul 2026 ·
+  <button data-theme-toggle style="background:none;border:none;color:var(--c-link);cursor:pointer;font:inherit;padding:0;border-bottom:1px solid currentColor;">toggle theme</button>
+</footer>
+
+</main>
+<script src="../../../../../assets/spec.js"></script>
+</body>
+</html>

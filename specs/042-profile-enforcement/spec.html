@@ -89,6 +89,62 @@ lives at the git/CI boundary where P-8 says it must.</p>
   where it is detectable and an honest warning where it is not; the structurally-undetectable set is data (today
   <code>{ coverage: ['go'] }</code>), extensible as new categories or ecosystems reveal gaps.</p></details>
   </spec-requirement>
+
+<spec-requirement id="FR-011" priority="must">
+  <p>A downstream project <spec-rule>MAY</spec-rule> relax a single enforcement category by declaring a waiver in
+  <code>spectastic.json</code> under <code>enforce.waivers[]</code>. Each waiver <spec-rule>MUST</spec-rule> carry four
+  fields: <code>category</code> (a valid enforcement category present in the project's profile floor), <code>reason</code>
+  (a non-empty, non-boilerplate justification), <code>until</code> (an ISO <code>YYYY-MM-DD</code> expiry no more than 365
+  days in the future), and <code>owner</code> (who accepted the risk). A waiver whose <code>until</code> has passed
+  <spec-rule>MUST</spec-rule> auto-expire — its category resumes gating with no further action. The mechanism
+  <spec-rule>MUST</spec-rule> be secure-by-default: an absent <code>enforce</code> section relaxes nothing, and a waiver
+  missing any field, carrying a boilerplate reason, or bearing an invalid/expired/over-horizon date
+  <spec-rule>MUST NOT</spec-rule> relax its category. Expiry <spec-rule>MUST</spec-rule> be evaluated against an
+  <em>injectable</em> clock (default: the current date) so a fixture project pins the clock for reproducible CI
+  (<a href="../../spec.html#NFR-001">NFR-001</a>). A waiver is a change to git-tracked <code>spectastic.json</code>, so its
+  <strong>PR review is the v1 approval surface</strong> — a distinct approver-vs-requester workflow is deferred
+  (<code>TBD-waiver-approval</code>), and the <code>owner</code> field records who accepted the risk.</p>
+  <details><summary>Rationale — reason and expiry are shape, not etiquette</summary><p>Justification and expiry baked into
+  the token achieve near-total compliance; the same fields left conventional rot into boilerplate (the comply-or-explain
+  failure mode). A mandatory expiry with a hard horizon turns "ignore forever" into a dated decision that must be renewed
+  or fixed — the single most-cited control that keeps an exception mechanism from becoming a footgun. The section-per-feature
+  home (<code>enforce.waivers</code>) matches the established <code>git</code>/<code>decider</code>/<code>models</code>
+  config shape.</p></details>
+  </spec-requirement>
+
+<spec-requirement id="FR-012" priority="must">
+  <p>A profile <spec-rule>MAY</spec-rule> declare an <code>enforce.unwaivable</code> set of categories that a waiver
+  cannot relax. The <strong>enterprise</strong> profile <spec-rule>MUST</spec-rule> mark <code>security</code> and
+  <code>supply-chain</code> un-relaxable. A waiver naming an un-relaxable category <spec-rule>MUST</spec-rule> be inert —
+  its category keeps gating regardless of the waiver — and <spec-rule>MUST</spec-rule> be flagged by validation
+  (<a href="#FR-013">FR-013</a>) so the author learns the waiver has no effect rather than assuming relief.</p>
+  <details><summary>Rationale — some controls are not tailorable</summary><p>Mature governance forbids waiving the
+  highest-risk controls even as it allows tailoring the rest — the exception mechanism itself is gated. Enterprise's
+  <code>security</code> and <code>supply-chain</code> categories are the two whose silent relaxation would be most
+  regrettable, so they are removed from the waivable set entirely; verified, a lower-rigor tier, keeps its whole floor
+  waivable. Verified is deliberately the <em>lighter</em> hard-gate tier — full waiver latitude, including over
+  <code>security</code> and <code>supply-chain</code>, is precisely what distinguishes it from enterprise; a team that
+  needs an un-waivable security floor chooses enterprise, and the tier choice is itself the recorded, explicit decision.
+  Declaring the set as per-profile data (not code) keeps it on 042's "the floor is data" footing and lets the
+  set evolve without a code change.</p></details>
+  </spec-requirement>
+
+<spec-requirement id="FR-013" priority="must">
+  <p><code>validate</code> <spec-rule>MUST</spec-rule> include an <code>enforce-waiver-well-formed</code> check that reads
+  the project's <code>spectastic.json</code> and reports, at <strong>error</strong> severity, any waiver that: names an
+  unknown category, names a category not in the project profile's floor (a dead waiver), names an un-relaxable category
+  (<a href="#FR-012">FR-012</a>), carries an empty or boilerplate <code>reason</code>, omits <code>owner</code>, or bears a
+  <code>until</code> that is missing, malformed, already past, or more than 365 days out. Independently, <code>enforce</code>
+  <spec-rule>MUST</spec-rule> fail closed: a malformed or expired waiver is ignored at runtime (the category keeps gating),
+  never trusted. The two guards are complementary — validate gives fast, specific authoring feedback; enforce guarantees a
+  broken waiver can never disable a gate even if validation is skipped.</p>
+  <details><summary>Rationale — the guarantee lives in the kernel or CI (P-8)</summary><p>A waiver is a gate-weakening
+  instrument, so its well-formedness is exactly the kind of invariant P-8 requires be machine-checked, not left to prose.
+  The scan is a folded repo-file check (it reads project state, so it joins the <code>skill-metadata</code> /
+  <code>no-internal-id-in-copy</code> family of CLI scans rather than the spec-HTML schema rules). Surfacing a
+  <em>silently-expired</em> waiver as an error is deliberate: an expired waiver that still sits in the file is a stale
+  decision the author should remove or renew, not leave to rot.</p></details>
+  </spec-requirement>
 </section>
 
 
@@ -174,10 +230,21 @@ progressively more.</p>
 </spec-requirement>
 
 <spec-requirement id="FR-004" priority="must">
-<p><code>enforce</code> <spec-rule>MUST</spec-rule> exit non-zero when a required category is unmet for a hard-gate
-profile (Verified/Enterprise); Standard <spec-rule>MUST</spec-rule> warn but exit 0; Lean and no-marker
-<spec-rule>MUST</spec-rule> exit 0 — so a pre-commit/CI gate can block precisely where it should.</p>
-</spec-requirement>
+  <p><code>enforce</code> <spec-rule>MUST</spec-rule> exit non-zero when a required category is unmet for a hard-gate
+  profile (Verified/Enterprise); Standard <spec-rule>MUST</spec-rule> warn but exit 0; Lean and no-marker
+  <spec-rule>MUST</spec-rule> exit 0 — so a pre-commit/CI gate can block precisely where it should. A required-but-unmet
+  category that carries an <em>active, well-formed</em> waiver (<a href="#FR-011">FR-011</a>) whose category is not
+  un-relaxable for the profile (<a href="#FR-012">FR-012</a>) <spec-rule>MUST</spec-rule> degrade to an advisory warning
+  and <spec-rule>MUST</spec-rule> be reported as a distinct <em>relaxed</em> count, never folded into the covered
+  categories — so a relaxed floor is always visible, never silent. A waiver that is expired, malformed, or names an
+  un-relaxable category <spec-rule>MUST NOT</spec-rule> relax its category: the gate fires as if no waiver were present.</p>
+  <details><summary>Rationale — the honest middle between "cover it" and "turn it off"</summary><p>Without a per-category
+  demotion, a team's only opt-out is to lower the whole profile or delete the marker — the silent gate-lowering P-9
+  forbids. Making the relaxed category a <em>separate reported tally</em> (rather than counting it as covered) is the
+  load-bearing honesty: the floor a profile promises stays legible even when one category is deliberately relaxed. The
+  secure-by-default clause (expired/malformed/unwaivable → still blocks) means a waiver can only ever <em>weaken</em> the
+  gate when it is complete and current.</p></details>
+  </spec-requirement>
 
 <spec-requirement id="FR-005" priority="should">
 <p><code>init --tools</code> (031) <spec-rule level="should">SHOULD</spec-rule> optionally wire
@@ -212,9 +279,16 @@ the floor <code>enforce</code> protects.</p>
 <h3>Non-functional</h3>
 
 <spec-requirement id="NFR-001" priority="must">
-<p><code>enforce</code> and detection <spec-rule>MUST</spec-rule> be deterministic and filesystem-only — no network,
-no model — so CI drives them with fixture projects.</p>
-</spec-requirement>
+  <p><code>enforce</code> and detection <spec-rule>MUST</spec-rule> be deterministic given the filesystem and an injected
+  clock — no network, no model — so CI drives them with fixture projects. Where a result depends on the current date (a
+  waiver's expiry, <a href="#FR-011">FR-011</a>), the date <spec-rule>MUST</spec-rule> be an injectable parameter (default:
+  the system date) so a fixture pins it for a reproducible run.</p>
+  <details><summary>Rationale — bounded, declared clock dependency</summary><p>Auto-expiry is the anti-rot control, but it
+  makes an active waiver time-dependent, which would otherwise break the "fixture projects drive CI" promise. Scoping
+  determinism to the filesystem <em>and</em> a supplied clock keeps the guarantee honest: the only non-filesystem input is
+  a clock the caller controls, so a fixture that pins the date is fully reproducible, and production reads the system date
+  as expected. This is the same injectable-<code>now</code> discipline the policy layer already uses for testability.</p></details>
+  </spec-requirement>
 
 <spec-requirement id="NFR-002" priority="should">
 <p>Detection <spec-rule level="should">SHOULD</spec-rule> read only shallow config signals (root manifests + known
@@ -309,6 +383,7 @@ severity model, and the brownfield boundary were anchored against 041 and the co
   <li><time datetime="2026-07-09">09 Jul 2026</time><span>Initial draft. The 041 enforcement follow-on. Grounds the gate as <code>spectastic enforce</code> (not a validate rule — the engine sees only spec-html) so the guarantee lives at the git/CI boundary (P-8). Deferred: tool installation, CI-file authoring, and the AI "build a checker" duty.</span></li>
   <li><time datetime="2026-07-11">11 Jul 2026</time><span>Applied <a href="./changes/archive/2026-07-11-coverage-enforce-category/proposal.html">2026-07-11-coverage-enforce-category</a>: Add coverage as the 7th enforcement category, detected only from a declared threshold/check (never a bare library) so a green result means a configured gate. New FR-010 generalises 042's 'undetectable stack -> warn' rule to the category level, so coverage sits in the verified/enterprise hard floor without false-failing structurally-undetectable ecosystems (Go: go test -cover is flag-only). Manifest half rides the data/content-delta contract (T-018). Adversarial pass: 3 risks, all mitigated (threshold-bearing detection, FR-010 added, honest surfaced copy)..</span></li>
   <li><time datetime="2026-07-11">11 Jul 2026</time><span>Applied <a href="./changes/archive/2026-07-11-observability-enforce-category/proposal.html">2026-07-11-observability-enforce-category</a>: Add observability as an enforcement category (teeth for the P1b verified observability principle): MODIFY FR-002 to detect a metrics registry/exporter/starter dependency by its deliberate export name (never a transitive core/tracing lib like @opentelemetry/api), plus a data/content delta adding observability to the verified/enterprise floor + axis labels. Adversarial pass: 3 risks (exporter-specific signals; an FR-010 observability:['swift','cpp'] entry so unsupported stacks warn not false-fail — the second user of that machinery; kept the hard gate with an explicit deliberate-choice justification). Present != wired ceiling recorded..</span></li>
+  <li><time datetime="2026-07-12">11 Jul 2026</time><span>Applied <a href="./changes/archive/2026-07-11-relax-a-requirement/proposal.html">2026-07-11-relax-a-requirement</a>: Relax a requirement: per-category enforcement waivers (spectastic.json enforce.waivers[]) that demote a floor category to an advisory 'relaxed' warning, with mandatory reason+owner and an auto-expiring 365-day horizon; security+supply-chain un-relaxable at enterprise; well-formed validate scan + fail-closed runtime. Adversarial pass: 3 risks (1 rejected, 2 mitigated incl. NFR-001 determinism scoped to filesystem+injected clock)..</span></li>
 </ol>
 </spec-changelog>
 </section>

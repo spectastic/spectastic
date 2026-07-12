@@ -1,6 +1,7 @@
 import type { Command } from 'commander';
 import { detectEcosystems, detectTooling } from '@spectastic/core/enforce/detect';
 import { evaluateEnforcement } from '@spectastic/core/enforce/policy';
+import { loadWaivers } from '@spectastic/core/enforce/config';
 import { resolveBundle } from './init/bundle.js';
 import { readMarker } from './init/marker.js';
 import { loadProfiles } from './init/profiles.js';
@@ -43,11 +44,13 @@ export function registerEnforce(program: Command): void {
 
       const covered = detectTooling(cwd);
       const ecosystems = detectEcosystems(cwd);
-      const { missing, warned, exitCode } = evaluateEnforcement(
+      const waivers = loadWaivers(cwd);
+      const { missing, warned, relaxed, expired, exitCode } = evaluateEnforcement(
         profile.enforce.required,
         covered,
         profile.enforce.gate,
         ecosystems,
+        { waivers, unwaivable: profile.enforce.unwaivable },
       );
 
       process.stdout.write(`enforce: profile ${profile.name} (${profile.enforce.gate} gate)\n`);
@@ -59,8 +62,23 @@ export function registerEnforce(program: Command): void {
           `  ⚠ undetectable in this ecosystem (not blocking): ${warned.join(', ')}\n`,
         );
       }
+      for (const r of relaxed) {
+        // FR-004 / FR-011: a deliberately-waived category — advisory, never silent,
+        // reported as its own tally so a relaxed floor stays visible.
+        process.stdout.write(
+          `  ⚠ relaxed (waived · advisory): ${r.category} — "${r.reason}" (owner ${r.owner}, expires ${r.until})\n`,
+        );
+      }
+      for (const w of expired) {
+        // An expired waiver auto-blocks (FR-011): surfaced loudly so it is renewed or removed.
+        process.stdout.write(`  ✗ waiver for ${w.category} expired ${w.until} — now blocking; renew or cover.\n`);
+      }
+      // The distinct tally (never fold relaxed into covered): N covered · M relaxed · K missing.
+      process.stdout.write(
+        `  → ${covered.size} covered · ${relaxed.length} relaxed · ${missing.length} missing\n`,
+      );
       if (missing.length === 0) {
-        process.stdout.write('  ✓ all detectable required enforcement categories are covered.\n');
+        process.stdout.write('  ✓ no blocking gaps.\n');
         process.exit(0);
       }
 
@@ -68,7 +86,7 @@ export function registerEnforce(program: Command): void {
       process.stdout.write(`  ${marker2} missing: ${missing.join(', ')}\n`);
       if (exitCode === 1) {
         process.stderr.write(
-          `enforce: ${profile.name} requires these enforcement categories — wire a tool for each (or lower the profile).\n`,
+          `enforce: ${profile.name} requires these enforcement categories — wire a tool for each, waive it (spectastic.json enforce.waivers), or lower the profile.\n`,
         );
       } else {
         process.stdout.write('  (soft gate — not blocking, but recommended.)\n');

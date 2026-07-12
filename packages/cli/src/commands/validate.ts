@@ -156,6 +156,38 @@ async function scanCopyLeak(): Promise<Finding[]> {
 }
 
 /**
+ * Scan the project's `spectastic.json` enforcement waivers for well-formedness
+ * (spec 042, FR-013). Error findings — the loud half of the two-guard design (the
+ * `enforce` runtime is the fail-closed half). Resolves the project's profile floor
+ * from the `.spectastic/profile.json` marker so it can flag a dead or un-relaxable
+ * waiver; falls back to structural checks (valid category, reason, owner, expiry)
+ * when there's no marker. A no-op when there are no waivers.
+ */
+async function scanEnforceWaivers(cwd: string): Promise<Finding[]> {
+  const [{ enforceWaiverFindings }, { readRawWaivers }, { ALL_CATEGORIES }, { readMarker }, { loadProfiles }, { resolveBundle }] =
+    await Promise.all([
+      import('@spectastic/core/commands/validate'),
+      import('@spectastic/core/enforce/config'),
+      import('@spectastic/core/enforce/detect'),
+      import('./init/marker.js'),
+      import('./init/profiles.js'),
+      import('./init/bundle.js'),
+    ]);
+  const waivers = readRawWaivers(cwd);
+  if (waivers.length === 0) return [];
+
+  const marker = readMarker(cwd);
+  const profile = marker ? loadProfiles(resolveBundle().root).profiles[marker.profile] : undefined;
+  const required = profile ? profile.enforce.required : ALL_CATEGORIES;
+  const unwaivable = profile ? profile.enforce.unwaivable : [];
+  return enforceWaiverFindings(
+    waivers,
+    { required, unwaivable, validCategories: ALL_CATEGORIES, now: new Date() },
+    'spectastic.json',
+  );
+}
+
+/**
  * Register the `validate` subcommand. Implements FR-001, FR-002, FR-014
  * of specs/002-validate-cli/spec.html.
  *
@@ -213,6 +245,10 @@ export function registerValidate(program: Command): void {
       // internal artifact id (spec number/slug, REQ-*, FR-*, …) is an error, so
       // the pre-commit gate blocks it. No-op outside the spectastic monorepo.
       const copyLeakFindings = await scanCopyLeak();
+      // The enforce-waiver-well-formed gate (spec 042, FR-013): a malformed,
+      // dead, un-relaxable, or silently-expired waiver in spectastic.json is an
+      // error, so the pre-commit gate blocks it. No-op when no waivers declared.
+      const enforceWaiverFindings = await scanEnforceWaivers(process.cwd());
       const findings = [
         ...result.findings,
         ...quarantineFindings,
@@ -220,6 +256,7 @@ export function registerValidate(program: Command): void {
         ...commandsDriftFindings,
         ...verbModelPolicyFindings,
         ...copyLeakFindings,
+        ...enforceWaiverFindings,
       ];
       const exitCode = findings.some((f) => f.severity === 'error') ? 1 : result.exitCode;
 

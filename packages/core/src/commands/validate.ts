@@ -6,6 +6,25 @@ import type {
   ValidateResult,
 } from '../types.js';
 import { MODEL_TIER_ALIASES, VERB_MODEL_POLICY, isModelTier } from '../model-policy/index.js';
+import type { EnforcementCategory } from '../enforce/types.js';
+import {
+  daysBetween,
+  isBoilerplateReason,
+  MAX_WAIVER_DAYS,
+  parseIsoDate,
+  type RawWaiver,
+} from '../enforce/config.js';
+
+interface WaiverProblem {
+  message: string;
+  fixHint: string;
+}
+type WaiverCtx = {
+  required: readonly EnforcementCategory[];
+  unwaivable: readonly EnforcementCategory[];
+  validCategories: readonly EnforcementCategory[];
+  now: Date;
+};
 
 /**
  * The three structured invocation-metadata keys REQ-TOOL-004 (spec
@@ -292,6 +311,81 @@ export function copyLeakFindings(content: string, file: string): Finding[] {
       fixHint: 'Remove the spec/requirement id (e.g. "(spec 042)", "(037)", "REQ-…") from the help string; keep provenance in comments and the artifact trail. An illustrative slug in argument help must use the neutral placeholder 001-auth-service.',
     });
   }
+  return findings;
+}
+
+/**
+ * `enforce-waiver-well-formed` (spec 042, FR-013). A waiver is a gate-weakening
+ * instrument, so its well-formedness is a P-8 kernel/CI invariant, not prose. This
+ * is the loud half of the two-guard design: `enforce` fails closed at runtime
+ * (ignoring a broken waiver so it can never disable a gate), while this scan gives
+ * the author fast, specific feedback at the git/CI boundary. Error severity for
+ * every problem: unknown / dead / un-relaxable category, empty or boilerplate
+ * reason, missing owner, and a `until` that is missing, malformed, already past
+ * (a silently-expired waiver), or more than 365 days out.
+ *
+ * Pure: the CLI reads `spectastic.json`'s raw `enforce.waivers[]` and the project's
+ * profile floor, then calls this. A no-op (empty) when there are no waivers.
+ */
+function categoryProblem(w: RawWaiver, label: string, ctx: WaiverCtx): WaiverProblem | null {
+  if (typeof w.category !== 'string') {
+    return { message: `Waiver ${label} has no string "category".`, fixHint: 'Set category to one of the enforcement categories in your profile floor.' };
+  }
+  const cat = w.category as EnforcementCategory;
+  if (!ctx.validCategories.includes(cat)) {
+    return { message: `Waiver ${label} names an unknown enforcement category.`, fixHint: `Use a valid category: ${ctx.validCategories.join(', ')}.` };
+  }
+  if (ctx.unwaivable.includes(cat)) {
+    return { message: `Waiver ${label} names an un-relaxable category — it has no effect (the category keeps gating).`, fixHint: 'Remove the waiver; this category cannot be relaxed on this profile. Cover it with a tool or choose a different profile.' };
+  }
+  if (!ctx.required.includes(cat)) {
+    return { message: `Waiver ${label} names a category not in this profile's floor — a dead waiver.`, fixHint: 'Remove it; only a required category needs a waiver.' };
+  }
+  return null;
+}
+
+function untilProblem(w: RawWaiver, label: string, now: Date): WaiverProblem | null {
+  if (typeof w.until !== 'string') {
+    return { message: `Waiver ${label} has no "until" expiry.`, fixHint: 'Set until to an ISO YYYY-MM-DD date within 365 days.' };
+  }
+  const until = parseIsoDate(w.until);
+  if (until === null) {
+    return { message: `Waiver ${label} has an invalid "until" (${w.until}) — expected ISO YYYY-MM-DD.`, fixHint: 'Use an ISO YYYY-MM-DD date, e.g. 2026-10-01.' };
+  }
+  const days = daysBetween(now, until);
+  if (days < 0) {
+    return { message: `Waiver ${label} expired on ${w.until} — remove or renew it.`, fixHint: 'An expired waiver auto-blocks; delete it or set a fresh until within 365 days.' };
+  }
+  if (days > MAX_WAIVER_DAYS) {
+    return { message: `Waiver ${label} expires ${w.until}, more than ${MAX_WAIVER_DAYS} days out.`, fixHint: `Set until within ${MAX_WAIVER_DAYS} days so the waiver can't be written to never expire.` };
+  }
+  return null;
+}
+
+/** Every well-formedness problem with one raw waiver (empty when clean). */
+function waiverProblems(w: RawWaiver, label: string, ctx: WaiverCtx): WaiverProblem[] {
+  const problems: WaiverProblem[] = [];
+  const category = categoryProblem(w, label, ctx);
+  if (category) problems.push(category);
+  if (typeof w.reason !== 'string' || isBoilerplateReason(w.reason)) {
+    problems.push({ message: `Waiver ${label} has an empty or boilerplate reason.`, fixHint: 'Give a specific justification (what and why, ideally a ticket ref) — a placeholder like "n/a"/"todo" is rejected.' });
+  }
+  if (typeof w.owner !== 'string' || w.owner.trim().length === 0) {
+    problems.push({ message: `Waiver ${label} has no owner.`, fixHint: 'Set owner to whoever accepted the risk.' });
+  }
+  const until = untilProblem(w, label, ctx.now);
+  if (until) problems.push(until);
+  return problems;
+}
+
+export function enforceWaiverFindings(waivers: readonly RawWaiver[], ctx: WaiverCtx, file: string): Finding[] {
+  const findings: Finding[] = [];
+  waivers.forEach((w, i) => {
+    const label = typeof w.category === 'string' ? `"${w.category}"` : `#${i + 1}`;
+    for (const { message, fixHint } of waiverProblems(w, label, ctx)) {
+      findings.push({ file, line: 1, column: 1, rule: 'enforce-waiver-well-formed', severity: 'error', message, fixHint });
+    }
+  });
   return findings;
 }
 

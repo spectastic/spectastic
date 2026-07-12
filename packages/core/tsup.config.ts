@@ -47,6 +47,7 @@ export default defineConfig({
     'src/enforce/types.ts',
     'src/enforce/detect.ts',
     'src/enforce/policy.ts',
+    'src/enforce/config.ts',
   ],
   format: ['esm'],
   dts: true,
