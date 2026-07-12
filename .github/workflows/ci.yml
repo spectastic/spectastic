@@ -65,3 +65,34 @@ jobs:
         with:
           sarif_file: spectastic.sarif
           category: spectastic-dogfood
+
+  # A distinct, required status check for the artifact-security layer (spec
+  # 045 built the controls; spec 046 red-teams them). This FAILS THE BUILD on
+  # any executable-content finding — unlike the advisory dogfood above, which
+  # stays SARIF-only. The two are kept separate on purpose: a structural finding
+  # never turns this job red, and a security finding is never merely logged.
+  security-review:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+      - run: pnpm install --frozen-lockfile
+      - name: Build
+        run: pnpm -r build
+
+      # Two hard gates:
+      #  · the adversarial red-team — a hostile artifact carrying the full
+      #    injection battery is caught (categorical vectors blocked; hidden-channel
+      #    vectors documented as the deferred 045 FR-004 gap);
+      #  · the corpus-clean scan — no shipped artifact carries executable content.
+      # Both assert only on the no-executable-content rule, so they can't be
+      # tripped by an unrelated structural finding.
+      - name: Adversarial red-team + corpus security scan (hard gate)
+        run: >
+          pnpm vitest run
+          packages/schema/test/injection-red-team.test.ts
+          packages/cli/test/security-corpus.test.ts

@@ -1,0 +1,245 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
+<title>Security-review CI + adversarial injection fixture · Specification</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Specification · 046-security-review-ci</p>
+  <h1>Security-review CI + adversarial injection fixture</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    045 built the controls. This proves they hold — a real hostile artifact, red-teamed, and a CI gate that goes red when executable content lands.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>      <span><spec-status value="accepted">Accepted</spec-status></span>
+    <b>Spec ID</b>     <span>046-security-review-ci</span>
+    <b>Owner</b>       <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Reviewers</b>   <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Created</b>     <span><time datetime="2026-07-12">12 Jul 2026</time></span>
+    <b>Principles</b><span><a href="../../principles.html">v1.7.0</a></span>
+    <b>Sibling</b>    <span><a href="../045-artifact-security/spec.html">045-artifact-security</a> (the controls this red-teams)</span>
+    <b>Smallest demoable</b><span>A <code>&lt;script&gt;</code> added to any shipped artifact turns the CI <code>security-review</code> job red.</span>
+    <b>Read time</b>   <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-budget words="1500" reqs="20" minutes="12"></spec-budget>
+
+  <spec-tldr>
+    <p>045 shipped the two boundary gates (the <code>no-executable-content</code> validate rule and a strict template CSP),
+    proven by isolated positive/negative fixture pairs and one browser spike. That proves the rule <em>works</em> on a toy
+    input — it doesn't prove it holds against a <strong>realistic combined payload</strong>, and nothing stops a security
+    regression from merging: today's CI dogfood runs with <code>|| true</code> (advisory) and never fails the build. This
+    spec is the adversarial-testing sibling. It adds (1) a single hostile spec-family artifact carrying the <em>full</em>
+    injection battery, (2) a red-team test that asserts every categorical vector is <strong>blocked</strong> and every
+    hidden-channel vector is honestly marked <strong>not-yet-blocked</strong> (the FR-004 gap 045 deferred), (3) a
+    corpus-clean assertion, and (4) a dedicated <code>security-review</code> CI job that <strong>fails hard</strong> on any
+    finding. The dual-LLM ceiling and the AI-verb fence red-team stay out of scope — the fence itself isn't built yet.</p>
+  </spec-tldr>
+
+  <dl class="invest">
+    <dt><span class="letter">I</span> Independent</dt> <dd>Depends only on the shipped <a href="../045-artifact-security/spec.html">045</a> controls and the <a href="../002-validate-cli/spec.html">002</a> rule registry. No shared-data coupling.</dd>
+    <dt><span class="letter">N</span> Negotiable</dt>  <dd>Outcome (a security regression can't merge; coverage is legible), not a named test runner or CI provider.</dd>
+    <dt><span class="letter">V</span> Valuable</dt>    <dd>Unlocks <a href="#SC-001">SC-001</a> — executable content in a shipped artifact fails CI, closing the gap the threat model flagged.</dd>
+    <dt><span class="letter">E</span> Estimable</dt>   <dd>One fixture + one test + one corpus assertion + one CI job. Mechanism fully known from 045; no spike needed.</dd>
+    <dt><span class="letter">S</span> Small</dt>       <dd>Four small artifacts, no new CLI surface, no production-code change — pure verification + gate.</dd>
+    <dt><span class="letter">T</span> Testable</dt>    <dd>Every requirement is a test or a CI job; <a href="#SC-001">SC-001</a>/<a href="#SC-002">SC-002</a> are directly observable.</dd>
+  </dl>
+</header>
+
+
+<section id="context">
+<h2>1 · Context</h2>
+<p><a href="../045-artifact-security/spec.html">045</a> ratified the enforcement half of <a href="../../principles.html#P-11">P-11</a>:
+a <code>no-executable-content</code> validate rule (author-time) and a strict CSP (open-time). Its coverage is proven by
+per-vector <em>positive/negative fixture pairs</em> — each vector in isolation. Spectastic's own
+<a href="../../docs/spec-injection-considerations.html#recommendation">threat model</a> (recommendation 7) and the project's
+standing verification discipline both say the same thing: <mark>a rule that passes on a toy input is not verified against a
+real adversary.</mark> A hostile spec combines vectors, buries instructions in channels a human never sees, and only has to
+find one that slips through.</p>
+<p>Two concrete gaps remain after 045. First, there is <strong>no red-team</strong> — no single realistic hostile artifact
+the layer is tested against end to end. Second, the gate has <strong>no teeth in CI</strong>: the dogfood step runs
+<code>spectastic validate … || true</code> and only uploads SARIF, so a <code>&lt;script&gt;</code> merged into a shipped
+artifact would not fail the build. This spec closes both, and is honest about what the categorical rule does <em>not</em> yet
+catch (the hidden-channel vectors 045 deferred to its FR-004 heuristic rule).</p>
+</section>
+
+
+<section id="scenarios">
+<h2>2 · User scenarios &amp; testing</h2>
+
+<h3 id="US1">US1 · A security regression fails CI <spec-pill>P1</spec-pill></h3>
+<p>As a <strong>maintainer</strong>, I want executable content in any shipped artifact to fail a dedicated CI job so a
+regression can't merge — not merely be logged to SARIF.</p>
+<p><em>Acceptance:</em> a <code>security-review</code> job runs on every push and PR; if any artifact in the scanned corpus
+carries a <code>no-executable-content</code> error, the job exits non-zero and the build is red. A clean corpus passes.</p>
+
+<h3 id="US2">US2 · The layer is red-teamed with a real payload <spec-pill>P1</spec-pill></h3>
+<p>As a <strong>reviewer</strong>, I want one hostile artifact carrying the full injection battery, and a test asserting the
+categorical vectors are all caught, so coverage is proven against a realistic attack, not just isolated fixtures.</p>
+<p><em>Acceptance:</em> a checked-in adversarial artifact carries an inline script, a non-sanctioned external script, an
+<code>on*=</code> handler, a <code>javascript:</code> URI, a <code>data:</code> URI, and an <code>&lt;iframe&gt;</code>;
+the red-team test asserts <code>validate</code> raises a <code>no-executable-content</code> error for each.</p>
+
+<h3 id="US3">US3 · Coverage is legible, not overclaimed <spec-pill>P2</spec-pill></h3>
+<p>As a <strong>reviewer</strong>, I want the hidden-channel vectors the categorical rule does <em>not</em> yet catch to be
+asserted as a documented gap, so no one mistakes "the red-team passes" for "every channel is closed".</p>
+<p><em>Acceptance:</em> the same hostile artifact carries an imperative HTML comment, a <code>display:none</code> instruction
+block, an <code>aria-hidden</code> block, and zero-width Unicode; the red-team test asserts these produce <strong>no</strong>
+finding today and marks each as the deferred <a href="../045-artifact-security/spec.html#FR-004">045 FR-004</a> gap.</p>
+
+<h3>Edge cases</h3>
+<ul>
+  <li><strong>Courses stay exempt.</strong> The red-team asserts a course-titled artifact with an inline gate script is <em>not</em> flagged — the sanctioned-interactive carve-out from 045 must survive.</li>
+  <li><strong>Advisory vs hard.</strong> The existing structural dogfood stays advisory (SARIF, <code>|| true</code>); only the new security gate fails the build. A structural WIP finding must not turn the security job red, and vice versa.</li>
+  <li><strong><code>docs/**</code> is unscanned.</strong> The corpus glob excludes <code>docs/**</code> (as today). A hostile docs page would not be caught by the corpus gate — a recorded ceiling, deferred, not silently closed.</li>
+</ul>
+</section>
+
+
+<section id="requirements">
+<h2>3 · Requirements</h2>
+
+<p>Conformance keywords (<spec-rule>MUST</spec-rule>, <spec-rule level="should">SHOULD</spec-rule>,
+<spec-rule level="may">MAY</spec-rule>) follow RFC 2119.</p>
+
+<h3>Functional</h3>
+
+<spec-requirement id="FR-001" priority="must">
+<p>The repository <spec-rule>MUST</spec-rule> carry a single checked-in <strong>adversarial injection fixture</strong> — one
+hostile spec-family artifact combining, in one document, every categorical injection vector the
+<code>no-executable-content</code> rule governs (an inline <code>&lt;script&gt;</code>, a non-sanctioned external
+<code>&lt;script src&gt;</code>, an <code>on*=</code> handler, a <code>javascript:</code> URI, a <code>data:</code> URI, and an
+<code>&lt;iframe&gt;</code>) <strong>and</strong> a representative set of hidden-channel vectors (an imperative HTML comment, a
+<code>display:none</code> instruction block, an <code>aria-hidden</code> block, and zero-width Unicode smuggling).</p>
+<details><summary>Rationale</summary><p>One realistic combined payload, not isolated pairs. It doubles as the living record of
+what the layer is tested against, and what it does not yet catch.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-002" priority="must">
+<p>A <strong>red-team test</strong> <spec-rule>MUST</spec-rule> run <code>validate</code> over the fixture and assert that
+<em>every categorical vector</em> produces a <code>no-executable-content</code> <strong>error</strong> finding. It
+<spec-rule>MUST</spec-rule> also assert that <em>every hidden-channel vector</em> produces <strong>no</strong> finding today,
+each marked as the deferred <a href="../045-artifact-security/spec.html#FR-004">045 FR-004</a> gap, and that a course-titled
+variant carrying an inline gate script is <strong>not</strong> flagged (the sanctioned-interactive carve-out holds).</p>
+<details><summary>Rationale</summary><p>Structural "it renders / the rule exists" checks are insufficient — the standing
+discipline. Asserting the gap explicitly keeps coverage legible: "the red-team passes" never reads as "every channel is closed".</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-003" priority="must">
+<p>A <strong>corpus-clean assertion</strong> <spec-rule>MUST</spec-rule> run <code>validate</code> over the shipped
+spec-family corpus (the same glob the CI dogfood scans — <code>specs/**</code>, <code>examples/*</code>, and the root
+artifacts) and assert <strong>zero</strong> <code>no-executable-content</code> findings, so a security regression in a real
+artifact is caught, not just a synthetic one. The adversarial fixture <spec-rule>MUST</spec-rule> be excluded from this glob
+(it is hostile by design).</p>
+</spec-requirement>
+
+<spec-requirement id="FR-004" priority="must">
+<p>A dedicated <code>security-review</code> job in the CI workflow <spec-rule>MUST</spec-rule> run the red-team (FR-002) and
+corpus-clean (FR-003) gates and <spec-rule>MUST</spec-rule> fail the build (non-zero exit) on any finding. The pre-existing
+structural dogfood <spec-rule>MUST</spec-rule> remain advisory (SARIF upload, non-blocking) — the two gates
+<spec-rule>MUST NOT</spec-rule> conflate, so a structural finding never fails the security job and a security finding is never
+merely logged.</p>
+<details><summary>Rationale</summary><p>A distinct, required status check is the guarantee half (P-8): the gate lives in CI,
+not in prose. Keeping it separate from the advisory dogfood is what gives "security fails hard" a clean meaning.</p></details>
+</spec-requirement>
+
+<h3>Non-functional</h3>
+
+<spec-requirement id="NFR-001" priority="must">
+<p>The red-team and corpus-clean gates <spec-rule>MUST</spec-rule> be deterministic and offline — a static fixture and pure
+<code>validate</code> calls, no network and no LLM. Re-running on the same commit <spec-rule>MUST</spec-rule> yield the same
+result.</p>
+</spec-requirement>
+
+<h3>Out of scope (deferred)</h3>
+<spec-out-of-scope>
+  <ul>
+    <li defer-to="TBD-docs-security-scan">Extending the security corpus scan to <code>docs/**</code>. Docs are artifacts too and pass the rule clean today, but bringing them into the gate is a separate decision — the exclusion is a recorded ceiling here, not a silent gap.</li>
+    <li defer-to="045-artifact-security">The hidden-instruction heuristic rule that would actually <em>catch</em> the hidden-channel vectors (045 FR-004). This spec only documents the gap; closing it is 045's later slice.</li>
+    <li defer-to="045-artifact-security">A red-team of the AI-verb fence/sanitize step (045 FR-003) — the fence is not built yet, so there is nothing to red-team.</li>
+    <li defer-to="TBD">Exfiltration / lethal-trifecta tool-layer tests (allowlisted egress, no-auto-render). These need the fence and a tool-boundary first; a far-future ceiling.</li>
+  </ul>
+</spec-out-of-scope>
+</section>
+
+
+<section id="data">
+<h2>4 · Data model</h2>
+<p>This feature owns no persistent entities. It adds one static hostile HTML fixture, two test assertions (a pure function
+over <code>validate</code>'s output), and one CI job definition.</p>
+<dl>
+  <dt>Categorical vector</dt><dd>An injection channel the <code>no-executable-content</code> rule flags categorically today: <code>&lt;script&gt;</code> (non-sanctioned), <code>on*=</code>, <code>javascript:</code>/<code>data:</code> URI, <code>&lt;iframe&gt;</code>. Asserted <em>blocked</em>.</dd>
+  <dt>Hidden-channel vector</dt><dd>An invisible-to-a-human channel a model still reads: HTML comment, <code>display:none</code>/<code>aria-hidden</code> text, zero-width Unicode. Asserted <em>not-yet-blocked</em> (the 045 FR-004 gap).</dd>
+</dl>
+</section>
+
+
+<section id="success">
+<h2>5 · Success criteria</h2>
+
+<spec-requirement id="SC-001" priority="must">
+<p>Adding a <code>&lt;script&gt;</code> (or any categorical vector) to a shipped artifact makes the <code>security-review</code>
+CI job <strong>fail</strong> (non-zero exit); with the corpus clean, the job passes. Demonstrable by a local dry-run of the
+gate over a temporarily-dirtied artifact.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-002" priority="should">
+<p>The red-team test documents <strong>both</strong> the blocked categorical vectors and the not-yet-blocked hidden-channel
+vectors, so a reader can see exactly what the layer stops and what it defers — coverage is legible, never overclaimed.</p>
+</spec-requirement>
+</section>
+
+
+<section id="assumptions">
+<h2>6 · Assumptions</h2>
+<spec-assumption>
+<p><code>spectastic validate</code> exposes the <code>no-executable-content</code> rule id and error severity in its output (it does — 045 FR-001), so the red-team can assert per-vector rather than on a bare pass/fail.</p>
+</spec-assumption>
+<spec-assumption>
+<p>The shipped corpus is clean of executable content at authoring time (045 verified this), so FR-003 lands green with zero migration.</p>
+</spec-assumption>
+</section>
+
+
+<section id="questions">
+<h2>7 · Open questions</h2>
+<spec-questions>
+<p>None outstanding — fixture scope (both categorical + hidden-channel, gaps marked), CI shape (a job in the existing workflow), gating hardness (security fails hard, dogfood stays advisory), and corpus glob (docs excluded, recorded) were all anchored in the interview.</p>
+</spec-questions>
+</section>
+
+
+<section id="conformance">
+<h2>8 · Conformance index</h2>
+<p>Auto-built from every <code>&lt;spec-requirement&gt;</code> in this document.</p>
+<spec-conformance></spec-conformance>
+</section>
+
+
+<section id="changelog">
+<h2>9 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-07-12">12 Jul 2026</time><span>Initial spec. The adversarial-testing sibling of 045: an injection fixture (FR-001), a red-team test asserting categorical vectors blocked + hidden-channel vectors marked as the deferred 045 FR-004 gap (FR-002), a corpus-clean assertion (FR-003), and a hard <code>security-review</code> CI job (FR-004). Resolves <code>TBD-security-review-ci</code>.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  046-security-review-ci · Security-review CI + adversarial injection fixture · authored 12 Jul 2026 ·
+  <button data-theme-toggle style="background:none;border:none;color:var(--c-link);cursor:pointer;font:inherit;padding:0;border-bottom:1px solid currentColor;">toggle theme</button>
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>
