@@ -1,0 +1,338 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
+<title>Malicious changes &amp; supply-chain integrity — Considerations for Spectastic</title>
+<meta name="description" content="Can a spec-driven tool detect an xz-style supply-chain attack, where the spec stays clean but the plan, tasks, or code hide the malice? An honest survey of what is detectable, what is unsolved, and the one novel signal spectastic's intent-to-code traceability makes cheap.">
+<link rel="stylesheet" href="../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../assets/favicon.svg">
+<script src="../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Considerations · Supply-chain integrity</p>
+  <h1>When the spec is clean but the code is not</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    The xz backdoor hid where no one reads — a binary test blob and a release-only build script, landed by a maintainer who spent two years earning trust. A clean spec would not have stopped it. But intent held as data is a signal a raw diff can't offer.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>     <span><spec-status value="draft">Draft</spec-status></span>
+    <b>Type</b>       <span>Threat model &amp; research synthesis</span>
+    <b>Author</b>     <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Created</b>    <span><time datetime="2026-07-12">12 Jul 2026</time></span>
+    <b>Sources</b>    <span>21 primary, verified 12 Jul 2026</span>
+    <b>Read time</b>  <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-tldr>
+    <p>A spec-driven flow protects the <em>human-facing</em> surface — but the surface an attacker keeps clean is exactly
+    <code>spec.html</code>. The xz-utils backdoor (CVE-2024-3094) is the worst case made real: the malice was <strong>not in any
+    reviewable source diff</strong>. It lived in hand-crafted binary test fixtures and a build script that shipped only in the release
+    tarball, introduced by a persona who spent <strong>~2.5 years</strong> building trust while sockpuppet accounts pressured a
+    burned-out maintainer into handing over the keys. Code review, CI, and any "no code-only PRs" policy would have — and did —
+    sail past it; it was found by accident, through a 500&nbsp;ms SSH slowdown. The blunt truth from the research is that
+    <mark>detecting a deliberately-obfuscated backdoor's intent is unsolved</mark>, and the field has "no satisfactory solution for
+    detecting malicious commits" today. <strong>So this doc does not promise detection.</strong> What it recommends instead is a
+    <strong>risk score that forces a human look</strong>: spectastic holds the human-approved intent (spec → plan → tasks) as
+    structured data, and its coding drain already computes a per-task diff it currently discards. That gives it a signal generic
+    scanners lack — a <strong>capability/scope delta versus what the spec authorized</strong>. A change that adds network, exec,
+    filesystem, crypto, binary, build-script, or dependency surface unrelated to its stated task is cheap to compute and
+    high-signal. Ranked cheap-first, downstream-project code first; spectastic's own build layer already sits near the top of the
+    maturity curve.</p>
+  </spec-tldr>
+
+  <spec-audience-map>
+    <dl>
+      <dt>Exec / PM</dt>   <dd>The TL;DR, then §<a href="#recommendation">6</a> (the staged posture).</dd>
+      <dt>Reviewer</dt>    <dd>§<a href="#today">3</a> (our exposure) + §<a href="#detectable">4</a> (what's real vs. unsolved).</dd>
+      <dt>Implementer</dt> <dd>§<a href="#lever">5</a> (the novel signal) + §<a href="#recommendation">6</a>.</dd>
+      <dt>In a hurry</dt>  <dd>We can't detect xz-style malice. We can score a change's capability against what its spec authorized. §<a href="#recommendation">6</a>.</dd>
+    </dl>
+  </spec-audience-map>
+</header>
+
+
+<!-- ======================================================= -->
+<section id="threat">
+<h2>1 · The threat — a spec-clean change hiding code malice</h2>
+<p>The fear is precise: in a spec-driven flow, a reviewer reads <code>spec.html</code> and approves the <em>intent</em>. But the
+malice need not live there. It can descend into the plan, the tasks, or — most dangerously — the code and build scripts, where the
+human-facing artifact stays innocent. The canonical instance is the <strong>xz-utils backdoor</strong>, CVE-2024-3094.</p>
+
+<p><spec-newthought>The malice was where no one reads.</spec-newthought> Andres Freund's original disclosure is blunt: "One
+portion of the backdoor is <em>solely in the distributed tarballs</em>" — a malicious macro in <code>build-to-host.m4</code> that
+"is not in the upstream source of build-to-host, nor is build-to-host used by xz in git."<spec-sidenote>Freund's oss-security
+disclosure <a href="https://www.openwall.com/lists/oss-security/2024/03/29/4">[1]</a>.</spec-sidenote> An obfuscated script run at
+the end of <code>configure</code> rewrote the Makefile to decompress a payload hidden inside <strong>binary test fixtures</strong>
+(<code>tests/files/bad-3-corrupt_lzma2.xz</code> and a sibling — files "not even used for any tests"), piping them through
+<code>xz -d | /bin/bash</code>; the payload then hijacked the IFUNC resolvers to redirect <code>RSA_public_decrypt</code>. A normal
+<code>git clone</code> and build produced a <em>clean</em> binary — only the distro packaging path, which builds from the tarball,
+was compromised.<spec-sidenote>TuxCare's mechanism write-up <a href="https://tuxcare.com/blog/xz-compromise/">[2]</a>; the binary
+blobs were hand-crafted with a hex editor, and a single stray <code>.</code> in <code>CMakeLists.txt</code> disabled a Landlock
+sandbox.</spec-sidenote> There was <strong>no reviewable malicious source diff</strong> — the exploitable facts were binary blobs
+added to the repo and a build script that diverged from the source tree.</p>
+
+<p><strong>And it took years of trust.</strong> Russ Cox's timeline records the "Jia Tan" persona's first innocuous patch in
+October 2021; from April 2022 sockpuppet accounts
+("Jigar Kumar", "Dennis Ens" — accounts that "never appeared elsewhere on the internet, even in data breaches") pressured maintainer
+Lasse Collin to hand off the project, exploiting his disclosed "longterm mental health issues"; commit authority came in
+December 2022; the backdoor shipped in v5.6.0 in February 2024.<spec-sidenote>Russ Cox's canonical timeline <a href="https://research.swtch.com/xz-timeline">[3]</a>; Kaspersky's
+social-engineering analysis <a href="https://securelist.com/xz-backdoor-story-part-2-social-engineering/112476/">[4]</a>.</spec-sidenote>
+It was caught not by any security control but by chance — Freund investigating a ~500&nbsp;ms SSH login slowdown and valgrind
+errors.<spec-sidenote>The accidental discovery <a href="https://en.wikipedia.org/wiki/XZ_Utils_backdoor">[5]</a>.</spec-sidenote></p>
+
+<p>The lesson governs everything below: <mark>the attack was engineered to defeat human code review and diff-based tooling.</mark>
+No annotation requirement, no "no code-only PRs" rule, and no spec would have surfaced it.</p>
+</section>
+
+
+<!-- ======================================================= -->
+<section id="sdd">
+<h2>2 · Why spec-driven development doesn't help by default</h2>
+<p>Spectastic's lifecycle runs spec → plan → tasks → implement → verify, and its traceability is real but <em>document-to-document</em>:
+a success criterion links to a user story links to a test-task, all by id and <code>href</code>. That chain stops exactly where code
+begins. There is no persisted link from a requirement or task to the diff that fulfilled it — git trailers record <em>attribution</em>
+(<code>Assisted-by</code>, <code>Acked-by</code>, a <code>Refs</code> to the archived proposal), never a <code>Task-Id</code> or a
+diff hash. The <code>&lt;span class="path"&gt;</code> a task carries is <em>authored intent</em> ("this task should touch this file"),
+never checked against what actually changed.</p>
+<p>So the attacker's move is easy: keep <code>spec.html</code> anodyne, and let the divergence live one layer down. A malicious task
+implementation, a compromised dependency added during the plan, a doctored build step — none of these contradict a clean spec, and
+spectastic captures no ground truth that would notice. The very thing that makes SDD reviewable to humans (the calm, high-level spec)
+is the surface an attacker most wants you reading.</p>
+</section>
+
+
+<!-- ======================================================= -->
+<section id="today">
+<h2>3 · Where spectastic stands today</h2>
+<p>Every security control spectastic has shipped is scoped to the <strong>artifact injection surface</strong> — stopping attacker
+text from steering the tool <em>inward</em> (P-11, the <code>no-executable-content</code> rule, the template CSP, the
+<a href="../specs/046-security-review-ci/spec.html">046</a> red-team). None of it inspects the <em>project's</em> source, build
+scripts, CI config, or dependencies. The exposure, boundary by boundary:</p>
+
+<div style="overflow-x:auto;">
+<table>
+  <thead><tr><th>Boundary</th><th>Exposure today</th><th>Evidence</th></tr></thead>
+  <tbody>
+    <tr>
+      <td>Enforce categories</td>
+      <td><em>Presence-only.</em> The <code>supply-chain</code> category is "covered" if a <code>renovate.json</code> / gradle <code>dependency-check</code> / cargo <code>deny.toml</code> exists at the repo root. It opens no dependency, reads no lockfile, diffs no version. A configured updater ≠ a safe dependency tree.</td>
+      <td><code>packages/core/src/enforce/detect.ts</code></td>
+    </tr>
+    <tr>
+      <td>Artifact security</td>
+      <td><em>Injection surface only.</em> The 045/046 layer blocks executable content and hidden-instruction channels <strong>inside a spec-family HTML document</strong>. It never reads a <code>.ts</code>/<code>.py</code>/<code>.rs</code> source file, a build script, or a diff.</td>
+      <td><code>packages/schema/src/rules/no-executable-content.ts</code></td>
+    </tr>
+    <tr>
+      <td><strong>Project code / deps / build</strong></td>
+      <td><em>Entirely unscanned.</em> No source inspection, no lockfile/version-diff analysis, no build-script or CI-config review, no behavioral analysis of dependencies (the xz vector). <strong>No risk-score primitive exists anywhere.</strong></td>
+      <td>— (the gap)</td>
+    </tr>
+    <tr>
+      <td>Own release integrity</td>
+      <td><em>Strong.</em> npm <code>--provenance</code> via GitHub OIDC (Sigstore/SLSA attestation), a version-tag guard, Dependabot, frozen lockfile. Near the top of today's practical maturity curve.</td>
+      <td><code>.github/workflows/publish.yml</code></td>
+    </tr>
+  </tbody>
+</table>
+</div>
+
+<p>The one boundary the research says most needs help — the project's own code and dependencies — is the one with zero coverage. And
+because spectastic's release integrity is already strong, <strong>the downstream project is where the marginal value is</strong>.</p>
+</section>
+
+
+<!-- ======================================================= -->
+<section id="detectable">
+<h2>4 · What's detectable, what's advisory, what's unsolved</h2>
+<p>The research is unambiguous about not overclaiming. Malicious-code detection is provably undecidable in the general case, even
+weak obfuscation defeats commercial scanners, and a top-level ACM survey concludes practitioners "currently do not have satisfactory
+solutions for detecting malicious commits."<spec-sidenote>Limits of static analysis
+<a href="https://sites.cs.ucsb.edu/~chris/research/doc/acsac07_limits.pdf">[6]</a>; ACM survey, state of the field
+<a href="https://dl.acm.org/doi/10.1145/3714464">[7]</a>.</spec-sidenote> The honest split:</p>
+
+<div style="overflow-x:auto;">
+<table>
+  <thead><tr><th>Tier</th><th>Signal</th><th>Basis</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><strong>Detectable</strong><br><span class="small-caps">cheap · deterministic</span></td>
+      <td>Binary/blob files added (the exact xz vector); build-script / packaging / CI edits (<code>*.m4</code>, <code>configure.ac</code>, <code>Makefile.am</code>, <code>CMakeLists.txt</code>, <code>.github/**</code>, <code>package.json</code> scripts, <code>.gitignore</code> hiding build inputs); install/postinstall hooks; high-entropy / base64 blobs in a diff; new dependency additions; and <strong>diff-scope-vs-stated-task mismatch</strong>.</td>
+      <td>OpenSSF Scorecard <em>Binary-Artifacts</em> + <em>Code-Review</em> checks <a href="https://github.com/ossf/scorecard/blob/main/docs/checks.md">[8]</a>; "Backstabber's Knife" (56% of npm malware runs on install) <a href="https://arxiv.org/abs/2005.09535">[9]</a>; "Weak Links in the npm supply chain" <a href="https://arxiv.org/abs/2112.10165">[10]</a>.</td>
+    </tr>
+    <tr>
+      <td><strong>Advisory</strong><br><span class="small-caps">real tooling / ML</span></td>
+      <td>Capability-delta via call-graph — "did this update add a new capability (network / exec / fs / crypto)?"; LLM semantic intent-vs-code review that can articulate "this change does more than its stated purpose."</td>
+      <td>Google <strong>Capslock</strong> <code>compare</code> mode <a href="https://github.com/google/capslock">[11]</a>, <a href="https://blog.deps.dev/capslock/">[12]</a>; anomaly detection on commit metadata (Anomalicious, 53% caught) <a href="https://patricegodefroid.github.io/public_psfiles/icse2021.pdf">[13]</a>; LLM PR-review routing humans (Datadog) <a href="https://www.datadoghq.com/blog/engineering/malicious-pull-requests/">[14]</a>.</td>
+    </tr>
+    <tr>
+      <td><strong>Unsolved</strong><br><span class="small-caps">do not claim</span></td>
+      <td>Intent behind a <em>deliberately obfuscated</em> backdoor (undecidable); a patient trusted-insider campaign (the "Jia Tan" pattern); contributor/maintainer-trust scoring (no reliable tool). And note: LLM reviewers are <em>themselves attackable</em> — crafted PR metadata achieved a 100% detection-evasion rate in one study.</td>
+      <td>Undecidability <a href="https://www.cs.cornell.edu/courses/cs711/2005fa/papers/cj-usenix03.pdf">[15]</a>; contextual-bias attack on LLM review <a href="https://arxiv.org/abs/2603.18740">[16]</a>; social-engineering analysis <a href="https://securelist.com/xz-backdoor-story-part-2-social-engineering/112476/">[4]</a>.</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+
+<p><strong>The structural counter to xz lives at the build layer, not the spec layer.</strong> The only controls that would have
+caught the tarball-vs-repo divergence are <strong>reproducible builds</strong> and <strong>source↔artifact provenance</strong> — and
+SLSA itself treats reproducibility as recommended, not required, "considered very hard in practice."<spec-sidenote>SLSA v1.1 FAQ on
+reproducible builds <a href="https://slsa.dev/spec/v1.1/faq">[17]</a>; in-toto/SLSA attestation flow
+<a href="https://secure-pipelines.com/ci-cd-security/artifact-provenance-attestations-slsa-in-toto/">[18]</a>.</spec-sidenote> These
+are real, but they are a separate track from anything the spec layer can offer.</p>
+</section>
+
+
+<!-- ======================================================= -->
+<section id="lever">
+<h2>5 · The novel lever — capability delta vs. the authorized spec</h2>
+<p>Here is the one thing spectastic has that a generic scanner reading a raw diff does not: <strong>the human-approved intent, held
+as structured data.</strong> A `spec.html` says what the change is <em>for</em>; the plan and tasks say what it should <em>touch</em>.
+And — the key mechanical fact — spectastic's coding drain <strong>already computes a per-task diff</strong> in a sandboxed git
+worktree (it stages the worktree, takes <code>git diff --cached HEAD</code>, and already gates a task on "a file actually changed")
+before applying it into the working tree for review. Today that diff is <em>applied and forgotten</em>. It is exactly the ground
+truth a divergence score needs, available at exactly the moment a task's code lands.</p>
+
+<p>The primitive: <strong>score a change by the capability and surface it adds, relative to what its task and spec authorized.</strong>
+A task described as "add a date-formatting helper" that touches a build script, adds a dependency, opens a network call, or drops a
+binary blob is <em>surface unrelated to its authorized intent</em> — a computable, high-signal anomaly. This is the deps.dev/Capslock
+idea ("flag when an update adds a new capability") re-based onto spectastic's advantage: not "new capability vs. the last version" but
+<strong>"new capability vs. the approved requirement."</strong> Composed the way mature tools compose risk — Scorecard's
+risk-weighted sum of cheap checks, CVSS×EPSS's impact×likelihood framing — it yields a single <em>change-risk</em> number.<spec-sidenote>Scorecard's
+risk-weighted aggregation <a href="https://scorecard.dev/">[19]</a>; CVSS vs. EPSS (severity vs. exploit-likelihood)
+<a href="https://entro.security/blog/cvss-vs-epss-in-vulnerability-scoring/">[20]</a>.</spec-sidenote></p>
+
+<spec-warning><strong>A score is not a verdict.</strong> Empirical work finds even mature scoring systems give conflicting,
+confusing signals on the same vulnerability.<spec-sidenote>"Conflicting Scores, Confusing Signals," 600 real vulnerabilities across
+CVSS/SSVC/EPSS <a href="https://arxiv.org/abs/2508.13644">[21]</a>.</spec-sidenote> The value of a change-risk score is not that it
+labels malice — it can't — but that it <em>forces a human to look</em> at the changes whose footprint exceeds their stated purpose.
+It raises the attacker's cost; it does not close the door.</spec-warning>
+</section>
+
+
+<!-- ======================================================= -->
+<section id="recommendation">
+<h2>6 · Recommendation — a layered, staged posture</h2>
+<p>Two theses anchor this: <strong>a change's capability should be accountable to its spec</strong>, and <strong>we surface risk, we
+do not claim detection</strong>. Ranked cheap-first; downstream-project code is the primary boundary (spectastic's own release
+integrity is already strong).</p>
+
+<spec-decision id="D-001" grounding="verified">
+  <h4>D-001 · Adopt a change-risk posture anchored by an accountability principle</h4>
+  <dl>
+    <dt>Status</dt><dd><spec-status value="draft">Proposed</spec-status></dd>
+    <dt>Context</dt><dd>A spec-clean change can hide malice in the plan/tasks/code; spectastic scans none of it and has no risk
+    primitive. Detecting obfuscated malice is unsolved, but spectastic uniquely holds the approved intent as data and already
+    computes a per-task diff it discards.</dd>
+    <dt>Decision</dt><dd>Adopt the ranked controls below and ratify a principle — <em>"a change's capability and scope must be
+    accountable to the spec that authorized it"</em> — as the invariant the controls trace to (the P-8 pattern: the principle is the
+    contract; a deterministic change-risk scan is the guarantee half). The score forces review; it never certifies safety.</dd>
+    <dt>Consequences</dt><dd>+ A first project-code-facing security signal, staged so the cheap deterministic flags land first.
+    + Reuses spectastic's own advantage — approved intent as data + the drain's diff hook — for a signal generic scanners can't
+    compute. − The score is advisory and can conflict/misfire; that residual is recorded, not hidden. − It cannot detect an xz-style
+    backdoor or a trusted-insider campaign — stated plainly, per the P-8/P-11 honesty posture.</dd>
+  </dl>
+</spec-decision>
+
+<ol>
+  <li><strong>Cheap deterministic red-flags — the P-8 floor.</strong> A <code>change-risk</code> scan over a diff, surfacing weighted
+  advisory findings: a binary/blob file added, a build-script / CI / packaging edit, an install/postinstall hook, a high-entropy or
+  base64 blob, a new dependency. Deterministic, language-agnostic, and exactly the surface signals xz threw off. Reuses the
+  <code>PerFileRule</code> / folded-CLI-scan shape and the hard-gate CI job pattern.</li>
+  <li><strong>Spec-anchored capability/scope-delta score — the headliner.</strong> At the coding-drain diff hook, score a task's real
+  footprint against its declared path and its spec's authorized surface; flag capability (network / exec / fs / crypto) and files
+  unrelated to the stated intent. Composes with the P-9 un-relaxable <code>security</code>/<code>supply-chain</code> floor.</li>
+  <li><strong>Advisory ceilings — recorded, not built now.</strong> Call-graph capability-delta (Capslock, language-limited) and
+  LLM semantic intent-vs-code review (non-deterministic, and itself attackable via crafted metadata — so never the sole gate).</li>
+  <li><strong>Spectastic's own build layer — a secondary track.</strong> Reproducible-build / source↔artifact verification and
+  hash-pinned GitHub Actions: the true structural counter to xz, deferred because release provenance is already strong.</li>
+</ol>
+
+<h3>Suggested next artifacts</h3>
+<spec-out-of-scope>
+  <ul>
+    <li defer-to="TBD-capability-accountability-principle">A <code>/spectastic.principles</code> amendment ratifying "a change's capability and scope must be accountable to the spec that authorized it" as the anchoring invariant (the P-8 contract half; enforcement lands in the scan).</li>
+    <li defer-to="TBD-change-risk-score">A new spec: the tiered <code>change-risk</code> scan — slice 1 the cheap deterministic red-flags, slice 2 the spec-anchored capability/scope-delta at the drain diff hook.</li>
+    <li defer-to="TBD-reproducible-build-provenance">Spectastic's own build-layer hardening — source↔artifact / reproducible-build verification and hash-pinned Actions.</li>
+    <li defer-to="TBD-dependency-provenance-gate">Verify <em>incoming</em> dependency provenance (SLSA/Sigstore attestation) at the supply-chain enforce boundary — moving that category from presence-only toward content-aware.</li>
+    <li defer-to="TBD-contributor-trust">Contributor / maintainer risk signals — recorded as a far ceiling; no reliable tooling exists, and the social dimension the xz attack exploited is human judgment.</li>
+  </ul>
+</spec-out-of-scope>
+</section>
+
+
+<!-- ======================================================= -->
+<section id="caveats">
+<h2>7 · Caveats on the sources</h2>
+<ul>
+  <li><strong>Malicious-commit detection is not solved, and no source claims it is.</strong> The ACM survey [7], the undecidability
+  results [6][15], and the LLM-review attack [16] all point the same way: any composite score is a triage aid, not a guarantee.</li>
+  <li><strong>Capability analysis is language-limited.</strong> Capslock's call-graph capability detection is strongest for Go; robust
+  equivalents do not exist for every ecosystem. The cheap deterministic flags (tier 1) are the portable floor.</li>
+  <li><strong>Scoring systems disagree.</strong> The empirical study [21] found significant disparity across CVSS/SSVC/EPSS on the same
+  vulnerabilities — a caution against over-trusting any single composite number, including a spectastic <code>change-risk</code> one.</li>
+  <li><strong>xz specifically would still evade the spec layer.</strong> Its payload was not in reviewed source, so a source-side
+  capability-delta check alone would not have caught it. Only build-layer reproducibility/provenance structurally would — hence the
+  secondary track.</li>
+</ul>
+</section>
+
+
+<!-- ======================================================= -->
+<section id="sources">
+<h2>8 · Sources</h2>
+<p>Verified 12 Jul 2026. Primary sources fetched directly; the two arXiv preprints cited for LLM-review attackability [16] and
+scoring disagreement [21] were confirmed by title and abstract.</p>
+<ol>
+  <li>Freund, xz backdoor disclosure — <a href="https://www.openwall.com/lists/oss-security/2024/03/29/4">openwall.com/lists/oss-security/2024/03/29/4</a>: tarball-only <code>build-to-host.m4</code>, binary-blob payload, IFUNC hijack.</li>
+  <li>TuxCare, the xz compromise — <a href="https://tuxcare.com/blog/xz-compromise/">tuxcare.com/blog/xz-compromise</a>: mechanism; hex-edited test blobs; clean-from-git, compromised-from-tarball.</li>
+  <li>Russ Cox, xz timeline — <a href="https://research.swtch.com/xz-timeline">research.swtch.com/xz-timeline</a>: the ~2.5-year Jia Tan / sockpuppet timeline.</li>
+  <li>Kaspersky Securelist, social engineering — <a href="https://securelist.com/xz-backdoor-story-part-2-social-engineering/112476/">securelist.com/…/xz-backdoor-story-part-2-social-engineering</a>.</li>
+  <li>XZ Utils backdoor (overview / accidental discovery) — <a href="https://en.wikipedia.org/wiki/XZ_Utils_backdoor">en.wikipedia.org/wiki/XZ_Utils_backdoor</a>.</li>
+  <li>Limits of static analysis for malware — <a href="https://sites.cs.ucsb.edu/~chris/research/doc/acsac07_limits.pdf">cs.ucsb.edu/…/acsac07_limits.pdf</a>.</li>
+  <li>ACM survey, detecting malicious commits (state of the field) — <a href="https://dl.acm.org/doi/10.1145/3714464">dl.acm.org/doi/10.1145/3714464</a>.</li>
+  <li>OpenSSF Scorecard checks (Binary-Artifacts, Code-Review) — <a href="https://github.com/ossf/scorecard/blob/main/docs/checks.md">github.com/ossf/scorecard/…/checks.md</a>.</li>
+  <li>Backstabber's Knife Collection (npm/PyPI/RubyGems malware) — <a href="https://arxiv.org/abs/2005.09535">arxiv.org/abs/2005.09535</a>: 56% run on install.</li>
+  <li>What are Weak Links in the npm Supply Chain? — <a href="https://arxiv.org/abs/2112.10165">arxiv.org/abs/2112.10165</a>: install scripts, expired-domain maintainers, inactivity.</li>
+  <li>Google Capslock — <a href="https://github.com/google/capslock">github.com/google/capslock</a>: capability classification + <code>compare</code> mode.</li>
+  <li>deps.dev, Capslock capabilities — <a href="https://blog.deps.dev/capslock/">blog.deps.dev/capslock</a>: "new capability in an update is a risk indicator."</li>
+  <li>Anomalicious (ICSE 2021) — <a href="https://patricegodefroid.github.io/public_psfiles/icse2021.pdf">patricegodefroid.github.io/…/icse2021.pdf</a>: commit-metadata anomaly detection, 53% caught.</li>
+  <li>Datadog, detecting malicious PRs with LLMs — <a href="https://www.datadoghq.com/blog/engineering/malicious-pull-requests/">datadoghq.com/blog/engineering/malicious-pull-requests</a>: routes human reviewers, not replaces.</li>
+  <li>On the (im)possibility of obfuscation / static detection limits — <a href="https://www.cs.cornell.edu/courses/cs711/2005fa/papers/cj-usenix03.pdf">cs.cornell.edu/…/cj-usenix03.pdf</a>.</li>
+  <li>Measuring and Exploiting Contextual Bias in LLM-Assisted Security Code Review (arXiv:2603.18740) — <a href="https://arxiv.org/abs/2603.18740">arxiv.org/abs/2603.18740</a>: PR-metadata attack, 100% evasion in one attack mode.</li>
+  <li>SLSA v1.1 FAQ (reproducible builds recommended, not required) — <a href="https://slsa.dev/spec/v1.1/faq">slsa.dev/spec/v1.1/faq</a>.</li>
+  <li>Artifact provenance attestations (SLSA / in-toto) — <a href="https://secure-pipelines.com/ci-cd-security/artifact-provenance-attestations-slsa-in-toto/">secure-pipelines.com/…/artifact-provenance-attestations-slsa-in-toto</a>.</li>
+  <li>OpenSSF Scorecard (risk-weighted aggregation) — <a href="https://scorecard.dev/">scorecard.dev</a>.</li>
+  <li>CVSS vs. EPSS (severity vs. exploit likelihood) — <a href="https://entro.security/blog/cvss-vs-epss-in-vulnerability-scoring/">entro.security/blog/cvss-vs-epss-in-vulnerability-scoring</a>.</li>
+  <li>Conflicting Scores, Confusing Signals (arXiv:2508.13644) — <a href="https://arxiv.org/abs/2508.13644">arxiv.org/abs/2508.13644</a>: 600 vulnerabilities, CVSS/SSVC/EPSS disagreement.</li>
+</ol>
+</section>
+
+
+<!-- ======================================================= -->
+<section id="changelog">
+<h2>9 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-07-12">12 Jul 2026</time><span>Initial threat model + synthesis. One web-backed research pass (21 primary sources: Freund/oss-security, Russ Cox, Kaspersky, TuxCare, OpenSSF Scorecard, SLSA/in-toto, Google Capslock, Backstabber's Knife, Weak Links, Anomalicious, the ACM malicious-commit survey, EPSS/CVSS, and two confirmed arXiv preprints) fused with a codebase audit (enforce is presence-only; the security layer is artifact-injection only; the coding drain computes a per-task diff it discards; no requirement→diff link; no risk primitive). Recommends a tiered, cheap-first change-risk posture anchored by a capability-accountability principle — downstream project code first, spectastic's own build layer a deferred secondary track. States plainly that xz-style malice is not detectable; the score forces a human look.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  Spectastic · Malicious changes &amp; supply-chain integrity · 12 Jul 2026 ·
+  <a href="../index.html">home</a> ·
+  <a href="./spec-injection-considerations.html">spec-injection</a> ·
+  <button data-theme-toggle style="background:none;border:none;color:var(--c-link);cursor:pointer;font:inherit;padding:0;border-bottom:1px solid currentColor;">light/dark</button>
+</footer>
+
+</main>
+<script src="../assets/spec.js"></script>
+</body>
+</html>
