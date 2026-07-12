@@ -190,19 +190,24 @@ async function scanEnforceWaivers(cwd: string): Promise<Finding[]> {
 /**
  * The "verified NFRs are quantified" gate (spec 047-slo-nfr-artifact, FR-004).
  * Resolves the project's tier from the `.spectastic/profile.json` marker (mirrors
- * `scanEnforceWaivers`) and re-reads the validated files to check each `NFR-*`
- * requirement. Tier gating (verified/enterprise only) and the no-marker no-op
- * live in the core function, not here — this scan only resolves the tier and
- * folds findings.
+ * `scanEnforceWaivers`), then re-reads the validated files to check each `NFR-*`
+ * requirement.
+ *
+ * Short-circuits *before* the file re-read when the gate can't fire (no marker,
+ * or a tier below verified): a project with no profile pays no extra I/O on
+ * validate, so the double-read cost lands only where the gate is actually active
+ * (the perf floor the `validate-full-project` bench guards).
  */
 async function scanQuantifiedNfr(files: readonly string[], cwd: string): Promise<Finding[]> {
   if (files.length === 0) return [];
-  const [{ quantifiedNfrFindings }, { readMarker }, { readFile }] = await Promise.all([
+  const [{ quantifiedNfrFindings, isQuantifiedNfrGatedTier }, { readMarker }] = await Promise.all([
     import('@spectastic/core/commands/validate'),
     import('./init/marker.js'),
-    import('node:fs/promises'),
   ]);
   const marker = readMarker(cwd);
+  if (!isQuantifiedNfrGatedTier(marker?.profile)) return [];
+
+  const { readFile } = await import('node:fs/promises');
   const docs = await Promise.all(
     files.map(async (file) => ({ html: await readFile(file, 'utf8'), file })),
   );
