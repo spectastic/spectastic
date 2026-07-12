@@ -39,6 +39,12 @@ export const sloWellFormedRule: PerFileRule = {
     '<spec-slo> must resolve target= to an NFR in this document, carry an SLI + objective + window + budgeting, and use a recognised signal=.',
   check({ doc }) {
     const findings: Finding[] = [];
+    // The common case is a document with no <spec-slo> — return before the
+    // second full-AST walk (the NFR index) so a SLO-less doc costs one walk,
+    // not two. (The validate-full-project bench floor.)
+    const slos = findAll(doc.ast, 'spec-slo');
+    if (slos.length === 0) return findings;
+
     const nfrIds = new Set(
       findAll(doc.ast, 'spec-requirement')
         .map((el) => getAttr(el, 'id'))
@@ -58,7 +64,7 @@ export const sloWellFormedRule: PerFileRule = {
       });
     };
 
-    for (const slo of findAll(doc.ast, 'spec-slo')) {
+    for (const slo of slos) {
       const target = getAttr(slo, 'target');
       // A missing target= is slo-target-required's concern — only check
       // resolution when one is present.

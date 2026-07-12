@@ -395,6 +395,16 @@ export function enforceWaiverFindings(waivers: readonly RawWaiver[], ctx: Waiver
 /** The profile tiers at which a verified NFR must be quantified (FR-004). */
 const QUANTIFIED_NFR_GATED_TIERS = new Set(['verified', 'enterprise']);
 
+/**
+ * Whether a resolved profile tier gates the quantified-NFR check. Exported so
+ * the CLI scan can short-circuit *before* re-reading the validated files when
+ * the gate can't fire (no marker, or a tier below verified) — a project with
+ * no profile pays no extra I/O on validate (the perf floor the bench guards).
+ */
+export function isQuantifiedNfrGatedTier(tier: string | undefined): boolean {
+  return tier !== undefined && QUANTIFIED_NFR_GATED_TIERS.has(tier);
+}
+
 /** Collect an element's visible text, collapsed (mirrors slo-well-formed's textOf). */
 function textOf(el: Element): string {
   let out = '';
@@ -425,7 +435,7 @@ export function quantifiedNfrFindings(
   docs: readonly { html: string; file: string }[],
   ctx: { tier: string | undefined },
 ): Finding[] {
-  if (!ctx.tier || !QUANTIFIED_NFR_GATED_TIERS.has(ctx.tier)) return [];
+  if (!isQuantifiedNfrGatedTier(ctx.tier)) return [];
 
   const findings: Finding[] = [];
   for (const { html, file } of docs) {
