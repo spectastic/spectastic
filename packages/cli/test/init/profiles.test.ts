@@ -26,6 +26,20 @@ describe('profiles: loadProfiles', () => {
     }
   });
 
+  // spec 041 2026-07-11-contracts-axis: the 6th axis expressing per-tier contract-rigor posture.
+  it('every profile carries a non-empty contracts axis (the 6th axis)', () => {
+    const posture: Record<string, string> = {
+      lean: 'informal',
+      standard: 'contract-first',
+      verified: 'contract-checked',
+      enterprise: 'versioned+governed',
+    };
+    for (const name of profileNames(manifest)) {
+      const contracts = resolveProfile(manifest, name).axes.contracts;
+      expect(contracts, `${name} must carry a contracts axis`).toBe(posture[name]);
+    }
+  });
+
   it('fails safe to an empty manifest for a missing file', () => {
     const empty = loadProfiles('/no/such/dir');
     expect(profileNames(empty)).toEqual([]);
