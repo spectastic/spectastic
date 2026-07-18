@@ -3,6 +3,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Command } from 'commander';
 import { registerApply } from './commands/apply.js';
+import { registerChangeRisk } from './commands/change-risk.js';
 import { registerCourse } from './commands/course.js';
 import { registerEnforce } from './commands/enforce.js';
 import { registerExplore } from './commands/explore.js';
@@ -74,6 +75,7 @@ registerGitignore(program);
 registerOrder(program);
 registerExplore(program);
 registerRun(program);
+registerChangeRisk(program);
 
 if (process.argv.length <= 2) {
   program.outputHelp();

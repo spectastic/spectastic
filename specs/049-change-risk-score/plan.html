@@ -1,0 +1,350 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
+<title>Change-risk score · Plan</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Implementation plan · 049-change-risk-score</p>
+  <h1>Change-risk score</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    How we will build it.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>     <span><spec-status value="accepted">Accepted</spec-status></span>
+    <b>Spec</b>       <span><a href="./spec.html">049-change-risk-score</a></span>
+    <b>Owner</b>      <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Branch</b>     <span><code>049-change-risk-score</code></span>
+    <b>Created</b>    <span><time datetime="2026-07-18">18 Jul 2026</time></span>
+    <b>Read time</b>  <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-tldr>
+    <p>A pure <code>@spectastic/core/change-risk</code> module scans a unified-diff <em>string</em> for five red flags,
+    scores them into a bounded 0–100 number with green/amber/red bands, and a thin <code>spectastic change-risk</code> CLI
+    plus a <code>git</code> adapter feeds it the diff — mirroring the <code>enforce/*</code> fat-core/thin-CLI shape
+    end-to-end. The biggest risk is <strong>false positives from the entropy/base64 detector</strong> (minified JS, base64
+    images, lockfile hashes); mitigated by a conservative threshold, the advisory-by-default posture, and tunable weights.</p>
+  </spec-tldr>
+</header>
+
+
+<section id="principles-check">
+<h2>1 · Principles check</h2>
+<p>Against <a href="../../principles.html">v1.8.0</a>. This feature is itself the guarantee half of <a href="../../principles.html#P-12">P-12</a>.</p>
+
+<table>
+  <thead><tr><th>Principle</th><th>Compliance</th><th>Notes</th></tr></thead>
+  <tbody>
+    <tr><td>P-1 · Source order is reading order</td><td><spec-pill>OK</spec-pill></td><td>Plain TS modules; no reordering.</td></tr>
+    <tr><td>P-2 · Semantic tags over class soup</td><td><spec-pill>OK</spec-pill></td><td>Plan uses <code>spec-*</code> elements.</td></tr>
+    <tr><td>P-3 · IDs are contracts</td><td><spec-pill>OK</spec-pill></td><td>Stable <code>D-00N</code> ids.</td></tr>
+    <tr><td>P-4 · Progressive enhancement</td><td><spec-pill>OK</spec-pill></td><td>Feature is a CLI; no browser-JS dependence.</td></tr>
+    <tr><td>P-5 · Calm density</td><td><spec-pill>OK</spec-pill></td><td>—</td></tr>
+    <tr><td>P-6 · Draft is loose</td><td><spec-pill>OK</spec-pill></td><td>Plan is Draft.</td></tr>
+    <tr><td>P-7 · Done means verified</td><td><spec-pill>OK</spec-pill></td><td>TDD; the scan is a library exercised in its own vitest harness (SC-001..004).</td></tr>
+    <tr><td>P-8 · Guarantees live in kernel/CI</td><td><spec-pill>OK</spec-pill></td><td>Scan logic is deterministic kernel code; the CI job is the gate. Advisory posture (D-004/D-006).</td></tr>
+    <tr><td>P-9 · The enforcement floor holds</td><td><spec-pill>OK</spec-pill></td><td>Config loader fails <em>safe</em> — malformed → advisory, never silently off (D-003, NFR-004).</td></tr>
+    <tr><td>P-10 · Internal ids out of copy</td><td><spec-pill>OK</spec-pill></td><td>The <code>change-risk</code> <code>.description</code>/output copy carries no spec ids — tool-talking only.</td></tr>
+    <tr><td>P-11 · Artifacts are data</td><td><spec-pill>OK</spec-pill></td><td>The scan reads a diff by deterministic text-matching (no LLM), so hostile diff content can't steer it; it emits no HTML artifact.</td></tr>
+    <tr><td>P-12 · Capability accountability</td><td><spec-pill>OK</spec-pill></td><td>This plan <em>is</em> P-12's guarantee half (slice 1).</td></tr>
+  </tbody>
+</table>
+</section>
+
+
+<section id="technical-context">
+<h2>2 · Technical context</h2>
+<dl>
+  <dt>Language(s)</dt>      <dd>TypeScript, ESM, Node ≥ 20 (CI <code>setup-node@v4</code> node 20).</dd>
+  <dt>Frameworks</dt>       <dd>commander (existing CLI). <strong>No new runtime dependency</strong> — <code>git</code> via <code>node:child_process</code> <code>execFile</code>, as <code>coding/worktree.ts</code> already does.</dd>
+  <dt>Architecture</dt>     <dd>Modular pure-core + thin-CLI — the standing fat-core/thin-CLI convention (CLAUDE.md), mirroring <code>enforce/*</code>. Not a house-pattern choice; see <a href="#D-001">D-001</a>.</dd>
+  <dt>Storage</dt>          <dd>None. In-memory per run (spec §4 data model).</dd>
+  <dt>Testing</dt>          <dd>vitest, TDD red-first; a fixture-diff-driven unit suite in <code>packages/core</code> + a CLI integration test.</dd>
+  <dt>Coverage</dt>         <dd>Not in scope — no <code>.spectastic/profile.json</code> marker, so no coverage floor.</dd>
+  <dt>Perf targets</dt>     <dd><a href="./spec.html#NFR-003">NFR-003</a> — a 1,000-line diff scanned in &lt; 2 s p95, in-process, no network.</dd>
+  <dt>Constraints</dt>      <dd>Deterministic (<a href="./spec.html#NFR-001">NFR-001</a>), language-agnostic (<a href="./spec.html#NFR-002">NFR-002</a>), secure-by-default config (<a href="./spec.html#NFR-004">NFR-004</a>), no internal ids in CLI copy (P-10).</dd>
+</dl>
+</section>
+
+
+<section id="grounding">
+<h2>3 · Grounding &amp; evidence</h2>
+<p>Every design-bearing fact and how it was confirmed (per <code>REQ-LIFECYCLE-006</code>).</p>
+
+<table class="evidence">
+  <thead>
+    <tr><th>Claim the design rests on</th><th>Source</th><th>Status</th><th>Finding / note</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>A verb is a thin CLI <code>register*</code> that delegates to a core module.</td>
+        <td><code>packages/cli/src/commands/enforce.ts:23</code></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td><code>registerEnforce</code> delegates to <code>@spectastic/core/enforce/{detect,policy,config}</code>; the exact template.</td></tr>
+    <tr><td>A <code>spectastic.json</code> typed section loads fail-safe.</td>
+        <td><code>packages/core/src/enforce/config.ts:119</code></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td><code>loadWaivers</code> returns <code>[]</code> on absent/malformed input — the NFR-004 posture, ready to clone for <code>changeRisk</code>.</td></tr>
+    <tr><td>A new core module = one tsup entry + one exports subpath.</td>
+        <td><code>packages/core/tsup.config.ts:47</code> · <code>package.json</code> <code>exports["./enforce/*"]</code></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td>The <code>enforce/*</code> cluster (types/detect/policy/config) is the parallel to add <code>change-risk/*</code>.</td></tr>
+    <tr><td>Core may run <code>git</code> without a new dependency.</td>
+        <td><code>packages/core/src/coding/worktree.ts:32</code></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td><code>execFile('git', …)</code> with a 64 MB buffer; <code>git diff --cached HEAD</code> already used at line 79.</td></tr>
+    <tr><td>Diff markers the detectors key on.</td>
+        <td>spike — <code>git diff --cached --no-color</code> + <code>--numstat</code> over a binary/manifest/hook fixture</td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td>Binary → <code>Binary files /dev/null and b/x differ</code> (and numstat <code>-&#9;-</code>); install hook → a <code>+</code> line in <code>package.json</code> <code>scripts</code>; deps → <code>+</code> lines under <code>dependencies</code>.</td></tr>
+    <tr><td>The 046 security-review CI job shape (build + a hard-gate step).</td>
+        <td><code>.github/workflows/ci.yml:74</code></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td>A distinct job: checkout → pnpm install → <code>pnpm -r build</code> → the gate command. The pattern <a href="./spec.html#FR-009">FR-009</a> reuses.</td></tr>
+    <tr><td>A CI <code>--range base..HEAD</code> needs the base ref present.</td>
+        <td><code>actions/checkout@v4</code> (default <code>fetch-depth: 1</code>)</td>
+        <td><spec-status value="blocked">assumed</spec-status></td>
+        <td>Shallow checkout lacks the merge-base; the job needs <code>fetch-depth: 0</code>. Should-tier (<a href="./spec.html#FR-009">FR-009</a>) → warns, doesn't block (<a href="#D-006">D-006</a>).</td></tr>
+    <tr><td>0–100 normalization from tiered weights.</td>
+        <td>— (judgment; sanity-checked vs spec bands)</td>
+        <td><spec-status value="review">n-a</spec-status></td>
+        <td>high 40 / med 15 / low 5, summed &amp; capped: one high = 40 (amber), two = 80 (red), a lone new-dep = 5 (green). Tunable (<a href="#D-004">D-004</a>).</td></tr>
+  </tbody>
+</table>
+</section>
+
+
+<section id="approach">
+<h2>4 · Approach</h2>
+
+<p>A linear pure pipeline. A thin <strong>git adapter</strong> (<code>execFile</code>) resolves the diff — the uncommitted
+working-tree+staged diff by default, or a <code>--range</code> — and hands its text plus <code>--numstat</code> to a pure
+<strong>scan</strong>. The scan runs five independent <strong>detectors</strong> (binary blob, build-script/CI/packaging
+edit, install hook, entropy/base64 payload, new dependency) over the diff, each emitting <code>RedFlagFinding</code>s with a
+tier. A <strong>scorer</strong> folds the findings into a 0–100 number and a band (thresholds from <code>spectastic.json</code>,
+with defaults). The <strong>CLI</strong> renders the report and resolves the exit code — 0 by default, non-zero only when an
+opt-in <code>failAt</code> is met.</p>
+
+<p>The core stays a pure function of a diff string (no git, no clock, no network) so it is deterministic and unit-testable on
+fixture diffs; git and process I/O live in the adapter and the CLI edge — the same isolation <code>worktree.ts</code> keeps.
+Nothing here is a new artifact type, so P-4/P-11's HTML concerns don't apply.</p>
+
+<spec-arch>
+<figure>
+<svg viewBox="0 0 700 150" role="img" aria-label="Change-risk pipeline: git adapter to scan to score to CLI report">
+  <style>
+    .box { fill:#fcfbf7; stroke:#c4c1bb; stroke-width:1.2; }
+    .label { font: 700 10px Lato, sans-serif; fill:#4a4a46; letter-spacing:0.05em; text-transform:uppercase; }
+    .body { font: 400 11px "Source Serif 4", Georgia, serif; fill:#353534; }
+    .arr { stroke:#73706d; stroke-width:1.2; fill:none; }
+  </style>
+  <rect class="box" x="14"  y="55" width="150" height="60" rx="4"/>
+  <text class="label" x="28" y="78">git adapter</text>
+  <text class="body"  x="28" y="98">diff + numstat</text>
+  <rect class="box" x="196" y="55" width="150" height="60" rx="4"/>
+  <text class="label" x="210" y="78">scan · 5 detectors</text>
+  <text class="body"  x="210" y="98">RedFlagFinding[]</text>
+  <rect class="box" x="378" y="55" width="150" height="60" rx="4"/>
+  <text class="label" x="392" y="78">score · bands</text>
+  <text class="body"  x="392" y="98">0–100 + RAG</text>
+  <rect class="box" x="536" y="55" width="150" height="60" rx="4"/>
+  <text class="label" x="550" y="78">CLI / CI</text>
+  <text class="body"  x="550" y="98">render · exit code</text>
+  <path class="arr" d="M164 85 L196 85" marker-end="url(#a)"/>
+  <path class="arr" d="M346 85 L378 85" marker-end="url(#a)"/>
+  <path class="arr" d="M528 85 L536 85" marker-end="url(#a)"/>
+  <defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#73706d"/></marker></defs>
+</svg>
+<figcaption>Pure core (scan → score) between a git adapter and the CLI edge; the core never touches git.</figcaption>
+</figure>
+</spec-arch>
+</section>
+
+
+<section id="alternatives">
+<h2>5 · Alternatives considered</h2>
+
+<spec-matrix>
+<table>
+  <thead>
+    <tr><th>Option</th><th>Determinism &amp; unit-testability</th><th>Fits fat-core convention</th><th>Effort</th><th class="score">Total</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Scan shells out to git itself (impure core)</td><td>2</td><td>2</td><td>4</td><td class="score">8</td></tr>
+    <tr><td>Fold a diff-scan mode into <code>enforce</code></td><td>3</td><td>2</td><td>3</td><td class="score">8</td></tr>
+    <tr data-winner><td>Pure <code>scan(diffText)</code> + thin git adapter</td><td>5</td><td>5</td><td>4</td><td class="score">14</td></tr>
+  </tbody>
+</table>
+</spec-matrix>
+<p>Folding into <code>enforce</code> loses on input model — <code>enforce</code> detects tooling <em>categories</em> in a
+working tree, not <em>changes</em> in a diff (spec §Surface interview). A pure diff-string scan is unit-testable on fixtures
+with no git, and is the convention's shape.</p>
+</section>
+
+
+<section id="decisions">
+<h2>6 · Decisions</h2>
+
+<spec-decision id="D-001" grounding="verified">
+  <h4>D-001 · Pure-core scan over a diff string, thin git adapter + CLI at the edge</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>The fat-core/thin-CLI convention and the <code>enforce/*</code> precedent (<code>packages/cli/src/commands/enforce.ts:23</code>); git-in-core is already sanctioned (<code>coding/worktree.ts:32</code>).</dd>
+    <dt>Decision</dt>     <dd>Core <code>scan(diffText, numstat)</code> is a pure function → findings → score. A <code>getDiff()</code> adapter (<code>execFile('git', …)</code>) and <code>registerChangeRisk</code> hold all I/O.</dd>
+    <dt>Consequences</dt> <dd>+ Deterministic, unit-testable on fixture diffs; no new dependency. + One seam (adapter) isolates git. − A diff-string contract the adapter must feed correctly (covered by the CLI integration test).</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-002" grounding="verified">
+  <h4>D-002 · Core module layout <code>change-risk/{types,diff,scan,score,config}</code></h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>A core module is a tsup entry + an exports subpath (<code>tsup.config.ts:47</code>, <code>package.json</code> <code>exports["./enforce/*"]</code>).</dd>
+    <dt>Decision</dt>     <dd>Add <code>src/change-risk/{types,diff,scan,score,config}.ts</code>, five tsup entries, and <code>./change-risk/*</code> export subpaths — the <code>enforce/*</code> cluster's parallel.</dd>
+    <dt>Consequences</dt> <dd>+ Tree-shakeable per-module imports; consistent with every other verb. − Five small files rather than one — the house style, not overhead.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-003" grounding="verified">
+  <h4>D-003 · <code>changeRisk</code> typed section in <code>spectastic.json</code>, fail-safe loader</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd><code>loadWaivers</code> (<code>enforce/config.ts:119</code>) is the fail-safe typed-section precedent; <a href="./spec.html#NFR-004">NFR-004</a> requires secure-by-default.</dd>
+    <dt>Decision</dt>     <dd>A <code>changeRisk</code> section with <code>bands</code> (amber/red thresholds) + <code>failAt</code>. A loader that clones <code>loadWaivers</code>: absent/malformed → defaults + advisory, never a throw, never silently off.</dd>
+    <dt>Consequences</dt> <dd>+ Reuses a proven, tested shape; secure-by-default for free. − Defaults live in code (green&lt;25/amber25–60/red&gt;60), documented in the CLI help.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-004" grounding="n-a">
+  <h4>D-004 · Score model — per-finding saturating points, tunable</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>Pure judgment — the spec deferred the weighting arithmetic to the plan and framed the numbers as tunable, not calibrated (<a href="./spec.html#FR-004">FR-004</a>, spec §6 assumption). No external source to cite; sanity-checked against the spec's bands.</dd>
+    <dt>Decision</dt>     <dd>Points per finding — high 40, medium 15, low 5 — summed and capped at 100. Repeated categories accumulate (breadth registers) but saturate. Maps onto the default bands: one high → amber, two → red, a lone new-dep → green.</dd>
+    <dt>Consequences</dt> <dd>+ Explainable and monotone; easy to reason about a diff's number. − The constants are a v1 default, not validated; over-ridable via config, and the whole surface is advisory (opt-in gate). Recorded as a §9 assumption.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-005" grounding="verified">
+  <h4>D-005 · Detection signals — numstat for binary/file-list, patch body for content</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>Spike over a binary/manifest/hook fixture (§3): <code>git diff --numstat</code> flags binary as <code>-&#9;-</code>; the <code>--no-color</code> patch carries added <code>+</code> lines for manifest deps and <code>scripts</code> hooks.</dd>
+    <dt>Decision</dt>     <dd>Use <code>--numstat</code> for the binary flag + changed-file list; parse the unified patch's added lines for build-script paths, install hooks, dep manifests, and entropy/base64. Detectors are independent, path- and content-pattern based (<a href="./spec.html#NFR-002">NFR-002</a>).</dd>
+    <dt>Consequences</dt> <dd>+ Binary detection is exact (no heuristic); content detectors run on a stable format. − Entropy/base64 is the one heuristic detector — false-positive-prone (see §8).</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-006" grounding="assumed">
+  <h4>D-006 · CI job advisory by default; <code>fetch-depth: 0</code> for the range diff</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd><a href="./spec.html#FR-009">FR-009</a> (should-tier) reuses the 046 job shape (<code>ci.yml:74</code>); <code>actions/checkout@v4</code> defaults to a shallow clone, so a <code>--range</code> merge-base needs <code>fetch-depth: 0</code> (assumed — standard Actions behavior).</dd>
+    <dt>Decision</dt>     <dd>A <code>change-risk</code> CI job runs the built CLI over <code>--range &lt;base&gt;..HEAD</code> with <code>fetch-depth: 0</code>; exit 0 (advisory) unless <code>failAt</code> is set.</dd>
+    <dt>Consequences</dt> <dd>+ Surfaces the score on every PR without failing the build. − The fetch-depth assumption is unverified here; a task validates the job actually resolves the base. Should-tier, so it warns not blocks.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-007" grounding="n-a">
+  <h4>D-007 · TDD red-first, fixture-diff suite</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>The repo norm (047/048 plan D-005); a pure scan is ideal for it.</dd>
+    <dt>Decision</dt>     <dd>Write each detector's failing test first against a checked-in fixture diff; the CLI integration test drives the built binary over a real git range. SC-001..004 are the acceptance backstops.</dd>
+    <dt>Consequences</dt> <dd>+ Behavior pinned before code; determinism (NFR-001) directly asserted by re-running a fixture. − Fixtures must cover the false-positive cases too (legit build edit, base64 image).</dd>
+  </dl>
+</spec-decision>
+</section>
+
+
+<section id="project-structure">
+<h2>7 · Project structure</h2>
+
+<p>Only new or changed paths.</p>
+
+<pre><code>packages/core/src/change-risk/
+  types.ts        # RedFlagFinding, ChangeRiskReport, ChangeRiskConfig, tier/band enums
+  diff.ts         # git adapter: getDiff(range?, cwd) via execFile; parse numstat + patch
+  scan.ts         # pure scan(diffText, numstat) → RedFlagFinding[] (the 5 detectors)
+  score.ts        # score(findings, config) → { score, band } (D-004)
+  config.ts       # loadChangeRiskConfig(cwd) — fail-safe, clones loadWaivers
+packages/core/tsup.config.ts          # + 5 change-risk entries
+packages/core/package.json            # + ./change-risk/* exports subpaths
+packages/cli/src/commands/change-risk.ts   # registerChangeRisk — thin CLI, --range, render, exit
+packages/cli/src/index.ts             # + registerChangeRisk(program)
+packages/core/test/change-risk.*.test.ts   # per-detector + score, fixture diffs
+packages/cli/test/change-risk.integration.test.ts  # built CLI over a real git range
+.github/workflows/ci.yml              # + change-risk job (fetch-depth: 0, advisory)</code></pre>
+</section>
+
+
+<section id="risks">
+<h2>8 · Risks &amp; mitigations</h2>
+
+<table>
+  <thead><tr><th>Risk</th><th>Likelihood</th><th>Impact</th><th>Mitigation</th></tr></thead>
+  <tbody>
+    <tr><td>Entropy/base64 detector false-positives (minified JS, base64 images, lockfile hashes)</td><td>M</td><td>M</td><td>Conservative length/charset threshold; advisory-only; low-noise weight; fixtures pin known-legit blobs as non-findings (D-007).</td></tr>
+    <tr><td>CI shallow clone lacks the merge-base for <code>--range</code></td><td>M</td><td>M</td><td><code>fetch-depth: 0</code> in the job; the scan errors clearly on an invalid range (spec edge case); a task asserts the job resolves the base (D-006).</td></tr>
+    <tr><td>Score constants mis-calibrated</td><td>M</td><td>L</td><td>Advisory + opt-in gate + config-tunable; recorded as a §9 assumption, not a claim of truth.</td></tr>
+    <tr><td>New-dependency detector varies across ecosystems (npm/pip/cargo/go)</td><td>L</td><td>L</td><td>Low weight + saturating cap; manifest-path allowlist grown per ecosystem, defaulting to no-finding when unsure.</td></tr>
+  </tbody>
+</table>
+</section>
+
+
+<section id="complexity">
+<h2>9 · Complexity tracking</h2>
+<p>Two deliberate choices beyond the literal spec.</p>
+
+<spec-assumption>
+<p>The diff-string / git-adapter seam (D-001) is one extra boundary the spec doesn't mandate. It is justified by NFR-001
+determinism and unit-testability — the core must be testable without a git repo — and mirrors <code>worktree.ts</code>'s
+git isolation.</p>
+</spec-assumption>
+
+<spec-assumption>
+<p>The score constants (high 40 / med 15 / low 5, cap 100) are a judgment default, not calibrated truth (D-004). They are
+config-tunable and the whole surface is advisory, so a wrong number costs a re-tune, never a false block.</p>
+</spec-assumption>
+</section>
+
+
+<section id="questions">
+<h2>10 · Open questions</h2>
+<spec-questions>
+<p>None outstanding — the scoring scheme, test style, and risk tolerance were resolved to grounded defaults, and every
+must-tier decision (D-001/002/003/005) is <code>verified</code>. No must-tier decision rests on an assumed or unresolved-spike
+fact, so the grounding gate is clear (D-004 is <code>n-a</code> judgment; D-006 is should-tier).</p>
+</spec-questions>
+</section>
+
+
+<section id="changelog">
+<h2>11 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-07-18">18 Jul 2026</time><span>Initial plan. Pure-core scan + git adapter + thin <code>change-risk</code> CLI, mirroring <code>enforce/*</code>. Grounded against <code>enforce.ts</code>, <code>enforce/config.ts</code>, <code>tsup.config.ts</code>/exports, <code>worktree.ts</code>, <code>ci.yml</code>, and a git-diff-marker spike. Defaults: per-finding saturating score (D-004), TDD red-first (D-007), Low risk tolerance. 6 facts verified, 1 assumed (CI fetch-depth, should-tier), 1 n-a (score constants).</span></li>
+  <li><time datetime="2026-07-18">18 Jul 2026</time><span>Status flipped Draft → Accepted on 18 Jul 2026 — zero remaining unchecked tasks; tests verified passing per author confirmation. Sibling bundle (REQ-LIFECYCLE-005).</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  Plan for 049-change-risk-score · Change-risk score · authored 18 Jul 2026
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>

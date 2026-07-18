@@ -1,0 +1,285 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
+<title>Change-risk score · Specification</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Specification · 049-change-risk-score</p>
+  <h1>Change-risk score</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    A deterministic scan that flags and scores the capability a diff adds, so a change's footprint gets a human look.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>      <span><spec-status value="accepted">Accepted</spec-status></span>
+    <b>Spec ID</b>     <span>049-change-risk-score</span>
+    <b>Owner</b>       <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Reviewers</b>   <span>—</span>
+    <b>Created</b>     <span><time datetime="2026-07-18">18 Jul 2026</time></span>
+    <b>Principles</b><span><a href="../../principles.html">v1.8.0</a></span>
+    <b>Smallest demoable</b><span><code>spectastic change-risk</code> on an uncommitted diff prints findings + a 0–100 score + a band.</span>
+    <b>Read time</b>   <span data-reading-time></span>
+  </spec-meta>
+
+  <!-- Live size gauge — green at <80%, amber 80-100%, red over. Words row counts authored prose (excludes the conformance index) per REQ-FORMAT-004. -->
+  <spec-budget words="1500" reqs="20" minutes="12"></spec-budget>
+
+  <spec-tldr>
+    <p>The enforcement half of <a href="../../principles.html#P-12">P-12</a>: a <code>change-risk</code> scan over a git diff
+    that surfaces red flags and rolls them into a 0–100 score with a green / amber / red band — for the engineer committing
+    and the reviewer / CI merging. <strong>Slice 1</strong>, the deterministic red-flag floor; the spec-anchored
+    capability-delta at the coding-drain hook is a deferred sibling. Advisory by default — it forces a human to look, never
+    claims to detect malice — with an opt-in gate.</p>
+  </spec-tldr>
+
+  <dl class="invest">
+    <dt><span class="letter">I</span> Independent</dt> <dd>Principles (<a href="../../principles.html#P-12">P-12</a>, <a href="../../principles.html#P-9">P-9</a>) + one upstream spec, <a href="../043-init-project-config/spec.html">043</a> (the <code>spectastic.json</code> config surface). No shared data model with the coding drain.</dd>
+    <dt><span class="letter">N</span> Negotiable</dt>  <dd>Outcomes only; the detection heuristics, weighting arithmetic, and CLI layout are the plan's.</dd>
+    <dt><span class="letter">V</span> Valuable</dt>    <dd>Unlocks <a href="#SC-001">SC-001</a> — a runnable scan surfacing a diff's footprint before merge.</dd>
+    <dt><span class="letter">E</span> Estimable</dt>   <dd>Derivable without further interview; no open questions remain.</dd>
+    <dt><span class="letter">S</span> Small</dt>       <dd>17 requirements; slice 2, allowlisting, and the advisory ceilings are deferred out of scope.</dd>
+    <dt><span class="letter">T</span> Testable</dt>    <dd>Every requirement observable on a fixture diff; success criteria quantified (finding count, band, exit code, p95).</dd>
+  </dl>
+
+  <spec-audience-map>
+    <dl>
+      <dt>Exec / PM</dt>   <dd>§<a href="#context">Context</a>, §<a href="#scenarios">User scenarios</a>, §<a href="#success">Success criteria</a>.</dd>
+      <dt>Reviewer</dt>    <dd>§<a href="#requirements">Requirements</a>, §<a href="#assumptions">Assumptions</a>, §<a href="#questions">Open questions</a>.</dd>
+      <dt>Implementer</dt> <dd>§<a href="#requirements">Requirements</a>, §<a href="#data">Data model</a>, §<a href="#conformance">Conformance index</a>.</dd>
+    </dl>
+  </spec-audience-map>
+</header>
+
+
+<section id="context">
+<h2>1 · Context</h2>
+<p>A spec-clean change can still hide malice in the plan, tasks, or code, and spectastic scans none of it — it has no risk
+primitive. The <a href="../../docs/supply-chain-integrity-considerations.html">supply-chain-integrity research</a> concluded
+plainly that detecting an xz-style backdoor is undecidable and no tool should claim otherwise. What it <em>can</em> do cheaply
+is surface the <strong>capability a diff adds</strong> — a binary blob, a build-script or packaging edit, an install hook, a
+high-entropy payload, a new dependency — the signals the xz campaign threw off. That forces a human to look; it raises the
+attacker's cost without pretending to close the door.</p>
+<p>The users are the <strong>engineer</strong> checking a diff before committing and the <strong>reviewer / CI</strong> gating a
+merge. This spec is P-12's guarantee half, staged cheap-first.</p>
+</section>
+
+
+<section id="scenarios">
+<h2>2 · User scenarios &amp; testing</h2>
+
+<p>Each story is independently testable — US1 alone is a viable MVP.</p>
+
+<h3 id="US1">US1 · See a diff's footprint before committing <spec-pill>P1</spec-pill></h3>
+<p>As an <strong>engineer</strong>, I want to run <strong><code>spectastic change-risk</code> on my uncommitted changes</strong>
+so that <strong>I see whether the diff touches more than I intended before I commit it</strong>.</p>
+<p><em>Acceptance:</em> on a diff that adds a binary and edits a CI workflow, it prints two findings (binary-blob = high,
+build-script = medium), a score, and a band; a docs-only diff prints zero findings, score 0, green, exit 0.</p>
+
+<h3 id="US2">US2 · Surface the score at review / CI time <spec-pill>P2</spec-pill></h3>
+<p>As a <strong>reviewer or CI pipeline</strong>, I want <strong>the scan to run against the change under review and report a
+score</strong> so that <strong>changes whose footprint exceeds their purpose get a human look</strong>.</p>
+<p><em>Acceptance:</em> a CI job runs <code>change-risk --range &lt;base&gt;..HEAD</code>, prints findings + score + band, and
+— with no threshold configured — exits 0 (advisory).</p>
+
+<h3 id="US3">US3 · Opt into a failing threshold <spec-pill>P3</spec-pill></h3>
+<p>As a <strong>security-conscious maintainer</strong>, I want to <strong>set a score threshold that fails the build</strong>
+so that <strong>a red-band change can't merge without a deliberate acknowledgement</strong>.</p>
+<p><em>Acceptance:</em> with <code>changeRisk.failAt: 60</code> set, a diff scoring 70 exits non-zero and fails the CI job; the
+same diff with no <code>failAt</code> exits 0.</p>
+
+<h3>Edge cases</h3>
+<ul>
+  <li>Empty diff → zero findings, score 0, green, exit 0.</li>
+  <li>Not a git repo, or an invalid <code>--range</code> → a clear error and a non-zero exit; never a silent pass.</li>
+  <li>A routine dependency bump → only the low-weight new-dependency flag; advisory, does not block unless <code>failAt</code> is set.</li>
+  <li>An expected binary (a test fixture) → still flagged; per-finding suppression is deferred.</li>
+  <li>Absent or malformed <code>changeRisk</code> config → the scan still runs advisory, never silently skipped (<a href="#NFR-004">NFR-004</a>).</li>
+</ul>
+</section>
+
+
+<section id="requirements">
+<h2>3 · Requirements</h2>
+
+<p>Conformance keywords (<spec-rule>MUST</spec-rule>, <spec-rule level="should">SHOULD</spec-rule>,
+<spec-rule level="may">MAY</spec-rule>) follow RFC 2119.</p>
+
+<h3>Functional</h3>
+
+<spec-requirement id="FR-001" priority="must">
+<p>A <code>change-risk</code> CLI subcommand <spec-rule>MUST</spec-rule> read a git diff and print its findings, a score, and a
+band. Its output <spec-rule>MUST</spec-rule> state that it surfaces risk for review and does not detect or certify safety.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-002" priority="must">
+<p>The scan <spec-rule>MUST</spec-rule> detect five red-flag categories: a binary/opaque blob added, a build-script / CI /
+packaging edit, an install or post-install hook, a high-entropy or base64 payload, and a new dependency.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-003" priority="must">
+<p>Each finding <spec-rule>MUST</spec-rule> carry a weight tier: <strong>high</strong> for an install hook, a binary blob, or an
+entropy blob; <strong>medium</strong> for a build-script / CI / packaging edit; <strong>low</strong> for a new dependency.</p>
+<details><summary>Rationale</summary><p>A routine dependency bump must not score like an install hook.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-004" priority="must">
+<p>The scan <spec-rule>MUST</spec-rule> emit a composite 0–100 change-risk score, a risk-weighted aggregation of the findings,
+and <spec-rule>MUST</spec-rule> map it to a green / amber / red band.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-005" priority="must">
+<p>The band thresholds <spec-rule>MUST</spec-rule> be configurable in <code>spectastic.json</code>, shipping defaults
+(green &lt; 25, amber 25–60, red &gt; 60) when unconfigured.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-006" priority="must">
+<p>The command <spec-rule>MUST</spec-rule> be advisory by default — reporting findings and score, exiting 0, never failing a
+build or blocking a commit — unless an opt-in threshold is configured.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-007" priority="should">
+<p>An opt-in <code>changeRisk.failAt</code> score in <code>spectastic.json</code> <spec-rule level="should">SHOULD</spec-rule>
+cause a non-zero exit when the score meets or exceeds it, so a CI job can gate on it.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-008" priority="must">
+<p>With no range given, the scan <spec-rule>MUST</spec-rule> default to the uncommitted local diff (working tree + staged); a
+<code>--range &lt;base&gt;..&lt;head&gt;</code> flag <spec-rule>MUST</spec-rule> select an explicit range for CI use.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-009" priority="should">
+<p>A CI job <spec-rule level="should">SHOULD</spec-rule> run the scan against the change's base (merge-base with the default
+branch), reusing the security-review job pattern; advisory unless <code>failAt</code> is set.</p>
+</spec-requirement>
+
+<h3>Non-functional</h3>
+
+<spec-requirement id="NFR-001" priority="must">
+<p>The scan <spec-rule>MUST</spec-rule> be deterministic: the same diff yields byte-identical findings and score across runs and
+machines, with no network calls and no dependence on the clock or a random source.</p>
+</spec-requirement>
+
+<spec-requirement id="NFR-002" priority="must">
+<p>Detection <spec-rule>MUST</spec-rule> be language-agnostic — file paths, diff structure, and content patterns, not any
+per-language toolchain — so it runs on any repository.</p>
+</spec-requirement>
+
+<spec-requirement id="NFR-003" priority="should">
+<p>The scan <spec-rule level="should">SHOULD</spec-rule> complete on a 1,000-line diff in under 2&nbsp;seconds at p95, in-process.</p>
+</spec-requirement>
+
+<spec-requirement id="NFR-004" priority="must">
+<p>Absent or malformed <code>changeRisk</code> configuration <spec-rule>MUST</spec-rule> fall back to running the scan and
+reporting advisory findings — never silently skipping it (secure-by-default, per <a href="../../principles.html#P-9">P-9</a>).</p>
+</spec-requirement>
+
+<h3>Out of scope (deferred to other slices)</h3>
+<spec-out-of-scope>
+  <ul>
+    <li defer-to="TBD">Slice 2 — the spec-anchored capability/scope-delta at the coding-drain hook, scoring a task's footprint against what its <em>authorized</em> spec sanctioned. The headliner; its own sibling spec.</li>
+    <li defer-to="TBD">Per-finding allowlist / suppression — needed once a team gates on <code>failAt</code>, not for the advisory v1.</li>
+    <li defer-to="TBD">Call-graph capability analysis (Capslock-style) — an advisory ceiling, language-limited.</li>
+    <li defer-to="TBD">LLM semantic intent-vs-code review — non-deterministic and itself attackable; never a sole gate.</li>
+    <li defer-to="TBD">Spectastic's own build-layer provenance (reproducible builds, hash-pinned Actions) — a separate track.</li>
+  </ul>
+</spec-out-of-scope>
+</section>
+
+
+<section id="data">
+<h2>4 · Data model</h2>
+
+<p>Three entities, all in-memory and per-run — nothing is persisted.</p>
+
+<h3>Entities</h3>
+<dl>
+  <dt>RedFlagFinding</dt><dd><code>category</code> (one of the five), <code>weight</code> (high / medium / low), <code>file</code> path, <code>evidence</code> (the matched line or reason).</dd>
+  <dt>ChangeRiskReport</dt><dd><code>findings[]</code>, <code>score</code> (0–100), <code>band</code> (green / amber / red), and the resolved <code>exitCode</code>.</dd>
+  <dt>changeRisk (config)</dt><dd>Optional <code>spectastic.json</code> section: <code>bands</code> (amber / red thresholds) and <code>failAt</code> (opt-in gate score). Absent → defaults + advisory.</dd>
+</dl>
+<p>The score is <em>derived</em> from the findings and their weights — never authored, never stored (<a href="#NFR-001">NFR-001</a>).</p>
+</section>
+
+
+<section id="success">
+<h2>5 · Success criteria</h2>
+
+<p>Technology-agnostic, measurable outcomes. These are how we know it worked.</p>
+
+<spec-requirement id="SC-001" priority="must">
+<p>On a fixture diff adding a binary blob and editing a CI/build file, the scan reports exactly those two findings with the
+right tiers (high, medium), a 0–100 score, and the matching band — identical on a repeat run.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-002" priority="must">
+<p>A docs-only / no-capability diff produces zero findings, score 0, the green band, and exit 0.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-003" priority="should">
+<p>With no <code>changeRisk.failAt</code> set, the command exits 0 for any score; with <code>failAt</code> at or below the
+score, it exits non-zero.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-004" priority="should">
+<p>The scan completes on a 1,000-line diff in under 2&nbsp;seconds at p95 with no network access observed.</p>
+</spec-requirement>
+</section>
+
+
+<section id="assumptions">
+<h2>6 · Assumptions</h2>
+
+<spec-assumption>
+<p>The scan runs inside a git repository and can obtain a diff (working-tree, staged, or a range) via git — the assumption the
+coding drain's worktree sandbox already makes.</p>
+</spec-assumption>
+
+<spec-assumption>
+<p>The v1 weight tiers and default bands are reasonable starting points, not calibrated truth — hence opt-in gating.</p>
+</spec-assumption>
+</section>
+
+
+<section id="questions">
+<h2>7 · Open questions</h2>
+<spec-questions>
+<p>None outstanding — every decision (slice boundary, advisory-vs-gate posture, invocation surface, output shape, the five-flag
+set and its tiering, score scale, band configurability, and default diff scope) was anchored in the interview.</p>
+</spec-questions>
+</section>
+
+
+<section id="conformance">
+<h2>8 · Conformance index</h2>
+<p>Auto-built from every <code>&lt;spec-requirement&gt;</code> in this document.</p>
+<spec-conformance></spec-conformance>
+</section>
+
+
+<section id="changelog">
+<h2>9 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-07-18">18 Jul 2026</time><span>Initial draft. The enforcement half of <a href="../../principles.html#P-12">P-12</a>, slice 1 of the change-risk posture — the deterministic red-flag scan over a diff. Sourced from <a href="../../docs/supply-chain-integrity-considerations.html">supply-chain-integrity considerations</a> D-001 (<code>TBD-change-risk-score</code>). Interview anchored the forks: slice-1-only, advisory with opt-in gate, a new <code>spectastic change-risk</code> subcommand + CI job, findings + 0–100 score + configurable RAG bands, five tiered flags, and an uncommitted-local default scope with <code>--range</code> for CI.</span></li>
+  <li><time datetime="2026-07-18">18 Jul 2026</time><span>Status flipped Draft → Accepted on 18 Jul 2026 — zero remaining unchecked tasks; tests verified passing per author confirmation. Sibling bundle (REQ-LIFECYCLE-005).</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  049-change-risk-score · Change-risk score · authored 18 Jul 2026
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>

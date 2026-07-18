@@ -96,3 +96,30 @@ jobs:
           pnpm vitest run
           packages/schema/test/injection-red-team.test.ts
           packages/cli/test/security-corpus.test.ts
+
+  # The enforcement half of principles.html P-12 (spec 049) — a diff-scoped
+  # capability/scope scan. PR-only: a range diff needs a PR to diff against.
+  # Advisory (D-006): surfaces findings for review, never fails the build —
+  # this repo's own spectastic.json sets no changeRisk.failAt. The `|| true`
+  # is a defensive backstop so an unexpected scan error can't block a merge
+  # on an advisory-only check.
+  change-risk:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # full history — needed to resolve the merge-base
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+      - run: pnpm install --frozen-lockfile
+      - name: Build
+        run: pnpm -r build
+
+      - name: Change-risk scan (advisory)
+        run: |
+          BASE=$(git merge-base "origin/${{ github.event.pull_request.base.ref }}" HEAD)
+          node packages/cli/bin/spectastic change-risk --range "${BASE}..HEAD" || true
