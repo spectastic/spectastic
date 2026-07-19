@@ -77,6 +77,41 @@ describe('profiles: principle drift guard', () => {
   });
 });
 
+// spec 041 2026-07-18-profile-principle-catalog-next: semver + supply-chain hygiene
+// repeated into standard/verified/enterprise; supply-chain provenance + accessibility
+// conformance seeded enterprise-only (deliberately not repeated downward — see the
+// proposal's §5 Risk 1: an unscoped a11y statement would be noise for non-UI projects
+// at any tier, so it's scoped to the user-facing case rather than omitted or blanket).
+describe('profiles: catalog-next tranche (semver, supply-chain, accessibility)', () => {
+  const manifest = loadProfiles(REPO_ROOT);
+  const namesAt = (profile: string) =>
+    resolveProfile(manifest, profile).principles.map((p) => p.name);
+
+  it('semver + supply-chain hygiene are seeded at standard, verified, and enterprise', () => {
+    for (const profile of ['standard', 'verified', 'enterprise']) {
+      const names = namesAt(profile);
+      expect(names, `${profile} principles`).toContain('Semantic versioning');
+      expect(names, `${profile} principles`).toContain('Supply-chain hygiene');
+    }
+  });
+
+  it('supply-chain provenance + accessibility conformance are enterprise-only, not repeated downward', () => {
+    expect(namesAt('enterprise')).toContain('Supply-chain provenance');
+    expect(namesAt('enterprise')).toContain('Accessibility conformance');
+    for (const profile of ['lean', 'standard', 'verified']) {
+      const names = namesAt(profile);
+      expect(names, `${profile} principles`).not.toContain('Supply-chain provenance');
+      expect(names, `${profile} principles`).not.toContain('Accessibility conformance');
+    }
+  });
+
+  it('per-tier principle counts match the tranche (standard +2, verified +2, enterprise +4)', () => {
+    expect(namesAt('standard')).toHaveLength(7);
+    expect(namesAt('verified')).toHaveLength(10);
+    expect(namesAt('enterprise')).toHaveLength(15);
+  });
+});
+
 describe('profiles: resolveProfile', () => {
   const manifest = loadProfiles(REPO_ROOT);
 
