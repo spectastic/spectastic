@@ -92,7 +92,7 @@ export const sloWellFormedRule: PerFileRule = {
         flag(
           slo,
           `<spec-slo signal="${signal}"> is not a recognised Four Golden Signals value`,
-          'Use one of: latency, traffic, errors, saturation — or omit signal= entirely.',
+          'Use one of: latency, traffic, errors, saturation — or omit signal= entirely. Broader terms are objectives, not signals: an availability objective is measured on the errors signal, and throughput on traffic.',
         );
       }
     }

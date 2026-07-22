@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { validate } from '../src/index.js';
+import { GOLDEN_SIGNALS } from '../src/slo-shared.js';
 
 /**
  * Unit tests for the two SLO shape rules (spec 047-slo-nfr-artifact, FR-002).
@@ -54,6 +55,11 @@ describe('slo-well-formed', () => {
   it('flags an unknown signal= value', () => {
     expect(messages).toMatch(/signal|throughput/i);
   });
+  it('the unknown-signal fixHint teaches the availability→errors / throughput→traffic mapping (047 T-1001)', () => {
+    const signalFinding = findings.find((f) => /signal/i.test(f.message));
+    expect(signalFinding?.fixHint).toMatch(/availability .*errors/i);
+    expect(signalFinding?.fixHint).toMatch(/throughput .*traffic/i);
+  });
   it('every finding is error severity', () => {
     expect(findings.length).toBeGreaterThan(0);
     expect(findings.every((f) => f.severity === 'error')).toBe(true);
@@ -64,5 +70,41 @@ describe('slo-well-formed', () => {
 
   it('a fully well-formed <spec-slo> is clean', () => {
     expect(findingsFor(WELL_FORMED_RULE, 'slo-well-formed', 'negative.html')).toEqual([]);
+  });
+});
+
+/**
+ * Drift guard (047 T-1003): the golden-signal set is documented in three places —
+ * the code constant GOLDEN_SIGNALS, spec 047's FR-002 requirement body, and its
+ * §4 data-model "Golden signal" entry. This pins the two spec copies to the
+ * constant so they can't silently diverge (mirrors profiles.test.ts's cross-tier
+ * drift guard). If GOLDEN_SIGNALS ever changes, the spec prose must change with it
+ * — this test fails until it does.
+ */
+describe('golden-signal vocabulary: spec ↔ code drift guard (047 T-1003)', () => {
+  const specHtml = readFileSync(
+    join(__dirname, '..', '..', '..', 'specs', '047-slo-nfr-artifact', 'spec.html'),
+    'utf8',
+  );
+
+  function sectionText(id: string): string {
+    const m = new RegExp(String.raw`<spec-requirement[^>]*\bid="${id}"[\s\S]*?</spec-requirement>`, 'i').exec(specHtml);
+    return m?.[0] ?? '';
+  }
+
+  it('FR-002 enumerates exactly the GOLDEN_SIGNALS values', () => {
+    const fr002 = sectionText('FR-002');
+    expect(fr002, 'FR-002 not found in spec.html').not.toBe('');
+    for (const sig of GOLDEN_SIGNALS) {
+      expect(fr002, `FR-002 is missing golden signal "${sig}"`).toContain(`<code>${sig}</code>`);
+    }
+  });
+
+  it('the §4 data-model "Golden signal" entry lists exactly the GOLDEN_SIGNALS values', () => {
+    const entry = /<dt>Golden signal<\/dt><dd>([\s\S]*?)<\/dd>/i.exec(specHtml)?.[1] ?? '';
+    expect(entry, '§4 Golden signal entry not found').not.toBe('');
+    for (const sig of GOLDEN_SIGNALS) {
+      expect(entry, `§4 data model is missing golden signal "${sig}"`).toContain(`<code>${sig}</code>`);
+    }
   });
 });
