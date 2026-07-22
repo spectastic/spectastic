@@ -43,6 +43,9 @@ describe('principlesCommand (008 FR-* via spec)', () => {
     expect(result.html).toContain('<title>spectastic · Principles</title>');
     expect(result.html).toContain('P-1 · Source order is reading order');
     expect(result.html).toContain('P-5 · Calm density');
+    // 045-artifact-security T-102: the kernel's own generated <head> carries the
+    // open-time CSP gate too, not just the file-based templates/principles.html.
+    expect(result.html).toContain('Content-Security-Policy');
     // I-023: principle headings carry stable id="P-N" anchors so cross-refs resolve
     expect(result.html).toContain('<h3 id="P-1">');
     expect(result.html).toContain('<h3 id="P-5">');

@@ -38,6 +38,9 @@ describe('graduateExtract (US1)', () => {
     expect(specHtml).toContain('reorder rows by pointer drag');
     expect(specHtml).toContain('id="US1"');
     expect(specHtml).toContain('<spec-status value="draft">Draft</spec-status>');
+    // 045-artifact-security T-102: a graduated spec's own generated <head>
+    // carries the open-time CSP gate too.
+    expect(specHtml).toContain('Content-Security-Policy');
 
     // FR-004: the PLAN's §3 evidence ledger holds verified rows from the run record,
     // citing the archived exploration — and the spec has NO grounding ledger.
@@ -48,6 +51,9 @@ describe('graduateExtract (US1)', () => {
     expect(planHtml).toContain('order persists'); // the proven demo fact
     // the empty `tests` field is not invented as a verified fact
     expect(planHtml).not.toContain('Test command (proven by the run)');
+    // 045-artifact-security T-102: the graduated plan's own generated <head>
+    // carries the open-time CSP gate too.
+    expect(planHtml).toContain('Content-Security-Policy');
   });
 
   it('seeds no verified rows when the build never ran', async () => {

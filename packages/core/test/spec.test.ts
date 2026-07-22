@@ -89,6 +89,9 @@ describe('specCommand (011 FR-* via spec)', () => {
     expect(result.html).toContain('SC-001');
     expect(result.html).toContain('<spec-changelog>');
     expect(result.html).toContain('Initial draft authored via specCommand');
+    // 045-artifact-security T-102: the kernel's own generated <head> carries the
+    // open-time CSP gate too, not just the file-based templates/spec.html.
+    expect(result.html).toContain('Content-Security-Policy');
     expect(result.warnings).toEqual([]);
   });
 

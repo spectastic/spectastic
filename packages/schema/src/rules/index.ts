@@ -27,6 +27,7 @@ import { taskTitleBoldScopeRule } from './task-title-bold-scope.js';
 import { verifyViewMissingRule } from './verify-view-missing.js';
 import { verifyViewStaleRule } from './verify-view-stale.js';
 import { noExecutableContentRule } from './no-executable-content.js';
+import { hiddenInstructionPatternRule } from './hidden-instruction-pattern.js';
 import { sloTargetRequiredRule } from './slo-target-required.js';
 import { sloWellFormedRule } from './slo-well-formed.js';
 
@@ -69,6 +70,7 @@ export const rules: readonly Rule[] = [
 
   // Security rules (per-file) — spec 045-artifact-security.
   noExecutableContentRule,
+  hiddenInstructionPatternRule,
 
   // SLO rules (per-file) — spec 047-slo-nfr-artifact.
   sloTargetRequiredRule,

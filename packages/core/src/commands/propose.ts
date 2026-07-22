@@ -21,6 +21,7 @@ import type {
 } from '../types.js';
 import { decide, resolveDecider, resolveEffort } from '../decider/index.js';
 import type { Verdict } from '../decider/index.js';
+import { fenceArtifactText } from '../security/fence.js';
 
 export async function proposeCommand(
   input: ProposeInput,
@@ -31,7 +32,7 @@ export async function proposeCommand(
   // Draft the proposal body via chat.
   const draftPrompt = [
     `Draft a change proposal against this spec:`,
-    input.specHtml.slice(0, 6000),
+    fenceArtifactText(input.specHtml.slice(0, 6000), 'Spec'),
     '',
     `Change request: ${input.description}`,
     '',
@@ -81,7 +82,7 @@ export async function proposeCommand(
     verdict = await decide(
       cfg,
       {
-        reviewPrompt: `Review this draft proposal against the spec and identify concrete risks.\n\nSpec excerpt:\n${input.specHtml.slice(0, 3000)}\n\nDraft proposal:\n${proposalDraft}`,
+        reviewPrompt: `Review this draft proposal against the spec and identify concrete risks.\n\nSpec excerpt:\n${fenceArtifactText(input.specHtml.slice(0, 3000), 'Spec excerpt')}\n\nDraft proposal:\n${proposalDraft}`,
         irreversible,
         maxFindings: 3,
         effortReason: reason,
@@ -156,7 +157,9 @@ function renderProposalHtml(
   }).join('\n');
 
   return `<!doctype html>
-<html lang="en"><head><meta charset="utf-8"><title>${esc(description)} · Change proposal</title>
+<html lang="en"><head><meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
+<title>${esc(description)} · Change proposal</title>
 <link rel="stylesheet" href="../../../../assets/spec.css"></head><body><main>
 <header><p class="small-caps">Change proposal · ${esc(specId)}</p><h1>${esc(description)}</h1>
 <spec-meta><b>Status</b><span><spec-status value="review">Under review</spec-status></span><b>Spec</b><span><a href="../../spec.html">${esc(specId)}</a></span><b>Created</b><span><time datetime="${today}">${today}</time></span></spec-meta>

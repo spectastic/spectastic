@@ -72,6 +72,8 @@ describe('tasksCommand restore mode (024-explore-restore)', () => {
     expect(r.html).toContain(ARCHIVE);
     // SC-002: test-first — a failing-tests task leads.
     expect(r.html).toMatch(/Write failing tests/);
+    // 045-artifact-security T-102: the restore-tasks head also carries the CSP.
+    expect(r.html).toContain('Content-Security-Policy');
     // tracer keeps the build: no prototype-deletion task.
     expect(r.html).not.toMatch(/Delete the discarded prototype/);
   });

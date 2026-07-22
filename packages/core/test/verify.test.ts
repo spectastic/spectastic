@@ -142,6 +142,10 @@ describe('renderVerifyHtml: shell discipline (T-013/T-101)', () => {
   it('is idempotent on an unchanged bundle (NFR-002)', () => {
     expect(renderVerifyHtml(model(), undefined)).toEqual(renderVerifyHtml(model(), undefined));
   });
+
+  it('carries the open-time CSP gate (045-artifact-security T-102)', () => {
+    expect(renderVerifyHtml(model(), undefined)).toContain('Content-Security-Policy');
+  });
 });
 
 describe('renderTrace: SC -> acceptance -> test links (T-201, FR-002/003)', () => {

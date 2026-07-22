@@ -18,6 +18,7 @@
 
 import type { AIProvider, Question, TriageCard, TriageInput, TriageLayer } from '../types.js';
 import { decideChoice } from '../decider/choice.js';
+import { fenceArtifactText } from '../security/fence.js';
 import type { DeciderConfig } from '../decider/types.js';
 
 export const ALL_LAYERS: ReadonlyArray<TriageLayer> = [
@@ -184,7 +185,7 @@ export function buildCharacterisePrompt(input: TriageInput, mode: 'single' | 'li
   return [
     `Triage this ${mode === 'single' ? 'single defect' : 'list item'}:`,
     '',
-    input.description,
+    fenceArtifactText(input.description, 'Defect description'),
     '',
     'Return JSON with these fields:',
     '  headline: one-line failure title (≤ 80 chars)',

@@ -73,6 +73,9 @@ describe('tasksCommand (009)', () => {
     expect(result.totalTasks).toBeGreaterThan(0);
     expect(result.html).toContain('099-test');
     expect(result.html).toContain('<spec-status value="draft">');
+    // 045-artifact-security T-102: the kernel's own generated <head> carries the
+    // open-time CSP gate too, not just the file-based templates/tasks.html.
+    expect(result.html).toContain('Content-Security-Policy');
   });
 
   it('emits <spec-warning> when a requirement is unreferenced (none here; verifies happy path)', async () => {

@@ -14,6 +14,7 @@ import type {
   PlanInput,
   PlanResult,
 } from '../types.js';
+import { fenceArtifactText } from '../security/fence.js';
 
 const BLOCKER_PATTERNS: ReadonlyArray<{ name: string; re: RegExp }> = [
   { name: 'open <spec-question>', re: /<spec-questions?>[\s\S]*?<ol>[\s\S]*?<li[^>]*>(?!\s*(?:<\/li>|None at write time))/i },
@@ -51,9 +52,9 @@ export async function planCommand(
   const isReentry = !!input.existingPlan;
   const prompt = [
     isReentry
-      ? `Sharpen this plan. ADD or ENHANCE only; never remove existing ADRs.\nExisting plan:\n${input.existingPlan!.slice(0, 6000)}`
-      : `Author an implementation plan for the spec below.\nSpec:\n${input.specHtml.slice(0, 6000)}`,
-    input.principlesHtml ? `\nPrinciples to check:\n${input.principlesHtml.slice(0, 3000)}` : '',
+      ? `Sharpen this plan. ADD or ENHANCE only; never remove existing ADRs.\nExisting plan:\n${fenceArtifactText(input.existingPlan!.slice(0, 6000), 'Existing plan')}`
+      : `Author an implementation plan for the spec below.\nSpec:\n${fenceArtifactText(input.specHtml.slice(0, 6000), 'Spec')}`,
+    input.principlesHtml ? `\nPrinciples to check:\n${fenceArtifactText(input.principlesHtml.slice(0, 3000), 'Principles')}` : '',
     formatDecisions(input.decisions),
     '',
     'Return JSON: { "approach": string, "decisions": [ { "id": "D-001", "title": string, "context": string, "decision": string, "consequences": string } ], "alternatives": [ { "name": string, "scores": [number, number, number], "isWinner": boolean } ], "risks": [ { "risk": string, "mitigation": string } ], "principles": [ { "id": "P-1", "status": "OK"|"EXCEPTION"|"VIOLATION", "note": string } ] }',
@@ -118,7 +119,9 @@ function renderPlanHtml(specId: string, p: ParsedPlan, isReentry: boolean): stri
   ).join('\n');
 
   return `<!doctype html>
-<html lang="en"><head><meta charset="utf-8"><title>${esc(specId)} · Plan</title>
+<html lang="en"><head><meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
+<title>${esc(specId)} · Plan</title>
 <link rel="stylesheet" href="../../assets/spec.css"></head><body><main>
 <header><p class="small-caps">Implementation plan · ${esc(specId)}</p><h1>${esc(specId)} — plan</h1>
 <spec-meta><b>Status</b><span><spec-status value="draft">Draft</spec-status></span><b>Spec</b><span><a href="./spec.html">${esc(specId)}</a></span><b>Created</b><span><time datetime="${today}">${today}</time></span></spec-meta>

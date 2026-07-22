@@ -151,6 +151,9 @@ describe('planCommand (012)', () => {
     expect(result.html).toContain('D-001');
     expect(result.html).toContain('D-002');
     expect(result.html).toContain('Initial plan via planCommand');
+    // 045-artifact-security T-102: the kernel's own generated <head> carries the
+    // open-time CSP gate too, not just the file-based templates/plan.html.
+    expect(result.html).toContain('Content-Security-Policy');
   });
 
   it('throws when AI marks any principle as VIOLATION', async () => {

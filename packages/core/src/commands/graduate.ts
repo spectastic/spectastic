@@ -17,6 +17,7 @@
  */
 
 import { deepenArchivePaths } from '../archive-paths.js';
+import { fenceArtifactText } from '../security/fence.js';
 import type {
   CapturedRun,
   FileSystem,
@@ -200,7 +201,7 @@ export async function graduateExtract(
   const prompt = [
     'Read this quarantined exploration ledger and extract a Draft spectastic spec from the build it describes.',
     `Classification: ${input.classification}.`,
-    `Ledger:\n${input.ledger.slice(0, 8000)}`,
+    `Ledger:\n${fenceArtifactText(input.ledger.slice(0, 8000), 'Ledger')}`,
     '',
     'Return ONLY JSON: { "intent": string, "tldr": string, "stories": [ { "id": "US1", "title": string, "role": string, "want": string, "outcome": string, "acceptance": string } ], "frs": [ { "id": "FR-001", "priority": "must"|"should"|"may", "body": string } ], "scs": [ { "id": "SC-001", "priority": "must"|"should", "body": string } ] }',
   ].join('\n');
@@ -229,7 +230,9 @@ function renderSpec(specId: string, s: ExtractedSpec): string {
   const frs = (s.frs ?? []).map(req).join('\n');
   const scs = (s.scs ?? []).map(req).join('\n');
   return `<!doctype html>
-<html lang="en"><head><meta charset="utf-8"><title>${esc(specId)} · Specification</title>
+<html lang="en"><head><meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
+<title>${esc(specId)} · Specification</title>
 <link rel="stylesheet" href="../../assets/spec.css"><script src="../../assets/theme-boot.js"></script></head>
 <body><main>
 <header><p class="small-caps">Specification · ${esc(specId)}</p><h1>${esc(s.intent ?? specId)}</h1>
@@ -262,7 +265,9 @@ function renderPlan(specId: string, run: CapturedRun): string {
     ? `<table class="evidence"><thead><tr><th>Claim</th><th>Source</th><th>Status</th><th>Finding</th></tr></thead><tbody>\n${rows}\n</tbody></table>`
     : '<p>The build never ran — no <code>verified</code> facts to seed; the plan interview grounds the rest.</p>';
   return `<!doctype html>
-<html lang="en"><head><meta charset="utf-8"><title>${esc(specId)} · Plan</title>
+<html lang="en"><head><meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
+<title>${esc(specId)} · Plan</title>
 <link rel="stylesheet" href="../../assets/spec.css"><script src="../../assets/theme-boot.js"></script></head>
 <body><main>
 <header><p class="small-caps">Implementation plan · ${esc(specId)}</p><h1>${esc(specId)} — plan</h1>

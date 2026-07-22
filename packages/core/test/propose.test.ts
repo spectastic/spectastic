@@ -104,6 +104,9 @@ describe('proposeCommand (013)', () => {
     expect(result.risks).toEqual([]);
     expect(ai.subagentCalls).toHaveLength(0);
     expect(result.html).not.toContain('<spec-risk');
+    // 045-artifact-security T-102: the kernel's own generated <head> carries the
+    // open-time CSP gate too, not just the file-based templates/proposal.html.
+    expect(result.html).toContain('Content-Security-Policy');
   });
 
   it('adversarial fires on removed-op delta', async () => {

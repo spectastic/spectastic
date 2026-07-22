@@ -16,6 +16,7 @@
 import { extractHealth } from '@spectastic/schema';
 import { sliceCommand, appendSplitToParent } from './slice.js';
 import { shouldAutoOffer } from '../slice/gate.js';
+import { fenceArtifactText } from '../security/fence.js';
 import type {
   KernelContext,
   SpecInput,
@@ -58,7 +59,7 @@ export async function specCommand(
     isReentry
       ? `Sharpen this existing spec. Only ADD or ENHANCE; do not remove or rewrite existing content.`
       : `Author a feature spec for: ${input.description}`,
-    isReentry ? `Existing spec:\n${input.existingSpec!.slice(0, 8000)}` : '',
+    isReentry ? `Existing spec:\n${fenceArtifactText(input.existingSpec!.slice(0, 8000), 'Existing spec')}` : '',
     '',
     'Return JSON: { "tldr": string, "stories": [ { "id": "US1", "title": string, "role": string, "want": string, "outcome": string, "acceptance": string, "priority": "P1"|"P2"|"P3" } ], "frs": [ { "id": "FR-001", "priority": "must"|"should"|"may", "body": string } ], "nfrs": [...], "scs": [...], "smallestDemoable": string }',
   ]
@@ -146,7 +147,9 @@ function renderSpecHtml(
       .join('\n\n');
 
   return `<!doctype html>
-<html lang="en"><head><meta charset="utf-8"><title>${esc(specId)} · Specification</title>
+<html lang="en"><head><meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
+<title>${esc(specId)} · Specification</title>
 <link rel="stylesheet" href="../../assets/spec.css"></head><body><main>
 <header>
 <p class="small-caps">Specification · ${esc(specId)}</p>

@@ -13,6 +13,7 @@
  */
 
 import { extractSpecMetadata } from '@spectastic/schema';
+import { fenceArtifactText } from '../security/fence.js';
 import type {
   GraduationClass,
   KernelContext,
@@ -173,7 +174,7 @@ async function enrichDescriptions(
       decisionsLine,
       `Return JSON: { "T-XYZ": "task title", ... } where keys are task IDs T-110..T-3NN.`,
       `Requirements:`,
-      reqList,
+      fenceArtifactText(reqList, 'Requirements'),
     ].filter(Boolean).join('\n'),
     {
       temperature: 0,
@@ -235,6 +236,7 @@ function renderTasksHtml(
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
 <title>${specId} · Tasks</title>
 <link rel="stylesheet" href="../../assets/spec.css">
 </head>
@@ -380,7 +382,7 @@ async function enrichRestore(
       framing,
       `For each requirement below, suggest a concise (≤ 14-word) ${path} task title. Do not include the requirement id in the title.`,
       `Return JSON: { "FR-NNN": "task title", ... }.`,
-      `Requirements:\n${reqList}`,
+      `Requirements:\n${fenceArtifactText(reqList, 'Requirements')}`,
     ].join('\n'),
     {
       temperature: 0,
@@ -442,6 +444,7 @@ function renderRestoreHtml(
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
 <title>${specId} · Restore tasks</title>
 <link rel="stylesheet" href="../../assets/spec.css">
 </head>
