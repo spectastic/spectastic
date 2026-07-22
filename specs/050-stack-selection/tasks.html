@@ -1,0 +1,248 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
+<title>Stack selection at the plan stage · Tasks</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Tasks · 050-stack-selection</p>
+  <h1>Stack selection at the plan stage</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    Ordered, parallelizable work. Tests precede implementation. Drive through with
+    <code>/spectastic.implement</code> — one task per invocation.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>     <span><spec-status value="accepted">Accepted</spec-status></span>
+    <b>Spec</b>       <span><a href="./spec.html">050-stack-selection</a></span>
+    <b>Plan</b>       <span><a href="./plan.html">plan</a></span>
+    <b>Branch</b>     <span><code>050-stack-selection</code></span>
+    <b>Created</b>    <span><time datetime="2026-07-22">22 Jul 2026</time></span>
+    <b>Read time</b>  <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-tldr>
+    <p>21 tasks across five phases. Setup → Foundational → User stories (US1·US2·US3) → Polish.
+    Tasks marked <span class="par">[P]</span> can run in parallel — different files, no
+    dependency. Tests for a story <strong>MUST</strong> be written and failing before its
+    implementation tasks start. Built <strong>guarantee-first</strong> per the plan's D-001: the kernel
+    winner-integrity rule (Foundational) ships before the advisory interview markdown (US1/US2), so slice 1
+    validates independently if slice 2 lags.</p>
+  </spec-tldr>
+</header>
+
+
+<section id="strategy">
+<h2>1 · Execution strategy</h2>
+
+<spec-tabs>
+  <spec-tab label="MVP-first">
+    <p>Implement US1 end-to-end. Ship. Iterate to US2 and US3 only after US1 is verified.</p>
+  </spec-tab>
+  <spec-tab label="Incremental">
+    <p>Setup → Foundational → US1 → US2 → US3 → Polish. Each story closes its conformance
+    before the next opens. <strong>Recommended</strong> — matches the plan's guarantee-first sequencing
+    and the file-sharing dependency between US1 and US2's markdown edits.</p>
+  </spec-tab>
+  <spec-tab label="Parallel teams">
+    <p>One team on each user story after Foundational. Coordinate at shared seams (data model,
+    API contracts) via the spec, not Slack.</p>
+  </spec-tab>
+</spec-tabs>
+</section>
+
+
+<section id="phase-setup" class="phase">
+<h2>2 · Phase 1 — Setup</h2>
+
+<spec-task id="T-001" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Add the interview opt-out key</strong> — document <code>plan.stackInterview: false</code> (default absent = on) in <code>spectastic.json</code>, per D-005. <span class="path">spectastic.json</span></div>
+</spec-task>
+</section>
+
+
+<section id="phase-foundation" class="phase">
+<h2>3 · Phase 2 — Foundational</h2>
+<p>The kernel guarantee (D-002): a per-file schema rule that the crowned matrix winner is the top-scored row. Built
+test-first, sequential — order matters throughout this phase.</p>
+
+<spec-task id="T-010">
+  <input type="checkbox" checked>
+  <div><strong>Write the failing winner-integrity test</strong> — clone <code>slo-well-formed.test.ts</code>'s shape; assert a winner strictly below another row fails, a tied-at-top winner passes, and a non-numeric/placeholder matrix is skipped (FR-010, NFR-001 determinism). <span class="path">packages/schema/test/matrix-winner-integrity.test.ts</span></div>
+</spec-task>
+<spec-task id="T-011">
+  <input type="checkbox" checked>
+  <div><strong>Implement the <code>matrix-winner-integrity</code> rule</strong> — a <code>PerFileRule</code> cloning <code>slo-well-formed.ts</code>'s shape (<code>findAll</code>/<code>getAttr</code>/<code>getLocation</code>, early-return on no <code>&lt;spec-matrix&gt;</code>); error severity; no new runtime dependency (NFR-002). Make T-010 pass. <span class="path">packages/schema/src/rules/matrix-winner-integrity.ts</span></div>
+</spec-task>
+<spec-task id="T-012">
+  <input type="checkbox" checked>
+  <div><strong>Register the new rule</strong> — one import + one array entry. <span class="path">packages/schema/src/rules/index.ts</span></div>
+</spec-task>
+<spec-task id="T-013">
+  <input type="checkbox" checked>
+  <div><strong>Run the backward-compat corpus sweep</strong> — build and <code>spectastic validate</code> every existing <code>spec.html</code>/<code>plan.html</code>; confirm zero new findings (SC-004), reconfirming the plan's §3 spike (43 numeric matrices, 0 winner-below-max, 3 ties-at-top). <span class="path">specs/</span></div>
+</spec-task>
+
+<spec-note>
+<p>Closes <a href="./spec.html#FR-010">FR-010</a>, <a href="./spec.html#NFR-001">NFR-001</a> (rule half),
+<a href="./spec.html#NFR-002">NFR-002</a>, <a href="./spec.html#SC-004">SC-004</a>. The durable guarantee ships
+before any story-facing work begins.</p>
+</spec-note>
+</section>
+
+
+<section id="phase-us1" class="phase">
+<h2>4 · Phase 3a — US1 · Offer the undecided choice</h2>
+
+<h3>Tests (write &amp; fail first)</h3>
+<spec-task id="T-100" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Write a failing content test for the interview instructions</strong> — <code>AskUserQuestion</code> is a harness-native interactive tool with no CLI/AI-stub-testable surface (verified: <code>planCommand</code>'s AI contract is a fixed single-shot JSON schema with no field for stack choices), so assert structurally against the authored markdown itself — mirrors the <code>commands-drift.test.ts</code> precedent for testing command markdown as content. Checks the decision-phase step names the gate, the undecided-dimension enumeration, and the coordination-not-duplication note (FR-001, FR-004, FR-005). <span class="path">packages/cli/test/plan.stack-interview.test.ts</span></div>
+</spec-task>
+
+<h3>Implementation</h3>
+<spec-task id="T-110">
+  <input type="checkbox" checked>
+  <div><strong>Add the stack-selection decision-phase step</strong> — auto-attempted, gated by the <code>plan.stackInterview</code> key from T-001 (default on); enumerates any undecided material stack dimension (not a fixed list) as a bounded <code>AskUserQuestion</code>; coordinates with, never duplicates, the existing architecture-pattern question and enforcement-tool resolution (FR-001, FR-004, FR-005). <span class="path">commands/spectastic.plan.md</span></div>
+</spec-task>
+<spec-task id="T-111">
+  <input type="checkbox" checked>
+  <div><strong>Add context-seeding instructions</strong> — recommendation drawn from repo detection + <code>CLAUDE.md</code>/<code>AGENTS.md</code>/a linked architecture doc, never a maintained house catalog; no "(Recommended)" crown when nothing decisive implies a winner (FR-002). <span class="path">commands/spectastic.plan.md</span></div>
+</spec-task>
+<spec-task id="T-112">
+  <input type="checkbox" checked>
+  <div><strong>Write confirmed picks into §2</strong> — instruct that a confirmed pick lands in the plan's Technical-context rows, no hand-editing after (FR-007). <span class="path">commands/spectastic.plan.md</span></div>
+</spec-task>
+<spec-task id="T-113">
+  <input type="checkbox" checked>
+  <div><strong>Sync the command copy</strong> — re-copy to the gitignored one-time mirror per the repo's CLAUDE.md discipline, so the running slash command isn't stale. <span class="path">.claude/commands/spectastic.plan.md</span></div>
+</spec-task>
+
+<spec-note>
+<p>Closes <a href="./spec.html#FR-001">FR-001</a>, <a href="./spec.html#FR-002">FR-002</a>,
+<a href="./spec.html#FR-004">FR-004</a>, <a href="./spec.html#FR-005">FR-005</a>,
+<a href="./spec.html#FR-007">FR-007</a>, <a href="./spec.html#SC-001">SC-001</a>.</p>
+</spec-note>
+</section>
+
+
+<section id="phase-us2" class="phase">
+<h2>5 · Phase 3b — US2 · Never re-ask a settled decision</h2>
+
+<h3>Tests (write &amp; fail first)</h3>
+<spec-task id="T-200">
+  <input type="checkbox" checked>
+  <div><strong>Extend the content test for self-skipping</strong> — assert the markdown instructs reading detection + standing docs before asking, skipping an already-fixed dimension, and surfacing (never silently resolving) a conflict between sources (FR-003, SC-002). Same file as T-100. <span class="path">packages/cli/test/plan.stack-interview.test.ts</span></div>
+</spec-task>
+
+<h3>Implementation</h3>
+<spec-task id="T-210">
+  <input type="checkbox" checked>
+  <div><strong>Add self-skipping logic</strong> — read detection + standing docs before asking; skip any dimension they already answer; surface (never silently resolve) a conflict between sources (FR-003). <span class="path">commands/spectastic.plan.md</span></div>
+</spec-task>
+<spec-task id="T-211">
+  <input type="checkbox" checked>
+  <div><strong>Wire the <code>frameworks</code> axis as the tie-break lean</strong> — <code>minimal</code> → stdlib/no-dep, <code>conventional</code> → mainstream, <code>staff-level</code> → mature/batteries-included; advisory only, detection and standing docs still dominate (FR-006, D-004). <span class="path">commands/spectastic.plan.md</span></div>
+</spec-task>
+
+<spec-note>
+<p>Closes <a href="./spec.html#FR-003">FR-003</a>, <a href="./spec.html#FR-006">FR-006</a>,
+<a href="./spec.html#SC-002">SC-002</a>.</p>
+</spec-note>
+</section>
+
+
+<section id="phase-us3" class="phase">
+<h2>6 · Phase 3c — US3 · A record that informs, not rationalises</h2>
+
+<h3>Tests (write &amp; fail first)</h3>
+<spec-task id="T-300" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Write a failing target-resolution test</strong> — extend the winner-integrity rule's test: an optional <code>&lt;spec-matrix target="D-NNN"&gt;</code> that doesn't resolve to a <code>&lt;spec-decision&gt;</code> in-document is flagged; an absent <code>target=</code> is untouched (FR-009). <span class="path">packages/schema/test/matrix-winner-integrity.test.ts</span></div>
+</spec-task>
+<spec-task id="T-301" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Write a failing Playwright render spec</strong> — a decision card with Considered Options shows ≥2 options with pros/cons and named decision drivers, in both themes; presence AND containment, per the repo's verification discipline. <span class="path">tests/plan-madr.spec.ts</span></div>
+</spec-task>
+
+<h3>Implementation</h3>
+<spec-task id="T-310" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Extend the rule with the target-link check</strong> — when <code>&lt;spec-matrix target=&gt;</code> is present, it must resolve to a <code>&lt;spec-decision id&gt;</code> in the same document; absent <code>target=</code> is not an error (FR-009). Makes T-300 pass. <span class="path">packages/schema/src/rules/matrix-winner-integrity.ts</span></div>
+</spec-task>
+<spec-task id="T-311" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Add the MADR Considered-Options markup + CSS</strong> — an optional list of options with per-option pros/cons and named decision drivers, additive to the existing Context/Decision/Consequences <code>&lt;dl&gt;</code>; no-JS render (P-4). Makes T-301 pass. <span class="path">templates/plan.html</span> <span class="path">assets/spec.css</span></div>
+</spec-task>
+<spec-task id="T-312">
+  <input type="checkbox" checked>
+  <div><strong>Auto-scaffold the decision card from a settled pick</strong> — when the interview confirms a material dimension, generate its <code>&lt;spec-decision&gt;</code> with Considered Options pre-filled from the offered choices and the recommendation captured as a decision driver (FR-011). <span class="path">commands/spectastic.plan.md</span></div>
+</spec-task>
+
+<spec-note>
+<p>Closes <a href="./spec.html#FR-008">FR-008</a>, <a href="./spec.html#FR-009">FR-009</a>,
+<a href="./spec.html#FR-011">FR-011</a>, <a href="./spec.html#SC-003">SC-003</a>. (<a href="./spec.html#FR-010">FR-010</a>
+was already closed in Foundational — the record's honesty and its integrity check ship in different phases by
+design, per D-001.)</p>
+</spec-note>
+</section>
+
+
+<section id="phase-polish" class="phase">
+<h2>7 · Phase 4 — Polish</h2>
+<spec-task id="T-900" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Editorial dry-run of the assembled instructions</strong> — no CLI/stub surface exists to automate this (per the T-100 correction), so this is a careful read-through of the final stack-selection + tie-break bullets confirming FR-001–007/011 are unambiguous and self-consistent. Found and fixed a real issue: the self-skip clause read after the offer clause instead of before it, and "no crown" had drifted from the actual rendered phrase — both corrected, tests updated to match. <span class="path">commands/spectastic.plan.md</span></div>
+</spec-task>
+<spec-task id="T-901" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Run the full suite</strong> — <code>pnpm build &amp;&amp; pnpm test &amp;&amp; pnpm typecheck</code>: build clean, typecheck clean (exit 0), 917/918 tests pass. The one failure (<code>git.integration.test.ts</code> T-900/NFR-001, an unrelated spec-026 perf-budget assertion — 1355ms vs a 1000ms ceiling) reproduced on both full parallel runs but passed cleanly (950ms) in isolation; nothing in this drain touches the git layer, so this is the documented session-load flakiness pattern, not a regression. <span class="path">packages/</span></div>
+</spec-task>
+<spec-task id="T-902" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Refresh the prebuild bundle</strong> — <code>packages/cli/_bundled/</code> picks up the modified command, template, and CSS for <code>init</code> to ship. <span class="path">packages/cli/_bundled/</span></div>
+</spec-task>
+</section>
+
+
+<section id="dependencies">
+<h2>8 · Dependencies</h2>
+<pre><code>Setup                 → Foundational
+Foundational          → US1                 (guarantee ships before the nudge)
+US1                    → US2                 (skip-logic extends US1's pass, same file)
+Foundational          → US3 tests/rule-ext/CSS (T-300, T-301, T-310, T-311 — independent of US1/US2)
+US1                    → T-312               (auto-scaffold needs the interview to hook into)
+US1, US2, US3          → Polish
+</code></pre>
+</section>
+
+
+<section id="changelog">
+<h2>9 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-07-22">22 Jul 2026</time><span>Initial task breakdown. 21 tasks, guarantee-first: Foundational ships the <code>matrix-winner-integrity</code> kernel rule (TDD) and reconfirms the plan's backward-compat spike via a corpus sweep, before any story work starts. US1/US2 sequentially edit the interview markdown (self-skipping extends the base pass, same file). US3's rule extension (target= resolution) and MADR card/CSS are independent of US1/US2 and run in parallel; only its auto-scaffold task depends on US1. Polish re-confirms the full suite and refreshes the prebuild bundle.</span></li>
+  <li><time datetime="2026-07-22">22 Jul 2026</time><span>Correction during the <code>--all</code> drain, before T-100 was authored: T-100/T-200's original "stub-driven interview test" wording assumed <code>AskUserQuestion</code> choices were exercisable through the CLI's <code>SPECTASTIC_AI_STUB</code> path. Grounding check found <code>planCommand</code>'s AI contract is a fixed single-shot JSON schema (approach/decisions/alternatives/risks/principles) with no field for stack dimensions — <code>AskUserQuestion</code> is a harness-native interactive tool the CLI stub cannot drive at all. Retargeted both tasks to a structural content test against the authored <code>commands/spectastic.plan.md</code> markdown, mirroring the <code>commands-drift.test.ts</code> precedent for testing command markdown as data. Neither <code>spec.html</code> nor <code>plan.html</code> needed a change — this was a test-strategy correction local to this Draft tasks.html, not a spec/plan defect.</span></li>
+  <li><time datetime="2026-07-22">22 Jul 2026</time><span>All 21 tasks complete. Status flipped Draft → Accepted on 22 Jul 2026 — zero remaining unchecked tasks; tests verified passing per author confirmation (17 vitest tests across schema+cli, 5 Playwright tests, corpus sweep byte-identical/zero new findings). Sibling bundle (REQ-LIFECYCLE-005).</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  Tasks for 050-stack-selection · Stack selection at the plan stage · authored 22 Jul 2026
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>

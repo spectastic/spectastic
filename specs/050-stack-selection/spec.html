@@ -1,0 +1,323 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
+<title>Stack selection at the plan stage · Specification</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Specification · 050-stack-selection</p>
+  <h1>Stack selection at the plan stage</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    Give the plan a way to help you <em>choose</em> the stack, not just transcribe it — a context-seeded interview for the undecided picks — and make the decision it records honest, not a rationalisation of what was already chosen.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>      <span><spec-status value="accepted">Accepted</spec-status></span>
+    <b>Spec ID</b>     <span>050-stack-selection</span>
+    <b>Owner</b>       <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Reviewers</b>   <span>—</span>
+    <b>Created</b>     <span><time datetime="2026-07-22">22 Jul 2026</time></span>
+    <b>Principles</b><span><a href="../../principles.html">v1.8.0</a></span>
+    <b>Smallest demoable</b><span>On a greenfield plan, one undecided stack dimension is offered as a bounded choice with a context-seeded recommendation, and the confirmed pick lands in §2 — no hand-editing.</span>
+    <b>Read time</b>   <span data-reading-time></span>
+  </spec-meta>
+
+  <!-- Live size gauge — green at <80%, amber 80-100%, red over. Words row counts authored prose (excludes the conformance index) per REQ-FORMAT-004. -->
+  <spec-budget words="1500" reqs="20" minutes="12"></spec-budget>
+
+  <spec-tldr>
+    <p>Today the plan <em>records</em> a stack it was handed; it never <em>offers</em> the choice, and the decision it
+    writes crowns whatever was chosen regardless of the scores. This spec does both. First, an optional, self-skipping
+    <strong>stack-selection interview</strong> surfaces every undecided material pick as a bounded choice with a
+    <strong>context-seeded</strong> recommendation — from repo detection, standing docs
+    (<code>CLAUDE.md</code>/<code>AGENTS.md</code>/a linked architecture doc), and the <code>frameworks</code> profile
+    stance — never a maintained house catalog. Second, it makes the record honest: <code>&lt;spec-decision&gt;</code> gains
+    an optional MADR-style <strong>Considered Options</strong> list with pros/cons and decision drivers, a matrix can link
+    to its decision, and a validate rule requires the crowned winner to be the top-scored row. The halves compose: a
+    material interview pick auto-scaffolds its decision card with the offered options pre-filled.</p>
+  </spec-tldr>
+
+  <dl class="invest">
+    <dt><span class="letter">I</span> Independent</dt> <dd>Depends on the plan verb + principles; couples to <a href="../041-init-profiles/spec.html">041</a> for the <code>frameworks</code> axis and to the schema package for the winner rule. Two named upstreams — at the limit, not over.</dd>
+    <dt><span class="letter">N</span> Negotiable</dt>  <dd>Outcomes only — which tool a project picks, and the exact recommendation copy, are the user's and the plan's, not fixed here.</dd>
+    <dt><span class="letter">V</span> Valuable</dt>    <dd>Unlocks <a href="#SC-001">SC-001</a> — a plan that helps choose an undecided stack instead of demanding a pre-made decision.</dd>
+    <dt><span class="letter">E</span> Estimable</dt>   <dd>Plan + tasks derivable now; every decision was anchored in the interview.</dd>
+    <dt><span class="letter">S</span> Small</dt>       <dd>⚠ <strong>Two concerns bundled by explicit choice.</strong> The split (interview / MADR-record as separate slices) was offered and declined. Each is independently sliceable; if estimation balloons, split along the §3 sub-headings. Budget watched below.</dd>
+    <dt><span class="letter">T</span> Testable</dt>    <dd>Every requirement observable; success criteria quantified, incl. a zero-new-findings backward-compat sweep.</dd>
+  </dl>
+
+  <spec-audience-map>
+    <dl>
+      <dt>Exec / PM</dt>   <dd>§<a href="#context">Context</a>, §<a href="#scenarios">User scenarios</a>, §<a href="#success">Success criteria</a>.</dd>
+      <dt>Reviewer</dt>    <dd>§<a href="#requirements">Requirements</a>, §<a href="#assumptions">Assumptions</a>, §<a href="#questions">Open questions</a>.</dd>
+      <dt>Implementer</dt> <dd>§<a href="#requirements">Requirements</a>, §<a href="#data">Data model</a>, §<a href="#conformance">Conformance index</a>.</dd>
+    </dl>
+  </spec-audience-map>
+</header>
+
+
+<section id="context">
+<h2>1 · Context</h2>
+<p>The plan stage defines the technical stack, but authors it by hand: the §2 Technical-context rows (Language,
+Frameworks, Storage, Testing) are filled from grounding reads and narrative chat. The decision-phase interview
+<em>records</em> a pick whose contenders already surfaced — it never <em>generates</em> a bounded choice-set with a
+recommendation for a decision not yet made (Java vs C++, Spring Boot vs Quarkus, no-dep vs Cobertura vs JaCoCo). The plan
+command never reads <code>CLAUDE.md</code>/<code>AGENTS.md</code>/a linked architecture doc, so it cannot tell what is
+already decided to skip it; and the <code>frameworks</code> profile axis that could seed a recommendation is an inert
+token with no code consumer.</p>
+<p>Separately, the record is biased: each <code>&lt;spec-decision&gt;</code> card is a Nygard ADR recording only the chosen
+path, and the matrix's <code>data-winner</code> highlight is bound to <em>the choice</em>, not the score — nothing checks
+the crowned row is the top-scored one. This spec builds out <a href="../../docs/stack-selection-considerations.html">the
+stack-selection considerations doc</a>, for the developer driving a plan and the reviewer reading its decisions.</p>
+</section>
+
+
+<section id="scenarios">
+<h2>2 · User scenarios &amp; testing</h2>
+
+<p>Each story <strong>MUST</strong> be independently testable: if you implemented only US1, you would still have a viable
+MVP.</p>
+
+<h3 id="US1">US1 · Offer the undecided choice <spec-pill>P1</spec-pill></h3>
+<p>As a <strong>developer planning a greenfield feature</strong>, I want to <strong>be offered bounded stack choices with
+a recommendation for decisions I haven't made</strong> so that <strong>I don't hand-fill §2 or research options
+blind</strong>.</p>
+<p><em>Acceptance:</em> on a plan where the framework is undecided, the plan presents a bounded choice with one
+context-seeded recommendation; confirming it writes the pick into §2 without hand-editing.</p>
+
+<h3 id="US2">US2 · Never re-ask a settled decision <spec-pill>P2</spec-pill></h3>
+<p>As a <strong>developer whose stack is already fixed</strong> (existing repo or a standing doc), I want the plan to
+<strong>skip questions it can already answer</strong> so that <strong>the interview only surfaces genuine gaps</strong>.</p>
+<p><em>Acceptance:</em> a plan whose language/framework are fixed by detection or a standing doc raises zero questions for
+those dimensions.</p>
+
+<h3 id="US3">US3 · A record that informs, not rationalises <spec-pill>P2</spec-pill></h3>
+<p>As a <strong>reviewer</strong>, I want a decision's record to <strong>show the real alternatives with pros/cons and a
+winner that matches the scores</strong> so that <strong>the record explains the choice instead of dressing it</strong>.</p>
+<p><em>Acceptance:</em> an interview-driven decision shows ≥2 considered options with pros/cons; a matrix whose crowned row
+is not the top-scored one is flagged by validate.</p>
+
+<h3>Edge cases</h3>
+<ul>
+  <li><strong>No signals at all</strong> (empty greenfield, no standing docs, no profile) — options are presented neutrally with no "(Recommended)" crown; the interview never invents a preference.</li>
+  <li><strong>Conflicting signals</strong> (a standing doc says X, detection says Y) — the conflict is surfaced to the user, never silently resolved.</li>
+  <li><strong>Placeholder matrix</strong> (scores are template <code>[N]</code> placeholders, not numbers) — the winner-integrity rule skips it, so unfilled templates don't false-fire.</li>
+  <li><strong>Opted out</strong> (<code>spectastic.json</code> disables it) — the pass does not run; §2 stays hand-authored, exactly as today.</li>
+  <li><strong>One viable option</strong> — the pick is recorded with no matrix; the spec never fabricates alternatives to fill a table.</li>
+</ul>
+</section>
+
+
+<section id="requirements">
+<h2>3 · Requirements</h2>
+
+<p>Conformance keywords (<spec-rule>MUST</spec-rule>, <spec-rule level="should">SHOULD</spec-rule>,
+<spec-rule level="may">MAY</spec-rule>) follow RFC 2119.</p>
+
+<h3>Functional — the stack-selection interview</h3>
+
+<spec-requirement id="FR-001" priority="must">
+<p>The plan <spec-rule>MUST</spec-rule>, in its decision phase before §2 is written, run a stack-selection pass that
+identifies the undecided material stack dimensions and presents each as a bounded choice.</p>
+<details><summary>Rationale</summary><p>Today the one stack bullet only records picks whose contenders already surfaced; nothing generates a choice-set for an undecided dimension. This is the core capability.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-002" priority="must">
+<p>Each recommendation <spec-rule>MUST</spec-rule> be <strong>context-seeded</strong> — drawn from repo detection,
+standing docs (<code>CLAUDE.md</code>/<code>AGENTS.md</code>/a linked architecture doc), and the <code>frameworks</code>
+axis stance — and <spec-rule>MUST NOT</spec-rule> come from a spectastic-maintained house catalog. Where no source
+decisively implies a winner, options <spec-rule>MUST</spec-rule> be presented with no "(Recommended)" crown.</p>
+<details><summary>Rationale</summary><p>Honours the detector's charter ("report gaps, never prescribe a specific tool") and the plan's "prompt, don't prescribe": the recommendation is contextual, overridable, and silent when context doesn't earn it.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-003" priority="must">
+<p>The pass <spec-rule>MUST</spec-rule> be self-skipping: any dimension already fixed by detection or a standing doc is
+not asked. Conflicting signals across sources <spec-rule>MUST</spec-rule> be surfaced, not silently resolved.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-004" priority="must">
+<p>The pass <spec-rule>MUST</spec-rule> cover any undecided material stack pick (e.g. language, framework, test framework,
+coverage tool, persistence, build tool), not a fixed list, and <spec-rule>MUST</spec-rule> coordinate with — not duplicate
+— the existing architecture-pattern question and the profile's enforcement-tool resolution.</p>
+<details><summary>Rationale</summary><p>"Cobertura vs JaCoCo" sits on the boundary with enforcement-tool resolution: the interview surfaces the undecided <em>choice</em>, the profile resolves the enforcement <em>policy</em> — neither re-asks the other's question.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-005" priority="must">
+<p>The pass <spec-rule>MUST</spec-rule> be auto-attempted by default and <spec-rule>MUST</spec-rule> be opt-out-able via a
+<code>spectastic.json</code> setting; when disabled, §2 is authored exactly as today.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-006" priority="must">
+<p>The <code>frameworks</code> axis (<code>minimal</code> / <code>conventional</code> / <code>staff-level</code>)
+<spec-rule>MUST</spec-rule> map to a build-vs-buy recommendation lean that seeds the default (minimal → stdlib/no-dep;
+conventional → mainstream; staff-level → mature, batteries-included). The lean is an advisory tie-breaker, not a gate.</p>
+<details><summary>Rationale</summary><p>Gives the inert axis its first consumer. Detection and standing docs still dominate; the axis only breaks ties in the recommendation.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-007" priority="must">
+<p>Confirmed picks <spec-rule>MUST</spec-rule> be written into the §2 Technical-context rows of the plan.</p>
+</spec-requirement>
+
+<h3>Functional — the honest decision record</h3>
+
+<spec-requirement id="FR-008" priority="must">
+<p><code>&lt;spec-decision&gt;</code> <spec-rule>MUST</spec-rule> support an <em>optional</em> MADR-style
+<strong>Considered Options</strong> list (per-option pros/cons) and named <strong>decision drivers</strong>, additive to
+the existing Context / Decision / Consequences. Existing Nygard-shaped cards <spec-rule>MUST</spec-rule> remain valid
+unchanged.</p>
+<details><summary>Rationale</summary><p>Augment, not replace — 49 existing specs use the Nygard shape. The new fields appear only where an author (or the interview) adds them.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-009" priority="should">
+<p>A <code>&lt;spec-matrix&gt;</code> <spec-rule level="should">SHOULD</spec-rule> be linkable to its governing
+<code>&lt;spec-decision&gt;</code> via a <code>target=</code> attribute, mirroring <code>&lt;spec-risk target&gt;</code> and
+<code>&lt;spec-slo target&gt;</code>.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-010" priority="must">
+<p>A validate rule <spec-rule>MUST</spec-rule> require the <code>data-winner</code> row of a matrix to carry the top
+<code>Total</code>, and <spec-rule>MUST</spec-rule> skip any matrix whose scores are non-numeric placeholders so unfilled
+templates do not fire.</p>
+<details><summary>Rationale</summary><p>This is the enforceable guarantee (P-8): the interview is an advisory nudge, but the winner-integrity check is a kernel/CI floor that a divergent record cannot pass.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-011" priority="must">
+<p>When the interview settles a material pick, it <spec-rule>MUST</spec-rule> auto-scaffold a <code>&lt;spec-decision&gt;</code>
+whose Considered Options are pre-filled from the offered choices and whose recommendation is captured as a decision
+driver.</p>
+<details><summary>Rationale</summary><p>The payoff of shipping both concerns together: the honest record is a byproduct of the interview, not extra manual work.</p></details>
+</spec-requirement>
+
+<h3>Non-functional</h3>
+
+<spec-requirement id="NFR-001" priority="must">
+<p>The pass and the winner-integrity rule <spec-rule>MUST</spec-rule> be deterministic given identical repo state — no
+network, and the same inputs yield the same recommendation and the same finding every run.</p>
+</spec-requirement>
+
+<spec-requirement id="NFR-002" priority="should">
+<p>The winner-integrity rule <spec-rule level="should">SHOULD</spec-rule> add no new runtime dependency and
+<spec-rule level="should">SHOULD</spec-rule> follow the existing per-file schema-rule shape.</p>
+</spec-requirement>
+
+<h3>Out of scope (deferred to other slices)</h3>
+<spec-out-of-scope>
+  <ul>
+    <li defer-to="TBD">A maintained per-ecosystem house stack catalog — deliberately never built; it contradicts the brownfield "never prescribe a specific tool" charter.</li>
+    <li defer-to="TBD">Automated weighted multi-criteria (ATAM-style) scoring of options — the matrix stays author-scored; only its winner integrity is checked.</li>
+    <li defer-to="TBD">Migrating the 49 existing Nygard decision cards to full MADR — augment-only was chosen.</li>
+    <li defer-to="003-init-node-port">Architecture-pattern selection and enforcement-tool resolution already live in the plan verb — coordinated with, not re-specified here.</li>
+  </ul>
+</spec-out-of-scope>
+</section>
+
+
+<section id="data">
+<h2>4 · Data model</h2>
+
+<p>The feature owns the shape of an undecided stack decision and extends two existing artifact elements.</p>
+
+<h3>Entities</h3>
+<dl>
+  <dt>Stack dimension</dt><dd>A material pick under consideration: its name, its detected/standing value or <em>undecided</em>, the candidate options, the seeded recommendation (or none), and the source that seeded it (detection / standing doc / axis).</dd>
+  <dt>Opt-out setting</dt><dd>A <code>spectastic.json</code> key (e.g. <code>plan.stackInterview: false</code>) that disables the pass.</dd>
+  <dt>Decision (extended)</dt><dd><code>&lt;spec-decision&gt;</code> gains optional <em>Considered Options</em> (each with pros/cons) and <em>decision drivers</em>, additive to Context/Decision/Consequences.</dd>
+  <dt>Matrix link</dt><dd><code>&lt;spec-matrix target="D-NNN"&gt;</code> ties a scored matrix to its governing decision.</dd>
+</dl>
+
+<spec-note>
+<p>Invariant: a matrix's crowned <code>data-winner</code> row and its top <code>Total</code> are the same row — unless the
+scores are placeholders, in which case the check stands down. The record never crowns a loser.</p>
+</spec-note>
+</section>
+
+
+<section id="success">
+<h2>5 · Success criteria</h2>
+
+<p>Technology-agnostic, measurable outcomes. These are how we know it worked.</p>
+
+<spec-requirement id="SC-001" priority="must">
+<p>On a greenfield plan where the framework is undecided, the user is presented a bounded choice with a context-seeded
+recommendation and the confirmed pick appears in §2 — with no hand-editing of the template.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-002" priority="must">
+<p>A plan whose language and framework are already fixed by detection or a standing doc raises <strong>zero</strong>
+stack-selection questions for those dimensions.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-003" priority="must">
+<p>An interview-driven decision card shows ≥2 considered options with pros/cons, and validate flags a matrix whose crowned
+row is not the top-scored row (while passing a matrix with placeholder scores).</p>
+</spec-requirement>
+
+<spec-requirement id="SC-004" priority="should">
+<p>Every pre-050 <code>spec.html</code> and <code>plan.html</code> in the repository still validates with zero new
+findings after the change ships.</p>
+</spec-requirement>
+</section>
+
+
+<section id="assumptions">
+<h2>6 · Assumptions</h2>
+
+<spec-assumption>
+<p>The interview itself is advisory (a UX nudge that cannot be guaranteed to run); the enforceable guarantee is the
+winner-integrity validate rule and the MADR schema shape, per P-8 / T-009.</p>
+</spec-assumption>
+
+<spec-assumption>
+<p>Standing-doc ingestion reads <code>CLAUDE.md</code>/<code>AGENTS.md</code> and a doc explicitly linked from them or the
+spec; it does not crawl the repository for architecture prose.</p>
+</spec-assumption>
+
+<spec-assumption>
+<p>"Material" picks are app-stack and tooling choices a plan would record in §2; ephemeral or trivial dependencies are not
+interviewed.</p>
+</spec-assumption>
+</section>
+
+
+<section id="questions">
+<h2>7 · Open questions</h2>
+<spec-questions>
+<p>None outstanding — every decision was anchored in the interview (scope, seeding sources, dimension breadth, trigger,
+MADR augment-vs-replace, winner-integrity mechanism, and interview↔record integration).</p>
+</spec-questions>
+</section>
+
+
+<section id="conformance">
+<h2>8 · Conformance index</h2>
+<p>Auto-built from every <code>&lt;spec-requirement&gt;</code> in this document.</p>
+<spec-conformance></spec-conformance>
+</section>
+
+
+<section id="changelog">
+<h2>9 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-07-22">22 Jul 2026</time><span>Initial draft. Builds out the stack-selection considerations doc as one spec covering both concerns (by explicit choice over the offered split): an optional, self-skipping, context-seeded stack-selection interview (detection + standing docs + <code>frameworks</code>-axis stance; auto with a <code>spectastic.json</code> opt-out; covers any undecided material pick) and a de-biased decision record (augment <code>&lt;spec-decision&gt;</code> with optional MADR Considered-Options + drivers, link the matrix, and a winner-integrity validate rule), with the interview tightly auto-scaffolding the decision card.</span></li>
+  <li><time datetime="2026-07-22">22 Jul 2026</time><span>Status flipped Draft → Accepted on 22 Jul 2026 — zero remaining unchecked tasks; tests verified passing per author confirmation. Sibling bundle (REQ-LIFECYCLE-005).</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  050-stack-selection · Stack selection at the plan stage · authored 22 Jul 2026
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>

@@ -295,6 +295,28 @@ Refs: changes/archive/2026-…-slug
 { "git": { "auto": "branch+commit", "trailers": "on" } }
 ```
 
+### Stack-selection interview (`plan.stackInterview`)
+
+At plan time, `/spectastic.plan` can offer a bounded, context-seeded choice for any undecided stack pick — language,
+framework, test framework, coverage tool, persistence — instead of waiting for you to hand-fill §2 Technical context.
+The recommendation is seeded from repo detection, standing docs (`CLAUDE.md`/`AGENTS.md`/a linked architecture doc),
+and the profile's `frameworks` axis stance — never a maintained house catalog — and it self-skips anything already
+fixed. This is [spec 050](./specs/050-stack-selection/spec.html).
+
+It's **on by default**. Opt out with a `spectastic.json` at your project root:
+
+```json
+{
+  "plan": {
+    "stackInterview": false
+  }
+}
+```
+
+- **absent / `true`** (default) — the plan's decision phase offers each undecided material stack dimension as a
+  bounded choice with a context-seeded recommendation.
+- **`false`** — the pass does not run; §2 is authored by hand, exactly as before this feature shipped.
+
 ## Component vocabulary
 
 Twelve-ish custom elements cover the spec shape. Tag name is schema.

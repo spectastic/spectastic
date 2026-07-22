@@ -30,6 +30,7 @@ import { noExecutableContentRule } from './no-executable-content.js';
 import { hiddenInstructionPatternRule } from './hidden-instruction-pattern.js';
 import { sloTargetRequiredRule } from './slo-target-required.js';
 import { sloWellFormedRule } from './slo-well-formed.js';
+import { matrixWinnerIntegrityRule } from './matrix-winner-integrity.js';
 
 /**
  * The canonical spectastic rule registry.
@@ -75,6 +76,9 @@ export const rules: readonly Rule[] = [
   // SLO rules (per-file) — spec 047-slo-nfr-artifact.
   sloTargetRequiredRule,
   sloWellFormedRule,
+
+  // Decision-record rules (per-file) — spec 050-stack-selection.
+  matrixWinnerIntegrityRule,
 
   // Cross-file rules.
   noDuplicateIdsRule,
