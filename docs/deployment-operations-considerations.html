@@ -1,0 +1,338 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Deployment &amp; operations — where DR, canary, and rollout strategy belong — Considerations for Spectastic</title>
+<meta name="description" content="Disaster recovery, canary testing, and deployment strategy (blue/green, rolling) are not one kind of thing: recoverability targets are reliability NFRs, deployment strategy is a plan-stage ADR, and the runtime mechanics are per-project infra. Route each by its nature — not a profile axis, not an enforce category.">
+<link rel="stylesheet" href="../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../assets/favicon.svg">
+<script src="../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Considerations · Deployment &amp; operations</p>
+  <h1>Where DR, canary, and rollout strategy belong</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    They feel like one bucket — "the ops stuff." They are three. A recovery target is an NFR. A rollout strategy is a decision. The rollout machinery is infrastructure. Route each to the layer built for it, and the answer to "profile axis or per-project?" stops being a false binary.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>     <span><spec-status value="draft">Draft</spec-status></span>
+    <b>Type</b>       <span>Research synthesis</span>
+    <b>Author</b>     <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Created</b>    <span><time datetime="2026-07-22">22 Jul 2026</time></span>
+    <b>Sources</b>    <span>14 primary, verified 22 Jul 2026</span>
+    <b>Companion</b>  <span><a href="./observability-slo-considerations.html">observability-slo</a> · <a href="./agent-architecture-considerations.html">agent-architecture</a></span>
+    <b>Read time</b>  <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-tldr>
+    <p>The question — "do disaster recovery, canary testing, and deployment strategy (blue/green, rolling restarts)
+    belong in the <strong>profile categorization</strong>, or as a <strong>per-project</strong> concern the user defines
+    outside spectastic?" — has a false binary buried in it. These concerns are <mark>not one kind of thing</mark>, and
+    spectastic already routes concerns <em>by their nature</em>: the observability/SLO chain put the <em>principle</em> in
+    profiles, the <em>threshold number</em> in the plan, the <em>artifact</em> in <code>&lt;spec-slo&gt;</code>, and the
+    <em>proof</em> in the verify view. Apply the same lens here. <strong>(1) Deployment strategy</strong> (blue/green ·
+    canary · rolling) is a contextual choice trading infra cost for release safety — a <strong>plan-stage decision → ADR</strong>,
+    sibling to the architecture-pattern prompt, <em>not</em> a maturity ladder. <strong>(2) DR / availability /
+    recoverability</strong> (RTO/RPO) are ISO 25010 <em>reliability</em> sub-attributes — targets that descend from
+    business need, i.e. <strong>reliability NFRs quantified as SLOs</strong>; <code>&lt;spec-slo&gt;</code> already fits.
+    <strong>(3) The runtime mechanics</strong> (Argo Rollouts / Flagger config, backups, failover, runbooks) are
+    <strong>per-project infrastructure, out of scope</strong> — and by construction: progressive-delivery config lives in
+    a <em>separate GitOps repo</em>, so root-only detection would false-fail most stacks. So it is deliberately
+    <strong>not a profile axis</strong> (the choice is contextual, not a rigor level) and <strong>not a hard enforce
+    category</strong> (detection is unreliable). At most, an <em>advisory</em> enterprise-tier principle — "safe
+    progressive delivery", "tested disaster recovery" — in the same band as <em>Ship dark by default</em> and
+    <em>Service level objectives</em>. Notably, "deployability" is <em>not even a listed quality attribute</em> in ISO
+    25010 — a tell that it is a decision, not a measurable axis.</p>
+  </spec-tldr>
+
+  <spec-audience-map>
+    <dl>
+      <dt>Exec / PM</dt>   <dd>The TL;DR, then §<a href="#recommendation">5</a>.</dd>
+      <dt>Reviewer</dt>    <dd>§<a href="#canon">2</a> (three kinds of thing) + §<a href="#today">4</a> (our gap).</dd>
+      <dt>Implementer</dt> <dd>§<a href="#detectability">3</a> (why not an enforce category) + §<a href="#recommendation">5</a> (the routings).</dd>
+      <dt>In a hurry</dt>  <dd>§<a href="#question">1</a> + §<a href="#recommendation">5</a>.</dd>
+    </dl>
+  </spec-audience-map>
+</header>
+
+
+<!-- ======================================================= -->
+<section id="question">
+<h2>1 · The question — one bucket, or several?</h2>
+<p>The prompt bundles four things: <strong>disaster-recovery strategy</strong>, <strong>canary testing</strong>,
+<strong>deployment strategy</strong> (blue/green, rolling restarts), and — implicitly — the operational readiness that
+decides a service is safe to ship. The instinct is to treat them as one category ("the ops stuff") and ask a single
+question: does the category live <em>inside</em> spectastic's profile ladder, or <em>outside</em> it as something each
+project defines for itself?</p>
+<p><spec-newthought>That framing hides the real answer.</spec-newthought> These concerns differ in <em>kind</em>, and a
+tool that already routes by kind should not flatten them. A recovery-time target is a <strong>requirement</strong> — a
+number that descends from what the business can tolerate. A choice between canary and blue/green is a
+<strong>decision</strong> — a tradeoff you make given your architecture and cost envelope. The Argo Rollouts manifest
+that implements the canary is <strong>infrastructure</strong> — config that lives in the delivery pipeline, often in a
+different repository entirely. Spectastic has a distinct home for each of those three natures already. The task is not
+to invent a new bucket; it is to route each concern to the layer built for it.</p>
+</section>
+
+
+<!-- ======================================================= -->
+<section id="canon">
+<h2>2 · Three different kinds of thing</h2>
+<p>The software-quality canon draws the line cleanly, and it is worth naming precisely because it settles the "axis vs
+decision" question on its own.</p>
+
+<p><strong>Recoverability is a quality attribute; deployability is not.</strong> ISO/IEC 25010 decomposes
+<em>reliability</em> into <strong>availability</strong> ("operational and accessible when required"), <strong>fault
+tolerance</strong> ("operates as intended despite faults"), and <strong>recoverability</strong> ("recover the data and
+re-establish the desired state" after an interruption).<spec-sidenote>ISO/IEC 25010 reliability sub-characteristics —
+availability, fault tolerance, recoverability <a href="https://blog.codacy.com/iso-25010-software-quality-model">[1]</a>.</spec-sidenote>
+Disaster recovery — RTO (max tolerable downtime) and RPO (max tolerable data loss)<spec-sidenote>RTO = maximum tolerable
+downtime; RPO = maximum acceptable data loss, measured in time <a href="https://cloudelemental.com/workload-resilience/">[2]</a>.</spec-sidenote>
+— is exactly the measurable face of availability and recoverability. But <strong>"deployability" is <em>absent</em> from
+ISO 25010's quality model</strong> — the standard has no such characteristic.<spec-sidenote>Deployability (and
+scalability, safety) are noted as <em>missing</em> from the ISO 25010 model
+<a href="https://quality.arc42.org/articles/iso-25010-shortcomings">[3]</a>.</spec-sidenote> That absence is the tell:
+recoverability is something you <em>measure and require</em>; how you deploy is something you <em>decide</em>.</p>
+
+<p><strong>Deployment strategy is an ADR-shaped tradeoff, not a rigor level.</strong> Blue/green, canary, and rolling
+are not points on a maturity ladder where "further right = better." They trade infrastructure cost for release
+safety along different axes, and the right pick depends on architecture and budget, not seniority.</p>
+
+<div style="overflow-x:auto;">
+<table>
+  <thead><tr><th>Strategy</th><th>What it does</th><th>Buys you</th><th>Costs you</th><th>Fits</th></tr></thead>
+  <tbody>
+    <tr><td><strong>Rolling</strong> (the default)</td><td>Gradually replaces old instances with new</td><td>No extra infra; steady rollout</td><td>Slow rollback; mixed versions in flight</td><td>Monolith or microservice</td></tr>
+    <tr><td><strong>Blue/green</strong></td><td>Two identical envs; swap live traffic</td><td>Instant rollback (slot swap)</td><td>≈2× infrastructure while both run</td><td>Microservices; low-risk-tolerance</td></tr>
+    <tr><td><strong>Canary</strong></td><td>Ship to a small % first; widen if metrics hold</td><td>Graduated exposure; early detection</td><td>Needs traffic-shaping + good SLIs</td><td>Microservices with a metrics stack</td></tr>
+  </tbody>
+</table>
+</div>
+<p>The choice "involves considerations around infrastructure requirements, application architecture, and monitoring
+capabilities"<spec-sidenote>Blue/green (instant rollback, extra resources), canary (graduated exposure), rolling
+(balance, no extra infra); the choice trades infra cost for deployment safety
+<a href="https://developer.hashicorp.com/well-architected-framework/define-and-automate-processes/deploy/zero-downtime-deployments">[4]</a>,
+<a href="https://devops-daily.com/posts/deployment-strategies-guide">[5]</a>.</spec-sidenote> — the exact shape of an
+<strong>architecture decision record</strong>: a context, a decision, and consequences. It belongs where spectastic
+already records decisions: the plan.</p>
+
+<p><strong>Operational readiness is a checklist, not a spec field.</strong> The "is this safe to ship" gate — Google
+SRE's <strong>Production Readiness Review</strong> (which "look[s] at recent incidents and postmortems… gauging the
+demands of emergency response and the availability of well-established operational controls")<spec-sidenote>Google SRE
+Production Readiness Review — reviews incidents/postmortems and operational controls before onboarding a service
+<a href="https://sre.google/sre-book/evolving-sre-engagement-model/">[6]</a>.</spec-sidenote> and AWS's
+<strong>Operational Readiness Review</strong> (a checklist covering "monitoring, security, incident response, and
+backup")<spec-sidenote>AWS Well-Architected operational-readiness review — a consistent ORR checklist across monitoring,
+incident response, backup <a href="https://www.well-architected-guide.com/well-architected-pillars/ensure-a-consistent-review-of-operational-readiness/">[7]</a>;
+production-readiness checklists <a href="https://www.port.io/blog/production-readiness-checklist-ensuring-smooth-deployments">[8]</a>,
+<a href="https://getdx.com/blog/production-readiness-checklist/">[9]</a>.</spec-sidenote> — is a per-service, per-infra
+ritual. It draws <em>on</em> the requirements and decisions above, but it is not itself an artifact spectastic authors;
+it is an operational practice a project runs. (A recurring finding in that literature: teams "define RTO/RPO and
+configure multi-region failover but then never actually test whether it works"<spec-sidenote>The common failure: RTO/RPO
+defined and failover configured but never tested <a href="https://getdx.com/blog/production-readiness-checklist/">[9]</a>.</spec-sidenote>
+— which is why the reliability <em>target</em> is the durable artifact and the test is an operational obligation, not a
+schema field.)</p>
+</section>
+
+
+<!-- ======================================================= -->
+<section id="detectability">
+<h2>3 · What's detectable, and what isn't</h2>
+<p>The observability enforce category earned its place because the metrics stack is <strong>dependency-gated and
+statically detectable</strong> in the root manifest — add <code>micrometer-registry-prometheus</code>, get an endpoint;
+the dependency name is a stable, distinctive substring. Deployment strategy fails that test on every count, which is the
+decisive argument against making it an enforce category.</p>
+
+<div style="overflow-x:auto;">
+<table>
+  <thead><tr><th>Signal</th><th>Where it lives</th><th>Detectable at repo root?</th></tr></thead>
+  <tbody>
+    <tr><td>Metrics stack (observability)</td><td>App's own build manifest (<code>pom.xml</code>, <code>go.mod</code>, <code>package.json</code>)</td><td><strong>Yes</strong> — root-manifest substring</td></tr>
+    <tr><td>Deployment strategy (canary/blue-green)</td><td>Argo Rollouts / Flagger CRs, k8s <code>Deployment.strategy</code></td><td><strong>Usually no</strong> — GitOps repo, not the app repo</td></tr>
+    <tr><td>DR posture (backups, failover)</td><td>Terraform / cloud console / runbooks</td><td><strong>No</strong> — infra tier, often another repo/tool</td></tr>
+    <tr><td>RTO/RPO targets</td><td>A business decision</td><td><strong>No</strong> — a requirement, not a file</td></tr>
+  </tbody>
+</table>
+</div>
+
+<p><spec-newthought>Progressive delivery lives in a separate repo by design.</spec-newthought> The two dominant
+tools make this concrete. <strong>Argo Rollouts</strong> replaces the k8s <code>Deployment</code> resource with a
+<code>Rollout</code> CR and pairs with Argo CD; <strong>Flagger</strong> runs alongside existing Deployments, driven by
+a declarative analysis spec, typically with Flux.<spec-sidenote>Argo Rollouts (replaces Deployment, Argo CD-native)
+vs Flagger (loosely coupled, works alongside Deployments) for progressive delivery
+<a href="https://www.buoyant.io/blog/flagger-vs-argo-rollouts-for-progressive-delivery-on-linkerd">[10]</a>.</spec-sidenote>
+In both, the strategy config is <strong>GitOps state</strong> — "component YAML, resiliency policies, and app deployments
+are all managed through Git pull requests with automated sync to clusters," in repository structures that "separate…
+base configurations, overlays for different environments, and applications."<spec-sidenote>GitOps stores rollout/config
+as code in Git, commonly in a repo/overlay structure separate from application source
+<a href="https://medium.com/@simardeep.oberoi/progressive-delivery-a-deep-dive-into-argo-rollouts-and-flagger-6c7548174bc5">[11]</a>.</spec-sidenote>
+Spectastic scans <em>root-only</em> (the sole exception being the contract-first category, which reaches into
+<code>api/</code>, <code>proto/</code>, <code>schema/</code>, <code>contracts/</code>). A deployment-strategy detector
+would therefore either see nothing in the vast majority of app repos, or require a <code>STRUCTURALLY_UNDETECTABLE</code>
+escape hatch for nearly every stack — the same warn-not-fail crutch coverage needs for Go and observability needs for
+Swift/C++, but here it would be the rule, not the exception. A category that can't honestly fail is not a floor.</p>
+
+<spec-warning><strong>An enforce category here would certify the wrong thing.</strong> Even where a
+<code>Rollout</code> CR <em>is</em> co-located, its presence proves only that a manifest exists — not that the canary
+analysis has meaningful SLI gates, nor that DR has ever been tested. The same "present ≠ wired" ceiling the observability
+category records would apply, but with far worse false-negative rates. The reliable, honest signal is the
+<em>requirement</em> (an RTO target) and the <em>decision</em> (a recorded strategy) — both of which are things a human
+states, not things a scanner infers.</spec-warning>
+</section>
+
+
+<!-- ======================================================= -->
+<section id="today">
+<h2>4 · Where spectastic stands today</h2>
+<p>None of these concerns has a home in any of spectastic's four routing layers — but the layers they <em>should</em>
+route to already exist, and two of them already hold the adjacent concept.</p>
+<ul>
+  <li><strong>No profile axis.</strong> The six axes (<code>verification</code>, <code>enforcement</code>,
+  <code>toggles</code>, <code>grounding</code>, <code>frameworks</code>, <code>contracts</code>) carry nothing on
+  deployment, rollout, or DR. The nearest neighbour is <code>toggles</code> (<code>none → optional → recommended →
+  every-feature</code>) and its enterprise principle <em>Ship dark by default</em> — but that is reversible
+  <em>exposure</em> (feature flags), not rollout <em>mechanics</em>.</li>
+  <li><strong>No enforce category.</strong> The nine categories are all build/CI-gate concerns (formatter, linter,
+  type-checker, security, supply-chain, test-runner, coverage, observability, contract-first). None is operational, and
+  §<a href="#detectability">3</a> is why none should be.</li>
+  <li><strong>No plan row.</strong> The plan's §2 Technical-context <code>&lt;dl&gt;</code> carries Language, Frameworks,
+  <em>Architecture</em> (scoped to <em>code structure</em> — layered / hexagonal / vertical-slice, explicitly not
+  deployment topology), Storage, Testing, Coverage, <strong>Perf targets</strong>, Constraints. There is a
+  <em>Perf targets</em> row — the one quantified NFR the plan captures — but no Deployment, Rollout, or Availability
+  row, and the decision-phase interview never asks the strategy question.</li>
+  <li><strong>No spec artifact.</strong> The just-landed <code>&lt;spec-slo target="NFR-NNN"&gt;</code>
+  (<a href="../specs/047-slo-nfr-artifact/spec.html">047</a>) and its verify trace
+  (<a href="../specs/048-verify-slo-trace/spec.html">048</a>) give reliability NFRs a first-class objective/SLI/error-budget
+  shape and a proof leg — but availability there is an SLO <em>objective</em> measured on the golden signals, and nothing
+  models a recovery <em>target</em> (RTO/RPO) or a deployment <em>decision</em> as such.</li>
+</ul>
+<p>So the gap is real, but the machinery is not missing — it is <em>unused for these concerns</em>. Deployment strategy
+wants the plan's decision phase (which already produces ADRs). DR wants the NFR → SLO chain (which already exists). The
+work is routing, not building a new layer.</p>
+</section>
+
+
+<!-- ======================================================= -->
+<section id="recommendation">
+<h2>5 · Recommendation — route by nature</h2>
+<p>Answer the "profile axis or per-project?" question by refusing its binary. The <em>intent</em> lands as plan and spec
+artifacts <em>inside</em> spectastic, at the layer matched to each concern's nature; the <em>implementation</em> stays
+per-project infrastructure <em>outside</em> it. This is the same split-by-nature move the observability/SLO chain made,
+applied one band over.</p>
+
+<spec-decision id="D-001" grounding="verified">
+  <h4>D-001 · Deployment strategy → a plan-stage decision → ADR (not a profile axis)</h4>
+  <dl>
+    <dt>Status</dt><dd><spec-status value="draft">Proposed</spec-status></dd>
+    <dt>Context</dt><dd>Blue/green vs canary vs rolling is a contextual tradeoff of infra cost against release safety, gated by architecture and budget — not a maturity level. ISO 25010 does not even list "deployability" as a quality attribute. The plan already runs a decision-phase interview and emits <code>&lt;spec-decision&gt;</code> ADRs, and already asks the sibling architecture-pattern question.</dd>
+    <dt>Decision</dt><dd>Add deployment strategy as a <strong>plan-stage decision-phase question</strong> — "How does this ship: rolling (default) / blue-green / canary / not-in-scope?" — anchored via <code>AskUserQuestion</code> and recorded as a <code>&lt;spec-decision&gt;</code> ADR when non-default. It rides the same rails as the pending architecture-pattern prompt and may fold into that pass. Not an axis, not enforced.</dd>
+    <dt>Consequences</dt><dd>+ The strategy becomes a recorded, reviewable decision instead of tribal knowledge. + Zero new schema — reuses the plan's ADR machinery. + Keeps the profile ladder honest (no false "canary = more mature" rung). − Advisory only; nothing verifies the strategy is actually wired (correctly — that's infra's job). − One more decision-phase question to keep from bloating the interview.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-002" grounding="verified">
+  <h4>D-002 · DR / recoverability → a reliability NFR quantified as an SLO</h4>
+  <dl>
+    <dt>Status</dt><dd><spec-status value="draft">Proposed</spec-status></dd>
+    <dt>Context</dt><dd>RTO/RPO and availability are ISO 25010 reliability sub-attributes — targets that descend from business tolerance. Spectastic captures NFRs and, since 047, quantifies reliability NFRs as <code>&lt;spec-slo&gt;</code> with objective/window/error-budget. Availability is already an SLO objective measured on the golden signals; a recovery target is the same shape.</dd>
+    <dt>Decision</dt><dd>Treat DR targets as <strong>reliability NFRs</strong>, scaffolded so a recovery objective (RTO/RPO) and its SLO are a prompted shape, not a blank. Light guidance/template work — a reliability-flavoured NFR prompt in the spec template and an example <code>&lt;spec-slo&gt;</code> carrying a recovery objective — rather than a new element. The verify observables trace (048) then gives it the same proof leg as any other SLO.</dd>
+    <dt>Consequences</dt><dd>+ Reuses the whole NFR → SLO → verify chain that just landed; no new artifact type. + An RTO/RPO becomes a first-class, traceable target instead of prose. + Consistent with how latency/availability are already handled. − "Recovery tested" is an operational obligation the artifact can state but not prove (the DX/SRE literature's exact failure mode) — recorded as a ceiling. − Needs the follow-on to decide whether recovery objectives need any signal vocabulary beyond the four golden signals.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-003" grounding="assumed">
+  <h4>D-003 · Runtime mechanics stay out of scope; offer only an advisory enterprise principle</h4>
+  <dl>
+    <dt>Status</dt><dd><spec-status value="draft">Proposed</spec-status></dd>
+    <dt>Context</dt><dd>Argo Rollouts / Flagger config, backups, and failover live in GitOps/infra repos separate from the app source; root-only detection would false-fail most stacks, and presence wouldn't prove correctness. But the elevated profiles already carry advisory maturity principles (<em>Ship dark by default</em>, <em>Service level objectives</em>) that state intent without machine teeth.</dd>
+    <dt>Decision</dt><dd><strong>Do not</strong> add a profile axis or a hard enforce category for deployment/DR. <strong>Optionally</strong> add one or two <em>advisory</em> enterprise-tier principles — "safe progressive delivery" and/or "tested disaster recovery / operational readiness" — to <code>spectastic-profiles.json</code> <code>principles[]</code> at the enterprise tier, in the same advisory band as SLOs and dark-launch. The runtime mechanics themselves remain the user's platform/infra concern.</dd>
+    <dt>Consequences</dt><dd>+ Keeps the enforce floor honest — no category that can't honestly fail. + Names operational maturity where it belongs (enterprise) without pretending to verify it. + Draws a clean tool boundary: spectastic holds intent, the delivery pipeline holds mechanics. − Advisory principles are a nudge, not a guarantee (T-009). − Leaves a real capability (does a canary's analysis actually gate on SLIs? has DR been drilled?) unmodelled — a recorded ceiling, revisitable if a reliable in-repo signal ever emerges.</dd>
+  </dl>
+</spec-decision>
+
+<h3>Suggested next artifacts</h3>
+<spec-out-of-scope>
+  <ul>
+    <li defer-to="TBD-plan-deployment-strategy">A <code>/spectastic.propose</code> against the plan verb adding a deployment-strategy decision-phase question → <code>&lt;spec-decision&gt;</code> ADR. Kin to <code>TBD-plan-architecture-prompt</code> (see <a href="./agent-architecture-considerations.html">agent-architecture</a>) — run them as <em>one</em> plan-decision pass, not two edits.</li>
+    <li defer-to="TBD-reliability-nfr-slo-guidance">A spec scaffolding a reliability NFR + recovery SLO (RTO/RPO) in the spec template and the 047 <code>&lt;spec-slo&gt;</code> shape — a prompted example, not a new element.</li>
+    <li defer-to="TBD-progressive-delivery-principle">A <code>/spectastic.propose</code> against <code>041-init-profiles</code> adding an advisory <em>safe progressive delivery</em> principle at the enterprise tier (a data/content delta on the profile manifest).</li>
+    <li defer-to="TBD-operational-readiness-principle">The sibling advisory principle — <em>tested disaster recovery / operational readiness</em> (PRR/ORR flavour) — at the enterprise tier; run it in the same manifest pass as the one above.</li>
+    <li defer-to="TBD-deployment-enforce-category">Recorded and <strong>rejected for now</strong>: a deployment/rollout enforce category. Blocked on a reliable in-repo signal (GitOps repo-separation defeats root-only detection); revisit only if co-located <code>Rollout</code>/<code>Canary</code> CRs become a dependable convention.</li>
+    <li defer-to="TBD-deployment-profile-axis">Recorded and <strong>rejected for now</strong>: a deployment/resilience profile axis. The strategy choice is contextual, not a rigor ladder — an axis would imply a false "further-right = better" ordering.</li>
+  </ul>
+</spec-out-of-scope>
+</section>
+
+
+<!-- ======================================================= -->
+<section id="caveats">
+<h2>6 · Caveats on the sources</h2>
+<ul>
+  <li><strong>"Deployability absent from ISO 25010"</strong> is accurate for the quality <em>model</em>'s eight
+  characteristics; portability/maintainability touch adjacent ground, and the 2023 revision refines wording but does not
+  add a deployability characteristic. The claim is "not a first-class quality attribute," not "never discussed."</li>
+  <li><strong>RTO/RPO as "the measurable face of availability/recoverability"</strong> is engineering-practice framing;
+  ISO 25010 defines the attributes but does not itself prescribe RTO/RPO or SLOs — the mapping is practice, as the
+  observability doc notes for the SLO mapping too.</li>
+  <li><strong>GitOps repo separation is a strong convention, not a law.</strong> Some teams co-locate delivery config
+  with app source (a single monorepo). The detectability argument is "unreliable enough to be a poor hard-gate," not
+  "impossible" — which is exactly why the recommendation is advisory-principle, not enforce.</li>
+  <li><strong>Deployment-strategy taxonomy blurs at the edges.</strong> "Canary" and "progressive delivery" are often
+  used interchangeably, and rolling can be tuned to approximate a canary; the table is the common-practice three, not a
+  partition.</li>
+</ul>
+</section>
+
+
+<!-- ======================================================= -->
+<section id="sources">
+<h2>7 · Sources</h2>
+<p>Verified 22 Jul 2026. Web-backed research (ISO 25010 quality model; deployment-strategy canon; production/operational
+readiness; progressive-delivery GitOps tooling) fused with a codebase audit of the profile axes, enforce categories,
+plan template, and the 047/048 SLO chain.</p>
+<ol>
+  <li>Codacy, <em>ISO/IEC 25010 software quality model</em> — <a href="https://blog.codacy.com/iso-25010-software-quality-model">blog.codacy.com/iso-25010-software-quality-model</a>: reliability = availability + fault tolerance + recoverability.</li>
+  <li>Cloud Elemental, <em>Workload resilience — RTO and RPO</em> — <a href="https://cloudelemental.com/workload-resilience/">cloudelemental.com/workload-resilience</a>: RTO = max tolerable downtime; RPO = max acceptable data loss.</li>
+  <li>arc42, <em>Shortcomings of ISO 25010</em> — <a href="https://quality.arc42.org/articles/iso-25010-shortcomings">quality.arc42.org/articles/iso-25010-shortcomings</a>: deployability/scalability/safety missing from the model.</li>
+  <li>HashiCorp Well-Architected, <em>Zero-downtime deployments</em> — <a href="https://developer.hashicorp.com/well-architected-framework/define-and-automate-processes/deploy/zero-downtime-deployments">developer.hashicorp.com/well-architected-framework/…/zero-downtime-deployments</a>: blue/green vs canary vs rolling; infra-cost-vs-safety tradeoff.</li>
+  <li>DevOps Daily, <em>Deployment strategies guide</em> — <a href="https://devops-daily.com/posts/deployment-strategies-guide">devops-daily.com/posts/deployment-strategies-guide</a>: rolling as default; strategy selection factors.</li>
+  <li>Google SRE, <em>Evolving the SRE engagement model — Production Readiness Review</em> — <a href="https://sre.google/sre-book/evolving-sre-engagement-model/">sre.google/sre-book/evolving-sre-engagement-model</a>: the PRR; incidents/postmortems + operational controls.</li>
+  <li>Well-Architected guide, <em>Consistent operational-readiness review</em> — <a href="https://www.well-architected-guide.com/well-architected-pillars/ensure-a-consistent-review-of-operational-readiness/">well-architected-guide.com/…/operational-readiness</a>: the ORR checklist (monitoring, incident response, backup).</li>
+  <li>Port, <em>Production readiness checklist</em> — <a href="https://www.port.io/blog/production-readiness-checklist-ensuring-smooth-deployments">port.io/blog/production-readiness-checklist</a>: readiness across security, reliability, performance before release.</li>
+  <li>DX, <em>Production readiness checklist</em> — <a href="https://getdx.com/blog/production-readiness-checklist/">getdx.com/blog/production-readiness-checklist</a>: RTO/RPO defined-but-never-tested as the common failure.</li>
+  <li>Buoyant, <em>Flagger vs Argo Rollouts</em> — <a href="https://www.buoyant.io/blog/flagger-vs-argo-rollouts-for-progressive-delivery-on-linkerd">buoyant.io/blog/flagger-vs-argo-rollouts-…</a>: Argo Rollouts replaces Deployment / Argo CD-native; Flagger loosely coupled alongside Deployments.</li>
+  <li>Simardeep Singh, <em>Progressive delivery — Argo Rollouts and Flagger deep dive</em> — <a href="https://medium.com/@simardeep.oberoi/progressive-delivery-a-deep-dive-into-argo-rollouts-and-flagger-6c7548174bc5">medium.com/@simardeep.oberoi/progressive-delivery-…</a>: GitOps stores rollout config as code in separate repo/overlay structures.</li>
+  <li>AWS Well-Architected, <em>Reliability Pillar</em> — <a href="https://docs.aws.amazon.com/wellarchitected/latest/reliability-pillar/welcome.html">docs.aws.amazon.com/wellarchitected/latest/reliability-pillar</a>: availability, recovery objectives, safe deployment practices.</li>
+  <li>GitHub, <em>Spec Kit — spec-driven development</em> — <a href="https://github.com/github/spec-kit/blob/main/spec-driven.md">github.com/github/spec-kit/blob/main/spec-driven.md</a>: constitution holds cross-cutting NFRs; spec captures non-functional intent — SDD tools prompt architecture/ops per-project, don't prescribe.</li>
+  <li>Harness, <em>Blue-green and canary deployments explained</em> — <a href="https://www.harness.io/blog/blue-green-canary-deployment-strategies">harness.io/blog/blue-green-canary-deployment-strategies</a>: graduated exposure and instant-rollback tradeoffs.</li>
+</ol>
+</section>
+
+
+<!-- ======================================================= -->
+<section id="changelog">
+<h2>8 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-07-22">22 Jul 2026</time><span>Initial synthesis. Web-backed research (ISO 25010 quality model — reliability sub-attributes present, deployability absent; the blue/green/canary/rolling tradeoff canon; Google SRE PRR + AWS ORR readiness reviews; RTO/RPO; progressive-delivery GitOps tooling and its repo separation) fused with a codebase audit (six profile axes, nine enforce categories, the plan §2 Technical-context rows, and the 047/048 NFR→SLO→verify chain — none of which covers deployment/DR). Answers "profile axis or per-project?" by routing each concern to its nature: deployment strategy → a plan-stage ADR (D-001); DR/recoverability → a reliability NFR quantified as an SLO (D-002); runtime mechanics → out of scope, with only an optional advisory enterprise principle (D-003). Explicitly rejects a profile axis and a hard enforce category (both recorded, not silently dropped) — detection is unreliable by construction and the choice is contextual, not a rigor ladder.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  Spectastic · Deployment &amp; operations · 22 Jul 2026 ·
+  <a href="../index.html">home</a> ·
+  <a href="../specs/047-slo-nfr-artifact/spec.html">047</a> ·
+  <a href="../specs/048-verify-slo-trace/spec.html">048</a> ·
+  <a href="./observability-slo-considerations.html">observability-slo</a> ·
+  <button data-theme-toggle style="background:none;border:none;color:var(--c-link);cursor:pointer;font:inherit;padding:0;border-bottom:1px solid currentColor;">light/dark</button>
+</footer>
+
+</main>
+<script src="../assets/spec.js"></script>
+</body>
+</html>
