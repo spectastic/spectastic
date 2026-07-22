@@ -38,7 +38,7 @@ export async function applyCommand(
 ): Promise<ApplyResult> {
   const fs = ctx.fs ?? (await import('../providers/node-fs.js')).nodeFs;
   const today = new Date().toISOString().slice(0, 10);
-  const todayHuman = formatHumanDate(new Date());
+  const todayHuman = formatHumanDate(today);
 
   // Guarantee-layer slice 1 (spec 030 / P-8): a principles amendment is applied by
   // the kernel, not by hand. The reserved `principles` spec-id resolves to root paths
@@ -555,7 +555,18 @@ function wrapRequirement(id: string, inner: string): string {
   return `<spec-requirement id="${id}" priority="must">\n${inner}\n</spec-requirement>`;
 }
 
-function formatHumanDate(d: Date): string {
+/**
+ * Format a `YYYY-MM-DD` string (the same ISO date already computed for
+ * `datetime=`) as `D Mon YYYY`. Takes the ISO string rather than a fresh
+ * `Date` so the human-readable text can never diverge from the machine
+ * date — a prior version called `new Date()` a second time and read its
+ * components with local-time getters, which disagreed with the UTC-based
+ * `datetime=` attribute whenever the two clocks straddled midnight
+ * (I-042). Parsing the components directly avoids re-introducing a
+ * timezone dependency.
+ */
+function formatHumanDate(isoDate: string): string {
   const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-  return `${d.getDate()} ${months[d.getMonth()]} ${d.getFullYear()}`;
+  const [year, month, day] = isoDate.split('-').map(Number);
+  return `${day} ${months[month! - 1]} ${year}`;
 }

@@ -3,6 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
 <title>Spectastic · Inbox</title>
 <link rel="stylesheet" href="./assets/spec.css">
 <link rel="icon" type="image/svg+xml" href="./assets/favicon.svg">
@@ -671,6 +672,87 @@ and stays in the inbox as history — strikethrough, faded, with a DONE pill.</p
   </dl>
 </spec-triage>
 
+<spec-triage id="I-039" layer="spec">
+  <header>
+    <h4>Make drain-all the default for <code>/spectastic.implement</code>, overridable via <code>spectastic.json</code></h4>
+    <span class="meta">
+      <span class="layer-pill">Spec</span>
+      <span class="regen" data-result="fail">upstream</span>
+    </span>
+  </header>
+  <p class="headline">In practice <code>implement</code> is almost always used to drain the whole queue, yet <a href="specs/000-spectastic/spec.html#REQ-TOOL-003">REQ-TOOL-003</a> makes <em>one task per invocation</em> the <code>MUST</code> default and <code>--all</code> an explicit opt-in; the request flips that default to drain-to-completion with a <code>spectastic.json</code> override. Not drift — the code implements the spec'd default correctly; changing the default and adding the config knob is a contract change to REQ-TOOL-003, so regeneration fails at <code>spec</code>.</p>
+  <dl>
+    <dt>Expected</dt> <dd>A bare <code>implement</code> drains all remaining tasks by default (the common case), with a <code>spectastic.json</code> key to restore one-at-a-time.</dd>
+    <dt>Actual</dt>   <dd>A bare <code>implement</code> does exactly one task and stops (<a href="specs/000-spectastic/spec.html#REQ-TOOL-003">REQ-TOOL-003</a>; <code>commands/spectastic.implement.md</code> "One task per invocation by default"), matching the spec.</dd>
+    <dt>Diagnosis</dt><dd>The single-task default is a deliberately-reasoned <code>MUST</code> in <a href="specs/000-spectastic/spec.html#REQ-TOOL-003">REQ-TOOL-003</a> whose rationale argues <em>for</em> per-task judgment; flipping it and defining a new override key is a requirement change, not an implementation fix.</dd>
+    <dt>Fix</dt>      <dd>Needs its own <code>/spectastic.propose</code>: a <code>MODIFY</code> delta to <a href="specs/000-spectastic/spec.html#REQ-TOOL-003">REQ-TOOL-003</a> that (a) flips the default and rebuts the existing one-per-invocation rationale, (b) defines the <code>spectastic.json</code> key + precedence (CLI flag &gt; config &gt; compiled default) with a config-shape rule the way <code>enforce.waivers</code>/<code>models</code> have one, and (c) updates <code>commands/spectastic.implement.md</code> (+ the gitignored <code>.claude/</code> copy).</dd>
+  </dl>
+  <details>
+    <summary>Deep dive — cross-spec (000 + 014)</summary>
+    <p>Plausibly cross-spec: the CLI dispatch path's drain modes are still <code>TBD-core-implement-drain</code> in <code>packages/core/src/commands/implement.ts</code>, owned by <a href="specs/014-core-implement/spec.html">014-core-implement</a>. A config-driven default touches that TBD, so the eventual proposal's scope should span 000 (the contract) and 014 (the core drain). Surfaced, not pre-resolved.</p>
+  </details>
+</spec-triage>
+
+<spec-triage id="I-040" layer="spec">
+  <header>
+    <h4><code>explain --course</code> quizzes always place the correct answer first — the position is predictable</h4>
+    <span class="meta">
+      <span class="layer-pill">Spec</span>
+      <span class="regen" data-result="fail">upstream</span>
+    </span>
+  </header>
+  <p class="headline">A generated course let every objective's <code>correctIndex</code> land on 0, so a learner scores 100% by always picking option A. <a href="specs/019-explain-course/spec.html#FR-004">FR-004</a>'s guessability gate checks each item <em>individually</em> and is structurally blind to a course-wide positional pattern; nothing obliges the drafter or the kernel to vary the position. A missing requirement, not drift — regeneration fails at <code>spec</code>.</p>
+  <dl>
+    <dt>Expected</dt> <dd>The correct option's position varies (or is otherwise structurally non-predictable) across a course's objectives, so position alone can't be pattern-matched.</dd>
+    <dt>Actual</dt>   <dd>Every <code>correctIndex</code> was 0 in the drafted course; <code>validateQuiz</code> only range-checks the index and <code>assembleCourse</code> renders options in authored order, so option A was correct every time.</dd>
+    <dt>Diagnosis</dt><dd><a href="specs/019-explain-course/spec.html#FR-004">FR-004</a> requires each item to be blind-unguessable from its own content; it says nothing about cross-objective position, and <code>verifyGuessability</code> poses one item at a time, so it cannot see the "always first" signal by construction.</dd>
+    <dt>Fix</dt>      <dd>Needs its own <code>/spectastic.propose</code>: extend <a href="specs/019-explain-course/spec.html#FR-004">FR-004</a> (or add a sibling FR) to require a non-predictable correct-option position, implemented as a <em>deterministic, seeded</em> option shuffle in <code>assembleCourse</code> (or a reject-constant-<code>correctIndex</code> check) — seeded off <code>draft.target</code>/slug, never <code>Math.random</code>, to preserve the deterministic/stub-testable pipeline. Guidance in <code>commands/spectastic.explain.md</code> alone is advisory (T-009) and won't hold.</dd>
+  </dl>
+  <details>
+    <summary>Deep dive — kernel-guarantee (T-009)</summary>
+    <p>The durable fix must be a kernel guarantee, not command-markdown guidance: per the T-009 reliability caveat a drafting agent keeps defaulting the correct answer first under load. The shuffle must be deterministic/seeded because 019's verification pipeline is grounded on byte-stable, stub-testable output. No cross-spec contract; no principle change.</p>
+  </details>
+</spec-triage>
+
+<spec-triage id="I-041" layer="just-do" data-status="done">
+  <header>
+    <h4><code>/spectastic.implement</code> step 10 materialises <code>verify.html</code> for a below-convention-floor spec, breaking <code>verify-view-missing</code> for its siblings</h4>
+    <span class="meta">
+      <span class="layer-pill">Just-do</span>
+    </span>
+  </header>
+  <p class="headline">Draining <a href="specs/012-core-plan/tasks.html">012-core-plan</a> to 20/20 triggered step 10 ("materialise <code>verify.html</code> on completion"), which generated <code>specs/012-core-plan/verify.html</code>. But the <code>verify-view-missing</code> rule computes a <em>convention floor</em> = the lowest spec number that carries a <code>verify.html</code> (specs below it predate the convention and are exempt). Adding one to 012 <strong>lowered the floor from 21 to 12</strong>, retroactively flagging every terminal-state spec between them with no verify.html — 013, 014, 015, 020 — as errors. Caught by a post-drain validate sweep and reverted (012 predates spec 021, so it correctly has no verify.html). Surfaced live; the procedure has no guard against it.</p>
+  <dl>
+    <dt>Target</dt>   <dd><span class="path">commands/spectastic.implement.md</span> step 10 — add a guard: skip <code>verify.html</code> materialisation when the spec is <em>below the verify-view convention floor</em> (i.e. predates spec 021 / no sibling at-or-below it carries a verify.html). Sync the <code>.claude/commands/</code> copy per the CLAUDE.md rule.</dd>
+    <dt>Why small</dt><dd>A one-file guard note in the command markdown; revert-safe; no contract change. The <code>verify-view-missing</code> floor logic (<span class="path">packages/schema/src/rules/verify-view-missing.ts</span>) is already correct — this only stops the implement procedure from tripping it.</dd>
+    <dt>Follow-on</dt><dd>Markdown guidance is advisory (T-009). The durable belt-and-braces version is a kernel guard in <code>spectastic verify &lt;id&gt;</code> that refuses/warns when the target spec is below the floor, rather than silently lowering it — a separate, larger change if the markdown note proves insufficient.</dd>
+    <dt>Closed by</dt><dd>Step 10 of <span class="path">commands/spectastic.implement.md</span> (+ the synced <span class="path">.claude/commands/</span> copy) now states the below-floor guard explicitly and adds a final safety net: run <code>spectastic validate</code> across the corpus after any new <code>verify.html</code> write and revert on any new finding. Verified live — <code>spectastic validate</code> reports zero <code>commands-drift</code> findings (the two copies are byte-identical) and <code>commands-drift.test.ts</code> (3/3) stays green.</dd>
+  </dl>
+</spec-triage>
+
+<spec-triage id="I-042" layer="just-do" data-status="done">
+  <header>
+    <h4><code>spectastic apply</code>'s changelog entry has a <code>datetime=</code> attribute that disagrees with its own visible date text</h4>
+    <span class="meta">
+      <span class="layer-pill">Just-do</span>
+    </span>
+  </header>
+  <p class="headline">Applying <a href="specs/047-slo-nfr-artifact/changes/archive/2026-07-21-slo-authoring-ergonomics/proposal.html">2026-07-21-slo-authoring-ergonomics</a>
+  produced <code>&lt;time datetime="2026-07-22"&gt;21 Jul 2026&lt;/time&gt;</code> in both the live spec's changelog and the archived
+  proposal's final entry — the machine-readable date and the human-readable text disagree by one day. Root cause: <code>packages/core/src/commands/apply.ts</code>
+  computes the <code>datetime=</code> attribute via <code>new Date().toISOString().slice(0,10)</code> (UTC) but the visible text via
+  <code>formatHumanDate(new Date())</code>, which reads <code>getDate()</code>/<code>getMonth()</code>/<code>getFullYear()</code> — all
+  <strong>local time</strong>. Around a UTC-day boundary where local time still reads the previous day, the two diverge. <code>spectastic validate</code>
+  doesn't catch it (the date-format rule checks shape, not text/attribute agreement), and the existing apply test suite (11/11 green) never
+  exercises a run that straddles the boundary.</p>
+  <dl>
+    <dt>Target</dt>   <dd><span class="path">packages/core/src/commands/apply.ts</span> — make <code>formatHumanDate</code> derive from the same <code>today</code> ISO string (parse the already-computed <code>YYYY-MM-DD</code>) instead of calling <code>new Date()</code> a second time with local-time getters, so both are always the same calendar day regardless of the invoking machine's timezone.</dd>
+    <dt>Why small</dt><dd>One function, one file; revert-safe; no contract change — the fix makes an already-deterministic-looking value actually deterministic. Add a regression test pinning a UTC-boundary case (e.g. a stubbed clock where local and UTC dates differ) so it can't silently regress.</dd>
+    <dt>Follow-on</dt><dd>Worth checking whether any other core command builds a changelog/human-date pair the same two-call way (e.g. <code>propose.ts</code>, <code>triage.ts</code>) — not confirmed here, so not claimed as also-broken, just unchecked.</dd>
+    <dt>Closed by</dt><dd><code>formatHumanDate</code> in <span class="path">packages/core/src/commands/apply.ts</span> now takes the already-computed ISO <code>today</code> string and parses its Y-M-D components directly, instead of calling <code>new Date()</code> a second time with local-time getters — a single source of truth, no timezone dependency. Checked the follow-on: no other core command (<code>course.ts</code>, <code>plan.ts</code>, <code>principles.ts</code>, <code>spec.ts</code>, <code>propose.ts</code>, <code>tasks.ts</code>) pairs a UTC date with a separately-computed local-time human date — <code>apply.ts</code> was the only site. Three regression tests added asserting <code>datetime=</code> agrees with its visible text (live-spec entry, archived-proposal entry, withdraw entry) — all three reproduced the real divergence before the fix (system was genuinely straddling the UTC/local boundary) and pass after. <code>apply.test.ts</code> 14/14; full core suite 426/426; live CLI smoke-tested.</dd>
+  </dl>
+</spec-triage>
+
 </spec-triage-log>
 </section>
 
@@ -728,6 +810,11 @@ and stays in the inbox as history — strikethrough, faded, with a DONE pill.</p
   <li><time datetime="2026-06-24">24 Jun 2026</time><span>I-037 added — opened artifact-panel tabs should use the spectastic favicon as their icon. <code>just-do</code>: set the <code>WebviewPanel</code> <code>iconPath</code> to the vendored favicon (thread <code>extensionUri</code>), revert-safe.</span></li>
   <li><time datetime="2026-06-24">24 Jun 2026</time><span>I-037 implemented and closed. <code>openArtifact</code> sets <code>panel.iconPath</code> to <code>media/favicon.svg</code> via the threaded <code>extensionUri</code>; unit test added (6/6). vsix repackaged + reinstalled. Inbox just-do queue drained.</span></li>
   <li><time datetime="2026-06-26">26 Jun 2026</time><span>I-038 added — defer: give principles a <code>/principles/</code> directory (sibling to <code>/specs/</code>) so its artifacts stop scattering as root suffix-files; <code>defer-to=TBD-principles-slice</code>. Surfaced declining to back-fill the missing <code>principles-tasks.html</code>.</span></li>
+  <li><time datetime="2026-07-18">18 Jul 2026</time><span>I-039 + I-040 added via <code>/spectastic.triage</code> list intake. Both classified <code>spec</code>; regen <code>fail</code>; each needs its own <code>/spectastic.propose</code>. I-039 — flip <code>implement</code>'s one-task default to drain-all with a <code>spectastic.json</code> override (<a href="specs/000-spectastic/spec.html#REQ-TOOL-003">REQ-TOOL-003</a>, cross-spec with <a href="specs/014-core-implement/spec.html">014</a>). I-040 — <code>explain --course</code> quizzes always place the correct answer first; <a href="specs/019-explain-course/spec.html#FR-004">FR-004</a>'s per-item guessability gate is blind to the course-wide positional pattern.</span></li>
+  <li><time datetime="2026-07-21">21 Jul 2026</time><span>I-041 added (just-do) — <code>/spectastic.implement</code> step 10 materialised a <code>verify.html</code> for below-floor spec 012 while draining it, lowering the <code>verify-view-missing</code> convention floor 21→12 and orphaning 013/014/015/020. Caught by a post-drain validate sweep and reverted; the procedure needs a below-floor guard. Surfaced live during the 012 drain.</span></li>
+  <li><time datetime="2026-07-21">21 Jul 2026</time><span>I-041 implemented and closed. <code>commands/spectastic.implement.md</code> step 10 states the below-floor guard + a post-write <code>validate</code> safety net; <code>.claude/commands/</code> copy synced. Verified live: <code>spectastic validate</code> reports zero <code>commands-drift</code> findings; <code>commands-drift.test.ts</code> 3/3 green.</span></li>
+  <li><time datetime="2026-07-21">21 Jul 2026</time><span>I-042 added (just-do) — <code>spectastic apply</code>'s changelog entry carries a <code>datetime=</code> (UTC) that disagrees with its own visible date text (local time) around a UTC-day boundary; caught live applying 2026-07-21-slo-authoring-ergonomics. <code>packages/core/src/commands/apply.ts</code>'s two date calls need unifying to one source.</span></li>
+  <li><time datetime="2026-07-21">21 Jul 2026</time><span>I-042 implemented and closed. <code>apply.ts</code>'s <code>formatHumanDate</code> now derives from the single already-computed ISO date instead of a second <code>new Date()</code> call; 3 regression tests added (reproduced the divergence pre-fix, pass post-fix). No other command shares the anti-pattern (checked). <code>apply.test.ts</code> 14/14; core suite 426/426.</span></li>
 </ol>
 </spec-changelog>
 </section>

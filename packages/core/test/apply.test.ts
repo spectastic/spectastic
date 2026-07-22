@@ -260,4 +260,54 @@ describe('applyCommand (010)', () => {
       ops.indexOf('rename:/specs/001/changes/withdrawn/2026-06-16-foo'),
     );
   });
+
+  // I-042: the changelog entry's machine datetime= and its visible human text must
+  // always name the same calendar day. Self-consistency check (no clock mocking
+  // needed) — a prior version computed the two from independent new Date() calls
+  // (one UTC via toISOString, one local-time via getDate/getMonth/getFullYear),
+  // which disagreed whenever the run straddled a UTC/local midnight boundary.
+  const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+  function assertDatetimeMatchesText(entry: string): void {
+    const m = /<time datetime="(\d{4})-(\d{2})-(\d{2})">(\d{1,2}) (\w{3}) (\d{4})<\/time>/.exec(entry);
+    expect(m, `no <time> element found in: ${entry}`).not.toBeNull();
+    const [, isoYear, isoMonth, isoDay, textDay, textMonth, textYear] = m!;
+    expect(Number(textDay)).toBe(Number(isoDay));
+    expect(MONTHS[Number(isoMonth) - 1]).toBe(textMonth);
+    expect(textYear).toBe(isoYear);
+  }
+
+  it('apply mode: the live-spec changelog entry\'s datetime= agrees with its visible text', async () => {
+    const { fs, files } = stubFs({
+      '/specs/001/spec.html': LIVE_SPEC,
+      '/specs/001/changes/2026-06-16-foo/proposal.html': APPLY_PROPOSAL,
+    });
+    await applyCommand({ kind: 'apply', specId: '001', slug: '2026-06-16-foo' }, { cwd: '', fs });
+    const entry = /<li><time[\s\S]*?<\/li>/.exec(files.get('/specs/001/spec.html')!)?.[0] ?? '';
+    assertDatetimeMatchesText(entry);
+  });
+
+  it('apply mode: the archived proposal\'s own apply entry datetime= agrees with its visible text', async () => {
+    const { fs, files } = stubFs({
+      '/specs/001/spec.html': LIVE_SPEC,
+      '/specs/001/changes/2026-06-16-foo/proposal.html': PROPOSAL_WITH_STATUS,
+    });
+    await applyCommand({ kind: 'apply', specId: '001', slug: '2026-06-16-foo' }, { cwd: '', fs });
+    const proposal = files.get('/specs/001/changes/2026-06-16-foo/proposal.html')!;
+    const entry = /<li><time[\s\S]*?Applied on[\s\S]*?<\/li>/.exec(proposal)?.[0] ?? '';
+    assertDatetimeMatchesText(entry);
+  });
+
+  it('withdraw mode: the "Considered…withdrew" changelog entry\'s datetime= agrees with its visible text', async () => {
+    const { fs, files } = stubFs({
+      '/specs/001/spec.html': LIVE_SPEC,
+      '/specs/001/changes/2026-06-16-foo/proposal.html': APPLY_PROPOSAL,
+    });
+    await applyCommand(
+      { kind: 'withdraw', specId: '001', slug: '2026-06-16-foo', reason: 'shape was wrong' },
+      { cwd: '', fs },
+    );
+    const entry = /<li><time[\s\S]*?<\/li>/.exec(files.get('/specs/001/spec.html')!)?.[0] ?? '';
+    assertDatetimeMatchesText(entry);
+  });
 });
