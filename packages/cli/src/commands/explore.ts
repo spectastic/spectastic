@@ -159,7 +159,7 @@ async function runGraduate(id: string, classify: string | undefined): Promise<vo
     process.stdout.write(
       `Graduated ${id} (${classify}) → ${result.specPath}\n` +
         `  exploration archived → ${result.archivedPath} (frozen)\n` +
-        `  Next: review the Draft spec + plan, then /spectastic.tasks. Restore-scaffold: TBD-explore-restore.\n`,
+        `  Next: review the Draft spec + plan, then /spectastic.tasks ${id} --restore for the ${classify} restore path.\n`,
     );
     process.exit(0);
   } catch (err) {

@@ -19,9 +19,10 @@ You are scaffolding an **exploration** — the front half of the discovery loop 
 off, a thin principles floor on. It is an **extended verb**: opt-in, sitting *upstream* of the eight core
 lifecycle verbs — it does not join or alter them (FR-001). The slogan is **"vibe to learn, spec to keep."**
 
-This slice ships the **front half** only — scaffold + quarantine. The **graduation** interview (classify
-spike vs tracer-bullet, extract the spec from the build, restore the gates) is a deferred sibling. Until it
-exists, the only exits from an exploration are **graduate** (not yet available) or **delete** (FR-009).
+The only exits from an exploration are **graduate** or **delete** (FR-009). Both halves ship: this verb
+scaffolds and quarantines (spec `022-explore`); **graduation** — classify spike vs tracer-bullet, extract the
+spec + plan from the build, restore the gates — is the `--graduate` mode below (spec `023-explore-graduation`),
+and the path-appropriate restore lands as `/spectastic.tasks <id> --restore` (spec `024-explore-restore`).
 
 ## What it does
 

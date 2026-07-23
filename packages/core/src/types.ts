@@ -697,7 +697,7 @@ export type GraduationClass = 'spike' | 'tracer-bullet';
  * What the AI-coupled extract leg produces (spec 023, FR-003 / D-002): a Draft
  * spec + plan. The run record's proven facts are seeded as `verified` rows in the
  * plan's §3 evidence ledger (FR-004 / REQ-LIFECYCLE-006 — grounding is a plan
- * artifact). The restore-task generation split to TBD-explore-restore, so no
+ * artifact). The restore-task generation split to 024-explore-restore, so no
  * `tasks.html` here.
  */
 export interface GraduateExtract {

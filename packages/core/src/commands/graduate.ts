@@ -12,7 +12,7 @@
  *  - the extract leg is AI-coupled and lives where the AI is available (the CLI
  *    or in-host session); it produces the `GraduateExtract` this kernel commits.
  *
- * The restore-task generation split to TBD-explore-restore (former US2), so the
+ * The restore-task generation split to 024-explore-restore (former US2), so the
  * bundle this kernel writes is spec + plan, not spec + plan + tasks.
  */
 
