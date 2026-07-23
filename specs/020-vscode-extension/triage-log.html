@@ -414,6 +414,38 @@
   </details>
 </spec-triage>
 
+<spec-triage id="T-012" layer="cross-spec">
+  <header>
+    <h4>Artifacts render unstyled with no JS in the webview — the artifact's own CSP <code>&lt;meta&gt;</code> collides with the webview CSP</h4>
+    <span class="meta">
+      <span class="layer-pill">Cross-spec</span>
+      <span class="regen" data-result="fail">upstream</span>
+    </span>
+  </header>
+
+  <p class="headline">Debugging a spec panel that rendered as if it had no CSS or JS (no theme dropdown — the JS-built header never ran), root cause was a cross-spec CSP collision; fixed by stripping the artifact's own CSP <code>&lt;meta&gt;</code> in the webview rewrite; regeneration fails upstream — neither 045 nor 020 captured the interaction, so a fresh webview implementation reintroduces it.</p>
+
+  <dl>
+    <dt>Expected</dt> <dd>An opened <code>spec.html</code>/<code>plan.html</code> renders fully styled with its sticky header + theme/mode controls (built by <code>spec.js</code>).</dd>
+    <dt>Actual</dt>   <dd>The page rendered unstyled with no header at all — <code>spec.css</code> and <code>spec.js</code> were both blocked. Two CSP <code>&lt;meta&gt;</code> tags coexisted (the artifact's + the webview's injected one); the browser applies their <em>intersection</em>, and the artifact's <code>script-src 'self'</code> / <code>style-src 'self' …</code> excludes the <code>cspSource</code> origin the assets are rewritten to — so the external stylesheet + script were denied.</dd>
+    <dt>Diagnosis</dt><dd>Spec <a href="../045-artifact-security/spec.html">045</a> added a strict CSP <code>&lt;meta&gt;</code> to every artifact (for standalone <code>file://</code>/published viewing, where assets are same-origin <code>'self'</code>); <a href="./spec.html#FR-003">020's</a> webview injects its own correct CSP but <code>rewriteForWebview</code> never removed the artifact's — so the two intersect and cancel out the webview origin. Latent since 045's CSP backfill (<code>4197091</code>); the T-200 check asserted the CSP string was <em>present</em>, not that it <em>allowed</em> the assets (presence ≠ containment).</dd>
+    <dt>Fix</dt>      <dd><span class="path">packages/vscode/src/host/open-artifact.ts</span> — <code>rewriteForWebview</code> now strips any artifact <code>&lt;meta http-equiv="Content-Security-Policy"&gt;</code> before injecting the webview CSP (the webview policy is the correct one for its origin; the artifact's is meant for standalone viewing).</dd>
+  </dl>
+
+  <spec-diff>
+<ins>  // strip the artifact's own CSP &lt;meta&gt; — in the webview its 'self' policy</ins>
+<ins>  // excludes cspSource and blocks the rewritten spec.css / spec.js.</ins>
+<ins>  const withoutArtifactCsp = rewritten.replace(/…http-equiv=…Content-Security-Policy…/gi, '');</ins>
+<del>  let out = rewritten.replace(/&lt;head&gt;/i, `&lt;head&gt;\n${csp}`);</del>
+<ins>  let out = withoutArtifactCsp.replace(/&lt;head&gt;/i, `&lt;head&gt;\n${csp}`);</ins>
+  </spec-diff>
+
+  <details>
+    <summary>Deep dive — cross-spec (045 CSP × 020 webview); fix guarded by a regression test</summary>
+    <p><strong>Cross-spec contract:</strong> the shared surface is the artifact's CSP <code>&lt;meta&gt;</code>. 045 owns it for standalone viewing; 020 owns the webview context where it doesn't apply. The reconciliation is that the <em>renderer</em> for a given context supplies the CSP — so the webview strips the document one. No 045 change needed (the file-on-disk CSP is untouched and still protects standalone viewing); no 020 requirement change needed (FR-003's render contract now simply produces a self-consistent single CSP). <strong>Guarantee (P-8):</strong> the fix is locked by a new <code>open-artifact.test.ts</code> case asserting exactly one CSP survives and it is the webview's — so the regen-fail can't recur here even though neither spec's prose documents the interaction. Not caused by the 23 Jul vivid CSS pass (that touched only <code>assets/spec.css</code> rules + <code>inbox.html</code>); this was pre-existing and theme-independent.</p>
+  </details>
+</spec-triage>
+
 </spec-triage-log>
 </section>
 
@@ -422,6 +454,7 @@
 <h2>Change log</h2>
 <spec-changelog>
 <ol>
+  <li><time datetime="2026-07-23">23 Jul 2026</time><span>T-012 added + fixed — opened artifacts rendered unstyled with no JS-built header (no theme dropdown) in the webview: the artifact's own strict CSP <code>&lt;meta&gt;</code> (spec 045, <code>4197091</code>) intersected with the webview's injected CSP and blocked the <code>cspSource</code>-origin <code>spec.css</code>/<code>spec.js</code>. <code>cross-spec</code>, regen <code>fail</code> (045 CSP × 020 webview interaction uncaptured). Fixed in <code>open-artifact.ts</code> — <code>rewriteForWebview</code> strips the artifact CSP before injecting the webview one; regression test added (exactly one CSP survives, and it is the webview's), extension <code>dist</code> rebuilt. Pre-existing since 045's CSP backfill; independent of the same-day vivid CSS pass.</span></li>
   <li><time datetime="2026-07-10">10 Jul 2026</time><span>T-011 resolved — FR-015 added + implemented in <code>open-artifact.ts</code>: cross-artifact <code>.html</code> links are marked (not <code>asWebviewUri</code>-rewritten), a nonce'd interceptor posts <code>openLink</code> to the host, which resolves the target against the source dir and opens it with the anchor baked in for an on-load scroll. vitest (4 cases) + Playwright (click→post, scroll) regressions added. Links now navigate in-extension.</span></li>
   <li><time datetime="2026-07-10">10 Jul 2026</time><span>T-011 added — cross-artifact anchor links escape the webview as external <code>vscode-resource</code> URLs instead of navigating to the target artifact's anchor. <code>spec</code>, regen <code>fail</code>: 020's nav contract is silent on intra-corpus link interception; needs a <code>/spectastic.propose</code>. From dogfooding on spec-tictactoe-2.</span></li>
   <li><time datetime="2026-07-06">06 Jul 2026</time><span>T-009 + T-010 fixed — <code>open-artifact.ts</code> now shares a <code>paint()</code> that repaints a reused panel on reopen (T-009) and stamps <code>&lt;body data-doc-path&gt;</code> so the sticky header shows the real spec-relative path (T-010; <code>spec.js</code> already preferred it). 3 host unit tests added, 9/9 green.</span></li>

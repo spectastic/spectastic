@@ -53,6 +53,26 @@ describe('rewriteForWebview', () => {
     expect(out).toContain('script-src vscode-webview://unit');
   });
 
+  // The artifact ships its own strict CSP <meta> (spec 045) whose 'self' policy
+  // excludes the webview cspSource; if it survives the rewrite it intersects with
+  // the webview CSP and blocks the rewritten spec.css / spec.js (page renders
+  // unstyled, no JS-built header). The rewrite must strip it, leaving only the
+  // webview CSP. (Cross-spec regression: 020 webview × 045 artifact CSP.)
+  it("strips the artifact's own CSP meta so it can't block webview-origin assets", () => {
+    const withArtifactCsp = `<!doctype html><head>
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
+<link rel="stylesheet" href="../../assets/spec.css">
+<script src="../../assets/spec.js"></script></head><body></body></html>`;
+    const rewritten = rewriteForWebview(withArtifactCsp, webview, '/repo/specs/099-demo');
+    // exactly one CSP meta survives, and it is the webview's (cspSource-scoped)
+    expect((rewritten.match(/Content-Security-Policy/g) || []).length).toBe(1);
+    expect(rewritten).not.toContain("script-src 'self'");
+    expect(rewritten).toContain('script-src vscode-webview://unit');
+    // the assets are still linked (so they now actually load under the webview CSP)
+    expect(rewritten).toContain('https://webview/repo/assets/spec.css');
+    expect(rewritten).toContain('https://webview/repo/assets/spec.js');
+  });
+
   // T-010: the sticky header reads document.body.dataset.docPath in preference
   // to the webview's synthetic location, so the host must stamp the real path.
   it('stamps the spec-relative path onto <body data-doc-path> when given', () => {

@@ -146,6 +146,19 @@ export function rewriteForWebview(
     },
   );
 
+  // The artifact ships its own strict CSP <meta> (spec 045) for standalone
+  // viewing (file://, the published site), where assets are same-origin 'self'.
+  // In the webview, assets are rewritten to `cspSource` — which the artifact's
+  // 'self'-based policy excludes — so leaving that meta in place intersects with
+  // the webview CSP below and blocks the external spec.css / spec.js outright:
+  // the page renders unstyled with no JS-built header (no theme dropdown). Strip
+  // it; the webview CSP injected here is the correct policy for this origin.
+  // (Cross-spec defect: 020 webview rendering × 045 artifact CSP.)
+  const withoutArtifactCsp = rewritten.replace(
+    /[ \t]*<meta\b[^>]*\bhttp-equiv\s*=\s*["']Content-Security-Policy["'][^>]*>\s*/gi,
+    '',
+  );
+
   const nonce = randomBytes(16).toString('base64');
   const csp =
     `<meta http-equiv="Content-Security-Policy" content="` +
@@ -155,7 +168,7 @@ export function rewriteForWebview(
     `font-src ${webview.cspSource} https: data:; ` +
     `script-src ${webview.cspSource} 'nonce-${nonce}';">`;
 
-  let out = rewritten.replace(/<head>/i, `<head>\n${csp}`);
+  let out = withoutArtifactCsp.replace(/<head>/i, `<head>\n${csp}`);
   // Tell the page its real spec-relative path so the sticky header shows it
   // instead of the webview's synthetic index.html (T-010), and — when the panel
   // was opened by following a cross-artifact link — the anchor to scroll to
