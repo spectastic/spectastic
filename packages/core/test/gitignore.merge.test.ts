@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { BLOCK_END, BLOCK_START, mergeBlock } from '../src/gitignore/apply.js';
-import { stackEntries } from '../src/gitignore/entries.js';
+import { BASE_ENTRIES, stackEntries } from '../src/gitignore/entries.js';
 
 /** Unit tests for the sentinel-block merge (spec 043 T-101 / T-300). */
 
@@ -47,6 +47,18 @@ describe('mergeBlock', () => {
   it('appends the block after existing content with a single blank line', () => {
     const out = mergeBlock('a/\n', BASE);
     expect(out).toContain('a/\n\n' + BLOCK_START);
+  });
+});
+
+describe('BASE_ENTRIES', () => {
+  it('ignores spectastic ephemera — courses and the rich explore ledger (022 FR-004)', () => {
+    expect(BASE_ENTRIES).toContain('.spectastic/courses/');
+    expect(BASE_ENTRIES).toContain('explorations/**/explore.html');
+  });
+
+  it('does NOT ignore the tracked quarantine marker (the anti-ship guard stays visible)', () => {
+    expect(BASE_ENTRIES.some((e) => e.includes('quarantine.json'))).toBe(false);
+    expect(BASE_ENTRIES).not.toContain('explorations/');
   });
 });
 

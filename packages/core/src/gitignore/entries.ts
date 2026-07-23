@@ -10,7 +10,15 @@
  */
 
 /** Spectastic's ephemeral outputs to ignore at init (not the tracked marker). */
-export const BASE_ENTRIES: readonly string[] = ['.spectastic/courses/'];
+export const BASE_ENTRIES: readonly string[] = [
+  '.spectastic/courses/',
+  // 022-explore FR-004 / D-002: the rich `explore.html` ledger is ephemeral (like a
+  // course), so it is git-ignored and never ships. The tracked `quarantine.json`
+  // marker — the anti-ship guard — is deliberately NOT ignored, so it stays visible
+  // to teammates + CI. Without this entry a consumer's ledger commits by accident,
+  // contradicting the "git-ignored ledger" the scaffold promises.
+  'explorations/**/explore.html',
+];
 
 /** ecosystem → build-artifact ignore entries. Keys match init/detect.ts SIGNALS[].ecosystem. */
 export const ECOSYSTEM_IGNORES: Readonly<Record<string, readonly string[]>> = {

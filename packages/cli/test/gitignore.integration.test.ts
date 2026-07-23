@@ -32,6 +32,8 @@ describe('init: base .gitignore (US1, SC-001)', () => {
     expect(r.code, r.stdout).toBe(0);
     const gi = readFileSync(join(dir, '.gitignore'), 'utf8');
     expect(gi).toContain('.spectastic/courses/');
+    expect(gi).toContain('explorations/**/explore.html'); // rich explore ledger is ephemeral (022 FR-004)
+    expect(gi).not.toMatch(/quarantine\.json/); // the anti-ship marker stays tracked
     expect(gi).not.toMatch(/^\.spectastic\/\s*$/m); // not the whole dir → marker stays trackable
   });
 
