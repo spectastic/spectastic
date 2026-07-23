@@ -1,0 +1,227 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
+<title>Pre-1.0 pre-releases move latest too · Change proposal</title>
+<link rel="stylesheet" href="../../../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../../../assets/favicon.svg">
+<script src="../../../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Change proposal · 004-npm-publish-workflow</p>
+  <h1>Pre-1.0 pre-releases move <code>latest</code> too</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    The guard that stops a bare <code>npm i</code> pulling a pre-release has, pre-1.0, frozen the documented install command on a months-old build.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>     <span><spec-status value="accepted">Approved</spec-status></span>
+    <b>Change ID</b>  <span>2026-07-23-prerelease-latest-dist-tag</span>
+    <b>Spec</b>       <span><a href="../../spec.html">004-npm-publish-workflow</a></span>
+    <b>Author</b>     <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Created</b>    <span><time datetime="2026-07-23">23 Jul 2026</time></span>
+    <b>Targets</b>    <span>2 modified deltas (<a href="../../spec.html#FR-006">FR-006</a> dist-tag rule, <a href="../../spec.html#SC-001">SC-001</a> stale file count)</span>
+    <b>Read time</b>  <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-tldr>
+    <p>Make the dist-tag rule version-keyed. While the project is pre-1.0, a pre-release publish moves
+    <strong>both</strong> <code>next</code> and <code>latest</code>, so the install command the README
+    advertises resolves to the newest build; from 1.0.0 the original stable-only rule resumes automatically.
+    Also corrects <a href="../../spec.html#SC-001">SC-001</a>'s stale <code>16-file</code> assertion to the
+    <code>20</code> that <code>init</code> actually emits. Exists because <code>latest</code> has never moved
+    off <code>0.1.0-pre.3</code> while <code>next</code> reached <code>0.1.0-pre.18</code>.</p>
+  </spec-tldr>
+</header>
+
+
+<spec-change id="2026-07-23-prerelease-latest-dist-tag" status="approved">
+
+<header>
+  <h3>Pre-1.0 pre-releases move <code>latest</code> too</h3>
+  <span class="meta"><spec-status value="accepted">Approved</spec-status></span>
+</header>
+
+
+<section id="intent">
+<h2>1 · Intent</h2>
+<p><a href="../../spec.html#FR-006">FR-006</a> derives the dist-tag from the version: a pre-release publishes
+with <code>--tag next</code>, a bare semver with <code>--tag latest</code>. Its stated rationale is explicit —
+&ldquo;this keeps <code>npm i @spectastic/cli</code> (no tag) from accidentally pulling pre-releases.&rdquo;
+That is correct reasoning for a project that <em>has</em> a stable release to fall back to.</p>
+
+<p>Pre-1.0, every release is a pre-release, so the rule's premise never holds: <code>latest</code> has never
+advanced past <code>0.1.0-pre.3</code> (<code>@spectastic/core</code>: <code>0.1.0-pre.8</code>) while
+<code>next</code> reached <code>0.1.0-pre.18</code>. Meanwhile <a href="../../spec.html#SC-001">SC-001</a> and
+<a href="../../spec.html#SC-004">SC-004</a> both describe the bare <code>npm i -g @spectastic/cli</code> path
+as <em>the</em> user install route, with SC-004 requiring that a reader following it &ldquo;lands on a working
+install&rdquo;. So pre-1.0 the guard in FR-006 defeats two of its own spec's success criteria: users following
+the documented command receive a build months behind <code>HEAD</code>, missing every fix shipped since.</p>
+
+<p>This change makes the rule conditional on the major version rather than flat, so the guard applies exactly
+when it is meaningful — once a stable release exists — and not before.</p>
+</section>
+
+
+<section id="scope">
+<h2>2 · Scope</h2>
+
+<spec-goals>
+  <h3>In scope</h3>
+  <ul>
+    <li>MODIFY <a href="../../spec.html#FR-006">FR-006</a> — version-keyed dist-tag rule: pre-1.0 a pre-release moves both <code>next</code> and <code>latest</code>; from 1.0.0 the stable-only rule resumes.</li>
+    <li>MODIFY <a href="../../spec.html#SC-001">SC-001</a> — correct the stale <code>16-file</code> tree assertion to <code>20</code>, the count <code>init</code> actually writes.</li>
+    <li>Cascade into <code>.github/workflows/publish.yml</code> (the <em>Derive dist-tag</em> and <em>Publish</em> steps) and plan <a href="../../plan.html">D-005</a>'s bash conditional.</li>
+    <li>The stale <code>canonical 17-file</code> comment in <code>packages/cli/src/commands/init.ts</code> — the same drift SC-001 carries.</li>
+  </ul>
+</spec-goals>
+
+<spec-non-goals>
+  <h3>Out of scope</h3>
+  <ul>
+    <li>The one-off operational fix for already-published versions (moving <code>latest</code> to <code>0.1.0-pre.18</code> by hand). Operational, not a requirement — <code>defer-to=never</code>.</li>
+    <li>Any change to the provenance / OIDC publish mechanism (<a href="../../spec.html#FR-004">FR-004</a>, <a href="../../spec.html#FR-005">FR-005</a>, <a href="../../spec.html#NFR-002">NFR-002</a>) — <code>defer-to=never</code>.</li>
+    <li>Deciding when 1.0 is cut, or what gates it — <code>defer-to=TBD-1-0-release</code>.</li>
+    <li>Re-verifying SC-001's byte-identical-tree claim end-to-end against a real npm install — <code>defer-to=TBD-1-0-release</code>.</li>
+  </ul>
+</spec-non-goals>
+</section>
+
+
+<section id="approach">
+<h2>3 · Approach</h2>
+<p>Key the rule on the version's major component rather than adding a manual switch. While the major is
+<code>0</code>, a pre-release publish moves both tags; from <code>1.0.0</code> onward FR-006's original
+behaviour resumes with no further edit. Version-keyed rather than a flag or a reminder because the failure
+being fixed <em>is</em> a forgetting: nobody remembered to move <code>latest</code> for eighteen pre-releases,
+and a rule that needs remembering at 1.0 would fail the same way.</p>
+
+<p>Pre-releases keep moving <code>next</code> as well as <code>latest</code>, so anyone already installing
+<code>@spectastic/cli@next</code> — or pinning it in CI — is unaffected. In workflow terms that is the existing
+<code>pnpm publish --tag next</code> followed by a <code>npm dist-tag add</code> per package, rather than
+flipping the single derived tag; the derivation step keeps one line of logic and the dry-run job still covers it.</p>
+</section>
+
+
+<section id="deltas">
+<h2>4 · Deltas</h2>
+<p>One <code>&lt;spec-delta&gt;</code> per requirement touched. <code>target=</code> links to
+the live spec. <code>op=</code> is one of <code>added | modified | removed | renamed</code>;
+a missing or invalid op renders visibly broken.</p>
+
+<spec-delta op="modified" target="FR-006">
+  <p><strong>What changes:</strong> the dist-tag rule becomes conditional on the major version — pre-1.0 a pre-release moves <code>next</code> <em>and</em> <code>latest</code>; from 1.0.0 the original stable-only rule resumes.</p>
+  <spec-requirement id="FR-006" priority="must">
+    <p>The dist-tag <spec-rule>MUST</spec-rule> be derived from the version being published.</p>
+    <p>While the project is <strong>pre-1.0</strong> (the version's major component is <code>0</code>), a
+    pre-release publish <spec-rule>MUST</spec-rule> move both <code>next</code> and <code>latest</code>, so the
+    documented bare install (<code>npm i -g @spectastic/cli</code>) resolves to the newest published build.</p>
+    <p>From <strong>1.0.0</strong> onward the guard applies: a pre-release (a version containing a hyphen,
+    matching <code>X.Y.Z-*</code>) <spec-rule>MUST</spec-rule> publish with <code>--tag next</code> only, and a
+    bare semver version (<code>X.Y.Z</code>) <spec-rule>MUST</spec-rule> publish with <code>--tag latest</code> —
+    keeping <code>npm i @spectastic/cli</code> (no tag) from pulling a pre-release once a stable release exists
+    to fall back to.</p>
+    <details><summary>Rationale</summary><p>The original rule reserved <code>latest</code> for bare semver so a
+    bare <code>npm i</code> could never land on a pre-release. Sound, but it presumes a stable release exists.
+    Pre-1.0 every release is a pre-release, so <code>latest</code> froze at <code>0.1.0-pre.3</code> while
+    <code>next</code> reached <code>0.1.0-pre.18</code> — and the install path named by
+    <a href="../../spec.html#SC-001">SC-001</a> and <a href="../../spec.html#SC-004">SC-004</a> served a build
+    months behind. Keying the rule to the major version applies the guard exactly when it protects something
+    real, and restores it automatically at 1.0 rather than relying on anyone remembering.</p></details>
+  </spec-requirement>
+</spec-delta>
+
+<spec-delta op="modified" target="SC-001">
+  <p><strong>What changes:</strong> the asserted tree size is corrected from <code>16</code> files to <code>20</code> — the count <code>spectastic init</code> actually writes.</p>
+  <spec-requirement id="SC-001" priority="must">
+    <p>Post-publish, an outside user with Node 20+ and no clone runs <code>npm i -g @spectastic/cli</code>, then
+    <code>spectastic init</code> in an empty directory yields a 20-file tree byte-identical to the local-clone
+    install; <code>spectastic validate</code> against a sample <code>spec.html</code> produces correct findings
+    or a clean pass.</p>
+    <details><summary>Rationale</summary><p>The criterion's shape is unchanged — a published install must match a
+    local-clone install exactly. Only the count was stale: the scaffold has grown to 20 files (asserted in
+    <code>packages/cli/test/init/plan.test.ts</code>, <code>write.test.ts</code> and <code>smoke.test.ts</code>),
+    so the written <code>16</code> would fail a literal reading of its own success criterion.</p></details>
+  </spec-requirement>
+</spec-delta>
+</section>
+
+
+<section id="risks">
+<h2>5 · Risk register</h2>
+<p>Populated by the adversarial risk pass (this proposal touches <code>must</code>-tier requirements). One
+<code>&lt;spec-risk&gt;</code> per finding. <code>status=</code> is <code>identified</code> until the author
+dispositions it; <code>/spectastic.apply</code> refuses while any remain <code>identified</code>, and each
+transition must record <code>by=</code>.</p>
+
+<spec-risk-log>
+<spec-risk target="FR-006" status="identified">
+  <p class="claim">Pointing <code>latest</code> at a pre-release means every new user's default install is software the project itself labels unstable — so a single bad pre-release reaches all of them immediately, with no stable version to fall back to. This is precisely the hazard the clause being removed was written to prevent.</p>
+  <p class="citation">Removed rationale: &ldquo;This keeps <code>npm i @spectastic/cli</code> (no tag) from accidentally pulling pre-releases.&rdquo;</p>
+  <div class="response">Draft response (author to confirm): accepted rather than eliminated. Pre-1.0 there is no stable release to fall back to, so the protection was theoretical — the real-world effect was serving a months-old build to everyone. The exposure is real but bounded by the pre-1.0 contract; the mitigation is that <code>next</code> keeps moving, so a burned user can pin an older exact version, and the rule self-reverts at 1.0 when a stable fallback finally exists.</div>
+</spec-risk>
+
+<spec-risk target="FR-008" status="identified">
+  <p class="claim">The workflow summary is specified around a <em>single</em> derived dist-tag and prints one install line (<code>npm i -g @spectastic/cli@$DIST_TAG</code>). Once a pre-1.0 pre-release moves two tags, that summary reports only one of them and will misdescribe what actually shipped.</p>
+  <p class="citation"><a href="../../spec.html#FR-008">FR-008</a> — the workflow summary block listing published versions and install instructions.</p>
+  <div class="response">Draft response (author to confirm): mitigated in the task list rather than by a further delta — the summary step is updated to print both tags when two were moved. FR-008's wording ("listing published versions + links") does not itself name a single tag, so no requirement text needs to change; only the step's output does.</div>
+</spec-risk>
+
+<spec-risk target="§2" status="identified">
+  <p class="claim">The proposal carries two unrelated intents: a dist-tag <em>policy</em> change and a stale <em>assertion</em> fix. They share only the words &ldquo;install path&rdquo;. If the policy delta is ever reverted, the SC-001 correction rides along with it, and the change's title under-describes half its deltas.</p>
+  <p class="citation">§2 In scope — &ldquo;MODIFY SC-001 — correct the stale <code>16-file</code> tree assertion to <code>20</code>&rdquo;.</p>
+  <div class="response">Draft response (author to confirm): accepted as a deliberate call made during the interview — the SC-001 drift was surfaced while verifying this proposal's own claims about the published install path, it is a one-word correction with no behavioural coupling to FR-006, and splitting it would cost a second full propose/apply cycle for a typo. Revert-coupling is the honest cost; it is recorded here rather than hidden.</div>
+</spec-risk>
+</spec-risk-log>
+</section>
+
+
+<section id="tasks">
+<h2>6 · Tasks</h2>
+<p>Scoped to this change only. On <code>/spectastic.apply</code> these fold into the target's
+<code>tasks.html</code> as a new provenance-linked phase (per <code>REQ-CHANGE-006</code>) that
+<code>/spectastic.implement</code> drains — this list is then the frozen intent record.</p>
+
+<ul style="list-style:none;padding-left:0;">
+  <li><input type="checkbox"> <strong>Version-key the dist-tag derivation</strong> — in <code>.github/workflows/publish.yml</code>, extend the <em>Derive dist-tag</em> step so a <code>0.y.z</code> pre-release yields both tags, and follow <em>Publish to npm</em> with a <code>npm dist-tag add</code> per package (cli, core, schema) when the pre-1.0 branch is taken.</li>
+  <li><input type="checkbox"> <strong>Report both tags in the run summary</strong> — update the <em>Workflow summary</em> step so a two-tag publish prints both, resolving the FR-008 risk.</li>
+  <li><input type="checkbox"> <strong>Record the mechanism in the plan</strong> — update <code>specs/004-npm-publish-workflow/plan.html</code> D-005's decision + consequences for the version-keyed conditional (its own consequence anticipated promoting to a script &ldquo;if the rule grows&rdquo;).</li>
+  <li><input type="checkbox"> <strong>Fix the stale scaffold count in code</strong> — <code>packages/cli/src/commands/init.ts</code> still comments &ldquo;canonical 17-file&rdquo;; correct to 20 to match SC-001 and the three init tests.</li>
+  <li><input type="checkbox"> <strong>Verify end-to-end</strong> — after the next tagged release, assert <code>npm view @spectastic/cli dist-tags</code> reports the new version on both <code>latest</code> and <code>next</code> for all three packages.</li>
+</ul>
+</section>
+
+
+<section id="questions">
+<h2>7 · Open questions</h2>
+<spec-questions>
+<p>None outstanding — the revert trigger (version-keyed vs manual), the fate of the <code>next</code> tag,
+the ship status, and whether to fold in the SC-001 correction were each anchored in the decision interview.</p>
+</spec-questions>
+</section>
+
+
+<section id="changelog">
+<h2>8 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-07-23">23 Jul 2026</time><span>Proposal authored — version-key FR-006 so pre-1.0 pre-releases move <code>latest</code> as well as <code>next</code>, and correct SC-001's stale 16-file assertion to 20. Three adversarial findings recorded against FR-006, FR-008 and §2.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+</spec-change>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  2026-07-23-prerelease-latest-dist-tag · Pre-1.0 pre-releases move latest too · authored 2026-07-23
+</footer>
+
+</main>
+<script src="../../../../assets/spec.js"></script>
+</body>
+</html>
