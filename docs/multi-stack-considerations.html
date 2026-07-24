@@ -1,0 +1,251 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>One spec, many stacks — where a polyglot feature binds its stacks — Considerations for Spectastic</title>
+<meta name="description" content="A spectastic spec is already technology-agnostic by principle — the stack binds at the plan, not the spec. So 'one spec, N stacks' is a deliberate non-goal in the modeling layer: the child-slice seam composes N sibling specs (one stack each, a contract-first spine) when a project truly needs it, and cross-stack orchestration stays a per-project build concern.">
+<link rel="stylesheet" href="../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../assets/favicon.svg">
+<script src="../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Considerations · Multi-stack</p>
+  <h1>One spec, many stacks</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    The spec already doesn't care what language you build it in — that's the whole point of a spec. So a feature that ships in three stacks isn't a spec problem. It's a composition problem, and the tool already has the seam for it.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>     <span><spec-status value="draft">Draft</spec-status></span>
+    <b>Type</b>       <span>Research synthesis</span>
+    <b>Author</b>     <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Created</b>    <span><time datetime="2026-07-22">22 Jul 2026</time></span>
+    <b>Sources</b>    <span>7 primary, verified 22 Jul 2026</span>
+    <b>Companion</b>  <span><a href="./deployment-operations-considerations.html">deployment-operations</a> · <a href="./stack-selection-considerations.html">stack-selection</a></span>
+    <b>Read time</b>  <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-tldr>
+    <p>Some features ship across several technology stacks — a polyglot SDK in Python + TypeScript + Go, or one API
+    contract implemented by services in different languages. spectastic today assumes <strong>one spec → one plan → one
+    stack</strong>: the plan's §2 Technical context has a single <code>Language(s)</code> row, and <code>verify.html</code>
+    is entirely stack-blind. The question is whether to model "N stacks in one plan." The answer is <mark>a deliberate
+    non-goal</mark> — and it falls out of a principle spectastic already holds. A spec's success criteria are
+    <strong>technology-agnostic by rule</strong>; the SDD canon says the same ("one durable specification, implementations
+    across different tech stacks"). So the <em>spec is already the stack-agnostic invariant</em> — the stack binds one
+    layer down, at the <strong>plan</strong>. A feature needing N stacks therefore doesn't want new per-stack sub-structure
+    inside a plan; it wants <strong>N plans</strong>, and the tool's <code>&lt;spec-parent&gt;</code> <strong>child-slice
+    seam</strong> already composes exactly that — one sibling spec per stack, each binding one stack, sharing a
+    <strong>contract-first</strong> spine (the one primitive that is already language-neutral: a single OpenAPI/proto doc
+    satisfies the contract regardless of which language declared the framework). Keeping <strong>one stack per plan</strong>
+    is what keeps the plan → tasks → verify trace <em>honest</em> — one stack's tests, SLOs, and coverage, not a blur.
+    Cross-stack orchestration (codegen, polyglot CI) is a per-project build concern, not the spec tool's job. Notably, the
+    plural primitive already exists where it belongs — <code>detectEcosystems</code> returns a <em>set</em>, and
+    enforce/gitignore already treat a repo as many stacks; only the authoring model collapses to one, on purpose.</p>
+  </spec-tldr>
+
+  <spec-audience-map>
+    <dl>
+      <dt>Exec / PM</dt>   <dd>The TL;DR, then §<a href="#recommendation">4</a>.</dd>
+      <dt>Reviewer</dt>    <dd>§<a href="#canon">2</a> (what the canon says) + §<a href="#today">3</a> (where we collapse).</dd>
+      <dt>Implementer</dt> <dd>§<a href="#today">3</a> (the seam that exists) + §<a href="#recommendation">4</a> (the recipe).</dd>
+      <dt>In a hurry</dt>  <dd>§<a href="#question">1</a> + §<a href="#recommendation">4</a>.</dd>
+    </dl>
+  </spec-audience-map>
+</header>
+
+
+<!-- ======================================================= -->
+<section id="question">
+<h2>1 · The question — where do the stacks bind?</h2>
+<p>A real feature sometimes has to exist in more than one technology stack at once. A client SDK ships in Python,
+TypeScript, Go, and Java from one design. An API is defined once and implemented by a Rust service and a Node BFF. A
+design-system component is built for web, iOS, and Android. In each case there is <em>one</em> intent — one set of
+requirements, one definition of "done" — and <em>several</em> implementations.</p>
+<p><spec-newthought>spectastic assumes one stack.</spec-newthought> The plan's §2 Technical context carries a single
+<code>Language(s)</code> row and a single <code>Frameworks</code> row; the just-shipped
+<a href="./stack-selection-considerations.html">stack-selection interview</a> picks <em>one</em> stack; and
+<code>verify.html</code> has no concept of a stack at all. So the question a careful reader asks: should the tool grow a
+way to model N stacks inside one spec or plan — a profile axis, repeated §2 blocks, per-stack task lanes? Or is that the
+wrong layer entirely?</p>
+</section>
+
+
+<!-- ======================================================= -->
+<section id="canon">
+<h2>2 · What the canon already settled</h2>
+<p><strong>The spec is supposed to be stack-agnostic.</strong> That is not a new idea to bolt on — it is the defining
+move of spec-driven development. SDD "decouples the <em>what</em> (requirements) from the <em>how</em> (tech stack)," so a
+"technology-independent spec … can generate multiple distinct implementations" — the canonical examples are literally
+"moving from React to Vue, from Go to Python."<spec-sidenote>SDD decouples the technology-agnostic specification (what/why)
+from the implementation (how); one durable spec, many implementations across stacks
+<a href="https://thebcms.com/blog/spec-driven-development">[1]</a>,
+<a href="https://en.wikipedia.org/wiki/Spec-driven_development">[2]</a>.</spec-sidenote> The whole value proposition is
+"maintain a single, durable specification while generating implementations across different technology stacks." spectastic
+already enforces this at the spec layer: <strong>success criteria are technology-agnostic by rule</strong> ("users complete
+sign-up in under 90 seconds," never "we use a faster auth library"), and requirements are outcomes, not implementations.
+The spec is the invariant; the stack is chosen later.</p>
+
+<p><strong>The shared spine is the contract, not the stack.</strong> When several stacks implement one thing, the field's
+answer is a language-neutral <em>contract</em> — an OpenAPI or <code>.proto</code> document as the single source of truth,
+from which each stack's client/server is generated and against which each is checked.<spec-sidenote>Contract-first as the
+polyglot spine: OpenAPI/proto as the shared source of truth; generators emit clients/servers per language and fail the
+build on drift <a href="https://github.com/OpenAPITools/openapi-generator">[3]</a>,
+<a href="https://ertyurk.com/posts/polyglot-monorepos-when-your-backend-and-frontend-speak-different-languages/">[4]</a>.</spec-sidenote>
+"The key to making a polyglot monorepo work is a contract between languages." This is exactly the shape spectastic already
+has as its <code>contract-first</code> enforce category — and it is the piece that lets N stacks share one design without
+the spec having to know their names.</p>
+
+<p>So the representation question has four candidate answers, and the canon points hard at the last two working
+<em>together</em>:</p>
+<div style="overflow-x:auto;">
+<table>
+  <thead><tr><th>Representation</th><th>What it does</th><th>Cost</th></tr></thead>
+  <tbody>
+    <tr><td>Repeated §2 stack blocks</td><td>One plan lists N Language/Frameworks blocks</td><td>Tasks + verify still collapse to one stack — the trace lies</td></tr>
+    <tr><td>N plans under one spec</td><td>plan-python.html, plan-go.html, …</td><td>Breaks the one-plan-per-spec lifecycle + the verify bundle model</td></tr>
+    <tr><td><strong>Parent + per-stack child slices</strong></td><td>One stack-agnostic parent; a child spec+plan per stack</td><td>Reuses the existing seam — no new machinery</td></tr>
+    <tr><td><strong>Contract-first spine</strong></td><td>One language-neutral contract each stack implements</td><td>Already an enforce category — the shared centre</td></tr>
+  </tbody>
+</table>
+</div>
+</section>
+
+
+<!-- ======================================================= -->
+<section id="today">
+<h2>3 · Where spectastic stands today</h2>
+<p>The striking finding: <strong>the plural primitive already exists — one layer below the authoring model.</strong> The
+collapse to a single stack is a modeling choice, not a limitation of detection.</p>
+<ul>
+  <li><strong>Detection is already plural.</strong> <code>detectEcosystems(cwd)</code> returns a
+  <code>Set&lt;string&gt;</code> — <code>python</code>, <code>js</code>, <code>java</code>, <code>go</code>,
+  <code>rust</code>, <code>swift</code>, <code>cpp</code> — and <code>spectastic enforce</code> and
+  <code>spectastic gitignore</code> already consume it as a <code>stacks[]</code> list. A polyglot repo is a first-class,
+  plural concept at the enforcement layer.</li>
+  <li><strong>The model collapses at the plan and verify.</strong> The plan's §2 has one <code>Language(s)</code>
+  <code>&lt;dd&gt;</code> (every real plan in the repo carries exactly one); a second stack can only be crammed as prose
+  into the same cell. <a href="../specs/021-verify-view/spec.html">verify.html</a> has <em>no</em> stack concept at all —
+  it traces success criteria, SLOs, and observables, with nowhere to attach a second stack's tests. This is where "one
+  stack" is actually assumed.</li>
+  <li><strong>The composition seam already exists.</strong> The <code>&lt;spec-parent specid="…"&gt;</code> child-slice
+  mechanism (guarded by the <code>spec-parent-well-formed</code> and <code>parent-child-reciprocity</code> rules) lets a
+  parent spec carve out children — proven in-repo by <a href="../specs/006-kernel-extraction/spec.html">006</a> slicing
+  into 007–014. Nothing stops those children from being <em>per-stack</em> instead of per-sub-feature; today they simply
+  never are.</li>
+  <li><strong>Polyglot is a deliberate skip, not a gap.</strong> Where the tool <em>could</em> guess a single stack for a
+  polyglot repo, it declines: <a href="../specs/043-init-project-config/spec.html">043</a> — "undetectable / polyglot
+  stack at plan → the base block stands; stack entries are skipped with a note, never guessed";
+  <a href="../specs/042-profile-enforcement/spec.html">042</a> — "unknown/polyglot ecosystem → detection reports what it
+  can … never a false failure." The tool already refuses to flatten a polyglot repo into a lie.</li>
+</ul>
+<p>Put together: the spec is the invariant (by principle), detection is plural (by implementation), and the only place a
+single stack is genuinely assumed is the <em>authoring model</em> — the one plan, the stack-blind verify. The question is
+whether that assumption is a defect to fix or a boundary to keep.</p>
+</section>
+
+
+<!-- ======================================================= -->
+<section id="recommendation">
+<h2>4 · Recommendation — a deliberate non-goal, with a sanctioned recipe</h2>
+<p>Keep it a non-goal. "N stacks in one plan" is the wrong layer: the spec already doesn't bind a stack, so the fix isn't
+new per-stack sub-structure — it's to let the existing composition seam do what it already can. What spectastic should
+add is <em>guidance</em>, not machinery.</p>
+
+<spec-decision id="D-001" grounding="verified">
+  <h4>D-001 · One stack per plan stays a deliberate boundary</h4>
+  <dl>
+    <dt>Status</dt><dd><spec-status value="draft">Proposed</spec-status></dd>
+    <dt>Context</dt><dd>The spec is stack-agnostic by rule (tech-agnostic SC) and the SDD canon agrees; only the plan and verify assume one stack. Making a plan hold N stacks would fork §2 into per-stack blocks and give <code>verify.html</code> no honest way to trace which stack's tests cover which criterion.</dd>
+    <dt>Decision</dt><dd><strong>Do not</strong> model multiple stacks inside a single plan or add a packaging/stack axis. Keep <em>one stack per plan</em>. A plan's §2, its tasks, and its <code>verify.html</code> trace exactly one stack's build, tests, SLOs, and coverage.</dd>
+    <dt>Consequences</dt><dd>+ The plan → tasks → verify trace stays honest — no "which of these three stacks is this test for?" ambiguity. + Zero new schema, no false "polyglot = more mature" axis. + Consistent with the existing polyglot-degrade-to-skip posture (043/042). − A genuinely multi-stack feature needs more than one plan — addressed by D-002, not by stretching one plan. − Cross-stack "keep them in sync" (codegen, drift) is left to the project's build, not modelled here (a recorded ceiling).</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-002" grounding="verified">
+  <h4>D-002 · The sanctioned recipe — parent spec, per-stack child slices, contract-first spine</h4>
+  <dl>
+    <dt>Status</dt><dd><spec-status value="draft">Proposed</spec-status></dd>
+    <dt>Context</dt><dd>A feature that truly ships in N stacks still needs to be expressed. The <code>&lt;spec-parent&gt;</code> child-slice seam already composes sibling specs, and <code>contract-first</code> already provides a language-neutral centre — both exist and are enforced.</dd>
+    <dt>Decision</dt><dd>Document (in <code>commands/spectastic.spec.md</code> + README) the recipe: a <strong>stack-agnostic parent spec</strong> (the requirements + tech-agnostic SC), a <strong>child slice per stack</strong> (each a normal spec+plan binding exactly one stack, <code>&lt;spec-parent&gt;</code> pointing home), and a <strong>contract-first</strong> artifact (OpenAPI/proto) as the shared spine every child implements. Advisory guidance, not a new element.</dd>
+    <dt>Consequences</dt><dd>+ Reuses the only existing composition seam (proven by 006→007-014) and the existing contract-first category — no new machinery. + Each child's verify trace is honest (one stack). + The parent holds the single definition of done; the contract holds the single interface. − More ceremony than one plan for a small two-stack case — the recipe is for features that genuinely warrant it, not every repo that happens to have two languages. − Per-stack conformance to the contract (does each child actually match?) is checked by the project's codegen/tests, not by spectastic — the honest boundary.</dd>
+  </dl>
+</spec-decision>
+
+<h3>Suggested next artifacts</h3>
+<spec-out-of-scope>
+  <ul>
+    <li defer-to="TBD-multi-stack-child-slice-guidance">The one <em>positive</em> follow-on: document the parent + per-stack child-slice + contract-first recipe in <code>commands/spectastic.spec.md</code> and the README, so the sanctioned path is written down rather than folklore. Advisory guidance; no schema change.</li>
+    <li defer-to="TBD-plan-multi-stack-blocks">Recorded and <strong>rejected for now</strong>: repeated per-stack §2 blocks inside one plan. It half-closes the gap — tasks and <code>verify.html</code> still collapse to one stack, so the trace would lie about which stack a test covers.</li>
+    <li defer-to="TBD-verify-per-stack-trace">Recorded and <strong>rejected for now</strong>: making <code>verify.html</code> stack-aware (per-stack test/SLO lanes). Only worth building if D-001 is ever reversed; today it would be structure with no authoring model behind it.</li>
+  </ul>
+</spec-out-of-scope>
+</section>
+
+
+<!-- ======================================================= -->
+<section id="caveats">
+<h2>5 · Caveats on the sources</h2>
+<ul>
+  <li><strong>"The spec is stack-agnostic" is a principle, not a guarantee.</strong> A careless author can leak an
+  implementation detail into a requirement; spectastic's tech-agnostic-SC rule pushes against it but can't fully prevent
+  it. The argument rests on the <em>intended</em> shape of a spec, which is also the SDD canon's.</li>
+  <li><strong>Contract-first covers interfaces, not everything.</strong> An OpenAPI/proto contract is the spine for
+  <em>API-shaped</em> multi-stack work; a polyglot SDK or a cross-platform UI shares intent but not always a single wire
+  contract. The recipe still holds (parent spec + per-stack children), but the "shared spine" is then the parent's
+  requirements, not a generated contract.</li>
+  <li><strong>The child-slice seam wasn't designed for per-stack splits.</strong> It was built for sub-feature slicing
+  (006→007-014). Using it per-stack is a <em>reuse</em>, sound in structure (the schema rules don't care why a child
+  exists) but unproven in practice in this repo — which is exactly why D-002 is guidance to try, not a mandate.</li>
+  <li><strong>"Non-goal" is revisitable.</strong> If a real project hits friction the recipe can't absorb, the rejected
+  TBDs above are the re-entry points. The recommendation is "don't build it yet," not "never."</li>
+</ul>
+</section>
+
+
+<!-- ======================================================= -->
+<section id="sources">
+<h2>6 · Sources</h2>
+<p>Verified 22 Jul 2026. Web-backed research (SDD's technology-agnostic-spec premise; contract-first / OpenAPI-generator as
+the polyglot spine; polyglot-monorepo practice) fused with a codebase audit (<code>detectEcosystems</code> set-return, the
+plan §2 single-stack row, <code>verify.ts</code> stack-blindness, the <code>&lt;spec-parent&gt;</code> child-slice seam,
+and the 042/043 polyglot degrade-to-skip).</p>
+<ol>
+  <li>BCMS, <em>Spec-Driven Development (2026 Guide)</em> — <a href="https://thebcms.com/blog/spec-driven-development">thebcms.com/blog/spec-driven-development</a>: SDD decouples the technology-agnostic what from the how; one spec, many implementations.</li>
+  <li>Wikipedia, <em>Spec-driven development</em> — <a href="https://en.wikipedia.org/wiki/Spec-driven_development">en.wikipedia.org/wiki/Spec-driven_development</a>: the specification is independent of language/framework/platform.</li>
+  <li>OpenAPITools, <em>OpenAPI Generator</em> — <a href="https://github.com/OpenAPITools/openapi-generator">github.com/OpenAPITools/openapi-generator</a>: one OpenAPI contract → clients/servers in many languages; the spec as shared source of truth.</li>
+  <li>M. Ertürk, <em>Polyglot Monorepos</em> — <a href="https://ertyurk.com/posts/polyglot-monorepos-when-your-backend-and-frontend-speak-different-languages/">ertyurk.com/posts/polyglot-monorepos-…</a>: "the key to a polyglot monorepo is a contract between languages" (OpenAPI/proto).</li>
+  <li>Graphite, <em>Managing multiple languages in a monorepo</em> — <a href="https://graphite.com/guides/managing-multiple-languages-in-a-monorepo">graphite.com/guides/managing-multiple-languages-in-a-monorepo</a>: contract standardization across languages; per-language build/test.</li>
+  <li>GitHub, <em>Spec Kit — spec-driven.md</em> — <a href="https://github.com/github/spec-kit/blob/main/spec-driven.md">github.com/github/spec-kit/blob/main/spec-driven.md</a>: the plan stage binds architecture/stack; the spec captures stack-independent intent.</li>
+  <li>Codebase audit (this repo) — <code>packages/core/src/enforce/detect.ts</code> (<code>detectEcosystems: Set</code>, contract-first interface-gating), <code>templates/plan.html</code> §2 (single Language row), <code>packages/core/src/commands/verify.ts</code> (stack-blind), the <code>spec-parent-well-formed</code> / <code>parent-child-reciprocity</code> rules, and <code>specs/042</code>/<code>043</code> (polyglot degrade-to-skip).</li>
+</ol>
+</section>
+
+
+<!-- ======================================================= -->
+<section id="changelog">
+<h2>7 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-07-22">22 Jul 2026</time><span>Initial synthesis. Web-backed research (SDD's technology-agnostic-spec premise — React→Vue, Go→Python; contract-first / OpenAPI-generator as the polyglot spine; polyglot-monorepo practice) fused with a codebase audit (<code>detectEcosystems</code> already returns a set; the plan §2 single <code>Language(s)</code> row and <code>verify.ts</code> stack-blindness are where the model collapses; the <code>&lt;spec-parent&gt;</code> child-slice seam is the only composition mechanism, proven by 006→007-014; polyglot is a deliberate degrade-to-skip in 042/043). Lands "one spec, N stacks" as a <strong>deliberate non-goal</strong> in the modeling layer (D-001) with a sanctioned recipe — parent spec + per-stack child slices + a contract-first spine (D-002) — since the spec is already the stack-agnostic invariant and the stack binds at the plan. Rejects repeated §2 stack blocks and a stack-aware verify (both recorded, revisitable).</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  Spectastic · One spec, many stacks · 22 Jul 2026 ·
+  <a href="../index.html">home</a> ·
+  <a href="./deployment-operations-considerations.html">deployment-operations</a> ·
+  <a href="./stack-selection-considerations.html">stack-selection</a> ·
+  <a href="../specs/006-kernel-extraction/spec.html">006</a> ·
+  <button data-theme-toggle style="background:none;border:none;color:var(--c-link);cursor:pointer;font:inherit;padding:0;border-bottom:1px solid currentColor;">light/dark</button>
+</footer>
+
+</main>
+<script src="../assets/spec.js"></script>
+</body>
+</html>

@@ -24,7 +24,7 @@
     <b>Type</b>       <span>Research synthesis</span>
     <b>Author</b>     <span>Brian Corbin · @briancorbinxyz</span>
     <b>Created</b>    <span><time datetime="2026-07-22">22 Jul 2026</time></span>
-    <b>Sources</b>    <span>14 primary, verified 22 Jul 2026</span>
+    <b>Sources</b>    <span>18 primary, verified 22 Jul 2026</span>
     <b>Companion</b>  <span><a href="./observability-slo-considerations.html">observability-slo</a> · <a href="./agent-architecture-considerations.html">agent-architecture</a></span>
     <b>Read time</b>  <span data-reading-time></span>
   </spec-meta>
@@ -47,7 +47,10 @@
     category</strong> (detection is unreliable). At most, an <em>advisory</em> enterprise-tier principle — "safe
     progressive delivery", "tested disaster recovery" — in the same band as <em>Ship dark by default</em> and
     <em>Service level objectives</em>. Notably, "deployability" is <em>not even a listed quality attribute</em> in ISO
-    25010 — a tell that it is a decision, not a measurable axis.</p>
+    25010 — a tell that it is a decision, not a measurable axis. <strong>Packaging</strong> (containerize or run on
+    bare-metal) is a further concern of the same <em>decision</em> nature — but with a twist: a <code>Dockerfile</code>
+    sits at the app repo root, so unlike rollout config it <mark>is</mark> statically detectable, and the plan can
+    <em>seed</em> that decision from it — still a plan-stage ADR, still not enforced.</p>
   </spec-tldr>
 
   <spec-audience-map>
@@ -120,6 +123,19 @@ capabilities"<spec-sidenote>Blue/green (instant rollback, extra resources), cana
 <strong>architecture decision record</strong>: a context, a decision, and consequences. It belongs where spectastic
 already records decisions: the plan.</p>
 
+<p><strong>Packaging is the same shape of decision.</strong> Containerize or run on bare-metal (or serverless) is another
+ADR-shaped tradeoff — the CNCF frames "containers on bare metal or on virtual machines" as, literally, "an architectural
+decision."<spec-sidenote>Containers on bare metal vs VMs framed as an architectural decision; the isolation/performance/cost
+tradeoff <a href="https://www.cncf.io/blog/2025/11/20/an-architectural-decision-containers-on-bare-metal-or-on-virtual-machines/">[15]</a>,
+<a href="https://www.cloud4c.com/blogs/bare-metal-vs-vms-vs-containers-ultimate-guide-to-modern-infrastructure-operations">[16]</a>.</spec-sidenote>
+A container buys multi-environment consistency and isolation at the cost of overhead and operational complexity — and
+the reverse is a real choice: for a single-server, stable, small-team, predictable-traffic workload, "Docker adds
+complexity without solving real problems," and bare-metal or serverless is simpler.<spec-sidenote>When <em>not</em> to
+containerize — single-server, stable requirements, predictable traffic, small team: the overhead isn't earning its keep
+<a href="https://blog.tothdanieldeveloper.com/docker-vs-bare-metal-for-small-projects/">[17]</a>; containers-on-bare-metal
+vs on-VMs weighs isolation against performance <a href="https://www.techtarget.com/searchitoperations/tip/Explore-the-benefits-of-containers-on-bare-metal-vs-on-VMs">[18]</a>.</spec-sidenote>
+Not a maturity rung; a contextual pick. Same nature, same home — the plan.</p>
+
 <p><strong>Operational readiness is a checklist, not a spec field.</strong> The "is this safe to ship" gate — Google
 SRE's <strong>Production Readiness Review</strong> (which "look[s] at recent incidents and postmortems… gauging the
 demands of emergency response and the availability of well-established operational controls")<spec-sidenote>Google SRE
@@ -153,6 +169,7 @@ decisive argument against making it an enforce category.</p>
   <tbody>
     <tr><td>Metrics stack (observability)</td><td>App's own build manifest (<code>pom.xml</code>, <code>go.mod</code>, <code>package.json</code>)</td><td><strong>Yes</strong> — root-manifest substring</td></tr>
     <tr><td>Deployment strategy (canary/blue-green)</td><td>Argo Rollouts / Flagger CRs, k8s <code>Deployment.strategy</code></td><td><strong>Usually no</strong> — GitOps repo, not the app repo</td></tr>
+    <tr><td><strong>Packaging</strong> (containerize?)</td><td><code>Dockerfile</code> / <code>compose.yaml</code> at the app repo root</td><td><strong>Yes</strong> — a root file, unlike rollout config</td></tr>
     <tr><td>DR posture (backups, failover)</td><td>Terraform / cloud console / runbooks</td><td><strong>No</strong> — infra tier, often another repo/tool</td></tr>
     <tr><td>RTO/RPO targets</td><td>A business decision</td><td><strong>No</strong> — a requirement, not a file</td></tr>
   </tbody>
@@ -175,6 +192,15 @@ Spectastic scans <em>root-only</em> (the sole exception being the contract-first
 would therefore either see nothing in the vast majority of app repos, or require a <code>STRUCTURALLY_UNDETECTABLE</code>
 escape hatch for nearly every stack — the same warn-not-fail crutch coverage needs for Go and observability needs for
 Swift/C++, but here it would be the rule, not the exception. A category that can't honestly fail is not a floor.</p>
+
+<p><spec-newthought>Packaging is the one detectable exception — and still not a requirement.</spec-newthought> A
+<code>Dockerfile</code> sits at the app repo root, so unlike rollout config the tool <em>can</em> see it. But
+<em>detectable</em> is not <em>required</em>: bare-metal services, serverless functions, libraries, and CLIs are all
+perfectly valid <em>without</em> a container, so a "must have a Dockerfile" gate would false-fail whole classes of
+project — not because the signal is missing (as with rollout config) but because its <em>absence is legitimate</em>. So
+detection here earns something narrower and more useful than a gate: it lets the plan <em>pre-seed</em> the packaging
+decision (a detected Dockerfile → "containerized, confirm?") rather than ask it cold. Seed the decision; don't enforce
+the artifact.</p>
 
 <spec-warning><strong>An enforce category here would certify the wrong thing.</strong> Even where a
 <code>Rollout</code> CR <em>is</em> co-located, its presence proves only that a manifest exists — not that the canary
@@ -254,15 +280,28 @@ applied one band over.</p>
   </dl>
 </spec-decision>
 
+<spec-decision id="D-004" grounding="verified">
+  <h4>D-004 · Packaging (containerize vs bare-metal) → a plan-stage decision, seeded from a detected Dockerfile</h4>
+  <dl>
+    <dt>Status</dt><dd><spec-status value="draft">Proposed</spec-status></dd>
+    <dt>Context</dt><dd>Containerize-or-not is an architectural tradeoff (multi-env consistency + isolation vs. overhead + cost), the same nature as deployment strategy — and today it has no home in the taxonomy (no <code>SIGNALS</code> entry, no enforce category, no axis, no plan row). Unlike rollout config, a <code>Dockerfile</code>/<code>compose.yaml</code> is at the app repo root, so it is statically detectable.</dd>
+    <dt>Decision</dt><dd>Add packaging as a <strong>plan-stage decision-phase question</strong>, folded into the deployment-strategy prompt of <a href="#D-001">D-001</a> — but <em>seeded from detection</em>: a root <code>Dockerfile</code> pre-fills "containerized (confirm?)", its absence pre-fills "bare-metal / serverless / n/a". Recorded as a <code>&lt;spec-decision&gt;</code> when non-trivial. <strong>Not</strong> an enforce category and <strong>not</strong> a profile axis.</dd>
+    <dt>Consequences</dt><dd>+ The plan asks a grounded question instead of a cold one — the detected artifact does the first draft. + Reuses the same ADR machinery as D-001; zero new schema. + Keeps the enforce floor honest — absence of a Dockerfile is legitimate (bare-metal / serverless / library / CLI), so a "must containerize" gate could never honestly fail. − Detection sees only <em>that</em> a Dockerfile exists, not whether it's good or actually used to deploy — a recorded ceiling, like the "present ≠ wired" note above. − Containerization isn't "more mature," so an axis would imply a false ordering — deliberately avoided.</dd>
+  </dl>
+</spec-decision>
+
 <h3>Suggested next artifacts</h3>
 <spec-out-of-scope>
   <ul>
     <li defer-to="TBD-plan-deployment-strategy">A <code>/spectastic.propose</code> against the plan verb adding a deployment-strategy decision-phase question → <code>&lt;spec-decision&gt;</code> ADR. Kin to <code>TBD-plan-architecture-prompt</code> (see <a href="./agent-architecture-considerations.html">agent-architecture</a>) — run them as <em>one</em> plan-decision pass, not two edits.</li>
+    <li defer-to="TBD-plan-packaging-decision">A detection-seeded packaging question in that <em>same</em> plan-decision pass — a root <code>Dockerfile</code> pre-fills the default. Fold into <code>TBD-plan-deployment-strategy</code>, not a separate edit.</li>
     <li defer-to="TBD-reliability-nfr-slo-guidance">A spec scaffolding a reliability NFR + recovery SLO (RTO/RPO) in the spec template and the 047 <code>&lt;spec-slo&gt;</code> shape — a prompted example, not a new element.</li>
     <li defer-to="TBD-progressive-delivery-principle">A <code>/spectastic.propose</code> against <code>041-init-profiles</code> adding an advisory <em>safe progressive delivery</em> principle at the enterprise tier (a data/content delta on the profile manifest).</li>
     <li defer-to="TBD-operational-readiness-principle">The sibling advisory principle — <em>tested disaster recovery / operational readiness</em> (PRR/ORR flavour) — at the enterprise tier; run it in the same manifest pass as the one above.</li>
     <li defer-to="TBD-deployment-enforce-category">Recorded and <strong>rejected for now</strong>: a deployment/rollout enforce category. Blocked on a reliable in-repo signal (GitOps repo-separation defeats root-only detection); revisit only if co-located <code>Rollout</code>/<code>Canary</code> CRs become a dependable convention.</li>
     <li defer-to="TBD-deployment-profile-axis">Recorded and <strong>rejected for now</strong>: a deployment/resilience profile axis. The strategy choice is contextual, not a rigor ladder — an axis would imply a false "further-right = better" ordering.</li>
+    <li defer-to="TBD-packaging-enforce-category">Recorded and <strong>rejected for now</strong>: a packaging/containerization enforce category. It <em>is</em> detectable (a root <code>Dockerfile</code>), but absence is legitimate for bare-metal / serverless / library / CLI projects, so the gate could never honestly fail — detection seeds the plan question instead.</li>
+    <li defer-to="TBD-packaging-profile-axis">Recorded and <strong>rejected for now</strong>: a packaging profile axis (<code>bare-metal → container → orchestrated</code>). Containerizing isn't "more mature," it's contextual — the same false-ordering objection as the deployment axis.</li>
   </ul>
 </spec-out-of-scope>
 </section>
@@ -292,8 +331,8 @@ applied one band over.</p>
 <section id="sources">
 <h2>7 · Sources</h2>
 <p>Verified 22 Jul 2026. Web-backed research (ISO 25010 quality model; deployment-strategy canon; production/operational
-readiness; progressive-delivery GitOps tooling) fused with a codebase audit of the profile axes, enforce categories,
-plan template, and the 047/048 SLO chain.</p>
+readiness; progressive-delivery GitOps tooling; containerization vs bare-metal) fused with a codebase audit of the
+profile axes, enforce categories, plan template, and the 047/048 SLO chain.</p>
 <ol>
   <li>Codacy, <em>ISO/IEC 25010 software quality model</em> — <a href="https://blog.codacy.com/iso-25010-software-quality-model">blog.codacy.com/iso-25010-software-quality-model</a>: reliability = availability + fault tolerance + recoverability.</li>
   <li>Cloud Elemental, <em>Workload resilience — RTO and RPO</em> — <a href="https://cloudelemental.com/workload-resilience/">cloudelemental.com/workload-resilience</a>: RTO = max tolerable downtime; RPO = max acceptable data loss.</li>
@@ -309,6 +348,10 @@ plan template, and the 047/048 SLO chain.</p>
   <li>AWS Well-Architected, <em>Reliability Pillar</em> — <a href="https://docs.aws.amazon.com/wellarchitected/latest/reliability-pillar/welcome.html">docs.aws.amazon.com/wellarchitected/latest/reliability-pillar</a>: availability, recovery objectives, safe deployment practices.</li>
   <li>GitHub, <em>Spec Kit — spec-driven development</em> — <a href="https://github.com/github/spec-kit/blob/main/spec-driven.md">github.com/github/spec-kit/blob/main/spec-driven.md</a>: constitution holds cross-cutting NFRs; spec captures non-functional intent — SDD tools prompt architecture/ops per-project, don't prescribe.</li>
   <li>Harness, <em>Blue-green and canary deployments explained</em> — <a href="https://www.harness.io/blog/blue-green-canary-deployment-strategies">harness.io/blog/blue-green-canary-deployment-strategies</a>: graduated exposure and instant-rollback tradeoffs.</li>
+  <li>CNCF, <em>An architectural decision: containers on bare metal or on virtual machines</em> — <a href="https://www.cncf.io/blog/2025/11/20/an-architectural-decision-containers-on-bare-metal-or-on-virtual-machines/">cncf.io/blog/2025/11/20/an-architectural-decision-…</a>: packaging/runtime as an explicit architectural decision.</li>
+  <li>Cloud4C, <em>Bare metal vs VMs vs containers</em> — <a href="https://www.cloud4c.com/blogs/bare-metal-vs-vms-vs-containers-ultimate-guide-to-modern-infrastructure-operations">cloud4c.com/blogs/bare-metal-vs-vms-vs-containers-…</a>: the isolation/performance/cost tradeoff across the three.</li>
+  <li>Tóth Dániel, <em>Docker vs bare metal for small projects</em> — <a href="https://blog.tothdanieldeveloper.com/docker-vs-bare-metal-for-small-projects/">blog.tothdanieldeveloper.com/docker-vs-bare-metal-for-small-projects</a>: when <em>not</em> to containerize — single-server, stable, small-team, predictable traffic.</li>
+  <li>TechTarget, <em>Containers on bare metal vs on VMs</em> — <a href="https://www.techtarget.com/searchitoperations/tip/Explore-the-benefits-of-containers-on-bare-metal-vs-on-VMs">techtarget.com/searchitoperations/tip/…containers-on-bare-metal-vs-on-VMs</a>: weighing direct-hardware performance against VM isolation.</li>
 </ol>
 </section>
 
@@ -319,6 +362,7 @@ plan template, and the 047/048 SLO chain.</p>
 <spec-changelog>
 <ol>
   <li><time datetime="2026-07-22">22 Jul 2026</time><span>Initial synthesis. Web-backed research (ISO 25010 quality model — reliability sub-attributes present, deployability absent; the blue/green/canary/rolling tradeoff canon; Google SRE PRR + AWS ORR readiness reviews; RTO/RPO; progressive-delivery GitOps tooling and its repo separation) fused with a codebase audit (six profile axes, nine enforce categories, the plan §2 Technical-context rows, and the 047/048 NFR→SLO→verify chain — none of which covers deployment/DR). Answers "profile axis or per-project?" by routing each concern to its nature: deployment strategy → a plan-stage ADR (D-001); DR/recoverability → a reliability NFR quantified as an SLO (D-002); runtime mechanics → out of scope, with only an optional advisory enterprise principle (D-003). Explicitly rejects a profile axis and a hard enforce category (both recorded, not silently dropped) — detection is unreliable by construction and the choice is contextual, not a rigor ladder.</span></li>
+  <li><time datetime="2026-07-22">22 Jul 2026</time><span>Added containerization vs bare-metal (a gap in the initial synthesis). Packaging is a fourth concern of the same <em>decision</em> nature as deployment strategy, with one twist: a root <code>Dockerfile</code>/<code>compose.yaml</code> is statically detectable (unlike GitOps rollout config), so the plan can <em>seed</em> the decision from it rather than ask cold (new §3 row + D-004). Still routed to the plan stage, still not an enforce category (absence is legitimate for bare-metal / serverless / library / CLI, so the gate could never honestly fail) and not a profile axis (containerize isn't "more mature"). New sources [15]–[18].</span></li>
 </ol>
 </spec-changelog>
 </section>
