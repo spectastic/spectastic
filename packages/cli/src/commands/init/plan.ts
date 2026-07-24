@@ -17,6 +17,28 @@ import type { BundleInventory, FileWriteDecision } from './types.js';
  * Per D-005 of specs/003-init-node-port/plan.html (FR-002) and
  * specs/018-explain/plan.html D-002 (FR-009).
  */
+/**
+ * The canonical sizes of a default (core-only) scaffold — the single source of
+ * truth for "how many files does `init` write".
+ *
+ * There are deliberately TWO numbers, because conflating them is what let this
+ * drift three ways (spec said 16, the init docblock said 17, the tests asserted
+ * 20 — while the real tree was 21):
+ *
+ *   SCAFFOLD_FILE_COUNT       files written FROM THE BUNDLE — what buildPlan()
+ *                             returns and what the summary reports as `wrote`.
+ *   SCAFFOLD_TREE_FILE_COUNT  files ON DISK afterwards — the bundle files plus
+ *                             the `.gitignore` init generates itself. This is
+ *                             the number 004's SC-001 asserts ("a N-file tree").
+ *
+ * Both are guarded in plan.test.ts: one test asserts the real plan length, one
+ * asserts the tree is exactly one more (the generated .gitignore), and a drift
+ * guard asserts SC-001 states SCAFFOLD_TREE_FILE_COUNT. Change the scaffold →
+ * change these once, and the guards name everything else that must follow.
+ */
+export const SCAFFOLD_FILE_COUNT = 20;
+export const SCAFFOLD_TREE_FILE_COUNT = SCAFFOLD_FILE_COUNT + 1;
+
 export interface BuildPlanOptions {
   inventory: BundleInventory;
   cwd: string;

@@ -43,7 +43,7 @@
   <tbody>
     <tr><td>P-1 · Source order is reading order</td><td><spec-pill>OK</spec-pill></td><td>Applies to plan.html itself.</td></tr>
     <tr><td>P-2 · Semantic tags over class soup</td><td><spec-pill>OK</spec-pill></td><td>Plan uses <code>&lt;spec-decision&gt;</code>, <code>&lt;spec-matrix&gt;</code>, <code>&lt;spec-arch&gt;</code>.</td></tr>
-    <tr><td>P-3 · IDs are contracts</td><td><spec-pill>OK</spec-pill></td><td>D-001..D-005 stable forever.</td></tr>
+    <tr><td>P-3 · IDs are contracts</td><td><spec-pill>OK</spec-pill></td><td>D-001..D-006 stable forever; D-005 is superseded in place by D-006, never renumbered.</td></tr>
     <tr><td>P-4 · Progressive enhancement, never dependence</td><td><spec-pill>OK</spec-pill></td><td>Plan reads without JS. The workflow YAML and its provenance trail are consuming tooling.</td></tr>
     <tr><td>P-5 · Calm density</td><td><spec-pill>OK</spec-pill></td><td>Tight ADRs.</td></tr>
   </tbody>
@@ -67,9 +67,9 @@
 <section id="approach">
 <h2>3 · Approach</h2>
 
-<p>One workflow file, two jobs sharing a YAML anchor for the install + gates. The <code>dry-run</code> job triggers on pull-requests that touch <code>.github/workflows/publish.yml</code>; it installs, typechecks, tests, builds, and runs <code>pnpm publish --dry-run -r</code> — the dry-run flag validates the publish would succeed (resolves <code>workspace:*</code>, checks package contents, etc.) without actually pushing a tarball to npm. The <code>publish</code> job triggers on tag pushes matching <code>v*</code>; it runs the same gates, additionally verifies the tag-derived version matches both packages' <code>package.json</code>, and then publishes for real with <code>--provenance --access public</code> and the version-derived dist-tag.</p>
+<p>One workflow file, two jobs sharing a YAML anchor for the install + gates. The <code>dry-run</code> job triggers on pull-requests that touch <code>.github/workflows/publish.yml</code>; it installs, typechecks, tests, builds, and runs <code>pnpm publish --dry-run -r</code> — the dry-run flag validates the publish would succeed (resolves <code>workspace:*</code>, checks package contents, etc.) without actually pushing a tarball to npm. The <code>publish</code> job triggers on tag pushes matching <code>v*</code>; it runs the same gates, additionally verifies the tag-derived version matches all three packages' <code>package.json</code>, and then publishes for real with <code>--provenance --access public</code> and the derived dist-tag set.</p>
 
-<p>The dist-tag is computed by a tiny bash step: if the version string contains a hyphen (<code>0.1.0-pre.3</code>), publish with <code>--tag next</code>; otherwise <code>--tag latest</code>. Done with one <code>if [[ "$VERSION" == *-* ]]</code> conditional; no Action dependency. Provenance flows through GitHub's OIDC sidecar — the workflow job declares <code>permissions: { id-token: write, contents: read }</code>, npm picks up the short-lived OIDC token at publish time, and the resulting attestation links the tarball back to this specific commit and Actions run.</p>
+<p>The dist-tag set is computed by <code>scripts/derive-dist-tag.mjs</code> (<a href="#D-006">D-006</a>, superseding <a href="#D-005">D-005</a>'s inline bash). It keys on whether a <em>stable release exists</em> rather than on the version string: while no bare-semver version has ever been published, a pre-release moves both <code>next</code> and <code>latest</code>, so the documented bare install resolves to the newest build; once a stable exists the guard engages and pre-releases go to <code>next</code> only. The workflow passes the primary tag to <code>pnpm publish --tag</code> and applies any extra tag with <code>npm dist-tag add</code> across all three packages; an undeterminable registry state fails the run rather than guessing. Provenance flows through GitHub's OIDC sidecar — the workflow job declares <code>permissions: { id-token: write, contents: read }</code>, npm picks up the short-lived OIDC token at publish time, and the resulting attestation links the tarball back to this specific commit and Actions run.</p>
 
 <spec-arch>
 <figure>
@@ -180,10 +180,20 @@
 <spec-decision id="D-005">
   <h4>D-005 · Bash conditional for dist-tag derivation</h4>
   <dl>
-    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Status</dt>       <dd><spec-status value="superseded">Superseded</spec-status> by <a href="#D-006">D-006</a></dd>
     <dt>Context</dt>      <dd><a href="./spec.html#FR-006">FR-006</a> requires the dist-tag to derive from the version string: pre-releases on <code>next</code>, bare semver on <code>latest</code>. Options: a custom Action, a Node script, or an inline bash conditional.</dd>
     <dt>Decision</dt>     <dd>Inline bash in the workflow: <code>if [[ "$VERSION" == *-* ]]; then DIST_TAG=next; else DIST_TAG=latest; fi</code>. No dependency; readable in the YAML; easy to extend if the rule grows.</dd>
     <dt>Consequences</dt> <dd>+ Zero dependencies; works on the default ubuntu-latest shell. + One line of logic, one line of test (the dry-run job covers it). − If the rule grows beyond "contains a hyphen → next," promote to a small <code>scripts/derive-dist-tag.mjs</code>. Not anticipated.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-006">
+  <h4>D-006 · Promote the dist-tag derivation to a tested script</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>The rule <a href="#D-005">D-005</a> implemented has grown exactly as D-005 anticipated. Applying <a href="./changes/archive/2026-07-23-prerelease-latest-dist-tag/proposal.html">2026-07-23-prerelease-latest-dist-tag</a>, <a href="./spec.html#FR-006">FR-006</a> now keys on whether a <em>stable release exists</em> rather than on the version string, moves two tags across three packages, and must fail rather than guess when the registry state can't be determined. That is four branches, a network call and a failure path — no longer "one line of logic".</dd>
+    <dt>Decision</dt>     <dd>Take D-005's own escape hatch: move the derivation into <code>scripts/derive-dist-tag.mjs</code>, splitting a pure <code>deriveDistTags(version, publishedVersions)</code> from the one function that touches the network. The workflow calls the script and reads back a primary tag (passed to <code>pnpm publish --tag</code>) plus any extra tags applied with <code>npm dist-tag add</code>. Kept as repo release tooling rather than moved into <code>@spectastic/core</code> — it is infrastructure, not product domain, and should not ship in a published package.</dd>
+    <dt>Consequences</dt> <dd>+ Every branch is unit-tested (<code>scripts/derive-dist-tag.test.ts</code>, 11 cases) instead of executing for the first time during a live publish — the riskiest place to be wrong. + The RC-window case (<code>1.0.0-rc.*</code> before any stable) is pinned by a test, not just prose. + <code>vitest.config.ts</code>'s include widens to <code>scripts/**/*.test.ts</code>, so release tooling is covered by the normal suite. − A release now depends on registry <em>availability</em>, not just registry writes; an undeterminable state fails the run deliberately, and the README rollback runbook covers recovering from a bad tag. − One more file outside <code>packages/</code>.</dd>
   </dl>
 </spec-decision>
 </section>

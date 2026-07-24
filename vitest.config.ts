@@ -2,7 +2,10 @@ import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
   test: {
-    include: ['packages/**/*.test.ts'],
+    // packages/** is the product; scripts/** is release tooling (the dist-tag
+    // derivation FR-006 requires), which is deliberately not shipped in a
+    // published package but still needs its branches tested.
+    include: ['packages/**/*.test.ts', 'scripts/**/*.test.ts'],
     reporters: ['default'],
     // The integration tier spawns real git + CLI processes (git/git-trailers/
     // init/init-tools). Under the full suite's parallel load those exceed the

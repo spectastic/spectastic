@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
+import { SCAFFOLD_TREE_FILE_COUNT } from '../../src/commands/init/plan.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const CLI = resolve(here, '..', '..', 'bin', 'spectastic');
@@ -67,15 +68,15 @@ describe('init: smoke (T-102)', () => {
     ).toBe(true);
   });
 
-  it('empty dir → 20 files, exit 0, summary present (FR-001, FR-002, FR-006, FR-007)', async () => {
+  it('empty dir → the full scaffold tree, exit 0, summary present (FR-001, FR-002, FR-006, FR-007)', async () => {
     const tmpDir = mkdtempSync(join(tmpdir(), 'spectastic-init-smoke-'));
     const r = await runCLI(['init'], tmpDir);
     expect(r.code, `stderr: ${r.stderr}\nstdout: ${r.stdout}`).toBe(0);
 
     const files = listFilesRecursive(tmpDir).sort();
-    // 21 = 8 core commands + .gitignore + 4 assets + 8 templates. (Was 20 before a
-    // template was added; the count assertion had drifted — corrected in passing.)
-    expect(files.length).toBe(21);
+    // The ON-DISK tree: bundle files + the .gitignore init generates itself.
+    // Single-sourced so it can't drift from SC-001 again (T-1005).
+    expect(files.length).toBe(SCAFFOLD_TREE_FILE_COUNT);
     expect(files).toContain('.claude/commands/spectastic.spec.md');
     expect(files).toContain('assets/theme-boot.js');
     expect(files).toContain('assets/favicon.svg');

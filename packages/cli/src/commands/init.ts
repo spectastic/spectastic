@@ -97,8 +97,12 @@ async function runToolsMode(options: InitOptions): Promise<void> {
 
 /**
  * Register the `init` subcommand. Bootstraps a spectastic project in
- * the current working directory by writing the canonical 17-file
- * lifecycle structure (8 slash commands + 2 assets + 7 templates).
+ * the current working directory by writing the canonical lifecycle
+ * structure (8 slash commands + 4 assets + 8 templates), plus a
+ * generated .gitignore. The counts are single-sourced as
+ * SCAFFOLD_FILE_COUNT / SCAFFOLD_TREE_FILE_COUNT in init/plan.ts —
+ * this docblock deliberately names no number, having previously drifted
+ * to "17" while the real tree was 21.
  *
  * Per FR-001..FR-009 of specs/003-init-node-port/spec.html.
  * Conflict UX delegates to `resolveConflicts` (prompt.ts); --force

@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { resolveBundle } from '../../src/commands/init/bundle.js';
-import { buildPlan } from '../../src/commands/init/plan.js';
+import { buildPlan, SCAFFOLD_FILE_COUNT } from '../../src/commands/init/plan.js';
 import { executeWrites } from '../../src/commands/init/write.js';
 
 /**
@@ -16,7 +16,7 @@ describe('init: writer (T-101, FR-002, FR-008)', () => {
     const plan = buildPlan({ inventory, cwd });
     const summary = await executeWrites(plan);
 
-    expect(summary.wrote).toBe(20);
+    expect(summary.wrote).toBe(SCAFFOLD_FILE_COUNT);
     expect(summary.overwrote).toBe(0);
     expect(summary.skipped).toBe(0);
 
