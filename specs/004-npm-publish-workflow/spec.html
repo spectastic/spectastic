@@ -120,8 +120,30 @@
 </spec-requirement>
 
 <spec-requirement id="FR-006" priority="must">
-<p>The dist-tag <spec-rule>MUST</spec-rule> be derived from the version: if the version contains a hyphen (matching <code>X.Y.Z-*</code>, the pre-release pattern), publish with <code>--tag next</code>. If the version is bare semver (<code>X.Y.Z</code>), publish with <code>--tag latest</code>. This keeps <code>npm i @spectastic/cli</code> (no tag) from accidentally pulling pre-releases.</p>
-</spec-requirement>
+    <p>The dist-tag <spec-rule>MUST</spec-rule> be derived from the version being published together with the
+    package's existing release history on the registry.</p>
+    <p>While <strong>no stable release exists</strong> — no bare-semver (<code>X.Y.Z</code>) version of the
+    package has ever been published — a pre-release publish <spec-rule>MUST</spec-rule> move both
+    <code>next</code> and <code>latest</code>, so the documented bare install
+    (<code>npm i -g @spectastic/cli</code>) resolves to the newest published build. This holds for
+    <code>0.y.z</code> pre-releases and <code>1.0.0-rc.*</code> alike: until a stable version exists there is
+    nothing safer for <code>latest</code> to point at.</p>
+    <p>Once a <strong>stable release exists</strong>, the guard applies: a pre-release (a version containing a
+    hyphen, matching <code>X.Y.Z-*</code>) <spec-rule>MUST</spec-rule> publish with <code>--tag next</code>
+    only, and a bare semver version <spec-rule>MUST</spec-rule> publish with <code>--tag latest</code> —
+    keeping <code>npm i @spectastic/cli</code> (no tag) from pulling a pre-release once there is a stable
+    version to fall back to.</p>
+    <p>If the registry query that determines whether a stable release exists cannot be completed, the workflow
+    <spec-rule>MUST</spec-rule> fail rather than guess a dist-tag.</p>
+    <details><summary>Rationale</summary><p>The original rule reserved <code>latest</code> for bare semver so a
+    bare <code>npm i</code> could never land on a pre-release. Sound, but it presumes a stable release exists.
+    None does, so <code>latest</code> froze at <code>0.1.0-pre.3</code> while <code>next</code> reached
+    <code>0.1.0-pre.18</code> — and the install path named by <a href="../../spec.html#SC-001">SC-001</a> and
+    <a href="../../spec.html#SC-004">SC-004</a> served a build months behind. Keying on the <em>existence</em>
+    of a stable release rather than the version string also covers the release-candidate window: a
+    version-string rule would send <code>1.0.0-rc.1</code> to <code>next</code> only and re-freeze
+    <code>latest</code> on the last <code>0.x</code> pre-release until <code>1.0.0</code> final.</p></details>
+  </spec-requirement>
 
 <spec-requirement id="FR-007" priority="must">
 <p>The workflow <spec-rule>MUST</spec-rule> re-run the prebuild step (refreshing <code>packages/cli/_bundled/</code>) before publish, so the shipped <code>@spectastic/cli</code> tarball includes a bundle generated from the tagged commit's <code>commands/</code>, <code>assets/</code>, and <code>templates/</code>. A stale or missing <code>_bundled/</code> <spec-rule>MUST</spec-rule> halt the publish.</p>
@@ -179,8 +201,17 @@
 <p>Technology-agnostic, measurable outcomes.</p>
 
 <spec-requirement id="SC-001" priority="must">
-<p>Post-publish, an outside user with Node 20+ and no clone runs <code>npm i -g @spectastic/cli</code>, then <code>spectastic init</code> in an empty directory yields a 16-file tree byte-identical to the local-clone install; <code>spectastic validate</code> against a sample spec.html produces correct findings or a clean pass.</p>
-</spec-requirement>
+    <p>Post-publish, an outside user with Node 20+ and no clone runs <code>npm i -g @spectastic/cli</code>, then
+    <code>spectastic init</code> in an empty directory yields a 20-file tree byte-identical to the local-clone
+    install; <code>spectastic validate</code> against a sample <code>spec.html</code> produces correct findings
+    or a clean pass.</p>
+    <details><summary>Rationale</summary><p>The criterion's shape is unchanged — a published install must match a
+    local-clone install exactly. Only the count was stale: the scaffold has grown to 20 files (asserted in
+    <code>packages/cli/test/init/plan.test.ts</code>, <code>write.test.ts</code> and <code>smoke.test.ts</code>),
+    so the written <code>16</code> would fail a literal reading of its own success criterion. The number is
+    stated in three places that had already drifted apart (spec <code>16</code>, <code>init.ts</code> comment
+    <code>17</code>, tests <code>20</code>), so a single source of truth and a drift-guard test land with it.</p></details>
+  </spec-requirement>
 
 <spec-requirement id="SC-002" priority="must">
 <p>Each published version's npmjs.com page displays a provenance attestation linking to a specific <code>github.com/spectastic/spectastic</code> commit and workflow run; the link resolves.</p>
@@ -239,6 +270,7 @@
   <li><time datetime="2026-06-16">16 Jun 2026</time><span>Applied <a href="./changes/archive/2026-06-16-carve-out-local-fallback/proposal.html">2026-06-16-carve-out-local-fallback</a>: removed FR-009; modified SC-004 to narrow to the npm-i-g clause only. Both migrations carved into sibling slice <a href="../005-publish-local-fallback/spec.html">005-publish-local-fallback</a> — first worked example in the repo of the parent / child slicing pattern. Adversarial pass produced 3 risks; R-001 + R-002 mitigated, R-003 accepted (doc-only slice's INVEST-V cost owned, not denied). 004's <code>&lt;spec-budget reqs&gt;</code> dropped 18 → 17.</span></li>
   <li><time datetime="2026-06-16">16 Jun 2026</time><span>Trim pass: §1 Context compressed to one paragraph, edge-cases bullets and §4 Data model + §6 Assumptions wrapped in <code>&lt;details&gt;</code>, US acceptance and SC bodies tightened, post-carve OOS migration entry collapsed to one bullet. Spec recovered from ~140% to 99.3% of budget. Prose-only; no requirement deltas.</span></li>
   <li><time datetime="2026-07-10">10 Jul 2026</time><span>Status flipped Draft → Accepted on 10 Jul 2026 — zero remaining unchecked tasks; SC verification complete per author confirmation, incl. SC-003 confirmed live (PR #24: the dry-run job failed at the Test step and skipped Dry-run publish — the gate fails before the publish path). Sibling bundle (REQ-LIFECYCLE-005).</span></li>
+  <li><time datetime="2026-07-24">24 Jul 2026</time><span>Applied <a href="./changes/archive/2026-07-23-prerelease-latest-dist-tag/proposal.html">2026-07-23-prerelease-latest-dist-tag</a>: Version-keys FR-006's dist-tag rule so a pre-release moves both next and latest while no stable release exists yet, closing the gap where the README's bare npm install served a months-old build (latest frozen at 0.1.0-pre.3 while next reached pre.18); also corrects SC-001's stale 16-file scaffold assertion to the 20 init actually writes..</span></li>
 </ol>
 </spec-changelog>
 </section>
