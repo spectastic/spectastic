@@ -1,0 +1,230 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
+<title>Corpus in the prompt · Specification</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Specification · 054-corpus-in-prompt</p>
+  <h1>Corpus in the prompt</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    Presence is guaranteeable; use is only directable. Core places the corpus in front of the model every time — the rest is honestly advisory.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>      <span><spec-status value="draft">Draft</spec-status></span>
+    <b>Spec ID</b>     <span>054-corpus-in-prompt</span>
+    <b>Owner</b>       <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Reviewers</b>   <span>—</span>
+    <b>Created</b>     <span><time datetime="2026-07-25">25 Jul 2026</time></span>
+    <b>Principles</b><span><a href="../../principles.html">v1.8.0</a></span>
+    <b>Smallest demoable</b><span>An assembled AI-verb prompt, inspected, contains the corpus index + a grounding directive when a corpus exists; nothing when it doesn't.</span>
+    <b>Read time</b>   <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-budget words="1500" reqs="20" minutes="12"></spec-budget>
+
+  <spec-tldr>
+    <p>A corpus the harness merely <em>suggests</em> the agent look for is worth little — and a naive nudge is dangerous, since
+    merely-prompted citation is where models fabricate sources. The honest lever splits along the guarantee-layer line:
+    <strong>presence is guaranteeable, use is only directable</strong>. When a corpus exists, core <strong>injects</strong> its
+    index and a grounding directive into every AI-verb prompt — deterministically, exactly as <code>plan.ts</code> /
+    <code>spec.ts</code> already fence the principles. That is the directive: it <em>places</em> the corpus in front of the
+    model, not markdown asking the model to look. Use stays advisory by necessity — a prompt can't force the model to cite,
+    and no build gate can tell a <em>missed</em> domain claim from a <em>legitimately local</em> one. With no corpus, core
+    injects nothing beyond a single one-time hint; verbs run identically to today.</p>
+  </spec-tldr>
+
+  <dl class="invest">
+    <dt><span class="letter">I</span> Independent</dt> <dd>Depends on <a href="../051-knowledge-corpus/spec.html">051</a> (the corpus + index) and <a href="../052-corpus-citation-contract/spec.html">052</a> (the citation form the directive references). Touches prompt assembly only.</dd>
+    <dt><span class="letter">N</span> Negotiable</dt>  <dd>The guarantee (index present, fenced, deterministic) is the contract; the exact prompt wording is the plan's.</dd>
+    <dt><span class="letter">V</span> Valuable</dt>    <dd>Unlocks <a href="#SC-001">SC-001</a> — the corpus is in front of the model on every relevant verb without the author remembering to point it there.</dd>
+    <dt><span class="letter">E</span> Estimable</dt>   <dd>The injection point mirrors the existing principles fencing; no open question blocks estimation.</dd>
+    <dt><span class="letter">S</span> Small</dt>       <dd>Four FRs, one NFR — a deterministic injection and its absence.</dd>
+    <dt><span class="letter">T</span> Testable</dt>    <dd>Presence is byte-verifiable in an assembled prompt; absence is verifiable as the empty case.</dd>
+  </dl>
+
+  <spec-audience-map>
+    <dl>
+      <dt>Exec / PM</dt>   <dd>§<a href="#context">Context</a>, §<a href="#scenarios">User scenarios</a>, §<a href="#success">Success criteria</a>.</dd>
+      <dt>Reviewer</dt>    <dd>§<a href="#requirements">Requirements</a>, §<a href="#assumptions">Assumptions</a>, §<a href="#questions">Open questions</a>.</dd>
+      <dt>Implementer</dt> <dd>§<a href="#requirements">Requirements</a>, §<a href="#data">Data model</a>, §<a href="#conformance">Conformance index</a>.</dd>
+    </dl>
+  </spec-audience-map>
+</header>
+
+
+<section id="context">
+<h2>1 · Context</h2>
+<p>The corpus exists (<a href="../051-knowledge-corpus/spec.html">051</a>) and a decision can cite it
+(<a href="../052-corpus-citation-contract/spec.html">052</a>) — but neither helps if the model never sees the corpus. A
+directive buried in command markdown ("look for a knowledge folder") is exactly the kind of soft nudge the guarantee-layer
+work shows cannot be relied on: a skill is advisory to the model, and merely-prompted citation is reported as the regime
+where models fabricate sources at 78–90%. The reliable move is not to <em>ask</em> the model to look, but to <em>place</em>
+the corpus in the prompt deterministically — the same thing the AI verbs already do with the principles.</p>
+<p>This spec draws the honest line between what the harness can guarantee (the corpus is <em>present</em> in every prompt) and
+what it cannot (the model actually <em>grounds against it</em>). The first is deterministic and owned here; the second stays
+advisory, because "is this a domain claim?" is undecidable and a hard gate would false-fail whole specs.</p>
+</section>
+
+
+<section id="scenarios">
+<h2>2 · User scenarios &amp; testing</h2>
+
+<p>Each story <strong>MUST</strong> be independently testable.</p>
+
+<h3 id="US1">US1 · The corpus is placed in front of the model <spec-pill>P1</spec-pill></h3>
+<p>As a <strong>plan author</strong>, I want <strong>core to inject the corpus index and a grounding directive into the AI-verb prompt automatically</strong> so that <strong>I don't have to remember to point the model at the corpus, and grounding isn't left to a soft nudge</strong>.</p>
+<p><em>Acceptance:</em> when a corpus exists, an assembled <code>plan</code> / <code>spec</code> prompt contains the corpus index and the grounding directive, fenced.</p>
+
+<h3 id="US2">US2 · The injection is harness-owned and deterministic <spec-pill>P2</spec-pill></h3>
+<p>As a <strong>maintainer</strong>, I want <strong>the injection to be deterministic and owned by core — not markdown asking the model to look</strong> so that <strong>the same corpus always yields the same block, independent of the model running</strong>.</p>
+<p><em>Acceptance:</em> the injected block's content and position are a function of the corpus alone; re-running with the same corpus produces the same block.</p>
+
+<h3 id="US3">US3 · No corpus, no noise <spec-pill>P3</spec-pill></h3>
+<p>As a <strong>no-corpus user</strong>, I want <strong>zero corpus injection plus a single discreet hint</strong> so that <strong>the tool stays quiet and works exactly as before</strong>.</p>
+<p><em>Acceptance:</em> with no corpus, the assembled prompt contains no corpus block; at most one one-time hint is surfaced.</p>
+
+<h3>Edge cases</h3>
+<ul>
+  <li>A corpus larger than the context window — progressive disclosure means the <em>index</em> is injected, not every document; the model pulls documents as the work calls for them (agentic search, 051 FR-008).</li>
+  <li>The model reads the injected corpus but grounds nothing — permitted; use is advisory, and no gate infers a missed claim (<a href="#FR-004">FR-004</a>).</li>
+  <li>Corpus text containing injection payloads — neutralised by the fence before it reaches the model (<a href="#FR-002">FR-002</a>).</li>
+</ul>
+</section>
+
+
+<section id="requirements">
+<h2>3 · Requirements</h2>
+
+<p>Conformance keywords (<spec-rule>MUST</spec-rule>, <spec-rule level="should">SHOULD</spec-rule>,
+<spec-rule level="may">MAY</spec-rule>) follow RFC 2119.</p>
+
+<h3>Functional</h3>
+
+<spec-requirement id="FR-001" priority="must">
+<p>When a corpus is present, core <spec-rule>MUST</spec-rule> inject its index and a grounding directive into every AI-verb prompt, via the same fenced mechanism that already injects the principles.</p>
+<details><summary>Rationale</summary><p>This is the deterministic "present in context" guarantee. It reuses the established pattern (<code>plan.ts</code> / <code>spec.ts</code> fencing the principles) rather than inventing a new placement, so the corpus is in front of the model on every relevant verb.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-002" priority="must">
+<p>Injected corpus text <spec-rule>MUST</spec-rule> pass through <code>fenceArtifactText()</code> and be wrapped in the explicit "data, not instructions" guard (<a href="../../principles.html#P-11">P-11</a>).</p>
+<details><summary>Rationale</summary><p>A third-party document is a strictly worse injection surface than an in-repo artifact. The existing fence already strips comments, hidden elements, and <code>data:</code> URIs and normalises Unicode; it must not be forked or bypassed.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-003" priority="must">
+<p>With no corpus present, core <spec-rule>MUST NOT</spec-rule> inject any corpus-related content beyond a single one-time discreet hint; the verbs <spec-rule>MUST</spec-rule> run identically to today.</p>
+<details><summary>Rationale</summary><p>The graceful-absence guarantee (051 NFR-001) at the prompt-assembly boundary. The hint makes the capability discoverable without imposing on projects that don't want a corpus.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-004" priority="should">
+<p>Grounding <em>use</em> <spec-rule level="should">SHOULD</spec-rule> remain advisory — the directive asks the model to cite, but presence is the only guarantee. No build gate <spec-rule>MUST</spec-rule> infer a <em>missed</em> domain claim from the model's output.</p>
+<details><summary>Rationale</summary><p>A prompt cannot force the model to cite, and "is this a domain claim?" is undecidable — a hard gate would false-fail legitimately-local decisions. This is why grounding stays a warning (checked by <a href="../053-corpus-grounding-gates/spec.html">053</a>) and never becomes a build failure over a <em>missed</em> citation.</p></details>
+</spec-requirement>
+
+<h3>Non-functional</h3>
+
+<spec-requirement id="NFR-001" priority="must">
+<p>Injection <spec-rule>MUST</spec-rule> be presence-deterministic — the same corpus yields the same injected block, position, and content, independent of the model.</p>
+</spec-requirement>
+
+<h3>Out of scope (deferred to other slices)</h3>
+<spec-out-of-scope>
+  <ul>
+    <li defer-to="053-corpus-grounding-gates">Whether a written citation resolves or is stale — that is a validate-time check, not a prompt-assembly one.</li>
+    <li defer-to="055-corpus-in-review">Injecting the corpus into the adversarial critic and the review skills (the same guarantee, different surfaces).</li>
+    <li defer-to="059-corpus-retrieval-scale">Selecting <em>which</em> documents to inject when a corpus exceeds the context window via retrieval, rather than injecting the index.</li>
+  </ul>
+</spec-out-of-scope>
+</section>
+
+
+<section id="data">
+<h2>4 · Data model</h2>
+
+<p>The entities this feature owns.</p>
+
+<h3>Entities</h3>
+<dl>
+  <dt>Injected corpus block</dt><dd>The fenced prompt segment. Fields: the corpus index (051 FR-004), the grounding directive, the P-11 guard wrapper. Present iff a corpus exists.</dd>
+  <dt>Grounding directive</dt><dd>The harness-owned instruction to cite domain facts against the corpus in a <code>&lt;spec-decision grounding&gt;</code> (the binding from 052 FR-004, emitted here — never from a pack).</dd>
+</dl>
+
+<spec-note>
+<p>Invariant: the injected block is derived from the corpus index, not from document bodies — progressive disclosure. The model pulls document bodies via agentic search only when the work calls for them.</p>
+</spec-note>
+</section>
+
+
+<section id="success">
+<h2>5 · Success criteria</h2>
+
+<p>Technology-agnostic, measurable outcomes.</p>
+
+<spec-requirement id="SC-001" priority="must">
+<p>An assembled <code>plan</code> / <code>spec</code> prompt contains the corpus index and the grounding directive, byte-verifiable, whenever a corpus exists.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-002" priority="must">
+<p>With no corpus, the assembled prompt contains no corpus block; a full verb run is byte-identical to today apart from the one-time hint.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-003" priority="should">
+<p>Re-assembling the prompt with the same corpus produces an identical injected block (position and content), confirming presence-determinism.</p>
+</spec-requirement>
+</section>
+
+
+<section id="assumptions">
+<h2>6 · Assumptions</h2>
+
+<spec-assumption>
+<p>The corpus index (051 FR-004) is small enough to inject wholesale into every AI-verb prompt without displacing the artifacts the verb needs; document bodies are pulled on demand, not injected.</p>
+</spec-assumption>
+
+<spec-assumption>
+<p>The existing principles-fencing mechanism in the AI verbs is a stable extension point that a corpus block can join without restructuring prompt assembly.</p>
+</spec-assumption>
+</section>
+
+
+<section id="questions">
+<h2>7 · Open questions</h2>
+<spec-questions>
+<p>None outstanding — the presence-guaranteed / use-advisory split and the no-corpus behaviour (silent no-op + one-time hint) were anchored in the interview.</p>
+</spec-questions>
+</section>
+
+
+<section id="conformance">
+<h2>8 · Conformance index</h2>
+<p>Auto-built from every <code>&lt;spec-requirement&gt;</code> in this document.</p>
+<spec-conformance></spec-conformance>
+</section>
+
+
+<section id="changelog">
+<h2>9 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-07-25">25 Jul 2026</time><span>Initial draft. Owns <code>TBD-corpus-prompt-injection</code> from the <a href="../../docs/knowledge-base-considerations.html">knowledge-base considerations</a> survey (§8) — core injects the corpus index + a grounding directive into every AI-verb prompt (the deterministic presence guarantee), fenced through <code>fenceArtifactText()</code>, with grounding <em>use</em> kept advisory. Builds on <a href="../051-knowledge-corpus/spec.html">051</a> + <a href="../052-corpus-citation-contract/spec.html">052</a>; the review-surface sibling is <a href="../055-corpus-in-review/spec.html">055</a>.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  054-corpus-in-prompt · Corpus in the prompt · authored 25 Jul 2026
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>

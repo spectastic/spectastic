@@ -1,0 +1,230 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
+<title>Corpus adapter · Specification</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Specification · 056-corpus-adapter</p>
+  <h1>Corpus adapter</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    Most teams already hold their knowledge in <em>some</em> shape. Meet them where it is — and never fabricate the provenance you can't derive.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>      <span><spec-status value="draft">Draft</spec-status></span>
+    <b>Spec ID</b>     <span>056-corpus-adapter</span>
+    <b>Owner</b>       <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Reviewers</b>   <span>—</span>
+    <b>Created</b>     <span><time datetime="2026-07-25">25 Jul 2026</time></span>
+    <b>Principles</b><span><a href="../../principles.html">v1.8.0</a></span>
+    <b>Smallest demoable</b><span>Point the adapter at a folder of markdown → get <code>KB-NNN</code> frontmatter + a curated index that validates.</span>
+    <b>Read time</b>   <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-budget words="1500" reqs="20" minutes="12"></spec-budget>
+
+  <spec-tldr>
+    <p>First-class treatment (citable, edition-pinned, gated) is a property of the <em>convention</em>, not of any particular
+    pile of files — so the honest answer to "I already have a knowledge base" is a tier, not a door. This spec builds the
+    <strong>adapt</strong> tier: a deterministic Node generator that emits provenance frontmatter and a curated index
+    <em>from</em> an existing corpus shape (a markdown folder, an <code>llms.txt</code>), turning a user's own knowledge base
+    first-class in one pass. It owns no PDF converter — document conversion stays the user's step — and it <strong>never
+    invents provenance it cannot derive</strong>: an unknown license or origin is an explicit <code>TODO</code> marker, never a
+    fabricated value. Conversion is lossy and its losses are silent, so the adapter surfaces that caveat and prompts a
+    spot-check.</p>
+  </spec-tldr>
+
+  <dl class="invest">
+    <dt><span class="letter">I</span> Independent</dt> <dd>Depends on <a href="../051-knowledge-corpus/spec.html">051</a> (the target shape it emits into) and principles. A standalone generator.</dd>
+    <dt><span class="letter">N</span> Negotiable</dt>  <dd>The inputs it accepts and the "never fabricate" rule are the contract; parsing internals are the plan's.</dd>
+    <dt><span class="letter">V</span> Valuable</dt>    <dd>Unlocks <a href="#SC-001">SC-001</a> — an existing markdown corpus becomes citable without hand-writing provenance.</dd>
+    <dt><span class="letter">E</span> Estimable</dt>   <dd>Inputs (markdown folder, <code>llms.txt</code>), outputs (frontmatter + index), and the TODO-marker rule are specified.</dd>
+    <dt><span class="letter">S</span> Small</dt>       <dd>Four FRs, one NFR — one generator with a strict no-fabrication boundary.</dd>
+    <dt><span class="letter">T</span> Testable</dt>    <dd>Adapting N files yields N documents + an N-row index; unknown fields appear as TODO; re-running produces no duplicates.</dd>
+  </dl>
+
+  <spec-audience-map>
+    <dl>
+      <dt>Exec / PM</dt>   <dd>§<a href="#context">Context</a>, §<a href="#scenarios">User scenarios</a>, §<a href="#success">Success criteria</a>.</dd>
+      <dt>Reviewer</dt>    <dd>§<a href="#requirements">Requirements</a>, §<a href="#assumptions">Assumptions</a>, §<a href="#questions">Open questions</a>.</dd>
+      <dt>Implementer</dt> <dd>§<a href="#requirements">Requirements</a>, §<a href="#data">Data model</a>, §<a href="#conformance">Conformance index</a>.</dd>
+    </dl>
+  </spec-audience-map>
+</header>
+
+
+<section id="context">
+<h2>1 · Context</h2>
+<p>Adopting the convention wholesale (<a href="../051-knowledge-corpus/spec.html">051</a>) is the most work and the most
+guarantee. But most teams with specialist knowledge already hold it in <em>some</em> shape — a folder of markdown, an
+<code>llms.txt</code> index — and asking them to re-author provenance by hand is friction that keeps a good corpus out of the
+convention. The considerations doc frames this as a tier: <em>adopt</em> (move it in, hand-authored), <em>adapt</em> (run a
+generator that emits the frontmatter and index from an existing shape), or <em>bridge</em> live via MCP. This spec is the
+<em>adapt</em> rung.</p>
+<p>The sharp edge is honesty. Conversion and adaptation are lossy, and a citation makes a wrong fact <em>more</em> credible,
+not less. So the adapter has one inviolable rule: it emits what it can derive and marks what it can't as an explicit
+<code>TODO</code> — it never manufactures a license, an origin, or an edition it did not read. A fabricated provenance field
+is worse than a missing one.</p>
+</section>
+
+
+<section id="scenarios">
+<h2>2 · User scenarios &amp; testing</h2>
+
+<p>Each story <strong>MUST</strong> be independently testable.</p>
+
+<h3 id="US1">US1 · An existing markdown folder becomes citable <spec-pill>P1</spec-pill></h3>
+<p>As a <strong>team with a markdown knowledge folder</strong>, I want <strong>an adapter that emits frontmatter and a curated index from it</strong> so that <strong>my corpus becomes citable without hand-writing provenance for every file</strong>.</p>
+<p><em>Acceptance:</em> pointing the adapter at a folder of N markdown files yields N documents carrying <code>KB-NNN</code> frontmatter and an N-row index that <code>spectastic validate</code> accepts.</p>
+
+<h3 id="US2">US2 · An <code>llms.txt</code> as the index source <spec-pill>P2</spec-pill></h3>
+<p>As a <strong>user with an <code>llms.txt</code></strong>, I want <strong>the adapter to read it as the index source</strong> so that <strong>the curated map I already maintain seeds the corpus index</strong>.</p>
+<p><em>Acceptance:</em> the adapter reads an <code>llms.txt</code> and produces a corpus index whose rows correspond to its entries.</p>
+
+<h3 id="US3">US3 · Nothing is fabricated <spec-pill>P3</spec-pill></h3>
+<p>As a <strong>cautious adopter</strong>, I want <strong>the adapter to mark provenance it cannot derive as <code>TODO</code> and to warn that conversion is lossy</strong> so that <strong>I know exactly what to spot-check rather than trusting a confident but hollow field</strong>.</p>
+<p><em>Acceptance:</em> a source file with no discernible license/origin yields <code>license: TODO</code> / <code>origin: TODO</code> (never a guessed value), and the adapter surfaces a spot-check caveat.</p>
+
+<h3>Edge cases</h3>
+<ul>
+  <li>Re-running the adapter on an already-adapted corpus — no duplicate IDs, no duplicate index rows (<a href="#NFR-001">NFR-001</a>).</li>
+  <li>A source folder mixing already-adapted and raw files — adapted files are left intact; only raw files gain frontmatter.</li>
+  <li>A PDF in the source folder — out of scope; the adapter consumes markdown, and conversion is documented, never shipped (<a href="#FR-004">FR-004</a>).</li>
+</ul>
+</section>
+
+
+<section id="requirements">
+<h2>3 · Requirements</h2>
+
+<p>Conformance keywords (<spec-rule>MUST</spec-rule>, <spec-rule level="should">SHOULD</spec-rule>,
+<spec-rule level="may">MAY</spec-rule>) follow RFC 2119.</p>
+
+<h3>Functional</h3>
+
+<spec-requirement id="FR-001" priority="must">
+<p>The adapter <spec-rule>MUST</spec-rule> emit provenance frontmatter (<code>KB-NNN</code> IDs plus the 051 fields) and a curated index from an existing corpus shape — a folder of markdown, or an <code>llms.txt</code>.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-002" priority="must">
+<p>The adapter <spec-rule>MUST NOT</spec-rule> invent provenance it cannot derive — an unknown <code>license</code>, <code>origin</code>, <code>origin-url</code>, or <code>edition</code> <spec-rule>MUST</spec-rule> be emitted as an explicit <code>TODO</code> marker, never a fabricated value. A content hash <spec-rule>MUST</spec-rule> be computed where the source is present.</p>
+<details><summary>Rationale</summary><p>Adaptation is lossy, and a citation makes a wrong fact more credible. A fabricated provenance field manufactures false confidence; an explicit <code>TODO</code> tells the user exactly what to verify.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-003" priority="should">
+<p>The adapter <spec-rule level="should">SHOULD</spec-rule> surface the silent-loss caveat on completion, prompting a spot-check of the emitted documents against their sources.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-004" priority="must">
+<p>The adapter <spec-rule>MUST</spec-rule> be deterministic Node (part of the kernel) and <spec-rule>MUST NOT</spec-rule> own a PDF converter; document conversion (Docling / MarkItDown / Marker) stays the user's step, documented but never depended on.</p>
+<details><summary>Rationale</summary><p>Keeps the kernel free of an external Python runtime and a version matrix. The tool consumes whatever markdown lands in the corpus; the adapter shapes markdown into the convention, it does not produce markdown from PDFs.</p></details>
+</spec-requirement>
+
+<h3>Non-functional</h3>
+
+<spec-requirement id="NFR-001" priority="must">
+<p>The adapter <spec-rule>MUST</spec-rule> be idempotent — re-running it on an already-adapted corpus <spec-rule>MUST NOT</spec-rule> duplicate <code>KB-NNN</code> IDs or index rows, nor overwrite hand-corrected provenance with a fresh <code>TODO</code>.</p>
+</spec-requirement>
+
+<h3>Out of scope (deferred to other slices)</h3>
+<spec-out-of-scope>
+  <ul>
+    <li defer-to="051-knowledge-corpus">The target corpus shape the adapter emits into (layout, IDs, index, frontmatter fields).</li>
+    <li defer-to="058-corpus-licensing">Adjudicating whether an emitted license permits redistribution — the adapter records the license; the licensing rule surfaces a restrictive one.</li>
+    <li defer-to="TBD-never">A shipped PDF converter — a documented recommendation (Docling / MarkItDown / Marker), never a spectastic dependency.</li>
+  </ul>
+</spec-out-of-scope>
+</section>
+
+
+<section id="data">
+<h2>4 · Data model</h2>
+
+<p>The entities this feature owns or substantially changes.</p>
+
+<h3>Entities</h3>
+<dl>
+  <dt>Adapter input</dt><dd>An existing corpus shape: a folder of markdown files, or an <code>llms.txt</code> index. Read-only source.</dd>
+  <dt>Emitted frontmatter</dt><dd>The 051 provenance block written onto each source document, with derivable fields populated and non-derivable fields set to <code>TODO</code>.</dd>
+  <dt>TODO marker</dt><dd>An explicit placeholder for a provenance field the adapter could not derive — the honest alternative to a guess. Machine-visible so a later validate / review can flag it.</dd>
+</dl>
+
+<spec-note>
+<p>Invariant: the adapter is additive and idempotent — it never destroys a hand-authored value. A field once corrected by a human is left untouched on re-run.</p>
+</spec-note>
+</section>
+
+
+<section id="success">
+<h2>5 · Success criteria</h2>
+
+<p>Technology-agnostic, measurable outcomes.</p>
+
+<spec-requirement id="SC-001" priority="must">
+<p>Adapting a folder of N markdown files yields N <code>KB-NNN</code> documents and an N-row index that <code>spectastic validate</code> accepts.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-002" priority="must">
+<p>A source file with no discernible license or origin produces <code>TODO</code> markers for those fields — never a fabricated value.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-003" priority="should">
+<p>Re-running the adapter on its own output produces no duplicate IDs or index rows and preserves any hand-corrected provenance.</p>
+</spec-requirement>
+</section>
+
+
+<section id="assumptions">
+<h2>6 · Assumptions</h2>
+
+<spec-assumption>
+<p>Existing corpora arrive as markdown (or an <code>llms.txt</code> pointing at markdown); documents still in PDF are converted by the user before adaptation, per the documented recipe.</p>
+</spec-assumption>
+
+<spec-assumption>
+<p>A content hash is computable deterministically from a source document's bytes, so provenance integrity does not depend on a field the adapter would otherwise have to guess.</p>
+</spec-assumption>
+</section>
+
+
+<section id="questions">
+<h2>7 · Open questions</h2>
+<spec-questions>
+<p>None outstanding — the adapt-tier scope, the never-fabricate rule, and the no-converter boundary were anchored in the interview.</p>
+</spec-questions>
+</section>
+
+
+<section id="conformance">
+<h2>8 · Conformance index</h2>
+<p>Auto-built from every <code>&lt;spec-requirement&gt;</code> in this document.</p>
+<spec-conformance></spec-conformance>
+</section>
+
+
+<section id="changelog">
+<h2>9 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-07-25">25 Jul 2026</time><span>Initial draft. Owns <code>TBD-corpus-adapter</code> from the <a href="../../docs/knowledge-base-considerations.html">knowledge-base considerations</a> survey (§8, the adopt/adapt/bridge tier) — a deterministic Node generator that emits frontmatter + a curated index from an existing corpus shape, so a user's own knowledge base becomes first-class in one pass, with a strict never-fabricate-provenance boundary. Emits into <a href="../051-knowledge-corpus/spec.html">051</a>'s shape.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  056-corpus-adapter · Corpus adapter · authored 25 Jul 2026
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>

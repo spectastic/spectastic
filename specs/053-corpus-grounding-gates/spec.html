@@ -1,0 +1,237 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
+<title>Corpus grounding gates · Specification</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Specification · 053-corpus-grounding-gates</p>
+  <h1>Corpus grounding gates</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    A citation can't rot into a dead reference, and a stale edition can't hide — two validate rules, at the severity each honestly earns.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>      <span><spec-status value="draft">Draft</spec-status></span>
+    <b>Spec ID</b>     <span>053-corpus-grounding-gates</span>
+    <b>Owner</b>       <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Reviewers</b>   <span>—</span>
+    <b>Created</b>     <span><time datetime="2026-07-25">25 Jul 2026</time></span>
+    <b>Principles</b><span><a href="../../principles.html">v1.8.0</a></span>
+    <b>Smallest demoable</b><span><code>spectastic validate</code> errors on a citation to a non-existent <code>KB-id</code> and warns on a superseded edition.</span>
+    <b>Read time</b>   <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-budget words="1500" reqs="20" minutes="12"></spec-budget>
+
+  <spec-tldr>
+    <p>Two validate rules make the citation contract (<a href="../052-corpus-citation-contract/spec.html">052</a>) enforceable.
+    <strong><code>corpus-provenance</code> is an error</strong>: a cited <code>KB-NNN</code> that resolves to no committed
+    document is a dead reference — deterministic, fail-closed, the same footing as <code>verify-view-stale</code> and P-3
+    (IDs are contracts). <strong><code>corpus-staleness</code> is a warning</strong>: a decision whose pinned edition is no
+    longer current surfaces loudly, the way an <code>assumed</code> decision already does, but doesn't block a build — the
+    world may have moved with no one having re-ingested. Both integrity gates fire whenever a corpus <em>and</em> a citation
+    both exist, at any profile tier; the softer <em>expectation</em> that domain claims be grounded ladders with the existing
+    <code>grounding</code> profile axis. With no corpus or no citation, neither rule fires.</p>
+  </spec-tldr>
+
+  <dl class="invest">
+    <dt><span class="letter">I</span> Independent</dt> <dd>Depends on <a href="../051-knowledge-corpus/spec.html">051</a> (the corpus) and <a href="../052-corpus-citation-contract/spec.html">052</a> (the citation form). Adds no new artifact type.</dd>
+    <dt><span class="letter">N</span> Negotiable</dt>  <dd>The two findings and their severities are the contract; the rule engine's internals are the plan's.</dd>
+    <dt><span class="letter">V</span> Valuable</dt>    <dd>Unlocks <a href="#SC-001">SC-001</a> — a citation that resolves to nothing fails the build instead of shipping green.</dd>
+    <dt><span class="letter">E</span> Estimable</dt>   <dd>Both rules clone the shape of existing validate rules (e.g. <code>verify-view-stale</code>); severities are decided.</dd>
+    <dt><span class="letter">S</span> Small</dt>       <dd>Five FRs, one NFR — two rules and their firing conditions.</dd>
+    <dt><span class="letter">T</span> Testable</dt>    <dd>Each rule is observable: a fixture citing a missing ID errors; a fixture citing a superseded edition warns.</dd>
+  </dl>
+
+  <spec-audience-map>
+    <dl>
+      <dt>Exec / PM</dt>   <dd>§<a href="#context">Context</a>, §<a href="#scenarios">User scenarios</a>, §<a href="#success">Success criteria</a>.</dd>
+      <dt>Reviewer</dt>    <dd>§<a href="#requirements">Requirements</a>, §<a href="#assumptions">Assumptions</a>, §<a href="#questions">Open questions</a>.</dd>
+      <dt>Implementer</dt> <dd>§<a href="#requirements">Requirements</a>, §<a href="#data">Data model</a>, §<a href="#conformance">Conformance index</a>.</dd>
+    </dl>
+  </spec-audience-map>
+</header>
+
+
+<section id="context">
+<h2>1 · Context</h2>
+<p>A citation is only worth its integrity. Scholarship and law lost badly to link rot — ~70% of academic-journal URLs and
+roughly half of US Supreme Court citation links now dead. A committed corpus dodges the worst of it, but two failure modes
+remain that a machine <em>can</em> catch: a citation that points at nothing (the document was never ingested, or the ID was
+mistyped), and a citation whose edition has been superseded. The citation contract (<a href="../052-corpus-citation-contract/spec.html">052</a>)
+defines the grammar; this spec is the enforcement that stops the grammar from lying.</p>
+<p>The severity split is the load-bearing design decision. The considerations doc argues grounding stays a <em>warning</em>
+because "is this a domain claim?" is undecidable — a hard gate would false-fail whole specs on a <em>missed</em> claim. But a
+<em>written</em> citation resolving to a real file is fully deterministic: it either exists or it doesn't. So the two rules
+part company — the referential-integrity check fails closed (error); the editorial-staleness check surfaces loudly but
+advisory (warning).</p>
+</section>
+
+
+<section id="scenarios">
+<h2>2 · User scenarios &amp; testing</h2>
+
+<p>Each story <strong>MUST</strong> be independently testable.</p>
+
+<h3 id="US1">US1 · A citation can't rot into a dead reference <spec-pill>P1</spec-pill></h3>
+<p>As a <strong>reviewer</strong>, I want <strong>validate to error when a cited <code>KB-NNN</code> resolves to no committed document</strong> so that <strong>a citation can never silently point at nothing</strong>.</p>
+<p><em>Acceptance:</em> a spec citing <code>KB-999</code> with no such document produces a <code>corpus-provenance</code> finding at error severity and a non-zero exit.</p>
+
+<h3 id="US2">US2 · Stale grounding surfaces like <code>assumed</code> <spec-pill>P2</spec-pill></h3>
+<p>As a <strong>reviewer</strong>, I want <strong>validate to warn when a cited edition has been superseded</strong> so that <strong>stale grounding is loud the way an <code>assumed</code> decision is, rather than rotting in silence</strong>.</p>
+<p><em>Acceptance:</em> a decision citing <code>KB-001@2017-09-05</code> when the current edition is <code>@2024-05-28</code> produces a <code>corpus-staleness</code> finding at warning severity and a zero exit.</p>
+
+<h3 id="US3">US3 · The nag ladders with rigor <spec-pill>P3</spec-pill></h3>
+<p>As a <strong>light-tier user</strong>, I want <strong>the <em>expectation</em> that domain claims be grounded to ladder with my <code>grounding</code> profile</strong> so that <strong>I get the integrity gates but am not nagged for citations above my chosen rigor</strong>.</p>
+<p><em>Acceptance:</em> a light-tier project with a corpus still gets the error gate on a dangling citation, but does not receive the advisory "this domain claim could be grounded" nudge reserved for higher grounding tiers.</p>
+
+<h3>Edge cases</h3>
+<ul>
+  <li>No corpus present, but a spec contains a <code>KB-NNN</code>-shaped string — neither rule fires; without a corpus there is nothing to resolve against (<a href="#FR-003">FR-003</a>).</li>
+  <li>A corpus present but a spec with no citations — neither rule fires; there is nothing to check.</li>
+  <li>A superseded edition retained on disk (per <a href="../052-corpus-citation-contract/spec.html">052</a> FR-003) — <code>corpus-provenance</code> passes (it resolves), <code>corpus-staleness</code> warns (it's superseded).</li>
+  <li>A regulation superseded <em>upstream</em> with no one having re-ingested it — greps as clean; the staleness rule cannot notice (<a href="#FR-005">FR-005</a>, a recorded ceiling).</li>
+</ul>
+</section>
+
+
+<section id="requirements">
+<h2>3 · Requirements</h2>
+
+<p>Conformance keywords (<spec-rule>MUST</spec-rule>, <spec-rule level="should">SHOULD</spec-rule>,
+<spec-rule level="may">MAY</spec-rule>) follow RFC 2119.</p>
+
+<h3>Functional</h3>
+
+<spec-requirement id="FR-001" priority="must">
+<p>A <code>corpus-provenance</code> validate rule <spec-rule>MUST</spec-rule> fire at <strong>error</strong> severity when a cited <code>KB-NNN</code> resolves to no committed corpus document.</p>
+<details><summary>Rationale</summary><p>A dead reference is deterministically detectable — the file exists or it doesn't — so it can honestly fail closed, exactly as <code>verify-view-stale</code> and the <code>data-delta-shape</code> rules do. This is P-3 (IDs are contracts) applied to the corpus.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-002" priority="must">
+<p>A <code>corpus-staleness</code> validate rule <spec-rule>MUST</spec-rule> fire at <strong>warning</strong> severity when a decision's pinned edition is not the current edition of the document it cites.</p>
+<details><summary>Rationale</summary><p>A superseded-but-still-resolving edition should surface as loudly as an <code>assumed</code> decision, but must not block a build: the world may have moved with no one yet having re-ingested, and blocking a build on that is too aggressive.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-003" priority="must">
+<p>Both rules <spec-rule>MUST</spec-rule> fire only when a corpus is present <em>and</em> a citation is written; a project with no corpus, or a spec with no citation, <spec-rule>MUST</spec-rule> see neither finding.</p>
+<details><summary>Rationale</summary><p>The graceful-absence guarantee (051 NFR-001) extends to the gates: they are inert until there is both something to cite and something to resolve against.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-004" priority="should">
+<p>The integrity gates (FR-001, FR-002) <spec-rule>MUST</spec-rule> be tier-independent — they fire at any profile whenever applicable. The advisory <em>expectation</em> that a domain claim be grounded <spec-rule level="should">SHOULD</spec-rule> ladder with the existing <code>grounding</code> profile axis (<code>light</code> → <code>decisions-cite</code> → <code>+risks</code> → <code>full-ledger</code>).</p>
+<details><summary>Rationale</summary><p>Referential integrity is not a matter of rigor — a dangling citation is wrong at every tier. But <em>how much</em> grounding is expected is exactly what the grounding axis exists to ladder, so the nudge (not the gate) rides that axis.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-005" priority="should">
+<p>The <code>corpus-staleness</code> rule <spec-rule>MUST</spec-rule> detect supersession only from committed corpus editions; it cannot notice that the world changed upstream. This ceiling <spec-rule>MUST</spec-rule> be recorded, not hidden.</p>
+<details><summary>Rationale</summary><p>Staleness is editorial at root. The rule tells a machine a citation's edition was superseded <em>once someone re-ingests the newer edition</em> — nothing here <em>notices</em> the change itself. Recording the limit keeps the tool honest about what it does and doesn't guarantee.</p></details>
+</spec-requirement>
+
+<h3>Non-functional</h3>
+
+<spec-requirement id="NFR-001" priority="must">
+<p>The gates <spec-rule>MUST</spec-rule> be deterministic — the same corpus and the same spec produce the same findings, with no clock dependence beyond the staleness rule reading the corpus's own recorded editions.</p>
+</spec-requirement>
+
+<h3>Out of scope (deferred to other slices)</h3>
+<spec-out-of-scope>
+  <ul>
+    <li defer-to="052-corpus-citation-contract">The citation grammar and supersede-by-append rule these gates check.</li>
+    <li defer-to="058-corpus-licensing">The <code>corpus-license</code> rule (a restrictive license surfaces) — a sibling validate rule with its own spec.</li>
+    <li defer-to="054-corpus-in-prompt">Whether the model grounds at all — undecidable, kept advisory, never a gate.</li>
+  </ul>
+</spec-out-of-scope>
+</section>
+
+
+<section id="data">
+<h2>4 · Data model</h2>
+
+<p>The entities this feature owns.</p>
+
+<h3>Entities</h3>
+<dl>
+  <dt>Provenance finding</dt><dd>A <code>corpus-provenance</code> validate result. Fields: the citing artifact + location, the unresolved <code>KB-NNN</code>, severity <code>error</code>.</dd>
+  <dt>Staleness finding</dt><dd>A <code>corpus-staleness</code> validate result. Fields: the citing artifact + location, the pinned edition, the current edition, severity <code>warning</code>.</dd>
+</dl>
+
+<spec-note>
+<p>Both findings resolve a citation against the corpus index + document editions (051 FR-004, 052 data model). The rules read those; they never write.</p>
+</spec-note>
+</section>
+
+
+<section id="success">
+<h2>5 · Success criteria</h2>
+
+<p>Technology-agnostic, measurable outcomes.</p>
+
+<spec-requirement id="SC-001" priority="must">
+<p><code>spectastic validate</code> exits non-zero on a spec citing a <code>KB-NNN</code> with no corresponding committed document.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-002" priority="must">
+<p><code>spectastic validate</code> emits a warning (zero exit) on a decision citing a superseded edition; the same project with a dangling citation still gets the error.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-003" priority="should">
+<p>A project with no corpus, or a spec with no citation, produces neither a <code>corpus-provenance</code> nor a <code>corpus-staleness</code> finding.</p>
+</spec-requirement>
+</section>
+
+
+<section id="assumptions">
+<h2>6 · Assumptions</h2>
+
+<spec-assumption>
+<p>The corpus index and document frontmatter reliably name the current edition of each document, so "is this pin current?" is answerable from committed data alone (per 051 FR-004 / 052 FR-002).</p>
+</spec-assumption>
+
+<spec-assumption>
+<p>The <code>grounding</code> profile axis is readable at validate time (as the profile-gated quantified-NFR scan already reads tier), so FR-004's laddered expectation can be tier-aware.</p>
+</spec-assumption>
+</section>
+
+
+<section id="questions">
+<h2>7 · Open questions</h2>
+<spec-questions>
+<p>None outstanding — the severity split (provenance error, staleness warning) and the always-on-gate / laddered-expectation division were anchored in the interview.</p>
+</spec-questions>
+</section>
+
+
+<section id="conformance">
+<h2>8 · Conformance index</h2>
+<p>Auto-built from every <code>&lt;spec-requirement&gt;</code> in this document.</p>
+<spec-conformance></spec-conformance>
+</section>
+
+
+<section id="changelog">
+<h2>9 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-07-25">25 Jul 2026</time><span>Initial draft. Owns <code>TBD-corpus-provenance-gate</code> and <code>TBD-corpus-staleness-gate</code> from the <a href="../../docs/knowledge-base-considerations.html">knowledge-base considerations</a> survey (§6, §8) — two validate rules: <code>corpus-provenance</code> (error, a cited ID must resolve) and <code>corpus-staleness</code> (warning, a pinned edition must be current). Integrity gates always-on when applicable; grounding <em>expectation</em> laddered to the profile axis. Builds on <a href="../051-knowledge-corpus/spec.html">051</a> + <a href="../052-corpus-citation-contract/spec.html">052</a>.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  053-corpus-grounding-gates · Corpus grounding gates · authored 25 Jul 2026
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>

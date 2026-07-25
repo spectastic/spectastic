@@ -1,0 +1,237 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
+<title>Corpus retrieval at scale · Specification</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Specification · 059-corpus-retrieval-scale</p>
+  <h1>Corpus retrieval at scale</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    The exception, not the design centre — characterised now so a future slice doesn't reinvent it, and deliberately not built until a real corpus earns it.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>      <span><spec-status value="draft">Draft (deferred — threshold-gated)</spec-status></span>
+    <b>Spec ID</b>     <span>059-corpus-retrieval-scale</span>
+    <b>Owner</b>       <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Reviewers</b>   <span>—</span>
+    <b>Created</b>     <span><time datetime="2026-07-25">25 Jul 2026</time></span>
+    <b>Principles</b><span><a href="../../principles.html">v1.8.0</a></span>
+    <b>Smallest demoable</b><span>Entry-gated: only meaningful once an in-repo corpus exceeds ~200k tokens. Below that, the shipping behaviour is agentic search only (<a href="../051-knowledge-corpus/spec.html">051</a> FR-008).</span>
+    <b>Read time</b>   <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-budget words="1500" reqs="20" minutes="12"></spec-budget>
+
+  <spec-warning>
+    <p>This spec is authored <strong>deferred on purpose</strong>. Its entry condition is a real in-repo corpus crossing the
+    ~200,000-token (~500-page) threshold; until then, building any of it is the most expensive mistake available in this
+    family (a synchronisation problem, an infra dependency, an opaque retrieval step — to solve a problem most projects do not
+    have). It is written now so the ladder is characterised and a future slice doesn't reinvent it, not because it is next to
+    build.</p>
+  </spec-warning>
+
+  <spec-tldr>
+    <p>Anthropic's own retrieval guidance draws the line explicitly: for a knowledge base under roughly <strong>200,000
+    tokens — about 500 pages</strong> — skip retrieval entirely and put the whole thing in the prompt (with prompt caching for
+    cost). That threshold covers most of what a project would curate, so agentic search over the committed corpus
+    (<a href="../051-knowledge-corpus/spec.html">051</a>) is the answer for the common case. This spec governs the
+    <em>exception</em>: above the threshold, the known ladder is contextual embeddings, then contextual BM25, then reranking —
+    reported to cut retrieval failures by roughly a third, a half, and two-thirds respectively. The binding constraints: this
+    is not built or activated below the threshold; any retrieval index is a second copy of the truth with a staleness cost;
+    and the index <strong>never</strong> becomes the cited source of record — the committed document remains the archive.</p>
+  </spec-tldr>
+
+  <dl class="invest">
+    <dt><span class="letter">I</span> Independent</dt> <dd>Depends on <a href="../051-knowledge-corpus/spec.html">051</a> (the committed corpus a retrieval index would index). Entry-gated behind a corpus-size threshold.</dd>
+    <dt><span class="letter">N</span> Negotiable</dt>  <dd>The threshold, the ladder, and the "index is never the source of record" invariant are the contract; the engine choice is a future plan's.</dd>
+    <dt><span class="letter">V</span> Valuable</dt>    <dd>Unlocks <a href="#SC-001">SC-001</a> — usable retrieval for the rare very-large corpus, without asking the model to hold it all in context.</dd>
+    <dt><span class="letter">E</span> Estimable</dt>   <dd>Estimable <em>when triggered</em>; the ladder is characterised. The entry condition (FR-004) is what makes it honestly deferrable.</dd>
+    <dt><span class="letter">S</span> Small</dt>       <dd>Four FRs, one NFR — a threshold, a ladder, and two invariants.</dd>
+    <dt><span class="letter">T</span> Testable</dt>    <dd>Below threshold: no index exists, agentic search resolves everything. Above: the ladder reduces retrieval failure measurably.</dd>
+  </dl>
+
+  <spec-audience-map>
+    <dl>
+      <dt>Exec / PM</dt>   <dd>§<a href="#context">Context</a>, §<a href="#scenarios">User scenarios</a>, §<a href="#success">Success criteria</a>.</dd>
+      <dt>Reviewer</dt>    <dd>§<a href="#requirements">Requirements</a>, §<a href="#assumptions">Assumptions</a>, §<a href="#questions">Open questions</a>.</dd>
+      <dt>Implementer</dt> <dd>§<a href="#requirements">Requirements</a>, §<a href="#data">Data model</a>, §<a href="#conformance">Conformance index</a>.</dd>
+    </dl>
+  </spec-audience-map>
+</header>
+
+
+<section id="context">
+<h2>1 · Context</h2>
+<p>The instinct on hearing "knowledge base" is to build a vector database. The evidence points the other way from two
+independent directions. First, the tools that tried are walking it back: Claude Code removed vector search in favour of
+agentic search — the reported reasons are simplicity, security, privacy, reliability, and above all <em>staleness</em> (an
+index is a second copy of the truth that must be kept in sync). Second, most corpora are too small to need it: below the
+~200k-token / ~500-page threshold, put the whole corpus in the prompt.</p>
+<p>So retrieval at scale is the exception, and the corpus convention (<a href="../051-knowledge-corpus/spec.html">051</a>)
+deliberately requires no index to be usable. This spec exists to characterise the ladder for the rare corpus that genuinely
+exceeds the threshold — and, just as importantly, to hold the line that it must not be built before then. The known technique
+is real and useful; it is simply not the first thing to build.</p>
+</section>
+
+
+<section id="scenarios">
+<h2>2 · User scenarios &amp; testing</h2>
+
+<p>Each story <strong>MUST</strong> be independently testable.</p>
+
+<h3 id="US1">US1 · Retrieval for a very large corpus <spec-pill>P1</spec-pill></h3>
+<p>As a <strong>user with a corpus above ~200k tokens</strong>, I want <strong>retrieval over it</strong> so that <strong>the model isn't asked to hold the whole corpus in context on every turn</strong>.</p>
+<p><em>Acceptance (entry-gated):</em> once a corpus exceeds the threshold, retrieval via the characterised ladder returns the relevant documents for a query and measurably reduces retrieval failure versus naive search.</p>
+
+<h3 id="US2">US2 · The ladder is characterised, not reinvented <spec-pill>P2</spec-pill></h3>
+<p>As a <strong>maintainer</strong>, I want <strong>the retrieval ladder named and ordered</strong> so that <strong>a future slice builds contextual embeddings → contextual BM25 → reranking in the known-good order rather than rediscovering it</strong>.</p>
+<p><em>Acceptance:</em> the spec records the ladder and its reported failure-reduction figures as the reference for a future implementation.</p>
+
+<h3 id="US3">US3 · The index never becomes the source of record <spec-pill>P3</spec-pill></h3>
+<p>As a <strong>reviewer</strong>, I want <strong>any retrieval index to stay strictly derived</strong> so that <strong>a citation still resolves to the committed document, never to an opaque index entry</strong>.</p>
+<p><em>Acceptance:</em> a citation resolves against the committed corpus document (051 / 052), and the index is a performance layer only, rebuildable and discardable.</p>
+
+<h3>Edge cases</h3>
+<ul>
+  <li>A corpus just under the threshold — no index; agentic search (051 FR-008) resolves everything (<a href="#FR-001">FR-001</a>).</li>
+  <li>An index that has drifted from the corpus — a staleness cost that must be justified before adopting an index at all (<a href="#FR-003">FR-003</a>).</li>
+  <li>Pressure to build retrieval "to be safe" before any corpus is large — refused; the entry condition is the guard (<a href="#FR-004">FR-004</a>).</li>
+</ul>
+</section>
+
+
+<section id="requirements">
+<h2>3 · Requirements</h2>
+
+<p>Conformance keywords (<spec-rule>MUST</spec-rule>, <spec-rule level="should">SHOULD</spec-rule>,
+<spec-rule level="may">MAY</spec-rule>) follow RFC 2119.</p>
+
+<h3>Functional</h3>
+
+<spec-requirement id="FR-001" priority="must">
+<p>Retrieval <spec-rule>MUST NOT</spec-rule> be built or activated while a corpus fits under the ~200k-token threshold; agentic search over the committed corpus (<a href="../051-knowledge-corpus/spec.html">051</a> FR-008) <spec-rule>MUST</spec-rule> be the sole mechanism below it.</p>
+<details><summary>Rationale</summary><p>Below the threshold the whole corpus fits in the prompt; an index buys a synchronisation problem, an infra dependency and an opaque step to solve a problem the project does not have.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-002" priority="should">
+<p>Above the threshold, retrieval <spec-rule level="should">SHOULD</spec-rule> follow the known ladder — contextual embeddings, then contextual BM25, then reranking — in that order.</p>
+<details><summary>Rationale</summary><p>The ladder is characterised: the three stages cut retrieval failures by roughly a third, a half, and two-thirds respectively. Recording the order means a future slice does not rediscover it.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-003" priority="should">
+<p>Any retrieval index <spec-rule>MUST</spec-rule> be treated as a second copy of the truth carrying a staleness cost; adopting one <spec-rule level="should">SHOULD</spec-rule> be justified against that cost rather than adopted by default.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-004" priority="must">
+<p>This spec <spec-rule>MUST</spec-rule> remain deferred — not implemented — until a real in-repo corpus crosses the ~200k-token threshold; that crossing is its entry condition.</p>
+<details><summary>Rationale</summary><p>The deferral is itself a requirement, not an accident of prioritisation. The entry condition is what makes the whole corpus family able to promise "no vector database" honestly.</p></details>
+</spec-requirement>
+
+<h3>Non-functional</h3>
+
+<spec-requirement id="NFR-001" priority="must">
+<p>A retrieval index, if built, <spec-rule>MUST NOT</spec-rule> become the cited source of record — the committed corpus document remains the archive a citation resolves to; the index is a rebuildable, discardable performance layer.</p>
+</spec-requirement>
+
+<h3>Out of scope (deferred to other slices)</h3>
+<spec-out-of-scope>
+  <ul>
+    <li defer-to="051-knowledge-corpus">Everything below the threshold — agentic search over the committed corpus, the common case.</li>
+    <li defer-to="054-corpus-in-prompt">Injecting the corpus index (not the documents) into the prompt — the below-threshold placement strategy.</li>
+    <li defer-to="TBD-never">A hosted vector-database service or an external retrieval runtime — the opaque, stale-prone dependency the whole family refuses.</li>
+  </ul>
+</spec-out-of-scope>
+</section>
+
+
+<section id="data">
+<h2>4 · Data model</h2>
+
+<p>The entities this feature would own if and when triggered.</p>
+
+<h3>Entities</h3>
+<dl>
+  <dt>Retrieval index</dt><dd>A derived, rebuildable structure over the committed corpus (embeddings + BM25 postings + a reranking stage). Never the source of record.</dd>
+  <dt>Corpus-size measurement</dt><dd>The token/page count of the committed corpus, evaluated against the ~200k-token threshold to determine whether retrieval is even in scope.</dd>
+</dl>
+
+<spec-note>
+<p>Invariant: the index derives entirely from the committed corpus and can be deleted and rebuilt with no loss. A citation (052) resolves against the document, never the index — so the index's staleness can never corrupt a cited source.</p>
+</spec-note>
+</section>
+
+
+<section id="success">
+<h2>5 · Success criteria</h2>
+
+<p>Technology-agnostic, measurable outcomes.</p>
+
+<spec-requirement id="SC-001" priority="must">
+<p>Entry-gated: when a corpus exceeds ~200k tokens, retrieval via the characterised ladder measurably reduces retrieval failure versus naive search, for a representative query set.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-002" priority="must">
+<p>While a corpus is under the threshold, no retrieval index exists and agentic search resolves every citation.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-003" priority="should">
+<p>A citation always resolves to a committed corpus document, never to an index entry — verifiable by deleting the index and re-resolving.</p>
+</spec-requirement>
+</section>
+
+
+<section id="assumptions">
+<h2>6 · Assumptions</h2>
+
+<spec-assumption>
+<p>The ~200k-token / ~500-page threshold from Anthropic's retrieval guidance remains a sound line for "put it all in the prompt vs retrieve"; the corpus convention's typical corpora fall below it.</p>
+</spec-assumption>
+
+<spec-assumption>
+<p>The contextual-embeddings → contextual-BM25 → reranking ladder remains the state-of-practice for above-threshold retrieval; if it moves, this spec is re-characterised before any build, not built against a stale reference.</p>
+</spec-assumption>
+</section>
+
+
+<section id="questions">
+<h2>7 · Open questions</h2>
+<spec-questions>
+<p>None outstanding — the decision to scaffold this deferred (rather than leave it TBD) and its threshold entry condition were anchored in the interview. The engine choice is deliberately left to the future plan the entry condition unblocks, not an open question on this spec.</p>
+</spec-questions>
+</section>
+
+
+<section id="conformance">
+<h2>8 · Conformance index</h2>
+<p>Auto-built from every <code>&lt;spec-requirement&gt;</code> in this document.</p>
+<spec-conformance></spec-conformance>
+</section>
+
+
+<section id="changelog">
+<h2>9 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-07-25">25 Jul 2026</time><span>Initial draft, authored deferred. Owns <code>TBD-corpus-retrieval-scale</code> from the <a href="../../docs/knowledge-base-considerations.html">knowledge-base considerations</a> survey (§4) — contextual embeddings + contextual BM25 + reranking, activated only when an in-repo corpus exceeds the ~200k-token threshold. Characterises the ladder and holds the "don't build it below the threshold / the index is never the source of record" invariants; scaffolded now (rather than left TBD) so a future slice has a reference, per the interview.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  059-corpus-retrieval-scale · Corpus retrieval at scale · authored 25 Jul 2026
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>
