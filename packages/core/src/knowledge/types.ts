@@ -35,15 +35,47 @@ export const REQUIRED_PROVENANCE_FIELDS = [
   'status',
 ] as const;
 
-/** The KB-NNN id shape (FR-002) — stable, independent of file path. */
+/** The KB-NNN id shape (FR-002) — stable, independent of file path. Matches
+ * both the pre-migration pack-minted id and the post-migration project-
+ * assigned `KB-NNNN` (a 4-digit baseline is still `\d{3,}`), so this constant
+ * is not duplicated for the new layer. */
 export const KB_ID_RE = /^KB-\d{3,}$/;
+
+/** The pack-internal slug shape (FR-002 layer 1) — a zero-padded ordinal
+ * prefix and a kebab-case name (e.g. `001-settlement-windows`), the
+ * convention every migration example in the 2026-07-26-two-layer-corpus-
+ * identity amendment and the considerations doc uses. FR-002 doesn't mandate
+ * a stricter shape than "short, path-independent, pack-unique"; this is the
+ * accepted parsing convention, shared by the frontmatter parser (`parse.ts`)
+ * and the `SKILL.md`-inlined map parser (`index-format.ts`) so the two agree
+ * on what a slug looks like, the same role `KB_ID_RE` plays for both
+ * `parseCorpusDocument` and `parseIndex`/`parseRegistry`. */
+export const SLUG_RE = /^\d+-[a-z0-9]+(?:-[a-z0-9]+)*$/i;
 
 /** Best-effort parse result for one `references/` document (FR-003). Never
  * throws; a malformed or absent field surfaces in `missingFields` rather
  * than crashing the loader on untrusted third-party content (P-11). */
 export interface ParsedCorpusDocument {
-  /** The KB-NNN id, or null if absent/malformed. */
+  /** The KB-NNN id, or null if absent/malformed. Pre-migration meaning:
+   * pack-minted, per-pack-unique. Retained through the
+   * `TBD-corpus-identity-migration` back-compat window (051 amendment
+   * 2026-07-26-two-layer-corpus-identity §6) — a pack that hasn't migrated
+   * yet still parses via this field; `slug` (below) is the two-layer
+   * replacement a migrated pack populates instead. */
   id: string | null;
+  /** The pack-internal slug (FR-002 layer 1) — a short, path-independent id
+   * unique only within its own pack (e.g. `001-settlement-windows`), authored
+   * and owned by the pack with no knowledge of a consuming repo. Optional —
+   * absent (not merely null) for a pack that hasn't migrated onto the
+   * two-layer model yet, so `parseCorpusDocument`'s existing object-literal
+   * return (and every pre-migration test fixture) needs no edit for this
+   * addition to land (NFR-001, the same non-breaking treatment
+   * `CorpusPack.supersededEditions?` already established below). `null`
+   * (once populated) means a migrated pack's document has no slug
+   * convention. Distinct from `id`: a pack never mints the project's
+   * `KB-NNNN` (FR-009) — only a consuming project's root registry does, and
+   * only a `RegistryEntry` row (below) carries one. */
+  slug?: string | null;
   /** Whether a `---`-fenced frontmatter block was found at all. */
   hasFrontmatter: boolean;
   /** Required field names ('id' plus REQUIRED_PROVENANCE_FIELDS) that are
@@ -71,6 +103,45 @@ export interface IndexEntry {
   title: string;
   description: string;
   edition: string;
+  path: string;
+}
+
+/**
+ * One row of the project's root corpus registry (FR-009, `knowledge/index.md`)
+ * — the two-layer model's project-owned half. Parallel to `IndexEntry` above,
+ * which is the pre-migration per-pack map; this is the post-migration
+ * project-wide one. Maps an opaque, repo-unique `id` (`KB-NNNN`, matching
+ * `KB_ID_RE`) to the reference it names: which marketplace and plugin (pack)
+ * it was imported from, the pack's own internal `slug` for that reference,
+ * and the descriptive/provenance columns a citation's rendered label reads
+ * (051 D-003, the hybrid citation).
+ *
+ * This type fixes the registry's *shape* only. *Assigning* an id and
+ * *maintaining* a row across a re-import — the `(marketplace, plugin, slug)`
+ * anchor, monotonic never-reused assignment, supersede-by-append, orphan
+ * flagging — is the deferred ingester's contract (`TBD-corpus-root-index-
+ * ingester`), not encoded here.
+ */
+export interface RegistryEntry {
+  /** The project-assigned, opaque, repo-unique id (`KB-NNNN`). Never mined
+   * from the pack or reference name (FR-002/FR-009's no-semantic-meaning
+   * rule) and never reused once assigned. */
+  id: string;
+  /** The source marketplace name (the Claude Code marketplace.json `name`
+   * this reference was imported from). */
+  marketplace: string;
+  /** The plugin (pack) name within that marketplace. */
+  plugin: string;
+  /** The pack-internal slug this row resolves to — the other half of the
+   * `(marketplace, plugin, slug)` re-import anchor. Matches a document's
+   * `ParsedCorpusDocument.slug` inside that pack. */
+  slug: string;
+  title: string;
+  /** The current edition (from the referenced document's provenance) — the
+   * `@edition` a citation pins (052), distinct from the marketplace plugin
+   * `version` that anchors a re-import. */
+  edition: string;
+  /** Path to the referenced document, relative to the project root. */
   path: string;
 }
 

@@ -72,4 +72,44 @@ describe('parseCorpusDocument', () => {
     expect(doc.hasFrontmatter).toBe(false);
     expect(doc.id).toBeNull();
   });
+
+  // 2026-07-26-two-layer-corpus-identity amendment (T-1003's discovery): a
+  // document identifies itself via EITHER id (legacy) or slug (new) — only
+  // flag 'id' missing when a document has neither.
+
+  it('reads a pack-internal slug from frontmatter', () => {
+    const withSlug = VALID.replace('id: KB-001', 'slug: 001-settlement-windows');
+    const doc = parseCorpusDocument(withSlug, 'knowledge/finance/references/001-settlement-windows.md');
+    expect(doc.slug).toBe('001-settlement-windows');
+    expect(doc.id).toBeNull();
+  });
+
+  it('does not flag "id" as missing when a valid slug is present instead', () => {
+    const withSlug = VALID.replace('id: KB-001', 'slug: 001-settlement-windows');
+    const doc = parseCorpusDocument(withSlug, 'knowledge/finance/references/001-settlement-windows.md');
+    expect(doc.missingFields).not.toContain('id');
+  });
+
+  it('still flags "id" as missing when neither id nor slug is present', () => {
+    const neither = VALID.replace('id: KB-001\n', '');
+    const doc = parseCorpusDocument(neither, 'knowledge/x/references/x.md');
+    expect(doc.id).toBeNull();
+    expect(doc.slug).toBeNull();
+    expect(doc.missingFields).toContain('id');
+  });
+
+  it('rejects a malformed slug the same way it rejects a malformed id', () => {
+    const badSlug = VALID.replace('id: KB-001', 'slug: Not A Valid Slug!');
+    const doc = parseCorpusDocument(badSlug, 'knowledge/x/references/x.md');
+    expect(doc.slug).toBeNull();
+    expect(doc.missingFields).toContain('id'); // neither id nor a valid slug present
+  });
+
+  it('a document can carry both id and slug during the migration window, with neither missing', () => {
+    const both = VALID.replace('id: KB-001', 'id: KB-001\nslug: 001-settlement-windows');
+    const doc = parseCorpusDocument(both, 'knowledge/finance/references/001-settlement-windows.md');
+    expect(doc.id).toBe('KB-001');
+    expect(doc.slug).toBe('001-settlement-windows');
+    expect(doc.missingFields).not.toContain('id');
+  });
 });

@@ -23,13 +23,21 @@ import type { CorpusDocument, CorpusPack, SupersededEdition } from './types.js';
 // separately bundled, so anything a consumer (the CLI's scanCorpusWellFormed
 // / scanCorpusGrounding, or 054–059) needs is re-exported from here.
 export { parseCorpusDocument } from './parse.js';
-export { corpusWellFormedFindings } from './validate.js';
+export { corpusWellFormedFindings, corpusRegistryFindings } from './validate.js';
 export { corpusLicenseFindings, isPermissiveLicense } from './license.js';
 export { fenceCorpusDocument } from './fence.js';
 export { resolveCitation } from './resolve.js';
 export { corpusGroundingFindings } from './gates.js';
 export { buildCorpusPromptBlock, CORPUS_HINT, withCorpusHint } from './prompt.js';
-export { parseIndex, renderIndexTable } from './index-format.js';
+export {
+  parseIndex,
+  renderIndexTable,
+  parseRegistry,
+  renderRegistryTable,
+  parseSkillSlugMap,
+  renderSkillSlugMapTable,
+} from './index-format.js';
+export type { SkillSlugMapEntry } from './index-format.js';
 export { adaptCorpus, allocateIds, contentHashOf, deriveProvenance } from './adapt.js';
 export type { AdaptInput, AdaptResult } from './adapt.js';
 export { packAgnosticismFindings, resolveMarketplacePacks } from './pack-agnostic.js';
@@ -39,6 +47,7 @@ export type {
   IndexEntry,
   ParsedCorpusDocument,
   Provenance,
+  RegistryEntry,
   ResolvedCitation,
   SupersededEdition,
 } from './types.js';

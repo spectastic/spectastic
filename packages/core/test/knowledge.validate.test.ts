@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { corpusWellFormedFindings } from '../src/knowledge/validate.js';
-import type { CorpusDocument, CorpusPack, IndexEntry } from '../src/knowledge/types.js';
+import { corpusWellFormedFindings, corpusRegistryFindings } from '../src/knowledge/validate.js';
+import type { CorpusDocument, CorpusPack, IndexEntry, RegistryEntry } from '../src/knowledge/types.js';
 
 /**
  * 051-knowledge-corpus T-100: red-first tests for corpusWellFormedFindings —
@@ -101,6 +101,105 @@ describe('corpusWellFormedFindings', () => {
           f.rule === 'corpus-well-formed' &&
           f.message.includes('KB-001') &&
           f.message.toLowerCase().includes('duplicate'),
+      ),
+    ).toBe(true);
+  });
+
+  // T-1002 (2026-07-26-two-layer-corpus-identity): the pack-local slug check
+  // is additive — a no-op for a pre-migration pack whose documents carry no
+  // `slug` at all (the existing fixtures above never set one).
+
+  it('is still a no-op for a pack with no slugs populated (pre-migration, additive)', () => {
+    expect(corpusWellFormedFindings([pack()])).toEqual([]);
+  });
+
+  it('flags two documents sharing one pack-internal slug', () => {
+    const dupA = doc({ id: 'KB-010', slug: '001-settlement-windows', filePath: 'knowledge/pack/references/a.md' });
+    const dupB = doc({ id: 'KB-011', slug: '001-settlement-windows', filePath: 'knowledge/pack/references/b.md' });
+    const findings = corpusWellFormedFindings([
+      pack({
+        index: [entry({ id: 'KB-010' }), entry({ id: 'KB-011', path: 'references/b.md' })],
+        documents: [dupA, dupB],
+      }),
+    ]);
+    expect(
+      findings.some(
+        (f) =>
+          f.rule === 'corpus-well-formed' &&
+          f.message.includes('001-settlement-windows') &&
+          f.message.toLowerCase().includes('duplicate'),
+      ),
+    ).toBe(true);
+  });
+
+  it('does not confuse two documents with no slug for a slug collision', () => {
+    const a = doc({ id: 'KB-010', filePath: 'knowledge/pack/references/a.md' });
+    const b = doc({ id: 'KB-011', filePath: 'knowledge/pack/references/b.md' });
+    const findings = corpusWellFormedFindings([
+      pack({
+        index: [entry({ id: 'KB-010' }), entry({ id: 'KB-011', path: 'references/b.md' })],
+        documents: [a, b],
+      }),
+    ]);
+    expect(findings.some((f) => f.message.toLowerCase().includes('slug'))).toBe(false);
+  });
+});
+
+describe('corpusRegistryFindings (FR-009, the root registry)', () => {
+  function registryRow(overrides: Partial<RegistryEntry> = {}): RegistryEntry {
+    return {
+      id: 'KB-0001',
+      marketplace: 'spectastic-examples',
+      plugin: 'finance-settlement',
+      slug: '001-settlement-windows',
+      title: 'Settlement windows',
+      edition: '2026-07-25',
+      path: 'knowledge/finance-settlement/references/001-settlement-windows.md',
+      ...overrides,
+    };
+  }
+
+  it('returns no findings for a well-formed registry', () => {
+    expect(corpusRegistryFindings([registryRow()])).toEqual([]);
+  });
+
+  it('is a no-op when no registry is present (empty entries)', () => {
+    expect(corpusRegistryFindings([])).toEqual([]);
+  });
+
+  it('flags a row missing a required column', () => {
+    const bad = registryRow({ title: '' });
+    const findings = corpusRegistryFindings([bad]);
+    expect(
+      findings.some((f) => f.rule === 'corpus-well-formed' && f.message.includes('KB-0001') && f.message.includes('title')),
+    ).toBe(true);
+  });
+
+  it('flags an id that is not shaped KB-NNNN (digits only) — a shape failure is an opaqueness failure', () => {
+    // A pure-digit KB-NNNN cannot encode a name; embedding one requires
+    // breaking the shape, so the shape check *is* the opaqueness check.
+    const bad = registryRow({ id: 'KB-finance-settlement-0001' });
+    const findings = corpusRegistryFindings([bad]);
+    expect(
+      findings.some(
+        (f) =>
+          f.message.includes('KB-finance-settlement-0001') &&
+          f.message.toLowerCase().includes('opaque'),
+      ),
+    ).toBe(true);
+  });
+
+  it('accepts a plain KB-NNNN with no name embedded, of any digit width ≥ 3', () => {
+    expect(corpusRegistryFindings([registryRow({ id: 'KB-42000' })])).toEqual([]);
+  });
+
+  it('flags two registry rows sharing one KB-NNNN (the cross-pack collision this amendment fixes)', () => {
+    const rowA = registryRow({ path: 'knowledge/pack-a/references/001-a.md' });
+    const rowB = registryRow({ plugin: 'other-pack', path: 'knowledge/pack-b/references/001-b.md' });
+    const findings = corpusRegistryFindings([rowA, rowB]);
+    expect(
+      findings.some(
+        (f) => f.message.includes('KB-0001') && f.message.toLowerCase().includes('duplicate'),
       ),
     ).toBe(true);
   });

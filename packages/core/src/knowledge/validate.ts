@@ -7,17 +7,32 @@
  * `packages/schema/src/rules/*` entry, since that registry is HTML-bound
  * (every rule takes a `ParsedDocument`) and the corpus is plain markdown.
  *
- * Three checks per pack, all at error severity — a written citation or
- * index row either resolves or it doesn't, fully deterministic:
+ * Per-pack checks, all at error severity — a written citation or index row
+ * either resolves or it doesn't, fully deterministic:
  *  - every document declares its required fields (`id` plus
  *    `REQUIRED_PROVENANCE_FIELDS`) — FR-002/FR-003
  *  - the index and the documents agree bidirectionally: every index row
  *    resolves to a document with a matching id, and every document appears
  *    in the index — FR-004, SC-001
  *  - no two documents in a pack share one `KB-NNN` id — FR-002, P-3
+ *  - no two documents in a pack share one pack-internal slug — FR-002 layer
+ *    1 (2026-07-26-two-layer-corpus-identity amendment), additive: a no-op
+ *    for a pack that hasn't migrated onto slugs yet.
+ *
+ * `duplicateIdFindings` still checks `KB-NNN` uniqueness *within a pack*, not
+ * yet the repo-wide uniqueness FR-002 restated (the array-order collision
+ * this whole amendment exists to fix, per the considerations doc §1) — that
+ * repurposing is explicitly deferred to `TBD-corpus-identity-migration`
+ * (this amendment's §6), landing alongside the pack re-authoring so it
+ * doesn't turn an unmigrated pack red today. `corpusRegistryFindings` below
+ * is the new, separate, additive check for the project's *root* registry
+ * (FR-009) — repo-wide uniqueness lives there once the migration wires a
+ * pack's ids through it.
  */
 import type { Finding } from '@spectastic/schema';
-import type { CorpusDocument, CorpusPack } from './types.js';
+import { KB_ID_RE, type CorpusDocument, type CorpusPack, type RegistryEntry } from './types.js';
+
+const REGISTRY_FILE = 'knowledge/index.md';
 
 const RULE = 'corpus-well-formed';
 
@@ -86,6 +101,31 @@ function duplicateIdFindings(pack: CorpusPack): Finding[] {
   return findings;
 }
 
+/** Group documents by pack-internal slug, then flag every group with more
+ * than one entry — a slug (FR-002 layer 1) must be unique within its own
+ * pack, the pack-owned half of the two-layer id. Additive: a document with
+ * no `slug` yet (an unmigrated pack) is skipped, so this is a no-op until a
+ * pack actually populates the field. */
+function duplicateSlugFindings(pack: CorpusPack): Finding[] {
+  const bySlug = new Map<string, CorpusDocument[]>();
+  for (const doc of pack.documents) {
+    if (!doc.slug) continue;
+    const group = bySlug.get(doc.slug) ?? [];
+    group.push(doc);
+    bySlug.set(doc.slug, group);
+  }
+  const findings: Finding[] = [];
+  for (const [slug, docs] of bySlug) {
+    if (docs.length < 2) continue;
+    const firstPath = docs[0]?.filePath ?? pack.dirPath;
+    const paths = docs.map((d) => d.filePath).join(', ');
+    findings.push(
+      errorFinding(firstPath, `Duplicate pack-internal slug "${slug}" in ${paths} — a slug must be unique within its pack.`),
+    );
+  }
+  return findings;
+}
+
 /** All corpus well-formedness findings across every loaded pack. A no-op
  * (returns []) when `packs` is empty — the graceful-absence contract holds
  * all the way through to the validate scan (NFR-001). */
@@ -96,6 +136,86 @@ export function corpusWellFormedFindings(packs: readonly CorpusPack[]): Finding[
     findings.push(...danglingIndexFindings(pack));
     findings.push(...orphanDocumentFindings(pack));
     findings.push(...duplicateIdFindings(pack));
+    findings.push(...duplicateSlugFindings(pack));
   }
   return findings;
+}
+
+/** Every registry row missing a required column. Unlike `parseRegistry` (which
+ * silently skips a table row whose id fails `KB_ID_RE`, never producing an
+ * entry for it), a `RegistryEntry[]` handed to this function isn't
+ * guaranteed to have come through that parser at all — a hand-edited
+ * registry or a future ingester bug could construct one directly — so
+ * nothing about its shape is assumed here or in the checks below. */
+function missingRegistryFieldFindings(entries: readonly RegistryEntry[]): Finding[] {
+  const findings: Finding[] = [];
+  const REQUIRED_REGISTRY_FIELDS = ['marketplace', 'plugin', 'slug', 'title', 'edition', 'path'] as const;
+  for (const entry of entries) {
+    const missing = REQUIRED_REGISTRY_FIELDS.filter((field) => !entry[field]);
+    if (missing.length > 0) {
+      findings.push(
+        errorFinding(REGISTRY_FILE, `Registry row ${entry.id} is missing required field(s): ${missing.join(', ')}.`),
+      );
+    }
+  }
+  return findings;
+}
+
+/** Every registry id that isn't shaped `KB-NNNN` — a `KB-` prefix and digits
+ * only (`KB_ID_RE`). This is FR-009's opaqueness rule made checkable: a
+ * pure-digit suffix cannot encode a pack, plugin, or reference name (the
+ * DOI/PID "no semantic meaning" lesson, considerations doc §2) — so a
+ * shape failure is exactly an opaqueness failure, not a separate concern.
+ * (A row that fails this shape can still reach here: `parseRegistry` skips
+ * it silently rather than producing an entry, but nothing guarantees every
+ * `RegistryEntry[]` this function sees came through that parser.) */
+function malformedIdFindings(entries: readonly RegistryEntry[]): Finding[] {
+  const findings: Finding[] = [];
+  for (const entry of entries) {
+    if (!KB_ID_RE.test(entry.id)) {
+      findings.push(
+        errorFinding(
+          REGISTRY_FILE,
+          `Registry id "${entry.id}" is not shaped KB-NNNN (a KB- prefix and digits only) — an id must be opaque, encoding no pack or reference name (FR-009).`,
+        ),
+      );
+    }
+  }
+  return findings;
+}
+
+/** Every `KB-NNNN` appearing more than once across the whole registry — the
+ * repo-wide uniqueness FR-009 mandates, and the direct fix for the cross-pack
+ * `KB-001` collision that motivated this amendment (`resolveCitation` picking
+ * the first match by array order, considerations doc §1). */
+function duplicateRegistryIdFindings(entries: readonly RegistryEntry[]): Finding[] {
+  const byId = new Map<string, RegistryEntry[]>();
+  for (const entry of entries) {
+    const group = byId.get(entry.id) ?? [];
+    group.push(entry);
+    byId.set(entry.id, group);
+  }
+  const findings: Finding[] = [];
+  for (const [id, group] of byId) {
+    if (group.length < 2) continue;
+    const paths = group.map((e) => e.path).join(', ');
+    findings.push(errorFinding(REGISTRY_FILE, `Duplicate registry id ${id} in ${paths} — a KB-NNNN must be repo-unique.`));
+  }
+  return findings;
+}
+
+/** All root-registry well-formedness findings (FR-009): required columns,
+ * opaqueness, and repo-wide `KB-NNNN` uniqueness. A no-op (returns []) when
+ * no registry exists — `entries` is simply empty in that case (no
+ * `knowledge/index.md` to parse), so the graceful-absence contract holds the
+ * same way `corpusWellFormedFindings`' does for an empty `packs` array
+ * (NFR-001). Kept separate from `corpusWellFormedFindings` because a
+ * registry spans every pack in the project, not one — there is no single
+ * `CorpusPack` to attach it to. */
+export function corpusRegistryFindings(entries: readonly RegistryEntry[]): Finding[] {
+  return [
+    ...missingRegistryFieldFindings(entries),
+    ...malformedIdFindings(entries),
+    ...duplicateRegistryIdFindings(entries),
+  ];
 }

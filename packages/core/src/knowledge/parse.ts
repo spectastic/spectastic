@@ -14,6 +14,7 @@ import { parse as parseYaml } from 'yaml';
 import {
   KB_ID_RE,
   REQUIRED_PROVENANCE_FIELDS,
+  SLUG_RE,
   type ParsedCorpusDocument,
   type Provenance,
 } from './types.js';
@@ -22,10 +23,13 @@ const FRONTMATTER_RE = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/;
 
 /** The degrade-to-empty result shared by every "couldn't read frontmatter"
  * path (absent fence, unparseable YAML, non-object YAML) — every required
- * field, including `id`, reports missing rather than guessing at a partial. */
+ * field, including `id`, reports missing rather than guessing at a partial.
+ * No frontmatter also means no `slug`, so the id-or-slug identity check
+ * below correctly has nothing to fall back on either. */
 function noFrontmatterResult(raw: string): ParsedCorpusDocument {
   return {
     id: null,
+    slug: null,
     hasFrontmatter: false,
     missingFields: ['id', ...REQUIRED_PROVENANCE_FIELDS],
     provenance: {},
@@ -51,6 +55,14 @@ function extractId(parsedYaml: Record<string, unknown>): string | null {
   return rawId && KB_ID_RE.test(rawId) ? rawId : null;
 }
 
+/** The pack-internal slug (FR-002 layer 1), or null if absent or malformed —
+ * the two-layer id's pack-owned half, read from the same frontmatter block
+ * `extractId` reads the legacy `id` from. */
+function extractSlug(parsedYaml: Record<string, unknown>): string | null {
+  const rawSlug = typeof parsedYaml.slug === 'string' ? parsedYaml.slug : null;
+  return rawSlug && SLUG_RE.test(rawSlug) ? rawSlug : null;
+}
+
 /** Whichever required provenance fields (FR-003) are present as non-empty
  * strings; a missing or wrong-typed field is simply absent from the result. */
 function extractProvenance(parsedYaml: Record<string, unknown>): Provenance {
@@ -64,12 +76,17 @@ function extractProvenance(parsedYaml: Record<string, unknown>): Provenance {
   return provenance;
 }
 
-/** Every required field ('id' plus each of REQUIRED_PROVENANCE_FIELDS) that
- * didn't make it into `id`/`provenance` — the well-formedness scan's raw
- * material (T-110). */
-function findMissingFields(id: string | null, provenance: Provenance): string[] {
+/** Every required field that didn't make it into `id`/`slug`/`provenance` —
+ * the well-formedness scan's raw material (T-110). A document identifies
+ * itself via *either* layer of the two-layer id (2026-07-26-two-layer-
+ * corpus-identity amendment): the legacy pack-minted `id`, or the new
+ * pack-internal `slug`. Only flag 'id' missing when a document has neither
+ * — a migrated document with a `slug` and no `id` is not re-penalised for
+ * an identity it no longer needs to carry; an unmigrated document with
+ * neither still gets the same "missing: id" finding it always has. */
+function findMissingFields(id: string | null, slug: string | null, provenance: Provenance): string[] {
   const missingFields: string[] = [];
-  if (!id) missingFields.push('id');
+  if (!id && !slug) missingFields.push('id');
   for (const field of REQUIRED_PROVENANCE_FIELDS) {
     if (!provenance[field]) missingFields.push(field);
   }
@@ -92,8 +109,9 @@ export function parseCorpusDocument(raw: string, _filePath: string): ParsedCorpu
   if (!parsedYaml) return noFrontmatterResult(raw);
 
   const id = extractId(parsedYaml);
+  const slug = extractSlug(parsedYaml);
   const provenance = extractProvenance(parsedYaml);
-  const missingFields = findMissingFields(id, provenance);
+  const missingFields = findMissingFields(id, slug, provenance);
 
-  return { id, hasFrontmatter: true, missingFields, provenance, body: body.trim() };
+  return { id, slug, hasFrontmatter: true, missingFields, provenance, body: body.trim() };
 }
