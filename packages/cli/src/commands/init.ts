@@ -98,7 +98,7 @@ async function runToolsMode(options: InitOptions): Promise<void> {
 /**
  * Register the `init` subcommand. Bootstraps a spectastic project in
  * the current working directory by writing the canonical lifecycle
- * structure (8 slash commands + 4 assets + 8 templates + a 3-file
+ * structure (8 slash commands + 5 assets + 8 templates + a 3-file
  * knowledge/ corpus scaffold, spec 051), plus a generated .gitignore.
  * The counts are single-sourced as
  * SCAFFOLD_FILE_COUNT / SCAFFOLD_TREE_FILE_COUNT in init/plan.ts —

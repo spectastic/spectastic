@@ -85,10 +85,23 @@ spectastic init --with explain      # also install the extended `explain` verb
 | Extended verb | Command | What it does |
 | --- | --- | --- |
 | explain | `/spectastic.explain <target> [--proficiency=wheels\|completion\|independent]` | A grounded, in-chat coaching read of a spec, requirement, decision, or file. Ephemeral — writes no artifact, cites only real source, pulled on demand. |
-| explain --course | `/spectastic.explain --course <target> [--keep]` | Generates a persistent, grounded **course** — a handful of objectives, each a reading + a quiz, on a mastery ledger. Every reference is verified to exist and every quiz item is checked to be unanswerable without the source. Courses are ephemeral: written under `.spectastic/courses/`, git-ignored by default (`--keep` retains). Backed by the `spectastic course` engine. |
+| explain --course | `/spectastic.explain --course <target> [--keep]` | Generates a persistent, grounded **course** — a handful of objectives, each a reading (optionally a structured teaching payload — analogy, contrast, worked example, illustration) + a quiz, on a mastery ledger. Every reference is verified to exist, every quiz item is checked to be unanswerable without the source, and an analogy is checked for a mis-mapping. Courses are ephemeral: written under `.spectastic/courses/`, git-ignored by default (`--keep` retains). Backed by the `spectastic course` engine. |
 | explore | `/spectastic.explore <intent>` | **Vibe to learn, spec to keep.** Scaffolds a *quarantined* exploration under `explorations/<id>/` — a git-ignored `explore.html` ledger plus a tracked `quarantine.json` marker — that you build loosely (SDD ceremony off, a thin P-1+P-2 floor on). The marker is the anti-ship gate: **`spectastic validate` errors while any exploration is quarantined**, so an un-graduated build can never merge (your branch is red by design until you *graduate* or *delete* it). |
 | explore --graduate | `/spectastic.explore --graduate <id>` | **The back half of the loop.** Turns a quarantined exploration into a real, verified-grounded **spec + plan**, then lifts the quarantine and archives the exploration. Three steps: *classify* (spike → rebuild clean, or tracer-bullet → harden in place; recorded immutably), *extract* (read the build into a Draft spec + plan, the run record's proven facts seeded as `verified` rows in the **plan's** evidence ledger), and *lift + archive* (all-or-nothing: a failure leaves the build quarantined, no partial spec). Restore tasks for the graduated build are the sibling slice — see `tasks --restore`. |
 | tasks --restore | `spectastic tasks <id> --restore` | **The other back half of graduation.** Generates path-appropriate restore tasks for a graduated exploration, reading the frozen classification from the archived marker: *refactor-to-comply* for a tracer-bullet (keep the build, harden it in place) or *clean-rebuild* for a spike (prototype marked for deletion). Output is banner-labelled. The trigger is always explicit — a flag, or an announced prompt on a TTY, and a refuse when piped — so it never emits the wrong task shape silently. |
+
+**A course objective can teach by more than a paragraph.** A flat reading is, mechanically, rereading — the
+lowest-utility study technique the evidence names. So an objective's `read` optionally widens into a **structured
+teaching payload**: an **analogy** (a mapping from a familiar concept), a pair of **contrasting cases** (the
+highest-transfer move in the research), a **worked example** (fully-solved steps), and an **illustration** (an
+inline diagram). Every member's cited refs are verified to exist exactly like today's refs; an analogy is
+additionally posed to a **blind fit check** that flags a mis-mapped comparison before the course is ever written —
+mirroring the existing quiz-guessability check. All four are optional and additive: a course authored with only
+plain prose (the pre-existing form) generates unchanged. The elements render from their own
+**`assets/course.css`** — never `assets/spec.css`/`spec.js`, since a teaching move isn't a spec construct — which
+ships with every `spectastic init` scaffold so a generated course renders styled in any project. Grounded in the
+[teaching](./docs/teaching-considerations.html) considerations survey; this is
+[spec 060](./specs/060-course-teaching-payload/spec.html).
 
 ### The guarantee layer — `init --tools`
 

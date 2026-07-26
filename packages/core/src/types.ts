@@ -491,12 +491,84 @@ export interface CourseQuizItem {
   feedback?: string[];
 }
 
+/**
+ * A teaching-by-comparison move (060-course-teaching-payload FR-002): a
+ * mapping from a familiar source concept to the target concept the
+ * objective teaches. The one member with a *mapping* that can be wrong —
+ * see `verifyAnalogyFit` — so it is the only member additionally posed to
+ * the blind misleading-check (FR-005).
+ */
+export interface CourseAnalogy {
+  /** The familiar concept the learner already understands. */
+  source: string;
+  /** The target concept being taught. */
+  target: string;
+  /** The mapping between them — what makes the analogy teach. */
+  mapping: string;
+  /** References this member's claims are grounded against. */
+  refs: string[];
+}
+
+/**
+ * Two aligned cases compared across named dimensions (060 FR-002) — the
+ * highest-evidence teaching-by-comparison move (Gentner's analogical
+ * encoding: comparing cases surfaces deep structure over surface
+ * similarity).
+ */
+export interface CourseContrast {
+  /** A short label for the first case. */
+  caseA: string;
+  /** A short label for the second case. */
+  caseB: string;
+  /** The dimensions compared, each contrasting caseA vs. caseB. */
+  dimensions: { label: string; a: string; b: string }[];
+  /** References this member's claims are grounded against. */
+  refs: string[];
+}
+
+/** An ordered, fully-worked sequence of solved steps (060 FR-003, the
+ * worked-example effect) — static; step-*fading* by proficiency band is
+ * deferred to 019's band-personalization. */
+export interface CourseWorkedExample {
+  /** The steps, in order, each already solved (not left for the learner). */
+  steps: string[];
+  /** References this member's claims are grounded against. */
+  refs: string[];
+}
+
+/** A self-contained inline illustration (060 FR-003, Mayer's multimedia
+ * principle) — data, never script (P-11), mirroring `<spec-arch>`'s shape. */
+export interface CourseIllustration {
+  /** A self-contained inline `<svg>…</svg>` string. */
+  svg: string;
+  /** The caption explaining what the diagram shows. */
+  caption: string;
+  /** References this member's claims are grounded against. */
+  refs: string[];
+}
+
+/**
+ * The structured teaching payload (060-course-teaching-payload FR-001) —
+ * reading prose plus zero or more optional teaching members. Supersedes a
+ * flat string as a second valid shape for `CourseObjective.read`; a plain
+ * string (the pre-060 form) remains valid and unchanged (FR-006).
+ */
+export interface StructuredRead {
+  /** The grounded reading prose (same role as the flat string form). */
+  prose: string;
+  analogy?: CourseAnalogy;
+  contrast?: CourseContrast;
+  workedExample?: CourseWorkedExample;
+  illustration?: CourseIllustration;
+}
+
 /** One learnable unit: a grounded read, a quiz, an ungraded teach-back. */
 export interface CourseObjective {
   /** Short objective title (becomes the ledger row label). */
   title: string;
-  /** Grounded Read explanation (HTML-ish prose). */
-  read: string;
+  /** Grounded Read explanation — a flat string (HTML-ish prose, the
+   * pre-060 form) or a structured teaching payload (060 FR-001/FR-006). */
+  read: string | StructuredRead;
   /** The objective's quiz item. */
   quiz: CourseQuizItem;
   /** Optional ungraded teach-back prompt (FR-007). */
@@ -528,9 +600,11 @@ export interface CourseInput {
 export interface CourseItemFailure {
   /** Index into draft.objectives[]. */
   objectiveIndex: number;
-  /** Why it failed. */
-  kind: 'missing-ref' | 'guessable';
-  /** Human-readable detail (the missing ref, or the guessable question). */
+  /** Why it failed. `'misleading-analogy'` is 060-course-teaching-payload's
+   * addition (FR-005) — an analogy the blind check judged mis-mapped. */
+  kind: 'missing-ref' | 'guessable' | 'misleading-analogy';
+  /** Human-readable detail (the missing ref, the guessable question, or
+   * the flagged analogy's mapping). */
   detail: string;
 }
 
