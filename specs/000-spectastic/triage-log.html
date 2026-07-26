@@ -672,6 +672,62 @@
   </details>
 </spec-triage>
 
+<spec-triage id="T-019" layer="spec">
+  <header>
+    <h4>Kernel apply drops every ADD requirement into §1 — anchors the first <code>&lt;/section&gt;</code>, not the section matching its kind</h4>
+    <span class="meta">
+      <span class="layer-pill">Spec</span>
+      <span class="regen" data-result="fail">upstream</span>
+    </span>
+  </header>
+
+  <p class="headline">Debugging an applied <code>op="added"</code> NFR that landed inside §1 Context instead of §3 Requirements, root cause was a <strong>spec</strong> gap — <a href="./spec.html#REQ-CHANGE-008">REQ-CHANGE-008</a> says the kernel "applies each delta into the live <code>spec.html</code>" but never says <em>where</em> an ADD requirement goes, so <code>apply.ts</code> inserts before the document's <em>first</em> <code>&lt;/section&gt;</code> (§1); fixed by hand-relocating the block + queuing a contract clause; regeneration <strong>fails</strong> — another LLM implementing the current wording writes the same first-<code>&lt;/section&gt;</code> anchor.</p>
+
+  <dl>
+    <dt>Expected</dt> <dd>An <code>op="added"</code> delta's embedded <code>&lt;spec-requirement&gt;</code> lands in the section matching its kind — an <code>FR-*</code> under §3 Functional, an <code>NFR-*</code> under §3 Non-functional, an <code>SC-*</code> under Success criteria — before that section's close.</dd>
+    <dt>Actual</dt>   <dd>Applying <a href="../019-explain-course/changes/archive/2026-07-26-keyless-in-host-verification/proposal.html">2026-07-26-keyless-in-host-verification</a>'s ADD <code>NFR-003</code> delta placed the requirement inside <code>&lt;section id="context"&gt;</code> (§1), because the kernel anchors on the first <code>&lt;/section&gt;</code> in the whole document. Recovered by hand: moved the block into §3 → Non-functional beside <code>NFR-001</code>/<code>NFR-002</code>.</dd>
+    <dt>Diagnosis</dt><dd><code>packages/core/src/commands/apply.ts:104-112</code> — the ADD branch computes <code>const closingSection = liveSpec.indexOf('&lt;/section&gt;')</code> (the <em>first</em> match) and splices the requirement there, ignoring the requirement's <code>FR/NFR/SC</code> kind. <a href="./spec.html#REQ-CHANGE-008">REQ-CHANGE-008</a> never constrains placement, so the naïve first-anchor implementation satisfies the letter of the contract.</dd>
+    <dt>Fix</dt>      <dd><code>/spectastic.propose</code> against <code>specs/000-spectastic/spec.html</code>: amend <a href="./spec.html#REQ-CHANGE-008">REQ-CHANGE-008</a> so an ADD requirement is inserted into the section matching its id prefix (<code>FR-</code>→Functional, <code>NFR-</code>→Non-functional, <code>SC-</code>→Success criteria), before that section's close. <strong>Hotfix:</strong> replace the first-<code>&lt;/section&gt;</code> anchor at <code>apply.ts:104-112</code> with a kind-routed section lookup.</dd>
+  </dl>
+
+  <details>
+    <summary>Deep dive — hotfix-before-amendment sequence; shared fold path with T-020</summary>
+    <dl>
+      <dt>Hotfix now?</dt> <dd>Already hand-applied to 019's live <code>spec.html</code> (the block moved to §3). The kernel hotfix + contract amendment are queued as one <code>/spectastic.propose</code> against 000 — the same "amend the contract + hotfix the kernel" shape as <a href="#T-007">T-007</a> / <a href="#T-018">T-018</a>, so a fresh implementation can't reintroduce it (P-8).</dd>
+      <dt>Shared path</dt> <dd>Bundles with <a href="#T-020">T-020</a> — both are defects in the single ADD-delta fold branch (<code>apply.ts:104-112</code>). One proposal should amend <a href="./spec.html#REQ-CHANGE-008">REQ-CHANGE-008</a> for placement (this card) and embedded-path re-depthing (T-020) together.</dd>
+      <dt>Why unseen</dt>  <dd>Every prior ADD the meta-spec applied happened to be the first-or-only requirement kind in its target, so the first-<code>&lt;/section&gt;</code> anchor coincidentally landed right; 019's NFR added to a spec that already had a §1 Context section is the first case that exposed it.</dd>
+    </dl>
+  </details>
+</spec-triage>
+
+<spec-triage id="T-020" layer="spec">
+  <header>
+    <h4>Kernel apply folds an ADD requirement's embedded links verbatim — no proposal→spec path-depth rewrite</h4>
+    <span class="meta">
+      <span class="layer-pill">Spec</span>
+      <span class="regen" data-result="fail">upstream</span>
+    </span>
+  </header>
+
+  <p class="headline">Debugging broken self- and cross-references in an applied ADD requirement, root cause was a <strong>spec</strong> gap — the kernel deepens the <em>archived proposal's</em> paths but <a href="./spec.html#REQ-CHANGE-008">REQ-CHANGE-008</a> never says an <em>embedded requirement's</em> inner links get re-depthed on fold, so proposal-depth hrefs (4 levels) splice into the live spec (2 levels) verbatim and point at nothing; fixed by hand-rewriting the hrefs + queuing a contract clause; regeneration <strong>fails</strong> — the current wording implies verbatim insertion.</p>
+
+  <dl>
+    <dt>Expected</dt> <dd>When an ADD delta's embedded <code>&lt;spec-requirement&gt;</code> folds into the live spec, its relative links are rewritten from proposal depth (<code>specs/&lt;id&gt;/changes/&lt;date&gt;-&lt;slug&gt;/</code>, 4 levels) to live-spec depth (<code>specs/&lt;id&gt;/</code>, 2 levels) — a self-ref <code>#FR-004</code> stays intra-doc, <code>../../principles.html</code> becomes <code>../../principles.html</code> re-based, a sibling <code>../006-…</code> re-based — so every link resolves.</dd>
+    <dt>Actual</dt>   <dd>19's <code>NFR-003</code> folded with its authored proposal-depth links intact (e.g. <code>../../spec.html#FR-004</code>, <code>../../../../principles.html#P-8</code>), which from the live spec point two levels above the repo root — broken. Recovered by hand: rewrote all seven hrefs and confirmed each resolves on disk + over HTTP 200.</dd>
+    <dt>Diagnosis</dt><dd><code>packages/core/src/commands/apply.ts:106</code> inserts <code>wrapRequirement(target, embeddedRequirement)</code> verbatim; <code>deepenArchivePaths</code> (<code>:167</code>) re-depths the <em>archived proposal copy</em> but nothing re-bases the requirement text spliced into the <em>live spec</em>. <a href="./spec.html#REQ-CHANGE-008">REQ-CHANGE-008</a> mentions deepening the archived proposal's paths but is silent on the folded requirement's own links.</dd>
+    <dt>Fix</dt>      <dd><code>/spectastic.propose</code> against <code>specs/000-spectastic/spec.html</code>: amend <a href="./spec.html#REQ-CHANGE-008">REQ-CHANGE-008</a> so an embedded requirement's relative paths are re-based from proposal depth to live-spec depth on fold (the mirror of the archive-deepen it already mandates). <strong>Hotfix:</strong> apply a proposal→spec path re-base to the insertion at <code>apply.ts:104-112</code> before splicing.</dd>
+  </dl>
+
+  <details>
+    <summary>Deep dive — hotfix-before-amendment sequence; shared fold path with T-019</summary>
+    <dl>
+      <dt>Hotfix now?</dt> <dd>Already hand-applied to 019's live <code>spec.html</code> (all seven hrefs rewritten + verified 200). Kernel hotfix + contract amendment queued as the same <code>/spectastic.propose</code> against 000 (P-8).</dd>
+      <dt>Shared path</dt> <dd>Bundles with <a href="#T-019">T-019</a> — same ADD-delta fold branch (<code>apply.ts:104-112</code>). The re-base helper is the inverse of the existing <code>deepenArchivePaths</code>; the two directions (deepen archive, shallow the folded body) should live side by side.</dd>
+      <dt>Scope</dt>       <dd>Applies to any ADD/MODIFY embedding a post-state with relative links — the deeper the change folder, the wider the gap. Latent in every prior applied delta whose embedded requirement happened to carry only intra-doc <code>#ID</code> anchors (which survive verbatim); 019's cross-file links are the first to expose it.</dd>
+    </dl>
+  </details>
+</spec-triage>
+
 </spec-triage-log>
 </section>
 
@@ -680,6 +736,7 @@
 <h2>Change log</h2>
 <spec-changelog>
 <ol>
+  <li><time datetime="2026-07-26">26 Jul 2026</time><span>T-019 + T-020 added — surfaced applying <a href="../019-explain-course/changes/archive/2026-07-26-keyless-in-host-verification/proposal.html">2026-07-26-keyless-in-host-verification</a>'s ADD <code>NFR-003</code> delta. T-019: the kernel drops every ADD requirement at the document's first <code>&lt;/section&gt;</code> (<code>apply.ts:104-112</code>), so <code>NFR-003</code> landed in §1 Context instead of §3 Non-functional. T-020: the folded requirement's embedded relative links are spliced verbatim at proposal depth (4 levels), broken from live-spec depth (2) — <code>deepenArchivePaths</code> re-depths only the archived copy. Both <code>spec</code> layer, regen <code>fail</code> — <a href="./spec.html#REQ-CHANGE-008">REQ-CHANGE-008</a> constrains neither placement nor embedded-path re-basing. Hotfixed by hand in 019's <code>spec.html</code> (block relocated, seven hrefs rewritten + verified 200); durable fix is one <code>/spectastic.propose</code> against 000 amending REQ-CHANGE-008 + a kernel hotfix, mirroring <a href="#T-007">T-007</a>/<a href="#T-018">T-018</a>.</span></li>
   <li><time datetime="2026-07-11">11 Jul 2026</time><span>T-018 closed — applied <a href="./changes/archive/2026-07-11-data-content-delta/proposal.html">2026-07-11-data-content-delta</a> (MODIFY REQ-CHANGE-002 + REQ-CHANGE-008: a delta with no embedded <code>&lt;spec-requirement&gt;</code> is a data/content delta; apply makes no change to the requirements body) and implemented the fix: <code>apply.ts</code> branches on the embedded requirement (never fabricates), a requirement-shaped target missing its post-state gate-blocks, and the new <code>data-delta-shape</code> validate rule catches the slip at authoring time. Adversarial pass: 3 risks, 2 mitigated (byte-identical→requirements-body wording; validate rule pulled in-scope), 1 accepted. 642 tests green; the fix unblocks 041 P1b + the 042 enforce cluster.</span></li>
   <li><time datetime="2026-07-11">11 Jul 2026</time><span>T-018 added — kernel <code>apply</code> injected a profile-data delta as a phantom <code>&lt;spec-requirement&gt;</code> into 041's <code>spec.html</code> (from <a href="./../041-init-profiles/changes/archive/2026-07-11-profile-principle-catalog/proposal.html">2026-07-11-profile-principle-catalog</a>, whose ADD delta targets <code>spectastic-profiles.json</code> data). <code>spec</code> layer, regen <code>fail</code> — <a href="./spec.html#REQ-CHANGE-002">REQ-CHANGE-002</a> assumes every <code>target</code> is a requirement ID and <a href="./spec.html#REQ-CHANGE-008">REQ-CHANGE-008</a>'s kernel (<code>apply.ts:75-86</code>) fabricates a requirement from any ADD lacking an embedded <code>&lt;spec-requirement&gt;</code>. Hotfixed (phantom removed, apply commit amended); fix is a <code>/spectastic.propose</code> against 000 defining a data/content delta that's a no-op to <code>spec.html</code>. Blocks P1b + the 042 enforce cluster.</span></li>
   <li><time datetime="2026-07-10">10 Jul 2026</time><span>T-017 added + done — user-facing copy leaked spectastic's own artifact ids (<code>spectastic --help</code> shipped <code>(037)</code>, <code>(spec 042)</code>, <code>Spec 043.</code>) across 30 sites in three tiers (CLI help, runtime messages, generated-file markers). <code>principles</code>, regen <code>fail</code>: the root was a missing invariant. Fixed by ratifying <a href="../../principles.html#P-10">P-10</a> (principles v1.5.0), scrubbing all 30 sites, and adding a <code>no-internal-id-in-copy</code> validate rule (<code>copyLeakFindings</code> + CLI <code>scanCopyLeak</code>, error, pre-commit-gated) over the CLI's own help strings — the machine-visible half; runtime messages / generated copy and downstream application copy are review-caught, the honest P-8 ceiling recorded. Formal <code>REQ-FORMAT-006</code> meta-spec owner deferred to <code>/spectastic.propose</code> (Accepted spec is P-6-locked).</span></li>
