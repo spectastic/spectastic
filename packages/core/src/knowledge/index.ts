@@ -15,8 +15,8 @@
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { parseCorpusDocument } from './parse.js';
-import { parseIndex } from './index-format.js';
-import type { CorpusDocument, CorpusPack, SupersededEdition } from './types.js';
+import { parseIndex, parseRegistry } from './index-format.js';
+import type { CorpusDocument, CorpusPack, RegistryEntry, SupersededEdition } from './types.js';
 
 // This file is the package's single `./knowledge` tsup entry (plan D-001) —
 // parse.ts, validate.ts, fence.ts, resolve.ts, gates.ts and types.ts are not
@@ -26,7 +26,7 @@ export { parseCorpusDocument } from './parse.js';
 export { corpusWellFormedFindings, corpusRegistryFindings } from './validate.js';
 export { corpusLicenseFindings, isPermissiveLicense } from './license.js';
 export { fenceCorpusDocument } from './fence.js';
-export { resolveCitation } from './resolve.js';
+export { resolveCitation, renderCitationLabel } from './resolve.js';
 export { corpusGroundingFindings } from './gates.js';
 export { buildCorpusPromptBlock, CORPUS_HINT, withCorpusHint } from './prompt.js';
 export {
@@ -57,6 +57,7 @@ const KNOWLEDGE_DIR = 'knowledge';
 const SKILL_FILE = 'SKILL.md';
 const INDEX_FILE = 'index.md';
 const REFERENCES_DIR = 'references';
+const REGISTRY_PATH = join(KNOWLEDGE_DIR, 'index.md');
 
 /** Every `references/*.md` document in a pack, parsed best-effort — a
  * malformed document is still included (with `missingFields` populated),
@@ -120,4 +121,17 @@ export function loadCorpus(cwd: string): CorpusPack[] {
     packs.push({ name, dirPath: relative(cwd, dirPath), hasSkillFile, index, documents, supersededEditions });
   }
   return packs;
+}
+
+/** Load the project's root corpus registry (FR-009, `knowledge/index.md`) —
+ * the two-layer model's repo-unique half (2026-07-26-hybrid-corpus-citation,
+ * T-1001). Returns an empty array when the file doesn't exist yet — a
+ * project mid-migration, or one that hasn't imported anything, owes no
+ * registry (051 FR-009's own graceful-absence framing) and every consumer
+ * (the grounding gate here, the eventual `TBD-corpus-root-index-ingester`)
+ * falls back to the pack scan exactly as before this row existed. */
+export function loadRegistry(cwd: string): RegistryEntry[] {
+  const registryPath = join(cwd, REGISTRY_PATH);
+  if (!existsSync(registryPath)) return [];
+  return parseRegistry(readFileSync(registryPath, 'utf8'));
 }

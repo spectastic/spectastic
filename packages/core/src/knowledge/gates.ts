@@ -19,13 +19,21 @@
  * also names is undecidable and deliberately not built here (plan D-004).
  * Deterministic (NFR-001): no clock reads, only the corpus's own recorded
  * editions.
+ *
+ * Registry-first resolution (2026-07-26-hybrid-corpus-citation, T-1001, FR-002
+ * MODIFY): an optional `registry` parameter is threaded straight through to
+ * 052's own `resolveCitation`, so a citation resolves against the root
+ * `knowledge/index.md` registry on the enforcement path too — not only in
+ * the resolver's own unit tests. Absent/empty registry falls back to the
+ * pack scan unchanged, so no shipped citation's finding changes on this
+ * apply (the same back-compat window T-1000 established).
  */
 import { findAll, getLocation, parse } from '@spectastic/schema/parser';
 import type { Element } from '@spectastic/schema/parser';
 import { findCitationTokens, parseCorpusCitation } from '@spectastic/schema/citation';
 import type { Finding } from '@spectastic/schema';
 import { resolveCitation } from './resolve.js';
-import type { CorpusPack } from './types.js';
+import type { CorpusPack, RegistryEntry } from './types.js';
 
 /** Collect an element's visible text, collapsed (mirrors slo-well-formed's
  * / corpus-citation-form's textOf). */
@@ -67,12 +75,17 @@ function stalenessFinding(file: string, decision: Element, token: string, curren
 }
 
 /** Every corpus-grounding finding for one decision's citations. */
-function decisionFindings(file: string, decision: Element, packs: readonly CorpusPack[]): Finding[] {
+function decisionFindings(
+  file: string,
+  decision: Element,
+  packs: readonly CorpusPack[],
+  registry: readonly RegistryEntry[] | undefined,
+): Finding[] {
   const findings: Finding[] = [];
   for (const token of findCitationTokens(textOf(decision))) {
     const citation = parseCorpusCitation(token);
     if (citation === null) continue; // malformed shape — corpus-citation-form's concern, not this gate's
-    const resolved = resolveCitation(packs, citation);
+    const resolved = resolveCitation(packs, citation, registry);
     if (resolved === null) {
       findings.push(provenanceFinding(file, decision, token));
     } else if (resolved.kind === 'superseded') {
@@ -96,13 +109,14 @@ function findCurrentEdition(packs: readonly CorpusPack[], id: string): string {
 export function corpusGroundingFindings(
   docs: readonly { html: string; file: string }[],
   packs: readonly CorpusPack[],
+  registry?: readonly RegistryEntry[],
 ): Finding[] {
   if (packs.length === 0) return [];
   const findings: Finding[] = [];
   for (const { html, file } of docs) {
     const doc = parse(html, file);
     for (const decision of findAll(doc.ast, 'spec-decision')) {
-      findings.push(...decisionFindings(file, decision, packs));
+      findings.push(...decisionFindings(file, decision, packs, registry));
     }
   }
   return findings;

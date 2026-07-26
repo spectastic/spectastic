@@ -7,9 +7,12 @@ import type { Finding, PerFileRule } from '../types.js';
  * `corpus-citation-form` (spec 052-corpus-citation-contract, FR-002, plan D-002).
  *
  * A corpus citation inside a `<spec-decision>` MUST be edition-pinned —
- * `KB-NNN@edition` — so a later re-ingest can never silently change what a
- * historical decision claimed to have read. A bare `KB-NNN` (no `@edition`)
- * or a malformed pin SHOULD warn.
+ * `KB-NNNN@edition`, the project-assigned, opaque, 4-digit-baseline id
+ * (2026-07-26-hybrid-corpus-citation, T-1004; the grammar itself is
+ * unchanged — `\d{3,}` already admitted 4+ digits, so a pre-migration
+ * 3-digit `KB-NNN` citation still parses) — so a later re-ingest can never
+ * silently change what a historical decision claimed to have read. A bare
+ * `KB-NNNN` (no `@edition`) or a malformed pin SHOULD warn.
  *
  * This is an HTML per-file rule, not a folded CLI scan (051's markdown case):
  * citations live in `<spec-decision>` HTML, so the HTML-bound schema registry
@@ -41,7 +44,7 @@ export const corpusCitationFormRule: PerFileRule = {
   scope: 'per-file',
   defaultSeverity: 'warning',
   description:
-    'A corpus citation in a <spec-decision> should be edition-pinned (KB-NNN@edition); a bare or malformed one warns.',
+    'A corpus citation in a <spec-decision> should be edition-pinned (KB-NNNN@edition); a bare or malformed one warns.',
   check({ doc }) {
     const findings: Finding[] = [];
     for (const decision of findAll(doc.ast, 'spec-decision')) {
@@ -56,8 +59,8 @@ export const corpusCitationFormRule: PerFileRule = {
           column: loc.column,
           rule: 'corpus-citation-form',
           severity: 'warning',
-          message: `Corpus citation "${token}" is not edition-pinned — cite it as KB-NNN@edition so a later re-ingest can't silently change what this decision grounded against.`,
-          fixHint: 'Add the edition the claim was grounded against, e.g. KB-001@2024-05-28.',
+          message: `Corpus citation "${token}" is not edition-pinned — cite it as KB-NNNN@edition so a later re-ingest can't silently change what this decision grounded against.`,
+          fixHint: 'Add the edition the claim was grounded against, e.g. KB-0001@2024-05-28.',
         });
       }
     }

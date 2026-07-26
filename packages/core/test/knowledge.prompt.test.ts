@@ -49,7 +49,9 @@ describe('buildCorpusPromptBlock (054, T-100)', () => {
     expect(block).toMatch(/<<<END KNOWLEDGE_CORPUS_INDEX DATA>>>/);
     expect(block).toMatch(/untrusted content/i);
     // The grounding directive names the citation form and stays unfenced.
-    expect(block).toMatch(/KB-NNN@edition|cite/i);
+    expect(block).toMatch(/KB-NNNN@edition|cite/i);
+    // 2026-07-26-hybrid-corpus-citation T-1005: never the marketplace version.
+    expect(block).toMatch(/never a marketplace/i);
   });
 
   it('renders rows from multiple packs', () => {

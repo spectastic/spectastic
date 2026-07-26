@@ -51,4 +51,16 @@ describe('corpus-citation-form', () => {
     const f = findings(decision('cites <code>KB-001</code> and <code>KB-002</code>'));
     expect(f.length).toBe(2);
   });
+
+  it('warns on a bare citation at the 4-digit KB-NNNN baseline too (2026-07-26-hybrid-corpus-citation T-1004)', () => {
+    const f = findings(decision('Grounded against <code>KB-0001</code>.'));
+    expect(f.length).toBe(1);
+    expect(f[0]?.severity).toBe('warning');
+    expect(f[0]?.message).toContain('KB-0001');
+    expect(f[0]?.message).toContain('KB-NNNN@edition');
+  });
+
+  it('does not flag a well-formed edition-pinned 4-digit citation', () => {
+    expect(findings(decision('Grounded against <code>KB-0001@2024-05-28</code>.'))).toEqual([]);
+  });
 });

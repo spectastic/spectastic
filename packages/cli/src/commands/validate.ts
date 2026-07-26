@@ -247,18 +247,27 @@ async function scanCorpusWellFormed(cwd: string): Promise<Finding[]> {
  * warning (corpus-staleness). Reads no profile marker — the integrity gates
  * are tier-independent by construction (FR-004). A no-op when no
  * `knowledge/` directory exists, matching scanCorpusWellFormed's shape.
+ *
+ * Registry-first (2026-07-26-hybrid-corpus-citation, T-1001, FR-002 MODIFY):
+ * the root `knowledge/index.md` registry (if any) is loaded and threaded
+ * through to `corpusGroundingFindings`, so a citation resolves against it
+ * on this enforcement path exactly as `resolveCitation`'s own tests already
+ * cover — not just in isolation. `loadRegistry` returns `[]` when the file
+ * doesn't exist, which is indistinguishable from "no registry" to the gate
+ * (empty array), so a pre-migration project sees no behaviour change.
  */
 async function scanCorpusGrounding(files: readonly string[], cwd: string): Promise<Finding[]> {
   if (files.length === 0) return [];
-  const { loadCorpus, corpusGroundingFindings } = await import('@spectastic/core/knowledge');
+  const { loadCorpus, loadRegistry, corpusGroundingFindings } = await import('@spectastic/core/knowledge');
   const packs = loadCorpus(cwd);
   if (packs.length === 0) return [];
+  const registry = loadRegistry(cwd);
 
   const { readFile } = await import('node:fs/promises');
   const docs = await Promise.all(
     files.map(async (file) => ({ html: await readFile(file, 'utf8'), file })),
   );
-  return corpusGroundingFindings(docs, packs);
+  return corpusGroundingFindings(docs, packs, registry);
 }
 
 /**

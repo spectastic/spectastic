@@ -13,9 +13,19 @@
  * grammar the `corpus-citation-form` rule also uses (plan D-001). Core
  * depends on schema, so this import is legal; the grammar itself never
  * depends on core.
+ *
+ * Registry-first resolution (2026-07-26-hybrid-corpus-citation, T-1000, FR-002
+ * MODIFY): a `KB-NNNN` is post-migration project-assigned and repo-unique in
+ * the root `knowledge/index.md` registry, so a registry hit is checked BEFORE
+ * the pack scan — the pack scan alone is array-order-dependent and is exactly
+ * the first-pack-wins collision the two-layer identity model exists to end.
+ * The `registry` argument is optional and additive: every existing caller
+ * (pre-migration, no registry loaded yet) is unaffected and falls through to
+ * the pack scan unchanged, the back-compat window `TBD-corpus-identity-
+ * migration` will eventually close.
  */
 import type { CorpusCitation } from '@spectastic/schema/citation';
-import type { CorpusPack, ResolvedCitation } from './types.js';
+import type { CorpusPack, RegistryEntry, ResolvedCitation } from './types.js';
 
 /** True if a pinned citation edition matches (or the citation is bare). */
 function editionMatches(citationEdition: string | null, edition: string | null): boolean {
@@ -46,10 +56,32 @@ function matchSuperseded(pack: CorpusPack, citation: CorpusCitation): ResolvedCi
   return null;
 }
 
+/** A registry row matching the citation, or null. The registry has no
+ * separate superseded-editions collection of its own (an entry's `edition`
+ * IS its current edition), so a hit is always `kind: 'current'`; a citation
+ * pinned to an edition the registry has already moved past falls through to
+ * null here and is picked up by the pack scan's own superseded match. The
+ * registry doesn't carry a document's full provenance frontmatter — only
+ * `edition` is known at this layer — so the synthesised `provenance` is
+ * minimal by construction, not a parsing gap. */
+function matchRegistry(registry: readonly RegistryEntry[], citation: CorpusCitation): ResolvedCitation | null {
+  for (const entry of registry) {
+    if (entry.id !== citation.id) continue;
+    if (!editionMatches(citation.edition, entry.edition)) continue;
+    return { id: entry.id, edition: entry.edition, kind: 'current', filePath: entry.path, provenance: { edition: entry.edition } };
+  }
+  return null;
+}
+
 export function resolveCitation(
   packs: readonly CorpusPack[],
   citation: CorpusCitation,
+  registry?: readonly RegistryEntry[],
 ): ResolvedCitation | null {
+  if (registry) {
+    const fromRegistry = matchRegistry(registry, citation);
+    if (fromRegistry) return fromRegistry;
+  }
   for (const pack of packs) {
     const current = matchCurrent(pack, citation);
     if (current) return current;
@@ -57,4 +89,28 @@ export function resolveCitation(
     if (superseded) return superseded;
   }
   return null;
+}
+
+/**
+ * Render a `KB-NNNN`'s human label from the registry (2026-07-26-hybrid-
+ * corpus-citation, T-1002, FR-006) — its source `marketplace`, `plugin`, and
+ * `slug`, or its `title` when any of those three is blank. Read at
+ * render/validate time only, never stored in the citation token itself: the
+ * persistent-identifier discipline is "no semantic meaning in the id, so a
+ * rename can't rot a citation" (FR-006's rationale, docs/corpus-identity-
+ * considerations.html D-003) — the token stays opaque, and only the label
+ * beside it is mutable.
+ *
+ * Returns `null` when the registry has no row for the id — an absent
+ * registry (a plain-agent context, or a project whose corpus hasn't been
+ * imported yet) is a no-op per FR-006, not a missing-label error; the caller
+ * renders the bare opaque token in that case.
+ */
+export function renderCitationLabel(id: string, registry: readonly RegistryEntry[]): string | null {
+  const entry = registry.find((row) => row.id === id);
+  if (!entry) return null;
+  if (entry.marketplace && entry.plugin && entry.slug) {
+    return `${entry.marketplace} · ${entry.plugin} · ${entry.slug}`;
+  }
+  return entry.title || null;
 }

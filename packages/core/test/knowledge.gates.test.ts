@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { corpusGroundingFindings } from '../src/knowledge/gates.js';
-import type { CorpusDocument, CorpusPack, SupersededEdition } from '../src/knowledge/types.js';
+import type { CorpusDocument, CorpusPack, RegistryEntry, SupersededEdition } from '../src/knowledge/types.js';
 
 /**
  * 053-corpus-grounding-gates T-100/T-200/T-300: red-first tests for
@@ -127,5 +127,53 @@ describe('corpusGroundingFindings', () => {
     expect(a).toEqual(b);
     expect(a.length).toBe(1);
     expect(a[0]?.severity).toBe('error');
+  });
+
+  /**
+   * 2026-07-26-hybrid-corpus-citation T-1001: the registry threaded through
+   * onto the enforcement path. A citation resolving via the registry (a
+   * repo-unique KB-NNNN) must be clean on the gate the same way a pack-scan
+   * hit is — and, since the registry is checked first, a project with two
+   * colliding per-pack ids no longer resolves by array order.
+   */
+  describe('registry threaded through the grounding gate (T-1001)', () => {
+    function registryRow(overrides: Partial<RegistryEntry> = {}): RegistryEntry {
+      return {
+        id: 'KB-0007',
+        marketplace: 'acme',
+        plugin: 'finance-settlement',
+        slug: '001-settlement-windows',
+        title: 'Settlement windows',
+        edition: '2026-01-01',
+        path: 'knowledge/finance-settlement/references/001-settlement-windows.md',
+        ...overrides,
+      };
+    }
+
+    it('is clean on a citation that resolves only via the registry (no matching pack document)', () => {
+      const findings = corpusGroundingFindings([decisionDoc('KB-0007@2026-01-01')], [pack()], [registryRow()]);
+      expect(findings).toEqual([]);
+    });
+
+    it('still errors on an unknown id even with a registry present (registry miss falls back to the pack scan)', () => {
+      const findings = corpusGroundingFindings([decisionDoc('KB-999@2024-05-28')], [pack()], [registryRow()]);
+      expect(findings.length).toBe(1);
+      expect(findings[0]?.rule).toBe('corpus-provenance');
+    });
+
+    it('resolves deterministically via the registry even when two packs share the cited id (ends first-pack-wins)', () => {
+      const packA = pack({ name: 'a', documents: [currentDoc('KB-0007', '2099-01-01')], supersededEditions: [] });
+      const packB = pack({ name: 'b', documents: [currentDoc('KB-0007', '2026-01-01')], supersededEditions: [] });
+      // Without a registry, array order alone decides which pack wins — packA
+      // (a stale/wrong edition) would resolve first and error. The registry
+      // pins the correct row deterministically instead.
+      const findings = corpusGroundingFindings([decisionDoc('KB-0007@2026-01-01')], [packA, packB], [registryRow()]);
+      expect(findings).toEqual([]);
+    });
+
+    it('is unaffected by an absent registry argument — the pre-T-1001 call shape still works', () => {
+      const findings = corpusGroundingFindings([decisionDoc('KB-001@2024-05-28')], [pack()]);
+      expect(findings).toEqual([]);
+    });
   });
 });
