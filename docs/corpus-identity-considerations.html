@@ -1,0 +1,379 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
+<title>Corpus identity — two-layer KB ids &amp; a composite citation — Considerations for Spectastic</title>
+<meta name="description" content="The corpus id model has two concrete failures after real use: cross-pack KB-001 collisions resolve by array order, and 'unique within the repo' contradicts 'independently published pack'. A DOI-shaped two-layer identity — a portable pack-internal slug plus a project-assigned opaque KB-NNNN in a root registry — fixes both, with a hybrid citation that stays stable but reads human.">
+<link rel="stylesheet" href="../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../assets/favicon.svg">
+<script src="../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Considerations · Corpus identity</p>
+  <h1>One KB id, two owners</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    A pack numbers its own references; the project numbers what it has ingested. Conflate the two and a citation resolves by luck — the order the packs happened to load in.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>     <span><spec-status value="draft">Draft</spec-status></span>
+    <b>Type</b>       <span>Design brief — feeds sequenced specs</span>
+    <b>Author</b>     <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Created</b>    <span><time datetime="2026-07-26">26 Jul 2026</time></span>
+    <b>Sources</b>    <span>4 primary, verified 26 Jul 2026</span>
+    <b>Read time</b>  <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-tldr>
+    <p>The knowledge-corpus family (051–059) shipped an id model that <strong>breaks under real use</strong>, in two ways a code read
+    confirms. First, both packs in the repo use <code>KB-001</code>, and the resolver returns the <strong>first</strong> pack whose id
+    matches — so <code>KB-001@2026-07-25</code> resolves by array order, not intent. Second, <a href="../specs/051-knowledge-corpus/spec.html">051</a>
+    requires an id "unique within the <em>repo</em>," while <a href="../specs/057-portable-domain-skill/spec.html">057</a> requires a pack
+    to be <em>independently authored and published</em> — an independent pack can't know what else will share its repo, so the two rules
+    can't both hold. <mark>The identity has to be composite.</mark> The fix is the <strong>DOI model</strong>: a project-assigned
+    namespace (like a DOI's agency prefix) plus a pack-internal id (like its assigner suffix) gives uniqueness <em>without global
+    coordination</em>. Concretely: each pack numbers its references with a portable <strong>slug</strong>
+    (<code>001-settlement-windows</code>), its curated map inlined in <code>SKILL.md</code>; the consuming project assigns each an opaque,
+    stable <strong><code>KB-NNNN</code></strong> in a new <strong>root <code>knowledge/index.md</code></strong>, keyed on the marketplace
+    <code>(name, version)</code> coordinate. The citation token stays opaque <code>KB-NNNN@edition</code> — resolving against the root
+    registry, deterministic at last — while a render layer shows the human label from the row (the <strong>hybrid</strong>). Re-importing
+    a newer pack keeps the <code>KB-NNNN</code> and appends the new edition; a vanished reference is <em>flagged</em>, never dropped.
+    This builds nothing — it feeds amendments to 051/052 and a new root-index-plus-ingester spec.</p>
+  </spec-tldr>
+
+  <spec-audience-map>
+    <dl>
+      <dt>Exec / PM</dt>   <dd>The TL;DR, then §<a href="#model">3</a> (the five decisions).</dd>
+      <dt>Reviewer</dt>    <dd>§<a href="#failures">1</a> (the two real bugs) + §<a href="#adversarial">4</a> (what still bites).</dd>
+      <dt>Implementer</dt> <dd>§<a href="#model">3</a> + §<a href="#migration">5</a> (the old→new map).</dd>
+      <dt>In a hurry</dt>  <dd>Pack numbers its refs; project numbers its imports; the citation is the project's opaque id. §<a href="#model">3</a>.</dd>
+    </dl>
+  </spec-audience-map>
+</header>
+
+
+<!-- ======================================================= -->
+<section id="failures">
+<h2>1 · Two failures, both in the code</h2>
+
+<p><spec-newthought>The collision is real, not hypothetical.</spec-newthought> The repo ships two corpus packs, and <em>both</em> assign
+<code>KB-001</code> to their first document — <a href="../knowledge/spectastic-concepts/index.md"><code>knowledge/spectastic-concepts</code></a>'s
+foundations doc and <a href="../examples/knowledge/finance-settlement/index.md"><code>examples/knowledge/finance-settlement</code></a>'s
+settlement-windows doc. A citation of <code>KB-001@2026-07-25</code> is therefore ambiguous, and the resolver does not detect the
+ambiguity: <code>resolveCitation</code> loops the packs and returns the <strong>first</strong> id match it finds.<spec-sidenote>
+<code>knowledge/resolve.ts</code> — <code>for (const pack of packs) { … if (current) return current; }</code>.
+The answer depends on the order the loader happened to assemble the packs, which no citation author can see.</spec-sidenote> Which
+document a citation grounds against is decided by array order.</p>
+
+<p><spec-newthought>The contract contradicts itself.</spec-newthought> <a href="../specs/051-knowledge-corpus/spec.html">051 FR-002</a>
+says every document "MUST carry a stable source ID of the form <code>KB-NNN</code>, unique within the <em>repo</em>." But the
+validator only enforces uniqueness <em>within a pack</em><spec-sidenote><code>knowledge/validate.ts</code>,
+<code>duplicateIdFindings(pack)</code>: "KB-NNN ids must be unique <em>within a pack</em>." The repo-wide guarantee 051 promises was
+never built — so the collision above passes validation clean.</spec-sidenote> — so the two <code>KB-001</code>s never trip a finding.
+Worse, the repo-wide rule can't be satisfied even in principle: <a href="../specs/057-portable-domain-skill/spec.html">057</a> requires a
+pack to be "installable into any skills-compatible client," authored and published on its own. An independently-authored pack cannot
+know which other packs a downstream repo will import alongside it, so it cannot guarantee its <code>KB-</code> ids are unique in that
+repo. <strong>Repo-uniqueness and independent authorship are mutually exclusive for a flat id.</strong></p>
+
+<p>The root cause is a single conflation: <em>who owns the number?</em> Today the pack author owns it (they write <code>KB-001</code>
+into their own <code>index.md</code>), but the number is asked to be unique in a scope the author doesn't control (the consuming repo).
+Every downstream symptom follows from that one mistake.</p>
+</section>
+
+
+<!-- ======================================================= -->
+<section id="priorart">
+<h2>2 · What the identifier field already knows</h2>
+
+<p>The problem — a globally-unique identifier without a global coordinator — is old, and its canonical answer is the
+<strong>DOI</strong>. A DOI is a <em>composite</em>: a <strong>prefix</strong> assigned by a registration agency (a namespace) and a
+<strong>suffix</strong> assigned by the publisher.<spec-sidenote>The DOI Handbook, §2 Numbering
+<a href="https://www.doi.org/doi_handbook/2_Numbering.html">[1]</a>; DataCite, DOI Basics
+<a href="https://support.datacite.org/docs/doi-basics">[2]</a>. "The prefix is used as a namespace so that DOIs are globally unique
+without requiring global coordination for every new identifier."</spec-sidenote> The publisher numbers freely inside its suffix space;
+the agency's prefix keeps two publishers from colliding. That is exactly our shape: the pack (publisher) numbers its references freely;
+the project (agency) prefixes them into a repo-unique namespace at import.</p>
+
+<p>Two more rules from the persistent-identifier literature bear directly on the design. <strong>Avoid semantic meaning in the
+identifier.</strong> DOI/PID guidance is blunt: "adding meaning to the identifier (e.g. by using a prefix with the name of the data
+repository) is always dangerous, because — despite best intentions — all names can change over time."<spec-sidenote>PLOS Biology,
+"Identifiers for the 21st century" <a href="https://journals.plos.org/plosbiology/article?id=10.1371%2Fjournal.pbio.2001414">[3]</a>;
+the DOI Handbook makes the same point — once assigned, an id "shall not be changed, regardless of any changes … of the referent."</spec-sidenote>
+That is a direct warning against baking a skill name (or a coined skill-code like <code>SW</code>) into the resolvable citation: rename
+the skill and the citation rots. <strong>And once assigned, an id never changes</strong> — the whole value of a persistent identifier is
+that the referent can move, be re-organised, or be re-ingested at a newer edition while the id stays put.</p>
+
+<p>The platform we publish onto already supplies the coordinate we need. A Claude Code <strong>marketplace</strong> plugin carries a
+<code>name</code> and a <code>version</code> (pinned explicitly, or the git commit SHA when omitted), and a marketplace-level
+<code>renames</code> map that migrates a former plugin <code>name</code> to its current one.<spec-sidenote>Claude Code plugin
+marketplaces <a href="https://code.claude.com/docs/en/plugin-marketplaces">[4]</a>. The schema's granularity stops at the plugin —
+there is no per-reference field — so a per-<em>reference</em> registry has to be a spectastic artifact layered on top of
+<code>(name, version)</code>, not a field inside <code>marketplace.json</code>.</spec-sidenote> That <code>(name, version)</code> pair
+is the stable coordinate a re-import can anchor on, and <code>renames</code> is the precedent for how a rename migrates rather than
+breaks.</p>
+</section>
+
+
+<!-- ======================================================= -->
+<section id="model">
+<h2>3 · The model — two owners, five decisions</h2>
+
+<p>The recommendation splits identity into two layers with two owners, and resolves the 051↔057 contradiction by giving each layer the
+scope it can actually guarantee.</p>
+
+<spec-arch>
+<figure>
+<svg viewBox="0 0 720 250" role="img" aria-label="A pack's internal slug being assigned a project KB-NNNN in the root index, then cited as an opaque token that renders a human label">
+  <style>
+    .box   { fill:var(--c-surface); stroke:var(--c-border); stroke-width:1.2; }
+    .box-w { fill:var(--c-winner-bg); stroke:var(--c-accent); stroke-width:1.3; }
+    .lab   { font:700 11px Lato, sans-serif; fill:var(--c-text-soft); letter-spacing:0.05em; text-transform:uppercase; }
+    .body  { font:400 12px "Source Serif 4", Georgia, serif; fill:var(--c-text); }
+    .mono  { font:400 11px "IBM Plex Mono", monospace; fill:var(--c-text); }
+    .arr   { stroke:var(--c-muted); stroke-width:1.2; fill:none; }
+    .note  { font:italic 11px "Source Serif 4", Georgia, serif; fill:var(--c-muted); }
+  </style>
+  <rect class="box" x="16" y="40" width="196" height="86" rx="4"/>
+  <text class="lab"  x="28" y="60">pack owns (portable)</text>
+  <text class="mono" x="28" y="82">finance-settlement/</text>
+  <text class="mono" x="28" y="100">  SKILL.md (map inline)</text>
+  <text class="mono" x="28" y="118">  001-settlement-windows</text>
+  <text class="note" x="18" y="150">numbers its own refs;</text>
+  <text class="note" x="18" y="166">knows nothing of the repo</text>
+
+  <path class="arr" d="M212 84 L268 84" marker-end="url(#ar2)"/>
+  <text class="lab" x="214" y="76">import</text>
+
+  <rect class="box-w" x="270" y="34" width="220" height="100" rx="4"/>
+  <text class="lab"  x="282" y="54">project owns (root index)</text>
+  <text class="mono" x="282" y="76">KB-0007 ← (finance-</text>
+  <text class="mono" x="282" y="93">  settlement, v1.2,</text>
+  <text class="mono" x="282" y="110">  001-settlement-windows)</text>
+  <text class="mono" x="282" y="127">  edition 2026-07-26</text>
+  <text class="note" x="272" y="156">opaque, monotonic, never reused;</text>
+  <text class="note" x="272" y="172">keyed on the marketplace coordinate</text>
+
+  <path class="arr" d="M490 84 L546 84" marker-end="url(#ar2)"/>
+  <text class="lab" x="492" y="76">cite</text>
+
+  <rect class="box" x="548" y="46" width="158" height="80" rx="4"/>
+  <text class="lab"  x="560" y="66">citation (hybrid)</text>
+  <text class="mono" x="560" y="88">KB-0007@2026-07-26</text>
+  <text class="note" x="558" y="110">renders: KB-0007</text>
+  <text class="note" x="558" y="124">(finance · settlement)</text>
+  <defs><marker id="ar2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="var(--c-muted)"/></marker></defs>
+</svg>
+<figcaption>The pack owns a portable slug; the project owns the opaque <code>KB-NNNN</code>; the citation carries only the project's
+stable id and renders the human label from the row. Rename the pack and <code>renames</code> re-maps the row — the <code>KB-NNNN</code>
+never moves.</figcaption>
+</figure>
+</spec-arch>
+
+<spec-decision id="D-001" grounding="verified">
+  <h4>D-001 · Two-layer identity — a portable slug plus a project-assigned KB-NNNN</h4>
+  <dl>
+    <dt>Status</dt><dd><spec-status value="draft">Proposed</spec-status></dd>
+    <dt>Context</dt><dd>Repo-uniqueness (051 FR-002) and independent authorship (057) can't both hold for a flat id; the DOI model
+    resolves it with a namespace/suffix split <a href="https://www.doi.org/doi_handbook/2_Numbering.html">[1]</a>.</dd>
+    <dt>Decision</dt><dd>Each reference carries a <strong>pack-internal slug</strong> (<code>001-settlement-windows</code>), unique
+    only within its pack — the portable unit the pack author owns and publishes. On import the <em>project</em> assigns each a stable,
+    opaque, monotonic <strong><code>KB-NNNN</code></strong> (4-digit baseline; the id shape is already <code>\d{3,}</code>, so wider
+    baselines cost nothing), unique within the repo. The pack never mints a <code>KB-</code> id.</dd>
+    <dt>Consequences</dt><dd>+ Both 051's repo-uniqueness and 057's independence hold, each in the scope it can guarantee.
+    + A pack stays a clean, publishable Agent Skill with no repo knowledge. − Two id layers is more to explain than one flat number.
+    − Every existing pack-scoped citation and both shipped packs must migrate (§<a href="#migration">5</a>).</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-002" grounding="verified">
+  <h4>D-002 · A root <code>knowledge/index.md</code> registry, keyed on the marketplace coordinate</h4>
+  <dl>
+    <dt>Status</dt><dd><spec-status value="draft">Proposed</spec-status></dd>
+    <dt>Context</dt><dd>The <code>KB-NNNN</code>→reference mapping has to live somewhere the project owns; <code>marketplace.json</code>
+    is the <em>publisher's</em> manifest and has no per-reference slot <a href="https://code.claude.com/docs/en/plugin-marketplaces">[4]</a>.</dd>
+    <dt>Decision</dt><dd>Add a new <strong>root <code>knowledge/index.md</code></strong> — the project's registry, one row per imported
+    reference: <code>KB-NNNN | marketplace | plugin | internal-slug | title | edition | path</code>. The row is keyed on
+    <code>(marketplace-name, plugin-name, internal-slug)</code> — the platform's own stable coordinate. Per-pack <code>index.md</code>
+    is retired (its map moves to <code>SKILL.md</code>, D-005).</dd>
+    <dt>Consequences</dt><dd>+ One deterministic place to resolve a citation and to answer "what have we ingested." + Reuses the
+    marketplace coordinate rather than inventing a parallel identity. − A new artifact to scaffold and validate. − The registry is a
+    consumer-side file; a pack dropped in by hand (not imported) needs a registry row written for it.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-003" grounding="verified">
+  <h4>D-003 · Hybrid citation — an opaque token that renders a human label</h4>
+  <dl>
+    <dt>Status</dt><dd><spec-status value="draft">Proposed</spec-status></dd>
+    <dt>Context</dt><dd>A citation must be stable (PID rule: no semantic meaning, never changes) yet legible at the citation site; a
+    baked-in skill name violates the first to serve the second <a href="https://journals.plos.org/plosbiology/article?id=10.1371%2Fjournal.pbio.2001414">[3]</a>.</dd>
+    <dt>Decision</dt><dd>The citation <strong>token stays opaque</strong> — <code>KB-NNNN@edition</code> — and resolves against the
+    <em>root</em> registry (deterministic; the array-order bug dies here). The <code>@edition</code> pins the <strong>document
+    edition</strong> from provenance, exactly as 052 defines it today — <em>not</em> the marketplace <code>version</code>. A render /
+    validate layer surfaces the human label (<code>finance-settlement · settlement-windows</code>) from the registry row, so the
+    citation reads without a mutable name in the token.</dd>
+    <dt>Consequences</dt><dd>+ Stable and legible without the semantic-rot risk of a composite token. + The resolver becomes
+    deterministic. − The label needs the registry present at render time — in a plain-agent context the token is fully opaque (but
+    there are no spectastic citations there anyway; the binding is harness-side per 052). − "Edition vs version" must be stated
+    loudly or the two will be conflated (§<a href="#adversarial">4</a>).</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-004" grounding="verified">
+  <h4>D-004 · Re-import anchors on the marketplace coordinate; supersede-by-append; flag orphans</h4>
+  <dl>
+    <dt>Status</dt><dd><spec-status value="draft">Proposed</spec-status></dd>
+    <dt>Context</dt><dd>The point of the split is that re-importing a newer pack keeps citations valid; that needs a stable anchor to
+    re-map <code>KB-NNNN</code> to the same reference across versions <a href="https://code.claude.com/docs/en/plugin-marketplaces">[4]</a>.</dd>
+    <dt>Decision</dt><dd>The ingester anchors on <code>(marketplace-name, plugin-name, internal-slug)</code>, reusing the platform
+    <code>renames</code> map for a renamed <em>plugin</em>. A matching key → the same <code>KB-NNNN</code>, edition bumped, and the prior
+    edition retained (supersede-by-append, <a href="../specs/052-corpus-citation-contract/spec.html">052 FR-003</a> unchanged, so an
+    edition-pinned citation still resolves). A reference present before but gone at re-import → its <code>KB-NNNN</code> is flagged
+    <strong>orphaned</strong>, never silently dropped. A genuinely new reference → a fresh <code>KB-NNNN</code>.</dd>
+    <dt>Consequences</dt><dd>+ Citations survive a version bump; the <code>KB-NNNN</code> never moves. + Leans on the platform's own
+    rename migration. − <code>renames</code> covers plugin renames, not per-<em>reference</em> slug renames — a renamed slug orphans
+    its id (§<a href="#adversarial">4</a>, finding 1). − Assigning a monotonic id is stateful; it must be kernel-serialised (P-8).</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-005" grounding="verified">
+  <h4>D-005 · The pack's curated map moves inline into <code>SKILL.md</code></h4>
+  <dl>
+    <dt>Status</dt><dd><spec-status value="draft">Proposed</spec-status></dd>
+    <dt>Context</dt><dd>A pack is one self-describing unit; a separate <code>index.md</code> beside <code>SKILL.md</code> splits the
+    pack's map from its discovery file, and the root registry now owns cross-pack identity anyway.</dd>
+    <dt>Decision</dt><dd>Inline the pack's curated reference map into <code>SKILL.md</code> (the llms.txt-spirit table, now over
+    <em>internal slugs</em>, no <code>KB-</code> ids). Retire the per-pack <code>index.md</code>. The pack ships as
+    <code>SKILL.md</code> + <code>references/</code> — a plain Agent Skill, exactly what 057 asks for.</dd>
+    <dt>Consequences</dt><dd>+ The pack is a single self-contained discovery unit; one fewer file to keep in sync. + The map is over
+    portable slugs, so it carries no project state. − <code>SKILL.md</code> grows a table; a large pack's discovery file gets longer.
+    − 051's index-scaffold and the adapter both move from writing a pack <code>index.md</code> to writing the <code>SKILL.md</code> map
+    plus a root registry row.</dd>
+  </dl>
+</spec-decision>
+</section>
+
+
+<!-- ======================================================= -->
+<section id="adversarial">
+<h2>4 · Adversarial pass</h2>
+
+<p>An honest survey names what the chosen model still gets wrong. These five are the residue after the decisions above; each is a
+mitigation or a recorded ceiling, in the P-8/P-11 posture — not a claim that the model is airtight. The eventual proposals run the real
+<code>spectastic-critic</code>; this is the design-time self-critique the user asked for.</p>
+
+<spec-note><strong>1 · Reference-rename gap</strong> (against D-004). The platform <code>renames</code> map migrates a renamed
+<em>plugin</em>, but nothing migrates a renamed <em>reference slug</em> inside a pack — a re-imported pack that renamed
+<code>001-settlement-windows</code> breaks the <code>(name, version, slug)</code> anchor and orphans its <code>KB-NNNN</code>.
+<em>Recorded ceiling:</em> pack-internal slug stability is a pack-author contract — the P-3 "ids are contracts" rule applied one layer
+down. The ingester <em>flags</em> the orphan for a human to reconcile; it never silently drops or re-maps. A content-hash lineage as a
+second anchor is a §<a href="#questions">6</a> open question, not this slice.</spec-note>
+
+<spec-note><strong>2 · Two meanings of "version"</strong> (against D-003). Marketplace <code>version</code> (a plugin release) and
+corpus <code>edition</code> (a document's provenance date) are different axes — a plugin bump need not change a document's edition, and
+an edition can change without a bump. Conflate them and <code>@edition</code> becomes meaningless. <em>Mitigated by wording:</em> the
+citation's <code>@edition</code> pins the <em>document edition</em> (052, unchanged); <code>version</code> is <em>only</em> the re-import
+anchor coordinate, never the citation pin. The amendment to 052 must state this in one sentence, and the registry row carries both
+columns so the distinction is visible.</spec-note>
+
+<spec-note><strong>3 · Migration is a breaking change on Accepted specs</strong> (against D-001). Every live pack-scoped
+<code>@edition</code> citation and both shipped packs are on the old 3-digit model. Re-scoping to a root registry with project-assigned
+ids dangles every existing citation if done without a bridge. <em>Mitigated by a migration slice:</em> a dedicated
+<code>TBD-corpus-identity-migration</code> maps old→new for the two packs and any live citation, with a back-compat window (the
+<code>renames</code> primitive is the precedent). The corpus is small today — two packs, one document each — so the migration is cheap
+now and only gets costlier; that argues for doing it before more citations accrue.</spec-note>
+
+<spec-note><strong>4 · Monotonic assignment is stateful (P-8)</strong> (against D-004). "Assign the next <code>KB-NNNN</code>" reads the
+current max from the registry; two imports racing, or a hand-edit, could mint a duplicate or a gap. <em>Mitigated by ownership:</em>
+assignment is a deterministic, kernel-owned step with the root registry as the single source of truth for "next id" — the same P-8
+posture apply uses for its own sequential fold ranges. The ingester is the only writer of the id column; a hand-edited collision is a
+validate finding.</spec-note>
+
+<spec-note><strong>5 · Don't reinvent the platform coordinate</strong> (against §2). A bespoke composite key that ignores the
+marketplace's own <code>(name, version)</code> + <code>renames</code> would drift from the platform and fight the next Claude Code
+update. <em>Adopted, not reinvented:</em> D-002/D-004 key the registry <em>on</em> the marketplace coordinate and reuse
+<code>renames</code>; the spectastic layer is only the per-reference registry the platform schema doesn't provide. If the schema later
+grows a per-reference field, the registry maps onto it rather than competing.</spec-note>
+</section>
+
+
+<!-- ======================================================= -->
+<section id="migration">
+<h2>5 · Migration — the old→new map</h2>
+
+<p>The corpus is small, which is the moment to change it. Two packs, one document each; a handful of citation forms in the CLAUDE.md
+review-hint and the specs. The migration is:</p>
+
+<ul>
+  <li><strong>Packs.</strong> Rename each <code>references/KB-001-*.md</code> to its slug form (<code>001-settlement-windows.md</code>);
+  drop the <code>KB-</code> id from the document frontmatter (the pack no longer mints it); move the pack's <code>index.md</code> table
+  inline into <code>SKILL.md</code> over slugs.</li>
+  <li><strong>Root registry.</strong> Write a new <code>knowledge/index.md</code> assigning <code>KB-0001</code>, <code>KB-0002</code>, …
+  to the imported references, keyed on <code>(marketplace, plugin, slug)</code>, carrying <code>edition</code> and <code>path</code>.</li>
+  <li><strong>Live citations.</strong> Re-point any <code>KB-001@edition</code> in a <code>&lt;spec-decision&gt;</code> or the CLAUDE.md
+  hint to its new <code>KB-NNNN@edition</code>. A back-compat window (accept the old form, warn) covers anything missed, mirroring the
+  marketplace <code>renames</code> migration path.</li>
+  <li><strong>Code + rules.</strong> <code>resolveCitation</code> resolves against the root registry; <code>duplicateIdFindings</code>
+  splits into a repo-wide check over <code>KB-NNNN</code> and a pack-local check over slugs; the adapter and 051's <code>init</code>
+  scaffold write the <code>SKILL.md</code> map plus a registry row instead of a pack <code>index.md</code>.</li>
+</ul>
+
+<p>None of this is in this brief's scope — it is the shape the migration slice will take, recorded so the sequencing is legible.</p>
+</section>
+
+
+<!-- ======================================================= -->
+<section id="questions">
+<h2>6 · Open questions</h2>
+<spec-questions>
+<ol>
+  <li><strong>Baseline width.</strong> <code>KB-NNNN</code> (4 digits) covers 9,999 references; the id shape already accepts more. Is a
+  4-digit baseline right, or should the convention be width-free (<code>\d{4,}</code>) from the start to avoid a future re-pad?</li>
+  <li><strong>One registry or many.</strong> Is the root <code>knowledge/index.md</code> a single file, or one registry per marketplace
+  source — trading a single lookup for cleaner provenance when a repo imports from several marketplaces?</li>
+  <li><strong>A second re-import anchor.</strong> Should the ingester carry a content-hash lineage alongside the
+  <code>(name, version, slug)</code> key, so a reference that renamed its slug but kept its content can still be re-mapped rather than
+  orphaned (finding 1)? Cheap to store, and it turns an orphan into a warning-with-a-guess.</li>
+</ol>
+</spec-questions>
+</section>
+
+
+<!-- ======================================================= -->
+<section id="scope">
+<h2>7 · Out of scope</h2>
+<spec-non-goals>
+  <ul>
+    <li><spec-out-of-scope defer-to="TBD-corpus-two-layer-identity">Amending 051 — the two-layer id shape, the pack-vs-repo uniqueness
+    resolution, and moving the index to root plus the inline <code>SKILL.md</code> map.</spec-out-of-scope></li>
+    <li><spec-out-of-scope defer-to="TBD-corpus-root-index-ingester">The new spec — the root <code>knowledge/index.md</code> registry and
+    the <code>spectastic corpus import</code> ingester (assign <code>KB-NNNN</code>, marketplace-anchored, supersede-by-append,
+    orphan-flag).</spec-out-of-scope></li>
+    <li><spec-out-of-scope defer-to="TBD-corpus-hybrid-citation">Amending 052 — resolve against the root registry, the 4-digit baseline,
+    the rendered label, and the "<code>@edition</code> pins the document edition" clause.</spec-out-of-scope></li>
+    <li><spec-out-of-scope defer-to="TBD-corpus-identity-migration">Migrating the two shipped packs and the live citations, and the
+    CLAUDE.md review-hint.</spec-out-of-scope></li>
+    <li><spec-out-of-scope defer-to="059-corpus-retrieval-scale">How a retrieval index interacts with the root registry — the registry
+    is the cited source of record; an index is a rebuildable layer above it, already 059's concern.</spec-out-of-scope></li>
+    <li><spec-out-of-scope defer-to="058-corpus-licensing">Redistribution terms of the material a re-imported pack bundles — a
+    licensing concern, not an identity one.</spec-out-of-scope></li>
+  </ul>
+</spec-non-goals>
+</section>
+
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  Spectastic · Corpus identity — two-layer KB ids &amp; a composite citation · 26 Jul 2026 ·
+  <a href="../index.html">home</a> ·
+  <button data-theme-toggle style="background:none;border:none;color:var(--c-link);cursor:pointer;font:inherit;padding:0;border-bottom:1px solid currentColor;">light/dark</button>
+</footer>
+
+</main>
+<script src="../assets/spec.js"></script>
+</body>
+</html>
