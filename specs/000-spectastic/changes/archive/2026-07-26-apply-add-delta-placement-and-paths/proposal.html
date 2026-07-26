@@ -1,0 +1,233 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
+<title>Apply kernel: place ADD deltas by kind, re-base embedded links · Change proposal</title>
+<link rel="stylesheet" href="../../../../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../../../../assets/favicon.svg">
+<script src="../../../../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Change proposal · 000-spectastic</p>
+  <h1>Apply kernel: place ADD deltas by kind, re-base embedded links</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    The durable fix for triage T-019/T-020 — make the apply kernel put an ADD requirement in the section its id names, and re-base an embedded requirement's links to the live spec's depth on fold.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>     <span><spec-status value="applied">Applied</spec-status></span>
+    <b>Change ID</b>  <span>2026-07-26-apply-add-delta-placement-and-paths</span>
+    <b>Spec</b>       <span><a href="../../../spec.html">000-spectastic</a></span>
+    <b>Author</b>     <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Created</b>    <span><time datetime="2026-07-26">26 Jul 2026</time></span>
+    <b>Targets</b>    <span>1 requirement</span>
+    <b>Read time</b>  <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-tldr>
+    <p>The apply kernel drops every <code>op="added"</code> requirement at the document's <em>first</em>
+    <code>&lt;/section&gt;</code> and splices an embedded requirement's relative links in verbatim — so an ADD lands
+    in the wrong section and its cross-file links point above the repository root (triage
+    <a href="../../../triage-log.html#T-019">T-019</a> / <a href="../../../triage-log.html#T-020">T-020</a>, both hand-fixed
+    while applying 019's NFR-003). This MODIFIES <a href="../../../spec.html#REQ-CHANGE-008">REQ-CHANGE-008</a> to require
+    kind-matched placement and proposal→live-spec link re-basing, then implements both in
+    <code>apply.ts</code>. One MODIFY delta; the adversarial pass ran.</p>
+  </spec-tldr>
+</header>
+
+
+<spec-change id="2026-07-26-apply-add-delta-placement-and-paths" status="applied">
+
+<header>
+  <h3>Apply kernel: place ADD deltas by kind, re-base embedded links</h3>
+  <span class="meta"><spec-status value="applied">Applied</spec-status></span>
+</header>
+
+
+<section id="intent">
+<h2>1 · Intent</h2>
+<p>Applying 019's <a href="../../../../019-explain-course/spec.html#NFR-003">NFR-003</a> ADD delta surfaced two defects
+in the apply kernel's requirement-delta path, both hand-fixed in 019's <code>spec.html</code> and logged as triage
+<a href="../../../triage-log.html#T-019">T-019</a> and <a href="../../../triage-log.html#T-020">T-020</a>. First, the ADD
+insertion anchors on the document's <em>first</em> <code>&lt;/section&gt;</code>
+(<code>apply.ts:104-112</code>), so <code>NFR-003</code> landed inside §1 Context instead of §3 Non-functional —
+placement ignores the requirement's kind entirely. Second, the embedded post-state is spliced in verbatim; the
+kernel deepens the <em>archived proposal's</em> paths but never re-bases the <em>folded requirement's own</em>
+links, so proposal-depth hrefs (four levels deep) land in a two-levels-deep spec and point above the repository
+root.</p>
+<p>Both are <code>spec</code>-layer, regen-<em>fail</em> defects: <a href="../../../spec.html#REQ-CHANGE-008">REQ-CHANGE-008</a>
+says the kernel applies each delta "into <code>spec.html</code> (insert for <code>added</code>)" but constrains
+neither <em>where</em> the insert lands nor <em>how</em> the embedded links are depth-adjusted — so a faithful
+re-implementation reproduces both. This change closes the contract gap and lands the kernel fix, so the hand-fixes
+019 needed become unnecessary for the next ADD.</p>
+</section>
+
+
+<section id="scope">
+<h2>2 · Scope</h2>
+
+<spec-goals>
+  <h3>In scope</h3>
+  <ul>
+    <li>MODIFY <a href="../../../spec.html#REQ-CHANGE-008">REQ-CHANGE-008</a> to require <em>family-prefix</em> placement
+    for an <code>op="added"</code> requirement — insert after the last existing sibling sharing its id prefix
+    (<code>NFR-</code> beside the non-functional requirements, <code>REQ-CHANGE-</code> beside the change-management
+    ones), covering both the downstream <code>FR</code>/<code>NFR</code>/<code>SC</code> vocabulary and the
+    meta-spec's own <code>REQ-&lt;TOPIC&gt;</code> vocabulary — never the document's first <code>&lt;/section&gt;</code>.</li>
+    <li>MODIFY the same requirement to require the kernel re-base an embedded <code>&lt;spec-requirement&gt;</code>'s
+    relative links from proposal depth to the live spec's depth on fold — for both <code>added</code> and
+    <code>modified</code> — the mirror of the archive-path deepening it already performs.</li>
+    <li>Implement both in the apply kernel (<code>apply.ts</code>): a kind-routed section lookup and an
+    inverse-of-<code>deepenArchivePaths</code> re-base helper, with unit coverage.</li>
+  </ul>
+</spec-goals>
+
+<spec-non-goals>
+  <h3>Out of scope</h3>
+  <ul>
+    <li>Retro-cleaning the meta-spec's own historically-spliced proposal-depth links (a pre-existing symptom of the
+    same bug, in text this change doesn't touch) — <code>defer-to=TBD-metaspec-link-depth-cleanup</code>.</li>
+    <li>Cross-spec apply, still kernel-unhandled — <code>defer-to=TBD-kernel-cross-spec-apply</code>.</li>
+  </ul>
+</spec-non-goals>
+</section>
+
+
+<section id="approach">
+<h2>3 · Approach</h2>
+<p><strong>Placement.</strong> Replace the first-<code>&lt;/section&gt;</code> anchor with a rule that keys on the
+requirement's own <em>family</em>, not on a fixed section vocabulary: strip the trailing number from the new
+<code>id</code> to get its family prefix (<code>NFR-003</code>→<code>NFR-</code>,
+<code>REQ-CHANGE-009</code>→<code>REQ-CHANGE-</code>), find the <em>last</em> existing
+<code>&lt;spec-requirement&gt;</code> sharing that prefix, and insert immediately after it — so the requirement
+joins its own group (an <code>NFR-*</code> beside the other non-functional requirements, a <code>REQ-CHANGE-*</code>
+beside the other change-management ones). This is vocabulary-agnostic by construction: it works for a downstream
+spec's <code>FR</code>/<code>NFR</code>/<code>SC</code> groups — which the templates keep as sibling
+<code>&lt;h3&gt;</code> inside one <code>&lt;section id="requirements"&gt;</code>, so keying on the enclosing
+<code>&lt;section&gt;</code> would fail — and for the meta-spec's own <code>REQ-&lt;TOPIC&gt;</code> groups, without
+hard-coding either heading. When no existing requirement shares the prefix (the first of its kind), append after
+the last <code>&lt;spec-requirement&gt;</code> in the document rather than gate-block — a legitimate first-of-kind
+ADD should land, not fail.</p>
+<p><strong>Path re-basing.</strong> Add the inverse of the existing <code>deepenArchivePaths</code>
+(<code>archive-paths.ts</code>) — a function that rewrites a fragment's relative <code>href</code>/<code>src</code>
+values from the proposal's four-levels-deep folder to the live spec's two-levels-deep location — and apply it to the
+embedded requirement HTML before it is written into <code>spec.html</code>, on both the <code>added</code> and
+<code>modified</code> branches. Same-document anchors (<code>#ID</code>) are already depth-independent and pass
+through untouched. The two directions (deepen the archived copy, shallow the folded body) then live side by side in
+one module, tested together.</p>
+</section>
+
+
+<section id="deltas">
+<h2>4 · Deltas</h2>
+<p>One <code>&lt;spec-delta&gt;</code>, MODIFYing <a href="../../../spec.html#REQ-CHANGE-008">REQ-CHANGE-008</a>. The
+post-state preserves the existing body verbatim and adds the placement + re-basing clauses to its second paragraph
+(and a rationale line); priority stays <code>should</code>.</p>
+
+<spec-delta op="modified" target="REQ-CHANGE-008">
+  <p><strong>What changes:</strong> the "when applying each delta" paragraph gains two clauses — (a) an
+  <code>added</code> requirement is inserted into the section matching its id kind, before that section's close, not
+  the document's first <code>&lt;/section&gt;</code>; and (b) an embedded <code>&lt;spec-requirement&gt;</code>'s
+  relative links are re-based from proposal depth to live-spec depth on fold (both <code>added</code> and
+  <code>modified</code>). Existing text and the priority (<code>should</code>) are unchanged; the new clauses' own
+  same-spec references use depth-independent intra-doc anchors.</p>
+  <spec-requirement id="REQ-CHANGE-008" priority="should">
+  <p>The mechanical steps of <code>/spectastic.apply</code> — applying each <code>&lt;spec-delta&gt;</code>, the live-spec <code>&lt;spec-changelog&gt;</code> entry (the kernel <spec-rule>MUST</spec-rule> accept an author-supplied one-line summary, so the changelog's human voice is preserved rather than reduced to a delta count), the archive-folder move, the proposal status flip to <code>applied</code>, and the §6 task-fold (per <a href="../../../spec.html#REQ-CHANGE-006">REQ-CHANGE-006</a> / <a href="../../../spec.html#REQ-CHANGE-007">REQ-CHANGE-007</a>) — <spec-rule>MUST</spec-rule> be performed by the apply kernel (<code>spectastic apply</code>, which is deterministic and requires no <code>ANTHROPIC_API_KEY</code>), not re-implemented in the slash-command markdown. The apply markdown <spec-rule>MUST</spec-rule> run the preconditions — including the <a href="../../../spec.html#REQ-CHANGE-004">REQ-CHANGE-004</a> risk gate, listing any <code>status="identified"</code> risks by <code>target=</code> — and surface failures <em>before</em> invoking the kernel; the kernel's own gate is a deterministic backstop, not the user-facing refusal. It <spec-rule>MUST</spec-rule> also confirm <code>spectastic apply</code> resolves before invoking it, surfacing a missing or stale binary clearly rather than failing silently. Beyond the preconditions, the markdown owns only the post-apply routing nudge (<a href="../../../spec.html#REQ-CHANGE-003">REQ-CHANGE-003</a>) and the inbox-card nudge.</p>
+  <p>When applying each <code>&lt;spec-delta&gt;</code>, the kernel <spec-rule>MUST</spec-rule> branch on whether the delta embeds a <code>&lt;spec-requirement&gt;</code>. <strong>Present</strong> — it is a requirement delta: apply the post-state into <code>spec.html</code>. For <code>added</code>, the kernel <spec-rule>MUST</spec-rule> insert the requirement immediately after the last existing <code>&lt;spec-requirement&gt;</code> whose <code>id</code> shares its <em>family prefix</em> (the <code>id</code> with its trailing number stripped — e.g. <code>NFR-</code>, <code>SC-</code>, <code>REQ-CHANGE-</code>), so it joins its own group beside its siblings, <strong>never</strong> the document's first <code>&lt;/section&gt;</code>. Keying on the sibling requirements already present makes this work for both a downstream spec's <code>FR</code>/<code>NFR</code>/<code>SC</code> groups (kept as sibling <code>&lt;h3&gt;</code> within one requirements <code>&lt;section&gt;</code>) and the meta-spec's <code>REQ-&lt;TOPIC&gt;</code> groups, with no hard-coded section heading. When no existing requirement shares the prefix (the first of its kind), the kernel <spec-rule>MUST</spec-rule> append it after the last <code>&lt;spec-requirement&gt;</code> in the document rather than at an arbitrary position. For <code>modified | removed | renamed</code>, replace the <code>id</code>-matched requirement in place. Whenever the kernel writes an embedded <code>&lt;spec-requirement&gt;</code> into <code>spec.html</code> (both <code>added</code> and <code>modified</code>), it <spec-rule>MUST</spec-rule> re-base that requirement's relative links from the proposal's folder depth to the live spec's depth — the mirror of the path-deepening it already applies to the archived proposal — so a same-spec link, a <code>principles.html</code> link, or a sibling-spec link resolves from the live spec instead of pointing above the repository root; a same-document anchor (<code>#ID</code>) is depth-independent and passes through unchanged. <strong>Absent</strong> — it is a <em>data/content delta</em> whose <code>target</code> names manifest data: the kernel <spec-rule>MUST</spec-rule> make no change to the requirements body (the mandated <code>&lt;spec-changelog&gt;</code> append still lands) and let the §6 task-fold carry the change; it <spec-rule>MUST NOT</spec-rule> fabricate a <code>&lt;spec-requirement&gt;</code> from the delta body. As a guard, if a delta's <code>target</code> matches a requirement-ID shape (<code>^[A-Z]+-</code>…) yet embeds no <code>&lt;spec-requirement&gt;</code>, the kernel <spec-rule>MUST</spec-rule> gate-block it as malformed rather than silently skip — a requirement delta that forgot its post-state is an error, not a no-op.</p>
+  <p>This is a deliberate, named exception to 006 FR-008 ("the markdown procedure remains the source of truth") and FR-009 ("slash commands MAY invoke the CLI but MUST NOT be required to") <em>for <code>apply</code></em>: its mechanical steps are pure and deterministic, and their prose-only form was the T-004 failure. Those general rules continue to govern the six verbs that need LLM judgment.</p>
+  <p>The obligation is scoped to <em>same-spec</em> applies. A <em>cross-spec</em> delta (whose <code>target</code> is a requirement in another spec) is the one mechanical step the kernel does not yet perform and <spec-rule level="may">MAY</spec-rule> remain markdown-handled until it does (<code>TBD-kernel-cross-spec-apply</code>).</p>
+  <details><summary>Rationale</summary><p>Apply's mechanical steps need no AI and the CLI runs key-free, so making the kernel authoritative for them removes the whole class of skipped-step bugs on the in-host path (T-004) without touching the verbs that need judgment. The data/content branch (T-018) extends the same principle: the kernel, not a fabrication fallback, decides what a delta means, so a manifest-data proposal (041 principles, 042 enforce categories) folds and archives without corrupting <code>spec.html</code>. The placement and link-rebasing clauses codify triage <a href="./triage-log.html#T-019">T-019</a> / <a href="./triage-log.html#T-020">T-020</a>: applying 019's NFR-003 ADD delta, the kernel dropped the new requirement at the document's first <code>&lt;/section&gt;</code> (§1 Context, not §3 Non-functional) and spliced its embedded links in verbatim at proposal depth, so every cross-file reference pointed above the repository root — both hand-fixed in 019, both certain to recur without a contract that constrains placement and link depth. Hosted as a meta-spec requirement — not a MODIFY of 006 FR-009 — because a cross-spec delta could not be applied by the kernel this very requirement mandates, and because apply's contract already lives in <code>REQ-CHANGE-*</code>. Priority <code>should</code>: codifying apply's kernel-authoritative path from incident, matching <a href="#REQ-CHANGE-004">REQ-CHANGE-004</a> / <a href="#REQ-CHANGE-007">REQ-CHANGE-007</a>; re-evaluate after a few real applies.</p></details>
+  </spec-requirement>
+</spec-delta>
+</section>
+
+
+<section id="risks">
+<h2>5 · Risk register</h2>
+<p>The adversarial risk pass ran (opt-in — the heuristic did not auto-fire, but this rewrites how the kernel places
+and re-links every future ADD delta, and a <code>knowledge/</code> corpus is present). One
+<code>&lt;spec-risk&gt;</code> per finding; <code>status="identified"</code> until the author dispositions each.
+Apply refuses while any remain <code>identified</code>.</p>
+
+<spec-risk-log>
+
+<spec-risk target="REQ-CHANGE-008" status="mitigated" by="Brian Corbin · @briancorbinxyz">
+  <p class="claim">The original placement rule routed on a per-<em>kind</em> <code>&lt;section&gt;</code> and gate-blocked on no match — but the templates keep Functional and Non-functional as sibling <code>&lt;h3&gt;</code> inside one <code>&lt;section id="requirements"&gt;</code>, so an <code>NFR-*</code> ADD would gate-block or land at the section's very end, reproducing a milder T-019 (right section, wrong group) that the hand-fix explicitly rejected by placing NFR-003 beside NFR-001/002.</p>
+  <p class="citation">Objected phrase (pre-revision): "insert the requirement into the section whose kind its <code>id</code> names … immediately before that section's closing <code>&lt;/section&gt;</code>."</p>
+  <div class="response">Mitigated by revision. The placement clause was re-keyed on the requirement's <em>family prefix</em> — insert immediately after the last existing <code>&lt;spec-requirement&gt;</code> sharing the id prefix — which is <code>&lt;h3&gt;</code>/<code>&lt;section&gt;</code>-layout-agnostic and reproduces the hand-fix's beside-siblings placement exactly. A test fixture mirroring the 019 shared-<code>&lt;section&gt;</code> layout is the first §6 task.</div>
+</spec-risk>
+
+<spec-risk target="REQ-AUTHOR-002" status="mitigated" by="Brian Corbin · @briancorbinxyz">
+  <p class="claim">The <code>FR/NFR/SC</code>-only routing would gate-block every ADD to the meta-spec, whose ids are <code>REQ-&lt;TOPIC&gt;-&lt;NNN&gt;</code> per <a href="../../../spec.html#REQ-AUTHOR-002">REQ-AUTHOR-002</a> — so the most-amended spec could not self-apply an ADD through the very kernel <a href="../../../spec.html#REQ-CHANGE-008">REQ-CHANGE-008</a> mandates.</p>
+  <p class="citation"><a href="../../../spec.html#REQ-AUTHOR-002">REQ-AUTHOR-002</a> mandates <code>REQ-&lt;TOPIC&gt;-&lt;NNN&gt;</code>; the pre-revision delta routed only on <code>FR/NFR/SC</code> and gate-blocked on no match.</p>
+  <div class="response">Mitigated by revision. The family-prefix rule covers <code>REQ-&lt;TOPIC&gt;</code> ids natively (a <code>REQ-CHANGE-*</code> lands beside the other change-management requirements), and gate-block-on-no-match was replaced with append-after-last, so a legitimate first-of-kind ADD to the meta-spec still lands. A meta-spec topic-grouped fixture is in the §6 tests.</div>
+</spec-risk>
+
+<spec-risk target="§2" status="mitigated" by="Brian Corbin · @briancorbinxyz">
+  <p class="claim">The in-scope item enumerated only the downstream <code>FR/NFR/SC</code> vocabulary and silently omitted the <code>REQ-&lt;TOPIC&gt;</code> family the host spec of this very contract uses — shipping a placement rule the meta-spec's own future ADDs fall outside of.</p>
+  <p class="citation">§Scope, in-scope item 1 (pre-revision): "(<code>FR-*</code>→functional, <code>NFR-*</code>→non-functional, <code>SC-*</code>→success-criteria section)."</p>
+  <div class="response">Mitigated by revision. §2 in-scope item 1 now describes the family-prefix rule and names both vocabularies explicitly (downstream <code>FR/NFR/SC</code> and the meta-spec's <code>REQ-&lt;TOPIC&gt;</code>).</div>
+</spec-risk>
+
+<spec-risk target="KB-001@2026-07-25" status="no-value-found">
+  <p class="claim">No requirement in the live spec contradicts a domain fact committed under <code>knowledge/</code>.</p>
+  <p class="citation"><code>KB-001-foundations.md@2026-07-25</code> (the pack's only reference, read in full) commits facts only about SDD framing, the RFC 2119 <code>MUST/SHOULD/MAY</code> definitions, and the verified/spike/assumed grounding states — all orthogonal to ADD-placement and link-rebasing mechanics; the change's <code>should</code> tier is itself consistent with KB-001's definition of SHOULD.</p>
+</spec-risk>
+
+</spec-risk-log>
+</section>
+
+
+<section id="tasks">
+<h2>6 · Tasks</h2>
+<p>Scoped to this change only. On <code>/spectastic.apply</code> these fold into
+<a href="../../../tasks.html">000-spectastic/tasks.html</a> as a new provenance-linked phase (per
+<a href="../../../spec.html#REQ-CHANGE-006">REQ-CHANGE-006</a>) that <code>/spectastic.implement</code> drains.</p>
+
+<ul style="list-style:none;padding-left:0;">
+  <li><input type="checkbox"> Write the failing tests first — an <code>added</code> <code>NFR-*</code> lands immediately after the last existing <code>NFR</code> in the 019 shared-<code>&lt;section&gt;</code> Functional/Non-functional layout, a <code>REQ-CHANGE-*</code> lands after the last <code>REQ-CHANGE-*</code> in the meta-spec's topic-grouped layout, and a first-of-kind id appends after the last requirement; none land at §1. <span class="path">packages/core/test/apply.placement.test.ts</span></li>
+  <li><input type="checkbox"> Write the failing tests first — an embedded requirement's <code>../../../../principles.html</code> / sibling-spec links are re-based to live-spec depth on both <code>added</code> and <code>modified</code>; a <code>#ID</code> anchor is untouched. <span class="path">packages/core/test/apply.rebase-paths.test.ts</span></li>
+  <li><input type="checkbox"> Add the proposal→live-spec relative-path re-base helper (the inverse of <code>deepenArchivePaths</code>). <span class="path">packages/core/src/archive-paths.ts</span></li>
+  <li><input type="checkbox"> Replace the first-<code>&lt;/section&gt;</code> anchor with a kind-routed section lookup in the <code>added</code> branch; apply the re-base helper on the <code>added</code> and <code>modified</code> branches before writing the embedded requirement. <span class="path">packages/core/src/commands/apply.ts</span></li>
+  <li><input type="checkbox"> Rebuild <code>@spectastic/core</code>, run the full suite green, and confirm a real-fs apply of a fixture proposal places the requirement correctly and leaves every embedded link resolvable. <span class="path">.</span></li>
+</ul>
+</section>
+
+
+<section id="questions">
+<h2>7 · Open questions</h2>
+<spec-questions>
+<p>None outstanding — placement is keyed on the id prefix, re-basing mirrors the existing deepen helper, and both
+behaviours are pinned by the tests above. The meta-spec's historically-spliced links and cross-spec apply are
+explicitly deferred (§2), not open.</p>
+</spec-questions>
+</section>
+
+
+<section id="changelog">
+<h2>8 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-07-26">26 Jul 2026</time><span>Proposal authored — MODIFY REQ-CHANGE-008 for ADD placement + embedded-link re-basing (durable fix for triage T-019/T-020).</span></li>
+  <li><time datetime="2026-07-26">26 Jul 2026</time><span>Adversarial pass (opt-in) reshaped the placement design: the original per-<code>&lt;section&gt;</code> FR/NFR/SC routing would have mis-placed 019-style NFRs and gate-blocked every meta-spec <code>REQ-&lt;TOPIC&gt;</code> ADD (findings against the delta, REQ-AUTHOR-002, and §2). Re-keyed on the requirement's family prefix (insert after the last sibling sharing the id prefix), covering both vocabularies; §3/§4/§2/§6 updated.</span></li>
+  <li><time datetime="2026-07-26">26 Jul 2026</time><span>Risks dispositioned by Brian Corbin: all 3 mitigated by the family-prefix revision; the corpus finding is no-value-found. Apply gate clear.</span></li>
+  <li><time datetime="2026-07-26">26 Jul 2026</time><span>Applied on 26 Jul 2026 — MODIFY REQ-CHANGE-008 — an added requirement now lands beside its family-prefix siblings (never the document's first </section>) and an embedded requirement's relative links are re-based from proposal depth to live-spec depth on fold; durable fix for triage T-019/T-020, adversarial pass reshaped the design to cover both the FR/NFR/SC and REQ-<TOPIC> id vocabularies.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+</spec-change>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  2026-07-26-apply-add-delta-placement-and-paths · Apply kernel: place ADD deltas by kind, re-base embedded links · authored 2026-07-26
+</footer>
+
+</main>
+<script src="../../../../../assets/spec.js"></script>
+</body>
+</html>
