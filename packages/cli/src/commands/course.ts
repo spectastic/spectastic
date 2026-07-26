@@ -45,7 +45,18 @@ export function registerCourse(program: Command): void {
       }
 
       const cwd = process.cwd();
-      const ai = await createAIProvider({ verb: 'course' });
+      let ai;
+      try {
+        ai = await createAIProvider({ verb: 'course' });
+      } catch (err) {
+        // Never let a provider-construction failure surface as an uncaught
+        // stack trace (spec 019 NFR-003) — createAIProvider's own message is
+        // already actionable (names every option: key / claude-on-PATH /
+        // stub); print it plainly and exit like every other guarded failure
+        // in this command.
+        process.stderr.write(`course: ${(err as Error).message}\n`);
+        process.exit(2);
+      }
       const ctx = { cwd, fs: nodeFs, ai };
 
       let result;

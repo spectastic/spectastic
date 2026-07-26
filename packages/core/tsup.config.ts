@@ -34,6 +34,7 @@ export default defineConfig({
     'src/commands/graduate.ts',
     'src/providers/node-fs.ts',
     'src/providers/claude.ts',
+    'src/providers/claude-cli.ts',
     'src/providers/stub.ts',
     'src/coding/types.ts',
     'src/coding/runtime.ts',

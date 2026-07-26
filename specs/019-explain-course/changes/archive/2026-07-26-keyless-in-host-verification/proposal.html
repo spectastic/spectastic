@@ -1,0 +1,263 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
+<title>Keyless in-host course verification · Change proposal</title>
+<link rel="stylesheet" href="../../../../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../../../../assets/favicon.svg">
+<script src="../../../../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Change proposal · 019-explain-course</p>
+  <h1>Keyless in-host course verification</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    <code>explain --course</code> can't run inside Claude Code because its kernel verification demands an
+    <code>ANTHROPIC_API_KEY</code>. Require a keyless in-host path — the guarantee stays in the kernel.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>     <span><spec-status value="applied">Applied</spec-status></span>
+    <b>Change ID</b>  <span>2026-07-26-keyless-in-host-verification</span>
+    <b>Spec</b>       <span><a href="../../../spec.html">019-explain-course</a></span>
+    <b>Author</b>     <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Created</b>    <span><time datetime="2026-07-26">26 Jul 2026</time></span>
+    <b>Targets</b>    <span>1 requirement (1 added)</span>
+    <b>Read time</b>  <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-tldr>
+    <p>Resolves triage <a href="../../../triage-log.html">T-004</a>. The course verb's anti-hallucination guarantee —
+    the guessability check (<a href="../../../spec.html#FR-004">FR-004</a>) and 060's sibling analogy-fit check — lives
+    in the kernel (<a href="../../../../../principles.html#P-8">P-8</a>) and calls a model. Driven from Claude Code the
+    kernel shells out to <code>spectastic course</code>, whose <code>createAIProvider</code> returns a key-requiring
+    <code>ClaudeProvider</code>; with no <code>ANTHROPIC_API_KEY</code> it exits 2 and the verb is unusable in its
+    primary habitat. This adds one must-tier NFR requiring a <strong>keyless in-host execution path</strong> for that
+    verification — using the host's own model access, keeping the check kernel-side and source-blind, honouring
+    <a href="../../../../006-kernel-extraction/spec.html#FR-009">006 FR-009</a>'s keyless-in-host contract. The mechanism
+    is the plan's; CI's deterministic stub is unchanged.</p>
+  </spec-tldr>
+</header>
+
+
+<spec-change id="2026-07-26-keyless-in-host-verification" status="applied">
+
+<header>
+  <h3>Keyless in-host course verification</h3>
+  <span class="meta"><spec-status value="applied">Applied</spec-status></span>
+</header>
+
+
+<section id="intent">
+<h2>1 · Intent</h2>
+<p>Creating a course from within Claude Code now fails: <code>spectastic course</code> exits 2 with
+<em>"ANTHROPIC_API_KEY is not set."</em> The course verb is unique among the AI-coupled verbs — for
+<code>spec</code>/<code>plan</code>/<code>propose</code>/<code>tasks</code> the in-host agent <em>does</em> the AI
+reasoning itself, so their CLI path is genuinely optional. But <code>explain --course</code>'s markdown procedure
+<em>delegates</em> its verification step to the kernel (the blind guessability check is a hard guarantee, and
+<a href="../../../../../principles.html#P-8">P-8</a> puts guarantees in the kernel, not advisory markdown). The kernel,
+run as a subprocess, has no way to reach the host's authenticated session and falls back to a direct API key it
+doesn't have.</p>
+<p>The standing contract is that the slash-command path "uses the in-host Claude session and needs no key"
+(<a href="../../../../006-kernel-extraction/spec.html#FR-009">006 FR-009</a>: the kernel is an alternate code path, not
+a hard dependency). Course honours neither half today. This change fixes the <em>keyless</em> half without weakening
+the guarantee: the verification stays a real kernel check, but gains a keyless in-host way to reach a model. The
+reporter's constraint is explicit — "this should be possible within claude code too."</p>
+</section>
+
+
+<section id="scope">
+<h2>2 · Scope</h2>
+
+<spec-goals>
+  <h3>In scope</h3>
+  <ul>
+    <li>ADD a must-tier NFR requiring a <strong>keyless in-host execution path</strong> for the course verb's
+    AI-coupled verification (the <a href="../../../spec.html#FR-004">FR-004</a> guessability check and 060's analogy-fit
+    sibling) — no <code>ANTHROPIC_API_KEY</code> required when driven from a host that provides model access.</li>
+    <li>Keep the guarantee <strong>kernel-side</strong> (<a href="../../../../../principles.html#P-8">P-8</a>) — the
+    in-host path must not demote verification to advisory — and each blind call <strong>source-blind and independent
+    of the drafting context</strong> (<a href="../../../spec.html#FR-004">FR-004</a>).</li>
+    <li>An <strong>actionable failure</strong> when no keyless model access <em>and</em> no key is available, instead
+    of a raw provider stack trace.</li>
+  </ul>
+</spec-goals>
+
+<spec-non-goals>
+  <h3>Out of scope</h3>
+  <ul>
+    <li><spec-out-of-scope defer-to="TBD-kernel-optional-ai-verb-carveout">Clarifying <a href="../../../../006-kernel-extraction/spec.html#FR-009">006 FR-009</a> itself — that AI-coupled verbs are a sanctioned exception to "markdown works end-to-end without the kernel." This change makes course honour the keyless half; the 006-side wording is a separate consideration.</spec-out-of-scope></li>
+    <li><spec-out-of-scope defer-to="TBD-cross-host-ai-providers">The concrete keyless provider and cross-host support (Cursor, Aider, plain terminals). The plan picks the v1 mechanism (the Claude Code in-host case); a provider catalogue is later.</spec-out-of-scope></li>
+    <li><spec-out-of-scope defer-to="never">Removing the API-key path. <code>ClaudeProvider</code> stays for headless / keyed runs; the deterministic <code>SPECTASTIC_AI_STUB</code> stays for CI. This only <em>adds</em> a keyless option.</spec-out-of-scope></li>
+  </ul>
+</spec-non-goals>
+</section>
+
+
+<section id="approach">
+<h2>3 · Approach</h2>
+<p>The spec change is one requirement; the mechanism is the plan's, but the shape is predictable. Add a keyless
+in-host <code>AIProvider</code> that reaches the host's authenticated model access rather than an API key — for the
+Claude Code case, a fresh, context-free invocation of the host's own model (e.g. the <code>claude</code> CLI's
+print mode, which uses the session's auth, not <code>ANTHROPIC_API_KEY</code>). <code>createAIProvider</code>
+(<code>packages/cli/src/ai-factory.ts</code>) gains a middle rung in its precedence: <code>SPECTASTIC_AI_STUB</code>
+(CI) → an explicit key (<code>ClaudeProvider</code>) → the keyless in-host provider when host model access is
+detected → an actionable error naming the options.</p>
+
+<spec-note>
+<p>Two properties the plan must hold, both flagged by the risk pass: (1) each verification call stays
+<strong>source-blind and isolated</strong> — a fresh model context per item, never the session that drafted the
+course, or FR-004's "answer with the source hidden" is defeated; (2) the keyless mechanism is
+<strong>host-pluggable</strong>, not hard-wired to one binary, so "keyless in-host" doesn't silently narrow to
+"Claude-Code-only" with no honest fallback elsewhere.</p>
+</spec-note>
+
+<spec-warning>
+<p>The adversarial pass below was run <strong>inline</strong> (same session, author-as-critic) rather than via an
+independent <code>spectastic-critic</code> subagent, to respect this session's standing "don't spawn agents"
+constraint. Independence is therefore weaker than a normal REQ-CHANGE-004 pass — request a fresh critic run before
+approving if you want the stronger check.</p>
+</spec-warning>
+</section>
+
+
+<section id="deltas">
+<h2>4 · Deltas</h2>
+<p>One <code>&lt;spec-delta&gt;</code> per requirement touched. <code>target=</code> links to the live spec;
+<code>op=</code> is one of <code>added | modified | removed | renamed</code>.</p>
+
+<spec-delta op="added" target="NFR-003">
+  <spec-requirement id="NFR-003" priority="must">
+    <p>The course verb's AI-coupled verification — the guessability check (<a href="../../../spec.html#FR-004">FR-004</a>)
+    and any sibling blind check — <spec-rule>MUST</spec-rule> have a <strong>keyless in-host execution path</strong>:
+    when <code>explain --course</code> is driven from an agent host that provides its own model access, the checks
+    <spec-rule>MUST</spec-rule> run without an <code>ANTHROPIC_API_KEY</code>, using that host's access rather than a
+    direct API key. The guarantee <spec-rule>MUST</spec-rule> stay kernel-side — the in-host path
+    <spec-rule>MUST NOT</spec-rule> demote verification to advisory (<a href="../../../../../principles.html#P-8">P-8</a>) —
+    and each blind call <spec-rule>MUST</spec-rule> remain source-blind and independent of the drafting context
+    (<a href="../../../spec.html#FR-004">FR-004</a>). Where neither keyless model access nor a key is available, the verb
+    <spec-rule>MUST</spec-rule> fail with an actionable message naming the options, never a raw provider stack trace.
+    The deterministic CI stub (<code>SPECTASTIC_AI_STUB</code>) is unchanged; the concrete keyless provider is a plan
+    decision.</p>
+    <details><summary>Rationale</summary><p>Resolves T-004. <code>explain --course</code>'s primary habitat is an
+    agent host (Claude Code) with no API key; the current kernel path (<code>createAIProvider</code> →
+    <code>ClaudeProvider</code>) makes the verb unusable there. This restores the keyless-in-host half of
+    <a href="../../../../006-kernel-extraction/spec.html#FR-009">006 FR-009</a> without moving the guarantee out of the
+    kernel (which would violate <a href="../../../../../principles.html#P-8">P-8</a> and demote
+    <a href="../../../spec.html#SC-002">SC-002</a> to advisory). Written as an execution constraint on the existing
+    verification, not a change to what the checks guarantee.</p></details>
+  </spec-requirement>
+</spec-delta>
+</section>
+
+
+<section id="risks">
+<h2>5 · Risk register</h2>
+<p>From the adversarial pass (run inline — see §3 warning). One <code>&lt;spec-risk&gt;</code> per finding; each
+carries a <code>target=</code>. Status stays <code>identified</code> until you disposition it — apply refuses while
+any risk is still <code>identified</code>. Author responses below are drafts; the status transition (and
+<code>by=</code>) are yours.</p>
+
+<spec-risk-log>
+<spec-risk target="NFR-003" status="mitigated" by="Brian Corbin · @briancorbinxyz">
+  <p class="claim">The regret risk: "keyless in-host" has exactly one realistic mechanism today — shelling to the
+  host's own CLI (e.g. <code>claude -p</code>) — which couples the kernel to a specific harness. In 30 days the MUST
+  may quietly mean "works in Claude Code, nowhere else," a portability promise the requirement's wording ("an agent
+  host that provides its own model access") overstates.</p>
+  <p class="citation">NFR-003: "when <code>explain --course</code> is driven from an agent host that provides its own model access, the checks MUST run without an ANTHROPIC_API_KEY."</p>
+  <div class="response"><strong>Mitigated.</strong> NFR-003 scopes the MUST to hosts that <em>provide</em> model
+  access and requires an actionable fallback otherwise, so it never claims to work where there is none; §3 keeps the
+  provider host-pluggable rather than hard-wired to one binary. The v1 mechanism being Claude-Code-only in practice
+  is named honestly in the <code>TBD-cross-host-ai-providers</code> out-of-scope item — a known, tracked narrowing,
+  not a hidden one.</div>
+</spec-risk>
+
+<spec-risk target="FR-004" status="mitigated" by="Brian Corbin · @briancorbinxyz">
+  <p class="claim">The most-likely-contradicted requirement: FR-004 requires the quiz be answered "with the source
+  hidden" — a genuinely blind, independent call. The cheapest keyless mechanism is to let the <em>same in-host
+  session that drafted the course</em> also run the check; that session already holds the source, so the "blind"
+  check silently sees what it's supposed to be blind to, and SC-002's guarantee becomes theatre.</p>
+  <p class="citation"><a href="../../../spec.html#FR-004">FR-004</a>: "an item the model can answer correctly with the source hidden MUST be rejected"; <a href="../../../spec.html#SC-002">SC-002</a>: "0 quiz items pass the guessability check."</p>
+  <div class="response"><strong>Mitigated.</strong> NFR-003 carries the guard clause ("source-blind and independent
+  of the drafting context") and §3 makes an isolated fresh-context call an explicit plan constraint; the §6 guard
+  task turns it into a test that <em>rejects</em> a leaked-context provider. A real implementation trap, closed by a
+  requirement clause + a test — not left to review.</div>
+</spec-risk>
+
+<spec-risk target="§2" status="accepted" by="Brian Corbin · @briancorbinxyz">
+  <p class="claim">The scope concern (too narrow): deferring the 006 FR-009 clarification leaves that requirement
+  still literally reading "markdown procedures work end-to-end without the kernel" — which course openly breaks. The
+  reconciliation lives only in 019's new NFR plus a <code>TBD-</code> that may never be picked up, so a reader of 006
+  in 30 days sees a contract course contradicts with no visible carve-out.</p>
+  <p class="citation">§2 out-of-scope: "Clarifying 006 FR-009 itself … defer-to TBD-kernel-optional-ai-verb-carveout."</p>
+  <div class="response"><strong>Accepted.</strong> Keeping this change 019-only is the deliberate call — a focused
+  blast radius beats a cross-spec edit for a one-verb fix. The residual (006 FR-009 reads misleadingly until the
+  carve-out lands) is accepted <em>with the follow-up named, not bare</em>: <code>TBD-kernel-optional-ai-verb-carveout</code>
+  carries a specific slug and one-line intent in §2, so it is trackable rather than lost. Its concrete form (a 006
+  clarification via <code>/spectastic.propose</code>, or a considerations note) is the follow-up owner's call.</div>
+</spec-risk>
+
+<spec-risk target="§4" status="no-value-found">
+  <p class="claim">Corpus-contradiction slot: the repo's <code>knowledge/spectastic-concepts</code> corpus
+  (<code>KB-001@2026-07-25</code>) covers spec-driven development, RFC 2119, and the grounding discipline — no
+  <em>domain</em> fact bears on the course verb's execution model, so no live 019 requirement contradicts it.</p>
+  <p class="citation">KB-001@2026-07-25 — "Spec-driven development, RFC 2119, and grounding."</p>
+  <div class="response">No finding for this slot; recorded per the adversarial-pass contract.</div>
+</spec-risk>
+</spec-risk-log>
+</section>
+
+
+<section id="tasks">
+<h2>6 · Tasks</h2>
+<p>Scoped to this change. On <code>/spectastic.apply</code> these fold into <code>019-explain-course/tasks.html</code>
+as a new provenance-linked phase (<code>REQ-CHANGE-006</code>) that <code>/spectastic.implement</code> drains.</p>
+
+<ul style="list-style:none;padding-left:0;">
+  <li><input type="checkbox"> Add a keyless in-host <code>AIProvider</code> that makes source-blind, isolated model calls via the host's own access (not an API key) <span class="path">packages/core/src/providers/in-host.ts</span></li>
+  <li><input type="checkbox"> Give <code>createAIProvider</code> the middle precedence rung (stub → key → keyless in-host → actionable error), host-detection kept pluggable <span class="path">packages/cli/src/ai-factory.ts</span></li>
+  <li><input type="checkbox"> Replace the raw <em>"ANTHROPIC_API_KEY is not set"</em> failure with an actionable message naming the options (set a key, or run in a host with model access) <span class="path">packages/cli/src/commands/course.ts</span></li>
+  <li><input type="checkbox"> Guard the FR-004 blindness: a test asserting each verification call is fresh/source-blind, and that a leaked-drafting-context provider is rejected <span class="path">packages/core/test/course.test.ts</span></li>
+  <li><input type="checkbox"> Manual smoke: generate a course inside Claude Code with no key, confirm the guessability + analogy-fit checks run and the course writes <span class="path">specs/019-explain-course/smoke.md</span></li>
+  <li><input type="checkbox"> Mark T-004 resolved by this change (link the proposal) <span class="path">specs/019-explain-course/triage-log.html</span></li>
+</ul>
+</section>
+
+
+<section id="questions">
+<h2>7 · Open questions</h2>
+<spec-questions>
+<p>None outstanding — the change shape (additive, one must-tier NFR), the ship status (under-review), the approach
+(keyless in-host provider, guarantee kept kernel-side), and the 006-scope decision (019-only, 006 clarification
+deferred) were all anchored in the interview. The concrete keyless mechanism is a plan decision, not an open
+question (§2).</p>
+</spec-questions>
+</section>
+
+
+<section id="changelog">
+<h2>8 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-07-26">26 Jul 2026</time><span>Proposal authored. Resolves T-004: ADD must-tier NFR-003 requiring a keyless in-host execution path for the course verb's AI-coupled verification — keeping the guarantee kernel-side (P-8) and honouring 006 FR-009. Adversarial pass run inline (3 risks + 1 no-value-found corpus slot), all <code>identified</code> pending disposition.</span></li>
+  <li><time datetime="2026-07-26">26 Jul 2026</time><span>Risks dispositioned by Brian Corbin · @briancorbinxyz — NFR-003 (portability) <code>mitigated</code> (scoped MUST + actionable fallback + host-pluggable); FR-004 (blindness leak) <code>mitigated</code> (source-blind clause + §6 guard test); §2 (deferred 006 clarification) <code>accepted</code> (deliberate 019-only scope, TBD named not bare). No <code>identified</code> risks remain — the change is apply-eligible once approved.</span></li>
+  <li><time datetime="2026-07-26">26 Jul 2026</time><span>Status flipped Under review → Approved by Brian Corbin · @briancorbinxyz. Ready to apply.</span></li>
+  <li><time datetime="2026-07-26">26 Jul 2026</time><span>Applied on 26 Jul 2026 — Applied 2026-07-26-keyless-in-host-verification: ADD NFR-003 (must) — the course verb's AI verification (guessability FR-004 + 060's analogy-fit) MUST have a keyless in-host execution path, running without an ANTHROPIC_API_KEY inside an agent host while keeping the guarantee kernel-side (P-8) and honouring 006 FR-009; resolves triage T-004. Adversarial pass: NFR-003/FR-004 mitigated, §2 accepted..</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+</spec-change>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  2026-07-26-keyless-in-host-verification · Keyless in-host course verification · authored 26 Jul 2026
+</footer>
+
+</main>
+<script src="../../../../../assets/spec.js"></script>
+</body>
+</html>

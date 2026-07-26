@@ -21,7 +21,7 @@
   </p>
 
   <spec-meta>
-    <b>Status</b>     <span><spec-status value="draft">Draft</spec-status></span>
+    <b>Status</b>     <span><spec-status value="accepted">Accepted</spec-status></span>
     <b>Spec</b>       <span><a href="./spec.html">019-explain-course</a></span>
     <b>Plan</b>       <span><a href="./plan.html">plan</a></span>
     <b>Branch</b>     <span><code>019-explain-course</code></span>
@@ -30,10 +30,15 @@
   </spec-meta>
 
   <spec-tldr>
-    <p>17 tasks across five phases. The verification + assembly + write live in a stub-testable kernel
+    <p>26 tasks across six phases. The verification + assembly + write live in a stub-testable kernel
     (the <a href="../015-ai-stub-injection/spec.html">015</a> pattern); the agent-facing draft contract and the
     <code>course.html</code> template are foundational. <span class="par">[P]</span> tasks touch distinct files
-    with no in-flight dependency. US1 is the whole generate-and-verify path; US2 layers the quiz gate on top.</p>
+    with no in-flight dependency. US1 is the whole generate-and-verify path; US2 layers the quiz gate on top; US3
+    (new) gives verification a keyless in-host path so <code>--course</code> runs inside Claude Code with no
+    <code>ANTHROPIC_API_KEY</code> (<a href="./spec.html#NFR-003">NFR-003</a>, resolving triage
+    <a href="./triage-log.html#T-004">T-004</a>). This regenerates the breakdown that
+    <code>/spectastic.apply</code> folded as an interim phase — <strong>T-1000–T-1005 are superseded and
+    retired</strong> (never reused) by US3's proper test-first tasks below.</p>
   </spec-tldr>
 </header>
 
@@ -44,14 +49,17 @@
 <spec-tabs>
   <spec-tab label="MVP-first">
     <p><strong>Recommended.</strong> Drive US1 end-to-end — a target produces a grounded, verified
-    <code>course.html</code> with a self-markable ledger. Then add US2 (the quiz gate) once the artifact is real.</p>
+    <code>course.html</code> with a self-markable ledger. Then add US2 (the quiz gate), and US3 (keyless
+    verification) once the artifact is real — US3 needs only the existing <code>AIProvider</code> seam, not US2's
+    template work, so it can also land in parallel with US2 if staffed separately.</p>
   </spec-tab>
   <spec-tab label="Incremental">
-    <p>Setup → Foundational → US1 → US2 → Polish. Each story closes its conformance before the next opens.</p>
+    <p>Setup → Foundational → US1 → US2 → US3 → Polish. Each story closes its conformance before the next opens.</p>
   </spec-tab>
   <spec-tab label="Parallel teams">
     <p>After Foundational, one person on the kernel/CLI (US1) and one on the template + gate (US2's
-    <a href="#T-210">T-210</a>) — they meet at <code>templates/course.html</code>, so coordinate there.</p>
+    <a href="#T-210">T-210</a>) — they meet at <code>templates/course.html</code>, so coordinate there. US3 touches
+    neither and can run as a third, independent stream once Foundational lands.</p>
   </spec-tab>
 </spec-tabs>
 </section>
@@ -159,8 +167,61 @@ via <a href="#T-100">T-100</a>/<a href="#T-101">T-101</a>.</p>
 </section>
 
 
+<section id="phase-us3" class="phase">
+<h2>6 · Phase 3c — US3 · Keyless in-host verification <spec-pill>P1</spec-pill></h2>
+<p>Resolves triage <a href="./triage-log.html#T-004">T-004</a> via the applied
+<a href="./changes/archive/2026-07-26-keyless-in-host-verification/proposal.html">2026-07-26-keyless-in-host-verification</a>
+(<a href="./spec.html#NFR-003">NFR-003</a>). Depends only on the existing <code>AIProvider</code> seam from
+Foundational — not on US2's template work — so it can run independent of US2.</p>
+
+<h3>Tests (write &amp; fail first)</h3>
+<spec-task id="T-300" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Test the keyless provider is source-blind by construction</strong> — <code>ClaudeCliProvider.subagent(prompt)</code> is invoked with only the blind prompt string; no course/draft context, no <code>--resume</code>, ever threaded in (<a href="./plan.html#D-007">D-007</a>, guards <a href="./spec.html#FR-004">FR-004</a>). <span class="path">packages/core/test/claude-cli-provider.test.ts</span></div>
+</spec-task>
+<spec-task id="T-301" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Test the provider-selection precedence</strong> — stub → explicit <code>ANTHROPIC_API_KEY</code> → <code>claude</code> detected on <code>PATH</code> (mocked) → an actionable error naming the options, never a raw SDK stack trace (<a href="./spec.html#NFR-003">NFR-003</a>). <span class="path">packages/cli/test/ai-factory-provider.test.ts</span></div>
+</spec-task>
+
+<h3>Implementation</h3>
+<spec-task id="T-310">
+  <input type="checkbox" checked>
+  <div><strong>Implement <code>ClaudeCliProvider</code></strong> — <code>subagent(prompt)</code> shells to <code>claude -p &lt;prompt&gt; --output-format text</code>, one fresh process per call, no <code>ANTHROPIC_API_KEY</code> required (<a href="./plan.html#D-006">D-006</a>, <a href="./plan.html#D-007">D-007</a>). <span class="path">packages/core/src/providers/claude-cli.ts</span></div>
+</spec-task>
+<spec-task id="T-311" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Add the <code>./providers/claude-cli</code> subpath export + tsup entry</strong> <span class="path">packages/core/package.json</span></div>
+</spec-task>
+<spec-task id="T-312">
+  <input type="checkbox" checked>
+  <div><strong>Give <code>createAIProvider</code> the precedence rung</strong> — detect <code>claude</code> on <code>PATH</code> (a host-pluggable seam) and construct <code>ClaudeCliProvider</code> when no stub and no key are present; fall through to an actionable error naming the options when neither is available (<a href="./plan.html#D-006">D-006</a>, <a href="./spec.html#NFR-003">NFR-003</a>). <span class="path">packages/cli/src/ai-factory.ts</span></div>
+</spec-task>
+<spec-task id="T-313">
+  <input type="checkbox" checked>
+  <div><strong>Replace the raw provider stack trace with the actionable message</strong> in the <code>spectastic course</code> failure path (<a href="./spec.html#NFR-003">NFR-003</a>). <span class="path">packages/cli/src/commands/course.ts</span></div>
+</spec-task>
+
+<h3>Closing</h3>
+<spec-task id="T-320" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Manual smoke: generate a course inside Claude Code with no <code>ANTHROPIC_API_KEY</code></strong> — confirm the guessability check (and 060's analogy-fit check, if present) runs via the in-host provider and the course writes. <span class="path">specs/019-explain-course/smoke.md</span></div>
+</spec-task>
+<spec-task id="T-321" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Mark triage T-004 resolved</strong> — link the applied proposal and the landed requirement. <span class="path">specs/019-explain-course/triage-log.html</span></div>
+</spec-task>
+
+<spec-note>
+<p>Closes <a href="./spec.html#NFR-003">NFR-003</a>; reinforces <a href="./spec.html#FR-004">FR-004</a> and
+<a href="./spec.html#SC-002">SC-002</a> under the new execution path — verified by
+<a href="#T-300">T-300</a>/<a href="#T-301">T-301</a>/<a href="#T-320">T-320</a>.</p>
+</spec-note>
+</section>
+
+
 <section id="phase-polish" class="phase">
-<h2>6 · Phase 4 — Polish</h2>
+<h2>7 · Phase 4 — Polish</h2>
 <spec-task id="T-900" parallel>
   <input type="checkbox" checked>
   <div><strong>Author the manual real-LLM smoke and run it once — generate a course for a real spec, eyeball grounding + quiz quality, confirm it lands git-ignored under <code>.spectastic/courses/</code></strong> <span class="path">specs/019-explain-course/smoke.md</span></div>
@@ -173,24 +234,34 @@ via <a href="#T-100">T-100</a>/<a href="#T-101">T-101</a>.</p>
   <input type="checkbox" checked>
   <div><strong>Rebuild and run the full suite + typecheck green; confirm the canonical-artifact validation still passes with the new course template excluded as tooling output</strong> <span class="path">.</span></div>
 </spec-task>
+<spec-task id="T-903" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Re-run the full safety-net verification for the US3 amendment</strong> — build, full suite, typecheck, and a corpus-wide <code>spectastic validate</code>, confirming the keyless-provider work introduces no regression against the baseline. <span class="path">.</span></div>
+</spec-task>
 </section>
 
 
 <section id="dependencies">
-<h2>7 · Dependencies</h2>
-<pre><code>Setup         → Foundational
-Foundational  → US1 (kernel · CLI · command + template fill)
-US1           → US2 (the gate layers on the same course.html template)
-US1, US2      → Polish
+<h2>8 · Dependencies</h2>
+<pre><code>Setup           → Foundational
+Foundational    → US1 (kernel · CLI · command + template fill)
+Foundational    → US3 (needs only the AIProvider seam; independent of US1's template work
+                       in principle, but sequenced after US1 here since US1 built the seam's
+                       only caller, verifyGuessability)
+US1             → US2 (the gate layers on the same course.html template)
+US1, US2, US3   → Polish
 </code></pre>
 </section>
 
 
 <section id="changelog">
-<h2>8 · Change log</h2>
+<h2>9 · Change log</h2>
 <spec-changelog>
 <ol>
   <li><time datetime="2026-06-20">20 Jun 2026</time><span>Initial task breakdown. 17 tasks; the verify/assemble/write kernel is test-first (stub-driven, the 015 pattern), the agent-facing <code>--course</code> draft loop and the <code>course.html</code> template are the moving parts. Every FR/SC traced to a task.</span></li>
+  <li><time datetime="2026-07-26">26 Jul 2026</time><span><code>/spectastic.apply</code> folded <a href="./changes/archive/2026-07-26-keyless-in-host-verification/proposal.html">2026-07-26-keyless-in-host-verification</a>'s §6 as an interim phase, T-1000–T-1005.</span></li>
+  <li><time datetime="2026-07-26">26 Jul 2026</time><span>Regenerated following the plan amendment (D-006/D-007). <strong>T-1000–T-1005 are superseded and retired</strong> (the ids are never reused) by a proper test-first US3 — Keyless in-host verification (T-300/T-301 tests, T-310–T-313 implementation, T-320/T-321 closing) — plus a Polish addition, T-903, re-verifying the amendment. 9 new tasks; 26 total. Every FR/SC/NFR still traced, including the new NFR-003.</span></li>
+  <li><time datetime="2026-07-26">26 Jul 2026</time><span>US3 drained (T-300–T-321) + T-903. A first pass wired the new keyless rung unconditionally into <code>createAIProvider</code>, regressing six other verbs' documented "CLI requires ANTHROPIC_API_KEY" contract on any host with <code>claude</code> on PATH — caught by the full-suite re-run, scoped to <code>verb: 'course'</code> only, and pinned with a regression-guard test. Status flipped Draft → Accepted on 26 Jul 2026 — zero remaining unchecked tasks; tests verified passing per author confirmation (full build + typecheck + 1073-test suite green). Sibling bundle (REQ-LIFECYCLE-005).</span></li>
 </ol>
 </spec-changelog>
 </section>

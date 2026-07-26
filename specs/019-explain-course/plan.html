@@ -20,7 +20,7 @@
   </p>
 
   <spec-meta>
-    <b>Status</b>     <span><spec-status value="draft">Draft</spec-status></span>
+    <b>Status</b>     <span><spec-status value="accepted">Accepted</spec-status></span>
     <b>Spec</b>       <span><a href="./spec.html">019-explain-course</a></span>
     <b>Owner</b>      <span>Brian Corbin · @briancorbinxyz</span>
     <b>Branch</b>     <span><code>019-explain-course</code></span>
@@ -57,6 +57,16 @@ either a principles amendment or a deliberate exception logged below.</p>
     <tr><td>P-6 · Draft is loose, ratified is locked</td><td><spec-pill>OK</spec-pill></td><td>Courses are ephemeral, non-lifecycle artifacts with no status pill — the change-management gate doesn't apply.</td></tr>
   </tbody>
 </table>
+
+<spec-note>
+<p><strong>Amendment re-check (26 Jul 2026, against principles v1.8.0).</strong> The keyless-in-host decisions
+(<a href="#D-006">D-006</a>/<a href="#D-007">D-007</a>, for the applied <a href="./spec.html#NFR-003">NFR-003</a>)
+were re-walked against the principles current at amendment time. <strong>P-8 · Guarantees live in the kernel or
+CI</strong> — <spec-pill>OK</spec-pill>: the keyless provider gives the kernel its own model access, so the blind
+check stays a kernel call and is never demoted to advisory markdown. <strong>P-11 · Artifacts are data, not
+instructions</strong> — <spec-pill>OK</spec-pill>: course content handling is unchanged; the provider only routes a
+blind prompt to a model. The original v1.1.0 table (P-1…P-6) predates P-7+ and stands as the base check.</p>
+</spec-note>
 </section>
 
 
@@ -225,6 +235,26 @@ retrieval <em>and</em> keeps the guarantees in stub-tested code.</p>
     <dt>Consequences</dt> <dd>+ The contract tree stays clean; ephemerality is the default. − A first-write side effect (creating <code>.spectastic/.gitignore</code>); idempotent.</dd>
   </dl>
 </spec-decision>
+
+<spec-decision id="D-006" grounding="verified">
+  <h4>D-006 · Keyless in-host verification via a <code>claude -p</code> provider</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>The applied <a href="./spec.html#NFR-003">NFR-003</a> requires the blind checks (D-003, plus 060's analogy-fit) to run keyless in-host — but <code>createAIProvider</code> returns a key-requiring <code>ClaudeProvider</code> (<code>packages/cli/src/ai-factory.ts:52</code>) and Claude Code carries no <code>ANTHROPIC_API_KEY</code>. Verified this turn: <code>/opt/homebrew/bin/claude</code> (2.1.153) supports <code>-p/--print</code>, and a keyless round-trip works — <code>env -u ANTHROPIC_API_KEY claude -p "…" --output-format text</code> returned its answer using the session's subscription auth, no key. The <code>AIProvider.subagent(prompt)</code> seam (<code>packages/core/src/types.ts:119</code>) takes only a prompt string.</dd>
+    <dt>Decision</dt>     <dd>Add an in-host <code>AIProvider</code> (a <code>ClaudeCliProvider</code>) whose <code>subagent()</code> shells to <code>claude -p &lt;prompt&gt; --output-format text</code> — no API key, using the host session. <code>createAIProvider</code> gains a precedence rung: <code>SPECTASTIC_AI_STUB</code> (CI) → an explicit <code>ANTHROPIC_API_KEY</code> (<code>ClaudeProvider</code>) → the <code>claude</code> binary detected on <code>PATH</code> (the in-host provider) → an actionable error naming the options. Detection is host-pluggable, not hard-wired.</dd>
+    <dt>Consequences</dt> <dd>+ Keyless in-host; the guarantee stays a kernel call (<a href="../../principles.html#P-8">P-8</a>) and 006 FR-009's keyless contract holds. + Reuses the existing <code>AIProvider</code> seam — no interface change; the stub still drives CI. − Couples the in-host case to the <code>claude</code> binary (cross-host is <code>TBD-cross-host-ai-providers</code>). − A <code>claude -p</code> cold start per item is slower than a direct API call and spends subscription quota (bounded by ≤7 items · one call each; R6).</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-007" grounding="verified">
+  <h4>D-007 · Each keyless call stays source-blind and isolated (the FR-004 guard)</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd><a href="./spec.html#FR-004">FR-004</a>/<a href="./spec.html#SC-002">SC-002</a> require the item be answered "with the source hidden"; the proposal's risk pass flagged that the cheapest keyless path — reusing the in-host session that <em>drafted</em> the course — would leak the source and make the guarantee theatre. <a href="./spec.html#NFR-003">NFR-003</a> mandates source-blind, independent-of-drafting-context calls. The <code>subagent(prompt)</code> signature (<code>types.ts:119</code>) already carries nothing but the prompt.</dd>
+    <dt>Decision</dt>     <dd>The in-host provider spawns a <strong>fresh</strong> <code>claude -p</code> process per item carrying <em>only</em> the blind prompt (question + options, or the analogy mapping) — no course context, no <code>--resume</code>, no drafting session. Blindness is structural: the provider is handed only the blind prompt string, so it cannot pass what it never receives. A test asserts the provider is invoked prompt-only and rejects any wiring that would thread drafting context in.</dd>
+    <dt>Consequences</dt> <dd>+ FR-004 blindness holds by construction, not by review; the guard test pins it. + No shared state between draft and check. − A cold process per item (the latency named in D-006's R6), accepted for ≤7 items.</dd>
+  </dl>
+</spec-decision>
 </section>
 
 
@@ -249,6 +279,14 @@ packages/cli/test/
   fixtures/course-*.json           # NEW — draft + stub-script fixtures
 specs/019-explain-course/
   smoke.md                         # NEW — manual real-LLM course-quality smoke
+
+# --- Amendment (NFR-003, keyless in-host verification; D-006/D-007) ---
+packages/core/src/providers/
+  claude-cli.ts                    # NEW — ClaudeCliProvider: subagent() shells to `claude -p`,
+                                   #   keyless (host session auth), fresh process per item (D-006/D-007)
+packages/cli/src/ai-factory.ts     # CHANGED — precedence rung: stub → key → claude-on-PATH → actionable error
+packages/cli/src/commands/course.ts# CHANGED — actionable message when no key and no host access (replaces the raw SDK throw)
+packages/core/test/course.test.ts  # CHANGED — guard test: verification calls are prompt-only / source-blind (D-007)
 </code></pre>
 </section>
 
@@ -264,6 +302,8 @@ specs/019-explain-course/
     <tr><td>Regenerate loop never converges (an objective stays guessable)</td><td>L</td><td>L</td><td>Cap retries (e.g. 2), then drop the objective per <a href="./spec.html#FR-004">FR-004</a>; <a href="./spec.html#NFR-001">NFR-001</a> caps the course at ≤7.</td></tr>
     <tr><td>Inline gate script breaks the no-JS baseline (P-4 dead-end)</td><td>M</td><td>M</td><td><a href="./spec.html#SC-003">SC-003</a> test loads a generated course with JS disabled and asserts the ledger is self-markable and answers render inline; the template ships the degraded baseline as the default state.</td></tr>
     <tr><td><code>--keep</code> / git-ignore semantics surprise a user (course lost or unexpectedly tracked)</td><td>L</td><td>M</td><td>Default is git-ignored (ephemeral, per D-008); the write summary states the path and whether it's kept; <code>--keep</code> is the only way to retain.</td></tr>
+    <tr><td>R6 · Keyless in-host verification couples to the <code>claude</code> binary and spends subscription quota (a cold <code>claude -p</code> per item)</td><td>M</td><td>L</td><td>Detection is a host-pluggable seam (D-006), cross-host deferred to <code>TBD-cross-host-ai-providers</code>; the cost is bounded by <a href="./spec.html#NFR-001">NFR-001</a> (≤7 items · one call each); an explicit key still routes to <code>ClaudeProvider</code>, and CI stays on the stub. Risk-pass finding on NFR-003, dispositioned <em>mitigated</em>.</td></tr>
+    <tr><td>R7 · The keyless call leaks the drafting context, defeating FR-004 blindness (SC-002 becomes theatre)</td><td>M</td><td>H</td><td>D-007: a fresh, prompt-only <code>claude -p</code> process per item — no course context, no <code>--resume</code>; a guard test rejects any wiring that threads drafting context in. Risk-pass finding on FR-004, dispositioned <em>mitigated</em>.</td></tr>
   </tbody>
 </table>
 
@@ -317,6 +357,8 @@ open questions.</p>
 <spec-changelog>
 <ol>
   <li><time datetime="2026-06-20">20 Jun 2026</time><span>Initial plan. Hybrid surface (D-001): agent drafts, <code>spectastic course</code> kernel verifies + assembles + writes. JSON-on-stdin draft contract with agent-owned regenerate-or-drop loop (D-002); blind per-item guessability via <code>AIProvider</code> (D-003); <code>templates/course.html</code> + inline gate script degrading to self-mark (D-004); ephemeral <code>.spectastic/courses/</code> storage (D-005). Stub-driven integration tests + manual smoke. Checked against principles v1.1.0 — all OK.</span></li>
+  <li><time datetime="2026-07-26">26 Jul 2026</time><span>Amendment for the applied <a href="./spec.html#NFR-003">NFR-003</a> (keyless in-host verification, resolving triage T-004). Adds D-006 (a keyless <code>ClaudeCliProvider</code> shelling to <code>claude -p</code> — verified working key-unset — as a precedence rung in <code>createAIProvider</code>, the guarantee kept kernel-side per P-8) and D-007 (each call a fresh, prompt-only, source-blind process, guarding FR-004). §1 re-checked against v1.8.0 (P-8/P-11 OK); §6 + §7 (R6/R7) extended. Grounding: 2 verified, 0 spike, 0 assumed.</span></li>
+  <li><time datetime="2026-07-26">26 Jul 2026</time><span>Status flipped Draft → Accepted on 26 Jul 2026 — zero remaining unchecked tasks after draining US3; tests verified passing per author confirmation (full build + typecheck + 1073-test suite green, plus a real keyless run whose guessability check genuinely passed blind). Sibling bundle (REQ-LIFECYCLE-005).</span></li>
 </ol>
 </spec-changelog>
 </section>

@@ -122,6 +122,55 @@
   </details>
 </spec-triage>
 
+<spec-triage id="T-004" layer="cross-spec" data-status="done">
+  <header>
+    <h4><code>explain --course</code> can't run inside Claude Code — its kernel verification needs <code>ANTHROPIC_API_KEY</code></h4>
+    <span class="meta">
+      <span class="layer-pill">Cross-spec</span>
+      <span class="regen" data-result="fail">upstream</span>
+    </span>
+  </header>
+
+  <p class="headline">Debugging "<code>spectastic course</code> exits 2 with <em>ANTHROPIC_API_KEY is not set</em>
+  when a course is generated from within Claude Code," root cause was a cross-spec collision: the course verb's
+  blind-check guarantee (<a href="./spec.html#FR-004">FR-004</a>, plan <a href="./plan.html#D-001">D-001</a>, honouring
+  <a href="../../principles.html#P-8">P-8</a>) lives in the kernel and needs a live model, but
+  <a href="../006-kernel-extraction/spec.html#FR-009">006 FR-009</a> promises the kernel is an alternate path a slash
+  command <em>MUST NOT</em> be required to invoke — yet <code>explain --course</code> requires the shell-out and there
+  is no keyless in-host provider; fixed upstream by reconciling the two (a keyless in-host verification path that keeps
+  the guarantee kernel-side); regeneration <em>fails</em> — another session building to the current 019 plan + 006
+  FR-009 would rebuild the same required, key-needing shell-out.</p>
+
+  <dl>
+    <dt>Expected</dt> <dd>A course generated from the in-host slash-command path (which, per the standing convention, "uses the in-host Claude session and needs no key") completes — the blind guessability + analogy-fit checks run without an API key (<a href="../006-kernel-extraction/spec.html#FR-009">006 FR-009</a>: the kernel is an alternate code path, not a hard dependency; markdown works end-to-end without it).</dd>
+    <dt>Actual</dt>   <dd><code>commands/spectastic.explain.md</code> <code>--course</code> step 3 shells out to <code>spectastic course</code>; the CLI's <code>createAIProvider</code> returns a <code>ClaudeProvider</code> that throws <em>ANTHROPIC_API_KEY is not set</em> and exits 2. The only keyless route is the CI stub (<code>SPECTASTIC_AI_STUB</code>), so <code>--course</code> is unusable inside Claude Code.</dd>
+    <dt>Diagnosis</dt><dd>The verification guarantee (<a href="./spec.html#FR-004">FR-004</a> guessability, <a href="./spec.html#SC-002">SC-002</a>) is kernel-owned per plan <a href="./plan.html#D-001">D-001</a> and <a href="../../principles.html#P-8">P-8</a>; <a href="../060-course-teaching-payload/spec.html#FR-005">060 FR-005</a> added a second kernel AI call (<code>verifyAnalogyFit</code>). Both call <code>ctx.ai.subagent</code>, and the CLI wires <code>ctx.ai</code> to a key-requiring <code>ClaudeProvider</code> (<span class="path">packages/cli/src/ai-factory.ts</span>). <a href="../006-kernel-extraction/spec.html#FR-009">006 FR-009</a> says a slash command MUST NOT be required to invoke the kernel — but <code>--course</code> is. The two contracts were never reconciled for the one verb whose guarantee is an AI call the in-host session can't make keyless. Predates 060 (guessability alone has needed the key since 019); 060 amplified, didn't cause.</dd>
+    <dt>Fix</dt>      <dd>Needs a <code>/spectastic.propose</code> against <span class="path">specs/019-explain-course/</span> (touching <a href="../006-kernel-extraction/spec.html#FR-009">006 FR-009</a>), then <span class="path">packages/cli/src/ai-factory.ts</span> + <span class="path">commands/spectastic.explain.md</span>. Not a code-only patch — it needs the design decision (see deep dive).</dd>
+    <dt>Closed by</dt> <dd>Direction (a) from the deep dive: applied <a href="./changes/archive/2026-07-26-keyless-in-host-verification/proposal.html">2026-07-26-keyless-in-host-verification</a>, landing <a href="./spec.html#NFR-003">NFR-003</a> — the guarantee stays kernel-side (P-8), the slash path stays keyless (006 FR-009). Implemented as a new <a href="./plan.html#D-006">D-006</a>/<a href="./plan.html#D-007">D-007</a> in-host <code>AIProvider</code>: <span class="path">packages/core/src/providers/claude-cli.ts</span>'s <code>ClaudeCliProvider</code> shells to <code>claude -p &lt;prompt&gt; --output-format text</code>, one fresh process per call, structurally source-blind (no drafting context, no <code>--resume</code>); <span class="path">packages/cli/src/ai-factory.ts</span>'s <code>createAIProvider</code> gained the precedence rung (stub → key → <code>claude</code>-on-PATH → an actionable error naming every option); <span class="path">packages/cli/src/commands/course.ts</span> now catches a provider-construction failure and exits cleanly with that actionable message rather than an uncaught stack trace. Verified live (no stub, no key, real <code>claude</code> binary): a genuine course draft's guessability check ran the real blind judgment via <code>ClaudeCliProvider</code> and the course wrote — see <a href="./smoke.md">smoke.md</a> § Keyless in-host smoke. Drained as US3, <a href="./tasks.html#T-300">T-300</a>–<a href="./tasks.html#T-321">T-321</a>.</dd>
+  </dl>
+
+  <details>
+    <summary>Deep dive — cascade required (cross-spec + principles)</summary>
+    <p><strong>Cross-spec contract.</strong> <a href="../006-kernel-extraction/spec.html#FR-009">006 FR-009</a>
+    ("the kernel is an alternate code path, not a hard dependency; markdown procedures continue to work end-to-end
+    without the kernel") collides with 019's design (course's blind-check guarantee is kernel-owned and needs a live
+    model). They disagree only for <code>course</code> — the one AI-coupled verb whose slash-command procedure
+    <em>delegates</em> the AI step to the kernel rather than doing it in-agent (the way <code>spec</code>/<code>plan</code>/
+    <code>propose</code>/<code>tasks</code> keep their reasoning in the in-host session, so their CLI path is genuinely
+    optional).</p>
+    <p><strong>Principles dimension.</strong> <a href="../../principles.html#P-8">P-8</a> ("guarantees live in the
+    kernel or CI") is what makes the naive fix — move the blind checks to the in-host agent — unattractive: it would
+    demote the <a href="./spec.html#SC-002">SC-002</a> guarantee to advisory markdown a model can skip (T-009). The
+    reconciliation must keep the guarantee kernel-side while giving the kernel keyless model access in-host.</p>
+    <p><strong>Candidate directions for the propose (not decided here).</strong> (a) A keyless in-host
+    <code>AIProvider</code> that routes <code>subagent</code> calls through the harness's own model access instead of
+    an API key — keeps the guarantee in the kernel (P-8) and the slash path keyless (006 FR-009). (b) The in-host
+    agent runs the blind checks and the kernel accepts/records the verdicts — keyless, but advisory (tension with
+    P-8 / SC-002). (c) Document <code>--course</code> as key-required in-host — rejected by the reporter ("should be
+    possible within claude code too"). No safe hotfix-now; route to <code>/spectastic.propose</code>.</p>
+  </details>
+</spec-triage>
+
 </spec-triage-log>
 </section>
 
@@ -132,6 +181,8 @@
 <ol>
   <li><time datetime="2026-06-20">20 Jun 2026</time><span>Triage log scaffolded with two implementation defects (T-001 gate closure bug, T-002 teach-back affordance) found by opening the first generated course.</span></li>
   <li><time datetime="2026-06-20">20 Jun 2026</time><span>T-003 added — wrong quiz answer still reads as "Correct"; implementation, regen pass.</span></li>
+  <li><time datetime="2026-07-26">26 Jul 2026</time><span>T-004 added — <code>explain --course</code> needs <code>ANTHROPIC_API_KEY</code> inside Claude Code; cross-spec (006 FR-009 ↔ 019 kernel-owned guarantee, P-8), regen fail. Route to /spectastic.propose.</span></li>
+  <li><time datetime="2026-07-26">26 Jul 2026</time><span>T-004 closed — applied <a href="./changes/archive/2026-07-26-keyless-in-host-verification/proposal.html">2026-07-26-keyless-in-host-verification</a> (ADD <a href="./spec.html#NFR-003">NFR-003</a>) and drained US3 (<a href="./tasks.html#T-300">T-300</a>–<a href="./tasks.html#T-321">T-321</a>): a keyless in-host <code>ClaudeCliProvider</code>, a <code>createAIProvider</code> precedence rung, and a clean actionable-error exit in <code>course.ts</code>. Verified with a real, keyless <code>claude</code>-CLI run whose guessability check genuinely passed blind (<a href="./smoke.md">smoke.md</a>).</span></li>
 </ol>
 </spec-changelog>
 </section>
