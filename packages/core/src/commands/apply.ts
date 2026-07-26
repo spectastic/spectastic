@@ -26,7 +26,7 @@ import type {
   KernelContext,
   WithdrawInput,
 } from '../types.js';
-import { deepenArchivePaths } from '../archive-paths.js';
+import { deepenArchivePaths, shallowProposalPaths } from '../archive-paths.js';
 
 const IDENTIFIED_RISK_RE = /<spec-risk[^>]*\bstatus=["']identified["']/i;
 const DELTA_RE =
@@ -102,17 +102,27 @@ export async function applyCommand(
     }
 
     if (op === 'added') {
-      // Insert the embedded post-state before the next </section>.
-      const insertion = `\n${wrapRequirement(target, embeddedRequirement!)}\n`;
-      const closingSection = liveSpec.indexOf('</section>');
-      if (closingSection === -1) {
-        deltas.push({ target, op, result: 'gate-blocked', reason: 'no </section> anchor' });
+      // Insert the embedded post-state beside its family-prefix siblings — the last
+      // existing <spec-requirement> whose id shares the new id's family prefix (id with
+      // its trailing number stripped: NFR-, SC-, REQ-CHANGE-) — never the document's
+      // first </section> (triage T-019). Re-base the embedded requirement's own relative
+      // links from proposal depth to live-spec depth first (triage T-020).
+      const rebased = shallowProposalPaths(embeddedRequirement!);
+      const insertion = `\n${wrapRequirement(target, rebased)}\n`;
+      const insertAt = findFamilyPrefixInsertionPoint(liveSpec, target);
+      if (insertAt === null) {
+        deltas.push({
+          target,
+          op,
+          result: 'gate-blocked',
+          reason: 'no existing <spec-requirement> to anchor placement',
+        });
         continue;
       }
-      liveSpec = `${liveSpec.slice(0, closingSection)}${insertion}${liveSpec.slice(closingSection)}`;
+      liveSpec = `${liveSpec.slice(0, insertAt)}${insertion}${liveSpec.slice(insertAt)}`;
       deltas.push({ target, op, result: 'success' });
     } else if (op === 'modified') {
-      const newBody = embeddedRequirement!;
+      const newBody = shallowProposalPaths(embeddedRequirement!);
       const re = new RegExp(`<spec-requirement[^>]*\\bid=["']${target}["'][\\s\\S]*?<\\/spec-requirement>`, 'i');
       if (re.test(liveSpec)) {
         liveSpec = liveSpec.replace(re, wrapRequirement(target, newBody));
@@ -553,6 +563,41 @@ function wrapRequirement(id: string, inner: string): string {
     return inner.replace(/\bid=["'][^"']*["']/, `id="${id}"`);
   }
   return `<spec-requirement id="${id}" priority="must">\n${inner}\n</spec-requirement>`;
+}
+
+/**
+ * The requirement id's family prefix — the id with its trailing number stripped, trailing
+ * hyphen kept (`NFR-003` → `NFR-`, `REQ-CHANGE-009` → `REQ-CHANGE-`, `SC-001` → `SC-`).
+ * Vocabulary-agnostic: works for a downstream spec's FR/NFR/SC ids and the meta-spec's own
+ * REQ-<TOPIC> ids alike, with no hard-coded id shape (triage T-019).
+ */
+function familyPrefix(id: string): string {
+  const m = id.match(/^(.*-)\d+$/);
+  return m ? m[1]! : id;
+}
+
+/**
+ * Where an `op="added"` requirement's post-state should be inserted: immediately after the
+ * last existing `<spec-requirement>` sharing the new id's family prefix, so it joins its own
+ * group beside its siblings — never the document's first `</section>` (triage T-019). Falls
+ * back to appending after the last `<spec-requirement>` in the document when no sibling
+ * shares the prefix (a legitimate first-of-kind ADD). Returns `null` only when the live spec
+ * has no `<spec-requirement>` at all to anchor against.
+ */
+function findFamilyPrefixInsertionPoint(liveSpec: string, newId: string): number | null {
+  const prefix = familyPrefix(newId);
+  const reqRe = /<spec-requirement\b[^>]*\bid=["']([^"']+)["'][\s\S]*?<\/spec-requirement>/g;
+  let lastEnd: number | null = null;
+  let lastFamilyEnd: number | null = null;
+  for (const m of liveSpec.matchAll(reqRe)) {
+    const id = m[1]!;
+    const end = m.index + m[0].length;
+    lastEnd = end;
+    if (id.startsWith(prefix)) {
+      lastFamilyEnd = end;
+    }
+  }
+  return lastFamilyEnd ?? lastEnd;
 }
 
 /**
