@@ -28,6 +28,17 @@ export { corpusLicenseFindings, isPermissiveLicense } from './license.js';
 export { fenceCorpusDocument } from './fence.js';
 export { resolveCitation, renderCitationLabel } from './resolve.js';
 export { corpusGroundingFindings } from './gates.js';
+export {
+  allocateRegistryIds,
+  installPack,
+  mergeRegistryRows,
+  parseCoordinate,
+  registerDocument,
+  NOT_YET_SPOT_CHECKED_STATUS,
+  NOT_CITABLE_UNTIL_SIGNED_OFF_STATUS,
+  NOT_CITABLE_UNTIL_CONFIRMED_STATUS,
+} from './ingest.js';
+export type { InstallInput, InstallResult, RegisterDocumentInput } from './ingest.js';
 export { buildCorpusPromptBlock, CORPUS_HINT, withCorpusHint } from './prompt.js';
 export {
   parseIndex,

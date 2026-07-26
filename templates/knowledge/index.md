@@ -7,7 +7,8 @@ reference it names — the id a plan decision cites as `KB-NNNN@edition`.
 A fresh project has imported nothing yet, so this table starts empty. It's populated by the corpus
 ingester as packs are imported, never hand-authored — the ingester owns assignment (a monotonic,
 never-reused `KB-NNNN`), the `(marketplace, plugin, slug)` re-import anchor, and orphan-flagging when
-a re-import drops a reference.
+a re-import drops a reference. `Status` is blank for a current reference and `orphaned` when a
+re-import no longer finds it at its anchor — flagged, never removed.
 
-| KB-NNNN | Marketplace | Plugin | Slug | Title | Edition | Path |
-| --- | --- | --- | --- | --- | --- | --- |
+| KB-NNNN | Marketplace | Plugin | Slug | Title | Edition | Path | Status |
+| --- | --- | --- | --- | --- | --- | --- | --- |

@@ -1,0 +1,421 @@
+/**
+ * The corpus ingester's registration backbone (061-corpus-ingester, plan
+ * D-001/D-004/D-005).
+ *
+ * Every acquisition door (`corpus import` / `interview` / `source`)
+ * converges here: assign a repo-unique, opaque, never-reused `KB-NNNN` and
+ * merge the new row into the root registry non-destructively. This module
+ * owns only the backbone; the install door's own orchestration (fetch →
+ * convert → allocate/merge → write the SKILL.md map) lands in US1 (T-111).
+ *
+ * Deliberately reuses 056's `adapt.ts` conversion primitives rather than
+ * duplicating them — this file is the *registry* half, `adapt.ts` stays the
+ * *conversion* half (plan D-003).
+ */
+import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { stringify as stringifyYaml } from 'yaml';
+import { deriveProvenance, deriveTitleAndDescription } from './adapt.js';
+import { parseCorpusDocument } from './parse.js';
+import {
+  parseRegistry,
+  parseSkillSlugMap,
+  renderRegistryTable,
+  renderSkillSlugMapTable,
+  type SkillSlugMapEntry,
+} from './index-format.js';
+import { KB_ID_RE } from './types.js';
+import type { RegistryEntry } from './types.js';
+import type { PackFetcher } from '../providers/pack-fetcher.js';
+
+/** The highest numeric suffix among a set of registry entries (0 if none
+ * match — a fresh registry allocates starting at KB-0001). Reads the WHOLE
+ * repo-wide registry, not a per-pack slice (061 FR-001, distinct from
+ * `adapt.ts`'s per-pack `maxExistingIdNum`) — and counts every entry
+ * regardless of `status`, so an orphaned row's id is never reused (FR-003). */
+function maxExistingRegistryIdNum(registry: readonly RegistryEntry[]): number {
+  let max = 0;
+  for (const entry of registry) {
+    if (!KB_ID_RE.test(entry.id)) continue;
+    const num = Number(entry.id.slice('KB-'.length));
+    if (num > max) max = num;
+  }
+  return max;
+}
+
+/**
+ * Allocate `count` sequential, never-colliding, repo-unique `KB-NNNN` ids,
+ * continuing from the registry's current highest id (FR-001/FR-003, plan
+ * D-004). Zero-padded to at least 4 digits (the 061 baseline — `KB_ID_RE`
+ * already admits `\d{3,}`, so a wider baseline costs nothing). Deterministic
+ * given a fixed `registry` — no clock reads (NFR-001).
+ */
+export function allocateRegistryIds(registry: readonly RegistryEntry[], count: number): string[] {
+  const start = maxExistingRegistryIdNum(registry) + 1;
+  return Array.from({ length: count }, (_, i) => `KB-${String(start + i).padStart(4, '0')}`);
+}
+
+/** The `(marketplace, plugin, slug)` re-import anchor key for a registry
+ * entry (FR-004) — the coordinate a re-import resolves against, distinct
+ * from the assigned `KB-NNNN` itself. */
+function anchorKey(entry: Pick<RegistryEntry, 'marketplace' | 'plugin' | 'slug'>): string {
+  return `${entry.marketplace} ${entry.plugin} ${entry.slug}`;
+}
+
+/**
+ * Merge a fresh set of registry rows into whatever the root registry
+ * already had (FR-002, plan D-004): keyed on the `(marketplace, plugin,
+ * slug)` anchor, an existing row's non-empty cell wins over a freshly
+ * re-derived one for the same anchor, so a hand-edited title/edition
+ * survives a re-run untouched (NFR-003) — mirrors `adapt.ts`'s
+ * `mergeIndexRows` precedent, keyed on the anchor rather than the id (both
+ * identify the same row once assigned, but the anchor is what FR-004 anchors
+ * a re-import on). Deterministic — no clock reads (NFR-001).
+ */
+export function mergeRegistryRows(
+  existing: readonly RegistryEntry[],
+  fresh: readonly RegistryEntry[],
+): RegistryEntry[] {
+  const byAnchor = new Map<string, RegistryEntry>();
+  for (const row of fresh) byAnchor.set(anchorKey(row), row);
+  for (const row of existing) {
+    const current = byAnchor.get(anchorKey(row));
+    if (!current) {
+      byAnchor.set(anchorKey(row), row);
+      continue;
+    }
+    byAnchor.set(anchorKey(row), {
+      id: row.id || current.id,
+      marketplace: row.marketplace || current.marketplace,
+      plugin: row.plugin || current.plugin,
+      slug: row.slug || current.slug,
+      title: row.title || current.title,
+      edition: row.edition || current.edition,
+      path: row.path || current.path,
+      status: row.status || current.status || '',
+    });
+  }
+  return [...byAnchor.values()];
+}
+
+/** Non-destructive merge for a pack's `SKILL.md`-inlined slug map, keyed on
+ * `slug` alone (a pack-local concern — no `KB-NNNN`, no repo-wide anchor).
+ * Same hand-edit-wins precedence as `mergeRegistryRows`. */
+function mergeSlugMapRows(
+  existing: readonly SkillSlugMapEntry[],
+  fresh: readonly SkillSlugMapEntry[],
+): SkillSlugMapEntry[] {
+  const bySlug = new Map<string, SkillSlugMapEntry>();
+  for (const row of fresh) bySlug.set(row.slug, row);
+  for (const row of existing) {
+    const current = bySlug.get(row.slug);
+    if (!current) {
+      bySlug.set(row.slug, row);
+      continue;
+    }
+    bySlug.set(row.slug, {
+      slug: row.slug,
+      title: row.title || current.title,
+      description: row.description || current.description,
+      edition: row.edition || current.edition,
+      path: row.path || current.path,
+    });
+  }
+  return [...bySlug.values()];
+}
+
+/** A two-layer document's frontmatter carries `slug` (FR-002's layer-1
+ * identity), never a pack-minted `id` — distinct from `adapt.ts`'s own
+ * `renderDocument`, which stamps the retired per-pack `id` field. */
+function renderTwoLayerDocument(slug: string, provenance: Record<string, string>, body: string): string {
+  const yamlBlock = stringifyYaml({ slug, ...provenance }).trimEnd();
+  return `---\n${yamlBlock}\n---\n\n${body}\n`;
+}
+
+/** Marks an installed document as not yet spot-checked by this project — the
+ * install door's own guard (spec FR-010: "citable once a human spot-checks
+ * the conversion"), distinct from whatever `status` the source pack itself
+ * declared. Deliberately overridden regardless of the source's own value; the
+ * source's claim is about ITS provenance, this is about whether THIS PROJECT
+ * has reviewed it yet. */
+export const NOT_YET_SPOT_CHECKED_STATUS = 'not-yet-spot-checked';
+
+/** The interview door's citability guard (FR-010) — an interviewed document
+ * is not citable until the subject-matter expert signs off on the captured
+ * text. Distinct from the install door's guard: a different door, a
+ * different guard, the same underlying "not yet reviewed" discipline. */
+export const NOT_CITABLE_UNTIL_SIGNED_OFF_STATUS = 'not-citable-until-signed-off';
+
+/** The source door's citability guard (FR-010) — a sourced document is not
+ * citable until a human confirms the fetch/ingestion. */
+export const NOT_CITABLE_UNTIL_CONFIRMED_STATUS = 'not-citable-until-confirmed';
+
+/** Split a `<plugin>@<marketplace>` acquisition coordinate (spec FR-008). */
+export function parseCoordinate(coordinate: string): { plugin: string; marketplace: string } {
+  const at = coordinate.indexOf('@');
+  if (at === -1) return { plugin: coordinate, marketplace: '' };
+  return { plugin: coordinate.slice(0, at), marketplace: coordinate.slice(at + 1) };
+}
+
+export interface InstallInput {
+  /** The `PackFetcher` seam (plan D-002) — real, stub, or `--from` local. */
+  fetcher: PackFetcher;
+  /** `<plugin>@<marketplace>` (spec FR-008). */
+  coordinate: string;
+  /** Absolute path to the project's `knowledge/` directory. */
+  knowledgeDir: string;
+  /** The source marketplace's `renames` map (a former plugin name → its
+   * current one), when known to the caller — FR-006's migration key. A
+   * re-import under the renamed name still resolves to the row registered
+   * under the old one. Optional: absent (no known renames) is a no-op. */
+  renames?: Record<string, string>;
+}
+
+export interface InstallResult {
+  plugin: string;
+  marketplace: string;
+  /** `KB-NNNN` ids newly registered this run. */
+  written: string[];
+  /** `KB-NNNN` ids already registered at this anchor, left untouched (idempotent, NFR-003). */
+  skipped: string[];
+  /** `KB-NNNN` ids whose document was superseded-by-append this run (FR-005) — same id, bumped edition, prior text retained. */
+  superseded: string[];
+  /** `KB-NNNN` ids flagged `orphaned` this run — present before, absent from this re-import (FR-007). */
+  orphaned: string[];
+}
+
+/** The plugin name(s) an existing registry row may be filed under for this
+ * install — its current name, plus any former name a rename map still
+ * migrates from (FR-006). */
+function candidatePluginNames(plugin: string, renames: Record<string, string>): string[] {
+  const formerNames = Object.entries(renames)
+    .filter(([, current]) => current === plugin)
+    .map(([former]) => former);
+  return [plugin, ...formerNames];
+}
+
+/**
+ * Install door orchestration (US1/US2, FR-001/FR-002/FR-004/FR-005/FR-006/
+ * FR-007/FR-008/FR-009). Fetches the pack via the seam, converts each of its
+ * `references/*.md` documents through 056's never-fabricate primitives
+ * (reused, not duplicated — plan D-003), assigns/merges registry rows via
+ * the backbone above, and merges the pack's own `SKILL.md` slug map.
+ *
+ * A reference already registered at its `(marketplace, plugin, slug)`
+ * anchor — or at a renamed former plugin name, via `renames` — is either
+ * left untouched (same edition, idempotent, NFR-003) or superseded-by-append
+ * (a newer edition: same `KB-NNNN`, prior text retained under
+ * `references/superseded/`, FR-005). A previously-registered reference this
+ * pack no longer fetches is flagged `orphaned`, never deleted (FR-007).
+ */
+export async function installPack(input: InstallInput): Promise<InstallResult> {
+  const { plugin, marketplace } = parseCoordinate(input.coordinate);
+  const renames = input.renames ?? {};
+  const sourceDir = await input.fetcher.fetch(input.coordinate);
+  const sourceReferencesDir = join(sourceDir, 'references');
+
+  const packDir = join(input.knowledgeDir, plugin);
+  const referencesDir = join(packDir, 'references');
+  const supersededDir = join(referencesDir, 'superseded');
+  mkdirSync(referencesDir, { recursive: true });
+
+  const registryPath = join(input.knowledgeDir, 'index.md');
+  const existingRegistry = existsSync(registryPath) ? parseRegistry(readFileSync(registryPath, 'utf8')) : [];
+  const existingByAnchor = new Map(existingRegistry.map((e) => [anchorKey(e), e]));
+
+  /** Resolve an existing row for this slug — the current plugin name first,
+   * then any former name the renames map still migrates from (FR-006). */
+  function findExisting(slug: string): RegistryEntry | undefined {
+    for (const candidate of candidatePluginNames(plugin, renames)) {
+      const found = existingByAnchor.get(anchorKey({ marketplace, plugin: candidate, slug }));
+      if (found) return found;
+    }
+    return undefined;
+  }
+
+  const sourceFiles = existsSync(sourceReferencesDir)
+    ? readdirSync(sourceReferencesDir)
+        .filter((f) => f.endsWith('.md'))
+        .sort()
+    : [];
+  const sourceSlugs = new Set(sourceFiles.map((f) => f.replace(/\.md$/, '')));
+
+  const written: string[] = [];
+  const skipped: string[] = [];
+  const superseded: string[] = [];
+  const staleAnchors = new Set<string>(); // renamed-from rows to drop from the merged registry
+  const freshRows: RegistryEntry[] = [];
+  const freshSlugRows: SkillSlugMapEntry[] = [];
+
+  for (const filename of sourceFiles) {
+    const slug = filename.replace(/\.md$/, '');
+    const raw = readFileSync(join(sourceReferencesDir, filename), 'utf8');
+    const parsed = parseCorpusDocument(raw, filename);
+    const existing = findExisting(slug);
+
+    if (!existing) {
+      const [id] = allocateRegistryIds([...existingRegistry, ...freshRows], 1);
+      const provenance = deriveProvenance(raw, { ...parsed.provenance, status: NOT_YET_SPOT_CHECKED_STATUS });
+      const { title, description } = deriveTitleAndDescription(parsed.body, slug);
+      writeFileSync(join(referencesDir, filename), renderTwoLayerDocument(slug, provenance, parsed.body), 'utf8');
+      freshRows.push({
+        id: id!,
+        marketplace,
+        plugin,
+        slug,
+        title,
+        edition: provenance.edition,
+        path: `knowledge/${plugin}/references/${filename}`,
+        status: '',
+      });
+      freshSlugRows.push({ slug, title, description, edition: provenance.edition, path: `references/${filename}` });
+      written.push(id!);
+      continue;
+    }
+
+    const incomingEdition = parsed.provenance.edition;
+    const sameEdition = !incomingEdition || incomingEdition === existing.edition;
+    if (sameEdition && existing.plugin === plugin) {
+      skipped.push(existing.id); // truly unchanged — idempotent no-op (NFR-003)
+      continue;
+    }
+
+    // A newer edition, and/or a renamed plugin migrating in: supersede the
+    // prior text (if a rename, there may be no prior file under the NEW
+    // plugin dir yet — moving what actually exists on disk, never guessing).
+    // The old row is dropped from the merge unconditionally (not just on
+    // rename) — mergeRegistryRows' hand-edit-wins precedence would otherwise
+    // let the OLD edition win over the very bump this branch exists to make.
+    staleAnchors.add(anchorKey(existing));
+    const priorPath = join(input.knowledgeDir, existing.plugin, 'references', filename);
+    if (existsSync(priorPath) && existing.edition) {
+      mkdirSync(supersededDir, { recursive: true });
+      writeFileSync(
+        join(supersededDir, `${slug}@${existing.edition}.md`),
+        readFileSync(priorPath, 'utf8'),
+        'utf8',
+      );
+    }
+
+    const provenance = deriveProvenance(raw, { ...parsed.provenance, status: NOT_YET_SPOT_CHECKED_STATUS });
+    const { title, description } = deriveTitleAndDescription(parsed.body, slug);
+    writeFileSync(join(referencesDir, filename), renderTwoLayerDocument(slug, provenance, parsed.body), 'utf8');
+    freshRows.push({
+      id: existing.id,
+      marketplace,
+      plugin,
+      slug,
+      title,
+      edition: provenance.edition,
+      path: `knowledge/${plugin}/references/${filename}`,
+      status: '',
+    });
+    freshSlugRows.push({ slug, title, description, edition: provenance.edition, path: `references/${filename}` });
+    superseded.push(existing.id);
+  }
+
+  // Orphans: rows this pack (current name or any renamed-from name) owns,
+  // whose slug this fetch no longer carries — flagged, never deleted (FR-007).
+  // Only a row that WASN'T already orphaned is reported, so a re-import over
+  // an already-orphaned row doesn't repeat the finding (idempotent, NFR-003).
+  const ownedPluginNames = new Set(candidatePluginNames(plugin, renames));
+  const orphaned: string[] = [];
+  const survivingExisting = existingRegistry
+    .filter((e) => !staleAnchors.has(anchorKey(e)))
+    .map((e) => {
+      const isOrphan = e.marketplace === marketplace && ownedPluginNames.has(e.plugin) && !sourceSlugs.has(e.slug);
+      if (isOrphan && e.status !== 'orphaned') orphaned.push(e.id);
+      return isOrphan ? { ...e, status: 'orphaned' as const } : e;
+    });
+  const mergedRegistry = mergeRegistryRows(survivingExisting, freshRows);
+  writeFileSync(registryPath, renderRegistryTable(mergedRegistry), 'utf8');
+
+  const skillPath = join(packDir, 'SKILL.md');
+  const existingSlugRows = existsSync(skillPath) ? parseSkillSlugMap(readFileSync(skillPath, 'utf8')) : [];
+  const mergedSlugRows = mergeSlugMapRows(existingSlugRows, freshSlugRows);
+  if (!existsSync(skillPath)) {
+    const frontmatter = stringifyYaml({ name: plugin, description: `Domain knowledge imported from ${marketplace}.` }).trimEnd();
+    writeFileSync(
+      skillPath,
+      `---\n${frontmatter}\n---\n\n# ${plugin}\n\n${renderSkillSlugMapTable(mergedSlugRows)}`,
+      'utf8',
+    );
+  } else if (freshSlugRows.length > 0) {
+    // A new or updated reference against an already-existing SKILL.md (a
+    // re-import, US2) — append the merged slug map so it's discoverable
+    // without disturbing the file's existing prose above it.
+    const body = readFileSync(skillPath, 'utf8');
+    writeFileSync(skillPath, `${body.trimEnd()}\n\n${renderSkillSlugMapTable(mergedSlugRows)}`, 'utf8');
+  }
+
+  return { plugin, marketplace, written, skipped, superseded, orphaned };
+}
+
+export interface RegisterDocumentInput {
+  /** Absolute path to the project's `knowledge/` directory. */
+  knowledgeDir: string;
+  marketplace: string;
+  plugin: string;
+  slug: string;
+  title: string;
+  /** The document body (no frontmatter — this function derives it). */
+  body: string;
+  /** The door-specific provenance `origin` — e.g. `interview: <role>, <date>`
+   * or the fetched URL + retrieval date (FR-010). Never fabricated: the
+   * caller supplies exactly what it read/captured. */
+  origin: string;
+  /** The door-specific citability guard — e.g.
+   * `not-citable-until-signed-off` or `not-citable-until-confirmed` (FR-010). */
+  status: string;
+}
+
+/**
+ * Register one hand-supplied document through the same backbone `install`
+ * uses (FR-010's "every door produces the identical registered artifact").
+ * Shared by the `interview` and `source` doors — each differs only in the
+ * `origin`/`status` it passes in, exactly as the spec requires. Not used by
+ * `install`, which registers a whole fetched pack's worth of documents at
+ * once; this is the single-document primitive the lighter doors need.
+ */
+export function registerDocument(input: RegisterDocumentInput): { id: string } {
+  const { knowledgeDir, marketplace, plugin, slug, title, body, origin, status } = input;
+  const packDir = join(knowledgeDir, plugin);
+  const referencesDir = join(packDir, 'references');
+  mkdirSync(referencesDir, { recursive: true });
+
+  const registryPath = join(knowledgeDir, 'index.md');
+  const existingRegistry = existsSync(registryPath) ? parseRegistry(readFileSync(registryPath, 'utf8')) : [];
+
+  const [id] = allocateRegistryIds(existingRegistry, 1);
+  const provenance = deriveProvenance(body, { origin, status });
+  const filename = `${slug}.md`;
+
+  writeFileSync(join(referencesDir, filename), renderTwoLayerDocument(slug, provenance, body), 'utf8');
+
+  const freshRow: RegistryEntry = {
+    id: id!,
+    marketplace,
+    plugin,
+    slug,
+    title,
+    edition: provenance.edition,
+    path: `knowledge/${plugin}/references/${filename}`,
+    status: '',
+  };
+  const mergedRegistry = mergeRegistryRows(existingRegistry, [freshRow]);
+  writeFileSync(registryPath, renderRegistryTable(mergedRegistry), 'utf8');
+
+  const skillPath = join(packDir, 'SKILL.md');
+  const freshSlugRow: SkillSlugMapEntry = { slug, title, description: '', edition: provenance.edition, path: `references/${filename}` };
+  const existingSlugRows = existsSync(skillPath) ? parseSkillSlugMap(readFileSync(skillPath, 'utf8')) : [];
+  const mergedSlugRows = mergeSlugMapRows(existingSlugRows, [freshSlugRow]);
+  if (!existsSync(skillPath)) {
+    const frontmatter = stringifyYaml({ name: plugin, description: `Domain knowledge for ${plugin}.` }).trimEnd();
+    writeFileSync(skillPath, `---\n${frontmatter}\n---\n\n# ${plugin}\n\n${renderSkillSlugMapTable(mergedSlugRows)}`, 'utf8');
+  } else {
+    const skillBody = readFileSync(skillPath, 'utf8');
+    writeFileSync(skillPath, `${skillBody.trimEnd()}\n\n${renderSkillSlugMapTable(mergedSlugRows)}`, 'utf8');
+  }
+
+  return { id: id! };
+}

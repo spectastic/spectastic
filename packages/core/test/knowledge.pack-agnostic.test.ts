@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
-import { packAgnosticismFindings } from '../src/knowledge/pack-agnostic.js';
+import { packAgnosticismFindings, readMarketplaceManifest } from '../src/knowledge/pack-agnostic.js';
 import { loadCorpus } from '../src/knowledge/index.js';
 import { resolveCitation } from '../src/knowledge/resolve.js';
 
@@ -137,6 +137,52 @@ describe('packAgnosticismFindings — the real finance-settlement demo pack (057
     const marketplacePath = join(REPO_ROOT, 'examples', 'knowledge', 'marketplace.json');
     const findings = packAgnosticismFindings(marketplacePath);
     expect(findings).toEqual([]);
+  });
+});
+
+/**
+ * 2026-07-26 061-corpus-ingester T-011 (plan D-006): the shared manifest
+ * reader widens to surface the marketplace `name`, each plugin's `version`,
+ * and the `renames` map alongside the existing `source` — the re-import
+ * anchor coordinate (FR-004/FR-006). A malformed or absent manifest still
+ * resolves to `null`, never a crash — the same graceful-degradation stance
+ * `resolveMarketplacePacks` already established.
+ */
+describe('readMarketplaceManifest (061 T-011, plan D-006)', () => {
+  it('surfaces the marketplace name, per-plugin version, and the renames map', () => {
+    const root = projectRoot();
+    const marketplacePath = join(root, 'marketplace.json');
+    writeFile(root, 'marketplace.json', JSON.stringify({
+      name: 'acme',
+      plugins: [{ name: 'finance-settlement', source: './finance-settlement', version: '1.2.0' }],
+      renames: { 'finance-old-name': 'finance-settlement' },
+    }));
+
+    const info = readMarketplaceManifest(marketplacePath);
+    expect(info?.name).toBe('acme');
+    expect(info?.plugins).toEqual([{ name: 'finance-settlement', source: './finance-settlement', version: '1.2.0' }]);
+    expect(info?.renames).toEqual({ 'finance-old-name': 'finance-settlement' });
+  });
+
+  it('defaults version to undefined and renames to {} when the manifest omits them', () => {
+    const root = projectRoot();
+    const marketplacePath = join(root, 'marketplace.json');
+    writeFile(root, 'marketplace.json', JSON.stringify({ name: 'acme', plugins: [{ name: 'x', source: './x' }] }));
+
+    const info = readMarketplaceManifest(marketplacePath);
+    expect(info?.plugins[0]).toEqual({ name: 'x', source: './x', version: undefined });
+    expect(info?.renames).toEqual({});
+  });
+
+  it('resolves to null for a missing manifest (never a crash)', () => {
+    const root = projectRoot();
+    expect(readMarketplaceManifest(join(root, 'does-not-exist.json'))).toBeNull();
+  });
+
+  it('resolves to null for malformed JSON (never a crash)', () => {
+    const root = projectRoot();
+    writeFile(root, 'bad.json', '{ not valid json');
+    expect(readMarketplaceManifest(join(root, 'bad.json'))).toBeNull();
   });
 });
 

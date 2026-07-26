@@ -114,30 +114,72 @@ function packFindings(packDir: string): Finding[] {
   return findings;
 }
 
-interface MarketplacePlugin {
+interface MarketplacePluginRaw {
+  name?: string;
   source?: string;
+  version?: string;
 }
 
-interface MarketplaceManifest {
-  plugins?: MarketplacePlugin[];
+interface MarketplaceManifestRaw {
+  name?: string;
+  plugins?: MarketplacePluginRaw[];
+  renames?: Record<string, string>;
+}
+
+/** One plugin entry from a marketplace manifest, widened past `source` alone
+ * (061-corpus-ingester T-022, plan D-006) to the re-import anchor coordinate
+ * the ingester needs: the plugin's own `name` and its `version`, if declared. */
+export interface MarketplacePluginInfo {
+  name: string;
+  source: string;
+  version: string | undefined;
+}
+
+/** The shape a consuming project's ingester (and this file's own
+ * agnosticism check) reads from a `marketplace.json` — the marketplace
+ * `name`, its declared `plugins`, and its `renames` map (a former plugin
+ * name → its current one), the platform's own migration primitive for a
+ * renamed plugin (061 FR-006). */
+export interface MarketplaceManifestInfo {
+  name: string;
+  plugins: MarketplacePluginInfo[];
+  renames: Record<string, string>;
+}
+
+/** Read and parse a `marketplace.json`, widened to surface the coordinate a
+ * re-import anchors on — `name`, per-plugin `version`, and `renames` — not
+ * just `plugins[].source` (061-corpus-ingester T-022, plan D-006). Shared by
+ * both this file's own agnosticism check and the ingester, so the two never
+ * drift on what a manifest is. A missing or malformed manifest (unparsable
+ * JSON) resolves to `null`, never a crash — the same graceful-degradation
+ * stance `resolveMarketplacePacks` established before this widening. */
+export function readMarketplaceManifest(marketplacePath: string): MarketplaceManifestInfo | null {
+  if (!existsSync(marketplacePath)) return null;
+  let raw: MarketplaceManifestRaw;
+  try {
+    raw = JSON.parse(readFileSync(marketplacePath, 'utf8')) as MarketplaceManifestRaw;
+  } catch {
+    return null;
+  }
+  return {
+    name: raw.name ?? '',
+    plugins: (raw.plugins ?? [])
+      .filter((p): p is MarketplacePluginRaw & { name: string; source: string } =>
+        typeof p.name === 'string' && p.name.length > 0 && typeof p.source === 'string' && p.source.length > 0,
+      )
+      .map((p) => ({ name: p.name, source: p.source, version: p.version })),
+    renames: raw.renames ?? {},
+  };
 }
 
 /** Resolve the pack directories a `marketplace.json` declares distributable
  * — each `plugins[].source`, relative to the manifest's own directory. A
  * malformed or missing manifest resolves to no packs (never a crash). */
 export function resolveMarketplacePacks(marketplacePath: string): string[] {
-  if (!existsSync(marketplacePath)) return [];
-  let manifest: MarketplaceManifest;
-  try {
-    manifest = JSON.parse(readFileSync(marketplacePath, 'utf8')) as MarketplaceManifest;
-  } catch {
-    return [];
-  }
+  const manifest = readMarketplaceManifest(marketplacePath);
+  if (!manifest) return [];
   const baseDir = dirname(marketplacePath);
-  return (manifest.plugins ?? [])
-    .map((p) => p.source)
-    .filter((source): source is string => typeof source === 'string' && source.length > 0)
-    .map((source) => resolve(baseDir, source));
+  return manifest.plugins.map((p) => resolve(baseDir, p.source));
 }
 
 /**

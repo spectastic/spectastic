@@ -203,4 +203,24 @@ describe('corpusRegistryFindings (FR-009, the root registry)', () => {
       ),
     ).toBe(true);
   });
+
+  /**
+   * 2026-07-26 061-corpus-ingester T-203 (FR-007): an orphaned row warns —
+   * loud, but never blocks a build (mirroring 052's corpus-staleness, not
+   * corpus-provenance). It's never dropped from `entries` either way; this
+   * is purely about the finding it raises.
+   */
+  it('warns exactly once on a row with status=orphaned', () => {
+    const row = registryRow({ status: 'orphaned' });
+    const findings = corpusRegistryFindings([row]);
+    const orphanFindings = findings.filter((f) => f.message.toLowerCase().includes('orphan'));
+    expect(orphanFindings).toHaveLength(1);
+    expect(orphanFindings[0]?.severity).toBe('warning');
+    expect(orphanFindings[0]?.message).toContain('KB-0001');
+  });
+
+  it('does not warn on a current (non-orphaned) row', () => {
+    const findings = corpusRegistryFindings([registryRow({ status: '' })]);
+    expect(findings.filter((f) => f.message.toLowerCase().includes('orphan'))).toEqual([]);
+  });
 });

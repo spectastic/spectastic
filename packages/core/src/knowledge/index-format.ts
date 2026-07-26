@@ -19,7 +19,11 @@
 import { KB_ID_RE, SLUG_RE, type IndexEntry, type RegistryEntry } from './types.js';
 
 const INDEX_COLUMNS = 5;
-const REGISTRY_COLUMNS = 7;
+const REGISTRY_COLUMNS = 8;
+/** A pre-061 registry row has no `status` column at all — accepted alongside
+ * the current 8-column shape so an unmigrated registry degrades (status
+ * defaults to `''`) rather than breaking (061-corpus-ingester T-021). */
+const LEGACY_REGISTRY_COLUMNS = 7;
 const SLUG_MAP_COLUMNS = 5;
 
 /** One row of a pack's `SKILL.md`-inlined slug map (FR-004 MODIFY) — the
@@ -71,16 +75,20 @@ export function renderIndexTable(rows: readonly IndexEntry[]): string {
 }
 
 /** Parse the project's root corpus registry (FR-009, `knowledge/index.md`) —
- * a 7-column table over `KB-NNNN | Marketplace | Plugin | Slug | Title |
- * Edition | Path`. Same discipline as `parseIndex`: a malformed row is
- * silently skipped, never invented; `KB_ID_RE` on column 1 doubles as the
+ * an 8-column table over `KB-NNNN | Marketplace | Plugin | Slug | Title |
+ * Edition | Path | Status` (the `Status` column added by 061-corpus-ingester
+ * T-021, FR-007 — orphan-flagging). A pre-061, 7-column row (no `Status` at
+ * all) is still accepted, defaulting `status` to `''`, so an unmigrated
+ * registry degrades rather than breaks (NFR-001-style non-breaking landing).
+ * Same discipline as `parseIndex` otherwise: a malformed row is silently
+ * skipped, never invented; `KB_ID_RE` on column 1 doubles as the
  * header/separator exclusion. */
 export function parseRegistry(raw: string): RegistryEntry[] {
   const entries: RegistryEntry[] = [];
   for (const line of raw.split('\n')) {
     const cells = tableRowCells(line);
-    if (!cells || cells.length !== REGISTRY_COLUMNS) continue;
-    const [id, marketplace, plugin, slug, title, edition, path] = cells;
+    if (!cells || (cells.length !== REGISTRY_COLUMNS && cells.length !== LEGACY_REGISTRY_COLUMNS)) continue;
+    const [id, marketplace, plugin, slug, title, edition, path, status] = cells;
     if (!id || !KB_ID_RE.test(id)) continue; // header / separator / malformed row
     entries.push({
       id,
@@ -90,20 +98,25 @@ export function parseRegistry(raw: string): RegistryEntry[] {
       title: title ?? '',
       edition: edition ?? '',
       path: path ?? '',
+      status: status === 'orphaned' ? 'orphaned' : '',
     });
   }
   return entries;
 }
 
-/** Render the root registry into the same 7-column table, sorted by
- * `KB-NNNN` for deterministic output (mirrors `renderIndexTable`). */
+/** Render the root registry into the same 8-column table (T-021's `Status`
+ * column added), sorted by `KB-NNNN` for deterministic output (mirrors
+ * `renderIndexTable`). */
 export function renderRegistryTable(rows: readonly RegistryEntry[]): string {
   const sorted = [...rows].sort((a, b) => a.id.localeCompare(b.id));
   const header =
-    '| KB-NNNN | Marketplace | Plugin | Slug | Title | Edition | Path |\n' +
-    '| --- | --- | --- | --- | --- | --- | --- |';
+    '| KB-NNNN | Marketplace | Plugin | Slug | Title | Edition | Path | Status |\n' +
+    '| --- | --- | --- | --- | --- | --- | --- | --- |';
   const body = sorted
-    .map((r) => `| ${r.id} | ${r.marketplace} | ${r.plugin} | ${r.slug} | ${r.title} | ${r.edition} | ${r.path} |`)
+    .map(
+      (r) =>
+        `| ${r.id} | ${r.marketplace} | ${r.plugin} | ${r.slug} | ${r.title} | ${r.edition} | ${r.path} | ${r.status ?? ''} |`,
+    )
     .join('\n');
   return `${header}\n${body}\n`;
 }

@@ -1,0 +1,471 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
+<title>Corpus ingester · Tasks</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Tasks · 061-corpus-ingester</p>
+  <h1>Corpus ingester</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    Ordered, parallelizable work. Tests precede implementation. Drive through with
+    <code>/spectastic.implement</code> — one task per invocation.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>     <span><spec-status value="accepted">Accepted</spec-status></span>
+    <b>Spec</b>       <span><a href="./spec.html">061-corpus-ingester</a></span>
+    <b>Plan</b>       <span><a href="./plan.html">plan</a></span>
+    <b>Branch</b>     <span><code>061-corpus-ingester</code></span>
+    <b>Created</b>    <span><time datetime="2026-07-26">26 Jul 2026</time></span>
+    <b>Read time</b>  <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-tldr>
+    <p>41 tasks across six phases. Setup → Foundational → User stories (US1 install · US2 supersede ·
+    US3 interview · US4 source) → Polish. Tasks marked <span class="par">[P]</span> can run in parallel
+    — different files, no dependency. Tests for a story <strong>MUST</strong> be written and failing
+    before its implementation tasks start. The backbone (allocate/merge/fetcher-seam) is Foundational —
+    every door registers through it, so it ships before any story opens.</p>
+  </spec-tldr>
+</header>
+
+
+<section id="strategy">
+<h2>1 · Execution strategy</h2>
+
+<spec-tabs>
+  <spec-tab label="MVP-first">
+    <p>Setup + Foundational, then US1 end-to-end (install → a citation resolves green). Ship. US2's
+    supersede path is the very next iteration — the same registry a fresh install just proved needs to
+    survive a re-import before it's trustworthy. US3/US4 (seam-only) follow once US1/US2 are verified.</p>
+  </spec-tab>
+  <spec-tab label="Incremental">
+    <p>Setup → Foundational → US1 → US2 → US3 → US4 → Polish. Each story closes its conformance
+    before the next opens. Recommended here: US1/US2 share one file (<code>ingest.ts</code>) and one
+    mental model (the backbone in action), so drifting them apart risks two half-built re-import paths.</p>
+  </spec-tab>
+  <spec-tab label="Parallel teams">
+    <p>One team on Foundational (backbone + fetcher seam). Once it lands, US1 and the doc-shape half of
+    US3/US4 can proceed in parallel — they share the backbone contract, not each other's files. US2
+    should follow US1 sequentially (same file, same registry invariants); splitting it out risks two
+    conflicting edits to <code>ingest.ts</code>'s supersede logic.</p>
+  </spec-tab>
+</spec-tabs>
+</section>
+
+
+<section id="phase-setup" class="phase">
+<h2>2 · Phase 1 — Setup</h2>
+
+<spec-task id="T-001">
+  <input type="checkbox" checked>
+  <div><strong>Wire the two new provider files into the build</strong> — add <code>src/providers/pack-fetcher.ts</code>
+  and <code>src/providers/pack-fetcher-stub.ts</code> as tsup entries and give each its own
+  <code>package.json</code> exports subpath (<code>./providers/pack-fetcher</code>,
+  <code>./providers/pack-fetcher-stub</code>), mirroring the existing <code>./providers/stub</code> /
+  <code>./providers/claude-cli</code> pattern. <span class="path">packages/core/tsup.config.ts · packages/core/package.json</span></div>
+</spec-task>
+</section>
+
+
+<section id="phase-foundation" class="phase">
+<h2>3 · Phase 2 — Foundational</h2>
+<p>Shared infrastructure no door can ship without — the registration backbone every one of the four
+stories registers through (plan D-004/D-005). Sequential where order matters (the fetcher stub needs
+its interface; the allocator needs the widened registry shape).</p>
+
+<h3>Tests (write &amp; fail first)</h3>
+<spec-task id="T-010" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Red test — the widened registry shape</strong> — <code>parseRegistry</code>/<code>renderRegistryTable</code>
+  round-trip an 8th <code>status</code> column, and a pre-existing 7-column row still parses (back-compat,
+  no crash). <span class="path">packages/core/test/knowledge.index-format.test.ts</span></div>
+</spec-task>
+<spec-task id="T-011" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Red test — the extended marketplace manifest reader</strong> — surfaces
+  <code>name</code>, each plugin's <code>version</code>, and the <code>renames</code> map; a malformed or
+  absent manifest still resolves to no packs (never a crash). <span class="path">packages/core/test/knowledge.pack-agnostic.test.ts</span></div>
+</spec-task>
+<spec-task id="T-012" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Red test — the PackFetcher stub and factory</strong> — the stub returns a fixture directory
+  for a given coordinate; <code>createPackFetcher</code> selects the stub when
+  <code>SPECTASTIC_PACK_STUB</code> is set or <code>--from</code> is passed, the real fetcher otherwise.
+  <span class="path">packages/core/test/providers.pack-fetcher.test.ts · packages/cli/test/pack-fetcher-factory.test.ts</span></div>
+</spec-task>
+<spec-task id="T-013" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Red test — repo-wide id allocation and non-destructive merge</strong> —
+  <code>allocateRegistryIds</code> is monotonic, never reuses a retired id, and continues from the real
+  registry max (not a per-pack one); <code>mergeRegistryRows</code> preserves a hand-edited cell across a
+  re-run; the same inputs produce byte-identical output on repeated calls (NFR-001).
+  <span class="path">packages/core/test/knowledge.ingest.test.ts</span></div>
+</spec-task>
+
+<h3>Implementation</h3>
+<spec-task id="T-020">
+  <input type="checkbox" checked>
+  <div><strong>Add the registry <code>status</code> field</strong> — <code>RegistryEntry</code> gains an
+  optional <code>status</code> (blank when current, <code>"orphaned"</code> when flagged), matching the
+  optional-field precedent <code>supersededEditions?</code> already established.
+  <span class="path">packages/core/src/knowledge/types.ts</span></div>
+</spec-task>
+<spec-task id="T-021">
+  <input type="checkbox" checked>
+  <div><strong>Widen the registry table to 8 columns</strong> — <code>parseRegistry</code> reads the new
+  <code>status</code> column (defaulting to blank when absent, so a legacy row degrades rather than
+  breaks); <code>renderRegistryTable</code> writes it. <span class="path">packages/core/src/knowledge/index-format.ts</span></div>
+</spec-task>
+<spec-task id="T-022">
+  <input type="checkbox" checked>
+  <div><strong>Extend the shared marketplace manifest reader</strong> — surface <code>name</code>,
+  per-plugin <code>version</code>, and <code>renames</code> alongside the existing
+  <code>plugins[].source</code> read, as one function both <code>pack-agnostic.ts</code>'s existing
+  caller and the new ingester can use. <span class="path">packages/core/src/knowledge/pack-agnostic.ts</span></div>
+</spec-task>
+<spec-task id="T-023" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Define the <code>PackFetcher</code> interface</strong> — one method resolving a
+  <code>&lt;plugin&gt;@&lt;marketplace&gt;</code> coordinate to a local directory path. No concrete
+  implementation yet — the real fetch mechanism is confirmed in US1's spike (T-100).
+  <span class="path">packages/core/src/providers/pack-fetcher.ts</span></div>
+</spec-task>
+<spec-task id="T-024">
+  <input type="checkbox" checked>
+  <div><strong>Implement the <code>PackFetcher</code> stub</strong> — reads a fixture directory keyed by
+  coordinate, for CI and offline use. <span class="path">packages/core/src/providers/pack-fetcher-stub.ts</span></div>
+</spec-task>
+<spec-task id="T-025">
+  <input type="checkbox" checked>
+  <div><strong>Implement <code>createPackFetcher</code></strong> — selects the stub when
+  <code>SPECTASTIC_PACK_STUB</code> is set, a local-checkout wrapper when <code>--from</code> is passed, the
+  real fetcher otherwise — mirroring <code>createAIProvider</code>'s precedence.
+  <span class="path">packages/cli/src/pack-fetcher-factory.ts</span></div>
+</spec-task>
+<spec-task id="T-026">
+  <input type="checkbox" checked>
+  <div><strong>Implement <code>allocateRegistryIds</code></strong> — reads the current max
+  <code>KB-NNNN</code> from the loaded registry and allocates monotonically upward, 4-digit baseline,
+  never reusing a retired id. <span class="path">packages/core/src/knowledge/ingest.ts</span></div>
+</spec-task>
+<spec-task id="T-027">
+  <input type="checkbox" checked>
+  <div><strong>Implement <code>mergeRegistryRows</code></strong> — folds new rows into the existing
+  registry keyed on <code>(marketplace, plugin, slug)</code>; a hand-edited cell (title, edition) on an
+  existing row survives a re-run untouched. <span class="path">packages/core/src/knowledge/ingest.ts</span></div>
+</spec-task>
+<spec-task id="T-028" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Add the <code>status</code> column to the root registry template</strong> — the scaffolded
+  <code>knowledge/index.md</code> header gains the 8th column. <span class="path">templates/knowledge/index.md</span></div>
+</spec-task>
+<spec-task id="T-029">
+  <input type="checkbox" checked>
+  <div><strong>Re-export the new backbone from the knowledge barrel</strong> — <code>ingest.ts</code>'s
+  public functions and the widened <code>RegistryEntry</code> type join the package's single
+  <code>./knowledge</code> entry, alongside the existing resolver/gates exports.
+  <span class="path">packages/core/src/knowledge/index.ts</span></div>
+</spec-task>
+</section>
+
+
+<section id="phase-us1" class="phase">
+<h2>4 · Phase 3a — US1 · Install an existing marketplace skill</h2>
+
+<spec-task id="T-100">
+  <input type="checkbox" checked>
+  <div><strong>Spike — confirm the real fetch mechanism</strong> — determine whether
+  <code>corpus import</code>'s real <code>PackFetcher</code> shells to <code>git clone</code> of the
+  marketplace repo or reads an already-<code>claude plugin install</code>ed pack's local path, and record
+  the one-line finding this task's implementation (T-110) follows. Time-boxed; the
+  <code>--from &lt;path&gt;</code> hatch keeps every other US1 task unblocked regardless of the answer.
+  <span class="path">packages/core/src/providers/pack-fetcher.ts</span></div>
+</spec-task>
+
+<h3>Tests (write &amp; fail first)</h3>
+<spec-task id="T-101" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Red test — the install orchestration</strong> — given a fetched pack directory, it converts
+  every reference, assigns a repo-unique <code>KB-NNNN</code> per reference, writes the root-registry rows,
+  and writes the pack's <code>SKILL.md</code> slug map (FR-004, FR-008).
+  <span class="path">packages/core/test/knowledge.ingest.test.ts</span></div>
+</spec-task>
+<spec-task id="T-102" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Red test — never-fabricate provenance survives the reshape</strong> — a field genuinely read
+  is used verbatim, every other field is the literal <code>TODO</code>, and the content hash is always
+  computed from the source bytes (FR-009). <span class="path">packages/core/test/knowledge.ingest.test.ts</span></div>
+</spec-task>
+<spec-task id="T-103" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Red CLI integration test — <code>corpus import</code> end-to-end via the stub fetcher</strong>
+  — installing a fixture pack writes a real root registry and a citation to one of its rows resolves
+  green through the grounding gate, with no network access (SC-001, SC-004, NFR-002).
+  <span class="path">packages/cli/test/corpus-import.test.ts</span></div>
+</spec-task>
+<spec-task id="T-104" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Red test — the <code>--from &lt;path&gt;</code> escape hatch</strong> — registers a local
+  checkout without invoking the fetcher at all (FR-008). <span class="path">packages/cli/test/corpus-import.test.ts</span></div>
+</spec-task>
+
+<h3>Implementation</h3>
+<spec-task id="T-110">
+  <input type="checkbox" checked>
+  <div><strong>Implement the real <code>PackFetcher</code></strong> — per T-100's finding; throws a
+  descriptive <code>PackFetcherError</code> (not a raw subprocess trace) on a failed fetch.
+  <span class="path">packages/core/src/providers/pack-fetcher.ts</span></div>
+</spec-task>
+<spec-task id="T-111">
+  <input type="checkbox" checked>
+  <div><strong>Implement the install orchestration</strong> — fetch via the seam → convert each reference
+  through <code>adapt.ts</code>'s <code>deriveProvenance</code>/<code>contentHashOf</code> → allocate +
+  merge via the backbone → write the <code>SKILL.md</code> slug map. Sets each document's own provenance
+  <code>status</code> to a not-yet-spot-checked marker (never a bare pass) so FR-010's "citable once a
+  human confirms" guard is visible, not silently assumed. <span class="path">packages/core/src/knowledge/ingest.ts</span></div>
+</spec-task>
+<spec-task id="T-112">
+  <input type="checkbox" checked>
+  <div><strong>Wire <code>corpus import</code></strong> — accepts
+  <code>&lt;plugin&gt;@&lt;marketplace&gt;</code> or <code>--from &lt;path&gt;</code>, resolves the
+  fetcher via the factory, and delegates to the install orchestration.
+  <span class="path">packages/cli/src/commands/corpus.ts</span></div>
+</spec-task>
+
+<spec-note>
+<p>Closes <a href="./spec.html#FR-001">FR-001</a>, <a href="./spec.html#FR-002">FR-002</a>,
+<a href="./spec.html#FR-003">FR-003</a> (allocation half), <a href="./spec.html#FR-004">FR-004</a>,
+<a href="./spec.html#FR-008">FR-008</a>, <a href="./spec.html#FR-009">FR-009</a>,
+<a href="./spec.html#FR-012">FR-012</a> (install door), <a href="./spec.html#NFR-002">NFR-002</a>,
+<a href="./spec.html#SC-001">SC-001</a>, <a href="./spec.html#SC-004">SC-004</a>.</p>
+</spec-note>
+</section>
+
+
+<section id="phase-us2" class="phase">
+<h2>5 · Phase 3b — US2 · Re-import a newer edition without dangling a citation</h2>
+
+<h3>Tests (write &amp; fail first)</h3>
+<spec-task id="T-200" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Red test — supersede-by-append</strong> — re-importing a reference at a newer edition keeps
+  its <code>KB-NNNN</code>, bumps the registry row's <code>edition</code>, and retains the prior document
+  under <code>references/superseded/</code> so an edition-pinned citation to it still resolves (FR-005).
+  <span class="path">packages/core/test/knowledge.ingest.test.ts</span></div>
+</spec-task>
+<spec-task id="T-201" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Red test — orphan-flagging</strong> — a reference present in a prior import but absent from
+  a re-import is marked <code>status=orphaned</code> in its row and is never deleted (FR-007).
+  <span class="path">packages/core/test/knowledge.ingest.test.ts</span></div>
+</spec-task>
+<spec-task id="T-202" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Red test — plugin-rename migration</strong> — a re-import whose marketplace
+  <code>renames</code> map points a former plugin name at its current one resolves to the <em>same</em>
+  <code>KB-NNNN</code> row rather than minting a duplicate (FR-006).
+  <span class="path">packages/core/test/knowledge.ingest.test.ts</span></div>
+</spec-task>
+<spec-task id="T-203" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Red test — the orphan validate finding</strong> — extending <code>corpusRegistryFindings</code>
+  with exactly one warning per <code>orphaned</code> row (FR-007).
+  <span class="path">packages/core/test/knowledge.validate.test.ts</span></div>
+</spec-task>
+<spec-task id="T-204" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Red CLI test — the orphan warning surfaces end-to-end</strong> — <code>spectastic validate</code>
+  reports the orphan finding on a project whose registry carries one, and a hand-edited duplicate
+  <code>KB-NNNN</code> is caught as an error (FR-003, FR-007).
+  <span class="path">packages/cli/test/validate-corpus-orphan.test.ts</span></div>
+</spec-task>
+<spec-task id="T-205" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Red test — re-import idempotency</strong> — re-running <code>corpus import</code> with no
+  underlying change writes nothing and rewrites no hand-corrected field back to <code>TODO</code> (NFR-003).
+  <span class="path">packages/cli/test/corpus-import.test.ts</span></div>
+</spec-task>
+
+<h3>Implementation</h3>
+<spec-task id="T-210">
+  <input type="checkbox" checked>
+  <div><strong>Implement supersede-by-append</strong> — on a matching
+  <code>(marketplace, plugin, slug)</code> at a newer edition, move the prior document to
+  <code>references/superseded/&lt;slug&gt;@&lt;edition&gt;.md</code> and bump the registry row's edition,
+  keeping the same <code>KB-NNNN</code>. <span class="path">packages/core/src/knowledge/ingest.ts</span></div>
+</spec-task>
+<spec-task id="T-211">
+  <input type="checkbox" checked>
+  <div><strong>Implement orphan detection</strong> — a previously-registered
+  <code>(marketplace, plugin, slug)</code> absent from a re-import's fetched set is marked
+  <code>status=orphaned</code> in place. <span class="path">packages/core/src/knowledge/ingest.ts</span></div>
+</spec-task>
+<spec-task id="T-212">
+  <input type="checkbox" checked>
+  <div><strong>Implement plugin-rename migration</strong> — resolves a renamed plugin via T-022's
+  <code>renames</code> read before the anchor match, so the same reference keeps the same
+  <code>KB-NNNN</code> across a rename. <span class="path">packages/core/src/knowledge/ingest.ts</span></div>
+</spec-task>
+<spec-task id="T-213">
+  <input type="checkbox" checked>
+  <div><strong>Extend <code>corpusRegistryFindings</code> for the orphan warning</strong> — one
+  warning-severity finding per <code>orphaned</code> row, alongside the existing duplicate-id and
+  missing-field checks. <span class="path">packages/core/src/knowledge/validate.ts</span></div>
+</spec-task>
+<spec-task id="T-214">
+  <input type="checkbox" checked>
+  <div><strong>Wire the registry scan into <code>spectastic validate</code></strong> — a
+  <code>scanCorpusRegistry</code> wrapper (matching <code>scanCorpusWellFormed</code>'s shape) loads the
+  root registry and folds <code>corpusRegistryFindings</code> in — the one wiring step that surfaces both
+  the sole-writer duplicate-id check (FR-003) and the new orphan warning (FR-007) at the CLI boundary.
+  <span class="path">packages/cli/src/commands/validate.ts</span></div>
+</spec-task>
+
+<spec-note>
+<p>Closes <a href="./spec.html#FR-003">FR-003</a> (validate-surfacing half),
+<a href="./spec.html#FR-005">FR-005</a>, <a href="./spec.html#FR-006">FR-006</a>,
+<a href="./spec.html#FR-007">FR-007</a>, <a href="./spec.html#NFR-001">NFR-001</a>,
+<a href="./spec.html#NFR-003">NFR-003</a>, <a href="./spec.html#SC-002">SC-002</a>,
+<a href="./spec.html#SC-003">SC-003</a>.</p>
+</spec-note>
+</section>
+
+
+<section id="phase-us3" class="phase">
+<h2>6 · Phase 3c — US3 · Capture a subject-matter expert</h2>
+<p>Seam-only per plan D-007: registers through the same backbone with its own origin/status shape; the
+interview discipline itself is <code>TBD-corpus-interview</code>'s to build.</p>
+
+<h3>Tests (write &amp; fail first)</h3>
+<spec-task id="T-300" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Red test — the interview registration shape</strong> — <code>corpus interview</code>
+  registers a document with an <code>interview: &lt;role&gt;, &lt;date&gt;</code> origin and a
+  not-citable-until-signed-off status, via the same backbone <code>import</code> uses (FR-010).
+  <span class="path">packages/cli/test/corpus-interview.test.ts</span></div>
+</spec-task>
+
+<h3>Implementation</h3>
+<spec-task id="T-310">
+  <input type="checkbox" checked>
+  <div><strong>Wire <code>corpus interview</code></strong> — persists the interview-shaped document via the
+  backbone and prints a notice that the interview discipline itself is deferred to
+  <code>TBD-corpus-interview</code>. <span class="path">packages/cli/src/commands/corpus.ts</span></div>
+</spec-task>
+
+<spec-note>
+<p>Closes the interview half of <a href="./spec.html#FR-010">FR-010</a> and
+<a href="./spec.html#FR-012">FR-012</a>. Interview mechanics deferred to
+<code>TBD-corpus-interview</code> per plan D-007.</p>
+</spec-note>
+</section>
+
+
+<section id="phase-us4" class="phase">
+<h2>7 · Phase 3d — US4 · Source from an authoritative URL</h2>
+<p>Seam-only per plan D-007: registers through the same backbone; the allowlist-bounded fetch itself is
+<code>TBD-corpus-sourcing</code> / <code>TBD-corpus-authority-allowlist</code>'s to build. Secure-by-default
+in the meantime — an absent or empty allowlist refuses every origin, never a silent pass.</p>
+
+<h3>Tests (write &amp; fail first)</h3>
+<spec-task id="T-400" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Red test — secure-by-default refusal</strong> — <code>corpus source</code> refuses to
+  register when no authority allowlist is configured, rather than allowing an unbounded fetch (FR-011).
+  <span class="path">packages/cli/test/corpus-source.test.ts</span></div>
+</spec-task>
+<spec-task id="T-401" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Red test — the sourced registration shape</strong> — given a stub-approved origin,
+  <code>corpus source</code> registers a document carrying the fetched URL + retrieval date + content hash
+  as its origin and a not-citable-until-confirmed status, via the same backbone (FR-010).
+  <span class="path">packages/cli/test/corpus-source.test.ts</span></div>
+</spec-task>
+
+<h3>Implementation</h3>
+<spec-task id="T-410">
+  <input type="checkbox" checked>
+  <div><strong>Wire <code>corpus source</code></strong> — refuses by default with no allowlist configured;
+  on a stub-approved origin, registers the sourced-shape document via the backbone and prints a notice
+  that the fetch-and-draft mechanics are deferred to <code>TBD-corpus-sourcing</code> /
+  <code>TBD-corpus-authority-allowlist</code>. <span class="path">packages/cli/src/commands/corpus.ts</span></div>
+</spec-task>
+
+<spec-note>
+<p>Closes the source half of <a href="./spec.html#FR-010">FR-010</a>,
+<a href="./spec.html#FR-011">FR-011</a> (secure-default half), and
+<a href="./spec.html#FR-012">FR-012</a>. Sourcing mechanics and the allowlist shape deferred to
+<code>TBD-corpus-sourcing</code> / <code>TBD-corpus-authority-allowlist</code> per plan D-007.</p>
+</spec-note>
+</section>
+
+
+<section id="phase-polish" class="phase">
+<h2>8 · Phase 4 — Polish</h2>
+<spec-task id="T-900" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Link the landed spec from the acquisition considerations doc</strong> — annotate §8 "Next
+  artifacts" where it names <code>TBD-corpus-interview</code>/<code>TBD-corpus-sourcing</code> with a
+  "(seam landed as 061, mechanics still open)" note, matching the doc's own landed-TBD convention.
+  <span class="path">docs/corpus-acquisition-considerations.html</span></div>
+</spec-task>
+<spec-task id="T-901" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Link the landed spec from the identity considerations doc</strong> — annotate §7's
+  <code>TBD-corpus-root-index-ingester</code> out-of-scope item as landed here.
+  <span class="path">docs/corpus-identity-considerations.html</span></div>
+</spec-task>
+</section>
+
+
+<section id="dependencies">
+<h2>9 · Dependencies</h2>
+<pre><code>Setup (T-001)                     → Foundational
+Foundational (T-010..T-029)       → US1, US3, US4 (independent after this point)
+US1 (T-100..T-112)                → US2 (same file, ingest.ts's supersede logic — sequential)
+US1, US2, US3, US4                → Polish
+</code></pre>
+</section>
+
+
+<section id="changelog">
+<h2>10 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-07-26">26 Jul 2026</time><span>Initial task breakdown. 41 tasks across six
+  phases (1 setup, 14 foundational, 8 US1, 11 US2, 2 US3, 3 US4, 2 polish). Every FR/NFR traced to at
+  least one task; every SC traced to a measurable task outcome (see §4–§7 <code>&lt;spec-note&gt;</code>
+  closures). US1's real <code>PackFetcher</code> opens with a spike (T-100) per plan §3's one unresolved
+  grounding fact; the <code>--from</code> hatch keeps every other task unblocked regardless of its
+  outcome. US2 deliberately not parallelized against US1 — both touch <code>ingest.ts</code>'s supersede
+  logic, mirroring the sequencing correction 051/052's own drains already established for a shared
+  file.</span></li>
+  <li><time datetime="2026-07-26">26 Jul 2026</time><span>Drained clean — all 41 tasks complete. One
+  real bug caught and fixed by the tests it was meant to catch: <code>anchorKey</code>'s template
+  literal had corrupted separators, breaking re-import idempotency detection until a dedicated test
+  isolated it. Status flipped Draft → Accepted on 26 Jul 2026 — zero remaining unchecked tasks; tests
+  verified passing per author confirmation. Sibling bundle (REQ-LIFECYCLE-005) — spec.html, plan.html,
+  tasks.html flip together.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  Tasks for 061-corpus-ingester · Corpus ingester · authored 26 Jul 2026
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>

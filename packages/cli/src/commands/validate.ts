@@ -241,6 +241,22 @@ async function scanCorpusWellFormed(cwd: string): Promise<Finding[]> {
 }
 
 /**
+ * The root-registry gate (061-corpus-ingester, FR-003/FR-007): a hand-edited
+ * duplicate `KB-NNNN` errors; an orphaned reference warns. Gated on the
+ * registry itself (`loadRegistry`), not on `loadCorpus`'s pack list — the
+ * registry's own well-formedness is a standalone concern from whether any
+ * pack directory currently exists on disk. A no-op when no root
+ * `knowledge/index.md` exists (or it has no rows), matching
+ * scanCorpusWellFormed's graceful-absence shape.
+ */
+async function scanCorpusRegistry(cwd: string): Promise<Finding[]> {
+  const { loadRegistry, corpusRegistryFindings } = await import('@spectastic/core/knowledge');
+  const registry = loadRegistry(cwd);
+  if (registry.length === 0) return [];
+  return corpusRegistryFindings(registry);
+}
+
+/**
  * The corpus grounding gates (053-corpus-grounding-gates, plan D-001/D-002):
  * a <spec-decision> citation resolving to no committed document is an error
  * (corpus-provenance); one resolving to a retained superseded edition is a
@@ -366,6 +382,9 @@ export function registerValidate(program: Command): void {
       // orphan document, a missing provenance field, or a duplicate KB-NNN
       // id is an error. No-op with no knowledge/ directory in the project.
       const corpusWellFormedScanFindings = await scanCorpusWellFormed(process.cwd());
+      // The root-registry gate (spec 061): a hand-edited duplicate KB-NNNN
+      // errors; an orphaned reference warns. No-op with no root registry.
+      const corpusRegistryScanFindings = await scanCorpusRegistry(process.cwd());
       // The corpus grounding gates (spec 053): a <spec-decision> citation
       // resolving to no committed document errors; one resolving to a
       // superseded edition warns. Tier-independent; no-op with no corpus.
@@ -388,6 +407,7 @@ export function registerValidate(program: Command): void {
         ...enforceWaiverFindings,
         ...quantifiedNfrScanFindings,
         ...corpusWellFormedScanFindings,
+        ...corpusRegistryScanFindings,
         ...corpusGroundingScanFindings,
         ...corpusLicenseScanFindings,
         ...packAgnosticismScanFindings,

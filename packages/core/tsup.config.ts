@@ -36,6 +36,8 @@ export default defineConfig({
     'src/providers/claude.ts',
     'src/providers/claude-cli.ts',
     'src/providers/stub.ts',
+    'src/providers/pack-fetcher.ts',
+    'src/providers/pack-fetcher-stub.ts',
     'src/coding/types.ts',
     'src/coding/runtime.ts',
     'src/coding/stub.ts',

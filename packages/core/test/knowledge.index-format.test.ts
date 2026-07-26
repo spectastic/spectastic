@@ -29,7 +29,7 @@ describe('parseIndex / renderIndexTable (pre-migration, unchanged by this amendm
 });
 
 describe('parseRegistry / renderRegistryTable (FR-009, the root registry)', () => {
-  it('round-trips a 7-column registry, sorted by KB-NNNN', () => {
+  it('round-trips a registry with no status set, sorted by KB-NNNN', () => {
     const table = renderRegistryTable([
       {
         id: 'KB-0007',
@@ -60,6 +60,7 @@ describe('parseRegistry / renderRegistryTable (FR-009, the root registry)', () =
       title: 'Foundations',
       edition: '2026-07-25',
       path: 'knowledge/spectastic-concepts/references/001-foundations.md',
+      status: '',
     });
   });
 
@@ -74,6 +75,59 @@ describe('parseRegistry / renderRegistryTable (FR-009, the root registry)', () =
     const parsed = parseRegistry(table);
     expect(parsed).toHaveLength(1);
     expect(parsed[0]?.id).toBe('KB-0042');
+  });
+
+  /**
+   * 2026-07-26 061-corpus-ingester T-010: the widened 8-column registry
+   * shape (plan D-005, FR-007) — an orphan-flagging `status` column beside
+   * the existing 7. A pre-existing 7-column row (pre-061) still parses
+   * unchanged — the widening is additive, never a breaking re-shape.
+   */
+  it('round-trips an 8th status column', () => {
+    const table = renderRegistryTable([
+      {
+        id: 'KB-0003',
+        marketplace: 'spectastic-examples',
+        plugin: 'finance-settlement',
+        slug: '002-clearing-cutover',
+        title: 'Clearing cutover',
+        edition: '2026-07-25',
+        path: 'knowledge/finance-settlement/references/002-clearing-cutover.md',
+        status: 'orphaned',
+      },
+    ]);
+    expect(table).toContain('Status');
+    const parsed = parseRegistry(table);
+    expect(parsed).toHaveLength(1);
+    expect(parsed[0]?.status).toBe('orphaned');
+  });
+
+  it('renders a blank status cell for a current (non-orphaned) row, and parses it back as blank', () => {
+    const table = renderRegistryTable([
+      {
+        id: 'KB-0001',
+        marketplace: 'spectastic',
+        plugin: 'spectastic-concepts',
+        slug: '001-foundations',
+        title: 'Foundations',
+        edition: '2026-07-25',
+        path: 'knowledge/spectastic-concepts/references/001-foundations.md',
+      },
+    ]);
+    const parsed = parseRegistry(table);
+    expect(parsed[0]?.status).toBe('');
+  });
+
+  it('still parses a pre-existing 7-column row with no status column at all (back-compat)', () => {
+    const legacyTable = [
+      '| KB-NNNN | Marketplace | Plugin | Slug | Title | Edition | Path |',
+      '| --- | --- | --- | --- | --- | --- | --- |',
+      '| KB-0042 | m | p | s | t | e | pa |',
+    ].join('\n');
+    const parsed = parseRegistry(legacyTable);
+    expect(parsed).toHaveLength(1);
+    expect(parsed[0]?.id).toBe('KB-0042');
+    expect(parsed[0]?.status).toBe('');
   });
 });
 

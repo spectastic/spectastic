@@ -85,8 +85,10 @@ function renderDocument(id: string, provenance: Required<Provenance>, body: stri
 
 /** A best-effort title + description from a raw markdown body — the first
  * `# ` heading is the title (falling back to the filename stem), and the
- * first non-empty paragraph after it is the description (empty if none). */
-function deriveTitleAndDescription(body: string, fallbackTitle: string): { title: string; description: string } {
+ * first non-empty paragraph after it is the description (empty if none).
+ * Exported (061-corpus-ingester, plan D-003) so the install door's
+ * `ingest.ts` reuses this derivation rather than duplicating it. */
+export function deriveTitleAndDescription(body: string, fallbackTitle: string): { title: string; description: string } {
   let title = fallbackTitle;
   let description = '';
   let sawTitle = false;

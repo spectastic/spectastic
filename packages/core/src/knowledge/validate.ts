@@ -40,6 +40,15 @@ function errorFinding(file: string, message: string): Finding {
   return { file, line: 1, column: 1, rule: RULE, severity: 'error', message };
 }
 
+/** `corpus-registry-orphan` (061-corpus-ingester FR-007) — warning severity,
+ * distinct from `corpus-well-formed`'s error-severity checks: an orphaned
+ * reference is a loud, review-worthy loss (the world moved and something
+ * vanished from a re-import), never a build-blocking defect. Mirrors 053's
+ * `corpus-staleness` posture, not its `corpus-provenance` one. */
+function warningFinding(file: string, message: string): Finding {
+  return { file, line: 1, column: 1, rule: 'corpus-registry-orphan', severity: 'warning', message };
+}
+
 /** Every document with a non-empty `missingFields` (parse.ts already
  * computed the gap; this just turns it into a finding). */
 function missingFieldFindings(pack: CorpusPack): Finding[] {
@@ -204,18 +213,39 @@ function duplicateRegistryIdFindings(entries: readonly RegistryEntry[]): Finding
   return findings;
 }
 
-/** All root-registry well-formedness findings (FR-009): required columns,
- * opaqueness, and repo-wide `KB-NNNN` uniqueness. A no-op (returns []) when
- * no registry exists — `entries` is simply empty in that case (no
- * `knowledge/index.md` to parse), so the graceful-absence contract holds the
- * same way `corpusWellFormedFindings`' does for an empty `packs` array
- * (NFR-001). Kept separate from `corpusWellFormedFindings` because a
- * registry spans every pack in the project, not one — there is no single
- * `CorpusPack` to attach it to. */
+/** Every registry row flagged `status=orphaned` (061-corpus-ingester FR-007)
+ * — a reference a prior import registered but a re-import no longer fetches.
+ * Warning severity: loud, never a build-blocker (the row is never dropped by
+ * the ingester either way; this is purely the finding it raises). */
+function orphanedRegistryFindings(entries: readonly RegistryEntry[]): Finding[] {
+  const findings: Finding[] = [];
+  for (const entry of entries) {
+    if (entry.status === 'orphaned') {
+      findings.push(
+        warningFinding(
+          REGISTRY_FILE,
+          `Registry row ${entry.id} (${entry.slug}) is orphaned — a re-import no longer fetches it. Reconcile or leave it flagged; it is never silently dropped.`,
+        ),
+      );
+    }
+  }
+  return findings;
+}
+
+/** All root-registry findings (FR-007/FR-009): required columns, opaqueness,
+ * repo-wide `KB-NNNN` uniqueness (all error severity), and orphan-flagging
+ * (warning severity). A no-op (returns []) when no registry exists —
+ * `entries` is simply empty in that case (no `knowledge/index.md` to parse),
+ * so the graceful-absence contract holds the same way
+ * `corpusWellFormedFindings`' does for an empty `packs` array (NFR-001).
+ * Kept separate from `corpusWellFormedFindings` because a registry spans
+ * every pack in the project, not one — there is no single `CorpusPack` to
+ * attach it to. */
 export function corpusRegistryFindings(entries: readonly RegistryEntry[]): Finding[] {
   return [
     ...missingRegistryFieldFindings(entries),
     ...malformedIdFindings(entries),
     ...duplicateRegistryIdFindings(entries),
+    ...orphanedRegistryFindings(entries),
   ];
 }

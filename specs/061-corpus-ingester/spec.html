@@ -1,0 +1,312 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
+<title>Corpus ingester · Specification</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Specification · 061-corpus-ingester</p>
+  <h1>Corpus ingester</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    Something has to write the registry. One front door, three ways in, one opaque id out — and a re-import that never dangles a citation.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>      <span><spec-status value="accepted">Accepted</spec-status></span>
+    <b>Spec ID</b>     <span>061-corpus-ingester</span>
+    <b>Owner</b>       <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Reviewers</b>   <span>—</span>
+    <b>Created</b>     <span><time datetime="2026-07-26">26 Jul 2026</time></span>
+    <b>Principles</b><span><a href="../../principles.html">v1.8.0</a></span>
+    <b>Smallest demoable</b><span><code>corpus import finance-settlement@spectastic-examples</code> assigns <code>KB-0001</code>, writes the root-registry row, and a <code>KB-0001@edition</code> citation resolves green.</span>
+    <b>Read time</b>   <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-budget words="1900" reqs="24" minutes="15"></spec-budget>
+
+  <spec-tldr>
+    <p>The corpus family (<a href="../051-knowledge-corpus/spec.html">051</a>–<a href="../059-corpus-retrieval-scale/spec.html">059</a>)
+    shipped everything that <em>reads</em> a corpus registry — the resolver, the grounding gates, the render label, the root
+    <code>knowledge/index.md</code> template — but <strong>nothing writes one</strong>. The registry stays empty, and every
+    <code>KB-NNNN</code> citation dangles, until an ingester exists to assign ids and maintain rows.
+    <a href="../051-knowledge-corpus/spec.html#FR-009">051 FR-009</a> and
+    <a href="../052-corpus-citation-contract/spec.html#FR-002">052 FR-002</a> both defer that behaviour here.
+    This spec is the ingester: a <code>corpus</code>-group front door with <strong>three ways in</strong> — install an existing
+    marketplace skill, interview a subject-matter expert, or source from an allowlisted authority — all converging on <strong>one
+    registration backbone</strong> that assigns a stable, opaque, repo-unique <code>KB-NNNN</code>, writes the registry row, and, on
+    re-import at a newer edition, supersedes by append while flagging any reference that vanished. The install door is the must; the
+    other two doors are lighter stories whose deeper mechanics have their own follow-on specs.</p>
+  </spec-tldr>
+
+  <dl class="invest">
+    <dt><span class="letter">I</span> Independent</dt> <dd>Depends on <a href="../051-knowledge-corpus/spec.html">051</a> (the registry shape, FR-009) and <a href="../052-corpus-citation-contract/spec.html">052</a> (the citation it feeds). The pack <em>migration</em> that re-authors the two shipped packs is a separate slice.</dd>
+    <dt><span class="letter">N</span> Negotiable</dt>  <dd>The contract is "a registered reference with an opaque id"; how the fetch shells out, or the interview is driven, is the plan's business.</dd>
+    <dt><span class="letter">V</span> Valuable</dt>    <dd>Unlocks <a href="#SC-001">SC-001</a> — the registry stops being empty, so a <code>KB-NNNN@edition</code> citation resolves for the first time.</dd>
+    <dt><span class="letter">E</span> Estimable</dt>   <dd>The backbone reuses 051/056's parsers and allocators; the install door reuses the adapter and a provider seam that already has precedent.</dd>
+    <dt><span class="letter">S</span> Small</dt>       <dd>Larger than a typical slice — a backbone plus three doors. The P1 install door + backbone is the must-have; P2/P3 doors are contract-level, their mechanics deferred to their own specs.</dd>
+    <dt><span class="letter">T</span> Testable</dt>    <dd>Each requirement is observable: an id assigned, a row written, a prior edition on disk under <code>superseded/</code>, an orphan marked, a stub fetch producing a real registration.</dd>
+  </dl>
+
+  <spec-audience-map>
+    <dl>
+      <dt>Exec / PM</dt>   <dd>§<a href="#context">Context</a>, §<a href="#scenarios">User scenarios</a>, §<a href="#success">Success criteria</a>.</dd>
+      <dt>Reviewer</dt>    <dd>§<a href="#requirements">Requirements</a>, §<a href="#assumptions">Assumptions</a>, §<a href="#questions">Open questions</a>.</dd>
+      <dt>Implementer</dt> <dd>§<a href="#requirements">Requirements</a>, §<a href="#data">Data model</a>, §<a href="#conformance">Conformance index</a>.</dd>
+    </dl>
+  </spec-audience-map>
+</header>
+
+
+<section id="context">
+<h2>1 · Context</h2>
+<p>The two-layer identity model (<a href="../../docs/corpus-identity-considerations.html">corpus-identity considerations</a>,
+D-001–D-005) split a corpus id into a pack-owned <strong>slug</strong> and a project-assigned, opaque <strong><code>KB-NNNN</code></strong>
+held in a new root <code>knowledge/index.md</code> registry. The amendments to <a href="../051-knowledge-corpus/spec.html#FR-009">051</a>
+and <a href="../052-corpus-citation-contract/spec.html#FR-002">052</a> landed the registry's <em>shape</em> and taught the resolver to
+prefer it — deterministically ending the array-order collision two packs sharing <code>KB-001</code> used to hit. But those amendments
+were deliberately scoped to <em>reading</em> a registry that something else fills. Nothing fills it. A fresh project's registry is empty,
+and stays empty; the only tool that writes corpus documents today, <a href="../056-corpus-adapter/spec.html">056</a>'s
+<code>corpus adapt</code>, writes the <em>retired</em> per-pack model (a pack-local <code>index.md</code> and pack-minted
+<code>KB-</code> ids), not a root-registry row.</p>
+<p>Acquisition also turns out to have more than one door. The <a href="../../docs/corpus-acquisition-considerations.html">corpus-acquisition
+considerations</a> observe that a corpus reference can arrive three ways — <em>converted</em> from an existing document or skill,
+<em>interviewed</em> out of a person, or <em>sourced</em> from an authoritative URL — but every door produces the <strong>same
+artifact</strong>: a provenance-stamped document addressable by a stable id. This spec is the front door onto that one contract, and the
+backbone that turns any arrival into a registered <code>KB-NNNN</code>. The people it serves are the plan authors who cite the corpus and
+the reviewers who must trust that a citation resolves to real, attributable text.</p>
+</section>
+
+
+<section id="scenarios">
+<h2>2 · User scenarios &amp; testing</h2>
+
+<p>Each story <strong>MUST</strong> be independently testable. US1 is the MVP: installing one skill and citing it green proves the whole
+backbone end-to-end without any other door built.</p>
+
+<h3 id="US1">US1 · Install an existing marketplace skill <spec-pill>P1</spec-pill></h3>
+<p>As a <strong>project author</strong>, I want to <strong>install a published domain skill and have its references registered</strong>
+so that <strong>a plan decision can cite them by a stable id the moment the install finishes</strong>.</p>
+<p><em>Acceptance:</em> <code>corpus import finance-settlement@spectastic-examples</code> fetches the plugin, converts each reference,
+assigns a repo-unique <code>KB-NNNN</code>, writes a root-registry row and the pack's <code>SKILL.md</code> slug map, and a
+<code>&lt;spec-decision&gt;</code> citing <code>KB-0001@edition</code> resolves green.</p>
+
+<h3 id="US2">US2 · Re-import a newer edition without dangling a citation <spec-pill>P1</spec-pill></h3>
+<p>As a <strong>project author</strong>, I want <strong>re-importing an updated skill to keep every id stable and every old citation
+resolvable</strong> so that <strong>a document moving on doesn't silently break a decision that grounded against the version it read</strong>.</p>
+<p><em>Acceptance:</em> re-running <code>corpus import</code> on a newer edition keeps the same <code>KB-NNNN</code>, bumps the registry
+edition, moves the prior document under <code>references/superseded/</code>, and a reference dropped from the new release is marked
+<code>orphaned</code> in its row — never deleted. A genuinely new reference gets a fresh <code>KB-NNNN</code>.</p>
+
+<h3 id="US3">US3 · Capture a subject-matter expert <spec-pill>P2</spec-pill></h3>
+<p>As a <strong>team with in-house expertise no document holds</strong>, I want to <strong>interview an expert into a corpus
+document</strong> so that <strong>house knowledge becomes a citable, attributable source instead of tribal memory</strong>.</p>
+<p><em>Acceptance:</em> <code>corpus interview</code> runs the interview discipline, persists a document with an
+<code>interview: &lt;role&gt;, &lt;date&gt;</code> origin, registers it, and marks it <strong>not citable</strong> until the expert's
+sign-off is recorded.</p>
+
+<h3 id="US4">US4 · Source from an authoritative URL <spec-pill>P3</spec-pill></h3>
+<p>As a <strong>project author needing a public primary source</strong>, I want to <strong>fetch a document from an allowlisted
+authority and register it</strong> so that <strong>a domain fact is grounded against the real text, not the model's memory of it</strong>.</p>
+<p><em>Acceptance:</em> <code>corpus source</code> fetches only from an allowlisted origin, drafts a document carrying the fetched URL +
+retrieval date + content hash, registers it, and marks it <strong>not citable</strong> until a human confirms the ingestion.</p>
+
+<h3>Edge cases</h3>
+<ul>
+  <li>A re-import where the marketplace <em>plugin</em> was renamed — the <code>renames</code> map migrates the row; the <code>KB-NNNN</code> never moves (<a href="#FR-006">FR-006</a>).</li>
+  <li>A re-import where a <em>reference slug</em> was renamed — the <code>(marketplace, plugin, slug)</code> anchor breaks; the old id is flagged <code>orphaned</code>, never silently re-mapped (<a href="#FR-007">FR-007</a>).</li>
+  <li>Two imports racing, or a hand-edited registry id — assignment is the ingester's alone; a duplicate <code>KB-NNNN</code> is a validate finding (<a href="#FR-003">FR-003</a>).</li>
+  <li>A conversion that can't read a provenance field — it is written as <code>TODO</code>, never guessed; the content hash is always computed (<a href="#FR-009">FR-009</a>).</li>
+  <li>An offline or CI run — the install fetch is a seam a stub satisfies, so registration is testable without a network (<a href="#NFR-002">NFR-002</a>).</li>
+</ul>
+</section>
+
+
+<section id="requirements">
+<h2>3 · Requirements</h2>
+
+<p>Conformance keywords (<spec-rule>MUST</spec-rule>, <spec-rule level="should">SHOULD</spec-rule>,
+<spec-rule level="may">MAY</spec-rule>) follow RFC 2119.</p>
+
+<h3>Functional — the registration backbone</h3>
+
+<spec-requirement id="FR-001" priority="must">
+<p>The ingester <spec-rule>MUST</spec-rule> assign each newly-registered reference a repo-unique, opaque, monotonic
+<code>KB-NNNN</code>, continuing from the highest id in the root <code>knowledge/index.md</code> registry and never reusing a retired one.</p>
+<details><summary>Rationale</summary><p>The registry is the single source of truth for "next id" (<a href="../051-knowledge-corpus/spec.html#FR-009">051 FR-009</a>). Monotonic never-reused assignment is what makes an id a stable anchor a citation can trust forever.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-002" priority="must">
+<p>The ingester <spec-rule>MUST</spec-rule> write each registration as a row in the root <code>knowledge/index.md</code>, merging into any existing registry non-destructively — a hand-edited cell (title, edition) <spec-rule>MUST</spec-rule> survive a re-run.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-003" priority="must">
+<p>The ingester <spec-rule>MUST</spec-rule> be the only writer of the registry's <code>KB-NNNN</code> column, and assignment <spec-rule>MUST</spec-rule> be deterministic and serialised so no two references ever collide on an id.</p>
+<details><summary>Rationale</summary><p>Stateful "read the max, add one" assignment is a P-8 concern: it belongs in the kernel, serialised, with the registry as the sole authority. A hand-edited collision is caught as a validate finding, not silently minted.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-004" priority="must">
+<p>A registration <spec-rule>MUST</spec-rule> be keyed on the <code>(marketplace, plugin, slug)</code> coordinate, so re-importing the same reference resolves to the same registry row.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-005" priority="must">
+<p>Re-importing a reference at a newer edition <spec-rule>MUST</spec-rule> keep its existing <code>KB-NNNN</code>, bump the row's <code>edition</code>, and retain the prior edition by append (under <code>references/superseded/</code>) so an edition-pinned citation to the older text still resolves (<a href="../052-corpus-citation-contract/spec.html#FR-003">052 FR-003</a>).</p>
+</spec-requirement>
+
+<spec-requirement id="FR-006" priority="should">
+<p>The ingester <spec-rule level="should">SHOULD</spec-rule> migrate a renamed <em>plugin</em> across a re-import via the marketplace <code>renames</code> map, so a plugin rename never orphans its references.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-007" priority="must">
+<p>A reference present in a prior import but absent from a re-import <spec-rule>MUST</spec-rule> be flagged <code>orphaned</code> in its registry row (never deleted), and a <code>validate</code> scan <spec-rule level="should">SHOULD</spec-rule> surface the orphan as a warning.</p>
+<details><summary>Rationale</summary><p>Silently dropping a row would dangle any citation that still points at it. A visible <code>orphaned</code> marker plus an advisory finding keeps the loss a decision, not an accident — the same secure-by-default, never-silent posture the enforce waivers use.</p></details>
+</spec-requirement>
+
+<h3>Functional — the three doors</h3>
+
+<spec-requirement id="FR-008" priority="must">
+<p>The <code>import</code> door <spec-rule>MUST</spec-rule> drive the install of a marketplace skill named as <code>&lt;plugin&gt;@&lt;marketplace&gt;</code>, convert each of its references through the shared conversion primitive, and register them via the backbone above. A <code>--from &lt;path&gt;</code> option <spec-rule>MUST</spec-rule> register a local checkout instead, for offline and CI use.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-009" priority="must">
+<p>Conversion <spec-rule>MUST NOT</spec-rule> fabricate provenance: a field is populated only from a value genuinely read, everything else is the literal <code>TODO</code>, and the content hash is always computed from the source bytes.</p>
+<details><summary>Rationale</summary><p>The never-fabricate rule 056 established (its FR-002/D-004) is the whole basis of a corpus a reviewer can trust. The ingester reuses it verbatim rather than loosening it at a new front door.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-010" priority="must">
+<p>Every door <spec-rule>MUST</spec-rule> produce the identical registered artifact — a provenance-stamped document plus a registry row — differing only in <code>origin</code> and the <code>status</code> guard that makes it citable. The <code>interview</code> and <code>source</code> doors <spec-rule>MUST</spec-rule> mark a document <strong>not citable</strong> until, respectively, an expert sign-off or a human confirmation is recorded.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-011" priority="should">
+<p>The <code>source</code> door <spec-rule>SHOULD</spec-rule> fetch only from an origin on a curated per-domain authority allowlist, and <spec-rule>MUST NOT</spec-rule> register a document fetched from an origin absent from it.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-012" priority="should">
+<p>All doors <spec-rule>SHOULD</spec-rule> be subcommands under the existing <code>corpus</code> command group, adding no new top-level lifecycle verb, so the eight-verb slash surface is unchanged.</p>
+</spec-requirement>
+
+<h3>Non-functional</h3>
+
+<spec-requirement id="NFR-001" priority="must">
+<p>The backbone (id assignment, registry merge, supersede-by-append) <spec-rule>MUST</spec-rule> be deterministic — the same inputs produce byte-identical registry output — and <spec-rule>MUST</spec-rule> read no wall-clock except where a door records a genuine retrieval or interview date.</p>
+</spec-requirement>
+
+<spec-requirement id="NFR-002" priority="must">
+<p>The install fetch <spec-rule>MUST</spec-rule> sit behind an injectable seam so a stub satisfies it in tests and CI — registration <spec-rule>MUST NOT</spec-rule> require a live network to be exercised.</p>
+</spec-requirement>
+
+<spec-requirement id="NFR-003" priority="should">
+<p>The ingester <spec-rule level="should">SHOULD</spec-rule> be idempotent and non-destructive — a re-run that changes nothing writes nothing, and never rewrites a hand-corrected field back to <code>TODO</code> (056 NFR-001, extended to the registry).</p>
+</spec-requirement>
+
+<h3>Out of scope (deferred to other slices)</h3>
+<spec-out-of-scope>
+  <ul>
+    <li defer-to="TBD-corpus-identity-migration">Migrating the two shipped packs and the live citations onto the two-layer shape, and flipping the resolver to registry-only (retiring the pack-scan fallback).</li>
+    <li defer-to="TBD-corpus-provenance-gate">The resolve-must-succeed gate that turns "never cite from memory" into a build finding; the staleness gate already lives in <a href="../053-corpus-grounding-gates/spec.html">053</a>.</li>
+    <li defer-to="TBD-corpus-authority-allowlist">The full shape and governance of the authority allowlist FR-011 fetches against — this spec assumes it, a sibling owns it.</li>
+    <li defer-to="059-corpus-retrieval-scale">How a retrieval index interacts with the registry — the registry is the record; an index is a rebuildable layer above it.</li>
+    <li defer-to="058-corpus-licensing">Redistribution terms of material a re-imported skill bundles.</li>
+  </ul>
+</spec-out-of-scope>
+</section>
+
+
+<section id="data">
+<h2>4 · Data model</h2>
+
+<p>The ingester owns no new persistent entity — it writes entities 051 and 052 already defined. It substantially changes how two of them are produced, and adds one column.</p>
+
+<h3>Entities</h3>
+<dl>
+  <dt>Registry row</dt><dd>One line in root <code>knowledge/index.md</code> (<a href="../051-knowledge-corpus/spec.html#FR-009">051 FR-009</a>): <code>KB-NNNN | marketplace | plugin | slug | title | edition | path</code>, gaining a <strong><code>status</code></strong> column (blank when current, <code>orphaned</code> when a re-import dropped the reference — FR-007).</dd>
+  <dt>Provenance</dt><dd>The frontmatter each conversion stamps (056): <code>origin</code>, <code>origin-url</code>, <code>edition</code>, <code>license</code>, <code>converter</code>, <code>content-hash</code>, <code>status</code>. The door decides <code>origin</code> and the <code>status</code> guard; the never-fabricate rule (FR-009) decides the rest.</dd>
+  <dt>Superseded edition</dt><dd>A prior document retained under <code>references/superseded/&lt;slug&gt;@&lt;edition&gt;.md</code> on re-import (052 FR-003), so an edition-pinned citation to the older text always resolves.</dd>
+</dl>
+
+<spec-note>
+<p>Invariant: a <code>KB-NNNN</code>, once assigned to a <code>(marketplace, plugin, slug)</code> coordinate, is never reused and never moves — not on a plugin rename (the row migrates), not on an edition bump (the row updates), not on an orphan (the row is flagged, not freed). This is the persistent-identifier discipline the whole two-layer model rests on.</p>
+</spec-note>
+</section>
+
+
+<section id="success">
+<h2>5 · Success criteria</h2>
+
+<p>Technology-agnostic, measurable outcomes.</p>
+
+<spec-requirement id="SC-001" priority="must">
+<p>Importing a two-layer skill into a project with an empty registry produces a root <code>knowledge/index.md</code> with one repo-unique <code>KB-NNNN</code> row per reference, and a <code>&lt;spec-decision&gt;</code> citing one of them at its edition resolves green through the grounding gate.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-002" priority="must">
+<p>Re-importing the same skill at a newer edition leaves every <code>KB-NNNN</code> unchanged, retains each prior edition on disk, and a citation pinned to a prior edition still resolves — no dangling reference is produced.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-003" priority="should">
+<p>A reference dropped between two imports appears with <code>status=orphaned</code> in the registry and raises exactly one advisory <code>validate</code> finding — and is never removed from the file.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-004" priority="should">
+<p>The full import → convert → register flow runs to a written registry in CI with no network access, driven entirely through the stubbed fetch seam.</p>
+</spec-requirement>
+</section>
+
+
+<section id="assumptions">
+<h2>6 · Assumptions</h2>
+
+<spec-assumption>
+<p>The ingester operates on the <strong>two-layer pack shape</strong> — a <code>SKILL.md</code> slug map and slug-named references with no pack-minted <code>KB-</code> id. The two in-repo packs are still on the legacy 056 shape, so this spec's tests use two-layer fixtures; dogfooding against the real packs waits on <code>TBD-corpus-identity-migration</code>. This ordering is deliberate, not an oversight.</p>
+</spec-assumption>
+
+<spec-assumption>
+<p>A Claude Code marketplace supplies the <code>(name, version)</code> coordinate and a <code>renames</code> map; the registry is a consumer-side artifact layered on top of that coordinate, not a field inside <code>marketplace.json</code> (there is no per-reference slot in the platform schema).</p>
+</spec-assumption>
+
+<spec-assumption>
+<p>The conversion primitive from 056 (<code>deriveProvenance</code>, the content hash, the title/description derivation) is reusable as-is; only its <em>output shape</em> changes — a <code>SKILL.md</code> slug map plus a registry row, in place of the retired per-pack <code>index.md</code> and pack-minted ids.</p>
+</spec-assumption>
+</section>
+
+
+<section id="questions">
+<h2>7 · Open questions</h2>
+<spec-questions>
+<p>None outstanding — the scope (full front-end over one backbone), the smallest demoable (install one pack), the orphan representation (a registry <code>status</code> column plus a warning scan), the import coordinate (<code>plugin@marketplace</code> with a <code>--from</code> escape hatch), the adapter relationship (coexists, reshaped), and the single idempotent <code>import</code> were all anchored in the interview.</p>
+</spec-questions>
+</section>
+
+
+<section id="conformance">
+<h2>8 · Conformance index</h2>
+<p>Auto-built from every <code>&lt;spec-requirement&gt;</code> in this document.</p>
+<spec-conformance></spec-conformance>
+</section>
+
+
+<section id="changelog">
+<h2>9 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-07-26">26 Jul 2026</time><span>Initial draft. Owns <code>TBD-corpus-root-index-ingester</code> from the <a href="../../docs/corpus-identity-considerations.html">corpus-identity considerations</a> (§7), scoped as the full acquisition front-end folding the <a href="../../docs/corpus-acquisition-considerations.html">corpus-acquisition</a> doc's three doors over one registration backbone. Fills the registry <a href="../051-knowledge-corpus/spec.html#FR-009">051 FR-009</a> and <a href="../052-corpus-citation-contract/spec.html#FR-002">052 FR-002</a> deferred here. Twelve FRs, three NFRs, four SCs across four stories (install + supersede P1; interview P2; sourcing P3).</span></li>
+  <li><time datetime="2026-07-26">26 Jul 2026</time><span>Status flipped Draft → Accepted on 26 Jul 2026 — zero remaining unchecked tasks; tests verified passing per author confirmation (1162 across the full suite, two documented pre-existing timing flakes reconfirmed clean in isolation; 0 new findings on the full-corpus validate sweep). Sibling bundle (REQ-LIFECYCLE-005) — spec.html, plan.html, tasks.html flip together.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  061-corpus-ingester · Corpus ingester · authored 26 Jul 2026
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>

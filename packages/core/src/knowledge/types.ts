@@ -143,6 +143,14 @@ export interface RegistryEntry {
   edition: string;
   /** Path to the referenced document, relative to the project root. */
   path: string;
+  /** The row's status (061-corpus-ingester T-020, FR-007): blank/absent when
+   * the reference is current, `'orphaned'` when a re-import no longer finds
+   * it at its `(marketplace, plugin, slug)` anchor. Never deleted on orphan —
+   * the row stays, flagged, so a dropped reference is a visible decision
+   * point, not a silent loss. Optional so every pre-061 `RegistryEntry`
+   * literal (parser, test fixture) needs no edit for this addition to land
+   * (NFR-001-style non-breaking, matching `supersededEditions?`'s precedent). */
+  status?: 'orphaned' | '';
 }
 
 /**
