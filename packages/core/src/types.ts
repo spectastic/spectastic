@@ -300,6 +300,12 @@ export interface TasksResult {
   phases: TaskPhase[];
   totalTasks: number;
   parallelTasks: number;
+  /**
+   * Discoverability hint (054-corpus-in-prompt, FR-003 / D-004). Set only when
+   * no `knowledge/` corpus was found for this run; the CLI shows it at most
+   * once, guarded by a `.spectastic/` marker. Never set when a corpus exists.
+   */
+  corpusHint?: string;
 }
 
 // --- apply (verb 010) --------------------------------------------------
@@ -387,6 +393,12 @@ export interface SpecResult {
   requirementsCount: number;
   /** Any soft warnings (over-budget, INVEST gaps, etc.). */
   warnings: string[];
+  /**
+   * Discoverability hint (054-corpus-in-prompt, FR-003 / D-004). Set only when
+   * no `knowledge/` corpus was found for this run; the CLI shows it at most
+   * once, guarded by a `.spectastic/` marker. Never set when a corpus exists.
+   */
+  corpusHint?: string;
 }
 
 export interface PlanInput {
@@ -415,6 +427,12 @@ export interface PlanResult {
     exceptions: number;
     violations: number;
   };
+  /**
+   * Discoverability hint (054-corpus-in-prompt, FR-003 / D-004). Set only when
+   * no `knowledge/` corpus was found for this run; the CLI shows it at most
+   * once, guarded by a `.spectastic/` marker. Never set when a corpus exists.
+   */
+  corpusHint?: string;
 }
 
 // --- propose (verb 013) ------------------------------------------------
@@ -451,6 +469,12 @@ export interface ProposeResult {
   html: string;
   deltasCount: number;
   risks: RiskFinding[];
+  /**
+   * Discoverability hint (054-corpus-in-prompt, FR-003 / D-004). Set only when
+   * no `knowledge/` corpus was found for this run; the CLI shows it at most
+   * once, guarded by a `.spectastic/` marker. Never set when a corpus exists.
+   */
+  corpusHint?: string;
 }
 
 // --- course (verb explain --course, spec 019-explain-course) -----------
@@ -705,6 +729,12 @@ export interface GraduateExtract {
   specHtml: string;
   /** The extracted Draft `plan.html`, carrying the verified evidence ledger. */
   planHtml: string;
+  /**
+   * Discoverability hint (054-corpus-in-prompt, FR-003 / D-004). Set only when
+   * no `knowledge/` corpus was found for this run; the CLI shows it at most
+   * once, guarded by a `.spectastic/` marker. Never set when a corpus exists.
+   */
+  corpusHint?: string;
 }
 
 /**

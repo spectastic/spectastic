@@ -130,6 +130,8 @@ export function registerSpec(program: Command): void {
         `Wrote ${outPath} (${result.requirementsCount} reqs${result.warnings.length ? `; ${result.warnings.length} warning(s)` : ''}).\n`,
       );
       for (const w of result.warnings) process.stderr.write(`  warn: ${w}\n`);
+      const { showCorpusHintOnce } = await import('../knowledge/corpus-hint-marker.js');
+      await showCorpusHintOnce(cwd, result.corpusHint);
 
       // Opt-in git layer (spec 026): branch + commit the artifact when git.auto is on.
       const outcome = await commitForVerb({

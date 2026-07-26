@@ -161,6 +161,8 @@ async function runGraduate(id: string, classify: string | undefined): Promise<vo
         `  exploration archived → ${result.archivedPath} (frozen)\n` +
         `  Next: review the Draft spec + plan, then /spectastic.tasks ${id} --restore for the ${classify} restore path.\n`,
     );
+    const { showCorpusHintOnce } = await import('../knowledge/corpus-hint-marker.js');
+    await showCorpusHintOnce(cwd, extract.corpusHint);
     process.exit(0);
   } catch (err) {
     process.stderr.write(`explore --graduate ${id}: ${(err as Error).message}\n`);

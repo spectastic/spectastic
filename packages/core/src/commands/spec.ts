@@ -17,6 +17,7 @@ import { extractHealth } from '@spectastic/schema';
 import { sliceCommand, appendSplitToParent } from './slice.js';
 import { shouldAutoOffer } from '../slice/gate.js';
 import { fenceArtifactText } from '../security/fence.js';
+import { buildCorpusPromptBlock, loadCorpus, withCorpusHint } from '../knowledge/index.js';
 import type {
   KernelContext,
   SpecInput,
@@ -54,12 +55,16 @@ export async function specCommand(
   }
 
   const isReentry = !!input.existingSpec;
+  // Corpus-in-prompt (054-corpus-in-prompt, D-001/D-005): '' when no knowledge/
+  // corpus exists, so filter(Boolean) drops it — byte-identical to before.
+  const corpusBlock = buildCorpusPromptBlock(loadCorpus(ctx.cwd));
 
   const prompt = [
     isReentry
       ? `Sharpen this existing spec. Only ADD or ENHANCE; do not remove or rewrite existing content.`
       : `Author a feature spec for: ${input.description}`,
     isReentry ? `Existing spec:\n${fenceArtifactText(input.existingSpec!.slice(0, 8000), 'Existing spec')}` : '',
+    corpusBlock ? `\n${corpusBlock}` : '',
     '',
     'Return JSON: { "tldr": string, "stories": [ { "id": "US1", "title": string, "role": string, "want": string, "outcome": string, "acceptance": string, "priority": "P1"|"P2"|"P3" } ], "frs": [ { "id": "FR-001", "priority": "must"|"should"|"may", "body": string } ], "nfrs": [...], "scs": [...], "smallestDemoable": string }',
   ]
@@ -93,7 +98,7 @@ export async function specCommand(
     );
   }
 
-  return { html, specId, requirementsCount: reqCount, warnings };
+  return withCorpusHint({ html, specId, requirementsCount: reqCount, warnings }, corpusBlock);
 }
 
 interface ParsedSpec {

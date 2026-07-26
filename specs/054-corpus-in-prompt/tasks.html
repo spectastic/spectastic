@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
+<title>Corpus in the prompt · Tasks</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Tasks · 054-corpus-in-prompt</p>
+  <h1>Corpus in the prompt</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    Ordered, parallelizable work. Tests precede implementation. Drive through with
+    <code>/spectastic.implement</code> — one task per invocation.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>     <span><spec-status value="accepted">Accepted</spec-status></span>
+    <b>Spec</b>       <span><a href="./spec.html">054-corpus-in-prompt</a></span>
+    <b>Plan</b>       <span><a href="./plan.html">plan</a></span>
+    <b>Branch</b>     <span><code>main</code></span>
+    <b>Created</b>    <span><time datetime="2026-07-25">25 Jul 2026</time></span>
+    <b>Read time</b>  <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-tldr>
+    <p>16 tasks across five phases. Setup → Foundational → User stories (US1·US2·US3) → Polish.
+    Tasks marked <span class="par">[P]</span> can run in parallel — different files, no
+    dependency. Tests for a story <strong>MUST</strong> be written and failing before its
+    implementation tasks start.</p>
+  </spec-tldr>
+</header>
+
+
+<section id="strategy">
+<h2>1 · Execution strategy</h2>
+
+<spec-tabs>
+  <spec-tab label="MVP-first">
+    <p>Implement US1 end-to-end — the presence guarantee across all five verbs. Ship. US2's
+    determinism-hardening and US3's no-corpus hint follow once US1 is verified.</p>
+  </spec-tab>
+  <spec-tab label="Incremental">
+    <p>Setup → Foundational → US1 → US2 → US3 → Polish. Each story closes its conformance
+    before the next opens.</p>
+  </spec-tab>
+  <spec-tab label="Parallel teams">
+    <p>Not applicable at this size — this is a small, solo-scoped kernel change (one pure
+    builder, five mechanical joins). Use MVP-first or Incremental.</p>
+  </spec-tab>
+</spec-tabs>
+</section>
+
+
+<section id="phase-setup" class="phase">
+<h2>2 · Phase 1 — Setup</h2>
+
+<!-- Task label form (REQ-LIFECYCLE-003): the leading <strong> wraps a SHORT
+     imperative title only; any supplementary detail follows in plain-weight
+     prose after an em-dash. Never bold the whole detailed line — the
+     task-title-bold-scope validate rule warns on it. -->
+<spec-task id="T-001" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Scaffold the CLI one-time-hint marker module</strong> — the file shell (imports, exported function signatures) for reading/writing <code>.spectastic/corpus-hint-shown.json</code>, mirroring <code>init/marker.ts</code>'s existsSync/readFileSync/mkdir/writeFile shape; the logic itself lands in T-310. <span class="path">packages/cli/src/knowledge/corpus-hint-marker.ts</span></div>
+</spec-task>
+<spec-task id="T-002" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Add the optional corpusHint result field</strong> — <code>corpusHint?: string</code> on <code>PlanResult</code>, <code>SpecResult</code>, <code>ProposeResult</code>, <code>TasksResult</code>, and <code>GraduateExtract</code>. <span class="path">packages/core/src/types.ts</span></div>
+</spec-task>
+</section>
+
+
+<section id="phase-foundation" class="phase">
+<h2>3 · Phase 2 — Foundational</h2>
+<p>The one shared builder every story depends on. Sequential — the barrel export needs the builder's real name.</p>
+
+<spec-task id="T-010">
+  <input type="checkbox" checked>
+  <div><strong>Implement buildCorpusPromptBlock(packs)</strong> — render the loaded index rows into compact text, wrap it via <code>fenceArtifactText(indexText, 'Knowledge corpus index')</code>, prepend the fixed, unfenced grounding directive; return <code>''</code> when <code>packs</code> is empty (D-001–D-003). <span class="path">packages/core/src/knowledge/prompt.ts</span></div>
+</spec-task>
+<spec-task id="T-011">
+  <input type="checkbox" checked>
+  <div><strong>Export buildCorpusPromptBlock from the knowledge barrel</strong> <span class="path">packages/core/src/knowledge/index.ts</span></div>
+</spec-task>
+</section>
+
+
+<section id="phase-us1" class="phase">
+<h2>4 · Phase 3a — US1 · The corpus is placed in front of the model</h2>
+
+<h3>Tests (write &amp; fail first)</h3>
+<spec-task id="T-100" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Unit-test the builder's present case</strong> — every <code>IndexEntry</code> row appears in the fenced output, alongside the grounding directive text. <span class="path">packages/core/test/knowledge/prompt.test.ts</span></div>
+</spec-task>
+<spec-task id="T-101" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Integration-test the five-verb join</strong> — a stub <code>AIProvider.chat</code> captures its prompt argument; assert the corpus block appears for <code>plan</code>, <code>spec</code>, <code>propose</code>, <code>tasks</code>, and <code>graduate</code> when a corpus is loaded. <span class="path">packages/core/test/corpus-prompt-injection.test.ts</span></div>
+</spec-task>
+
+<h3>Implementation</h3>
+<spec-task id="T-110">
+  <input type="checkbox" checked>
+  <div><strong>Join the corpus block into all five AI-coupled verbs</strong> — <code>loadCorpus(ctx.cwd)</code> then <code>buildCorpusPromptBlock(...)</code> dropped into the existing <code>[...].filter(Boolean).join('\n')</code> prompt array of <code>plan</code>, <code>spec</code>, <code>propose</code> (both prompt sites), <code>tasks</code> (both prompt sites), and <code>graduate</code>'s extract leg. <span class="path">packages/core/src/commands/</span></div>
+</spec-task>
+
+<spec-note>
+<p>Closes <a href="./spec.html#FR-001">FR-001</a>, <a href="./spec.html#FR-002">FR-002</a>, <a href="./spec.html#SC-001">SC-001</a>.</p>
+</spec-note>
+</section>
+
+
+<section id="phase-us2" class="phase">
+<h2>5 · Phase 3b — US2 · The injection is harness-owned and deterministic</h2>
+
+<h3>Tests (write &amp; fail first)</h3>
+<spec-task id="T-200">
+  <input type="checkbox" checked>
+  <div><strong>Test presence-determinism</strong> — building the block twice from the same (unsorted-input) packs yields byte-identical output; the directive text is present verbatim regardless of pack content. <span class="path">packages/core/test/knowledge/prompt.test.ts</span></div>
+</spec-task>
+
+<h3>Implementation</h3>
+<spec-task id="T-210">
+  <input type="checkbox" checked>
+  <div><strong>Sort packs and rows inside the builder</strong> — order by pack <code>name</code> then row <code>id</code> before rendering, so determinism holds independent of caller order rather than relying on <code>loadCorpus</code>'s own sort. <span class="path">packages/core/src/knowledge/prompt.ts</span></div>
+</spec-task>
+
+<spec-note>
+<p>Closes <a href="./spec.html#NFR-001">NFR-001</a>, <a href="./spec.html#SC-003">SC-003</a>.</p>
+</spec-note>
+</section>
+
+
+<section id="phase-us3" class="phase">
+<h2>6 · Phase 3c — US3 · No corpus, no noise</h2>
+
+<h3>Tests (write &amp; fail first)</h3>
+<spec-task id="T-300">
+  <input type="checkbox" checked>
+  <div><strong>Test the empty-corpus path</strong> — <code>buildCorpusPromptBlock([])</code> returns <code>''</code>; each of the five commands' assembled prompt is byte-identical to a pre-054 snapshot when <code>loadCorpus</code> returns <code>[]</code>. <span class="path">packages/core/test/corpus-prompt-injection.test.ts</span></div>
+</spec-task>
+<spec-task id="T-301" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Test the marker helper</strong> — an unshown marker reads as "not yet shown"; after a write, a second read reads as "already shown"; a write creates <code>.spectastic/</code> when absent. <span class="path">packages/cli/test/corpus-hint.test.ts</span></div>
+</spec-task>
+
+<h3>Implementation</h3>
+<spec-task id="T-310">
+  <input type="checkbox" checked>
+  <div><strong>Implement the marker helper's read/write logic</strong> <span class="path">packages/cli/src/knowledge/corpus-hint-marker.ts</span></div>
+</spec-task>
+<spec-task id="T-311">
+  <input type="checkbox" checked>
+  <div><strong>Set corpusHint on the empty-corpus path</strong> — in all five core commands, when <code>loadCorpus(ctx.cwd)</code> is empty, set <code>result.corpusHint</code> to the fixed discoverability string; otherwise leave it unset. <span class="path">packages/core/src/commands/</span></div>
+</spec-task>
+<spec-task id="T-312">
+  <input type="checkbox" checked>
+  <div><strong>Print corpusHint at most once from the CLI</strong> — the <code>plan</code>, <code>spec</code>, <code>propose</code>, <code>tasks</code> registrars and the <code>explore --graduate</code> leg print <code>result.corpusHint</code> guarded by the marker helper, then write the marker. <span class="path">packages/cli/src/commands/</span></div>
+</spec-task>
+
+<spec-warning>
+<p><a href="./spec.html#FR-004">FR-004</a> (grounding <em>use</em> stays advisory; no gate infers a missed citation) has no implementing task here by design — it is a SHOULD-not, satisfied by deliberately adding no new gate. The citation-resolution check already exists at warning severity in <a href="../053-corpus-grounding-gates/spec.html">053</a>; this spec introduces nothing that could harden it into a build failure.</p>
+</spec-warning>
+
+<spec-note>
+<p>Closes <a href="./spec.html#FR-003">FR-003</a>, <a href="./spec.html#SC-002">SC-002</a>.</p>
+</spec-note>
+</section>
+
+
+<section id="phase-polish" class="phase">
+<h2>7 · Phase 4 — Polish</h2>
+<spec-task id="T-900" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Document the corpus-in-prompt behavior in the README</strong> — the presence-guaranteed / use-advisory split, mirroring 051–053's existing corpus sections. <span class="path">README.md</span></div>
+</spec-task>
+<spec-task id="T-901">
+  <input type="checkbox" checked>
+  <div><strong>Run the full safety-net verification</strong> — the whole vitest + tsc suite, plus a corpus-wide <code>spectastic validate</code>, confirming zero new findings across every existing spec. <span class="path">(repo-wide)</span></div>
+</spec-task>
+</section>
+
+
+<section id="dependencies">
+<h2>8 · Dependencies</h2>
+<pre><code>Setup           → Foundational
+Foundational    → US1
+US1             → US2, US3   (independent of each other after US1)
+US2, US3        → Polish
+</code></pre>
+</section>
+
+
+<section id="changelog">
+<h2>9 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-07-25">25 Jul 2026</time><span>Initial task breakdown. 16 tasks; US1 lands the five-verb presence join, US2 hardens determinism independent of caller order, US3 adds the no-corpus hint. FR-004 flagged as intentionally taskless (a SHOULD-not).</span></li>
+  <li><time datetime="2026-07-25">25 Jul 2026</time><span>Status flipped Draft → Accepted — zero remaining unchecked tasks (16/16); tests verified passing per author confirmation. Sibling bundle (REQ-LIFECYCLE-005).</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  Tasks for 054-corpus-in-prompt · Corpus in the prompt · authored 25 Jul 2026
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>

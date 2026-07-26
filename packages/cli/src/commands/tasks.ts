@@ -87,6 +87,8 @@ export function registerTasks(program: Command): void {
       process.stdout.write(
         `Wrote ${tasksPath} (${result.totalTasks} tasks, ${result.parallelTasks} parallel${suffix}).\n`,
       );
+      const { showCorpusHintOnce } = await import('../knowledge/corpus-hint-marker.js');
+      await showCorpusHintOnce(process.cwd(), result.corpusHint);
 
       // Opt-in git layer (spec 026): commit on the current branch (tasks does not branch).
       const { commitVerbAndExit, slugOf } = await import('../git/index.js');

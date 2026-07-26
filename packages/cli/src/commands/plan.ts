@@ -93,6 +93,8 @@ export function registerPlan(program: Command): void {
       process.stdout.write(
         `Wrote ${planPath} (${result.decisionsCount} ADRs; principles: ${result.principlesCheck.ok} OK / ${result.principlesCheck.exceptions} exc).\n`,
       );
+      const { showCorpusHintOnce } = await import('../knowledge/corpus-hint-marker.js');
+      await showCorpusHintOnce(process.cwd(), result.corpusHint);
 
       // Opt-in git layer (spec 026): commit on the current branch (plan does not branch).
       const { commitVerbAndExit, slugOf } = await import('../git/index.js');

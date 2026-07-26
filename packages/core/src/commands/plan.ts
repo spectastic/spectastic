@@ -15,6 +15,7 @@ import type {
   PlanResult,
 } from '../types.js';
 import { fenceArtifactText } from '../security/fence.js';
+import { buildCorpusPromptBlock, loadCorpus, withCorpusHint } from '../knowledge/index.js';
 
 const BLOCKER_PATTERNS: ReadonlyArray<{ name: string; re: RegExp }> = [
   { name: 'open <spec-question>', re: /<spec-questions?>[\s\S]*?<ol>[\s\S]*?<li[^>]*>(?!\s*(?:<\/li>|None at write time))/i },
@@ -50,12 +51,17 @@ export async function planCommand(
   }
 
   const isReentry = !!input.existingPlan;
+  // Corpus-in-prompt (054-corpus-in-prompt, D-001/D-005): the same fence-and-join
+  // mechanism as the principles line above. '' when no knowledge/ corpus exists,
+  // so filter(Boolean) drops it and this run stays byte-identical to before.
+  const corpusBlock = buildCorpusPromptBlock(loadCorpus(ctx.cwd));
   const prompt = [
     isReentry
       ? `Sharpen this plan. ADD or ENHANCE only; never remove existing ADRs.\nExisting plan:\n${fenceArtifactText(input.existingPlan!.slice(0, 6000), 'Existing plan')}`
       : `Author an implementation plan for the spec below.\nSpec:\n${fenceArtifactText(input.specHtml.slice(0, 6000), 'Spec')}`,
     input.principlesHtml ? `\nPrinciples to check:\n${fenceArtifactText(input.principlesHtml.slice(0, 3000), 'Principles')}` : '',
     formatDecisions(input.decisions),
+    corpusBlock ? `\n${corpusBlock}` : '',
     '',
     'Return JSON: { "approach": string, "decisions": [ { "id": "D-001", "title": string, "context": string, "decision": string, "consequences": string } ], "alternatives": [ { "name": string, "scores": [number, number, number], "isWinner": boolean } ], "risks": [ { "risk": string, "mitigation": string } ], "principles": [ { "id": "P-1", "status": "OK"|"EXCEPTION"|"VIOLATION", "note": string } ] }',
   ].filter(Boolean).join('\n');
@@ -81,12 +87,10 @@ export async function planCommand(
   }
 
   const html = renderPlanHtml(input.specId, parsed, isReentry);
-  return {
-    html,
-    decisionsCount: (parsed.decisions ?? []).length,
-    estimabilityBlockers: [],
-    principlesCheck,
-  };
+  return withCorpusHint(
+    { html, decisionsCount: (parsed.decisions ?? []).length, estimabilityBlockers: [], principlesCheck },
+    corpusBlock,
+  );
 }
 
 interface ParsedPlan {

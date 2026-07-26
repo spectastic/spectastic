@@ -14,6 +14,7 @@
 
 import { extractSpecMetadata } from '@spectastic/schema';
 import { fenceArtifactText } from '../security/fence.js';
+import { buildCorpusPromptBlock, loadCorpus, withCorpusHint } from '../knowledge/index.js';
 import type {
   GraduationClass,
   KernelContext,
@@ -42,10 +43,14 @@ export async function tasksCommand(
     );
   }
 
+  // Corpus-in-prompt (054-corpus-in-prompt, D-001/D-005): the hint, computed
+  // once here, covers both the restore and normal return paths below.
+  const corpusBlock = buildCorpusPromptBlock(loadCorpus(ctx.cwd));
+
   // Restore mode (spec 024-explore-restore): generate path-appropriate restore
   // tasks for a graduated bundle instead of a normal breakdown.
   if (input.restore) {
-    return restoreTasks(meta, input.restore, ctx);
+    return withCorpusHint(await restoreTasks(meta, input.restore, ctx), corpusBlock);
   }
 
   const phases = await deriveAndDescribePhases(meta, planHtml, ctx, input.decisions);
@@ -61,7 +66,7 @@ export async function tasksCommand(
     0,
   );
 
-  return { html, phases, totalTasks, parallelTasks };
+  return withCorpusHint({ html, phases, totalTasks, parallelTasks }, corpusBlock);
 }
 
 async function deriveAndDescribePhases(
@@ -168,6 +173,9 @@ async function enrichDescriptions(
     .join('\n');
   const decisionPairs = Object.entries(decisions ?? {}).map(([k, v]) => `${k}: ${v}`).join('; ');
   const decisionsLine = decisionPairs ? `Chosen approach (honour it): ${decisionPairs}` : '';
+  // Corpus-in-prompt (054-corpus-in-prompt, D-001/D-005): '' when no knowledge/
+  // corpus exists, so filter(Boolean) drops it — byte-identical to before.
+  const corpusBlock = buildCorpusPromptBlock(loadCorpus(ctx.cwd));
   const raw = await ctx.ai.chat(
     [
       `For each requirement below, suggest a concise (≤ 12-word) task title that implements it.`,
@@ -175,6 +183,7 @@ async function enrichDescriptions(
       `Return JSON: { "T-XYZ": "task title", ... } where keys are task IDs T-110..T-3NN.`,
       `Requirements:`,
       fenceArtifactText(reqList, 'Requirements'),
+      corpusBlock ? `\n${corpusBlock}` : '',
     ].filter(Boolean).join('\n'),
     {
       temperature: 0,
@@ -376,6 +385,9 @@ async function enrichRestore(
       ? `The build at ${sourceArchive} is KEPT — each task refactors it to comply with the requirement and restores the gates relaxed during explore (requirement IDs, INVEST, full principles, the estimability + grounding gates).`
       : `The prototype at ${sourceArchive} is DISCARDED — each task rebuilds clean against the new spec, test-first, and the prototype is deleted at the end.`;
   const reqList = meta.fr.map((r) => `${r.id} (${r.priority}): ${r.summary}`).join('\n');
+  // Corpus-in-prompt (054-corpus-in-prompt, D-001/D-005): '' when no knowledge/
+  // corpus exists, so filter(Boolean) drops it — byte-identical to before.
+  const corpusBlock = buildCorpusPromptBlock(loadCorpus(ctx.cwd));
   const raw = await ctx.ai.chat(
     [
       `This is a ${classification} restore — a ${path} task list.`,
@@ -383,7 +395,8 @@ async function enrichRestore(
       `For each requirement below, suggest a concise (≤ 14-word) ${path} task title. Do not include the requirement id in the title.`,
       `Return JSON: { "FR-NNN": "task title", ... }.`,
       `Requirements:\n${fenceArtifactText(reqList, 'Requirements')}`,
-    ].join('\n'),
+      corpusBlock ? `\n${corpusBlock}` : '',
+    ].filter(Boolean).join('\n'),
     {
       temperature: 0,
       system: 'You are a deterministic engineering planner. Return ONLY JSON; no prose, no fences.',

@@ -18,6 +18,7 @@
 
 import { deepenArchivePaths } from '../archive-paths.js';
 import { fenceArtifactText } from '../security/fence.js';
+import { buildCorpusPromptBlock, loadCorpus, withCorpusHint } from '../knowledge/index.js';
 import type {
   CapturedRun,
   FileSystem,
@@ -198,13 +199,17 @@ export async function graduateExtract(
 ): Promise<GraduateExtract> {
   if (!ctx.ai) throw new GraduateError('graduateExtract requires ctx.ai (the extract leg is AI-coupled)');
   const run = parseRunBlock(input.ledger);
+  // Corpus-in-prompt (054-corpus-in-prompt, D-001/D-005): '' when no knowledge/
+  // corpus exists, so filter(Boolean) drops it — byte-identical to before.
+  const corpusBlock = buildCorpusPromptBlock(loadCorpus(ctx.cwd));
   const prompt = [
     'Read this quarantined exploration ledger and extract a Draft spectastic spec from the build it describes.',
     `Classification: ${input.classification}.`,
     `Ledger:\n${fenceArtifactText(input.ledger.slice(0, 8000), 'Ledger')}`,
+    corpusBlock ? `\n${corpusBlock}` : '',
     '',
     'Return ONLY JSON: { "intent": string, "tldr": string, "stories": [ { "id": "US1", "title": string, "role": string, "want": string, "outcome": string, "acceptance": string } ], "frs": [ { "id": "FR-001", "priority": "must"|"should"|"may", "body": string } ], "scs": [ { "id": "SC-001", "priority": "must"|"should", "body": string } ] }',
-  ].join('\n');
+  ].filter(Boolean).join('\n');
   const raw = await ctx.ai.chat(prompt, {
     temperature: 0,
     system: 'You extract a spectastic spec from a built prototype. Output ONLY the requested JSON; no prose, no code fences.',
@@ -212,10 +217,10 @@ export async function graduateExtract(
   const parsed = tryParse(raw);
   if (!parsed) throw new GraduateError('graduateExtract: the model did not return JSON');
 
-  return {
-    specHtml: renderSpec(input.specId, parsed),
-    planHtml: renderPlan(input.specId, run),
-  };
+  return withCorpusHint(
+    { specHtml: renderSpec(input.specId, parsed), planHtml: renderPlan(input.specId, run) },
+    corpusBlock,
+  );
 }
 
 function renderSpec(specId: string, s: ExtractedSpec): string {
