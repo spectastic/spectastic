@@ -1,0 +1,347 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
+<title>Corpus licensing · Plan</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Implementation plan · 058-corpus-licensing</p>
+  <h1>Corpus licensing</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    One folded validate rule that classifies a declared license against a permissive allowlist — surfacing everything else, never adjudicating any of it — plus a written policy that names the escape hatch.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>     <span><spec-status value="accepted">Accepted</spec-status></span>
+    <b>Spec</b>       <span><a href="./spec.html">058-corpus-licensing</a></span>
+    <b>Owner</b>      <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Branch</b>     <span><code>main</code></span>
+    <b>Created</b>    <span><time datetime="2026-07-25">25 Jul 2026</time></span>
+    <b>Read time</b>  <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-tldr>
+    <p>Add a <code>corpus-license</code> folded <code>validate</code> scan — <code>corpusLicenseFindings(packs)</code>
+    in core, <code>scanCorpusLicense</code> in the CLI — that classifies each document's declared
+    <code>license</code> against a maintained <strong>permissive allowlist</strong> (SPDX-style): a permissive id is
+    silent; a restrictive one, an unrecognised one, or a <code>TODO</code> warns, so committing paywalled/vendored
+    material is a decision on the record (FR-002). The <em>missing</em>-license case (FR-001) is already met — more
+    strictly — by 051's existing error, so the rule adds no redundant missing-license code. The redistribution policy
+    (FR-003/FR-004) lands as a README section naming by-reference (MCP bridge / <code>origin-url</code> only) as the
+    escape hatch, with the restrictive <code>KB-002</code> worked example described there and exercised as a test
+    fixture — so the repo's own validate baseline stays clean. Biggest risk: overclaiming legal effect; mitigated by
+    NFR-001's recorded ceiling — the rule flags a declared license, never adjudicates compatibility.</p>
+  </spec-tldr>
+</header>
+
+
+<section id="principles-check">
+<h2>1 · Principles check</h2>
+<p>Verify this plan respects every principle in
+<a href="../../principles.html">v1.8.0</a>. Any violation requires either a
+principles amendment or a deliberate exception logged below.</p>
+
+<table>
+  <thead><tr><th>Principle</th><th>Compliance</th><th>Notes</th></tr></thead>
+  <tbody>
+    <tr><td>P-8 · Guarantees live in the kernel or CI</td><td><spec-pill>OK</spec-pill></td><td>The classification is deterministic kernel code folded into <code>validate</code> (<a href="#D-001">D-001</a>); the honest limit — it flags a <em>declared</em> license, never adjudicates legal effect (<a href="./spec.html#NFR-001">NFR-001</a>) — is stated, not hidden.</td></tr>
+    <tr><td>P-9 · The enforcement floor holds</td><td><spec-pill>OK</spec-pill></td><td>A <em>warning</em>, not an error, by deliberate design (FR-002): whether to commit restricted material is the project's call with the fact in front of it. The rule makes the fact unavoidable; it does not block.</td></tr>
+    <tr><td>P-3 · IDs are contracts</td><td><spec-pill>OK</spec-pill></td><td>Reads 051's <code>license</code> provenance field; classifies by SPDX identifier. No new id shape.</td></tr>
+    <tr><td>P-11 · Artifacts are data, not instructions</td><td><spec-pill>OK</spec-pill></td><td>Reads the declared license as data; never infers a license from document content (the §4 invariant).</td></tr>
+    <tr><td>P-2 · Semantic tags over class soup</td><td><spec-pill>OK</spec-pill></td><td>No artifact markup; core TypeScript, a CLI scan, a README section, a test fixture.</td></tr>
+  </tbody>
+</table>
+</section>
+
+
+<section id="technical-context">
+<h2>2 · Technical context</h2>
+<dl>
+  <dt>Language(s)</dt>      <dd>TypeScript 5.7, Node ≥ 20 (pnpm 9.15.9 workspace)</dd>
+  <dt>Frameworks</dt>       <dd>None new — <code>@spectastic/core</code> kernel, the <code>validate</code> CLI</dd>
+  <dt>Architecture</dt>     <dd>n/a — one core classification finding-fn folded into <code>validate</code>, mirroring 053's <code>scanCorpusGrounding</code> gate (<a href="#D-001">D-001</a>)</dd>
+  <dt>Storage</dt>          <dd>Filesystem — reads the committed <code>knowledge/</code> corpus's <code>license</code> provenance</dd>
+  <dt>Testing</dt>          <dd>vitest 2 — TDD, tests written red-first (<a href="#D-006">D-006</a>)</dd>
+  <dt>Coverage</dt>         <dd>Not in scope — no <code>coverage</code> enforce category (no profile marker on this repo)</dd>
+  <dt>Perf targets</dt>     <dd>Not in scope — no perf NFR; a lookup per document against a small allowlist</dd>
+  <dt>Constraints</dt>      <dd>Flag a declared license only; never adjudicate compatibility (<a href="./spec.html#NFR-001">NFR-001</a>). Warn, never error (FR-002). Never silently pass an unrecognised license as permissive (the §2 edge case).</dd>
+</dl>
+</section>
+
+
+<section id="grounding">
+<h2>3 · Grounding &amp; evidence</h2>
+<p>Every design-bearing fact this plan rests on, and how it was confirmed — read this before the
+approach: it separates what the plan <em>knows</em> from what it <em>assumes</em> (per
+<code>REQ-LIFECYCLE-006</code>). Status is <code>verified</code> (opened the source
+this turn), <code>spike</code> (decidable only by a time-boxed investigation — run it, record the
+finding), or <code>assumed</code> (taken as true without verification). A <code>must</code>-tier decision
+may not rest on an <code>assumed</code>/unresolved-<code>spike</code> fact unless accepted as a
+<code>&lt;spec-risk&gt;</code> (see §8).</p>
+
+<table class="evidence">
+  <thead>
+    <tr><th>Claim the design rests on</th><th>Source</th><th>Status</th><th>Finding / note</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>051 already errors on a missing <code>license</code> — it is a required provenance field — so FR-001's missing-license case is met more strictly than the spec's "warn"</td>
+        <td><code>packages/core/src/knowledge/types.ts:28</code> (<code>REQUIRED_PROVENANCE_FIELDS</code>); <code>packages/core/src/knowledge/validate.ts:24</code>, <code>:30</code></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td><code>license</code> is in the required set; <code>missingFieldFindings</code> reports any missing field as an <code>errorFinding</code>. So <code>corpus-license</code> need not re-check missing (<a href="#D-002">D-002</a>).</td></tr>
+    <tr><td>The folded-scan pattern (core finding-fn + a thin <code>scanX</code> in validate, no-op on absence) is the established home for a corpus filesystem check</td>
+        <td><code>packages/cli/src/commands/validate.ts:251</code> (<code>scanCorpusGrounding</code>); <code>packages/core/src/knowledge/gates.ts:96</code></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td><code>scanCorpusGrounding</code> lazy-imports <code>@spectastic/core/knowledge</code>, no-ops on an empty corpus, delegates to a pure finding-fn. <code>corpus-license</code> mirrors it exactly.</td></tr>
+    <tr><td>The <code>license</code> field is a free-form provenance string already parsed and surfaced per document</td>
+        <td><code>packages/core/src/knowledge/parse.ts:56</code> (<code>extractProvenance</code>); <code>types.ts:14</code> (<code>Provenance.license</code>)</td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td>Present iff a non-empty string; <code>CorpusDocument.provenance.license</code> is what the rule classifies. A <code>TODO</code> value is "present" to 051 but unrecognised to this rule → warn.</td></tr>
+    <tr><td>Both shipped corpus documents carry a permissive license — the rule is a no-op on the current repo baseline (0 errors, 309 warnings)</td>
+        <td><code>knowledge/spectastic-concepts/references/KB-001-foundations.md:6</code> (<code>MIT</code>); <code>examples/knowledge/finance-settlement/references/KB-001-settlement-windows.md:6</code> (<code>CC0-1.0</code>)</td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td>Both on the permissive allowlist → silent. So the restrictive worked example lives as a test fixture, keeping the baseline unchanged (<a href="#D-004">D-004</a>).</td></tr>
+    <tr><td>No <code>KB-002</code> worked example is shipped — every <code>KB-002</code> in the repo is a test-fixture id</td>
+        <td>grep <code>KB-002</code> across <code>knowledge/</code>, <code>examples/</code>, <code>templates/</code> (only test files match)</td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td>The restrictive worked example is net-new; it lands as a test fixture + a README description, not a shipped corpus document (D-004).</td></tr>
+    <tr><td>The README already carries the corpus family's prose (051–057); the policy is a natural section there</td>
+        <td><code>README.md</code> (the "Knowledge corpus" section through spec 057)</td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td>FR-003/FR-004's written policy lands as a README section co-located with the rest of the corpus family (<a href="#D-005">D-005</a>).</td></tr>
+    <tr><td>SPDX identifiers are the standard, machine-comparable license vocabulary a permissive allowlist can key on</td>
+        <td><a href="https://spdx.org/licenses/">spdx.org/licenses</a>; the spec's §6 assumption</td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td>Common permissive ids (MIT, Apache-2.0, BSD-*, CC0-1.0, CC-BY-*, ISC, Unlicense, 0BSD, public-domain) form the allowlist; the classification is by exact id, case-insensitive.</td></tr>
+  </tbody>
+</table>
+</section>
+
+
+<section id="approach">
+<h2>4 · Approach</h2>
+
+<p>One rule, one policy. <code>corpusLicenseFindings(packs)</code> walks every loaded corpus document and
+classifies its <code>provenance.license</code> against a maintained <strong>permissive allowlist</strong> of
+SPDX-style identifiers. The classification is deliberately conservative (D-003): a license on the allowlist is
+<em>silent</em>; anything else — a known-restrictive id, an id the allowlist doesn't carry, or a placeholder like
+<code>TODO</code> — emits a <code>corpus-license</code> <strong>warning</strong>, so an unrecognised license is
+never silently waved through as permissive. The rule reads only the declared string; it never infers a license
+from content and never asserts legal compatibility (NFR-001, the recorded ceiling). A thin
+<code>scanCorpusLicense(cwd)</code> folds it into <code>validate</code>, a no-op with no corpus.</p>
+
+<p><strong>What the rule does <em>not</em> do:</strong> re-check a <em>missing</em> license. 051 already errors on
+that (a missing required provenance field), which is strictly louder than the spec's "warn" — so FR-001/SC-002 are
+met by the existing error, and adding a redundant missing-license warning would only double-report (D-002). The
+<strong>redistribution policy</strong> (FR-003/FR-004) is a README section: what may be committed in-repo, what
+must be held by reference, and the sanctioned by-reference escape hatch (an MCP bridge, or keeping only the
+<code>origin-url</code>) for material that cannot be redistributed — with the deliberately-restrictive
+<code>KB-002</code> described as the worked example. That example is exercised as a red-first test fixture, so the
+signal is proven without shipping a warning into the repo's own baseline (D-004).</p>
+
+<spec-arch>
+<figure>
+<svg viewBox="0 0 700 190" role="img" aria-label="corpus-license classification sketch">
+  <style>
+    .box { fill:#fcfbf7; stroke:#c4c1bb; stroke-width:1.2; }
+    .label { font: 700 11px Lato, sans-serif; fill:#4a4a46; letter-spacing:0.06em; text-transform:uppercase; }
+    .body { font: 400 12px "Source Serif 4", Georgia, serif; fill:#353534; }
+    .arr { stroke:#73706d; stroke-width:1.2; fill:none; }
+    .note { font: italic 11px "Source Serif 4", Georgia, serif; fill:#73706d; }
+  </style>
+  <rect class="box" x="20" y="72" width="150" height="48" rx="4"/>
+  <text class="label" x="32" y="92">license field</text>
+  <text class="body"  x="32" y="110">declared string</text>
+
+  <rect class="box" x="240" y="70" width="170" height="52" rx="4"/>
+  <text class="label" x="252" y="90">permissive allowlist?</text>
+  <text class="body"  x="252" y="108">exact SPDX id, ci</text>
+
+  <rect class="box" x="500" y="20" width="170" height="46" rx="4"/>
+  <text class="label" x="512" y="40">silent</text>
+  <text class="body"  x="512" y="58">MIT · CC0 · Apache…</text>
+
+  <rect class="box" x="500" y="118" width="170" height="52" rx="4"/>
+  <text class="label" x="512" y="138">corpus-license warning</text>
+  <text class="body"  x="512" y="156">restrictive · unknown · TODO</text>
+
+  <path class="arr" d="M170 94 L240 96" marker-end="url(#a)"/>
+  <path class="arr" d="M410 88 L500 52" marker-end="url(#a)"/>
+  <path class="arr" d="M410 104 L500 138" marker-end="url(#a)"/>
+  <text class="note" x="235" y="150">missing license → 051 error (not here)</text>
+  <defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#73706d"/></marker></defs>
+</svg>
+<figcaption>A declared license is silent only if it's on the permissive allowlist; restrictive, unrecognised, and placeholder licenses all warn. A missing license is 051's error, not this rule's concern.</figcaption>
+</figure>
+</spec-arch>
+</section>
+
+
+<section id="alternatives">
+<h2>5 · Alternatives considered</h2>
+
+<spec-matrix>
+<table>
+  <thead>
+    <tr><th>Option</th><th>Never-silent-unknown</th><th>No overclaim (NFR-001)</th><th>Reuse</th><th class="score">Total</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>A full SPDX license-compatibility engine (adjudicate legal effect)</td><td>4</td><td>1</td><td>1</td><td class="score">6</td></tr>
+    <tr><td>A restrictive blocklist (warn on listed; everything else silent)</td><td>1</td><td>4</td><td>4</td><td class="score">9</td></tr>
+    <tr data-winner><td>A permissive allowlist: silent only if listed; restrictive / unknown / placeholder warn</td><td>5</td><td>5</td><td>5</td><td class="score">15</td></tr>
+  </tbody>
+</table>
+</spec-matrix>
+<p>A compatibility engine is precisely what NFR-001 forbids — the tool does not adjudicate legal effect. A
+restrictive blocklist fails the §2 edge case: an unrecognised license would silently pass as permissive, exactly
+the silent liability this spec exists to prevent. A permissive allowlist is conservative by construction — the
+burden is on a license being <em>known-safe</em> to go silent — and reuses 053's folded-scan pattern wholesale.</p>
+</section>
+
+
+<section id="decisions">
+<h2>6 · Decisions</h2>
+
+<spec-decision id="D-001" grounding="verified">
+  <h4>D-001 · A <code>corpus-license</code> folded validate scan, mirroring 053's gates</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd><code>scanCorpusGrounding</code> (<code>validate.ts:251</code>) is the established shape for a corpus filesystem check — a thin CLI scan lazy-importing a pure core finding-fn, a no-op on an empty corpus.</dd>
+    <dt>Decision</dt>     <dd>Add <code>corpusLicenseFindings(packs)</code> to <code>@spectastic/core/knowledge</code> and <code>scanCorpusLicense(cwd)</code> to <code>validate.ts</code>, folded into the findings pipeline. Warning severity (FR-002).</dd>
+    <dt>Consequences</dt> <dd>+ Reuses a proven, tested pattern; unit-testable in-process. + Runs on every <code>validate</code>; no-op with no corpus. − One more folded scan (bounded, no-op when absent).</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-002" grounding="verified">
+  <h4>D-002 · FR-001 (missing license) is met by 051's existing error — no redundant check</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>051's <code>corpusWellFormedFindings</code> already reports a missing <code>license</code> as an <em>error</em> (<code>validate.ts:24</code>, <code>REQUIRED_PROVENANCE_FIELDS</code> includes <code>license</code>) — strictly louder than the spec's "warn".</dd>
+    <dt>Decision</dt>     <dd>The <code>corpus-license</code> rule owns only FR-002 (restrictive / unrecognised / placeholder → warn). FR-001/SC-002 are satisfied by 051's error; SC-002's test asserts a missing-license document produces a finding (the 051 error), not a second warning.</dd>
+    <dt>Consequences</dt> <dd>+ No double-reporting; the requirement is met more strictly. + One rule, one clear meaning ("this license is restrictive/unknown"). − A reader expecting SC-002's literal "warning" sees an error instead — a deliberate strengthening, recorded here and in the §9 assumption.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-003" grounding="verified">
+  <h4>D-003 · Classify by a permissive SPDX allowlist; everything else warns</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>The §2 edge case requires an unrecognised license to be "treated conservatively (warn to declare intent), never silently passed as permissive"; the §6 assumption names SPDX-style ids as the classification vocabulary.</dd>
+    <dt>Decision</dt>     <dd>A maintained allowlist of permissive SPDX ids (MIT, Apache-2.0, BSD-2/3-Clause, CC0-1.0, CC-BY-*, ISC, Unlicense, 0BSD, public-domain) → silent. Everything else — known-restrictive, unrecognised, or a placeholder like <code>TODO</code> — warns. Matched by exact id, case-insensitive.</dd>
+    <dt>Consequences</dt> <dd>+ Conservative: the burden is on a license being known-safe to go silent. + A newly-adapted <code>license: TODO</code> doc (056) correctly warns to declare intent. − The allowlist needs occasional maintenance as SPDX evolves; a false-warn on a genuinely-permissive id not yet listed is a cheap fix (add the id), never a silent miss.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-004" grounding="verified">
+  <h4>D-004 · The restrictive worked example is a test fixture + a README description</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>No such restrictive document ships today (the spec's deliberately-restrictive worked example is net-new); both shipped docs are permissive (baseline 0 errors, 309 warnings). A restrictive doc in the marketplace-listed <code>finance-settlement</code> pack (057) would contradict its distributability.</dd>
+    <dt>Decision</dt>     <dd>The rule's red-first test writes a temp corpus with a deliberately-restrictive document; the worked example is described in the README redistribution policy. No restrictive document is shipped into the repo's own corpus.</dd>
+    <dt>Consequences</dt> <dd>+ The repo baseline stays clean (unchanged warning count); the signal is still proven end-to-end in a test. − The worked example is described rather than live-shipped — acceptable, and it avoids a standing self-warning a reviewer would have to be told is intentional.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-005" grounding="n-a">
+  <h4>D-005 · The redistribution policy is a README corpus section</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>The README already carries the corpus family's prose (051–057); FR-003/FR-004 ask for a written policy the convention "carries".</dd>
+    <dt>Decision</dt>     <dd>Add a redistribution-policy section to the README's corpus family: what may be committed in-repo, what must be by-reference, and the sanctioned escape hatch (MCP bridge, or <code>origin-url</code>-only), with the restrictive worked example.</dd>
+    <dt>Consequences</dt> <dd>+ Co-located with the rest of the corpus story a reader already follows. − A README section is less a standalone reference doc than a dedicated <code>docs/</code> page — acceptable for a SHOULD, and the family's other prose lives here too.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-006" grounding="n-a">
+  <h4>D-006 · TDD, tests written red-first</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>The rule is deterministic core: a document with a given license in, a finding (or none) out. Every SC is cheaply assertable first, mirroring 053's gate tests.</dd>
+    <dt>Decision</dt>     <dd>Write the failing unit tests before <code>corpusLicenseFindings</code>: a restrictive license warns, a permissive one is silent, an unrecognised/<code>TODO</code> one warns.</dd>
+    <dt>Consequences</dt> <dd>+ Both MUSTs (FR-002/NFR-001-via-behaviour) get red-first coverage. − None material for a classification rule.</dd>
+  </dl>
+</spec-decision>
+</section>
+
+
+<section id="project-structure">
+<h2>7 · Project structure</h2>
+
+<p>Only the new or changed paths.</p>
+
+<pre><code>packages/core/src/knowledge/
+  license.ts                  (NEW — corpusLicenseFindings: classify each document's declared license; permissive allowlist)
+  index.ts                    (export corpusLicenseFindings from the ./knowledge barrel)
+packages/cli/src/commands/
+  validate.ts                 (scanCorpusLicense: load corpus → delegate; folded into the findings pipeline)
+packages/core/test/
+  knowledge.license.test.ts   (NEW — restrictive warns, permissive silent, unrecognised/TODO warns, missing = 051 error; red-first)
+README.md                     (the redistribution policy: committable vs by-reference, the MCP/origin-url escape hatch, the KB-002 worked example)
+</code></pre>
+</section>
+
+
+<section id="risks">
+<h2>8 · Risks &amp; mitigations</h2>
+
+<table>
+  <thead><tr><th>Risk</th><th>Likelihood</th><th>Impact</th><th>Mitigation</th></tr></thead>
+  <tbody>
+    <tr><td>The rule is read as adjudicating legal compatibility / effect — an overclaim the tool can't back</td><td>L</td><td>H</td><td>NFR-001's recorded ceiling: the finding message says only "declares a restrictive/unrecognised license", never "incompatible" or "not permitted". A test asserts the message wording stays descriptive, not adjudicative.</td></tr>
+    <tr><td>An unrecognised but genuinely-permissive license silently passes (the §2 edge case)</td><td>L</td><td>M</td><td>Allowlist design (D-003): only a known-permissive id goes silent, so an unknown id warns by default. A test asserts an unrecognised id warns.</td></tr>
+    <tr><td>The rule changes the repo's own validate baseline, breaking future drains' "0 errors, N warnings" check</td><td>L</td><td>L</td><td>Both shipped docs are permissive (verified) → no-op; the restrictive worked example is a test fixture, not shipped (D-004). A polish task confirms the corpus-wide baseline is unchanged.</td></tr>
+  </tbody>
+</table>
+</section>
+
+
+<section id="complexity">
+<h2>9 · Complexity tracking</h2>
+<p>Anywhere this plan introduces complexity not strictly required by the spec, justify it here.</p>
+
+<spec-assumption>
+<p>FR-001/SC-002's "a missing license warns" is realised by 051's pre-existing <em>error</em> on a missing required
+field — a deliberate strengthening (an error is louder than the spec's warn, and both satisfy the intent that
+licensing is never silent), not a divergence. The <code>corpus-license</code> rule therefore does not re-check the
+missing case; SC-002's test asserts a missing-license document produces a finding (the 051 error). Recorded here so
+the severity nuance is on the record rather than a surprise.</p>
+</spec-assumption>
+</section>
+
+
+<section id="questions">
+<h2>10 · Open questions</h2>
+<spec-questions>
+<p>None outstanding — the missing-license reconciliation (051's error), the classification strategy (permissive
+allowlist), the worked-example placement (test fixture + README), the policy home (README section), and test style
+were all anchored in the interview; every must-tier decision is <code>grounding="verified"</code>.</p>
+</spec-questions>
+</section>
+
+
+<section id="changelog">
+<h2>11 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-07-25">25 Jul 2026</time><span>Initial plan. A <code>corpus-license</code> folded validate scan (D-001) classifying a declared license against a permissive SPDX allowlist — silent if listed, warn otherwise (D-003); the missing-license case left to 051's stronger existing error (D-002); the restrictive <code>KB-002</code> worked example as a test fixture + README description, keeping the baseline clean (D-004); the redistribution policy as a README section (D-005); TDD red-first (D-006). Mirrors 053's gate pattern; no new subsystem, no legal adjudication (NFR-001).</span></li>
+  <li><time datetime="2026-07-25">25 Jul 2026</time><span>Status flipped Draft → Accepted on 25 Jul 2026 — zero remaining unchecked tasks; tests verified passing per author confirmation. Sibling bundle (REQ-LIFECYCLE-005).</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  Plan for 058-corpus-licensing · Corpus licensing · authored 25 Jul 2026
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>
