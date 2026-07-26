@@ -74,6 +74,11 @@ anchor are out of scope.
    you're tempted to mention something you haven't confirmed, either confirm it first or leave it out. Prefer
    linking real IDs (`FR-003`, `D-010`) and real paths over describing things in the abstract.
 
+   **Cite the corpus when a domain fact is present** (055-corpus-in-review, FR-002). If the project has a
+   `knowledge/` corpus and the target's grounding rests on a domain fact — not a local product decision — cite
+   the document as `KB-NNN@edition`, the same citation form a `<spec-decision>` uses. No `knowledge/` corpus ⇒
+   explain exactly as today; this is additive, never a requirement to invent a citation that isn't there.
+
    Fade by band: **`wheels`** gets the fullest scaffolding — worked through, every connection spelled out;
    **`completion`** gets a middle read that leaves some steps for the learner; **`independent`** gets a terse,
    skippable refresher. The grounding guarantee is the same at every band — only the depth changes.
@@ -105,7 +110,9 @@ under `.spectastic/courses/<date>-<slug>/course.html`.
    repo-anchored target only; refuse-and-report on a miss. Ad-hoc topics are out of scope for this slice.
 
 2. **Draft ≤ 7 objectives**, each grounded in source you actually read. Per objective:
-   - a **title** and a grounded **read** explanation (cite only references you confirmed exist);
+   - a **title** and a grounded **read** explanation (cite only references you confirmed exist); when a
+     `knowledge/` corpus is present and the read teaches a domain fact, cite it as `KB-NNN@edition` alongside
+     the other refs (055-corpus-in-review, FR-002);
    - an **MCQ quiz** — `question`, 2–4 `options`, the `correctIndex`, and per-option `feedback` — written so it
      **cannot be answered without the source** (sanity-check yourself: could a stranger guess it cold? then rewrite it);
    - an ungraded **teachBack** prompt;

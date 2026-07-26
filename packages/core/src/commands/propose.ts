@@ -22,6 +22,7 @@ import type {
 import { decide, resolveDecider, resolveEffort } from '../decider/index.js';
 import type { Verdict } from '../decider/index.js';
 import { fenceArtifactText } from '../security/fence.js';
+import { buildCorpusPromptBlock, loadCorpus, withCorpusHint } from '../knowledge/index.js';
 
 export async function proposeCommand(
   input: ProposeInput,
@@ -29,15 +30,20 @@ export async function proposeCommand(
 ): Promise<ProposeResult> {
   if (!ctx.ai) throw new Error('proposeCommand requires ctx.ai');
 
+  // Corpus-in-prompt (054-corpus-in-prompt, D-001/D-005): '' when no knowledge/
+  // corpus exists, so filter(Boolean) drops it — byte-identical to before.
+  const corpusBlock = buildCorpusPromptBlock(loadCorpus(ctx.cwd));
+
   // Draft the proposal body via chat.
   const draftPrompt = [
     `Draft a change proposal against this spec:`,
     fenceArtifactText(input.specHtml.slice(0, 6000), 'Spec'),
     '',
     `Change request: ${input.description}`,
+    corpusBlock ? `\n${corpusBlock}` : '',
     '',
     'Return JSON: { "intent": string, "scope": string, "approach": string, "deltas": [ { "op": "added"|"modified"|"removed"|"renamed", "target": "REQ-ID", "postState"?: string, "reason"?: string, "migration"?: string } ] }',
-  ].join('\n');
+  ].filter(Boolean).join('\n');
   const draftRaw = await ctx.ai.chat(draftPrompt, {
     temperature: 0,
     system: 'Output ONLY the requested JSON.',
@@ -79,10 +85,16 @@ export async function proposeCommand(
       'agent',
     );
     const proposalDraft = JSON.stringify(draft, null, 2);
+    // Corpus-in-review (055-corpus-in-review, D-001): when a corpus exists, ask the
+    // critic to check for contradictions — not just carry 054's authoring directive.
+    // '' when absent, so the no-corpus reviewPrompt stays exactly as before (NFR-001).
+    const corpusSuffix = corpusBlock
+      ? `\n\nA knowledge corpus is included below. As a fourth angle, flag any requirement in the draft proposal that CONTRADICTS a cited domain fact in the corpus.\n\n${corpusBlock}`
+      : '';
     verdict = await decide(
       cfg,
       {
-        reviewPrompt: `Review this draft proposal against the spec and identify concrete risks.\n\nSpec excerpt:\n${fenceArtifactText(input.specHtml.slice(0, 3000), 'Spec excerpt')}\n\nDraft proposal:\n${proposalDraft}`,
+        reviewPrompt: `Review this draft proposal against the spec and identify concrete risks.\n\nSpec excerpt:\n${fenceArtifactText(input.specHtml.slice(0, 3000), 'Spec excerpt')}\n\nDraft proposal:\n${proposalDraft}${corpusSuffix}`,
         irreversible,
         maxFindings: 3,
         effortReason: reason,
@@ -99,7 +111,7 @@ export async function proposeCommand(
   }
 
   const html = renderProposalHtml(input.specId, input.description, draft, risks, verdict);
-  return { html, deltasCount: deltas.length, risks };
+  return withCorpusHint({ html, deltasCount: deltas.length, risks }, corpusBlock);
 }
 
 interface ParsedDraft {

@@ -99,14 +99,16 @@ User input (from `$ARGUMENTS`): a change name or one-line description ("add OAut
 
    **Flag overrides:** `--no-adversarial` skips even when the heuristic fires; `--adversarial` runs even when it doesn't.
 
-   **Spawn the critic Agent** — via the Agent tool with `subagent_type: spectastic-critic`, so it runs on the model that definition pins (`inherit` — the session model; adversarial risk-finding is the one fan-out kept on the strong model, spec 044 US3). Inputs: the drafted proposal HTML, the live spec, `./principles.html`, and (if known) the originating inbox card path. Use this prompt verbatim:
+   **Spawn the critic Agent** — via the Agent tool with `subagent_type: spectastic-critic`, so it runs on the model that definition pins (`inherit` — the session model; adversarial risk-finding is the one fan-out kept on the strong model, spec 044 US3). Inputs: the drafted proposal HTML, the live spec, `./principles.html`, the project's `knowledge/` corpus if present (055-corpus-in-review), and (if known) the originating inbox card path. Use this prompt verbatim:
 
    > Identify exactly three risks in this proposal:
    > 1. The single change most likely to be regretted in 30 days. Cite the specific `<spec-delta>` target or quote the phrase being objected to.
    > 2. The single requirement in the live spec this proposal most likely contradicts. Cite the REQ ID.
    > 3. The single concern about the proposal's scope — too broad, too narrow, or wrong topic group. Cite the `§Scope` item.
    >
-   > Empty findings are forbidden. If no risk passes the "would I regret this in 30 days?" test for any of the three, return `<spec-risk status="no-value-found">` with a one-sentence justification. Three `no-value-found` in a row escalates to the user before archive.
+   > If a `knowledge/` corpus exists in this repo, add a fourth risk: a requirement in the live spec that contradicts a domain fact committed under `knowledge/<pack>/references/`. Cite the contradicted `KB-NNN@edition`. No `knowledge/` directory ⇒ skip this fourth risk entirely.
+   >
+   > Empty findings are forbidden. If no risk passes the "would I regret this in 30 days?" test for any applicable slot, return `<spec-risk status="no-value-found">` with a one-sentence justification. Three `no-value-found` in a row escalates to the user before archive.
 
    **Embed the findings** in the proposal's §5 Risk register as one `<spec-risk target="…" status="identified">` per finding. Every `<spec-risk>` MUST carry a `target=` (delta ID, REQ ID, or `§<n>` anchor); missing renders the visible label `MISSING TARGET`.
 

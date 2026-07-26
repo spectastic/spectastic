@@ -87,6 +87,18 @@ describe('compose: AGENTS.md + CLAUDE.md', () => {
   });
 });
 
+describe('compose: AGENTS.md knowledge-corpus hint (055-corpus-in-review, T-300)', () => {
+  it('every profile carries a standing "Knowledge corpus" hint with usage + the ownership boundary', () => {
+    for (const name of Object.keys(manifest.profiles)) {
+      const md = renderAgentsMd(manifest, resolveProfile(manifest, name));
+      expect(md, name).toMatch(/## Knowledge corpus/);
+      expect(md, name).toMatch(/KB-NNN/);
+      // The FR-003 MUST NOT boundary: no behavioural guarantee about a skill spectastic doesn't own.
+      expect(md, name).toMatch(/no (behavioural |behavior )?guarantee.*(skill|review)/i);
+    }
+  });
+});
+
 describe('compose: spliceUpgrade (FR-007)', () => {
   it('appends fresh principles before the sentinel, renumbering', () => {
     const lean = renderPrinciplesHtml(opts('lean'));

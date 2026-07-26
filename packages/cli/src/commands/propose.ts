@@ -88,6 +88,8 @@ export function registerPropose(program: Command): void {
         process.stdout.write(
           `Wrote ${path.join(dir, 'proposal.html')} (${result.deltasCount} deltas${result.risks.length ? `; ${result.risks.length} risks identified` : ''}).\n`,
         );
+        const { showCorpusHintOnce } = await import('../knowledge/corpus-hint-marker.js');
+        await showCorpusHintOnce(process.cwd(), result.corpusHint);
 
         // Opt-in git layer (spec 026): scoped to the parent spec; stage the change dir.
         const { commitVerbAndExit } = await import('../git/index.js');
