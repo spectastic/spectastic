@@ -79,9 +79,17 @@ anchor are out of scope.
    the document as `KB-NNN@edition`, the same citation form a `<spec-decision>` uses. No `knowledge/` corpus ⇒
    explain exactly as today; this is additive, never a requirement to invent a citation that isn't there.
 
-   Fade by band: **`wheels`** gets the fullest scaffolding — worked through, every connection spelled out;
-   **`completion`** gets a middle read that leaves some steps for the learner; **`independent`** gets a terse,
-   skippable refresher. The grounding guarantee is the same at every band — only the depth changes.
+   **Reach for a teaching move before a flat definition.** A bare restatement is the weakest way to teach — a
+   reader can reread it and still not *see* the shape. Where the target has one, lead with the move that makes the
+   structure land: an **analogy** to something the reader already understands; two **contrasting cases** held side
+   by side (the fastest way to surface what actually distinguishes them); a **worked example** stepped through in
+   order; or a **picture in words** for anything spatial or structural. Ground both sides of any analogy or
+   contrast in real source — a comparison that mis-maps teaches a wrong shape, worse than none.
+
+   Fade the *worked example* by band, not just the verbosity: **`wheels`** shows the fully worked example — every
+   step, the reasoning included; **`completion`** leaves the last step or two for the learner (a completion
+   problem); **`independent`** gives the problem or a terse refresher and trusts the reader to work it. The
+   grounding guarantee is the same at every band — only how much scaffolding you remove changes.
 
 6. **Stay pull-only and read-only.** Coaching is pulled, never pushed: you run only because the user invoked
    `explain`. Write **no** file and change **nothing** on disk — the explanation is the chat. Do not create a
@@ -110,15 +118,26 @@ under `.spectastic/courses/<date>-<slug>/course.html`.
    repo-anchored target only; refuse-and-report on a miss. Ad-hoc topics are out of scope for this slice.
 
 2. **Draft ≤ 7 objectives**, each grounded in source you actually read. Per objective:
-   - a **title** and a grounded **read** explanation (cite only references you confirmed exist); when a
-     `knowledge/` corpus is present and the read teaches a domain fact, cite it as `KB-NNN@edition` alongside
-     the other refs (055-corpus-in-review, FR-002);
+   - a grounded **read** — either plain prose, or a **structured teaching payload** (spec 060) that adds the
+     teaching moves of the coach's step 5 to the course. The payload is
+     `{prose, analogy?, contrast?, workedExample?, illustration?}`, each member optional and each carrying its own
+     `refs`:
+     - **analogy** — `{source, target, mapping, refs}`: a mapping from a familiar concept to the target.
+     - **contrast** — `{caseA, caseB, dimensions:[{label, a, b}], refs}`: two aligned cases across named dimensions.
+     - **workedExample** — `{steps:[…], refs}`: an ordered, fully-worked sequence.
+     - **illustration** — `{svg, caption, refs}`: a self-contained inline `<svg>` — data, never script.
+
+     Use members **sparingly** — the one or two that make *this* objective land, not all four. Every member cites
+     only references you confirmed exist; a plain-prose `read` (a bare string) is always valid and unchanged. When a
+     `knowledge/` corpus is present and the read teaches a domain fact, cite it as `KB-NNN@edition` alongside the
+     other refs (055-corpus-in-review, FR-002);
+   - a **title**;
    - an **MCQ quiz** — `question`, 2–4 `options`, the `correctIndex`, and per-option `feedback` — written so it
      **cannot be answered without the source** (sanity-check yourself: could a stranger guess it cold? then rewrite it);
    - an ungraded **teachBack** prompt;
    - the **refs** the objective cites (spec IDs / element IDs / paths).
 
-   Keep objectives at the recall/understand level (Read + Quiz); hands-on Build is a later slice. No streaks,
+   Keep objectives at the recall/understand level; hands-on Build is a later slice. No streaks,
    badges, or XP — feedback is the motivator.
 
 3. **Hand the draft to the kernel.** Emit the course as one JSON object and pipe it to the engine:
@@ -128,13 +147,15 @@ under `.spectastic/courses/<date>-<slug>/course.html`.
      | spectastic course --target <target> [--keep]
    ```
 
-   The kernel confirms every cited ref exists and poses each quiz item to a **blind** check (the question with no
-   source); it writes the course only if every item passes.
+   The kernel confirms every cited ref exists (across the read's teaching members too), poses each quiz item to a
+   **blind** check (the question with no source), and poses each analogy to a **blind fit-check** (does the mapping
+   mislead?); it writes the course only if every item passes.
 
-4. **Run the regenerate-or-drop loop.** If the kernel reports failures — `missing-ref` or `guessable` — fix them:
-   re-ground or remove a missing ref, or rewrite a guessable quiz so it genuinely needs the source, then re-run.
-   If an objective's quiz stays guessable after a couple of attempts, **drop that objective** and re-run. Stop
-   when the course writes cleanly (exit 0).
+4. **Run the regenerate-or-drop loop.** If the kernel reports failures — `missing-ref`, `guessable`, or
+   `misleading-analogy` — fix them: re-ground or remove a missing ref; rewrite a guessable quiz so it genuinely
+   needs the source; re-map or drop an analogy the fit-check flagged. If an item stays flagged after a couple of
+   attempts, **drop it** (the offending analogy, or the whole objective) and re-run. Stop when the course writes
+   cleanly (exit 0).
 
 5. **Report** the written path. The course is **git-ignored by default** — regenerate it when the source moves,
    don't hand-edit it; `--keep` retains a copy. Don't edit a course in place.
