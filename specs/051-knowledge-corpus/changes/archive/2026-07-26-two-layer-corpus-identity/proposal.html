@@ -1,0 +1,301 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
+<title>Two-layer corpus identity · Change proposal</title>
+<link rel="stylesheet" href="../../../../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../../../../assets/favicon.svg">
+<script src="../../../../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Change proposal · 051-knowledge-corpus</p>
+  <h1>Two-layer corpus identity</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    Split the corpus id into the layer the pack can own and the layer only the project can — the DOI fix for the collision and the 051↔057 contradiction.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>     <span><spec-status value="applied">Applied</spec-status></span>
+    <b>Change ID</b>  <span>2026-07-26-two-layer-corpus-identity</span>
+    <b>Spec</b>       <span><a href="../../../spec.html">051-knowledge-corpus</a></span>
+    <b>Author</b>     <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Created</b>    <span><time datetime="2026-07-26">26 Jul 2026</time></span>
+    <b>Targets</b>    <span>4 requirements</span>
+    <b>Read time</b>  <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-tldr>
+    <p>The corpus id model is flat — a pack author writes <code>KB-001</code> into their own index and it is asked to be
+    "unique within the repo" (<a href="../../../spec.html#FR-002">FR-002</a>). But a pack is authored and published
+    <em>independently</em> (<a href="../../../../057-portable-domain-skill/spec.html">057</a>), so it cannot know what else shares a
+    downstream repo — both shipped packs collide on <code>KB-001</code>, and the resolver picks by array order. This amendment splits
+    identity into two layers, each in the scope it can guarantee (the DOI model, per
+    <a href="../../../../../docs/corpus-identity-considerations.html">the considerations brief</a>): a <strong>pack-internal slug</strong>
+    the pack owns (MODIFY <a href="../../../spec.html#FR-002">FR-002</a>), a pack map inlined in <code>SKILL.md</code> over those slugs
+    (MODIFY <a href="../../../spec.html#FR-004">FR-004</a>), and a new project-owned <strong>root <code>knowledge/index.md</code></strong>
+    registry that assigns each reference an opaque, repo-unique <code>KB-NNNN</code> (ADD FR-009). This fixes the <em>convention</em>;
+    the <code>corpus import</code> command that maintains the registry, the citation grammar, and the migration are the sequenced
+    follow-ons.</p>
+  </spec-tldr>
+</header>
+
+
+<spec-change id="2026-07-26-two-layer-corpus-identity" status="applied">
+
+<header>
+  <h3>Two-layer corpus identity</h3>
+  <span class="meta"><spec-status value="applied">Applied</spec-status></span>
+</header>
+
+
+<section id="intent">
+<h2>1 · Intent</h2>
+<p>After real use of the corpus family (051–059), the id model breaks in two ways a code read confirms: both shipped packs assign
+<code>KB-001</code>, and <code>resolveCitation</code> returns the first pack whose id matches, so a citation resolves by array order;
+and <a href="../../../spec.html#FR-002">FR-002</a>'s "unique within the repo" cannot coexist with
+<a href="../../../../057-portable-domain-skill/spec.html">057</a>'s "independently authored and published," because an independent pack
+can't guarantee uniqueness in a repo it doesn't know. Both trace to one conflation — the pack author is asked to mint an id unique in a
+scope they don't control.</p>
+<p>The fix, grounded in <a href="../../../../../docs/corpus-identity-considerations.html">the considerations brief</a>, is the DOI shape:
+a registration agency's prefix namespaces a publisher's suffix, giving uniqueness without global coordination. This amendment lands that
+split at the <em>convention</em> layer — the id contract, where the pack's map lives, and the existence and shape of the project's
+registry. The tooling that maintains the registry (the ingester), the citation grammar, and the data migration are deliberately
+separate, sequenced changes.</p>
+</section>
+
+
+<section id="scope">
+<h2>2 · Scope</h2>
+
+<spec-goals>
+  <h3>In scope</h3>
+  <ul>
+    <li>MODIFY <a href="../../../spec.html#FR-002">FR-002</a> — a corpus document carries a <strong>pack-internal slug</strong> (unique
+    within its pack, authored by the pack) and the <em>project</em> assigns a repo-unique opaque <code>KB-NNNN</code> at import.</li>
+    <li>MODIFY <a href="../../../spec.html#FR-004">FR-004</a> — the pack's curated map inlines into <code>SKILL.md</code> over its slugs;
+    the per-pack <code>index.md</code> is retired.</li>
+    <li>ADD FR-009 — a single root <code>knowledge/index.md</code> registry, the project's record mapping each <code>KB-NNNN</code> to
+    its <code>(marketplace, plugin, slug, title, edition, path)</code>.</li>
+    <li>MODIFY <a href="../../../spec.html#SC-001">SC-001</a> — re-word the must-tier acceptance from the retired per-pack-index model to
+    the two-layer / root-registry world.</li>
+  </ul>
+</spec-goals>
+
+<spec-non-goals>
+  <h3>Out of scope</h3>
+  <ul>
+    <li><spec-out-of-scope defer-to="TBD-corpus-root-index-ingester">The <code>spectastic corpus import</code> command that assigns
+    <code>KB-NNNN</code> and maintains the registry — marketplace-anchored, supersede-by-append, orphan-flagging. This amendment fixes
+    the registry's shape; that spec builds the tool that writes it.</spec-out-of-scope></li>
+    <li><spec-out-of-scope defer-to="TBD-corpus-hybrid-citation">The citation grammar resolving against the root registry, the
+    rendered human label, and the "<code>@edition</code> pins the document edition" clause — 052's contract.</spec-out-of-scope></li>
+    <li><spec-out-of-scope defer-to="TBD-corpus-identity-migration">Re-authoring the shipped packs, the external example repos, and the
+    live citations onto the two-layer model.</spec-out-of-scope></li>
+    <li><spec-out-of-scope defer-to="TBD-corpus-registry-per-marketplace">A per-marketplace registry packaging — this amendment
+    mandates a single root file (the marketplace column already records per-row provenance); splitting it is a future option only if a
+    repo imports from many sources.</spec-out-of-scope></li>
+  </ul>
+</spec-non-goals>
+</section>
+
+
+<section id="approach">
+<h2>3 · Approach</h2>
+<p>The split follows a single principle: <em>give each id layer the scope it can actually guarantee.</em> A pack owns a
+<strong>slug</strong> unique only within itself — no repo knowledge required, so the pack stays a clean, independently-publishable Agent
+Skill (<a href="../../../../057-portable-domain-skill/spec.html">057</a>). The consuming project owns the <strong><code>KB-NNNN</code></strong>
+— opaque, repo-unique, assigned at import and recorded only in its own root registry — so repo-uniqueness holds where it's controllable.
+A citation names the <code>KB-NNNN</code> (052's job), which resolves deterministically against the one registry, ending the
+array-order collision.</p>
+<p>This proposal is scoped to the <strong>convention</strong>, matching how 051 already owns the corpus layout while
+<a href="../../../../056-corpus-adapter/spec.html">056</a> owns the adapter tooling: it fixes the id contract (FR-002), where the pack map
+lives (FR-004), and the registry's existence, location, columns, and <code>KB-NNNN</code> contract (FR-009). <em>How</em> the registry
+is populated — the assignment algorithm, the marketplace anchor, supersede-by-append, orphan-flagging — is the ingester spec, so this
+amendment adds no command and no assignment logic, only the artifacts they will operate on.</p>
+</section>
+
+
+<section id="deltas">
+<h2>4 · Deltas</h2>
+<p>Two MODIFY + one ADD, all within 051's <code>FR-*</code> topic. Each embeds its post-state.</p>
+
+<spec-delta op="modified" target="FR-002">
+  <p><strong>What changes:</strong> the flat repo-unique <code>KB-NNN</code> becomes two ids at two layers — a pack-owned slug and a
+  project-assigned <code>KB-NNNN</code> — resolving the 051↔057 contradiction.</p>
+  <spec-requirement id="FR-002" priority="must">
+    <p>Every corpus document <spec-rule>MUST</spec-rule> be identified at two layers. <strong>(1) A pack-internal slug</strong> — a
+    short, path-independent id unique <em>within its pack</em> (e.g. <code>001-settlement-windows</code>), authored and owned by the
+    pack and carried in the document (its filename and frontmatter). This is the portable id the pack ships with; minting it
+    <spec-rule>MUST NOT</spec-rule> require any knowledge of a consuming repo. <strong>(2) A project-assigned <code>KB-NNNN</code></strong>
+    — an opaque, repo-unique id (a <code>KB-</code> prefix and a zero-padded number, four-digit baseline, matching the existing
+    <code>\d{3,}</code> shape) the <em>consuming project</em> assigns when it imports the reference and records only in the root
+    registry (FR-009). A pack <spec-rule>MUST NOT</spec-rule> mint a <code>KB-NNNN</code>. A citation references the
+    <code>KB-NNNN</code> independent of file path (052).</p>
+    <details><summary>Rationale</summary><p>A persistent identifier in the spirit of a DOI — and a DOI is <em>composite</em> for exactly
+    this reason: a registration agency's prefix namespaces a publisher's suffix, so ids are globally unique without global coordination.
+    The old flat <code>KB-NNN</code> asked the pack author to mint an id unique in a scope they do not control (the consuming repo),
+    which both collides across independently-authored packs and contradicts <a href="../../../../057-portable-domain-skill/spec.html">057</a>.
+    Splitting the id gives each layer the scope it can guarantee — the pack owns a pack-local slug, the project owns the repo-unique
+    <code>KB-NNNN</code>. <a href="../../../../../principles.html#P-3">P-3</a> applied to the corpus, now at the right layer.</p></details>
+  </spec-requirement>
+</spec-delta>
+
+<spec-delta op="modified" target="FR-004">
+  <p><strong>What changes:</strong> the curated map moves from a per-pack <code>index.md</code> into the pack's <code>SKILL.md</code>,
+  over slugs (no <code>KB-</code> ids — those are the project's, per FR-009).</p>
+  <spec-requirement id="FR-004" priority="must">
+    <p>Each pack <spec-rule>MUST</spec-rule> carry a curated map of its references — in the <code>llms.txt</code> spirit — <strong>inlined
+    in its <code>SKILL.md</code></strong>, listing each reference's <em>pack-internal slug</em>, title, one-line description, current
+    edition, and path, so an agent has a cheap map before it reads anything. The map <spec-rule>MUST</spec-rule> be over the pack's own
+    slugs and <spec-rule>MUST NOT</spec-rule> carry a <code>KB-NNNN</code> (the project assigns those, FR-009), so the pack remains a
+    clean, self-describing, publishable unit. A separate per-pack <code>index.md</code> is retired.</p>
+    <details><summary>Rationale</summary><p>The pack is one portable, self-describing unit; its map belongs in the discovery file the
+    agent already reads, not a sibling file that can drift from it. Keeping the map over slugs — never <code>KB-</code> ids — is what
+    keeps the pack free of project state, so the same unedited pack works as a plain Agent Skill and, dropped into a spectastic repo, is
+    citable via the harness binding (<a href="../../../../057-portable-domain-skill/spec.html">057</a>).</p></details>
+  </spec-requirement>
+</spec-delta>
+
+<spec-delta op="modified" target="SC-001">
+  <p><strong>What changes:</strong> the must-tier acceptance still describes the retired model (a per-pack index + <code>KB-NNN</code>
+  documents); re-word it to the two-layer world so the criterion matches the FRs it verifies.</p>
+  <spec-requirement id="SC-001" priority="must">
+    <p>A committed corpus pack whose <code>SKILL.md</code> carries a curated map and whose <code>references/</code> holds at least one
+    slug-named document passes <code>spectastic validate</code> with zero findings; and for a project that has imported references,
+    every <code>KB-NNNN</code> in the root <code>knowledge/index.md</code> registry resolves to a file on disk.</p>
+  </spec-requirement>
+</spec-delta>
+
+<spec-delta op="added" target="FR-009">
+  <spec-requirement id="FR-009" priority="must">
+    <p>A consuming project that imports corpus references <spec-rule>MUST</spec-rule> record them in a single root registry at
+    <code>knowledge/index.md</code>. Each row <spec-rule>MUST</spec-rule> carry a project-assigned <code>KB-NNNN</code> and the reference
+    it names: source <code>marketplace</code>, <code>plugin</code> (pack), pack-internal <code>slug</code>, <code>title</code>, current
+    <code>edition</code>, and <code>path</code>. The <code>KB-NNNN</code> <spec-rule>MUST</spec-rule> be repo-unique and <strong>opaque</strong>
+    — a <code>KB-</code> prefix and a zero-padded number (four-digit baseline), with no embedded pack or reference name — the stable id a
+    citation resolves against (052). This requirement fixes the registry's <em>existence, location, and columns, and the
+    opaque-repo-unique <code>KB-NNNN</code> contract</em>. <em>How</em> ids are assigned and rows maintained across imports — the
+    <code>(marketplace, plugin, slug)</code> re-import key, monotonic never-reused assignment, supersede-by-append, orphan-flagging — is
+    the ingester's contract (deferred, <code>TBD-corpus-root-index-ingester</code>), not this requirement. A project with no imported
+    references owes no registry.</p>
+    <details><summary>Rationale</summary><p>The <code>KB-NNNN</code>→reference mapping must live where the project owns it, and
+    <code>marketplace.json</code> is the <em>publisher's</em> manifest with no per-reference slot — so the registry is a consumer-side
+    artifact layered on top of the marketplace's <code>(name, version)</code> coordinate, not a field inside it. A single root file is
+    the one deterministic place to resolve a citation and to answer "what has this project ingested." Opaqueness follows the
+    persistent-identifier rule so a pack or reference rename never rots a citation. The requirement is scoped to the static shape so it
+    is satisfiable the moment it lands — the assignment behaviour that only the ingester can perform is stated as its contract, not
+    demanded of a repo that has no import tool yet.</p></details>
+  </spec-requirement>
+</spec-delta>
+</section>
+
+
+<section id="risks">
+<h2>5 · Risk register</h2>
+<p>The adversarial pass ran (the amendment touches <code>must</code>-tier requirements). One <code>&lt;spec-risk&gt;</code> per finding;
+<code>status="identified"</code> until dispositioned. Apply refuses while any remain <code>identified</code>.</p>
+
+<spec-risk-log>
+
+<spec-risk target="FR-004" status="mitigated" by="Brian Corbin · @briancorbinxyz">
+  <p class="claim">Retiring the per-pack <code>index.md</code> and folding the validator flip into this slice turns the two shipped
+  dogfood packs red the moment it applies — the migration that would fix them is a separate, later slice.</p>
+  <p class="citation">FR-004 "a per-pack <code>index.md</code> is retired" + the original §6 tasks "retire the <code>index.md</code>
+  parse" / "split <code>duplicateIdFindings</code>", against <code>knowledge/spectastic-concepts/</code> and
+  <code>examples/knowledge/finance-settlement/</code>, which still carry an <code>index.md</code> and pack-minted <code>KB-001</code>.</p>
+  <div class="response"><strong>Mitigated by revision.</strong> §6 is re-scoped to be <em>non-breaking</em>: this slice adds the new
+  parsers/checks <em>alongside</em> the existing <code>index.md</code> acceptance and makes the registry check a no-op when absent; the
+  validator flip, the <code>index.md</code> removal, and the pack re-authoring all land together in
+  <code>TBD-corpus-identity-migration</code> (a back-compat window, the <code>renames</code> precedent). FR-004 states the target;
+  enforcement follows the migration, so no new finding hits the shipped packs on this apply.</div>
+</spec-risk>
+
+<spec-risk target="SC-001" status="mitigated" by="Brian Corbin · @briancorbinxyz">
+  <p class="claim">The amendment changed FR-002/FR-004 but the must-tier <code>SC-001</code> still asserted the retired shape (a per-pack
+  index + a <code>KB-NNN</code> document), so the acceptance criterion contradicted the requirements it verifies.</p>
+  <p class="citation">Live <code>SC-001</code>: "A committed corpus pack <em>with an index</em> and at least one <code>KB-NNN</code>
+  document … every <code>KB-NNN</code> in the index resolves to a file on disk."</p>
+  <div class="response"><strong>Mitigated by revision.</strong> A MODIFY <code>SC-001</code> delta was added, re-wording the acceptance to
+  the two-layer / root-registry world. The non-requirement prose that carries the same staleness (US1/US2 acceptance, the
+  smallest-demoable, the TL;DR, the §4 data model) is reconciled by the new §6 prose-edit task, since those are not
+  <code>&lt;spec-requirement&gt;</code> elements a delta can touch.</div>
+</spec-risk>
+
+<spec-risk target="FR-009" status="mitigated" by="Brian Corbin · @briancorbinxyz">
+  <p class="claim">FR-009 was scoped "convention only" yet mandated producer behaviour (the <code>(marketplace, plugin, slug)</code>
+  re-import key, never-reuse), and demanded a registry a repo can't populate until the deferred ingester exists — an unsatisfiable
+  <code>must</code>.</p>
+  <p class="citation">Original FR-009: "The row MUST be keyed on the <code>(marketplace, plugin, slug)</code> coordinate so a re-import
+  can find and update it … <code>KB-NNNN</code> MUST be … never reused."</p>
+  <div class="response"><strong>Mitigated by revision.</strong> FR-009 is narrowed to the static shape (existence, location, columns,
+  opaque repo-unique <code>KB-NNNN</code>); the assignment/keying/never-reuse/supersede/orphan semantics are named as the ingester's
+  contract (<code>TBD-corpus-root-index-ingester</code>), and "a project with no imported references owes no registry" makes it
+  satisfiable the moment it lands.</div>
+</spec-risk>
+
+<spec-risk target="KB-001@2026-07-25" status="no-value-found">
+  <p class="claim">No live 051 requirement contradicts a domain fact committed under <code>knowledge/</code>.</p>
+  <p class="citation"><code>knowledge/spectastic-concepts/references/KB-001-foundations.md</code> asserts facts about spec-driven
+  development, the RFC 2119 keywords, and the grounding states — none of which an identity-convention change touches.</p>
+</spec-risk>
+
+</spec-risk-log>
+</section>
+
+
+<section id="tasks">
+<h2>6 · Tasks</h2>
+<p>Scoped to the <em>convention</em>, and deliberately <strong>non-breaking</strong>: this slice <em>adds</em> the two-layer data model,
+the new parsers, and a no-op-when-absent registry check, but does <strong>not</strong> flip the validator to reject the old shape or
+remove the <code>index.md</code> acceptance — that enforcement rides with the pack re-authoring in
+<code>TBD-corpus-identity-migration</code>, so applying this adds no new finding to the two shipped packs (the CLAUDE.md
+"zero-errors across the corpus" invariant holds in the window). On apply these fold into
+<a href="../../../tasks.html">051's tasks.html</a> (per <a href="../../../spec.html#REQ-CHANGE-006">REQ-CHANGE-006</a>). The import command
+and the pack re-authoring are the follow-on specs, not here.</p>
+
+<ul style="list-style:none;padding-left:0;">
+  <li><input type="checkbox"> Add the two-layer id + root-registry data model — a pack-internal-slug field on the document type, and a <code>RegistryEntry</code> (<code>KB-NNNN</code>, marketplace, plugin, slug, title, edition, path). <span class="path">packages/core/src/knowledge/types.ts</span></li>
+  <li><input type="checkbox"> Add the root-registry table parse/render (7 columns) and the <code>SKILL.md</code>-inlined slug-map parse <em>alongside</em> the existing per-pack <code>index.md</code> parse — the old parse stays accepted through the migration back-compat window. <span class="path">packages/core/src/knowledge/index-format.ts</span></li>
+  <li><input type="checkbox"> Add root-registry well-formedness (required columns; opaque repo-unique <code>KB-NNNN</code>) as a new check that is a <strong>no-op when no registry is present</strong>, plus a pack-local slug-uniqueness check. Do <strong>not</strong> yet repurpose <code>duplicateIdFindings</code> to reject pack-minted <code>KB-</code> ids or drop the <code>index.md</code> acceptance — that flip lands with the pack re-authoring in <code>TBD-corpus-identity-migration</code>. <span class="path">packages/core/src/knowledge/validate.ts</span></li>
+  <li><input type="checkbox"> Scaffold a root <code>knowledge/index.md</code> and a <code>SKILL.md</code> with an inline slug map on <code>spectastic init</code> for new projects; the per-pack <code>index.md</code> template is dropped for new scaffolds only. <span class="path">packages/cli/src/commands/init</span></li>
+  <li><input type="checkbox"> Reconcile 051's own prose to the two-layer model — US1/US2 acceptance, the §2 smallest-demoable, the TL;DR, and the §4 data-model entities still say "<code>KB-NNN</code> ID" / "an index" / "unique across the repo". A hand-edit of <code>spec.html</code> prose (these are not <code>&lt;spec-requirement&gt;</code> elements, so not deltas). <span class="path">specs/051-knowledge-corpus/spec.html</span></li>
+</ul>
+</section>
+
+
+<section id="questions">
+<h2>7 · Open questions</h2>
+<spec-questions>
+<p>None outstanding — the baseline width (<code>KB-NNNN</code>), the single-root-file registry shape, and the convention-vs-tooling
+split were all anchored in the interview. The per-marketplace packaging is deferred (§2), not open; the ingester's assignment
+algorithm and the citation grammar are separate specs.</p>
+</spec-questions>
+</section>
+
+
+<section id="changelog">
+<h2>8 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-07-26">26 Jul 2026</time><span>Proposal authored — MODIFY FR-002 (two-layer id) + FR-004 (pack map → inline SKILL.md) + ADD FR-009 (root registry convention), per docs/corpus-identity-considerations.html D-001/D-002/D-005. First of the sequenced corpus-identity changes.</span></li>
+  <li><time datetime="2026-07-26">26 Jul 2026</time><span>Adversarial pass reshaped the slice: §6 made non-breaking (validator flip + index.md removal + pack re-authoring deferred to the migration, so the shipped packs don't go red on apply); a MODIFY SC-001 delta added (the must-tier acceptance had been left describing the retired model) + a §6 prose-reconciliation task; FR-009 narrowed to static shape (assignment/keying semantics moved to the ingester's contract). 4 deltas now; 3 risks identified + mitigated by these revisions, 1 corpus no-value-found.</span></li>
+  <li><time datetime="2026-07-26">26 Jul 2026</time><span>Applied on 26 Jul 2026 — MODIFY FR-002/FR-004/SC-001 + ADD FR-009 - the corpus id splits into a pack-owned slug and a project-assigned opaque KB-NNNN in a new root knowledge/index.md registry, resolving the FR-002-vs-057 pack-vs-repo uniqueness contradiction and the KB-001 cross-pack collision (docs/corpus-identity-considerations.html D-001/D-002/D-005); scoped non-breaking (validator flip and pack re-authoring deferred to the migration slice) and FR-009 narrowed to static shape after the adversarial pass.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+</spec-change>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  2026-07-26-two-layer-corpus-identity · Two-layer corpus identity · authored 26 Jul 2026
+</footer>
+
+</main>
+<script src="../../../../../assets/spec.js"></script>
+</body>
+</html>

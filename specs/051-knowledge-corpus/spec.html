@@ -118,9 +118,21 @@ portability are its siblings.</p>
 </spec-requirement>
 
 <spec-requirement id="FR-002" priority="must">
-<p>Every corpus document <spec-rule>MUST</spec-rule> carry a stable source ID of the form <code>KB-NNN</code>, unique within the repo, that a citation can reference independent of file path.</p>
-<details><summary>Rationale</summary><p>A persistent identifier, not a path — in the spirit of a DOI. The document can move, be reorganised, or be re-ingested at a newer edition, and the citation still resolves. <a href="../../principles.html#P-3">P-3</a> applied to the corpus.</p></details>
-</spec-requirement>
+    <p>Every corpus document <spec-rule>MUST</spec-rule> be identified at two layers. <strong>(1) A pack-internal slug</strong> — a
+    short, path-independent id unique <em>within its pack</em> (e.g. <code>001-settlement-windows</code>), authored and owned by the
+    pack and carried in the document (its filename and frontmatter). This is the portable id the pack ships with; minting it
+    <spec-rule>MUST NOT</spec-rule> require any knowledge of a consuming repo. <strong>(2) A project-assigned <code>KB-NNNN</code></strong>
+    — an opaque, repo-unique id (a <code>KB-</code> prefix and a zero-padded number, four-digit baseline, matching the existing
+    <code>\d{3,}</code> shape) the <em>consuming project</em> assigns when it imports the reference and records only in the root
+    registry (FR-009). A pack <spec-rule>MUST NOT</spec-rule> mint a <code>KB-NNNN</code>. A citation references the
+    <code>KB-NNNN</code> independent of file path (052).</p>
+    <details><summary>Rationale</summary><p>A persistent identifier in the spirit of a DOI — and a DOI is <em>composite</em> for exactly
+    this reason: a registration agency's prefix namespaces a publisher's suffix, so ids are globally unique without global coordination.
+    The old flat <code>KB-NNN</code> asked the pack author to mint an id unique in a scope they do not control (the consuming repo),
+    which both collides across independently-authored packs and contradicts <a href="../057-portable-domain-skill/spec.html">057</a>.
+    Splitting the id gives each layer the scope it can guarantee — the pack owns a pack-local slug, the project owns the repo-unique
+    <code>KB-NNNN</code>. <a href="../../principles.html#P-3">P-3</a> applied to the corpus, now at the right layer.</p></details>
+  </spec-requirement>
 
 <spec-requirement id="FR-003" priority="must">
 <p>Every corpus document <spec-rule>MUST</spec-rule> carry provenance frontmatter: <code>origin</code> / <code>origin-url</code>, <code>edition</code>, <code>license</code>, <code>converter</code>, a content hash, and a <code>status</code> (e.g. <code>illustrative-excerpt</code> vs authoritative).</p>
@@ -128,8 +140,16 @@ portability are its siblings.</p>
 </spec-requirement>
 
 <spec-requirement id="FR-004" priority="must">
-<p>The corpus <spec-rule>MUST</spec-rule> carry a curated index, in the <code>llms.txt</code> spirit, mapping each <code>KB-NNN</code> to its title, one-line description, current edition, and path — so an agent has a cheap map before it reads anything.</p>
-</spec-requirement>
+    <p>Each pack <spec-rule>MUST</spec-rule> carry a curated map of its references — in the <code>llms.txt</code> spirit — <strong>inlined
+    in its <code>SKILL.md</code></strong>, listing each reference's <em>pack-internal slug</em>, title, one-line description, current
+    edition, and path, so an agent has a cheap map before it reads anything. The map <spec-rule>MUST</spec-rule> be over the pack's own
+    slugs and <spec-rule>MUST NOT</spec-rule> carry a <code>KB-NNNN</code> (the project assigns those, FR-009), so the pack remains a
+    clean, self-describing, publishable unit. A separate per-pack <code>index.md</code> is retired.</p>
+    <details><summary>Rationale</summary><p>The pack is one portable, self-describing unit; its map belongs in the discovery file the
+    agent already reads, not a sibling file that can drift from it. Keeping the map over slugs — never <code>KB-</code> ids — is what
+    keeps the pack free of project state, so the same unedited pack works as a plain Agent Skill and, dropped into a spectastic repo, is
+    citable via the harness binding (<a href="../057-portable-domain-skill/spec.html">057</a>).</p></details>
+  </spec-requirement>
 
 <spec-requirement id="FR-005" priority="must">
 <p>Any corpus text entering an AI-verb prompt <spec-rule>MUST</spec-rule> pass through the existing <code>fenceArtifactText()</code> boundary; the sanitiser <spec-rule>MUST NOT</spec-rule> be forked.</p>
@@ -148,6 +168,26 @@ portability are its siblings.</p>
 <p>Agents <spec-rule level="may">MAY</spec-rule> discover and read the corpus by agentic search (grep / glob) over the committed files; the convention <spec-rule>MUST NOT</spec-rule> require a vector index or a runtime server to be usable.</p>
 <details><summary>Rationale</summary><p>The tools that tried vector search are walking it back (staleness, an infra dependency, an opaque step). For a corpus that lives in the repo and changes with it, "the codebase is the index" transfers directly. Retrieval at scale is a separate, threshold-gated slice (<a href="../059-corpus-retrieval-scale/spec.html">059</a>).</p></details>
 </spec-requirement>
+<spec-requirement id="FR-009" priority="must">
+    <p>A consuming project that imports corpus references <spec-rule>MUST</spec-rule> record them in a single root registry at
+    <code>knowledge/index.md</code>. Each row <spec-rule>MUST</spec-rule> carry a project-assigned <code>KB-NNNN</code> and the reference
+    it names: source <code>marketplace</code>, <code>plugin</code> (pack), pack-internal <code>slug</code>, <code>title</code>, current
+    <code>edition</code>, and <code>path</code>. The <code>KB-NNNN</code> <spec-rule>MUST</spec-rule> be repo-unique and <strong>opaque</strong>
+    — a <code>KB-</code> prefix and a zero-padded number (four-digit baseline), with no embedded pack or reference name — the stable id a
+    citation resolves against (052). This requirement fixes the registry's <em>existence, location, and columns, and the
+    opaque-repo-unique <code>KB-NNNN</code> contract</em>. <em>How</em> ids are assigned and rows maintained across imports — the
+    <code>(marketplace, plugin, slug)</code> re-import key, monotonic never-reused assignment, supersede-by-append, orphan-flagging — is
+    the ingester's contract (deferred, <code>TBD-corpus-root-index-ingester</code>), not this requirement. A project with no imported
+    references owes no registry.</p>
+    <details><summary>Rationale</summary><p>The <code>KB-NNNN</code>→reference mapping must live where the project owns it, and
+    <code>marketplace.json</code> is the <em>publisher's</em> manifest with no per-reference slot — so the registry is a consumer-side
+    artifact layered on top of the marketplace's <code>(name, version)</code> coordinate, not a field inside it. A single root file is
+    the one deterministic place to resolve a citation and to answer "what has this project ingested." Opaqueness follows the
+    persistent-identifier rule so a pack or reference rename never rots a citation. The requirement is scoped to the static shape so it
+    is satisfiable the moment it lands — the assignment behaviour that only the ingester can perform is stated as its contract, not
+    demanded of a repo that has no import tool yet.</p></details>
+  </spec-requirement>
+
 
 <h3>Non-functional</h3>
 
@@ -201,8 +241,10 @@ portability are its siblings.</p>
 <p>Technology-agnostic, measurable outcomes.</p>
 
 <spec-requirement id="SC-001" priority="must">
-<p>A committed corpus pack with an index and at least one <code>KB-NNN</code> document passes <code>spectastic validate</code> with zero findings, and every <code>KB-NNN</code> in the index resolves to a file on disk.</p>
-</spec-requirement>
+    <p>A committed corpus pack whose <code>SKILL.md</code> carries a curated map and whose <code>references/</code> holds at least one
+    slug-named document passes <code>spectastic validate</code> with zero findings; and for a project that has imported references,
+    every <code>KB-NNNN</code> in the root <code>knowledge/index.md</code> registry resolves to a file on disk.</p>
+  </spec-requirement>
 
 <spec-requirement id="SC-002" priority="should">
 <p>A fresh <code>spectastic init</code> produces a <code>knowledge/</code> scaffold into which a user adds a markdown document — with no edit to tool code — and that document validates.</p>
@@ -252,6 +294,7 @@ portability are its siblings.</p>
 <ol>
   <li><time datetime="2026-07-25">25 Jul 2026</time><span>Status flipped Draft → Accepted on 25 Jul 2026 — zero remaining unchecked tasks in tasks.html; tests verified passing per author confirmation (751/752 real tests green across core+cli, the one apparent failure a confirmed pre-existing perf-timing flake; 0 errors across the full spec corpus validate). Sibling bundle (REQ-LIFECYCLE-005) — spec.html, plan.html, tasks.html flip together.</span></li>
   <li><time datetime="2026-07-25">25 Jul 2026</time><span>Initial draft. Owns <code>TBD-knowledge-corpus</code> from the <a href="../../docs/knowledge-base-considerations.html">knowledge-base considerations</a> survey — the corpus convention: committed <code>knowledge/</code>, Agent Skills <code>references/</code> shape, <code>KB-NNN</code> IDs, provenance frontmatter, a curated index, <code>init</code> scaffolding, a dogfooded in-repo corpus, and ingestion through the existing <code>fenceArtifactText()</code>. The base slice of the corpus family; citation, gates, injection, review, adapter, licensing, portability, and retrieval-at-scale are its siblings.</span></li>
+  <li><time datetime="2026-07-26">26 Jul 2026</time><span>Applied <a href="./changes/archive/2026-07-26-two-layer-corpus-identity/proposal.html">2026-07-26-two-layer-corpus-identity</a>: MODIFY FR-002/FR-004/SC-001 + ADD FR-009 - the corpus id splits into a pack-owned slug and a project-assigned opaque KB-NNNN in a new root knowledge/index.md registry, resolving the FR-002-vs-057 pack-vs-repo uniqueness contradiction and the KB-001 cross-pack collision (docs/corpus-identity-considerations.html D-001/D-002/D-005); scoped non-breaking (validator flip and pack re-authoring deferred to the migration slice) and FR-009 narrowed to static shape after the adversarial pass.</span></li>
 </ol>
 </spec-changelog>
 </section>
