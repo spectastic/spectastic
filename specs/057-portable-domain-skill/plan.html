@@ -1,0 +1,359 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
+<title>Portable domain skill · Plan</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Implementation plan · 057-portable-domain-skill</p>
+  <h1>Portable domain skill</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    Portability and discoverability are the same coin: a pack that carries no host coupling and a description that any agent can find — checked where the tool can see it, honest about where it can't.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>     <span><spec-status value="accepted">Accepted</spec-status></span>
+    <b>Spec</b>       <span><a href="./spec.html">057-portable-domain-skill</a></span>
+    <b>Owner</b>      <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Branch</b>     <span><code>main</code></span>
+    <b>Created</b>    <span><time datetime="2026-07-25">25 Jul 2026</time></span>
+    <b>Read time</b>  <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-tldr>
+    <p>A domain pack is a distributable Agent Skill, and its discovery surface is the SKILL.md
+    <code>description</code> the agent's router reads at startup (progressive disclosure). So this slice ships three
+    things: a <strong>folded <code>validate</code> scan</strong> (<code>packAgnosticismFindings</code> in core) that
+    flags spectastic vocabulary in a pack <em>declared distributable by a <code>marketplace.json</code></em> — and
+    verifies that same pack carries a present, non-trivial discovery <code>description</code>; a
+    <strong><code>marketplace.json</code></strong> bundle shape; and a clean <strong><code>finance-settlement</code>
+    demo pack</strong> under <code>examples/</code> that carries zero spectastic tokens, a rich multi-phase
+    description, and 051 corpus metadata so the <em>same unedited pack</em> is a plain skill outside spectastic and
+    citable inside it. Biggest risk: false-positiving spectastic's own dogfood/scaffold packs; mitigated by only ever
+    checking marketplace-listed packs.</p>
+  </spec-tldr>
+</header>
+
+
+<section id="principles-check">
+<h2>1 · Principles check</h2>
+<p>Verify this plan respects every principle in
+<a href="../../principles.html">v1.8.0</a>. Any violation requires either a
+principles amendment or a deliberate exception logged below.</p>
+
+<table>
+  <thead><tr><th>Principle</th><th>Compliance</th><th>Notes</th></tr></thead>
+  <tbody>
+    <tr><td>P-8 · Guarantees live in the kernel or CI</td><td><spec-pill>OK</spec-pill></td><td>The agnosticism + discovery-presence check is deterministic kernel code folded into <code>validate</code> (<a href="#D-001">D-001</a>); the *quality* of a description's triggering, and any pack the tool never sees, stay honestly review-caught (<a href="./spec.html#NFR-001">NFR-001</a>) — named, not dressed up.</td></tr>
+    <tr><td>P-10 · Internal artifact ids stay out of user-facing copy</td><td><spec-pill>OK</spec-pill></td><td>The whole feature is *about* keeping spectastic vocabulary out of a portable pack; the demo pack and its <code>marketplace.json</code> carry none. The check's own finding message names the leaked token, which is legitimate diagnostic content.</td></tr>
+    <tr><td>P-3 · IDs are contracts</td><td><spec-pill>OK</spec-pill></td><td>The demo pack carries 051's <code>KB-NNN</code> ids so it is citable in a spectastic repo unedited — the id convention is the portable corpus data, not spectastic vocabulary (the token set excludes it, <a href="#D-003">D-003</a>).</td></tr>
+    <tr><td>P-11 · Artifacts are data, not instructions</td><td><spec-pill>OK</spec-pill></td><td>The check reads pack markdown as data to scan; it never executes it. The demo pack's references carry provenance, fenced by 054 when injected.</td></tr>
+    <tr><td>P-2 · Semantic tags over class soup</td><td><spec-pill>OK</spec-pill></td><td>No artifact markup; core TypeScript, a CLI scan, and emitted markdown/JSON fixtures.</td></tr>
+  </tbody>
+</table>
+</section>
+
+
+<section id="technical-context">
+<h2>2 · Technical context</h2>
+<dl>
+  <dt>Language(s)</dt>      <dd>TypeScript 5.7, Node ≥ 20 (pnpm 9.15.9 workspace); Markdown + JSON for the pack + manifest</dd>
+  <dt>Frameworks</dt>       <dd>None new — <code>@spectastic/core</code> kernel, the <code>validate</code> CLI, the existing <code>yaml</code> dep for SKILL.md frontmatter</dd>
+  <dt>Architecture</dt>     <dd>Fat-core / thin-CLI, layered: <code>marketplace.json</code> resolver → per-pack agnosticism + discovery check → findings; a folded <code>validate</code> scan; a demo pack + manifest fixture (<a href="#D-001">D-001</a>)</dd>
+  <dt>Storage</dt>          <dd>Filesystem — reads a <code>marketplace.json</code> and the packs it lists</dd>
+  <dt>Testing</dt>          <dd>vitest 2 — TDD, tests written red-first (<a href="#D-006">D-006</a>)</dd>
+  <dt>Coverage</dt>         <dd>Not in scope — no <code>coverage</code> enforce category (no profile marker on this repo)</dd>
+  <dt>Perf targets</dt>     <dd>Not in scope — no perf NFR; a token scan over a bounded set of listed packs</dd>
+  <dt>Constraints</dt>      <dd>Never false-positive spectastic's own packs (check only marketplace-listed ones). The pack MUST work as a plain Agent Skill with no spectastic present (<a href="./spec.html#FR-004">FR-004</a>). Portability on un-inspected third-party packs is encouraged, not enforced (<a href="./spec.html#NFR-001">NFR-001</a>).</dd>
+</dl>
+</section>
+
+
+<section id="grounding">
+<h2>3 · Grounding &amp; evidence</h2>
+<p>Every design-bearing fact this plan rests on, and how it was confirmed — read this before the
+approach: it separates what the plan <em>knows</em> from what it <em>assumes</em> (per
+<code>REQ-LIFECYCLE-006</code>). Status is <code>verified</code> (opened the source
+this turn), <code>spike</code> (decidable only by a time-boxed investigation — run it, record the
+finding), or <code>assumed</code> (taken as true without verification). A <code>must</code>-tier decision
+may not rest on an <code>assumed</code>/unresolved-<code>spike</code> fact unless accepted as a
+<code>&lt;spec-risk&gt;</code> (see §8).</p>
+
+<table class="evidence">
+  <thead>
+    <tr><th>Claim the design rests on</th><th>Source</th><th>Status</th><th>Finding / note</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>052 deliberately left 057 the broad agnosticism check — its own guard is a narrow, test-only binding-token scan</td>
+        <td><code>packages/cli/test/corpus-pack-agnostic.test.ts</code></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td>Scans only for <code>&lt;spec-decision</code>/<code>grounding=</code>; its comment states the broad "zero spectastic knowledge" check "for a distributable (finance-settlement) skill is 057's concern, not this one." No core function, no CLI reach.</td></tr>
+    <tr><td>The false-positive to avoid: spectastic's own dogfood/scaffold packs legitimately name spectastic — the check must be scoped to distributable packs only</td>
+        <td><code>knowledge/spectastic-concepts/SKILL.md</code>; <code>templates/knowledge/example/SKILL.md</code></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td>Both name spectastic freely (the scaffold even says "scaffolded by <code>spectastic init</code>", "cites a document as <code>KB-NNN@edition</code>"). Neither is in a marketplace, so the marketplace-scoped check never inspects them (<a href="#D-002">D-002</a>).</td></tr>
+    <tr><td>A pack's discovery surface is the SKILL.md <code>description</code>, loaded at startup via progressive disclosure</td>
+        <td><code>docs/knowledge-base-considerations.html:154</code>; <code>templates/knowledge/example/SKILL.md</code></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td>"at startup only each skill's name and description are loaded; when a task matches, the full <code>SKILL.md</code> is read in." The scaffold calls <code>description</code> "the discovery layer: a name and description an agent reads first" — exactly the discoverability surface (<a href="#D-004">D-004</a>).</td></tr>
+    <tr><td>A <code>marketplace.json</code> bundles skills as installable-by-path plugins — the distribution shape (FR-002) and the "declared distributable" signal in one</td>
+        <td><code>docs/knowledge-base-considerations.html:338</code>, <code>:479</code></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td>An <code>anthropics/skills</code>-style <code>marketplace.json</code> bundles skills by path; a public registry/semver is <em>reported</em>, not confirmed (so not depended on).</td></tr>
+    <tr><td>The folded-scan pattern (core finding-fn + a thin <code>scanX</code> in validate, no-op on absence) is the established home for a filesystem check</td>
+        <td><code>packages/cli/src/commands/validate.ts:236</code> (<code>scanCorpusWellFormed</code>); <code>packages/core/src/knowledge/validate.ts:92</code></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td><code>scanCorpusWellFormed</code> lazy-imports <code>@spectastic/core/knowledge</code>, returns <code>[]</code> on absence, delegates to a pure core finding-fn. <code>packAgnosticismFindings</code> mirrors it exactly.</td></tr>
+    <tr><td>The SKILL.md is <code>---</code>-fenced YAML frontmatter (<code>name</code> + <code>description</code>) + body — parseable by the existing <code>yaml</code> dep</td>
+        <td><code>knowledge/spectastic-concepts/SKILL.md</code>; <code>packages/core/src/knowledge/parse.ts:13</code></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td>Same frontmatter mechanism the corpus documents use; the discovery-presence check reads <code>description</code> from it.</td></tr>
+    <tr><td>No <code>finance-settlement</code> pack exists — the demo is net-new; <code>examples/</code> is the established home for illustrative artifacts</td>
+        <td><code>examples/</code> (holds <code>slicing-gaps.html</code>, <code>triage-log.html</code>)</td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td>The demo pack lands at <code>examples/knowledge/finance-settlement/</code> with an <code>examples/knowledge/marketplace.json</code> listing it (<a href="#D-005">D-005</a>).</td></tr>
+  </tbody>
+</table>
+</section>
+
+
+<section id="approach">
+<h2>4 · Approach</h2>
+
+<p>Three deliverables, one coherent split. <strong>The check (FR-001/FR-003/SC-003):</strong> a pure core
+<code>packAgnosticismFindings(packs)</code> takes packs a <code>marketplace.json</code> declares distributable and,
+per pack, (a) scans its <code>SKILL.md</code> + <code>references/*.md</code> for spectastic vocabulary — the
+<code>&lt;spec-*&gt;</code> artifact tags, <code>grounding=</code>, <code>/spectastic.</code> verb names, the literal
+word <code>spectastic</code> — emitting a <code>pack-not-portable</code> finding per leak; and (b) verifies the
+<code>SKILL.md</code> carries a present, non-trivial <code>description</code>, emitting a
+<code>pack-not-discoverable</code> finding when it doesn't. The token set deliberately excludes <code>KB-NNN</code>
+ids and provenance frontmatter — those are the *portable* corpus convention (051), shared with Agent Skills, not
+spectastic coupling. A thin <code>scanPackAgnosticism(cwd)</code> locates any <code>marketplace.json</code>,
+resolves the listed pack dirs, and delegates — a no-op when no manifest exists.</p>
+
+<p><strong>The distribution shape (FR-002):</strong> a <code>marketplace.json</code> bundling packs by path, the
+same shape any skills-compatible client installs. <strong>The demo (FR-004 + your discoverability steer):</strong>
+a <code>finance-settlement</code> pack at <code>examples/knowledge/</code> — a plain <code>SKILL.md</code> +
+<code>references/</code> Agent Skill with <em>zero</em> spectastic tokens and a <strong>rich, multi-phase
+<code>description</code></strong> written to trigger across software-development, learning, and knowledge-share
+tasks (the discovery surface), plus 051 <code>KB-NNN</code> metadata so the same unedited pack is a plain skill
+outside spectastic and citable inside it. The pack proves the split end-to-end; the check guards it.</p>
+
+<spec-arch>
+<figure>
+<svg viewBox="0 0 720 210" role="img" aria-label="Portable-pack check + distribution sketch">
+  <style>
+    .box { fill:#fcfbf7; stroke:#c4c1bb; stroke-width:1.2; }
+    .label { font: 700 11px Lato, sans-serif; fill:#4a4a46; letter-spacing:0.06em; text-transform:uppercase; }
+    .body { font: 400 12px "Source Serif 4", Georgia, serif; fill:#353534; }
+    .arr { stroke:#73706d; stroke-width:1.2; fill:none; }
+    .note { font: italic 11px "Source Serif 4", Georgia, serif; fill:#73706d; }
+  </style>
+  <rect class="box" x="20" y="82" width="150" height="50" rx="4"/>
+  <text class="label" x="32" y="102">marketplace.json</text>
+  <text class="body"  x="32" y="121">lists distributable</text>
+
+  <rect class="box" x="215" y="80" width="170" height="54" rx="4"/>
+  <text class="label" x="227" y="100">packAgnosticismFindings</text>
+  <text class="body"  x="227" y="118">token scan + description</text>
+
+  <rect class="box" x="430" y="24" width="150" height="46" rx="4"/>
+  <text class="label" x="442" y="44">pack-not-portable</text>
+  <text class="body"  x="442" y="62">spectastic token</text>
+
+  <rect class="box" x="430" y="90" width="150" height="46" rx="4"/>
+  <text class="label" x="442" y="110">pack-not-discoverable</text>
+  <text class="body"  x="442" y="128">no description</text>
+
+  <rect class="box" x="215" y="158" width="360" height="40" rx="4"/>
+  <text class="label" x="227" y="178">examples/knowledge/finance-settlement</text>
+  <text class="body"  x="227" y="192">clean pack · multi-phase description · KB metadata</text>
+
+  <path class="arr" d="M170 104 L215 106" marker-end="url(#a)"/>
+  <path class="arr" d="M385 100 L430 60" marker-end="url(#a)"/>
+  <path class="arr" d="M385 110 L430 112" marker-end="url(#a)"/>
+  <path class="arr" d="M300 158 L300 134" marker-end="url(#a)"/>
+  <text class="note" x="595" y="90">validate</text>
+  <defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#73706d"/></marker></defs>
+</svg>
+<figcaption>A marketplace.json names the distributable packs; the folded check flags a spectastic leak (portability) or a missing description (discoverability); the finance-settlement demo proves a clean pack through both.</figcaption>
+</figure>
+</spec-arch>
+</section>
+
+
+<section id="alternatives">
+<h2>5 · Alternatives considered</h2>
+
+<spec-matrix>
+<table>
+  <thead>
+    <tr><th>Option</th><th>No false-positive</th><th>Reach (FR-003)</th><th>Reuse</th><th class="score">Total</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Check every corpus pack for spectastic tokens</td><td>1</td><td>4</td><td>4</td><td class="score">9</td></tr>
+    <tr><td>Grow the existing 052 test only (test-only, no CLI)</td><td>4</td><td>1</td><td>3</td><td class="score">8</td></tr>
+    <tr data-winner><td>Folded validate scan, marketplace-scoped, core finding-fn + demo pack</td><td>5</td><td>5</td><td>5</td><td class="score">15</td></tr>
+  </tbody>
+</table>
+</spec-matrix>
+<p>Checking *every* pack reproduces the exact false-positive 052 hit — the dogfood corpus's domain <em>is</em>
+spectastic. A test-only check has no reach beyond the repo's own packs, failing FR-003's "wherever the tool can
+inspect it." The marketplace-scoped folded scan checks precisely the packs declared distributable, reuses the
+corpus-scan pattern wholesale, and the demo pack proves the whole split.</p>
+</section>
+
+
+<section id="decisions">
+<h2>6 · Decisions</h2>
+
+<spec-decision id="D-001" grounding="verified">
+  <h4>D-001 · A folded <code>validate</code> scan backed by a pure core finding-fn</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd><code>scanCorpusWellFormed</code> (<code>validate.ts:236</code>) is the established shape for a filesystem check: a thin CLI scan lazy-importing a pure core finding-fn, a no-op on absence.</dd>
+    <dt>Decision</dt>     <dd>Add <code>packAgnosticismFindings(packs)</code> to <code>@spectastic/core/knowledge</code> and <code>scanPackAgnosticism(cwd)</code> to <code>validate.ts</code>. Runs on every <code>spectastic validate</code>; <code>[]</code> when no <code>marketplace.json</code> exists.</dd>
+    <dt>Consequences</dt> <dd>+ Reuses a proven, tested pattern; the check is unit-testable in-process. + FR-003's "wherever the tool can inspect" is satisfied by every validate run. − One more folded scan in the validate pipeline (bounded, no-op when absent).</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-002" grounding="verified">
+  <h4>D-002 · A pack is "distributable" iff a <code>marketplace.json</code> lists it — the check's scope</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>The dogfood/scaffold packs legitimately name spectastic (<code>knowledge/spectastic-concepts/SKILL.md</code>); checking every pack reproduces 052's SC-003 false-positive. A <code>marketplace.json</code> is precisely the "packaged for distribution" declaration (FR-002).</dd>
+    <dt>Decision</dt>     <dd>The agnosticism check inspects <em>only</em> packs a <code>marketplace.json</code> resolves. spectastic's own un-listed packs are never checked.</dd>
+    <dt>Consequences</dt> <dd>+ No false-positive on spectastic-domain packs; ties FR-002 and FR-003 into one signal. − A pack a user forgets to list is unchecked — acceptable, and exactly the NFR-001 ceiling (the tool checks what it can see).</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-003" grounding="verified">
+  <h4>D-003 · Token set = spectastic vocabulary, not the portable corpus convention</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>052's <code>BINDING_TOKENS</code> flagged <code>&lt;spec-decision</code>/<code>grounding=</code>; FR-001 widens this to "spectastic artifact vocabulary". But <code>KB-NNN</code> ids + provenance are 051's corpus convention, shared with Agent Skills — the pack needs them to be citable in a spectastic repo (US3).</dd>
+    <dt>Decision</dt>     <dd>Flag: <code>&lt;spec-*&gt;</code> tags, <code>grounding=</code>, <code>/spectastic.</code> verb names, the literal <code>spectastic</code>. Do <strong>not</strong> flag: <code>KB-NNN</code> ids, provenance frontmatter, <code>index.md</code> — those are portable data, not coupling.</dd>
+    <dt>Consequences</dt> <dd>+ A clean finance pack keeps its citable KB metadata and still passes. + Matches 052's precedent, widened deliberately. − A pack could still couple in prose the token list doesn't name — the honest ceiling of a mechanical check (NFR-001), recorded.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-004" grounding="verified">
+  <h4>D-004 · Discoverability = the SKILL.md <code>description</code>; check presence, author quality</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>Agent Skills discovery is progressive disclosure over the SKILL.md <code>name</code>+<code>description</code> (<code>considerations.html:154</code>); a pack with no description is undiscoverable and so not "functioning as a plain Agent Skill" (FR-004). The steer: discoverable across dev/learning/knowledge-share phases.</dd>
+    <dt>Decision</dt>     <dd>The check verifies each distributable pack's <code>SKILL.md</code> has a present, non-trivial <code>description</code> (<code>pack-not-discoverable</code> otherwise). The demo pack models a rich, multi-phase description; the *quality* of triggering stays authored + review-caught (semantic, unenforceable) — no spec change, this rides inside FR-004.</dd>
+    <dt>Consequences</dt> <dd>+ Honours the discoverability steer with a real checked floor + a worked example. + No requirement invented; interprets FR-004's "plain Agent Skill" honestly. − Presence ≠ good triggering; the semantic quality is review-caught (the whole family's presence-vs-quality line).</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-005" grounding="verified">
+  <h4>D-005 · The <code>finance-settlement</code> demo pack under <code>examples/knowledge/</code></h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>The smallest-demoable names a <code>finance-settlement</code> pack; none exists. <code>examples/</code> is the established home for illustrative artifacts (not <code>knowledge/</code>, the repo's own corpus, nor <code>templates/</code>, the init scaffold).</dd>
+    <dt>Decision</dt>     <dd>Build <code>examples/knowledge/finance-settlement/</code> (<code>SKILL.md</code> + <code>references/</code> + <code>index.md</code>) — zero spectastic tokens, a multi-phase description, 051 metadata — and <code>examples/knowledge/marketplace.json</code> listing it. It is both the demo and the check's own fixture.</dd>
+    <dt>Consequences</dt> <dd>+ One artifact proves the whole split (plain skill outside, citable inside) and exercises both check legs. − A settlement-domain doc needs plausible content; kept small and clearly illustrative (not authoritative), with honest <code>TODO</code>/illustrative provenance.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-006" grounding="n-a">
+  <h4>D-006 · TDD, tests written red-first</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>The check is deterministic core: fixtures in, findings out. Every SC is cheaply assertable first (clean pack passes; a token leak flags; a missing description flags; the demo pack passes both).</dd>
+    <dt>Decision</dt>     <dd>Write the failing unit tests before <code>packAgnosticismFindings</code>; the demo pack doubles as a real-fixture green case.</dd>
+    <dt>Consequences</dt> <dd>+ Two MUSTs + the discovery floor get red-first coverage. − None material for a deterministic scan.</dd>
+  </dl>
+</spec-decision>
+</section>
+
+
+<section id="project-structure">
+<h2>7 · Project structure</h2>
+
+<p>Only the new or changed paths.</p>
+
+<pre><code>packages/core/src/knowledge/
+  pack-agnostic.ts            (NEW — packAgnosticismFindings: token scan + description-presence, per marketplace-listed pack)
+  index.ts                    (export packAgnosticismFindings + marketplace resolver from the ./knowledge barrel)
+packages/cli/src/commands/
+  validate.ts                 (scanPackAgnosticism: locate marketplace.json → resolve packs → delegate; folded in)
+packages/core/test/
+  knowledge.pack-agnostic.test.ts  (NEW — clean passes, token leak flags, missing description flags; red-first)
+examples/knowledge/
+  finance-settlement/
+    SKILL.md                  (NEW — zero spectastic tokens, a rich multi-phase discovery description)
+    index.md                  (NEW — 051 5-col index)
+    references/KB-001-*.md     (NEW — an illustrative settlement doc + honest provenance)
+  marketplace.json            (NEW — lists finance-settlement as a distributable plugin)
+README.md                     (document the portable-pack shape + marketplace distribution + the discoverability description)
+</code></pre>
+</section>
+
+
+<section id="risks">
+<h2>8 · Risks &amp; mitigations</h2>
+
+<table>
+  <thead><tr><th>Risk</th><th>Likelihood</th><th>Impact</th><th>Mitigation</th></tr></thead>
+  <tbody>
+    <tr><td>The agnosticism check false-positives spectastic's own dogfood/scaffold packs (052's SC-003 trap)</td><td>L</td><td>M</td><td>Marketplace-scoped by construction (D-002): only packs a <code>marketplace.json</code> lists are inspected, and spectastic's own packs are never listed. A regression test asserts <code>knowledge/</code>/<code>templates/</code> packs are untouched.</td></tr>
+    <tr><td>The token set flags the portable corpus convention (KB ids/provenance), breaking a pack's citability in a spectastic repo</td><td>L</td><td>M</td><td>The token set excludes <code>KB-NNN</code>/provenance/<code>index.md</code> by design (D-003); a test asserts the demo pack — which carries KB metadata — passes clean.</td></tr>
+    <tr><td>Discoverability read as a hard guarantee it isn't (a present description ≠ a well-triggering one)</td><td>M</td><td>L</td><td>Check presence only; state plainly (here + the finding text) that triggering *quality* is authored + review-caught — the same presence-vs-quality line the corpus family already draws. The demo pack models the good case.</td></tr>
+  </tbody>
+</table>
+</section>
+
+
+<section id="complexity">
+<h2>9 · Complexity tracking</h2>
+<p>Anywhere this plan introduces complexity not strictly required by the spec, justify it here.</p>
+
+<spec-assumption>
+<p>Discoverability is treated as an aspect of FR-004 ("function as a plain Agent Skill"), realised through the
+SKILL.md <code>description</code> — not a new requirement. This honours the author's steer without a spec
+re-entry: an Agent Skill's discovery surface *is* its description, so a present, non-trivial description is part
+of functioning as one. Should a first-class, separately-tested discoverability requirement later prove wanted,
+that is a clean <code>/spectastic.propose</code> against 057 — recorded, not pre-built.</p>
+</spec-assumption>
+</section>
+
+
+<section id="questions">
+<h2>10 · Open questions</h2>
+<spec-questions>
+<p>None outstanding — the distributable-declaration mechanism (<code>marketplace.json</code>), the discoverability
+treatment (SKILL.md description: presence checked, quality authored), the check's home (folded validate scan), and
+test style were all anchored in the interview; every must-tier decision is <code>grounding="verified"</code>.</p>
+</spec-questions>
+</section>
+
+
+<section id="changelog">
+<h2>11 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-07-25">25 Jul 2026</time><span>Initial plan. A folded <code>validate</code> scan (<code>packAgnosticismFindings</code>) marketplace-scoped to distributable packs (D-001/D-002); a token set of spectastic vocabulary that excludes the portable KB/provenance convention (D-003); discoverability realised as a checked SKILL.md-description presence + an authored multi-phase description, inside FR-004 (D-004); a <code>finance-settlement</code> demo pack + <code>marketplace.json</code> under <code>examples/</code> (D-005); TDD red-first (D-006). Extends 051/052's corpus infra and the corpus-scan pattern; no new subsystem.</span></li>
+  <li><time datetime="2026-07-25">25 Jul 2026</time><span>Status flipped Draft → Accepted — zero remaining unchecked tasks; tests verified passing per author confirmation. Sibling bundle (REQ-LIFECYCLE-005).</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  Plan for 057-portable-domain-skill · Portable domain skill · authored 25 Jul 2026
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>
