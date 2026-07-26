@@ -141,6 +141,139 @@ spectastic init --no-gitignore  # opt out
 
 Every spectastic entry lives inside a marked block, so a brownfield `.gitignore` is **appended to, never clobbered** — your own rules outside the block are untouched, and re-runs are idempotent. This is [spec 043](./specs/043-init-project-config/spec.html), mirroring the same init-writes-base / plan-resolves-stack split as profiles→enforcement.
 
+### Knowledge corpus — `spectastic init`
+
+A spec is only as good as what the model already knows, and a domain fact can only ever cite what's actually
+in the repo. `spectastic init` scaffolds a `knowledge/` directory — a committed, greppable corpus for the
+domain knowledge a project's specs need to ground against, shaped as an [Agent Skills](https://agentskills.io/home)
+folder (`SKILL.md` + `references/`) so it's portable across any skills-compatible agent, not tied to the one
+that authored it:
+
+```sh
+spectastic init                              # scaffolds knowledge/<pack>/ alongside the usual templates
+spectastic validate                          # a dangling KB-NNN citation or missing provenance field errors
+```
+
+Every document under `references/` carries a stable `KB-NNN` id — independent of file path, cited from a plan
+decision as `KB-NNN@edition` — plus provenance frontmatter (`origin`, `origin-url`, `edition`, `license`,
+`converter`, `content-hash`, `status`). A curated `index.md` gives an agent a cheap map before it reads
+anything; no vector database, no retrieval index — agentic search over committed files, matching the way the
+tool itself is already read.
+
+**Cite an id *at an edition*.** A plan decision grounds a domain fact by citing `KB-NNN@edition` — the id
+pinned to the exact edition it was read against — so a later re-ingest at a newer edition can never silently
+change what a historical decision claimed. A prior edition is retained under `references/superseded/` (never
+overwritten), so an edition-pinned citation always resolves; `spectastic validate` warns on a bare, unpinned
+citation. This is [spec 052](./specs/052-corpus-citation-contract/spec.html); it also widens the plan verb's
+grounding discipline so a domain fact can finally be `verified` against a corpus document instead of only
+`assumed`.
+
+**A citation can't rot into a dead reference, and a stale one can't hide.** `spectastic validate` resolves
+every cited `KB-NNN@edition` against the committed corpus: a citation with no committed document at that id or
+edition (including a fabricated or typo'd one) is a **`corpus-provenance` error**, failing the build — the same
+fail-closed footing as an internal broken id. A citation pinned to a **superseded** edition is a
+**`corpus-staleness` warning** — loud, like an `assumed` decision, but never blocking, since the world may have
+moved with no one having re-ingested yet. Both gates are tier-independent (they fire the same way at every
+profile); this is [spec 053](./specs/053-corpus-grounding-gates/spec.html). Two ceilings are recorded rather
+than hidden: staleness can only notice a supersession once someone re-ingests the newer edition, never the
+moment the world actually changes; and detecting whether the model grounds a claim *at all* is undecidable, so
+that stays advisory, never a gate.
+
+**Presence is guaranteed; use is only directable.** A corpus the harness merely told a verb's markdown to
+"look for" is exactly the soft nudge that lets a model fabricate a citation instead of admitting there's
+nothing to cite. So when a corpus exists, core **injects** its index and a fixed grounding directive into
+every AI-verb prompt — `plan`, `spec`, `propose`, `tasks`, and `explore --graduate` — deterministically,
+through the same fence-and-join mechanism that already places the principles in front of the model. That's
+the guarantee: the corpus is *placed* in context, not merely pointed at. Grounding *use* stays honestly
+advisory — a prompt can't force a citation, and no build gate infers a *missed* one (that's undecidable and
+would false-fail a legitimately local decision); it's [spec 053](./specs/053-corpus-grounding-gates/spec.html)
+above that checks a citation actually written. With no corpus, nothing is injected beyond a single discreet
+one-time hint pointing at `spectastic init`'s scaffold — every verb otherwise runs byte-identical to before.
+This is [spec 054](./specs/054-corpus-in-prompt/spec.html).
+
+**Grounding isn't only an authoring concern.** The adversarial critic that reviews a change proposal, the
+`explain` coaching read, and the harness's own review skills (`code-review`, `security-review`) can all use the
+same corpus a spec is authored against. When a corpus exists, the critic gains a fourth angle — flagging a
+requirement that contradicts a cited domain fact — alongside its usual three; `explain` cites the source a claim
+rests on; and the generated `AGENTS.md` carries a standing hint pointing any review skill at the corpus. The
+honest line holds here too: only the corpus's *presence* in the critic's input is a tested guarantee — whether
+the critic (or a review skill spectastic doesn't own) actually acts on it stays advisory. This is
+[spec 055](./specs/055-corpus-in-review/spec.html).
+
+**The corpus is strictly optional.** With no `knowledge/` directory present, every verb behaves exactly as
+today — spectastic works identically with or without one. This is [spec 051](./specs/051-knowledge-corpus/spec.html),
+the first slice of a family that widens grounding to accept a corpus citation, checks it for referential
+integrity, and feeds it to the authoring and review surfaces.
+
+**Already have a knowledge base? Adapt it — never fabricate what it doesn't tell you.** Most teams hold
+specialist knowledge in *some* shape already — a folder of markdown, an `llms.txt` index — and hand-authoring
+provenance for every file is exactly the friction that keeps a good corpus out of the convention. First-class
+treatment (citable, edition-pinned, gated) is a property of the *convention*, not of any particular pile of
+files, so the honest answer to "I already have one" is a tier:
+
+```sh
+spectastic corpus adapt <folder>              # every .md gets frontmatter + a curated index
+spectastic corpus adapt <folder>/llms.txt     # the llms.txt entries seed the index instead
+```
+
+The adapter derives what it can — a `sha256:` hash of every document's real bytes, always — and marks
+everything it can't as an explicit `TODO`: an unknown `license`, `origin`, or `edition` is **never** guessed,
+because a citation makes a wrong fact *more* credible, not less. It's safe to run repeatedly: an
+already-adapted file is left completely untouched, ids never collide, and a field you've hand-corrected
+survives every later re-run. The adapter owns no PDF converter — that stays your step, documented but never a
+dependency: [Docling](https://github.com/docling-project/docling) is the structurally-rich default (best on
+tables and formulas), [MarkItDown](https://github.com/microsoft/markitdown) is the fast path for clean digital
+PDFs, and [Marker](https://github.com/VikParuchuri/marker) is the highest-fidelity option where a GPU budget
+justifies it. This is [spec 056](./specs/056-corpus-adapter/spec.html) — the *adapt* rung of the adopt / adapt /
+bridge-via-MCP tiering the [knowledge-base considerations](./docs/knowledge-base-considerations.html) doc lays out.
+
+**A domain pack is a publishable unit — keep it spectastic-agnostic.** A pack meant for distribution (a
+`finance-settlement` skill, say) must carry **zero** spectastic-specific instructions — no `<spec-decision>`
+markup, no "cite this in a grounding" text — so it stays a clean [Agent Skill](https://agentskills.io/home)
+equally useful in a plain agent project and in a spectastic repo. Any pack a `marketplace.json` declares
+distributable is checked automatically:
+
+```sh
+spectastic validate .   # flags a spectastic-vocabulary leak, or a SKILL.md with no real discovery description
+```
+
+The check inspects only marketplace-listed packs — spectastic's own dogfood and scaffold corpora are never
+touched, since they legitimately talk about spectastic itself. Portability across a *third-party* pack the tool
+never sees stays a discipline it encourages, not a property it enforces — that ceiling is recorded, not hidden.
+Discoverability matters as much as portability: an agent's Agent Skills router reads a pack's `SKILL.md`
+`description` before anything else (progressive disclosure), so the check also flags a missing or placeholder
+one. See [`examples/knowledge/finance-settlement/`](./examples/knowledge/finance-settlement/) for a worked
+example — a clean pack with a description written to trigger across development, learning, and knowledge-share
+tasks — paired with the citation binding that stays in the *harness*, never the pack (spec 052 FR-004). This is
+[spec 057](./specs/057-portable-domain-skill/spec.html).
+
+**Committing a document makes its redistribution terms unavoidable.** The moment a third-party document lands
+in-repo — a vendored standard, a paywalled regulatory text, a licensed reference manual — its license applies to
+the repo, whether or not anyone reads it first. Every corpus document declares a `license` in its provenance
+frontmatter (a missing one is already a `corpus-well-formed` error, spec 051); `spectastic validate` additionally
+flags a **declared** license that restricts redistribution:
+
+```sh
+spectastic validate .   # a corpus-license warning names a restrictive/unrecognised declared license
+```
+
+The rule is conservative by construction: a **permissive allowlist** (MIT, Apache-2.0, BSD-2/3-Clause, CC0-1.0,
+plain CC-BY, ISC, Unlicense, 0BSD, public-domain) goes silent; a known-restrictive license, an id the allowlist
+doesn't carry, or a placeholder such as the adapter's own `TODO` marker (spec 056) all produce a
+`corpus-license` **warning** — never an error, since whether to commit restricted material is the project's call
+to make with the fact in front of it. The rule flags a *declared* license only; it never adjudicates license
+compatibility or legal effect — a recorded ceiling, not a claim the tool can't back.
+
+**What may be committed, and the escape hatch for what can't.** Material the project holds rights to redistribute
+— public-domain facts, permissively-licensed references, hand-authored illustrative excerpts — may be committed
+in-repo, where it's citable, greppable, and durable. Material that carries a restrictive license and cannot be
+redistributed has a sanctioned by-reference path instead: bridge it live via an MCP server, or keep only its
+`origin-url` in the index and never commit the text itself. A restrictive license committed anyway is a decision
+on the record (the `corpus-license` warning above), not a silent liability. A worked example: a hypothetical
+`KB-002` document declaring an "All rights reserved, internal distribution only" license would warn on every
+`validate` run rather than sit as a silent liability — illustrative only, never shipped into this repo's own
+corpus. This is [spec 058](./specs/058-corpus-licensing/spec.html).
+
 ### Change proposals (`/spectastic.propose` + `/spectastic.apply`)
 
 Spec evolution happens via PR-shaped proposal artifacts. Each change is a folder

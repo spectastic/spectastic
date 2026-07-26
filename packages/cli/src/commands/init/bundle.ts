@@ -71,7 +71,7 @@ function inventoryAt(root: string, origin: 'production' | 'dev-fallback'): Bundl
   const files = [
     ...listFiles(root, '.claude/commands'),
     ...listFiles(root, 'assets'),
-    ...listFiles(root, 'templates'),
+    ...remapKnowledgeScaffold(listFiles(root, 'templates')),
   ];
   return { root, origin, files };
 }
@@ -88,9 +88,28 @@ function inventoryAtDev(root: string): BundleInventory {
       relativeDestination: f.relativeDestination.replace(/^commands\//, '.claude/commands/'),
     })),
     ...listFiles(root, 'assets'),
-    ...listFiles(root, 'templates'),
+    ...remapKnowledgeScaffold(listFiles(root, 'templates')),
   ];
   return { root, origin: 'dev-fallback', files };
+}
+
+/**
+ * The knowledge/ corpus scaffold (051-knowledge-corpus FR-006) is authored
+ * under `templates/knowledge/` so prebuild bundles it with no config change
+ * — but unlike every other `templates/` entry (a template a later
+ * spec-authoring verb copies FROM), it must land as a real, immediately
+ * usable `knowledge/` directory at project root, not nested inside the
+ * user's `templates/` folder. Mirrors the `commands/` → `.claude/commands/`
+ * remap above for the same reason: the source layout and the destination
+ * layout intentionally diverge for one subtree.
+ */
+function remapKnowledgeScaffold(
+  files: Array<{ source: string; relativeDestination: string }>,
+): Array<{ source: string; relativeDestination: string }> {
+  return files.map((f) => ({
+    source: f.source,
+    relativeDestination: f.relativeDestination.replace(/^templates\/knowledge\//, 'knowledge/'),
+  }));
 }
 
 function listFiles(

@@ -223,6 +223,78 @@ async function scanQuantifiedNfr(files: readonly string[], cwd: string): Promise
  * notably `init` — don't pay the cold-start cost on every invocation.
  * Keeps init under its <500 ms NFR.
  */
+/**
+ * The corpus-well-formed gate (051-knowledge-corpus, plan D-003 corrected):
+ * a corpus document missing a required provenance field, an index row with
+ * no matching document, an orphan document with no index row, or two
+ * documents sharing one KB-NNN id, is an error. Folded into every validate
+ * run like the other non-HTML scans (scanEnforceWaivers, scanCopyLeak) — the
+ * corpus lives in plain markdown, never in the HTML-bound schema-rule
+ * registry. A no-op when no `knowledge/` directory exists (NFR-001 —
+ * graceful absence holds all the way through to this scan).
+ */
+async function scanCorpusWellFormed(cwd: string): Promise<Finding[]> {
+  const { loadCorpus, corpusWellFormedFindings } = await import('@spectastic/core/knowledge');
+  const packs = loadCorpus(cwd);
+  if (packs.length === 0) return [];
+  return corpusWellFormedFindings(packs);
+}
+
+/**
+ * The corpus grounding gates (053-corpus-grounding-gates, plan D-001/D-002):
+ * a <spec-decision> citation resolving to no committed document is an error
+ * (corpus-provenance); one resolving to a retained superseded edition is a
+ * warning (corpus-staleness). Reads no profile marker — the integrity gates
+ * are tier-independent by construction (FR-004). A no-op when no
+ * `knowledge/` directory exists, matching scanCorpusWellFormed's shape.
+ */
+async function scanCorpusGrounding(files: readonly string[], cwd: string): Promise<Finding[]> {
+  if (files.length === 0) return [];
+  const { loadCorpus, corpusGroundingFindings } = await import('@spectastic/core/knowledge');
+  const packs = loadCorpus(cwd);
+  if (packs.length === 0) return [];
+
+  const { readFile } = await import('node:fs/promises');
+  const docs = await Promise.all(
+    files.map(async (file) => ({ html: await readFile(file, 'utf8'), file })),
+  );
+  return corpusGroundingFindings(docs, packs);
+}
+
+/**
+ * The corpus-license gate (058-corpus-licensing, plan D-001): a corpus
+ * document declaring a restrictive, unrecognised, or placeholder (`TODO`)
+ * license is a warning, so committing paywalled or vendored material is a
+ * visible decision, not a silent one (FR-002). The missing-license case
+ * stays scanCorpusWellFormed's error (051, plan D-002) — this scan never
+ * re-checks it. A no-op when no `knowledge/` directory exists, matching
+ * scanCorpusWellFormed/scanCorpusGrounding's shape.
+ */
+async function scanCorpusLicense(cwd: string): Promise<Finding[]> {
+  const { loadCorpus, corpusLicenseFindings } = await import('@spectastic/core/knowledge');
+  const packs = loadCorpus(cwd);
+  if (packs.length === 0) return [];
+  return corpusLicenseFindings(packs);
+}
+
+/**
+ * The portable-domain-skill agnosticism gate (057-portable-domain-skill,
+ * plan D-001/D-002): a marketplace-listed pack embedding spectastic
+ * vocabulary is a portability defect (error); one with no real SKILL.md
+ * discovery description is undiscoverable (warning). Inspects ONLY packs a
+ * `marketplace.json` declares distributable — spectastic's own dogfood and
+ * scaffold packs are never listed, so they are never checked (the false
+ * positive 052's SC-003 guard exists to avoid). A no-op when no
+ * `marketplace.json` exists anywhere under `cwd`.
+ */
+async function scanPackAgnosticism(): Promise<Finding[]> {
+  const { expandGlobs } = await import('../glob.js');
+  const manifests = await expandGlobs(['**/marketplace.json']);
+  if (manifests.length === 0) return [];
+  const { packAgnosticismFindings } = await import('@spectastic/core/knowledge');
+  return manifests.flatMap((manifestPath) => packAgnosticismFindings(manifestPath));
+}
+
 export function registerValidate(program: Command): void {
   program
     .command('validate')
@@ -281,6 +353,22 @@ export function registerValidate(program: Command): void {
       // the pre-commit gate blocks a vague reliability promise. No-op below
       // verified and with no profile marker.
       const quantifiedNfrScanFindings = await scanQuantifiedNfr(files, process.cwd());
+      // The corpus-well-formed gate (spec 051): a dangling index row, an
+      // orphan document, a missing provenance field, or a duplicate KB-NNN
+      // id is an error. No-op with no knowledge/ directory in the project.
+      const corpusWellFormedScanFindings = await scanCorpusWellFormed(process.cwd());
+      // The corpus grounding gates (spec 053): a <spec-decision> citation
+      // resolving to no committed document errors; one resolving to a
+      // superseded edition warns. Tier-independent; no-op with no corpus.
+      const corpusGroundingScanFindings = await scanCorpusGrounding(files, process.cwd());
+      // The corpus-license gate (spec 058): a restrictive, unrecognised, or
+      // placeholder declared license warns. No-op with no knowledge/ directory.
+      const corpusLicenseScanFindings = await scanCorpusLicense(process.cwd());
+      // The portable-domain-skill agnosticism gate (spec 057): a
+      // marketplace-listed pack embedding spectastic vocabulary errors; one
+      // with no real discovery description warns. No-op with no
+      // marketplace.json anywhere in the project.
+      const packAgnosticismScanFindings = await scanPackAgnosticism();
       const findings = [
         ...result.findings,
         ...quarantineFindings,
@@ -290,6 +378,10 @@ export function registerValidate(program: Command): void {
         ...copyLeakFindings,
         ...enforceWaiverFindings,
         ...quantifiedNfrScanFindings,
+        ...corpusWellFormedScanFindings,
+        ...corpusGroundingScanFindings,
+        ...corpusLicenseScanFindings,
+        ...packAgnosticismScanFindings,
       ];
       const exitCode = findings.some((f) => f.severity === 'error') ? 1 : result.exitCode;
 

@@ -1,0 +1,395 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
+<title>Knowledge corpus convention · Plan</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Implementation plan · 051-knowledge-corpus</p>
+  <h1>Knowledge corpus convention</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    How we will build it.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>     <span><spec-status value="accepted">Accepted</spec-status></span>
+    <b>Spec</b>       <span><a href="./spec.html">051-knowledge-corpus</a></span>
+    <b>Owner</b>      <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Branch</b>     <span><code>051-knowledge-corpus</code></span>
+    <b>Created</b>    <span><time datetime="2026-07-25">25 Jul 2026</time></span>
+    <b>Read time</b>  <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-tldr>
+    <p>Build the corpus as a small pure module in <code>@spectastic/core</code> — a <code>yaml</code>-backed parser over a
+    committed <code>knowledge/</code> directory of Agent Skills packs — consumed by two existing seams: a new
+    <code>corpus-well-formed</code> schema rule (so a corpus self-validates) and the <code>init</code> bundle mechanism (so a
+    project starts from a working scaffold). The loader returns empty when no corpus exists, so every verb behaves exactly as
+    today. The one risk to watch is the <em>contract</em>: 052–059 all read this frontmatter and index shape, so getting the
+    minimal field set right now is worth more than getting it big.</p>
+  </spec-tldr>
+</header>
+
+
+<section id="principles-check">
+<h2>1 · Principles check</h2>
+<p>Verify this plan respects every principle in <a href="../../principles.html">v1.8.0</a>. Any violation requires either a
+principles amendment or a deliberate exception logged in §9.</p>
+
+<table>
+  <thead><tr><th>Principle</th><th>Compliance</th><th>Notes</th></tr></thead>
+  <tbody>
+    <tr><td>P-1 · Source order is reading order</td><td><spec-pill>OK</spec-pill></td><td>Corpus documents are flat markdown; no spec/plan artifact is reordered.</td></tr>
+    <tr><td>P-2 · Semantic tags over class soup</td><td><spec-pill>OK</spec-pill></td><td>n/a to markdown corpus; the new validate rule reuses the existing element grammar.</td></tr>
+    <tr><td>P-3 · IDs are contracts</td><td><spec-pill>OK</spec-pill></td><td><strong>Central.</strong> <code>KB-NNN</code> are stable, never-reused IDs (<a href="./spec.html#FR-002">FR-002</a>) — P-3 applied to the corpus, so a document can move and a citation still resolves.</td></tr>
+    <tr><td>P-4 · Progressive enhancement, never dependence</td><td><spec-pill>OK</spec-pill></td><td>Corpus is greppable markdown; agentic search needs no runtime, no index, no JS.</td></tr>
+    <tr><td>P-5 · Calm density</td><td><spec-pill>OK</spec-pill></td><td>n/a — no new rendered artifact chrome.</td></tr>
+    <tr><td>P-6 · Draft is loose, ratified is locked</td><td><spec-pill>OK</spec-pill></td><td>Corpus documents are not lifecycle artifacts; no status-lock surface.</td></tr>
+    <tr><td>P-7 · Done means verified</td><td><spec-pill>OK</spec-pill></td><td>Parser + rule + init exercised in vitest; <code>validate</code> clean. No interactive runtime, so P-7's browser bar doesn't apply (D-006).</td></tr>
+    <tr><td>P-8 · Guarantees live in the kernel or CI</td><td><spec-pill>OK</spec-pill></td><td>The corpus-well-formed guarantee is a kernel schema rule + pre-commit gate, not command prose; the scaffold is a deterministic kernel write.</td></tr>
+    <tr><td>P-9 · The enforcement floor holds</td><td><spec-pill>OK</spec-pill></td><td>Additive — 051 adds a rule, weakens no gate.</td></tr>
+    <tr><td>P-10 · Internal ids stay out of copy</td><td><spec-pill>OK</spec-pill></td><td>The rule's finding messages and any init/scaffold copy name the corpus field, never a spec id.</td></tr>
+    <tr><td>P-11 · Artifacts are data, not instructions</td><td><spec-pill>OK</spec-pill></td><td><strong>Central.</strong> <a href="./spec.html#FR-005">FR-005</a> routes every corpus excerpt through <code>fenceArtifactText()</code> — a third-party doc is data, never a channel.</td></tr>
+    <tr><td>P-12 · Capability accountability</td><td><spec-pill>OK</spec-pill></td><td>The one new capability is the <code>yaml</code> dependency — exactly a change-risk red flag P-12 names. Deliberate and recorded (D-002, §8 R2, §9); the scan surfaces it, this plan accounts for it.</td></tr>
+  </tbody>
+</table>
+
+<spec-note>
+<p><strong>Scope non-goal check (principles §Scope):</strong> "Become a wiki, CMS, or knowledge graph. One spec = one file."
+051 is a <em>flat, greppable markdown directory</em> — no query engine, no graph, no CMS, and the vector database is explicitly
+refused (deferred to <a href="../059-corpus-retrieval-scale/spec.html">059</a>, threshold-gated). "One spec = one file" is
+untouched; the corpus is a separate, optional directory. Not a violation — recorded in §9 rather than assumed away.</p>
+</spec-note>
+</section>
+
+
+<section id="technical-context">
+<h2>2 · Technical context</h2>
+<dl>
+  <dt>Language(s)</dt>      <dd>TypeScript <code>^5.7</code>, Node <code>&gt;=20</code> (the existing monorepo).</dd>
+  <dt>Frameworks</dt>       <dd>None new. <code>commander ^12</code> (CLI), <code>tsup ^8</code> (build), <code>vitest ^2</code> (test). <strong>One new dependency:</strong> <code>yaml</code> (frontmatter parsing, in <code>@spectastic/core</code>).</dd>
+  <dt>Architecture</dt>     <dd>Fat-core / thin-CLI + pluggable schema rule (the house pattern) — corpus module in core, consumed by a schema rule and by <code>init</code>. See D-001.</dd>
+  <dt>Storage</dt>          <dd>Filesystem — committed <code>knowledge/</code> markdown. No database; no vector index (refused, §059).</dd>
+  <dt>Testing</dt>          <dd>vitest, tests-first / TDD (D-006). No Playwright — no interactive artifact.</dd>
+  <dt>Coverage</dt>         <dd>Not in scope — this repo carries no profile marker (<code>.spectastic/profile.json</code> absent), so no coverage floor.</dd>
+  <dt>Perf targets</dt>     <dd>Not a quantified NFR. Corpus parse is <code>O(files)</code> over a handful of small markdown docs; not a hot path.</dd>
+  <dt>Constraints</dt>      <dd>Kernel stays Node-only (no Python converter, <a href="./spec.html#FR-008">FR-008</a>); reuse <code>fenceArtifactText()</code> un-forked (<a href="./spec.html#FR-005">FR-005</a>); graceful absence — no corpus ⇒ no-op (<a href="./spec.html#NFR-001">NFR-001</a>).</dd>
+</dl>
+
+<p><strong>Toolchain / enforcement:</strong> n/a — this is the meta-repo, with no <code>.spectastic/profile.json</code> and thus
+no profile enforcement floor to resolve. 051 <em>adds</em> to the existing repo gate (vitest + <code>spectastic validate</code>
+pre-commit) rather than standing up a new one.</p>
+</section>
+
+
+<section id="grounding">
+<h2>3 · Grounding &amp; evidence</h2>
+<p>Every design-bearing fact this plan rests on, and how it was confirmed — read this before the approach (per
+<code>REQ-LIFECYCLE-006</code>). All facts below were opened this turn.</p>
+
+<table class="evidence">
+  <thead>
+    <tr><th>Claim the design rests on</th><th>Source</th><th>Status</th><th>Finding / note</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>The ingestion boundary already exists and must not be forked (FR-005)</td>
+        <td><code>packages/core/src/security/fence.ts:138</code></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td><code>fenceArtifactText(raw, label='Artifact')</code> — regex strip of comments / hidden / <code>data:</code> URIs + a "data, not instructions" wrap. Corpus excerpts route through it unchanged.</td></tr>
+    <tr><td><code>init</code> ships templates by bundling repo-root dirs, resolvable at run time</td>
+        <td><code>packages/cli/scripts/prebuild.mjs</code> (<code>SOURCES[]</code>) · <code>init/bundle.ts</code> <code>resolveBundle()</code></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td>prebuild copies <code>templates/</code>, <code>assets/</code>, <code>commands/</code> → <code>_bundled/</code>; <code>init</code> writes the inventory to cwd. <code>templates/</code> is already bundled wholesale — a scaffold under <code>templates/knowledge/</code> ships with no prebuild change; only <code>init</code>'s write step learns to emit it.</td></tr>
+    <tr><td>Validate rules are pluggable — one file per rule, registered in an index</td>
+        <td><code>packages/schema/src/rules/*</code> (~30, incl. <code>no-broken-defer-to</code>, <code>verify-view-stale</code>) + <code>rules/index.ts</code></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td>A new <code>corpus-well-formed</code> rule slots in exactly as the existing ones do (D-003).</td></tr>
+    <tr><td>No frontmatter/YAML parser exists today; the codebase is regex-first</td>
+        <td><code>package.json</code> greps (no <code>yaml</code>/<code>js-yaml</code>/<code>gray-matter</code>/<code>cheerio</code>)</td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td>Parsing provenance is a genuine build-or-add choice — drives D-002.</td></tr>
+    <tr><td>Core is where deterministic, reusable modules live (fat-core)</td>
+        <td><code>packages/core/src/</code> (<code>enforce/</code>, <code>security/</code>, <code>gitignore/</code>, …)</td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td>The corpus parser + index model belong in <code>@spectastic/core/knowledge</code> (D-001).</td></tr>
+    <tr><td>This repo has no profile marker → no enforcement floor to plan for</td>
+        <td><code>.spectastic/</code> (no <code>profile.json</code>) · <code>spectastic.json</code> (git-only)</td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td>Step 5b skipped; the stack is the existing monorepo, not an interviewed one.</td></tr>
+    <tr><td>The chosen parser (<code>yaml</code>) installs cleanly on this toolchain</td>
+        <td>spike — <code>find node_modules/.pnpm</code> + Node <code>&gt;=20</code> / TS 5.7 check</td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td>Not yet in the tree; <code>yaml</code> (eemeli/yaml) is the standard ESM-native pure-JS parser, zero native deps, Node≥20 compatible. Add as a direct dep of <code>@spectastic/core</code>; pin version at install — the first task.</td></tr>
+  </tbody>
+</table>
+</section>
+
+
+<section id="approach">
+<h2>4 · Approach</h2>
+
+<p>Three additions around one new core module, each hanging off a seam that already exists. <strong>(1) The corpus module</strong>
+— <code>@spectastic/core/knowledge</code>: a <code>parse.ts</code> that reads a document's <code>---</code>-fenced YAML frontmatter
+(via <code>yaml</code>) into a typed <code>Provenance</code>, an <code>index.ts</code> that loads a pack's <code>SKILL.md</code>,
+its <code>references/</code> documents, and its curated index into a <code>CorpusPack</code> model — and, crucially, returns an
+empty result when no <code>knowledge/</code> directory exists (the graceful-absence no-op, D-005). <strong>(2) The validate
+scan</strong> — <code>corpusWellFormedFindings()</code> in <code>@spectastic/core/knowledge/validate.ts</code>, folded into
+<code>spectastic validate</code> the same way <code>scanEnforceWaivers</code>/<code>scanCopyLeak</code> already are (D-003):
+required frontmatter fields present, and index↔file bidirectional integrity (every index row resolves to a file, every
+document appears in the index), so SC-001's "every <code>KB-NNN</code> resolves to a file on disk" is a gate, not a hope. <strong>(3) The scaffold</strong> — a
+<code>templates/knowledge/</code> pack (a <code>SKILL.md</code>, an <code>llms.txt</code>-spirit index, and one worked reference
+document with full provenance) that <code>init</code> writes to cwd, plus a small dogfooded <code>knowledge/</code> corpus of
+spectastic's own concepts committed at repo root (FR-007).</p>
+
+<p>The index ships in the <code>llms.txt</code> spirit (<a href="./spec.html#FR-004">FR-004</a>) — a curated markdown map of
+<code>KB-NNN</code> → title, one-line description, current edition, path — which the <code>corpus-well-formed</code> rule parses
+for the integrity check. Nothing here is a new mechanism; it is the fence, the bundle, and the rule engine, pointed at a new
+directory.</p>
+
+<spec-arch>
+<figure>
+<svg viewBox="0 0 700 260" role="img" aria-label="Corpus module and its two consumers">
+  <style>
+    .box { fill:#fcfbf7; stroke:#c4c1bb; stroke-width:1.2; }
+    .label { font: 700 11px Lato, sans-serif; fill:#4a4a46; letter-spacing:0.06em; text-transform:uppercase; }
+    .body { font: 400 12px "Source Serif 4", Georgia, serif; fill:#353534; }
+    .arr { stroke:#73706d; stroke-width:1.2; fill:none; }
+  </style>
+  <rect class="box" x="40"  y="100" width="180" height="64" rx="4"/>
+  <text class="label" x="56" y="124">knowledge/ corpus</text>
+  <text class="body"  x="56" y="144">SKILL.md · refs · index</text>
+
+  <rect class="box" x="280" y="100" width="180" height="64" rx="4"/>
+  <text class="label" x="296" y="124">core/knowledge</text>
+  <text class="body"  x="296" y="144">parse + index (yaml)</text>
+
+  <rect class="box" x="520" y="30" width="150" height="60" rx="4"/>
+  <text class="label" x="536" y="54">validate.ts</text>
+  <text class="body"  x="536" y="74">folded corpus scan</text>
+
+  <rect class="box" x="520" y="170" width="150" height="60" rx="4"/>
+  <text class="label" x="536" y="194">spectastic init</text>
+  <text class="body"  x="536" y="214">writes scaffold</text>
+
+  <path class="arr" d="M220 132 L280 132" marker-end="url(#a)"/>
+  <path class="arr" d="M460 122 L520 78" marker-end="url(#a)"/>
+  <path class="arr" d="M520 200 L235 164" marker-end="url(#a)"/>
+  <defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#73706d"/></marker></defs>
+</svg>
+<figcaption>The core corpus module parses <code>knowledge/</code>; the schema rule validates it; <code>init</code> scaffolds it. Absent the directory, the parser returns empty and nothing downstream fires.</figcaption>
+</figure>
+</spec-arch>
+</section>
+
+
+<section id="alternatives">
+<h2>5 · Alternatives considered</h2>
+
+<p>The one genuinely weighed choice was how to parse the provenance frontmatter — the rest of the plan follows the house
+patterns directly. Higher is better; the chosen row is marked.</p>
+
+<spec-matrix>
+<table>
+  <thead>
+    <tr><th>Option</th><th>Parse correctness</th><th>Maintenance</th><th>Dep-light fit</th><th class="score">Total</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Minimal flat parser (regex / split-on-first-colon)</td><td>2</td><td>3</td><td>5</td><td class="score">10</td></tr>
+    <tr><td><code>js-yaml</code> dependency</td><td>5</td><td>4</td><td>3</td><td class="score">12</td></tr>
+    <tr data-winner><td><code>yaml</code> dependency — chosen</td><td>5</td><td>5</td><td>3</td><td class="score">13</td></tr>
+  </tbody>
+</table>
+</spec-matrix>
+
+<p>The minimal parser scores highest on dep-lightness but lowest where it matters most: a silently mis-parsed provenance field
+becomes a confidently-wrong <code>verified</code> fact — the exact silent-loss failure this whole family warns about. Between the
+two libraries, <code>yaml</code> edges <code>js-yaml</code> on ESM-native fit (the codebase is ESM) and active maintenance.</p>
+</section>
+
+
+<section id="decisions">
+<h2>6 · Decisions</h2>
+
+<spec-decision id="D-001" grounding="verified">
+  <h4>D-001 · Corpus module lives in <code>@spectastic/core/knowledge</code></h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>The parser + index model is cross-cutting deterministic logic every downstream corpus verb (052–059) will reuse. Core is where such logic lives — <code>packages/core/src/</code> already holds <code>enforce/</code>, <code>security/</code>, <code>gitignore/</code>. Fat-core / thin-CLI.</dd>
+    <dt>Decision</dt>     <dd>Add <code>packages/core/src/knowledge/</code> (<code>parse.ts</code>, <code>index.ts</code>, <code>types.ts</code>) with a <code>./knowledge</code> export subpath (a <code>tsup.config.ts</code> entry + <code>package.json</code> exports).</dd>
+    <dt>Consequences</dt> <dd>+ Reusable by the schema rule, <code>init</code>, and 052–059 without spawning a binary. + Testable as a pure unit. − One more core subpath to maintain.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-002" grounding="verified">
+  <h4>D-002 · Parse provenance frontmatter with the <code>yaml</code> dependency</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>No frontmatter/YAML parser exists today and the codebase is regex-first (<code>package.json</code> greps; <code>fence.ts</code>). Provenance correctness is load-bearing — a mis-parse manufactures a false <code>verified</code>.</dd>
+    <dt>Decision drivers</dt> <dd>Parse correctness · Maintenance burden · Dep-light fit</dd>
+    <dt>Considered options</dt>
+    <dd>
+      <ul class="considered-options">
+        <li><strong>Minimal flat parser</strong> — + zero new dep, house idiom. − owns every YAML edge case forever; silent mis-parse risk.</li>
+        <li><strong><code>js-yaml</code></strong> — + robust, battle-tested. − CJS-first, larger, less active than <code>yaml</code>.</li>
+        <li><strong><code>yaml</code> — chosen</strong> — + ESM-native (fits the codebase), actively maintained, zero native deps. − spectastic's first YAML dep.</li>
+      </ul>
+    </dd>
+    <dt>Decision</dt>     <dd>Add <code>yaml</code> as a direct dependency of <code>@spectastic/core</code>; pin the version at install (first task).</dd>
+    <dt>Consequences</dt> <dd>+ Correct, maintenance-free parsing of a load-bearing field. − A new dependency — a P-12 capability surface, recorded in §8 R2 / §9. Corpus text is still fenced (P-11) regardless of the parser.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-003" grounding="verified">
+  <h4>D-003 · Ship <code>corpus-well-formed</code> as a folded CLI scan, not an HTML schema rule</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd><a href="./spec.html#SC-001">SC-001</a> requires a corpus to pass <code>validate</code> and every <code>KB-NNN</code> to resolve to a file. Re-grounded at tasks time: <code>packages/schema/src/rules/*</code> is HTML-bound — every rule takes a <code>ParsedDocument</code> (<code>packages/schema/src/rules/no-broken-defer-to.ts:1-2</code>, <code>parser.js</code>'s <code>findAll</code>/<code>getAttr</code>). The corpus lives in plain markdown, which never reaches that parser. The exact precedent already exists: <code>packages/cli/src/commands/validate.ts</code> folds non-HTML checks into every <code>validate</code> run as <code>scanX()</code> functions (<code>scanQuarantineMarkers</code> over JSON markers, <code>scanCommandsDrift</code>/<code>scanCopyLeak</code>/<code>scanEnforceWaivers</code> over markdown/config), each backed by a pure finding-function in <code>@spectastic/core/commands/validate.ts</code>, assembled in <code>registerValidate()</code> (validate.ts:226-283).</dd>
+    <dt>Decision</dt>     <dd>Add <code>corpusWellFormedFindings(packs)</code> as a pure function in <code>packages/core/src/knowledge/validate.ts</code> — operating on the already-parsed <code>CorpusPack[]</code> model from D-001's loader, not re-parsing markdown — checking required frontmatter fields, index↔file bidirectional integrity, and <code>KB-NNN</code> uniqueness. The CLI wires it in as <code>scanCorpusWellFormed(cwd)</code> in <code>packages/cli/src/commands/validate.ts</code>, folded into <code>registerValidate()</code> alongside the existing scans. A no-op when <code>knowledge/</code> is absent (the loader returns an empty pack set). The <em>spec-citation-resolves</em> check stays <a href="../053-corpus-grounding-gates/spec.html">053</a>'s, on the same folded-scan footing.</dd>
+    <dt>Consequences</dt> <dd>+ A corpus self-validates via the exact mechanism the codebase already uses for non-HTML checks — no new engine, no schema-rule-registry misuse. + Reuses D-001's parsed model rather than re-parsing. − One more <code>scanX</code> in an already-large <code>validate.ts</code> (525 lines before this addition) — acceptable; 053/058 will add siblings on the same pattern, not a new one each time.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-004" grounding="verified">
+  <h4>D-004 · Scaffold via the existing prebuild/init bundle mechanism</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd><code>prebuild.mjs</code> already bundles <code>templates/</code> wholesale into <code>_bundled/</code>; <code>init/bundle.ts</code> resolves and writes the inventory to cwd.</dd>
+    <dt>Decision</dt>     <dd>Place the scaffold under <code>templates/knowledge/</code> (auto-bundled, no prebuild change) and teach <code>init</code>'s write step to emit it. The dogfood corpus (FR-007) is committed at repo-root <code>knowledge/</code> and is <em>not</em> shipped to downstream projects.</dd>
+    <dt>Consequences</dt> <dd>+ Reuses a proven, atomic ship path. + Scaffold validates out of the box (<a href="./spec.html#SC-002">SC-002</a>). − <code>init</code>'s write logic gains one more known target.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-005" grounding="n-a">
+  <h4>D-005 · Graceful absence = a silent no-op loader; the one-time hint is 054's</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd><a href="./spec.html#NFR-001">NFR-001</a> promises "no corpus ⇒ behave as today, apart from a single one-time hint." The hint is a prompt-surface concern; <a href="../054-corpus-in-prompt/spec.html">054</a> owns AI-verb prompt assembly. Pure scope judgment — no external fact.</dd>
+    <dt>Decision</dt>     <dd>051's loader returns empty when no <code>knowledge/</code> exists — zero verb changes, fully testable now. The actual one-time hint + its "shown once" state is built in 054, where the prompt surface lives.</dd>
+    <dt>Consequences</dt> <dd>+ Keeps prompt-surface/state concerns out of the format slice. + 051 proves absence-is-silent deterministically. − NFR-001's hint clause is only fully demonstrated once 054 lands (noted on both specs).</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-006" grounding="n-a">
+  <h4>D-006 · vitest, tests-first; no Playwright</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>051 produces a core parser, a schema rule, init wiring, and markdown — no interactive HTML runtime. A test-style preference; no external fact (<code>n-a</code>).</dd>
+    <dt>Decision</dt>     <dd>Red-first vitest units for the parser, the rule, and the scaffold write. No Playwright — P-7's browser bar targets interactive artifacts, which 051 doesn't ship.</dd>
+    <dt>Consequences</dt> <dd>+ Fast feedback on the contract that 052–059 depend on. − No end-to-end browser evidence, correctly, because there is no runtime to exercise.</dd>
+  </dl>
+</spec-decision>
+</section>
+
+
+<section id="project-structure">
+<h2>7 · Project structure</h2>
+
+<p>Only the new or changed paths.</p>
+
+<pre><code>packages/core/
+  src/knowledge/
+    types.ts          # CorpusPack, CorpusDocument, Provenance, IndexEntry
+    parse.ts          # frontmatter (yaml) + document parser
+    index.ts          # pack/index loader — returns empty when knowledge/ absent
+  package.json        # + yaml dep, + "./knowledge" export subpath
+  tsup.config.ts      # + knowledge entry
+
+packages/core/
+  src/knowledge/validate.ts   # corpusWellFormedFindings(packs) — pure, consumes D-001's model
+
+packages/cli/
+  src/commands/validate.ts    # + scanCorpusWellFormed(cwd), folded into registerValidate()
+
+templates/knowledge/                # NEW — shipped by init (auto-bundled under templates/)
+  <pack>/SKILL.md
+  <pack>/index.md                   # llms.txt-spirit curated index
+  <pack>/references/KB-001-....md   # worked example w/ full provenance frontmatter
+
+knowledge/                          # NEW — dogfood corpus, repo-only (FR-007)
+  spectastic-concepts/SKILL.md
+  spectastic-concepts/index.md
+  spectastic-concepts/references/KB-001-....md
+
+packages/cli/src/commands/init/     # write.ts / bundle.ts: emit the knowledge scaffold to cwd
+
+tests/ (vitest)
+  packages/core/test/knowledge.parse.test.ts
+  packages/core/test/knowledge.validate.test.ts
+  packages/cli/test/validate-corpus.test.ts
+  packages/cli/test/init/knowledge-scaffold.test.ts
+</code></pre>
+</section>
+
+
+<section id="risks">
+<h2>8 · Risks &amp; mitigations</h2>
+
+<table>
+  <thead><tr><th>Risk</th><th>Likelihood</th><th>Impact</th><th>Mitigation</th></tr></thead>
+  <tbody>
+    <tr><td>R1 · The frontmatter + index <strong>contract</strong> is consumed by 052–059; getting it wrong is expensive to change later.</td><td>M</td><td>H</td><td>Freeze a <em>minimal</em> field set — only what the FRs/SCs need. Return a typed model so downstream reads a contract, not raw YAML. Version the index shape.</td></tr>
+    <tr><td>R2 · The new <code>yaml</code> dependency is a capability / supply-chain surface (P-12).</td><td>L</td><td>M</td><td>Pin the version; single well-known ESM-native dep. Recorded here as the accountable capability change; corpus text still fenced (P-11).</td></tr>
+    <tr><td>R3 · Silent frontmatter mis-parse yields a confidently-wrong <code>verified</code> provenance.</td><td>L</td><td>M</td><td><code>corpus-well-formed</code> requires all fields + a content hash present; the family's silent-loss / spot-check caveat is documented, not trusted away.</td></tr>
+    <tr><td>R4 · Scope creep toward a knowledge store / graph (the §Scope non-goal).</td><td>L</td><td>H</td><td>Agentic-search-only, flat files, no index/DB (059 deferred). Held explicitly in §9.</td></tr>
+  </tbody>
+</table>
+</section>
+
+
+<section id="complexity">
+<h2>9 · Complexity tracking</h2>
+<p>Where this plan introduces complexity or deviates from a standing grain, the rationale.</p>
+
+<spec-assumption>
+<p><strong>A new dependency against the dep-light grain.</strong> <code>yaml</code> is spectastic's first YAML dep. Justified:
+provenance correctness is load-bearing — a hand-rolled parser silently mis-parsing a field manufactures a false
+<code>verified</code>, the precise silent-loss failure the corpus family exists to guard against. A single, small, ESM-native,
+zero-native-dep parser is the proportionate cost. Accountable per P-12 (D-002, R2).</p>
+</spec-assumption>
+
+<spec-assumption>
+<p><strong>The no-wiki/CMS/knowledge-graph non-goal holds.</strong> The corpus is a flat, greppable markdown directory read by
+agentic search — no query engine, no graph, no CMS, and the vector database is explicitly refused (deferred to
+<a href="../059-corpus-retrieval-scale/spec.html">059</a>). "One spec = one file" is untouched; the corpus is a separate,
+optional directory. Checked, not assumed.</p>
+</spec-assumption>
+</section>
+
+
+<section id="questions">
+<h2>10 · Open questions</h2>
+<spec-questions>
+<p>None outstanding — every decision was anchored in the interview, and the one spike (<code>yaml</code> installability) was run
+and resolved. The exact version pin is a first-task implementation detail, not an open design question.</p>
+</spec-questions>
+</section>
+
+
+<section id="changelog">
+<h2>11 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-07-25">25 Jul 2026</time><span>Status flipped Draft → Accepted on 25 Jul 2026 — zero remaining unchecked tasks in tasks.html; tests verified passing per author confirmation. Sibling bundle (REQ-LIFECYCLE-005) — spec.html, plan.html, tasks.html flip together.</span></li>
+  <li><time datetime="2026-07-25">25 Jul 2026</time><span>D-003 corrected at tasks-derivation time: re-grounding found <code>packages/schema/src/rules/*</code> is HTML-bound (every rule takes a <code>ParsedDocument</code>), so a corpus living in plain markdown cannot be checked there. Re-shaped to follow the existing folded-CLI-scan precedent (<code>scanEnforceWaivers</code>/<code>scanCopyLeak</code> in <code>packages/cli/src/commands/validate.ts</code>, backed by a pure finding-function in core) instead — <code>corpusWellFormedFindings()</code> in <code>@spectastic/core/knowledge/validate.ts</code>, consuming D-001's parsed model directly. §7 and the architecture sketch updated to match. No other decision changed.</span></li>
+  <li><time datetime="2026-07-25">25 Jul 2026</time><span>Initial plan. Six decisions, all grounded (four <code>verified</code>, two <code>n-a</code>): corpus module in <code>@spectastic/core/knowledge</code> (D-001); parse frontmatter with the <code>yaml</code> dependency (D-002, interview-chosen over a minimal parser); ship a <code>corpus-well-formed</code> validate rule (D-003); scaffold via the existing prebuild/init bundle (D-004); graceful-absence no-op loader with the one-time hint deferred to <a href="../054-corpus-in-prompt/spec.html">054</a> (D-005); vitest tests-first, no Playwright (D-006). Grounding gate clear — no must-tier decision rests on an assumed or unresolved-spike fact.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  Plan for 051-knowledge-corpus · Knowledge corpus convention · authored 25 Jul 2026
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>

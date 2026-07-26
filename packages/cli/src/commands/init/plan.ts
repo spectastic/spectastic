@@ -36,7 +36,7 @@ import type { BundleInventory, FileWriteDecision } from './types.js';
  * guard asserts SC-001 states SCAFFOLD_TREE_FILE_COUNT. Change the scaffold →
  * change these once, and the guards name everything else that must follow.
  */
-export const SCAFFOLD_FILE_COUNT = 20;
+export const SCAFFOLD_FILE_COUNT = 23;
 export const SCAFFOLD_TREE_FILE_COUNT = SCAFFOLD_FILE_COUNT + 1;
 
 export interface BuildPlanOptions {
