@@ -31,6 +31,7 @@ import { hiddenInstructionPatternRule } from './hidden-instruction-pattern.js';
 import { sloTargetRequiredRule } from './slo-target-required.js';
 import { sloWellFormedRule } from './slo-well-formed.js';
 import { matrixWinnerIntegrityRule } from './matrix-winner-integrity.js';
+import { corpusCitationFormRule } from './corpus-citation-form.js';
 
 /**
  * The canonical spectastic rule registry.
@@ -79,6 +80,9 @@ export const rules: readonly Rule[] = [
 
   // Decision-record rules (per-file) — spec 050-stack-selection.
   matrixWinnerIntegrityRule,
+
+  // Corpus-citation rules (per-file) — spec 052-corpus-citation-contract.
+  corpusCitationFormRule,
 
   // Cross-file rules.
   noDuplicateIdsRule,
