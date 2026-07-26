@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
+<title>Corpus adapter · Tasks</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Tasks · 056-corpus-adapter</p>
+  <h1>Corpus adapter</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    Ordered, parallelizable work. Tests precede implementation. Drive through with
+    <code>/spectastic.implement</code> — one task per invocation.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>     <span><spec-status value="accepted">Accepted</spec-status></span>
+    <b>Spec</b>       <span><a href="./spec.html">056-corpus-adapter</a></span>
+    <b>Plan</b>       <span><a href="./plan.html">plan</a></span>
+    <b>Branch</b>     <span><code>main</code></span>
+    <b>Created</b>    <span><time datetime="2026-07-25">25 Jul 2026</time></span>
+    <b>Read time</b>  <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-tldr>
+    <p>16 tasks across five phases. Setup → Foundational → User stories (US1·US2·US3) → Polish.
+    Tasks marked <span class="par">[P]</span> can run in parallel — different files, no
+    dependency. Fully kernel-testable this time — every FR/NFR/SC gets a real automated
+    guard, no advisory ceiling to name.</p>
+  </spec-tldr>
+</header>
+
+
+<section id="strategy">
+<h2>1 · Execution strategy</h2>
+
+<spec-tabs>
+  <spec-tab label="MVP-first">
+    <p>Implement US1 end-to-end — folder mode, the common case. Ship. US2 (llms.txt) and US3
+    (honesty + idempotency + the CLI caveat) follow.</p>
+  </spec-tab>
+  <spec-tab label="Incremental">
+    <p>Setup → Foundational → US1 → US2 → US3 → Polish. Each story closes its conformance
+    before the next opens.</p>
+  </spec-tab>
+  <spec-tab label="Parallel teams">
+    <p>Not applicable at this size — one new core module plus a thin CLI shell. Use
+    MVP-first or Incremental.</p>
+  </spec-tab>
+</spec-tabs>
+</section>
+
+
+<section id="phase-setup" class="phase">
+<h2>2 · Phase 1 — Setup</h2>
+
+<spec-task id="T-001" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Scaffold the new core test file</strong> — imports and temp-dir helpers (mirroring the existing <code>knowledge.*.test.ts</code> convention: <code>mkdtempSync</code> + a corpus-fixture writer); no assertions yet. <span class="path">packages/core/test/knowledge.adapt.test.ts</span></div>
+</spec-task>
+<spec-task id="T-002" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Scaffold the corpus command registrar shell</strong> — <code>registerCorpus(program)</code> defining the <code>corpus</code> group with an empty <code>adapt &lt;path&gt;</code> subcommand stub; no body yet. <span class="path">packages/cli/src/commands/corpus.ts</span></div>
+</spec-task>
+</section>
+
+
+<section id="phase-foundation" class="phase">
+<h2>3 · Phase 2 — Foundational</h2>
+<p>Shared derivation logic both input modes call identically.</p>
+
+<spec-task id="T-010">
+  <input type="checkbox" checked>
+  <div><strong>Implement the per-doc derive helper</strong> — a <code>sha256:&lt;hex&gt;</code> content hash (Node <code>crypto</code>) computed from the source bytes; every other provenance field the source doesn't supply emits the literal <code>TODO</code>, never a guess (D-004). <span class="path">packages/core/src/knowledge/adapt.ts</span></div>
+</spec-task>
+<spec-task id="T-011">
+  <input type="checkbox" checked>
+  <div><strong>Implement sequential KB-NNN id allocation</strong> — scan the target pack for the highest existing id, assign <code>max+1, max+2…</code> to new files in sorted-filename order (D-003). <span class="path">packages/core/src/knowledge/adapt.ts</span></div>
+</spec-task>
+</section>
+
+
+<section id="phase-us1" class="phase">
+<h2>4 · Phase 3a — US1 · An existing markdown folder becomes citable</h2>
+
+<h3>Tests (write &amp; fail first)</h3>
+<spec-task id="T-100">
+  <input type="checkbox" checked>
+  <div><strong>Test folder-mode N → N + validate-accepts</strong> — adapting a temp directory of N raw <code>.md</code> files yields N valid <code>KB-NNN</code>-fronted documents and an N-row <code>index.md</code> that a folded <code>spectastic validate</code> pass accepts with zero errors. <span class="path">packages/core/test/knowledge.adapt.test.ts</span></div>
+</spec-task>
+
+<h3>Implementation</h3>
+<spec-task id="T-110">
+  <input type="checkbox" checked>
+  <div><strong>Implement folder-mode routing</strong> — walk the target directory (direct <code>node:fs</code>, mirroring <code>loadCorpus</code>'s own convention, not the AI-verb <code>ctx.fs</code> shape), filter to <code>.md</code> files, skip any already carrying a valid <code>KB-NNN</code> id (idempotency), and derive + allocate the rest. <span class="path">packages/core/src/knowledge/adapt.ts</span></div>
+</spec-task>
+<spec-task id="T-111">
+  <input type="checkbox" checked>
+  <div><strong>Write the derived frontmatter + merged index.md</strong> — emit each document's <code>---</code>-fenced frontmatter back into place and write <code>knowledge/&lt;pack&gt;/index.md</code>'s 5-column table. <span class="path">packages/core/src/knowledge/adapt.ts</span></div>
+</spec-task>
+
+<spec-note>
+<p>Closes <a href="./spec.html#FR-001">FR-001</a> (folder leg), <a href="./spec.html#SC-001">SC-001</a>.</p>
+</spec-note>
+</section>
+
+
+<section id="phase-us2" class="phase">
+<h2>5 · Phase 3b — US2 · An <code>llms.txt</code> as the index source</h2>
+
+<h3>Tests (write &amp; fail first)</h3>
+<spec-task id="T-200">
+  <input type="checkbox" checked>
+  <div><strong>Test llms.txt entries correspond to index rows</strong> — a temp <code>llms.txt</code> with M linked markdown files yields an M-row index whose rows trace to those entries, and the linked files gain frontmatter. <span class="path">packages/core/test/knowledge.adapt.test.ts</span></div>
+</spec-task>
+
+<h3>Implementation</h3>
+<spec-task id="T-210">
+  <input type="checkbox" checked>
+  <div><strong>Implement llms.txt index-seed mode</strong> — parse the markdown-link entries, resolve each linked file relative to the <code>llms.txt</code>'s own directory, seed the index rows from the entries, and derive + allocate frontmatter for the files they link (reusing T-010/T-011). <span class="path">packages/core/src/knowledge/adapt.ts</span></div>
+</spec-task>
+
+<spec-note>
+<p>Closes <a href="./spec.html#FR-001">FR-001</a> (<code>llms.txt</code> leg).</p>
+</spec-note>
+</section>
+
+
+<section id="phase-us3" class="phase">
+<h2>6 · Phase 3c — US3 · Nothing is fabricated</h2>
+
+<h3>Tests (write &amp; fail first)</h3>
+<spec-task id="T-300">
+  <input type="checkbox" checked>
+  <div><strong>Test an underivable field emits TODO, never a guess</strong> — a source file with no discernible license/origin yields <code>license: TODO</code> / <code>origin: TODO</code> exactly, and never any other placeholder value. <span class="path">packages/core/test/knowledge.adapt.test.ts</span></div>
+</spec-task>
+<spec-task id="T-301" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Test idempotent re-run</strong> — running the adapter twice on the same source produces no duplicate ids or index rows, and a provenance field a human hand-corrected between runs survives the second run untouched. <span class="path">packages/core/test/knowledge.adapt.test.ts</span></div>
+</spec-task>
+
+<h3>Implementation</h3>
+<spec-task id="T-310">
+  <input type="checkbox" checked>
+  <div><strong>Implement the idempotency guard</strong> — a file with <code>hasFrontmatter &amp;&amp; id</code> (051's <code>parseCorpusDocument</code>) is skipped whole; the index merge is by id, keyed so an existing non-empty cell always wins; no non-<code>TODO</code> provenance value is ever rewritten to <code>TODO</code> (D-005). <span class="path">packages/core/src/knowledge/adapt.ts</span></div>
+</spec-task>
+<spec-task id="T-311" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Wire the corpus adapt CLI command's body</strong> — resolve the target pack name (default: the source folder's basename), call <code>adaptCorpus</code>, print a count summary, and end with the silent-loss caveat prompting a spot-check of the emitted documents (FR-003). <span class="path">packages/cli/src/commands/corpus.ts</span></div>
+</spec-task>
+<spec-task id="T-312" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Register the corpus command group</strong> <span class="path">packages/cli/src/index.ts</span></div>
+</spec-task>
+
+<spec-note>
+<p>Closes <a href="./spec.html#FR-002">FR-002</a>, <a href="./spec.html#FR-003">FR-003</a>, <a href="./spec.html#NFR-001">NFR-001</a>, <a href="./spec.html#SC-002">SC-002</a>, <a href="./spec.html#SC-003">SC-003</a>.</p>
+</spec-note>
+</section>
+
+
+<section id="phase-polish" class="phase">
+<h2>7 · Phase 4 — Polish</h2>
+<spec-task id="T-900" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Document the adapt tier in the README</strong> — the adopt/adapt/bridge framing, the <code>corpus adapt</code> command, and the documented (never depended-on) conversion recipe: Docling as the default, MarkItDown for the fast path, Marker where fidelity justifies a GPU (<a href="./spec.html#FR-004">FR-004</a>'s no-converter boundary). <span class="path">README.md</span></div>
+</spec-task>
+<spec-task id="T-901">
+  <input type="checkbox" checked>
+  <div><strong>Run the full safety-net verification</strong> — the whole vitest + tsc suite, plus a corpus-wide <code>spectastic validate</code>, confirming zero new findings across every existing spec. <span class="path">(repo-wide)</span></div>
+</spec-task>
+</section>
+
+
+<section id="dependencies">
+<h2>8 · Dependencies</h2>
+<pre><code>Setup           → Foundational
+Foundational    → US1
+US1             → US2, US3   (independent of each other after US1)
+US2, US3        → Polish
+</code></pre>
+</section>
+
+
+<section id="changelog">
+<h2>9 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-07-25">25 Jul 2026</time><span>Initial task breakdown. 16 tasks; Foundational lands the shared derive + id-allocation helpers both modes call; US1 (folder), US2 (llms.txt), and US3 (honesty + idempotency + the CLI caveat) each close a clean requirement subset. Fully kernel-testable — no advisory ceiling on this one, unlike 055.</span></li>
+  <li><time datetime="2026-07-25">25 Jul 2026</time><span>Status flipped Draft → Accepted — zero remaining unchecked tasks (16/16); tests verified passing per author confirmation. Sibling bundle (REQ-LIFECYCLE-005).</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  Tasks for 056-corpus-adapter · Corpus adapter · authored 25 Jul 2026
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>

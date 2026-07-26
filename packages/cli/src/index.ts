@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { Command } from 'commander';
 import { registerApply } from './commands/apply.js';
 import { registerChangeRisk } from './commands/change-risk.js';
+import { registerCorpus } from './commands/corpus.js';
 import { registerCourse } from './commands/course.js';
 import { registerEnforce } from './commands/enforce.js';
 import { registerExplore } from './commands/explore.js';
@@ -76,6 +77,7 @@ registerOrder(program);
 registerExplore(program);
 registerRun(program);
 registerChangeRisk(program);
+registerCorpus(program);
 
 if (process.argv.length <= 2) {
   program.outputHelp();

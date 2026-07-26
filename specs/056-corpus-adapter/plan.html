@@ -1,0 +1,351 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
+<title>Corpus adapter · Plan</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Implementation plan · 056-corpus-adapter</p>
+  <h1>Corpus adapter</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    A deterministic Node generator that shapes an existing corpus into 051's form — populating what it can derive, marking what it can't as an explicit TODO, and never destroying a hand-authored value on re-run.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>     <span><spec-status value="accepted">Accepted</spec-status></span>
+    <b>Spec</b>       <span><a href="./spec.html">056-corpus-adapter</a></span>
+    <b>Owner</b>      <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Branch</b>     <span><code>main</code></span>
+    <b>Created</b>    <span><time datetime="2026-07-25">25 Jul 2026</time></span>
+    <b>Read time</b>  <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-tldr>
+    <p>Add a fat-core module <code>knowledge/adapt.ts</code> that turns an existing corpus shape into 051's form,
+    and a thin CLI command <code>spectastic corpus adapt &lt;path&gt;</code> — the first subcommand group. The core
+    reuses 051's <code>parseCorpusDocument</code> for idempotency (a file that already has frontmatter + a
+    <code>KB-NNN</code> id is left untouched), assigns new ids sequentially from the pack's existing max in
+    sorted-filename order, computes a <code>sha256:</code> content hash from source bytes, and emits every
+    underivable provenance field as a literal <code>TODO</code> — never a guess. Input mode is chosen by what you
+    point at: a directory adapts every <code>.md</code>; an <code>llms.txt</code> seeds the index. Biggest risk:
+    silently fabricating provenance; mitigated by making <code>TODO</code> the only fallback and testing it as a MUST.</p>
+  </spec-tldr>
+</header>
+
+
+<section id="principles-check">
+<h2>1 · Principles check</h2>
+<p>Verify this plan respects every principle in
+<a href="../../principles.html">v1.8.0</a>. Any violation requires either a
+principles amendment or a deliberate exception logged below.</p>
+
+<table>
+  <thead><tr><th>Principle</th><th>Compliance</th><th>Notes</th></tr></thead>
+  <tbody>
+    <tr><td>P-8 · Guarantees live in the kernel or CI</td><td><spec-pill>OK</spec-pill></td><td>The derivation and the never-fabricate rule are deterministic kernel code (<a href="./spec.html#FR-004">FR-004</a>), unit-tested — not advisory markdown. The TODO markers are then machine-visible to <code>validate</code>/review.</td></tr>
+    <tr><td>P-3 · IDs are contracts</td><td><spec-pill>OK</spec-pill></td><td>Emits 051's <code>KB-NNN</code> id shape and the frozen provenance-field set; allocates new ids without ever colliding an existing one (<a href="#D-003">D-003</a>).</td></tr>
+    <tr><td>P-11 · Artifacts are data, not instructions</td><td><spec-pill>OK</spec-pill></td><td>The adapter <em>reads</em> untrusted source docs to derive metadata; it never executes them, and the emitted corpus is later fenced by 054 when injected.</td></tr>
+    <tr><td>P-10 · Internal artifact ids stay out of user-facing copy</td><td><spec-pill>OK</spec-pill></td><td>The CLI <code>--help</code> and the completion caveat say what the command does; no spec/REQ id leaks into tool-talking copy (the <code>no-internal-id-in-copy</code> floor applies).</td></tr>
+    <tr><td>P-2 · Semantic tags over class soup</td><td><spec-pill>OK</spec-pill></td><td>No artifact markup; core TypeScript + a CLI shell + emitted markdown/YAML.</td></tr>
+  </tbody>
+</table>
+</section>
+
+
+<section id="technical-context">
+<h2>2 · Technical context</h2>
+<dl>
+  <dt>Language(s)</dt>      <dd>TypeScript 5.7, Node ≥ 20 (pnpm 9.15.9 workspace)</dd>
+  <dt>Frameworks</dt>       <dd>None new — <code>@spectastic/core</code> kernel, <code>commander</code> 12.1 CLI, the existing <code>yaml</code> dep, Node <code>crypto</code></dd>
+  <dt>Architecture</dt>     <dd>Fat-core / thin-CLI, layered within one module: input router → per-doc derive (frontmatter + hash) → sequential id allocate → index merge; a thin <code>corpus adapt</code> command delegates (<a href="#D-001">D-001</a>)</dd>
+  <dt>Storage</dt>          <dd>Filesystem — reads a source folder / <code>llms.txt</code>, writes into <code>knowledge/&lt;pack&gt;/</code> (051's shape)</dd>
+  <dt>Testing</dt>          <dd>vitest 2 — TDD, tests written red-first (<a href="#D-006">D-006</a>)</dd>
+  <dt>Coverage</dt>         <dd>Not in scope — no <code>coverage</code> enforce category (no profile marker on this repo)</dd>
+  <dt>Perf targets</dt>     <dd>Not in scope — no perf NFR; a one-pass folder walk over a bounded corpus</dd>
+  <dt>Constraints</dt>      <dd>No PDF converter, no Python runtime (<a href="./spec.html#FR-004">FR-004</a>). Never fabricate provenance (<a href="./spec.html#FR-002">FR-002</a>). Idempotent + non-destructive on re-run (<a href="./spec.html#NFR-001">NFR-001</a>).</dd>
+</dl>
+</section>
+
+
+<section id="grounding">
+<h2>3 · Grounding &amp; evidence</h2>
+<p>Every design-bearing fact this plan rests on, and how it was confirmed — read this before the
+approach: it separates what the plan <em>knows</em> from what it <em>assumes</em> (per
+<code>REQ-LIFECYCLE-006</code>). Status is <code>verified</code> (opened the source
+this turn), <code>spike</code> (decidable only by a time-boxed investigation — run it, record the
+finding), or <code>assumed</code> (taken as true without verification). A <code>must</code>-tier decision
+may not rest on an <code>assumed</code>/unresolved-<code>spike</code> fact unless accepted as a
+<code>&lt;spec-risk&gt;</code> (see §8).</p>
+
+<table class="evidence">
+  <thead>
+    <tr><th>Claim the design rests on</th><th>Source</th><th>Status</th><th>Finding / note</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>The emission target is <code>---</code>-fenced YAML frontmatter (<code>id</code> + 7 provenance fields) + a 5-col <code>index.md</code> table, all round-trippable through the existing <code>yaml</code> dep</td>
+        <td><code>packages/core/src/knowledge/parse.ts:21</code>, <code>:13</code>; <code>knowledge/index.ts</code> (<code>INDEX_COLUMNS = 5</code>)</td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td><code>FRONTMATTER_RE = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?…/</code>; <code>parseYaml</code> from <code>yaml</code>. Index rows: ID | Title | Description | Edition | Path.</td></tr>
+    <tr><td>Idempotency (NFR-001) is nearly free: <code>parseCorpusDocument</code> already reports whether a file has frontmatter and a valid id</td>
+        <td><code>packages/core/src/knowledge/parse.ts:79</code>, <code>:48</code></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td>Returns <code>{ id, hasFrontmatter, missingFields, provenance, body }</code>. A file with <code>hasFrontmatter &amp;&amp; id !== null</code> is already-adapted → skip; a re-derivable field already set to a non-TODO value is preserved.</td></tr>
+    <tr><td>The provenance fields and id shape are a frozen, importable contract</td>
+        <td><code>packages/core/src/knowledge/types.ts:28</code> (<code>REQUIRED_PROVENANCE_FIELDS</code>), <code>:39</code> (<code>KB_ID_RE</code>)</td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td>7 fields: origin, origin-url, edition, license, converter, content-hash, status. <code>KB_ID_RE = /^KB-\d{3,}$/</code>.</td></tr>
+    <tr><td>The never-fabricate + content-hash pattern is already modelled in the dogfood corpus</td>
+        <td><code>knowledge/spectastic-concepts/references/KB-001-foundations.md:8</code></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td>Ships <code>content-hash: TODO</code> where uncomputed; content hashes elsewhere are <code>sha256:&lt;hex&gt;</code> (<code>knowledge.parse.test.ts:19</code>). The adapter computes <code>sha256:</code> from source bytes (present) and TODO-marks license/origin (underivable).</td></tr>
+    <tr><td>All ~20 CLI subcommands are flat — a <code>corpus</code> group is a new, contained pattern <code>commander</code> 12.1 supports</td>
+        <td><code>packages/cli/src/index.ts:61</code>–<code>78</code>; <code>commander@^12.1.0</code></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td>No existing group; <code>program.command('corpus')</code> then <code>.command('adapt &lt;path&gt;')</code> is standard commander. Registered via a new <code>registerCorpus</code>.</td></tr>
+    <tr><td>A fat-core function that reads a source tree and writes derived output is the established shape</td>
+        <td><code>packages/core/src/gitignore/apply.ts:70</code>; <code>providers/node-fs.ts</code></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td><code>applyGitignore(cwd, entries)</code> reads + writes deterministically; core takes <code>ctx.fs</code> or lazy-loads <code>nodeFs</code>. The adapter follows the same seam, testable without spawning the binary.</td></tr>
+    <tr><td>The <code>llms.txt</code> input is a curated markdown-link index (a shape, not a standard)</td>
+        <td><code>docs/knowledge-base-considerations.html:142</code></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td>"A curated, machine-readable index of a site's documents as markdown links." US2 maps its entries → index rows; the linked <code>.md</code> files get frontmatter.</td></tr>
+  </tbody>
+</table>
+</section>
+
+
+<section id="approach">
+<h2>4 · Approach</h2>
+
+<p>One new core module, one thin CLI command. <code>knowledge/adapt.ts</code> exposes a pure-ish
+<code>adaptCorpus(input, fs)</code> that: (1) routes on the input kind — a directory adapts every <code>.md</code>
+under it; an <code>llms.txt</code> file seeds the index from its entries and adapts the files it links; (2) for
+each source doc, parses any existing frontmatter via 051's <code>parseCorpusDocument</code> and <strong>skips</strong>
+it when it already carries a valid <code>KB-NNN</code> (idempotency); (3) for each raw doc, derives what it can
+— a <code>sha256:</code> hash of the bytes, an <code>edition</code>/<code>origin</code> only where the source or
+<code>llms.txt</code> genuinely supplies it — and writes every other provenance field as a literal
+<code>TODO</code>; (4) allocates new ids sequentially from the pack's existing max in sorted-filename order; and
+(5) merges the index by id (never a duplicate row). The command <code>spectastic corpus adapt &lt;path&gt;
+[--pack &lt;name&gt;]</code> resolves the pack (default: the source folder's basename), calls core, prints a count
+summary, and ends with the silent-loss caveat + a spot-check prompt (FR-003).</p>
+
+<spec-arch>
+<figure>
+<svg viewBox="0 0 720 220" role="img" aria-label="Corpus adapter pipeline sketch">
+  <style>
+    .box { fill:#fcfbf7; stroke:#c4c1bb; stroke-width:1.2; }
+    .label { font: 700 11px Lato, sans-serif; fill:#4a4a46; letter-spacing:0.06em; text-transform:uppercase; }
+    .body { font: 400 12px "Source Serif 4", Georgia, serif; fill:#353534; }
+    .arr { stroke:#73706d; stroke-width:1.2; fill:none; }
+    .note { font: italic 11px "Source Serif 4", Georgia, serif; fill:#73706d; }
+  </style>
+  <rect class="box" x="20" y="86" width="130" height="48" rx="4"/>
+  <text class="label" x="32" y="106">input router</text>
+  <text class="body"  x="32" y="124">dir | llms.txt</text>
+
+  <rect class="box" x="185" y="30" width="150" height="44" rx="4"/>
+  <text class="label" x="197" y="50">idempotency guard</text>
+  <text class="body"  x="197" y="67">skip if KB-NNN set</text>
+
+  <rect class="box" x="185" y="98" width="150" height="48" rx="4"/>
+  <text class="label" x="197" y="118">derive per doc</text>
+  <text class="body"  x="197" y="136">sha256 · else TODO</text>
+
+  <rect class="box" x="185" y="168" width="150" height="40" rx="4"/>
+  <text class="label" x="197" y="192">id allocate</text>
+  <text class="body"  x="197" y="205">max+1 · sorted</text>
+
+  <rect class="box" x="380" y="98" width="140" height="48" rx="4"/>
+  <text class="label" x="392" y="118">index merge</text>
+  <text class="body"  x="392" y="136">by id · no dups</text>
+
+  <rect class="box" x="560" y="86" width="140" height="48" rx="4"/>
+  <text class="label" x="572" y="106">knowledge/&lt;pack&gt;/</text>
+  <text class="body"  x="572" y="124">docs + index.md</text>
+
+  <path class="arr" d="M150 104 L185 60" marker-end="url(#a)"/>
+  <path class="arr" d="M150 110 L185 120" marker-end="url(#a)"/>
+  <path class="arr" d="M150 116 L185 184" marker-end="url(#a)"/>
+  <path class="arr" d="M335 122 L380 122" marker-end="url(#a)"/>
+  <path class="arr" d="M520 122 L560 112" marker-end="url(#a)"/>
+  <text class="note" x="352" y="205">non-destructive on re-run</text>
+  <defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#73706d"/></marker></defs>
+</svg>
+<figcaption>Input routed by kind; each raw doc derives what it can and TODO-marks the rest; ids allocated from the pack's max; index merged by id — writing 051's shape without ever overwriting a hand-authored value.</figcaption>
+</figure>
+</spec-arch>
+</section>
+
+
+<section id="alternatives">
+<h2>5 · Alternatives considered</h2>
+
+<spec-matrix>
+<table>
+  <thead>
+    <tr><th>Option</th><th>Honesty (no-fabricate)</th><th>Determinism</th><th>Reuse</th><th class="score">Total</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Own the full PDF→markdown→corpus pipeline (bundle Docling/MarkItDown)</td><td>3</td><td>2</td><td>1</td><td class="score">6</td></tr>
+    <tr><td>Generator that best-guesses missing provenance from filename/heuristics</td><td>1</td><td>4</td><td>4</td><td class="score">9</td></tr>
+    <tr data-winner><td>Deterministic Node generator: derive what's present, TODO the rest, idempotent via 051's parser</td><td>5</td><td>5</td><td>5</td><td class="score">15</td></tr>
+  </tbody>
+</table>
+</spec-matrix>
+<p>Owning conversion drags a Python runtime + a version matrix into the kernel — barred by <a href="./spec.html#FR-004">FR-004</a>.
+Best-guessing provenance is precisely the failure <a href="./spec.html#FR-002">FR-002</a> forbids: a fabricated field makes a
+wrong fact more credible. Deriving what's present and marking the rest TODO is the only option that stays honest, and it
+reuses 051's parser wholesale.</p>
+</section>
+
+
+<section id="decisions">
+<h2>6 · Decisions</h2>
+
+<spec-decision id="D-001" grounding="verified">
+  <h4>D-001 · Fat-core <code>knowledge/adapt.ts</code> + a thin <code>corpus adapt</code> CLI command</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>FR-004 requires deterministic kernel code; <code>applyGitignore</code> (<code>gitignore/apply.ts:70</code>) is the established read-source-write-derived shape, testable without the binary.</dd>
+    <dt>Decision</dt>     <dd>Add <code>adaptCorpus(input, fs)</code> to <code>@spectastic/core/knowledge</code>; register a thin <code>registerCorpus</code> CLI that delegates. The CLI is the first subcommand <em>group</em> (<code>corpus adapt</code>) — commander 12.1 supports it (<a href="#D-005">D-005</a>).</dd>
+    <dt>Consequences</dt> <dd>+ Pure derivation is unit-testable in-process. + A <code>corpus</code> namespace gives the 051–059 family a home. − Introduces the CLI's first subcommand group — a small new pattern, contained to one registrar.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-002" grounding="verified">
+  <h4>D-002 · Input mode selected by what the target points at</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>FR-001 accepts "a folder of markdown, or an <code>llms.txt</code>"; US1's acceptance is folder-shaped, US2's is llms.txt-shaped. <code>fs.stat</code> distinguishes a directory from a file.</dd>
+    <dt>Decision</dt>     <dd>A directory → folder mode (every <code>.md</code> gets frontmatter; index built from them). An <code>llms.txt</code> file → index-seed mode (its entries become index rows; the linked <code>.md</code> files get frontmatter). No flag chooses the mode; the target's kind does.</dd>
+    <dt>Consequences</dt> <dd>+ Each story's acceptance maps to one mode; zero ambiguity. − An <code>llms.txt</code> pointing outside its own folder needs a base-path rule (resolve links relative to the <code>llms.txt</code>'s dir) — a documented edge, not a new mode.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-003" grounding="verified">
+  <h4>D-003 · Sequential <code>KB-NNN</code> allocation from the pack's existing max</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>NFR-001 forbids duplicate ids on re-run or a second adapt. <code>loadCorpus</code>/<code>parseCorpusDocument</code> already surface every existing id; <code>KB_ID_RE</code> pins the shape.</dd>
+    <dt>Decision</dt>     <dd>Scan the target pack for the highest existing <code>KB-NNN</code>; allocate <code>max+1, max+2…</code> to <em>new</em> (raw) files in sorted-filename order. Already-adapted files keep their id.</dd>
+    <dt>Consequences</dt> <dd>+ Never collides an existing id; deterministic given a fixed source set. + Human-readable, sequential. − Allocation depends on the current pack contents (a deleted-then-re-added file may get a higher number) — acceptable; ids are stable-forward, never reused.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-004" grounding="verified">
+  <h4>D-004 · Never fabricate: derive what's present, TODO the rest, hash the bytes</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>FR-002 forbids inventing <code>license</code>/<code>origin</code>/<code>origin-url</code>/<code>edition</code> and requires a content hash where the source is present. The dogfood corpus already ships <code>content-hash: TODO</code> and <code>sha256:</code> hashes elsewhere.</dd>
+    <dt>Decision</dt>     <dd>Populate a field only from a value genuinely read (frontmatter already present, or an <code>llms.txt</code> entry); otherwise emit the literal string <code>TODO</code>. Always compute <code>content-hash: sha256:&lt;hex&gt;</code> from the source bytes via Node <code>crypto</code>. <code>converter</code> records the tool the user named or <code>TODO</code>.</dd>
+    <dt>Consequences</dt> <dd>+ A wrong fact never gains false credibility; the TODO is machine-visible to <code>validate</code>/review. − Freshly-adapted corpora are TODO-heavy until a human fills them — by design (honesty over convenience); surfaced by the FR-003 caveat.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-005" grounding="verified">
+  <h4>D-005 · Idempotency + non-destruction via 051's parser</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>NFR-001 requires re-runs to add no duplicate ids/rows and to never overwrite a hand-corrected value with a fresh TODO. <code>parseCorpusDocument</code> reports <code>hasFrontmatter</code>, <code>id</code>, and the present provenance.</dd>
+    <dt>Decision</dt>     <dd>A file with <code>hasFrontmatter &amp;&amp; id</code> is skipped whole. The index merges by id (existing row wins its non-empty cells). A provenance field already set to a non-<code>TODO</code> value is never rewritten to <code>TODO</code>.</dd>
+    <dt>Consequences</dt> <dd>+ Safe to re-run repeatedly; a human's edits survive. − "Already adapted" is judged by a valid id, so a half-adapted file (frontmatter, no id) is re-derived — the correct behaviour, not a bug.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-006" grounding="n-a">
+  <h4>D-006 · TDD, tests written red-first</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>The adapter is deterministic core: a temp source dir in, assert emitted frontmatter/index out. Every SC is cheaply assertable first (N→N + validate; underivable→TODO; re-run→no dups + preserved edits).</dd>
+    <dt>Decision</dt>     <dd>Write the failing unit tests before the generator; a folded <code>spectastic validate</code> over the emitted corpus proves SC-001's "validate accepts" leg.</dd>
+    <dt>Consequences</dt> <dd>+ Two MUSTs, a MUST-NOT and the idempotency NFR get red-first coverage. − None material for a pure transform.</dd>
+  </dl>
+</spec-decision>
+</section>
+
+
+<section id="project-structure">
+<h2>7 · Project structure</h2>
+
+<p>Only the new or changed paths.</p>
+
+<pre><code>packages/core/src/knowledge/
+  adapt.ts                    (NEW — adaptCorpus: input router, derive, id allocate, index merge, idempotency)
+  index.ts                    (export adaptCorpus + its result type from the ./knowledge barrel)
+packages/core/src/
+  types.ts                    (AdaptInput / AdaptResult shapes if not local to adapt.ts)
+packages/cli/src/commands/
+  corpus.ts                   (NEW — registerCorpus: the `corpus` group + the `adapt` subcommand shell)
+packages/cli/src/
+  index.ts                    (registerCorpus(program))
+packages/core/test/
+  knowledge.adapt.test.ts     (NEW — N→N + validate, TODO on underivable, idempotent re-run; red-first)
+README.md                     (document the adapt tier + the no-converter recipe: Docling/MarkItDown/Marker)
+</code></pre>
+</section>
+
+
+<section id="risks">
+<h2>8 · Risks &amp; mitigations</h2>
+
+<table>
+  <thead><tr><th>Risk</th><th>Likelihood</th><th>Impact</th><th>Mitigation</th></tr></thead>
+  <tbody>
+    <tr><td>The adapter silently fabricates a plausible-looking provenance value, making a wrong fact more credible</td><td>L</td><td>H</td><td>The only fallback for an underivable field is the literal <code>TODO</code> (D-004); a dedicated test asserts a no-license/no-origin source yields <code>TODO</code>, never a guess (SC-002, a MUST).</td></tr>
+    <tr><td>A re-run overwrites a human's hand-corrected provenance with a fresh <code>TODO</code>, or duplicates ids</td><td>L</td><td>M</td><td>Idempotency judged by 051's parser: valid-id files skipped whole, index merged by id, non-TODO values never rewritten (D-005); an idempotency test re-runs on the adapter's own output.</td></tr>
+    <tr><td>Scope creep into owning document conversion (a PDF the adapter can't consume)</td><td>L</td><td>M</td><td>FR-004 boundary: the adapter consumes markdown only; a PDF in the source is skipped, and conversion is a documented user step (README), never a dependency.</td></tr>
+  </tbody>
+</table>
+</section>
+
+
+<section id="complexity">
+<h2>9 · Complexity tracking</h2>
+<p>Anywhere this plan introduces complexity not strictly required by the spec, justify it here.</p>
+
+<spec-assumption>
+<p>The <code>corpus</code> subcommand group is the CLI's first — a small new pattern. It is justified by the
+size of the corpus family (051–059) and keeps <code>adapt</code> from colliding with the flat top-level
+namespace as a bare, context-free verb. Contained entirely to one registrar; no other command changes.</p>
+</spec-assumption>
+</section>
+
+
+<section id="questions">
+<h2>10 · Open questions</h2>
+<spec-questions>
+<p>None outstanding — the command surface (<code>corpus adapt</code>), the input-mode routing (by target kind),
+<code>KB-NNN</code> allocation (sequential from max), and test style were all anchored in the interview; every
+must-tier decision is <code>grounding="verified"</code>.</p>
+</spec-questions>
+</section>
+
+
+<section id="changelog">
+<h2>11 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-07-25">25 Jul 2026</time><span>Initial plan. Fat-core <code>adaptCorpus</code> + a thin <code>corpus adapt</code> CLI, the first subcommand group (D-001); input mode by target kind (D-002); sequential <code>KB-NNN</code> from the pack max (D-003); never-fabricate with <code>TODO</code> markers + a <code>sha256:</code> byte hash (D-004); idempotency via 051's <code>parseCorpusDocument</code> (D-005); TDD red-first (D-006). Reuses 051's parser/types wholesale; no PDF converter, no Python.</span></li>
+  <li><time datetime="2026-07-25">25 Jul 2026</time><span>Status flipped Draft → Accepted — zero remaining unchecked tasks; tests verified passing per author confirmation. Sibling bundle (REQ-LIFECYCLE-005).</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  Plan for 056-corpus-adapter · Corpus adapter · authored 25 Jul 2026
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>
