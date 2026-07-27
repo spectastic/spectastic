@@ -241,20 +241,52 @@ function orphanedRegistryFindings(entries: readonly RegistryEntry[]): Finding[] 
   return findings;
 }
 
+/** Every `(plugin, slug)` reference registered under MORE THAN ONE
+ * marketplace — an identity-fragmentation signal (061 Phase 8 T-1004, the
+ * Risk-1 mitigation reconciled to 063's `corpus.marketplace`). The install
+ * door pins a marketplace-less re-import to the existing row's marketplace
+ * (T-1002), so this can't arise from import; a hand-edit or a manually-set
+ * `corpus.marketplace` change between imports can still fragment the same
+ * pack into two `KB-NNNN`s under two namespaces. Warning, not error: the rows
+ * are individually well-formed and each resolves; the concern is that a
+ * consumer citing "this pack" now has two ids for it. */
+function fragmentedIdentityFindings(entries: readonly RegistryEntry[]): Finding[] {
+  const byPluginSlug = new Map<string, Set<string>>();
+  for (const entry of entries) {
+    const key = `${entry.plugin} ${entry.slug}`;
+    const marketplaces = byPluginSlug.get(key) ?? new Set<string>();
+    marketplaces.add(entry.marketplace);
+    byPluginSlug.set(key, marketplaces);
+  }
+  const findings: Finding[] = [];
+  for (const [key, marketplaces] of byPluginSlug) {
+    if (marketplaces.size < 2) continue;
+    const [plugin, slug] = key.split(' ');
+    findings.push(
+      warningFinding(
+        REGISTRY_FILE,
+        `Reference ${plugin}/${slug} is registered under ${marketplaces.size} marketplaces (${[...marketplaces].join(', ')}) — an identity fragmentation. A consumer citing this pack now has two KB-NNNN ids for it; reconcile to one marketplace namespace.`,
+      ),
+    );
+  }
+  return findings;
+}
+
 /** All root-registry findings (FR-007/FR-009): required columns, opaqueness,
- * repo-wide `KB-NNNN` uniqueness (all error severity), and orphan-flagging
- * (warning severity). A no-op (returns []) when no registry exists —
- * `entries` is simply empty in that case (no `knowledge/index.md` to parse),
- * so the graceful-absence contract holds the same way
- * `corpusWellFormedFindings`' does for an empty `packs` array (NFR-001).
- * Kept separate from `corpusWellFormedFindings` because a registry spans
- * every pack in the project, not one — there is no single `CorpusPack` to
- * attach it to. */
+ * repo-wide `KB-NNNN` uniqueness (all error severity), orphan-flagging and
+ * identity-fragmentation (warning severity). A no-op (returns []) when no
+ * registry exists — `entries` is simply empty in that case (no
+ * `knowledge/index.md` to parse), so the graceful-absence contract holds the
+ * same way `corpusWellFormedFindings`' does for an empty `packs` array
+ * (NFR-001). Kept separate from `corpusWellFormedFindings` because a registry
+ * spans every pack in the project, not one — there is no single `CorpusPack`
+ * to attach it to. */
 export function corpusRegistryFindings(entries: readonly RegistryEntry[]): Finding[] {
   return [
     ...missingRegistryFieldFindings(entries),
     ...malformedIdFindings(entries),
     ...duplicateRegistryIdFindings(entries),
     ...orphanedRegistryFindings(entries),
+    ...fragmentedIdentityFindings(entries),
   ];
 }

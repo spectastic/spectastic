@@ -207,6 +207,25 @@ export interface InstallResult {
   orphaned: string[];
 }
 
+/** 061 FR-013 (T-1005): preserve a source pack's ALREADY-retained superseded
+ * editions on import. The install loop reads only top-level `references/*.md`,
+ * so a source's `references/superseded/*.md` would otherwise be silently
+ * dropped — dangling any edition-pinned citation to a prior edition (052
+ * FR-003). Copies each verbatim (the `<slug>@<edition>.md` filename already
+ * matches what `loadSuperseded` parses; no rename), never overwriting one
+ * already present (idempotent). Distinct from `installPack`'s own
+ * supersede-by-append branch, which creates a NEW superseded file when a live
+ * edition is bumped. */
+function preserveSourceSuperseded(sourceReferencesDir: string, destSupersededDir: string): void {
+  const sourceSupersededDir = join(sourceReferencesDir, 'superseded');
+  if (!existsSync(sourceSupersededDir)) return;
+  mkdirSync(destSupersededDir, { recursive: true });
+  for (const f of readdirSync(sourceSupersededDir).filter((n) => n.endsWith('.md'))) {
+    const dest = join(destSupersededDir, f);
+    if (!existsSync(dest)) writeFileSync(dest, readFileSync(join(sourceSupersededDir, f), 'utf8'), 'utf8');
+  }
+}
+
 /** The plugin name(s) an existing registry row may be filed under for this
  * install — its current name, plus any former name a rename map still
  * migrates from (FR-006). */
@@ -232,7 +251,7 @@ function candidatePluginNames(plugin: string, renames: Record<string, string>): 
  * pack no longer fetches is flagged `orphaned`, never deleted (FR-007).
  */
 export async function installPack(input: InstallInput): Promise<InstallResult> {
-  const { plugin, marketplace } = parseCoordinate(input.coordinate);
+  const { plugin, marketplace: coordinateMarketplace } = parseCoordinate(input.coordinate);
   const renames = input.renames ?? {};
   const sourceDir = await input.fetcher.fetch(input.coordinate);
   const sourceReferencesDir = join(sourceDir, 'references');
@@ -244,6 +263,22 @@ export async function installPack(input: InstallInput): Promise<InstallResult> {
 
   const registryPath = join(input.knowledgeDir, 'index.md');
   const existingRegistry = existsSync(registryPath) ? parseRegistry(readFileSync(registryPath, 'utf8')) : [];
+
+  // 061 FR-008 marketplace-optional local mode (reconciled to 063's
+  // corpus.marketplace per 063 D-003): a coordinate that omits @marketplace
+  // — an in-repo pack never fetched from a marketplace — files under a
+  // resolved namespace instead of an empty column. T-1002 pin: reuse an
+  // existing row's marketplace for this plugin FIRST, so a later
+  // corpus.marketplace change never silently re-keys (plugin, slug) and mints
+  // a second KB-NNNN; else the caller's corpus.marketplace
+  // (`corpusMarketplaceName`); else the `local` sentinel (never an empty
+  // required column).
+  const marketplace =
+    coordinateMarketplace ||
+    existingRegistry.find((e) => e.plugin === plugin)?.marketplace ||
+    input.corpusMarketplaceName ||
+    'local';
+
   const existingByAnchor = new Map(existingRegistry.map((e) => [anchorKey(e), e]));
 
   /** Resolve an existing row for this slug — the current plugin name first,
@@ -336,6 +371,8 @@ export async function installPack(input: InstallInput): Promise<InstallResult> {
     freshSlugRows.push({ slug, title, description, edition: provenance.edition, path: `references/${filename}` });
     superseded.push(existing.id);
   }
+
+  preserveSourceSuperseded(sourceReferencesDir, supersededDir);
 
   // Orphans: rows this pack (current name or any renamed-from name) owns,
   // whose slug this fetch no longer carries — flagged, never deleted (FR-007).

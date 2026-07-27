@@ -223,4 +223,23 @@ describe('corpusRegistryFindings (FR-009, the root registry)', () => {
     const findings = corpusRegistryFindings([registryRow({ status: '' })]);
     expect(findings.filter((f) => f.message.toLowerCase().includes('orphan'))).toEqual([]);
   });
+
+  /**
+   * 061 Phase 8 T-1004 (Risk-1 mitigation): the same (plugin, slug) registered
+   * under two marketplaces is an identity fragmentation — warn, never block.
+   */
+  it('warns when the same (plugin, slug) is registered under two marketplaces (identity fragmentation)', () => {
+    const rowA = registryRow({ id: 'KB-0001', marketplace: 'local' });
+    const rowB = registryRow({ id: 'KB-0002', marketplace: 'my-repo' }); // same plugin+slug, different marketplace
+    const findings = corpusRegistryFindings([rowA, rowB]);
+    const frag = findings.filter((f) => f.message.toLowerCase().includes('fragmentation'));
+    expect(frag).toHaveLength(1);
+    expect(frag[0]?.severity).toBe('warning');
+    expect(frag[0]?.message).toContain('finance-settlement/001-settlement-windows');
+  });
+
+  it('does not warn when the same (plugin, slug) is under a single marketplace', () => {
+    const findings = corpusRegistryFindings([registryRow()]);
+    expect(findings.filter((f) => f.message.toLowerCase().includes('fragmentation'))).toEqual([]);
+  });
 });

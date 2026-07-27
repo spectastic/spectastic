@@ -306,6 +306,53 @@ describe('installPack (T-101/T-102, FR-001/FR-002/FR-004/FR-008/FR-009)', () => 
     expect(manifest.name).toBe('acme');
     expect(manifest.plugins).toHaveLength(1);
   });
+
+  it('061 Phase 8 T-1001: a marketplace-less coordinate files under corpusMarketplaceName (else the local sentinel)', async () => {
+    const src = sourcePack({ '001-fact.md': '# A fact\n\nBody.\n' });
+    const kd = knowledgeDir();
+    // No @marketplace in the coordinate — a local, in-repo pack.
+    const r = await installPack({ fetcher: stubFetcher('ops-knowledge', src), coordinate: 'ops-knowledge', knowledgeDir: kd, corpusMarketplaceName: 'my-repo' });
+    expect(r.marketplace).toBe('my-repo');
+    const registry = parseRegistry(readFileSync(join(kd, 'index.md'), 'utf8'));
+    expect(registry[0]?.marketplace).toBe('my-repo');
+    expect(registry[0]?.plugin).toBe('ops-knowledge');
+
+    const kd2 = knowledgeDir();
+    const bare = await installPack({ fetcher: stubFetcher('ops-knowledge', src), coordinate: 'ops-knowledge', knowledgeDir: kd2 });
+    expect(bare.marketplace, 'no config → the local sentinel').toBe('local');
+  });
+
+  it('061 Phase 8 T-1002: a marketplace-less re-import reuses the existing row\'s marketplace (pin, no re-key on config drift)', async () => {
+    const src = sourcePack({ '001-fact.md': '# A fact\n\nBody.\n' });
+    const kd = knowledgeDir();
+    // First import files it under 'first-name'.
+    await installPack({ fetcher: stubFetcher('ops-knowledge', src), coordinate: 'ops-knowledge', knowledgeDir: kd, corpusMarketplaceName: 'first-name' });
+    // Config drifts: a re-import with a DIFFERENT corpus.marketplace...
+    const second = await installPack({ fetcher: stubFetcher('ops-knowledge', src), coordinate: 'ops-knowledge', knowledgeDir: kd, corpusMarketplaceName: 'drifted-name' });
+    // ...still resolves to the existing row's marketplace — no second KB-NNNN under 'drifted-name'.
+    expect(second.marketplace).toBe('first-name');
+    const registry = parseRegistry(readFileSync(join(kd, 'index.md'), 'utf8'));
+    expect(registry).toHaveLength(1);
+    expect(registry[0]?.marketplace).toBe('first-name');
+  });
+
+  it('061 Phase 8 T-1005: a source pack\'s existing references/superseded/ editions are preserved on import (FR-013)', async () => {
+    const src = sourcePack({ '001-settlement.md': '# Settlement\n\nT+1.\n' });
+    // The source already retains a prior edition.
+    mkdirSync(join(src, 'references', 'superseded'), { recursive: true });
+    writeFileSync(
+      join(src, 'references', 'superseded', '001-settlement@2017-09-05.md'),
+      '---\nslug: 001-settlement\nedition: 2017-09-05\n---\n\n# Settlement (T+2)\n\nPrior edition.\n',
+      'utf8',
+    );
+    const kd = knowledgeDir();
+    await installPack({ fetcher: stubFetcher('finance@acme', src), coordinate: 'finance@acme', knowledgeDir: kd });
+
+    expect(
+      existsSync(join(kd, 'finance', 'references', 'superseded', '001-settlement@2017-09-05.md')),
+      'the retained prior edition must be copied into the installed pack',
+    ).toBe(true);
+  });
 });
 
 describe('registerDocument (T-212, FR-003)', () => {

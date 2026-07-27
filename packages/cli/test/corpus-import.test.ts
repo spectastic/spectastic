@@ -1,7 +1,7 @@
 import { spawn } from 'node:child_process';
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join, resolve } from 'node:path';
+import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
@@ -135,6 +135,19 @@ describe('spectastic corpus import --from <path> (061 T-104, FR-008)', () => {
     const registry = readFileSync(join(dir, 'knowledge', 'index.md'), 'utf8');
     expect(registry).toContain('001-settlement-windows');
     expect(registry).toContain('finance-settlement');
+  });
+
+  it('061 Phase 8 T-1003: a marketplace-less coordinate files under the resolved corpus.marketplace (default = repo dir name)', async () => {
+    const dir = project('local');
+    const src = sourcePack(dir, { '001-fact.md': '# A fact\n\nBody.\n' });
+
+    // No @marketplace — an in-repo local pack. corpus.marketplace defaults to basename(cwd).
+    const r = await runCLI(['corpus', 'import', 'ops-knowledge', '--from', src], dir);
+    expect(r.code, r.stdout + r.stderr).toBe(0);
+
+    const registry = readFileSync(join(dir, 'knowledge', 'index.md'), 'utf8');
+    expect(registry).toContain('ops-knowledge');
+    expect(registry).toContain(basename(dir)); // filed under the repo-name default, never an empty marketplace column
   });
 });
 
