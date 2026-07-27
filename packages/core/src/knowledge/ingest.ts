@@ -132,6 +132,20 @@ function renderTwoLayerDocument(slug: string, provenance: Record<string, string>
   return `---\n${yamlBlock}\n---\n\n${body}\n`;
 }
 
+/** The body's first non-heading, non-empty line, truncated to a slug-map
+ * description length — the discoverability blurb for a hand-supplied document
+ * (interview/source) whose body carries no `# heading` for
+ * `deriveTitleAndDescription` to key off. Returns `''` for an empty body. */
+function firstBodyParagraph(body: string): string {
+  const DESCRIPTION_LEN = 137; // matches adapt.ts's TITLE_FALLBACK_LEN
+  for (const line of body.split('\n')) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#')) continue;
+    return trimmed.length > DESCRIPTION_LEN ? `${trimmed.slice(0, DESCRIPTION_LEN)}...` : trimmed;
+  }
+  return '';
+}
+
 /** Marks an installed document as not yet spot-checked by this project — the
  * install door's own guard (spec FR-010: "citable once a human spot-checks
  * the conversion"), distinct from whatever `status` the source pack itself
@@ -399,14 +413,22 @@ export function registerDocument(input: RegisterDocumentInput): { id: string } {
     slug,
     title,
     edition: provenance.edition,
-    path: `knowledge/${plugin}/references/${filename}`,
+    // Corpus-root-relative, matching installPack + loadCorpus (062 triage T-002).
+    path: `${plugin}/references/${filename}`,
     status: '',
   };
   const mergedRegistry = mergeRegistryRows(existingRegistry, [freshRow]);
   writeFileSync(registryPath, renderRegistryTable(mergedRegistry), 'utf8');
 
   const skillPath = join(packDir, 'SKILL.md');
-  const freshSlugRow: SkillSlugMapEntry = { slug, title, description: '', edition: provenance.edition, path: `references/${filename}` };
+  // Derive the slug-map description from the body's first paragraph rather than
+  // leaving it blank — a blank cell makes the pack's own map undiscoverable. A
+  // hand-supplied interview/source body is heading-less prose (its title comes
+  // in via the caller), so `deriveTitleAndDescription` — which only reads the
+  // line after a `# heading` — returns blank here; the first-paragraph fallback
+  // is what actually fills the cell.
+  const description = firstBodyParagraph(body);
+  const freshSlugRow: SkillSlugMapEntry = { slug, title, description, edition: provenance.edition, path: `references/${filename}` };
   const existingSlugRows = existsSync(skillPath) ? parseSkillSlugMap(readFileSync(skillPath, 'utf8')) : [];
   const mergedSlugRows = mergeSlugMapRows(existingSlugRows, [freshSlugRow]);
   if (!existsSync(skillPath)) {

@@ -137,12 +137,14 @@ describe('explain.md corpus-grounding instruction (055, T-200)', () => {
   // genuinely landed in the source markdown, in both modes (D-002).
   const md = readFileSync(resolve(REPO_ROOT, 'commands', 'spectastic.explain.md'), 'utf8');
 
-  it('the bare-mode grounding step cites KB-NNN@edition when a corpus is present', () => {
-    expect(md).toMatch(/knowledge\/.*corpus.*KB-NNN@edition|KB-NNN@edition.*knowledge\/.*corpus/is);
+  it('the bare-mode grounding step cites KB-NNNN@edition when a corpus is present', () => {
+    // 062 migration: the id shape is four-digit KB-NNNN (the retired flat model
+    // was three-digit KB-NNN); the coaching copy modernised with it.
+    expect(md).toMatch(/knowledge\/.*corpus.*KB-NNNN@edition|KB-NNNN@edition.*knowledge\/.*corpus/is);
   });
 
   it('the --course objective-drafting step carries the same corpus-citation instruction', () => {
     const courseSection = md.slice(md.indexOf('## Course mode'));
-    expect(courseSection).toMatch(/KB-NNN@edition/);
+    expect(courseSection).toMatch(/KB-NNNN@edition/);
   });
 });

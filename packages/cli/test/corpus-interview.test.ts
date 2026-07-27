@@ -77,6 +77,11 @@ describe('spectastic corpus interview (061 T-300, FR-010, plan D-007)', () => {
     expect(doc).toContain('origin: "interview: settlement-desk-lead, 2026-07-26"');
     expect(doc).toContain('status: not-citable-until-signed-off');
     expect(doc).toContain('manually override a settlement');
+
+    // just-do: the SKILL.md slug-map description is derived from the body, not
+    // left blank — a blank cell makes the pack's own map undiscoverable.
+    const skill = readFileSync(join(dir, 'knowledge', 'ops-knowledge', 'SKILL.md'), 'utf8');
+    expect(skill).toContain('manually override a settlement');
   });
 
   it('prints a notice that the interview discipline itself is deferred', async () => {

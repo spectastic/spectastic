@@ -106,7 +106,7 @@ User input (from `$ARGUMENTS`): a change name or one-line description ("add OAut
    > 2. The single requirement in the live spec this proposal most likely contradicts. Cite the REQ ID.
    > 3. The single concern about the proposal's scope — too broad, too narrow, or wrong topic group. Cite the `§Scope` item.
    >
-   > If a `knowledge/` corpus exists in this repo, add a fourth risk: a requirement in the live spec that contradicts a domain fact committed under `knowledge/<pack>/references/`. Cite the contradicted `KB-NNN@edition`. No `knowledge/` directory ⇒ skip this fourth risk entirely.
+   > If a `knowledge/` corpus exists in this repo, add a fourth risk: a requirement in the live spec that contradicts a domain fact committed under `knowledge/<pack>/references/`. Cite the contradicted `KB-NNNN@edition`. No `knowledge/` directory ⇒ skip this fourth risk entirely.
    >
    > Empty findings are forbidden. If no risk passes the "would I regret this in 30 days?" test for any applicable slot, return `<spec-risk status="no-value-found">` with a one-sentence justification. Three `no-value-found` in a row escalates to the user before archive.
 

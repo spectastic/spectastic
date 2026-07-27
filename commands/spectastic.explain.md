@@ -76,7 +76,7 @@ anchor are out of scope.
 
    **Cite the corpus when a domain fact is present** (055-corpus-in-review, FR-002). If the project has a
    `knowledge/` corpus and the target's grounding rests on a domain fact — not a local product decision — cite
-   the document as `KB-NNN@edition`, the same citation form a `<spec-decision>` uses. No `knowledge/` corpus ⇒
+   the document as `KB-NNNN@edition`, the same citation form a `<spec-decision>` uses. No `knowledge/` corpus ⇒
    explain exactly as today; this is additive, never a requirement to invent a citation that isn't there.
 
    **Reach for a teaching move before a flat definition.** A bare restatement is the weakest way to teach — a
@@ -129,7 +129,7 @@ under `.spectastic/courses/<date>-<slug>/course.html`.
 
      Use members **sparingly** — the one or two that make *this* objective land, not all four. Every member cites
      only references you confirmed exist; a plain-prose `read` (a bare string) is always valid and unchanged. When a
-     `knowledge/` corpus is present and the read teaches a domain fact, cite it as `KB-NNN@edition` alongside the
+     `knowledge/` corpus is present and the read teaches a domain fact, cite it as `KB-NNNN@edition` alongside the
      other refs (055-corpus-in-review, FR-002);
    - a **title**;
    - an **MCQ quiz** — `question`, 2–4 `options`, the `correctIndex`, and per-option `feedback` — written so it
