@@ -1,8 +1,9 @@
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { PackFetcherError, RealPackFetcher } from '../src/providers/pack-fetcher.js';
+import type { GitRunner, GitSource } from '../src/providers/pack-fetcher.js';
 import { StubPackFetcher, StubPackFetcherError } from '@spectastic/core/providers/pack-fetcher-stub';
 
 /**
@@ -99,23 +100,81 @@ describe('RealPackFetcher (061 T-110, plan §3 spike)', () => {
     );
   });
 
-  it('throws an actionable error naming /plugin install for a remote (object-sourced) plugin', async () => {
-    const home = claudeHome();
+  /** A fake GitRunner that records its calls and populates `dest` (at the
+   * source's subdir when given) with a minimal two-layer pack — so a clone
+   * never touches the network in a test (the seam's whole point). */
+  class FakeGitRunner implements GitRunner {
+    public readonly calls: Array<{ dest: string; source: GitSource }> = [];
+    fetch(dest: string, source: GitSource): void {
+      this.calls.push({ dest, source });
+      const packDir = source.path ? join(dest, source.path) : dest;
+      mkdirSync(join(packDir, 'references'), { recursive: true });
+      writeFileSync(join(packDir, 'SKILL.md'), '---\nname: remote-thing\n---\n');
+      writeFileSync(join(packDir, 'references', '001-x.md'), '---\nslug: 001-x\n---\n# X\n');
+    }
+  }
+
+  function marketplaceWith(home: string, name: string, source: unknown): void {
     mkdirSync(join(home, 'plugins'), { recursive: true });
-    const installLocation = join(home, 'plugins', 'marketplaces', 'acme');
+    const installLocation = join(home, 'plugins', 'marketplaces', name);
     mkdirSync(join(installLocation, '.claude-plugin'), { recursive: true });
-    writeFileSync(join(home, 'plugins', 'known_marketplaces.json'), JSON.stringify({ acme: { installLocation } }));
+    writeFileSync(join(home, 'plugins', 'known_marketplaces.json'), JSON.stringify({ [name]: { installLocation } }));
     writeFileSync(
       join(installLocation, '.claude-plugin', 'marketplace.json'),
-      JSON.stringify({
-        name: 'acme',
-        plugins: [{ name: 'remote-thing', source: { source: 'url', url: 'https://example.com/x.git' } }],
-      }),
+      JSON.stringify({ name, plugins: [{ name: 'remote-thing', source }] }),
     );
+  }
 
-    const fetcher = new RealPackFetcher(home);
-    await expect(fetcher.fetch('remote-thing@acme')).rejects.toThrow(PackFetcherError);
-    await expect(fetcher.fetch('remote-thing@acme')).rejects.toThrow(/\/plugin install remote-thing@acme/);
+  it('clones a remote (url + sha) plugin via the git seam and returns the cached pack dir', async () => {
+    const home = claudeHome();
+    marketplaceWith(home, 'acme', { source: 'url', url: 'https://example.com/x.git', sha: 'abc123' });
+    const git = new FakeGitRunner();
+
+    const dir = await new RealPackFetcher(home, git).fetch('remote-thing@acme');
+    expect(git.calls).toHaveLength(1);
+    expect(git.calls[0]?.source).toMatchObject({ url: 'https://example.com/x.git', sha: 'abc123' });
+    expect(dir).toContain(join('.spectastic-cache', 'remote-thing@acme@abc123'));
+    expect(existsSync(join(dir, 'references', '001-x.md'))).toBe(true);
+  });
+
+  it('derives the github clone URL from {source:github, repo}', async () => {
+    const home = claudeHome();
+    marketplaceWith(home, 'acme', { source: 'github', repo: 'owner/name' });
+    const git = new FakeGitRunner();
+
+    await new RealPackFetcher(home, git).fetch('remote-thing@acme');
+    expect(git.calls[0]?.source.url).toBe('https://github.com/owner/name.git');
+  });
+
+  it('returns the subdir for a git-subdir source', async () => {
+    const home = claudeHome();
+    marketplaceWith(home, 'acme', { source: 'git-subdir', url: 'https://example.com/r.git', path: 'plugins/thing', sha: 'deadbeef' });
+    const git = new FakeGitRunner();
+
+    const dir = await new RealPackFetcher(home, git).fetch('remote-thing@acme');
+    expect(dir.endsWith(join('plugins', 'thing'))).toBe(true);
+    expect(readFileSync(join(dir, 'SKILL.md'), 'utf8')).toContain('remote-thing');
+  });
+
+  it('reuses the cache on a second fetch at the same sha (no re-clone)', async () => {
+    const home = claudeHome();
+    marketplaceWith(home, 'acme', { source: 'url', url: 'https://example.com/x.git', sha: 'abc123' });
+    const git = new FakeGitRunner();
+    const fetcher = new RealPackFetcher(home, git);
+
+    await fetcher.fetch('remote-thing@acme');
+    await fetcher.fetch('remote-thing@acme');
+    expect(git.calls, 'the second fetch is a cache hit').toHaveLength(1);
+  });
+
+  it('throws for an unrecognised remote source shape (no url or repo)', async () => {
+    const home = claudeHome();
+    marketplaceWith(home, 'acme', { source: 'url' }); // no url
+    const git = new FakeGitRunner();
+
+    await expect(new RealPackFetcher(home, git).fetch('remote-thing@acme')).rejects.toThrow(PackFetcherError);
+    await expect(new RealPackFetcher(home, git).fetch('remote-thing@acme')).rejects.toThrow(/unrecognised remote source/);
+    expect(git.calls, 'never attempts a clone for a malformed source').toHaveLength(0);
   });
 
   it('throws an actionable error naming /plugin marketplace add for an unknown marketplace', async () => {

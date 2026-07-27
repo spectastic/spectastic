@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
+<title>061-corpus-ingester · Triage log</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Triage log · 061-corpus-ingester</p>
+  <h1>061-corpus-ingester — triage log</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    Defects against the <code>061-corpus-ingester</code> spec. Cards append-only; IDs stable.
+  </p>
+
+  <spec-meta>
+    <b>Spec</b>      <span><a href="./spec.html">061-corpus-ingester</a></span>
+    <b>Created</b>   <span><time datetime="2026-07-26">26 Jul 2026</time></span>
+    <b>Read time</b> <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-tldr>
+    <p>One card per debug session. Fits one screen; reads in under 30 seconds. Five required Tier-1 fields
+    (headline · Expected · Actual · Diagnosis · Fix); the deep-dive <code>&lt;details&gt;</code> stays collapsed
+    unless cross-spec, principles, scope, or hotfix-now applies. See <a href="../../examples/triage-log.html">examples/triage-log.html</a>
+    for the canonical look + the protocol (<code>TRIAGE-001</code>..<code>TRIAGE-006</code>).</p>
+  </spec-tldr>
+</header>
+
+
+<section id="cards">
+<h2>Cards</h2>
+<spec-triage-log>
+
+<spec-triage id="T-001" layer="implementation">
+  <header>
+    <h4>FR-008 remote-source ceiling lifted — RealPackFetcher now git-clones an object-sourced plugin</h4>
+    <span class="meta">
+      <span class="layer-pill">Implementation</span>
+      <span class="regen" data-result="pass">code</span>
+    </span>
+  </header>
+
+  <p class="headline">Not a defect — a deliberately-deferred ceiling now built. <a href="./spec.html#FR-008">FR-008</a>
+  ("the import door MUST drive the install") shipped cache-read-only: an installed or string-sourced plugin
+  resolved, but an object-sourced (remote) plugin threw and named <code>/plugin install</code> as the ceiling
+  (plan D-002 / the T-100 spike, to avoid re-implementing git). That ceiling is now lifted — a remote plugin is
+  git-cloned. Regeneration <strong>passes</strong>: the change is entirely in code behind the existing seam; the
+  spec/plan are unchanged and still correct.</p>
+
+  <dl>
+    <dt>Expected</dt> <dd>An object-sourced plugin in an <em>added</em> marketplace resolves without a manual <code>/plugin install</code> — <a href="./spec.html#FR-008">FR-008</a>'s "drive the install" met for the remote case, not just the cached one.</dd>
+    <dt>Actual</dt>   <dd>Before: <code>RealPackFetcher</code> threw <code>PackFetcherError</code> on an object source, naming <code>/plugin install</code> / <code>--from</code> as the only paths.</dd>
+    <dt>Diagnosis</dt><dd>A recorded scope ceiling (plan D-002), not a bug: the object-source clone was deferred at 061 to avoid re-implementing a git client. Building it fully satisfies the <code>must</code>-tier <a href="./spec.html#FR-008">FR-008</a>.</dd>
+    <dt>Fix</dt>      <dd><code>packages/core/src/providers/pack-fetcher.ts</code> — a new <code>GitRunner</code> seam (real impl shells a hardened <code>git</code>; a fake is injected in tests so CI never clones) + <code>parseGitSource</code> for the <code>url</code>/<code>git-subdir</code>/<code>github</code> shapes. Clones shallow, no submodules, hooks disabled, pinned to the manifest <code>sha</code> when present; cached under <code>~/.claude/plugins/.spectastic-cache/&lt;coordinate&gt;@&lt;rev&gt;</code> and reused. 14 fetcher tests green.</dd>
+  </dl>
+
+  <details>
+    <summary>Deep dive — security posture + the residual ceiling</summary>
+    <p><strong>Trust boundary.</strong> The clone URL comes from a marketplace the user added via
+    <code>/plugin marketplace add</code> — a trust decision already made — so <code>import</code> clones by default
+    (no extra <code>--allow</code> gate, unlike the arbitrary-web-fetch <code>source</code> door). Integrity comes
+    from pinning to the manifest's immutable <code>sha</code> when present (the supply-chain-integrity-considerations
+    lever), plus a hardened clone that runs no remote code (no hooks, no submodule recursion).</p>
+    <p><strong>Residual ceiling (recorded, not hidden).</strong> An <em>unknown</em> marketplace still errors — its
+    manifest, and thus any URL, isn't on disk until <code>/plugin marketplace add</code>. Cloning a whole
+    marketplace from its <code>known_marketplaces.json</code> <code>source</code> is a further step, not built here.
+    A <code>ref</code>/HEAD (unpinned) source is cached mutably by name; only a <code>sha</code> is immutable-by-key.</p>
+  </details>
+</spec-triage>
+
+</spec-triage-log>
+</section>
+
+
+<section id="changelog">
+<h2>Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-07-26">26 Jul 2026</time><span>T-001 added — FR-008's remote-source ceiling (plan D-002 / T-100 spike) lifted: <code>RealPackFetcher</code> git-clones an object-sourced plugin behind a new <code>GitRunner</code> seam (hardened, sha-pinned, cached). Implementation-layer, regen passes.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  061-corpus-ingester triage log · scaffolded 2026-07-26
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>

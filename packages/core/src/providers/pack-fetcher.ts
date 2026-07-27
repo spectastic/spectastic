@@ -25,14 +25,19 @@
  *    object for an externally-hosted one (confirmed against both the
  *    official marketplace and spectastic's own real one).
  *
- * `RealPackFetcher` therefore never shells to git itself — it reads Claude
- * Code's own cache. A plugin whose source is the object (remote) form isn't
- * yet fetched here (that would mean re-implementing a git client Claude
- * Code already has); the error names the `/plugin install` command as the
- * documented ceiling, alongside the `--from <path>` escape hatch every
- * caller already has.
+ * `RealPackFetcher` reads Claude Code's own cache for the common cases (an
+ * installed plugin, or a string-sourced monorepo plugin in an added
+ * marketplace). A plugin whose source is the object (remote) form is
+ * git-cloned (061 FR-008 remote-source clone, triage T-001): the marketplace was added by
+ * the user, so the URL in its manifest is within their trust boundary, and the
+ * clone is hardened (shallow, no submodules, hooks disabled) and pinned to the
+ * manifest's `sha` when present. The one network touch lives behind the
+ * `GitRunner` seam so CI never clones (the `--from <path>` escape hatch still
+ * bypasses fetching entirely). An unknown marketplace still errors — there is
+ * no URL to clone from until `/plugin marketplace add`.
  */
-import { existsSync, readFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
 
@@ -51,6 +56,69 @@ export class PackFetcherError extends Error {
   }
 }
 
+/** A resolved remote git source for a plugin: the clone URL, an optional
+ * immutable `sha` (preferred — pinning to it is the supply-chain integrity
+ * win), an optional `ref` (tag/branch), and an optional `path` subdir the pack
+ * lives under inside the repo. */
+export interface GitSource {
+  url: string;
+  ref?: string;
+  sha?: string;
+  path?: string;
+}
+
+/**
+ * The injectable git seam (061 FR-008 remote-source clone, triage T-001). A remote-sourced
+ * plugin is fetched by cloning its git source; this interface is the only
+ * thing that touches the network, so a test injects a fake that populates
+ * `dest` from a fixture and CI never clones (the same stub-in-CI discipline
+ * `PackFetcher` itself follows).
+ */
+export interface GitRunner {
+  /**
+   * Fetch `source` into the empty directory `dest`, hardened: shallow
+   * (`--depth 1`), no tags, no submodule recursion, hooks disabled. Checks out
+   * the pinned `sha` when given (immutable), else the `ref`, else the default
+   * branch.
+   */
+  fetch(dest: string, source: GitSource): void;
+}
+
+/** The production `GitRunner` — shells to a hardened `git`. The one place
+ * spectastic touches a network for `corpus import`; kept behind the seam so
+ * it's never exercised in a test. */
+export class RealGitRunner implements GitRunner {
+  fetch(dest: string, source: GitSource): void {
+    // `-c core.hooksPath=` neutralises any repo-supplied hook; a plain clone
+    // never recurses submodules, so no remote code runs on a fetch.
+    const hard = ['-c', 'core.hooksPath=/dev/null', '-c', 'advice.detachedHead=false'];
+    const run = (args: string[], cwd?: string): void => {
+      execFileSync('git', [...hard, ...args], { stdio: ['ignore', 'ignore', 'pipe'], ...(cwd ? { cwd } : {}) });
+    };
+    try {
+      if (source.sha) {
+        // Fetch exactly the pinned commit (GitHub allows reachable-SHA1 wants),
+        // so the tree is byte-for-byte the reviewed one — never a moving ref.
+        mkdirSync(dest, { recursive: true });
+        run(['init', '-q', dest]);
+        run(['remote', 'add', 'origin', source.url], dest);
+        run(['fetch', '-q', '--depth', '1', 'origin', source.sha], dest);
+        run(['checkout', '-q', source.sha], dest);
+      } else if (source.ref) {
+        run(['clone', '-q', '--depth', '1', '--no-tags', '--single-branch', '--branch', source.ref, source.url, dest]);
+      } else {
+        run(['clone', '-q', '--depth', '1', '--no-tags', '--single-branch', source.url, dest]);
+      }
+    } catch (err) {
+      const rev = source.sha ?? source.ref;
+      const at = rev ? `@${rev}` : '';
+      const stderr = (err as { stderr?: Buffer }).stderr?.toString('utf8').trim();
+      const detail = stderr ? `: ${stderr}` : '';
+      throw new PackFetcherError(`git fetch of ${source.url}${at} failed${detail}`, { cause: err });
+    }
+  }
+}
+
 interface InstalledPluginsFile {
   plugins?: Record<string, Array<{ installPath?: string }>>;
 }
@@ -62,6 +130,37 @@ interface KnownMarketplacesFile {
 interface RawMarketplacePlugin {
   name?: string;
   source?: string | Record<string, unknown>;
+}
+
+/** Resolve a plugin's object `source` (the remote forms confirmed against the
+ * real official + spectastic marketplaces) into a `GitSource`, or `null` if
+ * the shape carries no usable URL:
+ *  - `{source:'github', repo:'owner/name'}` → `https://github.com/owner/name.git`
+ *  - `{source:'url'|'git-subdir', url, ref?, sha?, path?}` → its `url` (+ subdir).
+ */
+function parseGitSource(source: Record<string, unknown>): GitSource | null {
+  const str = (v: unknown): string | undefined => (typeof v === 'string' && v.length > 0 ? v : undefined);
+  const kind = str(source['source']);
+  const ref = str(source['ref']);
+  const sha = str(source['sha']);
+  const path = str(source['path']);
+  let url: string | undefined;
+  if (kind === 'github') {
+    const repo = str(source['repo']);
+    if (repo) url = `https://github.com/${repo}.git`;
+  } else {
+    url = str(source['url']);
+  }
+  if (!url) return null;
+  return { url, ...(ref ? { ref } : {}), ...(sha ? { sha } : {}), ...(path ? { path } : {}) };
+}
+
+/** A filesystem-safe cache key for a cloned pack — the coordinate plus the
+ * exact revision, so a `sha`-pinned fetch is immutable-by-key (same sha → same
+ * cached tree, reused; a new sha → a new dir). */
+function cacheKey(coordinate: string, source: GitSource): string {
+  const rev = source.sha ?? source.ref ?? 'HEAD';
+  return `${coordinate}@${rev}`.replace(/[^\w.@-]+/g, '-');
 }
 
 interface RawMarketplaceManifest {
@@ -85,7 +184,10 @@ function readJson<T>(path: string): T | null {
  * so tests point it at a fixture directory instead of the real `~/.claude`.
  */
 export class RealPackFetcher implements PackFetcher {
-  constructor(private readonly claudeHome: string = join(homedir(), '.claude')) {}
+  constructor(
+    private readonly claudeHome: string = join(homedir(), '.claude'),
+    private readonly gitRunner: GitRunner = new RealGitRunner(),
+  ) {}
 
   async fetch(coordinate: string): Promise<string> {
     const installed = readJson<InstalledPluginsFile>(join(this.claudeHome, 'plugins', 'installed_plugins.json'));
@@ -117,10 +219,34 @@ export class RealPackFetcher implements PackFetcher {
     if (typeof plugin.source === 'string') {
       return resolve(marketplace.installLocation, plugin.source);
     }
-    throw new PackFetcherError(
-      `plugin "${coordinate}" is hosted externally (a remote source Claude Code fetches, not spectastic) — ` +
-        `run \`/plugin install ${coordinate}\` in Claude Code first so it's cached locally, then retry ` +
-        `\`corpus import\`, or use --from <path> to register an existing local checkout.`,
-    );
+
+    // Remote (object) source: clone it (061 FR-008 remote-source clone, triage T-001). The
+    // marketplace was added by the user via `/plugin marketplace add`, so the
+    // URL in its manifest is already within their trust boundary; the fetch is
+    // hardened + pinned to the manifest's `sha` when present. Cached under a
+    // spectastic-managed dir keyed by coordinate + revision, so a repeat import
+    // at the same sha reuses the clone offline.
+    const gitSource = plugin.source && typeof plugin.source === 'object' ? parseGitSource(plugin.source) : null;
+    if (!gitSource) {
+      throw new PackFetcherError(
+        `plugin "${coordinate}" has an unrecognised remote source in ${manifestPath} ` +
+          `(no github repo or git url) — use --from <path> to register a local checkout.`,
+      );
+    }
+
+    const cacheRoot = join(this.claudeHome, 'plugins', '.spectastic-cache');
+    const cacheDir = join(cacheRoot, cacheKey(coordinate, gitSource));
+    if (!existsSync(cacheDir) || readdirSync(cacheDir).length === 0) {
+      // Clone into a sibling `.partial` then atomically rename, so an
+      // interrupted clone never leaves a half-populated dir that a later run
+      // would mistake for a cache hit.
+      const partial = `${cacheDir}.partial`;
+      rmSync(partial, { recursive: true, force: true });
+      rmSync(cacheDir, { recursive: true, force: true });
+      mkdirSync(cacheRoot, { recursive: true });
+      this.gitRunner.fetch(partial, gitSource);
+      renameSync(partial, cacheDir);
+    }
+    return gitSource.path ? join(cacheDir, gitSource.path) : cacheDir;
   }
 }
