@@ -1,0 +1,203 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
+<title>Local-pack import + preserve superseded · Change proposal · 061</title>
+<link rel="stylesheet" href="../../../../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../../../../assets/favicon.svg">
+<script src="../../../../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Change proposal · 061-corpus-ingester</p>
+  <h1>Local-pack import + preserve superseded editions</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    Give an in-repo pack (no marketplace) a first-class import door, and make import carry over a source's already-retained superseded editions — the two gaps the downstream migration hit.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>     <span><spec-status value="applied">Applied</spec-status></span>
+    <b>Change ID</b>  <span>2026-07-26-local-import-and-preserve-superseded</span>
+    <b>Spec</b>       <span><a href="../../../spec.html">061-corpus-ingester</a></span>
+    <b>Author</b>     <span>Brian Corbin · @briancorbin</span>
+    <b>Created</b>    <span><time datetime="2026-07-26">26 Jul 2026</time></span>
+    <b>Targets</b>    <span>2 requirements (1 modified, 1 added)</span>
+    <b>Read time</b>  <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-tldr>
+    <p>Migrating a downstream repo (example-cash-snapshot) surfaced two gaps in the import door (triage
+    <a href="../../../triage-log.html#T-002">T-002</a> / <a href="../../../triage-log.html#T-003">T-003</a>). <strong>MODIFY
+    <a href="../../../spec.html#FR-008">FR-008</a></strong> so <code>corpus import &lt;plugin&gt; --from &lt;path&gt;</code>
+    with no <code>@marketplace</code> registers an in-repo pack under a project-local namespace — no faked
+    marketplace, no <code>marketplace.json</code>. <strong>ADD FR-013</strong> so import preserves a source pack's
+    existing <code>references/superseded/</code> editions, keeping <a href="../../../../052-corpus-citation-contract/spec.html#FR-003">052
+    FR-003</a>'s edition-pin guarantee true after migration.</p>
+  </spec-tldr>
+</header>
+
+
+<spec-change id="2026-07-26-local-import-and-preserve-superseded" status="applied">
+
+<header>
+  <h3>Local-pack import + preserve superseded editions</h3>
+  <span class="meta"><spec-status value="applied">Applied</spec-status></span>
+</header>
+
+
+<section id="intent">
+<h2>1 · Intent</h2>
+<p>061's <code>import</code> door was built around a marketplace: a <code>&lt;plugin&gt;@&lt;marketplace&gt;</code>
+coordinate, fetched from an added marketplace or (now) cloned from a remote source. But a project's own
+<em>in-repo</em> pack — authored in the repo, never fetched, and correctly carrying no distributable
+<code>marketplace.json</code> (<a href="../../../../062-corpus-identity-migration/spec.html#FR-009">062 FR-009</a>) — has no
+natural marketplace. 062 papered over this for <code>spectastic-concepts</code> by staging a copy and inventing a
+<code>spectastic</code> namespace; the workaround resurfaced as a wall when the same migration was attempted
+downstream, where the author reasonably expected to register their own pack without faking a marketplace.</p>
+<p>The migration also exposed a data-loss bug: <code>import</code> reads only the top-level
+<code>references/*.md</code> of a source pack, so a pack that already retains prior editions under
+<code>references/superseded/</code> loses them on import — and an edition-pinned citation to that prior edition then
+dangles. example-cash-snapshot's finance-settlement pack retains a T+2 edition exactly this way. Both are import
+gaps; this change closes both.</p>
+</section>
+
+
+<section id="scope">
+<h2>2 · Scope</h2>
+
+<spec-goals>
+  <h3>In scope</h3>
+  <ul>
+    <li>A marketplace-optional local mode of <code>import</code>: <code>corpus import &lt;plugin&gt; --from &lt;path&gt;</code> with no <code>@marketplace</code>, filed under a project-configured namespace (else the sentinel <code>local</code>).</li>
+    <li>Preserving a source pack's already-retained <code>references/superseded/</code> editions on import.</li>
+    <li>Simplifying the downstream migration path (drop the staging + synthetic-namespace hack).</li>
+  </ul>
+</spec-goals>
+
+<spec-non-goals>
+  <h3>Out of scope</h3>
+  <ul>
+    <li>The still-ambiguous downstream symptom "it took our root-level knowledge as canonical" — captured on <a href="../../../triage-log.html#T-002">T-002</a> pending the exact repro; if it is a distinct cwd/registry-resolution bug it gets its own triage, not this proposal.</li>
+    <li>Publishing a consumer's corpus as a distributable marketplace — stays <code>TBD-corpus-publish</code> (<a href="../../../../062-corpus-identity-migration/spec.html#FR-009">062 FR-009</a>).</li>
+    <li>Auto-migrating existing registry rows when a project later changes its configured namespace — a namespace change re-keys the <code>(marketplace, plugin, slug)</code> anchor and is the author's explicit action, not a silent migration.</li>
+  </ul>
+</spec-non-goals>
+</section>
+
+
+<section id="approach">
+<h2>3 · Approach</h2>
+<p>Both changes live in the existing backbone; neither adds a verb or a subsystem.
+<code>parseCoordinate</code> already returns an empty marketplace when the coordinate omits <code>@</code>; the local
+mode fills that empty namespace from <code>spectastic.json</code>'s <code>corpus.namespace</code>, or the sentinel
+<code>local</code> when unset, so the registry's required marketplace column is never blank and the
+<code>(marketplace, plugin, slug)</code> anchor (<a href="../../../spec.html#FR-004">FR-004</a>) still holds. The default
+is resolved at import time; a project that may later publish should set <code>corpus.namespace</code> up front rather
+than lean on the fallback (see risks). For superseded, <code>installPack</code> gains a verbatim copy of each source
+<code>references/superseded/*.md</code> into the installed pack — no new registry rows, since a superseded edition
+resolves through the pack scan's <code>matchSuperseded</code>, and the <code>&lt;slug&gt;@&lt;edition&gt;.md</code>
+filename already matches what <code>loadSuperseded</code> parses.</p>
+</section>
+
+
+<section id="deltas">
+<h2>4 · Deltas</h2>
+<p>One <code>&lt;spec-delta&gt;</code> per requirement touched.</p>
+
+<spec-delta op="modified" target="FR-008">
+  <p><strong>What changes:</strong> add a marketplace-optional local mode — a <code>--from</code> import whose coordinate omits <code>@marketplace</code> registers an in-repo pack under a project-configured namespace (else <code>local</code>).</p>
+  <spec-requirement id="FR-008" priority="must">
+    <p>The <code>import</code> door <spec-rule>MUST</spec-rule> drive the install of a marketplace skill named as <code>&lt;plugin&gt;@&lt;marketplace&gt;</code>, convert each of its references through the shared conversion primitive, and register them via the backbone above. A <code>--from &lt;path&gt;</code> option <spec-rule>MUST</spec-rule> register a local checkout instead, for offline and CI use. When the coordinate omits <code>@&lt;marketplace&gt;</code> — an in-repo pack that was never fetched from a marketplace — the door <spec-rule>MUST</spec-rule> register it under a project-local namespace: the <code>spectastic.json</code> <code>corpus.namespace</code> value when set, else the sentinel <code>local</code>. The namespace so resolved is a label in the <code>(marketplace, plugin, slug)</code> anchor (<a href="../../../spec.html#FR-004">FR-004</a>), never a <code>marketplace.json</code> or a publication claim (<a href="../../../../062-corpus-identity-migration/spec.html#FR-009">062 FR-009</a>).</p>
+    <p>To keep that anchor stable (mitigating the identity-fragmentation risk), a marketplace-less re-import <spec-rule>MUST</spec-rule> resolve to an existing registry row for the same <code>(plugin, slug)</code> whose namespace was locally derived, reusing that row's recorded namespace — so the namespace is pinned at first registration and a later <code>corpus.namespace</code> change never silently mints a second <code>KB-NNNN</code> for the same pack. As a further guard, a <code>validate</code> scan <spec-rule level="should">SHOULD</spec-rule> warn when a <code>local</code>-namespaced row coexists with a configured <code>corpus.namespace</code>, so any residual fragmentation is surfaced, never silent.</p>
+    <details><summary>Rationale</summary><p>An in-repo pack has no marketplace, so forcing a <code>&lt;plugin&gt;@&lt;marketplace&gt;</code> coordinate meant inventing one (the 062 staging + synthetic-namespace hack). A configured-else-<code>local</code> default gives a first-class door without faking distributability — the marketplace column stays a namespace, exactly as the interview and source doors already treat it. Pinning the namespace at first registration keeps <a href="../../../spec.html#FR-004">FR-004</a>'s re-import stability honest even if the configured default drifts later.</p></details>
+  </spec-requirement>
+</spec-delta>
+
+<spec-delta op="added" target="FR-013">
+  <spec-requirement id="FR-013" priority="must">
+    <p>Importing a pack whose source already carries retained superseded editions under <code>references/superseded/&lt;slug&gt;@&lt;edition&gt;.md</code> <spec-rule>MUST</spec-rule> preserve them — copying each into the installed pack verbatim — so an edition-pinned citation to a prior edition still resolves after import (<a href="../../../../052-corpus-citation-contract/spec.html#FR-003">052 FR-003</a>).</p>
+    <details><summary>Rationale</summary><p><a href="../../../spec.html#FR-005">FR-005</a> retains a prior edition <em>created during a re-import</em>; nothing covered a source that <em>already</em> retained superseded editions at first import. <code>installPack</code> reads only top-level <code>references/*.md</code>, silently dropping the <code>superseded/</code> subdir — so migrating a pack with prior editions dangled every edition-pinned citation to them. Superseded editions resolve through the pack scan, so preserving the files is enough; no registry row is added.</p></details>
+  </spec-requirement>
+</spec-delta>
+</section>
+
+
+<section id="risks">
+<h2>5 · Risk register</h2>
+<p>Adversarial pass ran (touches <code>must</code>-tier <a href="../../../spec.html#FR-008">FR-008</a> + adds a <code>must</code> FR). Three findings + one corpus check, all dispositioned by the author: two mitigated (folded into FR-008 + §6), one accepted. No finding remains open, so the apply risk-gate is clear.</p>
+
+<spec-risk-log>
+<spec-risk target="FR-008" status="mitigated" by="Brian Corbin · @briancorbin">
+  <p class="claim">The <code>local</code> fallback fragments identity: a project that imports a pack under <code>local</code> today and later sets <code>corpus.namespace</code> (or publishes the pack under a real marketplace) will re-key the <code>(marketplace, plugin, slug)</code> anchor, so the same pack registers a second time under a fresh <code>KB-NNNN</code> instead of resolving to the existing row — the most likely 30-day regret.</p>
+  <p class="citation">MODIFY <a href="../../../spec.html#FR-008">FR-008</a>: "the <code>spectastic.json</code> <code>corpus.namespace</code> value when set, else the sentinel <code>local</code>".</p>
+  <div class="response"><strong>Mitigated.</strong> FR-008 now carries a <code>validate</code> warning when a <code>local</code>-namespaced row coexists with a configured <code>corpus.namespace</code>, so fragmentation is never silent (§6 task on <code>validate.ts</code>). Paired with the Risk-2 namespace-pin, the common path never fragments and the residual case is surfaced loudly.</div>
+</spec-risk>
+
+<spec-risk target="FR-004" status="mitigated" by="Brian Corbin · @briancorbin">
+  <p class="claim">The requirement this most likely contradicts is <a href="../../../spec.html#FR-004">FR-004</a> ("registration MUST be keyed on <code>(marketplace, plugin, slug)</code> so re-importing resolves to the same row"): a marketplace-derived-by-default coordinate makes the anchor's first component depend on config state at import time, so FR-004's re-import stability holds only while the namespace resolution is itself stable.</p>
+  <p class="citation"><a href="../../../spec.html#FR-004">FR-004</a> vs. the MODIFY FR-008 default-namespace clause.</p>
+  <div class="response"><strong>Mitigated.</strong> FR-008 now pins the namespace to the row permanently: a marketplace-less re-import resolves to an existing <code>(plugin, slug)</code> row whose namespace was locally derived and reuses that recorded namespace, so config drift can never silently re-key it (§6 task on <code>ingest.ts</code>). FR-004's anchor is preserved; the local mode just resolves the namespace stably rather than re-deriving it each run.</div>
+</spec-risk>
+
+<spec-risk target="§2" status="accepted" by="Brian Corbin · @briancorbin">
+  <p class="claim">Scope may be too narrow: the proposal explicitly defers the "took our root-level knowledge as canonical" symptom, so if that phrase describes a real second bug (not just the missing marketplace-free door), this change ships without fixing what the user actually hit.</p>
+  <p class="citation">§2 Out of scope: "the still-ambiguous downstream symptom … pending the exact repro".</p>
+  <div class="response"><strong>Accepted (narrow scope).</strong> The two grounded gaps (T-002 door, T-003 superseded) are what reproduced against real files and are worth shipping now. The ambiguous phrase stays flagged on <a href="../../../triage-log.html#T-002">T-002</a>; if it proves a distinct bug it earns its own triage rather than inflating this proposal.</div>
+</spec-risk>
+
+<spec-risk target="FR-013" status="no-value-found">
+  <p class="claim">No domain-fact contradiction: the repo's <code>knowledge/</code> corpus (spectastic-concepts <code>KB-0001</code> — SDD / RFC 2119 / grounding; finance-settlement <code>KB-0002</code> — settlement windows) commits facts orthogonal to the ingester's import mechanics, so neither delta contradicts a committed domain fact.</p>
+</spec-risk>
+</spec-risk-log>
+</section>
+
+
+<section id="tasks">
+<h2>6 · Tasks</h2>
+<p>Scoped to this change; fold into <code>061</code>'s <code>tasks.html</code> on apply.</p>
+
+<ul style="list-style:none;padding-left:0;">
+  <li><input type="checkbox"> Red-first tests: a <code>--from</code> import with no <code>@marketplace</code> files under the configured namespace (else <code>local</code>); a source pack with an existing <code>references/superseded/</code> edition preserves it and the edition-pinned citation resolves. <span class="path">packages/core/test/knowledge.ingest.test.ts</span></li>
+  <li><input type="checkbox"> FR-008 local mode: default the empty marketplace to <code>spectastic.json</code> <code>corpus.namespace</code> else <code>local</code> in the install backbone. <span class="path">packages/core/src/knowledge/ingest.ts</span></li>
+  <li><input type="checkbox"> Risk-2 mitigation: a marketplace-less re-import resolves to an existing <code>(plugin, slug)</code> row whose namespace was locally derived and reuses its recorded namespace (pin at first registration; no silent re-key on config drift). <span class="path">packages/core/src/knowledge/ingest.ts</span></li>
+  <li><input type="checkbox"> Accept a marketplace-less coordinate at the CLI (make the <code>@marketplace</code> half optional for <code>--from</code>). <span class="path">packages/cli/src/commands/corpus.ts</span></li>
+  <li><input type="checkbox"> Risk-1 mitigation: a validate warning when a <code>local</code>-namespaced row coexists with a configured <code>corpus.namespace</code> (identity-fragmentation guard). <span class="path">packages/core/src/knowledge/validate.ts</span></li>
+  <li><input type="checkbox"> FR-013: copy each source <code>references/superseded/*.md</code> into the installed pack verbatim in <code>installPack</code>. <span class="path">packages/core/src/knowledge/ingest.ts</span></li>
+  <li><input type="checkbox"> Update the downstream migration guidance to the marketplace-optional local import (drop the staging + synthetic-namespace hack). <span class="path">CLAUDE.md</span></li>
+</ul>
+</section>
+
+
+<section id="questions">
+<h2>7 · Open questions</h2>
+<spec-questions>
+<p>None outstanding — the local-mode door shape, the default-namespace resolution (configured-else-<code>local</code>), and the superseded-preservation behaviour were all anchored in the triage + interview. The three adversarial risks await author disposition, not further design.</p>
+</spec-questions>
+</section>
+
+
+<section id="changelog">
+<h2>8 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-07-26">26 Jul 2026</time><span>Proposal authored. MODIFY FR-008 (marketplace-optional local import) + ADD FR-013 (import preserves a source's retained superseded editions), from triage <a href="../../../triage-log.html#T-002">T-002</a> / <a href="../../../triage-log.html#T-003">T-003</a>. Adversarial pass embedded three risks + one corpus no-value-found.</span></li>
+  <li><time datetime="2026-07-26">26 Jul 2026</time><span>Risks dispositioned by Brian Corbin: R1 (local-fallback fragmentation) → mitigated (FR-008 gains a validate clash-warning); R2 (FR-004 stability) → mitigated (FR-008 pins the namespace to the row at first registration); R3 (scope) → accepted (narrow). Both mitigations folded into FR-008 + §6 tasks; status Approved, apply-ready.</span></li>
+  <li><time datetime="2026-07-27">27 Jul 2026</time><span>Applied on 27 Jul 2026 — Give an in-repo pack a first-class marketplace-optional import door (MODIFY FR-008), pinning the resolved namespace to its row so config drift can never re-key it; and make import preserve a source pack's already-retained superseded editions (ADD FR-013), so 052 FR-003's edition-pin guarantee survives migration. Both gaps surfaced by the downstream example-cash-snapshot migration (triage T-002/T-003)..</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+</spec-change>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  061-corpus-ingester · change proposal · 2026-07-26-local-import-and-preserve-superseded
+</footer>
+
+</main>
+<script src="../../../../../assets/spec.js"></script>
+</body>
+</html>

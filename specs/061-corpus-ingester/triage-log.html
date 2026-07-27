@@ -75,6 +75,82 @@
   </details>
 </spec-triage>
 
+<spec-triage id="T-002" layer="spec">
+  <header>
+    <h4>No marketplace-free path to register an in-repo pack — <code>import</code> assumes a marketplace coordinate</h4>
+    <span class="meta">
+      <span class="layer-pill">Spec</span>
+      <span class="regen" data-result="fail">upstream</span>
+    </span>
+  </header>
+
+  <p class="headline">Migrating a downstream repo (example-cash-snapshot) hit a wall: its
+  <code>knowledge/finance-settlement/</code> pack was authored in-repo, never fetched from a marketplace, and the
+  repo has no <code>marketplace.json</code> — but <code>corpus import</code> is shaped entirely around a
+  <code>&lt;plugin&gt;@&lt;marketplace&gt;</code> coordinate, so there is no first-class way to register/migrate a
+  local pack into the root registry. Regeneration <strong>fails</strong>: the acquisition model in the spec has no
+  marketplace-free door.</p>
+
+  <dl>
+    <dt>Expected</dt> <dd>A repo with an in-repo, never-from-a-marketplace pack has a clean way to register it into the root <code>knowledge/index.md</code> and migrate it to two-layer — without inventing a fake marketplace or a <code>marketplace.json</code> it will never publish.</dd>
+    <dt>Actual</dt>   <dd><code>corpus import</code> (<a href="./spec.html#FR-008">FR-008</a>) requires a marketplace coordinate; the only way to register a local pack today is the 062 workaround — stage a copy and run <code>corpus import &lt;plugin&gt;@&lt;synthetic-namespace&gt; --from &lt;stage&gt;</code>. Downstream that read as "it took our root-level knowledge as canonical but demanded a marketplace we don't have".</dd>
+    <dt>Diagnosis</dt><dd>The same gap 062 papered over for <code>spectastic-concepts</code> (synthetic <code>spectastic</code> namespace + staging hack, and <a href="../062-corpus-identity-migration/spec.html#FR-009">062 FR-009</a> recording consumer-only). It resurfaced downstream because the workaround was never generalised into a real requirement/verb.</dd>
+    <dt>Fix</dt>      <dd><strong>Direction chosen (26 Jul 2026):</strong> make <code>import</code> marketplace-optional — <code>corpus import &lt;plugin&gt; --from &lt;path&gt;</code> with no <code>@marketplace</code> files the pack under a default project-local namespace (reusing <code>installPack</code> wholesale; no new verb, 8-verb discipline held). <code>import &lt;plugin&gt;@&lt;marketplace&gt;</code> stays the fetch-from-marketplace path. Lands as a <code>/spectastic.propose</code> on 061 (with T-003).</dd>
+  </dl>
+
+  <details>
+    <summary>Deep dive — cross-spec (062/056) + the design options to discuss</summary>
+    <p><strong>Cross-spec.</strong> Touches <a href="../062-corpus-identity-migration/spec.html#FR-009">062 FR-009</a>
+    (a consumer root carries no distributable <code>marketplace.json</code>) and <a href="../056-corpus-adapter/spec.html">056</a>
+    (<code>corpus adapt</code>, the raw-conversion primitive that predates the ingester). The question is where a
+    <em>local pack</em> enters the registry.</p>
+    <p><strong>Options (to weigh).</strong> (a) <code>import</code> gains a marketplace-optional / <code>local</code>
+    mode: <code>corpus import &lt;plugin&gt; --from &lt;path&gt;</code> with no <code>@marketplace</code>, filed under a
+    default project-local namespace. (b) A dedicated <code>corpus register-local &lt;path&gt;</code> verb (but the
+    8-verb discipline resists a new top-level verb — it'd be a <code>corpus</code> subcommand). (c) Route local
+    migration through <code>corpus adapt</code>, reshaped to write the root registry. (d) Keep the coordinate but make
+    the marketplace half optional with a clear default. The friction downstream is the strongest signal this needs a
+    first-class answer, not a per-repo hack.</p>
+    <p><strong>Ambiguity to confirm.</strong> "It took our root-level knowledge as canonical" — needs the exact
+    downstream symptom confirmed (a wrong cwd/registry resolution, vs. simply the missing marketplace door) before the
+    fix is scoped.</p>
+  </details>
+</spec-triage>
+
+<spec-triage id="T-003" layer="spec">
+  <header>
+    <h4><code>installPack</code> drops a source pack's <code>references/superseded/</code> on import</h4>
+    <span class="meta">
+      <span class="layer-pill">Spec</span>
+      <span class="regen" data-result="fail">upstream</span>
+    </span>
+  </header>
+
+  <p class="headline"><code>corpus import</code> reads only the top-level <code>references/*.md</code> of a source
+  pack; a pre-existing <code>references/superseded/&lt;slug&gt;@&lt;edition&gt;.md</code> is silently skipped, so a pack
+  with retained prior editions loses them on import — and an edition-pinned citation to that prior edition then
+  dangles. Regeneration <strong>fails</strong>: the import contract never says a source's superseded editions must
+  be carried over.</p>
+
+  <dl>
+    <dt>Expected</dt> <dd>Importing a pack that already retains superseded editions preserves them, so an edition-pinned citation to a prior edition still resolves after migration (<a href="../052-corpus-citation-contract/spec.html#FR-003">052 FR-003</a>).</dd>
+    <dt>Actual</dt>   <dd><code>installPack</code> lists <code>sourceReferencesDir</code> non-recursively and filters <code>.md</code> (<code>ingest.ts:251-254</code>), so the <code>superseded</code> subdir is never read; the dest <code>superseded/</code> is only written when a re-import supersedes a live edition (<a href="./spec.html#FR-005">FR-005</a>). example-cash-snapshot's <code>references/superseded/001-us-equities-settlement-cycle@2017-09-05.md</code> would be dropped.</dd>
+    <dt>Diagnosis</dt><dd>FR-005 covers supersede-<em>on-re-import</em> but no requirement covers preserving a source's <em>already-retained</em> superseded editions on first import — a gap between 061's import and 052 FR-003's "prior edition must remain reachable".</dd>
+    <dt>Fix</dt>      <dd><strong>Agreed (26 Jul 2026):</strong> pin a 061 requirement — import MUST preserve a source pack's retained superseded editions — and make <code>installPack</code> copy each source <code>references/superseded/*.md</code> into the dest verbatim (no new registry rows — superseded resolves via the pack scan's <code>matchSuperseded</code>). Folds into the same 061 <code>/spectastic.propose</code> as T-002.</dd>
+  </dl>
+
+  <details>
+    <summary>Deep dive — cross-spec (052 FR-003)</summary>
+    <p><strong>Cross-spec contract.</strong> <a href="../052-corpus-citation-contract/spec.html#FR-003">052 FR-003</a>
+    guarantees an edition-pinned citation to a retained prior edition resolves; that guarantee rests on the
+    superseded file existing on disk. 061's import is the migration path onto the two-layer shape, so if it drops
+    superseded editions the 052 guarantee is quietly broken for every migrated pack that had them. The fix is a few
+    lines, but it needs to be a stated requirement (not just a code tweak) so the two specs stop disagreeing.</p>
+    <p><strong>Note.</strong> The superseded filename shape (<code>&lt;slug&gt;@&lt;edition&gt;.md</code>) already
+    matches what <code>loadSuperseded</code> parses, so a verbatim copy is enough — no rename or re-derivation.</p>
+  </details>
+</spec-triage>
+
 </spec-triage-log>
 </section>
 
@@ -84,6 +160,8 @@
 <spec-changelog>
 <ol>
   <li><time datetime="2026-07-26">26 Jul 2026</time><span>T-001 added — FR-008's remote-source ceiling (plan D-002 / T-100 spike) lifted: <code>RealPackFetcher</code> git-clones an object-sourced plugin behind a new <code>GitRunner</code> seam (hardened, sha-pinned, cached). Implementation-layer, regen passes.</span></li>
+  <li><time datetime="2026-07-26">26 Jul 2026</time><span>T-002 added — no marketplace-free path to register an in-repo pack; <code>import</code> assumes a marketplace coordinate, so a downstream local pack (no <code>marketplace.json</code>) has no clean registration door. Spec-layer, regen fails; design discussion open.</span></li>
+  <li><time datetime="2026-07-26">26 Jul 2026</time><span>T-003 added — <code>installPack</code> drops a source pack's <code>references/superseded/</code> on import, dangling edition-pinned citations to prior editions (breaks 052 FR-003). Spec-layer, regen fails; small fix once pinned as a requirement.</span></li>
 </ol>
 </spec-changelog>
 </section>
