@@ -625,15 +625,16 @@ ln -s "$(pwd)/packages/cli/bin/spectastic" ~/.local/bin/spectastic
 
 ## Releasing
 
-A release is a git tag push. The GitHub Actions workflow at [`.github/workflows/publish.yml`](.github/workflows/publish.yml) runs the gates (typecheck + tests + build + version verify) and publishes `@spectastic/cli`, `@spectastic/core` and `@spectastic/schema` to npm with provenance attestation via GitHub OIDC.
+A release is a git tag push. The GitHub Actions workflow at [`.github/workflows/publish.yml`](.github/workflows/publish.yml) runs the gates (typecheck + tests + build + version verify) and publishes `@spectastic/cli`, `@spectastic/core`, `@spectastic/schema`, and `@spectastic/corpus` to npm with provenance attestation via GitHub OIDC.
 
 ### Primary release path (CI-driven)
 
 ```sh
-# 1. Bump the version in all three packages to the same value.
+# 1. Bump the version in all four packages to the same value.
 $EDITOR packages/cli/package.json     # e.g. "version": "0.1.0-pre.3"
 $EDITOR packages/core/package.json    # must match cli exactly
 $EDITOR packages/schema/package.json  # must match cli exactly
+$EDITOR packages/corpus/package.json  # must match cli exactly
 
 # 2. Commit and tag (the v prefix is required; matches the workflow trigger).
 git commit -am "v0.1.0-pre.3"
@@ -644,9 +645,9 @@ git push --follow-tags
 The workflow:
 
 - Runs typecheck + tests + build. **Refuses to publish if any gate fails.**
-- Verifies the tag-derived version (`v0.1.0-pre.3` → `0.1.0-pre.3`) matches the `version` field in **all three** packages' `package.json`. Refuses on mismatch.
+- Verifies the tag-derived version (`v0.1.0-pre.3` → `0.1.0-pre.3`) matches the `version` field in **all four** packages' `package.json`. Refuses on mismatch.
 - Derives the dist-tag set via [`scripts/derive-dist-tag.mjs`](scripts/derive-dist-tag.mjs), keyed on whether a **stable release exists** — not on the version string. While no bare-semver version has ever been published, a pre-release moves **both** `next` and `latest`, so `npm i -g @spectastic/cli` resolves to the newest build instead of freezing on an old one. Once `1.0.0` ships the guard engages by itself: pre-releases go to `next` only, keeping a bare `npm i` off them. An undeterminable registry state fails the run rather than guessing a tag.
-- Publishes all three packages in one `pnpm publish -r` invocation with `--provenance --access public`, then applies any additional dist-tag. The provenance attestation appears on each version's npmjs.com page as a verified-source badge linking to the commit and workflow run.
+- Publishes all four packages in one `pnpm publish -r` invocation with `--provenance --access public`, then applies any additional dist-tag. The provenance attestation appears on each version's npmjs.com page as a verified-source badge linking to the commit and workflow run.
 
 Watch the run in the [Actions tab](https://github.com/spectastic/spectastic/actions/workflows/publish.yml).
 
@@ -658,12 +659,12 @@ Because `latest` tracks the newest pre-release until `1.0.0` ships, a bad releas
 npm login                       # a maintainer of @spectastic
 LAST_GOOD=0.1.0-pre.17          # the version to fall back to
 
-for PKG in @spectastic/cli @spectastic/core @spectastic/schema; do
+for PKG in @spectastic/cli @spectastic/core @spectastic/schema @spectastic/corpus; do
   npm dist-tag add "$PKG@$LAST_GOOD" latest
 done
 
 # Confirm every package agrees before telling anyone it's fixed.
-for PKG in @spectastic/cli @spectastic/core @spectastic/schema; do
+for PKG in @spectastic/cli @spectastic/core @spectastic/schema @spectastic/corpus; do
   npm view "$PKG" dist-tags
 done
 ```
@@ -686,7 +687,7 @@ pnpm publish -r \
 
 # Pre-1.0, also move `latest` so the bare install isn't left on an old build
 # (this is what the workflow's derive step does for you — see above).
-for PKG in @spectastic/cli @spectastic/core @spectastic/schema; do
+for PKG in @spectastic/cli @spectastic/core @spectastic/schema @spectastic/corpus; do
   npm dist-tag add "$PKG@$(node -p "require('./packages/cli/package.json').version")" latest
 done
 ```
