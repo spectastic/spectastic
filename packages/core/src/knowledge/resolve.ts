@@ -19,10 +19,16 @@
  * the root `knowledge/index.md` registry, so a registry hit is checked BEFORE
  * the pack scan — the pack scan alone is array-order-dependent and is exactly
  * the first-pack-wins collision the two-layer identity model exists to end.
- * The `registry` argument is optional and additive: every existing caller
- * (pre-migration, no registry loaded yet) is unaffected and falls through to
- * the pack scan unchanged, the back-compat window `TBD-corpus-identity-
- * migration` will eventually close.
+ *
+ * Registry is the sole current-edition authority (062-corpus-identity-
+ * migration, FR-006): once a `registry` is passed, it is the ONLY source for a
+ * current-edition match — the array-order `matchCurrent` pack fallback is
+ * retired for that call, so a current edition can never resolve by a pack's
+ * array position. An edition-pinned SUPERSEDED edition still resolves via the
+ * packs (052 FR-003 / 062 FR-007), the one order-independent lookup the flip
+ * keeps. When NO registry is passed the full pack scan is unchanged — the
+ * documented back-compat path, closing entirely once the registry can record
+ * superseded editions (`TBD-resolver-registry-only`).
  */
 import type { CorpusCitation } from '@spectastic/schema/citation';
 import type { CorpusPack, RegistryEntry, ResolvedCitation } from './types.js';
@@ -81,7 +87,23 @@ export function resolveCitation(
   if (registry) {
     const fromRegistry = matchRegistry(registry, citation);
     if (fromRegistry) return fromRegistry;
+    // 062-corpus-identity-migration FR-006: with a registry loaded, it is the
+    // SOLE authority for a current-edition match — the array-order
+    // `matchCurrent` pack fallback is retired, so a current-edition citation
+    // can never again resolve by a pack's position in an array. Only an
+    // edition-pinned SUPERSEDED edition still resolves via the packs (052
+    // FR-003 / 062 FR-007), because the registry records no prior editions of
+    // its own; that narrow superseded lookup is order-independent by nature.
+    for (const pack of packs) {
+      const superseded = matchSuperseded(pack, citation);
+      if (superseded) return superseded;
+    }
+    return null;
   }
+  // No registry loaded: the documented back-compat path — the full pack scan,
+  // unchanged, for a caller that hasn't loaded the root registry yet. The
+  // window closes entirely once the registry can record superseded editions
+  // and the pack scan is deleted (TBD-resolver-registry-only).
   for (const pack of packs) {
     const current = matchCurrent(pack, citation);
     if (current) return current;

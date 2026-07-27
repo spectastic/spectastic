@@ -1,0 +1,318 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
+<title>Corpus identity migration · Plan</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Implementation plan · 062-corpus-identity-migration</p>
+  <h1>Corpus identity migration</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    How we will build it.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>     <span><spec-status value="accepted">Accepted</spec-status></span>
+    <b>Spec</b>       <span><a href="./spec.html">062-corpus-identity-migration</a></span>
+    <b>Owner</b>      <span>Brian Corbin · @briancorbin</span>
+    <b>Branch</b>     <span><code>main</code></span>
+    <b>Created</b>    <span><time datetime="2026-07-26">26 Jul 2026</time></span>
+    <b>Read time</b>  <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-tldr>
+    <p>Reshape both shipped packs to clean slugs, stage each as a source checkout, run 061's real
+    <code>installPack</code> to write the root registry, re-point every live citation to its assigned
+    <code>KB-NNNN</code>, and gate <code>resolveCitation</code>'s array-order <code>matchCurrent</code> behind
+    "no registry" so a loaded registry is the sole current-edition authority. Biggest risk: a mechanical re-point
+    corrupting a frozen archive or the <code>KB-002</code> fixture — mitigated by a precise skip list and a
+    validate-baseline diff.</p>
+  </spec-tldr>
+</header>
+
+
+<section id="principles-check">
+<h2>1 · Principles check</h2>
+<p>Verify this plan respects every principle in <a href="../../principles.html">v1.8.0</a>. No violation; two
+principles do direct work here.</p>
+
+<table>
+  <thead><tr><th>Principle</th><th>Compliance</th><th>Notes</th></tr></thead>
+  <tbody>
+    <tr><td>P-3 · IDs are contracts</td><td><spec-pill>OK</spec-pill></td><td>The whole slice is P-3 made real — a stable opaque <code>KB-NNNN</code> that a rename can never rot. Re-pointed citations name that id; archives are preserved verbatim (FR-005).</td></tr>
+    <tr><td>P-8 · Guarantees live in the kernel or CI</td><td><spec-pill>OK</spec-pill></td><td>The migration runs the kernel's <code>installPack</code>; the resolver flip and repo-wide uniqueness are kernel/validate guarantees, not prose.</td></tr>
+    <tr><td>P-7 · Done means verified</td><td><spec-pill>OK</spec-pill></td><td>Success is a green resolve, a validate baseline with no new errors, and an observably idempotent re-run — not "the files look migrated".</td></tr>
+    <tr><td>P-1 · Source order is reading order</td><td><spec-pill>OK</spec-pill></td><td>No artifact structural change.</td></tr>
+    <tr><td>P-2 · Semantic tags over class soup</td><td><spec-pill>OK</spec-pill></td><td>No new markup.</td></tr>
+    <tr><td>P-6 · Draft is loose, ratified is locked</td><td><spec-pill>OK</spec-pill></td><td>Spec is Draft; this plan does not lock it.</td></tr>
+  </tbody>
+</table>
+</section>
+
+
+<section id="technical-context">
+<h2>2 · Technical context</h2>
+<dl>
+  <dt>Language(s)</dt>      <dd>TypeScript (ESM, Node 20+), <code>exactOptionalPropertyTypes</code> + <code>verbatimModuleSyntax</code> on.</dd>
+  <dt>Frameworks</dt>       <dd>None new. <code>@spectastic/core</code> knowledge kernel; <code>commander</code> CLI edge; <code>yaml</code> for frontmatter.</dd>
+  <dt>Architecture</dt>     <dd>n/a — no new module. This slice runs existing kernel functions (<code>installPack</code>, <code>resolveCitation</code>) and edits their data + one resolver branch.</dd>
+  <dt>Storage</dt>          <dd>Flat markdown: per-pack <code>references/*.md</code> + <code>SKILL.md</code>; the root <code>knowledge/index.md</code> registry table.</dd>
+  <dt>Testing</dt>          <dd>Vitest, red-first. A two-colliding-pack resolver fixture; a validate-baseline diff; an idempotent-re-import assertion. Stub-fetcher / <code>--from</code> local paths — no network (<code>feedback-ai-in-ci-uses-stubs</code>).</dd>
+  <dt>Coverage</dt>         <dd>Not in scope as a gate (Lean meta-repo posture); a change never lowers coverage of the resolver/validate lines it touches.</dd>
+  <dt>Perf targets</dt>     <dd>n/a — a one-time migration + an O(registry) resolver lookup already in place.</dd>
+  <dt>Constraints</dt>      <dd>Deterministic, no clock/network reads (NFR-001); no content loss, no fabricated provenance (NFR-002); archives verbatim (FR-005).</dd>
+</dl>
+</section>
+
+
+<section id="grounding">
+<h2>3 · Grounding &amp; evidence</h2>
+<p>Every design-bearing fact, and how it was confirmed — read before the approach (per
+<code>REQ-LIFECYCLE-006</code>). All <code>verified</code> in-repo this turn; nothing rests on an unresolved spike.</p>
+
+<table class="evidence">
+  <thead>
+    <tr><th>Claim the design rests on</th><th>Source</th><th>Status</th><th>Finding / note</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><code>installPack</code> derives a document's slug from its reference <em>filename</em></td>
+        <td><code>packages/core/src/knowledge/ingest.ts:251</code></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td><code>slug = filename.replace(/\.md$/, '')</code> — so files must be renamed to clean slugs <em>before</em> import (FR-001).</td></tr>
+    <tr><td>The converter drops the legacy <code>id:</code> and writes <code>slug:</code></td>
+        <td><code>ingest.ts:130</code> (<code>renderTwoLayerDocument</code>) + <code>adapt.ts:40</code> (<code>deriveProvenance</code>)</td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td><code>deriveProvenance</code> carries only the seven standard fields; <code>id</code> is not among them, so it vanishes on rewrite — no manual frontmatter surgery.</td></tr>
+    <tr><td>The array-order collision lives in <code>resolveCitation</code>'s pack loop</td>
+        <td><code>resolve.ts:85-90</code> (<code>matchCurrent</code>)</td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td>Registry is already checked first (<code>resolve.ts:81</code>); only <code>matchCurrent</code> is array-order-prone. <code>matchSuperseded</code> (line 88) is edition-pinned.</td></tr>
+    <tr><td>The registry has no superseded collection; superseded resolution is pack-only</td>
+        <td><code>resolve.ts:59-74</code> (<code>matchRegistry</code> comment + body)</td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td>Confirms FR-007's constraint: the pack <code>matchSuperseded</code> must survive the flip, or edition-pinned prior-edition citations break.</td></tr>
+    <tr><td>Repo-wide uniqueness already exists; per-pack <code>duplicateIdFindings</code> keys on <code>doc.id</code></td>
+        <td><code>validate.ts:200</code> (<code>duplicateRegistryIdFindings</code>) &amp; <code>:95</code> (<code>duplicateIdFindings</code>)</td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td>A migrated doc has no <code>doc.id</code>, so <code>duplicateIdFindings</code> is already a no-op on it (line 98 skips empty ids); repo-wide gate is live. FR-008 is documentation, not new code.</td></tr>
+    <tr><td><code>--from &lt;path&gt;</code> resolves any coordinate to one fixed local dir</td>
+        <td><code>packages/cli/src/pack-fetcher-factory.ts</code> (<code>LocalPathFetcher</code>)</td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td>So <code>corpus import finance-settlement@spectastic-examples --from &lt;dir&gt;</code> reads <code>&lt;dir&gt;/references/*.md</code>; the coordinate supplies the registry <code>marketplace</code>/<code>plugin</code>.</td></tr>
+    <tr><td>The finance demo pack's current edition</td>
+        <td><code>examples/knowledge/finance-settlement/references/KB-001-settlement-windows.md:5</code></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td><code>edition: 2026-07-25</code> — so its citation becomes <code>KB-0002@2026-07-25</code> (concepts <code>KB-0001@2026-07-25</code>).</td></tr>
+  </tbody>
+</table>
+</section>
+
+
+<section id="approach">
+<h2>4 · Approach</h2>
+
+<p>Four ordered moves, each a phase. <strong>(1) Reshape</strong> — add <code>knowledge/marketplace.json</code>, and
+stage <code>spectastic-concepts</code> as a temp-dir source checkout with its reference renamed to the clean
+<code>001-foundations</code> slug (copied out so the import never reads-and-writes the same live dir). The
+<code>examples/knowledge/finance-settlement/</code> marketplace source is left as-is — it is the ingester's raw
+input, and 057's portable-skill test reads it at that shape. <strong>(2) Register</strong> — run the real
+<code>corpus import &lt;plugin&gt;@&lt;marketplace&gt; --from …</code> once per pack (concepts from its staged copy
+into <code>knowledge/spectastic-concepts/</code>; finance from <code>examples/</code> into a new
+<code>knowledge/finance-settlement/</code>), writing the single root registry, the two-layer references (legacy
+<code>id:</code> dropped, slug derived from the filename), and each <code>SKILL.md</code> slug map; then delete the
+now-redundant per-pack <code>index.md</code> under <code>knowledge/</code>. <strong>(3) Re-point</strong> — rewrite
+every live citation to its <code>KB-NNNN@edition</code>, honouring the precise skip list. <strong>(4) Flip</strong> —
+gate <code>matchCurrent</code> behind the no-registry path so a loaded registry is the sole current-edition
+authority, keeping <code>matchSuperseded</code> intact.</p>
+
+<spec-arch>
+<figure>
+<svg viewBox="0 0 720 250" role="img" aria-label="Migration flow: reshape, register, re-point, flip">
+  <style>
+    .box { fill:#fcfbf7; stroke:#c4c1bb; stroke-width:1.2; }
+    .label { font: 700 10px Lato, sans-serif; fill:#4a4a46; letter-spacing:0.05em; text-transform:uppercase; }
+    .body { font: 400 11px "Source Serif 4", Georgia, serif; fill:#353534; }
+    .arr { stroke:#73706d; stroke-width:1.2; fill:none; }
+  </style>
+  <rect class="box" x="20"  y="95" width="150" height="62" rx="4"/>
+  <text class="label" x="34" y="118">1 · Reshape</text>
+  <text class="body"  x="34" y="136">slugs + marketplace</text>
+  <rect class="box" x="200" y="95" width="150" height="62" rx="4"/>
+  <text class="label" x="214" y="118">2 · Register</text>
+  <text class="body"  x="214" y="136">corpus import</text>
+  <rect class="box" x="380" y="95" width="150" height="62" rx="4"/>
+  <text class="label" x="394" y="118">3 · Re-point</text>
+  <text class="body"  x="394" y="136">KB-NNNN citations</text>
+  <rect class="box" x="560" y="95" width="140" height="62" rx="4"/>
+  <text class="label" x="574" y="118">4 · Flip</text>
+  <text class="body"  x="574" y="136">registry-only</text>
+  <rect class="box" x="200" y="15" width="150" height="46" rx="4" style="fill:#f2efe6;"/>
+  <text class="label" x="214" y="34">root registry</text>
+  <text class="body"  x="214" y="50">KB-0001 · KB-0002</text>
+  <path class="arr" d="M170 126 L200 126" marker-end="url(#a)"/>
+  <path class="arr" d="M350 126 L380 126" marker-end="url(#a)"/>
+  <path class="arr" d="M530 126 L560 126" marker-end="url(#a)"/>
+  <path class="arr" d="M275 95 L275 61" marker-end="url(#a)"/>
+  <defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#73706d"/></marker></defs>
+</svg>
+<figcaption>The four phases; phase 2 is the only writer of the root registry (KB-0001, KB-0002).</figcaption>
+</figure>
+</spec-arch>
+</section>
+
+
+<section id="alternatives">
+<h2>5 · Alternatives considered</h2>
+
+<spec-matrix>
+<table>
+  <thead>
+    <tr><th>Option</th><th>Dogfoods ingester</th><th>Determinism</th><th>Simplicity</th><th class="score">Total</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Hand-author the registry rows</td><td>0</td><td>3</td><td>3</td><td class="score">6</td></tr>
+    <tr><td>Import in-place (concepts reads+writes live dir)</td><td>3</td><td>2</td><td>2</td><td class="score">7</td></tr>
+    <tr data-winner><td>Reshape → stage source → import</td><td>3</td><td>3</td><td>2</td><td class="score">8</td></tr>
+  </tbody>
+</table>
+</spec-matrix>
+<p>Hand-authoring would leave the registry unproven against the tool that must maintain it (FR-003 forbids it).
+In-place import works — <code>installPack</code> reads each file before rewriting it — but staging a source copy
+removes even the appearance of a read/write-same-dir hazard for the cost of one copy step, which the interview chose.</p>
+</section>
+
+
+<section id="decisions">
+<h2>6 · Decisions</h2>
+
+<spec-decision id="D-001" grounding="verified">
+  <h4>D-001 · Reshape then import from a staged source, never hand-author the registry</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd><code>installPack</code> derives the slug from the reference filename (<code>ingest.ts:251</code>) and drops the legacy <code>id:</code> on rewrite (<code>ingest.ts:130</code>), so a rename-first + real-import path yields a clean two-layer pack with no manual frontmatter edits. FR-003 requires the registry be exactly what the ingester writes.</dd>
+    <dt>Decision</dt>     <dd>Rename references to <code>NNN-topic</code> slugs and run <code>corpus import … --from …</code>. Concepts is staged under a temp dir (copied out so its live dir is never both source and dest); finance imports directly from its <code>examples/</code> marketplace source, which stays unchanged.</dd>
+    <dt>Consequences</dt> <dd>+ Registry is provably ingester-written; + the migration is a re-runnable script. − One extra copy/cleanup step per pack.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-002" grounding="verified">
+  <h4>D-002 · Gate array-order <code>matchCurrent</code> behind the no-registry path</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>The array-order collision is <code>resolve.ts:85-90</code>'s <code>matchCurrent</code>; the registry is already consulted first (<code>resolve.ts:81</code>), and superseded resolution lives only in the pack <code>matchSuperseded</code> (<code>resolve.ts:59-74</code>, FR-007). Deleting the pack scan outright would break edition-pinned prior-edition citations.</dd>
+    <dt>Decision</dt>     <dd>When a registry is provided: resolve current via <code>matchRegistry</code>, fall through to pack <code>matchSuperseded</code> only, and return null rather than consulting <code>matchCurrent</code>. When no registry is provided: unchanged full pack scan (the documented back-compat path). So a loaded registry is the sole current-edition authority.</dd>
+    <dt>Consequences</dt> <dd>+ A current-edition citation never resolves by array order once the registry is loaded (FR-006); + 052 FR-003 superseded resolution preserved (FR-007); + no downstream packs-only caller breaks. − The pack scan isn't fully deleted — that's <code>TBD-resolver-registry-only</code>, scoped out.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-003" grounding="verified">
+  <h4>D-003 · Leave <code>duplicateIdFindings</code> in place as a documented no-op on migrated packs</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd><code>duplicateIdFindings</code> (<code>validate.ts:95</code>) skips any document with no <code>doc.id</code> (line 98); a migrated two-layer doc has none, so it is already inert on migrated packs. Repo-wide uniqueness is enforced by <code>duplicateRegistryIdFindings</code> (<code>validate.ts:200</code>).</dd>
+    <dt>Decision</dt>     <dd>Do not delete it — it still guards an <em>unmigrated</em> downstream pack that legitimately still carries <code>doc.id</code>. Add a comment marking it a no-op on migrated packs and pointing at the repo-wide gate. FR-008 (SHOULD) is satisfied by documentation, not removal.</dd>
+    <dt>Consequences</dt> <dd>+ No regression for downstream packs still on the legacy shape; + the two-layer gate is unshadowed. − The function outlives the model it was written for until every consumer migrates.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-004" grounding="n-a">
+  <h4>D-004 · Red-first vitest with a two-colliding-pack resolver fixture</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>A test-style preference, no external fact. Mirrors 061's stub-fetcher precedent and <code>feedback-ai-in-ci-uses-stubs</code>.</dd>
+    <dt>Decision</dt>     <dd>Write failing tests first: (a) two packs sharing a legacy id + a registry → resolves by registry identity, not array order; (b) a superseded-edition citation still resolves post-flip; (c) an idempotent re-import registers nothing new; (d) a validate baseline shows no new error. Real files via <code>--from</code>; no network.</dd>
+    <dt>Consequences</dt> <dd>+ The flip's regression surface is pinned before the edit; + deterministic in CI. − The colliding-pack fixture is bespoke setup.</dd>
+  </dl>
+</spec-decision>
+</section>
+
+
+<section id="project-structure">
+<h2>7 · Project structure</h2>
+
+<p>Mostly data moves; one resolver branch and one test file are the only source changes.</p>
+
+<pre><code>knowledge/
+  index.md                              (NEW — populated by phase 2, the single root registry)
+  marketplace.json                      (NEW — FR-002, names the `spectastic` marketplace)
+  spectastic-concepts/
+    SKILL.md                            (slug map written/appended by import)
+    references/001-foundations.md       (reshaped in place from KB-001-foundations.md)
+    index.md                            (DELETED — replaced by SKILL.md + root registry)
+  finance-settlement/                   (NEW — imported+converted from the examples source; KB-0002)
+    SKILL.md
+    references/001-settlement-windows.md
+examples/knowledge/finance-settlement/  (UNCHANGED — the marketplace source / ingester input; keeps 057 green)
+packages/core/src/knowledge/
+    resolve.ts                          (D-002 — gate matchCurrent behind no-registry)
+    validate.ts                         (D-003 — comment duplicateIdFindings as a no-op)
+packages/core/test/
+    knowledge.resolve-registry-only.test.ts  (NEW — the colliding-pack + superseded fixtures)
+specs/*, CLAUDE.md, docs/               (phase 3 — re-pointed citations, skip list honoured)</code></pre>
+</section>
+
+
+<section id="risks">
+<h2>8 · Risks &amp; mitigations</h2>
+
+<table>
+  <thead><tr><th>Risk</th><th>Likelihood</th><th>Impact</th><th>Mitigation</th></tr></thead>
+  <tbody>
+    <tr><td>A mechanical re-point corrupts a frozen archive or the <code>KB-002</code> fixture</td><td>M</td><td>H</td><td>FR-005 skip list is explicit; the re-point is scoped file-by-file, and a validate-baseline diff catches any 058 fixture breakage.</td></tr>
+    <tr><td>Flipping <code>matchCurrent</code> breaks an existing packs-only (no-registry) test</td><td>M</td><td>M</td><td>D-002 keeps the no-registry path unchanged; the red-first suite runs the full existing resolver tests before the edit lands.</td></tr>
+    <tr><td>The staged import writes a wrong <code>marketplace</code>/<code>plugin</code> into the registry</td><td>L</td><td>M</td><td>The coordinate is explicit on the command line and asserted against the written registry row in the register-phase test.</td></tr>
+    <tr><td>A dropped provenance field (e.g. <code>content-hash</code>) silently changes on re-import</td><td>L</td><td>L</td><td>NFR-002: body + known fields preserved; <code>content-hash</code> is recomputed deterministically from the same bytes, so it is stable.</td></tr>
+  </tbody>
+</table>
+</section>
+
+
+<section id="complexity">
+<h2>9 · Complexity tracking</h2>
+<p>No complexity beyond the spec. The one judgement call — keeping <code>duplicateIdFindings</code> rather than
+deleting it (D-003) — is justified by the still-live downstream unmigrated-pack case, and is documented in code.</p>
+
+<spec-assumption>
+<p>Downstream projects may still run legacy-shaped packs, so the no-registry resolver path and the per-pack id
+check remain load-bearing until <code>TBD-resolver-registry-only</code> closes the window.</p>
+</spec-assumption>
+</section>
+
+
+<section id="questions">
+<h2>10 · Open questions</h2>
+<spec-questions>
+<p>None outstanding — mechanism (staged import), the resolver-flip shape (registry-authoritative, superseded via
+pack), the duplicate-gate disposition, and test style were all anchored. Every must-tier decision is
+<code>verified</code> against in-repo source; the grounding gate is clear.</p>
+</spec-questions>
+</section>
+
+
+<section id="changelog">
+<h2>11 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-07-26">26 Jul 2026</time><span>Initial plan. Four phases — reshape, register (dogfood <code>installPack</code>), re-point, flip — with D-002 gating array-order <code>matchCurrent</code> behind the no-registry path so a loaded registry is the sole current-edition authority while 052 FR-003 superseded resolution survives. All decisions <code>verified</code> in-repo.</span></li>
+  <li><time datetime="2026-07-26">26 Jul 2026</time><span>Status flipped Draft → Accepted — the spec bundle ratified on drain completion; tests verified passing per author confirmation. Sibling bundle (REQ-LIFECYCLE-005).</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  062-corpus-identity-migration · plan · authored 26 Jul 2026
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>

@@ -73,7 +73,7 @@ const REGISTRY_PATH = join(KNOWLEDGE_DIR, 'index.md');
 /** Every `references/*.md` document in a pack, parsed best-effort — a
  * malformed document is still included (with `missingFields` populated),
  * never dropped or crashed on. */
-function loadDocuments(packDir: string, cwd: string): CorpusDocument[] {
+function loadDocuments(packDir: string, baseDir: string): CorpusDocument[] {
   const referencesDir = join(packDir, REFERENCES_DIR);
   if (!existsSync(referencesDir)) return [];
   const documents: CorpusDocument[] = [];
@@ -82,7 +82,7 @@ function loadDocuments(packDir: string, cwd: string): CorpusDocument[] {
     const filePath = join(referencesDir, entry);
     if (!statSync(filePath).isFile()) continue;
     const raw = readFileSync(filePath, 'utf8');
-    const relPath = relative(cwd, filePath);
+    const relPath = relative(baseDir, filePath);
     documents.push({ ...parseCorpusDocument(raw, relPath), filePath: relPath });
   }
   return documents;
@@ -94,7 +94,7 @@ function loadDocuments(packDir: string, cwd: string): CorpusDocument[] {
  * from its frontmatter, kept separate from `documents[]` so the duplicate-id
  * check never fires on a legitimate current + prior pair. A superseded file
  * with no id or edition is dropped (it can't be pinned-cited). */
-function loadSuperseded(packDir: string, cwd: string): SupersededEdition[] {
+function loadSuperseded(packDir: string, baseDir: string): SupersededEdition[] {
   const supersededDir = join(packDir, REFERENCES_DIR, 'superseded');
   if (!existsSync(supersededDir)) return [];
   const editions: SupersededEdition[] = [];
@@ -102,10 +102,10 @@ function loadSuperseded(packDir: string, cwd: string): SupersededEdition[] {
     if (!entry.endsWith('.md')) continue;
     const filePath = join(supersededDir, entry);
     if (!statSync(filePath).isFile()) continue;
-    const parsed = parseCorpusDocument(readFileSync(filePath, 'utf8'), relative(cwd, filePath));
+    const parsed = parseCorpusDocument(readFileSync(filePath, 'utf8'), relative(baseDir, filePath));
     const edition = parsed.provenance.edition;
     if (parsed.id === null || edition === undefined) continue;
-    editions.push({ id: parsed.id, edition, filePath: relative(cwd, filePath), provenance: parsed.provenance });
+    editions.push({ id: parsed.id, edition, filePath: relative(baseDir, filePath), provenance: parsed.provenance });
   }
   return editions;
 }
@@ -126,10 +126,15 @@ export function loadCorpus(cwd: string): CorpusPack[] {
     const hasSkillFile = existsSync(join(dirPath, SKILL_FILE));
     const indexPath = join(dirPath, INDEX_FILE);
     const index = existsSync(indexPath) ? parseIndex(readFileSync(indexPath, 'utf8')) : [];
-    const documents = loadDocuments(dirPath, cwd);
-    const supersededEditions = loadSuperseded(dirPath, cwd);
+    // Paths are stored relative to the corpus root (`knowledgeDir`), not the
+    // repo root — so the configured base can be overridden without rewriting a
+    // single stored path (062 triage T-002), and a registry hit's filePath
+    // (also corpus-root-relative, written by the ingester) matches a pack-scan
+    // hit's, keeping resolveCitation's filePath base consistent across routes.
+    const documents = loadDocuments(dirPath, knowledgeDir);
+    const supersededEditions = loadSuperseded(dirPath, knowledgeDir);
 
-    packs.push({ name, dirPath: relative(cwd, dirPath), hasSkillFile, index, documents, supersededEditions });
+    packs.push({ name, dirPath: relative(knowledgeDir, dirPath), hasSkillFile, index, documents, supersededEditions });
   }
   return packs;
 }

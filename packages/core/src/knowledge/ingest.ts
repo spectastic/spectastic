@@ -265,7 +265,7 @@ export async function installPack(input: InstallInput): Promise<InstallResult> {
         slug,
         title,
         edition: provenance.edition,
-        path: `knowledge/${plugin}/references/${filename}`,
+        path: `${plugin}/references/${filename}`,
         status: '',
       });
       freshSlugRows.push({ slug, title, description, edition: provenance.edition, path: `references/${filename}` });
@@ -307,7 +307,7 @@ export async function installPack(input: InstallInput): Promise<InstallResult> {
       slug,
       title,
       edition: provenance.edition,
-      path: `knowledge/${plugin}/references/${filename}`,
+      path: `${plugin}/references/${filename}`,
       status: '',
     });
     freshSlugRows.push({ slug, title, description, edition: provenance.edition, path: `references/${filename}` });

@@ -91,7 +91,16 @@ function orphanDocumentFindings(pack: CorpusPack): Finding[] {
 }
 
 /** Group documents by id, then flag every group with more than one entry —
- * KB-NNN ids must be unique within a pack (P-3: IDs are contracts). */
+ * KB-NNN ids must be unique within a pack (P-3: IDs are contracts).
+ *
+ * 062-corpus-identity-migration D-003: this is a NO-OP on a migrated
+ * (two-layer) pack — a migrated document carries `slug:`, not `id:`, so
+ * `doc.id` is empty and the loop below skips it (line: `if (!doc.id) continue`).
+ * Repo-wide `KB-NNNN` uniqueness is enforced by `duplicateRegistryIdFindings`
+ * over the root registry (FR-008). This per-pack check is retained solely for a
+ * still-unmigrated downstream pack that legitimately carries a document `id`;
+ * do not delete it until every consumer has migrated
+ * (`TBD-resolver-registry-only`'s sibling cleanup). */
 function duplicateIdFindings(pack: CorpusPack): Finding[] {
   const byId = new Map<string, CorpusDocument[]>();
   for (const doc of pack.documents) {

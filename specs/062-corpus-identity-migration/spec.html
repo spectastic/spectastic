@@ -1,0 +1,355 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
+<title>Corpus identity migration · Specification</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Specification · 062-corpus-identity-migration</p>
+  <h1>Corpus identity migration</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    Move the two shipped packs onto the two-layer shape, populate the root registry by dogfooding the ingester, re-point every live citation, and make the registry the sole authority for a current edition — closing the back-compat window the corpus family has carried since 051.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>      <span><spec-status value="accepted">Accepted</spec-status></span>
+    <b>Spec ID</b>     <span>062-corpus-identity-migration</span>
+    <b>Owner</b>       <span>Brian Corbin · @briancorbin</span>
+    <b>Reviewers</b>   <span>—</span>
+    <b>Created</b>     <span><time datetime="2026-07-26">26 Jul 2026</time></span>
+    <b>Principles</b><span><a href="../../principles.html">v1.8.0</a></span>
+    <b>Smallest demoable</b><span>Both in-repo packs reshaped and imported so the root <code>knowledge/index.md</code> carries <code>KB-0001</code>/<code>KB-0002</code>, and a migrated document's <code>KB-NNNN@edition</code> citation resolves green.</span>
+    <b>Read time</b>   <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-budget words="1500" reqs="20" minutes="12"></spec-budget>
+
+  <spec-tldr>
+    <p>The knowledge-corpus family (051–059) built everything that <em>reads</em> a root registry — registry-first
+    resolution, the grounding gate, the render label — and 061 built the ingester that <em>writes</em> one. But the
+    two shipped packs (<code>spectastic-concepts</code>, the <code>finance-settlement</code> demo) are still on the
+    legacy 056 shape (pack-minted <code>KB-001</code>, a per-pack <code>index.md</code>), and the root registry is
+    empty, so a citation still resolves by array order. This slice migrates both packs, populates the registry by
+    running the real ingester on them, re-points every live citation to its opaque <code>KB-NNNN</code>, and retires
+    the array-order fallback for a current edition. It is the atomic close of <code>TBD-corpus-identity-migration</code>.</p>
+  </spec-tldr>
+
+  <dl class="invest">
+    <dt><span class="letter">I</span> Independent</dt> <dd>Depends on <a href="../051-knowledge-corpus/spec.html">051</a> (data model), <a href="../052-corpus-citation-contract/spec.html">052</a> (resolution), and <a href="../061-corpus-ingester/spec.html">061</a> (the ingester it dogfoods). No new upstream coupling.</dd>
+    <dt><span class="letter">N</span> Negotiable</dt>  <dd>Outcomes contract — "the registry is populated by the real ingester", not "hand-write these rows". The superseded-resolution mechanism is deferred to the plan.</dd>
+    <dt><span class="letter">V</span> Valuable</dt>    <dd>Unlocks <a href="#SC-002">SC-002</a> — a corpus citation resolves deterministically by identity, never by array order, so two packs can never silently collide again.</dd>
+    <dt><span class="letter">E</span> Estimable</dt>   <dd>Every input is verified in-repo (the packs, the ingester, the resolver); no open question blocks estimation.</dd>
+    <dt><span class="letter">S</span> Small</dt>       <dd>Under 1,500 authored words; eleven requirements. A data-and-cleanup slice, not a new subsystem.</dd>
+    <dt><span class="letter">T</span> Testable</dt>    <dd>Every requirement is observable — a registry row, a green citation, a validate baseline, an idempotent re-run.</dd>
+  </dl>
+
+  <spec-audience-map>
+    <dl>
+      <dt>Exec / PM</dt>   <dd>§<a href="#context">Context</a>, §<a href="#scenarios">User scenarios</a>, §<a href="#success">Success criteria</a>.</dd>
+      <dt>Reviewer</dt>    <dd>§<a href="#requirements">Requirements</a>, §<a href="#assumptions">Assumptions</a>, §<a href="#questions">Open questions</a>.</dd>
+      <dt>Implementer</dt> <dd>§<a href="#requirements">Requirements</a>, §<a href="#data">Data model</a>, §<a href="#conformance">Conformance index</a>.</dd>
+    </dl>
+  </spec-audience-map>
+</header>
+
+
+<section id="context">
+<h2>1 · Context</h2>
+<p>The corpus family shipped its reader and its writer, but never crossed them over on its own data. The two
+shipped packs still carry the retired flat identity — a pack author writes <code>KB-001</code> into a per-pack
+<code>index.md</code>, both packs collide on <code>KB-001</code>, and <code>resolveCitation</code> returns the first
+pack whose id matches, so a citation resolves by array order rather than by intent. The root
+<code>knowledge/index.md</code> registry — the single source of truth the two-layer model rests on — is empty,
+because nothing has ever run the ingester against the real packs. Every downstream reader (<a href="../053-corpus-grounding-gates/spec.html">053</a>'s
+gates, <a href="../052-corpus-citation-contract/spec.html">052</a>'s render label) is therefore reading a table
+that does not yet exist.</p>
+<p>This is the maintainer's problem: the tooling dogfoods a convention it does not itself follow. The migration is
+the one-time cutover that makes the meta-repo obey its own model — and, because 061's ingester assumes the
+two-layer shape, it is the slice every ingester test has been waiting on to run against real packs rather than
+fixtures.</p>
+</section>
+
+
+<section id="scenarios">
+<h2>2 · User scenarios &amp; testing</h2>
+
+<p>Each story <strong>MUST</strong> be independently testable. US1 stands alone as a viable MVP: the packs are
+migrated and the registry is populated even if no citation is re-pointed and the resolver is untouched.</p>
+
+<h3 id="US1">US1 · Reshape and register both shipped packs <spec-pill>P1</spec-pill></h3>
+<p>As a <strong>meta-repo maintainer</strong>, I want to <strong>reshape both in-repo packs to the two-layer shape
+and populate the root registry by running the real ingester on them</strong> so that <strong>the corpus convention
+the tooling reads is actually populated, and the ingester is proven on real packs instead of fixtures</strong>.</p>
+<p><em>Acceptance:</em> after adding a <code>knowledge/marketplace.json</code> and staging each pack's references on
+clean <code>NNN-topic</code> slug filenames, running <code>corpus import &lt;plugin&gt;@&lt;marketplace&gt; --from …</code>
+once per pack writes a single root <code>knowledge/index.md</code> with two repo-unique rows — <code>KB-0001</code>
+(<code>spectastic · spectastic-concepts</code>) and <code>KB-0002</code> (<code>spectastic-examples · finance-settlement</code>) —
+each installed pack carrying a <code>SKILL.md</code> slug map and no per-pack <code>index.md</code>;
+<code>spectastic validate</code> introduces no new error over the pre-migration baseline.</p>
+
+<h3 id="US2">US2 · Re-point every live citation <spec-pill>P1</spec-pill></h3>
+<p>As a <strong>maintainer</strong>, I want to <strong>re-point every live grounding citation that names an in-repo
+pack document from the retired <code>KB-001@edition</code> to its project-assigned <code>KB-NNNN@edition</code></strong>
+so that <strong>no live citation resolves by the retired array-order path</strong>.</p>
+<p><em>Acceptance:</em> every live citation in a spec, plan, doc, <code>CLAUDE.md</code>, or worked-example that
+names an actual in-repo pack document is rewritten to its <code>KB-NNNN@edition</code>; the three non-re-pointable
+categories — frozen archive proposals, the <code>KB-002</code> license fixture, and the <code>KB-999</code>/<code>@2017</code>
+illustrative hypotheticals — are left verbatim, each skip named with its reason.</p>
+
+<h3 id="US3">US3 · Make the registry the sole authority for a current edition <spec-pill>P1</spec-pill></h3>
+<p>As a <strong>corpus consumer</strong>, I want <strong><code>resolveCitation</code> to resolve a current-edition
+<code>KB-NNNN</code> via the registry only, retiring the array-order pack-scan fallback</strong> so that
+<strong>two packs can never again resolve a citation by their order in an array</strong>.</p>
+<p><em>Acceptance:</em> with a registry present, a current-edition citation resolves via the registry and the
+array-order <code>matchCurrent</code> pack fallback no longer runs; a fixture of two packs sharing an id proves the
+resolution is by registry identity, not array order; an edition-pinned citation to a <em>retained superseded</em>
+edition still resolves (<a href="../052-corpus-citation-contract/spec.html#FR-003">052 FR-003</a> preserved).</p>
+
+<h3>Edge cases</h3>
+<ul>
+  <li><strong>In-place import for <code>spectastic-concepts</code>.</strong> Its source and destination are both
+  <code>knowledge/spectastic-concepts/</code>; the import reads each reference before it rewrites it, so an in-place
+  run is safe — but the slug filenames must already be clean before the run.</li>
+  <li><strong>Legacy <code>id:</code> frontmatter.</strong> The ingester's converter carries only the standard
+  provenance fields, so the retired <code>id: KB-001</code> is dropped on rewrite and the two-layer <code>slug:</code>
+  is written in its place — no manual frontmatter surgery.</li>
+  <li><strong>Re-running the import.</strong> A second run over an already-migrated pack must register nothing new
+  (idempotent), so the migration is safe to repeat and safe to leave in a script.</li>
+</ul>
+</section>
+
+
+<section id="requirements">
+<h2>3 · Requirements</h2>
+
+<p>Conformance keywords (<spec-rule>MUST</spec-rule>, <spec-rule level="should">SHOULD</spec-rule>,
+<spec-rule level="may">MAY</spec-rule>) follow RFC 2119.</p>
+
+<h3>Functional</h3>
+
+<spec-requirement id="FR-001" priority="must">
+<p>Every pack that lives under a project's <code>knowledge/</code> root <spec-rule>MUST</spec-rule> end on the
+two-layer shape: each reference on a clean <code>NNN-topic</code> slug filename with <code>slug:</code> frontmatter
+and no pack-minted <code>id:</code>, a <code>SKILL.md</code> slug map, and no per-pack <code>index.md</code>.
+Concretely: <code>spectastic-concepts</code> is reshaped in place; <code>finance-settlement</code> is installed
+under <code>knowledge/</code> as a two-layer pack by <em>importing</em> it from the
+<code>examples/knowledge/finance-settlement/</code> marketplace source, which is deliberately left on its current
+shape as the ingester's raw input.</p>
+<details><summary>Rationale</summary><p>061's ingester derives a document's slug from its reference filename and
+converts arbitrary-shaped input to two-layer on install. Leaving the <code>examples/</code> source unchanged shows
+the ingester doing its actual job — converting a legacy marketplace pack — and keeps
+<a href="../057-portable-domain-skill/spec.html">057</a>'s portable-skill contract (which reads that source at its
+current shape) green. A legacy <code>KB-001-foundations.md</code> filename would otherwise yield the slug
+<code>KB-001-foundations</code>, carrying exactly the pack-minted id the two-layer model retires — so the reshape
+(rename before staging) is the precondition for a clean import.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-002" priority="must">
+<p>The <code>spectastic-concepts</code> pack <spec-rule>MUST</spec-rule> be filed in the registry under the
+project-local namespace <code>spectastic</code> (supplied by the import coordinate
+<code>spectastic-concepts@spectastic</code>), and <spec-rule>MUST NOT</spec-rule> be declared in a distributable
+<code>knowledge/marketplace.json</code>.</p>
+<details><summary>Rationale</summary><p>The pack is spectastic's own dogfood corpus — it legitimately carries
+<code>&lt;spec-*&gt;</code> tags, verb names, and the word "spectastic". <a href="../057-portable-domain-skill/spec.html">057</a>'s
+<code>pack-not-portable</code> rule inspects only packs a <code>marketplace.json</code> declares distributable, and
+its D-002 keeps spectastic's own <em>un-listed</em> packs exempt "by construction, not by an exemption list". Listing
+concepts as distributable would wrongly assert portability and fire four false errors; the namespace label carries the
+identity without the distributability claim. A consuming project's <code>knowledge/</code> is a corpus root, not a
+marketplace — the demo's <code>examples/knowledge/marketplace.json</code> is the marketplace <em>source</em>, a
+different role.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-003" priority="must">
+<p>The root <code>knowledge/index.md</code> registry <spec-rule>MUST</spec-rule> be populated by running
+<code>corpus import &lt;plugin&gt;@&lt;marketplace&gt; --from …</code> against each reshaped pack — dogfooding 061's
+ingester — <spec-rule level="should">SHOULD NOT</spec-rule> be hand-authored row by row, so the registry is proven
+to be exactly what the ingester writes.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-004" priority="must">
+<p>Every <em>live</em> grounding citation that names an actual in-repo pack document
+<spec-rule>MUST</spec-rule> be re-pointed from the retired three-digit <code>KB-001@edition</code> to its
+project-assigned four-digit <code>KB-NNNN@edition</code>, across specs, plans, docs, <code>CLAUDE.md</code>, and
+worked-example prose.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-005" priority="must">
+<p>The re-point <spec-rule>MUST NOT</spec-rule> alter three categories: archived proposals under
+<code>changes/archive/</code> (preserved verbatim per <a href="../../principles.html">P-3</a>), the
+<code>KB-002</code> restrictive-license fixture (a distinct id whose <a href="../058-corpus-licensing/spec.html">058</a>
+tests pin it), and the illustrative <code>KB-999</code>/<code>KB-001@2017-09-05</code> hypotheticals in
+<a href="../053-corpus-grounding-gates/spec.html">053</a> (they demonstrate the gates against invented ids with no
+real target). Each skipped file is named with its reason.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-006" priority="must">
+<p><code>resolveCitation</code> <spec-rule>MUST</spec-rule> treat the registry as the sole authority for a
+<em>current-edition</em> match; the array-order pack-scan match for a current edition
+<spec-rule>MUST</spec-rule> be retired, so a current-edition citation never resolves by a pack's position in an
+array.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-007" priority="must">
+<p>An edition-pinned citation to a <em>retained superseded</em> edition <spec-rule>MUST</spec-rule> continue to
+resolve after the flip (<a href="../052-corpus-citation-contract/spec.html#FR-003">052 FR-003</a> preserved). The
+mechanism — a narrow pack lookup kept for superseded editions only, or a registry extension — is a plan decision.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-008" priority="should">
+<p>Repo-wide <code>KB-NNNN</code> uniqueness <spec-rule level="should">SHOULD</spec-rule> be the effective duplicate
+gate after migration; the per-pack <code>KB-NNN</code> duplicate check keyed on the retired document
+<code>id</code> <spec-rule level="should">SHOULD</spec-rule> be retired or explicitly documented as a no-op on a
+migrated pack, so the two-layer model is not shadowed by a check for the model it replaced.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-009" priority="must">
+<p>The migration <spec-rule>MUST</spec-rule> record the meta-repo's corpus role as <em>consumer-only</em>: its
+<code>knowledge/</code> is a corpus root it reads from and dogfoods, <spec-rule>MUST NOT</spec-rule> carry a
+distributable root <code>marketplace.json</code>, and does <spec-rule>NOT</spec-rule> publish
+<code>spectastic-concepts</code> for external <code>corpus import</code> in this slice.</p>
+<details><summary>Rationale</summary><p>Surfaced by triage <a href="./triage-log.html#T-001">T-001</a>: removing the
+concepts manifest during US1 fixed the consumer role but left the <em>publisher</em> role undecided. The examples
+marketplace under <code>examples/knowledge/</code> already demonstrates external import, so publishing the dogfood
+pack is deferred, not adopted. Publishing would additionally need <a href="../057-portable-domain-skill/spec.html">057</a>
+to gain a first-class exemption for an intentionally tool-specific pack (its <code>pack-not-portable</code> rule
+assumes distributable ⟹ domain-neutral) — a cross-spec change out of scope here. Deferred to
+<code>TBD-corpus-publish</code>.</p></details>
+</spec-requirement>
+
+<h3>Non-functional</h3>
+
+<spec-requirement id="NFR-001" priority="must">
+<p>The migration <spec-rule>MUST</spec-rule> be idempotent and deterministic: re-running <code>corpus import</code>
+on an already-migrated pack registers nothing new, and no step reads a clock or a network — the result is a pure
+function of the repo's files.</p>
+</spec-requirement>
+
+<spec-requirement id="NFR-002" priority="must">
+<p>The migration <spec-rule>MUST NOT</spec-rule> lose content: every migrated document's body text and every
+known provenance field is preserved, and no <code>TODO</code> provenance field is fabricated to look verified.</p>
+</spec-requirement>
+
+<h3>Out of scope (deferred to other slices)</h3>
+<spec-out-of-scope>
+  <ul>
+    <li defer-to="TBD-corpus-external-migration">Migrating the external repos <code>~/Code/example-cash-snapshot</code> and <code>~/Code/spectastic.io</code> — same reshape, different repos, done locally and pushed on the owner's direction.</li>
+    <li defer-to="TBD-corpus-publish">Publishing the corpus for external import (a distributable root <code>marketplace.json</code> + a <a href="../057-portable-domain-skill/spec.html">057</a> carve-out for an intentionally tool-specific pack) — FR-009 records this repo as consumer-only for now.</li>
+    <li defer-to="TBD-resolver-registry-only">Extending the registry to record retained superseded editions so the pack scan can be deleted entirely — FR-007 keeps a narrow superseded lookup for now.</li>
+    <li defer-to="TBD-corpus-remote-fetch">The <code>RealPackFetcher</code> remote/object-source gap (061 ceiling) — this slice uses <code>--from</code> local checkouts and never exercises a network fetch.</li>
+    <li defer-to="TBD-commands-citation-copy">The stale <code>KB-NNN@edition</code> copy in <code>commands/spectastic.explain.md</code> and <code>spectastic.propose.md</code> — a just-do already tracked, not a migration requirement.</li>
+  </ul>
+</spec-out-of-scope>
+</section>
+
+
+<section id="data">
+<h2>4 · Data model</h2>
+
+<p>This slice introduces no new entity; it moves existing data from the retired flat shape to the two-layer shape
+already defined by 051/052. The transformation, per document:</p>
+
+<h3>The reshape, per document</h3>
+<dl>
+  <dt>Reference file</dt><dd><code>references/KB-001-foundations.md</code> → <code>references/001-foundations.md</code>. The filename becomes the pack-owned portable <code>slug</code>.</dd>
+  <dt>Frontmatter</dt><dd>The pack-minted <code>id: KB-001</code> is dropped; <code>slug: 001-foundations</code> is written. Provenance (<code>origin</code>, <code>edition</code>, <code>license</code>, <code>content-hash</code>, …) is preserved; the install door stamps <code>status: not-yet-spot-checked</code>.</dd>
+  <dt>Pack index</dt><dd>The per-pack <code>index.md</code> is removed; a <code>SKILL.md</code> slug map replaces it as the pack's discovery surface.</dd>
+  <dt>Root registry</dt><dd>One new row per document in <code>knowledge/index.md</code>: the project-assigned opaque <code>KB-NNNN</code> keyed on <code>(marketplace, plugin, slug)</code> — the DOI-model layer-2 identity.</dd>
+</dl>
+
+<spec-note>
+<p><strong>Invariant:</strong> the <code>KB-NNNN</code> a document is assigned at migration is stable forever — a
+later rename of the pack or slug re-anchors the same id via the registry, never mints a new one. The re-pointed
+citations (FR-004) name that id, so the invariant is what keeps them from ever dangling.</p>
+</spec-note>
+</section>
+
+
+<section id="success">
+<h2>5 · Success criteria</h2>
+
+<p>Technology-agnostic, measurable outcomes.</p>
+
+<spec-requirement id="SC-001" priority="must">
+<p>After migration, the root <code>knowledge/index.md</code> contains exactly one repo-unique <code>KB-NNNN</code> row
+per migrated document (two rows: <code>KB-0001</code>, <code>KB-0002</code>), and <code>spectastic validate</code>
+over the full corpus produces zero new errors relative to the pre-migration baseline.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-002" priority="must">
+<p>A <code>&lt;spec-decision grounding="verified"&gt;</code> citing a migrated document's <code>KB-NNNN@edition</code>
+resolves green through <code>resolveCitation</code> with the registry present; a fixture of two packs sharing a
+legacy id proves the resolution is by registry identity, not by array order.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-003" priority="should">
+<p>Re-running <code>corpus import</code> against an already-migrated pack registers zero new documents and reports
+the existing ones as already-registered — idempotence observable from the command's own output.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-004" priority="must">
+<p>No live grounding citation to an in-repo pack document remains on a three-digit <code>KB-NNN</code>; a repo grep
+outside the three documented skip categories finds only <code>KB-NNNN</code>.</p>
+</spec-requirement>
+</section>
+
+
+<section id="assumptions">
+<h2>6 · Assumptions</h2>
+
+<spec-assumption>
+<p>061's <code>installPack</code>, the <code>--from</code> <code>LocalPathFetcher</code>, and registry-first
+<code>resolveCitation</code> are built and green (verified in-repo this turn) — this slice runs them, it does not
+build them.</p>
+</spec-assumption>
+
+<spec-assumption>
+<p>Neither shipped pack has any retained superseded edition today, so FR-007's guarantee is proven against a
+fixture rather than a live superseded document — the migration itself creates no superseded content.</p>
+</spec-assumption>
+</section>
+
+
+<section id="questions">
+<h2>7 · Open questions</h2>
+<spec-questions>
+<p>None outstanding — the smallest-demoable scope, the <code>spectastic-concepts</code> marketplace coordinate, the
+re-point reach, and the resolver-flip aggressiveness were all anchored in the interview. The superseded-resolution
+mechanism is deliberately left to the plan, not left open.</p>
+</spec-questions>
+</section>
+
+
+<section id="conformance">
+<h2>8 · Conformance index</h2>
+<p>Auto-built from every <code>&lt;spec-requirement&gt;</code> in this document.</p>
+<spec-conformance></spec-conformance>
+</section>
+
+
+<section id="changelog">
+<h2>9 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-07-26">26 Jul 2026</time><span>Initial draft. Owns <code>TBD-corpus-identity-migration</code> deferred by <a href="../051-knowledge-corpus/spec.html">051 FR-009</a> and <a href="../052-corpus-citation-contract/spec.html">052 FR-002</a>: reshape both shipped packs to the two-layer shape, populate the root registry by dogfooding 061's ingester, re-point every live citation, and retire the array-order fallback for a current edition. Grounded in <a href="../../docs/corpus-identity-considerations.html">corpus-identity-considerations</a> D-001…D-005.</span></li>
+  <li><time datetime="2026-07-26">26 Jul 2026</time><span>Added <a href="#FR-009">FR-009</a> — the meta-repo's corpus is <em>consumer-only</em> (no distributable root <code>marketplace.json</code>); publishing deferred to <code>TBD-corpus-publish</code>. Surfaced + resolved by triage <a href="./triage-log.html#T-001">T-001</a>, recorded directly on the Draft spec (P-6).</span></li>
+  <li><time datetime="2026-07-26">26 Jul 2026</time><span>Status flipped Draft → Accepted — zero remaining unchecked tasks; corpus test suites verified passing and full-corpus validate at the pre-migration baseline per author confirmation; triage T-001 resolved. Sibling bundle (REQ-LIFECYCLE-005).</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  062-corpus-identity-migration · Corpus identity migration · authored 26 Jul 2026
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>

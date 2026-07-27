@@ -1,12 +1,12 @@
 ---
-id: KB-001
+slug: 001-foundations
 origin: spectastic project documentation
 origin-url: https://github.com/spectastic/spectastic
 edition: 2026-07-25
 license: MIT
 converter: hand-authored
-content-hash: TODO
-status: authoritative
+content-hash: sha256:0417938e7b32f80e84dc56ff8bcdcf13cc298b4ca911b8734a2e04865f771c97
+status: not-yet-spot-checked
 ---
 
 # Spec-driven development, RFC 2119, and grounding

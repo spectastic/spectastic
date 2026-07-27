@@ -128,10 +128,13 @@ describe('resolveCitation — registry-first resolution (T-1000, 2026-07-26-hybr
     expect(r?.filePath).toBe(registryRow().path);
   });
 
-  it('falls back to the pack scan when the registry has no matching row (back-compat window)', () => {
+  it('does NOT fall back to array-order matchCurrent when a registry is present but lacks the row (062 FR-006 retired the back-compat fallback)', () => {
+    // Was: with a registry present but no matching row, resolution fell back to
+    // the pack scan's matchCurrent (the 052 back-compat window). 062 US3 closes
+    // that window — a loaded registry is the sole current-edition authority, so
+    // a current-edition id absent from it resolves to null, never by array order.
     const r = resolveCitation([pack()], { id: 'KB-001', edition: '2024-05-28' }, [registryRow()]);
-    expect(r?.kind).toBe('current');
-    expect(r?.filePath).toBe('knowledge/finance/references/KB-001-settlement.md');
+    expect(r).toBeNull();
   });
 
   it('falls back to the pack scan when no registry argument is passed at all', () => {
