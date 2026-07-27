@@ -13,8 +13,8 @@
  */
 
 import { extractSpecMetadata } from '@spectastic/schema';
-import { fenceArtifactText } from '../security/fence.js';
-import { buildCorpusPromptBlock, loadCorpus, withCorpusHint } from '../knowledge/index.js';
+import { fenceArtifactText } from '@spectastic/schema/fence';
+import { buildCorpusPromptBlock, loadCorpus, withCorpusHint } from '@spectastic/corpus';
 import type {
   GraduationClass,
   KernelContext,

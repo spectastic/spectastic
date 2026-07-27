@@ -6,9 +6,9 @@
  * next rung (bypasses fetching entirely), and the real fetcher — which
  * shells out to install a marketplace pack — is the fallback.
  */
-import { RealPackFetcher } from '@spectastic/core/providers/pack-fetcher';
-import type { PackFetcher } from '@spectastic/core/providers/pack-fetcher';
-import { StubPackFetcher } from '@spectastic/core/providers/pack-fetcher-stub';
+import { RealPackFetcher } from './providers/pack-fetcher.js';
+import type { PackFetcher } from './providers/pack-fetcher.js';
+import { StubPackFetcher } from './providers/pack-fetcher-stub.js';
 
 export interface CreatePackFetcherOptions {
   /** The `--from <path>` escape hatch — registers a local checkout, no fetch. */

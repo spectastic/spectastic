@@ -8,7 +8,7 @@
  * ingestion path uses, with a corpus-specific label so the model still has
  * structural context.
  */
-import { fenceArtifactText } from '../security/fence.js';
+import { fenceArtifactText } from '@spectastic/schema/fence';
 
 const LABEL = 'Knowledge corpus';
 

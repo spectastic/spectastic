@@ -234,7 +234,7 @@ async function scanQuantifiedNfr(files: readonly string[], cwd: string): Promise
  * graceful absence holds all the way through to this scan).
  */
 async function scanCorpusWellFormed(cwd: string): Promise<Finding[]> {
-  const { loadCorpus, corpusWellFormedFindings } = await import('@spectastic/core/knowledge');
+  const { loadCorpus, corpusWellFormedFindings } = await import('@spectastic/corpus');
   const packs = loadCorpus(cwd);
   if (packs.length === 0) return [];
   return corpusWellFormedFindings(packs);
@@ -250,7 +250,7 @@ async function scanCorpusWellFormed(cwd: string): Promise<Finding[]> {
  * scanCorpusWellFormed's graceful-absence shape.
  */
 async function scanCorpusRegistry(cwd: string): Promise<Finding[]> {
-  const { loadRegistry, corpusRegistryFindings } = await import('@spectastic/core/knowledge');
+  const { loadRegistry, corpusRegistryFindings } = await import('@spectastic/corpus');
   const registry = loadRegistry(cwd);
   if (registry.length === 0) return [];
   return corpusRegistryFindings(registry);
@@ -274,7 +274,7 @@ async function scanCorpusRegistry(cwd: string): Promise<Finding[]> {
  */
 async function scanCorpusGrounding(files: readonly string[], cwd: string): Promise<Finding[]> {
   if (files.length === 0) return [];
-  const { loadCorpus, loadRegistry, corpusGroundingFindings } = await import('@spectastic/core/knowledge');
+  const { loadCorpus, loadRegistry, corpusGroundingFindings } = await import('@spectastic/corpus');
   const packs = loadCorpus(cwd);
   if (packs.length === 0) return [];
   const registry = loadRegistry(cwd);
@@ -296,7 +296,7 @@ async function scanCorpusGrounding(files: readonly string[], cwd: string): Promi
  * scanCorpusWellFormed/scanCorpusGrounding's shape.
  */
 async function scanCorpusLicense(cwd: string): Promise<Finding[]> {
-  const { loadCorpus, corpusLicenseFindings } = await import('@spectastic/core/knowledge');
+  const { loadCorpus, corpusLicenseFindings } = await import('@spectastic/corpus');
   const packs = loadCorpus(cwd);
   if (packs.length === 0) return [];
   return corpusLicenseFindings(packs);
@@ -316,7 +316,7 @@ async function scanPackAgnosticism(): Promise<Finding[]> {
   const { expandGlobs } = await import('../glob.js');
   const manifests = await expandGlobs(['**/marketplace.json']);
   if (manifests.length === 0) return [];
-  const { packAgnosticismFindings } = await import('@spectastic/core/knowledge');
+  const { packAgnosticismFindings } = await import('@spectastic/corpus');
   return manifests.flatMap((manifestPath) => packAgnosticismFindings(manifestPath));
 }
 

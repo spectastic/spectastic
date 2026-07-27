@@ -8,7 +8,7 @@ import {
   defaultMarketplaceName,
   DEFAULT_CORPUS_ROOT,
   CorpusConfigError,
-} from '../src/config/corpus.js';
+} from '../src/config.js';
 
 /**
  * 063-corpus-discoverability T-100: the corpus config reader — a raw partial

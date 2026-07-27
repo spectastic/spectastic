@@ -16,8 +16,8 @@
 import { extractHealth } from '@spectastic/schema';
 import { sliceCommand, appendSplitToParent } from './slice.js';
 import { shouldAutoOffer } from '../slice/gate.js';
-import { fenceArtifactText } from '../security/fence.js';
-import { buildCorpusPromptBlock, loadCorpus, withCorpusHint } from '../knowledge/index.js';
+import { fenceArtifactText } from '@spectastic/schema/fence';
+import { buildCorpusPromptBlock, loadCorpus, withCorpusHint } from '@spectastic/corpus';
 import type {
   KernelContext,
   SpecInput,

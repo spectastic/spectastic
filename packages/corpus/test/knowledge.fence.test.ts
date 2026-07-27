@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { fenceCorpusDocument } from '../src/knowledge/fence.js';
-import { fenceArtifactText } from '../src/security/fence.js';
+import { fenceArtifactText } from '@spectastic/schema/fence';
 
 /**
  * 051-knowledge-corpus T-101: red-first test for the fenced corpus-text

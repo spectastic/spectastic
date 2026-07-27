@@ -7,6 +7,7 @@ import { specCommand } from '@spectastic/core/commands/spec';
 import { proposeCommand } from '@spectastic/core/commands/propose';
 import { tasksCommand } from '@spectastic/core/commands/tasks';
 import { graduateExtract } from '@spectastic/core/commands/graduate';
+import { buildCorpusPromptBlock, loadCorpus } from '@spectastic/corpus';
 import type {
   AIProvider,
   ChatOpts,
@@ -152,5 +153,20 @@ describe('corpus prompt injection — absent (054, T-300)', () => {
       expect(prompt).not.toContain('KNOWLEDGE_CORPUS_INDEX');
       expect(prompt).not.toMatch(/knowledge corpus is available/i);
     }
+  });
+});
+
+describe('corpus prompt injection — byte-identical after extraction (064, T-111, SC-004)', () => {
+  it('the injected block for a fixed fixture corpus is byte-identical to its golden baseline', () => {
+    // Exercises the real loadCorpus() + buildCorpusPromptBlock() pipeline, both
+    // now imported from @spectastic/corpus, against the same on-disk fixture
+    // shape corpusDir() builds above. The snapshot is the practical form of
+    // "byte-identical before and after the extraction" once the pre-extraction
+    // code path no longer exists to diff against directly: any future change to
+    // the moved prompt/index/fence logic that alters a single byte of output
+    // fails this test loudly.
+    const cwd = corpusDir();
+    const block = buildCorpusPromptBlock(loadCorpus(cwd));
+    expect(block).toMatchSnapshot();
   });
 });
