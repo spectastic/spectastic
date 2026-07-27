@@ -157,10 +157,14 @@ export async function applyCommand(
 
   // Append changelog entry — the author-supplied summary (REQ-CHANGE-008)
   // preserves the changelog's human voice; raw CLI use falls back to a terse
-  // delta count.
-  const summary =
+  // delta count. A trailing period on the summary is stripped before the
+  // sentence-closing "." below is appended, so an author summary that already
+  // ends a sentence never renders a double period (just-do, caught applying
+  // 2026-07-26-local-import-and-preserve-superseded).
+  const rawSummary =
     input.summary ??
     `${deltas.length} delta${deltas.length === 1 ? '' : 's'} (${deltas.filter((d) => d.result === 'success').length} successful)`;
+  const summary = rawSummary.replace(/\.+$/, '');
   const changelogEntry = `<li><time datetime="${today}">${todayHuman}</time><span>Applied <a href="./changes/archive/${input.slug}/proposal.html">${input.slug}</a>: ${summary}.</span></li>`;
   liveSpec = appendChangelogEntry(liveSpec, changelogEntry);
 
@@ -432,9 +436,12 @@ async function applyPrinciples(
 
   live = substitutePrinciplesHeader(live, fields, today, todayHuman);
 
-  const summary =
+  // Trailing period stripped for the same reason as the ordinary apply path
+  // above — never a double period on a summary that already ends a sentence.
+  const rawSummary =
     input.summary ??
     `${deltas.length} delta${deltas.length === 1 ? '' : 's'} (${deltas.filter((d) => d.result === 'success').length} successful)`;
+  const summary = rawSummary.replace(/\.+$/, '');
   const changelogEntry = `<li><time datetime="${today}">${todayHuman}</time><span>Applied <a href="./changes/archive/${input.slug}/proposal.html">${input.slug}</a>: ${summary}.</span></li>`;
   live = appendChangelogEntry(live, changelogEntry);
   await fs.writeFile(targetPath, live);

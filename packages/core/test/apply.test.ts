@@ -166,6 +166,20 @@ describe('applyCommand (010)', () => {
     expect(updated).not.toContain('1 delta (1 successful)');
   });
 
+  it('apply mode: never double-periods a summary that already ends a sentence (just-do)', async () => {
+    const { fs, files } = stubFs({
+      '/specs/001/spec.html': LIVE_SPEC,
+      '/specs/001/changes/2026-06-16-foo/proposal.html': APPLY_PROPOSAL,
+    });
+    await applyCommand(
+      { kind: 'apply', specId: '001', slug: '2026-06-16-foo', summary: 'added FR-002, a rich human summary.' },
+      { cwd: '', fs },
+    );
+    const updated = files.get('/specs/001/spec.html')!;
+    expect(updated).toContain('added FR-002, a rich human summary.</span>');
+    expect(updated).not.toContain('summary..');
+  });
+
   it('apply mode: falls back to a terse delta count when no summary is given', async () => {
     const { fs, files } = stubFs({
       '/specs/001/spec.html': LIVE_SPEC,
