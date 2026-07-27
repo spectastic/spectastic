@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
+<title>052-corpus-citation-contract · Triage log</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Triage log · 052-corpus-citation-contract</p>
+  <h1>052-corpus-citation-contract — triage log</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    Defects against the <code>052-corpus-citation-contract</code> spec. Cards append-only; IDs stable.
+  </p>
+
+  <spec-meta>
+    <b>Spec</b>      <span><a href="./spec.html">052-corpus-citation-contract</a></span>
+    <b>Created</b>   <span><time datetime="2026-07-27">27 Jul 2026</time></span>
+    <b>Read time</b> <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-tldr>
+    <p>One card per debug session. Fits one screen; reads in under 30 seconds. Five required Tier-1 fields
+    (headline · Expected · Actual · Diagnosis · Fix); the deep-dive <code>&lt;details&gt;</code> stays collapsed
+    unless cross-spec, principles, scope, or hotfix-now applies. See <a href="../../examples/triage-log.html">examples/triage-log.html</a>
+    for the canonical look + the protocol (<code>TRIAGE-001</code>..<code>TRIAGE-006</code>).</p>
+  </spec-tldr>
+</header>
+
+
+<section id="cards">
+<h2>Cards</h2>
+<spec-triage-log>
+
+<spec-triage id="T-001" layer="implementation">
+  <header>
+    <h4>Empty registry array skips the pack-scan fallback in <code>resolveCitation</code></h4>
+    <span class="meta">
+      <span class="layer-pill">Implementation</span>
+      <span class="regen" data-result="pass">code</span>
+    </span>
+  </header>
+
+  <p class="headline">Debugging a corpus citation that resolved to <code>null</code> even though its document is present in a pack, root cause was implementation drift — <code>resolveCitation</code>'s <code>if (registry)</code> guard treats <code>loadRegistry()</code>'s empty-array return (what it yields when no root <code>knowledge/index.md</code> exists) as a <em>loaded</em> registry; fixed by guarding on <code>registry.length &gt; 0</code>; regeneration passes — a faithful implementation of the documented "no registry → pack scan" contract would not conflate an empty registry with a present one.</p>
+
+  <dl>
+    <dt>Expected</dt> <dd><code>resolveCitation(packs, citation, [])</code>, with the cited document present in a pack and no root registry on disk, resolves it via the full pack scan — the documented back-compat path (<a href="./spec.html#FR-003">FR-003</a>).</dd>
+    <dt>Actual</dt>   <dd>Returns <code>null</code>. The empty array is truthy, so the registry-authoritative branch runs; <code>matchRegistry</code> finds nothing (no rows) and only the <em>superseded</em> pack lookup runs — never <code>matchCurrent</code> — so a bare or current-edition citation never resolves.</dd>
+    <dt>Diagnosis</dt><dd><code>if (registry)</code> at <code>packages/corpus/src/knowledge/resolve.ts:87</code> conflates an empty registry array with a loaded one; <a href="../062-corpus-identity-migration/spec.html#FR-006">062 FR-006</a>'s registry authority applies only "with a registry loaded," and a no-rows registry should fall through to <a href="./spec.html#FR-003">FR-003</a>'s pack-scan resolution.</dd>
+    <dt>Fix</dt>      <dd><code>packages/corpus/src/knowledge/resolve.ts</code> — guard the registry-authoritative branch on <code>registry.length &gt; 0</code> so an empty registry is treated as "no registry" (equivalently, callers pass <code>undefined</code> for an empty registry).</dd>
+  </dl>
+
+  <spec-diff>
+<del>  if (registry) {</del>
+<ins>  if (registry && registry.length > 0) {</ins>
+  </spec-diff>
+
+  <details>
+    <summary>Deep dive — impact across consumers (no cross-spec contract disagreement, no principle, no hotfix)</summary>
+    <p>All specs <em>agree</em> on the intended behaviour (registry authoritative when loaded; pack scan otherwise) — this is a code defect, not a contract clash, so it is not a <code>cross-spec</code> gap. But the impact is broader than the one function: the <a href="../053-corpus-grounding-gates/spec.html">053 grounding gate</a>'s <code>scanCorpusGrounding</code> passes <code>loadRegistry(cwd)</code> straight through, so for any project with corpus packs but no root <code>knowledge/index.md</code> yet (a pre-migration project, or one that ran <code>corpus adapt</code> but never <code>corpus import</code>) valid citations resolve to <code>null</code> and surface as <strong>false <code>corpus-provenance</code> errors</strong> in shipped code today. The <a href="../064-corpus-package-extraction/spec.html">064</a> <code>get</code> read-path shipped a local workaround (passing <code>undefined</code> for an empty registry); <strong>fixed at source</strong> — the guard now reads <code>registry.length &gt; 0</code>, the <code>get</code> workaround is removed, and a regression test in <code>knowledge.resolve-registry-only.test.ts</code> pins the empty-array-is-no-registry behaviour. No spec change was required — the fix passes the regeneration test at the implementation layer.</p>
+  </details>
+</spec-triage>
+
+</spec-triage-log>
+</section>
+
+
+<section id="changelog">
+<h2>Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-07-27">27 Jul 2026</time><span>Triage log scaffolded.</span></li>
+  <li><time datetime="2026-07-27">27 Jul 2026</time><span>T-001 added — <code>resolveCitation</code>'s <code>if (registry)</code> guard treats an empty registry array as loaded, skipping the pack-scan fallback; implementation-layer fix, regen passes.</span></li>
+  <li><time datetime="2026-07-27">27 Jul 2026</time><span>T-001 fixed — guard now <code>registry.length &gt; 0</code> in <code>resolve.ts</code>; <code>get.ts</code> workaround removed; regression test added.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  052-corpus-citation-contract triage log · scaffolded 27 Jul 2026
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>

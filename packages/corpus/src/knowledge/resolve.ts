@@ -84,7 +84,12 @@ export function resolveCitation(
   citation: CorpusCitation,
   registry?: readonly RegistryEntry[],
 ): ResolvedCitation | null {
-  if (registry) {
+  // An empty registry array means "no registry loaded" — `loadRegistry()` returns
+  // `[]` for any project with no root `knowledge/index.md` yet, and a bare truthy
+  // check (`if (registry)`) would treat that as an authoritative-but-empty registry,
+  // skipping the pack-scan back-compat path below and resolving every citation to
+  // null. Guarding on length keeps the documented contract: no rows → full pack scan.
+  if (registry && registry.length > 0) {
     const fromRegistry = matchRegistry(registry, citation);
     if (fromRegistry) return fromRegistry;
     // 062-corpus-identity-migration FR-006: with a registry loaded, it is the

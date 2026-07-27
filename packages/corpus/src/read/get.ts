@@ -25,13 +25,9 @@ export function get(idOrCitation: string, packs: readonly CorpusPack[], registry
   const citation = parseCorpusCitation(idOrCitation);
   if (!citation) return { found: false };
 
-  // resolveCitation checks `if (registry)`, and an empty array is truthy — passing one
-  // through (as loadRegistry() returns for any project with no root registry file yet)
-  // would silently switch to registry-only resolution and skip the full pack scan, even
-  // though the function's own contract says "no registry" preserves it. A pre-existing
-  // sharp edge in the moved (unchanged) resolver, found via this new caller; worked around
-  // here rather than touched there — flagged for triage, not fixed inline.
-  const resolved = resolveCitation(packs, citation, registry.length > 0 ? registry : undefined);
+  // An empty registry falls through to the full pack scan inside resolveCitation
+  // (it guards on `registry.length > 0`), so the array can be passed straight through.
+  const resolved = resolveCitation(packs, citation, registry);
   if (!resolved) return { found: false };
 
   return {
