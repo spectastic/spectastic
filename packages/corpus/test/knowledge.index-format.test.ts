@@ -12,7 +12,7 @@ import {
   renderRegistryTable,
   parseSkillSlugMap,
   renderSkillSlugMapTable,
-} from '@spectastic/core/knowledge';
+} from '../src/knowledge/index-format.js';
 
 describe('parseIndex / renderIndexTable (pre-migration, unchanged by this amendment)', () => {
   it('round-trips a 5-column pack index', () => {

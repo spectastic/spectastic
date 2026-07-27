@@ -20,7 +20,7 @@
  * to arrive pre-sorted from `loadCorpus` — the block is a pure function of
  * corpus *content* alone (054 T-210).
  */
-import { fenceArtifactText } from '../security/fence.js';
+import { fenceArtifactText } from '@spectastic/schema/fence';
 import type { CorpusPack, IndexEntry } from './types.js';
 
 const INDEX_LABEL = 'Knowledge corpus index';

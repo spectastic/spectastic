@@ -1,0 +1,561 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
+<title>The corpus as its own tool — Considerations for Spectastic</title>
+<meta name="description" content="Should the knowledge-corpus subsystem become a standalone product — separately installable, usable without the spec-driven lifecycle, finally able to own PDF conversion, and serving corpus and specs to any agent over MCP? A survey of what's extractable, where it sits in the knowledge-base landscape, and the tiered slices to get there.">
+<link rel="stylesheet" href="../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../assets/favicon.svg">
+<script src="../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Considerations · Standalone corpus</p>
+  <h1>The corpus wants to be its own tool</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    A curation, provenance, and citation layer grew inside a spec-driven tool. It is nearly self-contained, it already lives in repos that never run the lifecycle, and the one feature it was told it couldn't have — PDF conversion — is only forbidden because of a constraint a standalone tool wouldn't carry.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>     <span><spec-status value="draft">Draft</spec-status></span>
+    <b>Type</b>       <span>Architecture &amp; landscape survey</span>
+    <b>Author</b>     <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Created</b>    <span><time datetime="2026-07-27">27 Jul 2026</time></span>
+    <b>Sources</b>    <span>21 external, retrieved 27 Jul 2026 · codebase audit</span>
+    <b>Read time</b>  <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-tldr>
+    <p>The knowledge-corpus subsystem has quietly become <strong>product-shaped</strong>: ~3,000 lines in one cohesive module
+    (<code>packages/core/src/knowledge/</code>), coupled to the lifecycle through only <strong>two thin seams</strong> (prompt
+    injection + validate gates), and the core was <em>deliberately built</em> for a second surface — its file-IO port names "an MCP
+    server with capability-scoped IO" as an intended adapter. The <a href="../specs/062-corpus-identity-migration/spec.html">external
+    migration</a> already proved corpus knowledge lives in repos that never touch the lifecycle. So the question is real: make it a
+    standalone <strong>corpus product</strong> — separately installable, usable without spec-driven development, and finally free to
+    own <strong>PDF conversion</strong> (descoped from the kernel only for a <em>Node-only</em> constraint a standalone tool doesn't
+    carry). The landscape confirms a niche: the open-source world splits into <em>retrieval infrastructure</em> (LangChain, RAGFlow,
+    vector DBs) and <em>packaging</em> (the SKILL.md standard, agent-skills marketplaces) — and this corpus is <mark>neither</mark>.
+    It is the <strong>provenance / citation / curation layer</strong>: human-curated, <code>KB-NNNN</code>-cited,
+    injected-not-embedded. The interview surfaced a bigger prize than a library: an <strong>MCP server</strong> serving the corpus
+    <em>and</em> the <code>specs/</code> estate across <em>multiple repos</em> — the doc-MCP category is established, targeted
+    retrieval saves context over file-reads, and spectastic's citation contract is exactly the provenance a generic doc-server can't
+    carry. That multi-repo move exposes a collision the doc has to answer: spec ids and <code>KB-NNNN</code> are both <em>repo-local</em>,
+    so a federated index is ambiguous — but the corpus already carries the fix (the DOI-shaped <code>marketplace</code> prefix), and
+    specs need the same prefix they lack today; namespace both and a top-level <strong>orchestrator</strong> could route a requirement
+    to its owning service by the spec-sensitive corpus (a forward-look, human-confirmed). Recommendation: three staged slices —
+    <strong>extract the library</strong> (in-monorepo first), <strong>give PDF a home</strong> (a shell-out wrapper, no bundled
+    runtime), and <strong>build the MCP serving surface</strong> (likely its own repo, federated-identity-aware) as the headline
+    bet.</p>
+  </spec-tldr>
+
+  <spec-audience-map>
+    <dl>
+      <dt>Exec / PM</dt>   <dd>The TL;DR, then §<a href="#recommendation">8</a> (the three slices).</dd>
+      <dt>Reviewer</dt>    <dd>§<a href="#extractable">2</a> (how clean the seam is) + §<a href="#landscape">3</a> (where it sits).</dd>
+      <dt>Implementer</dt> <dd>§<a href="#retrieval">4</a> (the MCP/query surface) + §<a href="#namespacing">5</a> (federated identity) + §<a href="#recommendation">8</a>.</dd>
+      <dt>In a hurry</dt>  <dd>The corpus is extractable and underserved. Ship it as a library + PDF wrapper + an MCP server for corpus <em>and</em> specs — namespaced so a multi-repo estate doesn't collide. §<a href="#recommendation">8</a>.</dd>
+    </dl>
+  </spec-audience-map>
+</header>
+
+
+<!-- ======================================================= -->
+<section id="ask">
+<h2>1 · The ask — a corpus that outlives the lifecycle</h2>
+<p>Spectastic's corpus began as a grounding aid: give the AI verbs trustworthy, cited source material so a generated spec cites a
+real requirement instead of hallucinating one. But it kept accreting the machinery of a knowledge product — a two-layer identity
+(<a href="../specs/062-corpus-identity-migration/spec.html">062</a>), a citation contract with edition pinning
+(<a href="../specs/052-corpus-citation-contract/spec.html">052</a>), integrity and grounding gates
+(<a href="../specs/053-corpus-grounding-gates/spec.html">053</a>), licensing checks
+(<a href="../specs/058-corpus-licensing/spec.html">058</a>), an ingester (<a href="../specs/061-corpus-ingester/spec.html">061</a>),
+and marketplace discoverability (<a href="../specs/063-corpus-discoverability/spec.html">063</a>). None of that is <em>about</em>
+spec-driven development. It is about <strong>curating a trustworthy, citable body of domain knowledge</strong>.</p>
+
+<p><spec-newthought>Two facts turn "nice module" into "candidate product."</spec-newthought> First, the corpus already lives where
+the lifecycle doesn't: the external-repo migration (<code>example-cash-snapshot</code>, <code>spectastic.io</code>) reshaped and
+pushed corpus packs in repos that are not driven by spectastic specs. Second, the one feature the kernel <em>refused</em> — a PDF
+converter — was refused for a reason that evaporates outside the kernel. The rule (<a href="../specs/051-knowledge-corpus/spec.html">051</a>,
+<a href="../specs/056-corpus-adapter/spec.html">056</a>, marked <code>TBD-never</code>) is "the kernel stays Node-only; a
+converter means a Python/GPU runtime we won't take on." A standalone corpus tool is not the kernel and carries no such vow.</p>
+
+<p>So the prompt is: <strong>can the corpus be a product in its own right</strong> — separately downloadable, useful to someone who
+wants a knowledge base and citation discipline but never writes a spec? And if so, how does knowledge get <em>out</em> of it, given
+that today the only exit is prompt injection into spectastic's own verbs?</p>
+</section>
+
+
+<!-- ======================================================= -->
+<section id="extractable">
+<h2>2 · What's actually extractable</h2>
+<p>The encouraging finding from the codebase audit: the corpus is one of the most self-contained subsystems in the tree, and the
+architecture was <em>designed</em> to be lifted. The surface, module by module:</p>
+
+<div style="overflow-x:auto;">
+<table>
+  <thead><tr><th>Piece</th><th>Where</th><th>What it owns</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><strong>The library</strong></td>
+      <td><code>packages/core/src/knowledge/</code> — 15 modules, ~2,960 LOC</td>
+      <td>Parse, ingest, adapt, resolve citations, publish/sync <code>marketplace.json</code>, validate (well-formed / registry / grounding), licensing, provenance fencing, the registry + index format, pack-agnostic resolution.</td>
+    </tr>
+    <tr>
+      <td><strong>The CLI edge</strong></td>
+      <td><code>packages/cli/src/commands/corpus.ts</code> (~200 LOC) + <code>config/corpus.ts</code></td>
+      <td>One command group: <code>adapt</code>, <code>import</code>, <code>interview</code>, <code>source</code>, <code>publish</code>. Thin — it parses args and delegates to the library, per the fat-core / thin-CLI convention.</td>
+    </tr>
+    <tr>
+      <td><strong>The schema rules</strong></td>
+      <td><code>packages/schema/src/</code> — <code>citation-shared.ts</code>, <code>rules/corpus-citation-form.ts</code></td>
+      <td>The citation-form check + the shared citation grammar.</td>
+    </tr>
+    <tr>
+      <td><strong>Lifecycle seams</strong> <span class="small-caps">(the only coupling)</span></td>
+      <td>AI verbs + <code>validate</code></td>
+      <td><em>Two.</em> (1) Prompt injection: every AI verb calls <code>buildCorpusPromptBlock(loadCorpus(cwd))</code> + <code>withCorpusHint</code>. (2) Validate gates: the <code>scanCorpus*</code> functions import from <code>@spectastic/core/knowledge</code>.</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+
+<p><spec-newthought>The architecture already anticipates this.</spec-newthought> The core's file-IO port
+(<code>packages/core/src/providers/node-fs.ts</code>) states its own reason for existing as "a browser-based web editor, an MCP
+server with capability-scoped IO" — the <code>IO</code> abstraction was written so a <em>second surface</em> could drive the same
+deterministic kernel, and <code>core/src/types.ts</code> repeats the intent ("MCP / VS Code adapters render the choices in their own
+UI"). A corpus library with its own thin CLI (and later an MCP edge) is not a new pattern to invent — it is the seam the codebase
+already assumes. There is direct precedent too: <code>@spectastic/core</code> <strong>already ships a standalone-library
+import</strong> as a first-class, tested guarantee (<a href="../specs/002-validate-cli/spec.html">002</a>, SC-004). Extraction here
+is a well-trodden move, not a leap.</p>
+
+<spec-warning><strong>The two seams are the whole cost.</strong> Extraction is not free — the prompt-injection call and the
+validate scans must invert from "core reaches into <code>knowledge/</code>" to "core (or the CLI) depends on the extracted corpus
+package": a mechanical dependency flip across a handful of call sites, not a redesign. The graceful-absence NFR (the lifecycle works
+<em>with or without</em> a corpus, <a href="../specs/051-knowledge-corpus/spec.html">051</a>) already makes both seams null-safe,
+which is what keeps the flip low-risk.</spec-warning>
+</section>
+
+
+<!-- ======================================================= -->
+<section id="landscape">
+<h2>3 · The landscape — two worlds, and this sits in neither</h2>
+<p>The open-source knowledge-base world in 2026 splits cleanly, and understanding the split is what tells us whether a standalone
+corpus is a redundant re-entry or an underserved niche.</p>
+
+<div style="overflow-x:auto;">
+<table>
+  <thead><tr><th>World</th><th>Exemplars</th><th>Problem it solves</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><strong>Retrieval infrastructure</strong></td>
+      <td>LangChain, LlamaIndex, Haystack; RAGFlow (chunk-level citation, GraphRAG); vector stores Chroma, Qdrant, Milvus, txtai.</td>
+      <td><em>Query-time retrieval over embeddings.</em> Chunk, embed, index, similarity-search, re-rank. The pipeline engineering problem.</td>
+    </tr>
+    <tr>
+      <td><strong>Packaging / agent-skills</strong></td>
+      <td>The <strong>SKILL.md</strong> open standard (16+ tools by early 2026 — Claude Code, Codex, Cursor, Gemini CLI); agent-skills marketplaces; <code>llms.txt</code>.</td>
+      <td><em>Portable, progressively-disclosed, versioned knowledge/skill packs.</em> Build once, consume from any compatible agent.</td>
+    </tr>
+    <tr>
+      <td><strong>The gap this fills</strong></td>
+      <td>Spectastic's corpus.</td>
+      <td><em>Curation, provenance, and citation.</em> Human-curated, <code>KB-NNNN@edition</code>-cited, provenance-stamped, license-checked, injected-not-embedded. The <strong>trust</strong> problem, upstream of both.</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+
+<p><spec-newthought>It is not a RAG tool, and shouldn't pretend to be.</spec-newthought> RAGFlow and the vector DBs answer "how do
+I <em>retrieve</em> the relevant chunk fast?" This corpus answers a question they punt on: "can I <em>trust</em> this source,
+<em>cite</em> it precisely, and know when its edition went stale?" A corpus document carries authority provenance (converted /
+interviewed / sourced), a license verdict, a stable id, and edition pinning so a citation survives supersession
+(<a href="../specs/052-corpus-citation-contract/spec.html">052</a>) — the <em>curation layer</em>, orthogonal to retrieval and
+largely unserved by the retrieval-infra tools, which take "whatever markdown lands in the index" on faith. So the honest
+positioning: spectastic-corpus is <strong>upstream of RAG</strong> (it produces trustworthy, cited, licensed source a LangChain or
+RAGFlow pipeline can consume) and <strong>aligned with SKILL.md packaging</strong> (062/063 already emit a <code>marketplace.json</code>
+and portable packs). It should <em>lean into</em> both rather than compete with either. Refusing to become a vector DB isn't a
+limitation to apologize for — it is the product's spine.</p>
+</section>
+
+
+<!-- ======================================================= -->
+<section id="retrieval">
+<h2>4 · Getting knowledge out — the retrieval seam</h2>
+<p>Here is the real design problem. Today the corpus is <strong>write-and-inject only</strong>: you curate documents in, and the
+<em>only</em> way knowledge comes back out is through spectastic's own AI verbs quietly prepending a prompt block. A standalone
+product needs a first-class <strong>read path</strong> — a way for a person, or any agent, to <em>ask the corpus a question and
+get cited answers</em> without running a single spec command.</p>
+
+<p><spec-newthought>Two exits, and they compose.</spec-newthought> A <strong>query CLI</strong>
+(<code>corpus query "T+1 settlement window"</code> → matching documents with their <code>KB-NNNN</code> ids and provenance) is the
+deterministic, scriptable floor. An <strong>MCP server</strong> is the ambient one: any MCP-speaking agent (Claude Code, Codex,
+Cursor) connects and pulls cited corpus context on demand. Both are established prior art — dedicated documentation MCP servers
+("maintain docs in one place, available to humans via the web and to agents via MCP") already exist, and multi-server
+<em>aggregation</em> (one endpoint fronting many repos' servers) is a known pattern.</p>
+
+<spec-warning><strong>This read path is additive, not a rewrite of injection.</strong> The query CLI and MCP server are how
+<em>external</em> consumers — a person, another agent — get cited knowledge out. Spectastic's own AI verbs are <strong>unchanged</strong>:
+they keep injecting directly from <code>knowledge/</code> on disk via <code>buildCorpusPromptBlock(loadCorpus(cwd))</code>, exactly as
+today. Nothing here proposes rerouting the verbs' injection through the MCP server — not in slice 1, and not as part of this survey.
+The extracted library reads the same files; the server is a second doorway onto them, not a replacement for the first.</spec-warning>
+
+<p><strong>The interview widened this past the corpus.</strong> If a server is serving cited knowledge, the <code>specs/</code>
+estate is the same shape of thing — structured, cross-referenced, id-anchored HTML. An agent asking "what does
+<code>REQ-FORMAT-004</code> require?" or "show me the SC→acceptance→test trace for this spec" is a retrieval problem the server could
+answer <em>directly</em> and cheaply: one requirement or one trace is far less context than an agent reading whole
+<code>spec.html</code> files (code-intelligence MCP servers report large token reductions over file-reads for exactly this reason).
+Two properties make this spectastic's to win rather than a generic doc-server's:</p>
+
+<ul>
+  <li><strong>Provenance is native.</strong> A generic doc-MCP server returns text; spectastic returns text <em>with its
+  <code>KB-NNNN@edition</code> citation and authority provenance</em>. "Cite the paragraph you relied on" is not a bolt-on — it is
+  the corpus's existing contract.</li>
+  <li><strong>Multi-repo is the multiplier.</strong> One server pointed at several checkouts turns an org's whole spec-and-corpus
+  estate into a single queryable, cited surface — the thing no single-repo tool offers.</li>
+</ul>
+
+<p>Because that server serves <em>both</em> corpus and specs, is a <strong>long-running process</strong> (unlike every existing CLI
+verb), and may <strong>aggregate multiple repositories</strong>, it is architecturally a different animal from the corpus library —
+plausibly its own component, quite possibly its own repo, consuming the extracted library and a read-only view of the specs. That is
+the headline bet, and the piece worth the deepest scrutiny before building.</p>
+
+<spec-decision id="D-001" grounding="verified">
+  <h4>D-001 · The read path is a query CLI plus an MCP server; the MCP server serves corpus and specs, multi-repo</h4>
+  <dl>
+    <dt>Status</dt><dd><spec-status value="draft">Proposed</spec-status></dd>
+    <dt>Context</dt><dd>A standalone corpus is useless without a way to get cited knowledge out; today the only exit is spectastic's
+    prompt injection. Doc-MCP servers and multi-server aggregation are established patterns; spectastic's differentiator is native
+    provenance and a citation contract a generic server lacks.</dd>
+    <dt>Decision</dt><dd>Ship a deterministic <code>corpus query</code>/<code>get</code> CLI as the floor, and an MCP server as the
+    ambient surface. Scope the MCP server to serve <em>both</em> the corpus and a read-only view of the <code>specs/</code> estate,
+    across multiple repos, returning provenance/citation with every result. Stay provenance-first — <strong>no embeddings / vector
+    store</strong> in this product; interoperate with RAG tools instead of becoming one. This is an <strong>additive external read
+    path</strong>: spectastic's own verbs keep injecting directly from <code>knowledge/</code> — rerouting them through the server is
+    explicitly out of scope for this survey.</dd>
+    <dt>Consequences</dt><dd>+ Genuine standalone usefulness; any agent gets cited context without the lifecycle. + Reuses the
+    IO-port second-surface design the core already assumes. + Multi-repo makes an org's whole estate one queryable surface.
+    − A new long-running process with its own lifecycle (auth, scoping, versioning), gated behind the library extraction.
+    − Deliberately no semantic/vector retrieval; large corpora needing fuzzy recall must pair it with a RAG pipeline — a boundary
+    to state, not blur.</dd>
+  </dl>
+</spec-decision>
+</section>
+
+
+<!-- ======================================================= -->
+<section id="namespacing">
+<h2>5 · Identity &amp; namespacing across the federated estate</h2>
+<p>The multi-repo ambition of §4 hides a load-bearing problem the moment a server fronts more than one repo: <strong>identity
+collides.</strong> A federated index that keys on the ids artifacts carry today is ambiguous, on two axes at once.</p>
+
+<div style="overflow-x:auto;">
+<table>
+  <thead><tr><th>Axis</th><th>The collision</th><th>Why</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><strong>Spec ids</strong></td>
+      <td>Every spectastic repo has a spec <code>042</code>, a <code>REQ-FORMAT-004</code>, a <code>T-017</code>. Across repos they are <em>not the same thing</em> and there is nothing to tell them apart.</td>
+      <td>Spec ids are purely <strong>repo-local</strong> — every project starts at <code>000</code> and re-uses the same <code>REQ-</code>/<code>FR-</code>/<code>T-</code> grammar. There is <strong>no namespace layer at all</strong>; <code>spectastic.json</code> carries no project identity.</td>
+    </tr>
+    <tr>
+      <td><strong>Corpus ids</strong></td>
+      <td>The same <code>KB-0001</code> exists in every repo that dogfoods the corpus.</td>
+      <td><code>KB-NNNN</code> is <em>repo-unique</em>, not global — it is "project-assigned and repo-unique" in the root registry (<a href="../specs/052-corpus-citation-contract/spec.html">052</a> resolver). It is a local convenience, not a federation key.</td>
+    </tr>
+    <tr>
+      <td><strong>Duplicated knowledge</strong></td>
+      <td>The same pack (<code>spectastic-concepts</code>) installed in ten repos is the <em>same</em> knowledge appearing ten times.</td>
+      <td>A federated index that can't recognise "this is the same document" either double-counts it or returns ten near-identical hits.</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+
+<p><spec-newthought>The corpus already solved this — with a DOI.</spec-newthought> The
+<a href="./corpus-identity-considerations.html">corpus-identity survey</a> faced exactly "a globally-unique id without a global
+coordinator" and adopted the identifier world's canonical answer: a <strong>DOI</strong> is a namespace <em>prefix</em> (assigned by
+an agency) plus a local <em>suffix</em>. Spectastic's prefix is the <strong><code>marketplace</code></strong>; the durable cross-repo
+key is <strong><code>marketplace · plugin · slug @ edition</code></strong> (the label <code>renderCitationLabel</code> already
+derives), and <code>KB-NNNN</code> is only the repo-local suffix. So federation of the corpus is a <em>solved shape</em>: key results
+on the marketplace coordinate, not <code>KB-NNNN</code>, and the same pack in ten repos <strong>dedupes for free</strong> because all
+ten share one coordinate. The identity survey even anticipated this in its own open questions — "one registry or many… when a repo
+imports from several marketplaces."</p>
+
+<spec-warning><strong>The marketplace default is federation-fragile.</strong> <code>corpus.marketplace</code> defaults to the repo's
+directory name (<a href="../specs/063-corpus-discoverability/spec.html">063</a>) — fine for one repo, but two repos that both default
+to a generic dir name (or the <code>local</code> sentinel) <em>collide in the namespace that is supposed to prevent collision</em>.
+Federation is what turns <code>TBD-corpus-owner-config</code> (an owner/org-qualified, genuinely-global prefix) from a nicety into a
+prerequisite, and promotes 061's identity-fragmentation <code>validate</code> warning into a federation-integrity check.</spec-warning>
+
+<p><strong>Specs have no such prefix — that is the real gap.</strong> The corpus can be federated today with care; specs cannot, because
+they carry no namespace at all. The fix is the same DOI move applied to the spec side: a stable <strong>project prefix</strong> +
+the repo-local spec id → a federation-unique coordinate, surfaced as an MCP <strong>resource URI</strong>
+(<code>spectastic://&lt;project&gt;/spec/042#REQ-FORMAT-004</code>). This is not exotic: the MCP ecosystem has already converged on
+exactly this — the 2026-07-28 spec makes "roots become resource URIs," and aggregators uniformly <em>namespace resources by their
+source</em> to avoid conflicts when many servers sit behind one endpoint. Spectastic would be adopting the platform's own convergent
+pattern, not inventing one.</p>
+
+<spec-decision id="D-002" grounding="verified">
+  <h4>D-002 · Federate on qualified coordinates; weigh one project namespace vs. two</h4>
+  <dl>
+    <dt>Status</dt><dd><spec-status value="draft">Proposed</spec-status></dd>
+    <dt>Context</dt><dd>Spec ids and <code>KB-NNNN</code> are both repo-local; a federated index keyed on them is ambiguous. The
+    corpus already has a DOI-shaped answer (the <code>marketplace</code> prefix); specs have no prefix at all.</dd>
+    <dt>Decision</dt><dd>Key every federated result on a <strong>qualified coordinate</strong> — corpus on
+    <code>marketplace · plugin · slug @ edition</code> (never bare <code>KB-NNNN</code>), specs on a new <strong>project prefix</strong>
+    + the repo-local id — and surface both as source-namespaced MCP resource URIs. The <em>open sub-question the follow-on spec must
+    settle</em>: whether that project prefix is <strong>one unified namespace</strong> (generalize <code>corpus.marketplace</code> / a
+    new <code>project</code> field so a single coordinate qualifies both corpus and specs — one thing for an orchestrator to route to,
+    and <code>TBD-corpus-owner-config</code> becomes the single load-bearing primitive) or <strong>two parallel namespaces</strong>
+    (corpus keeps its publish-scoped <code>marketplace</code>, specs get an independent repo-scoped project-id — more faithful to the
+    062/063 split between "published pack" and "this repo"). <em>Leaning unified</em> — the corpus already proves the prefix works and
+    an orchestrator wants one coordinate — but the two-systems fidelity is real and the spec should decide it deliberately.</dd>
+    <dt>Consequences</dt><dd>+ A federated estate whose every result is globally unambiguous and whose duplicated packs dedupe.
+    + Reuses the corpus's proven DOI model and the MCP world's convergent source-prefixing. − Specs need an identity primitive they
+    lack today (a project field in <code>spectastic.json</code>). − Retrofitting a prefix onto existing repo-local spec ids is a
+    migration, and the unified-vs-parallel choice is a genuine fork, not a detail.</dd>
+  </dl>
+</spec-decision>
+
+<p><spec-newthought>The payoff is an orchestrator that knows where a spec belongs.</spec-newthought> Once the estate is namespaced,
+provenance-carrying, and queryable as one federated index, a forward-looking possibility opens that no single-repo tool has: a
+<strong>top-level orchestrator</strong> for a multi-service project. Given a fresh requirement, it asks the index "which service's
+<em>spec-sensitive corpus</em> and existing specs is this closest to?" and proposes <em>where the resulting spec(s) should live</em> —
+routing a requirement to its owning service the way CODEOWNERS routes a PR to its owning team, or Backstage catalogs a service, but
+<em>semantically</em>, driven by the domain signal the corpus already holds. The namespacing above is the hard prerequisite: you
+cannot route to a service whose artifacts aren't distinctly addressable.</p>
+
+<spec-warning><strong>Placement is a ranked suggestion, never a silent decision.</strong> This orchestrator <em>suggests</em> where a
+spec belongs with a confidence, and a human confirms — the same human-in-the-loop posture the corpus already takes with provenance
+and sign-off. It is a <strong>forward-look, gated behind the namespacing work</strong>, not a slice to build now; it is here because
+it is the reason the namespacing is worth doing, not because it is next.</spec-warning>
+</section>
+
+
+<!-- ======================================================= -->
+<section id="pdf">
+<h2>6 · PDF finally gets a home</h2>
+<p>The kernel refused a PDF converter on a single, principled ground: staying Node-only. Outside the kernel that ground is gone, and
+a standalone corpus tool is the natural owner of the "documents arrive as PDFs" reality that a curation product will hit constantly.
+The de-facto open-source converters, from the 2026 surveys:</p>
+
+<div style="overflow-x:auto;">
+<table>
+  <thead><tr><th>Converter</th><th>Shape</th><th>Best when</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><strong>MarkItDown</strong> <span class="small-caps">Microsoft · MIT</span></td>
+      <td>Thin wrapper over format libraries; no models, no GPU; broad format tail (PDF, DOCX, PPTX, XLSX, HTML, images). <code>pip install</code> and go.</td>
+      <td>Clean, digital PDFs you control. The fast default.</td>
+    </tr>
+    <tr>
+      <td><strong>Docling</strong> <span class="small-caps">IBM · MIT</span></td>
+      <td>Layout-detection model + optional small vision model; emits a structure-preserving document, not just text.</td>
+      <td>Tables, formulas, multi-column academic layouts where structure carries meaning.</td>
+    </tr>
+    <tr>
+      <td><strong>Marker</strong> <span class="small-caps">Datalab</span></td>
+      <td>OCR-based (Surya), GPU / CPU / Apple-MPS; highest structural fidelity at scale.</td>
+      <td>Scanned or messy PDFs, high fidelity needed, GPU budget available.</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+
+<p>None is universally best — the choice is a speed / fidelity / hardware trade, and that variance is the design cue: <strong>the
+corpus tool should not marry one converter.</strong> The clean move is a <code>corpus convert</code> subcommand that <em>shells
+out</em> to a user-installed converter (MarkItDown default, Docling for structure, Marker for fidelity), then routes the markdown
+into the existing <code>adapt</code>/<code>import</code> provenance path — stamping the source PDF, the converter used, and a byte
+hash, exactly as 056 already records converted-origin provenance. No bundled Python, no GPU dependency, no lock-in; the converter
+stays the user's install, and the tool owns only orchestration and provenance.</p>
+
+<spec-decision id="D-003" grounding="verified">
+  <h4>D-003 · A <code>corpus convert</code> wrapper that shells out; the tool never bundles a converter</h4>
+  <dl>
+    <dt>Status</dt><dd><spec-status value="draft">Proposed</spec-status></dd>
+    <dt>Context</dt><dd>PDF was descoped from the kernel only for the Node-only vow; a standalone tool doesn't carry it. Three
+    converters own the space, none universally best — a speed/fidelity/hardware trade.</dd>
+    <dt>Decision</dt><dd>Add <code>corpus convert &lt;file&gt;</code> that invokes a user-installed converter (MarkItDown default,
+    Docling / Marker documented alternatives) and feeds the markdown into the existing provenance-stamping adapt path. The tool owns
+    orchestration + provenance, never the converter binary.</dd>
+    <dt>Consequences</dt><dd>+ Closes the <code>TBD-never</code> without a Python/GPU runtime. + Reuses 056's converted-origin
+    provenance machinery. + Converter-agnostic, so it tracks the field instead of betting on one tool. − The converter is a
+    documented user prerequisite, not bundled. − Conversion quality is the converter's, not the tool's — but the provenance records
+    <em>which</em> converter, so a bad conversion is attributable.</dd>
+  </dl>
+</spec-decision>
+</section>
+
+
+<!-- ======================================================= -->
+<section id="packaging">
+<h2>7 · Packaging shape — monorepo package or its own repo</h2>
+<p>Two ways to ship the extracted corpus, with a real trade between them.</p>
+
+<div style="overflow-x:auto;">
+<table>
+  <thead><tr><th>Shape</th><th>What it is</th><th>Cost / benefit</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><strong>In-monorepo package</strong> <span class="small-caps">recommended first</span></td>
+      <td>A new <code>@spectastic/corpus</code> package beside <code>core</code>/<code>cli</code>/<code>schema</code>, with its own <code>spectastic-corpus</code> binary. Spectastic depends on it via the two seams.</td>
+      <td>Least disruption; shared tooling, tests, release. Still a separate <code>npm</code> install for standalone users. Mirrors the <code>@spectastic/core</code> standalone-lib precedent. But the boundary is "polite," not enforced — nothing stops a future import from re-coupling it.</td>
+    </tr>
+    <tr>
+      <td><strong>Separate repo</strong></td>
+      <td>A standalone <code>spectastic-corpus</code> repository, published independently; spectastic consumes it as an external dependency.</td>
+      <td>Cleanest boundary, true "separate download," independent release cadence, its own issue tracker for non-SDD users. But adds cross-repo version coordination, a second CI, and a release-lockstep tax every time a shared type changes.</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+
+<p>The measured call: <strong>start in-monorepo, defer the repo split.</strong> The extraction's value — a clean package boundary, a
+standalone binary, a reusable library — is captured immediately by the package move; the separate repo's <em>extra</em> value is
+mostly organizational (independent releases, a home for non-SDD users) and only pays off once there is real standalone adoption to
+serve. Splitting later is cheap when the boundary is already clean; un-splitting a premature repo is not. The MCP server (§4) is the
+exception — serving specs and running as a process, it is the piece most likely to warrant its own repo from the start, decided
+independently of where the library lives.</p>
+
+<spec-decision id="D-004" grounding="verified">
+  <h4>D-004 · Extract to an in-monorepo package first; gate the repo split on standalone adoption</h4>
+  <dl>
+    <dt>Status</dt><dd><spec-status value="draft">Proposed</spec-status></dd>
+    <dt>Context</dt><dd>The extraction's engineering value is a clean package boundary + a standalone binary; the separate repo's
+    extra value is organizational and only matters with real non-SDD users. Splitting later is cheap once the boundary is clean.</dd>
+    <dt>Decision</dt><dd>Create <code>@spectastic/corpus</code> in this monorepo with its own binary; defer a separate
+    <code>spectastic-corpus</code> repo behind evidence of standalone adoption. Decide the MCP server's repo home separately, since
+    it serves specs and runs as a process.</dd>
+    <dt>Consequences</dt><dd>+ Captures the boundary and the standalone install now, cheaply. + Keeps release coordination in one
+    place until adoption justifies the split. − The in-repo boundary is convention-enforced, not physical; re-coupling must be
+    review-caught (the fat-core / thin-CLI posture). − Standalone users initially install under the <code>@spectastic</code> scope,
+    which reads as SDD-coupled even though it isn't.</dd>
+  </dl>
+</spec-decision>
+</section>
+
+
+<!-- ======================================================= -->
+<section id="recommendation">
+<h2>8 · Recommendation — three staged slices</h2>
+<p>Two theses anchor this: <strong>the corpus is a curation/provenance product, not a retrieval engine</strong>, and <strong>ship the
+library boundary before the process that fronts it</strong>. Ordered so each slice stands alone and de-risks the next.</p>
+
+<ol>
+  <li><strong>Slice 1 — extract the library.</strong> Lift <code>packages/core/src/knowledge/</code> + its schema rules into
+  <code>@spectastic/corpus</code>, a package with a thin <code>spectastic-corpus</code> CLI (the existing
+  <code>adapt</code>/<code>import</code>/<code>interview</code>/<code>source</code>/<code>publish</code> verbs plus a
+  <code>query</code>/<code>get</code> read path), and invert the two seams to depend on it — <em>inverting</em> means the import
+  source flips to the extracted package; injection still reads <code>knowledge/</code> on disk exactly as today. In-monorepo;
+  graceful-absence keeps the flip low-risk. The foundation every other slice sits on.</li>
+  <li><strong>Slice 2 — PDF gets a home.</strong> Add <code>corpus convert</code>, shelling out to a user-installed converter and
+  feeding the markdown into the converted-origin provenance path. Closes the <code>TBD-never</code> without a bundled runtime — small,
+  self-contained, high symbolic value.</li>
+  <li><strong>Slice 3 — the MCP serving surface (the bet).</strong> A distinct component, likely its own repo, serving the corpus
+  <em>and</em> a read-only view of the <code>specs/</code> estate across repos as provenance-carrying MCP resources/tools —
+  <strong>federated-identity-aware</strong> (§5): corpus keyed on the <code>marketplace</code> coordinate, specs on a new project
+  prefix, so a multi-repo index doesn't collide. Highest value and scope; gated behind Slice 1 and worth its own survey first —
+  especially the specs-over-MCP half and the unified-vs-parallel namespace choice, which may each separate into their own spec.</li>
+</ol>
+
+<spec-warning><strong>Do not let the MCP server pull in a vector store by the back door.</strong> The moment "serve knowledge to
+agents" meets "the corpus is large," the pressure to add embeddings is real — and taking it on turns this from a differentiated
+curation product into a weaker RAGFlow. The line to hold: spectastic-corpus produces trustworthy cited source and serves it by exact
+lookup; fuzzy semantic recall is a RAG pipeline's job, and the two <em>interoperate</em>. That boundary is the product's identity,
+not a gap in it.</spec-warning>
+
+<h3>Suggested next artifacts</h3>
+<spec-out-of-scope>
+  <ul>
+    <li defer-to="TBD-corpus-package-extraction">A new spec: extract <code>@spectastic/corpus</code> (library + thin CLI + a <code>query</code>/<code>get</code> read path), inverting the prompt-injection and validate-gate seams to depend on it. Slice 1 — the foundation.</li>
+    <li defer-to="TBD-corpus-pdf-convert">A new spec: <code>corpus convert</code> — a converter-agnostic shell-out wrapper (MarkItDown / Docling / Marker) feeding the existing converted-origin provenance path. Slice 2.</li>
+    <li defer-to="TBD-corpus-mcp-server">A new spec: the MCP serving surface for the corpus (query / get, provenance-carrying), multi-repo. Slice 3, corpus half.</li>
+    <li defer-to="TBD-spec-mcp-serving">The specs-over-MCP half — serving the <code>specs/</code> estate (requirements, SC→test traces) to agents as cited MCP resources; may be its own spec if it separates from the corpus MCP.</li>
+    <li defer-to="TBD-mcp-federation-namespace">A new spec: the federated resource-URI addressing scheme — corpus keyed on <code>marketplace · plugin · slug @ edition</code>, specs on a project prefix, source-namespaced MCP resource URIs. The identity substrate Slice 3 sits on (§5, D-002).</li>
+    <li defer-to="TBD-spec-project-identity">A stable project prefix for specs in <code>spectastic.json</code> — the DOI move the spec side lacks; settles the unified-vs-parallel namespace choice (generalize <code>corpus.marketplace</code> vs. a separate project-id).</li>
+    <li defer-to="TBD-corpus-owner-config">Promote the corpus <code>marketplace</code> from a repo-dir-name default to an owner/org-qualified, globally-unique prefix — a nicety single-repo, a prerequisite once the estate is federated (raised by <a href="../specs/063-corpus-discoverability/spec.html">063</a>, now load-bearing).</li>
+    <li defer-to="TBD-orchestrator-spec-placement">A forward-look: a top-level orchestrator that routes a requirement to its owning service by the spec-sensitive corpus (semantic CODEOWNERS/Backstage), suggesting spec placement with confidence — human-confirmed, gated behind the namespacing above.</li>
+    <li defer-to="TBD-corpus-standalone-repo">The separate <code>spectastic-corpus</code> repo split — deferred, gated on evidence of standalone (non-SDD) adoption.</li>
+    <li defer-to="TBD-corpus-rag-interop">A documented interop recipe: exporting cited corpus source into a RAG pipeline (LangChain / RAGFlow) so the curation layer feeds retrieval without owning it — recorded as the boundary, not built.</li>
+  </ul>
+</spec-out-of-scope>
+</section>
+
+
+<!-- ======================================================= -->
+<section id="caveats">
+<h2>9 · Caveats on the sources</h2>
+<ul>
+  <li><strong>The landscape moves fast, and its figures are directional.</strong> The RAG-framework and PDF-converter surveys are
+  dated 2026 and reshuffle quarterly — the durable finding is the <em>shape</em> of the split (retrieval vs. packaging vs. curation),
+  not any single tool's ranking. Likewise the "targeted retrieval beats file-reads" token savings and the "16+ tools" SKILL.md tally
+  are real but vendor/ecosystem-reported: treat them as motivation for the MCP bet, not guaranteed numbers.</li>
+  <li><strong>"Extractable" is a claim about coupling, not effort.</strong> The two-seam audit is accurate, but a real extraction still
+  carries the ordinary cost of a package split — build config, exports, test relocation, the dependency-direction flip. Low-risk is
+  not zero-work.</li>
+  <li><strong>MCP identity-federation is itself still settling.</strong> The 2026-07-28 spec reworks resource URIs and aggregators
+  have converged on source-prefixing, but true nested federation, identity propagation, and session semantics through intermediaries
+  are explicitly still open on the roadmap. §5's namespacing is a <em>self-imposed</em> discipline spectastic controls (its own
+  coordinates), deliberately not dependent on the protocol solving federation — the right posture while the standard moves.</li>
+</ul>
+</section>
+
+
+<!-- ======================================================= -->
+<section id="sources">
+<h2>10 · Sources</h2>
+<p>External landscape retrieved 27 Jul 2026 via search; canonical standard and survey pages cited. Fused with a direct codebase
+audit (the <code>knowledge/</code> module inventory, the two lifecycle seams, the IO-port second-surface intent, the 002
+standalone-library precedent).</p>
+<ol>
+  <li>15 Best Open-Source RAG Frameworks (2026) — <a href="https://www.firecrawl.dev/blog/best-open-source-rag-frameworks">firecrawl.dev/blog/best-open-source-rag-frameworks</a>: LangChain / LlamaIndex / Haystack / RAGFlow and the vector-store field.</li>
+  <li>Best LLM Knowledge Base Tools in 2026 (Enterprise RAG Compared) — <a href="https://atlan.com/know/llm-knowledge-base-tools/">atlan.com/know/llm-knowledge-base-tools</a>: the KM-platform vs. RAG-infrastructure split.</li>
+  <li>Knowledge Base &amp; RAG: 10 Open-Source Tools Compared (2026) — <a href="https://agentskillshub.top/best/knowledge-base/">agentskillshub.top/best/knowledge-base</a>: Chroma / Qdrant / Milvus / txtai comparison.</li>
+  <li>Agent Skills overview — <a href="https://platform.claude.com/docs/en/agents-and-tools/agent-skills/overview">platform.claude.com/docs/en/agents-and-tools/agent-skills/overview</a>: the SKILL.md format and progressive disclosure.</li>
+  <li>Skills Marketplace: the new app store for AI agents (2026) — <a href="https://www.agensi.io/learn/skills-marketplace-ai-agents">agensi.io/learn/skills-marketplace-ai-agents</a>: portable packs, cross-agent consumption.</li>
+  <li>Best Open Source PDF to Markdown Tools (2026): Marker vs MinerU vs MarkItDown — <a href="https://jimmysong.io/blog/pdf-to-markdown-open-source-deep-dive/">jimmysong.io/blog/pdf-to-markdown-open-source-deep-dive</a>.</li>
+  <li>Best Open-Source PDF-to-Markdown Tools in 2026 (Marker / Docling / MinerU / PyMuPDF4LLM) — <a href="https://themenonlab.blog/blog/best-open-source-pdf-to-markdown-tools-2026">themenonlab.blog/blog/best-open-source-pdf-to-markdown-tools-2026</a>.</li>
+  <li>MarkItDown vs Docling vs Marker: PDF to Markdown for LLMs — <a href="https://www.danilchenko.dev/posts/markitdown-vs-docling-vs-marker/">danilchenko.dev/posts/markitdown-vs-docling-vs-marker</a>: speed / fidelity / hardware trade.</li>
+  <li>MCP Documentation Server — <a href="https://github.com/andrea9293/mcp-documentation-server">github.com/andrea9293/mcp-documentation-server</a>: a doc-serving MCP server (management, search, uploads).</li>
+  <li>What is an MCP server, and why it matters for documentation — <a href="https://www.gitbook.com/blog/what-is-mcp-server-documentation">gitbook.com/blog/what-is-mcp-server-documentation</a>: docs available to humans via web + agents via MCP.</li>
+  <li>1mcp — unified MCP server aggregating multiple servers — <a href="https://github.com/1mcp-app/agent">github.com/1mcp-app/agent</a>: multi-server / per-repo aggregation.</li>
+  <li>GitHub's official MCP server — <a href="https://github.com/github/github-mcp-server">github.com/github/github-mcp-server</a>: repo context over MCP, prior art for serving a code/spec estate.</li>
+  <li>MCP servers for codebase context (code intelligence for agents) — <a href="https://dev.to/corestory/mcp-servers-for-codebase-context-how-ai-coding-agents-access-code-intelligence-3757">dev.to/corestory/mcp-servers-for-codebase-context…</a>: targeted retrieval vs. file-reads token reduction.</li>
+  <li>Building effective AI agents with MCP — <a href="https://developers.redhat.com/articles/2026/01/08/building-effective-ai-agents-mcp">developers.redhat.com/articles/2026/01/08/building-effective-ai-agents-mcp</a>: MCP resources vs. tools, retrieval primitives.</li>
+  <li>Federated MCP architecture (bidirectional federation design) — <a href="https://mnemoverse.com/docs/research/mcp/federated/architecture">mnemoverse.com/docs/research/mcp/federated/architecture</a>: identity federation and nested-federation open problems.</li>
+  <li>MCP multiplexing with AgentGateway — <a href="https://agentgateway.dev/blog/2026-02-20-mcp-multiplexing-tool-access-agentgateway/">agentgateway.dev/blog/…/mcp-multiplexing</a>: automatic namespacing (prefix by source-server) to avoid conflicts behind one endpoint.</li>
+  <li>The "mcp" URI scheme &amp; server-discovery mechanism (IETF draft) — <a href="https://datatracker.ietf.org/doc/html/draft-serra-mcp-discovery-uri-00">datatracker.ietf.org/doc/html/draft-serra-mcp-discovery-uri-00</a>: resource-URI addressing for MCP.</li>
+  <li>The 2026-07-28 MCP spec update (agent authentication) — <a href="https://workos.com/blog/mcp-2026-spec-agent-authentication">workos.com/blog/mcp-2026-spec-agent-authentication</a>: "roots become resource URIs"; RFC 8707 audience binding / RFC 9728 protected-resource metadata.</li>
+  <li>MCP resources concept — <a href="https://modelcontextprotocol.info/docs/concepts/resources/">modelcontextprotocol.info/docs/concepts/resources</a>: resource URIs as the retrieval primitive.</li>
+  <li>Monorepo governance: module ownership &amp; CODEOWNERS — <a href="https://dev.to/kodus/monorepo-governance-module-best-practices-and-code-ownership-4o87">dev.to/kodus/monorepo-governance-…</a>: CODEOWNERS routes work to the owning team; service catalogs as ownership inputs (Backstage prior art for the orchestrator).</li>
+  <li>DOI basics (namespace prefix + local suffix) — <a href="https://support.datacite.org/docs/doi-basics">support.datacite.org/docs/doi-basics</a>: the identifier model the corpus adopted, applied here to the federated estate.</li>
+</ol>
+</section>
+
+
+<!-- ======================================================= -->
+<section id="changelog">
+<h2>11 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-07-27">27 Jul 2026</time><span>Initial survey. One web-backed landscape pass (RAG-framework and KB-tool comparisons, the SKILL.md / agent-skills packaging standard, three PDF-to-markdown converter surveys, and the doc-MCP / multi-repo-aggregation / codebase-context-MCP prior art) fused with a codebase audit — the corpus is a self-contained ~2,960-LOC <code>knowledge/</code> module coupled to the lifecycle through only two seams (prompt injection + validate gates), and the IO port already names an MCP server as an intended second surface (002 ships a standalone-library import precedent). Positions the corpus as the curation/provenance/citation layer, neither a RAG engine nor a bare packaging format. Recommends three staged slices — extract <code>@spectastic/corpus</code> (in-monorepo first), a converter-agnostic <code>corpus convert</code> shell-out, and an MCP serving surface for corpus and specs across repos as the headline bet — with a hard line against absorbing a vector store.</span></li>
+  <li><time datetime="2026-07-27">27 Jul 2026</time><span>Added §5 (Identity &amp; namespacing across the federated estate) after review flagged that the multi-repo MCP surface skips a collision: spec ids and <code>KB-NNNN</code> are both repo-local, and the same pack installs in many repos. Second web pass (7 sources: the 2026-07-28 MCP resource-URI/auth update, MCP federation + multiplexing/namespacing, the <code>mcp</code> URI-scheme draft, CODEOWNERS/Backstage ownership routing, DOI basics) grounded on the code — the corpus already carries a DOI-shaped answer (the <code>marketplace</code> prefix; <code>KB-NNNN</code> is only the repo-local suffix), while specs carry no namespace at all. New <strong>D-002</strong> keys federated results on qualified coordinates and leaves the unified-vs-parallel project-namespace choice for the follow-on spec to settle. Added the <strong>orchestrator spec-placement</strong> forward-look (route a requirement to its owning service by the spec-sensitive corpus — semantic CODEOWNERS, human-confirmed), gated behind the namespacing. Also clarified that the MCP/query read-path is <em>additive</em> and does not reroute the verbs' <code>knowledge/</code> injection. Now plants ten <code>TBD-</code> next artifacts.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  Spectastic · The corpus as its own tool · 27 Jul 2026 ·
+  <a href="../index.html">home</a> ·
+  <a href="./corpus-acquisition-considerations.html">corpus-acquisition</a> ·
+  <a href="./knowledge-base-considerations.html">knowledge-base</a> ·
+  <button data-theme-toggle style="background:none;border:none;color:var(--c-link);cursor:pointer;font:inherit;padding:0;border-bottom:1px solid currentColor;">light/dark</button>
+</footer>
+
+</main>
+<script src="../assets/spec.js"></script>
+</body>
+</html>

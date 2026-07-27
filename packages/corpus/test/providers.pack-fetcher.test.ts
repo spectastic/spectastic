@@ -4,7 +4,7 @@ import { join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { PackFetcherError, RealPackFetcher } from '../src/providers/pack-fetcher.js';
 import type { GitRunner, GitSource } from '../src/providers/pack-fetcher.js';
-import { StubPackFetcher, StubPackFetcherError } from '@spectastic/core/providers/pack-fetcher-stub';
+import { StubPackFetcher, StubPackFetcherError } from '../src/providers/pack-fetcher-stub.js';
 
 /**
  * 2026-07-26 061-corpus-ingester T-012 (Foundational, red-first): the

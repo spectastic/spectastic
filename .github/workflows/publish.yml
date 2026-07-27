@@ -94,10 +94,13 @@ jobs:
       - name: Test
         run: pnpm test
 
-      # T-012: verify the pushed tag matches all three packages' versions.
+      # T-012: verify the pushed tag matches every published package's version.
       # Refuses if any differ from the tag-derived version. Per FR-003 of
-      # 004-npm-publish-workflow, extended for @spectastic/core by FR-011
-      # of 006-kernel-extraction.
+      # 004-npm-publish-workflow, extended for @spectastic/core by FR-011 of
+      # 006-kernel-extraction, and for @spectastic/corpus by 064-corpus-package-
+      # extraction (a version-check gap here would let a new package ship at a
+      # stale/mismatched version silently — it is not covered by pnpm publish -r
+      # actually publishing it, only by this explicit check).
       - name: Verify versions match tag
         id: version
         run: |
@@ -105,11 +108,13 @@ jobs:
           CLI_VERSION=$(node -p "require('./packages/cli/package.json').version")
           SCHEMA_VERSION=$(node -p "require('./packages/schema/package.json').version")
           CORE_VERSION=$(node -p "require('./packages/core/package.json').version")
+          CORPUS_VERSION=$(node -p "require('./packages/corpus/package.json').version")
 
           echo "Tag version:    $TAG_VERSION"
           echo "CLI version:    $CLI_VERSION"
           echo "Schema version: $SCHEMA_VERSION"
           echo "Core version:   $CORE_VERSION"
+          echo "Corpus version: $CORPUS_VERSION"
 
           if [[ "$CLI_VERSION" != "$TAG_VERSION" ]]; then
             echo "::error::@spectastic/cli version ($CLI_VERSION) does not match tag ($TAG_VERSION)"
@@ -121,6 +126,10 @@ jobs:
           fi
           if [[ "$CORE_VERSION" != "$TAG_VERSION" ]]; then
             echo "::error::@spectastic/core version ($CORE_VERSION) does not match tag ($TAG_VERSION)"
+            exit 1
+          fi
+          if [[ "$CORPUS_VERSION" != "$TAG_VERSION" ]]; then
+            echo "::error::@spectastic/corpus version ($CORPUS_VERSION) does not match tag ($TAG_VERSION)"
             exit 1
           fi
 
@@ -170,7 +179,7 @@ jobs:
           set -euo pipefail
           VERSION="${{ steps.version.outputs.version }}"
           for TAG in ${{ steps.dist-tag.outputs.extra }}; do
-            for PKG in @spectastic/cli @spectastic/core @spectastic/schema; do
+            for PKG in @spectastic/cli @spectastic/core @spectastic/schema @spectastic/corpus; do
               echo "dist-tag add $PKG@$VERSION $TAG"
               npm dist-tag add "$PKG@$VERSION" "$TAG"
             done
@@ -196,6 +205,7 @@ jobs:
           - [@spectastic/cli@$VERSION](https://www.npmjs.com/package/@spectastic/cli/v/$VERSION)
           - [@spectastic/core@$VERSION](https://www.npmjs.com/package/@spectastic/core/v/$VERSION)
           - [@spectastic/schema@$VERSION](https://www.npmjs.com/package/@spectastic/schema/v/$VERSION)
+          - [@spectastic/corpus@$VERSION](https://www.npmjs.com/package/@spectastic/corpus/v/$VERSION)
 
           Install:
 

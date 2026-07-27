@@ -1,0 +1,260 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
+<title>Corpus package extraction · Specification</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Specification · 064-corpus-package-extraction</p>
+  <h1>Corpus package extraction</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    The curation, citation, and provenance subsystem becomes <code>@spectastic/corpus</code> — a standalone package and binary usable without the spec-driven lifecycle, with the two lifecycle seams inverted onto a clean, one-way package boundary.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>      <span><spec-status value="accepted">Accepted</spec-status></span>
+    <b>Spec ID</b>     <span>064-corpus-package-extraction</span>
+    <b>Owner</b>       <span>Brian Corbin · @briancorbin</span>
+    <b>Reviewers</b>   <span>—</span>
+    <b>Created</b>     <span><time datetime="2026-07-27">27 Jul 2026</time></span>
+    <b>Principles</b><span><a href="../../principles.html">v1.8.0</a></span>
+    <b>Smallest demoable</b><span>A <code>spectastic-corpus</code> binary that curates, searches (get/query/grep), and validates a corpus with no <code>@spectastic/core</code> or <code>specs/</code> present — while the lifecycle's own corpus behaviour stays byte-identical.</span>
+    <b>Read time</b>   <span data-reading-time></span>
+  </spec-meta>
+
+  <!-- Live size gauge — green at <80%, amber 80-100%, red over. Words row counts authored prose (excludes the conformance index) per REQ-FORMAT-004. -->
+  <spec-budget words="2000" reqs="20" minutes="12"></spec-budget>
+
+  <spec-tldr>
+    <p>The knowledge-corpus subsystem is self-contained but trapped inside <code>@spectastic/core</code>, reachable only through
+    the SDD verbs. This slice lifts it into a standalone <strong><code>@spectastic/corpus</code></strong> package and
+    <strong><code>spectastic-corpus</code> binary</strong> — curation (adapt/import/interview/source/publish), a deterministic read
+    path (get/query/grep), and corpus-intrinsic validate — usable by anyone who wants a cited knowledge base <em>without</em>
+    running a spec. The two lifecycle seams (prompt injection + validate gates) invert to depend on it, shared types drop to a
+    lower package so the graph stays acyclic, and the move is guarded by <strong>behavioural parity</strong>. Slice 1 of the
+    corpus-as-a-product survey — the foundation the MCP surface and PDF conversion sit on.</p>
+  </spec-tldr>
+
+  <dl class="invest">
+    <dt><span class="letter">I</span> Independent</dt> <dd>Depends on the principles and the <a href="../../docs/corpus-extraction-considerations.html">corpus-extraction survey</a> only. Coupling to <code>@spectastic/core</code> is one-way, severed by this slice.</dd>
+    <dt><span class="letter">N</span> Negotiable</dt>  <dd>Outcomes only; package names, the shared-types shape, and the acyclicity-check tooling are plan decisions.</dd>
+    <dt><span class="letter">V</span> Valuable</dt>    <dd>Unlocks <a href="#SC-003">SC-003</a> — a cited corpus that curates, searches, and validates with no lifecycle present.</dd>
+    <dt><span class="letter">E</span> Estimable</dt>   <dd>A parity-guarded extraction plus three defined read verbs; plan and tasks derive without further interview.</dd>
+    <dt><span class="letter">S</span> Small</dt>       <dd>The largest corpus slice — 13 requirements, ~1,800 words, near its (raised) budget, mirroring the <a href="../006-kernel-extraction/spec.html">006 kernel-extraction</a> precedent. Its size is <em>mechanical</em> (a parity-bounded refactor plus three thin read verbs), not complexity; it stays one coherent, resumable unit because parity guards every step.</dd>
+    <dt><span class="letter">T</span> Testable</dt>    <dd>Every requirement observable; criteria quantified — parity (zero changed assertions), zero back-edges, byte-identical injection.</dd>
+  </dl>
+
+  <spec-audience-map>
+    <dl>
+      <dt>Exec / PM</dt>   <dd>§<a href="#context">Context</a>, §<a href="#scenarios">User scenarios</a>, §<a href="#success">Success criteria</a>.</dd>
+      <dt>Reviewer</dt>    <dd>§<a href="#requirements">Requirements</a>, §<a href="#assumptions">Assumptions</a>, §<a href="#questions">Open questions</a>.</dd>
+      <dt>Implementer</dt> <dd>§<a href="#requirements">Requirements</a>, §<a href="#data">Data model</a>, §<a href="#conformance">Conformance index</a>.</dd>
+    </dl>
+  </spec-audience-map>
+</header>
+
+
+<section id="context">
+<h2>1 · Context</h2>
+<p>Spectastic's corpus grew from a grounding aid into a full knowledge product — two-layer identity, an edition-pinned citation
+contract, integrity and licensing gates, an ingester, marketplace discoverability. None of it is <em>about</em> spec-driven
+development; it is about curating citable domain knowledge. Yet it lives in <code>packages/core/src/knowledge/</code>, and the only
+way knowledge comes out is the SDD verbs injecting a prompt block. The
+<a href="../../docs/corpus-extraction-considerations.html">corpus-extraction survey</a> found it couples to the lifecycle through
+only <strong>two thin seams</strong> (prompt injection + the <code>scanCorpus*</code> validate gates), with the file-IO port
+already built for a second surface — so extraction is a well-trodden move, not a leap.</p>
+<p>This is <strong>Slice 1</strong>: make the corpus a package and binary in its own right, so someone who wants a cited knowledge
+base but never writes a spec can use it. The MCP surface, PDF conversion, and the eventual repo split sit downstream.</p>
+</section>
+
+
+<section id="scenarios">
+<h2>2 · User scenarios &amp; testing</h2>
+
+<p>Each story <strong>MUST</strong> be independently testable: if you implemented only US1, you would still have a viable MVP.</p>
+
+<h3 id="US1">US1 · The corpus becomes a clean package <spec-pill>P1</spec-pill></h3>
+<p>As a <strong>spectastic maintainer</strong>, I want to <strong>lift the corpus logic into <code>@spectastic/corpus</code> and invert the two seams onto it</strong> so that <strong>the subsystem is a reusable package with a one-way boundary and every existing consumer behaves identically</strong>.</p>
+<p><em>Acceptance:</em> the AI verbs and the CLI validate scans import corpus logic from <code>@spectastic/corpus</code>; the <code>@spectastic/core/knowledge</code> subpath is gone; the full pre-extraction test suite passes with only import-path edits; a dependency check shows no edge from <code>@spectastic/corpus</code> back into <code>@spectastic/core</code>.</p>
+
+<h3 id="US2">US2 · A corpus you can use without the lifecycle <spec-pill>P1</spec-pill></h3>
+<p>As <strong>someone who wants a cited knowledge base but not SDD</strong>, I want a <strong>standalone <code>spectastic-corpus</code> binary</strong> so that <strong>I can curate, search, and validate a corpus with no <code>@spectastic/core</code> or <code>specs/</code> present</strong>.</p>
+<p><em>Acceptance:</em> in a fresh environment carrying only <code>@spectastic/corpus</code>, <code>spectastic-corpus</code> runs the curation verbs (adapt/import/interview/source/publish), the read path (get/query/grep), and corpus-intrinsic validate (well-formed/registry/license) — each succeeding without the lifecycle installed.</p>
+
+<h3 id="US3">US3 · Get cited knowledge out, deterministically <spec-pill>P2</spec-pill></h3>
+<p>As a <strong>curator or agent</strong>, I want <strong>deterministic read verbs that return documents with their citation and provenance</strong> so that <strong>I can retrieve knowledge by id, by metadata, or by full text without a vector store</strong>.</p>
+<p><em>Acceptance:</em> <code>get &lt;id&gt;</code> resolves one document via the existing citation resolver; <code>query &lt;term&gt;</code> returns metadata-field substring matches; <code>grep &lt;pattern&gt;</code> returns document-body matches with context; every hit carries the document's coordinate and provenance, and the same inputs always return the same results.</p>
+
+<h3>Edge cases</h3>
+<ul>
+  <li><strong>Absent or empty corpus</strong> — every verb is a defined no-op or empty result (get → not-found, query/grep → no matches, validate → clean), never an error; graceful-absence is preserved.</li>
+  <li><strong>Injection must not change</strong> — the AI verbs still inject from <code>knowledge/</code> on disk; the read path is additive and never reroutes them.</li>
+  <li><strong>Latent cycle</strong> — shared types (corpus domain types, the citation grammar, the IO port, <code>Finding</code>) drop to a lower package both depend on, so <code>core</code> ↔ <code>corpus</code> never forms a cycle.</li>
+  <li><strong>Non-markdown files</strong> in a corpus folder — <code>grep</code> scans corpus documents only and skips anything it can't read as text.</li>
+</ul>
+</section>
+
+
+<section id="requirements">
+<h2>3 · Requirements</h2>
+
+<p>Conformance keywords (<spec-rule>MUST</spec-rule>, <spec-rule level="should">SHOULD</spec-rule>,
+<spec-rule level="may">MAY</spec-rule>) follow RFC 2119.</p>
+
+<h3>Functional</h3>
+
+<spec-requirement id="FR-001" priority="must">
+<p>The corpus curation, citation, provenance, and licensing logic (today <code>packages/core/src/knowledge/</code> plus the schema corpus-citation rules) <spec-rule>MUST</spec-rule> live in a new standalone <code>@spectastic/corpus</code> package that owns it in full.</p>
+<details><summary>Rationale</summary><p>The survey's core finding: the subsystem is cohesive and self-contained. A package makes that boundary real and reusable rather than an unwritten habit.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-002" priority="must">
+<p>Shared foundational types both packages need — corpus domain types, the citation grammar, the IO port, and the <code>Finding</code> shape — <spec-rule>MUST</spec-rule> live in a lower package that both <code>@spectastic/core</code> and <code>@spectastic/corpus</code> depend on, so the dependency graph is acyclic.</p>
+<details><summary>Rationale</summary><p>Core needs corpus (for injection) and corpus needs shared types core also uses; a lower types package is the only shape that severs the latent cycle without one package importing the other's edge.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-003" priority="must">
+<p>The two lifecycle seams <spec-rule>MUST</spec-rule> depend on <code>@spectastic/corpus</code>: the AI verbs' prompt-injection loader and the CLI's corpus validate scans import from it. The <code>@spectastic/core/knowledge</code> subpath <spec-rule>MUST</spec-rule> be removed and every in-repo caller repointed.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-004" priority="must">
+<p>A standalone <code>spectastic-corpus</code> binary <spec-rule>MUST</spec-rule> expose the curation verbs (adapt/import/interview/source/publish), the read path (get/query/grep), and corpus-intrinsic validate (well-formed / registry / license), runnable without <code>@spectastic/core</code> or the SDD lifecycle present.</p>
+<details><summary>Rationale</summary><p>The grounding gate needs specs, so it stays a lifecycle/main-CLI concern; the well-formed, registry, and license scans are intrinsic to a corpus and belong on the standalone binary.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-005" priority="must">
+<p>The read path <spec-rule>MUST</spec-rule> be deterministic with no embeddings or vector store: <code>get &lt;id&gt;</code> resolves one document via the existing citation resolver; <code>query &lt;term&gt;</code> matches a case-insensitive substring over metadata fields (id, slug, title, description); <code>grep &lt;pattern&gt;</code> matches over document bodies. Every result <spec-rule>MUST</spec-rule> carry the document's coordinate and provenance.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-006" priority="must">
+<p>The AI verbs' prompt injection <spec-rule>MUST</spec-rule> continue to read directly from <code>knowledge/</code> via the extracted loader, unchanged. The new read path is additive and <spec-rule>MUST NOT</spec-rule> reroute injection through <code>query</code>/<code>get</code>/<code>grep</code> or any server.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-007" priority="should">
+<p>Every verb (curation, read, validate) on an absent or empty corpus <spec-rule level="should">SHOULD</spec-rule> be a well-defined no-op or empty result, never an error — preserving today's with-or-without-corpus behaviour.</p>
+</spec-requirement>
+
+<h3>Non-functional</h3>
+
+<spec-requirement id="NFR-001" priority="must">
+<p>Behavioural parity: the pre-extraction corpus, validate, and AI-verb test suites <spec-rule>MUST</spec-rule> pass against the extracted packages with no changes beyond import paths — identical inputs producing identical outputs and findings.</p>
+</spec-requirement>
+
+<spec-requirement id="NFR-002" priority="must">
+<p>The acyclic, one-way boundary <spec-rule>MUST</spec-rule> be machine-verified: an automated dependency check reports zero import edges from <code>@spectastic/corpus</code> (or the shared-types package) into <code>@spectastic/core</code>. The boundary is enforced, not conventional.</p>
+</spec-requirement>
+
+<h3>Out of scope (deferred to other slices)</h3>
+<spec-out-of-scope>
+  <ul>
+    <li defer-to="TBD-corpus-mcp-server">The MCP serving surface for the corpus (query/get over MCP), and the specs-over-MCP half.</li>
+    <li defer-to="TBD-corpus-pdf-convert">A <code>corpus convert</code> PDF wrapper — the read/curate/validate surface here consumes markdown only.</li>
+    <li defer-to="TBD-spec-mcp-serving">Full-text search over <code>specs/</code> — <code>grep</code> here is scoped to corpus documents; searching the spec estate is a later, namespaced concern.</li>
+    <li defer-to="TBD-corpus-rag-interop">Semantic / vector retrieval and any export-to-RAG recipe — the read path stays deterministic exact/substring lookup.</li>
+    <li defer-to="TBD-corpus-standalone-repo">Splitting <code>@spectastic/corpus</code> into its own repository — this slice is in-monorepo.</li>
+  </ul>
+</spec-out-of-scope>
+</section>
+
+
+<section id="data">
+<h2>4 · Data model</h2>
+
+<p>This slice moves code across package boundaries; it introduces <strong>no new persisted artifact</strong>. The corpus document,
+registry, and index formats are unchanged — that invariance is exactly what parity guards.</p>
+
+<h3>Entities</h3>
+<dl>
+  <dt><code>@spectastic/corpus</code></dt><dd>The extracted package: curation verbs, the get/query/grep read path, corpus-intrinsic validate, and the <code>spectastic-corpus</code> binary.</dd>
+  <dt>Shared foundational types package</dt><dd>The lower package both <code>core</code> and <code>corpus</code> depend on: corpus domain types, the citation grammar, the IO port, <code>Finding</code>. Exact name/shape is a plan decision.</dd>
+  <dt>Read-path hit</dt><dd>A result from get/query/grep: the document's coordinate (<code>marketplace · plugin · slug @ edition</code> / KB-id), title, provenance, and — for <code>grep</code> — the matching context.</dd>
+</dl>
+
+<spec-note>
+<p>Invariant: for a fixed corpus, the prompt block the AI verbs inject is byte-identical before and after this slice
+(<a href="#SC-004">SC-004</a>). The extraction is invisible to every existing consumer.</p>
+</spec-note>
+</section>
+
+
+<section id="success">
+<h2>5 · Success criteria</h2>
+
+<p>Technology-agnostic, measurable outcomes. These are how we know it worked.</p>
+
+<spec-requirement id="SC-001" priority="must">
+<p>Behavioural parity: running the full pre-064 test suite (unit, Playwright, and a full-corpus <code>validate</code> sweep) against the extracted packages yields identical results, with zero changed assertions except import paths.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-002" priority="must">
+<p>One-way boundary: an automated dependency check reports <strong>zero</strong> import edges from <code>@spectastic/corpus</code> into <code>@spectastic/core</code>.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-003" priority="must">
+<p>Standalone usability: in a fresh environment carrying <code>@spectastic/corpus</code> (or the <code>spectastic-corpus</code> binary) but <strong>without</strong> <code>@spectastic/core</code> or any <code>specs/</code>, a user can import/adapt a corpus, run get/query/grep returning cited results, and run corpus validate — all succeeding.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-004" priority="must">
+<p>Injection unchanged: for a fixed corpus, the prompt corpus block the AI verbs inject is byte-identical before and after the extraction.</p>
+</spec-requirement>
+</section>
+
+
+<section id="assumptions">
+<h2>6 · Assumptions</h2>
+
+<spec-assumption>
+<p>The <code>knowledge/</code> subsystem is genuinely self-contained at the two seams the survey audited; extraction will not surface a hidden third coupling. If one appears, it is captured and severed via the shared-types package.</p>
+</spec-assumption>
+
+<spec-assumption>
+<p>Every consumer of <code>@spectastic/core/knowledge</code> is in-repo (a pnpm monorepo); no external package imports that subpath directly, so removing it breaks no published contract.</p>
+</spec-assumption>
+
+<spec-assumption>
+<p>The existing vitest + Playwright coverage is sufficient to guard parity — a passing suite after the move is credible evidence of no regression.</p>
+</spec-assumption>
+</section>
+
+
+<section id="questions">
+<h2>7 · Open questions</h2>
+<spec-questions>
+<p>None outstanding — every decision (slice boundary, success anchors, dependency direction, read-path matching, binary surface, and removal of the old subpath) was anchored in the interview.</p>
+</spec-questions>
+</section>
+
+
+<section id="conformance">
+<h2>8 · Conformance index</h2>
+<p>Auto-built from every <code>&lt;spec-requirement&gt;</code> in this document.</p>
+<spec-conformance></spec-conformance>
+</section>
+
+
+<section id="changelog">
+<h2>9 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-07-27">27 Jul 2026</time><span>Initial draft. Slice 1 of the corpus-extraction survey — the package + <code>spectastic-corpus</code> binary + deterministic get/query/grep read path + corpus-intrinsic validate, with the two lifecycle seams inverted onto a shared-types-package boundary and the whole move guarded by behavioural parity. Interview anchored the full-slice scope, dual parity + one-way-boundary success anchors, the shared lower types package, field-substring query plus body <code>grep</code>, and removal of the <code>@spectastic/core/knowledge</code> subpath.</span></li>
+  <li><time datetime="2026-07-27">27 Jul 2026</time><span>Status flipped Draft → Accepted — zero remaining unchecked tasks (40/40); <code>pnpm typecheck</code> clean, <code>pnpm test</code> 1245/1245 real tests passing, <code>pnpm test:e2e</code> 126/126 passing, verified before author confirmation. Sibling bundle (REQ-LIFECYCLE-005) — spec.html, plan.html, tasks.html flip together.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  064-corpus-package-extraction · Corpus package extraction · authored 27 Jul 2026
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>

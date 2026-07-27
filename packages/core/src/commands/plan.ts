@@ -14,8 +14,8 @@ import type {
   PlanInput,
   PlanResult,
 } from '../types.js';
-import { fenceArtifactText } from '../security/fence.js';
-import { buildCorpusPromptBlock, loadCorpus, withCorpusHint } from '../knowledge/index.js';
+import { fenceArtifactText } from '@spectastic/schema/fence';
+import { buildCorpusPromptBlock, loadCorpus, withCorpusHint } from '@spectastic/corpus';
 
 const BLOCKER_PATTERNS: ReadonlyArray<{ name: string; re: RegExp }> = [
   { name: 'open <spec-question>', re: /<spec-questions?>[\s\S]*?<ol>[\s\S]*?<li[^>]*>(?!\s*(?:<\/li>|None at write time))/i },

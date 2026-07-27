@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { fenceArtifactText, sanitizeArtifactText } from '../src/security/fence.js';
+import { fenceArtifactText, sanitizeArtifactText } from '../src/fence.js';
 
 /**
  * Unit tests for the AI-verb ingestion fence (045-artifact-security, FR-003,

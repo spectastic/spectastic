@@ -18,7 +18,7 @@
 
 import type { AIProvider, Question, TriageCard, TriageInput, TriageLayer } from '../types.js';
 import { decideChoice } from '../decider/choice.js';
-import { fenceArtifactText } from '../security/fence.js';
+import { fenceArtifactText } from '@spectastic/schema/fence';
 import type { DeciderConfig } from '../decider/types.js';
 
 export const ALL_LAYERS: ReadonlyArray<TriageLayer> = [

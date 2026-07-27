@@ -21,8 +21,8 @@ import type {
 } from '../types.js';
 import { decide, resolveDecider, resolveEffort } from '../decider/index.js';
 import type { Verdict } from '../decider/index.js';
-import { fenceArtifactText } from '../security/fence.js';
-import { buildCorpusPromptBlock, loadCorpus, withCorpusHint } from '../knowledge/index.js';
+import { fenceArtifactText } from '@spectastic/schema/fence';
+import { buildCorpusPromptBlock, loadCorpus, withCorpusHint } from '@spectastic/corpus';
 
 export async function proposeCommand(
   input: ProposeInput,
