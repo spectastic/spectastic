@@ -1,0 +1,308 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
+<title>Corpus package extraction · Tasks</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Tasks · 064-corpus-package-extraction</p>
+  <h1>Corpus package extraction</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    Ordered, parallelizable work. Tests precede implementation. Drive through with
+    <code>/spectastic.implement</code> — one task per invocation.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>     <span><spec-status value="accepted">Accepted</spec-status></span>
+    <b>Spec</b>       <span><a href="./spec.html">064-corpus-package-extraction</a></span>
+    <b>Plan</b>       <span><a href="./plan.html">plan</a></span>
+    <b>Branch</b>     <span><code>064-corpus-package-extraction</code></span>
+    <b>Created</b>    <span><time datetime="2026-07-27">27 Jul 2026</time></span>
+    <b>Read time</b>  <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-tldr>
+    <p>40 tasks across five phases (6 Setup · 14 Foundational · 4 US1 · 5 US2 · 7 US3 · 4 Polish). Setup → Foundational → User
+    stories (US1 parity+boundary · US2 standalone binary · US3 read path) → Polish. 20 tasks are marked <span class="par">[P]</span>
+    and can run in parallel — different files, no dependency. Foundational carries the actual code moves (the wrap-don't-rewrite
+    core of this slice); the plan's D-002 correction — <code>fence.ts</code> relocates to <code>@spectastic/schema</code>, not
+    corpus — is baked in throughout. Tests for a story <strong>MUST</strong> be written and failing before its implementation
+    tasks start.</p>
+  </spec-tldr>
+</header>
+
+
+<section id="strategy">
+<h2>1 · Execution strategy</h2>
+
+<spec-tabs>
+  <spec-tab label="Incremental (recommended)">
+    <p>Setup → Foundational → US1 → US2 → US3 → Polish, in order. This slice is a single coherent move (per plan D-006, wrap-
+    don't-rewrite) — Foundational's code relocation is what US1's parity/boundary checks verify, so running phases out of order
+    leaves nothing to test against.</p>
+  </spec-tab>
+  <spec-tab label="MVP-first">
+    <p>Setup → Foundational → US1 only, ship, then US2/US3. Valid since US1 alone (parity + boundary) is a complete, mergeable
+    slice; US2/US3 add the new read/binary surface on top.</p>
+  </spec-tab>
+  <spec-tab label="Parallel teams">
+    <p>Not recommended here — Foundational's moves are the shared seam every story depends on; splitting teams before it lands
+    just recreates the coordination the plan's parity harness already automates.</p>
+  </spec-tab>
+</spec-tabs>
+</section>
+
+
+<section id="phase-setup" class="phase">
+<h2>2 · Phase 1 — Setup</h2>
+
+<spec-task id="T-001" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Add dependency-cruiser as a root devDependency</strong> — pin <code>dependency-cruiser@17.4.3</code>, version confirmed this turn (plan §3). <span class="path">package.json</span></div>
+</spec-task>
+<spec-task id="T-002">
+  <input type="checkbox" checked>
+  <div><strong>Wire and prove the forbidden-edge rule</strong> — a <code>forbidden</code> rule blocking any module under <code>packages/corpus</code> from importing one under <code>packages/core</code>; plant a throwaway <code>corpus→core</code> import, confirm the rule fails the build, then remove the plant. Closes the plan's §3 spike. <span class="path">.dependency-cruiser.cjs</span></div>
+</spec-task>
+<spec-task id="T-003" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Scaffold the corpus package manifest</strong> — <code>name: "@spectastic/corpus"</code>, <code>bin: { "spectastic-corpus": "./bin/spectastic-corpus" }</code>, <code>dependencies: { "@spectastic/schema": "workspace:*" }</code> (mirrors <code>packages/cli/package.json</code>'s bin shape). <span class="path">packages/corpus/package.json</span></div>
+</spec-task>
+<spec-task id="T-004" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Scaffold the corpus tsconfig</strong> — extends <code>tsconfig.base.json</code>, mirrors <code>packages/core/tsconfig.json</code>'s shape. <span class="path">packages/corpus/tsconfig.json</span></div>
+</spec-task>
+<spec-task id="T-005" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Scaffold the corpus tsup config</strong> — multi-entry build, one entry per eventual subpath export (mirrors <code>packages/core/tsup.config.ts</code>'s pattern, D-001). <span class="path">packages/corpus/tsup.config.ts</span></div>
+</spec-task>
+<spec-task id="T-006" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Scaffold the standalone binary shim</strong> — a thin bin importing <code>../dist/cli/index.js</code> (mirrors <code>packages/cli/bin/spectastic</code>). <span class="path">packages/corpus/bin/spectastic-corpus</span></div>
+</spec-task>
+</section>
+
+
+<section id="phase-foundation" class="phase">
+<h2>3 · Phase 2 — Foundational</h2>
+<p>The actual code relocation (D-001–D-006). Sequential where a later move depends on an earlier import repoint.</p>
+
+<spec-task id="T-010">
+  <input type="checkbox" checked>
+  <div><strong>Relocate fence.ts to schema</strong> — move <code>security/fence.ts</code>'s content unchanged into a new file; add a <code>./fence</code> export subpath to schema's <code>package.json</code> (alongside <code>./parser</code>/<code>./citation</code>/<code>./slo</code>) and a matching tsup entry. Per D-002's correction. <span class="path">packages/schema/src/fence.ts</span></div>
+</spec-task>
+<spec-task id="T-011" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Move fence's unit test to schema</strong> — relocate the test, updating its relative import to <code>./fence.js</code>. <span class="path">packages/schema/test/fence.test.ts</span></div>
+</spec-task>
+<spec-task id="T-012">
+  <input type="checkbox" checked>
+  <div><strong>Repoint core's six fence callers</strong> — <code>triage/classify.ts</code> and <code>commands/{spec,plan,propose,tasks,graduate}.ts</code> import <code>fenceArtifactText</code> from <code>@spectastic/schema/fence</code> instead of <code>../security/fence.js</code>. <span class="path">packages/core/src/</span></div>
+</spec-task>
+<spec-task id="T-013">
+  <input type="checkbox" checked>
+  <div><strong>Delete the relocated fence source</strong> — satisfied by T-010's <code>git mv</code> (a move, not a copy); <code>packages/core/src/security/</code> no longer exists. <span class="path">packages/core/src/security/fence.ts</span></div>
+</spec-task>
+<spec-task id="T-014">
+  <input type="checkbox" checked>
+  <div><strong>Move knowledge/ verbatim into corpus</strong> — <code>git mv</code> the whole tree, no content edits except the one import fixed in T-015. <span class="path">packages/corpus/src/knowledge/</span></div>
+</spec-task>
+<spec-task id="T-015">
+  <input type="checkbox" checked>
+  <div><strong>Repoint knowledge/fence.ts's import</strong> — <code>../security/fence.js</code> → <code>@spectastic/schema/fence</code>; also <code>knowledge/prompt.ts</code>, which imports the same symbol and moved in the same tree. <span class="path">packages/corpus/src/knowledge/fence.ts, packages/corpus/src/knowledge/prompt.ts</span></div>
+</spec-task>
+<spec-task id="T-016">
+  <input type="checkbox" checked>
+  <div><strong>Move pack-fetcher into corpus</strong> — relocate <code>providers/pack-fetcher.ts</code> + its stub (D-003; confirmed corpus-only, no other caller), plus its unit test (<code>providers.pack-fetcher.test.ts</code>, found during the actual move — a package-import of the stub subpath repointed to a relative import). <span class="path">packages/corpus/src/providers/, packages/corpus/test/providers.pack-fetcher.test.ts</span></div>
+</spec-task>
+<spec-task id="T-017" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Move the moved modules' unit tests into corpus</strong> — all 16 <code>knowledge.*.test.ts</code> files; the relative <code>../src/knowledge/</code> imports resolve unchanged since <code>test/</code> and <code>src/</code> moved together, except <code>knowledge.fence.test.ts</code>'s <code>../src/security/fence.js</code>, repointed to <code>@spectastic/schema/fence</code>. <span class="path">packages/corpus/test/</span></div>
+</spec-task>
+<spec-task id="T-018">
+  <input type="checkbox" checked>
+  <div><strong>Add the new cross-package dependencies</strong> — <code>@spectastic/corpus: "workspace:*"</code> on both <code>@spectastic/core</code> (injection) and <code>@spectastic/cli</code> (validate + the corpus command). <span class="path">packages/core/package.json, packages/cli/package.json</span></div>
+</spec-task>
+<spec-task id="T-019">
+  <input type="checkbox" checked>
+  <div><strong>Remove the old knowledge subpath from core</strong> — delete the <code>"./knowledge"</code> export + tsup entry, and (required for the build to resolve after T-016) the two now-stale <code>./providers/pack-fetcher{,-stub}</code> exports and tsup entries. <span class="path">packages/core/package.json, packages/core/tsup.config.ts</span></div>
+</spec-task>
+<spec-task id="T-020">
+  <input type="checkbox" checked>
+  <div><strong>Repoint the five AI-verb injection call sites</strong> — each used a <em>relative</em> <code>../knowledge/index.js</code> import (not the package subpath), now <code>@spectastic/corpus</code>; the call itself is untouched (FR-006, SC-004). <span class="path">packages/core/src/commands/{spec,plan,propose,tasks,graduate}.ts</span></div>
+</spec-task>
+<spec-task id="T-021">
+  <input type="checkbox" checked>
+  <div><strong>Repoint validate's five corpus scans</strong> — each <code>await import('@spectastic/core/knowledge')</code> becomes <code>await import('@spectastic/corpus')</code>. <span class="path">packages/cli/src/commands/validate.ts</span></div>
+</spec-task>
+<spec-task id="T-022" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Repoint the corpus CLI command's imports</strong> — the static <code>@spectastic/core/knowledge</code> import in <code>corpus.ts</code>, and the pack-fetcher import in the factory, both now <code>@spectastic/corpus</code>. Required creating <code>packages/corpus/src/index.ts</code>, the package's barrel (not yet built by any prior task) re-exporting the moved <code>knowledge/</code> surface plus the pack-fetcher providers. <span class="path">packages/cli/src/commands/corpus.ts, packages/cli/src/pack-fetcher-factory.ts, packages/corpus/src/index.ts</span></div>
+</spec-task>
+<spec-task id="T-023">
+  <input type="checkbox" checked>
+  <div><strong>Build and typecheck all four packages</strong> — <code>pnpm -r build</code> + <code>pnpm typecheck</code> (added <code>packages/corpus</code> to the root script) + the boundary check, all green. Two real gaps found and fixed: <code>knowledge/</code> needs the <code>yaml</code> dependency (added to corpus, removed from core — no longer used there) and <code>packages/corpus/src/{index,cli/index}.ts</code> didn't exist yet (created in T-022/here) so tsup had nothing to build. <span class="path">pnpm -r build</span></div>
+</spec-task>
+</section>
+
+
+<section id="phase-us1" class="phase">
+<h2>4 · Phase 3a — US1 · The corpus becomes a clean package</h2>
+
+<h3>Tests (write &amp; run first)</h3>
+<spec-task id="T-100" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Run the parity check</strong> — 1214/1217 real tests pass; two genuine stale <code>@spectastic/core/knowledge</code> imports found and fixed (<code>knowledge.index-format.test.ts</code>, <code>init/knowledge-scaffold.test.ts</code>); the remaining 3 failures (git-layer timing, schema perf p95, init startup) are session-load timing flakes — reconfirmed clean in isolation, matching CLAUDE.md's documented pattern, not caused by this slice. Zero changed assertions beyond import paths (SC-001). <span class="path">packages/{core,cli,corpus}/test/</span></div>
+</spec-task>
+<spec-task id="T-101" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Run the boundary check</strong> — dependency-cruiser reports zero <code>corpus→core</code> edges from the real (not planted) graph (SC-002). <span class="path">.dependency-cruiser.cjs</span></div>
+</spec-task>
+
+<h3>Implementation</h3>
+<spec-task id="T-110">
+  <input type="checkbox" checked>
+  <div><strong>Wire both checks as CI-blocking jobs</strong> — the parity suite was already CI-blocking (<code>pnpm test</code> in the existing <code>build-and-test</code> job); added a new step running the dependency-cruiser rule, hard-gated (no <code>|| true</code>), right after typecheck. <span class="path">.github/workflows/ci.yml</span></div>
+</spec-task>
+<spec-task id="T-111" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Add the byte-identical-injection assertion</strong> — a snapshot test on the real <code>loadCorpus</code>+<code>buildCorpusPromptBlock</code> pipeline (now imported from <code>@spectastic/corpus</code>) against the fixed KB-901 fixture; the practical form of before/after diffing once the pre-extraction code no longer exists to compare against (SC-004). <span class="path">packages/core/test/corpus-prompt-injection.test.ts</span></div>
+</spec-task>
+
+<spec-note>
+<p>Closes <a href="./spec.html#FR-001">FR-001</a>, <a href="./spec.html#FR-002">FR-002</a>, <a href="./spec.html#FR-003">FR-003</a>, <a href="./spec.html#NFR-001">NFR-001</a>, <a href="./spec.html#NFR-002">NFR-002</a>, <a href="./spec.html#SC-001">SC-001</a>, <a href="./spec.html#SC-002">SC-002</a>, <a href="./spec.html#SC-004">SC-004</a>.</p>
+</spec-note>
+</section>
+
+
+<section id="phase-us2" class="phase">
+<h2>5 · Phase 3b — US2 · A corpus you can use without the lifecycle</h2>
+
+<h3>Tests (write &amp; fail first)</h3>
+<spec-task id="T-200" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Write the standalone-binary test</strong> — in a fresh directory carrying only <code>@spectastic/corpus</code> (no <code>@spectastic/core</code>, no <code>specs/</code>), run every curation verb, get/query/grep, and validate; assert each succeeds (SC-003). Initially failed on get/query/grep as expected (test-first — US3 not built yet); all 4 tests fully pass now that US3 has landed. <span class="path">packages/corpus/test/standalone-binary.test.ts</span></div>
+</spec-task>
+
+<h3>Implementation</h3>
+<spec-task id="T-210">
+  <input type="checkbox" checked>
+  <div><strong>Register the curation verbs on the binary</strong> — adapt/import/interview/source/publish, reusing the moved logic unchanged; also required relocating <code>createPackFetcher</code> (+ its test) from the CLI into corpus, since it had zero remaining CLI-specific dependencies once its three symbols moved. <span class="path">packages/corpus/src/cli/curate.ts, packages/corpus/src/pack-fetcher-factory.ts</span></div>
+</spec-task>
+<spec-task id="T-211">
+  <input type="checkbox" checked>
+  <div><strong>Register corpus-intrinsic validate</strong> — well-formed / registry / license scans, reusing the moved <code>corpusWellFormedFindings</code>/<code>corpusRegistryFindings</code>/<code>corpusLicenseFindings</code> (excludes the grounding gate, which needs specs). <span class="path">packages/corpus/src/cli/validate.ts</span></div>
+</spec-task>
+<spec-task id="T-212" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Wire the built bin entry</strong> — confirmed end-to-end by the standalone-binary test driving the real compiled bin via <code>execFileSync</code>. <span class="path">packages/corpus/package.json</span></div>
+</spec-task>
+<spec-task id="T-213">
+  <input type="checkbox" checked>
+  <div><strong>Verify graceful absence across every verb</strong> — validate on an absent corpus exits 0 clean (standalone-binary test); get/query/grep each have an explicit empty-corpus test asserting a defined not-found/empty-array, never a throw (FR-007). Deferred until US3 landed since "read" verbs didn't exist until now. <span class="path">packages/corpus/src/</span></div>
+</spec-task>
+
+<spec-note>
+<p>Closes <a href="./spec.html#FR-004">FR-004</a>, <a href="./spec.html#FR-007">FR-007</a>, <a href="./spec.html#SC-003">SC-003</a>.</p>
+</spec-note>
+</section>
+
+
+<section id="phase-us3" class="phase">
+<h2>6 · Phase 3c — US3 · Get cited knowledge out, deterministically</h2>
+
+<h3>Tests (write &amp; fail first)</h3>
+<spec-task id="T-300" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Write get's resolution tests</strong> — a known id resolves via <code>resolveCitation</code> with coordinate + provenance; an unknown id returns not-found. <span class="path">packages/corpus/test/read.get.test.ts</span></div>
+</spec-task>
+<spec-task id="T-301" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Write query's substring-match tests</strong> — a case-insensitive term matches across id/slug/title/description; no match returns empty, not an error. <span class="path">packages/corpus/test/read.query.test.ts</span></div>
+</spec-task>
+<spec-task id="T-302" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Write grep's rg/Node parity test</strong> — on a fixture corpus, the ripgrep path and the pure-Node path return identical, normalised hit sets (plan D-005, the risk in plan §8). <span class="path">packages/corpus/test/read.grep-parity.test.ts</span></div>
+</spec-task>
+
+<h3>Implementation</h3>
+<spec-task id="T-310">
+  <input type="checkbox" checked>
+  <div><strong>Implement get</strong> — a thin shim over <code>resolveCitation</code> returning the document's coordinate and provenance. <span class="path">packages/corpus/src/read/get.ts</span></div>
+</spec-task>
+<spec-task id="T-311">
+  <input type="checkbox" checked>
+  <div><strong>Implement query</strong> — case-insensitive substring scan over the loaded index/registry's id, slug, title, and description fields. <span class="path">packages/corpus/src/read/query.ts</span></div>
+</spec-task>
+<spec-task id="T-312">
+  <input type="checkbox" checked>
+  <div><strong>Implement grep</strong> — both paths search the exact same in-memory document bodies (rg receives each over stdin, never touching disk) with the same case-insensitive fixed-string semantics, so output is identical by construction; verified directly by the parity test. <span class="path">packages/corpus/src/read/grep.ts</span></div>
+</spec-task>
+<spec-task id="T-313" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Register get/query/grep on the CLI</strong> — three commander subcommands wired to the read-path implementations. Caught and worked around a real pre-existing bug in the moved (unchanged) <code>resolveCitation</code> here: it checks <code>if (registry)</code>, and an empty array is truthy, so <code>loadRegistry()</code>'s <code>[]</code>-on-no-file return silently skipped pack-scan resolution for any project without a root registry — the common, pre-migration case. Worked around in <code>get.ts</code> (never the moved resolver); flagged for triage as a latent defect in existing production code, not fixed inline. <span class="path">packages/corpus/src/cli/read.ts, packages/corpus/src/read/get.ts</span></div>
+</spec-task>
+
+<spec-note>
+<p>Closes <a href="./spec.html#FR-005">FR-005</a>, <a href="./spec.html#FR-006">FR-006</a>, <a href="./spec.html#SC-003">SC-003</a>.</p>
+</spec-note>
+</section>
+
+
+<section id="phase-polish" class="phase">
+<h2>7 · Phase 4 — Polish</h2>
+<spec-task id="T-900" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Update the README's package references</strong> — no <code>@spectastic/core/knowledge</code> mentions existed, but the Releasing section's three-package lists (version bump, tag-verify, dist-tag loops) all needed a fourth <code>@spectastic/corpus</code> entry. Also fixed the same real gap in <code>.github/workflows/publish.yml</code> itself — its version-match gate and dist-tag/summary steps hardcoded the same three packages and would have silently missed a corpus version mismatch or left it off `latest`. <span class="path">README.md, .github/workflows/publish.yml</span></div>
+</spec-task>
+<spec-task id="T-901" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Record the landing in CLAUDE.md</strong> — append a note to the Knowledge corpus section that the subsystem now lives in <code>packages/corpus/</code>; leave prior historical entries' original paths untouched as the record of what was true then. <span class="path">CLAUDE.md</span></div>
+</spec-task>
+<spec-task id="T-902" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Add a changelog entry for the new package's first release</strong>. <span class="path">CHANGELOG.md</span></div>
+</spec-task>
+<spec-task id="T-903">
+  <input type="checkbox" checked>
+  <div><strong>Run the full regression pass</strong> — <code>pnpm typecheck</code> clean; <code>pnpm test</code> 1245/1245 real tests pass (the git-layer timing test failed once under session load, reconfirmed clean in isolation — a documented pre-existing flake, not a regression); <code>pnpm test:e2e</code> 126/126 Playwright tests pass. <span class="path">pnpm test</span></div>
+</spec-task>
+</section>
+
+
+<section id="dependencies">
+<h2>8 · Dependencies</h2>
+<pre><code>Setup           → Foundational
+Foundational    → US1, US2, US3   (independent after this point)
+US1, US2, US3   → Polish
+</code></pre>
+</section>
+
+
+<section id="changelog">
+<h2>9 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-07-27">27 Jul 2026</time><span>Initial task breakdown. 40 tasks (20 parallelizable) across Setup (6) / Foundational (14) / US1 (4) / US2 (5) / US3 (7) / Polish (4). Foundational carries the plan's D-002 correction throughout: <code>fence.ts</code> relocates to <code>@spectastic/schema/fence</code> (T-010–T-013), not corpus, with its six real core callers repointed — the defect the plan's own tasks-grounding pass caught before any code moved. The dependency-cruiser spike from plan §3 is task 1 (T-002). Every FR/NFR/SC traces to at least one task.</span></li>
+  <li><time datetime="2026-07-27">27 Jul 2026</time><span>All 40 tasks drained. Two real gaps found and fixed live: <code>knowledge/</code> needed the <code>yaml</code> dependency added to corpus (T-023); a pre-existing bug in the moved (unchanged) <code>resolveCitation</code> — an empty registry array reads as "present," silently skipping pack-scan resolution — found via the new <code>get</code> caller and worked around there, flagged for triage (T-313). Status flipped Draft → Accepted — zero remaining unchecked tasks; <code>pnpm typecheck</code> clean, <code>pnpm test</code> 1245/1245 real tests passing, <code>pnpm test:e2e</code> 126/126 passing, verified before author confirmation. Sibling bundle (REQ-LIFECYCLE-005) — spec.html, plan.html, tasks.html flip together.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  Tasks for 064-corpus-package-extraction · Corpus package extraction · authored 27 Jul 2026
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>
