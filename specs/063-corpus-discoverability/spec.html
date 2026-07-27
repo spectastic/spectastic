@@ -1,0 +1,315 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
+<title>Corpus discoverability · Specification</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Specification · 063-corpus-discoverability</p>
+  <h1>Corpus discoverability</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    A corpus describes itself and is discoverable by default — carrying a marketplace.json kept in sync with its registry, configured at init, published on demand — reversing the consumer-only stance once the portability rule learns to spare a tool's own pack.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>      <span><spec-status value="draft">Draft</spec-status></span>
+    <b>Spec ID</b>     <span>063-corpus-discoverability</span>
+    <b>Owner</b>       <span>Brian Corbin · @briancorbin</span>
+    <b>Reviewers</b>   <span>—</span>
+    <b>Created</b>     <span><time datetime="2026-07-26">26 Jul 2026</time></span>
+    <b>Principles</b><span><a href="../../principles.html">v1.8.0</a></span>
+    <b>Smallest demoable</b><span><code>corpus publish</code> on the meta-repo writes a <code>knowledge/marketplace.json</code> synced from <code>index.md</code>, with <code>spectastic-concepts</code> self-declared tool-specific, and <code>spectastic validate</code> stays clean.</span>
+    <b>Read time</b>   <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-budget words="1500" reqs="20" minutes="12"></spec-budget>
+
+  <spec-tldr>
+    <p>062 recorded a project's corpus as <em>consumer-only</em> — no distributable <code>marketplace.json</code> —
+    because <a href="../057-portable-domain-skill/spec.html">057</a>'s <code>pack-not-portable</code> rule errors on any
+    marketplace-listed pack carrying spectastic tokens, and the meta-repo's own <code>spectastic-concepts</code> pack
+    is inherently tool-specific. This spec pivots: a corpus should be <strong>self-describing and discoverable by
+    default</strong>. A corpus carries a <code>marketplace.json</code> kept in sync with its root <code>index.md</code>
+    by the corpus verbs; <code>corpus publish</code> generates a missing one; <code>init</code> sets
+    <code>corpus.marketplace</code> (the repo name) and <code>corpus.root</code> in <code>spectastic.json</code>. The
+    collision is resolved by letting a pack <strong>self-declare tool-specific</strong>, which <code>pack-not-portable</code>
+    then spares — so discoverability and the portability guarantee coexist. This is <code>TBD-corpus-publish</code>,
+    deferred by <a href="../062-corpus-identity-migration/spec.html#FR-009">062 FR-009</a>.</p>
+  </spec-tldr>
+
+  <dl class="invest">
+    <dt><span class="letter">I</span> Independent</dt> <dd>Builds on <a href="../061-corpus-ingester/spec.html">061</a> (the corpus verbs + config), <a href="../062-corpus-identity-migration/spec.html">062</a> (the registry it syncs from), and <a href="../057-portable-domain-skill/spec.html">057</a> (the rule it amends). Two amendments to Accepted siblings are named as explicit cascades, not hidden.</dd>
+    <dt><span class="letter">N</span> Negotiable</dt>  <dd>Outcomes contract — "a corpus carries a synced marketplace.json and stays validate-clean", not a serializer's field order. The tool-specific declaration's exact home is a plan choice.</dd>
+    <dt><span class="letter">V</span> Valuable</dt>    <dd>Unlocks <a href="#SC-002">SC-002</a> — a project's corpus becomes an installable, self-describing unit another project can find and <code>corpus import</code> from, closing the friction the downstream migration hit.</dd>
+    <dt><span class="letter">E</span> Estimable</dt>   <dd>Every input is verified in-repo (the marketplace.json shape, the 057 rule, 062 FR-009, init's <code>basename(cwd)</code>); the cross-spec cascades are scoped, not open.</dd>
+    <dt><span class="letter">S</span> Small</dt>       <dd>One config addition, one generated-and-synced manifest, one verb, one rule exemption. Larger than a slice but a single coherent intent; US3's cross-spec cascades are the stretch.</dd>
+    <dt><span class="letter">T</span> Testable</dt>    <dd>Every requirement is observable — a config key, a generated manifest, a sync after a verb, a clean validate with a tool-specific pack listed.</dd>
+  </dl>
+
+  <spec-audience-map>
+    <dl>
+      <dt>Exec / PM</dt>   <dd>§<a href="#context">Context</a>, §<a href="#scenarios">User scenarios</a>, §<a href="#success">Success criteria</a>.</dd>
+      <dt>Reviewer</dt>    <dd>§<a href="#requirements">Requirements</a>, §<a href="#assumptions">Assumptions</a>, §<a href="#questions">Open questions</a>.</dd>
+      <dt>Implementer</dt> <dd>§<a href="#requirements">Requirements</a>, §<a href="#data">Data model</a>, §<a href="#conformance">Conformance index</a>.</dd>
+    </dl>
+  </spec-audience-map>
+</header>
+
+
+<section id="context">
+<h2>1 · Context</h2>
+<p>062 settled the meta-repo's corpus as consumer-only — <a href="../062-corpus-identity-migration/spec.html#FR-009">FR-009</a>
+forbids a distributable root <code>marketplace.json</code> — because <a href="../057-portable-domain-skill/spec.html">057</a>'s
+<code>pack-not-portable</code> rule (error severity) fires on any marketplace-listed pack embedding
+<code>&lt;spec-*&gt;</code> tags or verb names, and <code>spectastic-concepts</code> legitimately carries them. That
+decision made a corpus <em>invisible</em>: nothing describes it, nothing else can find or install it, and a downstream
+project migrating its own in-repo pack hit exactly this wall — "we have no <code>marketplace.json</code>" — with no
+first-class way to become discoverable.</p>
+<p>The pivot: a corpus should be a <strong>self-describing, discoverable unit by default</strong>, the way an Agent
+Skill marketplace already is. The blocker was never discoverability itself — it was that
+<code>pack-not-portable</code> conflated "listed in a marketplace" with "portable to any other domain". A pack whose
+domain <em>is</em> a specific tool is legitimately both listed and non-portable. Once a pack can self-declare
+tool-specific and the rule spares it, discoverability and the portability guarantee stop fighting, and 062 FR-009's
+consumer-only default can be retracted. This is the <code>TBD-corpus-publish</code> follow-on 062 named.</p>
+</section>
+
+
+<section id="scenarios">
+<h2>2 · User scenarios &amp; testing</h2>
+
+<p>Each story <strong>MUST</strong> be independently testable. US1 (config at init) stands alone as a viable first
+increment even before a manifest is generated.</p>
+
+<h3 id="US1">US1 · Configure the corpus at init <spec-pill>P1</spec-pill></h3>
+<p>As a <strong>project author running <code>spectastic init</code></strong>, I want <strong>a <code>corpus</code>
+section written to <code>spectastic.json</code> — the marketplace name defaulting to my repo name, and the corpus
+root directory</strong> so that <strong>every corpus verb has one source of truth for what my corpus is called and
+where it lives</strong>.</p>
+<p><em>Acceptance:</em> after <code>spectastic init</code>, <code>spectastic.json</code> carries
+<code>corpus.marketplace</code> (defaulting to <code>basename(cwd)</code>) and <code>corpus.root</code> (defaulting to
+<code>knowledge</code>); a marketplace-less local <code>corpus import</code> files under <code>corpus.marketplace</code>
+(folding 061's interim <code>corpus.namespace</code> into this single key).</p>
+
+<h3 id="US2">US2 · A corpus carries a synced marketplace.json <spec-pill>P1</spec-pill></h3>
+<p>As a <strong>corpus maintainer</strong>, I want <strong>my corpus to carry a <code>marketplace.json</code>
+generated from my registry and kept in sync by the corpus verbs, with <code>corpus publish</code> generating a
+missing one</strong> so that <strong>the corpus is self-describing and installable without a hand-written
+manifest</strong>.</p>
+<p><em>Acceptance:</em> <code>corpus publish</code> writes <code>&lt;root&gt;/marketplace.json</code> (name from
+<code>corpus.marketplace</code>, one <code>plugins[]</code> entry per pack derived from <code>index.md</code> +
+each pack's <code>SKILL.md</code>); a subsequent corpus write verb (import / register / adapt / interview / source)
+keeps it in sync as packs change; and a pack self-declared tool-specific is listed <em>without</em> tripping
+<code>pack-not-portable</code>.</p>
+
+<h3 id="US3">US3 · Discoverable-by-default supersedes consumer-only <spec-pill>P2</spec-pill></h3>
+<p>As a <strong>maintainer of the meta-repo (and any spectastic project)</strong>, I want <strong>discoverable-by-default
+to become the stance, retracting 062's consumer-only clause and publishing the meta-repo's own corpus</strong> so that
+<strong>the tool dogfoods the discoverability it now offers downstream</strong>.</p>
+<p><em>Acceptance:</em> the meta-repo's <code>knowledge/</code> gains a <code>marketplace.json</code> listing
+<code>spectastic-concepts</code> (tool-specific) and <code>finance-settlement</code>; <a href="../062-corpus-identity-migration/spec.html#FR-009">062 FR-009</a>
+is retracted via a MODIFY propose (named, not silent); and full-corpus <code>validate</code> stays at its prior
+error baseline.</p>
+
+<h3>Edge cases</h3>
+<ul>
+  <li><strong>marketplace.json already hand-edited.</strong> Sync + <code>publish</code> preserve hand-edited cells the way the registry merge does (non-destructive), rather than clobbering an owner/description a human tuned.</li>
+  <li><strong>A pack with no SKILL.md description.</strong> The plugin entry's description falls back rather than fabricating (NFR-002); 057 already warns on a missing discovery description.</li>
+  <li><strong>A corpus with zero packs.</strong> <code>publish</code> writes a manifest with an empty <code>plugins[]</code> (a valid, discoverable-but-empty marketplace), never an error.</li>
+</ul>
+</section>
+
+
+<section id="requirements">
+<h2>3 · Requirements</h2>
+
+<p>Conformance keywords (<spec-rule>MUST</spec-rule>, <spec-rule level="should">SHOULD</spec-rule>,
+<spec-rule level="may">MAY</spec-rule>) follow RFC 2119.</p>
+
+<h3>Functional</h3>
+
+<spec-requirement id="FR-001" priority="must">
+<p><code>spectastic init</code> <spec-rule>MUST</spec-rule> write a <code>corpus</code> section to
+<code>spectastic.json</code> with <code>marketplace</code> (defaulting to the repo directory name,
+<code>basename(cwd)</code>) and <code>root</code> (defaulting to <code>knowledge</code>).</p>
+</spec-requirement>
+
+<spec-requirement id="FR-002" priority="must">
+<p>A corpus <spec-rule>MUST</spec-rule> be describable by a <code>marketplace.json</code> at its
+<code>corpus.root</code>, carrying the marketplace <code>name</code> (from <code>corpus.marketplace</code>), an
+<code>owner</code>, and one <code>plugins[]</code> entry per pack (<code>name</code>, relative <code>source</code>,
+<code>description</code>) — the discoverable, self-describing manifest a consuming project installs from.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-003" priority="must">
+<p>The corpus write verbs (<code>import</code>, <code>register</code> via interview/source, <code>adapt</code>)
+<spec-rule>MUST</spec-rule> keep <code>marketplace.json</code> in sync with the root <code>index.md</code> registry —
+adding, updating, or reflecting a pack's <code>plugins[]</code> entry as the registry changes — non-destructively,
+preserving hand-edited cells (mirroring the registry merge).</p>
+</spec-requirement>
+
+<spec-requirement id="FR-004" priority="must">
+<p>A <code>corpus publish</code> subcommand <spec-rule>MUST</spec-rule> generate a <code>marketplace.json</code> for a
+corpus that lacks one — from <code>corpus.marketplace</code> plus the packs in <code>index.md</code> — and
+<spec-rule>MUST</spec-rule> be idempotent (a re-run against an in-sync corpus changes nothing).</p>
+</spec-requirement>
+
+<spec-requirement id="FR-005" priority="must">
+<p>A pack <spec-rule>MUST</spec-rule> be able to self-declare <em>tool-specific</em> (in its own <code>SKILL.md</code>),
+and <a href="../057-portable-domain-skill/spec.html">057</a>'s <code>pack-not-portable</code> rule
+<spec-rule>MUST</spec-rule> skip a self-declared tool-specific pack — so a corpus listing an inherently
+tool-specific pack (the meta-repo's <code>spectastic-concepts</code>) is discoverable without a false portability
+error, while a pack meant for cross-domain reuse still gets the hard check.</p>
+<details><summary>Rationale</summary><p><code>pack-not-portable</code> conflated "listed in a marketplace" with
+"portable to any domain". A pack whose subject <em>is</em> a specific tool is legitimately both. The self-declaration
+makes the distinction explicit and machine-readable rather than exempt-by-omission (057 D-002), which is what
+required consumer-only in the first place.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-006" priority="must">
+<p>The corpus's <code>marketplace</code> name <spec-rule>MUST</spec-rule> be the single canonical source for both the
+<code>marketplace.json</code> <code>name</code> and the default namespace a marketplace-less local
+<code>import</code> files under (061 FR-008). The interim <code>corpus.namespace</code> key (061)
+<spec-rule level="should">SHOULD</spec-rule> be retained only as a deprecated read-alias resolving to
+<code>corpus.marketplace</code>, so the manifest name and the registry namespace can never drift apart.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-007" priority="should">
+<p>Discoverable-by-default <spec-rule level="should">SHOULD</spec-rule> supersede <a href="../062-corpus-identity-migration/spec.html#FR-009">062 FR-009</a>'s
+consumer-only default; landing this <spec-rule>MUST</spec-rule> retract that clause via a MODIFY-FR-009 propose on
+062 (recorded, never a silent contradiction), and the meta-repo <spec-rule>MUST</spec-rule> publish its own corpus
+as the dogfood.</p>
+</spec-requirement>
+
+<h3>Non-functional</h3>
+
+<spec-requirement id="NFR-001" priority="must">
+<p>Manifest generation and sync <spec-rule>MUST</spec-rule> be deterministic: regenerating
+<code>marketplace.json</code> from the same <code>index.md</code> + config yields byte-identical output, with no
+clock or network read.</p>
+</spec-requirement>
+
+<spec-requirement id="NFR-002" priority="must">
+<p>Generation <spec-rule>MUST NOT</spec-rule> fabricate: a plugin's <code>description</code> is derived from the
+pack's <code>SKILL.md</code> (falling back, never inventing), and <code>source</code> is the pack's real relative
+path — the same never-fabricate discipline the registry already holds (061 FR-009).</p>
+</spec-requirement>
+
+<h3>Out of scope (deferred to other slices)</h3>
+<spec-out-of-scope>
+  <ul>
+    <li defer-to="057-portable-domain-skill">The <em>spec-text</em> amendment to 057's <code>pack-not-portable</code> requirement recording the tool-specific exemption — a MODIFY propose on 057 (this spec owns the behaviour + code; 057's prose catches up).</li>
+    <li defer-to="062-corpus-identity-migration">The MODIFY-FR-009 propose retracting 062's consumer-only clause — FR-007 requires it as a cascade; the propose itself lands against 062.</li>
+    <li defer-to="TBD-corpus-marketplace-remote-source">Rewriting a pack's <code>source</code> to a remote git URL for cross-repo distribution — publish emits relative-path sources (marketplace-is-the-repo); a remote-source rewrite is a later concern.</li>
+    <li defer-to="TBD-corpus-owner-config">A configurable <code>owner</code> block beyond a sensible default — the manifest's <code>owner</code> is defaulted for now.</li>
+  </ul>
+</spec-out-of-scope>
+</section>
+
+
+<section id="data">
+<h2>4 · Data model</h2>
+
+<p>Three artifacts at a corpus root, now kept mutually consistent:</p>
+
+<h3>Entities</h3>
+<dl>
+  <dt><code>spectastic.json</code> · <code>corpus</code></dt><dd>New config object: <code>marketplace</code> (string, the name + local namespace; default <code>basename(cwd)</code>) and <code>root</code> (string, the corpus base directory; default <code>knowledge</code>). Set at init (FR-001); <code>root</code> is the overridable base 062 T-002 made corpus-root-relative.</dd>
+  <dt><code>&lt;root&gt;/marketplace.json</code></dt><dd>The discoverable manifest: <code>{ name, owner, plugins:[{ name, source, description }] }</code>. Generated + synced from the registry + config (FR-002/003/004); never hand-authored, but hand-edited cells survive a re-sync.</dd>
+  <dt><code>&lt;root&gt;/index.md</code></dt><dd>The <code>KB-NNNN</code> registry (062), unchanged — the source of truth the manifest's <code>plugins[]</code> is derived from.</dd>
+  <dt>Pack <code>SKILL.md</code> · tool-specific flag</dt><dd>A pack self-declares tool-specific here (FR-005); <code>pack-not-portable</code> reads it to decide whether to enforce portability. The exact field name is a plan choice.</dd>
+</dl>
+
+<spec-note>
+<p><strong>Invariant:</strong> <code>corpus.marketplace</code> is the one name — the manifest's <code>name</code> and
+the local-import namespace are always the same value (FR-006), so the discoverable identity and the resolution
+identity never diverge.</p>
+</spec-note>
+</section>
+
+
+<section id="success">
+<h2>5 · Success criteria</h2>
+
+<p>Technology-agnostic, measurable outcomes.</p>
+
+<spec-requirement id="SC-001" priority="must">
+<p>After <code>spectastic init</code>, <code>spectastic.json</code> contains <code>corpus.marketplace</code> equal to
+the repo directory name and <code>corpus.root</code> equal to <code>knowledge</code>.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-002" priority="must">
+<p><code>corpus publish</code> on the meta-repo writes <code>knowledge/marketplace.json</code> listing both packs
+(<code>spectastic-concepts</code> marked tool-specific, <code>finance-settlement</code>), and full-corpus
+<code>spectastic validate</code> stays at its prior error baseline — no new <code>pack-not-portable</code> error.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-003" priority="must">
+<p>Registering a new pack through any corpus write verb updates <code>marketplace.json</code> to include it, matching
+<code>index.md</code>, with no manual edit — and a re-run of <code>corpus publish</code> changes nothing (idempotent).</p>
+</spec-requirement>
+
+<spec-requirement id="SC-004" priority="should">
+<p>A marketplace-less local <code>corpus import &lt;plugin&gt; --from …</code> files the pack under the
+<code>corpus.marketplace</code> name; <code>corpus.namespace</code>, if present, resolves to it as a deprecated
+read-alias (never a second independent value).</p>
+</spec-requirement>
+</section>
+
+
+<section id="assumptions">
+<h2>6 · Assumptions</h2>
+
+<spec-assumption>
+<p>061's marketplace-optional local import + <code>corpus.namespace</code> (applied 2026-07-26) is the base FR-006
+folds into; its folded tasks are not yet drained, so the fold is a rename before build, not a migration of shipped code.</p>
+</spec-assumption>
+
+<spec-assumption>
+<p><code>init</code> already computes <code>projectName: basename(cwd)</code>, so the repo-name default for
+<code>corpus.marketplace</code> reuses an existing value rather than deriving a new one (e.g. from a git remote).</p>
+</spec-assumption>
+</section>
+
+
+<section id="questions">
+<h2>7 · Open questions</h2>
+<spec-questions>
+<p>None outstanding — the smallest-demoable, the portability-collision resolution (self-declared tool-specific), the
+namespace/name unification, the 062 reversal reach, and the config-key shape were all anchored in the interview. The
+exact home of the tool-specific flag and the manifest serializer details are deliberately left to the plan, not left open.</p>
+</spec-questions>
+</section>
+
+
+<section id="conformance">
+<h2>8 · Conformance index</h2>
+<p>Auto-built from every <code>&lt;spec-requirement&gt;</code> in this document.</p>
+<spec-conformance></spec-conformance>
+</section>
+
+
+<section id="changelog">
+<h2>9 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-07-26">26 Jul 2026</time><span>Initial draft. Owns <code>TBD-corpus-publish</code> (deferred by <a href="../062-corpus-identity-migration/spec.html#FR-009">062 FR-009</a>): a corpus is discoverable by default — a synced <code>marketplace.json</code>, <code>corpus publish</code>, init config (<code>corpus.marketplace</code> = repo name, <code>corpus.root</code>) — reconciled with <a href="../057-portable-domain-skill/spec.html">057</a> via a self-declared tool-specific exemption, folding 061's <code>corpus.namespace</code> into <code>corpus.marketplace</code> and reversing 062's consumer-only stance. Reverses a decision taken earlier this session; the two cross-spec amendments (057 rule text, 062 FR-009) are named cascades.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  063-corpus-discoverability · Corpus discoverability · authored 26 Jul 2026
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>

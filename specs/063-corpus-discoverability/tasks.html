@@ -1,0 +1,247 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
+<title>Corpus discoverability · Tasks</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Tasks · 063-corpus-discoverability</p>
+  <h1>Corpus discoverability</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    Ordered, parallelizable work. Tests precede implementation. Drive through with
+    <code>/spectastic.implement</code> — one task per invocation.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>     <span><spec-status value="draft">Draft</spec-status></span>
+    <b>Spec</b>       <span><a href="./spec.html">063-corpus-discoverability</a></span>
+    <b>Plan</b>       <span><a href="./plan.html">plan</a></span>
+    <b>Branch</b>     <span><code>main</code></span>
+    <b>Created</b>    <span><time datetime="2026-07-27">27 Jul 2026</time></span>
+    <b>Read time</b>  <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-tldr>
+    <p>25 tasks across five phases. Setup → Foundational (corpus config) → US1 (init writes it) · US2 (synced
+    manifest + publish) · US3 (portability exemption + the meta-repo's own dogfood + the two cross-spec proposes)
+    → Polish. Tasks marked <span class="par">[P]</span> touch a distinct file with no in-flight dependency.</p>
+  </spec-tldr>
+</header>
+
+
+<section id="strategy">
+<h2>1 · Execution strategy</h2>
+
+<spec-tabs>
+  <spec-tab label="MVP-first">
+    <p>US1 alone (config at init) is a viable slice — every downstream part reads <code>corpus.marketplace</code>/<code>root</code>, so landing it first de-risks everything after. Then US2, then US3.</p>
+  </spec-tab>
+  <spec-tab label="Incremental">
+    <p>Setup → Foundational → US1 → US2 → US3 → Polish. The recommended path — US2's sync needs US1's config resolver, and US3's dogfood needs US2's <code>publish</code> to exist.</p>
+  </spec-tab>
+  <spec-tab label="Parallel teams">
+    <p>Not a fit for US1→US2→US3 (genuinely ordered by dependency), but US3's portability-exemption code (T-300/T-310) is independent of US1/US2 and could run alongside them if staffed.</p>
+  </spec-tab>
+</spec-tabs>
+</section>
+
+
+<section id="phase-setup" class="phase">
+<h2>2 · Phase 1 — Setup</h2>
+<spec-task id="T-001" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Scaffold the publish module</strong> — an empty <code>knowledge/publish.ts</code> with its exported function signatures stubbed (<code>renderMarketplaceManifest</code>, <code>syncMarketplaceManifest</code>, <code>publishCorpus</code>), throwing <code>not implemented</code> so downstream imports resolve before the real logic lands. <span class="path">packages/core/src/knowledge/publish.ts</span></div>
+</spec-task>
+<spec-task id="T-002" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Barrel-export the new module</strong> — re-export <code>publish.ts</code>'s symbols from <code>knowledge/index.ts</code>, the package's single documented <code>./knowledge</code> tsup entry (corrected from the plan's original "new subpath" draft, which had wrongly grounded against <code>providers/pack-fetcher.ts</code> — a different directory with its own real/stub-seam reason for a dedicated entry). No <code>tsup.config.ts</code> change. <span class="path">packages/core/src/knowledge/index.ts</span></div>
+</spec-task>
+</section>
+
+
+<section id="phase-foundation" class="phase">
+<h2>3 · Phase 2 — Foundational</h2>
+<spec-task id="T-010">
+  <input type="checkbox" checked>
+  <div><strong>Implement the corpus config reader</strong> — <code>config/corpus.ts</code> mirrors <code>config/models.ts</code>'s read-and-fail-fast shape: resolves <code>corpus.marketplace</code> (canonical) and <code>corpus.root</code>, with a present <code>corpus.namespace</code> read as a deprecated alias resolving to <code>marketplace</code> (D-003); exposes the same defaults (<code>basename(cwd)</code>, <code>knowledge</code>) both the init writer and the sync reader share, so they can never disagree. <span class="path">packages/cli/src/config/corpus.ts</span></div>
+</spec-task>
+</section>
+
+
+<section id="phase-us1" class="phase">
+<h2>4 · Phase 3a — US1 · Configure the corpus at init</h2>
+
+<h3>Tests (write &amp; fail first)</h3>
+<spec-task id="T-100" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Red test: config resolution</strong> — asserts <code>corpus.marketplace</code>/<code>root</code> resolve with defaults absent, an explicit value wins, and a legacy <code>corpus.namespace</code> resolves as <code>marketplace</code> when <code>marketplace</code> itself is unset. <span class="path">packages/cli/test/config-corpus.test.ts</span></div>
+</spec-task>
+<spec-task id="T-101" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Red test: init writes the corpus section</strong> — asserts a fresh <code>spectastic init</code> writes <code>corpus.marketplace</code> = the repo directory name and <code>corpus.root</code> = <code>knowledge</code>, and that an existing hand-authored <code>spectastic.json</code> (e.g. a <code>git</code>-only file) keeps its other sections untouched. <span class="path">packages/cli/test/init/corpus-config.test.ts</span></div>
+</spec-task>
+
+<h3>Implementation</h3>
+<spec-task id="T-110">
+  <input type="checkbox" checked>
+  <div><strong>Implement init's create-or-merge corpus-section writer</strong> — reads any existing <code>spectastic.json</code>, adds/preserves the <code>corpus</code> section using the T-010 defaults, and writes it back; a project with no <code>spectastic.json</code> gets one created. Makes T-100/T-101 green. <span class="path">packages/cli/src/commands/init.ts</span></div>
+</spec-task>
+
+<h3>Verification</h3>
+<spec-task id="T-120">
+  <input type="checkbox" checked>
+  <div><strong>Verify SC-001 end to end</strong> — run the built CLI's <code>spectastic init</code> in a fresh temp directory and assert the resulting <code>spectastic.json</code> carries the expected <code>corpus</code> section. <span class="path">packages/cli/test/init/corpus-config.test.ts</span></div>
+</spec-task>
+
+<spec-note>
+<p>Closes <a href="./spec.html#FR-001">FR-001</a>, <a href="./spec.html#FR-006">FR-006</a> (the config half); <a href="./spec.html#SC-001">SC-001</a>. The other half of <a href="./spec.html#SC-004">SC-004</a> — a marketplace-less local <code>corpus import</code> actually filing under <code>corpus.marketplace</code> at the CLI — depends on <a href="../061-corpus-ingester/tasks.html">061's own Phase 8</a> draining against this config reader; that drain is a separate spec's tasks, tracked as a cross-spec follow-on, not fabricated here.</p>
+</spec-note>
+</section>
+
+
+<section id="phase-us2" class="phase">
+<h2>5 · Phase 3b — US2 · A corpus carries a synced marketplace.json</h2>
+
+<h3>Tests (write &amp; fail first)</h3>
+<spec-task id="T-200" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Red test: manifest render, no fabrication</strong> — asserts <code>renderMarketplaceManifest</code> derives one <code>plugins[]</code> entry per registry row, with <code>description</code> read from the pack's <code>SKILL.md</code> (never invented) and falling back — never erroring — when absent. <span class="path">packages/core/test/knowledge.publish.test.ts</span></div>
+</spec-task>
+<spec-task id="T-201">
+  <input type="checkbox" checked>
+  <div><strong>Red test: sync is non-destructive and idempotent</strong> — a hand-edited <code>owner</code>/<code>description</code> survives a re-sync, and re-running sync against an already-in-sync manifest produces byte-identical output (NFR-001). <span class="path">packages/core/test/knowledge.publish.test.ts</span></div>
+</spec-task>
+<spec-task id="T-202" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Red test: corpus publish subcommand</strong> — generates a missing <code>marketplace.json</code> for a fixture corpus and exits 0; a second run changes nothing. <span class="path">packages/cli/test/corpus-publish.test.ts</span></div>
+</spec-task>
+
+<h3>Implementation</h3>
+<spec-task id="T-210">
+  <input type="checkbox" checked>
+  <div><strong>Implement renderMarketplaceManifest</strong> — beside the existing <code>readMarketplaceManifest</code>, derives the manifest shape from a <code>corpus.marketplace</code> name plus the root registry + each pack's <code>SKILL.md</code>. Makes T-200 green. <span class="path">packages/core/src/knowledge/pack-agnostic.ts</span></div>
+</spec-task>
+<spec-task id="T-211">
+  <input type="checkbox" checked>
+  <div><strong>Implement syncMarketplaceManifest + publishCorpus</strong> — the non-destructive merge (existing hand-edited cells win, mirroring <code>mergeRegistryRows</code>) and the idempotent write. Makes T-201 green. <span class="path">packages/core/src/knowledge/publish.ts</span></div>
+</spec-task>
+<spec-task id="T-212">
+  <input type="checkbox" checked>
+  <div><strong>Wire the sync into every registry-writing path</strong> — <code>installPack</code> and <code>registerDocument</code> call <code>syncMarketplaceManifest</code> after writing the registry, so <code>marketplace.json</code> never drifts from <code>index.md</code> (FR-003). <span class="path">packages/core/src/knowledge/ingest.ts</span></div>
+</spec-task>
+<spec-task id="T-213">
+  <input type="checkbox" checked>
+  <div><strong>Add the corpus publish subcommand</strong> — a new <code>corpus publish</code> CLI command calling <code>publishCorpus</code> against the resolved <code>corpus.root</code>. Makes T-202 green. <span class="path">packages/cli/src/commands/corpus.ts</span></div>
+</spec-task>
+
+<h3>Verification</h3>
+<spec-task id="T-220">
+  <input type="checkbox" checked>
+  <div><strong>Verify SC-003 end to end</strong> — register a new pack via <code>corpus import</code> and assert <code>marketplace.json</code> now lists it, matching <code>index.md</code>, with no manual edit; a follow-up <code>corpus publish</code> changes nothing. <span class="path">packages/cli/test/corpus-import.test.ts</span></div>
+</spec-task>
+
+<spec-note>
+<p>Closes <a href="./spec.html#FR-002">FR-002</a>, <a href="./spec.html#FR-003">FR-003</a>, <a href="./spec.html#FR-004">FR-004</a>, <a href="./spec.html#NFR-001">NFR-001</a>, <a href="./spec.html#NFR-002">NFR-002</a>; <a href="./spec.html#SC-003">SC-003</a>.</p>
+</spec-note>
+</section>
+
+
+<section id="phase-us3" class="phase">
+<h2>6 · Phase 3c — US3 · Discoverable-by-default supersedes consumer-only</h2>
+
+<h3>Tests (write &amp; fail first)</h3>
+<spec-task id="T-300" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Red test: the tool-specific exemption</strong> — a fixture pack whose <code>SKILL.md</code> declares <code>tool-specific: true</code> produces zero <code>pack-not-portable</code> findings even while embedding <code>&lt;spec-*&gt;</code> tokens; an otherwise-identical pack without the flag still errors. <span class="path">packages/core/test/knowledge.pack-agnostic.test.ts</span></div>
+</spec-task>
+
+<h3>Implementation</h3>
+<spec-task id="T-310">
+  <input type="checkbox" checked>
+  <div><strong>Implement the tool-specific skip in packFindings</strong> — reads a pack's <code>SKILL.md</code> frontmatter for <code>tool-specific: true</code> and returns early with no portability findings when present. Makes T-300 green. <span class="path">packages/core/src/knowledge/pack-agnostic.ts</span></div>
+</spec-task>
+<spec-task id="T-311">
+  <input type="checkbox" checked>
+  <div><strong>Dogfood: declare spectastic-concepts tool-specific</strong> — add <code>tool-specific: true</code> to its <code>SKILL.md</code> frontmatter. <span class="path">knowledge/spectastic-concepts/SKILL.md</span></div>
+</spec-task>
+<spec-task id="T-312">
+  <input type="checkbox" checked>
+  <div><strong>Dogfood: publish the meta-repo's own corpus</strong> — run <code>corpus publish</code> against the real <code>knowledge/</code>, generating and committing <code>knowledge/marketplace.json</code> listing both packs. <span class="path">knowledge/marketplace.json</span></div>
+</spec-task>
+
+<h3>Verification</h3>
+<spec-task id="T-320">
+  <input type="checkbox" checked>
+  <div><strong>Verify SC-002: full-corpus validate stays at baseline</strong> — with the new <code>marketplace.json</code> + the tool-specific pack listed, <code>spectastic validate</code> introduces no new <code>pack-not-portable</code> (or any other) error. <span class="path">knowledge/marketplace.json</span></div>
+</spec-task>
+<spec-task id="T-321">
+  <input type="checkbox">
+  <div><strong>Author + apply a MODIFY propose on 057</strong> — records the tool-specific exemption in <code>pack-not-portable</code>'s spec text (the code already exists from T-310; this is 057's own prose catching up, per <a href="./spec.html#requirements">063's out-of-scope</a>). <span class="path">specs/057-portable-domain-skill/changes/</span></div>
+</spec-task>
+<spec-task id="T-322">
+  <input type="checkbox">
+  <div><strong>Author + apply a MODIFY-FR-009 propose on 062</strong> — retracts 062's consumer-only clause now that discoverable-by-default is built and dogfooded (FR-007's MUST clause). <span class="path">specs/062-corpus-identity-migration/changes/</span></div>
+</spec-task>
+
+<spec-note>
+<p>Closes <a href="./spec.html#FR-005">FR-005</a>, <a href="./spec.html#FR-007">FR-007</a>; <a href="./spec.html#SC-002">SC-002</a>. T-321/T-322 are process steps (author + apply a proposal), not code — named explicitly per the plan's top risk (§8) so the cross-spec cascade is tracked, not silently left for someone to notice later.</p>
+</spec-note>
+</section>
+
+
+<section id="phase-polish" class="phase">
+<h2>7 · Phase 4 — Polish</h2>
+<spec-task id="T-900" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Materialise verify.html</strong> — generate the per-spec verify view from the real commands run across this drain. <span class="path">specs/063-corpus-discoverability/verify.html</span></div>
+</spec-task>
+<spec-task id="T-901" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Full-corpus validate sweep</strong> — confirm the error/warning totals match the pre-063 baseline (no new findings) across the whole repo, not just the 063 bundle. <span class="path">CLAUDE.md</span></div>
+</spec-task>
+<spec-task id="T-902">
+  <input type="checkbox" checked>
+  <div><strong>Record the landing in the project log</strong> — update <code>CLAUDE.md</code>'s knowledge-corpus note: discoverable-by-default landed, <code>corpus.namespace</code> is now a deprecated alias for <code>corpus.marketplace</code>, and add <code>TBD-corpus-namespace-alias-removal</code> for eventually dropping it. <span class="path">CLAUDE.md</span></div>
+</spec-task>
+</section>
+
+
+<section id="dependencies">
+<h2>8 · Dependencies</h2>
+<ul>
+  <li><strong>T-010 → T-100, T-101, T-110</strong> — the config reader's defaults exist before anything tests or writes against them.</li>
+  <li><strong>T-110 → T-120</strong> — the writer lands before its end-to-end verification.</li>
+  <li><strong>T-210, T-211 → T-212, T-213 → T-220</strong> — render + sync exist before they're wired into ingest/CLI and verified.</li>
+  <li><strong>T-310 → T-311, T-312 → T-320</strong> — the exemption code exists before the meta-repo dogfoods it and before validate is re-checked.</li>
+  <li><strong>T-320 → T-321, T-322</strong> — the code + dogfood prove the design before either sibling's spec text is amended.</li>
+  <li><strong>T-901 → T-902</strong> — the baseline is confirmed before the project log claims it.</li>
+</ul>
+</section>
+
+
+<section id="changelog">
+<h2>9 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-07-27">27 Jul 2026</time><span>Initial breakdown. 25 tasks, 9 parallel. Five phases — setup, foundational (corpus config), US1 (init writes it), US2 (synced manifest + publish), US3 (portability exemption + meta-repo dogfood + the two named cross-spec proposes) — plus polish. SC-004's local-import half is flagged as depending on 061's own unbuilt Phase 8, not fabricated as a 063 task.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  063-corpus-discoverability · tasks · authored 27 Jul 2026
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>

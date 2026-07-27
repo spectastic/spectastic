@@ -68,9 +68,14 @@ describe('062 migration — both packs are two-layer, no three-digit id survives
   });
 });
 
-describe('062 migration — consumer-only corpus role (FR-009)', () => {
-  it('carries no distributable root marketplace.json (the recorded consumer-only decision)', () => {
-    expect(existsSync(join(REPO_ROOT, 'knowledge', 'marketplace.json'))).toBe(false);
+describe('062 migration — corpus role superseded by 063 (FR-009 retracted)', () => {
+  it('carries a real root marketplace.json — discoverable-by-default (063 FR-007) supersedes the earlier consumer-only decision', () => {
+    // 062 FR-009 originally recorded this repo as consumer-only (no root
+    // marketplace.json). 063-corpus-discoverability's whole point is to
+    // retract that: the meta-repo now dogfoods discoverable-by-default
+    // (T-312), with the formal MODIFY-FR-009 propose on 062 as T-322's
+    // follow-on. This assertion flips with the code, not after it.
+    expect(existsSync(join(REPO_ROOT, 'knowledge', 'marketplace.json'))).toBe(true);
   });
 });
 

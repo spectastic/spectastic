@@ -51,6 +51,15 @@ export {
 export type { SkillSlugMapEntry } from './index-format.js';
 export { adaptCorpus, allocateIds, contentHashOf, deriveProvenance } from './adapt.js';
 export type { AdaptInput, AdaptResult } from './adapt.js';
+export { renderMarketplaceManifest, syncMarketplaceManifest, publishCorpus } from './publish.js';
+export type {
+  MarketplaceManifest,
+  MarketplacePluginEntry,
+  RenderMarketplaceManifestInput,
+  SyncMarketplaceManifestInput,
+  PublishCorpusInput,
+  PublishCorpusResult,
+} from './publish.js';
 export { packAgnosticismFindings, resolveMarketplacePacks } from './pack-agnostic.js';
 export type {
   CorpusDocument,

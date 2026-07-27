@@ -1,6 +1,6 @@
 ---
 name: finance-settlement
-description: Domain knowledge imported from spectastic-examples.
+description: Securities-settlement and cash-accounting domain knowledge — trade-date vs. settlement-date timing, clearing-house cutover mechanics, and common reconciliation exceptions.
 ---
 
 # finance-settlement

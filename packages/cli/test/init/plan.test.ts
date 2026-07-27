@@ -68,8 +68,8 @@ describe('init: plan builder (T-100, FR-002)', () => {
  * scaffold change fails here instead of silently rotting the success criterion.
  */
 describe('scaffold count drift guard (004 SC-001, T-1005)', () => {
-  it('the tree is exactly the bundle files plus the generated .gitignore', () => {
-    expect(SCAFFOLD_TREE_FILE_COUNT).toBe(SCAFFOLD_FILE_COUNT + 1);
+  it('the tree is exactly the bundle files plus the generated .gitignore + spectastic.json (063 FR-001)', () => {
+    expect(SCAFFOLD_TREE_FILE_COUNT).toBe(SCAFFOLD_FILE_COUNT + 2);
   });
 
   it("004's SC-001 states the canonical tree count", () => {

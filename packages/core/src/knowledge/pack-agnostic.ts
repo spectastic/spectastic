@@ -65,8 +65,11 @@ function discoverableFinding(file: string): Finding {
 const TRIVIAL_DESCRIPTION_LEN = 20;
 
 /** Parse a SKILL.md's `---`-fenced frontmatter for its `description`, or
- * `null` if absent/unparseable/too short to be a real discovery surface. */
-function skillDescription(raw: string): string | null {
+ * `null` if absent/unparseable/too short to be a real discovery surface.
+ * Exported for reuse by `publish.ts`'s manifest render (063-corpus-
+ * discoverability) — the same never-fabricate description read, one
+ * implementation. */
+export function skillDescription(raw: string): string | null {
   const match = FRONTMATTER_RE.exec(raw);
   if (!match?.[1]) return null;
   try {
@@ -94,10 +97,32 @@ function packMarkdownFiles(packDir: string): string[] {
   return files;
 }
 
+/** True when a SKILL.md's frontmatter self-declares `tool-specific: true`
+ * (063-corpus-discoverability FR-005) — the pack's own domain IS a specific
+ * tool, so listing it as discoverable is not a portability claim.
+ * Unparseable/absent frontmatter → false (the hard check still applies by
+ * default; a pack must opt out explicitly, never by omission). */
+function isToolSpecific(raw: string): boolean {
+  const match = FRONTMATTER_RE.exec(raw);
+  if (!match?.[1]) return false;
+  try {
+    const parsed = parseYaml(match[1]) as Record<string, unknown> | null;
+    return parsed?.['tool-specific'] === true;
+  } catch {
+    return false;
+  }
+}
+
 /** All findings for one distributable pack directory: a portability finding
  * per spectastic-token leak, plus a discoverability finding when its
- * SKILL.md carries no real description. */
+ * SKILL.md carries no real description. A pack that self-declares
+ * `tool-specific: true` is spared entirely (FR-005) — checked first, so a
+ * tool-specific pack's own inherent vocabulary never trips the scan below. */
 function packFindings(packDir: string): Finding[] {
+  const skillPath = join(packDir, SKILL_FILE);
+  const skillRaw = existsSync(skillPath) ? readFileSync(skillPath, 'utf8') : '';
+  if (isToolSpecific(skillRaw)) return [];
+
   const findings: Finding[] = [];
   for (const file of packMarkdownFiles(packDir)) {
     const content = readFileSync(file, 'utf8');
@@ -106,8 +131,7 @@ function packFindings(packDir: string): Finding[] {
     }
   }
 
-  const skillPath = join(packDir, SKILL_FILE);
-  if (existsSync(skillPath) && skillDescription(readFileSync(skillPath, 'utf8')) === null) {
+  if (existsSync(skillPath) && skillDescription(skillRaw) === null) {
     findings.push(discoverableFinding(skillPath));
   }
 

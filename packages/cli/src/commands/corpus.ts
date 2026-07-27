@@ -4,21 +4,30 @@ import type { Command } from 'commander';
 import {
   adaptCorpus,
   installPack,
+  publishCorpus,
   registerDocument,
   NOT_CITABLE_UNTIL_CONFIRMED_STATUS,
   NOT_CITABLE_UNTIL_SIGNED_OFF_STATUS,
 } from '@spectastic/core/knowledge';
 import { createPackFetcher } from '../pack-fetcher-factory.js';
+import { resolveCorpusConfig } from '../config/corpus.js';
 
 /**
  * The `corpus` subcommand group (056-corpus-adapter, plan D-001; extended by
- * 061-corpus-ingester) — the CLI's first subcommand group, contained
- * entirely to this registrar. `adapt` turns an existing corpus shape (a
- * markdown folder, or an `llms.txt`) into the frontmatter + index
- * convention; `import` installs a marketplace skill and registers it.
+ * 061-corpus-ingester, 063-corpus-discoverability). `adapt` turns an
+ * existing corpus shape (a markdown folder, or an `llms.txt`) into the
+ * frontmatter + index convention; `import` installs a marketplace skill and
+ * registers it; `publish` generates/refreshes the corpus's own
+ * `marketplace.json`.
+ *
+ * Every write door resolves its corpus root and marketplace identity from
+ * `resolveCorpusConfig` (063 FR-001/FR-006) rather than a hardcoded
+ * `'knowledge'` — so `corpus.root` is a real, honoured override, and
+ * `installPack`/`registerDocument` are handed a `corpusMarketplaceName` that
+ * keeps `marketplace.json` in sync on every write (FR-003).
  *
  * Filesystem-only, deterministic, no model (mirrors `gitignore`'s command
- * shape) — the adapter/ingester logic is core, this is the thin dispatch.
+ * shape) — the adapter/ingester/publish logic is core, this is the thin dispatch.
  */
 export function registerCorpus(program: Command): void {
   const corpus = program.command('corpus').description('Commands for the knowledge/ corpus family.');
@@ -32,18 +41,21 @@ export function registerCorpus(program: Command): void {
       const target = resolve(process.cwd(), path);
       const isDir = statSync(target).isDirectory();
       const pack = opts.pack ?? basename(isDir ? target : dirname(target));
-      const knowledgeDir = resolve(process.cwd(), 'knowledge');
+      const { root } = resolveCorpusConfig(process.cwd());
+      const knowledgeDir = resolve(process.cwd(), root);
 
       const result = adaptCorpus({ target, knowledgeDir, pack });
 
       process.stdout.write(
         `corpus adapt: ${result.written.length} written, ${result.skipped.length} already adapted (untouched), ` +
-          `${result.indexRows} index row(s) → knowledge/${pack}/\n`,
+          `${result.indexRows} index row(s) → ${root}/${pack}/\n`,
       );
       if (result.written.length > 0) {
         process.stdout.write(
           '  Adaptation is lossy and its losses are silent — spot-check the newly-written documents ' +
-            'against their sources before citing them, and fill in any TODO provenance field you can verify.\n',
+            'against their sources before citing them, and fill in any TODO provenance field you can verify.\n' +
+            '  This writes the pack\'s own legacy index, not the root registry — the pack isn\'t discoverable ' +
+            'via marketplace.json until it\'s also registered through `corpus import --from`.\n',
         );
       }
       process.exit(0);
@@ -56,13 +68,14 @@ export function registerCorpus(program: Command): void {
     .option('--from <path>', 'register an already-fetched local checkout instead of installing one')
     .action(async (coordinate: string, opts: { from?: string }) => {
       const fetcher = createPackFetcher(opts.from ? { from: opts.from } : {});
-      const knowledgeDir = resolve(process.cwd(), 'knowledge');
+      const { marketplace, root } = resolveCorpusConfig(process.cwd());
+      const knowledgeDir = resolve(process.cwd(), root);
 
       try {
-        const result = await installPack({ fetcher, coordinate, knowledgeDir });
+        const result = await installPack({ fetcher, coordinate, knowledgeDir, corpusMarketplaceName: marketplace });
         process.stdout.write(
           `corpus import: ${result.written.length} registered, ${result.skipped.length} already registered ` +
-            `(untouched) → knowledge/${result.plugin}/\n`,
+            `(untouched) → ${root}/${result.plugin}/\n`,
         );
         if (result.written.length > 0) {
           process.stdout.write(
@@ -87,7 +100,8 @@ export function registerCorpus(program: Command): void {
     .requiredOption('--body <text>', 'the captured text')
     .option('--date <date>', 'the interview date (YYYY-MM-DD)')
     .action((role: string, opts: { marketplace: string; plugin: string; slug: string; title: string; body: string; date?: string }) => {
-      const knowledgeDir = resolve(process.cwd(), 'knowledge');
+      const { marketplace: corpusMarketplaceName, root } = resolveCorpusConfig(process.cwd());
+      const knowledgeDir = resolve(process.cwd(), root);
       const origin = `interview: ${role}, ${opts.date ?? 'TODO'}`;
 
       const result = registerDocument({
@@ -99,9 +113,10 @@ export function registerCorpus(program: Command): void {
         body: opts.body,
         origin,
         status: NOT_CITABLE_UNTIL_SIGNED_OFF_STATUS,
+        corpusMarketplaceName,
       });
 
-      process.stdout.write(`corpus interview: registered ${result.id} → knowledge/${opts.plugin}/\n`);
+      process.stdout.write(`corpus interview: registered ${result.id} → ${root}/${opts.plugin}/\n`);
       process.stdout.write(
         '  Not citable until the expert signs off. The interview discipline itself (running the ' +
           'elicitation) is deferred to TBD-corpus-interview — this only registers the captured text.\n',
@@ -146,7 +161,8 @@ export function registerCorpus(program: Command): void {
           process.exit(1);
         }
 
-        const knowledgeDir = resolve(process.cwd(), 'knowledge');
+        const { marketplace: corpusMarketplaceName, root } = resolveCorpusConfig(process.cwd());
+        const knowledgeDir = resolve(process.cwd(), root);
         const origin = `${url}, fetched ${opts.date ?? 'TODO'}`;
 
         const result = registerDocument({
@@ -158,9 +174,10 @@ export function registerCorpus(program: Command): void {
           body: opts.body,
           origin,
           status: NOT_CITABLE_UNTIL_CONFIRMED_STATUS,
+          corpusMarketplaceName,
         });
 
-        process.stdout.write(`corpus source: registered ${result.id} → knowledge/${opts.plugin}/\n`);
+        process.stdout.write(`corpus source: registered ${result.id} → ${root}/${opts.plugin}/\n`);
         process.stdout.write(
           '  Not citable until a human confirms the ingestion. The fetch-and-draft mechanics and the ' +
             'real authority allowlist are deferred to TBD-corpus-sourcing / TBD-corpus-authority-allowlist ' +
@@ -169,4 +186,19 @@ export function registerCorpus(program: Command): void {
         process.exit(0);
       },
     );
+
+  corpus
+    .command('publish')
+    .description('Generate or refresh this corpus\'s marketplace.json from its root registry, so it\'s discoverable without a hand-written manifest.')
+    .action(() => {
+      const { marketplace, root } = resolveCorpusConfig(process.cwd());
+      const knowledgeDir = resolve(process.cwd(), root);
+
+      const result = publishCorpus({ marketplaceName: marketplace, knowledgeDir });
+      process.stdout.write(
+        `corpus publish: ${result.alreadyExisted ? 'refreshed' : 'generated'} ${root}/marketplace.json ` +
+          `(marketplace=${marketplace})\n`,
+      );
+      process.exit(0);
+    });
 }

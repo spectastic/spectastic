@@ -27,6 +27,7 @@ import {
 import { KB_ID_RE } from './types.js';
 import type { RegistryEntry } from './types.js';
 import type { PackFetcher } from '../providers/pack-fetcher.js';
+import { syncMarketplaceManifest } from './publish.js';
 
 /** The highest numeric suffix among a set of registry entries (0 if none
  * match — a fresh registry allocates starting at KB-0001). Reads the WHOLE
@@ -183,6 +184,14 @@ export interface InstallInput {
    * re-import under the renamed name still resolves to the row registered
    * under the old one. Optional: absent (no known renames) is a no-op. */
   renames?: Record<string, string>;
+  /** This corpus's OWN publish identity (`corpus.marketplace`,
+   * 063-corpus-discoverability FR-006) — distinct from the registry row's
+   * `marketplace` column above, which is import PROVENANCE (where a
+   * reference came from). When given, `installPack` re-syncs
+   * `marketplace.json` after writing the registry (FR-003). Optional: a
+   * caller with no corpus config yet (or a test with no interest in the
+   * manifest) gets no sync side effect — the CLI always supplies it. */
+  corpusMarketplaceName?: string;
 }
 
 export interface InstallResult {
@@ -362,6 +371,15 @@ export async function installPack(input: InstallInput): Promise<InstallResult> {
     writeFileSync(skillPath, `${body.trimEnd()}\n\n${renderSkillSlugMapTable(mergedSlugRows)}`, 'utf8');
   }
 
+  // 063-corpus-discoverability FR-003: keep marketplace.json in sync — AFTER
+  // the SKILL.md write above, so a brand-new pack's real (if generic)
+  // description is what gets synced, never a stale "SKILL.md doesn't exist
+  // yet" fallback from reading too early (a real ordering bug this comment
+  // now guards against). No-op when the caller supplies no corpus identity.
+  if (input.corpusMarketplaceName) {
+    syncMarketplaceManifest({ marketplaceName: input.corpusMarketplaceName, knowledgeDir: input.knowledgeDir });
+  }
+
   return { plugin, marketplace, written, skipped, superseded, orphaned };
 }
 
@@ -381,6 +399,10 @@ export interface RegisterDocumentInput {
   /** The door-specific citability guard — e.g.
    * `not-citable-until-signed-off` or `not-citable-until-confirmed` (FR-010). */
   status: string;
+  /** This corpus's OWN publish identity (`corpus.marketplace`,
+   * 063-corpus-discoverability FR-006) — see `InstallInput`'s field of the
+   * same name for the full rationale. Optional, same default (no sync). */
+  corpusMarketplaceName?: string;
 }
 
 /**
@@ -392,7 +414,7 @@ export interface RegisterDocumentInput {
  * once; this is the single-document primitive the lighter doors need.
  */
 export function registerDocument(input: RegisterDocumentInput): { id: string } {
-  const { knowledgeDir, marketplace, plugin, slug, title, body, origin, status } = input;
+  const { knowledgeDir, marketplace, plugin, slug, title, body, origin, status, corpusMarketplaceName } = input;
   const packDir = join(knowledgeDir, plugin);
   const referencesDir = join(packDir, 'references');
   mkdirSync(referencesDir, { recursive: true });
@@ -437,6 +459,14 @@ export function registerDocument(input: RegisterDocumentInput): { id: string } {
   } else {
     const skillBody = readFileSync(skillPath, 'utf8');
     writeFileSync(skillPath, `${skillBody.trimEnd()}\n\n${renderSkillSlugMapTable(mergedSlugRows)}`, 'utf8');
+  }
+
+  // 063-corpus-discoverability FR-003: keep marketplace.json in sync — AFTER
+  // the SKILL.md write above, for the same real-ordering-bug reason
+  // installPack's own sync call moved (see its comment). No-op when the
+  // caller supplies no corpus identity.
+  if (corpusMarketplaceName) {
+    syncMarketplaceManifest({ marketplaceName: corpusMarketplaceName, knowledgeDir });
   }
 
   return { id: id! };

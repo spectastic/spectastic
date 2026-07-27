@@ -1,8 +1,8 @@
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { allocateRegistryIds, installPack, mergeRegistryRows } from '../src/knowledge/ingest.js';
+import { allocateRegistryIds, installPack, mergeRegistryRows, registerDocument } from '../src/knowledge/ingest.js';
 import { parseRegistry, parseSkillSlugMap } from '../src/knowledge/index-format.js';
 import type { RegistryEntry } from '../src/knowledge/types.js';
 import type { PackFetcher } from '../src/providers/pack-fetcher.js';
@@ -285,5 +285,71 @@ describe('installPack (T-101/T-102, FR-001/FR-002/FR-004/FR-008/FR-009)', () => 
 
     const registry = parseRegistry(readFileSync(registryPath, 'utf8'));
     expect(registry[0]?.title).toBe('Hand-corrected title'); // survives untouched
+  });
+
+  it('063-corpus-discoverability T-212: syncs marketplace.json when corpusMarketplaceName is given, stays a no-op otherwise (FR-003)', async () => {
+    const src = sourcePack({ '001-settlement-windows.md': '# Settlement windows\n\nBody.\n' });
+    const kd = knowledgeDir();
+    const coordinate = 'finance-settlement@spectastic-examples';
+
+    await installPack({ fetcher: stubFetcher(coordinate, src), coordinate, knowledgeDir: kd });
+    expect(existsSync(join(kd, 'marketplace.json')), 'no sync without corpusMarketplaceName').toBe(false);
+
+    const withSync = knowledgeDir();
+    await installPack({
+      fetcher: stubFetcher(coordinate, src),
+      coordinate,
+      knowledgeDir: withSync,
+      corpusMarketplaceName: 'acme',
+    });
+    const manifest = JSON.parse(readFileSync(join(withSync, 'marketplace.json'), 'utf8')) as { name: string; plugins: unknown[] };
+    expect(manifest.name).toBe('acme');
+    expect(manifest.plugins).toHaveLength(1);
+  });
+});
+
+describe('registerDocument (T-212, FR-003)', () => {
+  const dirs: string[] = [];
+  afterEach(() => {
+    for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true });
+  });
+
+  function knowledgeDir(): string {
+    const dir = mkdtempSync(join(tmpdir(), 'spectastic-register-dest-'));
+    dirs.push(dir);
+    const kd = join(dir, 'knowledge');
+    mkdirSync(kd, { recursive: true });
+    return kd;
+  }
+
+  it('syncs marketplace.json when corpusMarketplaceName is given, stays a no-op otherwise', () => {
+    const kd = knowledgeDir();
+    registerDocument({
+      knowledgeDir: kd,
+      marketplace: 'in-house',
+      plugin: 'ops-knowledge',
+      slug: '001-fact',
+      title: 'A fact',
+      body: 'Body text.',
+      origin: 'interview: ops-lead, 2026-07-27',
+      status: 'not-citable-until-signed-off',
+    });
+    expect(existsSync(join(kd, 'marketplace.json')), 'no sync without corpusMarketplaceName').toBe(false);
+
+    const withSync = knowledgeDir();
+    registerDocument({
+      knowledgeDir: withSync,
+      marketplace: 'in-house',
+      plugin: 'ops-knowledge',
+      slug: '001-fact',
+      title: 'A fact',
+      body: 'Body text.',
+      origin: 'interview: ops-lead, 2026-07-27',
+      status: 'not-citable-until-signed-off',
+      corpusMarketplaceName: 'acme',
+    });
+    const manifest = JSON.parse(readFileSync(join(withSync, 'marketplace.json'), 'utf8')) as { name: string; plugins: unknown[] };
+    expect(manifest.name).toBe('acme');
+    expect(manifest.plugins).toHaveLength(1);
   });
 });

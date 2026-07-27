@@ -1,6 +1,7 @@
 ---
 name: spectastic-concepts
 description: Spectastic's own foundational concepts — spec-driven development, RFC 2119 conformance keywords, and the grounding discipline that binds every plan. Dogfoods the knowledge-corpus convention (051-knowledge-corpus) with a real, in-repo pack rather than a placeholder.
+tool-specific: true
 ---
 
 # spectastic-concepts

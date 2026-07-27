@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import type { Command } from 'commander';
 import { resolveBundle } from './init/bundle.js';
@@ -27,6 +27,7 @@ import {
   spliceUpgrade,
 } from './init/compose.js';
 import { readMarker, writeMarker } from './init/marker.js';
+import { DEFAULT_CORPUS_ROOT } from '../config/corpus.js';
 import { detectTooling } from '@spectastic/core/enforce/detect';
 import { applyGitignore } from '@spectastic/core/gitignore/apply';
 import { BASE_ENTRIES } from '@spectastic/core/gitignore/entries';
@@ -50,6 +51,34 @@ const MONTHS = [
 ];
 
 /** Today's date as { iso: "YYYY-MM-DD", display: "DD Mon YYYY" }. */
+/**
+ * Write (or preserve) the `corpus` section of `spectastic.json`
+ * (063-corpus-discoverability FR-001, D-002) — the first init-writes-config
+ * path. Create-or-merge: reads any existing `spectastic.json`, and if it has
+ * NO `corpus` key at all, adds one with the defaults
+ * (`marketplace: basename(cwd)`, `root: DEFAULT_CORPUS_ROOT`) — matching
+ * `resolveCorpusConfig`'s own defaults exactly, so the two can never disagree
+ * (FR-006). Every OTHER section (and a `corpus` section that already exists,
+ * however partial) is left untouched — this never overwrites a value the
+ * project owner set. Returns whether it actually wrote anything, for the
+ * caller's summary line (mirrors `applyGitignore`'s boolean-return shape).
+ */
+function writeCorpusConfig(cwd: string): boolean {
+  const path = join(cwd, 'spectastic.json');
+  let config: Record<string, unknown> = {};
+  if (existsSync(path)) {
+    try {
+      config = JSON.parse(readFileSync(path, 'utf8')) as Record<string, unknown>;
+    } catch {
+      config = {};
+    }
+  }
+  if (config['corpus'] !== undefined) return false; // already configured — never overwrite
+  config['corpus'] = { marketplace: basename(cwd), root: DEFAULT_CORPUS_ROOT };
+  writeFileSync(path, `${JSON.stringify(config, null, 2)}\n`, 'utf8');
+  return true;
+}
+
 function today(): { iso: string; display: string } {
   const d = new Date();
   const y = d.getFullYear();
@@ -182,6 +211,13 @@ export function registerInit(program: Command): void {
       if (options.gitignore !== false) {
         const wrote = await applyGitignore(cwd, BASE_ENTRIES);
         if (wrote) process.stdout.write('✓ wrote .gitignore (spectastic ephemera)\n');
+      }
+      // 063-corpus-discoverability FR-001: every project gets a corpus config
+      // (marketplace name + root dir), unconditional — no flag, matching the
+      // gitignore write's own unconditional-unless-opted-out precedent minus
+      // the opt-out (there is no reason to skip a config-only default write).
+      if (writeCorpusConfig(cwd)) {
+        process.stdout.write(`✓ wrote spectastic.json corpus config (marketplace=${basename(cwd)}, root=${DEFAULT_CORPUS_ROOT})\n`);
       }
       // Spec 031 T-001: make the guarantee layer discoverable. Interactive init
       // offers to install it (auto-commits + the pre-commit gate); non-interactive

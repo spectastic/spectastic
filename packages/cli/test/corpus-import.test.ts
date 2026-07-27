@@ -137,3 +137,28 @@ describe('spectastic corpus import --from <path> (061 T-104, FR-008)', () => {
     expect(registry).toContain('finance-settlement');
   });
 });
+
+/**
+ * 063-corpus-discoverability T-220: registering a pack via `corpus import`
+ * updates `marketplace.json` to match `index.md` with no manual edit
+ * (SC-003), and a follow-up `corpus publish` changes nothing (idempotent).
+ */
+describe('spectastic corpus import — marketplace.json stays in sync (063 T-220, SC-003)', () => {
+  it('a fresh import registers the pack in marketplace.json, matching index.md; re-publish is a no-op', async () => {
+    const dir = project('sync');
+    const src = sourcePack(dir, { '001-settlement-windows.md': '# Settlement windows\n\nBody.\n' });
+
+    const r = await runCLI(['corpus', 'import', 'finance-settlement@spectastic-examples', '--from', src], dir);
+    expect(r.code, r.stdout + r.stderr).toBe(0);
+
+    const manifestPath = join(dir, 'knowledge', 'marketplace.json');
+    const manifest = JSON.parse(readFileSync(manifestPath, 'utf8')) as { plugins: Array<{ name: string }> };
+    expect(manifest.plugins.map((p) => p.name)).toEqual(['finance-settlement']);
+    const before = readFileSync(manifestPath, 'utf8');
+
+    const published = await runCLI(['corpus', 'publish'], dir);
+    expect(published.code, published.stdout + published.stderr).toBe(0);
+    expect(published.stdout).toContain('refreshed');
+    expect(readFileSync(manifestPath, 'utf8')).toBe(before); // no manual edit needed, no drift
+  });
+});

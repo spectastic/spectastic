@@ -28,16 +28,19 @@ import type { BundleInventory, FileWriteDecision } from './types.js';
  *   SCAFFOLD_FILE_COUNT       files written FROM THE BUNDLE — what buildPlan()
  *                             returns and what the summary reports as `wrote`.
  *   SCAFFOLD_TREE_FILE_COUNT  files ON DISK afterwards — the bundle files plus
- *                             the `.gitignore` init generates itself. This is
- *                             the number 004's SC-001 asserts ("a N-file tree").
+ *                             the two files init generates itself outside the
+ *                             plan: the `.gitignore` block and the
+ *                             `spectastic.json` corpus config (063-corpus-
+ *                             discoverability FR-001). This is the number
+ *                             004's SC-001 asserts ("a N-file tree").
  *
  * Both are guarded in plan.test.ts: one test asserts the real plan length, one
- * asserts the tree is exactly one more (the generated .gitignore), and a drift
- * guard asserts SC-001 states SCAFFOLD_TREE_FILE_COUNT. Change the scaffold →
- * change these once, and the guards name everything else that must follow.
+ * asserts the tree is exactly two more (the generated .gitignore + spectastic.json),
+ * and a drift guard asserts SC-001 states SCAFFOLD_TREE_FILE_COUNT. Change the
+ * scaffold → change these once, and the guards name everything else that must follow.
  */
 export const SCAFFOLD_FILE_COUNT = 24;
-export const SCAFFOLD_TREE_FILE_COUNT = SCAFFOLD_FILE_COUNT + 1;
+export const SCAFFOLD_TREE_FILE_COUNT = SCAFFOLD_FILE_COUNT + 2;
 
 export interface BuildPlanOptions {
   inventory: BundleInventory;

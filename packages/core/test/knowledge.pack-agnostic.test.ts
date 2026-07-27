@@ -210,3 +210,39 @@ describe('the demo pack is citable in a spectastic repo with zero edit (057, T-3
     expect(resolved!.id).toBe('KB-001');
   });
 });
+
+/**
+ * 063-corpus-discoverability T-300 (FR-005): a pack that self-declares
+ * `tool-specific: true` in its own SKILL.md is spared by pack-not-portable —
+ * so a corpus can list an inherently tool-specific pack as discoverable
+ * without a false portability error, while a pack that doesn't declare
+ * itself tool-specific (even an otherwise-identical one) still gets the
+ * hard check.
+ */
+describe('packAgnosticismFindings — the tool-specific exemption (063 T-300, FR-005)', () => {
+  it('a pack declaring tool-specific: true produces zero portability findings, even embedding spectastic vocabulary', () => {
+    const root = projectRoot();
+    writeFile(
+      root,
+      'dogfood/SKILL.md',
+      `---\nname: dogfood\ndescription: ${RICH_DESCRIPTION}\ntool-specific: true\n---\n\nCite this in a <spec-decision grounding="verified"> per /spectastic.plan.\n`,
+    );
+    const marketplacePath = writeMarketplace(root, ['dogfood']);
+
+    const findings = packAgnosticismFindings(marketplacePath);
+    expect(findings).toEqual([]);
+  });
+
+  it('an otherwise-identical pack WITHOUT the flag still fails the hard check', () => {
+    const root = projectRoot();
+    writeFile(
+      root,
+      'undeclared/SKILL.md',
+      `---\nname: undeclared\ndescription: ${RICH_DESCRIPTION}\n---\n\nCite this in a <spec-decision grounding="verified"> per /spectastic.plan.\n`,
+    );
+    const marketplacePath = writeMarketplace(root, ['undeclared']);
+
+    const findings = packAgnosticismFindings(marketplacePath);
+    expect(findings.some((f) => f.rule === 'pack-not-portable')).toBe(true);
+  });
+});

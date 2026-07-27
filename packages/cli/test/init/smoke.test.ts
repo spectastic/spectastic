@@ -74,8 +74,9 @@ describe('init: smoke (T-102)', () => {
     expect(r.code, `stderr: ${r.stderr}\nstdout: ${r.stdout}`).toBe(0);
 
     const files = listFilesRecursive(tmpDir).sort();
-    // The ON-DISK tree: bundle files + the .gitignore init generates itself.
-    // Single-sourced so it can't drift from SC-001 again (T-1005).
+    // The ON-DISK tree: bundle files + the .gitignore + spectastic.json init
+    // generates itself (063-corpus-discoverability FR-001). Single-sourced
+    // so it can't drift from SC-001 again (T-1005).
     expect(files.length).toBe(SCAFFOLD_TREE_FILE_COUNT);
     expect(files).toContain('.claude/commands/spectastic.spec.md');
     expect(files).toContain('assets/theme-boot.js');
@@ -88,6 +89,7 @@ describe('init: smoke (T-102)', () => {
     expect(files).toContain('templates/principles.html');
     expect(files).toContain('templates/spec.html');
     expect(files).toContain('templates/inbox.html');
+    expect(files).toContain('spectastic.json');
 
     expect(r.stdout).toContain('spectastic init — summary');
     expect(r.stdout).toContain('wrote');
