@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
+<title>064-corpus-package-extraction · Triage log</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Triage log · 064-corpus-package-extraction</p>
+  <h1>064-corpus-package-extraction — triage log</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    Defects against the <code>064-corpus-package-extraction</code> spec. Cards append-only; IDs stable.
+  </p>
+
+  <spec-meta>
+    <b>Spec</b>      <span><a href="./spec.html">064-corpus-package-extraction</a></span>
+    <b>Created</b>   <span><time datetime="2026-07-27">27 Jul 2026</time></span>
+    <b>Read time</b> <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-tldr>
+    <p>One card per debug session. Fits one screen; reads in under 30 seconds. Five required Tier-1 fields
+    (headline · Expected · Actual · Diagnosis · Fix); the deep-dive <code>&lt;details&gt;</code> stays collapsed
+    unless cross-spec, principles, scope, or hotfix-now applies. See <a href="../../examples/triage-log.html">examples/triage-log.html</a>
+    for the canonical look + the protocol (<code>TRIAGE-001</code>..<code>TRIAGE-006</code>).</p>
+  </spec-tldr>
+</header>
+
+
+<section id="cards">
+<h2>Cards</h2>
+<spec-triage-log>
+
+<spec-triage id="T-001" layer="implementation">
+  <header>
+    <h4>The grep read-path's rg/Node parity test hard-requires ripgrep, turning CI red on a runner without it</h4>
+    <span class="meta">
+      <span class="layer-pill">Implementation</span>
+      <span class="regen" data-result="pass">code</span>
+    </span>
+  </header>
+
+  <p class="headline">Debugging a red <code>build-and-test</code> on an unrelated PR, root cause was implementation drift — <code>read.grep-parity.test.ts</code> forces <code>{ mode: 'rg' }</code> and asserts <code>rgAvailable() === true</code>, but the GitHub runner image no longer bundles <code>rg</code>, so every rg-forced case threw <code>spawnSync rg ENOENT</code>; fixed by making the rg-parity cases skip when rg is absent and installing ripgrep in CI; regeneration passes — the plan's own design (<code>rg</code> when present, else a pure-Node scan) means a faithful test would never have hard-required the optional accelerator.</p>
+
+  <dl>
+    <dt>Expected</dt> <dd><code>pnpm test</code> passes on any runner: the grep read-path treats ripgrep as an optional accelerator (auto mode falls back to a pure-Node scan), so its tests should too.</dd>
+    <dt>Actual</dt>   <dd>Four tests in <code>packages/corpus/test/read.grep-parity.test.ts</code> fail with <code>spawnSync rg ENOENT</code> (and one <code>expected false to be true</code> on <code>rgAvailable()</code>) whenever <code>rg</code> isn't on <code>PATH</code> — which is now the case on the CI runner, silently reddening <code>build-and-test</code> (and, by the same <code>pnpm test</code> gate, blocking the publish job).</dd>
+    <dt>Diagnosis</dt><dd>The test contradicts its own design contract (plan <a href="./plan.html">D-005</a>: ripgrep optional, Node fallback): it forces rg mode unconditionally and asserts <code>rgAvailable()</code> is always true. When 064 merged, the runner still bundled <code>rg</code>, masking the coupling; a later runner-image change removed it.</dd>
+    <dt>Fix</dt>      <dd><code>packages/corpus/test/read.grep-parity.test.ts</code> — split the always-available Node-mode assertions from the rg-parity block, gate the latter on <code>rgAvailable()</code> (<code>describe.skipIf</code>), add a complementary no-rg fallback test; plus <code>.github/workflows/ci.yml</code> and <code>publish.yml</code> install ripgrep so the parity leg still runs in CI.</dd>
+  </dl>
+
+  <spec-diff>
+<del>describe('grep — rg/Node parity', () =&gt; { ... grep(..., { mode: 'rg' }) ... expect(rgAvailable()).toBe(true) })</del>
+<ins>const HAS_RG = rgAvailable();</ins>
+<ins>describe('grep — Node mode', () =&gt; { /* always runs */ })</ins>
+<ins>describe.skipIf(!HAS_RG)('grep — rg/Node parity — requires ripgrep on PATH', () =&gt; { ... })</ins>
+<ins>describe.skipIf(HAS_RG)('grep — auto mode falls back to Node when rg absent', () =&gt; { ... })</ins>
+  </spec-diff>
+
+  <details>
+    <summary>Deep dive — no cross-spec contract, no invariant, no hotfix (but a coverage-visibility note)</summary>
+    <p>Not a cross-spec gap — the design already says ripgrep is optional; only the test disagreed. Worth recording one thing: skipping the rg-parity block when <code>rg</code> is absent means an environment without ripgrep gets <em>no</em> parity coverage — acceptable (you can't test rg parity without rg), but the reason CI installs ripgrep is precisely to keep that coverage live rather than silently skipped. The silent-skip-vs-hard-fail trade is deliberate: a skip is visible in the test summary, whereas the ENOENT was a hard red that masked which leg actually broke. No production code changed; the moved <code>grep.ts</code> was already correct.</p>
+  </details>
+</spec-triage>
+
+</spec-triage-log>
+</section>
+
+
+<section id="changelog">
+<h2>Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-07-27">27 Jul 2026</time><span>Triage log scaffolded.</span></li>
+  <li><time datetime="2026-07-27">27 Jul 2026</time><span>T-001 added — <code>read.grep-parity.test.ts</code> hard-required ripgrep, reddening CI on a runner without it; made the rg-parity block skip-when-absent and installed ripgrep in CI. Implementation-layer fix, regen passes.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  064-corpus-package-extraction triage log · scaffolded 27 Jul 2026
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>
