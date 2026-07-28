@@ -107,7 +107,10 @@ export const CONVERTERS: Record<string, ConverterSpec> = {
     buildArgs: (file) => [file],
     collectOutput: (run) => run.stdout,
     versionArgs: ['--version'],
-    installHint: 'pip install markitdown',
+    // A CLI app, not a library — pipx/uv install it isolated, which also sidesteps
+    // PEP 668's "externally-managed-environment" that blocks bare `pip` on modern
+    // macOS/Homebrew/nix. The `[all]` extra pulls in PDF (and the other format) support.
+    installHint: "pipx install 'markitdown[all]'  (or: uv tool install 'markitdown[all]')",
   },
   docling: {
     bin: 'docling',
@@ -118,7 +121,7 @@ export const CONVERTERS: Record<string, ConverterSpec> = {
       return readFileSync(join(tmpDir, `${stem}.md`), 'utf8');
     },
     versionArgs: ['--version'],
-    installHint: 'pip install docling',
+    installHint: 'pipx install docling  (or: uv tool install docling)',
   },
   marker: {
     bin: 'marker_single',
@@ -131,7 +134,7 @@ export const CONVERTERS: Record<string, ConverterSpec> = {
     // marker_single exposes no documented version flag (spec §6 Assumptions) — no
     // versionArgs, so the `converter` provenance field always records the literal
     // TODO for the version rather than fabricating one.
-    installHint: 'pip install marker-pdf',
+    installHint: 'pipx install marker-pdf  (or: uv tool install marker-pdf)',
   },
 };
 
