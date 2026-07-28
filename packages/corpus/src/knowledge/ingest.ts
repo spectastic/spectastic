@@ -440,6 +440,17 @@ export interface RegisterDocumentInput {
    * 063-corpus-discoverability FR-006) — see `InstallInput`'s field of the
    * same name for the full rationale. Optional, same default (no sync). */
   corpusMarketplaceName?: string;
+  /** The tool that produced this document, for the provenance `converter`
+   * field — `convert` passes its converter (065 FR-004); other doors leave it
+   * unset (defaults to the never-fabricate `TODO`). */
+  converter?: string;
+  /** A pre-computed `content-hash` to pin instead of hashing the body —
+   * `convert` pins the SOURCE file's bytes (065 FR-004). Unset ⇒ the body is
+   * hashed as before. */
+  contentHash?: string;
+  /** An explicit slug-map description, overriding the first-body-paragraph
+   * derivation — `convert`'s optional `--description` (065 FR-007). */
+  description?: string;
 }
 
 /**
@@ -460,7 +471,12 @@ export function registerDocument(input: RegisterDocumentInput): { id: string } {
   const existingRegistry = existsSync(registryPath) ? parseRegistry(readFileSync(registryPath, 'utf8')) : [];
 
   const [id] = allocateRegistryIds(existingRegistry, 1);
-  const provenance = deriveProvenance(body, { origin, status });
+  const provenance = deriveProvenance(body, {
+    origin,
+    status,
+    ...(input.converter !== undefined ? { converter: input.converter } : {}),
+    ...(input.contentHash !== undefined ? { 'content-hash': input.contentHash } : {}),
+  });
   const filename = `${slug}.md`;
 
   writeFileSync(join(referencesDir, filename), renderTwoLayerDocument(slug, provenance, body), 'utf8');
@@ -486,7 +502,7 @@ export function registerDocument(input: RegisterDocumentInput): { id: string } {
   // in via the caller), so `deriveTitleAndDescription` — which only reads the
   // line after a `# heading` — returns blank here; the first-paragraph fallback
   // is what actually fills the cell.
-  const description = firstBodyParagraph(body);
+  const description = input.description ?? firstBodyParagraph(body);
   const freshSlugRow: SkillSlugMapEntry = { slug, title, description, edition: provenance.edition, path: `references/${filename}` };
   const existingSlugRows = existsSync(skillPath) ? parseSkillSlugMap(readFileSync(skillPath, 'utf8')) : [];
   const mergedSlugRows = mergeSlugMapRows(existingSlugRows, [freshSlugRow]);

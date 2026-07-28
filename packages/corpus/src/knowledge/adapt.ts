@@ -44,7 +44,9 @@ export function deriveProvenance(raw: string, known: Partial<Provenance> = {}): 
     edition: known.edition ?? TODO,
     license: known.license ?? TODO,
     converter: known.converter ?? TODO,
-    'content-hash': contentHashOf(raw),
+    // Honour a supplied `content-hash` — `convert` pins the SOURCE file's bytes,
+    // not the derived markdown (065 FR-004) — else compute it from `raw`.
+    'content-hash': known['content-hash'] ?? contentHashOf(raw),
     status: known.status ?? TODO,
   };
 }
@@ -325,85 +327,4 @@ function adaptLlmsTxt(input: AdaptInput): AdaptResult {
 export function adaptCorpus(input: AdaptInput): AdaptResult {
   if (statSync(input.target).isDirectory()) return adaptFolder(input);
   return adaptLlmsTxt(input);
-}
-
-// Mirrors ingest.ts's NOT_YET_SPOT_CHECKED_STATUS ('not-yet-spot-checked') — kept as
-// a local literal rather than an import, since ingest.ts already imports FROM this
-// module (deriveProvenance/deriveTitleAndDescription) and importing back would
-// create a cycle. Both must stay in sync if either changes.
-const NOT_YET_SPOT_CHECKED = 'not-yet-spot-checked';
-
-export interface FileConvertedDocumentInput {
-  /** Absolute path to the original source file (e.g. the PDF) — its bytes, not the
-   * converted markdown, are what `content-hash` pins (065-corpus-pdf-convert, D-003). */
-  sourceFile: string;
-  /** The markdown a converter already produced from `sourceFile`. */
-  markdown: string;
-  /** Absolute path to the project's `knowledge/` directory (the destination root). */
-  knowledgeDir: string;
-  /** The pack name — the subdirectory under `knowledgeDir`. */
-  pack: string;
-  /** e.g. `"markitdown 1.2.3"`, or just `"markitdown"` when no version was probed. */
-  converter: string;
-}
-
-export interface FileConvertedDocumentResult {
-  id: string;
-  /** Relative to the pack directory, e.g. `references/paper.md`. */
-  filePath: string;
-}
-
-/**
- * File a converted document into a pack (065-corpus-pdf-convert, US3, D-003). Reuses
- * the same id-allocation, idempotency, and index-merge machinery as `adaptFolder` —
- * but stamps its own provenance: `content-hash` is the SHA-256 of the *source file's*
- * bytes (not the derived markdown), `converter` records the tool that ran, `origin`
- * is the source filename, and `status` starts not-yet-spot-checked (adaptation, like
- * conversion, is lossy — a human should confirm before citing).
- */
-export function fileConvertedDocument(input: FileConvertedDocumentInput): FileConvertedDocumentResult {
-  const { sourceFile, markdown, knowledgeDir, pack, converter } = input;
-  const packDir = join(knowledgeDir, pack);
-  const referencesDir = join(packDir, REFERENCES_DIR);
-  mkdirSync(referencesDir, { recursive: true });
-
-  const indexPath = join(packDir, INDEX_FILE);
-  const existingIndex = existsSync(indexPath) ? parseIndex(readFileSync(indexPath, 'utf8')) : [];
-  const alreadyAdapted = existingAdaptedByFilename(referencesDir);
-
-  const sourceName = basename(sourceFile);
-  const destName = `${sourceName.replace(/\.[^.]+$/, '')}.md`;
-
-  const already = alreadyAdapted.get(destName);
-  if (already) {
-    // Idempotent (mirrors D-005): a source already filed under this destination
-    // name is left completely untouched — not even re-derived.
-    const existingRow = existingIndex.find((r) => r.id === already.id);
-    return { id: already.id, filePath: existingRow?.path ?? `${REFERENCES_DIR}/${destName}` };
-  }
-
-  const existingIds = [...existingIndex.map((r) => r.id), ...[...alreadyAdapted.values()].map((v) => v.id)];
-  const id = allocateIds(existingIds, 1)[0]!;
-
-  // Hash the SOURCE's raw bytes, never the converted markdown — a Buffer read, not a
-  // utf8 string round-trip, so a binary source (a PDF) hashes faithfully.
-  const sourceBytes = readFileSync(sourceFile);
-  const provenance: Required<Provenance> = {
-    origin: sourceName,
-    'origin-url': TODO,
-    edition: TODO,
-    license: TODO,
-    converter,
-    'content-hash': `sha256:${createHash('sha256').update(sourceBytes).digest('hex')}`,
-    status: NOT_YET_SPOT_CHECKED,
-  };
-
-  const { title, description } = deriveTitleAndDescription(markdown, sourceName.replace(/\.[^.]+$/, ''));
-  writeFileSync(join(referencesDir, destName), renderDocument(id, provenance, markdown), 'utf8');
-
-  const freshRow: IndexEntry = { id, title, description, edition: provenance.edition, path: `${REFERENCES_DIR}/${destName}` };
-  const mergedRows = mergeIndexRows(existingIndex, [freshRow]);
-  writeFileSync(indexPath, renderIndexTable(mergedRows), 'utf8');
-
-  return { id, filePath: `${REFERENCES_DIR}/${destName}` };
 }
