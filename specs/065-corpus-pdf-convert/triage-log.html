@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
+<title>065-corpus-pdf-convert · Triage log</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Triage log · 065-corpus-pdf-convert</p>
+  <h1>065-corpus-pdf-convert — triage log</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    Defects against the <code>065-corpus-pdf-convert</code> spec. Cards append-only; IDs stable.
+  </p>
+
+  <spec-meta>
+    <b>Spec</b>      <span><a href="./spec.html">065-corpus-pdf-convert</a></span>
+    <b>Created</b>   <span><time datetime="2026-07-27">27 Jul 2026</time></span>
+    <b>Read time</b> <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-tldr>
+    <p>Dogfooding <code>corpus convert</code> on a real PDF (in a freshly-<code>init</code>ed project) surfaced
+    that it files a <em>legacy, registry-invisible</em> document rather than a well-formed two-layer pack. Three
+    cards: <a href="#T-001">T-001</a> the root cause (spec-layer — FR-001 named the wrong filing primitive),
+    <a href="#T-002">T-002</a> weak title/description on converted docs, <a href="#T-003">T-003</a> the corpus
+    validator's blind spot that let the malformed pack ship clean. See <a href="../../examples/triage-log.html">examples/triage-log.html</a>
+    for the format.</p>
+  </spec-tldr>
+</header>
+
+
+<section id="cards">
+<h2>Cards</h2>
+<spec-triage-log>
+
+<spec-triage id="T-001" layer="spec">
+  <header>
+    <h4>convert files a legacy single-layer document via the adapt path, never registering it in the two-layer corpus</h4>
+    <span class="meta">
+      <span class="layer-pill">Spec</span>
+      <span class="regen" data-result="fail">upstream</span>
+    </span>
+  </header>
+
+  <p class="headline">Debugging a converted PDF that produced an incomplete pack, root cause was a spec-layer contract error — <a href="./spec.html#FR-001">FR-001</a> specified "the existing adapt provenance path — allocating a KB-NNN id, writing frontmatter, and updating the pack index," which is the pre-062 single-layer 056-era primitive, so <code>fileConvertedDocument</code> faithfully produced a legacy pack (id-in-frontmatter, no root-registry row, no SKILL.md, no slug, a stray pack index); fixed by respecifying FR-001 to register through the two-layer <code>registerDocument</code> backbone; regeneration fails at implementation and plan (both correctly carried out FR-001) — only a spec change makes a faithful build produce a citable two-layer document.</p>
+
+  <dl>
+    <dt>Expected</dt> <dd><code>convert</code> yields the same well-formed two-layer artifact as <code>import</code>/<code>interview</code>/<code>source</code>: a <code>slug: NNN-name</code> document at <code>references/NNN-slug.md</code>, a <code>KB-NNNN</code> row in the root <code>knowledge/index.md</code> registry, a pack <code>SKILL.md</code> with the slug-map, and <code>marketplace.json</code> synced.</dd>
+    <dt>Actual</dt>   <dd>The 056-era legacy shape: doc frontmatter carries <code>id: KB-001</code> (single-layer), the file is <code>references/dodbook.md</code> (no <code>NNN-</code> slug), a stray pack-local <code>index.md</code> is written, <strong>no <code>SKILL.md</code></strong> is created, and the root registry is left <strong>empty</strong>. <code>get KB-001</code> resolves only via the deprecated pack-scan fallback (<a href="../052-corpus-citation-contract/spec.html#FR-003">052 FR-003</a>) and only at <code>@TODO</code> edition — an edition-pinned citation never resolves, and the doc vanishes once <code>TBD-resolver-registry-only</code> deletes the fallback.</dd>
+    <dt>Diagnosis</dt><dd><code>fileConvertedDocument</code> (<code>packages/corpus/src/knowledge/adapt.ts</code>) was built on <code>adaptFolder</code>'s legacy helpers (<code>renderDocument</code> + pack-index + <code>id:</code> frontmatter) instead of <code>registerDocument</code>'s two-layer backbone (<code>renderTwoLayerDocument</code> + root-registry row + <code>SKILL.md</code> + slug + <a href="../063-corpus-discoverability/spec.html">063</a> marketplace sync). The plan (D-003) and the implementation both faithfully executed FR-001's "adapt provenance path" wording — so the error is the contract, not the code.</dd>
+    <dt>Fix</dt>      <dd><strong>MODIFY <a href="./spec.html#FR-001">FR-001</a></strong>: register a converted document through the two-layer <code>registerDocument</code> backbone (root-registry row + <code>slug: NNN-name</code> doc + <code>SKILL.md</code> + marketplace sync + <code>NNN-slug.md</code> filename; drop the pack-local index), and <strong>extend that backbone</strong> to carry convert's own provenance (<code>converter</code>, source-bytes <code>content-hash</code>, <code>not-yet-spot-checked</code> status), which <code>registerDocument</code>'s <code>deriveProvenance(body, {origin, status})</code> does not set today. Cascade: spec → plan (D-003) → tasks → re-implement.</dd>
+  </dl>
+
+  <details>
+    <summary>Deep dive — cross-spec cascade + a shipped-in-a-release note (no silent hotfix)</summary>
+    <p><strong>Cross-spec.</strong> The shared contract is <a href="../062-corpus-identity-migration/spec.html#FR-006">062's two-layer identity</a> (the <code>KB-NNNN</code> lives in the root registry; the document carries the <code>slug</code>). convert never joined that model — it still writes the 056 single-layer shape, which is exactly what 062 migrated the corpus away from. So the converted doc is invisible to registry-authoritative resolution and survives only on 052's back-compat pack scan, slated for removal (<code>TBD-resolver-registry-only</code>).</p>
+    <p><strong>Maps every dogfooding observation to this one root cause:</strong> "index inside the pack" + "root index not populated" = the pack-local <code>index.md</code> written instead of a root-registry row; "no <code>NNN-</code> prefix" = <code>${stem}.md</code> vs <code>registerDocument</code>'s <code>${slug}.md</code>; "no <code>SKILL.md</code>" = the backbone step convert skips. All resolve by re-basing on <code>registerDocument</code>.</p>
+    <p><strong>Scope note — it's live.</strong> convert shipped in the <code>0.1.0-pre.22</code> release, so this malformed output is reaching users now. No hotfix is meaningful (the fix is a re-spec + re-implement, not a one-liner), but the amended spec should land and ship in the next release rather than waiting; flagged here, not buried.</p>
+  </details>
+</spec-triage>
+
+<spec-triage id="T-002" layer="spec">
+  <header>
+    <h4>Converted-document title and description are derived from noisy PDF text, with no override</h4>
+    <span class="meta">
+      <span class="layer-pill">Spec</span>
+      <span class="regen" data-result="pass">upstream</span>
+    </span>
+  </header>
+
+  <p class="headline">Debugging a converted book whose registry title/description read as junk, root cause was a missing capability — convert derives both from <code>deriveTitleAndDescription</code> (first <code>#</code> heading + next paragraph) over raw converter output, which for a PDF is often a cover-page artifact or a page number, and there is no way to supply a better one; fixed by adding optional <code>--title</code>/<code>--description</code> overrides (and a filename-stem title fallback); regeneration passes at implementation — the heuristic is doing exactly what it was built to do, the gap is that convert offers no better source.</p>
+
+  <dl>
+    <dt>Expected</dt> <dd>A converted book lands with a sensible title (e.g. the book's name) and a description that summarises it — or a way to provide them when the auto-derivation is poor.</dd>
+    <dt>Actual</dt>   <dd>Title and description come only from the converter's first heading/paragraph, which for real PDFs is frequently a cover fragment, a running header, or a page number; there is no <code>--title</code>/<code>--description</code> flag to correct it, and the value is what gets written into the registry row and (post-T-001) the SKILL.md slug-map.</dd>
+    <dt>Diagnosis</dt><dd>convert reuses <code>deriveTitleAndDescription</code> unconditionally. It has richer signal it ignores — the source filename (a good title fallback) — and no author override. This is independent of <a href="#T-001">T-001</a>: re-basing on <code>registerDocument</code> keeps the same weak derivation (it also uses <code>firstBodyParagraph</code>).</dd>
+    <dt>Fix</dt>      <dd><strong>ADD</strong> optional <code>--title</code> and <code>--description</code> options to the <code>convert</code> verb (both CLIs), threaded into the filing call; when a title isn't derivable from a heading, fall back to the humanised source filename stem rather than <code>"Converted: &lt;stem&gt;"</code>. Should-tier.</dd>
+  </dl>
+
+  <details>
+    <summary>Deep dive — no cross-spec contract, no invariant, no hotfix</summary>
+    <p>Partly inherent to lossy PDF conversion — the tool can't manufacture a good description from bad text, which is why the <code>not-yet-spot-checked</code> status and the "review before citing" nudge exist. The actionable gap is only the missing override + the poor filename-stem fallback. Best folded into the same slice as <a href="#T-001">T-001</a>'s re-spec, since both touch FR-001 and the filing call.</p>
+  </details>
+</spec-triage>
+
+<spec-triage id="T-003" layer="cross-spec">
+  <header>
+    <h4>The corpus validator doesn't catch a malformed pack — missing SKILL.md, single-layer doc, unregistered reference</h4>
+    <span class="meta">
+      <span class="layer-pill">Cross-spec</span>
+      <span class="regen" data-result="fail">upstream</span>
+    </span>
+  </header>
+
+  <p class="headline">Debugging why the malformed convert output shipped without a gate catching it, root cause was a coverage gap in the corpus validator — <code>spectastic-corpus validate</code> reports only the license warning on <a href="#T-001">T-001</a>'s output, silently passing a pack with no SKILL.md, a <code>id:</code>-frontmatter (single-layer) reference, a reference absent from the root registry, and a stray pack-local index; fixed by adding those checks to the corpus validate rules; regeneration fails upstream — the rules never asserted these invariants, so no faithful re-implementation of the validator would have caught it.</p>
+
+  <dl>
+    <dt>Expected</dt> <dd><code>spectastic-corpus validate</code> flags a pack that (a) has no <code>SKILL.md</code>, (b) contains a <code>references/</code> document using <code>id:</code> instead of the two-layer <code>slug:</code>, (c) has a document not registered in the root <code>knowledge/index.md</code>, and (d) carries an unexpected pack-local <code>index.md</code>.</dd>
+    <dt>Actual</dt>   <dd>All four pass clean — the only finding on the malformed pack is the (correct) <code>corpus-license</code> warning. The validator is blind to structural malformation, so a bad producer (convert today, a bad hand-edit tomorrow) ships an unusable pack with a green check.</dd>
+    <dt>Diagnosis</dt><dd>The corpus validate rules (<code>corpusWellFormedFindings</code>/<code>corpusRegistryFindings</code>, owned by <a href="../064-corpus-package-extraction/spec.html">064</a> / the corpus-validate line) never grew a SKILL-presence check. This is why <a href="#T-001">T-001</a> reached a release: the guarantee that should live in the validator (P-8) isn't there.</dd>
+    <dt>Fix</dt>      <dd><strong>Done (SKILL-presence gate).</strong> Added <code>missingSkillFileFindings</code> to <code>corpusWellFormedFindings</code> (error severity): a pack with reference documents but no <code>SKILL.md</code> now fails validate, enforcing <a href="../057-portable-domain-skill/spec.html">057</a>'s existing "a pack MUST function as a plain Agent Skill (SKILL.md + references/)". It catches <a href="#T-001">T-001</a>'s output. The other three checks first proposed here — reject a bare <code>id:</code> reference, require root-registry membership, flag a pack-local <code>index.md</code> — were <strong>re-scoped out</strong>: the validator <em>deliberately</em> supports single-layer packs (<a href="../062-corpus-identity-migration/spec.html">062</a> D-003 retains <code>id:</code> + pack-index for unmigrated downstream packs), so those would fight intended back-compat and need a separate "deprecate single-layer" decision, not a bug-fix gate.</dd>
+  </dl>
+
+  <details>
+    <summary>Deep dive — the corrected scope + a second verb caught (adapt)</summary>
+    <p><strong>Corrected scope.</strong> Of the four checks first proposed, only SKILL-presence is a clean gate — it enforces an <em>existing</em> requirement (057) with no conflict, so it landed as an implementation fix, not a new proposal. The single-layer-vs-two-layer question is real but belongs to convert's own <a href="#T-001">T-001</a> (converted docs <em>should</em> be two-layer) and to a future decision about retiring single-layer support corpus-wide — the validator can't reject single-layer-ness today without breaking packs it's meant to accept.</p>
+    <p><strong>Second verb caught.</strong> The new gate immediately flagged that <code>adaptCorpus</code> (056 folder mode) <em>also</em> emitted SKILL-less packs — a latent defect in a shipped verb, surfaced by an adapt test that had (wrongly) asserted a SKILL-less pack was clean. Fixed in the same change: <code>adapt</code> now writes a minimal <code>SKILL.md</code> (name + description) when absent, mirroring <code>registerDocument</code>. <code>convert</code> was deliberately left failing the gate — its full fix is the two-layer re-spec in <a href="#T-001">T-001</a>, and the gate correctly holds the line until then.</p>
+  </details>
+</spec-triage>
+
+</spec-triage-log>
+</section>
+
+
+<section id="changelog">
+<h2>Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-07-27">27 Jul 2026</time><span>Triage log scaffolded.</span></li>
+  <li><time datetime="2026-07-27">27 Jul 2026</time><span>T-001 added — convert files a legacy single-layer doc via the adapt path (no root-registry row, no SKILL.md, no slug, stray pack index); spec-layer, FR-001 named the wrong primitive; regen fails upstream, cascade spec→plan→impl.</span></li>
+  <li><time datetime="2026-07-27">27 Jul 2026</time><span>T-002 added — converted-doc title/description derived from noisy PDF text with no <code>--title</code>/<code>--description</code> override; should-tier, folds into the T-001 re-spec.</span></li>
+  <li><time datetime="2026-07-27">27 Jul 2026</time><span>T-003 added — corpus validator blind to the malformed pack (no SKILL.md / single-layer doc / unregistered reference); cross-spec, fix owned by the 064 corpus-validate rules — the missing P-8 gate that let T-001 ship.</span></li>
+  <li><time datetime="2026-07-28">28 Jul 2026</time><span>T-003 fixed (SKILL-presence gate) + re-scoped — added <code>missingSkillFileFindings</code> (error) enforcing 057; the other three proposed checks dropped as conflicting with deliberate single-layer support (062 D-003). The gate caught a second verb: <code>adaptCorpus</code> also emitted SKILL-less packs, fixed to write a minimal SKILL.md. convert left failing the gate pending T-001.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  065-corpus-pdf-convert triage log · scaffolded 27 Jul 2026
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>

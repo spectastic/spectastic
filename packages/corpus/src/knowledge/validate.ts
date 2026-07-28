@@ -144,6 +144,21 @@ function duplicateSlugFindings(pack: CorpusPack): Finding[] {
   return findings;
 }
 
+/** A pack that carries reference documents but no `SKILL.md`. 057-portable-domain-skill
+ * mandates that "a pack MUST function as a plain Agent Skill (SKILL.md + references/)";
+ * enforcement had been missing, so a references-only pack validated clean (065 triage
+ * T-003 — `convert` shipped exactly such a pack). Scoped to a pack that actually has
+ * documents: an empty directory under `knowledge/` is not yet a pack and isn't flagged. */
+function missingSkillFileFindings(pack: CorpusPack): Finding[] {
+  if (pack.hasSkillFile || pack.documents.length === 0) return [];
+  return [
+    errorFinding(
+      `${pack.dirPath}/SKILL.md`,
+      `Pack "${pack.name}" has reference documents but no SKILL.md — a pack must function as a plain Agent Skill (SKILL.md + references/). Add a SKILL.md declaring the pack's name and slug-map.`,
+    ),
+  ];
+}
+
 /** All corpus well-formedness findings across every loaded pack. A no-op
  * (returns []) when `packs` is empty — the graceful-absence contract holds
  * all the way through to the validate scan (NFR-001). */
@@ -155,6 +170,7 @@ export function corpusWellFormedFindings(packs: readonly CorpusPack[]): Finding[
     findings.push(...orphanDocumentFindings(pack));
     findings.push(...duplicateIdFindings(pack));
     findings.push(...duplicateSlugFindings(pack));
+    findings.push(...missingSkillFileFindings(pack));
   }
   return findings;
 }

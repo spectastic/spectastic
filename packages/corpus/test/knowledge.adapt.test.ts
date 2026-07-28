@@ -1,4 +1,4 @@
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -64,6 +64,11 @@ describe('adaptCorpus — folder mode (056, T-100)', () => {
     // Every emitted document carries a valid KB-NNN id.
     const ids = pack!.documents.map((d) => d.id).sort();
     expect(ids).toEqual(['KB-001', 'KB-002', 'KB-003']);
+
+    // adapt emits a minimal SKILL.md so the pack functions as an Agent Skill
+    // (057; enforced by the corpus-well-formed SKILL-presence gate, 065 T-003).
+    expect(existsSync(join(knowledgeDir, 'example', 'SKILL.md'))).toBe(true);
+    expect(pack!.hasSkillFile).toBe(true);
 
     // The whole pack validates clean — SC-001's "spectastic validate accepts" leg.
     expect(corpusWellFormedFindings(packs)).toEqual([]);
