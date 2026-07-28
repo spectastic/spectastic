@@ -218,10 +218,13 @@ export function registerCorpus(program: Command): void {
     .option('--timeout <seconds>', 'override the default 120s child-process timeout')
     .addHelpText(
       'after',
-      '\nEach converter is a separate install this tool never bundles:\n' +
-        '  markitdown  pip install markitdown   (default)\n' +
-        '  docling     pip install docling\n' +
-        '  marker      pip install marker-pdf\n',
+      '\nEach converter is a separate install this tool never bundles. These are CLI\n' +
+        'apps — install them isolated with pipx or uv (bare `pip` is blocked on modern\n' +
+        'macOS/Homebrew/nix by PEP 668):\n' +
+        "  markitdown  pipx install 'markitdown[all]'   (default; [all] adds PDF support)\n" +
+        '  docling     pipx install docling\n' +
+        '  marker      pipx install marker-pdf\n' +
+        '  (uv users: swap `pipx install` for `uv tool install`.)\n',
     )
     .action(async (file: string, opts: { pack?: string; converter?: string; adapt: boolean; out?: string; timeout?: string }) => {
       const sourceFile = resolve(process.cwd(), file);
