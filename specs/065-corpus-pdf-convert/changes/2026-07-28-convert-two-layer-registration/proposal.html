@@ -1,0 +1,217 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
+<title>Convert registers a two-layer corpus document · Change proposal</title>
+<link rel="stylesheet" href="../../../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../../../assets/favicon.svg">
+<script src="../../../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Change proposal · 065-corpus-pdf-convert</p>
+  <h1>Convert registers a two-layer corpus document</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    Re-base <code>convert</code>'s filing from the legacy adapt path onto the two-layer registration backbone, and let the author supply a title/description.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>     <span><spec-status value="accepted">Approved</spec-status></span>
+    <b>Change ID</b>  <span>2026-07-28-convert-two-layer-registration</span>
+    <b>Spec</b>       <span><a href="../../spec.html">065-corpus-pdf-convert</a></span>
+    <b>Author</b>     <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Created</b>    <span><time datetime="2026-07-28">28 Jul 2026</time></span>
+    <b>Targets</b>    <span>2 requirement(s)</span>
+    <b>Read time</b>  <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-tldr>
+    <p>Dogfooding <code>convert</code> on a real PDF showed it files a <em>legacy single-layer</em> document
+    (via the adapt path): <code>id:</code> in the frontmatter, no root-registry row, no <code>SKILL.md</code>, a
+    non-slug filename — so an edition-pinned citation never resolves and the doc vanishes once the deprecated
+    pack-scan fallback is removed (065 triage T-001). This change re-points <a href="../../spec.html#FR-001">FR-001</a>
+    at the two-layer registration backbone that <code>import</code>/<code>interview</code>/<code>source</code> use,
+    and adds optional <code>--title</code>/<code>--description</code> overrides (T-002). MODIFY FR-001 (must) + ADD
+    FR-007 (should).</p>
+  </spec-tldr>
+</header>
+
+
+<spec-change id="2026-07-28-convert-two-layer-registration" status="approved">
+
+<header>
+  <h3>Convert registers a two-layer corpus document</h3>
+  <span class="meta"><spec-status value="accepted">Approved</spec-status></span>
+</header>
+
+
+<section id="intent">
+<h2>1 · Intent</h2>
+<p>Running <code>convert</code> on a real book PDF in a fresh project produced an incomplete, registry-invisible
+pack (065 triage <a href="../../triage-log.html#T-001">T-001</a>): the document carried <code>id: KB-001</code>
+(the pre-062 single-layer shape), was never written into the root <code>knowledge/index.md</code> registry, had
+no <code>SKILL.md</code>, and used a bare <code>&lt;stem&gt;.md</code> filename. Consequences: <code>get KB-001</code>
+resolves only through the deprecated pack-scan fallback and only at <code>@TODO</code> edition, so an
+edition-pinned citation never resolves and every converted document disappears once
+<code>TBD-resolver-registry-only</code> deletes that fallback.</p>
+<p>The root cause is <a href="../../spec.html#FR-001">FR-001</a> itself, which specified <em>"the existing adapt
+provenance path — allocating a KB-NNN id, writing frontmatter, and updating the pack index"</em> — the legacy
+056-era primitive. This change re-points FR-001 at the two-layer <code>registerDocument</code> backbone that
+<code>import</code>/<code>interview</code>/<code>source</code> already share, so a converted document is a
+first-class, registry-cited, two-layer artifact. It also adds optional title/description overrides
+(<a href="../../triage-log.html#T-002">T-002</a>), because auto-deriving both from noisy converted-PDF text yields
+poor metadata and there is currently no way to correct it.</p>
+</section>
+
+
+<section id="scope">
+<h2>2 · Scope</h2>
+
+<spec-goals>
+  <h3>In scope</h3>
+  <ul>
+    <li>Re-base <code>convert</code>'s filing on the two-layer registration backbone: a repo-unique <code>KB-NNNN</code> row in the root <code>knowledge/index.md</code>, a <code>slug:</code> document at <code>references/&lt;NNN-slug&gt;.md</code>, a created/extended pack <code>SKILL.md</code>, and <code>marketplace.json</code> kept in sync.</li>
+    <li>Extend that backbone to carry <code>convert</code>'s own provenance — <code>converter</code>, the source-bytes <code>content-hash</code>, and the not-yet-spot-checked status — preserving <a href="../../spec.html#FR-004">FR-004</a>.</li>
+    <li>Optional <code>--title</code>/<code>--description</code> overrides, with a humanised source-filename-stem title fallback.</li>
+  </ul>
+</spec-goals>
+
+<spec-non-goals>
+  <h3>Out of scope</h3>
+  <ul>
+    <li defer-to="TBD-corpus-single-layer-retire">Retiring single-layer support corpus-wide — the validator deliberately still accepts <code>id:</code> + pack-index packs for unmigrated downstream corpora (<a href="../../../062-corpus-identity-migration/spec.html">062</a> D-003).</li>
+    <li defer-to="TBD-corpus-single-layer-retire">Migrating <code>adaptCorpus</code>'s own document shape to two-layer — a separate verb with its own single-layer output.</li>
+  </ul>
+</spec-non-goals>
+</section>
+
+
+<section id="approach">
+<h2>3 · Approach</h2>
+<p><code>convert</code> stops filing through <code>fileConvertedDocument</code> (the adapt-legacy path that writes
+an <code>id:</code> document + a pack-local index) and instead registers through the two-layer backbone. The
+orchestrator derives the backbone's inputs from what it already has: <code>plugin</code> = the <code>--pack</code>
+value, <code>marketplace</code> = the resolved <code>corpus.marketplace</code> (pinned at convert time, as
+<code>installPack</code> pins a marketplace-less import), <code>slug</code> = an allocated <code>NNN-</code>
+prefix + the slugified filename stem, and <code>title</code>/<code>description</code> from the overrides or the
+derivation.</p>
+<p>The one real seam: <code>registerDocument</code>'s <code>deriveProvenance(body, {origin, status})</code> hashes
+the <em>markdown body</em> and sets only <code>origin</code>/<code>status</code>. <code>convert</code> needs
+<code>content-hash</code> = the <em>source</em> bytes and a <code>converter</code> field, so the backbone is
+extended to accept an optional provenance override. <code>SC-001</code> (content-hash equals the source SHA-256,
+readable from frontmatter) and <code>FR-004</code> hold unchanged; the document simply also gains a root-registry
+row and a <code>slug:</code>. <code>--no-adapt</code> (<a href="../../spec.html#FR-005">FR-005</a>) is untouched —
+it never files, so it never touches the backbone.</p>
+</section>
+
+
+<section id="deltas">
+<h2>4 · Deltas</h2>
+<p>One <code>&lt;spec-delta&gt;</code> per requirement touched. <code>target=</code> links to the live spec.</p>
+
+<spec-delta op="modified" target="FR-001">
+  <p><strong>What changes:</strong> convert registers through the two-layer backbone (root-registry row + <code>slug:</code> document + <code>SKILL.md</code> + marketplace sync), not the legacy adapt path + pack-index.</p>
+  <spec-requirement id="FR-001" priority="must">
+  <p>The corpus tool <spec-rule>MUST</spec-rule> provide a <code>convert &lt;file&gt;</code> verb that converts a
+  source document to markdown via an external converter and, given a target pack, registers the result through the
+  <strong>two-layer corpus backbone</strong> — the same path <code>import</code>/<code>interview</code>/<code>source</code>
+  use. It <spec-rule>MUST</spec-rule> allocate a repo-unique <code>KB-NNNN</code> row in the root
+  <code>knowledge/index.md</code> registry, write the document at <code>references/&lt;NNN-slug&gt;.md</code> carrying
+  a <code>slug:</code> (never a document <code>id:</code>), create or extend the pack's <code>SKILL.md</code>, and
+  keep <code>marketplace.json</code> in sync — never the legacy single-layer pack-index shape. The backbone
+  <spec-rule>MUST</spec-rule> carry convert's own provenance per <a href="../../spec.html#FR-004">FR-004</a>
+  (<code>converter</code>, source-bytes <code>content-hash</code>, not-yet-spot-checked status).</p>
+  <details><summary>Rationale</summary><p>A converted document must be a first-class, registry-cited artifact — resolvable by the registry (062 FR-006), not only via the deprecated pack-scan fallback. The prior "adapt provenance path … pack index" wording produced a single-layer, registry-invisible pack (T-001).</p></details>
+  </spec-requirement>
+</spec-delta>
+
+<spec-delta op="added" target="FR-007">
+  <spec-requirement id="FR-007" priority="should">
+  <p>The <code>convert</code> verb <spec-rule level="should">SHOULD</spec-rule> accept optional <code>--title</code>
+  and <code>--description</code> options that set the registered document's title and description directly. Absent a
+  <code>--title</code> and a derivable heading, it <spec-rule level="should">SHOULD</spec-rule> fall back to the
+  humanised source-filename stem (e.g. <code>dodbook.pdf</code> → <em>"Dodbook"</em>) rather than a fixed
+  <code>"Converted: &lt;stem&gt;"</code> placeholder.</p>
+  <details><summary>Rationale</summary><p>Auto-deriving a title/description from converted PDF text (first heading + first paragraph) is frequently a cover-page artifact or a page number; the author needs an override, and the filename is a better default than a fixed placeholder (T-002).</p></details>
+  </spec-requirement>
+</spec-delta>
+</section>
+
+
+<section id="risks">
+<h2>5 · Risk register</h2>
+<p>Adversarial risk pass (run this session — the proposal touches must-tier FR-001). One
+<code>&lt;spec-risk&gt;</code> per finding, each dispositioned by the author (recorded in <code>by=</code>): two
+mitigated, one accepted. No finding is left open.</p>
+
+<spec-risk-log>
+
+<spec-risk target="FR-001" status="mitigated" by="Brian Corbin · @briancorbinxyz">
+  <p class="claim">Making convert MUST-register through the backbone hard-couples it to <code>corpus.marketplace</code> config it never depended on before — and when that's unset (repo-dir-name default or the <code>local</code> sentinel), a later <code>corpus.marketplace</code> change re-keys the pack and mints a second <code>KB-NNNN</code>, the identity fragmentation 061 Phase 8 exists to warn about.</p>
+  <p class="citation">MODIFY FR-001 — "allocate a repo-unique <code>KB-NNNN</code> row … keep <code>marketplace.json</code> in sync".</p>
+  <div class="response">Mitigated: convert pins the converted row to the <em>resolved</em> <code>corpus.marketplace</code> at convert time, exactly as <code>installPack</code> pins a marketplace-less import (061 Phase 8 T-1002), so a later config change can't silently re-key it; the existing identity-fragmentation validate warning is the belt-and-braces guard. Captured as an implementation constraint on §6 task 2.</div>
+</spec-risk>
+
+<spec-risk target="FR-004" status="mitigated" by="Brian Corbin · @briancorbinxyz">
+  <p class="claim">The two-layer backbone's default provenance <em>contradicts</em> FR-004: <code>registerDocument</code>'s <code>deriveProvenance</code> hashes the markdown <em>body</em> and sets only <code>origin</code>/<code>status</code>, so re-basing convert onto it as-is would set <code>content-hash</code> to the converted markdown, not the source bytes — silently reverting the very guarantee FR-004 (and SC-001) make.</p>
+  <p class="citation">Live <a href="../../spec.html#FR-004">FR-004</a> — "set <code>content-hash</code> to the SHA-256 of the original source file's bytes, not the converted markdown".</p>
+  <div class="response">Mitigated: the MODIFY makes "the backbone MUST carry convert's own provenance per FR-004" load-bearing, and §6 task 1 (extend the backbone to accept a provenance override) plus §6 task 5 (a regression test asserting the source-bytes hash survives) are the concrete guards. The contradiction only arises if the extension is skipped — which the tasks and the FR-004 test prevent.</div>
+</spec-risk>
+
+<spec-risk target="§2" status="accepted" by="Brian Corbin · @briancorbinxyz">
+  <p class="claim">Bundling the title/description overrides (FR-007, should) with the must-tier two-layer re-base risks holding the load-bearing fix behind a cosmetic feature — two intents in one proposal.</p>
+  <p class="citation">§2 In scope — the third bullet (<code>--title</code>/<code>--description</code>) versus the first two (the re-base).</p>
+  <div class="response">Accepted (keep together): they share one code path (the filing call's title/description arguments) and one release, and were triaged together (T-001 folds T-002). The should-tier keeps FR-007 non-blocking, so it never gates the must-tier work at apply — the bundling carries no scheduling risk.</div>
+</spec-risk>
+
+</spec-risk-log>
+</section>
+
+
+<section id="tasks">
+<h2>6 · Tasks</h2>
+<p>Scoped to this change only. On <code>/spectastic.apply</code> these fold into
+<a href="../../tasks.html">tasks.html</a> as a new provenance-linked phase.</p>
+
+<ul style="list-style:none;padding-left:0;">
+  <li><input type="checkbox"> Extend the two-layer registration backbone to accept an optional provenance override (<code>converter</code>, source-bytes <code>content-hash</code>, status) <span class="path">packages/corpus/src/knowledge/ingest.ts</span></li>
+  <li><input type="checkbox"> Re-implement <code>convertDocument</code> filing: derive marketplace/plugin/slug/title/description and call the extended backbone; drop the adapt-path + pack-index write <span class="path">packages/corpus/src/knowledge/convert.ts</span></li>
+  <li><input type="checkbox"> Retire or reduce <code>fileConvertedDocument</code> now that convert no longer uses the adapt-legacy filing; update barrel exports <span class="path">packages/corpus/src/knowledge/adapt.ts</span></li>
+  <li><input type="checkbox"> Add <code>--title</code>/<code>--description</code> options + humanised filename-stem title fallback on both CLI surfaces <span class="path">packages/corpus/src/cli/convert.ts</span></li>
+  <li><input type="checkbox"> Rewrite the convert tests: assert a root-registry row, <code>slug:</code> frontmatter, a created <code>SKILL.md</code>, an <code>NNN-slug</code> filename, and that the source-bytes <code>content-hash</code> is preserved through the backbone <span class="path">packages/corpus/test/knowledge.convert.test.ts</span></li>
+</ul>
+</section>
+
+
+<section id="questions">
+<h2>7 · Open questions</h2>
+<spec-questions>
+<p>None outstanding — status (under-review), FR-007 tier (should), and the single-layer-retirement scope
+(deferred to <code>TBD-corpus-single-layer-retire</code>) were anchored in the interview.</p>
+</spec-questions>
+</section>
+
+
+<section id="changelog">
+<h2>8 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-07-28">28 Jul 2026</time><span>Proposal authored — MODIFY FR-001 (two-layer registration) + ADD FR-007 (title/description overrides); resolves 065 triage T-001 + T-002. Adversarial pass: 3 risks identified.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+</spec-change>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  2026-07-28-convert-two-layer-registration · Convert registers a two-layer corpus document · authored 28 Jul 2026
+</footer>
+
+</main>
+<script src="../../../../assets/spec.js"></script>
+</body>
+</html>
