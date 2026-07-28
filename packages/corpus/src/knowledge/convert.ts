@@ -16,10 +16,14 @@
  */
 import { execFile as execFileCb } from 'node:child_process';
 import { promisify } from 'node:util';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
-import { fileConvertedDocument } from './adapt.js';
+import { deriveTitleAndDescription } from './adapt.js';
+import { registerDocument, NOT_YET_SPOT_CHECKED_STATUS } from './ingest.js';
+import { parseRegistry } from './index-format.js';
+import type { RegistryEntry } from './types.js';
 
 const execFile = promisify(execFileCb);
 
@@ -172,9 +176,16 @@ export interface ConvertDocumentInput {
   converter?: string;
   runner: ConverterRunner;
   timeoutMs?: number;
-  /** Required unless `noAdapt` is set. */
+  /** Required unless `noAdapt` is set: the absolute path to `knowledge/`, the target
+   * pack (`plugin`), and the corpus's `marketplace` namespace (065 FR-001, two-layer). */
   knowledgeDir?: string;
   pack?: string;
+  marketplace?: string;
+  /** Optional metadata overrides (065 FR-007). */
+  title?: string;
+  description?: string;
+  /** This corpus's own publish identity, to keep `marketplace.json` in sync (063). */
+  corpusMarketplaceName?: string;
   /** Raw-emit mode (FR-005): skip filing entirely; return the markdown, or write it
    * to `out` when given. No pack is read or written either way. */
   noAdapt?: boolean;
@@ -246,17 +257,68 @@ export async function convertDocument(input: ConvertDocumentInput): Promise<Conv
     return { converter: converterField, markdown };
   }
 
-  if (!input.knowledgeDir || !input.pack) {
-    throw new Error('convertDocument: knowledgeDir and pack are required unless --no-adapt is set');
+  if (!input.knowledgeDir || !input.pack || !input.marketplace) {
+    throw new Error('convertDocument: knowledgeDir, pack, and marketplace are required unless --no-adapt is set');
   }
 
-  const filed = fileConvertedDocument({
-    sourceFile: input.sourceFile,
-    markdown,
+  // Register through the two-layer backbone (065 FR-001) — the same path
+  // import/interview/source use: a root-registry KB-NNNN row, a slug: document, a
+  // SKILL.md, and marketplace.json in sync. content-hash pins the SOURCE bytes (FR-004).
+  const sourceBytes = readFileSync(input.sourceFile);
+  const contentHash = `sha256:${createHash('sha256').update(sourceBytes).digest('hex')}`;
+  const sourceName = basename(input.sourceFile);
+  const stem = sourceName.replace(/\.[^.]+$/, '');
+
+  const registryPath = join(input.knowledgeDir, 'index.md');
+  const registry: RegistryEntry[] = existsSync(registryPath) ? parseRegistry(readFileSync(registryPath, 'utf8')) : [];
+  const slug = deriveConvertSlug(registry, input.pack, stem);
+
+  const title = input.title ?? deriveTitleAndDescription(markdown, humaniseStem(stem)).title;
+
+  const { id } = registerDocument({
     knowledgeDir: input.knowledgeDir,
-    pack: input.pack,
+    marketplace: input.marketplace,
+    plugin: input.pack,
+    slug,
+    title,
+    body: markdown,
+    origin: sourceName,
+    status: NOT_YET_SPOT_CHECKED_STATUS,
     converter: converterField,
+    contentHash,
+    ...(input.description !== undefined ? { description: input.description } : {}),
+    ...(input.corpusMarketplaceName !== undefined ? { corpusMarketplaceName: input.corpusMarketplaceName } : {}),
   });
 
-  return { id: filed.id, filePath: filed.filePath, converter: converterField };
+  return { id, filePath: `${input.pack}/references/${slug}.md`, converter: converterField };
+}
+
+/** A URL/filename-safe slug body: lowercase, non-alphanumerics collapsed to single
+ * hyphens, trimmed. Falls back to `document` for an all-symbol stem. */
+function slugify(s: string): string {
+  return s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'document';
+}
+
+/** A human title fallback from a filename stem when the converted markdown has no
+ * usable `# heading` — `dodbook` → `Dodbook`, `data_oriented-design` → `Data oriented design`. */
+function humaniseStem(stem: string): string {
+  const words = stem.replace(/[_-]+/g, ' ').trim();
+  return words ? words.charAt(0).toUpperCase() + words.slice(1) : 'Document';
+}
+
+/** Derive the pack-internal slug (`NNN-name`) for a converted source. Idempotent:
+ * if a document with the same name already exists in this pack, reuse its slug so a
+ * re-convert merges the existing registry row rather than minting a duplicate;
+ * otherwise allocate the next `NNN` for the pack. */
+function deriveConvertSlug(registry: readonly RegistryEntry[], plugin: string, stem: string): string {
+  const nameSlug = slugify(stem);
+  const existing = registry.find((e) => e.plugin === plugin && e.slug.replace(/^\d+-/, '') === nameSlug);
+  if (existing) return existing.slug;
+  let max = 0;
+  for (const e of registry) {
+    if (e.plugin !== plugin) continue;
+    const m = /^(\d+)-/.exec(e.slug);
+    if (m?.[1]) max = Math.max(max, Number(m[1]));
+  }
+  return `${String(max + 1).padStart(3, '0')}-${nameSlug}`;
 }

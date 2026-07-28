@@ -1,11 +1,11 @@
 import { createHash } from 'node:crypto';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { fileConvertedDocument } from '../src/knowledge/adapt.js';
-import { parseIndex } from '../src/knowledge/index-format.js';
+import { parseRegistry } from '../src/knowledge/index-format.js';
+import type { RegistryEntry } from '../src/knowledge/types.js';
 import {
   convertDocument,
   CONVERTERS,
@@ -16,12 +16,13 @@ import {
 } from '../src/knowledge/convert.js';
 
 const FIXTURE_CONVERTER = fileURLToPath(new URL('./fixtures/fake-converter.mjs', import.meta.url));
+const MKT = 'test-marketplace';
 
 /**
- * 065-corpus-pdf-convert, Foundational (T-010/T-011, plan D-001/D-002): the
- * ConverterRunner port (stub for tests, execFile-backed for real) and the
- * CONVERTERS registry's name-validation lookup — the "unrecognised converter
- * is rejected before any process runs" guarantee (FR-002) starts here.
+ * 065-corpus-pdf-convert, incl. the 2026-07-28 two-layer re-base (T-1000..T-1004):
+ * the ConverterRunner port + CONVERTERS validation, and — the re-base — convert
+ * registering a *two-layer* document (root-registry KB-NNNN row + slug: frontmatter
+ * + SKILL.md + NNN-slug filename), with the source-bytes content-hash preserved (FR-004).
  */
 
 describe('ConverterRunner — StubConverterRunner (T-010)', () => {
@@ -68,124 +69,100 @@ function tempKnowledgeDir(): string {
   return join(dir, 'knowledge');
 }
 
-describe('fileConvertedDocument — source-bytes hash + converter stamping (T-012)', () => {
-  it("hashes the SOURCE file's bytes into content-hash, not the converted markdown", () => {
-    const sourceFile = tempSourceFile('paper.pdf', 'these are the original source bytes');
-    const knowledgeDir = tempKnowledgeDir();
+/** Read the filed document (result.filePath is `<pack>/references/<slug>.md`, relative to knowledgeDir). */
+function readFiled(knowledgeDir: string, filePath: string): string {
+  return readFileSync(join(knowledgeDir, filePath), 'utf8');
+}
 
-    const result = fileConvertedDocument({
-      sourceFile,
-      markdown: '# Converted\n\nSome markdown text that is NOT the source bytes.\n',
-      knowledgeDir,
-      pack: 'research',
-      converter: 'markitdown',
-    });
+/** Parse the root registry (`knowledge/index.md`). */
+function readRegistry(knowledgeDir: string): RegistryEntry[] {
+  const path = join(knowledgeDir, 'index.md');
+  return existsSync(path) ? parseRegistry(readFileSync(path, 'utf8')) : [];
+}
 
-    const filed = readFileSync(join(knowledgeDir, 'research', result.filePath), 'utf8');
-    const expectedHash = `sha256:${createHash('sha256').update('these are the original source bytes', 'utf8').digest('hex')}`;
-    expect(filed).toContain(`content-hash: ${expectedHash}`);
-  });
-
-  it('records converter and origin, and files through the same index/id machinery as adapt', () => {
-    const sourceFile = tempSourceFile('paper.pdf', 'source bytes');
-    const knowledgeDir = tempKnowledgeDir();
-
-    const result = fileConvertedDocument({
-      sourceFile,
-      markdown: '# Converted\n\nBody.\n',
-      knowledgeDir,
-      pack: 'research',
-      converter: 'markitdown 1.2.3',
-    });
-
-    const filed = readFileSync(join(knowledgeDir, 'research', result.filePath), 'utf8');
-    expect(filed).toContain('converter: markitdown 1.2.3');
-    expect(filed).toContain('origin: paper.pdf');
-    expect(result.id).toMatch(/^KB-\d{3,}$/);
-
-    const index = parseIndex(readFileSync(join(knowledgeDir, 'research', 'index.md'), 'utf8'));
-    expect(index.some((row) => row.id === result.id)).toBe(true);
-  });
-
-  it('is idempotent — re-filing the same source leaves the existing document untouched', () => {
-    const sourceFile = tempSourceFile('paper.pdf', 'source bytes');
-    const knowledgeDir = tempKnowledgeDir();
-
-    const first = fileConvertedDocument({ sourceFile, markdown: '# v1\n', knowledgeDir, pack: 'research', converter: 'markitdown' });
-    const second = fileConvertedDocument({ sourceFile, markdown: '# v2 — should be ignored\n', knowledgeDir, pack: 'research', converter: 'markitdown' });
-
-    expect(second.id).toBe(first.id);
-    const filed = readFileSync(join(knowledgeDir, 'research', first.filePath), 'utf8');
-    expect(filed).toContain('# v1');
-    expect(filed).not.toContain('should be ignored');
-  });
-});
-
-describe('convertDocument — US1: default convert files a doc into a pack (T-100)', () => {
-  it('with the stub runner, the default (markitdown) path files a citable document into the pack', async () => {
+describe('convertDocument — US1: default convert registers a two-layer document (T-100/T-1004)', () => {
+  it('files a slug: document at references/<NNN-slug>.md, a root-registry KB-NNNN row, and a SKILL.md', async () => {
     const sourceFile = tempSourceFile('paper.pdf', 'the original pdf bytes');
     const knowledgeDir = tempKnowledgeDir();
     const runner = new StubConverterRunner({ stdout: '# Converted\n\nBody text.\n' });
 
-    const result = await convertDocument({ sourceFile, knowledgeDir, pack: 'research', runner });
+    const result = await convertDocument({ sourceFile, knowledgeDir, pack: 'research', marketplace: MKT, runner });
 
+    // NNN-slug filename + returned path.
+    expect(result.filePath).toBe('research/references/001-paper.md');
     expect(result.id).toMatch(/^KB-\d{3,}$/);
-    const filed = readFileSync(join(knowledgeDir, 'research', result.filePath), 'utf8');
+
+    // Two-layer document: slug: frontmatter, never a document id:.
+    const filed = readFiled(knowledgeDir, result.filePath!);
+    expect(filed).toContain('slug: 001-paper');
+    expect(filed).not.toMatch(/^id: KB-/m);
     expect(filed).toContain('# Converted');
     expect(filed).toContain('converter: markitdown');
 
-    const index = parseIndex(readFileSync(join(knowledgeDir, 'research', 'index.md'), 'utf8'));
-    expect(index.some((row) => row.id === result.id)).toBe(true);
+    // Root-registry row (the registry is authoritative, 062 FR-006).
+    const row = readRegistry(knowledgeDir).find((r) => r.id === result.id);
+    expect(row).toMatchObject({ marketplace: MKT, plugin: 'research', slug: '001-paper' });
 
-    // The stub runner proves markitdown's own default argv shape was used: just the file.
+    // SKILL.md created — the pack functions as an Agent Skill (057; the 065 T-003 gate).
+    expect(existsSync(join(knowledgeDir, 'research', 'SKILL.md'))).toBe(true);
+
+    // markitdown's own default argv shape: just the file.
     expect(runner.calls[0]?.bin).toBe('markitdown');
     expect(runner.calls[0]?.argv).toEqual([sourceFile]);
+  });
+
+  it('requires a marketplace when filing into a pack (two-layer registration)', async () => {
+    const sourceFile = tempSourceFile('paper.pdf', 'bytes');
+    const knowledgeDir = tempKnowledgeDir();
+    const runner = new StubConverterRunner({ stdout: '# x\n' });
+    await expect(convertDocument({ sourceFile, knowledgeDir, pack: 'research', runner })).rejects.toThrow(/marketplace/i);
+  });
+
+  it('is idempotent — re-converting the same source reuses its slug and mints no duplicate registry row', async () => {
+    const sourceFile = tempSourceFile('paper.pdf', 'source bytes');
+    const knowledgeDir = tempKnowledgeDir();
+    const runner = new StubConverterRunner({ stdout: '# Converted\n' });
+
+    const first = await convertDocument({ sourceFile, knowledgeDir, pack: 'research', marketplace: MKT, runner });
+    const second = await convertDocument({ sourceFile, knowledgeDir, pack: 'research', marketplace: MKT, runner });
+
+    expect(second.filePath).toBe(first.filePath);
+    const rows = readRegistry(knowledgeDir).filter((r) => r.plugin === 'research');
+    expect(rows).toHaveLength(1);
   });
 });
 
 /** Wraps a real registry entry so it runs the fixture shim (via `node`) instead of
- * the real binary, keeping its own buildArgs/collectOutput shape intact — proves the
- * registry entry's argv/output-collection contract against a real child process
- * without needing markitdown/docling/marker actually installed (T-200/T-211). */
+ * the real binary, keeping its own buildArgs/collectOutput shape intact (T-200/T-211). */
 function fixtureSpec(real: ConverterSpec): ConverterSpec {
   return { ...real, bin: 'node', buildArgs: (file, tmpDir) => [FIXTURE_CONVERTER, ...real.buildArgs(file, tmpDir)] };
 }
 
 describe('convertDocument — US2: --converter routes to the right registry entry (T-200)', () => {
-  it('routes --converter docling to the docling shape and files provenance naming it', async () => {
+  it('routes --converter docling to the docling shape and records it in provenance', async () => {
     const sourceFile = tempSourceFile('paper.pdf', 'real bytes');
     const knowledgeDir = tempKnowledgeDir();
-    const registry = { docling: fixtureSpec(CONVERTERS.docling) };
 
     const result = await convertDocument({
-      sourceFile,
-      knowledgeDir,
-      pack: 'research',
-      converter: 'docling',
-      runner: new ExecFileConverterRunner(),
-      registry,
+      sourceFile, knowledgeDir, pack: 'research', marketplace: MKT,
+      converter: 'docling', runner: new ExecFileConverterRunner(), registry: { docling: fixtureSpec(CONVERTERS.docling) },
     });
 
-    const filed = readFileSync(join(knowledgeDir, 'research', result.filePath), 'utf8');
+    const filed = readFiled(knowledgeDir, result.filePath!);
     expect(filed).toContain('converter: docling');
     expect(filed).toContain('# Converted: paper');
   });
 
-  it('routes --converter marker to the marker shape (its own output subfolder) and files provenance naming it', async () => {
+  it('routes --converter marker to the marker shape (its own output subfolder) and records it', async () => {
     const sourceFile = tempSourceFile('paper.pdf', 'real bytes');
     const knowledgeDir = tempKnowledgeDir();
-    const registry = { marker: fixtureSpec(CONVERTERS.marker) };
 
     const result = await convertDocument({
-      sourceFile,
-      knowledgeDir,
-      pack: 'research',
-      converter: 'marker',
-      runner: new ExecFileConverterRunner(),
-      registry,
+      sourceFile, knowledgeDir, pack: 'research', marketplace: MKT,
+      converter: 'marker', runner: new ExecFileConverterRunner(), registry: { marker: fixtureSpec(CONVERTERS.marker) },
     });
 
-    const filed = readFileSync(join(knowledgeDir, 'research', result.filePath), 'utf8');
+    const filed = readFiled(knowledgeDir, result.filePath!);
     expect(filed).toContain('converter: marker');
     expect(filed).toContain('# Converted: paper');
   });
@@ -198,22 +175,22 @@ describe('resolveConverterSpec — US2: unrecognised converter rejected pre-run 
     const runner = new StubConverterRunner({ stdout: 'should never be reached' });
 
     await expect(
-      convertDocument({ sourceFile, knowledgeDir, pack: 'research', converter: 'not-a-real-converter', runner }),
+      convertDocument({ sourceFile, knowledgeDir, pack: 'research', marketplace: MKT, converter: 'not-a-real-converter', runner }),
     ).rejects.toThrow(/unknown converter/i);
 
     expect(runner.calls).toHaveLength(0);
   });
 });
 
-describe('convertDocument — US3: content-hash pins the SOURCE, not the markdown (T-300)', () => {
-  it('the filed content-hash equals the SHA-256 of the original file bytes, through the full orchestrator', async () => {
+describe('convertDocument — US3: content-hash pins the SOURCE, preserved through the backbone (T-300/FR-004)', () => {
+  it('the filed content-hash equals the SHA-256 of the original file bytes, not the markdown', async () => {
     const sourceFile = tempSourceFile('paper.pdf', 'the real source bytes');
     const knowledgeDir = tempKnowledgeDir();
     const runner = new StubConverterRunner({ stdout: '# Totally different markdown text, not the source\n' });
 
-    const result = await convertDocument({ sourceFile, knowledgeDir, pack: 'research', runner });
+    const result = await convertDocument({ sourceFile, knowledgeDir, pack: 'research', marketplace: MKT, runner });
 
-    const filed = readFileSync(join(knowledgeDir, 'research', result.filePath), 'utf8');
+    const filed = readFiled(knowledgeDir, result.filePath!);
     const expectedHash = `sha256:${createHash('sha256').update('the real source bytes', 'utf8').digest('hex')}`;
     expect(filed).toContain(`content-hash: ${expectedHash}`);
   });
@@ -227,14 +204,14 @@ describe('convertDocument — US3: converter + origin recorded, TODO otherwise (
       argv.includes('--version') ? { stdout: 'markitdown 1.2.3\n' } : { stdout: '# Converted\n' },
     );
 
-    const result = await convertDocument({ sourceFile, knowledgeDir, pack: 'research', runner });
+    const result = await convertDocument({ sourceFile, knowledgeDir, pack: 'research', marketplace: MKT, runner });
 
-    const filed = readFileSync(join(knowledgeDir, 'research', result.filePath), 'utf8');
+    const filed = readFiled(knowledgeDir, result.filePath!);
     expect(filed).toContain('converter: markitdown 1.2.3');
     expect(filed).toContain('origin: paper.pdf');
   });
 
-  it('falls back to the bare converter name (no probe attempted, no fabricated version) when the spec has no versionArgs', async () => {
+  it('falls back to the bare converter name (no probe attempted) when the spec has no versionArgs', async () => {
     const sourceFile = tempSourceFile('paper.pdf', 'bytes');
     const knowledgeDir = tempKnowledgeDir();
     const noVersionSpec: ConverterSpec = {
@@ -242,22 +219,45 @@ describe('convertDocument — US3: converter + origin recorded, TODO otherwise (
       buildArgs: (file) => [file],
       collectOutput: (run) => run.stdout,
       installHint: 'n/a',
-      // deliberately no versionArgs
     };
     const runner = new StubConverterRunner({ stdout: '# Converted\n' });
 
     const result = await convertDocument({
-      sourceFile,
-      knowledgeDir,
-      pack: 'research',
-      converter: 'whatever-tool',
-      runner,
-      registry: { 'whatever-tool': noVersionSpec },
+      sourceFile, knowledgeDir, pack: 'research', marketplace: MKT,
+      converter: 'whatever-tool', runner, registry: { 'whatever-tool': noVersionSpec },
     });
 
-    const filed = readFileSync(join(knowledgeDir, 'research', result.filePath), 'utf8');
+    const filed = readFiled(knowledgeDir, result.filePath!);
     expect(filed).toContain('converter: whatever-tool\n');
-    // Only the one conversion call — no version probe was ever attempted.
     expect(runner.calls).toHaveLength(1);
+  });
+});
+
+describe('convertDocument — FR-007: title/description overrides + filename-stem fallback (T-1003)', () => {
+  it('--title / --description set the registry title and the SKILL slug-map description', async () => {
+    const sourceFile = tempSourceFile('dodbook.pdf', 'bytes');
+    const knowledgeDir = tempKnowledgeDir();
+    const runner = new StubConverterRunner({ stdout: '# noisy pdf heading\n\nnoisy first paragraph\n' });
+
+    const result = await convertDocument({
+      sourceFile, knowledgeDir, pack: 'research', marketplace: MKT, runner,
+      title: 'Data-Oriented Design', description: 'A hand-written summary of the book.',
+    });
+
+    const row = readRegistry(knowledgeDir).find((r) => r.id === result.id);
+    expect(row?.title).toBe('Data-Oriented Design');
+    const skill = readFileSync(join(knowledgeDir, 'research', 'SKILL.md'), 'utf8');
+    expect(skill).toContain('A hand-written summary of the book.');
+  });
+
+  it('falls back to the humanised filename stem for the title when there is no heading and no --title', async () => {
+    const sourceFile = tempSourceFile('dodbook.pdf', 'bytes');
+    const knowledgeDir = tempKnowledgeDir();
+    const runner = new StubConverterRunner({ stdout: 'no heading here, just prose\n' });
+
+    const result = await convertDocument({ sourceFile, knowledgeDir, pack: 'research', marketplace: MKT, runner });
+
+    const row = readRegistry(knowledgeDir).find((r) => r.id === result.id);
+    expect(row?.title).toBe('Dodbook');
   });
 });

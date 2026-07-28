@@ -22,6 +22,8 @@ export function registerConvert(program: Command): void {
     .option('--converter <name>', 'which converter to invoke: markitdown (default), docling, or marker')
     .option('--no-adapt', 'emit the converted markdown without filing it into any pack')
     .option('--out <path>', 'with --no-adapt, write the markdown here instead of stdout')
+    .option('--title <title>', 'set the registered document title (else derived from a heading or the filename)')
+    .option('--description <text>', 'set the registered document description (else derived from the first paragraph)')
     .option('--timeout <seconds>', 'override the default 120s child-process timeout')
     .addHelpText(
       'after',
@@ -33,7 +35,7 @@ export function registerConvert(program: Command): void {
         '  marker      pipx install marker-pdf\n' +
         '  (uv users: swap `pipx install` for `uv tool install`.)\n',
     )
-    .action(async (file: string, opts: { pack?: string; converter?: string; adapt: boolean; out?: string; timeout?: string }) => {
+    .action(async (file: string, opts: { pack?: string; converter?: string; adapt: boolean; out?: string; title?: string; description?: string; timeout?: string }) => {
       const sourceFile = resolve(process.cwd(), file);
       const timeoutMs = opts.timeout ? Number(opts.timeout) * 1000 : undefined;
       const runner = new ExecFileConverterRunner();
@@ -58,7 +60,7 @@ export function registerConvert(program: Command): void {
           process.exit(2);
         }
 
-        const { root } = resolveCorpusConfig(process.cwd());
+        const { root, marketplace } = resolveCorpusConfig(process.cwd());
         const knowledgeDir = resolve(process.cwd(), root);
 
         const result = await convertDocument({
@@ -66,7 +68,11 @@ export function registerConvert(program: Command): void {
           runner,
           knowledgeDir,
           pack: opts.pack,
+          marketplace,
+          corpusMarketplaceName: marketplace,
           ...(opts.converter !== undefined ? { converter: opts.converter } : {}),
+          ...(opts.title !== undefined ? { title: opts.title } : {}),
+          ...(opts.description !== undefined ? { description: opts.description } : {}),
           ...(timeoutMs !== undefined ? { timeoutMs } : {}),
         });
 

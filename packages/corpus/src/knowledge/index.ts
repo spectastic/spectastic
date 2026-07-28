@@ -49,8 +49,8 @@ export {
   renderSkillSlugMapTable,
 } from './index-format.js';
 export type { SkillSlugMapEntry } from './index-format.js';
-export { adaptCorpus, allocateIds, contentHashOf, deriveProvenance, fileConvertedDocument } from './adapt.js';
-export type { AdaptInput, AdaptResult, FileConvertedDocumentInput, FileConvertedDocumentResult } from './adapt.js';
+export { adaptCorpus, allocateIds, contentHashOf, deriveProvenance } from './adapt.js';
+export type { AdaptInput, AdaptResult } from './adapt.js';
 export {
   CONVERTERS,
   resolveConverterSpec,

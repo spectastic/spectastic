@@ -114,6 +114,7 @@ describe('convertDocument — Polish: the managed tmpDir is always cleaned up (T
       sourceFile,
       knowledgeDir,
       pack: 'research',
+      marketplace: 'test-marketplace',
       converter: 'marker',
       runner: new ExecFileConverterRunner(),
       registry: { marker: markerFixtureSpec((d) => (capturedTmpDir = d)) },
