@@ -3,6 +3,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Command } from 'commander';
 import { registerCurate } from './curate.js';
+import { registerConvert } from './convert.js';
 import { registerValidate } from './validate.js';
 import { registerRead } from './read.js';
 
@@ -31,6 +32,7 @@ program
   .version(pkg.version);
 
 registerCurate(program);
+registerConvert(program);
 registerValidate(program);
 registerRead(program);
 
