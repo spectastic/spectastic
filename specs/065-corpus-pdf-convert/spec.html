@@ -1,0 +1,301 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
+<title>corpus convert — PDF &amp; document conversion · Specification</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Specification · 065-corpus-pdf-convert</p>
+  <h1>corpus convert — document conversion into the corpus</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    A converter-agnostic <code>corpus convert</code> that shells out to a user-installed tool, turning a PDF (or any format the converter handles) into a provenance-stamped corpus document — no bundled runtime.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>      <span><spec-status value="accepted">Accepted</spec-status></span>
+    <b>Spec ID</b>     <span>065-corpus-pdf-convert</span>
+    <b>Owner</b>       <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Reviewers</b>   <span>—</span>
+    <b>Created</b>     <span><time datetime="2026-07-27">27 Jul 2026</time></span>
+    <b>Principles</b><span><a href="../../principles.html">v1.8.0</a></span>
+    <b>Smallest demoable</b><span><code>corpus convert paper.pdf --pack research</code> with MarkItDown installed files a cited document whose hash pins the source PDF.</span>
+    <b>Read time</b>   <span data-reading-time></span>
+  </spec-meta>
+
+  <!-- Live size gauge — green at <80%, amber 80-100%, red over. Words row counts authored prose (excludes the conformance index) per REQ-FORMAT-004. -->
+  <spec-budget words="1900" reqs="20" minutes="12"></spec-budget>
+
+  <spec-tldr>
+    <p>The kernel refused a PDF converter to stay Node-only; <code>@spectastic/corpus</code> is a standalone tool
+    and carries no such vow. This spec adds <code>corpus convert</code> — a subcommand that shells out to a
+    user-installed converter (MarkItDown default, Docling or Marker on request), feeds the markdown into the
+    existing adapt provenance path, and stamps which converter ran plus a hash of the source bytes. The tool owns
+    orchestration and provenance, never a converter binary or a Python/GPU runtime. For anyone curating a corpus
+    from PDFs — with or without the SDD lifecycle.</p>
+  </spec-tldr>
+
+  <dl class="invest">
+    <dt><span class="letter">I</span> Independent</dt> <dd>Builds only on <a href="../064-corpus-package-extraction/spec.html">064</a> (the extracted package + curation verbs) and <a href="../056-corpus-adapter/spec.html">056</a>'s provenance path. No shared-data coupling.</dd>
+    <dt><span class="letter">N</span> Negotiable</dt>  <dd>Contracts the outcome — a converted document with attributable provenance — not the converter. Which converters ship and how the shell-out is wired are the plan's.</dd>
+    <dt><span class="letter">V</span> Valuable</dt>    <dd>Unlocks <a href="#SC-001">SC-001</a> — a PDF becomes a citable corpus document in one command, closing the kernel's <code>TBD-never</code> for PDF import.</dd>
+    <dt><span class="letter">E</span> Estimable</dt>   <dd>The adapt path, the provenance fields, and the CLI-mirroring pattern all exist; the new surface is one verb + a shell-out adapter.</dd>
+    <dt><span class="letter">S</span> Small</dt>       <dd>Under 20 requirements; one new verb, one adapter module, no schema change.</dd>
+    <dt><span class="letter">T</span> Testable</dt>    <dd>Every requirement is observable via a stubbed converter binary; <a href="#SC-001">SC-001</a>–<a href="#SC-004">SC-004</a> are exit-code- and file-state-checkable.</dd>
+  </dl>
+
+  <spec-audience-map>
+    <dl>
+      <dt>Exec / PM</dt>   <dd>§<a href="#context">Context</a>, §<a href="#scenarios">User scenarios</a>, §<a href="#success">Success criteria</a>.</dd>
+      <dt>Reviewer</dt>    <dd>§<a href="#requirements">Requirements</a>, §<a href="#assumptions">Assumptions</a>, §<a href="#questions">Open questions</a>.</dd>
+      <dt>Implementer</dt> <dd>§<a href="#requirements">Requirements</a>, §<a href="#data">Data model</a>, §<a href="#conformance">Conformance index</a>.</dd>
+    </dl>
+  </spec-audience-map>
+</header>
+
+
+<section id="context">
+<h2>1 · Context</h2>
+<p>Curated corpora start as documents, and documents arrive as PDFs. The spectastic kernel descoped PDF
+conversion permanently (<code>TBD-never</code>, specs 051/056) for a single principled reason: the kernel stays
+Node-only, and every serious PDF-to-markdown converter is a Python or GPU tool. That ground disappears once the
+corpus is its own package — <a href="../064-corpus-package-extraction/spec.html">064</a> extracted
+<code>@spectastic/corpus</code> with a standalone <code>spectastic-corpus</code> binary, usable with no SDD
+lifecycle present. A standalone curation tool that cannot ingest a PDF is missing the front door.</p>
+<p>The 2026 landscape has three de-facto open-source converters and no universal winner — MarkItDown (fast,
+shallow, no GPU), Docling (structure-preserving), Marker (highest fidelity, GPU). That variance is the design
+cue: the tool must not marry one converter. The corpus-extraction survey
+(<a href="../../docs/corpus-extraction-considerations.html#pdf">§6, D-003</a>) landed the shape this spec
+builds — a <code>convert</code> subcommand that <em>shells out</em> to whichever converter the user installed and
+feeds the markdown into the provenance-stamping adapt path. It serves anyone building a corpus from source
+documents — a spectastic project or a standalone <code>spectastic-corpus</code> user with no <code>specs/</code> at all.</p>
+</section>
+
+
+<section id="scenarios">
+<h2>2 · User scenarios &amp; testing</h2>
+
+<p>Each story <strong>MUST</strong> be independently testable: if you implemented only US1, you would still have
+a viable MVP.</p>
+
+<h3 id="US1">US1 · Convert a PDF into a pack <spec-pill>P1</spec-pill></h3>
+<p>As a <strong>corpus curator</strong>, I want to <strong>run one command that turns a PDF into a filed,
+cited corpus document</strong> so that <strong>a document that arrived as a PDF is usable knowledge without
+hand-transcription</strong>.</p>
+<p><em>Acceptance:</em> with MarkItDown on <code>PATH</code>, <code>corpus convert paper.pdf --pack research</code>
+converts the PDF, files the markdown under <code>knowledge/research/references/</code> with allocated
+<code>KB-NNN</code> id and full frontmatter, and reports the written id — the same terminal state as an
+<code>adapt</code> of that markdown, reached in one step.</p>
+
+<h3 id="US2">US2 · Choose the converter <spec-pill>P2</spec-pill></h3>
+<p>As a <strong>curator with structure-heavy or scanned sources</strong>, I want to <strong>select Docling or
+Marker instead of the default</strong> so that <strong>I can trade speed for fidelity when the source
+demands it</strong>.</p>
+<p><em>Acceptance:</em> <code>--converter docling</code> and <code>--converter marker</code> invoke the named
+binary; the recorded provenance names the converter actually used. An unrecognised <code>--converter</code>
+value is rejected before any conversion runs.</p>
+
+<h3 id="US3">US3 · Attributable provenance <spec-pill>P1</spec-pill></h3>
+<p>As a <strong>reviewer citing a converted document</strong>, I want <strong>the provenance to record which
+converter ran and to pin the original source</strong> so that <strong>a bad or disputed conversion is
+attributable to its source and tool</strong>.</p>
+<p><em>Acceptance:</em> a converted document's frontmatter carries <code>converter</code> (tool + version),
+<code>origin</code> (the source filename), and a <code>content-hash</code> that is the SHA-256 of the
+<em>original source file's bytes</em> — so re-converting the same PDF is detectable, and a converter upgrade that
+changes the markdown never silently rewrites what the hash pinned.</p>
+
+<h3>Edge cases</h3>
+<ul>
+  <li>The chosen converter isn't installed → non-zero exit with a copy-paste install line; nothing written to the pack.</li>
+  <li>The converter runs but exits non-zero (corrupt/encrypted PDF) → its stderr is surfaced; no partial document is filed.</li>
+  <li>The source file has already been converted into the pack (same filename) → idempotent, per adapt's non-destructive rule; the existing document is left untouched.</li>
+  <li>A non-derivable provenance field (edition, license) stays the literal <code>TODO</code> — conversion never fabricates it.</li>
+</ul>
+</section>
+
+
+<section id="requirements">
+<h2>3 · Requirements</h2>
+
+<p>Conformance keywords (<spec-rule>MUST</spec-rule>, <spec-rule level="should">SHOULD</spec-rule>,
+<spec-rule level="may">MAY</spec-rule>) follow RFC 2119.</p>
+
+<h3>Functional</h3>
+
+<spec-requirement id="FR-001" priority="must">
+<p>The corpus tool <spec-rule>MUST</spec-rule> provide a <code>convert &lt;file&gt;</code> verb that converts a
+source document to markdown via an external converter and, given a target pack, files the result through the
+existing adapt provenance path — allocating a <code>KB-NNN</code> id, writing frontmatter, and updating the pack index.</p>
+<details><summary>Rationale</summary><p>Convert is orchestration in front of adapt — it reuses 056's provenance and index-merge machinery, not a second corpus writer.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-002" priority="must">
+<p>The verb <spec-rule>MUST</spec-rule> default to the MarkItDown converter and <spec-rule>MUST</spec-rule>
+accept a <code>--converter &lt;name&gt;</code> option selecting one of a documented set (MarkItDown, Docling,
+Marker); an unrecognised name <spec-rule>MUST</spec-rule> be rejected before any conversion runs.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-003" priority="must">
+<p>The tool <spec-rule>MUST NOT</spec-rule> bundle or install a converter. It <spec-rule>MUST</spec-rule> invoke
+a user-installed binary found on <code>PATH</code>; when the chosen converter is absent, it
+<spec-rule>MUST</spec-rule> exit non-zero with an actionable install hint and <spec-rule>MUST NOT</spec-rule>
+write any partial output to the pack.</p>
+<details><summary>Rationale</summary><p>Per D-003 — closes <code>TBD-never</code> without a Python/GPU runtime, keeps the Node-only spirit of distribution, and stays converter-agnostic so the tool tracks the field instead of betting on one binary.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-004" priority="must">
+<p>A filed converted document's provenance <spec-rule>MUST</spec-rule> record the <code>converter</code> used
+(tool and version) and set <code>content-hash</code> to the SHA-256 of the <em>original source file's bytes</em>,
+not the converted markdown; <code>origin</code> <spec-rule>MUST</spec-rule> record the source filename. Fields
+not derivable from the source <spec-rule>MUST</spec-rule> remain the literal <code>TODO</code> (056's
+never-fabricate rule).</p>
+</spec-requirement>
+
+<spec-requirement id="FR-005" priority="should">
+<p>The verb <spec-rule level="should">SHOULD</spec-rule> support a <code>--no-adapt</code> mode that emits the
+converted markdown (to a file or stdout) without filing it into a pack, for users who want to inspect or hand-place
+the output. In this mode no pack is required and none is modified.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-006" priority="should">
+<p>The verb <spec-rule level="should">SHOULD</spec-rule> accept any source format the chosen converter supports
+(e.g. PDF, DOCX, PPTX, XLSX, HTML, images for MarkItDown), delegating format capability to the converter and
+surfacing the converter's own error when a format is unsupported.</p>
+</spec-requirement>
+
+<h3>Non-functional</h3>
+
+<spec-requirement id="NFR-001" priority="must">
+<p>The shell-out <spec-rule>MUST</spec-rule> be injection-safe: converter and source arguments are passed as an
+argv array to a non-shell process spawn, never interpolated into a shell command string. Given identical converter
+output, the filed result <spec-rule>MUST</spec-rule> be deterministic.</p>
+</spec-requirement>
+
+<spec-requirement id="NFR-002" priority="should">
+<p>The feature <spec-rule level="should">SHOULD</spec-rule> add no Python, GPU, or non-Node runtime dependency to
+the tool's own distribution; the converter is a documented user prerequisite, surfaced in <code>--help</code> and
+the missing-binary hint.</p>
+</spec-requirement>
+
+<h3>Out of scope (deferred to other slices)</h3>
+<spec-out-of-scope>
+  <ul>
+    <li defer-to="TBD-corpus-convert-batch">Batch/directory conversion — converting a folder of PDFs in one invocation. The first slice is one file per call.</li>
+    <li defer-to="TBD-corpus-convert-quality">Conversion-quality scoring or OCR-confidence surfacing — the tool records which converter ran, not how well it did.</li>
+    <li defer-to="TBD-corpus-mcp-server">Serving converted documents over the MCP read path — unrelated retrieval surface.</li>
+  </ul>
+</spec-out-of-scope>
+</section>
+
+
+<section id="data">
+<h2>4 · Data model</h2>
+
+<p>This feature adds no new persisted entity — a converted document <em>is</em> a corpus document (051/056's
+frontmatter + index shape). It introduces two conceptual roles at conversion time.</p>
+
+<h3>Entities</h3>
+<dl>
+  <dt>Converted document</dt><dd>The derived markdown filed into a pack, plus its provenance: <code>origin</code> = source filename, <code>converter</code> = tool + version, <code>content-hash</code> = SHA-256 of the <em>source</em> bytes, <code>status</code> = <code>TODO</code> until spot-checked. Otherwise identical to any adapted document.</dd>
+  <dt>Converter adapter</dt><dd>A named external binary (MarkItDown / Docling / Marker) the tool invokes as an argv process and does not own. Identified by name, resolved on <code>PATH</code>, its version captured for provenance.</dd>
+</dl>
+
+<spec-note>
+<p>Invariant: <code>content-hash</code> pins the <em>input</em>, not the stored output. This is a deliberate
+departure from plain <code>adapt</code> (which hashes the markdown it stores) — for a converted document the
+markdown is derived and converter-version-dependent, so hashing the immutable source is the faithful provenance.</p>
+</spec-note>
+</section>
+
+
+<section id="success">
+<h2>5 · Success criteria</h2>
+
+<p>Technology-agnostic, measurable outcomes. These are how we know it worked.</p>
+
+<spec-requirement id="SC-001" priority="must">
+<p>With a converter installed, a single <code>corpus convert &lt;file&gt; --pack &lt;name&gt;</code> invocation
+leaves the pack containing a new cited document whose <code>content-hash</code> equals the SHA-256 of the source
+file and whose <code>converter</code> field names the tool used — verifiable by re-hashing the source and reading
+the frontmatter.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-002" priority="must">
+<p>Running <code>convert</code> with the chosen converter <em>not</em> installed exits non-zero, prints an install
+command for that converter, and leaves the pack byte-for-byte unchanged (no partial write).</p>
+</spec-requirement>
+
+<spec-requirement id="SC-003" priority="should">
+<p><code>--converter docling</code> and <code>--converter marker</code> route to their respective binaries and the
+filed provenance records which converter ran; an unrecognised converter name is rejected with a non-zero exit
+before any binary is invoked.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-004" priority="should">
+<p><code>--no-adapt</code> produces converted markdown output identical to what would have been filed, without
+creating or modifying any pack or index.</p>
+</spec-requirement>
+</section>
+
+
+<section id="assumptions">
+<h2>6 · Assumptions</h2>
+
+<spec-assumption>
+<p>Each documented converter (MarkItDown, Docling, Marker) exposes a command-line invocation that reads a source
+file and emits markdown to a file or stdout — confirmed for MarkItDown (<code>markitdown &lt;file&gt;</code>) and
+the plan will verify the Docling/Marker invocation shapes as a grounding step.</p>
+</spec-assumption>
+
+<spec-assumption>
+<p>A converter's version is capturable via its <code>--version</code> (or equivalent); where a converter offers
+none, the <code>converter</code> field records the name and the literal <code>TODO</code> for the version rather
+than fabricating one. The existing free-form <code>content-hash</code> field carries the source-bytes hash with no
+schema change (no consumer asserts it hashes the stored file specifically).</p>
+</spec-assumption>
+</section>
+
+
+<section id="questions">
+<h2>7 · Open questions</h2>
+<spec-questions>
+<p>None outstanding — the smallest-demoable boundary (full multi-converter slice with auto-adapt), format scope
+(any the converter handles), hash target (source bytes), converter selection (explicit <code>--converter</code>
+flag, MarkItDown default, hard-fail on absence), and the <code>--no-adapt</code> raw-emit mode were all anchored
+in the interview.</p>
+</spec-questions>
+</section>
+
+
+<section id="conformance">
+<h2>8 · Conformance index</h2>
+<p>Auto-built from every <code>&lt;spec-requirement&gt;</code> in this document.</p>
+<spec-conformance></spec-conformance>
+</section>
+
+
+<section id="changelog">
+<h2>9 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-07-27">27 Jul 2026</time><span>Initial draft. Slice 2 of the corpus-extraction survey (<code>TBD-corpus-pdf-convert</code>) — a converter-agnostic <code>corpus convert</code> shelling out to a user-installed converter and feeding the markdown into the provenance-stamping adapt path. Full multi-converter slice per the interview; source-bytes hashing; no bundled runtime.</span></li>
+  <li><time datetime="2026-07-27">27 Jul 2026</time><span>Status flipped Draft → Accepted — zero remaining unchecked tasks (27/27); tests verified passing per author confirmation. Sibling bundle (REQ-LIFECYCLE-005).</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  065-corpus-pdf-convert · corpus convert — document conversion · authored 27 Jul 2026
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>
