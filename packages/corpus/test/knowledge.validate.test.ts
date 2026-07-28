@@ -62,6 +62,22 @@ describe('corpusWellFormedFindings', () => {
     expect(corpusWellFormedFindings([])).toEqual([]);
   });
 
+  // 057-portable-domain-skill: "a pack MUST function as a plain Agent Skill
+  // (SKILL.md + references/)". Enforcement had been missing — a pack of
+  // references with no SKILL.md validated clean (065 triage T-003: convert
+  // shipped exactly such a pack).
+  it('flags a pack that has reference documents but no SKILL.md', () => {
+    const findings = corpusWellFormedFindings([pack({ hasSkillFile: false })]);
+    expect(
+      findings.some((f) => f.rule === 'corpus-well-formed' && /SKILL\.md/.test(f.message)),
+    ).toBe(true);
+  });
+
+  it('does NOT flag a missing SKILL.md on a pack with no documents (not yet a real pack)', () => {
+    const findings = corpusWellFormedFindings([pack({ hasSkillFile: false, documents: [], index: [] })]);
+    expect(findings.some((f) => /SKILL\.md/.test(f.message))).toBe(false);
+  });
+
   it('flags a document missing a required field', () => {
     const bad = doc({
       missingFields: ['license'],

@@ -83,6 +83,19 @@ function renderDocument(id: string, provenance: Required<Provenance>, body: stri
   return `---\n${yamlBlock}\n---\n\n${body}\n`;
 }
 
+/** Create a minimal `SKILL.md` for a pack when it lacks one — a pack MUST function as
+ * a plain Agent Skill (057-portable-domain-skill; enforced by the corpus-well-formed
+ * SKILL-presence gate, 065 triage T-003). Minimal by design: `name` + `description`
+ * frontmatter and a heading. adapt's documents are single-layer (they carry `id:`, no
+ * slug), so no slug-map table is emitted here — the deeper two-layer migration of adapt
+ * is a separate concern. Never overwrites an existing SKILL.md. */
+function ensureSkillFile(packDir: string, packName: string): void {
+  const skillPath = join(packDir, 'SKILL.md');
+  if (existsSync(skillPath)) return;
+  const frontmatter = stringifyYaml({ name: packName, description: `Domain knowledge for ${packName}.` }).trimEnd();
+  writeFileSync(skillPath, `---\n${frontmatter}\n---\n\n# ${packName}\n`, 'utf8');
+}
+
 /** A best-effort title + description from a raw markdown body — the first
  * `# ` heading is the title (falling back to the filename stem), and the
  * first non-empty paragraph after it is the description (empty if none).
@@ -214,6 +227,7 @@ function adaptFolder(input: AdaptInput): AdaptResult {
 
   const mergedRows = mergeIndexRows(existingIndex, freshRows);
   writeFileSync(indexPath, renderIndexTable(mergedRows), 'utf8');
+  ensureSkillFile(packDir, input.pack);
 
   return { pack: input.pack, written, skipped, indexRows: mergedRows.length };
 }
@@ -297,6 +311,7 @@ function adaptLlmsTxt(input: AdaptInput): AdaptResult {
 
   const mergedRows = mergeIndexRows(existingIndex, freshRows);
   writeFileSync(indexPath, renderIndexTable(mergedRows), 'utf8');
+  ensureSkillFile(packDir, input.pack);
 
   return { pack: input.pack, written, skipped, indexRows: mergedRows.length };
 }
