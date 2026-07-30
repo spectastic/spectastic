@@ -257,6 +257,21 @@ async function scanCorpusRegistry(cwd: string): Promise<Finding[]> {
 }
 
 /**
+ * The project-identity gate (067-spec-project-identity FR-007): a malformed
+ * `project` errors, a bare unqualified default (collision-prone) warns, and
+ * an absent or well-formed owner-qualified value is silent. A general
+ * spectastic.json health check — not corpus-intrinsic (it has no dependency
+ * on a `knowledge/` corpus existing), so unlike `scanCorpusRegistry` above it
+ * is deliberately NOT mirrored onto the standalone `spectastic-corpus`
+ * binary's own corpus-only validate (`packages/corpus/src/cli/validate.ts`,
+ * whose docstring scopes it to "properties of the corpus alone").
+ */
+async function scanProjectIdentity(cwd: string): Promise<Finding[]> {
+  const { projectIdentityFindings } = await import('@spectastic/corpus');
+  return projectIdentityFindings(cwd);
+}
+
+/**
  * The corpus grounding gates (053-corpus-grounding-gates, plan D-001/D-002):
  * a <spec-decision> citation resolving to no committed document is an error
  * (corpus-provenance); one resolving to a retained superseded edition is a
@@ -397,6 +412,10 @@ export function registerValidate(program: Command): void {
       // with no real discovery description warns. No-op with no
       // marketplace.json anywhere in the project.
       const packAgnosticismScanFindings = await scanPackAgnosticism();
+      // The project-identity gate (spec 067): a malformed project id errors;
+      // a bare unqualified default (no owner segment) warns; absent or
+      // well-formed is silent. No-op-safe — reads spectastic.json only.
+      const projectIdentityScanFindings = await scanProjectIdentity(process.cwd());
       const findings = [
         ...result.findings,
         ...quarantineFindings,
@@ -411,6 +430,7 @@ export function registerValidate(program: Command): void {
         ...corpusGroundingScanFindings,
         ...corpusLicenseScanFindings,
         ...packAgnosticismScanFindings,
+        ...projectIdentityScanFindings,
       ];
       const exitCode = findings.some((f) => f.severity === 'error') ? 1 : result.exitCode;
 

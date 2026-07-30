@@ -100,8 +100,11 @@ export {
   defaultMarketplaceName,
   DEFAULT_CORPUS_ROOT,
   CorpusConfigError,
+  loadProjectConfig,
+  resolveProjectConfig,
+  projectIdentityFindings,
 } from './config.js';
-export type { CorpusFileConfig, ResolvedCorpusConfig } from './config.js';
+export type { CorpusFileConfig, ResolvedCorpusConfig, ProjectFileConfig, ResolvedProjectConfig } from './config.js';
 
 export { createPackFetcher } from './pack-fetcher-factory.js';
 export type { CreatePackFetcherOptions } from './pack-fetcher-factory.js';

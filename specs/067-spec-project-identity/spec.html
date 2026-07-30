@@ -1,0 +1,338 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
+<title>Spec project identity · Specification</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Specification · 067-spec-project-identity</p>
+  <h1>Spec project identity</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    Give a project a stable identity so a repo-local spec id becomes a federation-unique coordinate — the prefix specs lack that the corpus already has.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>      <span><spec-status value="accepted">Accepted</spec-status></span>
+    <b>Spec ID</b>     <span>067-spec-project-identity</span>
+    <b>Owner</b>       <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Reviewers</b>   <span>—</span>
+    <b>Created</b>     <span><time datetime="2026-07-29">29 Jul 2026</time></span>
+    <b>Principles</b><span><a href="../../principles.html">v1.8.0</a></span>
+    <b>Smallest demoable</b><span>A <code>project</code> identity in <code>spectastic.json</code> + <code>spectastic id &lt;spec&gt;</code> printing that spec's federation-unique <code>spectastic://</code> resource URI.</span>
+    <b>Read time</b>   <span data-reading-time></span>
+  </spec-meta>
+
+  <!-- Live size gauge — green at <80%, amber 80-100%, red over. Words row counts authored prose (excludes the conformance index) per REQ-FORMAT-004. -->
+  <spec-budget words="1650" reqs="18" minutes="12"></spec-budget>
+
+  <spec-tldr>
+    <p>Spec ids are purely repo-local — every spectastic project starts at <code>000</code> and reuses the same
+    <code>042</code>&nbsp;/&nbsp;<code>REQ-*</code>&nbsp;/&nbsp;<code>T-*</code> grammar, so across a multi-repo estate
+    they collide with nothing to tell them apart. The corpus already solved this with a DOI-shaped prefix
+    (<code>corpus.marketplace</code>); specs have <em>no</em> prefix at all. This spec gives a project a stable
+    <strong>identity</strong> in <code>spectastic.json</code>, owner-qualified by default (derived once from the git
+    remote), and resolves any spec to a canonical, federation-unique <code>spectastic://&lt;project&gt;/spec/&lt;id&gt;</code>
+    resource URI via a new deterministic <code>spectastic id</code> command. The identity is <strong>unified</strong> —
+    one coordinate qualifies both specs and the corpus. It is <strong>additive and non-breaking</strong>: repo-local ids
+    are unchanged, and a project that sets nothing still works exactly as today. For anyone federating more than one
+    spectastic repo behind a single index or orchestrator.</p>
+  </spec-tldr>
+
+  <dl class="invest">
+    <dt><span class="letter">I</span> Independent</dt> <dd>Builds on the config-resolver pattern (<a href="../063-corpus-discoverability/spec.html">063</a>'s <code>resolveCorpusConfig</code>) and existing git detection. No shared-data coupling; depends on nothing unbuilt.</dd>
+    <dt><span class="letter">N</span> Negotiable</dt>  <dd>Contracts the outcome — a project identity, a federation-unique spec resource URI, and unified derivation. The exact URI grammar's owner/repo encoding and the command's spelling are the plan's.</dd>
+    <dt><span class="letter">V</span> Valuable</dt>    <dd>Unlocks <a href="#SC-001">SC-001</a> — the same spec id in two repos resolves to two distinct coordinates, so a federated index can address either without ambiguity.</dd>
+    <dt><span class="letter">E</span> Estimable</dt>   <dd><code>resolveCorpusConfig</code> is the template for the config layer; the git-remote read is a bounded shell-out; the URI render is pure. Plan + tasks derivable with no further interview.</dd>
+    <dt><span class="letter">S</span> Small</dt>       <dd>Under 20 requirements: one config field, one resolver, one CLI utility, one validate rule, one corpus-derivation tweak. The MCP serving surface and the orchestrator are deferred.</dd>
+    <dt><span class="letter">T</span> Testable</dt>    <dd>Every requirement observable — <a href="#SC-001">SC-001</a>–<a href="#SC-005">SC-005</a> are all fixture-checkable against a config + a git remote stub.</dd>
+  </dl>
+
+  <spec-audience-map>
+    <dl>
+      <dt>Exec / PM</dt>   <dd>§<a href="#context">Context</a>, §<a href="#scenarios">User scenarios</a>, §<a href="#success">Success criteria</a>.</dd>
+      <dt>Reviewer</dt>    <dd>§<a href="#requirements">Requirements</a>, §<a href="#assumptions">Assumptions</a>, §<a href="#questions">Open questions</a>.</dd>
+      <dt>Implementer</dt> <dd>§<a href="#requirements">Requirements</a>, §<a href="#data">Data model</a>, §<a href="#conformance">Conformance index</a>.</dd>
+    </dl>
+  </spec-audience-map>
+</header>
+
+
+<section id="context">
+<h2>1 · Context</h2>
+<p>The corpus-extraction survey (<a href="../../docs/corpus-extraction-considerations.html">docs/corpus-extraction-considerations.html</a>,
+§5) surfaced a collision that only appears once a server or index fronts more than one repo: <strong>identity collides on two
+axes at once.</strong> Every spectastic repo has a spec <code>042</code>, a <code>REQ-FORMAT-004</code>, a <code>T-017</code>; across
+repos they are not the same thing and there is nothing to distinguish them. Spec ids are purely <em>repo-local</em> — there is no
+namespace layer at all, and <code>spectastic.json</code> carries no project identity.</p>
+<p>The corpus does not have this problem. It adopted the identifier world's canonical answer — a <strong>DOI</strong>: a namespace
+<em>prefix</em> plus a local <em>suffix</em>. Spectastic's corpus prefix is the <code>marketplace</code>; the durable cross-repo key
+is <code>marketplace · plugin · slug @ edition</code>, and <code>KB-NNNN</code> is only the repo-local suffix. So the corpus can be
+federated today with care. <strong>Specs cannot — because they carry no prefix at all.</strong> That missing prefix is this spec's
+entire subject: apply the same DOI move to the spec side.</p>
+<p><strong>Who it's for:</strong> anyone federating more than one spectastic repo — a multi-service estate served behind one query
+index or MCP surface, and (downstream, gated on this) an orchestrator that routes a new requirement to the service whose specs and
+corpus it most resembles. That federation surface is deferred; this spec builds the <em>identity substrate</em> it must stand on.</p>
+</section>
+
+
+<section id="scenarios">
+<h2>2 · User scenarios &amp; testing</h2>
+
+<p>Each story <strong>MUST</strong> be independently testable: if you implemented only US1 you would still have a viable MVP —
+a project that carries a stable, owner-qualified identity, even before anything resolves a coordinate from it.</p>
+
+<h3 id="US1">US1 · A project declares its identity <spec-pill>P1</spec-pill></h3>
+<p>As a <strong>maintainer of a spectastic repo</strong>, I want <strong>my project to carry a stable, owner-qualified
+identity</strong> so that <strong>its specs are distinguishable from an identically-numbered spec in any other repo</strong>.</p>
+<p><em>Acceptance:</em> <code>spectastic init</code> writes a top-level <code>project</code> field to <code>spectastic.json</code>,
+derived <strong>once</strong> from the git remote as an owner-qualified id (<code>&lt;owner&gt;/&lt;repo&gt;</code>); with no remote it
+falls back to the bare directory name. A single-source-of-truth resolver returns exactly that persisted value and never re-derives
+it live. An existing <code>project</code> value is never overwritten.</p>
+
+<h3 id="US2">US2 · A spec resolves to a federation-unique coordinate <spec-pill>P1</spec-pill></h3>
+<p>As a <strong>consumer federating several repos</strong>, I want <strong>each spec to resolve to a globally-unambiguous resource
+URI</strong> so that <strong>I can address <code>042</code> in one repo without it colliding with <code>042</code> in another</strong>.</p>
+<p><em>Acceptance:</em> <code>spectastic id 042</code> prints the canonical
+<code>spectastic://&lt;project&gt;/spec/042</code> resource URI; an optional requirement/task anchor appends as
+<code>spectastic://&lt;project&gt;/spec/042#REQ-FORMAT-004</code>. The command errors on a spec id that does not exist under
+<code>specs/</code>. Re-running yields byte-identical output. The repo-local id (<code>042</code>) is unchanged everywhere it is
+used today — the coordinate is additive.</p>
+
+<h3 id="US3">US3 · The identity is validated <spec-pill>P2</spec-pill></h3>
+<p>As a <strong>maintainer preparing to federate</strong>, I want <strong><code>validate</code> to catch a broken or
+collision-prone identity</strong> so that <strong>a typo'd or bare-default project id doesn't silently mint a wrong or ambiguous
+coordinate</strong>.</p>
+<p><em>Acceptance:</em> a malformed <code>project</code> (illegal characters / wrong shape) is a validate <strong>error</strong>;
+a bare, unqualified default (no owner segment — the no-remote fallback) is a <strong>warning</strong> naming the fix; an absent
+<code>project</code> is neither (single-repo back-compat). A well-formed owner-qualified identity yields no finding.</p>
+
+<h3>Edge cases</h3>
+<ul>
+  <li>A repo with <em>no</em> git remote at <code>init</code> time (the common fresh-repo case) — <code>init</code> leaves <code>project</code> absent (provisional); coordinates degrade to the bare directory name and <code>validate</code> warns it is collision-prone (never blocks). Adding the remote and re-running <code>init</code> firms up the owner-qualified identity.</li>
+  <li>A repo whose remote is renamed or forked <em>after</em> the identity is firmed up — the persisted <code>project</code> is unchanged, so a spec's coordinate never silently shifts (the reason derivation is write-time, not read-time).</li>
+  <li>A project that publishes a corpus pack under a marketplace name that genuinely differs from its project identity — an explicit <code>corpus.marketplace</code> still wins over the unified default.</li>
+  <li>A repo that sets nothing (<code>project</code> absent) — every verb behaves exactly as today; a coordinate degrades to the bare id with the collision warning, never a crash.</li>
+  <li>An anchor that names a requirement/task not present in the spec — the coordinate is still emitted (mechanical append); anchor-existence checking is out of scope.</li>
+</ul>
+</section>
+
+
+<section id="requirements">
+<h2>3 · Requirements</h2>
+
+<p>Conformance keywords (<spec-rule>MUST</spec-rule>, <spec-rule level="should">SHOULD</spec-rule>,
+<spec-rule level="may">MAY</spec-rule>) follow RFC 2119.</p>
+
+<h3>Functional</h3>
+
+<spec-requirement id="FR-001" priority="must">
+<p><code>spectastic.json</code> <spec-rule>MUST</spec-rule> support a top-level <code>project</code> identity field, and a single
+single-source-of-truth resolver <spec-rule>MUST</spec-rule> be the only path any consumer reads it through — so no two callers can
+derive a different value.</p>
+<details><summary>Rationale</summary><p>The DOI prefix specs lack. Mirrors <a href="../063-corpus-discoverability/spec.html">063</a>'s <code>resolveCorpusConfig</code> single-authority pattern exactly, so config identity is never re-derived independently.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-002" priority="must">
+<p><code>spectastic init</code> <spec-rule>MUST</spec-rule> persist an owner-qualified identity
+(<code>&lt;owner&gt;/&lt;repo&gt;</code>) to <code>spectastic.json</code> <strong>only when the git remote resolves one</strong>; when no
+remote is available it <spec-rule>MUST</spec-rule> leave <code>project</code> <strong>absent</strong> (provisional) rather than
+persist a bare directory name. Re-running <code>init</code> after a remote becomes available <spec-rule>MUST</spec-rule> firm up the
+identity — deriving and persisting it — and <spec-rule>MUST NOT</spec-rule> overwrite a <code>project</code> value already set (by a
+person or a prior firm-up).</p>
+<details><summary>Rationale</summary><p>The common fresh-repo flow is <code>git init</code> → <code>spectastic init</code> → remote added later, so a remote is usually <em>absent</em> at init time. Persisting a bare dir name then would lock in a federation-fragile value and fire the collision warning on nearly every new repo; leaving it absent keeps the door open to firm up an owner-qualified identity once the remote exists — without ever clobbering a deliberate value. Create-or-merge, never-overwrite mirrors <code>writeCorpusConfig</code>.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-003" priority="must">
+<p>The resolver <spec-rule>MUST</spec-rule> read the persisted <code>project</code> value and <spec-rule>MUST NOT</spec-rule>
+re-derive it from the git remote (or any other live environment source) at read time. When <code>project</code> is absent (the
+provisional state), it <spec-rule>MUST</spec-rule> fall back deterministically to the bare directory name.</p>
+<details><summary>Rationale</summary><p>A federation key must be stable. Live re-derivation would let a fork, a remote rename, or a missing remote silently shift a spec's coordinate — the determinism hazard NFR-001 forbids. Derivation is confined to <code>init</code>'s write path (FR-002); read is pure.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-004" priority="must">
+<p>A spec <spec-rule>MUST</spec-rule> resolve to a canonical, federation-unique resource URI of the form
+<code>spectastic://&lt;project&gt;/spec/&lt;spec-id&gt;</code>, qualified by the project identity and the repo-local spec id, with an
+optional <code>#&lt;anchor&gt;</code> fragment for a requirement or task. The repo-local spec id <spec-rule>MUST</spec-rule> remain
+unchanged everywhere it is used today (additive, non-breaking).</p>
+<details><summary>Rationale</summary><p>The <code>spectastic://</code> scheme is defined here; the MCP server that <em>serves</em> these URIs as resources — and cross-repo aggregation — is the deferred transport concern. The precise owner/repo → authority/path encoding is the plan's (D-002 open detail).</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-005" priority="must">
+<p>A deterministic <code>spectastic id &lt;spec&gt;</code> command <spec-rule>MUST</spec-rule> print the qualified resource URI for a
+given spec, <spec-rule>MUST</spec-rule> accept an optional anchor and append it mechanically, and <spec-rule>MUST</spec-rule> error
+on a spec id absent from <code>specs/</code>. It is a read-only utility, not a lifecycle verb — the eight AI lifecycle commands are
+unchanged.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-006" priority="must">
+<p>The identity <spec-rule>MUST</spec-rule> be <strong>unified</strong>: when <code>corpus.marketplace</code> is unset it
+<spec-rule>MUST</spec-rule> derive from <code>project</code>, so a single coordinate qualifies both specs and the corpus. An explicit
+<code>corpus.marketplace</code> (or the deprecated <code>corpus.namespace</code> alias) <spec-rule>MUST</spec-rule> still take
+precedence, preserving the publish-identity-differs-from-project escape hatch.</p>
+<details><summary>Rationale</summary><p>Survey D-002's "leaning unified": one thing for an orchestrator to route to, and the owner-qualified prefix becomes the single load-bearing primitive. The escape hatch keeps <a href="../062-corpus-identity-migration/spec.html">062</a>/<a href="../063-corpus-discoverability/spec.html">063</a>'s "published pack ≠ this repo" fidelity intact. Resolution precedence: explicit <code>corpus.marketplace</code> → <code>corpus.namespace</code> → <code>project</code> → bare dir name.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-007" priority="should">
+<p><code>spectastic validate</code> <spec-rule level="should">SHOULD</spec-rule> emit a validate <strong>error</strong> for a
+malformed <code>project</code> (illegal characters or wrong shape) and a <strong>warning</strong> for a bare, unqualified default
+(no owner segment) that is collision-prone; an absent <code>project</code> <spec-rule level="should">SHOULD</spec-rule> yield no
+finding.</p>
+<details><summary>Rationale</summary><p>Malformed-errors mirrors the corpus id-shape rules; the collision warning mirrors 061's identity-fragmentation posture. The true cross-repo collision check needs the whole estate and is deferred to the federation surface.</p></details>
+</spec-requirement>
+
+<h3>Non-functional</h3>
+
+<spec-requirement id="NFR-001" priority="must">
+<p>Coordinate resolution <spec-rule>MUST</spec-rule> be deterministic: given a fixed <code>spectastic.json</code>, the resolver and
+<code>spectastic id</code> <spec-rule>MUST</spec-rule> return byte-identical output across runs, with no dependency on the live git
+remote, the clock, or environment state at read time. Git-remote derivation happens only at <code>init</code>/write time.</p>
+</spec-requirement>
+
+<spec-requirement id="NFR-002" priority="must">
+<p>The change <spec-rule>MUST</spec-rule> be non-breaking: no existing <code>spec.html</code>/<code>plan.html</code>/<code>tasks.html</code>
+artifact and no repo-local id changes, and a project with no <code>project</code> field <spec-rule>MUST</spec-rule> behave exactly
+as it does today (graceful absence — every verb unchanged, no crash).</p>
+</spec-requirement>
+
+<spec-requirement id="NFR-003" priority="should">
+<p>The command's <code>--help</code> and any diagnostic copy <spec-rule level="should">SHOULD</spec-rule> carry no internal artifact
+id (P-10) — say what the command does, not which spec added it.</p>
+</spec-requirement>
+
+<h3>Out of scope (deferred to other slices)</h3>
+<spec-out-of-scope>
+  <ul>
+    <li defer-to="TBD-mcp-federation-namespace">The MCP server that serves these <code>spectastic://</code> URIs as resources, and cross-repo aggregation / multiplexing. This spec defines the URI <em>scheme</em>; that spec owns the <em>transport</em>.</li>
+    <li defer-to="TBD-spec-mcp-serving">Exposing the <code>specs/</code> estate over MCP (the specs half of the read-path). Consumes this spec's coordinate; does not define it.</li>
+    <li defer-to="TBD-orchestrator-spec-placement">The requirement→owning-service router (semantic CODEOWNERS). The forward-look this identity substrate exists for; gated behind the whole federation surface, human-confirmed.</li>
+    <li defer-to="TBD-corpus-owner-config">Explicit owner/org config fields and org-level identity policy beyond the git-remote-derived default. This spec provides the owner-qualified <em>default</em>; the fuller owner/org surface remains its own concern.</li>
+    <li defer-to="TBD-mcp-federation-namespace">Rendering <em>corpus</em> resources as <code>spectastic://</code> URIs. This spec unifies the identity at the config layer (FR-006); the corpus resource-URI form ships with the serving surface.</li>
+    <li defer-to="TBD-spec-mcp-serving">Anchor-existence checking (that <code>#REQ-*</code> names a real requirement). The coordinate appends the anchor mechanically; validating it belongs with the query/read path.</li>
+  </ul>
+</spec-out-of-scope>
+</section>
+
+
+<section id="data">
+<h2>4 · Data model</h2>
+
+<p>No new persisted store — one new config field and one derived value. The change is a <em>coordinate</em> and its
+<em>derivation</em>, not a new entity.</p>
+
+<h3>Entities</h3>
+<dl>
+  <dt>Project identity</dt><dd>The top-level <code>project</code> string in <code>spectastic.json</code> — an owner-qualified id (<code>&lt;owner&gt;/&lt;repo&gt;</code> by default), persisted once at <code>init</code>. The DOI-style prefix that qualifies every spec (and, unified, the corpus) in this repo.</dd>
+  <dt>Spec resource URI</dt><dd>The federation-unique coordinate a spec resolves to: <code>spectastic://&lt;project&gt;/spec/&lt;spec-id&gt;</code>, with an optional <code>#&lt;anchor&gt;</code>. Composed from the persisted project identity and the unchanged repo-local spec id — never stored in the artifact, always derived.</dd>
+</dl>
+
+<spec-note>
+<p>Invariant: the coordinate is <em>identity-prefixed, id-preserving</em> — the repo-local spec id is stable and untouched; the project
+identity is the only thing that makes it globally unambiguous, and it is resolved deterministically from persisted config, never from
+live environment state.</p>
+</spec-note>
+</section>
+
+
+<section id="success">
+<h2>5 · Success criteria</h2>
+
+<p>Technology-agnostic, measurable outcomes.</p>
+
+<spec-requirement id="SC-001" priority="must">
+<p>Two repos with distinct owner-qualified project identities each carrying a spec <code>042</code> resolve to two <strong>distinct</strong>
+<code>spectastic://</code> resource URIs — no collision — verifiable by resolving both against their fixture configs.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-002" priority="must">
+<p><code>spectastic id 042</code> in a configured repo prints a stable, federation-unique resource URI; re-running yields
+byte-identical output and consults no live git remote or clock (determinism, NFR-001).</p>
+</spec-requirement>
+
+<spec-requirement id="SC-003" priority="must">
+<p>A repo with no <code>project</code> set authors, validates, and implements specs exactly as before (no behavioural change); a
+resolved coordinate degrades to the bare directory name and <code>validate</code> warns it is collision-prone — never an error, never
+a crash.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-004" priority="must">
+<p>With <code>project</code> set and <code>corpus.marketplace</code> unset, a corpus citation coordinate and a spec resource URI share
+the same project authority (unified); setting an explicit <code>corpus.marketplace</code> overrides it for the corpus while the spec
+coordinate keeps the <code>project</code> identity.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-005" priority="should">
+<p>Validating a project whose <code>project</code> is malformed yields a validate error; one whose <code>project</code> is a bare
+unqualified default yields a warning; a well-formed owner-qualified identity yields neither — all observable against fixture
+configs.</p>
+</spec-requirement>
+</section>
+
+
+<section id="assumptions">
+<h2>6 · Assumptions</h2>
+
+<spec-assumption>
+<p>The git remote is readable at <code>init</code> time for the common case; when it is not, the bare-directory-name fallback plus the
+collision warning is an acceptable degraded default (the owner can set <code>project</code> by hand). Derivation is a bounded
+shell-out, never a network call.</p>
+</spec-assumption>
+
+<spec-assumption>
+<p><code>resolveCorpusConfig</code> (063) is the pattern the project-identity resolver clones, and the corpus config's marketplace
+precedence can absorb <code>project</code> as a new fallback tier without disturbing the existing <code>marketplace</code> →
+<code>namespace</code> chain.</p>
+</spec-assumption>
+
+<spec-assumption>
+<p>The exact encoding of an owner-qualified <code>&lt;owner&gt;/&lt;repo&gt;</code> identity into the <code>spectastic://</code> URI's
+authority-versus-path components is a plan-level decision; the spec fixes only that the coordinate is canonical, federation-unique,
+and project-qualified.</p>
+</spec-assumption>
+</section>
+
+
+<section id="questions">
+<h2>7 · Open questions</h2>
+<spec-questions>
+<p>None outstanding — the smallest demoable (field + resolver + <code>spectastic id</code> CLI), the unified-vs-parallel fork
+(unified, marketplace derives from <code>project</code>), the owner-qualified git-remote default, the persist-at-init determinism
+model, the additive non-breaking migration, the full-<code>spectastic://</code>-URI scope, and the validation severities were all
+anchored in the interview. The corpus resource-URI form and the MCP serving surface are deferred, not undecided.</p>
+</spec-questions>
+</section>
+
+
+<section id="conformance">
+<h2>8 · Conformance index</h2>
+<p>Auto-built from every <code>&lt;spec-requirement&gt;</code> in this document.</p>
+<spec-conformance></spec-conformance>
+</section>
+
+
+<section id="changelog">
+<h2>9 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-07-29">29 Jul 2026</time><span>Initial draft. <code>TBD-spec-project-identity</code> (planted by the corpus-extraction survey §5 / D-002) — a stable owner-qualified <code>project</code> identity in <code>spectastic.json</code>, a canonical <code>spectastic://&lt;project&gt;/spec/&lt;id&gt;</code> resource URI, and a deterministic <code>spectastic id</code> resolver. Unified namespace (marketplace derives from <code>project</code>); additive and non-breaking. Narrows <code>TBD-mcp-federation-namespace</code> to the serving/transport half and largely satisfies <code>TBD-corpus-owner-config</code>'s owner-qualified motivation.</span></li>
+  <li><time datetime="2026-07-29">29 Jul 2026</time><span>Amended FR-002 / FR-003 / edge cases during planning: the owner-qualified identity is persisted <em>only when a git remote resolves one</em> — absent at <code>init</code> is the provisional state (the common fresh-repo case, remote added later), firmed up by a re-run once the remote exists, never overwriting a set value. Corrects the original "derive once at init, else bare-dir default" which would have fired the collision warning on nearly every new repo.</span></li>
+  <li><time datetime="2026-07-29">29 Jul 2026</time><span>All 30 tasks implemented and verified. A real bug was caught by end-to-end testing beyond what any unit test surfaced: <code>writeCorpusConfig</code> wrote an explicit <code>corpus.marketplace = basename(cwd)</code> unconditionally, which — since an explicit marketplace always wins in <code>resolveCorpusConfig</code>'s precedence — permanently shadowed a same-run <code>project</code> identity, defeating FR-006's unification for every freshly-initialized project. Fixed: the writer now defaults marketplace to the resolved project identity. Also caught: an unconditional git shell-out on every <code>init</code> regressed the pre-existing &lt;500 ms perf budget (spec 003 NFR-001) — fixed with a cheap <code>.git</code>-exists pre-check; and an illustrative <code>FR-001</code> example in <code>--anchor</code>'s help text tripped the repo's own copy-leak gate (P-10), fixed by describing the anchor generically. 316/316 relevant tests green (schema/corpus/core/cli) + all four touched packages typecheck clean; a real end-to-end sweep (init with/without a remote, <code>spectastic id</code>, <code>validate</code> at all three severities) confirmed against real temp repos. Status flipped Draft → Accepted — zero remaining unchecked tasks; tests verified passing per author confirmation. Sibling bundle (REQ-LIFECYCLE-005).</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  067-spec-project-identity · Spec project identity · authored 29 Jul 2026
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>

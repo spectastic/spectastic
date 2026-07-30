@@ -44,6 +44,30 @@ export interface Committer {
   email: string;
 }
 
+/** An owner/repo pair confidently parsed from a git remote URL (spec
+ * 067-spec-project-identity, plan §8 R1). */
+export interface OwnerRepo {
+  owner: string;
+  repo: string;
+}
+
+/** Match a remote URL against EXACTLY `host/owner/repo` (https/http/ssh://) or
+ * `user@host:owner/repo` (scp-like) — two path segments, no more, no fewer.
+ * A shape with an extra segment (a GitLab subgroup, Azure DevOps's `/_git/`)
+ * or fewer is deliberately NOT matched: "confidently resolves" means the
+ * narrow shape or nothing (plan D-002 — never persist a guessed value). */
+const URL_OWNER_REPO_RE = /^(?:https?|ssh):\/\/(?:[^@/]+@)?[^/]+\/([^/]+)\/([^/]+)$/;
+const SCP_OWNER_REPO_RE = /^[^@\s]+@[^:]+:([^/]+)\/([^/]+)$/;
+
+/** Parse a git remote URL into an owner/repo pair, or `null` when the shape
+ * isn't confidently one of the two supported forms. Pure — no fs, no git. */
+export function parseRemoteOwnerRepo(url: string): OwnerRepo | null {
+  const stripped = url.trim().replace(/\.git\/?$/, '').replace(/\/$/, '');
+  const match = URL_OWNER_REPO_RE.exec(stripped) ?? SCP_OWNER_REPO_RE.exec(stripped);
+  if (!match?.[1] || !match[2]) return null;
+  return { owner: match[1], repo: match[2] };
+}
+
 export interface GitRunner {
   currentBranch(): Promise<string>;
   headSubject(): Promise<string>;
@@ -59,6 +83,10 @@ export interface GitRunner {
   fetchDefault(branch: string, timeoutMs: number): Promise<boolean>;
   /** Names of the immediate `specs/` subdirectories at `ref` (e.g. `origin/main`). */
   lsTreeSpecDirs(ref: string): Promise<string[]>;
+  /** The `origin` remote's owner/repo, confidently parsed — or `null` when
+   * there is no remote, or its shape can't be confidently resolved (spec
+   * 067-spec-project-identity FR-002, plan D-002/§8 R1). */
+  remoteOwnerRepo(): Promise<OwnerRepo | null>;
 }
 
 export function gitRunner(cwd: string, exec: GitExec = realExec): GitRunner {
@@ -155,6 +183,15 @@ export function gitRunner(cwd: string, exec: GitExec = realExec): GitRunner {
           .map((p) => p.replace(/^specs\//, ''));
       } catch {
         return [];
+      }
+    },
+
+    async remoteOwnerRepo() {
+      try {
+        const { stdout } = await exec(['remote', 'get-url', 'origin'], { cwd });
+        return parseRemoteOwnerRepo(stdout.trim());
+      } catch {
+        return null; // no origin remote — never a guessed value
       }
     },
   };

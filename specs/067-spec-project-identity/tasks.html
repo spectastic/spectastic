@@ -1,0 +1,295 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
+<title>Spec project identity · Tasks</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Tasks · 067-spec-project-identity</p>
+  <h1>Spec project identity</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    Ordered, parallelizable work. Tests precede implementation. Drive through with
+    <code>/spectastic.implement</code> — one task per invocation.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>     <span><spec-status value="accepted">Accepted</spec-status></span>
+    <b>Spec</b>       <span><a href="./spec.html">067-spec-project-identity</a></span>
+    <b>Plan</b>       <span><a href="./plan.html">plan</a></span>
+    <b>Branch</b>     <span><code>067-spec-project-identity</code></span>
+    <b>Created</b>    <span><time datetime="2026-07-29">29 Jul 2026</time></span>
+    <b>Read time</b>  <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-tldr>
+    <p>30 tasks across five phases. Setup → Foundational → User stories (US1 · US2 · US3) → Polish.
+    Tasks marked <span class="par">[P]</span> can run in parallel — different files, no
+    dependency. Tests for a story <strong>MUST</strong> be written and failing before its
+    implementation tasks start. The identity is placed by purity (plan <a href="./plan.html#D-001">D-001</a>):
+    pure grammar in <code>@spectastic/schema</code>, the fs reader in <code>@spectastic/corpus</code>,
+    the <code>id</code> engine in <code>@spectastic/core</code>, git derivation confined to the CLI.</p>
+  </spec-tldr>
+</header>
+
+
+<section id="strategy">
+<h2>1 · Execution strategy</h2>
+
+<p>Story IDs follow the spec's numbering (T-1xx = US1, T-2xx = US2, T-3xx = US3) regardless of build
+order. Priorities are US1 = P1, US2 = P1, US3 = P2 — the recommended order below runs both P1 stories
+before the P2 validate story.</p>
+
+<spec-tabs>
+  <spec-tab label="Incremental (recommended)">
+    <p>Setup → Foundational → <strong>US1</strong> (declare identity, P1) → <strong>US2</strong>
+    (resolve coordinate + <code>spectastic id</code>, P1) → <strong>US3</strong> (validate, P2) → Polish.
+    US2 depends on US1's resolver existing (the <code>id</code> engine calls <code>resolveProjectConfig</code>),
+    so this is the natural build order even though both are P1.</p>
+  </spec-tab>
+  <spec-tab label="MVP-first">
+    <p>Setup → Foundational → US1 only → ship. A project can already declare and resolve its identity
+    (in code, via <code>resolveProjectConfig</code>) — a viable substrate on its own. Add US2 (the visible
+    <code>spectastic id</code> demo surface) and US3 (validate) as fast-follows.</p>
+  </spec-tab>
+  <spec-tab label="Parallel teams">
+    <p>Foundational must land first (both stories depend on the schema primitives). After that, US1
+    (<code>init</code> writer + <code>GitRunner</code> + <code>corpus/config.ts</code>) and US3 (the validate
+    rule, which only needs schema's predicate, not US1's resolver) can run in parallel; US2 waits on US1's
+    <code>resolveProjectConfig</code> landing.</p>
+  </spec-tab>
+</spec-tabs>
+</section>
+
+
+<section id="phase-setup" class="phase">
+<h2>2 · Phase 1 — Setup</h2>
+
+<!-- Task label form (REQ-LIFECYCLE-003): the leading <strong> wraps a SHORT
+     imperative title only; any supplementary detail follows in plain-weight
+     prose after an em-dash. Never bold the whole detailed line. -->
+<spec-task id="T-001" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Scaffold the project-identity grammar module</strong> — empty <code>classifyProjectId</code>/<code>specResourceUri</code> signatures, no logic yet; mirrors <code>citation-shared.ts</code>'s shape exactly. <span class="path">packages/schema/src/project-shared.ts</span></div>
+</spec-task>
+<spec-task id="T-002" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Wire the ./project subpath export</strong> — add the tsup entry and the <code>package.json</code> <code>exports["./project"]</code> block, matching <code>./citation</code>/<code>./slo</code> exactly. <span class="path">packages/schema/tsup.config.ts</span> <span class="path">packages/schema/package.json</span></div>
+</spec-task>
+</section>
+
+
+<section id="phase-foundation" class="phase">
+<h2>3 · Phase 2 — Foundational</h2>
+<p>The pure grammar + URI composer every story depends on: US1's resolver needs nothing from here directly,
+but US2's <code>id</code> engine and US3's validate rule both consume it — and per plan <a href="./plan.html#D-001">D-001</a>
+it is the one shared, reusable primitive (the citation-grammar precedent), so it is built once, first.</p>
+
+<spec-task id="T-010">
+  <input type="checkbox" checked>
+  <div><strong>Write failing tests for the project-id grammar and URI composer</strong> — well-formed vs. malformed project ids (illegal characters, wrong shape), a bare-default (no owner segment) classified distinctly from an owner-qualified one, and <code>specResourceUri</code> composing <code>spectastic://&lt;owner&gt;/&lt;repo&gt;/spec/&lt;id&gt;</code> with and without a <code>#&lt;anchor&gt;</code>. <span class="path">packages/schema/test/project-shared.test.ts</span></div>
+</spec-task>
+<spec-task id="T-011">
+  <input type="checkbox" checked>
+  <div><strong>Implement classifyProjectId and specResourceUri</strong> — the project-id shape classifier (a 3-way <code>owner-qualified | bare | malformed</code>, not a boolean — US3 needs the full split) and the owner-as-authority URI composer (plan <a href="./plan.html#D-004">D-004</a>). <span class="path">packages/schema/src/project-shared.ts</span></div>
+</spec-task>
+
+<spec-note>
+<p>No barrel re-export — <code>./project</code> is the sole consumption path, exactly like <code>./citation</code>/<code>./slo</code>/<code>./fence</code> (none of which are re-exported from schema's top-level <code>index.ts</code> either).</p>
+</spec-note>
+</section>
+
+
+<section id="phase-us1" class="phase">
+<h2>4 · Phase 3a — US1 · A project declares its identity <spec-pill>P1</spec-pill></h2>
+
+<h3>Tests (write &amp; fail first)</h3>
+<spec-task id="T-100" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Write failing test: remoteOwnerRepo parses confidently or returns null</strong> — GitHub/Bitbucket/simple-GitLab https and SSH forms resolve; Azure DevOps <code>/_git/</code> and GitLab subgroups (the spike's known gaps, plan §8 R1) return <code>null</code> rather than a wrong value. Uses the injectable <code>GitExec</code> recorder pattern already in <code>git.run.test.ts</code>. <span class="path">packages/cli/test/git.run.test.ts</span></div>
+</spec-task>
+<spec-task id="T-101" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Write failing test: writeProjectConfig persists only on a confident remote</strong> — a resolvable remote yields a persisted owner-qualified <code>project</code>; no remote (or an unresolvable one) leaves <code>project</code> absent — never a bare directory-name value. <span class="path">packages/cli/test/init/project-config.test.ts</span></div>
+</spec-task>
+<spec-task id="T-102" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Write failing test: writeProjectConfig never overwrites</strong> — an existing <code>project</code> (hand-set or already firmed up) survives a re-run unchanged, mirroring <code>writeCorpusConfig</code>'s own never-overwrite test. <span class="path">packages/cli/test/init/project-config.test.ts</span></div>
+</spec-task>
+<spec-task id="T-103" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Write failing test: resolveProjectConfig is read-only and deterministic</strong> — with <code>project</code> set, returns exactly that value across repeated calls; with it absent, falls back to <code>basename(cwd)</code>; asserts no git process is ever spawned by the resolver (NFR-001). <span class="path">packages/corpus/test/config.test.ts</span></div>
+</spec-task>
+<spec-task id="T-104" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Write failing test: resolveCorpusConfig's marketplace precedence gains the project tier</strong> — explicit <code>corpus.marketplace</code> and the deprecated <code>corpus.namespace</code> alias still win over <code>project</code>; <code>project</code> wins over the bare <code>basename(cwd)</code> default (FR-006, plan §8 R3). <span class="path">packages/corpus/test/config.test.ts</span></div>
+</spec-task>
+
+<h3>Implementation</h3>
+<spec-task id="T-110">
+  <input type="checkbox" checked>
+  <div><strong>Implement GitRunner.remoteOwnerRepo()</strong> — read <code>git remote get-url origin</code> via the existing injectable <code>execFile</code> exec, parse the confident host-shape only (plan's narrow-parse mitigation), returning <code>null</code> on anything else or on no remote. <span class="path">packages/cli/src/git/run.ts</span></div>
+</spec-task>
+<spec-task id="T-111">
+  <input type="checkbox" checked>
+  <div><strong>Implement writeProjectConfig and wire it into init</strong> — create-or-merge, never-overwrite (mirrors <code>writeCorpusConfig</code>); call <code>remoteOwnerRepo()</code> and persist the owner-qualified <code>project</code> only on a confident resolve; call it before <code>writeCorpusConfig</code> in the init action so the new marketplace tier (T-113) sees the freshly-written value on the same run. <span class="path">packages/cli/src/commands/init.ts</span></div>
+</spec-task>
+<spec-task id="T-112" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Implement loadProjectConfig and resolveProjectConfig</strong> — the raw/resolved two-layer split mirroring <code>loadCorpusConfig</code>/<code>resolveCorpusConfig</code> exactly; read-only, no git, no live derivation (FR-003/NFR-001). <span class="path">packages/corpus/src/config.ts</span></div>
+</spec-task>
+<spec-task id="T-113">
+  <input type="checkbox" checked>
+  <div><strong>Fold the project tier into resolveCorpusConfig's marketplace precedence</strong> — <code>file.marketplace ?? file.namespace ?? rawProject ?? basename(cwd)</code> (FR-006). <span class="path">packages/corpus/src/config.ts</span></div>
+</spec-task>
+<spec-task id="T-114" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Export resolveProjectConfig from the corpus barrel</strong> — <code>resolveProjectConfig</code> + its input/result types, alongside the existing <code>resolveCorpusConfig</code> export. <span class="path">packages/corpus/src/index.ts</span></div>
+</spec-task>
+
+<spec-note>
+<p>Closes <a href="./spec.html#FR-001">FR-001</a>, <a href="./spec.html#FR-002">FR-002</a>,
+<a href="./spec.html#FR-003">FR-003</a>, <a href="./spec.html#FR-006">FR-006</a>,
+<a href="./spec.html#NFR-001">NFR-001</a> (resolver leg), <a href="./spec.html#NFR-002">NFR-002</a>,
+<a href="./spec.html#SC-003">SC-003</a>, <a href="./spec.html#SC-004">SC-004</a>.</p>
+</spec-note>
+</section>
+
+
+<section id="phase-us2" class="phase">
+<h2>5 · Phase 3b — US2 · A spec resolves to a federation-unique coordinate <spec-pill>P1</spec-pill></h2>
+
+<h3>Tests (write &amp; fail first)</h3>
+<spec-task id="T-200" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Write failing test: the id engine composes the canonical URI</strong> — an owner-qualified project resolves <code>042</code> to <code>spectastic://&lt;owner&gt;/&lt;repo&gt;/spec/042</code>; a supplied anchor appends mechanically as <code>#REQ-FORMAT-004</code>. <span class="path">packages/core/test/id.test.ts</span></div>
+</spec-task>
+<spec-task id="T-201" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Write failing test: the id engine errors on an unknown spec</strong> — a spec id with no matching <code>specs/&lt;id&gt;</code> directory fails cleanly, never fabricating a coordinate. <span class="path">packages/core/test/id.test.ts</span></div>
+</spec-task>
+<spec-task id="T-202" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Write failing test: two distinct project identities never collide</strong> — the same repo-local spec id (<code>042</code>) under two different fixture project configs resolves to two distinct URIs (SC-001). <span class="path">packages/core/test/id.test.ts</span></div>
+</spec-task>
+<spec-task id="T-203" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Write failing test: spectastic id is deterministic</strong> — repeated invocations against a fixed config yield byte-identical output; no git process is spawned at resolve time (NFR-001, SC-002). <span class="path">packages/cli/test/id.test.ts</span></div>
+</spec-task>
+
+<h3>Implementation</h3>
+<spec-task id="T-210">
+  <input type="checkbox" checked>
+  <div><strong>Implement the id command engine</strong> — resolve the project via <code>resolveProjectConfig</code>, confirm <code>specs/&lt;spec-id&gt;</code> exists, render the URI via <code>specResourceUri</code>, erroring on an unknown spec. <span class="path">packages/core/src/commands/id.ts</span></div>
+</spec-task>
+<spec-task id="T-211" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Register the spectastic id CLI dispatch</strong> — thin <code>registerId</code>, argument for the spec id, optional anchor flag; main-CLI-only (plan <a href="./plan.html#D-003">D-003</a> — the standalone corpus binary has no <code>specs/</code>). <span class="path">packages/cli/src/commands/id.ts</span></div>
+</spec-task>
+<spec-task id="T-212" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Wire registerId into the CLI entry point</strong> <span class="path">packages/cli/src/index.ts</span></div>
+</spec-task>
+<spec-task id="T-213" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Write --help copy carrying no internal spec id</strong> — the <code>id</code> command's description/argument text says what it does, never which spec added it (NFR-003, P-10). <span class="path">packages/cli/src/commands/id.ts</span></div>
+</spec-task>
+
+<spec-note>
+<p>Closes <a href="./spec.html#FR-004">FR-004</a>, <a href="./spec.html#FR-005">FR-005</a>,
+<a href="./spec.html#NFR-001">NFR-001</a> (spectastic id leg), <a href="./spec.html#NFR-003">NFR-003</a>,
+<a href="./spec.html#SC-001">SC-001</a>, <a href="./spec.html#SC-002">SC-002</a>.</p>
+</spec-note>
+</section>
+
+
+<section id="phase-us3" class="phase">
+<h2>6 · Phase 3c — US3 · The identity is validated <spec-pill>P2</spec-pill></h2>
+
+<h3>Tests (write &amp; fail first)</h3>
+<spec-task id="T-300" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Write failing test: a malformed project id errors</strong> — illegal characters or the wrong shape yields a validate error finding. <span class="path">packages/corpus/test/config.test.ts</span></div>
+</spec-task>
+<spec-task id="T-301" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Write failing test: a bare unqualified default warns</strong> — a <code>project</code> with no owner segment (the provisional no-remote fallback) yields a warning naming the fix, never an error. <span class="path">packages/corpus/test/config.test.ts</span></div>
+</spec-task>
+<spec-task id="T-302" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Write failing test: absence and well-formed identity are both silent</strong> — no <code>project</code> field yields no finding (single-repo back-compat); a well-formed owner-qualified identity yields no finding either. <span class="path">packages/corpus/test/config.test.ts</span></div>
+</spec-task>
+
+<h3>Implementation</h3>
+<spec-task id="T-310">
+  <input type="checkbox" checked>
+  <div><strong>Add the project-identity validate finding</strong> — wraps schema's <code>classifyProjectId</code> against the raw config value: malformed → error, bare-default → warning naming <code>spectastic init</code> as the fix, absent/well-formed → silent. <span class="path">packages/corpus/src/config.ts</span></div>
+</spec-task>
+<spec-task id="T-311" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Wire the finding into the CLI validate sweep</strong> — a <code>scanProjectIdentity</code> wrapper folded alongside <code>scanCorpusRegistry</code>, so both the main CLI and (transitively, via the shared corpus module) the standalone binary check it. <span class="path">packages/cli/src/commands/validate.ts</span></div>
+</spec-task>
+
+<spec-note>
+<p>Closes <a href="./spec.html#FR-007">FR-007</a>, <a href="./spec.html#SC-005">SC-005</a>.</p>
+</spec-note>
+</section>
+
+
+<section id="phase-polish" class="phase">
+<h2>7 · Phase 4 — Polish</h2>
+<spec-task id="T-900" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Write a regression test pinning the marketplace-precedence risk</strong> — a project with a pre-existing <code>corpus.marketplace</code> or <code>corpus.namespace</code> resolves identically before and after this feature lands (plan §8 R3). <span class="path">packages/corpus/test/config.test.ts</span></div>
+</spec-task>
+<spec-task id="T-901" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Run a real end-to-end sweep</strong> — build the CLI; run <code>spectastic init</code> in a fresh temp repo with no remote (confirm <code>project</code> stays absent, <code>validate</code> warns) and with a fixture remote (confirm the owner-qualified identity persists); run <code>spectastic id</code> against a real spec; run <code>spectastic validate</code> against this repo's own <code>spectastic.json</code> to confirm zero new findings. <span class="path">packages/cli/test/init/project-config.test.ts</span></div>
+</spec-task>
+<spec-task id="T-902" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Confirm no new runtime dependency was added</strong> — diff each touched package's manifest against its pre-feature state (git derivation reuses <code>node:child_process</code>, no new dependency anywhere). <span class="path">packages/schema/package.json</span> <span class="path">packages/corpus/package.json</span> <span class="path">packages/cli/package.json</span></div>
+</spec-task>
+</section>
+
+
+<section id="dependencies">
+<h2>8 · Dependencies</h2>
+<pre><code>Setup           → Foundational
+Foundational    → US1, US2, US3        (the schema grammar + URI composer feed all three)
+US1             → US2                  (the id engine calls resolveProjectConfig, T-112)
+US1             → US3                  (parallelizable in practice — US3 only needs the schema
+                                         predicate, not US1's resolver — but US1 lands first per
+                                         the recommended build order)
+US1, US2, US3   → Polish
+</code></pre>
+</section>
+
+
+<section id="changelog">
+<h2>9 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-07-29">29 Jul 2026</time><span>Initial task breakdown. 30 tasks (23 parallel-marked) across five phases; Incremental build order recommended (US1 → US2 → US3), reflecting US2's real dependency on US1's resolver. Identity placed by purity: schema grammar → corpus reader/FR-006 → core id engine → CLI dispatch + init writer + GitRunner.</span></li>
+  <li><time datetime="2026-07-29">29 Jul 2026</time><span>All 30 tasks implemented and verified; two path/name corrections applied during the drain — <code>classifyProjectId</code> (a 3-way classifier, not a boolean <code>isWellFormedProjectId</code>) and the real test file locations (<code>packages/cli/test/init/project-config.test.ts</code>, <code>packages/core/test/id.test.ts</code>) — matching the codebase's actual naming conventions discovered while writing them. Three real bugs found and fixed via end-to-end testing: <code>writeCorpusConfig</code> shadowing the unified project identity (FR-006), an unconditional git shell-out regressing spec 003's &lt;500 ms init perf budget (NFR-001), and a P-10 copy-leak in <code>--anchor</code>'s help text. 316/316 relevant tests green (schema/corpus/core/cli), all four touched packages typecheck clean, zero new runtime dependencies.</span></li>
+  <li><time datetime="2026-07-29">29 Jul 2026</time><span>Status flipped Draft → Accepted — zero remaining unchecked tasks (30/30); tests verified passing per author confirmation. Sibling bundle (REQ-LIFECYCLE-005).</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  Tasks for 067-spec-project-identity · Spec project identity · authored 29 Jul 2026
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>

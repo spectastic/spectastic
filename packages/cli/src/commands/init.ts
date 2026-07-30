@@ -27,10 +27,11 @@ import {
   spliceUpgrade,
 } from './init/compose.js';
 import { readMarker, writeMarker } from './init/marker.js';
-import { DEFAULT_CORPUS_ROOT } from '@spectastic/corpus';
+import { DEFAULT_CORPUS_ROOT, resolveProjectConfig } from '@spectastic/corpus';
 import { detectTooling } from '@spectastic/core/enforce/detect';
 import { applyGitignore } from '@spectastic/core/gitignore/apply';
 import { BASE_ENTRIES } from '@spectastic/core/gitignore/entries';
+import { gitRunner } from '../git/run.js';
 import type { FileWriteDecision } from './init/types.js';
 
 interface InitOptions {
@@ -55,15 +56,27 @@ const MONTHS = [
  * Write (or preserve) the `corpus` section of `spectastic.json`
  * (063-corpus-discoverability FR-001, D-002) — the first init-writes-config
  * path. Create-or-merge: reads any existing `spectastic.json`, and if it has
- * NO `corpus` key at all, adds one with the defaults
- * (`marketplace: basename(cwd)`, `root: DEFAULT_CORPUS_ROOT`) — matching
- * `resolveCorpusConfig`'s own defaults exactly, so the two can never disagree
- * (FR-006). Every OTHER section (and a `corpus` section that already exists,
- * however partial) is left untouched — this never overwrites a value the
- * project owner set. Returns whether it actually wrote anything, for the
- * caller's summary line (mirrors `applyGitignore`'s boolean-return shape).
+ * NO `corpus` key at all, adds one with the defaults (`root:
+ * DEFAULT_CORPUS_ROOT`, `marketplace:` the resolved project identity — see
+ * below) — matching `resolveCorpusConfig`'s own defaults exactly, so the two
+ * can never disagree (FR-006). Every OTHER section (and a `corpus` section
+ * that already exists, however partial) is left untouched — this never
+ * overwrites a value the project owner set. Returns whether it actually
+ * wrote anything, for the caller's summary line (mirrors `applyGitignore`'s
+ * boolean-return shape).
+ *
+ * Runs AFTER `writeProjectConfig` (067-spec-project-identity): `marketplace`
+ * defaults to `resolveProjectConfig(cwd).project` — the just-persisted or
+ * already-set owner-qualified `project`, falling back to `basename(cwd)`
+ * exactly as before when no `project` exists. This matters: an explicit
+ * `corpus.marketplace` value ALWAYS wins in `resolveCorpusConfig`'s
+ * precedence chain, so writing the bare directory name here unconditionally
+ * would permanently shadow the unified `project` identity FR-006 exists to
+ * provide — a real bug caught only by running `init` end-to-end with a real
+ * git remote (a fresh init produced `project: "acme/widget"` alongside
+ * `corpus.marketplace: "<dir-name>"`, silently un-unifying the two).
  */
-function writeCorpusConfig(cwd: string): boolean {
+function writeCorpusConfig(cwd: string): string | null {
   const path = join(cwd, 'spectastic.json');
   let config: Record<string, unknown> = {};
   if (existsSync(path)) {
@@ -73,10 +86,51 @@ function writeCorpusConfig(cwd: string): boolean {
       config = {};
     }
   }
-  if (config['corpus'] !== undefined) return false; // already configured — never overwrite
-  config['corpus'] = { marketplace: basename(cwd), root: DEFAULT_CORPUS_ROOT };
+  if (config['corpus'] !== undefined) return null; // already configured — never overwrite
+  const marketplace = resolveProjectConfig(cwd).project;
+  config['corpus'] = { marketplace, root: DEFAULT_CORPUS_ROOT };
   writeFileSync(path, `${JSON.stringify(config, null, 2)}\n`, 'utf8');
-  return true;
+  return marketplace;
+}
+
+/**
+ * Write (or preserve) the top-level `project` identity in `spectastic.json`
+ * (067-spec-project-identity, plan D-002) — the DOI-style prefix specs lack.
+ * Create-or-merge, never-overwrite, mirroring `writeCorpusConfig` exactly —
+ * with one deliberate difference (FR-002): this writer persists a value
+ * ONLY when the `origin` remote confidently resolves an owner/repo (plan
+ * §8 R1). The common fresh-repo flow (`git init` -> `spectastic init` ->
+ * remote added later) has no remote yet, so the identity stays absent —
+ * provisional — rather than locking in a federation-fragile bare directory
+ * name. Re-running `init` after the remote exists firms it up. Returns
+ * whether it actually wrote anything, for the caller's summary line.
+ */
+async function writeProjectConfig(cwd: string): Promise<string | null> {
+  const path = join(cwd, 'spectastic.json');
+  let config: Record<string, unknown> = {};
+  if (existsSync(path)) {
+    try {
+      config = JSON.parse(readFileSync(path, 'utf8')) as Record<string, unknown>;
+    } catch {
+      config = {};
+    }
+  }
+  if (config['project'] !== undefined) return null; // already set — never overwrite
+
+  // Skip the git shell-out entirely when cwd isn't even a git repo yet (the
+  // common `spectastic init` before `git init` order, and the perf-sensitive
+  // path — spawning `git` unconditionally cost NFR-001's <500ms budget, spec
+  // 003-init-node-port). A repo initialised but with no remote still pays
+  // the one bounded exec call below, correctly resolving to null.
+  if (!existsSync(join(cwd, '.git'))) return null;
+
+  const ownerRepo = await gitRunner(cwd).remoteOwnerRepo();
+  if (!ownerRepo) return null; // no confident remote — stay provisional
+
+  const project = `${ownerRepo.owner}/${ownerRepo.repo}`;
+  config['project'] = project;
+  writeFileSync(path, `${JSON.stringify(config, null, 2)}\n`, 'utf8');
+  return project;
 }
 
 function today(): { iso: string; display: string } {
@@ -212,12 +266,21 @@ export function registerInit(program: Command): void {
         const wrote = await applyGitignore(cwd, BASE_ENTRIES);
         if (wrote) process.stdout.write('✓ wrote .gitignore (spectastic ephemera)\n');
       }
+      // 067-spec-project-identity FR-002: persist an owner-qualified project
+      // identity when the git remote confidently resolves one. Runs BEFORE
+      // writeCorpusConfig so a project written this same run is visible to
+      // resolveCorpusConfig's new project-derived marketplace tier (FR-006).
+      const writtenProject = await writeProjectConfig(cwd);
+      if (writtenProject) {
+        process.stdout.write(`✓ wrote spectastic.json project identity (project=${writtenProject})\n`);
+      }
       // 063-corpus-discoverability FR-001: every project gets a corpus config
       // (marketplace name + root dir), unconditional — no flag, matching the
       // gitignore write's own unconditional-unless-opted-out precedent minus
       // the opt-out (there is no reason to skip a config-only default write).
-      if (writeCorpusConfig(cwd)) {
-        process.stdout.write(`✓ wrote spectastic.json corpus config (marketplace=${basename(cwd)}, root=${DEFAULT_CORPUS_ROOT})\n`);
+      const writtenMarketplace = writeCorpusConfig(cwd);
+      if (writtenMarketplace) {
+        process.stdout.write(`✓ wrote spectastic.json corpus config (marketplace=${writtenMarketplace}, root=${DEFAULT_CORPUS_ROOT})\n`);
       }
       // Spec 031 T-001: make the guarantee layer discoverable. Interactive init
       // offers to install it (auto-commits + the pre-commit gate); non-interactive

@@ -8,6 +8,9 @@ import {
   defaultMarketplaceName,
   DEFAULT_CORPUS_ROOT,
   CorpusConfigError,
+  loadProjectConfig,
+  resolveProjectConfig,
+  projectIdentityFindings,
 } from '../src/config.js';
 
 /**
@@ -89,5 +92,100 @@ describe('resolveCorpusConfig (resolved value, FR-006)', () => {
 
   it('defaultMarketplaceName is exactly basename(cwd), the same value init already computes', () => {
     expect(defaultMarketplaceName(dir)).toBe(basename(dir));
+  });
+
+  // 067-spec-project-identity T-104: resolveCorpusConfig's marketplace
+  // precedence gains a project tier (FR-006) — below explicit
+  // marketplace/namespace, above the bare basename(cwd) default.
+  it('an unset marketplace derives from project (FR-006, unified identity)', () => {
+    write({ project: 'acme/widget' });
+    expect(resolveCorpusConfig(dir).marketplace).toBe('acme/widget');
+  });
+
+  it('an explicit corpus.marketplace still wins over project (the publish-identity escape hatch)', () => {
+    write({ corpus: { marketplace: 'published-name' }, project: 'acme/widget' });
+    expect(resolveCorpusConfig(dir).marketplace).toBe('published-name');
+  });
+
+  it('the deprecated corpus.namespace alias still wins over project', () => {
+    write({ corpus: { namespace: 'legacy-name' }, project: 'acme/widget' });
+    expect(resolveCorpusConfig(dir).marketplace).toBe('legacy-name');
+  });
+
+  it('falls back to basename(cwd) when neither marketplace/namespace nor project is set (unchanged precedent)', () => {
+    expect(resolveCorpusConfig(dir).marketplace).toBe(basename(dir));
+  });
+});
+
+describe('loadProjectConfig / resolveProjectConfig (067, FR-001/FR-003)', () => {
+  let dir: string;
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'spectastic-project-config-'));
+  });
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true });
+  });
+  const write = (obj: unknown) => writeFileSync(join(dir, 'spectastic.json'), JSON.stringify(obj));
+
+  it('loadProjectConfig returns empty when no file / no project field', () => {
+    expect(loadProjectConfig(dir)).toEqual({});
+    write({ corpus: { marketplace: 'x' } });
+    expect(loadProjectConfig(dir)).toEqual({});
+  });
+
+  it('loadProjectConfig reads the raw project value verbatim', () => {
+    write({ project: 'acme/widget' });
+    expect(loadProjectConfig(dir)).toEqual({ project: 'acme/widget' });
+  });
+
+  it('loadProjectConfig throws on a non-string project', () => {
+    write({ project: 42 });
+    expect(() => loadProjectConfig(dir)).toThrow(/project/);
+  });
+
+  it('resolveProjectConfig returns the persisted value verbatim — never re-derived', () => {
+    write({ project: 'acme/widget' });
+    expect(resolveProjectConfig(dir)).toEqual({ project: 'acme/widget' });
+    // Calling twice is byte-identical — pure read, no git, no clock (NFR-001).
+    expect(resolveProjectConfig(dir)).toEqual(resolveProjectConfig(dir));
+  });
+
+  it('resolveProjectConfig falls back to basename(cwd) when project is absent', () => {
+    expect(resolveProjectConfig(dir)).toEqual({ project: basename(dir) });
+  });
+});
+
+describe('projectIdentityFindings (067 T-300/T-301/T-302, FR-007)', () => {
+  let dir: string;
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'spectastic-project-findings-'));
+  });
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true });
+  });
+  const write = (obj: unknown) => writeFileSync(join(dir, 'spectastic.json'), JSON.stringify(obj));
+
+  it('a malformed project id is an error', () => {
+    write({ project: '/leading-slash' });
+    const findings = projectIdentityFindings(dir);
+    expect(findings).toHaveLength(1);
+    expect(findings[0]!.severity).toBe('error');
+  });
+
+  it('a bare unqualified default is a warning, never an error', () => {
+    write({ project: 'spectastic' });
+    const findings = projectIdentityFindings(dir);
+    expect(findings).toHaveLength(1);
+    expect(findings[0]!.severity).toBe('warning');
+    expect(findings[0]!.message).toContain('spectastic init');
+  });
+
+  it('an absent project is silent (single-repo back-compat)', () => {
+    expect(projectIdentityFindings(dir)).toEqual([]);
+  });
+
+  it('a well-formed owner-qualified project is silent', () => {
+    write({ project: 'acme/widget' });
+    expect(projectIdentityFindings(dir)).toEqual([]);
   });
 });

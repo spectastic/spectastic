@@ -134,4 +134,41 @@ describe('gitRunner wrappers (T-014)', () => {
     });
     expect(await gitRunner('/repo', fails).lsTreeSpecDirs('origin/main')).toEqual([]);
   });
+
+  // 067-spec-project-identity T-100: remoteOwnerRepo parses confidently or
+  // returns null (plan D-002/D-003, §8 R1). Never a wrong value — a shape
+  // outside the narrow "exactly host + owner + repo" match degrades to null.
+  it('remoteOwnerRepo parses the confident host + owner + repo shapes', async () => {
+    const cases: Array<[string, { owner: string; repo: string } | null]> = [
+      ['https://github.com/spectastic/spectastic.git', { owner: 'spectastic', repo: 'spectastic' }],
+      ['https://github.com/spectastic/spectastic', { owner: 'spectastic', repo: 'spectastic' }],
+      ['git@github.com:spectastic/spectastic.git', { owner: 'spectastic', repo: 'spectastic' }],
+      ['ssh://git@github.com/spectastic/spectastic.git', { owner: 'spectastic', repo: 'spectastic' }],
+      ['https://bitbucket.org/team/repo.git', { owner: 'team', repo: 'repo' }],
+      ['git@gitlab.com:group/repo-name.git', { owner: 'group', repo: 'repo-name' }],
+    ];
+    for (const [url, expected] of cases) {
+      const { exec } = recorder(() => `${url}\n`);
+      expect(await gitRunner('/repo', exec).remoteOwnerRepo(), url).toEqual(expected);
+    }
+  });
+
+  it('remoteOwnerRepo returns null for a shape it cannot confidently resolve, never a wrong value', async () => {
+    const ambiguous = [
+      'https://gitlab.com/group/subgroup/repo.git', // a genuine subgroup — 3 path segments
+      'https://user@dev.azure.com/org/proj/_git/repo', // Azure DevOps's /_git/ segment
+      'not-a-url-at-all',
+    ];
+    for (const url of ambiguous) {
+      const { exec } = recorder(() => `${url}\n`);
+      expect(await gitRunner('/repo', exec).remoteOwnerRepo(), url).toBeNull();
+    }
+  });
+
+  it('remoteOwnerRepo returns null when there is no origin remote at all', async () => {
+    const noRemote: GitExec = vi.fn(async () => {
+      throw new Error("No such remote 'origin'");
+    });
+    expect(await gitRunner('/repo', noRemote).remoteOwnerRepo()).toBeNull();
+  });
 });
