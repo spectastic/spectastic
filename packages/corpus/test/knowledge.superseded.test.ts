@@ -46,10 +46,7 @@ function seedPackWithSuperseded(): string {
     ].join('\n'),
   );
   writeFileSync(join(pack, 'references', 'KB-001-settlement.md'), doc('KB-001', '2024-05-28'));
-  writeFileSync(
-    join(pack, 'references', 'superseded', 'KB-001-settlement@2017-09-05.md'),
-    doc('KB-001', '2017-09-05'),
-  );
+  writeFileSync(join(pack, 'references', 'superseded', 'KB-001-settlement@2017-09-05.md'), doc('KB-001', '2017-09-05'));
   return cwd;
 }
 
@@ -74,7 +71,9 @@ describe('superseded-edition loading (052 T-200, FR-003)', () => {
     // check never false-fires on a legitimate current + prior pair.
     const packs = loadCorpus(seedPackWithSuperseded());
     const findings = corpusWellFormedFindings(packs);
-    expect(findings.some((f) => f.rule === 'corpus-well-formed' && f.message.toLowerCase().includes('duplicate'))).toBe(false);
+    expect(findings.some((f) => f.rule === 'corpus-well-formed' && f.message.toLowerCase().includes('duplicate'))).toBe(
+      false,
+    );
   });
 
   it('a pack with no superseded/ directory has an empty supersededEditions', () => {

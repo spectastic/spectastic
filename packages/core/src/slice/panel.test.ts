@@ -1,9 +1,9 @@
-import { describe, it, expect } from 'vitest';
+import { describe, expect, it } from 'vitest';
+import type { AIProvider, ChatOpts, Question, SubagentOpts, SubagentResult } from '../types.js';
 import { panelScore } from './panel.js';
 import { decomposeRivals, selectBestDecomposition } from './rivals.js';
 import { sliceStub } from './stub-ai.js';
 import type { CandidateChild, Decomposition } from './types.js';
-import type { AIProvider, ChatOpts, Question, SubagentOpts, SubagentResult } from '../types.js';
 
 /**
  * US3 (T-300): the bias-resistant ranking panel (median resists an outlier judge,
@@ -18,7 +18,12 @@ function child(specId: string, rice: [number, number, number, number], ids: stri
     scope: '',
     assignedRequirementIds: ids,
     dependsOn: [],
-    rice: { reach: rice[0], impact: rice[1], confidence: rice[2], effort: rice[3] },
+    rice: {
+      reach: rice[0],
+      impact: rice[1],
+      confidence: rice[2],
+      effort: rice[3],
+    },
     riceConfirmed: true,
   };
 }
@@ -104,7 +109,9 @@ describe('rival decompositions', () => {
     const covering: Decomposition = {
       children: [child('001-a', [1, 1, 1, 1], ['FR-001']), child('002-b', [1, 1, 1, 1], ['FR-002'])],
     };
-    const incomplete: Decomposition = { children: [child('003-c', [9, 9, 1, 1], ['FR-001'])] };
+    const incomplete: Decomposition = {
+      children: [child('003-c', [9, 9, 1, 1], ['FR-001'])],
+    };
     expect(selectBestDecomposition([incomplete, covering], parent)).toBe(covering);
   });
 
@@ -113,7 +120,18 @@ describe('rival decompositions', () => {
       decompositions: [
         {
           decompositions: [
-            { children: [{ specId: '001-a', title: 'A', scope: '', assignedRequirementIds: ['FR-001'], dependsOn: [], rice: { reach: 1, impact: 1, confidence: 1, effort: 1 } }] },
+            {
+              children: [
+                {
+                  specId: '001-a',
+                  title: 'A',
+                  scope: '',
+                  assignedRequirementIds: ['FR-001'],
+                  dependsOn: [],
+                  rice: { reach: 1, impact: 1, confidence: 1, effort: 1 },
+                },
+              ],
+            },
             { children: [] },
             { children: [] },
           ],

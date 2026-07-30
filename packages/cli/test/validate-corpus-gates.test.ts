@@ -29,7 +29,10 @@ interface RunResult {
 
 async function runCLI(args: string[], cwd: string): Promise<RunResult> {
   return new Promise((resolveFn) => {
-    const child = spawn('node', [CLI, ...args], { cwd, stdio: ['pipe', 'pipe', 'pipe'] });
+    const child = spawn('node', [CLI, ...args], {
+      cwd,
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
     let stdout = '';
     let stderr = '';
     child.stdout.on('data', (c: Buffer) => (stdout += c.toString('utf8')));

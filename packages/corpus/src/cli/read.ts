@@ -1,8 +1,8 @@
 import type { Command } from 'commander';
 import { loadCorpus, loadRegistry } from '../knowledge/index.js';
 import { get } from '../read/get.js';
-import { query } from '../read/query.js';
 import { grep } from '../read/grep.js';
+import { query } from '../read/query.js';
 
 /**
  * The read-path subcommands (064-corpus-package-extraction, US3, FR-005): get/query/grep
@@ -30,7 +30,9 @@ export function registerRead(program: Command): void {
 
   program
     .command('query')
-    .description('Case-insensitive substring search over corpus metadata (id, slug, title, description) — never document bodies.')
+    .description(
+      'Case-insensitive substring search over corpus metadata (id, slug, title, description) — never document bodies.',
+    )
     .argument('<term>', 'the search term')
     .action((term: string) => {
       const cwd = process.cwd();

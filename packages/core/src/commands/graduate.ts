@@ -16,16 +16,16 @@
  * bundle this kernel writes is spec + plan, not spec + plan + tasks.
  */
 
-import { deepenArchivePaths } from '../archive-paths.js';
-import { fenceArtifactText } from '@spectastic/schema/fence';
 import { buildCorpusPromptBlock, loadCorpus, withCorpusHint } from '@spectastic/corpus';
+import { fenceArtifactText } from '@spectastic/schema/fence';
+import { deepenArchivePaths } from '../archive-paths.js';
 import type {
   CapturedRun,
   FileSystem,
   GraduateExtract,
-  GraduationClass,
   GraduateTransactionInput,
   GraduateTransactionResult,
+  GraduationClass,
   KernelContext,
   QuarantineMarker,
 } from '../types.js';
@@ -111,7 +111,12 @@ export async function graduateTransaction(
     };
     await fs.writeFile(`${archiveDir}/quarantine.json`, `${JSON.stringify(graduated, null, 2)}\n`);
 
-    return { specId, specPath: `${specDir}/spec.html`, archivedPath: archiveDir, classification };
+    return {
+      specId,
+      specPath: `${specDir}/spec.html`,
+      archivedPath: archiveDir,
+      classification,
+    };
   } catch (err) {
     // Best-effort rollback so a failed graduation leaves no residue (SC-003):
     // un-archive the exploration, then remove the partial bundle.
@@ -139,7 +144,14 @@ export async function graduateTransaction(
 interface ExtractedSpec {
   intent?: string;
   tldr?: string;
-  stories?: Array<{ id: string; title: string; role: string; want: string; outcome: string; acceptance: string }>;
+  stories?: Array<{
+    id: string;
+    title: string;
+    role: string;
+    want: string;
+    outcome: string;
+    acceptance: string;
+  }>;
   frs?: Array<{ id: string; priority: string; body: string }>;
   scs?: Array<{ id: string; priority: string; body: string }>;
 }
@@ -193,10 +205,7 @@ function esc(s: string): string {
  * never answered are left for the /spec + /plan interviews to fill (D-007); this
  * kernel renders what the build demonstrated.
  */
-export async function graduateExtract(
-  input: GraduateExtractInput,
-  ctx: KernelContext,
-): Promise<GraduateExtract> {
+export async function graduateExtract(input: GraduateExtractInput, ctx: KernelContext): Promise<GraduateExtract> {
   if (!ctx.ai) throw new GraduateError('graduateExtract requires ctx.ai (the extract leg is AI-coupled)');
   const run = parseRunBlock(input.ledger);
   // Corpus-in-prompt (054-corpus-in-prompt, D-001/D-005): '' when no knowledge/
@@ -209,16 +218,22 @@ export async function graduateExtract(
     corpusBlock ? `\n${corpusBlock}` : '',
     '',
     'Return ONLY JSON: { "intent": string, "tldr": string, "stories": [ { "id": "US1", "title": string, "role": string, "want": string, "outcome": string, "acceptance": string } ], "frs": [ { "id": "FR-001", "priority": "must"|"should"|"may", "body": string } ], "scs": [ { "id": "SC-001", "priority": "must"|"should", "body": string } ] }',
-  ].filter(Boolean).join('\n');
+  ]
+    .filter(Boolean)
+    .join('\n');
   const raw = await ctx.ai.chat(prompt, {
     temperature: 0,
-    system: 'You extract a spectastic spec from a built prototype. Output ONLY the requested JSON; no prose, no code fences.',
+    system:
+      'You extract a spectastic spec from a built prototype. Output ONLY the requested JSON; no prose, no code fences.',
   });
   const parsed = tryParse(raw);
   if (!parsed) throw new GraduateError('graduateExtract: the model did not return JSON');
 
   return withCorpusHint(
-    { specHtml: renderSpec(input.specId, parsed), planHtml: renderPlan(input.specId, run) },
+    {
+      specHtml: renderSpec(input.specId, parsed),
+      planHtml: renderPlan(input.specId, run),
+    },
     corpusBlock,
   );
 }

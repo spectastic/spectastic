@@ -11,8 +11,8 @@
  */
 
 import { join } from 'node:path';
-import { parse, findAll, getAttr, walk } from '@spectastic/schema/parser';
 import type { Document, Element } from '@spectastic/schema/parser';
+import { findAll, getAttr, parse, walk } from '@spectastic/schema/parser';
 import { isQuantifiedTarget } from '@spectastic/schema/slo';
 import type { CapturedRun, FileSystem, KernelContext, VerifyInput, VerifyResult } from '../types.js';
 
@@ -190,7 +190,11 @@ function extractObservables(ast: Document): ObservablesRow[] {
     if (slos.length > 0) return { nfrId, slos };
     const sloAttr = getAttr(nfr, 'slo') ?? '';
     const quantified = isQuantifiedTarget(textOf(nfr)) || isQuantifiedTarget(sloAttr);
-    return { nfrId, slos, gap: quantified ? ('loud' as const) : ('quiet' as const) };
+    return {
+      nfrId,
+      slos,
+      gap: quantified ? ('loud' as const) : ('quiet' as const),
+    };
   });
 }
 
@@ -258,7 +262,10 @@ function extractPhaseMap(ast: Document): Map<string, PhaseHit> {
   for (const section of findAll(ast, 'section')) {
     const m = PHASE_US.exec(getAttr(section, 'id') ?? '');
     if (!m?.[1]) continue;
-    const hit: PhaseHit = { usNum: Number(m[1]), testTaskIds: collectTestTasks(section) };
+    const hit: PhaseHit = {
+      usNum: Number(m[1]),
+      testTaskIds: collectTestTasks(section),
+    };
     for (const note of findAll(section, 'spec-note')) {
       for (const a of findAll(note, 'a')) {
         const hm = SC_HREF.exec(getAttr(a, 'href') ?? '');
@@ -307,11 +314,7 @@ const ASSETS = '../../assets';
 
 /** Escape text for safe interpolation into HTML. */
 function escapeHtml(s: string): string {
-  return s
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;');
+  return s.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;');
 }
 
 /**
@@ -324,8 +327,7 @@ export function renderRunBlock(captured: VerifyInput['capturedRun']): string {
   // An absent field stays an EMPTY element (no whitespace) so CSS :empty
   // renders it loudly (FR-009); cites come from the captured ids (FR-004).
   const field = (val?: string): string => (val ? escapeHtml(val) : '');
-  const cites = (ids?: string[]): string =>
-    ids && ids.length > 0 ? ` cites="${escapeHtml(ids.join(' '))}"` : '';
+  const cites = (ids?: string[]): string => (ids && ids.length > 0 ? ` cites="${escapeHtml(ids.join(' '))}"` : '');
   // Spec 021 T-003: a block whose commands were NOT run is marked suggested so
   // it never presents unverified commands with the authority of verified ones
   // (P-7). Default is verified (a /implement capture ran them); only an explicit
@@ -440,10 +442,7 @@ function sloRow(nfrId: string, slo: SloInfo, observedSignals: Set<string> | unde
 
 /** One §Observables row for an NFR with no linked SLO — a loud or quiet gap (FR-001). */
 function observablesGapRow(row: ObservablesRow): string {
-  const cell =
-    row.gap === 'loud'
-      ? observablesGap(row.nfrId)
-      : '<span style="color:var(--c-muted);">n/a</span>';
+  const cell = row.gap === 'loud' ? observablesGap(row.nfrId) : '<span style="color:var(--c-muted);">n/a</span>';
   return `    <tr><td><a href="./spec.html#${row.nfrId}">${row.nfrId}</a></td><td colspan="3">${cell}</td></tr>`;
 }
 
@@ -574,10 +573,7 @@ async function readFileSafe(fs: FileSystem, path: string): Promise<string | unde
   }
 }
 
-export async function verifyCommand(
-  input: VerifyInput,
-  ctx: KernelContext,
-): Promise<VerifyResult> {
+export async function verifyCommand(input: VerifyInput, ctx: KernelContext): Promise<VerifyResult> {
   // ctx.fs is optional on the kernel context; default to the node wrapper
   // (the apply-verb pattern) so the CLI needn't wire it explicitly.
   const fs = ctx.fs ?? (await import('../providers/node-fs.js')).nodeFs;

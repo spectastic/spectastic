@@ -12,23 +12,23 @@
  * duplicating them — this file is the *registry* half, `adapt.ts` stays the
  * *conversion* half (plan D-003).
  */
-import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { stringify as stringifyYaml } from 'yaml';
+import type { PackFetcher } from '../providers/pack-fetcher.js';
 import { deriveProvenance, deriveTitleAndDescription } from './adapt.js';
-import { parseCorpusDocument } from './parse.js';
 import {
   parseRegistry,
   parseSkillSlugMap,
   renderRegistryTable,
   renderSkillSlugMapTable,
-  SLUG_MAP_HEADER,
   type SkillSlugMapEntry,
+  SLUG_MAP_HEADER,
 } from './index-format.js';
-import { KB_ID_RE } from './types.js';
-import type { RegistryEntry } from './types.js';
-import type { PackFetcher } from '../providers/pack-fetcher.js';
+import { parseCorpusDocument } from './parse.js';
 import { syncMarketplaceManifest } from './publish.js';
+import type { RegistryEntry } from './types.js';
+import { KB_ID_RE } from './types.js';
 
 /** The highest numeric suffix among a set of registry entries (0 if none
  * match — a fresh registry allocates starting at KB-0001). Reads the WHOLE
@@ -180,10 +180,16 @@ export const NOT_CITABLE_UNTIL_SIGNED_OFF_STATUS = 'not-citable-until-signed-off
 export const NOT_CITABLE_UNTIL_CONFIRMED_STATUS = 'not-citable-until-confirmed';
 
 /** Split a `<plugin>@<marketplace>` acquisition coordinate (spec FR-008). */
-export function parseCoordinate(coordinate: string): { plugin: string; marketplace: string } {
+export function parseCoordinate(coordinate: string): {
+  plugin: string;
+  marketplace: string;
+} {
   const at = coordinate.indexOf('@');
   if (at === -1) return { plugin: coordinate, marketplace: '' };
-  return { plugin: coordinate.slice(0, at), marketplace: coordinate.slice(at + 1) };
+  return {
+    plugin: coordinate.slice(0, at),
+    marketplace: coordinate.slice(at + 1),
+  };
 }
 
 export interface InstallInput {
@@ -327,7 +333,10 @@ export async function installPack(input: InstallInput): Promise<InstallResult> {
 
     if (!existing) {
       const [id] = allocateRegistryIds([...existingRegistry, ...freshRows], 1);
-      const provenance = deriveProvenance(raw, { ...parsed.provenance, status: NOT_YET_SPOT_CHECKED_STATUS });
+      const provenance = deriveProvenance(raw, {
+        ...parsed.provenance,
+        status: NOT_YET_SPOT_CHECKED_STATUS,
+      });
       const { title, description } = deriveTitleAndDescription(parsed.body, slug);
       writeFileSync(join(referencesDir, filename), renderTwoLayerDocument(slug, provenance, parsed.body), 'utf8');
       freshRows.push({
@@ -340,7 +349,13 @@ export async function installPack(input: InstallInput): Promise<InstallResult> {
         path: `${plugin}/references/${filename}`,
         status: '',
       });
-      freshSlugRows.push({ slug, title, description, edition: provenance.edition, path: `references/${filename}` });
+      freshSlugRows.push({
+        slug,
+        title,
+        description,
+        edition: provenance.edition,
+        path: `references/${filename}`,
+      });
       written.push(id!);
       continue;
     }
@@ -362,14 +377,13 @@ export async function installPack(input: InstallInput): Promise<InstallResult> {
     const priorPath = join(input.knowledgeDir, existing.plugin, 'references', filename);
     if (existsSync(priorPath) && existing.edition) {
       mkdirSync(supersededDir, { recursive: true });
-      writeFileSync(
-        join(supersededDir, `${slug}@${existing.edition}.md`),
-        readFileSync(priorPath, 'utf8'),
-        'utf8',
-      );
+      writeFileSync(join(supersededDir, `${slug}@${existing.edition}.md`), readFileSync(priorPath, 'utf8'), 'utf8');
     }
 
-    const provenance = deriveProvenance(raw, { ...parsed.provenance, status: NOT_YET_SPOT_CHECKED_STATUS });
+    const provenance = deriveProvenance(raw, {
+      ...parsed.provenance,
+      status: NOT_YET_SPOT_CHECKED_STATUS,
+    });
     const { title, description } = deriveTitleAndDescription(parsed.body, slug);
     writeFileSync(join(referencesDir, filename), renderTwoLayerDocument(slug, provenance, parsed.body), 'utf8');
     freshRows.push({
@@ -382,7 +396,13 @@ export async function installPack(input: InstallInput): Promise<InstallResult> {
       path: `${plugin}/references/${filename}`,
       status: '',
     });
-    freshSlugRows.push({ slug, title, description, edition: provenance.edition, path: `references/${filename}` });
+    freshSlugRows.push({
+      slug,
+      title,
+      description,
+      edition: provenance.edition,
+      path: `references/${filename}`,
+    });
     superseded.push(existing.id);
   }
 
@@ -408,7 +428,10 @@ export async function installPack(input: InstallInput): Promise<InstallResult> {
   const existingSlugRows = existsSync(skillPath) ? parseSkillSlugMap(readFileSync(skillPath, 'utf8')) : [];
   const mergedSlugRows = mergeSlugMapRows(existingSlugRows, freshSlugRows);
   if (!existsSync(skillPath)) {
-    const frontmatter = stringifyYaml({ name: plugin, description: `Domain knowledge imported from ${marketplace}.` }).trimEnd();
+    const frontmatter = stringifyYaml({
+      name: plugin,
+      description: `Domain knowledge imported from ${marketplace}.`,
+    }).trimEnd();
     writeFileSync(
       skillPath,
       `---\n${frontmatter}\n---\n\n# ${plugin}\n\n${renderSkillSlugMapTable(mergedSlugRows)}`,
@@ -428,7 +451,10 @@ export async function installPack(input: InstallInput): Promise<InstallResult> {
   // yet" fallback from reading too early (a real ordering bug this comment
   // now guards against). No-op when the caller supplies no corpus identity.
   if (input.corpusMarketplaceName) {
-    syncMarketplaceManifest({ marketplaceName: input.corpusMarketplaceName, knowledgeDir: input.knowledgeDir });
+    syncMarketplaceManifest({
+      marketplaceName: input.corpusMarketplaceName,
+      knowledgeDir: input.knowledgeDir,
+    });
   }
 
   return { plugin, marketplace, written, skipped, superseded, orphaned };
@@ -529,12 +555,25 @@ export function registerDocument(input: RegisterDocumentInput): { id: string } {
   // line after a `# heading` — returns blank here; the first-paragraph fallback
   // is what actually fills the cell.
   const description = input.description ?? firstBodyParagraph(body);
-  const freshSlugRow: SkillSlugMapEntry = { slug, title, description, edition: provenance.edition, path: `references/${filename}` };
+  const freshSlugRow: SkillSlugMapEntry = {
+    slug,
+    title,
+    description,
+    edition: provenance.edition,
+    path: `references/${filename}`,
+  };
   const existingSlugRows = existsSync(skillPath) ? parseSkillSlugMap(readFileSync(skillPath, 'utf8')) : [];
   const mergedSlugRows = mergeSlugMapRows(existingSlugRows, [freshSlugRow]);
   if (!existsSync(skillPath)) {
-    const frontmatter = stringifyYaml({ name: plugin, description: `Domain knowledge for ${plugin}.` }).trimEnd();
-    writeFileSync(skillPath, `---\n${frontmatter}\n---\n\n# ${plugin}\n\n${renderSkillSlugMapTable(mergedSlugRows)}`, 'utf8');
+    const frontmatter = stringifyYaml({
+      name: plugin,
+      description: `Domain knowledge for ${plugin}.`,
+    }).trimEnd();
+    writeFileSync(
+      skillPath,
+      `---\n${frontmatter}\n---\n\n# ${plugin}\n\n${renderSkillSlugMapTable(mergedSlugRows)}`,
+      'utf8',
+    );
   } else {
     const skillBody = readFileSync(skillPath, 'utf8');
     const prose = stripExistingSlugMapTable(skillBody);
@@ -546,7 +585,10 @@ export function registerDocument(input: RegisterDocumentInput): { id: string } {
   // installPack's own sync call moved (see its comment). No-op when the
   // caller supplies no corpus identity.
   if (corpusMarketplaceName) {
-    syncMarketplaceManifest({ marketplaceName: corpusMarketplaceName, knowledgeDir });
+    syncMarketplaceManifest({
+      marketplaceName: corpusMarketplaceName,
+      knowledgeDir,
+    });
   }
 
   return { id: id! };

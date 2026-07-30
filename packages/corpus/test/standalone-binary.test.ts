@@ -1,7 +1,7 @@
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync, existsSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, dirname } from 'node:path';
+import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, beforeAll, describe, expect, it } from 'vitest';
 
@@ -25,11 +25,18 @@ const BIN = join(here, '..', 'bin', 'spectastic-corpus');
 
 function run(args: string[], cwd: string): { code: number; stdout: string; stderr: string } {
   try {
-    const stdout = execFileSync('node', [BIN, ...args], { cwd, encoding: 'utf8' });
+    const stdout = execFileSync('node', [BIN, ...args], {
+      cwd,
+      encoding: 'utf8',
+    });
     return { code: 0, stdout, stderr: '' };
   } catch (err) {
     const e = err as { status?: number; stdout?: string; stderr?: string };
-    return { code: e.status ?? 1, stdout: e.stdout ?? '', stderr: e.stderr ?? '' };
+    return {
+      code: e.status ?? 1,
+      stdout: e.stdout ?? '',
+      stderr: e.stderr ?? '',
+    };
   }
 }
 
@@ -90,9 +97,17 @@ describe('spectastic-corpus standalone binary (US2, SC-003)', () => {
     );
     writeFileSync(
       join(packDir, 'references', 'KB-501.md'),
-      ['---', 'id: KB-501', 'edition: 2026-01-01', '---', '', '# Settlement window', '', 'Settles in one business day.', ''].join(
-        '\n',
-      ),
+      [
+        '---',
+        'id: KB-501',
+        'edition: 2026-01-01',
+        '---',
+        '',
+        '# Settlement window',
+        '',
+        'Settles in one business day.',
+        '',
+      ].join('\n'),
     );
 
     const got = run(['get', 'KB-501'], cwd);

@@ -19,23 +19,13 @@
  * first.
  */
 
-import type {
-  ApplyInput,
-  ApplyResult,
-  DeltaApplication,
-  KernelContext,
-  WithdrawInput,
-} from '../types.js';
 import { deepenArchivePaths, shallowProposalPaths } from '../archive-paths.js';
+import type { ApplyInput, ApplyResult, DeltaApplication, KernelContext, WithdrawInput } from '../types.js';
 
 const IDENTIFIED_RISK_RE = /<spec-risk[^>]*\bstatus=["']identified["']/i;
-const DELTA_RE =
-  /<spec-delta\s+op=["']([^"']+)["'][^>]*\btarget=["']([^"']+)["'][^>]*>([\s\S]*?)<\/spec-delta>/g;
+const DELTA_RE = /<spec-delta\s+op=["']([^"']+)["'][^>]*\btarget=["']([^"']+)["'][^>]*>([\s\S]*?)<\/spec-delta>/g;
 
-export async function applyCommand(
-  input: ApplyInput | WithdrawInput,
-  ctx: KernelContext,
-): Promise<ApplyResult> {
+export async function applyCommand(input: ApplyInput | WithdrawInput, ctx: KernelContext): Promise<ApplyResult> {
   const fs = ctx.fs ?? (await import('../providers/node-fs.js')).nodeFs;
   const today = new Date().toISOString().slice(0, 10);
   const todayHuman = formatHumanDate(today);
@@ -128,15 +118,28 @@ export async function applyCommand(
         liveSpec = liveSpec.replace(re, wrapRequirement(target, newBody));
         deltas.push({ target, op, result: 'success' });
       } else {
-        deltas.push({ target, op, result: 'gate-blocked', reason: 'target not found in live spec' });
+        deltas.push({
+          target,
+          op,
+          result: 'gate-blocked',
+          reason: 'target not found in live spec',
+        });
       }
     } else if (op === 'removed') {
-      const re = new RegExp(`\\n?<spec-requirement[^>]*\\bid=["']${target}["'][\\s\\S]*?<\\/spec-requirement>\\n?`, 'i');
+      const re = new RegExp(
+        `\\n?<spec-requirement[^>]*\\bid=["']${target}["'][\\s\\S]*?<\\/spec-requirement>\\n?`,
+        'i',
+      );
       if (re.test(liveSpec)) {
         liveSpec = liveSpec.replace(re, '\n');
         deltas.push({ target, op, result: 'success' });
       } else {
-        deltas.push({ target, op, result: 'gate-blocked', reason: 'target not found' });
+        deltas.push({
+          target,
+          op,
+          result: 'gate-blocked',
+          reason: 'target not found',
+        });
       }
     } else if (op === 'renamed') {
       // Extract new ID from the post-state requirement, then update + cross-refs in-spec.
@@ -148,9 +151,19 @@ export async function applyCommand(
         liveSpec = liveSpec.replace(re, wrapRequirement(newId, newBody));
         // Intra-spec reference rewrite.
         liveSpec = liveSpec.split(`#${target}`).join(`#${newId}`);
-        deltas.push({ target, op, result: 'success', reason: `renamed to ${newId}` });
+        deltas.push({
+          target,
+          op,
+          result: 'success',
+          reason: `renamed to ${newId}`,
+        });
       } else {
-        deltas.push({ target, op, result: 'gate-blocked', reason: 'target not found' });
+        deltas.push({
+          target,
+          op,
+          result: 'gate-blocked',
+          reason: 'target not found',
+        });
       }
     }
   }
@@ -181,7 +194,10 @@ export async function applyCommand(
   const archivedProposal = deepenArchivePaths(
     appendChangelogEntry(
       proposalHtml
-        .replaceAll(/<spec-status value=["'][^"']+["']>[^<]*<\/spec-status>/g, '<spec-status value="applied">Applied</spec-status>')
+        .replaceAll(
+          /<spec-status value=["'][^"']+["']>[^<]*<\/spec-status>/g,
+          '<spec-status value="applied">Applied</spec-status>',
+        )
         .replaceAll(/(<spec-change\b[^>]*?)\sstatus=["'][^"']+["']/g, '$1 status="applied"'),
       `<li><time datetime="${today}">${todayHuman}</time><span>Applied on ${todayHuman} — ${summary}.</span></li>`,
     ),
@@ -259,7 +275,10 @@ async function foldProposalTasks(
 
   // Bump the changelog heading only when adding a new section (not replacing).
   if (!phaseExisted) {
-    out = out.replace(/<h2>(\d+)(\s*·\s*Change log<\/h2>)/i, (_m, n: string, rest: string) => `<h2>${Number(n) + 1}${rest}`);
+    out = out.replace(
+      /<h2>(\d+)(\s*·\s*Change log<\/h2>)/i,
+      (_m, n: string, rest: string) => `<h2>${Number(n) + 1}${rest}`,
+    );
   }
   const idx = out.indexOf('<section id="changelog">');
   if (idx === -1) {
@@ -360,7 +379,10 @@ async function doWithdraw(
 ): Promise<ApplyResult> {
   // Flip proposal status: status="…" → status="withdrawn".
   const flipped = proposalHtml
-    .replace(/<spec-status value=["'][^"']+["']>[^<]*<\/spec-status>/g, '<spec-status value="withdrawn">Withdrawn</spec-status>')
+    .replace(
+      /<spec-status value=["'][^"']+["']>[^<]*<\/spec-status>/g,
+      '<spec-status value="withdrawn">Withdrawn</spec-status>',
+    )
     .replace(/<spec-change([^>]*)\sstatus=["'][^"']+["']/g, '<spec-change$1 status="withdrawn"');
 
   // Move folder to withdrawn/. Ensure the parent exists first — same first-use
@@ -450,7 +472,10 @@ async function applyPrinciples(
   const archivedProposal = deepenArchivePaths(
     appendChangelogEntry(
       proposalHtml
-        .replaceAll(/<spec-status value=["'][^"']+["']>[^<]*<\/spec-status>/g, '<spec-status value="applied">Applied</spec-status>')
+        .replaceAll(
+          /<spec-status value=["'][^"']+["']>[^<]*<\/spec-status>/g,
+          '<spec-status value="applied">Applied</spec-status>',
+        )
         .replaceAll(/(<spec-change\b[^>]*?)\sstatus=["'][^"']+["']/g, '$1 status="applied"'),
       `<li><time datetime="${today}">${todayHuman}</time><span>Applied on ${todayHuman} — ${summary}.</span></li>`,
     ),
@@ -461,27 +486,41 @@ async function applyPrinciples(
   const archiveDir = `${ctx.cwd}/changes/archive/${input.slug}`;
   await fs.rename(proposalDir, archiveDir);
 
-  return { liveSpec: targetPath, archivedPath: archiveDir, deltas, changelogEntry, crossSpecWarnings: [], foldedPhase: null };
+  return {
+    liveSpec: targetPath,
+    archivedPath: archiveDir,
+    deltas,
+    changelogEntry,
+    crossSpecWarnings: [],
+    foldedPhase: null,
+  };
 }
 
 /** Parse + validate the proposal's <spec-principles-apply> block (FR-004). Throws if absent/incomplete. */
 function parsePrinciplesApply(proposalHtml: string): PrinciplesFields {
   const block = PRINCIPLES_APPLY_RE.exec(proposalHtml)?.[1];
   if (block === undefined) {
-    throw new Error('applyCommand: principles proposal is missing its <spec-principles-apply> block (spec 030 FR-004).');
+    throw new Error(
+      'applyCommand: principles proposal is missing its <spec-principles-apply> block (spec 030 FR-004).',
+    );
   }
   const from = /<version\b[^>]*\bfrom=["']([^"']+)["']/i.exec(block)?.[1];
   const to = /<version\b[^>]*>([^<]+)<\/version>/i.exec(block)?.[1]?.trim();
   const tagline = /<tagline>([\s\S]*?)<\/tagline>/i.exec(block)?.[1]?.trim();
   const tldr = /<tldr>([\s\S]*?)<\/tldr>/i.exec(block)?.[1]?.trim();
   if (from === undefined || !to || tagline === undefined || tldr === undefined) {
-    throw new Error('applyCommand: <spec-principles-apply> needs <version from="…">…</version>, <tagline>, <tldr> (spec 030 FR-004).');
+    throw new Error(
+      'applyCommand: <spec-principles-apply> needs <version from="…">…</version>, <tagline>, <tldr> (spec 030 FR-004).',
+    );
   }
   return { from, to, tagline, tldr };
 }
 
 /** Fold each ADD/MODIFY delta as a bare principle; `mutate` applies each transform to the live doc. */
-function foldPrinciplesDeltas(proposalHtml: string, mutate: (fn: (live: string) => string) => void): DeltaApplication[] {
+function foldPrinciplesDeltas(
+  proposalHtml: string,
+  mutate: (fn: (live: string) => string) => void,
+): DeltaApplication[] {
   const deltas: DeltaApplication[] = [];
   for (const match of proposalHtml.matchAll(DELTA_RE)) {
     const op = match[1] as DeltaApplication['op'];
@@ -497,9 +536,23 @@ function foldPrinciplesDeltas(proposalHtml: string, mutate: (fn: (live: string) 
         found = replaced !== null;
         return replaced ?? live;
       });
-      deltas.push(found ? { target, op, result: 'success' } : { target, op, result: 'gate-blocked', reason: 'principle not found' });
+      deltas.push(
+        found
+          ? { target, op, result: 'success' }
+          : {
+              target,
+              op,
+              result: 'gate-blocked',
+              reason: 'principle not found',
+            },
+      );
     } else {
-      deltas.push({ target, op, result: 'gate-blocked', reason: `op ${op} unsupported for principles` });
+      deltas.push({
+        target,
+        op,
+        result: 'gate-blocked',
+        reason: `op ${op} unsupported for principles`,
+      });
     }
   }
   return deltas;
@@ -530,16 +583,16 @@ function insertPrincipleAtEndOfCore(live: string, bare: string): string {
 /** Replace an existing principle block (its <h3 id> up to the next <h3> or </section>). Null if absent. */
 function replacePrinciple(live: string, id: string, bare: string): string | null {
   const re = new RegExp(String.raw`<h3\b[^>]*\bid=["']` + id + String.raw`["'][\s\S]*?(?=<h3\b|</section>)`, 'i');
-  return re.test(live) ? live.replace(re, bare + '\n\n') : null;
+  return re.test(live) ? live.replace(re, `${bare}\n\n`) : null;
 }
 
 /** Substitute the version (pill + meta + footer), amended date, tagline, and TL;DR. */
 function substitutePrinciplesHeader(live: string, f: PrinciplesFields, today: string, todayHuman: string): string {
   const fromV = escapeRegExp(f.from);
   return live
-    .replace(new RegExp(String.raw`(Principles · v)` + fromV), `$1${f.to}`)
+    .replace(new RegExp(`(Principles · v)${fromV}`), `$1${f.to}`)
     .replace(/(<b>Version<\/b>\s*<span>)[^<]+(<\/span>)/i, `$1${f.to}$2`)
-    .replace(new RegExp(String.raw`(Principles v)` + fromV), `$1${f.to}`)
+    .replace(new RegExp(`(Principles v)${fromV}`), `$1${f.to}`)
     .replace(/(<b>Last amended<\/b>\s*<span><time datetime=")[^"]*(">)[^<]*(<\/time>)/i, `$1${today}$2${todayHuman}$3`)
     .replace(/(<footer[^>]*>[\s\S]*?amended [^·<]*?)(\s·)/i, `$1, ${todayHuman}$2`)
     .replace(/(<p style="[^"]*font-size:1\.25rem[^"]*">)[\s\S]*?(<\/p>)/i, `$1\n    ${f.tagline}\n  $2`)
@@ -554,7 +607,7 @@ function escapeRegExp(s: string): string {
 function appendChangelogEntry(html: string, entry: string): string {
   // Insert before </ol>\n</spec-changelog>.
   const closing = html.lastIndexOf('</ol>');
-  if (closing === -1) return html + `\n<spec-changelog><ol>\n${entry}\n</ol></spec-changelog>`;
+  if (closing === -1) return `${html}\n<spec-changelog><ol>\n${entry}\n</ol></spec-changelog>`;
   return `${html.slice(0, closing)}  ${entry}\n${html.slice(closing)}`;
 }
 

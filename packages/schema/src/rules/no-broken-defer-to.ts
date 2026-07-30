@@ -41,7 +41,7 @@ export const noBrokenDeferToRule: CrossFileRule = {
     const knownSpecIds = new Set<string>();
     for (const doc of docs) {
       const m = SPEC_FILE.exec(doc.file);
-      if (m && m[1]) knownSpecIds.add(m[1]);
+      if (m?.[1]) knownSpecIds.add(m[1]);
     }
     const canCheckExistence = docs.length >= 2;
 

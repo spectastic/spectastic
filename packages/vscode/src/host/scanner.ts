@@ -1,13 +1,7 @@
-import { readFile, stat, readdir } from 'node:fs/promises';
+import { readdir, readFile, stat } from 'node:fs/promises';
 import * as path from 'node:path';
-import { extractHealth, validate, validateMany, type ArtifactHealth } from '@spectastic/schema';
-import {
-  VERB_ORDER,
-  type ArtifactNode,
-  type Edge,
-  type LifecycleGraph,
-  type VerbType,
-} from './messaging.js';
+import { type ArtifactHealth, extractHealth, validate, validateMany } from '@spectastic/schema';
+import { type ArtifactNode, type Edge, type LifecycleGraph, VERB_ORDER, type VerbType } from './messaging.js';
 import { flagStale, type MtimeItem } from './stale.js';
 
 export interface ScanContext {
@@ -28,7 +22,10 @@ interface Candidate {
 /** Map each verb to the file that backs it in this repo's layout. */
 function candidates(ctx: ScanContext): Candidate[] {
   return [
-    { verb: 'principles', path: path.join(ctx.workspaceRoot, 'principles.html') },
+    {
+      verb: 'principles',
+      path: path.join(ctx.workspaceRoot, 'principles.html'),
+    },
     { verb: 'spec', path: path.join(ctx.specDir, 'spec.html') },
     { verb: 'plan', path: path.join(ctx.specDir, 'plan.html') },
     { verb: 'tasks', path: path.join(ctx.specDir, 'tasks.html') },
@@ -71,7 +68,11 @@ export async function buildGraph(ctx: ScanContext): Promise<LifecycleGraph> {
     const node = await buildNode(c.verb, c.verb, ctx.specId, c.path);
     nodes.push(node);
     const mtimeMs = await mtimeOf(c.path);
-    mtimeItems.push({ id: node.id, orderIndex: VERB_ORDER.indexOf(c.verb), mtimeMs });
+    mtimeItems.push({
+      id: node.id,
+      orderIndex: VERB_ORDER.indexOf(c.verb),
+      mtimeMs,
+    });
   }
 
   // Flow edges between consecutive spine nodes.
@@ -114,10 +115,7 @@ async function appendDerivedView(
   const verifyPath = path.join(ctx.specDir, 'verify.html');
   if (!(await fileExists(verifyPath))) return;
   nodes.push(await buildDerivedNode(ctx, verifyPath));
-  const source =
-    present.find((c) => c.verb === 'tasks') ??
-    present.find((c) => c.verb === 'spec') ??
-    present.at(-1);
+  const source = present.find((c) => c.verb === 'tasks') ?? present.find((c) => c.verb === 'spec') ?? present.at(-1);
   if (source) edges.push({ from: source.verb, to: 'verify', kind: 'derived' });
 }
 
@@ -160,12 +158,7 @@ async function verifyStale(ctx: ScanContext): Promise<boolean> {
   return validateMany(inputs).some((f) => f.rule === 'verify-view-stale');
 }
 
-async function buildNode(
-  verb: VerbType,
-  id: string,
-  specId: string,
-  filePath: string,
-): Promise<ArtifactNode> {
+async function buildNode(verb: VerbType, id: string, specId: string, filePath: string): Promise<ArtifactNode> {
   try {
     const html = await readFile(filePath, 'utf8');
     const health = extractHealth(html);

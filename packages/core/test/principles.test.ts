@@ -1,13 +1,6 @@
-import { describe, expect, it } from 'vitest';
+import type { AIProvider, ChatOpts, KernelContext, Question, SubagentOpts, SubagentResult } from '@spectastic/core';
 import { principlesCommand } from '@spectastic/core/commands/principles';
-import type {
-  AIProvider,
-  ChatOpts,
-  KernelContext,
-  Question,
-  SubagentOpts,
-  SubagentResult,
-} from '@spectastic/core';
+import { describe, expect, it } from 'vitest';
 
 class StubAI implements AIProvider {
   constructor(private readonly response: string) {}
@@ -53,16 +46,12 @@ describe('principlesCommand (008 FR-* via spec)', () => {
 
   it('throws on AI returning non-JSON', async () => {
     const ai = new StubAI('not json at all');
-    await expect(
-      principlesCommand({ projectName: 'x' }, ctxWith(ai)),
-    ).rejects.toThrow(/non-JSON/);
+    await expect(principlesCommand({ projectName: 'x' }, ctxWith(ai))).rejects.toThrow(/non-JSON/);
   });
 
   it('throws on missing principles array', async () => {
     const ai = new StubAI(JSON.stringify({ other: 'thing' }));
-    await expect(
-      principlesCommand({ projectName: 'x' }, ctxWith(ai)),
-    ).rejects.toThrow(/missing "principles" array/);
+    await expect(principlesCommand({ projectName: 'x' }, ctxWith(ai))).rejects.toThrow(/missing "principles" array/);
   });
 
   it('honours custom count parameter', async () => {
@@ -75,16 +64,11 @@ describe('principlesCommand (008 FR-* via spec)', () => {
         ],
       }),
     );
-    const result = await principlesCommand(
-      { projectName: 'x', principlesCount: 3 },
-      ctxWith(ai),
-    );
+    const result = await principlesCommand({ projectName: 'x', principlesCount: 3 }, ctxWith(ai));
     expect(result.principlesCount).toBe(3);
   });
 
   it('throws when ctx.ai is undefined', async () => {
-    await expect(
-      principlesCommand({ projectName: 'x' }, { cwd: '/tmp' }),
-    ).rejects.toThrow(/ctx\.ai/);
+    await expect(principlesCommand({ projectName: 'x' }, { cwd: '/tmp' })).rejects.toThrow(/ctx\.ai/);
   });
 });

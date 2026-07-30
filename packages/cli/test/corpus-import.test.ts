@@ -65,13 +65,17 @@ const MINIMAL_SPEC = (decisionText: string) => `<!doctype html>
 describe('spectastic corpus import (061 T-103, SC-001/SC-004/NFR-002)', () => {
   it('end-to-end via the stub fetcher: writes a real root registry, and a citation to it resolves green', async () => {
     const dir = project('e2e');
-    const src = sourcePack(dir, { '001-settlement-windows.md': '# Settlement windows\n\nBody.\n' });
+    const src = sourcePack(dir, {
+      '001-settlement-windows.md': '# Settlement windows\n\nBody.\n',
+    });
 
     const scriptPath = join(dir, 'pack-fetcher-script.json');
     const coordinate = 'finance-settlement@spectastic-examples';
     writeFileSync(scriptPath, JSON.stringify({ [coordinate]: src }));
 
-    const r = await runCLI(['corpus', 'import', coordinate], dir, { SPECTASTIC_PACK_STUB: scriptPath });
+    const r = await runCLI(['corpus', 'import', coordinate], dir, {
+      SPECTASTIC_PACK_STUB: scriptPath,
+    });
     expect(r.code, r.stdout + r.stderr).toBe(0);
 
     const registry = readFileSync(join(dir, 'knowledge', 'index.md'), 'utf8');
@@ -90,12 +94,16 @@ describe('spectastic corpus import (061 T-103, SC-001/SC-004/NFR-002)', () => {
 
   it('runs with no network access — the stub fetcher is exercised, never a real fetch (NFR-002)', async () => {
     const dir = project('no-network');
-    const src = sourcePack(dir, { '001-settlement-windows.md': '# Settlement windows\n\nBody.\n' });
+    const src = sourcePack(dir, {
+      '001-settlement-windows.md': '# Settlement windows\n\nBody.\n',
+    });
     const scriptPath = join(dir, 'pack-fetcher-script.json');
     const coordinate = 'finance-settlement@spectastic-examples';
     writeFileSync(scriptPath, JSON.stringify({ [coordinate]: src }));
 
-    const r = await runCLI(['corpus', 'import', coordinate], dir, { SPECTASTIC_PACK_STUB: scriptPath });
+    const r = await runCLI(['corpus', 'import', coordinate], dir, {
+      SPECTASTIC_PACK_STUB: scriptPath,
+    });
     expect(r.code, r.stdout + r.stderr).toBe(0);
   });
 });
@@ -108,16 +116,22 @@ describe('spectastic corpus import (061 T-103, SC-001/SC-004/NFR-002)', () => {
 describe('spectastic corpus import — idempotency (061 T-205, NFR-003)', () => {
   it('re-running with no change reports 0 newly registered on the second run', async () => {
     const dir = project('idempotent');
-    const src = sourcePack(dir, { '001-settlement-windows.md': '# Settlement windows\n\nBody.\n' });
+    const src = sourcePack(dir, {
+      '001-settlement-windows.md': '# Settlement windows\n\nBody.\n',
+    });
     const scriptPath = join(dir, 'pack-fetcher-script.json');
     const coordinate = 'finance-settlement@spectastic-examples';
     writeFileSync(scriptPath, JSON.stringify({ [coordinate]: src }));
 
-    const first = await runCLI(['corpus', 'import', coordinate], dir, { SPECTASTIC_PACK_STUB: scriptPath });
+    const first = await runCLI(['corpus', 'import', coordinate], dir, {
+      SPECTASTIC_PACK_STUB: scriptPath,
+    });
     expect(first.code, first.stdout + first.stderr).toBe(0);
     expect(first.stdout).toContain('1 registered');
 
-    const second = await runCLI(['corpus', 'import', coordinate], dir, { SPECTASTIC_PACK_STUB: scriptPath });
+    const second = await runCLI(['corpus', 'import', coordinate], dir, {
+      SPECTASTIC_PACK_STUB: scriptPath,
+    });
     expect(second.code, second.stdout + second.stderr).toBe(0);
     expect(second.stdout).toContain('0 registered');
     expect(second.stdout).toContain('1 already registered');
@@ -127,7 +141,9 @@ describe('spectastic corpus import — idempotency (061 T-205, NFR-003)', () => 
 describe('spectastic corpus import --from <path> (061 T-104, FR-008)', () => {
   it('registers a local checkout directly, without any fetcher/stub involved', async () => {
     const dir = project('from');
-    const src = sourcePack(dir, { '001-settlement-windows.md': '# Settlement windows\n\nBody.\n' });
+    const src = sourcePack(dir, {
+      '001-settlement-windows.md': '# Settlement windows\n\nBody.\n',
+    });
 
     const r = await runCLI(['corpus', 'import', 'finance-settlement@spectastic-examples', '--from', src], dir);
     expect(r.code, r.stdout + r.stderr).toBe(0);
@@ -159,13 +175,17 @@ describe('spectastic corpus import --from <path> (061 T-104, FR-008)', () => {
 describe('spectastic corpus import — marketplace.json stays in sync (063 T-220, SC-003)', () => {
   it('a fresh import registers the pack in marketplace.json, matching index.md; re-publish is a no-op', async () => {
     const dir = project('sync');
-    const src = sourcePack(dir, { '001-settlement-windows.md': '# Settlement windows\n\nBody.\n' });
+    const src = sourcePack(dir, {
+      '001-settlement-windows.md': '# Settlement windows\n\nBody.\n',
+    });
 
     const r = await runCLI(['corpus', 'import', 'finance-settlement@spectastic-examples', '--from', src], dir);
     expect(r.code, r.stdout + r.stderr).toBe(0);
 
     const manifestPath = join(dir, 'knowledge', 'marketplace.json');
-    const manifest = JSON.parse(readFileSync(manifestPath, 'utf8')) as { plugins: Array<{ name: string }> };
+    const manifest = JSON.parse(readFileSync(manifestPath, 'utf8')) as {
+      plugins: Array<{ name: string }>;
+    };
     expect(manifest.plugins.map((p) => p.name)).toEqual(['finance-settlement']);
     const before = readFileSync(manifestPath, 'utf8');
 

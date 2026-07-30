@@ -32,10 +32,7 @@ export function registerVerify(program: Command): void {
       const capturedRun = await readCapturedRun();
       const ctx = { cwd, fs: nodeFs };
 
-      const result = await verifyCommand(
-        { specId, ...(capturedRun ? { capturedRun } : {}) },
-        ctx,
-      );
+      const result = await verifyCommand({ specId, ...(capturedRun ? { capturedRun } : {}) }, ctx);
 
       const out = join(cwd, 'specs', result.specId, 'verify.html');
       await fsp.writeFile(out, result.html, 'utf8');

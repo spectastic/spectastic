@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
-  CourseDraftError,
   assembleCourse,
+  CourseDraftError,
   deriveSlug,
   findMissingRefs,
   validateCourseDraft,
@@ -26,7 +26,12 @@ function goodDraft(): CourseDraft {
   return {
     target: '015-ai-stub-injection',
     objectives: [
-      { title: 'Stub routing', read: 'The factory routes via the env var.', quiz: quiz(2), refs: ['FR-007'] },
+      {
+        title: 'Stub routing',
+        read: 'The factory routes via the env var.',
+        quiz: quiz(2),
+        refs: ['FR-007'],
+      },
     ],
   };
 }
@@ -46,14 +51,24 @@ describe('course: draft validation (T-101, D-002)', () => {
 
   it('rejects more than 7 objectives (NFR-001)', () => {
     const o = { title: 't', read: 'r', quiz: quiz(0), refs: [] };
-    const draft = { target: 'x', objectives: Array.from({ length: 8 }, () => o) };
+    const draft = {
+      target: 'x',
+      objectives: Array.from({ length: 8 }, () => o),
+    };
     expect(() => validateCourseDraft(draft)).toThrow(/cap is 7/);
   });
 
   it('names the offending path on a bad quiz', () => {
     const draft = {
       target: 'x',
-      objectives: [{ title: 't', read: 'r', quiz: { question: 'q', options: ['a'], correctIndex: 0 }, refs: [] }],
+      objectives: [
+        {
+          title: 't',
+          read: 'r',
+          quiz: { question: 'q', options: ['a'], correctIndex: 0 },
+          refs: [],
+        },
+      ],
     };
     expect(() => validateCourseDraft(draft)).toThrow(/objectives\[0\]\.quiz\.options/);
   });
@@ -159,12 +174,16 @@ describe('course: structured read — analogy/contrast validation (060 T-100, FR
   });
 
   it('rejects an analogy missing its mapping, naming the offending path', () => {
-    const draft = structuredDraft({ analogy: analogyFixture({ mapping: undefined }) });
+    const draft = structuredDraft({
+      analogy: analogyFixture({ mapping: undefined }),
+    });
     expect(() => validateCourseDraft(draft)).toThrow(/objectives\[0\]\.read\.analogy\.mapping/);
   });
 
   it('rejects a contrast missing its dimensions, naming the offending path', () => {
-    const draft = structuredDraft({ contrast: contrastFixture({ dimensions: undefined }) });
+    const draft = structuredDraft({
+      contrast: contrastFixture({ dimensions: undefined }),
+    });
     expect(() => validateCourseDraft(draft)).toThrow(/objectives\[0\]\.read\.contrast\.dimensions/);
   });
 });
@@ -230,12 +249,16 @@ describe('course: structured read — worked-example/illustration validation (06
   });
 
   it('rejects a worked example with an empty steps array, naming the offending path', () => {
-    const draft = structuredDraft2({ workedExample: workedExampleFixture({ steps: [] }) });
+    const draft = structuredDraft2({
+      workedExample: workedExampleFixture({ steps: [] }),
+    });
     expect(() => validateCourseDraft(draft)).toThrow(/objectives\[0\]\.read\.workedExample\.steps/);
   });
 
   it('rejects an illustration missing its svg, naming the offending path', () => {
-    const draft = structuredDraft2({ illustration: illustrationFixture({ svg: undefined }) });
+    const draft = structuredDraft2({
+      illustration: illustrationFixture({ svg: undefined }),
+    });
     expect(() => validateCourseDraft(draft)).toThrow(/objectives\[0\]\.read\.illustration\.svg/);
   });
 });
@@ -301,8 +324,13 @@ function stubFs(existingPaths: readonly string[]): FileSystem {
 
 describe('course: existence extends to every member (060 T-300, FR-004)', () => {
   it('flags a missing ref cited by an analogy member', async () => {
-    const draft = structuredDraft({ analogy: analogyFixture({ refs: ['packages/does/not/exist.ts'] }) });
-    const failures = await verifyExistence(draft, { cwd: '/repo', fs: stubFs([]) });
+    const draft = structuredDraft({
+      analogy: analogyFixture({ refs: ['packages/does/not/exist.ts'] }),
+    });
+    const failures = await verifyExistence(draft, {
+      cwd: '/repo',
+      fs: stubFs([]),
+    });
     expect(failures.some((f) => f.kind === 'missing-ref' && f.detail.includes('does/not/exist'))).toBe(true);
   });
 
@@ -312,7 +340,10 @@ describe('course: existence extends to every member (060 T-300, FR-004)', () => 
       workedExample: workedExampleFixture({ refs: ['packages/ghost-a.ts'] }),
       illustration: illustrationFixture({ refs: ['packages/ghost-b.ts'] }),
     });
-    const failures = await verifyExistence(draft, { cwd: '/repo', fs: stubFs([]) });
+    const failures = await verifyExistence(draft, {
+      cwd: '/repo',
+      fs: stubFs([]),
+    });
     const missing = failures.filter((f) => f.kind === 'missing-ref').map((f) => f.detail);
     expect(missing.some((d) => d.includes('ghost-a'))).toBe(true);
     expect(missing.some((d) => d.includes('ghost-b'))).toBe(true);
@@ -321,7 +352,10 @@ describe('course: existence extends to every member (060 T-300, FR-004)', () => 
   it('resolves a member ref that genuinely exists', async () => {
     // Isolate to the analogy's ref alone — target/objective-level refs and the
     // default contrast fixture are ID-shaped and orthogonal to this check.
-    const draft = structuredDraft({ analogy: analogyFixture({ refs: ['packages/real.ts'] }), contrast: undefined });
+    const draft = structuredDraft({
+      analogy: analogyFixture({ refs: ['packages/real.ts'] }),
+      contrast: undefined,
+    });
     draft.target = 'packages/target.ts';
     draft.objectives[0]!.refs = [];
     const failures = await verifyExistence(draft, {
@@ -335,12 +369,19 @@ describe('course: existence extends to every member (060 T-300, FR-004)', () => 
 describe('course: backward compatibility (060 T-301, FR-006)', () => {
   it('a flat-string objective is checked exactly as it always was pre-060 — no new findings from the payload feature', async () => {
     const draft = goodDraft();
-    const failures = await verifyExistence(draft, { cwd: '/repo', fs: stubFs([]) });
+    const failures = await verifyExistence(draft, {
+      cwd: '/repo',
+      fs: stubFs([]),
+    });
     // Both the target and the objective's ref are ID-shaped, not path-like; with
     // no known-ID source in this stub, both are reported exactly as they always
     // were pre-060 — nothing about the structured-payload feature changes this.
     expect(failures).toEqual([
-      { objectiveIndex: -1, kind: 'missing-ref', detail: 'target "015-ai-stub-injection" does not resolve to real source' },
+      {
+        objectiveIndex: -1,
+        kind: 'missing-ref',
+        detail: 'target "015-ai-stub-injection" does not resolve to real source',
+      },
       { objectiveIndex: 0, kind: 'missing-ref', detail: 'FR-007' },
     ]);
   });

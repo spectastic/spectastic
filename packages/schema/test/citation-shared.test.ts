@@ -10,15 +10,24 @@ import { findCitationTokens, parseCorpusCitation } from '../src/citation-shared.
  */
 describe('parseCorpusCitation', () => {
   it('parses a well-formed pinned citation', () => {
-    expect(parseCorpusCitation('KB-001@2024-05-28')).toEqual({ id: 'KB-001', edition: '2024-05-28' });
+    expect(parseCorpusCitation('KB-001@2024-05-28')).toEqual({
+      id: 'KB-001',
+      edition: '2024-05-28',
+    });
   });
 
   it('parses a longer edition string (version, not just a date)', () => {
-    expect(parseCorpusCitation('KB-042@v3.1.0')).toEqual({ id: 'KB-042', edition: 'v3.1.0' });
+    expect(parseCorpusCitation('KB-042@v3.1.0')).toEqual({
+      id: 'KB-042',
+      edition: 'v3.1.0',
+    });
   });
 
   it('parses a bare KB-NNN as a citation with a null edition (SHOULD-warn territory)', () => {
-    expect(parseCorpusCitation('KB-001')).toEqual({ id: 'KB-001', edition: null });
+    expect(parseCorpusCitation('KB-001')).toEqual({
+      id: 'KB-001',
+      edition: null,
+    });
   });
 
   it('rejects a malformed id (too few digits)', () => {
@@ -34,7 +43,10 @@ describe('parseCorpusCitation', () => {
   });
 
   it('trims surrounding whitespace before matching', () => {
-    expect(parseCorpusCitation('  KB-001@2024-05-28  ')).toEqual({ id: 'KB-001', edition: '2024-05-28' });
+    expect(parseCorpusCitation('  KB-001@2024-05-28  ')).toEqual({
+      id: 'KB-001',
+      edition: '2024-05-28',
+    });
   });
 });
 
@@ -50,10 +62,7 @@ describe('findCitationTokens', () => {
   });
 
   it('finds multiple tokens, pinned and bare, in one string', () => {
-    expect(findCitationTokens('cites KB-001@2024-05-28 and also KB-002')).toEqual([
-      'KB-001@2024-05-28',
-      'KB-002',
-    ]);
+    expect(findCitationTokens('cites KB-001@2024-05-28 and also KB-002')).toEqual(['KB-001@2024-05-28', 'KB-002']);
   });
 
   it('strips trailing sentence punctuation from each token', () => {

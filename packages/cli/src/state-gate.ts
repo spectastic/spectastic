@@ -1,5 +1,5 @@
-import { join } from 'node:path';
 import type { promises as fsPromises } from 'node:fs';
+import { join } from 'node:path';
 
 /**
  * Gate authoring-verb writes on the destination's `<spec-status>` per

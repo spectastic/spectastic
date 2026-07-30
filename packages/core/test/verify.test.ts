@@ -2,13 +2,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import {
-  readBundle,
-  renderRunBlock,
-  renderTrace,
-  renderVerifyHtml,
-  verifyCommand,
-} from '../src/commands/verify.js';
+import { readBundle, renderRunBlock, renderTrace, renderVerifyHtml, verifyCommand } from '../src/commands/verify.js';
 import type { CapturedRun, FileSystem, KernelContext } from '../src/types.js';
 
 /**
@@ -36,7 +30,10 @@ describe('readBundle: the SC -> US join (T-010, D-002)', () => {
       usAnchorPresent: true,
       testTaskIds: ['T-100'],
     });
-    expect(t.find((r) => r.scId === 'SC-002')).toMatchObject({ usNum: 2, testTaskIds: ['T-200'] });
+    expect(t.find((r) => r.scId === 'SC-002')).toMatchObject({
+      usNum: 2,
+      testTaskIds: ['T-200'],
+    });
   });
 
   // 021 trace-by-tests-section change: a test task is identified by the story's Tests
@@ -185,16 +182,27 @@ function memFs(files: Record<string, string>): FileSystem {
   };
 }
 
-const ctxFor = (files: Record<string, string>): KernelContext =>
-  ({ cwd: '/repo', fs: memFs(files), ai: undefined as never });
+const ctxFor = (files: Record<string, string>): KernelContext => ({
+  cwd: '/repo',
+  fs: memFs(files),
+  ai: undefined as never,
+});
 
 describe('verifyCommand: standalone regen preserves the Run block + idempotency (T-301, FR-006/NFR-002)', () => {
   it('preserves the captured Run block on a links-only regeneration', async () => {
-    const captured: CapturedRun = { run: 'pnpm build', tests: 'pnpm test', toggle: 'none', demo: 'open it' };
+    const captured: CapturedRun = {
+      run: 'pnpm build',
+      tests: 'pnpm test',
+      toggle: 'none',
+      demo: 'open it',
+    };
     // First pass with a captured run.
     const first = await verifyCommand(
       { specId: '999-fixture', capturedRun: captured },
-      ctxFor({ '999-fixture/spec.html': SPEC, '999-fixture/tasks.html': TASKS }),
+      ctxFor({
+        '999-fixture/spec.html': SPEC,
+        '999-fixture/tasks.html': TASKS,
+      }),
     );
     expect(first.html).toContain('<spec-run>pnpm build</spec-run>');
 
@@ -212,16 +220,13 @@ describe('verifyCommand: standalone regen preserves the Run block + idempotency 
   });
 
   it('is byte-identical on repeated regeneration of an unchanged bundle (NFR-002)', async () => {
-    const files = { '999-fixture/spec.html': SPEC, '999-fixture/tasks.html': TASKS };
+    const files = {
+      '999-fixture/spec.html': SPEC,
+      '999-fixture/tasks.html': TASKS,
+    };
     const a = await verifyCommand({ specId: '999-fixture' }, ctxFor(files));
-    const b = await verifyCommand(
-      { specId: '999-fixture' },
-      ctxFor({ ...files, '999-fixture/verify.html': a.html }),
-    );
-    const c = await verifyCommand(
-      { specId: '999-fixture' },
-      ctxFor({ ...files, '999-fixture/verify.html': b.html }),
-    );
+    const b = await verifyCommand({ specId: '999-fixture' }, ctxFor({ ...files, '999-fixture/verify.html': a.html }));
+    const c = await verifyCommand({ specId: '999-fixture' }, ctxFor({ ...files, '999-fixture/verify.html': b.html }));
     expect(b.html).toEqual(c.html);
   });
 });

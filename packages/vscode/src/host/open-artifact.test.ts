@@ -1,7 +1,7 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { mkdtemp, writeFile, rm } from 'node:fs/promises';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join, basename } from 'node:path';
+import { basename, join } from 'node:path';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 // open-artifact imports 'vscode', which only exists in the extension host. Mock
 // the slice we use so the pure rewrite (plan D-005) runs under vitest.
@@ -126,7 +126,9 @@ function makePanel(reveal: ReturnType<typeof vi.fn> = vi.fn()): vscode.WebviewPa
   return {
     webview: {
       html: '',
-      asWebviewUri: (u: { fsPath: string }) => ({ toString: () => `https://wv${u.fsPath}` }),
+      asWebviewUri: (u: { fsPath: string }) => ({
+        toString: () => `https://wv${u.fsPath}`,
+      }),
       cspSource: 'x',
       onDidReceiveMessage: vi.fn(),
       postMessage: vi.fn(),
@@ -167,10 +169,10 @@ describe('panel identity + reuse (FR-003, D-009)', () => {
       m: Map<string, unknown> | undefined,
       ext: { fsPath: string },
     ) => Promise<void>;
-    await open('/repo/specs/020-vscode-extension/spec.html', [], undefined, { fsPath: '/ext' });
-    expect((panel as { iconPath?: { fsPath: string } }).iconPath?.fsPath).toBe(
-      '/ext/media/favicon.svg',
-    );
+    await open('/repo/specs/020-vscode-extension/spec.html', [], undefined, {
+      fsPath: '/ext',
+    });
+    expect((panel as { iconPath?: { fsPath: string } }).iconPath?.fsPath).toBe('/ext/media/favicon.svg');
   });
 
   // T-009: re-opening a reused panel must repaint from the current file, not
@@ -184,11 +186,7 @@ describe('panel identity + reuse (FR-003, D-009)', () => {
       const panel = makePanel();
       vi.mocked(vscode.window.createWebviewPanel).mockReturnValue(panel);
       const registry = new Map<string, unknown>();
-      const open = openArtifact as unknown as (
-        p: string,
-        r: unknown[],
-        m: Map<string, unknown>,
-      ) => Promise<void>;
+      const open = openArtifact as unknown as (p: string, r: unknown[], m: Map<string, unknown>) => Promise<void>;
 
       await open(file, [], registry);
       expect(panel.webview.html).toContain('VERSION_ONE');

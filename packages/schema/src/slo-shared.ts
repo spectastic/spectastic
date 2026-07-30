@@ -38,10 +38,5 @@ const THRESHOLD_WORD_RE = /\b(under|below|over|above|at least|at most|within)\b.
 export function isQuantifiedTarget(text: string): boolean {
   const t = text.trim();
   if (!t) return false;
-  return (
-    PERCENTILE_RE.test(t) ||
-    COMPARISON_NUMBER_RE.test(t) ||
-    NUMBER_UNIT_RE.test(t) ||
-    THRESHOLD_WORD_RE.test(t)
-  );
+  return PERCENTILE_RE.test(t) || COMPARISON_NUMBER_RE.test(t) || NUMBER_UNIT_RE.test(t) || THRESHOLD_WORD_RE.test(t);
 }

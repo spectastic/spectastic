@@ -13,14 +13,22 @@ import type { Command } from 'commander';
 export function registerId(program: Command): void {
   program
     .command('id')
-    .description('Print a spec\'s canonical resource URI, qualified by this project\'s identity — for addressing it unambiguously across repos.')
+    .description(
+      "Print a spec's canonical resource URI, qualified by this project's identity — for addressing it unambiguously across repos.",
+    )
     .argument('<spec-id>', 'the spec to resolve (e.g. 001-auth-service)')
     .option('--anchor <id>', 'append an id from the spec (a requirement, task, or section anchor) as a URI fragment')
     .action(async (specId: string, opts: { anchor?: string }) => {
       const { idCommand, UnknownSpecError } = await import('@spectastic/core/commands/id');
 
       try {
-        const result = idCommand({ specId, ...(opts.anchor !== undefined ? { anchor: opts.anchor } : {}) }, process.cwd());
+        const result = idCommand(
+          {
+            specId,
+            ...(opts.anchor !== undefined ? { anchor: opts.anchor } : {}),
+          },
+          process.cwd(),
+        );
         process.stdout.write(`${result.uri}\n`);
         process.exit(0);
       } catch (err) {

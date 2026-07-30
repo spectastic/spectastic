@@ -13,7 +13,12 @@ import { quantifiedNfrFindings } from '../src/commands/validate.js';
 const RULE = 'quantified-nfr-required';
 
 function doc(html: string, file = 'specs/999-x/spec.html') {
-  return [{ html: `<!doctype html><html><body><main>${html}</main></body></html>`, file }];
+  return [
+    {
+      html: `<!doctype html><html><body><main>${html}</main></body></html>`,
+      file,
+    },
+  ];
 }
 
 describe('quantifiedNfrFindings: tier gating', () => {
@@ -60,7 +65,9 @@ describe('quantifiedNfrFindings: what counts as quantified', () => {
   it('an NFR with only a compact slo= attribute passes at verified (US3, T-300)', () => {
     // No measurable number in the prose, no linked <spec-slo> element — just
     // the light annotation (FR-003). Fails until T-310 extends the function.
-    const d = doc('<spec-requirement id="NFR-001" slo="99% &lt; 200ms / 28d"><p>The system must be fast.</p></spec-requirement>');
+    const d = doc(
+      '<spec-requirement id="NFR-001" slo="99% &lt; 200ms / 28d"><p>The system must be fast.</p></spec-requirement>',
+    );
     expect(quantifiedNfrFindings(d, { tier: 'verified' })).toEqual([]);
   });
 
@@ -80,5 +87,43 @@ describe('quantifiedNfrFindings: what counts as quantified', () => {
       <spec-requirement id="NFR-002"><p>Reliable.</p></spec-requirement>
     `);
     expect(quantifiedNfrFindings(d, { tier: 'verified' }).length).toBe(2);
+  });
+});
+
+// 068-enterprise-enforce-floor T-200 (plan D-003, FR-009). A config-declared
+// convention floor mirroring verify-view-missing's own precedent: a spec
+// below the floor predates the quantified-NFR convention and is exempt; a
+// spec at or above it is still gated. Written before the floor param exists
+// (T-200) — failing until T-210 lands.
+describe('quantifiedNfrFindings: convention floor (FR-009)', () => {
+  const unquantifiedIn = (specId: string) =>
+    doc(
+      '<spec-requirement id="NFR-001"><p>The system must be fast.</p></spec-requirement>',
+      `specs/${specId}/spec.html`,
+    );
+
+  it('exempts a below-floor spec even at a gated tier', () => {
+    const d = unquantifiedIn('042-some-spec');
+    expect(quantifiedNfrFindings(d, { tier: 'verified', floor: 69 })).toEqual([]);
+  });
+
+  it('still gates a spec at the floor', () => {
+    const d = unquantifiedIn('069-some-spec');
+    expect(quantifiedNfrFindings(d, { tier: 'verified', floor: 69 }).length).toBe(1);
+  });
+
+  it('still gates a spec above the floor', () => {
+    const d = unquantifiedIn('070-some-spec');
+    expect(quantifiedNfrFindings(d, { tier: 'verified', floor: 69 }).length).toBe(1);
+  });
+
+  it("with no floor configured, gates every spec (today's unchanged behavior)", () => {
+    const d = unquantifiedIn('001-some-spec');
+    expect(quantifiedNfrFindings(d, { tier: 'verified' }).length).toBe(1);
+  });
+
+  it('a spec-id with no parseable leading number is never exempted by a floor', () => {
+    const d = unquantifiedIn('untitled-spec');
+    expect(quantifiedNfrFindings(d, { tier: 'verified', floor: 69 }).length).toBe(1);
   });
 });

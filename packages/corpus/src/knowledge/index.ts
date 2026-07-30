@@ -14,67 +14,95 @@
  */
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
-import { parseCorpusDocument } from './parse.js';
 import { parseIndex, parseRegistry } from './index-format.js';
+import { parseCorpusDocument } from './parse.js';
 import type { CorpusDocument, CorpusPack, RegistryEntry, SupersededEdition } from './types.js';
 
+export type { AdaptInput, AdaptResult } from './adapt.js';
+export {
+  adaptCorpus,
+  allocateIds,
+  contentHashOf,
+  deriveProvenance,
+} from './adapt.js';
+export type {
+  ConvertDocumentInput,
+  ConvertDocumentResult,
+  ConverterRunner,
+  ConverterSpec,
+} from './convert.js';
+export {
+  CONVERTERS,
+  ConverterNotFoundError,
+  convertDocument,
+  createConverterTmpDir,
+  DEFAULT_TIMEOUT_MS,
+  ExecFileConverterRunner,
+  removeConverterTmpDir,
+  resolveConverterSpec,
+  StubConverterRunner,
+} from './convert.js';
+export { fenceCorpusDocument } from './fence.js';
+export { corpusGroundingFindings } from './gates.js';
+export type { SkillSlugMapEntry } from './index-format.js';
+export {
+  parseIndex,
+  parseRegistry,
+  parseSkillSlugMap,
+  renderIndexTable,
+  renderRegistryTable,
+  renderSkillSlugMapTable,
+} from './index-format.js';
+export type {
+  InstallInput,
+  InstallResult,
+  RegisterDocumentInput,
+} from './ingest.js';
+export {
+  allocateRegistryIds,
+  installPack,
+  mergeRegistryRows,
+  NOT_CITABLE_UNTIL_CONFIRMED_STATUS,
+  NOT_CITABLE_UNTIL_SIGNED_OFF_STATUS,
+  NOT_YET_SPOT_CHECKED_STATUS,
+  parseCoordinate,
+  registerDocument,
+} from './ingest.js';
+export { corpusLicenseFindings, isPermissiveLicense } from './license.js';
+export type { MigrateInput, MigrateResult } from './migrate.js';
+export {
+  isSingleLayerPack,
+  migratePack,
+  singleLayerDocuments,
+} from './migrate.js';
+export {
+  packAgnosticismFindings,
+  resolveMarketplacePacks,
+} from './pack-agnostic.js';
 // This file is the package's single `./knowledge` tsup entry (plan D-001) —
 // parse.ts, validate.ts, fence.ts, resolve.ts, gates.ts and types.ts are not
 // separately bundled, so anything a consumer (the CLI's scanCorpusWellFormed
 // / scanCorpusGrounding, or 054–059) needs is re-exported from here.
 export { parseCorpusDocument } from './parse.js';
-export { corpusWellFormedFindings, corpusRegistryFindings } from './validate.js';
-export { corpusLicenseFindings, isPermissiveLicense } from './license.js';
-export { fenceCorpusDocument } from './fence.js';
-export { resolveCitation, renderCitationLabel } from './resolve.js';
-export { corpusGroundingFindings } from './gates.js';
 export {
-  allocateRegistryIds,
-  installPack,
-  mergeRegistryRows,
-  parseCoordinate,
-  registerDocument,
-  NOT_YET_SPOT_CHECKED_STATUS,
-  NOT_CITABLE_UNTIL_SIGNED_OFF_STATUS,
-  NOT_CITABLE_UNTIL_CONFIRMED_STATUS,
-} from './ingest.js';
-export type { InstallInput, InstallResult, RegisterDocumentInput } from './ingest.js';
-export { buildCorpusPromptBlock, CORPUS_HINT, withCorpusHint } from './prompt.js';
-export {
-  parseIndex,
-  renderIndexTable,
-  parseRegistry,
-  renderRegistryTable,
-  parseSkillSlugMap,
-  renderSkillSlugMapTable,
-} from './index-format.js';
-export type { SkillSlugMapEntry } from './index-format.js';
-export { adaptCorpus, allocateIds, contentHashOf, deriveProvenance } from './adapt.js';
-export type { AdaptInput, AdaptResult } from './adapt.js';
-export { migratePack, singleLayerDocuments, isSingleLayerPack } from './migrate.js';
-export type { MigrateInput, MigrateResult } from './migrate.js';
-export {
-  CONVERTERS,
-  resolveConverterSpec,
-  ExecFileConverterRunner,
-  StubConverterRunner,
-  createConverterTmpDir,
-  removeConverterTmpDir,
-  DEFAULT_TIMEOUT_MS,
-  convertDocument,
-  ConverterNotFoundError,
-} from './convert.js';
-export type { ConverterRunner, ConverterSpec, ConvertDocumentInput, ConvertDocumentResult } from './convert.js';
-export { renderMarketplaceManifest, syncMarketplaceManifest, publishCorpus } from './publish.js';
+  buildCorpusPromptBlock,
+  CORPUS_HINT,
+  withCorpusHint,
+} from './prompt.js';
 export type {
   MarketplaceManifest,
   MarketplacePluginEntry,
-  RenderMarketplaceManifestInput,
-  SyncMarketplaceManifestInput,
   PublishCorpusInput,
   PublishCorpusResult,
+  RenderMarketplaceManifestInput,
+  SyncMarketplaceManifestInput,
 } from './publish.js';
-export { packAgnosticismFindings, resolveMarketplacePacks } from './pack-agnostic.js';
+export {
+  publishCorpus,
+  renderMarketplaceManifest,
+  syncMarketplaceManifest,
+} from './publish.js';
+export { renderCitationLabel, resolveCitation } from './resolve.js';
 export type {
   CorpusDocument,
   CorpusPack,
@@ -86,6 +114,10 @@ export type {
   SupersededEdition,
 } from './types.js';
 export { KB_ID_RE, REQUIRED_PROVENANCE_FIELDS } from './types.js';
+export {
+  corpusRegistryFindings,
+  corpusWellFormedFindings,
+} from './validate.js';
 
 const KNOWLEDGE_DIR = 'knowledge';
 const SKILL_FILE = 'SKILL.md';
@@ -128,7 +160,12 @@ function loadSuperseded(packDir: string, baseDir: string): SupersededEdition[] {
     const parsed = parseCorpusDocument(readFileSync(filePath, 'utf8'), relative(baseDir, filePath));
     const edition = parsed.provenance.edition;
     if (parsed.id === null || edition === undefined) continue;
-    editions.push({ id: parsed.id, edition, filePath: relative(baseDir, filePath), provenance: parsed.provenance });
+    editions.push({
+      id: parsed.id,
+      edition,
+      filePath: relative(baseDir, filePath),
+      provenance: parsed.provenance,
+    });
   }
   return editions;
 }
@@ -157,7 +194,14 @@ export function loadCorpus(cwd: string): CorpusPack[] {
     const documents = loadDocuments(dirPath, knowledgeDir);
     const supersededEditions = loadSuperseded(dirPath, knowledgeDir);
 
-    packs.push({ name, dirPath: relative(knowledgeDir, dirPath), hasSkillFile, index, documents, supersededEditions });
+    packs.push({
+      name,
+      dirPath: relative(knowledgeDir, dirPath),
+      hasSkillFile,
+      index,
+      documents,
+      supersededEditions,
+    });
   }
   return packs;
 }

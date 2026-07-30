@@ -39,7 +39,11 @@ const IGNORE = [
 
 describe('integration: every real artifact validates clean (SC-001)', () => {
   it('produces zero error findings across the canonical artifact set', async () => {
-    const files = await glob(PATTERNS, { cwd: REPO_ROOT, ignore: IGNORE, onlyFiles: true });
+    const files = await glob(PATTERNS, {
+      cwd: REPO_ROOT,
+      ignore: IGNORE,
+      onlyFiles: true,
+    });
     expect(files.length, 'expected to find some artifacts to validate').toBeGreaterThan(0);
 
     const inputs = await Promise.all(
@@ -50,9 +54,7 @@ describe('integration: every real artifact validates clean (SC-001)', () => {
     );
     const findings = validateMany(inputs);
     const errors = findings.filter((f) => f.severity === 'error');
-    const report = errors
-      .map((f) => `  ${f.file}:${f.line}:${f.column}  ${f.rule}  ${f.message}`)
-      .join('\n');
+    const report = errors.map((f) => `  ${f.file}:${f.line}:${f.column}  ${f.rule}  ${f.message}`).join('\n');
     expect(errors, `expected zero error findings; got ${errors.length}:\n${report}`).toEqual([]);
   });
 });

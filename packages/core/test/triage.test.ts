@@ -1,13 +1,6 @@
-import { describe, expect, it } from 'vitest';
+import type { AIProvider, ChatOpts, KernelContext, Question, SubagentOpts, SubagentResult } from '@spectastic/core';
 import { triageCommand } from '@spectastic/core/commands/triage';
-import type {
-  AIProvider,
-  ChatOpts,
-  KernelContext,
-  Question,
-  SubagentOpts,
-  SubagentResult,
-} from '@spectastic/core';
+import { describe, expect, it } from 'vitest';
 
 /**
  * Unit tests for triageCommand. Per FR-010 + FR-011 of
@@ -36,9 +29,7 @@ class StubAI implements AIProvider {
     return JSON.stringify(response.json);
   }
 
-  async ask<TResult extends Record<string, string>>(
-    questions: ReadonlyArray<Question>,
-  ): Promise<TResult> {
+  async ask<TResult extends Record<string, string>>(questions: ReadonlyArray<Question>): Promise<TResult> {
     this.askCalls.push([...questions]);
     const response = this.askResponses[this.askCalls.length - 1];
     if (!response) throw new Error('StubAI: no ask response staged');
@@ -160,10 +151,7 @@ describe('triageCommand (007 FR-004, FR-005, FR-009, FR-010, FR-011)', () => {
           },
         },
       ],
-      [
-        { category: 'diagnostic' },
-        { layer: 'implementation' },
-      ],
+      [{ category: 'diagnostic' }, { layer: 'implementation' }],
     );
 
     const result = await triageCommand(
@@ -178,8 +166,8 @@ describe('triageCommand (007 FR-004, FR-005, FR-009, FR-010, FR-011)', () => {
   });
 
   it('throws when ctx.ai is undefined', async () => {
-    await expect(
-      triageCommand({ description: 'x', mode: 'single' }, { cwd: '/tmp' }),
-    ).rejects.toThrow(/triageCommand requires ctx\.ai/);
+    await expect(triageCommand({ description: 'x', mode: 'single' }, { cwd: '/tmp' })).rejects.toThrow(
+      /triageCommand requires ctx\.ai/,
+    );
   });
 });

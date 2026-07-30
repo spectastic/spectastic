@@ -46,12 +46,12 @@ export const parentChildReciprocityRule: CrossFileRule = {
     const docBySpecId = new Map<string, ParsedDocument>();
     for (const doc of docs) {
       const m = SPEC_FILE.exec(doc.file);
-      if (m && m[1]) docBySpecId.set(m[1], doc);
+      if (m?.[1]) docBySpecId.set(m[1], doc);
     }
 
     for (const childDoc of docs) {
       const childMatch = SPEC_FILE.exec(childDoc.file);
-      if (!childMatch || !childMatch[1]) continue;
+      if (!childMatch?.[1]) continue;
       const childSpecId = childMatch[1];
 
       for (const parentEl of findAll(childDoc.ast, 'spec-parent')) {
@@ -61,9 +61,8 @@ export const parentChildReciprocityRule: CrossFileRule = {
         const parentDoc = docBySpecId.get(parentSpecId);
         if (!parentDoc) continue;
 
-        const hasReciprocal = findAll(parentDoc.ast, 'spec-out-of-scope').some(
-          (block) =>
-            findAll(block, 'li').some((li) => getAttr(li, 'defer-to') === childSpecId),
+        const hasReciprocal = findAll(parentDoc.ast, 'spec-out-of-scope').some((block) =>
+          findAll(block, 'li').some((li) => getAttr(li, 'defer-to') === childSpecId),
         );
 
         if (hasReciprocal) continue;

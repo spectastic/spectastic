@@ -6,8 +6,9 @@
  * next rung (bypasses fetching entirely), and the real fetcher — which
  * shells out to install a marketplace pack — is the fallback.
  */
-import { RealPackFetcher } from './providers/pack-fetcher.js';
+
 import type { PackFetcher } from './providers/pack-fetcher.js';
+import { RealPackFetcher } from './providers/pack-fetcher.js';
 import { StubPackFetcher } from './providers/pack-fetcher-stub.js';
 
 export interface CreatePackFetcherOptions {
@@ -26,7 +27,7 @@ class LocalPathFetcher implements PackFetcher {
 }
 
 export function createPackFetcher(opts: CreatePackFetcherOptions = {}): PackFetcher {
-  const stubScript = process.env['SPECTASTIC_PACK_STUB'];
+  const stubScript = process.env.SPECTASTIC_PACK_STUB;
   if (stubScript) return new StubPackFetcher(stubScript);
   if (opts.from) return new LocalPathFetcher(opts.from);
   return new RealPackFetcher();

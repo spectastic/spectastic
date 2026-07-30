@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { gitRunner, type GitExec, type GitExecOpts } from '../src/git/run.js';
+import { type GitExec, type GitExecOpts, gitRunner } from '../src/git/run.js';
 
 /**
  * T-014 of specs/026-git-strategy/tasks.html. Unit tests for the git execFile
@@ -72,12 +72,18 @@ describe('gitRunner wrappers (T-014)', () => {
 
   it('committer reads user.name/email; empty when unset', async () => {
     const ok = recorder((args) => (args[1] === 'user.name' ? 'Brian Corbin' : 'b@x'));
-    expect(await gitRunner('/repo', ok.exec).committer()).toEqual({ name: 'Brian Corbin', email: 'b@x' });
+    expect(await gitRunner('/repo', ok.exec).committer()).toEqual({
+      name: 'Brian Corbin',
+      email: 'b@x',
+    });
 
     const unset: GitExec = vi.fn(async () => {
       throw new Error('no such key');
     });
-    expect(await gitRunner('/repo', unset).committer()).toEqual({ name: '', email: '' });
+    expect(await gitRunner('/repo', unset).committer()).toEqual({
+      name: '',
+      email: '',
+    });
   });
 
   it('createBranch uses checkout -b', async () => {
@@ -100,9 +106,7 @@ describe('gitRunner wrappers (T-014)', () => {
   });
 
   it('defaultBranch strips origin/ and falls back to remote show', async () => {
-    const direct = recorder((args) =>
-      args[0] === 'symbolic-ref' ? 'origin/main' : '',
-    );
+    const direct = recorder((args) => (args[0] === 'symbolic-ref' ? 'origin/main' : ''));
     expect(await gitRunner('/repo', direct.exec).defaultBranch()).toBe('main');
 
     // origin/HEAD unset → symbolic-ref throws → remote show fallback (T-901).

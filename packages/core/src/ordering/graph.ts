@@ -9,9 +9,9 @@
  * Read-only: it parses HTML strings and returns data; it never writes (FR-009).
  */
 
-import { parse, findAll, getAttr, walk } from '@spectastic/schema/parser';
-import type { Document, Element } from '@spectastic/schema/parser';
 import { extractRice, extractSpecStatus } from '@spectastic/schema';
+import type { Document, Element } from '@spectastic/schema/parser';
+import { findAll, getAttr, parse, walk } from '@spectastic/schema/parser';
 import type { CorpusEntry, DanglingRef, Edge, SpecNode } from './types.js';
 
 const SPEC_ID = /^\d{3}-[a-z][a-z0-9-]*$/;
@@ -76,10 +76,7 @@ function reciprocalEdges(
 }
 
 /** defer-to targets that look like a spec id but aren't in the corpus (FR-010). */
-function danglingDeferTos(
-  deferBy: ReadonlyMap<string, Set<string>>,
-  present: ReadonlySet<string>,
-): DanglingRef[] {
+function danglingDeferTos(deferBy: ReadonlyMap<string, Set<string>>, present: ReadonlySet<string>): DanglingRef[] {
   const dangling: DanglingRef[] = [];
   for (const [from, targets] of deferBy) {
     for (const ref of targets) {

@@ -46,9 +46,7 @@ describe('spec-budget band value', () => {
 
     expect(jsThreshold, 'could not read the band() threshold from assets/spec.js').toBeDefined();
     expect(reqThreshold, 'could not read the band threshold from REQ-FORMAT-004').toBeDefined();
-    expect(jsThreshold, 'assets/spec.js band must match REQ-FORMAT-004 — update both together').toBe(
-      reqThreshold,
-    );
+    expect(jsThreshold, 'assets/spec.js band must match REQ-FORMAT-004 — update both together').toBe(reqThreshold);
     // Anchor the absolute value too, so a coordinated drift of *both* is still caught.
     expect(jsThreshold).toBe(80);
   });

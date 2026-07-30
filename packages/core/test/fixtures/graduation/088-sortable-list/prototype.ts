@@ -37,9 +37,7 @@ export function makeSortable(container: HTMLElement, rows: Row[]): void {
 
   function render(): void {
     const byId = new Map(rows.map((r) => [r.id, r]));
-    container.innerHTML = order
-      .map((id) => `<li data-row="${id}">${byId.get(id)?.label ?? id}</li>`)
-      .join('');
+    container.innerHTML = order.map((id) => `<li data-row="${id}">${byId.get(id)?.label ?? id}</li>`).join('');
   }
 }
 

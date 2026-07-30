@@ -112,10 +112,7 @@ function remapKnowledgeScaffold(
   }));
 }
 
-function listFiles(
-  root: string,
-  subdir: string,
-): Array<{ source: string; relativeDestination: string }> {
+function listFiles(root: string, subdir: string): Array<{ source: string; relativeDestination: string }> {
   const out: Array<{ source: string; relativeDestination: string }> = [];
   const dir = join(root, subdir);
   if (!existsSync(dir)) return out;

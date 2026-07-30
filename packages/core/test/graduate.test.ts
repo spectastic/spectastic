@@ -1,6 +1,6 @@
-import { describe, expect, it } from 'vitest';
-import { graduateTransaction, GraduateError } from '@spectastic/core/commands/graduate';
 import type { FileSystem } from '@spectastic/core';
+import { GraduateError, graduateTransaction } from '@spectastic/core/commands/graduate';
+import { describe, expect, it } from 'vitest';
 
 // T-300 / T-301 (spec 023-explore-graduation, US3): the pure, atomic graduation
 // transaction kernel — write spec+plan, archive + deepen, flip the marker last —
@@ -61,7 +61,12 @@ function stubFs(
   return { fs, files, ops };
 }
 
-const MARKER = JSON.stringify({ id: '099', intent: 'x', status: 'quarantined', created: '2026-06-20' });
+const MARKER = JSON.stringify({
+  id: '099',
+  intent: 'x',
+  status: 'quarantined',
+  created: '2026-06-20',
+});
 const EXTRACT = { specHtml: '<spec>S</spec>', planHtml: '<plan>P</plan>' };
 
 describe('graduateTransaction (US3)', () => {
@@ -72,7 +77,12 @@ describe('graduateTransaction (US3)', () => {
       '/explorations/099/prototype.ts': 'build',
     });
     const res = await graduateTransaction(
-      { specId: '099', classification: 'tracer-bullet', extract: EXTRACT, date: '2026-06-26' },
+      {
+        specId: '099',
+        classification: 'tracer-bullet',
+        extract: EXTRACT,
+        date: '2026-06-26',
+      },
       { cwd: '', fs },
     );
 
@@ -108,7 +118,12 @@ describe('graduateTransaction (US3)', () => {
 
     await expect(
       graduateTransaction(
-        { specId: '099', classification: 'spike', extract: EXTRACT, date: '2026-06-26' },
+        {
+          specId: '099',
+          classification: 'spike',
+          extract: EXTRACT,
+          date: '2026-06-26',
+        },
         { cwd: '', fs },
       ),
     ).rejects.toThrow(/injected/);
@@ -127,7 +142,12 @@ describe('graduateTransaction (US3)', () => {
     });
     await expect(
       graduateTransaction(
-        { specId: '099', classification: 'spike', extract: EXTRACT, date: '2026-06-26' },
+        {
+          specId: '099',
+          classification: 'spike',
+          extract: EXTRACT,
+          date: '2026-06-26',
+        },
         { cwd: '', fs },
       ),
     ).rejects.toThrow(GraduateError);
@@ -135,11 +155,19 @@ describe('graduateTransaction (US3)', () => {
 
   it('refuses a non-quarantined (already graduated) exploration', async () => {
     const { fs } = stubFs({
-      '/explorations/099/quarantine.json': JSON.stringify({ id: '099', status: 'graduated' }),
+      '/explorations/099/quarantine.json': JSON.stringify({
+        id: '099',
+        status: 'graduated',
+      }),
     });
     await expect(
       graduateTransaction(
-        { specId: '099', classification: 'spike', extract: EXTRACT, date: '2026-06-26' },
+        {
+          specId: '099',
+          classification: 'spike',
+          extract: EXTRACT,
+          date: '2026-06-26',
+        },
         { cwd: '', fs },
       ),
     ).rejects.toThrow(/not quarantined/);

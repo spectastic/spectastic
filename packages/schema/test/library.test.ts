@@ -1,15 +1,15 @@
 import { describe, expect, expectTypeOf, it } from 'vitest';
 import {
-  rules,
-  validate,
-  validateMany,
   type CrossFileRule,
   type Finding,
   type Location,
   type PerFileRule,
   type Rule,
+  rules,
   type Severity,
   type ValidateOptions,
+  validate,
+  validateMany,
 } from '../src/index.js';
 
 /**

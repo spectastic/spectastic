@@ -38,8 +38,7 @@ export const specParentWellFormedRule: PerFileRule = {
           rule: 'spec-parent-well-formed',
           severity: 'error',
           message: '<spec-parent> missing required specid= attribute',
-          fixHint:
-            'Add specid="<parent-spec-id>", e.g. specid="004-npm-publish-workflow".',
+          fixHint: 'Add specid="<parent-spec-id>", e.g. specid="004-npm-publish-workflow".',
         });
         continue;
       }
@@ -52,8 +51,7 @@ export const specParentWellFormedRule: PerFileRule = {
           rule: 'spec-parent-well-formed',
           severity: 'error',
           message: '<spec-parent> specid= attribute is empty',
-          fixHint:
-            'Use specid="<parent-spec-id>", e.g. specid="004-npm-publish-workflow".',
+          fixHint: 'Use specid="<parent-spec-id>", e.g. specid="004-npm-publish-workflow".',
         });
         continue;
       }

@@ -13,8 +13,8 @@
  */
 
 import type { AIProvider, Question } from '../types.js';
-import type { DeciderConfig } from './types.js';
 import { decideChoice } from './choice.js';
+import type { DeciderConfig } from './types.js';
 
 export const DECISION_TAXONOMY: Readonly<Record<string, ReadonlyArray<Question>>> = Object.freeze({
   plan: [
@@ -22,16 +22,28 @@ export const DECISION_TAXONOMY: Readonly<Record<string, ReadonlyArray<Question>>
       question: 'What test style should this plan commit to?',
       header: 'Test style',
       options: [
-        { label: 'TDD', description: 'Tests written and failing first, then implementation.' },
-        { label: 'integration-first', description: 'Integration/behaviour tests lead; units fill in.' },
-        { label: 'smoke-only', description: 'A thin smoke check; heavier testing deferred.' },
+        {
+          label: 'TDD',
+          description: 'Tests written and failing first, then implementation.',
+        },
+        {
+          label: 'integration-first',
+          description: 'Integration/behaviour tests lead; units fill in.',
+        },
+        {
+          label: 'smoke-only',
+          description: 'A thin smoke check; heavier testing deferred.',
+        },
       ],
     },
     {
       question: "What is this plan's risk tolerance?",
       header: 'Risk tolerance',
       options: [
-        { label: 'Low', description: 'Proven path — established patterns, no unknowns.' },
+        {
+          label: 'Low',
+          description: 'Proven path — established patterns, no unknowns.',
+        },
         { label: 'Medium', description: 'Some unknowns — a spike or two.' },
         { label: 'High', description: 'Experimental — significant unknowns.' },
       ],
@@ -42,9 +54,18 @@ export const DECISION_TAXONOMY: Readonly<Record<string, ReadonlyArray<Question>>
       question: 'Which execution strategy fits this work?',
       header: 'Execution strategy',
       options: [
-        { label: 'MVP-first', description: 'Ship US1 end-to-end; solo work or risky discovery.' },
-        { label: 'Incremental', description: 'Story by story, each closing before the next — normal team work.' },
-        { label: 'Parallel teams', description: 'Independent surfaces worked at once when staffing allows.' },
+        {
+          label: 'MVP-first',
+          description: 'Ship US1 end-to-end; solo work or risky discovery.',
+        },
+        {
+          label: 'Incremental',
+          description: 'Story by story, each closing before the next — normal team work.',
+        },
+        {
+          label: 'Parallel teams',
+          description: 'Independent surfaces worked at once when staffing allows.',
+        },
       ],
     },
   ],

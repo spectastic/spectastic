@@ -11,13 +11,7 @@
  * own §5/§9 caveat, applied at the parser boundary.
  */
 import { parse as parseYaml } from 'yaml';
-import {
-  KB_ID_RE,
-  REQUIRED_PROVENANCE_FIELDS,
-  SLUG_RE,
-  type ParsedCorpusDocument,
-  type Provenance,
-} from './types.js';
+import { KB_ID_RE, type ParsedCorpusDocument, type Provenance, REQUIRED_PROVENANCE_FIELDS, SLUG_RE } from './types.js';
 
 const FRONTMATTER_RE = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/;
 
@@ -113,5 +107,12 @@ export function parseCorpusDocument(raw: string, _filePath: string): ParsedCorpu
   const provenance = extractProvenance(parsedYaml);
   const missingFields = findMissingFields(id, slug, provenance);
 
-  return { id, slug, hasFrontmatter: true, missingFields, provenance, body: body.trim() };
+  return {
+    id,
+    slug,
+    hasFrontmatter: true,
+    missingFields,
+    provenance,
+    body: body.trim(),
+  };
 }

@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { expect, test } from '@playwright/test';
 import { SAMPLE_GRAPH } from './fixtures/graph.js';
 
 // I-036 — the dotted grid must fill the whole panel, not just the cards'

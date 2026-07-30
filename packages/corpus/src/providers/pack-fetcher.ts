@@ -37,7 +37,7 @@
  * no URL to clone from until `/plugin marketplace add`.
  */
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
 
@@ -93,7 +93,10 @@ export class RealGitRunner implements GitRunner {
     // never recurses submodules, so no remote code runs on a fetch.
     const hard = ['-c', 'core.hooksPath=/dev/null', '-c', 'advice.detachedHead=false'];
     const run = (args: string[], cwd?: string): void => {
-      execFileSync('git', [...hard, ...args], { stdio: ['ignore', 'ignore', 'pipe'], ...(cwd ? { cwd } : {}) });
+      execFileSync('git', [...hard, ...args], {
+        stdio: ['ignore', 'ignore', 'pipe'],
+        ...(cwd ? { cwd } : {}),
+      });
     };
     try {
       if (source.sha) {
@@ -140,19 +143,24 @@ interface RawMarketplacePlugin {
  */
 function parseGitSource(source: Record<string, unknown>): GitSource | null {
   const str = (v: unknown): string | undefined => (typeof v === 'string' && v.length > 0 ? v : undefined);
-  const kind = str(source['source']);
-  const ref = str(source['ref']);
-  const sha = str(source['sha']);
-  const path = str(source['path']);
+  const kind = str(source.source);
+  const ref = str(source.ref);
+  const sha = str(source.sha);
+  const path = str(source.path);
   let url: string | undefined;
   if (kind === 'github') {
-    const repo = str(source['repo']);
+    const repo = str(source.repo);
     if (repo) url = `https://github.com/${repo}.git`;
   } else {
-    url = str(source['url']);
+    url = str(source.url);
   }
   if (!url) return null;
-  return { url, ...(ref ? { ref } : {}), ...(sha ? { sha } : {}), ...(path ? { path } : {}) };
+  return {
+    url,
+    ...(ref ? { ref } : {}),
+    ...(sha ? { sha } : {}),
+    ...(path ? { path } : {}),
+  };
 }
 
 /** A filesystem-safe cache key for a cloned pack — the coordinate plus the

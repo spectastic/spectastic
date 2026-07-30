@@ -56,7 +56,9 @@ function graduatedProject(classify: 'spike' | 'tracer-bullet'): string {
   mkdirSync(join(cwd, 'specs', '019-demo'), { recursive: true });
   writeFileSync(join(cwd, 'specs', '019-demo', 'spec.html'), SPEC);
   writeFileSync(join(cwd, 'specs', '019-demo', 'plan.html'), PLAN);
-  mkdirSync(join(cwd, 'explorations', 'archive', '019-demo'), { recursive: true });
+  mkdirSync(join(cwd, 'explorations', 'archive', '019-demo'), {
+    recursive: true,
+  });
   writeFileSync(
     join(cwd, 'explorations', 'archive', '019-demo', 'quarantine.json'),
     JSON.stringify({ id: '019-demo', status: 'graduated', classify }),

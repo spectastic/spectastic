@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { resolveNextSpecId, highestNumberInDirs, slugify } from '../src/git/allocate.js';
+import { highestNumberInDirs, resolveNextSpecId, slugify } from '../src/git/allocate.js';
 import type { GitRunner } from '../src/git/run.js';
 
 /**
@@ -23,11 +23,7 @@ afterEach(() => {
 });
 
 /** A fake runner: configurable default branch, fetch outcome, and origin dirs. */
-function fakeRunner(opts: {
-  def?: string | null;
-  fetchOk?: boolean;
-  originDirs?: string[];
-}): GitRunner {
+function fakeRunner(opts: { def?: string | null; fetchOk?: boolean; originDirs?: string[] }): GitRunner {
   return {
     currentBranch: async () => 'main',
     headSubject: async () => '',
@@ -58,13 +54,21 @@ describe('resolveNextSpecId (T-104)', () => {
 
   it('takes the max of local and origin when the remote is reachable', async () => {
     const cwd = tmpProject(['024-a']); // local max 24
-    const runner = fakeRunner({ def: 'main', fetchOk: true, originDirs: ['024-a', '030-remote'] });
+    const runner = fakeRunner({
+      def: 'main',
+      fetchOk: true,
+      originDirs: ['024-a', '030-remote'],
+    });
     expect(await resolveNextSpecId(cwd, 'x', { runner })).toBe('031-x'); // origin 30 wins
   });
 
   it('falls back to local when the fetch times out / no remote', async () => {
     const cwd = tmpProject(['024-a', '025-b']);
-    const offline = fakeRunner({ def: 'main', fetchOk: false, originDirs: ['099-should-be-ignored'] });
+    const offline = fakeRunner({
+      def: 'main',
+      fetchOk: false,
+      originDirs: ['099-should-be-ignored'],
+    });
     expect(await resolveNextSpecId(cwd, 'x', { runner: offline })).toBe('026-x');
 
     const noRemote = fakeRunner({ def: null });

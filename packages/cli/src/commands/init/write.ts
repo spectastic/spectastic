@@ -9,9 +9,7 @@ import type { FileWriteDecision, InitSummary } from './types.js';
  *
  * Per FR-008 + FR-002 of specs/003-init-node-port/spec.html.
  */
-export async function executeWrites(
-  plan: readonly FileWriteDecision[],
-): Promise<InitSummary> {
+export async function executeWrites(plan: readonly FileWriteDecision[]): Promise<InitSummary> {
   let wrote = 0;
   let overwrote = 0;
   let skipped = 0;
@@ -29,9 +27,7 @@ export async function executeWrites(
     } else if (decision.source !== undefined) {
       await copyFile(decision.source, decision.destination);
     } else {
-      throw new Error(
-        `init: write decision for ${decision.destination} has neither source nor content`,
-      );
+      throw new Error(`init: write decision for ${decision.destination} has neither source nor content`);
     }
     if (decision.action === 'overwrite') {
       overwrote += 1;

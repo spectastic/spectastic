@@ -19,11 +19,14 @@
  * — the document's first `</section>`, ignoring the requirement's kind entirely.
  */
 
-import { describe, expect, it } from 'vitest';
-import { applyCommand } from '@spectastic/core/commands/apply';
 import type { FileSystem, KernelContext } from '@spectastic/core';
+import { applyCommand } from '@spectastic/core/commands/apply';
+import { describe, expect, it } from 'vitest';
 
-function stubFs(initial: Record<string, string>): { fs: FileSystem; files: Map<string, string> } {
+function stubFs(initial: Record<string, string>): {
+  fs: FileSystem;
+  files: Map<string, string>;
+} {
   const files = new Map(Object.entries(initial));
   const fs: FileSystem = {
     async readFile(path) {
@@ -106,10 +109,7 @@ describe('apply kernel — ADD placement keyed on family prefix (triage T-019)',
     });
     const ctx: KernelContext = { cwd: '', fs };
 
-    const result = await applyCommand(
-      { kind: 'apply', specId: '019', slug: '2026-01-01-add-nfr-003' },
-      ctx,
-    );
+    const result = await applyCommand({ kind: 'apply', specId: '019', slug: '2026-01-01-add-nfr-003' }, ctx);
 
     expect(result.deltas[0]?.result).toBe('success');
     const updated = files.get('/specs/019/spec.html')!;
@@ -145,10 +145,7 @@ describe('apply kernel — ADD placement keyed on family prefix (triage T-019)',
     });
     const ctx: KernelContext = { cwd: '', fs };
 
-    const result = await applyCommand(
-      { kind: 'apply', specId: '000', slug: '2026-01-01-add-change-009' },
-      ctx,
-    );
+    const result = await applyCommand({ kind: 'apply', specId: '000', slug: '2026-01-01-add-change-009' }, ctx);
 
     expect(result.deltas[0]?.result).toBe('success');
     const updated = files.get('/specs/000/spec.html')!;
@@ -179,10 +176,7 @@ describe('apply kernel — ADD placement keyed on family prefix (triage T-019)',
     });
     const ctx: KernelContext = { cwd: '', fs };
 
-    const result = await applyCommand(
-      { kind: 'apply', specId: '019', slug: '2026-01-01-add-sc-001' },
-      ctx,
-    );
+    const result = await applyCommand({ kind: 'apply', specId: '019', slug: '2026-01-01-add-sc-001' }, ctx);
 
     // Must succeed, never gate-block, for a legitimate first-of-kind ADD.
     expect(result.deltas[0]?.result).toBe('success');

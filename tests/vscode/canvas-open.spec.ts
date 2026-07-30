@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { expect, test } from '@playwright/test';
 import { SAMPLE_GRAPH } from './fixtures/graph.js';
 
 // US2 / T-200 (spec FR-003). Clicking a node dispatches an `open` message to the
@@ -16,14 +16,20 @@ test.beforeEach(async ({ page }) => {
 test('clicking a node posts an open message with the artifact path', async ({ page }) => {
   await page.locator('.node[data-id="spec"]').click();
   const posted = await page.evaluate(() => window.__posted);
-  expect(posted).toContainEqual({ type: 'open', path: '/repo/specs/099-demo/spec.html' });
+  expect(posted).toContainEqual({
+    type: 'open',
+    path: '/repo/specs/099-demo/spec.html',
+  });
 });
 
 test('Enter on a focused node also opens it (keyboard a11y)', async ({ page }) => {
   await page.locator('.node[data-id="plan"]').focus();
   await page.keyboard.press('Enter');
   const posted = await page.evaluate(() => window.__posted);
-  expect(posted).toContainEqual({ type: 'open', path: '/repo/specs/099-demo/plan.html' });
+  expect(posted).toContainEqual({
+    type: 'open',
+    path: '/repo/specs/099-demo/plan.html',
+  });
 });
 
 // Regression: the canvas reconciles nodes by id (spec/plan/tasks are the same
@@ -65,5 +71,8 @@ test('switching the selected spec rebinds node clicks to the new spec paths', as
   await page.locator('.node[data-id="spec"]').click();
   const opens = (await page.evaluate(() => window.__posted)).filter((m) => m.type === 'open');
   // The most recent open must be the NEW spec's path, not 099-demo's.
-  expect(opens.at(-1)).toEqual({ type: 'open', path: '/repo/specs/002-validate-cli/spec.html' });
+  expect(opens.at(-1)).toEqual({
+    type: 'open',
+    path: '/repo/specs/002-validate-cli/spec.html',
+  });
 });

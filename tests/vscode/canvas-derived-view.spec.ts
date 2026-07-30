@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { expect, test } from '@playwright/test';
 
 // T-500 (spec FR-001 + FR-014, plan D-008). A derived-view artifact — verify.html
 // — renders as a distinct, statusless node: no status pill, a stale metric, and a
@@ -55,9 +55,7 @@ test.beforeEach(async ({ page }) => {
   await page.waitForSelector('.node[data-id="spec"]');
 });
 
-test('a derived-view node renders, marked distinct from the verb spine (FR-014/D-008)', async ({
-  page,
-}) => {
+test('a derived-view node renders, marked distinct from the verb spine (FR-014/D-008)', async ({ page }) => {
   const verify = page.locator('.node[data-id="verify"]');
   await expect(verify).toHaveCount(1);
   await expect(verify).toHaveAttribute('data-derived', 'true');

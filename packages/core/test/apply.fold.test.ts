@@ -1,11 +1,14 @@
-import { describe, expect, it } from 'vitest';
-import { applyCommand } from '@spectastic/core/commands/apply';
 import type { FileSystem } from '@spectastic/core';
+import { applyCommand } from '@spectastic/core/commands/apply';
+import { describe, expect, it } from 'vitest';
 
 // T-100..T-102 of specs/000-spectastic/tasks.html (REQ-CHANGE-007): the apply
 // kernel's deterministic §6 task-fold + its fidelity post-condition.
 
-function stubFs(initial: Record<string, string>): { fs: FileSystem; files: Map<string, string> } {
+function stubFs(initial: Record<string, string>): {
+  fs: FileSystem;
+  files: Map<string, string>;
+} {
   const files = new Map(Object.entries(initial));
   const fs: FileSystem = {
     async readFile(path) {
@@ -92,7 +95,9 @@ describe('applyCommand §6 fold (REQ-CHANGE-007)', () => {
     const { fs, files } = stubFs({
       '/specs/000/spec.html': SPEC,
       '/templates/tasks.html': TEMPLATE,
-      [`/specs/000/changes/${SLUG}/proposal.html`]: proposal('<li><input type="checkbox"> Only <span class="path">x.ts</span></li>'),
+      [`/specs/000/changes/${SLUG}/proposal.html`]: proposal(
+        '<li><input type="checkbox"> Only <span class="path">x.ts</span></li>',
+      ),
     });
     const res = await applyCommand(APPLY, { cwd: '', fs });
 
@@ -107,7 +112,9 @@ describe('applyCommand §6 fold (REQ-CHANGE-007)', () => {
     const { fs, files } = stubFs({
       '/specs/000/spec.html': SPEC,
       '/specs/000/tasks.html': tracker(phase('T-118')),
-      [`/specs/000/changes/${SLUG}/proposal.html`]: proposal('<li><input type="checkbox"> One <span class="path">x.ts</span></li>'),
+      [`/specs/000/changes/${SLUG}/proposal.html`]: proposal(
+        '<li><input type="checkbox"> One <span class="path">x.ts</span></li>',
+      ),
     });
     const res = await applyCommand(APPLY, { cwd: '', fs });
     expect(res.foldedPhase?.taskIds).toEqual(['T-200']); // max 118 → next hundred-range 200
@@ -115,7 +122,8 @@ describe('applyCommand §6 fold (REQ-CHANGE-007)', () => {
   });
 
   it('completes a partial pre-existing phase rather than duplicating it', async () => {
-    const partial = `<section id="phase-${SLUG}" class="phase"><h2>1 · Demo</h2>` +
+    const partial =
+      `<section id="phase-${SLUG}" class="phase"><h2>1 · Demo</h2>` +
       '<spec-task id="T-100"><input type="checkbox"><div>First <span class="path">a/b.ts</span></div></spec-task></section>';
     const { fs, files } = stubFs({
       '/specs/000/spec.html': SPEC,

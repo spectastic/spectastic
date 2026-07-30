@@ -35,12 +35,9 @@ describe('copyLeakFindings', () => {
   });
 
   it('catches a multi-line .option() whose help string is on its own line', () => {
-    const src = [
-      '.option(',
-      "  '--graduate <id>',",
-      "  'graduate an exploration into a spec (spec 023)',",
-      ')',
-    ].join('\n');
+    const src = ['.option(', "  '--graduate <id>',", "  'graduate an exploration into a spec (spec 023)',", ')'].join(
+      '\n',
+    );
     const findings = copyLeakFindings(src, FILE);
     expect(findings).toHaveLength(1);
     // The finding anchors to the line the leaking literal starts on, not the call.

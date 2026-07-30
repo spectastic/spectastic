@@ -1,6 +1,6 @@
 import { execFileSync } from 'node:child_process';
 import type { AIProvider } from '@spectastic/core';
-import { isModelTier, resolveVerbModel, type ModelTier } from '@spectastic/core/model-policy';
+import { isModelTier, type ModelTier, resolveVerbModel } from '@spectastic/core/model-policy';
 import { loadModelsConfig, ModelsConfigError } from './config/models.js';
 
 export interface CreateAIProviderOptions {
@@ -52,7 +52,7 @@ function defaultDetectClaudeCli(): boolean {
  */
 export function resolveProviderModel(opts: CreateAIProviderOptions = {}): string {
   const verb = opts.verb ?? '';
-  const rawOverride = opts.override ?? process.env['SPECTASTIC_MODEL'];
+  const rawOverride = opts.override ?? process.env.SPECTASTIC_MODEL;
   let override: ModelTier | undefined;
   if (rawOverride !== undefined && rawOverride !== '') {
     if (!isModelTier(rawOverride)) {
@@ -97,12 +97,12 @@ export function resolveProviderModel(opts: CreateAIProviderOptions = {}): string
  * a stub-routed integration test.
  */
 export async function createAIProvider(opts: CreateAIProviderOptions = {}): Promise<AIProvider> {
-  const stubPath = process.env['SPECTASTIC_AI_STUB'];
+  const stubPath = process.env.SPECTASTIC_AI_STUB;
   if (stubPath) {
     const { StubAIProvider } = await import('@spectastic/core/providers/stub');
     return new StubAIProvider(stubPath);
   }
-  const apiKey = process.env['ANTHROPIC_API_KEY'];
+  const apiKey = process.env.ANTHROPIC_API_KEY;
   if (apiKey) {
     const model = resolveProviderModel(opts);
     const { ClaudeProvider } = await import('@spectastic/core/providers/claude');

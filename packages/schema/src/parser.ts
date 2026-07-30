@@ -1,5 +1,5 @@
-import { parse as parse5Parse } from 'parse5';
 import type { DefaultTreeAdapterTypes } from 'parse5';
+import { parse as parse5Parse } from 'parse5';
 import type { ParsedDocument } from './types.js';
 
 export type Document = DefaultTreeAdapterTypes.Document;

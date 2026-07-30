@@ -1,5 +1,6 @@
 import { join } from 'node:path';
 import type { Command } from 'commander';
+import type { AIProvider, CourseResult } from '@spectastic/core';
 
 /**
  * Register the `course` subcommand (spec 019-explain-course). Reads an
@@ -22,22 +23,19 @@ export function registerCourse(program: Command): void {
     .requiredOption('--target <target>', 'the repo-anchored target the course teaches')
     .option('--keep', 'retain (track) this course instead of git-ignoring it')
     .action(async (opts: { target: string; keep?: boolean }) => {
-      const [{ courseCommand, CourseDraftError }, { createAIProvider }, { nodeFs }, fsp] =
-        await Promise.all([
-          import('@spectastic/core/commands/course'),
-          import('../ai-factory.js'),
-          import('@spectastic/core/providers/node-fs'),
-          import('node:fs/promises'),
-        ]);
+      const [{ courseCommand, CourseDraftError }, { createAIProvider }, { nodeFs }, fsp] = await Promise.all([
+        import('@spectastic/core/commands/course'),
+        import('../ai-factory.js'),
+        import('@spectastic/core/providers/node-fs'),
+        import('node:fs/promises'),
+      ]);
 
       const raw = await readStdin();
       let draft: Record<string, unknown>;
       try {
         draft = JSON.parse(raw) as Record<string, unknown>;
       } catch (err) {
-        process.stderr.write(
-          `course: stdin is not valid JSON — ${(err as Error).message}\n`,
-        );
+        process.stderr.write(`course: stdin is not valid JSON — ${(err as Error).message}\n`);
         process.exit(2);
       }
       if (typeof draft.target !== 'string' || draft.target.trim() === '') {
@@ -45,7 +43,7 @@ export function registerCourse(program: Command): void {
       }
 
       const cwd = process.cwd();
-      let ai;
+      let ai: AIProvider;
       try {
         ai = await createAIProvider({ verb: 'course' });
       } catch (err) {
@@ -59,7 +57,7 @@ export function registerCourse(program: Command): void {
       }
       const ctx = { cwd, fs: nodeFs, ai };
 
-      let result;
+      let result: CourseResult;
       try {
         result = await courseCommand({ draft: draft as never }, ctx);
       } catch (err) {
@@ -119,7 +117,8 @@ async function ensureGitignore(
   } catch {
     // Ephemeral by default, EXCEPT the tracked profile marker (041) — otherwise
     // this ignore-all would hide `.spectastic/profile.json` (spec 043 T-310).
-    content = '# spectastic courses are ephemeral by default — regenerate, don\'t track.\n*\n!.gitignore\n!profile.json\n';
+    content =
+      "# spectastic courses are ephemeral by default — regenerate, don't track.\n*\n!.gitignore\n!profile.json\n";
   }
   if (keep) {
     const marker = `!courses/${slug}/`;

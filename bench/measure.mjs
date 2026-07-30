@@ -17,8 +17,8 @@
 
 import { spawn } from 'node:child_process';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
-import { performance } from 'node:perf_hooks';
 import { dirname, resolve } from 'node:path';
+import { performance } from 'node:perf_hooks';
 import { fileURLToPath } from 'node:url';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -47,15 +47,9 @@ const SCENARIOS = [
   },
   {
     id: 'validate-full-project',
-    description: '`spectastic validate "specs/**" "examples/**" inbox.html principles.html` — steady-state across the full set',
-    args: [
-      CLI_PATH,
-      'validate',
-      'specs/**/*.html',
-      'examples/**/*.html',
-      'inbox.html',
-      'principles.html',
-    ],
+    description:
+      '`spectastic validate "specs/**" "examples/**" inbox.html principles.html` — steady-state across the full set',
+    args: [CLI_PATH, 'validate', 'specs/**/*.html', 'examples/**/*.html', 'inbox.html', 'principles.html'],
   },
 ];
 
@@ -89,9 +83,7 @@ function fmt(ms) {
 
 async function main() {
   if (!existsSync(resolve(REPO_ROOT, CLI_PATH))) {
-    process.stderr.write(
-      `✗ ${CLI_PATH} not found. Run \`pnpm -r build\` first.\n`,
-    );
+    process.stderr.write(`✗ ${CLI_PATH} not found. Run \`pnpm -r build\` first.\n`);
     process.exit(2);
   }
 
@@ -101,9 +93,7 @@ async function main() {
   process.stderr.write(
     `\nspectastic perf bench · ${ITERATIONS} iters (${WARMUP} warmup), comparing p50 against budget\n`,
   );
-  process.stderr.write(
-    '─'.repeat(72) + '\n',
-  );
+  process.stderr.write(`${'─'.repeat(72)}\n`);
 
   const results = {};
   let regressed = false;
@@ -131,12 +121,10 @@ async function main() {
     const ok = stats.p50 <= baseline.budget_ms;
     if (!ok) regressed = true;
     const status = ok ? '✓' : '✗ OVER BUDGET';
-    process.stderr.write(
-      `p50 ${fmt(stats.p50)}  p95 ${fmt(stats.p95)}  budget ${baseline.budget_ms}ms  ${status}\n`,
-    );
+    process.stderr.write(`p50 ${fmt(stats.p50)}  p95 ${fmt(stats.p95)}  budget ${baseline.budget_ms}ms  ${status}\n`);
   }
 
-  process.stderr.write('─'.repeat(72) + '\n');
+  process.stderr.write(`${'─'.repeat(72)}\n`);
 
   if (updateMode) {
     const updated = { ...baselines, captured_at: new Date().toISOString() };
@@ -147,7 +135,7 @@ async function main() {
         observed: { p50_ms: r.p50_ms, p95_ms: r.p95_ms },
       };
     }
-    writeFileSync(BASELINES_FILE, JSON.stringify(updated, null, 2) + '\n');
+    writeFileSync(BASELINES_FILE, `${JSON.stringify(updated, null, 2)}\n`);
     process.stderr.write(`Updated observed values in ${BASELINES_FILE}\n`);
   }
 

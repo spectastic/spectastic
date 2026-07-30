@@ -1,8 +1,8 @@
-import type { Command } from 'commander';
+import { loadChangeRiskConfig } from '@spectastic/core/change-risk/config';
 import { getDiff } from '@spectastic/core/change-risk/diff';
 import { scan } from '@spectastic/core/change-risk/scan';
 import { score } from '@spectastic/core/change-risk/score';
-import { loadChangeRiskConfig } from '@spectastic/core/change-risk/config';
+import type { Command } from 'commander';
 
 /**
  * `spectastic change-risk [--range <base..head>]` — the enforcement half of
@@ -21,7 +21,7 @@ export function registerChangeRisk(program: Command): void {
   program
     .command('change-risk')
     .description(
-      "Scan a diff for capability/scope red flags — a binary blob, a build-script edit, an install hook, a high-entropy payload, a new dependency — and report a score. Surfaces risk for review; does not detect or certify safety.",
+      'Scan a diff for capability/scope red flags — a binary blob, a build-script edit, an install hook, a high-entropy payload, a new dependency — and report a score. Surfaces risk for review; does not detect or certify safety.',
     )
     .argument('[path]', 'project root to scan', '.')
     .option('--range <base..head>', 'diff an explicit commit range instead of the default uncommitted diff')

@@ -4,11 +4,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import {
-  isExtended,
-  verbFromDestination,
-  type VerbManifest,
-} from '../src/commands/init/manifest.js';
+import { isExtended, type VerbManifest, verbFromDestination } from '../src/commands/init/manifest.js';
 
 /**
  * T-300 of specs/018-explain/tasks.html. The opt-in extended-verb packaging
@@ -50,12 +46,14 @@ function listFilesRecursive(dir: string, base = dir): string[] {
   return out;
 }
 
-const commandFiles = (files: string[]) =>
-  files.filter((f) => f.startsWith('.claude/commands/'));
+const commandFiles = (files: string[]) => files.filter((f) => f.startsWith('.claude/commands/'));
 
 describe('init: extended-verb tiering (T-300, FR-009)', () => {
   describe('manifest classification', () => {
-    const manifest: VerbManifest = { core: ['spec', 'plan'], extended: ['explain'] };
+    const manifest: VerbManifest = {
+      core: ['spec', 'plan'],
+      extended: ['explain'],
+    };
 
     it('extracts the verb from a command destination path', () => {
       expect(verbFromDestination('.claude/commands/spectastic.explain.md')).toBe('explain');

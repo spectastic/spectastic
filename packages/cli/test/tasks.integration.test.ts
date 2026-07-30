@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process';
-import { mkdirSync, mkdtempSync, writeFileSync, readFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -55,8 +55,14 @@ function setupSpecDir(opts: { tasksStatus?: string }): {
   const specDir = join(cwd, 'specs', specId);
   mkdirSync(specDir, { recursive: true });
   // Minimal but valid spec.html + plan.html sources.
-  writeFileSync(join(specDir, 'spec.html'), '<!doctype html><html><body><main><spec-meta></spec-meta></main></body></html>');
-  writeFileSync(join(specDir, 'plan.html'), '<!doctype html><html><body><main><spec-meta></spec-meta></main></body></html>');
+  writeFileSync(
+    join(specDir, 'spec.html'),
+    '<!doctype html><html><body><main><spec-meta></spec-meta></main></body></html>',
+  );
+  writeFileSync(
+    join(specDir, 'plan.html'),
+    '<!doctype html><html><body><main><spec-meta></spec-meta></main></body></html>',
+  );
   const tasksPath = join(specDir, 'tasks.html');
   if (opts.tasksStatus) {
     writeFileSync(
@@ -69,7 +75,9 @@ function setupSpecDir(opts: { tasksStatus?: string }): {
 
 describe('CLI integration: tasks (T-112)', () => {
   it('refuses past-Draft tasks.html with exit 2', async () => {
-    const { cwd, specId, tasksPath } = setupSpecDir({ tasksStatus: 'accepted' });
+    const { cwd, specId, tasksPath } = setupSpecDir({
+      tasksStatus: 'accepted',
+    });
 
     const r = await runCLI(['tasks', specId], cwd);
     expect(r.code, `stdout: ${r.stdout}\nstderr: ${r.stderr}`).toBe(2);
@@ -92,7 +100,9 @@ describe('CLI integration: tasks (T-112)', () => {
   it('--force on past-Draft bypasses with warning', async () => {
     const { cwd, specId } = setupSpecDir({ tasksStatus: 'accepted' });
 
-    const r = await runCLI(['tasks', specId, '--force'], cwd, { ANTHROPIC_API_KEY: '' });
+    const r = await runCLI(['tasks', specId, '--force'], cwd, {
+      ANTHROPIC_API_KEY: '',
+    });
     expect(r.stderr).toContain('warn: bypassing change-management surface');
     expect(r.stderr).toContain('status was accepted');
     expect(r.code).not.toBe(0);
@@ -125,11 +135,10 @@ describe('CLI integration: tasks (T-112)', () => {
     );
     const scriptPath = resolve(here, 'fixtures', 'tasks-script.json');
 
-    const r = await runCLI(
-      ['tasks', specId],
-      cwd,
-      { SPECTASTIC_AI_STUB: scriptPath, ANTHROPIC_API_KEY: '' },
-    );
+    const r = await runCLI(['tasks', specId], cwd, {
+      SPECTASTIC_AI_STUB: scriptPath,
+      ANTHROPIC_API_KEY: '',
+    });
 
     expect(r.code, `stdout: ${r.stdout}\nstderr: ${r.stderr}`).toBe(0);
     expect(r.stdout).toContain('Wrote');

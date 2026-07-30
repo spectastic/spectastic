@@ -1,7 +1,7 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { test, expect } from '@playwright/test';
+import { expect, test } from '@playwright/test';
 // Import the built kernel directly — the repo root isn't a workspace member, so the
 // package specifier doesn't resolve here. Requires `pnpm --filter @spectastic/core build`.
 import { assembleCourse } from '../packages/core/dist/commands/course.js';
@@ -40,8 +40,16 @@ const draft = {
           caseA: 'permissive allowlist',
           caseB: 'restrictive blocklist',
           dimensions: [
-            { label: 'unknown license', a: 'warns (conservative)', b: 'silently passes (risky)' },
-            { label: 'burden of proof', a: 'on being known-safe', b: 'on being known-bad' },
+            {
+              label: 'unknown license',
+              a: 'warns (conservative)',
+              b: 'silently passes (risky)',
+            },
+            {
+              label: 'burden of proof',
+              a: 'on being known-safe',
+              b: 'on being known-bad',
+            },
           ],
           refs: [],
         },
@@ -59,7 +67,12 @@ const draft = {
           refs: [],
         },
       },
-      quiz: { question: 'q1', options: ['a', 'b', 'c'], correctIndex: 1, feedback: ['no', 'yes', 'no'] },
+      quiz: {
+        question: 'q1',
+        options: ['a', 'b', 'c'],
+        correctIndex: 1,
+        feedback: ['no', 'yes', 'no'],
+      },
       refs: [],
     },
   ],

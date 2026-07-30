@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
+import type { AIProvider, ChatOpts, Question, SubagentOpts, SubagentResult } from '../types.js';
 import { confirmRice } from './rank.js';
 import type { CandidateChild } from './types.js';
-import type { AIProvider, ChatOpts, Question, SubagentOpts, SubagentResult } from '../types.js';
 
 /**
  * confirmRice routes its Accept/Adjust gate through the Decider (spec 036).

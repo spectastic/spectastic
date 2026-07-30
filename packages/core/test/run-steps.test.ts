@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { buildRunSteps } from '../src/run/steps.js';
 import type { CodingAgent } from '../src/coding/types.js';
+import { buildRunSteps } from '../src/run/steps.js';
 import type { AIProvider } from '../src/types.js';
 
 /**

@@ -1,5 +1,5 @@
 import { parseCorpusCitation } from '@spectastic/schema/citation';
-import { resolveCitation, renderCitationLabel } from '../knowledge/index.js';
+import { renderCitationLabel, resolveCitation } from '../knowledge/index.js';
 import type { CorpusPack, RegistryEntry } from '../knowledge/types.js';
 
 /**

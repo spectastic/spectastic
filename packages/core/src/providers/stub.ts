@@ -23,13 +23,7 @@
  */
 
 import { readFileSync } from 'node:fs';
-import type {
-  AIProvider,
-  ChatOpts,
-  Question,
-  SubagentOpts,
-  SubagentResult,
-} from '../types.js';
+import type { AIProvider, ChatOpts, Question, SubagentOpts, SubagentResult } from '../types.js';
 
 export class StubAIProviderError extends Error {
   constructor(message: string) {
@@ -98,9 +92,7 @@ export class StubAIProvider implements AIProvider {
     return response as string;
   }
 
-  async ask<T extends Record<string, string>>(
-    _questions: ReadonlyArray<Question>,
-  ): Promise<T> {
+  async ask<T extends Record<string, string>>(_questions: ReadonlyArray<Question>): Promise<T> {
     if (this.askIdx >= this.script.ask.length) {
       throw new StubAIProviderError(
         `StubAIProvider: ask() invoked ${this.askIdx + 1} times; script only defines ${this.script.ask.length} response(s). Extend the script's "ask" array.`,
@@ -135,40 +127,30 @@ export class StubAIProvider implements AIProvider {
  */
 function validateStubScript(parsed: unknown): asserts parsed is StubScript {
   if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
-    throw new StubAIProviderError(
-      `StubAIProvider: script root must be an object (got ${describeType(parsed)})`,
-    );
+    throw new StubAIProviderError(`StubAIProvider: script root must be an object (got ${describeType(parsed)})`);
   }
   const obj = parsed as Record<string, unknown>;
 
-  if (obj['chat'] !== undefined) {
-    const chat = obj['chat'];
+  if (obj.chat !== undefined) {
+    const chat = obj.chat;
     if (!Array.isArray(chat)) {
-      throw new StubAIProviderError(
-        `StubAIProvider: script chat must be an array (got ${describeType(chat)})`,
-      );
+      throw new StubAIProviderError(`StubAIProvider: script chat must be an array (got ${describeType(chat)})`);
     }
     chat.forEach((item, i) => {
       if (typeof item !== 'string') {
-        throw new StubAIProviderError(
-          `StubAIProvider: script chat[${i}] must be a string (got ${describeType(item)})`,
-        );
+        throw new StubAIProviderError(`StubAIProvider: script chat[${i}] must be a string (got ${describeType(item)})`);
       }
     });
   }
 
-  if (obj['ask'] !== undefined) {
-    const ask = obj['ask'];
+  if (obj.ask !== undefined) {
+    const ask = obj.ask;
     if (!Array.isArray(ask)) {
-      throw new StubAIProviderError(
-        `StubAIProvider: script ask must be an array (got ${describeType(ask)})`,
-      );
+      throw new StubAIProviderError(`StubAIProvider: script ask must be an array (got ${describeType(ask)})`);
     }
     ask.forEach((item, i) => {
       if (item === null || typeof item !== 'object' || Array.isArray(item)) {
-        throw new StubAIProviderError(
-          `StubAIProvider: script ask[${i}] must be an object (got ${describeType(item)})`,
-        );
+        throw new StubAIProviderError(`StubAIProvider: script ask[${i}] must be an object (got ${describeType(item)})`);
       }
       for (const [k, v] of Object.entries(item as Record<string, unknown>)) {
         if (typeof v !== 'string') {
@@ -180,12 +162,10 @@ function validateStubScript(parsed: unknown): asserts parsed is StubScript {
     });
   }
 
-  if (obj['subagent'] !== undefined) {
-    const subagent = obj['subagent'];
+  if (obj.subagent !== undefined) {
+    const subagent = obj.subagent;
     if (!Array.isArray(subagent)) {
-      throw new StubAIProviderError(
-        `StubAIProvider: script subagent must be an array (got ${describeType(subagent)})`,
-      );
+      throw new StubAIProviderError(`StubAIProvider: script subagent must be an array (got ${describeType(subagent)})`);
     }
     subagent.forEach((item, i) => {
       if (item === null || typeof item !== 'object' || Array.isArray(item)) {
@@ -194,9 +174,9 @@ function validateStubScript(parsed: unknown): asserts parsed is StubScript {
         );
       }
       const subItem = item as Record<string, unknown>;
-      if (typeof subItem['output'] !== 'string') {
+      if (typeof subItem.output !== 'string') {
         throw new StubAIProviderError(
-          `StubAIProvider: script subagent[${i}].output must be a string (got ${describeType(subItem['output'])})`,
+          `StubAIProvider: script subagent[${i}].output must be a string (got ${describeType(subItem.output)})`,
         );
       }
     });

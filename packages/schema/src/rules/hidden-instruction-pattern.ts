@@ -1,5 +1,5 @@
-import { getAttr, getLocation, hasAttr } from '../parser.js';
 import type { Document, Element } from '../parser.js';
+import { getAttr, getLocation, hasAttr } from '../parser.js';
 import type { Finding, PerFileRule } from '../types.js';
 
 /**
@@ -132,13 +132,13 @@ export const hiddenInstructionPatternRule: PerFileRule = {
         rule: 'hidden-instruction-pattern',
         severity: 'warning',
         message: `<${el.tagName}> hides ${len} characters of text (display:none / aria-hidden / off-screen) — review for a smuggled instruction; heuristic, not categorical (FR-004).`,
-        fixHint: 'If this text is legitimately not meant to be read, confirm it carries no directive language; otherwise remove it.',
+        fixHint:
+          'If this text is legitimately not meant to be read, confirm it carries no directive language; otherwise remove it.',
       });
     });
 
     COMMENT_RE.lastIndex = 0;
-    let m: RegExpExecArray | null;
-    while ((m = COMMENT_RE.exec(doc.html))) {
+    for (let m = COMMENT_RE.exec(doc.html); m; m = COMMENT_RE.exec(doc.html)) {
       const body = m[1] ?? '';
       if (!isImperativeComment(body)) continue;
       const loc = locationAt(doc.html, m.index);

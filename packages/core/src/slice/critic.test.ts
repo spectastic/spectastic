@@ -1,6 +1,6 @@
-import { describe, it, expect } from 'vitest';
-import { runCoverageCritic } from './critic.js';
+import { describe, expect, it } from 'vitest';
 import { sliceCommand } from '../commands/slice.js';
+import { runCoverageCritic } from './critic.js';
 import { sliceStub } from './stub-ai.js';
 import type { CandidateChild } from './types.js';
 
@@ -23,7 +23,9 @@ function child(specId: string, ids: string[]): CandidateChild {
 
 describe('runCoverageCritic', () => {
   it('parses the critic subagent verdict', async () => {
-    const ai = sliceStub({ agents: ['{"ok":false,"notes":["child 002 is a horizontal layer"]}'] });
+    const ai = sliceStub({
+      agents: ['{"ok":false,"notes":["child 002 is a horizontal layer"]}'],
+    });
     const v = await runCoverageCritic('<html></html>', [child('001-a', ['FR-001'])], { cwd: '.', ai });
     expect(v?.ok).toBe(false);
     expect(v?.notes).toContain('child 002 is a horizontal layer');
@@ -39,8 +41,22 @@ describe('runCoverageCritic', () => {
 describe('sliceCommand with the critic (default on)', () => {
   const decomposition = {
     children: [
-      { specId: '030-a', title: 'A', scope: 'FR-001', assignedRequirementIds: ['FR-001'], dependsOn: [], rice: { reach: 5, impact: 5, confidence: 1, effort: 1 } },
-      { specId: '031-b', title: 'B', scope: 'FR-002', assignedRequirementIds: ['FR-002'], dependsOn: ['030-a'], rice: { reach: 2, impact: 2, confidence: 1, effort: 1 } },
+      {
+        specId: '030-a',
+        title: 'A',
+        scope: 'FR-001',
+        assignedRequirementIds: ['FR-001'],
+        dependsOn: [],
+        rice: { reach: 5, impact: 5, confidence: 1, effort: 1 },
+      },
+      {
+        specId: '031-b',
+        title: 'B',
+        scope: 'FR-002',
+        assignedRequirementIds: ['FR-002'],
+        dependsOn: ['030-a'],
+        rice: { reach: 2, impact: 2, confidence: 1, effort: 1 },
+      },
     ],
   };
   const parentHtml = `<main><spec-requirement id="FR-001" priority="must"><p>a</p></spec-requirement><spec-requirement id="FR-002" priority="must"><p>b</p></spec-requirement></main>`;

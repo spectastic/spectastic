@@ -142,7 +142,11 @@ function mergeManifest(existing: MarketplaceManifest | null, fresh: MarketplaceM
   for (const row of existing.plugins ?? []) {
     if (!byName.has(row.name)) byName.set(row.name, row); // orphan: no longer in the registry, keep verbatim
   }
-  return { name, owner, plugins: [...byName.values()].sort((a, b) => a.name.localeCompare(b.name)) };
+  return {
+    name,
+    owner,
+    plugins: [...byName.values()].sort((a, b) => a.name.localeCompare(b.name)),
+  };
 }
 
 export interface SyncMarketplaceManifestInput extends RenderMarketplaceManifestInput {}

@@ -4,8 +4,8 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { adaptCorpus } from '../src/knowledge/adapt.js';
 import { loadCorpus, loadRegistry, parseSkillSlugMap } from '../src/knowledge/index.js';
-import { corpusWellFormedFindings } from '../src/knowledge/validate.js';
 import { KB_ID_RE } from '../src/knowledge/types.js';
+import { corpusWellFormedFindings } from '../src/knowledge/validate.js';
 
 /**
  * 066-corpus-single-layer-retire: red-first tests for adaptCorpus's two-layer
@@ -48,7 +48,12 @@ describe('adaptCorpus — folder mode produces two-layer output (066, T-100)', (
     const cwd = projectRoot();
     const knowledgeDir = join(cwd, 'knowledge');
 
-    const result = adaptCorpus({ target: source, knowledgeDir, pack: 'example', marketplace: 'test-mp' });
+    const result = adaptCorpus({
+      target: source,
+      knowledgeDir,
+      pack: 'example',
+      marketplace: 'test-mp',
+    });
 
     expect(result.written).toHaveLength(3);
     expect(result.skipped).toHaveLength(0);
@@ -102,7 +107,12 @@ describe('adaptCorpus — llms.txt index-seed mode produces two-layer output (06
     const cwd = projectRoot();
     const knowledgeDir = join(cwd, 'knowledge');
 
-    const result = adaptCorpus({ target: join(source, 'llms.txt'), knowledgeDir, pack: 'example', marketplace: 'test-mp' });
+    const result = adaptCorpus({
+      target: join(source, 'llms.txt'),
+      knowledgeDir,
+      pack: 'example',
+      marketplace: 'test-mp',
+    });
 
     expect(result.written).toHaveLength(2);
     expect(result.registryRows).toBe(2);
@@ -128,11 +138,18 @@ describe('adaptCorpus — llms.txt index-seed mode produces two-layer output (06
 
 describe('adaptCorpus — never fabricated (066)', () => {
   it('a source with no discernible license/origin yields TODO exactly, never a guessed value', () => {
-    const source = rawFolder({ 'zeta.md': '# Zeta\n\nZeta body, no metadata anywhere in it.\n' });
+    const source = rawFolder({
+      'zeta.md': '# Zeta\n\nZeta body, no metadata anywhere in it.\n',
+    });
     const cwd = projectRoot();
     const knowledgeDir = join(cwd, 'knowledge');
 
-    adaptCorpus({ target: source, knowledgeDir, pack: 'example', marketplace: 'test-mp' });
+    adaptCorpus({
+      target: source,
+      knowledgeDir,
+      pack: 'example',
+      marketplace: 'test-mp',
+    });
 
     const packs = loadCorpus(cwd);
     const doc = packs.find((p) => p.name === 'example')!.documents[0]!;
@@ -155,8 +172,18 @@ describe('adaptCorpus — idempotent re-run (066, T-101)', () => {
     const cwd = projectRoot();
     const knowledgeDir = join(cwd, 'knowledge');
 
-    const first = adaptCorpus({ target: source, knowledgeDir, pack: 'example', marketplace: 'test-mp' });
-    const second = adaptCorpus({ target: source, knowledgeDir, pack: 'example', marketplace: 'test-mp' });
+    const first = adaptCorpus({
+      target: source,
+      knowledgeDir,
+      pack: 'example',
+      marketplace: 'test-mp',
+    });
+    const second = adaptCorpus({
+      target: source,
+      knowledgeDir,
+      pack: 'example',
+      marketplace: 'test-mp',
+    });
 
     expect(first.written).toHaveLength(2);
     expect(second.written).toHaveLength(0);
@@ -172,14 +199,24 @@ describe('adaptCorpus — idempotent re-run (066, T-101)', () => {
     const cwd = projectRoot();
     const knowledgeDir = join(cwd, 'knowledge');
 
-    adaptCorpus({ target: source, knowledgeDir, pack: 'example', marketplace: 'test-mp' });
+    adaptCorpus({
+      target: source,
+      knowledgeDir,
+      pack: 'example',
+      marketplace: 'test-mp',
+    });
 
     const packs = loadCorpus(cwd);
     const docPath = join(knowledgeDir, packs.find((p) => p.name === 'example')!.documents[0]!.filePath);
     const handCorrected = readFileSync(docPath, 'utf8').replace('license: TODO', 'license: MIT');
     writeFileSync(docPath, handCorrected, 'utf8');
 
-    adaptCorpus({ target: source, knowledgeDir, pack: 'example', marketplace: 'test-mp' });
+    adaptCorpus({
+      target: source,
+      knowledgeDir,
+      pack: 'example',
+      marketplace: 'test-mp',
+    });
 
     const afterSecondRun = readFileSync(docPath, 'utf8');
     expect(afterSecondRun).toMatch(/^license: MIT$/m);

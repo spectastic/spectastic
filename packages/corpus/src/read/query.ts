@@ -24,7 +24,13 @@ export function query(term: string, packs: readonly CorpusPack[], registry: read
     for (const entry of pack.index) {
       const haystack = `${entry.id} ${entry.title} ${entry.description}`.toLowerCase();
       if (!haystack.includes(needle)) continue;
-      hits.set(entry.id, { id: entry.id, title: entry.title, description: entry.description, edition: entry.edition, path: entry.path });
+      hits.set(entry.id, {
+        id: entry.id,
+        title: entry.title,
+        description: entry.description,
+        edition: entry.edition,
+        path: entry.path,
+      });
     }
   }
 
@@ -32,7 +38,12 @@ export function query(term: string, packs: readonly CorpusPack[], registry: read
     if (hits.has(entry.id)) continue;
     const haystack = `${entry.id} ${entry.slug} ${entry.title}`.toLowerCase();
     if (!haystack.includes(needle)) continue;
-    hits.set(entry.id, { id: entry.id, title: entry.title, edition: entry.edition, path: entry.path });
+    hits.set(entry.id, {
+      id: entry.id,
+      title: entry.title,
+      edition: entry.edition,
+      path: entry.path,
+    });
   }
 
   return [...hits.values()].sort((a, b) => a.id.localeCompare(b.id));

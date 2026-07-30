@@ -11,11 +11,7 @@ import type { Ordering, RankedNode } from '../ordering/types.js';
 
 /** Escape text for safe interpolation into HTML. */
 function escapeHtml(s: string): string {
-  return s
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;');
+  return s.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;');
 }
 
 /**
@@ -45,12 +41,8 @@ export function applyWsjf(entries: readonly RankedNode[]): RankedNode[] {
     (a: RankedNode, b: RankedNode): number =>
       key(b) - key(a) || byId(a.specId, b.specId);
 
-  const ricePos = new Map(
-    [...ranked].sort(cmp((e) => e.value ?? 0)).map((e, i) => [e.specId, i]),
-  );
-  const wsjfPos = new Map(
-    [...ranked].sort(cmp((e) => wsjfOf.get(e.specId) ?? 0)).map((e, i) => [e.specId, i]),
-  );
+  const ricePos = new Map([...ranked].sort(cmp((e) => e.value ?? 0)).map((e, i) => [e.specId, i]));
+  const wsjfPos = new Map([...ranked].sort(cmp((e) => wsjfOf.get(e.specId) ?? 0)).map((e, i) => [e.specId, i]));
 
   return entries.map((e) => ({
     ...e,

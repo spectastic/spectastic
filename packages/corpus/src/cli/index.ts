@@ -2,10 +2,10 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Command } from 'commander';
-import { registerCurate } from './curate.js';
 import { registerConvert } from './convert.js';
-import { registerValidate } from './validate.js';
+import { registerCurate } from './curate.js';
 import { registerRead } from './read.js';
+import { registerValidate } from './validate.js';
 
 /**
  * spectastic-corpus entry point — the standalone binary (064-corpus-package-extraction,

@@ -17,10 +17,10 @@
  *    document, and never rewrites a hand-corrected (non-TODO) field.
  */
 import { createHash } from 'node:crypto';
-import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
-import { registerDocument } from './ingest.js';
 import { parseRegistry } from './index-format.js';
+import { registerDocument } from './ingest.js';
 import { KB_ID_RE, type Provenance, type RegistryEntry } from './types.js';
 
 export const TODO = 'TODO';
@@ -85,7 +85,12 @@ const TITLE_FALLBACK_LEN = 137;
  * (065); duplicated rather than shared so this spec's diff stays scoped to
  * adapt's own re-base (066-corpus-single-layer-retire). */
 function slugify(s: string): string {
-  return s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'document';
+  return (
+    s
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '') || 'document'
+  );
 }
 
 /** Derive the pack-internal slug for a freshly-adapted file: reuse an
@@ -204,7 +209,16 @@ function adaptFolder(input: AdaptInput): AdaptResult {
     written.push(id);
     registry = [
       ...registry,
-      { id, marketplace: input.marketplace, plugin: input.pack, slug, title, edition: TODO, path: `${input.pack}/references/${slug}.md`, status: '' },
+      {
+        id,
+        marketplace: input.marketplace,
+        plugin: input.pack,
+        slug,
+        title,
+        edition: TODO,
+        path: `${input.pack}/references/${slug}.md`,
+        status: '',
+      },
     ];
   }
 
@@ -238,7 +252,11 @@ function parseLlmsTxt(raw: string): LlmsTxtEntry[] {
   for (const line of raw.split('\n')) {
     const m = LLMS_ENTRY_RE.exec(line.trim());
     if (!m?.[1] || !m[2]) continue;
-    entries.push({ title: m[1].trim(), relPath: m[2].trim(), description: m[3]?.trim() ?? '' });
+    entries.push({
+      title: m[1].trim(),
+      relPath: m[2].trim(),
+      description: m[3]?.trim() ?? '',
+    });
   }
   return entries;
 }
@@ -285,7 +303,16 @@ function adaptLlmsTxt(input: AdaptInput): AdaptResult {
     written.push(id);
     registry = [
       ...registry,
-      { id, marketplace: input.marketplace, plugin: input.pack, slug, title: entry.title, edition: TODO, path: `${input.pack}/references/${filename}`, status: '' },
+      {
+        id,
+        marketplace: input.marketplace,
+        plugin: input.pack,
+        slug,
+        title: entry.title,
+        edition: TODO,
+        path: `${input.pack}/references/${filename}`,
+        status: '',
+      },
     ];
   }
 

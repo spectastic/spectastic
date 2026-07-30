@@ -16,9 +16,9 @@
  */
 
 import type { AIProvider } from '../types.js';
-import type { DeciderConfig, DeciderRole, EffortLevel, Verdict } from './types.js';
 import { DEFAULT_EFFORT, effortToDepth } from './effort.js';
-import { LENSES, arbitrateCategorical, runCritic } from './panel.js';
+import { arbitrateCategorical, LENSES, runCritic } from './panel.js';
+import type { DeciderConfig, DeciderRole, EffortLevel, Verdict } from './types.js';
 
 /**
  * Resolve the effective decider by precedence: per-run override > project config
@@ -52,15 +52,14 @@ export interface DecideRequest {
  * person authors/dispositions); `agent` runs one critic; `panel` runs N diverse
  * critics sized by the effort level, arbitrated by majority vote.
  */
-export async function decide(
-  cfg: DeciderConfig,
-  req: DecideRequest,
-  ai: AIProvider,
-): Promise<Verdict> {
+export async function decide(cfg: DeciderConfig, req: DecideRequest, ai: AIProvider): Promise<Verdict> {
   const max = req.maxFindings ?? 3;
 
   if (cfg.role === 'human') {
-    return { ...blankVerdict('human', cfg.effort, true), ...(req.effortReason ? { effortReason: req.effortReason } : {}) };
+    return {
+      ...blankVerdict('human', cfg.effort, true),
+      ...(req.effortReason ? { effortReason: req.effortReason } : {}),
+    };
   }
 
   const voters = cfg.role === 'agent' ? 1 : effortToDepth(cfg.effort).voters;
@@ -69,7 +68,8 @@ export async function decide(
 
   const { survivors, votesByTarget } = arbitrateCategorical(critiques, voters, max);
   const tally = survivors.map(
-    (s) => `${s.concern.slice(0, 60)} — raised by ${votesByTarget.get(s.target) ?? 1}/${voters} critics (${s.lens} lens)`,
+    (s) =>
+      `${s.concern.slice(0, 60)} — raised by ${votesByTarget.get(s.target) ?? 1}/${voters} critics (${s.lens} lens)`,
   );
 
   return {
@@ -85,5 +85,12 @@ export async function decide(
 }
 
 function blankVerdict(role: DeciderRole, effort: EffortLevel, escalated: boolean): Verdict {
-  return { role, effort, voters: 0, survivors: [], tally: [], escalatedToHuman: escalated };
+  return {
+    role,
+    effort,
+    voters: 0,
+    survivors: [],
+    tally: [],
+    escalatedToHuman: escalated,
+  };
 }

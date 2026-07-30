@@ -1,7 +1,7 @@
-import { findAll, getAttr, getLocation } from '../parser.js';
 import type { Element } from '../parser.js';
-import type { Finding, PerFileRule } from '../types.js';
+import { findAll, getAttr, getLocation } from '../parser.js';
 import { isGoldenSignal } from '../slo-shared.js';
+import type { Finding, PerFileRule } from '../types.js';
 
 /**
  * `slo-well-formed` (spec 047-slo-nfr-artifact, FR-002). A `<spec-slo>` with a
@@ -23,7 +23,11 @@ const REQUIRED_ATTRS = ['objective', 'window', 'budgeting'] as const;
 function textOf(el: Element): string {
   let out = '';
   const visit = (node: unknown): void => {
-    const n = node as { tagName?: string; value?: string; childNodes?: unknown[] };
+    const n = node as {
+      tagName?: string;
+      value?: string;
+      childNodes?: unknown[];
+    };
     if (n.tagName === undefined && typeof n.value === 'string') out += n.value;
     if (n.childNodes) for (const child of n.childNodes) visit(child);
   };
@@ -79,12 +83,20 @@ export const sloWellFormedRule: PerFileRule = {
       for (const attr of REQUIRED_ATTRS) {
         const value = getAttr(slo, attr);
         if (!value || value.trim() === '') {
-          flag(slo, `<spec-slo> is missing required ${attr}=`, `Add ${attr}="…" — every SLO carries an objective, a window, and a budgeting method.`);
+          flag(
+            slo,
+            `<spec-slo> is missing required ${attr}=`,
+            `Add ${attr}="…" — every SLO carries an objective, a window, and a budgeting method.`,
+          );
         }
       }
 
       if (textOf(slo) === '') {
-        flag(slo, '<spec-slo> has no SLI — its content is empty', 'Describe what is measured (the SLI) as the element\'s content, e.g. "fraction of requests served < 200 ms".');
+        flag(
+          slo,
+          '<spec-slo> has no SLI — its content is empty',
+          'Describe what is measured (the SLI) as the element\'s content, e.g. "fraction of requests served < 200 ms".',
+        );
       }
 
       const signal = getAttr(slo, 'signal');

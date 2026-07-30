@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { extractHealth } from './extract.js';
 
 // Written before extractHealth existed (task T-010): exercises status, requirement

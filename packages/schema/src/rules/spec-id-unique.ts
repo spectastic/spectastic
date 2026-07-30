@@ -25,8 +25,7 @@ export const specIdUniqueRule: CrossFileRule = {
   id: 'spec-id-unique',
   scope: 'cross-file',
   defaultSeverity: 'error',
-  description:
-    'Two distinct specs/<NNN>-slug/ directories must not share the same numeric NNN prefix.',
+  description: 'Two distinct specs/<NNN>-slug/ directories must not share the same numeric NNN prefix.',
   check({ docs }) {
     // number → (distinct dir name → first site seen in that dir)
     const byNumber = new Map<string, Map<string, Location>>();

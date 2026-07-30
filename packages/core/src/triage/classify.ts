@@ -16,10 +16,10 @@
  *     (spec FR-006, principle P-8).
  */
 
-import type { AIProvider, Question, TriageCard, TriageInput, TriageLayer } from '../types.js';
-import { decideChoice } from '../decider/choice.js';
 import { fenceArtifactText } from '@spectastic/schema/fence';
+import { decideChoice } from '../decider/choice.js';
 import type { DeciderConfig } from '../decider/types.js';
+import type { AIProvider, Question, TriageCard, TriageInput, TriageLayer } from '../types.js';
 
 export const ALL_LAYERS: ReadonlyArray<TriageLayer> = [
   'spec',
@@ -63,11 +63,19 @@ export async function classifyItem(
     const prompt = buildCharacterisePrompt(input, mode);
     const raw =
       backend === 'subagent'
-        ? (await ai.subagent(`${CLASSIFY_SYSTEM}\n\n${prompt}`, { task: 'triage-classify' })).output
+        ? (
+            await ai.subagent(`${CLASSIFY_SYSTEM}\n\n${prompt}`, {
+              task: 'triage-classify',
+            })
+          ).output
         : await ai.chat(prompt, { temperature: 0, system: CLASSIFY_SYSTEM });
     const parsed = parseCard(raw);
     if (!parsed) {
-      return { status: 'failed', draft: failedDraft(input.description), hedgedFrom: 'implementation' };
+      return {
+        status: 'failed',
+        draft: failedDraft(input.description),
+        hedgedFrom: 'implementation',
+      };
     }
     const draft = buildDraft(parsed);
     if (parsed.layerConfidence === 'low' || !isValidLayer(parsed.layer)) {
@@ -80,7 +88,11 @@ export async function classifyItem(
     }
     return { status: 'ok', draft };
   } catch {
-    return { status: 'failed', draft: failedDraft(input.description), hedgedFrom: 'implementation' };
+    return {
+      status: 'failed',
+      draft: failedDraft(input.description),
+      hedgedFrom: 'implementation',
+    };
   }
 }
 
@@ -102,37 +114,58 @@ export async function escalateLayer(
     question: `Defect description: "${description.slice(0, 200)}". The first-pass classification was ambiguous (hedged: "${hedged}"). Is this a diagnostic-layer defect (spec / plan / implementation / cross-spec / principles / platform) or a routing-exit item (just-do / defer)?`,
     header: 'category',
     options: [
-      { label: 'diagnostic', description: 'A defect in the spec, plan, code, cross-spec contract, principles, or platform.' },
-      { label: 'routing', description: 'Not a classic defect — just-do (implement immediately) or defer (back-burner).' },
+      {
+        label: 'diagnostic',
+        description: 'A defect in the spec, plan, code, cross-spec contract, principles, or platform.',
+      },
+      {
+        label: 'routing',
+        description: 'Not a classic defect — just-do (implement immediately) or defer (back-burner).',
+      },
     ],
   };
   const a1 = await decideChoice(cfg, [q1], ai);
 
-  if (a1['category'] === 'routing') {
+  if (a1.category === 'routing') {
     const q2: Question = {
       question: 'Which routing exit?',
       header: 'layer',
       options: [
-        { label: 'just-do', description: 'Implement immediately; no proposal cycle.' },
+        {
+          label: 'just-do',
+          description: 'Implement immediately; no proposal cycle.',
+        },
         { label: 'defer', description: 'Back-burner with a defer-to target.' },
       ],
     };
     const a2 = await decideChoice(cfg, [q2], ai);
-    return a2['layer'] as TriageLayer;
+    return a2.layer as TriageLayer;
   }
 
   const q2: Question = {
     question: 'Which diagnostic layer?',
     header: 'layer',
     options: [
-      { label: 'spec', description: 'User-visible behavior / NFR / contract is missing or wrong.' },
-      { label: 'plan', description: 'Spec correct; technical decision violates a constraint.' },
-      { label: 'implementation', description: 'Spec + plan correct; code drifted.' },
-      { label: 'cross-spec', description: 'Two specs disagree on a shared contract.' },
+      {
+        label: 'spec',
+        description: 'User-visible behavior / NFR / contract is missing or wrong.',
+      },
+      {
+        label: 'plan',
+        description: 'Spec correct; technical decision violates a constraint.',
+      },
+      {
+        label: 'implementation',
+        description: 'Spec + plan correct; code drifted.',
+      },
+      {
+        label: 'cross-spec',
+        description: 'Two specs disagree on a shared contract.',
+      },
     ],
   };
   const a2 = await decideChoice(cfg, [q2], ai);
-  return a2['layer'] as TriageLayer;
+  return a2.layer as TriageLayer;
 }
 
 /**
@@ -189,7 +222,7 @@ export function buildCharacterisePrompt(input: TriageInput, mode: 'single' | 'li
     '',
     'Return JSON with these fields:',
     '  headline: one-line failure title (≤ 80 chars)',
-    '  layer: one of ' + ALL_LAYERS.join(' | '),
+    `  layer: one of ${ALL_LAYERS.join(' | ')}`,
     '  layerConfidence: "high" | "medium" | "low"',
     '  expected: single sentence',
     '  actual: single sentence',
@@ -223,17 +256,17 @@ export function parseCard(raw: string): ParsedCard | null {
   try {
     const parsed = JSON.parse(trimmed) as Record<string, unknown>;
     if (typeof parsed !== 'object' || parsed === null) return null;
-    const lc = parsed['layerConfidence'];
-    const rr = parsed['regenResult'];
-    const dt = parsed['deferTo'];
-    const dd = parsed['deepDive'];
+    const lc = parsed.layerConfidence;
+    const rr = parsed.regenResult;
+    const dt = parsed.deferTo;
+    const dd = parsed.deepDive;
     return {
-      headline: String(parsed['headline'] ?? ''),
-      layer: (parsed['layer'] ?? 'spec') as TriageLayer,
-      expected: String(parsed['expected'] ?? ''),
-      actual: String(parsed['actual'] ?? ''),
-      diagnosis: String(parsed['diagnosis'] ?? ''),
-      fix: String(parsed['fix'] ?? ''),
+      headline: String(parsed.headline ?? ''),
+      layer: (parsed.layer ?? 'spec') as TriageLayer,
+      expected: String(parsed.expected ?? ''),
+      actual: String(parsed.actual ?? ''),
+      diagnosis: String(parsed.diagnosis ?? ''),
+      fix: String(parsed.fix ?? ''),
       ...(lc === 'high' || lc === 'medium' || lc === 'low' ? { layerConfidence: lc } : {}),
       ...(rr === 'pass' || rr === 'fail' || rr === 'unsure' ? { regenResult: rr } : {}),
       ...(typeof dt === 'string' ? { deferTo: dt } : {}),

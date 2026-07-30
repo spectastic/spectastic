@@ -9,14 +9,14 @@
  * P1 path takes a single decomposition + the coverage critic.
  */
 
-import { decompose } from '../slice/decompose.js';
-import { confirmRice, orderChildren } from '../slice/rank.js';
 import { resolveDecider } from '../decider/index.js';
 import { buildCoverage } from '../slice/coverage.js';
 import { runCoverageCritic } from '../slice/critic.js';
-import { decideVerdict, overBudgetChildren } from '../slice/verdict.js';
+import { decompose } from '../slice/decompose.js';
+import { confirmRice, orderChildren } from '../slice/rank.js';
 import { renderSplitSection } from '../slice/render.js';
 import type { SplitModel, Verdict } from '../slice/types.js';
+import { decideVerdict, overBudgetChildren } from '../slice/verdict.js';
 import type { KernelContext } from '../types.js';
 
 export { appendSplitToParent } from '../slice/render.js';
@@ -65,7 +65,10 @@ export async function sliceCommand(input: SliceInput, ctx: KernelContext): Promi
   const { children } = await decompose(input.parentHtml, ctx);
   const acceptCfg = resolveDecider(
     undefined,
-    { ...(input.decider ? { role: input.decider } : {}), ...(input.effort ? { effort: input.effort } : {}) },
+    {
+      ...(input.decider ? { role: input.decider } : {}),
+      ...(input.effort ? { effort: input.effort } : {}),
+    },
     'human',
   );
   const confirmed = await confirmRice(children, ctx, acceptCfg);

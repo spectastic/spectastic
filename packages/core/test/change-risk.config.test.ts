@@ -31,20 +31,31 @@ describe('loadChangeRiskConfig', () => {
   });
 
   it('loads a well-formed bands + failAt section', () => {
-    const dir = projectWith({ changeRisk: { bands: { amber: 30, red: 70 }, failAt: 70 } });
-    expect(loadChangeRiskConfig(dir)).toEqual({ bands: { amber: 30, red: 70 }, failAt: 70 });
+    const dir = projectWith({
+      changeRisk: { bands: { amber: 30, red: 70 }, failAt: 70 },
+    });
+    expect(loadChangeRiskConfig(dir)).toEqual({
+      bands: { amber: 30, red: 70 },
+      failAt: 70,
+    });
   });
 
   it('accepts bands-only or failAt-only — the two fields load independently', () => {
-    const bandsOnly = projectWith({ changeRisk: { bands: { amber: 20, red: 50 } } });
-    expect(loadChangeRiskConfig(bandsOnly)).toEqual({ bands: { amber: 20, red: 50 } });
+    const bandsOnly = projectWith({
+      changeRisk: { bands: { amber: 20, red: 50 } },
+    });
+    expect(loadChangeRiskConfig(bandsOnly)).toEqual({
+      bands: { amber: 20, red: 50 },
+    });
 
     const failAtOnly = projectWith({ changeRisk: { failAt: 60 } });
     expect(loadChangeRiskConfig(failAtOnly)).toEqual({ failAt: 60 });
   });
 
   it('drops a malformed bands object but keeps a valid failAt alongside it', () => {
-    const dir = projectWith({ changeRisk: { bands: { amber: 'high', red: 70 }, failAt: 55 } });
+    const dir = projectWith({
+      changeRisk: { bands: { amber: 'high', red: 70 }, failAt: 55 },
+    });
     expect(loadChangeRiskConfig(dir)).toEqual({ failAt: 55 });
   });
 

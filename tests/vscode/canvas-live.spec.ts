@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { expect, test } from '@playwright/test';
 import { SAMPLE_GRAPH } from './fixtures/graph.js';
 
 // Polish / T-902 (spec NFR-002, SC-004). A re-post (the watcher's effect) updates

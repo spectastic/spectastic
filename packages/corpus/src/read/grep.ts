@@ -57,16 +57,23 @@ function nodeSearchBody(body: string, needle: string): BodyHit[] {
 
 function rgSearchBody(body: string, needle: string): BodyHit[] {
   try {
-    const out = execFileSync('rg', ['--fixed-strings', '--ignore-case', '--line-number', '--no-filename', '--', needle], {
-      input: body,
-      encoding: 'utf8',
-    });
+    const out = execFileSync(
+      'rg',
+      ['--fixed-strings', '--ignore-case', '--line-number', '--no-filename', '--', needle],
+      {
+        input: body,
+        encoding: 'utf8',
+      },
+    );
     return out
       .split('\n')
       .filter((line) => line.length > 0)
       .map((line) => {
         const sep = line.indexOf(':');
-        return { line: Number(line.slice(0, sep)), context: line.slice(sep + 1).trim() };
+        return {
+          line: Number(line.slice(0, sep)),
+          context: line.slice(sep + 1).trim(),
+        };
       });
   } catch (err) {
     // rg exits 1 for "no match" — a normal signal, not a failure (confirmed this turn).
@@ -90,7 +97,13 @@ export function grep(pattern: string, packs: readonly CorpusPack[], opts: GrepOp
     for (const doc of pack.documents) {
       if (doc.id === null) continue;
       const bodyHits = useRg ? rgSearchBody(doc.body, pattern) : nodeSearchBody(doc.body, pattern);
-      for (const h of bodyHits) hits.push({ id: doc.id, filePath: doc.filePath, line: h.line, context: h.context });
+      for (const h of bodyHits)
+        hits.push({
+          id: doc.id,
+          filePath: doc.filePath,
+          line: h.line,
+          context: h.context,
+        });
     }
   }
 

@@ -1,6 +1,6 @@
-import { describe, expect, it } from 'vitest';
-import { tasksCommand } from '@spectastic/core/commands/tasks';
 import type { AIProvider, FileSystem, KernelContext } from '@spectastic/core';
+import { tasksCommand } from '@spectastic/core/commands/tasks';
+import { describe, expect, it } from 'vitest';
 
 // T-100 (US1, tracer) + T-200 (US2, spike) of spec 024-explore-restore: restore
 // generation seeds the prompt by classification (FR-002/FR-003), banners the
@@ -61,7 +61,10 @@ describe('tasksCommand restore mode (024-explore-restore)', () => {
   it('tracer-bullet seeds a refactor-to-comply prompt and banners the classification (FR-002, FR-005, SC-002)', async () => {
     const { ctx, prompts } = harness('{ "FR-001": "Bring A to comply", "FR-002": "Bring B to comply" }');
     const r = await tasksCommand(
-      { ...paths, restore: { classification: 'tracer-bullet', sourceArchive: ARCHIVE } },
+      {
+        ...paths,
+        restore: { classification: 'tracer-bullet', sourceArchive: ARCHIVE },
+      },
       ctx,
     );
     const prompt = prompts.join('\n');
@@ -83,7 +86,10 @@ describe('tasksCommand restore mode (024-explore-restore)', () => {
     // deterministic skeleton. SC-003 must hold regardless of the AI.
     const { ctx, prompts } = harness('the model returned prose, not JSON');
     const r = await tasksCommand(
-      { ...paths, restore: { classification: 'spike', sourceArchive: ARCHIVE } },
+      {
+        ...paths,
+        restore: { classification: 'spike', sourceArchive: ARCHIVE },
+      },
       ctx,
     );
     const prompt = prompts.join('\n');

@@ -15,7 +15,10 @@ const CLI = resolve(here, '..', 'bin', 'spectastic');
 
 async function runCLI(args: string[], cwd: string): Promise<{ stdout: string; code: number }> {
   return new Promise((resolveFn) => {
-    const child = spawn('node', [CLI, ...args], { cwd, stdio: ['pipe', 'pipe', 'pipe'] });
+    const child = spawn('node', [CLI, ...args], {
+      cwd,
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
     let stdout = '';
     child.stdout.on('data', (c: Buffer) => (stdout += c.toString('utf8')));
     child.stdin.end();

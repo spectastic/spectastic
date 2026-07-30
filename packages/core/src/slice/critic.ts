@@ -6,8 +6,8 @@
  * single-subagent precedent; the partition (FR-005) remains the hard gate.
  */
 
-import type { CandidateChild, SemanticVerdict } from './types.js';
 import type { KernelContext } from '../types.js';
+import type { CandidateChild, SemanticVerdict } from './types.js';
 
 const CRITIC_SYSTEM =
   'You are an adversarial coverage critic for a proposed spec split. Judge two things: (1) do the children, together, drop nothing meaningful from the parent? (2) is each child a genuine vertical slice — independently demoable — rather than a horizontal layer? Return ONLY JSON: { "ok": boolean, "notes": [string, ...] }.';
@@ -21,7 +21,15 @@ export async function runCoverageCritic(
   const summary = children
     .map((c) => `- ${c.specId} "${c.title}": ${c.scope} [covers ${c.assignedRequirementIds.join(', ')}]`)
     .join('\n');
-  const prompt = [CRITIC_SYSTEM, '', 'Parent excerpt:', parentHtml.slice(0, 3000), '', 'Proposed children:', summary].join('\n');
+  const prompt = [
+    CRITIC_SYSTEM,
+    '',
+    'Parent excerpt:',
+    parentHtml.slice(0, 3000),
+    '',
+    'Proposed children:',
+    summary,
+  ].join('\n');
   const res = await ctx.ai.subagent(prompt, { task: 'coverage-critic' });
   return parseVerdict(res.output);
 }

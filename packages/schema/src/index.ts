@@ -11,17 +11,29 @@
  */
 
 export { validate, validateMany } from './engine.js';
-export { rules } from './rules/index.js';
-export { extractSpecMetadata, extractSpecStatus, extractHealth, extractRice, riceValue } from './extract.js';
-export type { Requirement, SpecMetadata, ArtifactHealth, BudgetBand, RiceInputs } from './extract.js';
 export type {
+  ArtifactHealth,
+  BudgetBand,
+  Requirement,
+  RiceInputs,
+  SpecMetadata,
+} from './extract.js';
+export {
+  extractHealth,
+  extractRice,
+  extractSpecMetadata,
+  extractSpecStatus,
+  riceValue,
+} from './extract.js';
+export { rules } from './rules/index.js';
+export type {
+  CrossFileRule,
+  CrossFileRuleContext,
   Finding,
   Location,
   ParsedDocument,
   PerFileRule,
-  CrossFileRule,
   PerFileRuleContext,
-  CrossFileRuleContext,
   Rule,
   Severity,
   ValidateOptions,

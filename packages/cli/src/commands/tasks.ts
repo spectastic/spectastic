@@ -1,5 +1,5 @@
-import type { Command } from 'commander';
 import type { GraduationClass } from '@spectastic/core';
+import type { Command } from 'commander';
 
 /**
  * Register the `tasks` subcommand. Reads spec.html + plan.html for the
@@ -55,7 +55,9 @@ export function registerTasks(program: Command): void {
       const planPath = path.resolve(process.cwd(), 'specs', specId, 'plan.html');
       const tasksPath = path.resolve(process.cwd(), 'specs', specId, 'tasks.html');
 
-      const decision = await gateOnDestinationState(fs, tasksPath, { force: opts.force });
+      const decision = await gateOnDestinationState(fs, tasksPath, {
+        force: opts.force,
+      });
       if (decision.kind === 'refuse') {
         process.stderr.write(
           `${tasksPath} exists in <spec-status value="${decision.status}"> — past-Draft per P-6 of principles.html.\nRefusing to overwrite. Amend via /spectastic.propose against the parent spec, or pass --force to bypass.\n`,
@@ -78,10 +80,7 @@ export function registerTasks(program: Command): void {
       const ai = await createAIProvider({ verb: 'tasks' });
       const ctx = { cwd: process.cwd(), fs: nodeFs, ai };
 
-      const result = await tasksCommand(
-        { specPath, planPath, ...(restore ? { restore } : {}) },
-        ctx,
-      );
+      const result = await tasksCommand({ specPath, planPath, ...(restore ? { restore } : {}) }, ctx);
       await fs.writeFile(tasksPath, result.html, 'utf8');
       const suffix = restore ? `, ${restore.classification} restore` : '';
       process.stdout.write(
@@ -149,7 +148,10 @@ async function resolveRestoreMode(
  */
 async function promptRestore(specId: string, classify: GraduationClass): Promise<boolean> {
   const readline = await import('node:readline');
-  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout,
+  });
   const kind = classify === 'tracer-bullet' ? 'refactor-to-comply' : 'clean-rebuild';
   return new Promise((resolve) => {
     rl.question(

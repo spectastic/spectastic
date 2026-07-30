@@ -2,8 +2,8 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { PackFetcherError, RealPackFetcher } from '../src/providers/pack-fetcher.js';
 import type { GitRunner, GitSource } from '../src/providers/pack-fetcher.js';
+import { PackFetcherError, RealPackFetcher } from '../src/providers/pack-fetcher.js';
 import { StubPackFetcher, StubPackFetcherError } from '../src/providers/pack-fetcher-stub.js';
 
 /**
@@ -19,9 +19,7 @@ describe('StubPackFetcher (061 T-012, NFR-002)', () => {
     const fetcher = new StubPackFetcher({
       'finance-settlement@spectastic-examples': '/fixtures/finance-settlement',
     });
-    await expect(fetcher.fetch('finance-settlement@spectastic-examples')).resolves.toBe(
-      '/fixtures/finance-settlement',
-    );
+    await expect(fetcher.fetch('finance-settlement@spectastic-examples')).resolves.toBe('/fixtures/finance-settlement');
   });
 
   it('throws a descriptive error for a coordinate with no registered fixture', async () => {
@@ -91,7 +89,10 @@ describe('RealPackFetcher (061 T-110, plan §3 spike)', () => {
     );
     writeFileSync(
       join(installLocation, '.claude-plugin', 'marketplace.json'),
-      JSON.stringify({ name: 'spectastic', plugins: [{ name: 'finance-settlement', source: './finance-settlement' }] }),
+      JSON.stringify({
+        name: 'spectastic',
+        plugins: [{ name: 'finance-settlement', source: './finance-settlement' }],
+      }),
     );
 
     const fetcher = new RealPackFetcher(home);
@@ -127,12 +128,19 @@ describe('RealPackFetcher (061 T-110, plan §3 spike)', () => {
 
   it('clones a remote (url + sha) plugin via the git seam and returns the cached pack dir', async () => {
     const home = claudeHome();
-    marketplaceWith(home, 'acme', { source: 'url', url: 'https://example.com/x.git', sha: 'abc123' });
+    marketplaceWith(home, 'acme', {
+      source: 'url',
+      url: 'https://example.com/x.git',
+      sha: 'abc123',
+    });
     const git = new FakeGitRunner();
 
     const dir = await new RealPackFetcher(home, git).fetch('remote-thing@acme');
     expect(git.calls).toHaveLength(1);
-    expect(git.calls[0]?.source).toMatchObject({ url: 'https://example.com/x.git', sha: 'abc123' });
+    expect(git.calls[0]?.source).toMatchObject({
+      url: 'https://example.com/x.git',
+      sha: 'abc123',
+    });
     expect(dir).toContain(join('.spectastic-cache', 'remote-thing@acme@abc123'));
     expect(existsSync(join(dir, 'references', '001-x.md'))).toBe(true);
   });
@@ -148,7 +156,12 @@ describe('RealPackFetcher (061 T-110, plan §3 spike)', () => {
 
   it('returns the subdir for a git-subdir source', async () => {
     const home = claudeHome();
-    marketplaceWith(home, 'acme', { source: 'git-subdir', url: 'https://example.com/r.git', path: 'plugins/thing', sha: 'deadbeef' });
+    marketplaceWith(home, 'acme', {
+      source: 'git-subdir',
+      url: 'https://example.com/r.git',
+      path: 'plugins/thing',
+      sha: 'deadbeef',
+    });
     const git = new FakeGitRunner();
 
     const dir = await new RealPackFetcher(home, git).fetch('remote-thing@acme');
@@ -158,7 +171,11 @@ describe('RealPackFetcher (061 T-110, plan §3 spike)', () => {
 
   it('reuses the cache on a second fetch at the same sha (no re-clone)', async () => {
     const home = claudeHome();
-    marketplaceWith(home, 'acme', { source: 'url', url: 'https://example.com/x.git', sha: 'abc123' });
+    marketplaceWith(home, 'acme', {
+      source: 'url',
+      url: 'https://example.com/x.git',
+      sha: 'abc123',
+    });
     const git = new FakeGitRunner();
     const fetcher = new RealPackFetcher(home, git);
 
@@ -173,7 +190,9 @@ describe('RealPackFetcher (061 T-110, plan §3 spike)', () => {
     const git = new FakeGitRunner();
 
     await expect(new RealPackFetcher(home, git).fetch('remote-thing@acme')).rejects.toThrow(PackFetcherError);
-    await expect(new RealPackFetcher(home, git).fetch('remote-thing@acme')).rejects.toThrow(/unrecognised remote source/);
+    await expect(new RealPackFetcher(home, git).fetch('remote-thing@acme')).rejects.toThrow(
+      /unrecognised remote source/,
+    );
     expect(git.calls, 'never attempts a clone for a malformed source').toHaveLength(0);
   });
 

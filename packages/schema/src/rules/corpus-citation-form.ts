@@ -1,6 +1,6 @@
-import { findAll, getLocation } from '../parser.js';
-import type { Element } from '../parser.js';
 import { findCitationTokens, parseCorpusCitation } from '../citation-shared.js';
+import type { Element } from '../parser.js';
+import { findAll, getLocation } from '../parser.js';
 import type { Finding, PerFileRule } from '../types.js';
 
 /**
@@ -31,7 +31,11 @@ import type { Finding, PerFileRule } from '../types.js';
 function textOf(el: Element): string {
   let out = '';
   const visit = (node: unknown): void => {
-    const n = node as { tagName?: string; value?: string; childNodes?: unknown[] };
+    const n = node as {
+      tagName?: string;
+      value?: string;
+      childNodes?: unknown[];
+    };
     if (n.tagName === undefined && typeof n.value === 'string') out += n.value;
     if (n.childNodes) for (const child of n.childNodes) visit(child);
   };

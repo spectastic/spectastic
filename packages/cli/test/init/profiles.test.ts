@@ -1,12 +1,7 @@
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import {
-  UnknownProfileError,
-  loadProfiles,
-  profileNames,
-  resolveProfile,
-} from '../../src/commands/init/profiles.js';
+import { loadProfiles, profileNames, resolveProfile, UnknownProfileError } from '../../src/commands/init/profiles.js';
 
 /** Unit tests for the profile manifest loader (spec 041 T-011 / T-210). */
 
@@ -68,9 +63,7 @@ describe('profiles: principle drift guard', () => {
     for (const [principleName, byProfile] of byName) {
       const statements = new Set(byProfile.values());
       if (statements.size > 1) {
-        drifted.push(
-          `"${principleName}" diverges across ${[...byProfile.keys()].join(', ')}`,
-        );
+        drifted.push(`"${principleName}" diverges across ${[...byProfile.keys()].join(', ')}`);
       }
     }
     expect(drifted, `principle statements drifted across tiers:\n${drifted.join('\n')}`).toEqual([]);
@@ -84,8 +77,7 @@ describe('profiles: principle drift guard', () => {
 // at any tier, so it's scoped to the user-facing case rather than omitted or blanket).
 describe('profiles: catalog-next tranche (semver, supply-chain, accessibility)', () => {
   const manifest = loadProfiles(REPO_ROOT);
-  const namesAt = (profile: string) =>
-    resolveProfile(manifest, profile).principles.map((p) => p.name);
+  const namesAt = (profile: string) => resolveProfile(manifest, profile).principles.map((p) => p.name);
 
   it('semver + supply-chain hygiene are seeded at standard, verified, and enterprise', () => {
     for (const profile of ['standard', 'verified', 'enterprise']) {

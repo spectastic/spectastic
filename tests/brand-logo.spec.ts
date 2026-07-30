@@ -1,5 +1,5 @@
-import { test, expect } from '@playwright/test';
 import { readFileSync } from 'node:fs';
+import { expect, test } from '@playwright/test';
 
 // 017-brand-logo — the canonical spectrum mark + lockup.
 // T-100 (US1): written failing-first; passes once the header builds the SVG
@@ -9,12 +9,24 @@ const FIXTURE = '/tests/fixtures/all-components.html';
 const BRAND = 'header.spec-bar .spec-brand';
 
 const LIGHT = [
-  'rgb(95, 2, 62)', 'rgb(150, 4, 98)', 'rgb(225, 98, 79)', 'rgb(224, 162, 60)',
-  'rgb(63, 106, 55)', 'rgb(4, 165, 187)', 'rgb(0, 117, 143)', 'rgb(117, 88, 178)',
+  'rgb(95, 2, 62)',
+  'rgb(150, 4, 98)',
+  'rgb(225, 98, 79)',
+  'rgb(224, 162, 60)',
+  'rgb(63, 106, 55)',
+  'rgb(4, 165, 187)',
+  'rgb(0, 117, 143)',
+  'rgb(117, 88, 178)',
 ];
 const DARK = [
-  'rgb(233, 140, 182)', 'rgb(232, 90, 171)', 'rgb(240, 138, 121)', 'rgb(255, 208, 156)',
-  'rgb(143, 181, 106)', 'rgb(66, 202, 221)', 'rgb(43, 176, 196)', 'rgb(178, 155, 223)',
+  'rgb(233, 140, 182)',
+  'rgb(232, 90, 171)',
+  'rgb(240, 138, 121)',
+  'rgb(255, 208, 156)',
+  'rgb(143, 181, 106)',
+  'rgb(66, 202, 221)',
+  'rgb(43, 176, 196)',
+  'rgb(178, 155, 223)',
 ];
 
 const vivid = (page, mode = 'light') =>
@@ -33,7 +45,10 @@ test.describe('017 · brand logo — header lockup', () => {
     expect(await brand.evaluate((el) => el.textContent || '')).not.toMatch(/[✻✳✱]/);
     const info = await brand.evaluate((el) => {
       const svg = el.querySelector('svg');
-      return { paths: svg ? svg.querySelectorAll('path').length : 0, svgIsLast: el.lastElementChild === svg };
+      return {
+        paths: svg ? svg.querySelectorAll('path').length : 0,
+        svgIsLast: el.lastElementChild === svg,
+      };
     });
     expect(info.paths, '8 prong paths').toBe(8);
     expect(info.svgIsLast, 'mark comes after the wordmark').toBe(true);
@@ -94,7 +109,9 @@ test.describe('017 · brand logo — landing & variants', () => {
 
   test('mono lockup is single-ink; the superscript variant renders', async ({ page }) => {
     await page.goto(FIXTURE);
-    const fills = await page.locator('.spec-logo--mono svg path').evaluateAll((ps) => ps.map((p) => getComputedStyle(p).fill));
+    const fills = await page
+      .locator('.spec-logo--mono svg path')
+      .evaluateAll((ps) => ps.map((p) => getComputedStyle(p).fill));
     expect(fills.length, '8 prongs').toBe(8);
     expect(new Set(fills).size, 'mono = one ink across all prongs').toBe(1);
     await expect(page.locator('sup.spec-sup svg').first()).toBeVisible();

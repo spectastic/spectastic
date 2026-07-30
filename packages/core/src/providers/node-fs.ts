@@ -13,7 +13,7 @@
  * this module internally as the default — see each command file.
  */
 
-import { readFile, writeFile, readdir, stat, rename, rm, mkdir } from 'node:fs/promises';
+import { mkdir, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
 import type { FileSystem } from '../types.js';
 
 export const nodeFs: FileSystem = {

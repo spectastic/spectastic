@@ -1,8 +1,8 @@
 import { spawn } from 'node:child_process';
-import { basename, dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
+import { basename, dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
 /**
@@ -25,7 +25,10 @@ interface RunResult {
 
 async function runCLI(args: string[], cwd: string): Promise<RunResult> {
   return new Promise((resolveFn) => {
-    const child = spawn('node', [CLI, ...args], { cwd, stdio: ['pipe', 'pipe', 'pipe'] });
+    const child = spawn('node', [CLI, ...args], {
+      cwd,
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
     let stdout = '';
     let stderr = '';
     child.stdout.on('data', (c: Buffer) => (stdout += c.toString('utf8')));
@@ -48,7 +51,10 @@ describe('spectastic init — corpus config (063 T-101/T-120, FR-001, SC-001)', 
     const config = JSON.parse(readFileSync(join(dir, 'spectastic.json'), 'utf8')) as {
       corpus?: { marketplace?: string; root?: string };
     };
-    expect(config.corpus).toEqual({ marketplace: basename(dir), root: 'knowledge' });
+    expect(config.corpus).toEqual({
+      marketplace: basename(dir),
+      root: 'knowledge',
+    });
     expect(r.stdout).toContain('spectastic.json corpus config');
   });
 
@@ -64,12 +70,20 @@ describe('spectastic init — corpus config (063 T-101/T-120, FR-001, SC-001)', 
       corpus?: { marketplace?: string; root?: string };
     };
     expect(config.git).toEqual({ auto: 'commit', trailers: 'on' });
-    expect(config.corpus).toEqual({ marketplace: basename(dir), root: 'knowledge' });
+    expect(config.corpus).toEqual({
+      marketplace: basename(dir),
+      root: 'knowledge',
+    });
   });
 
   it('never overwrites an already-configured corpus section', async () => {
     const dir = project('existing-corpus');
-    writeFileSync(join(dir, 'spectastic.json'), JSON.stringify({ corpus: { marketplace: 'acme', root: 'domain-knowledge' } }));
+    writeFileSync(
+      join(dir, 'spectastic.json'),
+      JSON.stringify({
+        corpus: { marketplace: 'acme', root: 'domain-knowledge' },
+      }),
+    );
 
     const r = await runCLI(['init'], dir);
     expect(r.code, r.stdout + r.stderr).toBe(0);
@@ -77,7 +91,10 @@ describe('spectastic init — corpus config (063 T-101/T-120, FR-001, SC-001)', 
     const config = JSON.parse(readFileSync(join(dir, 'spectastic.json'), 'utf8')) as {
       corpus?: { marketplace?: string; root?: string };
     };
-    expect(config.corpus).toEqual({ marketplace: 'acme', root: 'domain-knowledge' });
+    expect(config.corpus).toEqual({
+      marketplace: 'acme',
+      root: 'domain-knowledge',
+    });
     expect(r.stdout).not.toContain('spectastic.json corpus config');
   });
 });

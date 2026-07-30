@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest';
-import { orderCommand, CycleError } from '../commands/order.js';
+import { describe, expect, it } from 'vitest';
+import { CycleError, orderCommand } from '../commands/order.js';
 import type { CorpusEntry } from './types.js';
 
 /**

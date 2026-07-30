@@ -48,7 +48,7 @@ export function loadChangeRiskConfig(cwd: string): ChangeRiskConfig {
     return {};
   }
   if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
-  const section = (parsed as Record<string, unknown>)['changeRisk'];
+  const section = (parsed as Record<string, unknown>).changeRisk;
   if (section === null || typeof section !== 'object' || Array.isArray(section)) return {};
   const { bands, failAt } = section as Record<string, unknown>;
 

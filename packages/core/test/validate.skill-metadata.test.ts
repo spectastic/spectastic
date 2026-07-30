@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { skillMetadataFinding, REQUIRED_SKILL_KEYS } from '../src/commands/validate.js';
+import { REQUIRED_SKILL_KEYS, skillMetadataFinding } from '../src/commands/validate.js';
 
 /**
  * T-602 (spec 000-spectastic, REQ-TOOL-004). The `skill-metadata-shape` rule:
@@ -70,7 +70,17 @@ describe('skillMetadataFinding', () => {
   it('tolerates the optional model: key — its presence is not a finding (spec 044 / REQ-TOOL-004)', () => {
     // The frontmatter contract permits model:; skill-metadata-shape checks only
     // the three required keys and must never flag the optional model: key.
-    const withModel = ['---', 'description: do a thing', 'triggers: t', 'use-when: w', 'sibling-boundary: s', 'model: sonnet', '---', '', '# body'].join('\n');
+    const withModel = [
+      '---',
+      'description: do a thing',
+      'triggers: t',
+      'use-when: w',
+      'sibling-boundary: s',
+      'model: sonnet',
+      '---',
+      '',
+      '# body',
+    ].join('\n');
     expect(skillMetadataFinding(withModel, FILE)).toBeNull();
   });
 });

@@ -1,16 +1,16 @@
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
-  convertDocument,
   CONVERTERS,
   ConverterNotFoundError,
-  ExecFileConverterRunner,
-  StubConverterRunner,
   type ConverterRunner,
   type ConverterSpec,
+  convertDocument,
+  ExecFileConverterRunner,
+  StubConverterRunner,
 } from '../src/knowledge/convert.js';
 
 /**
@@ -56,8 +56,16 @@ describe('convertDocument — missing converter binary (T-101)', () => {
     const knowledgeDir = tempKnowledgeDir();
 
     await expect(
-      convertDocument({ sourceFile, knowledgeDir, pack: 'research', runner: new ENOENTRunner() }),
-    ).rejects.toMatchObject({ name: 'ConverterNotFoundError', installHint: expect.stringContaining('markitdown') });
+      convertDocument({
+        sourceFile,
+        knowledgeDir,
+        pack: 'research',
+        runner: new ENOENTRunner(),
+      }),
+    ).rejects.toMatchObject({
+      name: 'ConverterNotFoundError',
+      installHint: expect.stringContaining('markitdown'),
+    });
 
     // No partial write — the pack directory was never created.
     expect(existsSync(join(knowledgeDir, 'research'))).toBe(false);
@@ -83,7 +91,12 @@ describe('convertDocument — --no-adapt raw-emit (T-102)', () => {
     dirs.push(outDir);
     const outPath = join(outDir, 'paper.md');
 
-    const result = await convertDocument({ sourceFile, runner, noAdapt: true, out: outPath });
+    const result = await convertDocument({
+      sourceFile,
+      runner,
+      noAdapt: true,
+      out: outPath,
+    });
 
     expect(readFileSync(outPath, 'utf8')).toBe('# Raw output\n');
     expect(result.id).toBeUndefined();
@@ -105,7 +118,7 @@ function markerFixtureSpec(captureTmpDir: (dir: string) => void): ConverterSpec 
 }
 
 describe('convertDocument — Polish: the managed tmpDir is always cleaned up (T-902)', () => {
-  it('removes the tmpDir — including Marker\'s own per-document subfolder — after a successful run', async () => {
+  it("removes the tmpDir — including Marker's own per-document subfolder — after a successful run", async () => {
     const sourceFile = tempSourceFile('paper.pdf', 'real bytes, really converted');
     const knowledgeDir = tempKnowledgeDir();
     let capturedTmpDir = '';

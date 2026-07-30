@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { query } from '../src/read/query.js';
 import type { CorpusPack, RegistryEntry } from '../src/knowledge/types.js';
+import { query } from '../src/read/query.js';
 
 /**
  * 064-corpus-package-extraction, US3 (T-301, FR-005): query<term> matches a case-insensitive
@@ -57,12 +57,12 @@ describe('query (064, T-301)', () => {
     expect(hits.map((h) => h.id)).toEqual(['KB-501']);
   });
 
-  it('matches a term in a registry row\'s slug', () => {
+  it("matches a term in a registry row's slug", () => {
     const hits = query('fx-risk', [pack()], registry);
     expect(hits.map((h) => h.id)).toEqual(['KB-777']);
   });
 
-  it('matches a term in a registry row\'s title', () => {
+  it("matches a term in a registry row's title", () => {
     const hits = query('FX settlement', [], registry);
     expect(hits.map((h) => h.id)).toEqual(['KB-777']);
   });

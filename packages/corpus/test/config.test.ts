@@ -1,16 +1,16 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
-  loadCorpusConfig,
-  resolveCorpusConfig,
-  defaultMarketplaceName,
-  DEFAULT_CORPUS_ROOT,
   CorpusConfigError,
+  DEFAULT_CORPUS_ROOT,
+  defaultMarketplaceName,
+  loadCorpusConfig,
   loadProjectConfig,
-  resolveProjectConfig,
   projectIdentityFindings,
+  resolveCorpusConfig,
+  resolveProjectConfig,
 } from '../src/config.js';
 
 /**
@@ -37,7 +37,10 @@ describe('loadCorpusConfig (raw partial read)', () => {
 
   it('reads an explicit marketplace + root', () => {
     write({ corpus: { marketplace: 'acme', root: 'domain-knowledge' } });
-    expect(loadCorpusConfig(dir)).toEqual({ marketplace: 'acme', root: 'domain-knowledge' });
+    expect(loadCorpusConfig(dir)).toEqual({
+      marketplace: 'acme',
+      root: 'domain-knowledge',
+    });
   });
 
   it('reads the deprecated namespace field verbatim (no alias resolution at this layer)', () => {
@@ -72,17 +75,26 @@ describe('resolveCorpusConfig (resolved value, FR-006)', () => {
   const write = (obj: unknown) => writeFileSync(join(dir, 'spectastic.json'), JSON.stringify(obj));
 
   it('defaults to the repo directory name + "knowledge" when nothing is set', () => {
-    expect(resolveCorpusConfig(dir)).toEqual({ marketplace: basename(dir), root: DEFAULT_CORPUS_ROOT });
+    expect(resolveCorpusConfig(dir)).toEqual({
+      marketplace: basename(dir),
+      root: DEFAULT_CORPUS_ROOT,
+    });
   });
 
   it('an explicit corpus.marketplace/root wins over the defaults', () => {
     write({ corpus: { marketplace: 'acme', root: 'domain-knowledge' } });
-    expect(resolveCorpusConfig(dir)).toEqual({ marketplace: 'acme', root: 'domain-knowledge' });
+    expect(resolveCorpusConfig(dir)).toEqual({
+      marketplace: 'acme',
+      root: 'domain-knowledge',
+    });
   });
 
   it('a legacy corpus.namespace resolves as marketplace when marketplace itself is unset', () => {
     write({ corpus: { namespace: 'legacy-name' } });
-    expect(resolveCorpusConfig(dir)).toEqual({ marketplace: 'legacy-name', root: DEFAULT_CORPUS_ROOT });
+    expect(resolveCorpusConfig(dir)).toEqual({
+      marketplace: 'legacy-name',
+      root: DEFAULT_CORPUS_ROOT,
+    });
   });
 
   it('an explicit corpus.marketplace wins over a present corpus.namespace (never a second independent value)', () => {
@@ -103,7 +115,10 @@ describe('resolveCorpusConfig (resolved value, FR-006)', () => {
   });
 
   it('an explicit corpus.marketplace still wins over project (the publish-identity escape hatch)', () => {
-    write({ corpus: { marketplace: 'published-name' }, project: 'acme/widget' });
+    write({
+      corpus: { marketplace: 'published-name' },
+      project: 'acme/widget',
+    });
     expect(resolveCorpusConfig(dir).marketplace).toBe('published-name');
   });
 

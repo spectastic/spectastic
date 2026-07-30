@@ -1,7 +1,14 @@
 import { defineConfig } from 'tsup';
 
 export default defineConfig({
-  entry: ['src/index.ts', 'src/parser.ts', 'src/slo-shared.ts', 'src/citation-shared.ts', 'src/fence.ts', 'src/project-shared.ts'],
+  entry: [
+    'src/index.ts',
+    'src/parser.ts',
+    'src/slo-shared.ts',
+    'src/citation-shared.ts',
+    'src/fence.ts',
+    'src/project-shared.ts',
+  ],
   format: ['esm'],
   dts: true,
   sourcemap: true,

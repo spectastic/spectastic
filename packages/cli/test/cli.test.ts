@@ -65,7 +65,11 @@ describe('CLI integration', () => {
     expect(r.code).toBe(1);
     const parsed: unknown = JSON.parse(r.stdout);
     expect(Array.isArray(parsed)).toBe(true);
-    const arr = parsed as Array<{ rule: string; severity: string; file: string }>;
+    const arr = parsed as Array<{
+      rule: string;
+      severity: string;
+      file: string;
+    }>;
     expect(arr.length).toBeGreaterThan(0);
     expect(arr.some((f) => f.rule === 'no-missing-defer-to')).toBe(true);
     expect(arr.every((f) => typeof f.severity === 'string')).toBe(true);
@@ -77,7 +81,10 @@ describe('CLI integration', () => {
     expect(r.code).toBe(1);
     const sarif = JSON.parse(r.stdout) as {
       version: string;
-      runs: Array<{ tool: { driver: { name: string } }; results: Array<{ ruleId: string }> }>;
+      runs: Array<{
+        tool: { driver: { name: string } };
+        results: Array<{ ruleId: string }>;
+      }>;
     };
     expect(sarif.version).toBe('2.1.0');
     expect(sarif.runs).toHaveLength(1);

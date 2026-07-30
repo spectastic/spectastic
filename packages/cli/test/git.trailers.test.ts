@@ -8,7 +8,11 @@ import { gatherTrailers, type TrailerInput } from '../src/git/trailers.js';
  */
 
 const base: TrailerInput = {
-  meta: { owner: 'Brian Corbin · @briancorbinxyz', author: null, reviewers: null },
+  meta: {
+    owner: 'Brian Corbin · @briancorbinxyz',
+    author: null,
+    reviewers: null,
+  },
   committer: { name: 'Brian Corbin', email: 'b@x' },
 };
 
@@ -27,7 +31,10 @@ describe('gatherTrailers — human set (T-103)', () => {
       meta: { owner: 'Alice Author · @alice', author: null, reviewers: null },
       committer: { name: 'Bob Builder', email: 'bob@x' },
     });
-    expect(ts).toContainEqual({ key: 'Co-authored-by', value: 'Alice Author · @alice' });
+    expect(ts).toContainEqual({
+      key: 'Co-authored-by',
+      value: 'Alice Author · @alice',
+    });
   });
 
   it('Reviewed-by from a populated Reviewers field; omitted on the em-dash placeholder', () => {
@@ -51,7 +58,11 @@ describe('gatherTrailers — human set (T-103)', () => {
   });
 
   it('Assisted-by from the model; Acked-by from the dispositioner; the model is never a human trailer', () => {
-    const ts = gatherTrailers({ ...base, model: 'stub-model', dispositioner: 'Alice · @a' });
+    const ts = gatherTrailers({
+      ...base,
+      model: 'stub-model',
+      dispositioner: 'Alice · @a',
+    });
     expect(ts).toContainEqual({ key: 'Assisted-by', value: 'stub-model' });
     expect(ts).toContainEqual({ key: 'Acked-by', value: 'Alice · @a' });
     // the model only ever appears under Assisted-by (FR-006)

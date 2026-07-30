@@ -79,12 +79,18 @@ describe('buildCorpusPromptBlock presence-determinism (054, T-200)', () => {
 
   it('is independent of pack and row order (sorts internally)', () => {
     const forward = [
-      pack({ name: 'a', index: [entry({ id: 'KB-001' }), entry({ id: 'KB-002' })] }),
+      pack({
+        name: 'a',
+        index: [entry({ id: 'KB-001' }), entry({ id: 'KB-002' })],
+      }),
       pack({ name: 'b', index: [entry({ id: 'KB-003' })] }),
     ];
     const reversed = [
       pack({ name: 'b', index: [entry({ id: 'KB-003' })] }),
-      pack({ name: 'a', index: [entry({ id: 'KB-002' }), entry({ id: 'KB-001' })] }),
+      pack({
+        name: 'a',
+        index: [entry({ id: 'KB-002' }), entry({ id: 'KB-001' })],
+      }),
     ];
     expect(buildCorpusPromptBlock(forward)).toBe(buildCorpusPromptBlock(reversed));
   });

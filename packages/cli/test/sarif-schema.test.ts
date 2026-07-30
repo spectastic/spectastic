@@ -1,10 +1,10 @@
 import { readFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import type { Finding } from '@spectastic/schema';
 import Ajv from 'ajv';
 import addFormats from 'ajv-formats';
 import { describe, expect, it } from 'vitest';
-import type { Finding } from '@spectastic/schema';
 import { sarifFormatter } from '../src/formatters/sarif.js';
 
 const here = dirname(fileURLToPath(import.meta.url));

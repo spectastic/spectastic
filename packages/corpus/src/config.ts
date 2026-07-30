@@ -18,10 +18,10 @@
  * is unset — never a second independent value (D-003).
  */
 
-import { basename, join } from 'node:path';
 import { readFileSync } from 'node:fs';
-import { classifyProjectId } from '@spectastic/schema/project';
+import { basename, join } from 'node:path';
 import type { Finding } from '@spectastic/schema';
+import { classifyProjectId } from '@spectastic/schema/project';
 
 export class CorpusConfigError extends Error {
   constructor(message: string) {

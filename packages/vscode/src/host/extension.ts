@@ -1,9 +1,9 @@
-import * as vscode from 'vscode';
 import * as path from 'node:path';
+import * as vscode from 'vscode';
+import type { HostMessage, Orientation, WebviewMessage } from './messaging.js';
+import { openArtifact } from './open-artifact.js';
 import { buildGraph, listSpecs, type ScanContext } from './scanner.js';
 import { watchLifecycle } from './watcher.js';
-import { openArtifact } from './open-artifact.js';
-import type { HostMessage, Orientation, WebviewMessage } from './messaging.js';
 
 /**
  * Extension host entry (spec FR-008, FR-009). Registers the canvas webview view
@@ -20,9 +20,7 @@ export function activate(context: vscode.ExtensionContext): void {
   context.subscriptions.push(
     vscode.window.registerWebviewViewProvider(VIEW_ID, provider),
     vscode.commands.registerCommand('spectastic.selectSpec', () => provider.promptForSpec()),
-    vscode.commands.registerCommand('spectastic.toggleOrientation', () =>
-      provider.toggleOrientation(),
-    ),
+    vscode.commands.registerCommand('spectastic.toggleOrientation', () => provider.toggleOrientation()),
   );
 }
 
@@ -39,8 +37,7 @@ class CanvasViewProvider implements vscode.WebviewViewProvider {
   private readonly panels = new Map<string, vscode.WebviewPanel>();
 
   constructor(private readonly context: vscode.ExtensionContext) {
-    this.orientation =
-      context.workspaceState.get<Orientation>(ORIENTATION_KEY) ?? 'vertical';
+    this.orientation = context.workspaceState.get<Orientation>(ORIENTATION_KEY) ?? 'vertical';
   }
 
   /** Flip vertical ↔ horizontal, persist per workspace, and re-render (spec FR-013). */
@@ -93,7 +90,10 @@ class CanvasViewProvider implements vscode.WebviewViewProvider {
 
     if (!this.specId) this.specId = await defaultSpec(specsRoot);
     if (!this.specId) {
-      this.post({ type: 'empty', reason: 'No specs found under specs/. Create one to begin.' });
+      this.post({
+        type: 'empty',
+        reason: 'No specs found under specs/. Create one to begin.',
+      });
       return;
     }
 
@@ -120,8 +120,7 @@ class CanvasViewProvider implements vscode.WebviewViewProvider {
   private post(message: HostMessage): void {
     // Stamp the active orientation onto every graph post — including the watcher's —
     // so a horizontal toggle survives live updates (spec FR-004/FR-013).
-    const stamped: HostMessage =
-      message.type === 'graph' ? { ...message, orientation: this.orientation } : message;
+    const stamped: HostMessage = message.type === 'graph' ? { ...message, orientation: this.orientation } : message;
     void this.view?.webview.postMessage(stamped);
   }
 
@@ -157,9 +156,7 @@ async function defaultSpec(specsRoot: string): Promise<string | undefined> {
   let best: { id: string; mtime: number } | undefined;
   for (const id of specs) {
     try {
-      const stat = await vscode.workspace.fs.stat(
-        vscode.Uri.file(path.join(specsRoot, id, 'spec.html')),
-      );
+      const stat = await vscode.workspace.fs.stat(vscode.Uri.file(path.join(specsRoot, id, 'spec.html')));
       if (!best || stat.mtime > best.mtime) best = { id, mtime: stat.mtime };
     } catch {
       // skip

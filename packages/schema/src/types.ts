@@ -86,4 +86,3 @@ export interface ValidateOptions {
   /** Logical file name attached to findings. Defaults to `"<anonymous>"`. */
   file?: string;
 }
-

@@ -1,12 +1,12 @@
-import { describe, it, expect } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import {
-  MODEL_TIER_ALIASES,
   ALIAS_TO_MODEL_ID,
   DEFAULT_MODEL_ID,
-  VERB_MODEL_POLICY,
   isModelTier,
-  tierToModelId,
+  MODEL_TIER_ALIASES,
   resolveVerbModel,
+  tierToModelId,
+  VERB_MODEL_POLICY,
 } from '../src/model-policy/index.js';
 
 describe('model-policy (spec 044)', () => {

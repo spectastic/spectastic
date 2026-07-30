@@ -33,9 +33,7 @@ export function registerOrder(program: Command): void {
       try {
         const result = await orderCommand({ assetsPrefix }, { cwd, fs: nodeFs });
         await fsp.writeFile(join(cwd, opts.out), result.html, 'utf8');
-        process.stdout.write(
-          opts.json ? `${JSON.stringify(result.ids)}\n` : `${result.ids.join('\n')}\n`,
-        );
+        process.stdout.write(opts.json ? `${JSON.stringify(result.ids)}\n` : `${result.ids.join('\n')}\n`);
         process.stderr.write(`Wrote ${opts.out}\n`);
         process.exit(0);
       } catch (err) {

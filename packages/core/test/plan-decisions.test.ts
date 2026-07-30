@@ -32,7 +32,11 @@ describe('planCommand — decisions threading (037 FR-005)', () => {
   it('folds the answered decisions into the generation prompt', async () => {
     const ai = new RecordChat();
     await planCommand(
-      { specId: 'x', specHtml: SPEC, decisions: { 'Test style': 'TDD', 'Risk tolerance': 'Low' } },
+      {
+        specId: 'x',
+        specHtml: SPEC,
+        decisions: { 'Test style': 'TDD', 'Risk tolerance': 'Low' },
+      },
       { cwd: '.', ai },
     );
     expect(ai.prompts[0]).toContain('Decisions already made');

@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest';
 import { mapPool } from '@spectastic/core/commands/triage';
+import { describe, expect, it } from 'vitest';
 
 /** Unit tests for the bounded-concurrency pool (spec 032-triage-fanout, plan D-002). */
 describe('mapPool (032 D-002)', () => {

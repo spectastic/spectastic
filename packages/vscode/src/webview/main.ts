@@ -1,17 +1,11 @@
 import './canvas.css';
+import type { ArtifactNode, HostMessage, LifecycleGraph, Orientation, WebviewMessage } from '../host/messaging.js';
+import { attachCard } from './card.js';
+import { renderEdges } from './edges.js';
 import { layoutGraph, type NodePos } from './layout.js';
 import { renderNode, updateNode } from './node.js';
-import { renderEdges } from './edges.js';
 import { renderEmpty } from './states.js';
 import { applyTheme, watchTheme } from './theme.js';
-import { attachCard } from './card.js';
-import type {
-  ArtifactNode,
-  HostMessage,
-  LifecycleGraph,
-  Orientation,
-  WebviewMessage,
-} from '../host/messaging.js';
 
 /**
  * Canvas webview entry (spec FR-001). Receives a LifecycleGraph (or patch) from
@@ -24,8 +18,7 @@ interface VsCodeApi {
 }
 declare function acquireVsCodeApi(): VsCodeApi;
 
-const api: VsCodeApi | null =
-  typeof acquireVsCodeApi === 'function' ? acquireVsCodeApi() : null;
+const api: VsCodeApi | null = typeof acquireVsCodeApi === 'function' ? acquireVsCodeApi() : null;
 const post = (message: WebviewMessage): void => api?.postMessage(message);
 
 const nodeEls = new Map<string, HTMLElement>();

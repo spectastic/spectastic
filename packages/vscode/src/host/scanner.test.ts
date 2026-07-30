@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest';
 import * as path from 'node:path';
+import { describe, expect, it } from 'vitest';
 import { buildGraph, listSpecs } from './scanner.js';
 
 // Runnable host-path verification (spec FR-001, FR-010): the scanner is vscode-free,

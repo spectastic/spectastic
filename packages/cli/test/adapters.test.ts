@@ -2,12 +2,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import {
-  MANAGED_MARKER,
-  adaptersManaged,
-  generateAdapters,
-  removeAdapters,
-} from '../src/commands/init/adapters.js';
+import { adaptersManaged, generateAdapters, MANAGED_MARKER, removeAdapters } from '../src/commands/init/adapters.js';
 
 /**
  * T-202 of specs/031-init-tools/tasks.html. The adapter generator (US2 / D-001):

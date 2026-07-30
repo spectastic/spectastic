@@ -54,7 +54,9 @@ export function registerImplement(program: Command): void {
           inboxHtml = await fs.readFile(targetFile, 'utf8');
         } else if (/^T-\d+$/.test(target)) {
           const { glob } = await import('tinyglobby');
-          const candidates = await glob(['specs/**/tasks.html'], { cwd: process.cwd() });
+          const candidates = await glob(['specs/**/tasks.html'], {
+            cwd: process.cwd(),
+          });
           let found: string | null = null;
           for (const candidate of candidates) {
             const content = await fs.readFile(path.resolve(process.cwd(), candidate), 'utf8');
@@ -62,8 +64,16 @@ export function registerImplement(program: Command): void {
               found = candidate;
               tasksHtml = content;
               specDir = path.dirname(path.resolve(process.cwd(), candidate));
-              try { specHtml = await fs.readFile(path.join(specDir, 'spec.html'), 'utf8'); } catch { /* optional */ }
-              try { planHtml = await fs.readFile(path.join(specDir, 'plan.html'), 'utf8'); } catch { /* optional */ }
+              try {
+                specHtml = await fs.readFile(path.join(specDir, 'spec.html'), 'utf8');
+              } catch {
+                /* optional */
+              }
+              try {
+                planHtml = await fs.readFile(path.join(specDir, 'plan.html'), 'utf8');
+              } catch {
+                /* optional */
+              }
               break;
             }
           }
@@ -97,9 +107,7 @@ export function registerImplement(program: Command): void {
           tasksHtml = tasksHtml.replace(re, '$1 checked');
           await fs.writeFile(targetFile, tasksHtml, 'utf8');
         } else if (inboxHtml && targetFile) {
-          const re = new RegExp(
-            `(<spec-triage\\s+id=["']${escId}["'])(?![^>]*\\bdata-status=)`,
-          );
+          const re = new RegExp(`(<spec-triage\\s+id=["']${escId}["'])(?![^>]*\\bdata-status=)`);
           inboxHtml = inboxHtml.replace(re, '$1 data-status="done"');
           await fs.writeFile(targetFile, inboxHtml, 'utf8');
         }
@@ -166,13 +174,30 @@ async function runDrain(specId: string): Promise<void> {
   }
   let specHtml: string | undefined;
   let planHtml: string | undefined;
-  try { specHtml = await fs.readFile(path.join(specDir, 'spec.html'), 'utf8'); } catch { /* optional */ }
-  try { planHtml = await fs.readFile(path.join(specDir, 'plan.html'), 'utf8'); } catch { /* optional */ }
+  try {
+    specHtml = await fs.readFile(path.join(specDir, 'spec.html'), 'utf8');
+  } catch {
+    /* optional */
+  }
+  try {
+    planHtml = await fs.readFile(path.join(specDir, 'plan.html'), 'utf8');
+  } catch {
+    /* optional */
+  }
 
   const [coding, sandbox] = await Promise.all([factory.createCodingAgent(), factory.createSandbox()]);
   const result = await drainTasks(
-    { tasksHtml, ...(specHtml ? { specHtml } : {}), ...(planHtml ? { planHtml } : {}) },
-    { cwd: process.cwd(), coding, sandbox, verify: factory.createVerifyRunner() },
+    {
+      tasksHtml,
+      ...(specHtml ? { specHtml } : {}),
+      ...(planHtml ? { planHtml } : {}),
+    },
+    {
+      cwd: process.cwd(),
+      coding,
+      sandbox,
+      verify: factory.createVerifyRunner(),
+    },
   );
 
   if (result.ticked.length > 0) {
@@ -190,7 +215,10 @@ async function runDrain(specId: string): Promise<void> {
 async function confirmStdin(prompt: string): Promise<boolean> {
   if (!process.stdin.isTTY) return false;
   const readline = await import('node:readline');
-  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout,
+  });
   return new Promise((resolve) => {
     rl.question(prompt, (answer) => {
       rl.close();

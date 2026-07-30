@@ -1,38 +1,22 @@
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
-import type { Command } from 'commander';
-import { resolveBundle } from './init/bundle.js';
-import { buildPlan, findConflicts } from './init/plan.js';
-import {
-  NonTTYConflictError,
-  UserCancelError,
-  confirmTools,
-  resolveConflicts,
-  selectProfile,
-} from './init/prompt.js';
-import { currentCliEntry } from './init/hook.js';
-import { printSummary } from './init/summary.js';
-import { ToolsError, runTools } from './init/tools.js';
-import { executeWrites } from './init/write.js';
-import {
-  UnknownProfileError,
-  loadProfiles,
-  profileNames,
-  resolveProfile,
-  type Profile,
-} from './init/profiles.js';
-import {
-  combinedPrinciples,
-  composeArtifacts,
-  spliceUpgrade,
-} from './init/compose.js';
-import { readMarker, writeMarker } from './init/marker.js';
-import { DEFAULT_CORPUS_ROOT, resolveProjectConfig } from '@spectastic/corpus';
 import { detectTooling } from '@spectastic/core/enforce/detect';
 import { applyGitignore } from '@spectastic/core/gitignore/apply';
 import { BASE_ENTRIES } from '@spectastic/core/gitignore/entries';
+import { DEFAULT_CORPUS_ROOT, resolveProjectConfig } from '@spectastic/corpus';
+import type { Command } from 'commander';
 import { gitRunner } from '../git/run.js';
+import { resolveBundle } from './init/bundle.js';
+import { combinedPrinciples, composeArtifacts, spliceUpgrade } from './init/compose.js';
+import { currentCliEntry } from './init/hook.js';
+import { readMarker, writeMarker } from './init/marker.js';
+import { buildPlan, findConflicts } from './init/plan.js';
+import { loadProfiles, type Profile, profileNames, resolveProfile, UnknownProfileError } from './init/profiles.js';
+import { confirmTools, NonTTYConflictError, resolveConflicts, selectProfile, UserCancelError } from './init/prompt.js';
+import { printSummary } from './init/summary.js';
+import { runTools, ToolsError } from './init/tools.js';
 import type { FileWriteDecision } from './init/types.js';
+import { executeWrites } from './init/write.js';
 
 interface InitOptions {
   force?: boolean;
@@ -46,10 +30,7 @@ interface InitOptions {
   gitignore?: boolean;
 }
 
-const MONTHS = [
-  'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-  'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
-];
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
 /** Today's date as { iso: "YYYY-MM-DD", display: "DD Mon YYYY" }. */
 /**
@@ -86,9 +67,9 @@ function writeCorpusConfig(cwd: string): string | null {
       config = {};
     }
   }
-  if (config['corpus'] !== undefined) return null; // already configured — never overwrite
+  if (config.corpus !== undefined) return null; // already configured — never overwrite
   const marketplace = resolveProjectConfig(cwd).project;
-  config['corpus'] = { marketplace, root: DEFAULT_CORPUS_ROOT };
+  config.corpus = { marketplace, root: DEFAULT_CORPUS_ROOT };
   writeFileSync(path, `${JSON.stringify(config, null, 2)}\n`, 'utf8');
   return marketplace;
 }
@@ -115,7 +96,7 @@ async function writeProjectConfig(cwd: string): Promise<string | null> {
       config = {};
     }
   }
-  if (config['project'] !== undefined) return null; // already set — never overwrite
+  if (config.project !== undefined) return null; // already set — never overwrite
 
   // Skip the git shell-out entirely when cwd isn't even a git repo yet (the
   // common `spectastic init` before `git init` order, and the perf-sensitive
@@ -128,7 +109,7 @@ async function writeProjectConfig(cwd: string): Promise<string | null> {
   if (!ownerRepo) return null; // no confident remote — stay provisional
 
   const project = `${ownerRepo.owner}/${ownerRepo.repo}`;
-  config['project'] = project;
+  config.project = project;
   writeFileSync(path, `${JSON.stringify(config, null, 2)}\n`, 'utf8');
   return project;
 }
@@ -155,8 +136,8 @@ function collectVerb(value: string, previous: string[]): string[] {
  */
 async function runToolsMode(options: InitOptions): Promise<void> {
   const narrowed = options.hooksOnly === true || options.commandsOnly === true;
-  const hooks = options.hooksOnly === true || (!narrowed);
-  const commands = options.commandsOnly === true || (!narrowed);
+  const hooks = options.hooksOnly === true || !narrowed;
+  const commands = options.commandsOnly === true || !narrowed;
   try {
     const summary = await runTools({
       cwd: process.cwd(),
@@ -208,7 +189,10 @@ export function registerInit(program: Command): void {
     .option('--commands-only', 'with --tools/--uninstall: only the command-adapter half')
     .option('--uninstall', 'remove what init --tools installed (reversible)')
     .option('--profile <name>', 'seed principles + AGENTS.md from a profile: lean | standard | verified | enterprise')
-    .option('--replace-tools', 'with --profile: ignore existing toolchain when tailoring the AGENTS.md enforcement floor')
+    .option(
+      '--replace-tools',
+      'with --profile: ignore existing toolchain when tailoring the AGENTS.md enforcement floor',
+    )
     .option('--no-gitignore', 'skip writing the base .gitignore block')
     .action(async (options: InitOptions) => {
       if (options.tools || options.hooksOnly || options.commandsOnly || options.uninstall) {
@@ -280,7 +264,9 @@ export function registerInit(program: Command): void {
       // the opt-out (there is no reason to skip a config-only default write).
       const writtenMarketplace = writeCorpusConfig(cwd);
       if (writtenMarketplace) {
-        process.stdout.write(`✓ wrote spectastic.json corpus config (marketplace=${writtenMarketplace}, root=${DEFAULT_CORPUS_ROOT})\n`);
+        process.stdout.write(
+          `✓ wrote spectastic.json corpus config (marketplace=${writtenMarketplace}, root=${DEFAULT_CORPUS_ROOT})\n`,
+        );
       }
       // Spec 031 T-001: make the guarantee layer discoverable. Interactive init
       // offers to install it (auto-commits + the pre-commit gate); non-interactive
@@ -296,7 +282,8 @@ export function registerInit(program: Command): void {
  * print a one-line tip so `--tools` is never silently undiscovered.
  */
 async function offerTools(cwd: string, force: boolean): Promise<void> {
-  const tip = 'tip: `spectastic init --tools` installs the guarantee layer (pre-commit gate + auto-commit) — off by default.';
+  const tip =
+    'tip: `spectastic init --tools` installs the guarantee layer (pre-commit gate + auto-commit) — off by default.';
   if (!process.stdout.isTTY) {
     process.stdout.write(`  ${tip}\n`);
     return;

@@ -12,13 +12,25 @@ export const SAMPLE_GRAPH = {
   nodes: [
     mkNode('spec', 'spec', '099-demo', { reqCount: 14, status: 'review' }, { metric: '14 reqs' }),
     mkNode('plan', 'plan', '099-demo', { status: 'draft' }, { metric: 'draft' }),
-    mkNode('tasks', 'tasks', '099-demo', { status: 'draft' }, {
-      metric: 'draft',
-      attention: true, // e.g. open questions
-    }),
-    mkNode('slice:099a', 'spec', '099a-child', { reqCount: 5, status: 'draft' }, {
-      metric: '5 reqs',
-    }),
+    mkNode(
+      'tasks',
+      'tasks',
+      '099-demo',
+      { status: 'draft' },
+      {
+        metric: 'draft',
+        attention: true, // e.g. open questions
+      },
+    ),
+    mkNode(
+      'slice:099a',
+      'spec',
+      '099a-child',
+      { reqCount: 5, status: 'draft' },
+      {
+        metric: '5 reqs',
+      },
+    ),
   ],
   edges: [
     { from: 'spec', to: 'plan', kind: 'flow' },

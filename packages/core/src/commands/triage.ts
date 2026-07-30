@@ -25,16 +25,13 @@
  *   - routing exits (just-do / defer) → inbox.html
  */
 
-import type { KernelContext, TriageInput, TriageResult } from '../types.js';
+import { resolveDecider } from '../decider/index.js';
 import { detectMode } from '../helpers/detect-mode.js';
 import { applyLayer, classifyItem, escalateLayer, formatId } from '../triage/classify.js';
 import { triageFanout } from '../triage/fanout.js';
-import { resolveDecider } from '../decider/index.js';
+import type { KernelContext, TriageInput, TriageResult } from '../types.js';
 
-export async function triageCommand(
-  input: TriageInput,
-  ctx: KernelContext,
-): Promise<TriageResult> {
+export async function triageCommand(input: TriageInput, ctx: KernelContext): Promise<TriageResult> {
   if (!ctx.ai) {
     throw new Error('triageCommand requires ctx.ai (an AIProvider); got undefined');
   }
@@ -79,7 +76,12 @@ function splitList(description: string): string[] {
   // Newline-separated takes precedence; fall back to comma / semicolon.
   const lines = description
     .split(/\r?\n/)
-    .map((l) => l.replace(/^\s*[-*•]\s*/, '').replace(/^\s*\d+[.)]\s*/, '').trim())
+    .map((l) =>
+      l
+        .replace(/^\s*[-*•]\s*/, '')
+        .replace(/^\s*\d+[.)]\s*/, '')
+        .trim(),
+    )
     .filter((l) => l.length > 0);
   if (lines.length >= 2) return lines;
   return description
@@ -88,10 +90,10 @@ function splitList(description: string): string[] {
     .filter((s) => s.length > 0);
 }
 
+export { mapPool } from '../helpers/map-pool.js';
+export type { ClassifyResult, ClassifyStatus } from '../triage/classify.js';
+export { classifyItem } from '../triage/classify.js';
+export type { FanoutOpts } from '../triage/fanout.js';
 // Re-exported for spec 032's fan-out tests and any surface that drives the
 // engine directly (the shared classification core stays in ../triage/).
-export { triageFanout, DEFAULT_CONCURRENCY } from '../triage/fanout.js';
-export type { FanoutOpts } from '../triage/fanout.js';
-export { classifyItem } from '../triage/classify.js';
-export type { ClassifyResult, ClassifyStatus } from '../triage/classify.js';
-export { mapPool } from '../helpers/map-pool.js';
+export { DEFAULT_CONCURRENCY, triageFanout } from '../triage/fanout.js';

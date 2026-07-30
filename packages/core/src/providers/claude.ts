@@ -22,15 +22,9 @@
  */
 
 import Anthropic from '@anthropic-ai/sdk';
-import type {
-  AIProvider,
-  ChatOpts,
-  Question,
-  SubagentOpts,
-  SubagentResult,
-} from '../types.js';
 // Pure constants (no heavy deps) — safe on this lazy-loaded path, unlike the SDK.
 import { DEFAULT_MODEL_ID } from '../model-policy/index.js';
+import type { AIProvider, ChatOpts, Question, SubagentOpts, SubagentResult } from '../types.js';
 
 // The refreshed default (spec 044 D-007). Sourced from the one alias→id table so
 // the stale 'claude-sonnet-4-6' can't reappear and there is a single id literal.
@@ -61,11 +55,9 @@ export class ClaudeProvider implements AIProvider {
   private readonly apiKey: string;
 
   constructor(options: ClaudeProviderOptions = {}) {
-    const apiKey = options.apiKey ?? process.env['ANTHROPIC_API_KEY'];
+    const apiKey = options.apiKey ?? process.env.ANTHROPIC_API_KEY;
     if (!apiKey) {
-      throw new ClaudeProviderError(
-        'ANTHROPIC_API_KEY is not set. Provide it via the env var or the apiKey option.',
-      );
+      throw new ClaudeProviderError('ANTHROPIC_API_KEY is not set. Provide it via the env var or the apiKey option.');
     }
     this.apiKey = apiKey;
     this.model = options.model ?? DEFAULT_MODEL;
@@ -82,7 +74,7 @@ export class ClaudeProvider implements AIProvider {
         messages: [{ role: 'user', content: prompt }],
       });
       const block = response.content[0];
-      if (!block || block.type !== 'text') {
+      if (block?.type !== 'text') {
         throw new ClaudeProviderError('Claude returned no text block');
       }
       return block.text;
@@ -91,9 +83,7 @@ export class ClaudeProvider implements AIProvider {
     }
   }
 
-  async ask<TResult extends Record<string, string>>(
-    questions: ReadonlyArray<Question>,
-  ): Promise<TResult> {
+  async ask<TResult extends Record<string, string>>(questions: ReadonlyArray<Question>): Promise<TResult> {
     const schema = questions.map((q) => ({
       key: q.header,
       question: q.question,

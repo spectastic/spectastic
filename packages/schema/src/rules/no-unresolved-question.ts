@@ -19,8 +19,7 @@ export const noUnresolvedQuestionRule: PerFileRule = {
   id: 'no-unresolved-question',
   scope: 'per-file',
   defaultSeverity: 'error',
-  description:
-    '<spec-question> admonitions must be resolved before a spec is accepted.',
+  description: '<spec-question> admonitions must be resolved before a spec is accepted.',
   check({ doc }) {
     const severity = severityForStatus(doc.status);
     if (severity === undefined) return [];

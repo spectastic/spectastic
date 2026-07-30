@@ -4,10 +4,10 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import {
   buildMarker,
+  ExploreError,
   exploreScaffold,
   renderExploreRunBlock,
   renderLedger,
-  ExploreError,
 } from '../src/commands/explore.js';
 import type { CapturedRun, ExploreInput } from '../src/types.js';
 
@@ -21,10 +21,7 @@ import type { CapturedRun, ExploreInput } from '../src/types.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 // Couples the test to the real thin-floor template so drift is caught (T-011).
-const TEMPLATE = readFileSync(
-  join(here, '..', '..', '..', 'templates', 'explore.html'),
-  'utf8',
-);
+const TEMPLATE = readFileSync(join(here, '..', '..', '..', 'templates', 'explore.html'), 'utf8');
 
 const base = (over: Partial<ExploreInput> = {}): ExploreInput => ({
   id: '023-try-a-graph-view',
@@ -73,9 +70,7 @@ describe('exploreScaffold — T-100 (FR-002, FR-003, FR-007, FR-009)', () => {
   });
 
   it('escapes HTML in the intent', () => {
-    const { ledgerHtml, marker } = exploreScaffold(
-      base({ intent: 'render <b>bold</b> & "quotes"' }),
-    );
+    const { ledgerHtml, marker } = exploreScaffold(base({ intent: 'render <b>bold</b> & "quotes"' }));
     expect(ledgerHtml).toContain('render &lt;b&gt;bold&lt;/b&gt; &amp; &quot;quotes&quot;');
     // The marker keeps the raw intent (it is JSON, not HTML).
     expect(marker.intent).toBe('render <b>bold</b> & "quotes"');

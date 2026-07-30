@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { buildCoverage } from './coverage.js';
 import type { CandidateChild } from './types.js';
 
@@ -40,10 +40,7 @@ describe('buildCoverage', () => {
   });
 
   it('flags a duplicated requirement (partition not disjoint)', () => {
-    const cov = buildCoverage(parent, [
-      child('001-a', ['FR-001', 'FR-002']),
-      child('002-b', ['FR-002', 'SC-001']),
-    ]);
+    const cov = buildCoverage(parent, [child('001-a', ['FR-001', 'FR-002']), child('002-b', ['FR-002', 'SC-001'])]);
     expect(cov.duplicated).toEqual(['FR-002']);
     expect(cov.isTotalAndDisjoint).toBe(false);
   });

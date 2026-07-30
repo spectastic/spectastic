@@ -1,11 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-  VERB_GIT_MAP,
-  scopeOf,
-  commitSubject,
-  branchName,
-  shouldCreateBranch,
-} from '../src/git/derive.js';
+import { branchName, commitSubject, scopeOf, shouldCreateBranch, VERB_GIT_MAP } from '../src/git/derive.js';
 
 /**
  * T-012 of specs/026-git-strategy/tasks.html. Unit tests for pure derivation

@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { expect, test } from '@playwright/test';
 
 // Spec 047-slo-nfr-artifact — FR-001 (render as a typed block) + the
 // spec-slo[target] click-through (mirrors spec-delta[target], assets/spec.js).

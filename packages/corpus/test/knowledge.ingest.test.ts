@@ -2,8 +2,8 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { allocateRegistryIds, installPack, mergeRegistryRows, registerDocument } from '../src/knowledge/ingest.js';
 import { parseRegistry, parseSkillSlugMap } from '../src/knowledge/index-format.js';
+import { allocateRegistryIds, installPack, mergeRegistryRows, registerDocument } from '../src/knowledge/ingest.js';
 import type { RegistryEntry } from '../src/knowledge/types.js';
 import type { PackFetcher } from '../src/providers/pack-fetcher.js';
 
@@ -112,7 +112,14 @@ describe('installPack (T-101/T-102, FR-001/FR-002/FR-004/FR-008/FR-009)', () => 
   }
 
   function stubFetcher(coordinate: string, path: string): PackFetcher {
-    return { fetch: async (c: string) => (c === coordinate ? path : (() => { throw new Error('unexpected coordinate'); })()) };
+    return {
+      fetch: async (c: string) =>
+        c === coordinate
+          ? path
+          : (() => {
+              throw new Error('unexpected coordinate');
+            })(),
+    };
   }
 
   it('converts every reference, assigns a repo-unique KB-NNNN each, and writes the root-registry rows', async () => {
@@ -123,7 +130,11 @@ describe('installPack (T-101/T-102, FR-001/FR-002/FR-004/FR-008/FR-009)', () => 
     const kd = knowledgeDir();
     const coordinate = 'finance-settlement@spectastic-examples';
 
-    const result = await installPack({ fetcher: stubFetcher(coordinate, src), coordinate, knowledgeDir: kd });
+    const result = await installPack({
+      fetcher: stubFetcher(coordinate, src),
+      coordinate,
+      knowledgeDir: kd,
+    });
 
     expect(result.plugin).toBe('finance-settlement');
     expect(result.marketplace).toBe('spectastic-examples');
@@ -133,16 +144,24 @@ describe('installPack (T-101/T-102, FR-001/FR-002/FR-004/FR-008/FR-009)', () => 
     const registry = parseRegistry(readFileSync(join(kd, 'index.md'), 'utf8'));
     expect(registry).toHaveLength(2);
     expect(registry.map((r) => r.slug).sort()).toEqual(['001-settlement-windows', '002-clearing-cutover']);
-    expect(registry.every((r) => r.marketplace === 'spectastic-examples' && r.plugin === 'finance-settlement')).toBe(true);
+    expect(registry.every((r) => r.marketplace === 'spectastic-examples' && r.plugin === 'finance-settlement')).toBe(
+      true,
+    );
     expect(new Set(registry.map((r) => r.id)).size).toBe(2); // repo-unique
   });
 
   it('writes the pack SKILL.md slug map alongside the registry', async () => {
-    const src = sourcePack({ '001-settlement-windows.md': '# Settlement windows\n\nBody.\n' });
+    const src = sourcePack({
+      '001-settlement-windows.md': '# Settlement windows\n\nBody.\n',
+    });
     const kd = knowledgeDir();
     const coordinate = 'finance-settlement@spectastic-examples';
 
-    await installPack({ fetcher: stubFetcher(coordinate, src), coordinate, knowledgeDir: kd });
+    await installPack({
+      fetcher: stubFetcher(coordinate, src),
+      coordinate,
+      knowledgeDir: kd,
+    });
 
     const skillMd = readFileSync(join(kd, 'finance-settlement', 'SKILL.md'), 'utf8');
     const rows = parseSkillSlugMap(skillMd);
@@ -158,7 +177,11 @@ describe('installPack (T-101/T-102, FR-001/FR-002/FR-004/FR-008/FR-009)', () => 
     const kd = knowledgeDir();
     const coordinate = 'finance-settlement@spectastic-examples';
 
-    await installPack({ fetcher: stubFetcher(coordinate, src), coordinate, knowledgeDir: kd });
+    await installPack({
+      fetcher: stubFetcher(coordinate, src),
+      coordinate,
+      knowledgeDir: kd,
+    });
 
     const written = readFileSync(join(kd, 'finance-settlement', 'references', '001-settlement-windows.md'), 'utf8');
     expect(written).toContain('origin: SEC release'); // genuinely read, verbatim
@@ -176,7 +199,11 @@ describe('installPack (T-101/T-102, FR-001/FR-002/FR-004/FR-008/FR-009)', () => 
     const kd = knowledgeDir();
     const coordinate = 'finance-settlement@spectastic-examples';
 
-    await installPack({ fetcher: stubFetcher(coordinate, src), coordinate, knowledgeDir: kd });
+    await installPack({
+      fetcher: stubFetcher(coordinate, src),
+      coordinate,
+      knowledgeDir: kd,
+    });
 
     const written = readFileSync(join(kd, 'finance-settlement', 'references', '001-settlement-windows.md'), 'utf8');
     expect(written).toContain('status: not-yet-spot-checked');
@@ -190,14 +217,22 @@ describe('installPack (T-101/T-102, FR-001/FR-002/FR-004/FR-008/FR-009)', () => 
     const srcV1 = sourcePack({
       '001-settlement-windows.md': '---\nedition: 2026-01-01\n---\n\n# Settlement windows\n\nOriginal text.\n',
     });
-    const first = await installPack({ fetcher: stubFetcher(coordinate, srcV1), coordinate, knowledgeDir: kd });
+    const first = await installPack({
+      fetcher: stubFetcher(coordinate, srcV1),
+      coordinate,
+      knowledgeDir: kd,
+    });
     expect(first.written).toHaveLength(1);
     const id = first.written[0]!;
 
     const srcV2 = sourcePack({
       '001-settlement-windows.md': '---\nedition: 2026-07-01\n---\n\n# Settlement windows\n\nUpdated text.\n',
     });
-    const second = await installPack({ fetcher: stubFetcher(coordinate, srcV2), coordinate, knowledgeDir: kd });
+    const second = await installPack({
+      fetcher: stubFetcher(coordinate, srcV2),
+      coordinate,
+      knowledgeDir: kd,
+    });
 
     expect(second.written).toEqual([]); // same anchor, not a "new" registration
     expect(second.superseded).toEqual([id]); // but reported as a supersede
@@ -207,7 +242,13 @@ describe('installPack (T-101/T-102, FR-001/FR-002/FR-004/FR-008/FR-009)', () => 
     expect(registry[0]?.id).toBe(id); // KB-NNNN never moves
     expect(registry[0]?.edition).toBe('2026-07-01'); // bumped
 
-    const priorPath = join(kd, 'finance-settlement', 'references', 'superseded', '001-settlement-windows@2026-01-01.md');
+    const priorPath = join(
+      kd,
+      'finance-settlement',
+      'references',
+      'superseded',
+      '001-settlement-windows@2026-01-01.md',
+    );
     expect(readFileSync(priorPath, 'utf8')).toContain('Original text.');
 
     const currentPath = join(kd, 'finance-settlement', 'references', '001-settlement-windows.md');
@@ -222,11 +263,21 @@ describe('installPack (T-101/T-102, FR-001/FR-002/FR-004/FR-008/FR-009)', () => 
       '001-settlement-windows.md': '# Settlement windows\n\nBody.\n',
       '002-clearing-cutover.md': '# Clearing cutover\n\nBody.\n',
     });
-    await installPack({ fetcher: stubFetcher(coordinate, srcV1), coordinate, knowledgeDir: kd });
+    await installPack({
+      fetcher: stubFetcher(coordinate, srcV1),
+      coordinate,
+      knowledgeDir: kd,
+    });
 
     // Re-import drops 002-clearing-cutover entirely.
-    const srcV2 = sourcePack({ '001-settlement-windows.md': '# Settlement windows\n\nBody.\n' });
-    const second = await installPack({ fetcher: stubFetcher(coordinate, srcV2), coordinate, knowledgeDir: kd });
+    const srcV2 = sourcePack({
+      '001-settlement-windows.md': '# Settlement windows\n\nBody.\n',
+    });
+    const second = await installPack({
+      fetcher: stubFetcher(coordinate, srcV2),
+      coordinate,
+      knowledgeDir: kd,
+    });
 
     expect(second.orphaned).toHaveLength(1);
     const registry = parseRegistry(readFileSync(join(kd, 'index.md'), 'utf8'));
@@ -240,7 +291,9 @@ describe('installPack (T-101/T-102, FR-001/FR-002/FR-004/FR-008/FR-009)', () => 
   it('plugin-rename migration — a renamed plugin resolves to the same KB-NNNN via the marketplace renames map', async () => {
     const kd = knowledgeDir();
 
-    const srcV1 = sourcePack({ '001-settlement-windows.md': '# Settlement windows\n\nBody.\n' });
+    const srcV1 = sourcePack({
+      '001-settlement-windows.md': '# Settlement windows\n\nBody.\n',
+    });
     const first = await installPack({
       fetcher: stubFetcher('finance-old-name@spectastic-examples', srcV1),
       coordinate: 'finance-old-name@spectastic-examples',
@@ -250,7 +303,9 @@ describe('installPack (T-101/T-102, FR-001/FR-002/FR-004/FR-008/FR-009)', () => 
     const id = first.written[0]!;
 
     // Re-import under the renamed plugin, with the marketplace's own renames map supplied.
-    const srcV2 = sourcePack({ '001-settlement-windows.md': '# Settlement windows\n\nBody.\n' });
+    const srcV2 = sourcePack({
+      '001-settlement-windows.md': '# Settlement windows\n\nBody.\n',
+    });
     const second = await installPack({
       fetcher: stubFetcher('finance-settlement@spectastic-examples', srcV2),
       coordinate: 'finance-settlement@spectastic-examples',
@@ -266,11 +321,17 @@ describe('installPack (T-101/T-102, FR-001/FR-002/FR-004/FR-008/FR-009)', () => 
   });
 
   it('is idempotent — re-running with no new references writes nothing new and never rewrites a hand-corrected field back to TODO (NFR-003)', async () => {
-    const src = sourcePack({ '001-settlement-windows.md': '# Settlement windows\n\nBody.\n' });
+    const src = sourcePack({
+      '001-settlement-windows.md': '# Settlement windows\n\nBody.\n',
+    });
     const kd = knowledgeDir();
     const coordinate = 'finance-settlement@spectastic-examples';
 
-    const first = await installPack({ fetcher: stubFetcher(coordinate, src), coordinate, knowledgeDir: kd });
+    const first = await installPack({
+      fetcher: stubFetcher(coordinate, src),
+      coordinate,
+      knowledgeDir: kd,
+    });
     expect(first.written).toHaveLength(1);
 
     // Hand-correct the registry row's title, matching the sole-writer discipline's
@@ -279,7 +340,11 @@ describe('installPack (T-101/T-102, FR-001/FR-002/FR-004/FR-008/FR-009)', () => 
     const handCorrected = readFileSync(registryPath, 'utf8').replace('Settlement windows', 'Hand-corrected title');
     writeFileSync(registryPath, handCorrected, 'utf8');
 
-    const second = await installPack({ fetcher: stubFetcher(coordinate, src), coordinate, knowledgeDir: kd });
+    const second = await installPack({
+      fetcher: stubFetcher(coordinate, src),
+      coordinate,
+      knowledgeDir: kd,
+    });
     expect(second.written).toEqual([]); // nothing new
     expect(second.skipped).toEqual(first.written); // the same reference, now skipped
 
@@ -288,11 +353,17 @@ describe('installPack (T-101/T-102, FR-001/FR-002/FR-004/FR-008/FR-009)', () => 
   });
 
   it('063-corpus-discoverability T-212: syncs marketplace.json when corpusMarketplaceName is given, stays a no-op otherwise (FR-003)', async () => {
-    const src = sourcePack({ '001-settlement-windows.md': '# Settlement windows\n\nBody.\n' });
+    const src = sourcePack({
+      '001-settlement-windows.md': '# Settlement windows\n\nBody.\n',
+    });
     const kd = knowledgeDir();
     const coordinate = 'finance-settlement@spectastic-examples';
 
-    await installPack({ fetcher: stubFetcher(coordinate, src), coordinate, knowledgeDir: kd });
+    await installPack({
+      fetcher: stubFetcher(coordinate, src),
+      coordinate,
+      knowledgeDir: kd,
+    });
     expect(existsSync(join(kd, 'marketplace.json')), 'no sync without corpusMarketplaceName').toBe(false);
 
     const withSync = knowledgeDir();
@@ -302,7 +373,10 @@ describe('installPack (T-101/T-102, FR-001/FR-002/FR-004/FR-008/FR-009)', () => 
       knowledgeDir: withSync,
       corpusMarketplaceName: 'acme',
     });
-    const manifest = JSON.parse(readFileSync(join(withSync, 'marketplace.json'), 'utf8')) as { name: string; plugins: unknown[] };
+    const manifest = JSON.parse(readFileSync(join(withSync, 'marketplace.json'), 'utf8')) as {
+      name: string;
+      plugins: unknown[];
+    };
     expect(manifest.name).toBe('acme');
     expect(manifest.plugins).toHaveLength(1);
   });
@@ -311,24 +385,43 @@ describe('installPack (T-101/T-102, FR-001/FR-002/FR-004/FR-008/FR-009)', () => 
     const src = sourcePack({ '001-fact.md': '# A fact\n\nBody.\n' });
     const kd = knowledgeDir();
     // No @marketplace in the coordinate — a local, in-repo pack.
-    const r = await installPack({ fetcher: stubFetcher('ops-knowledge', src), coordinate: 'ops-knowledge', knowledgeDir: kd, corpusMarketplaceName: 'my-repo' });
+    const r = await installPack({
+      fetcher: stubFetcher('ops-knowledge', src),
+      coordinate: 'ops-knowledge',
+      knowledgeDir: kd,
+      corpusMarketplaceName: 'my-repo',
+    });
     expect(r.marketplace).toBe('my-repo');
     const registry = parseRegistry(readFileSync(join(kd, 'index.md'), 'utf8'));
     expect(registry[0]?.marketplace).toBe('my-repo');
     expect(registry[0]?.plugin).toBe('ops-knowledge');
 
     const kd2 = knowledgeDir();
-    const bare = await installPack({ fetcher: stubFetcher('ops-knowledge', src), coordinate: 'ops-knowledge', knowledgeDir: kd2 });
+    const bare = await installPack({
+      fetcher: stubFetcher('ops-knowledge', src),
+      coordinate: 'ops-knowledge',
+      knowledgeDir: kd2,
+    });
     expect(bare.marketplace, 'no config → the local sentinel').toBe('local');
   });
 
-  it('061 Phase 8 T-1002: a marketplace-less re-import reuses the existing row\'s marketplace (pin, no re-key on config drift)', async () => {
+  it("061 Phase 8 T-1002: a marketplace-less re-import reuses the existing row's marketplace (pin, no re-key on config drift)", async () => {
     const src = sourcePack({ '001-fact.md': '# A fact\n\nBody.\n' });
     const kd = knowledgeDir();
     // First import files it under 'first-name'.
-    await installPack({ fetcher: stubFetcher('ops-knowledge', src), coordinate: 'ops-knowledge', knowledgeDir: kd, corpusMarketplaceName: 'first-name' });
+    await installPack({
+      fetcher: stubFetcher('ops-knowledge', src),
+      coordinate: 'ops-knowledge',
+      knowledgeDir: kd,
+      corpusMarketplaceName: 'first-name',
+    });
     // Config drifts: a re-import with a DIFFERENT corpus.marketplace...
-    const second = await installPack({ fetcher: stubFetcher('ops-knowledge', src), coordinate: 'ops-knowledge', knowledgeDir: kd, corpusMarketplaceName: 'drifted-name' });
+    const second = await installPack({
+      fetcher: stubFetcher('ops-knowledge', src),
+      coordinate: 'ops-knowledge',
+      knowledgeDir: kd,
+      corpusMarketplaceName: 'drifted-name',
+    });
     // ...still resolves to the existing row's marketplace — no second KB-NNNN under 'drifted-name'.
     expect(second.marketplace).toBe('first-name');
     const registry = parseRegistry(readFileSync(join(kd, 'index.md'), 'utf8'));
@@ -336,7 +429,7 @@ describe('installPack (T-101/T-102, FR-001/FR-002/FR-004/FR-008/FR-009)', () => 
     expect(registry[0]?.marketplace).toBe('first-name');
   });
 
-  it('061 Phase 8 T-1005: a source pack\'s existing references/superseded/ editions are preserved on import (FR-013)', async () => {
+  it("061 Phase 8 T-1005: a source pack's existing references/superseded/ editions are preserved on import (FR-013)", async () => {
     const src = sourcePack({ '001-settlement.md': '# Settlement\n\nT+1.\n' });
     // The source already retains a prior edition.
     mkdirSync(join(src, 'references', 'superseded'), { recursive: true });
@@ -346,7 +439,11 @@ describe('installPack (T-101/T-102, FR-001/FR-002/FR-004/FR-008/FR-009)', () => 
       'utf8',
     );
     const kd = knowledgeDir();
-    await installPack({ fetcher: stubFetcher('finance@acme', src), coordinate: 'finance@acme', knowledgeDir: kd });
+    await installPack({
+      fetcher: stubFetcher('finance@acme', src),
+      coordinate: 'finance@acme',
+      knowledgeDir: kd,
+    });
 
     expect(
       existsSync(join(kd, 'finance', 'references', 'superseded', '001-settlement@2017-09-05.md')),
@@ -395,7 +492,10 @@ describe('registerDocument (T-212, FR-003)', () => {
       status: 'not-citable-until-signed-off',
       corpusMarketplaceName: 'acme',
     });
-    const manifest = JSON.parse(readFileSync(join(withSync, 'marketplace.json'), 'utf8')) as { name: string; plugins: unknown[] };
+    const manifest = JSON.parse(readFileSync(join(withSync, 'marketplace.json'), 'utf8')) as {
+      name: string;
+      plugins: unknown[];
+    };
     expect(manifest.name).toBe('acme');
     expect(manifest.plugins).toHaveLength(1);
   });

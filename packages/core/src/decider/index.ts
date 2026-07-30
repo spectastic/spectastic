@@ -4,19 +4,25 @@
  * the 035 rollout wires the rest.
  */
 
+export type { EffortSignal, RequestedEffort, ResolvedEffort } from './auto.js';
+export { resolveEffort } from './auto.js';
+export { decideChoice } from './choice.js';
+export type { DecideRequest } from './decider.js';
+export { decide, resolveDecider } from './decider.js';
+export type { EffortDepth } from './effort.js';
+export { DEFAULT_EFFORT, effortToDepth, VOTER_CAP } from './effort.js';
+export {
+  arbitrateCategorical,
+  LENSES,
+  median,
+  parseFindings,
+  runCritic,
+} from './panel.js';
+export { answerDecisions, DECISION_TAXONOMY } from './taxonomy.js';
 export type {
+  DeciderConfig,
   DeciderRole,
   EffortLevel,
-  DeciderConfig,
   Finding,
   Verdict,
 } from './types.js';
-export { resolveDecider, decide } from './decider.js';
-export type { DecideRequest } from './decider.js';
-export { effortToDepth, DEFAULT_EFFORT, VOTER_CAP } from './effort.js';
-export type { EffortDepth } from './effort.js';
-export { LENSES, runCritic, arbitrateCategorical, median, parseFindings } from './panel.js';
-export { resolveEffort } from './auto.js';
-export type { RequestedEffort, EffortSignal, ResolvedEffort } from './auto.js';
-export { decideChoice } from './choice.js';
-export { DECISION_TAXONOMY, answerDecisions } from './taxonomy.js';

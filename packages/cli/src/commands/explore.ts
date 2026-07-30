@@ -1,4 +1,4 @@
-import { readdir, readFile, mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import type { Command } from 'commander';
 
@@ -19,10 +19,7 @@ export function registerExplore(program: Command): void {
       'Scaffold a quarantined exploration under explorations/<id>/ (a git-ignored ledger + a tracked quarantine marker) to build loosely. Graduate or delete — nothing ships un-graduated.',
     )
     .argument('[intent]', 'a one-line description of what you want to find out (scaffold mode)')
-    .option(
-      '--graduate <id>',
-      'graduate an existing quarantined exploration into a spec instead of scaffolding',
-    )
+    .option('--graduate <id>', 'graduate an existing quarantined exploration into a spec instead of scaffolding')
     .option('--classify <kind>', 'spike | tracer-bullet (required with --graduate)')
     .action(async (intent: string | undefined, opts: { graduate?: string; classify?: string }) => {
       // Mode select: exactly one of <intent> (scaffold) or --graduate <id>.
@@ -49,9 +46,7 @@ export function registerExplore(program: Command): void {
       try {
         template = await readFile(templatePath, 'utf8');
       } catch {
-        process.stderr.write(
-          `explore: cannot read ${templatePath} — the thin-floor ledger template is required.\n`,
-        );
+        process.stderr.write(`explore: cannot read ${templatePath} — the thin-floor ledger template is required.\n`);
         process.exit(2);
       }
 
@@ -61,11 +56,7 @@ export function registerExplore(program: Command): void {
       const dir = join(cwd, 'explorations', id);
       await mkdir(dir, { recursive: true });
       await writeFile(join(dir, 'explore.html'), result.ledgerHtml, 'utf8');
-      await writeFile(
-        join(dir, 'quarantine.json'),
-        `${JSON.stringify(result.marker, null, 2)}\n`,
-        'utf8',
-      );
+      await writeFile(join(dir, 'quarantine.json'), `${JSON.stringify(result.marker, null, 2)}\n`, 'utf8');
 
       process.stdout.write(
         `Wrote explorations/${id}/explore.html (git-ignored ledger) + quarantine.json (tracked marker).\n` +
@@ -85,10 +76,7 @@ const ID_PREFIX = /^(\d{3})-/;
 async function resolveNextId(cwd: string, intent: string): Promise<string> {
   const highest = Math.max(
     0,
-    ...(await Promise.all([
-      highestNumberIn(join(cwd, 'specs')),
-      highestNumberIn(join(cwd, 'explorations')),
-    ])),
+    ...(await Promise.all([highestNumberIn(join(cwd, 'specs')), highestNumberIn(join(cwd, 'explorations'))])),
   );
   const num = String(highest + 1).padStart(3, '0');
   return `${num}-${slugify(intent)}`;

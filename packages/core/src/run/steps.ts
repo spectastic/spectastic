@@ -88,10 +88,7 @@ export function buildRunSteps(specId: string, deps: RunStepDeps): PipelineStep[]
       decisionVerb: 'tasks',
       async run({ decisions }): Promise<StepOutcome> {
         const { tasksCommand } = await import('../commands/tasks.js');
-        const res = await tasksCommand(
-          { specPath, planPath, decisions },
-          { cwd: deps.cwd, fs: deps.fs, ai: deps.ai },
-        );
+        const res = await tasksCommand({ specPath, planPath, decisions }, { cwd: deps.cwd, fs: deps.fs, ai: deps.ai });
         await deps.fs.writeFile(tasksPath, res.html);
         return { findings: await validateBundle() };
       },
@@ -103,11 +100,26 @@ export function buildRunSteps(specId: string, deps: RunStepDeps): PipelineStep[]
         const specHtml = await readSafe(deps.fs, specPath);
         const planHtml = await readSafe(deps.fs, planPath);
         const result = await drainTasks(
-          { tasksHtml, ...(specHtml ? { specHtml } : {}), ...(planHtml ? { planHtml } : {}) },
-          { cwd: deps.cwd, coding: deps.coding, sandbox: deps.sandbox, verify: deps.verify },
+          {
+            tasksHtml,
+            ...(specHtml ? { specHtml } : {}),
+            ...(planHtml ? { planHtml } : {}),
+          },
+          {
+            cwd: deps.cwd,
+            coding: deps.coding,
+            sandbox: deps.sandbox,
+            verify: deps.verify,
+          },
         );
         await deps.fs.writeFile(tasksPath, result.tasksHtml);
-        if (result.halted) return { halted: { taskId: result.halted.taskId, reason: result.halted.reason } };
+        if (result.halted)
+          return {
+            halted: {
+              taskId: result.halted.taskId,
+              reason: result.halted.reason,
+            },
+          };
         return {};
       },
     },

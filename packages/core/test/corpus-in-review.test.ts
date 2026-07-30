@@ -1,10 +1,10 @@
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { afterEach, describe, expect, it } from 'vitest';
-import { proposeCommand } from '@spectastic/core/commands/propose';
 import type { AIProvider, ChatOpts, KernelContext, Question, SubagentOpts, SubagentResult } from '@spectastic/core';
+import { proposeCommand } from '@spectastic/core/commands/propose';
+import { afterEach, describe, expect, it } from 'vitest';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(here, '..', '..', '..');
@@ -25,7 +25,12 @@ class CapturingAI implements AIProvider {
   public subagentPrompts: string[] = [];
   async chat(prompt: string, _opts?: ChatOpts): Promise<string> {
     this.chatPrompts.push(prompt);
-    return JSON.stringify({ intent: 'x', scope: 'x', approach: 'x', deltas: [] });
+    return JSON.stringify({
+      intent: 'x',
+      scope: 'x',
+      approach: 'x',
+      deltas: [],
+    });
   }
   async subagent(prompt: string, _opts?: SubagentOpts): Promise<SubagentResult> {
     this.subagentPrompts.push(prompt);
@@ -75,7 +80,12 @@ async function runAdversarialPropose(cwd: string): Promise<CapturingAI> {
   const ai = new CapturingAI();
   const ctx: KernelContext = { cwd, ai };
   await proposeCommand(
-    { specId: '099-corpus-review', description: 'add a thing', specHtml: CLEAN_SPEC, adversarial: true },
+    {
+      specId: '099-corpus-review',
+      description: 'add a thing',
+      specHtml: CLEAN_SPEC,
+      adversarial: true,
+    },
     ctx,
   );
   return ai;

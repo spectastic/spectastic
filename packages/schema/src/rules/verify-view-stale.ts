@@ -1,5 +1,5 @@
-import { findAll, getAttr, getLocation, walk } from '../parser.js';
 import type { Element } from '../parser.js';
+import { findAll, getAttr, getLocation, walk } from '../parser.js';
 import type { CrossFileRule, Finding, ParsedDocument } from '../types.js';
 
 /**
@@ -51,9 +51,15 @@ function groupBundles(docs: readonly ParsedDocument[]): Map<string, Bundle> {
   };
   for (const doc of docs) {
     const s = SPEC_FILE.exec(doc.file);
-    if (s?.[1]) { slot(s[1]).spec = doc; continue; }
+    if (s?.[1]) {
+      slot(s[1]).spec = doc;
+      continue;
+    }
     const t = TASKS_FILE.exec(doc.file);
-    if (t?.[1]) { slot(t[1]).tasks = doc; continue; }
+    if (t?.[1]) {
+      slot(t[1]).tasks = doc;
+      continue;
+    }
     const v = VERIFY_FILE.exec(doc.file);
     if (v?.[1]) slot(v[1]).verify = doc;
   }
@@ -202,8 +208,7 @@ function linkedSloNfrIds(verify: ParsedDocument): string[] {
   return [...nfrs].sort((a, b) => a.localeCompare(b));
 }
 
-const eq = (a: string[], b: string[]): boolean =>
-  a.length === b.length && a.every((v, i) => v === b[i]);
+const eq = (a: string[], b: string[]): boolean => a.length === b.length && a.every((v, i) => v === b[i]);
 
 interface Loc {
   line: number;
@@ -319,7 +324,13 @@ export const verifyViewStaleRule: CrossFileRule = {
       const incomplete = completenessFinding(b.verify, b.specId, perSc, expectedTasks, loc);
       if (incomplete) findings.push(incomplete);
       const expectedNfrs = specSloTargetIds(b.spec);
-      const observablesDrift = observablesDriftFinding(b.verify, b.specId, expectedNfrs, linkedSloNfrIds(b.verify), loc);
+      const observablesDrift = observablesDriftFinding(
+        b.verify,
+        b.specId,
+        expectedNfrs,
+        linkedSloNfrIds(b.verify),
+        loc,
+      );
       if (observablesDrift) findings.push(observablesDrift);
     }
     return findings;

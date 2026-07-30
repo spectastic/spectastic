@@ -1,7 +1,7 @@
-import * as vscode from 'vscode';
-import { readFile } from 'node:fs/promises';
 import { randomBytes } from 'node:crypto';
+import { readFile } from 'node:fs/promises';
 import * as path from 'node:path';
+import * as vscode from 'vscode';
 
 /**
  * Open a rendered spectastic artifact in a WebviewPanel (spec FR-003, plan D-005).
@@ -83,11 +83,7 @@ export async function openArtifact(
 /** Read the artifact and render it into the panel (or a loud error page). Shared
  *  by the first open and the reuse-reveal path so both surface read errors and
  *  carry the doc-path identically. */
-async function paint(
-  panel: vscode.WebviewPanel,
-  artifactPath: string,
-  anchor?: string,
-): Promise<void> {
+async function paint(panel: vscode.WebviewPanel, artifactPath: string, anchor?: string): Promise<void> {
   try {
     const raw = await readFile(artifactPath, 'utf8');
     panel.webview.html = rewriteForWebview(
@@ -128,23 +124,20 @@ export function rewriteForWebview(
   const toUri = (rel: string): string =>
     webview.asWebviewUri(vscode.Uri.file(path.resolve(artifactDir, rel))).toString();
 
-  const rewritten = html.replace(
-    /(href|src)="([^"]+)"/g,
-    (match, attr: string, val: string) => {
-      if (/^(?:https?:|data:|#|mailto:|vscode-|blob:)/.test(val)) return match;
-      // Cross-artifact link (spec 020 T-011): a relative href to a .html artifact
-      // (optionally #anchor). Rewriting it through asWebviewUri produces a
-      // vscode-resource URL that escapes the panel when clicked. Instead, mark it
-      // for the injected interceptor and neutralise native navigation.
-      const link = attr === 'href' ? /^([^#]*\.html)(?:#(.+))?$/.exec(val) : null;
-      if (link) {
-        const rel = link[1] ?? '';
-        const frag = link[2] ?? '';
-        return `href="#" data-artifact-link="${escapeHtml(rel)}" data-anchor="${escapeHtml(frag)}"`;
-      }
-      return `${attr}="${toUri(val)}"`;
-    },
-  );
+  const rewritten = html.replace(/(href|src)="([^"]+)"/g, (match, attr: string, val: string) => {
+    if (/^(?:https?:|data:|#|mailto:|vscode-|blob:)/.test(val)) return match;
+    // Cross-artifact link (spec 020 T-011): a relative href to a .html artifact
+    // (optionally #anchor). Rewriting it through asWebviewUri produces a
+    // vscode-resource URL that escapes the panel when clicked. Instead, mark it
+    // for the injected interceptor and neutralise native navigation.
+    const link = attr === 'href' ? /^([^#]*\.html)(?:#(.+))?$/.exec(val) : null;
+    if (link) {
+      const rel = link[1] ?? '';
+      const frag = link[2] ?? '';
+      return `href="#" data-artifact-link="${escapeHtml(rel)}" data-anchor="${escapeHtml(frag)}"`;
+    }
+    return `${attr}="${toUri(val)}"`;
+  });
 
   // The artifact ships its own strict CSP <meta> (spec 045) for standalone
   // viewing (file://, the published site), where assets are same-origin 'self'.
@@ -177,18 +170,12 @@ export function rewriteForWebview(
     (docPath ? ` data-doc-path="${escapeHtml(docPath)}"` : '') +
     (anchor ? ` data-scroll-to="${escapeHtml(anchor)}"` : '');
   if (bodyAttrs) {
-    out = out.replace(
-      /<body(\s[^>]*)?>/i,
-      (_m, attrs: string | undefined) => `<body${attrs ?? ''}${bodyAttrs}>`,
-    );
+    out = out.replace(/<body(\s[^>]*)?>/i, (_m, attrs: string | undefined) => `<body${attrs ?? ''}${bodyAttrs}>`);
   }
   // Inject the link interceptor (T-011). Intercepts clicks on marked
   // cross-artifact links → postMessage to the host; on load, scrolls to a baked
   // data-scroll-to target. Nonce-authorised against the CSP above.
-  out = out.replace(
-    /<\/body>/i,
-    `<script nonce="${nonce}">${LINK_INTERCEPTOR}</script>\n</body>`,
-  );
+  out = out.replace(/<\/body>/i, `<script nonce="${nonce}">${LINK_INTERCEPTOR}</script>\n</body>`);
   return out;
 }
 
@@ -219,11 +206,7 @@ const LINK_INTERCEPTOR = `(function(){
   } else { setTimeout(scrollToTarget, 0); }
 })();`;
 
-function errorPage(
-  webview: Pick<vscode.Webview, 'cspSource'>,
-  artifactPath: string,
-  message: string,
-): string {
+function errorPage(_webview: Pick<vscode.Webview, 'cspSource'>, artifactPath: string, message: string): string {
   return (
     `<!doctype html><html><head>` +
     `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline';">` +
@@ -236,7 +219,5 @@ function errorPage(
 }
 
 function escapeHtml(s: string): string {
-  return s.replace(/[&<>"]/g, (c) =>
-    c === '&' ? '&amp;' : c === '<' ? '&lt;' : c === '>' ? '&gt;' : '&quot;',
-  );
+  return s.replace(/[&<>"]/g, (c) => (c === '&' ? '&amp;' : c === '<' ? '&lt;' : c === '>' ? '&gt;' : '&quot;'));
 }

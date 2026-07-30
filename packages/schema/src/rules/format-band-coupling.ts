@@ -1,5 +1,5 @@
-import { findAll, getAttr, getLocation, walk } from '../parser.js';
 import type { Element } from '../parser.js';
+import { findAll, getAttr, getLocation, walk } from '../parser.js';
 import type { CrossFileRule, Finding, ParsedDocument } from '../types.js';
 
 /**
@@ -51,7 +51,10 @@ function restatedThreshold(text: string): number | undefined {
   return m ? Number(m[1]) : undefined;
 }
 
-function findRequirement(docs: readonly ParsedDocument[], id: string): { doc: ParsedDocument; el: Element } | undefined {
+function findRequirement(
+  docs: readonly ParsedDocument[],
+  id: string,
+): { doc: ParsedDocument; el: Element } | undefined {
   for (const doc of docs) {
     for (const req of findAll(doc.ast, 'spec-requirement')) {
       if (getAttr(req, 'id') === id) return { doc, el: req };

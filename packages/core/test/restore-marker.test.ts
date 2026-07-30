@@ -1,6 +1,6 @@
-import { describe, expect, it } from 'vitest';
-import { readArchivedClassify } from '@spectastic/core/commands/restore-marker';
 import type { FileSystem } from '@spectastic/core';
+import { readArchivedClassify } from '@spectastic/core/commands/restore-marker';
+import { describe, expect, it } from 'vitest';
 
 // T-012 (spec 024-explore-restore, FR-004): read the frozen classify from a
 // graduated exploration's archived marker; null for anything not graduated.
@@ -31,13 +31,19 @@ describe('readArchivedClassify (024-explore-restore, FR-004)', () => {
 
   it('returns the frozen classify for a graduated marker', async () => {
     const fs = stubFs({
-      [markerPath]: JSON.stringify({ id: '019-x', status: 'graduated', classify: 'tracer-bullet' }),
+      [markerPath]: JSON.stringify({
+        id: '019-x',
+        status: 'graduated',
+        classify: 'tracer-bullet',
+      }),
     });
     expect(await readArchivedClassify(fs, cwd, '019-x')).toBe('tracer-bullet');
   });
 
   it('returns spike when the build was a spike', async () => {
-    const fs = stubFs({ [markerPath]: JSON.stringify({ status: 'graduated', classify: 'spike' }) });
+    const fs = stubFs({
+      [markerPath]: JSON.stringify({ status: 'graduated', classify: 'spike' }),
+    });
     expect(await readArchivedClassify(fs, cwd, '019-x')).toBe('spike');
   });
 
@@ -46,7 +52,9 @@ describe('readArchivedClassify (024-explore-restore, FR-004)', () => {
   });
 
   it('returns null when the marker has not flipped to graduated', async () => {
-    const fs = stubFs({ [markerPath]: JSON.stringify({ status: 'quarantined' }) });
+    const fs = stubFs({
+      [markerPath]: JSON.stringify({ status: 'quarantined' }),
+    });
     expect(await readArchivedClassify(fs, cwd, '019-x')).toBeNull();
   });
 

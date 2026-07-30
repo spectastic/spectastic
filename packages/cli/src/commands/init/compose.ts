@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import type { FileWriteDecision } from './types.js';
 import type { EnforcementCategory, Principle, Profile, ProfileManifest } from './profiles.js';
+import type { FileWriteDecision } from './types.js';
 
 /**
  * Compose the three profile artifacts (spec 041, D-003 / D-004).
@@ -37,17 +37,11 @@ export interface ComposeOptions {
 }
 
 function escapeHtml(s: string): string {
-  return s
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
 /** Base + profile principles, deduped by name (base wins on a tie). */
-export function combinedPrinciples(
-  manifest: ProfileManifest,
-  profile: Profile,
-): Principle[] {
+export function combinedPrinciples(manifest: ProfileManifest, profile: Profile): Principle[] {
   const out: Principle[] = [];
   const seen = new Set<string>();
   for (const p of [...manifest.base.principles, ...profile.principles]) {
@@ -104,7 +98,10 @@ export function renderPrinciplesHtml(opts: ComposeOptions): string {
   const replacements: Array<[string, string]> = [
     ['[PROJECT_NAME]', escapeHtml(opts.projectName)],
     ['[ONE_LINE_PROJECT_TAGLINE]', escapeHtml(tagline)],
-    ['[ONE_PARAGRAPH_PROJECT_PURPOSE — what we are building, for whom, and what binds every\n    downstream spec back to this document.]', purpose],
+    [
+      '[ONE_PARAGRAPH_PROJECT_PURPOSE — what we are building, for whom, and what binds every\n    downstream spec back to this document.]',
+      purpose,
+    ],
     ['[RATIFICATION_DATE]', opts.date],
     ['[LAST_AMENDED_DATE]', opts.date],
     ['[IN_SCOPE_ITEM_1]', 'What this project builds — fill in.'],
@@ -114,8 +111,14 @@ export function renderPrinciplesHtml(opts: ComposeOptions): string {
     ['[OUT_OF_SCOPE_ITEM_2]', 'A second non-goal.'],
     ['[OWNER_NAMES_AND_HANDLES]', 'Project owner — fill in.'],
     ['[CONSENSUS | OWNER | LAZY_CONSENSUS — describe how decisions are made]', 'Owner decides; propose changes by PR.'],
-    ['[HOW_TO_AMEND — typically PR to this file with version bump and Sync Impact Report]', 'PR to this file with a version bump and a Sync Impact Report.'],
-    ['[ANY_ASSUMPTIONS the principles rest on — e.g. team size, target audience, budget,\ninfrastructure.]', `Assumes the ${opts.profile.name} profile's level of rigor fits this project.`],
+    [
+      '[HOW_TO_AMEND — typically PR to this file with version bump and Sync Impact Report]',
+      'PR to this file with a version bump and a Sync Impact Report.',
+    ],
+    [
+      '[ANY_ASSUMPTIONS the principles rest on — e.g. team size, target audience, budget,\ninfrastructure.]',
+      `Assumes the ${opts.profile.name} profile's level of rigor fits this project.`,
+    ],
   ];
   for (const [from, to] of replacements) html = html.split(from).join(to);
 
@@ -178,10 +181,7 @@ export function renderClaudeMd(manifest: ProfileManifest): string {
  * highest existing P-N. Returns null if the file has no sentinel (hand-authored
  * or pre-041) — the caller then falls back to the conflict prompt.
  */
-export function spliceUpgrade(
-  existingHtml: string,
-  principles: Principle[],
-): string | null {
+export function spliceUpgrade(existingHtml: string, principles: Principle[]): string | null {
   if (!existingHtml.includes(PRINCIPLES_END)) return null;
 
   // Highest existing P-number.
@@ -191,9 +191,7 @@ export function spliceUpgrade(
   }
 
   // Only principles whose name isn't already present.
-  const fresh = principles.filter(
-    (p) => !existingHtml.includes(`· ${escapeHtml(p.name)}</h3>`),
-  );
+  const fresh = principles.filter((p) => !existingHtml.includes(`· ${escapeHtml(p.name)}</h3>`));
   if (fresh.length === 0) return existingHtml; // nothing to add; idempotent
 
   const blocks = renderPrincipleBlocks(fresh, maxN + 1);

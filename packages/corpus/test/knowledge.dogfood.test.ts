@@ -1,8 +1,8 @@
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { corpusWellFormedFindings } from '../src/knowledge/validate.js';
 import { loadCorpus } from '../src/knowledge/index.js';
+import { corpusWellFormedFindings } from '../src/knowledge/validate.js';
 
 /**
  * 051-knowledge-corpus T-300: red-first test for the dogfooded reference

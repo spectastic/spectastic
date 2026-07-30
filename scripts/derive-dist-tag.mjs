@@ -56,9 +56,7 @@ export async function fetchPublishedVersions(pkg, run = execFileAsync) {
   } catch (err) {
     const text = `${err?.stderr ?? ''}${err?.message ?? ''}`;
     if (text.includes('E404') || text.includes('404 Not Found')) return [];
-    throw new Error(
-      `could not determine published versions for ${pkg}: ${err?.message ?? err}`,
-    );
+    throw new Error(`could not determine published versions for ${pkg}: ${err?.message ?? err}`);
   }
 }
 
@@ -74,8 +72,7 @@ async function main(argv) {
   process.stdout.write(`${tags.join('\n')}\n`);
 }
 
-const invokedDirectly =
-  process.argv[1] && import.meta.url === new URL(`file://${process.argv[1]}`).href;
+const invokedDirectly = process.argv[1] && import.meta.url === new URL(`file://${process.argv[1]}`).href;
 
 if (invokedDirectly) {
   main(process.argv.slice(2)).catch((err) => {

@@ -31,9 +31,7 @@ export function buildSyntheticCorpus(children: readonly CandidateChild[]): Corpu
 
   return children.map((c) => {
     const parents = c.dependsOn.map((d) => `<spec-parent specid="${esc(d)}"></spec-parent>`).join('');
-    const defers = (dependents.get(c.specId) ?? [])
-      .map((x) => `<li defer-to="${esc(x)}">precedes</li>`)
-      .join('');
+    const defers = (dependents.get(c.specId) ?? []).map((x) => `<li defer-to="${esc(x)}">precedes</li>`).join('');
     const oos = defers ? `<spec-out-of-scope><ul>${defers}</ul></spec-out-of-scope>` : '';
     const r = c.rice;
     const rice = `<spec-rice reach="${r.reach}" impact="${r.impact}" confidence="${r.confidence}" effort="${r.effort}"></spec-rice>`;

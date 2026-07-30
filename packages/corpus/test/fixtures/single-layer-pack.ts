@@ -78,6 +78,9 @@ export function writeTwoLayerDoc(
 ): void {
   const referencesDir = join(cwd, 'knowledge', pack, 'references');
   mkdirSync(referencesDir, { recursive: true });
-  const yamlBlock = stringifyYaml({ slug, ...{ ...FULL_PROVENANCE, ...provenance } }).trimEnd();
+  const yamlBlock = stringifyYaml({
+    slug,
+    ...{ ...FULL_PROVENANCE, ...provenance },
+  }).trimEnd();
   writeFileSync(join(referencesDir, `${slug}.md`), `---\n${yamlBlock}\n---\n\n${body}\n`, 'utf8');
 }

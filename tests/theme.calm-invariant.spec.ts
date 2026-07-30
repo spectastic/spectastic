@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { expect, test } from '@playwright/test';
 
 // R-6 guard — the vivid parity work must not regress calm. Vivid rules are
 // scoped to [data-theme="spectastic-vivid"]; calm (:root default) must keep
@@ -14,7 +14,10 @@ async function calm(page) {
   });
 }
 const prop = (page, sel: string, p: string) =>
-  page.locator(sel).first().evaluate((el, p) => getComputedStyle(el)[p as any], p);
+  page
+    .locator(sel)
+    .first()
+    .evaluate((el, p) => getComputedStyle(el)[p as keyof CSSStyleDeclaration], p);
 
 test.describe('calm invariance (R-6)', () => {
   test('calm pill + card radii are unchanged', async ({ page }) => {
@@ -42,17 +45,30 @@ test.describe('calm invariance (R-6)', () => {
         const e = document.querySelector(s);
         return e ? Math.round(e.getBoundingClientRect().width) : null;
       };
-      const measure =
-        parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--measure')) * 16;
+      const measure = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--measure')) * 16;
       const widths = (sels: string[]) =>
-        sels.map((s) => ({ s, w: W(s) })).filter((x) => x.w != null) as { s: string; w: number }[];
+        sels.map((s) => ({ s, w: W(s) })).filter((x) => x.w != null) as {
+          s: string;
+          w: number;
+        }[];
       const main = document.querySelector('main')!.getBoundingClientRect();
       return {
         measure,
         content: widths([
-          'spec-tldr', 'spec-requirement', 'spec-decision', 'spec-note', 'spec-meta',
-          'spec-conformance', 'spec-audience-map', 'dl.invest', 'spec-budget', 'spec-out-of-scope',
-          'table', 'spec-matrix', 'spec-diff', 'pre',
+          'spec-tldr',
+          'spec-requirement',
+          'spec-decision',
+          'spec-note',
+          'spec-meta',
+          'spec-conformance',
+          'spec-audience-map',
+          'dl.invest',
+          'spec-budget',
+          'spec-out-of-scope',
+          'table',
+          'spec-matrix',
+          'spec-diff',
+          'pre',
         ]),
         leftMargin: Math.round(main.left),
         rightMargin: Math.round(window.innerWidth - main.right),

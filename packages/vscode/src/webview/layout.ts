@@ -1,4 +1,4 @@
-import { VERB_ORDER, type LifecycleGraph, type Orientation } from '../host/messaging.js';
+import { type LifecycleGraph, type Orientation, VERB_ORDER } from '../host/messaging.js';
 
 /**
  * Deterministic auto-layout (spec FR-004, plan D-003). The spine runs along the
@@ -29,8 +29,7 @@ export interface Layout {
 
 const isSlice = (id: string): boolean => id.startsWith('slice:');
 /** Lane (off-spine) nodes: child slices and derived views (FR-014). */
-const isLane = (n: { id: string; derived?: boolean }): boolean =>
-  isSlice(n.id) || Boolean(n.derived);
+const isLane = (n: { id: string; derived?: boolean }): boolean => isSlice(n.id) || Boolean(n.derived);
 
 export function layoutGraph(graph: LifecycleGraph, orientation: Orientation = 'vertical'): Layout {
   const vertical = orientation === 'vertical';
@@ -62,9 +61,7 @@ export function layoutGraph(graph: LifecycleGraph, orientation: Orientation = 'v
   // Slices and derived views branch perpendicular to the spine, aligned with their parent.
   const laneCount = new Map<string, number>();
   for (const lane of graph.nodes.filter(isLane)) {
-    const parentEdge = graph.edges.find(
-      (e) => e.to === lane.id && (e.kind === 'slice' || e.kind === 'derived'),
-    );
+    const parentEdge = graph.edges.find((e) => e.to === lane.id && (e.kind === 'slice' || e.kind === 'derived'));
     const parent = parentEdge ? posByVerb.get(parentEdge.from) : undefined;
     const baseX = parent?.x ?? PAD;
     const baseY = parent?.y ?? PAD;

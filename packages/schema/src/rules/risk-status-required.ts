@@ -5,13 +5,7 @@ import type { Finding, PerFileRule } from '../types.js';
  * Valid `status=` values for a `<spec-risk>` element. Mirrors the
  * lifecycle pills documented for the risk register.
  */
-const VALID_STATUSES = new Set([
-  'identified',
-  'accepted',
-  'mitigated',
-  'rejected',
-  'no-value-found',
-]);
+const VALID_STATUSES = new Set(['identified', 'accepted', 'mitigated', 'rejected', 'no-value-found']);
 
 /**
  * Flag any `<spec-risk>` element that is missing a `status=` attribute,
@@ -25,8 +19,7 @@ export const riskStatusRequiredRule: PerFileRule = {
   id: 'risk-status-required',
   scope: 'per-file',
   defaultSeverity: 'error',
-  description:
-    '<spec-risk> elements must declare a status= attribute with a known lifecycle value.',
+  description: '<spec-risk> elements must declare a status= attribute with a known lifecycle value.',
   check({ doc }) {
     const findings: Finding[] = [];
     for (const risk of findAll(doc.ast, 'spec-risk')) {
@@ -39,8 +32,7 @@ export const riskStatusRequiredRule: PerFileRule = {
           rule: 'risk-status-required',
           severity: 'error',
           message: '<spec-risk> missing required status= attribute',
-          fixHint:
-            'Add status="identified" (or accepted, mitigated, rejected, no-value-found).',
+          fixHint: 'Add status="identified" (or accepted, mitigated, rejected, no-value-found).',
         });
         continue;
       }
@@ -53,8 +45,7 @@ export const riskStatusRequiredRule: PerFileRule = {
           rule: 'risk-status-required',
           severity: 'error',
           message: `<spec-risk> has invalid status="${value}"`,
-          fixHint:
-            'Use one of: identified, accepted, mitigated, rejected, no-value-found.',
+          fixHint: 'Use one of: identified, accepted, mitigated, rejected, no-value-found.',
         });
       }
     }

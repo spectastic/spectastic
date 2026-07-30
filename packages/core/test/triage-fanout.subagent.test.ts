@@ -1,7 +1,7 @@
-import { describe, expect, it } from 'vitest';
-import { triageFanout } from '@spectastic/core/commands/triage';
 import type { TriageInput } from '@spectastic/core';
-import { KeyedStubAI, type KeyedResponse } from './helpers/keyed-stub.js';
+import { triageFanout } from '@spectastic/core/commands/triage';
+import { describe, expect, it } from 'vitest';
+import { type KeyedResponse, KeyedStubAI } from './helpers/keyed-stub.js';
 
 /**
  * The Workflow backend carries a runtime; per spec 032 NFR-002 (principle P-7)
@@ -34,7 +34,10 @@ describe('triageFanout · subagent backend (032 NFR-002, P-7)', () => {
     }));
     const ai = new KeyedStubAI(responses);
 
-    const cards = await triageFanout(items, base, ai, { concurrency: 8, backend: 'subagent' });
+    const cards = await triageFanout(items, base, ai, {
+      concurrency: 8,
+      backend: 'subagent',
+    });
 
     expect(cards.map((c) => c.headline)).toEqual(['sa0', 'sa1', 'sa2', 'sa3']);
     expect(cards.map((c) => c.id)).toEqual(['I-001', 'I-002', 'I-003', 'I-004']);

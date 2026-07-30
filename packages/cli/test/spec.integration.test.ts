@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process';
-import { mkdirSync, mkdtempSync, writeFileSync, readFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -25,7 +25,10 @@ interface RunResult {
 
 async function runCLI(args: string[], cwd: string, extraEnv: Record<string, string> = {}): Promise<RunResult> {
   return new Promise((resolveFn) => {
-    const child = spawn('node', [CLI, ...args], { cwd, env: { ...process.env, ...extraEnv } });
+    const child = spawn('node', [CLI, ...args], {
+      cwd,
+      env: { ...process.env, ...extraEnv },
+    });
     let stdout = '';
     let stderr = '';
     child.stdout.on('data', (chunk: Buffer) => {
@@ -38,7 +41,11 @@ async function runCLI(args: string[], cwd: string, extraEnv: Record<string, stri
   });
 }
 
-function setupReentryTarget(opts: { specStatus?: string }): { cwd: string; specId: string; specPath: string } {
+function setupReentryTarget(opts: { specStatus?: string }): {
+  cwd: string;
+  specId: string;
+  specPath: string;
+} {
   const cwd = mkdtempSync(join(tmpdir(), 'spectastic-spec-'));
   const specId = 'foo-bar';
   const specDir = join(cwd, 'specs', specId);
@@ -55,7 +62,9 @@ function setupReentryTarget(opts: { specStatus?: string }): { cwd: string; specI
 
 describe('CLI integration: spec (T-112)', () => {
   it('--reentry against past-Draft spec.html refuses with exit 2 — silent-overwrite failure mode closed', async () => {
-    const { cwd, specId, specPath } = setupReentryTarget({ specStatus: 'accepted' });
+    const { cwd, specId, specPath } = setupReentryTarget({
+      specStatus: 'accepted',
+    });
 
     const r = await runCLI(['spec', 'sharpen me', '--reentry', specId], cwd);
     expect(r.code, `stdout: ${r.stdout}\nstderr: ${r.stderr}`).toBe(2);
@@ -68,11 +77,9 @@ describe('CLI integration: spec (T-112)', () => {
   it('--reentry against Draft spec.html sharpens in place — gate passes', async () => {
     const { cwd, specId } = setupReentryTarget({ specStatus: 'draft' });
 
-    const r = await runCLI(
-      ['spec', 'sharpen me', '--reentry', specId],
-      cwd,
-      { ANTHROPIC_API_KEY: '' },
-    );
+    const r = await runCLI(['spec', 'sharpen me', '--reentry', specId], cwd, {
+      ANTHROPIC_API_KEY: '',
+    });
     expect(r.stderr).toContain('Sharpening Draft');
     expect(r.stderr).toContain('per P-6');
     expect(r.code).not.toBe(0);
@@ -82,11 +89,7 @@ describe('CLI integration: spec (T-112)', () => {
   it('--reentry --force on past-Draft bypasses with warning', async () => {
     const { cwd, specId } = setupReentryTarget({ specStatus: 'accepted' });
 
-    const r = await runCLI(
-      ['spec', 'sharpen me', '--reentry', specId, '--force'],
-      cwd,
-      { ANTHROPIC_API_KEY: '' },
-    );
+    const r = await runCLI(['spec', 'sharpen me', '--reentry', specId, '--force'], cwd, { ANTHROPIC_API_KEY: '' });
     expect(r.stderr).toContain('warn: bypassing change-management surface');
     expect(r.stderr).toContain('status was accepted');
     expect(r.code).not.toBe(0);
@@ -95,7 +98,9 @@ describe('CLI integration: spec (T-112)', () => {
   it('fresh-mode description proceeds past the re-entry gate', async () => {
     const cwd = mkdtempSync(join(tmpdir(), 'spectastic-spec-fresh-'));
 
-    const r = await runCLI(['spec', 'a new feature description'], cwd, { ANTHROPIC_API_KEY: '' });
+    const r = await runCLI(['spec', 'a new feature description'], cwd, {
+      ANTHROPIC_API_KEY: '',
+    });
     // No reentry path → no "Sharpening Draft" gate signal.
     expect(r.stderr).not.toContain('Sharpening Draft');
     // AI call attempted; fails on missing key.
@@ -107,11 +112,10 @@ describe('CLI integration: spec (T-112)', () => {
     const cwd = mkdtempSync(join(tmpdir(), 'spectastic-spec-stub-'));
     const scriptPath = resolve(here, 'fixtures', 'spec-script.json');
 
-    const r = await runCLI(
-      ['spec', 'test feature'],
-      cwd,
-      { SPECTASTIC_AI_STUB: scriptPath, ANTHROPIC_API_KEY: '' },
-    );
+    const r = await runCLI(['spec', 'test feature'], cwd, {
+      SPECTASTIC_AI_STUB: scriptPath,
+      ANTHROPIC_API_KEY: '',
+    });
 
     expect(r.code, `stdout: ${r.stdout}\nstderr: ${r.stderr}`).toBe(0);
     expect(r.stdout).toContain('Wrote');

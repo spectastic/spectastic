@@ -2,7 +2,7 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
-import { createTmpGitRepo, type TmpGitRepo, type StubScript } from '../../../tests/helpers/tmp-git-repo.js';
+import { createTmpGitRepo, type StubScript, type TmpGitRepo } from '../../../tests/helpers/tmp-git-repo.js';
 import { gitRunner } from '../src/git/run.js';
 
 const FIXTURES = join(dirname(fileURLToPath(import.meta.url)), 'fixtures');
@@ -26,14 +26,42 @@ const SPEC_STUB: StubScript = {
       tldr: 'A test feature spec.',
       smallestDemoable: 'The smallest version that delivers value.',
       stories: [
-        { id: 'US1', title: 'Main story', role: 'user', want: 'do the thing', outcome: 'value delivered', acceptance: 'observable when the thing happens', priority: 'P1' },
+        {
+          id: 'US1',
+          title: 'Main story',
+          role: 'user',
+          want: 'do the thing',
+          outcome: 'value delivered',
+          acceptance: 'observable when the thing happens',
+          priority: 'P1',
+        },
       ],
       frs: [
-        { id: 'FR-001', priority: 'must', body: 'The system MUST do the thing.' },
-        { id: 'FR-002', priority: 'should', body: 'The system SHOULD do it well.' },
+        {
+          id: 'FR-001',
+          priority: 'must',
+          body: 'The system MUST do the thing.',
+        },
+        {
+          id: 'FR-002',
+          priority: 'should',
+          body: 'The system SHOULD do it well.',
+        },
       ],
-      nfrs: [{ id: 'NFR-001', priority: 'must', body: 'Performance MUST be acceptable.' }],
-      scs: [{ id: 'SC-001', priority: 'must', body: 'At least 80% of users complete the flow.' }],
+      nfrs: [
+        {
+          id: 'NFR-001',
+          priority: 'must',
+          body: 'Performance MUST be acceptable.',
+        },
+      ],
+      scs: [
+        {
+          id: 'SC-001',
+          priority: 'must',
+          body: 'At least 80% of users complete the flow.',
+        },
+      ],
     }),
   ],
 };
@@ -46,7 +74,9 @@ describe('git layer · US1 (spec 026)', () => {
     repo = createTmpGitRepo();
     repo.writeFile('spectastic.json', JSON.stringify({ git: { auto: 'branch+commit' } }));
 
-    const r = await repo.runVerb(['spec', 'git strategy feature'], { stub: SPEC_STUB });
+    const r = await repo.runVerb(['spec', 'git strategy feature'], {
+      stub: SPEC_STUB,
+    });
     expect(r.code, `stdout: ${r.stdout}\nstderr: ${r.stderr}`).toBe(0);
 
     expect(await repo.currentBranch()).toBe('001-git-strategy-feature');
@@ -59,7 +89,9 @@ describe('git layer · US1 (spec 026)', () => {
     const before = await repo.commitCount();
 
     // No spectastic.json → auto defaults to off.
-    const r = await repo.runVerb(['spec', 'untracked feature'], { stub: SPEC_STUB });
+    const r = await repo.runVerb(['spec', 'untracked feature'], {
+      stub: SPEC_STUB,
+    });
     expect(r.code, `stdout: ${r.stdout}\nstderr: ${r.stderr}`).toBe(0);
 
     expect(await repo.currentBranch()).toBe('main'); // no branch created
@@ -71,14 +103,22 @@ describe('git layer · US1 (spec 026)', () => {
     await repo.git('commit', '--allow-empty', '-m', 'seed');
     const before = await repo.commitCount();
     // A live quarantine marker → the validate gate must refuse the commit (FR-008).
-    mkdirSync(join(repo.dir, 'explorations', '099-quarantined'), { recursive: true });
+    mkdirSync(join(repo.dir, 'explorations', '099-quarantined'), {
+      recursive: true,
+    });
     writeFileSync(
       join(repo.dir, 'explorations', '099-quarantined', 'quarantine.json'),
-      JSON.stringify({ id: '099-quarantined', status: 'quarantined', created: '2026-06-29' }),
+      JSON.stringify({
+        id: '099-quarantined',
+        status: 'quarantined',
+        created: '2026-06-29',
+      }),
     );
     repo.writeFile('spectastic.json', JSON.stringify({ git: { auto: 'branch+commit' } }));
 
-    const r = await repo.runVerb(['spec', 'blocked feature'], { stub: SPEC_STUB });
+    const r = await repo.runVerb(['spec', 'blocked feature'], {
+      stub: SPEC_STUB,
+    });
     expect(r.code).toBe(1);
     expect(r.stderr).toContain('NOT committed');
     expect(await repo.commitCount()).toBe(before); // no commit
@@ -91,7 +131,9 @@ describe('git layer · US1 (spec 026)', () => {
     repo.writeFile('unrelated.txt', 'i am dirty and unrelated');
     repo.writeFile('spectastic.json', JSON.stringify({ git: { auto: 'commit' } }));
 
-    const r = await repo.runVerb(['spec', 'scoped feature'], { stub: SPEC_STUB });
+    const r = await repo.runVerb(['spec', 'scoped feature'], {
+      stub: SPEC_STUB,
+    });
     expect(r.code, `stdout: ${r.stdout}\nstderr: ${r.stderr}`).toBe(0);
 
     const committed = (await repo.git('show', '--name-only', '--format=', 'HEAD'))
@@ -137,7 +179,7 @@ describe('git layer · US1 (spec 026)', () => {
     expect(await repo.headSubject()).toBe('principles: Foo'); // no (NNN) — scope omitted
   });
 
-  it('T-900/NFR-001: the layer\'s own work (branch + stage + commit) adds ≤ 1 s', async () => {
+  it("T-900/NFR-001: the layer's own work (branch + stage + commit) adds ≤ 1 s", async () => {
     repo = createTmpGitRepo();
     await repo.git('commit', '--allow-empty', '-m', 'seed');
     repo.writeFile('a.txt', 'one');

@@ -14,8 +14,7 @@ export const fileTooLargeRule: PerFileRule = {
   id: 'file-too-large',
   scope: 'per-file',
   defaultSeverity: 'warning',
-  description:
-    'Spec files over 5,000 lines parse but lose the NFR-001 performance guarantee.',
+  description: 'Spec files over 5,000 lines parse but lose the NFR-001 performance guarantee.',
   check({ doc }) {
     const findings: Finding[] = [];
     const lineCount = doc.html.split('\n').length;
@@ -27,7 +26,8 @@ export const fileTooLargeRule: PerFileRule = {
         rule: 'file-too-large',
         severity: 'warning',
         message: `File has ${lineCount} lines; NFR-001 performance guarantee only holds under 5,000.`,
-        fixHint: 'Split the spec into smaller siblings, or accept that validation may run slower than the NFR-001 budget.',
+        fixHint:
+          'Split the spec into smaller siblings, or accept that validation may run slower than the NFR-001 budget.',
       });
     }
     return findings;

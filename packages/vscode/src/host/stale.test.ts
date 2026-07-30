@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { flagStale } from './stale.js';
 
 // US3 / T-302 (spec FR-007, plan D-006). A node is stale when an upstream

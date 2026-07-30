@@ -19,7 +19,7 @@ function findingsFor(dir: string, file: string) {
 }
 
 describe('matrix-winner-integrity', () => {
-  it('flags a data-winner row whose Total is strictly below another row\'s', () => {
+  it("flags a data-winner row whose Total is strictly below another row's", () => {
     const findings = findingsFor('matrix-winner-integrity', 'positive.html');
     const winnerFinding = findings.find((f) => /below another row's/.test(f.message));
     expect(winnerFinding).toBeDefined();

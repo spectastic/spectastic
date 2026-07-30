@@ -1,6 +1,6 @@
-import { describe, expect, it } from 'vitest';
-import { applyCommand } from '@spectastic/core/commands/apply';
 import type { FileSystem, KernelContext } from '@spectastic/core';
+import { applyCommand } from '@spectastic/core/commands/apply';
+import { describe, expect, it } from 'vitest';
 
 function stubFs(initial: Record<string, string>): {
   fs: FileSystem;
@@ -71,10 +71,7 @@ describe('applyCommand (010)', () => {
     });
     const ctx: KernelContext = { cwd: '', fs };
 
-    const result = await applyCommand(
-      { kind: 'apply', specId: '001', slug: '2026-06-16-foo' },
-      ctx,
-    );
+    const result = await applyCommand({ kind: 'apply', specId: '001', slug: '2026-06-16-foo' }, ctx);
 
     expect(result.deltas).toHaveLength(1);
     expect(result.deltas[0]?.op).toBe('modified');
@@ -103,7 +100,12 @@ describe('applyCommand (010)', () => {
       '/specs/001/changes/2026-06-16-foo/proposal.html': APPLY_PROPOSAL,
     });
     const result = await applyCommand(
-      { kind: 'withdraw', specId: '001', slug: '2026-06-16-foo', reason: 'shape was wrong' },
+      {
+        kind: 'withdraw',
+        specId: '001',
+        slug: '2026-06-16-foo',
+        reason: 'shape was wrong',
+      },
       { cwd: '', fs },
     );
 
@@ -137,7 +139,7 @@ describe('applyCommand (010)', () => {
     expect(proposal).toContain('Applied on'); // the proposal's own apply changelog entry
   });
 
-  it('apply mode: deepens the archived proposal\'s ../-relative paths one level (T-204)', async () => {
+  it("apply mode: deepens the archived proposal's ../-relative paths one level (T-204)", async () => {
     const withPaths = PROPOSAL_WITH_STATUS.replace(
       '<body>',
       '<head><link rel="stylesheet" href="../../../../assets/spec.css"></head><body><a href="../../spec.html">spec</a>',
@@ -158,7 +160,12 @@ describe('applyCommand (010)', () => {
       '/specs/001/changes/2026-06-16-foo/proposal.html': APPLY_PROPOSAL,
     });
     await applyCommand(
-      { kind: 'apply', specId: '001', slug: '2026-06-16-foo', summary: 'added FR-002, a rich human summary' },
+      {
+        kind: 'apply',
+        specId: '001',
+        slug: '2026-06-16-foo',
+        summary: 'added FR-002, a rich human summary',
+      },
       { cwd: '', fs },
     );
     const updated = files.get('/specs/001/spec.html')!;
@@ -172,7 +179,12 @@ describe('applyCommand (010)', () => {
       '/specs/001/changes/2026-06-16-foo/proposal.html': APPLY_PROPOSAL,
     });
     await applyCommand(
-      { kind: 'apply', specId: '001', slug: '2026-06-16-foo', summary: 'added FR-002, a rich human summary.' },
+      {
+        kind: 'apply',
+        specId: '001',
+        slug: '2026-06-16-foo',
+        summary: 'added FR-002, a rich human summary.',
+      },
       { cwd: '', fs },
     );
     const updated = files.get('/specs/001/spec.html')!;
@@ -213,7 +225,12 @@ describe('applyCommand (010)', () => {
       '/specs/001/changes/2026-07-11-data/proposal.html': DATA_PROPOSAL,
     });
     const result = await applyCommand(
-      { kind: 'apply', specId: '001', slug: '2026-07-11-data', summary: 'seed a manifest principle' },
+      {
+        kind: 'apply',
+        specId: '001',
+        slug: '2026-07-11-data',
+        summary: 'seed a manifest principle',
+      },
       { cwd: '', fs },
     );
 
@@ -235,10 +252,7 @@ describe('applyCommand (010)', () => {
       '/specs/001/spec.html': LIVE_SPEC,
       '/specs/001/changes/2026-07-11-oops/proposal.html': MALFORMED_REQ_PROPOSAL,
     });
-    const result = await applyCommand(
-      { kind: 'apply', specId: '001', slug: '2026-07-11-oops' },
-      { cwd: '', fs },
-    );
+    const result = await applyCommand({ kind: 'apply', specId: '001', slug: '2026-07-11-oops' }, { cwd: '', fs });
     expect(result.deltas[0]?.result).toBe('gate-blocked');
     expect(result.deltas[0]?.reason).toMatch(/missing <spec-requirement>/);
     // Never fabricates FR-999 into the spec.
@@ -266,7 +280,12 @@ describe('applyCommand (010)', () => {
       '/specs/001/changes/2026-06-16-foo/proposal.html': APPLY_PROPOSAL,
     });
     await applyCommand(
-      { kind: 'withdraw', specId: '001', slug: '2026-06-16-foo', reason: 'shape was wrong' },
+      {
+        kind: 'withdraw',
+        specId: '001',
+        slug: '2026-06-16-foo',
+        reason: 'shape was wrong',
+      },
       { cwd: '', fs },
     );
     expect(mkdirs).toContain('/specs/001/changes/withdrawn');
@@ -291,7 +310,7 @@ describe('applyCommand (010)', () => {
     expect(textYear).toBe(isoYear);
   }
 
-  it('apply mode: the live-spec changelog entry\'s datetime= agrees with its visible text', async () => {
+  it("apply mode: the live-spec changelog entry's datetime= agrees with its visible text", async () => {
     const { fs, files } = stubFs({
       '/specs/001/spec.html': LIVE_SPEC,
       '/specs/001/changes/2026-06-16-foo/proposal.html': APPLY_PROPOSAL,
@@ -301,7 +320,7 @@ describe('applyCommand (010)', () => {
     assertDatetimeMatchesText(entry);
   });
 
-  it('apply mode: the archived proposal\'s own apply entry datetime= agrees with its visible text', async () => {
+  it("apply mode: the archived proposal's own apply entry datetime= agrees with its visible text", async () => {
     const { fs, files } = stubFs({
       '/specs/001/spec.html': LIVE_SPEC,
       '/specs/001/changes/2026-06-16-foo/proposal.html': PROPOSAL_WITH_STATUS,
@@ -318,7 +337,12 @@ describe('applyCommand (010)', () => {
       '/specs/001/changes/2026-06-16-foo/proposal.html': APPLY_PROPOSAL,
     });
     await applyCommand(
-      { kind: 'withdraw', specId: '001', slug: '2026-06-16-foo', reason: 'shape was wrong' },
+      {
+        kind: 'withdraw',
+        specId: '001',
+        slug: '2026-06-16-foo',
+        reason: 'shape was wrong',
+      },
       { cwd: '', fs },
     );
     const entry = /<li><time[\s\S]*?<\/li>/.exec(files.get('/specs/001/spec.html')!)?.[0] ?? '';

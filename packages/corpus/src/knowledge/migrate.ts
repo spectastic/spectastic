@@ -13,10 +13,10 @@
  */
 import { existsSync, readdirSync, readFileSync, rmSync, statSync } from 'node:fs';
 import { join } from 'node:path';
-import { TODO, deriveTitleAndDescription } from './adapt.js';
+import { deriveTitleAndDescription, TODO } from './adapt.js';
+import { parseIndex } from './index-format.js';
 import { registerDocument } from './ingest.js';
 import { parseCorpusDocument } from './parse.js';
-import { parseIndex } from './index-format.js';
 import type { CorpusDocument, CorpusPack, IndexEntry, ParsedCorpusDocument } from './types.js';
 
 const REFERENCES_DIR = 'references';
@@ -64,7 +64,12 @@ export interface MigrateResult {
  * (065); duplicated rather than shared so this spec's diff stays scoped to
  * `migrate.ts`'s own new module. */
 function slugify(s: string): string {
-  return s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'document';
+  return (
+    s
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '') || 'document'
+  );
 }
 
 /** Derive the pack-internal slug for a migrating document (plan D-002):

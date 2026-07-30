@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { expect, test } from '@playwright/test';
 import { SAMPLE_GRAPH } from './fixtures/graph.js';
 
 // US1 / T-101 (spec FR-004). Edges render as an SVG layer; the slice edge is

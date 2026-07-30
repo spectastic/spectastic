@@ -13,7 +13,12 @@ describe('scan — binary-blob detector', () => {
     ].join('\n');
     const findings = scan({ patch, numstat: '-\t-\tlogo.png\n' });
     expect(findings).toEqual([
-      { category: 'binary-blob', weight: 'high', file: 'logo.png', evidence: expect.any(String) },
+      {
+        category: 'binary-blob',
+        weight: 'high',
+        file: 'logo.png',
+        evidence: expect.any(String),
+      },
     ]);
   });
 

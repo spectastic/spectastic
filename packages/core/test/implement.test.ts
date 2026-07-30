@@ -1,6 +1,6 @@
-import { describe, expect, it } from 'vitest';
-import { implementCommand } from '@spectastic/core/commands/implement';
 import type { KernelContext } from '@spectastic/core';
+import { implementCommand } from '@spectastic/core/commands/implement';
+import { describe, expect, it } from 'vitest';
 
 // implementCommand is pure w.r.t. IO — it neither reads nor writes files —
 // so a bare KernelContext (no fs, no ai) is sufficient.
@@ -38,10 +38,18 @@ const INBOX_WITH_CARD = `<!doctype html><html><body>
 describe('implementCommand (014)', () => {
   it('ticks a middle task without firing the flip prompt', async () => {
     const result = await implementCommand(
-      { target: 'T-002', tasksHtml: TASKS_THREE_UNCHECKED, specHtml: SPEC_DRAFT },
+      {
+        target: 'T-002',
+        tasksHtml: TASKS_THREE_UNCHECKED,
+        specHtml: SPEC_DRAFT,
+      },
       ctx,
     );
-    expect(result.ticked).toEqual({ kind: 'task', id: 'T-002', file: 'tasks.html' });
+    expect(result.ticked).toEqual({
+      kind: 'task',
+      id: 'T-002',
+      file: 'tasks.html',
+    });
     expect(result.remainingUnchecked).toBe(2);
     expect(result.flipPromptFired).toBe(false);
   });
@@ -58,7 +66,11 @@ describe('implementCommand (014)', () => {
 
   it('does NOT fire the flip prompt on last-tick when spec is Accepted', async () => {
     const result = await implementCommand(
-      { target: 'T-003', tasksHtml: TASKS_ONE_UNCHECKED, specHtml: SPEC_ACCEPTED },
+      {
+        target: 'T-003',
+        tasksHtml: TASKS_ONE_UNCHECKED,
+        specHtml: SPEC_ACCEPTED,
+      },
       ctx,
     );
     expect(result.remainingUnchecked).toBe(0);
@@ -66,36 +78,29 @@ describe('implementCommand (014)', () => {
   });
 
   it('does NOT fire the flip prompt on last-tick when specHtml is undefined', async () => {
-    const result = await implementCommand(
-      { target: 'T-003', tasksHtml: TASKS_ONE_UNCHECKED },
-      ctx,
-    );
+    const result = await implementCommand({ target: 'T-003', tasksHtml: TASKS_ONE_UNCHECKED }, ctx);
     expect(result.remainingUnchecked).toBe(0);
     expect(result.flipPromptFired).toBe(false);
   });
 
   it('ticks an inbox just-do card and never fires the flip prompt', async () => {
-    const result = await implementCommand(
-      { target: 'I-001', inboxHtml: INBOX_WITH_CARD, specHtml: SPEC_DRAFT },
-      ctx,
-    );
-    expect(result.ticked).toEqual({ kind: 'just-do', id: 'I-001', file: 'inbox.html' });
+    const result = await implementCommand({ target: 'I-001', inboxHtml: INBOX_WITH_CARD, specHtml: SPEC_DRAFT }, ctx);
+    expect(result.ticked).toEqual({
+      kind: 'just-do',
+      id: 'I-001',
+      file: 'inbox.html',
+    });
     expect(result.remainingUnchecked).toBe(0);
     expect(result.flipPromptFired).toBe(false);
   });
 
   it('throws when target is a task ID but tasksHtml is undefined', async () => {
-    await expect(
-      implementCommand({ target: 'T-001' }, ctx),
-    ).rejects.toThrow(/tasksHtml is undefined/);
+    await expect(implementCommand({ target: 'T-001' }, ctx)).rejects.toThrow(/tasksHtml is undefined/);
   });
 
   it('throws when target is an unrecognised ID (e.g., a spec-id)', async () => {
-    await expect(
-      implementCommand(
-        { target: '001-auth', tasksHtml: TASKS_THREE_UNCHECKED },
-        ctx,
-      ),
-    ).rejects.toThrow(/not a recognised T-NNN or I-NNN/);
+    await expect(implementCommand({ target: '001-auth', tasksHtml: TASKS_THREE_UNCHECKED }, ctx)).rejects.toThrow(
+      /not a recognised T-NNN or I-NNN/,
+    );
   });
 });

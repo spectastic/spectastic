@@ -28,10 +28,11 @@
  * pack scan unchanged, so no shipped citation's finding changes on this
  * apply (the same back-compat window T-1000 established).
  */
-import { findAll, getLocation, parse } from '@spectastic/schema/parser';
-import type { Element } from '@spectastic/schema/parser';
-import { findCitationTokens, parseCorpusCitation } from '@spectastic/schema/citation';
+
 import type { Finding } from '@spectastic/schema';
+import { findCitationTokens, parseCorpusCitation } from '@spectastic/schema/citation';
+import type { Element } from '@spectastic/schema/parser';
+import { findAll, getLocation, parse } from '@spectastic/schema/parser';
 import { resolveCitation } from './resolve.js';
 import type { CorpusPack, RegistryEntry } from './types.js';
 
@@ -40,7 +41,11 @@ import type { CorpusPack, RegistryEntry } from './types.js';
 function textOf(el: Element): string {
   let out = '';
   const visit = (node: unknown): void => {
-    const n = node as { tagName?: string; value?: string; childNodes?: unknown[] };
+    const n = node as {
+      tagName?: string;
+      value?: string;
+      childNodes?: unknown[];
+    };
     if (n.tagName === undefined && typeof n.value === 'string') out += n.value;
     if (n.childNodes) for (const child of n.childNodes) visit(child);
   };
@@ -70,7 +75,8 @@ function stalenessFinding(file: string, decision: Element, token: string, curren
     rule: 'corpus-staleness',
     severity: 'warning',
     message: `Corpus citation "${token}" is pinned to a superseded edition — the current edition is ${currentEdition}.`,
-    fixHint: 'Re-ground against the current edition, or accept the pin deliberately if the historical claim is intentional.',
+    fixHint:
+      'Re-ground against the current edition, or accept the pin deliberately if the historical claim is intentional.',
   };
 }
 

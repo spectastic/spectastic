@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { expect, test } from '@playwright/test';
 
 // T-017 (budget-bands fold) — R-2 mitigation for REQ-FORMAT-004.
 // The <spec-budget> Words row MUST count *authored* prose only: the auto-built
@@ -21,8 +21,7 @@ test('Words row excludes the auto-built conformance index', async ({ page }) => 
       return t ? t.split(/\s+/).length : 0;
     };
     // The authored count the gauge actually rendered (Words is the first row).
-    const valueText =
-      document.querySelector('spec-budget .row .value')?.textContent ?? '';
+    const valueText = document.querySelector('spec-budget .row .value')?.textContent ?? '';
     const rendered = Number.parseInt(valueText.split('/')[0].replace(/[^\d]/g, ''), 10);
 
     // Measure the document the way spec.js did, by removing the *generated*
@@ -30,11 +29,20 @@ test('Words row excludes the auto-built conformance index', async ({ page }) => 
     // its word count before the gauge renders, so the gauge's own output must
     // not be in the comparison — remove <spec-budget>. Then removing
     // <spec-conformance> isolates the index's contribution.
-    document.querySelectorAll('spec-budget').forEach((e) => e.remove());
+    document.querySelectorAll('spec-budget').forEach((e) => {
+      e.remove();
+    });
     const withIndex = words(document.body.innerText); // authored prose + the index
-    document.querySelectorAll('spec-conformance').forEach((e) => e.remove());
+    document.querySelectorAll('spec-conformance').forEach((e) => {
+      e.remove();
+    });
     const authored = words(document.body.innerText); // authored prose only
-    return { rendered, withIndex, authored, conformanceWc: withIndex - authored };
+    return {
+      rendered,
+      withIndex,
+      authored,
+      conformanceWc: withIndex - authored,
+    };
   });
 
   // The fixture's conformance index is populated, so the exclusion is observable.
@@ -42,7 +50,5 @@ test('Words row excludes the auto-built conformance index', async ({ page }) => 
   // The gauge counted authored prose only — equal to the document with the
   // generated index removed, and strictly below the count that includes it (R-2).
   expect(m.rendered).toBe(m.authored);
-  expect(m.rendered, 'authored words must be below the count that includes the index').toBeLessThan(
-    m.withIndex,
-  );
+  expect(m.rendered, 'authored words must be below the count that includes the index').toBeLessThan(m.withIndex);
 });

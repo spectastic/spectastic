@@ -9,7 +9,7 @@
  * Pre-1.0 minor bump (consumers should pin tightly).
  */
 
-import { parse, findAll, getAttr } from './parser.js';
+import { findAll, getAttr, parse } from './parser.js';
 import type { ParsedDocument } from './types.js';
 
 export interface Requirement {
@@ -114,9 +114,9 @@ function extractHeaderFields(doc: ParsedDocument): {
     if (label) fields[label] = values[i] ?? '';
   }
   return {
-    owner: fields['Owner'] ?? null,
-    author: fields['Author'] ?? null,
-    reviewers: fields['Reviewers'] ?? null,
+    owner: fields.Owner ?? null,
+    author: fields.Author ?? null,
+    reviewers: fields.Reviewers ?? null,
   };
 }
 
@@ -279,7 +279,11 @@ function countBodyWords(ast: ParsedDocument['ast']): number {
 /** Concatenate text content of a node, skipping any subtree whose tag is excluded. */
 function textExcluding(node: unknown, exclude: Set<string>): string {
   if (!node || typeof node !== 'object') return '';
-  const n = node as { value?: string; tagName?: string; childNodes?: ReadonlyArray<unknown> };
+  const n = node as {
+    value?: string;
+    tagName?: string;
+    childNodes?: ReadonlyArray<unknown>;
+  };
   if (typeof n.value === 'string') return n.value;
   if (n.tagName && exclude.has(n.tagName)) return '';
   if (!n.childNodes) return '';

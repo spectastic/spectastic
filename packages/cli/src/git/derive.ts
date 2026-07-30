@@ -60,10 +60,6 @@ export function branchName(specId: string): string {
  * config is `branch+commit`, the verb may branch, and this is a new slice (a
  * sharpen/re-entry reuses the existing branch).
  */
-export function shouldCreateBranch(
-  verb: Verb,
-  auto: 'off' | 'commit' | 'branch+commit',
-  newSlice: boolean,
-): boolean {
+export function shouldCreateBranch(verb: Verb, auto: 'off' | 'commit' | 'branch+commit', newSlice: boolean): boolean {
   return auto === 'branch+commit' && VERB_GIT_MAP[verb].createsBranch && newSlice;
 }

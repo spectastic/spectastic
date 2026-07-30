@@ -14,6 +14,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # full history — the patch-coverage gate below resolves a merge-base
 
       # ripgrep is an optional runtime accelerator for the corpus grep read-path
       # (064); the tests skip the rg/Node parity block when it's absent, so it's
@@ -43,6 +45,11 @@ jobs:
       - name: Typecheck
         run: pnpm typecheck
 
+      # Format + lint, blocking (068-enterprise-enforce-floor T-115/FR-001).
+      # `biome check` covers both signals in one pass — see biome.jsonc.
+      - name: Format + lint (Biome)
+        run: pnpm lint
+
       # The one-way package boundary (064-corpus-package-extraction, D-004 /
       # NFR-002 / SC-002): @spectastic/corpus must never import back into
       # @spectastic/core. Machine-verified, not conventional (P-8) — a hard
@@ -51,8 +58,24 @@ jobs:
       - name: Dependency boundary — corpus must not import core
         run: npx depcruise --config .dependency-cruiser.cjs --output-type err packages/core packages/cli packages/corpus packages/schema
 
+      # Runs with coverage so the lcov output below can be diffed against the
+      # change (068-enterprise-enforce-floor T-116) — same suite, same result,
+      # `pnpm test` isn't a separate run.
       - name: Unit + integration tests
-        run: pnpm test
+        run: pnpm test:coverage
+
+      # Diff-aware coverage gate (T-117, plan D-002): ≥80% of THIS change's
+      # lines, never a universal project percentage. BASE resolves the PR's
+      # merge-base when triggered by a pull_request, or the parent commit on
+      # a direct push to main.
+      - name: Patch coverage (≥80% of changed lines)
+        run: |
+          if [ -n "${{ github.event.pull_request.base.ref }}" ]; then
+            BASE=$(git merge-base "origin/${{ github.event.pull_request.base.ref }}" HEAD)
+          else
+            BASE=$(git rev-parse HEAD~1)
+          fi
+          pnpm patch-coverage -- --base="$BASE"
 
       - name: Perf bench — catch order-of-magnitude regressions
         # Budgets live in bench/baselines.json and are permissive on
@@ -61,6 +84,15 @@ jobs:
         # cold-start by 10ms. Raise budgets deliberately when they tighten;
         # never quietly relax.
         run: pnpm bench
+
+      # Dependency-vulnerability audit gate (068-enterprise-enforce-floor
+      # T-313, FR-007, should-tier): an advisory-database scan so a
+      # known-vulnerable dependency is caught, not merely auto-updated.
+      # Advisory (should, not must) — `|| true` keeps it from blocking the
+      # build, matching the change-risk job's own should-tier posture below;
+      # the finding still surfaces in the job log for review.
+      - name: Dependency-vulnerability audit (advisory)
+        run: pnpm audit --audit-level high || true
 
       - name: Dogfood — validate the repo's own spec-html artifacts
         run: |
@@ -99,7 +131,7 @@ jobs:
       - name: Build
         run: pnpm -r build
 
-      # Two hard gates:
+      # Three hard gates:
       #  · the adversarial red-team — a hostile artifact carrying the full
       #    injection battery is caught (categorical vectors blocked; hidden-channel
       #    vectors documented as the deferred 045 FR-004 gap);
@@ -111,6 +143,16 @@ jobs:
           pnpm vitest run
           packages/schema/test/injection-red-team.test.ts
           packages/cli/test/security-corpus.test.ts
+
+      # Semgrep SAST over the tool's own source (068-enterprise-enforce-floor
+      # T-311/T-312, plan D-004) — additive to the two artifact-scoped gates
+      # above, never a replacement: those scan spec/plan/tasks *artifacts*,
+      # this scans packages/*/src itself. Written from a real finding (see
+      # .semgrep.yml's first rule + the coding-factory.ts fix in this change).
+      - name: Semgrep SAST (hard gate)
+        run: |
+          pip install semgrep
+          semgrep --config .semgrep.yml packages/*/src --error
 
   # The enforcement half of principles.html P-12 (spec 049) — a diff-scoped
   # capability/scope scan. PR-only: a range diff needs a PR to diff against.

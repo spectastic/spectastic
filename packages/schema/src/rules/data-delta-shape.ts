@@ -24,8 +24,7 @@ export const dataDeltaShapeRule: PerFileRule = {
   id: 'data-delta-shape',
   scope: 'per-file',
   defaultSeverity: 'error',
-  description:
-    'A requirement-shaped <spec-delta target> (added|modified) must embed a <spec-requirement>.',
+  description: 'A requirement-shaped <spec-delta target> (added|modified) must embed a <spec-requirement>.',
   check({ doc }) {
     const findings: Finding[] = [];
     for (const delta of findAll(doc.ast, 'spec-delta')) {

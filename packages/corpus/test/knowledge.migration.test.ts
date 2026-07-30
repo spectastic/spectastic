@@ -1,4 +1,4 @@
-import { readFileSync, existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
@@ -31,8 +31,16 @@ describe('062 migration — the root registry (SC-001)', () => {
 
   it('files each pack under its expected (marketplace, plugin, slug) coordinate', () => {
     const byId = new Map(registry.map((r) => [r.id, r]));
-    expect(byId.get('KB-0001')).toMatchObject({ marketplace: 'spectastic', plugin: 'spectastic-concepts', slug: '001-foundations' });
-    expect(byId.get('KB-0002')).toMatchObject({ marketplace: 'spectastic-examples', plugin: 'finance-settlement', slug: '001-settlement-windows' });
+    expect(byId.get('KB-0001')).toMatchObject({
+      marketplace: 'spectastic',
+      plugin: 'spectastic-concepts',
+      slug: '001-foundations',
+    });
+    expect(byId.get('KB-0002')).toMatchObject({
+      marketplace: 'spectastic-examples',
+      plugin: 'finance-settlement',
+      slug: '001-settlement-windows',
+    });
   });
 });
 

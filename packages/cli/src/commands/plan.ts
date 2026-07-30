@@ -45,7 +45,9 @@ export function registerPlan(program: Command): void {
 
       const specHtml = await fs.readFile(specPath, 'utf8');
 
-      const decision = await gateOnDestinationState(fs, planPath, { force: opts.force });
+      const decision = await gateOnDestinationState(fs, planPath, {
+        force: opts.force,
+      });
       if (decision.kind === 'refuse') {
         process.stderr.write(
           `${planPath} exists in <spec-status value="${decision.status}"> — past-Draft per P-6 of principles.html.\nRefusing to sharpen. Amend via /spectastic.propose against the spec, or pass --force to bypass.\n`,

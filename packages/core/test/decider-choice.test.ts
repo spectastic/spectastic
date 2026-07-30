@@ -1,6 +1,6 @@
-import { describe, expect, it } from 'vitest';
-import { decideChoice } from '@spectastic/core/decider';
 import type { AIProvider, ChatOpts, Question, SubagentOpts, SubagentResult } from '@spectastic/core';
+import { decideChoice } from '@spectastic/core/decider';
+import { describe, expect, it } from 'vitest';
 
 /**
  * Behavioural tests for the bounded-choice Decider (spec 036-decider-choice).
@@ -44,7 +44,7 @@ describe('decideChoice — role dispatch (036 FR-001)', () => {
     const r = await decideChoice({ role: 'human', effort: 'medium' }, [Q], ai);
     expect(ai.askCalls).toBe(1);
     expect(ai.subCalls).toBe(0);
-    expect(r['RICE']).toBe('Accept');
+    expect(r.RICE).toBe('Accept');
   });
 
   it('agent picks via exactly one subagent', async () => {
@@ -52,20 +52,20 @@ describe('decideChoice — role dispatch (036 FR-001)', () => {
     const r = await decideChoice({ role: 'agent', effort: 'max' }, [Q], ai);
     expect(ai.subCalls).toBe(1);
     expect(ai.askCalls).toBe(0);
-    expect(r['RICE']).toBe('Adjust');
+    expect(r.RICE).toBe('Adjust');
   });
 
   it('panel majority-votes across effort-sized voters (high = 3)', async () => {
     const ai = new ChoiceStub({}, ['{"RICE":"Accept"}', '{"RICE":"Accept"}', '{"RICE":"Adjust"}']);
     const r = await decideChoice({ role: 'panel', effort: 'high' }, [Q], ai);
     expect(ai.subCalls).toBe(3);
-    expect(r['RICE']).toBe('Accept'); // 2 Accept vs 1 Adjust
+    expect(r.RICE).toBe('Accept'); // 2 Accept vs 1 Adjust
   });
 
   it('an invalid/absent label falls back to the first declared option (NFR-001)', async () => {
     const ai = new ChoiceStub({}, ['{"RICE":"Nonsense"}']);
     const r = await decideChoice({ role: 'agent', effort: 'medium' }, [Q], ai);
-    expect(r['RICE']).toBe('Accept');
+    expect(r.RICE).toBe('Accept');
   });
 
   it('a tie breaks to declared order (NFR-001)', async () => {
@@ -73,7 +73,7 @@ describe('decideChoice — role dispatch (036 FR-001)', () => {
     const ai = new ChoiceStub({}, ['{"RICE":"Adjust"}', '{"RICE":"Accept"}', '{"RICE":"bad"}']);
     const r = await decideChoice({ role: 'panel', effort: 'high' }, [Q], ai);
     // votes: Adjust 1, Accept 1, bad→Accept(fallback) 1 → Accept 2 wins; deterministic
-    expect(['Accept', 'Adjust']).toContain(r['RICE']);
-    expect(r['RICE']).toBe('Accept');
+    expect(['Accept', 'Adjust']).toContain(r.RICE);
+    expect(r.RICE).toBe('Accept');
   });
 });

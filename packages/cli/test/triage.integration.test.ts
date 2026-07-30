@@ -24,7 +24,10 @@ interface RunResult {
 
 async function runCLI(args: string[], cwd: string, extraEnv: Record<string, string> = {}): Promise<RunResult> {
   return new Promise((resolveFn) => {
-    const child = spawn('node', [CLI, ...args], { cwd, env: { ...process.env, ...extraEnv } });
+    const child = spawn('node', [CLI, ...args], {
+      cwd,
+      env: { ...process.env, ...extraEnv },
+    });
     let stdout = '';
     let stderr = '';
     child.stdout.on('data', (chunk: Buffer) => {
@@ -41,11 +44,9 @@ describe('CLI integration: triage (T-112)', () => {
   it('description arg + missing API key reaches AI layer (proves CLI wiring)', async () => {
     const cwd = mkdtempSync(join(tmpdir(), 'spectastic-triage-nokey-'));
 
-    const r = await runCLI(
-      ['triage', 'fake failure description'],
-      cwd,
-      { ANTHROPIC_API_KEY: '' },
-    );
+    const r = await runCLI(['triage', 'fake failure description'], cwd, {
+      ANTHROPIC_API_KEY: '',
+    });
     // CLI wiring constructs ClaudeProvider which throws on missing key.
     expect(r.code).not.toBe(0);
     expect(r.stderr).toContain('ANTHROPIC_API_KEY');
@@ -54,11 +55,9 @@ describe('CLI integration: triage (T-112)', () => {
   it('--mode list arg + missing API key reaches AI layer (proves list-intake wiring)', async () => {
     const cwd = mkdtempSync(join(tmpdir(), 'spectastic-triage-list-'));
 
-    const r = await runCLI(
-      ['triage', 'item one, item two, item three', '--mode', 'list'],
-      cwd,
-      { ANTHROPIC_API_KEY: '' },
-    );
+    const r = await runCLI(['triage', 'item one, item two, item three', '--mode', 'list'], cwd, {
+      ANTHROPIC_API_KEY: '',
+    });
     expect(r.code).not.toBe(0);
     expect(r.stderr).toContain('ANTHROPIC_API_KEY');
   });
@@ -66,11 +65,9 @@ describe('CLI integration: triage (T-112)', () => {
   it('--format json arg parses (commander does not reject before action)', async () => {
     const cwd = mkdtempSync(join(tmpdir(), 'spectastic-triage-json-'));
 
-    const r = await runCLI(
-      ['triage', 'fake desc', '--format', 'json'],
-      cwd,
-      { ANTHROPIC_API_KEY: '' },
-    );
+    const r = await runCLI(['triage', 'fake desc', '--format', 'json'], cwd, {
+      ANTHROPIC_API_KEY: '',
+    });
     // Reaches the action handler → AI key error (not commander's argument error).
     expect(r.code).not.toBe(0);
     expect(r.stderr).toContain('ANTHROPIC_API_KEY');
@@ -80,15 +77,16 @@ describe('CLI integration: triage (T-112)', () => {
     const cwd = mkdtempSync(join(tmpdir(), 'spectastic-triage-stub-'));
     const scriptPath = resolve(here, 'fixtures', 'triage-script.json');
 
-    const r = await runCLI(
-      ['triage', 'Login button does nothing when clicked', '--format', 'json'],
-      cwd,
-      { SPECTASTIC_AI_STUB: scriptPath, ANTHROPIC_API_KEY: '' },
-    );
+    const r = await runCLI(['triage', 'Login button does nothing when clicked', '--format', 'json'], cwd, {
+      SPECTASTIC_AI_STUB: scriptPath,
+      ANTHROPIC_API_KEY: '',
+    });
 
     expect(r.code, `stdout: ${r.stdout}\nstderr: ${r.stderr}`).toBe(0);
     // --format json emits the card data as JSON; assert on the parsed shape.
-    const parsed = JSON.parse(r.stdout) as { cards: Array<{ layer: string; headline: string }> };
+    const parsed = JSON.parse(r.stdout) as {
+      cards: Array<{ layer: string; headline: string }>;
+    };
     expect(parsed.cards).toHaveLength(1);
     expect(parsed.cards[0]?.layer).toBe('implementation');
     expect(parsed.cards[0]?.headline).toContain('Login button');

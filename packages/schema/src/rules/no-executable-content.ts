@@ -1,5 +1,5 @@
-import { findAll, getAttr, getLocation, walk } from '../parser.js';
 import type { Element } from '../parser.js';
+import { findAll, getAttr, getLocation, walk } from '../parser.js';
 import type { Finding, PerFileRule } from '../types.js';
 
 /**
@@ -65,7 +65,15 @@ export const noExecutableContentRule: PerFileRule = {
 
     const flag = (el: Element, message: string, fixHint: string): void => {
       const loc = getLocation(el);
-      findings.push({ file: doc.file, line: loc.line, column: loc.column, rule: 'no-executable-content', severity: 'error', message, fixHint });
+      findings.push({
+        file: doc.file,
+        line: loc.line,
+        column: loc.column,
+        rule: 'no-executable-content',
+        severity: 'error',
+        message,
+        fixHint,
+      });
     };
 
     walk(doc.ast, (el) => {
@@ -86,13 +94,21 @@ export const noExecutableContentRule: PerFileRule = {
       for (const attr of el.attrs ?? []) {
         const name = attr.name.toLowerCase();
         if (name.startsWith('on')) {
-          flag(el, `inline event handler ${attr.name}= in a spec — a spec carries no executable content (P-11).`, `Remove the ${attr.name} handler; behaviour belongs in the sanctioned spec.js.`);
+          flag(
+            el,
+            `inline event handler ${attr.name}= in a spec — a spec carries no executable content (P-11).`,
+            `Remove the ${attr.name} handler; behaviour belongs in the sanctioned spec.js.`,
+          );
           continue;
         }
         if (URI_ATTRS.has(name)) {
           const scheme = firstScheme(attr.value);
           if (scheme) {
-            flag(el, `${attr.name}="${attr.value.slice(0, 24)}…" uses a ${scheme}: URI — disallowed in a spec (P-11).`, `Reference the resource by a normal path, not a ${scheme}: URI.`);
+            flag(
+              el,
+              `${attr.name}="${attr.value.slice(0, 24)}…" uses a ${scheme}: URI — disallowed in a spec (P-11).`,
+              `Reference the resource by a normal path, not a ${scheme}: URI.`,
+            );
           }
         }
       }

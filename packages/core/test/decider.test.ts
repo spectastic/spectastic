@@ -1,6 +1,6 @@
-import { describe, expect, it } from 'vitest';
-import { resolveDecider, decide, effortToDepth, VOTER_CAP } from '@spectastic/core/decider';
 import type { AIProvider, ChatOpts, Question, SubagentOpts, SubagentResult } from '@spectastic/core';
+import { decide, effortToDepth, resolveDecider, VOTER_CAP } from '@spectastic/core/decider';
+import { describe, expect, it } from 'vitest';
 
 /**
  * Behavioural tests for the Decider (spec 033-decider-effort). They RUN the
@@ -78,7 +78,11 @@ describe('decide — role dispatch (FR-001)', () => {
 
 describe('decide — effort sizes the panel (SC-004, FR-004, NFR-001)', () => {
   it('medium → 1, high → 3, max → 5 critics', async () => {
-    for (const [effort, n] of [['medium', 1], ['high', 3], ['max', 5]] as const) {
+    for (const [effort, n] of [
+      ['medium', 1],
+      ['high', 3],
+      ['max', 5],
+    ] as const) {
       const shared = { target: 'FR-001', concern: 'shared risk' };
       const ai = new CriticStub(Array.from({ length: 5 }, () => [shared]));
       const v = await decide({ role: 'panel', effort }, req(), ai);
@@ -95,7 +99,10 @@ describe('decide — categorical arbitration (FR-005)', () => {
   it('a finding survives only with a majority of votes', async () => {
     // 3 critics: FR-001 raised by all 3 (survives), FR-002 by 1 only (culled).
     const ai = new CriticStub([
-      [{ target: 'FR-001', concern: 'a' }, { target: 'FR-002', concern: 'b' }],
+      [
+        { target: 'FR-001', concern: 'a' },
+        { target: 'FR-002', concern: 'b' },
+      ],
       [{ target: 'FR-001', concern: 'a' }],
       [{ target: 'FR-001', concern: 'a' }],
     ]);

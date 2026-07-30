@@ -51,13 +51,19 @@ function pack(): CorpusPack {
 
 describe('resolveCitation (052 T-201, SC-002)', () => {
   it('resolves a citation matching the current edition to the current document', () => {
-    const r = resolveCitation([pack()], { id: 'KB-001', edition: '2024-05-28' });
+    const r = resolveCitation([pack()], {
+      id: 'KB-001',
+      edition: '2024-05-28',
+    });
     expect(r?.kind).toBe('current');
     expect(r?.filePath).toBe('knowledge/finance/references/KB-001-settlement.md');
   });
 
   it('resolves a citation matching a superseded edition to the retained copy (no dangling reference)', () => {
-    const r = resolveCitation([pack()], { id: 'KB-001', edition: '2017-09-05' });
+    const r = resolveCitation([pack()], {
+      id: 'KB-001',
+      edition: '2017-09-05',
+    });
     expect(r?.kind).toBe('superseded');
     expect(r?.edition).toBe('2017-09-05');
     expect(r?.filePath).toContain('superseded');
@@ -122,7 +128,10 @@ describe('resolveCitation — registry-first resolution (T-1000, 2026-07-26-hybr
 
   it('resolves a registry hit before scanning packs at all, deterministically over array order', () => {
     const packA = collidingPack('spectastic-concepts', 'knowledge/spectastic-concepts/references/KB-0007-x.md');
-    const packB = collidingPack('finance-settlement', 'knowledge/finance-settlement/references/001-settlement-windows.md');
+    const packB = collidingPack(
+      'finance-settlement',
+      'knowledge/finance-settlement/references/001-settlement-windows.md',
+    );
     const r = resolveCitation([packA, packB], { id: 'KB-0007', edition: '2026-01-01' }, [registryRow()]);
     expect(r?.kind).toBe('current');
     expect(r?.filePath).toBe(registryRow().path);
@@ -138,7 +147,10 @@ describe('resolveCitation — registry-first resolution (T-1000, 2026-07-26-hybr
   });
 
   it('falls back to the pack scan when no registry argument is passed at all', () => {
-    const r = resolveCitation([pack()], { id: 'KB-001', edition: '2024-05-28' });
+    const r = resolveCitation([pack()], {
+      id: 'KB-001',
+      edition: '2024-05-28',
+    });
     expect(r?.kind).toBe('current');
   });
 

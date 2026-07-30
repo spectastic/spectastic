@@ -14,8 +14,7 @@ export const riceWellFormedRule: PerFileRule = {
   id: 'rice-well-formed',
   scope: 'per-file',
   defaultSeverity: 'error',
-  description:
-    '<spec-rice> must declare numeric reach/impact/confidence/effort (all ≥ 0, effort > 0).',
+  description: '<spec-rice> must declare numeric reach/impact/confidence/effort (all ≥ 0, effort > 0).',
   check({ doc }) {
     const findings: Finding[] = [];
     for (const el of findAll(doc.ast, 'spec-rice')) {
@@ -30,7 +29,8 @@ export const riceWellFormedRule: PerFileRule = {
             rule: 'rice-well-formed',
             severity: 'error',
             message: `<spec-rice> missing required ${attr}= attribute`,
-            fixHint: 'Declare reach, impact, confidence and effort, e.g. <spec-rice reach="3" impact="2" confidence="0.8" effort="2">.',
+            fixHint:
+              'Declare reach, impact, confidence and effort, e.g. <spec-rice reach="3" impact="2" confidence="0.8" effort="2">.',
           });
           continue;
         }

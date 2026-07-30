@@ -23,7 +23,10 @@ interface RunResult {
 
 async function runCLI(args: string[], cwd: string, extraEnv: Record<string, string> = {}): Promise<RunResult> {
   return new Promise((resolveFn) => {
-    const child = spawn('node', [CLI, ...args], { cwd, env: { ...process.env, ...extraEnv } });
+    const child = spawn('node', [CLI, ...args], {
+      cwd,
+      env: { ...process.env, ...extraEnv },
+    });
     let stdout = '';
     let stderr = '';
     child.stdout.on('data', (chunk: Buffer) => {
@@ -40,11 +43,7 @@ describe('CLI integration: propose (T-112)', () => {
   it('reaches AI layer with both required args (proves CLI wiring)', async () => {
     const cwd = mkdtempSync(join(tmpdir(), 'spectastic-propose-nokey-'));
 
-    const r = await runCLI(
-      ['propose', '001-foo', 'fake change description'],
-      cwd,
-      { ANTHROPIC_API_KEY: '' },
-    );
+    const r = await runCLI(['propose', '001-foo', 'fake change description'], cwd, { ANTHROPIC_API_KEY: '' });
     expect(r.code).not.toBe(0);
     expect(r.stderr).toContain('ANTHROPIC_API_KEY');
   });
@@ -52,11 +51,7 @@ describe('CLI integration: propose (T-112)', () => {
   it('--adversarial flag accepted by commander', async () => {
     const cwd = mkdtempSync(join(tmpdir(), 'spectastic-propose-adv-'));
 
-    const r = await runCLI(
-      ['propose', '001-foo', 'desc', '--adversarial'],
-      cwd,
-      { ANTHROPIC_API_KEY: '' },
-    );
+    const r = await runCLI(['propose', '001-foo', 'desc', '--adversarial'], cwd, { ANTHROPIC_API_KEY: '' });
     expect(r.code).not.toBe(0);
     expect(r.stderr).toContain('ANTHROPIC_API_KEY');
   });
@@ -64,11 +59,7 @@ describe('CLI integration: propose (T-112)', () => {
   it('--no-adversarial flag accepted by commander', async () => {
     const cwd = mkdtempSync(join(tmpdir(), 'spectastic-propose-noadv-'));
 
-    const r = await runCLI(
-      ['propose', '001-foo', 'desc', '--no-adversarial'],
-      cwd,
-      { ANTHROPIC_API_KEY: '' },
-    );
+    const r = await runCLI(['propose', '001-foo', 'desc', '--no-adversarial'], cwd, { ANTHROPIC_API_KEY: '' });
     expect(r.code).not.toBe(0);
     expect(r.stderr).toContain('ANTHROPIC_API_KEY');
   });
@@ -98,11 +89,10 @@ describe('CLI integration: propose (T-112)', () => {
     );
     const scriptPath = resolve(here, 'fixtures', 'propose-script.json');
 
-    const r = await runCLI(
-      ['propose', specId, 'remove FR-002'],
-      cwd,
-      { SPECTASTIC_AI_STUB: scriptPath, ANTHROPIC_API_KEY: '' },
-    );
+    const r = await runCLI(['propose', specId, 'remove FR-002'], cwd, {
+      SPECTASTIC_AI_STUB: scriptPath,
+      ANTHROPIC_API_KEY: '',
+    });
 
     expect(r.code, `stdout: ${r.stdout}\nstderr: ${r.stderr}`).toBe(0);
     expect(r.stdout).toContain('1 deltas');

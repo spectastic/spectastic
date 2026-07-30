@@ -8,8 +8,8 @@
  * Test-only — never imported by production code (it constructs no real provider).
  */
 
-import { StubAIProvider } from '../providers/stub.js';
 import type { StubScript } from '../providers/stub.js';
+import { StubAIProvider } from '../providers/stub.js';
 
 export interface SliceStubScript {
   /** Each entry becomes one `chat()` response, JSON-stringified — a drafted decomposition. */

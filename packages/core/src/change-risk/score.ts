@@ -6,15 +6,19 @@
  * calibrated truth (plan §9) — tunable via `spectastic.json`.
  */
 
-import { DEFAULT_BANDS } from './types.js';
 import type { ChangeRiskBand, ChangeRiskBands, ChangeRiskConfig, RedFlagFinding } from './types.js';
+import { DEFAULT_BANDS } from './types.js';
 
 export interface ScoreResult {
   score: number;
   band: ChangeRiskBand;
 }
 
-const WEIGHT_POINTS: Record<RedFlagFinding['weight'], number> = { high: 40, medium: 15, low: 5 };
+const WEIGHT_POINTS: Record<RedFlagFinding['weight'], number> = {
+  high: 40,
+  medium: 15,
+  low: 5,
+};
 
 /** Bands: score < amber → green; amber ≤ score ≤ red → amber; score > red → red. */
 function bandFor(value: number, bands: ChangeRiskBands): ChangeRiskBand {
@@ -27,5 +31,8 @@ function bandFor(value: number, bands: ChangeRiskBands): ChangeRiskBand {
 export function score(findings: RedFlagFinding[], config: ChangeRiskConfig): ScoreResult {
   const raw = findings.reduce((sum, f) => sum + WEIGHT_POINTS[f.weight], 0);
   const capped = Math.min(100, raw);
-  return { score: capped, band: bandFor(capped, config.bands ?? DEFAULT_BANDS) };
+  return {
+    score: capped,
+    band: bandFor(capped, config.bands ?? DEFAULT_BANDS),
+  };
 }

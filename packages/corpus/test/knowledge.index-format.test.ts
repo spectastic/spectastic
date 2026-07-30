@@ -7,23 +7,47 @@
 import { describe, expect, it } from 'vitest';
 import {
   parseIndex,
-  renderIndexTable,
   parseRegistry,
-  renderRegistryTable,
   parseSkillSlugMap,
+  renderIndexTable,
+  renderRegistryTable,
   renderSkillSlugMapTable,
 } from '../src/knowledge/index-format.js';
 
 describe('parseIndex / renderIndexTable (pre-migration, unchanged by this amendment)', () => {
   it('round-trips a 5-column pack index', () => {
     const table = renderIndexTable([
-      { id: 'KB-002', title: 'Second', description: 'd2', edition: '2026-01-02', path: 'references/KB-002.md' },
-      { id: 'KB-001', title: 'First', description: 'd1', edition: '2026-01-01', path: 'references/KB-001.md' },
+      {
+        id: 'KB-002',
+        title: 'Second',
+        description: 'd2',
+        edition: '2026-01-02',
+        path: 'references/KB-002.md',
+      },
+      {
+        id: 'KB-001',
+        title: 'First',
+        description: 'd1',
+        edition: '2026-01-01',
+        path: 'references/KB-001.md',
+      },
     ]);
     const parsed = parseIndex(table);
     expect(parsed).toEqual([
-      { id: 'KB-001', title: 'First', description: 'd1', edition: '2026-01-01', path: 'references/KB-001.md' },
-      { id: 'KB-002', title: 'Second', description: 'd2', edition: '2026-01-02', path: 'references/KB-002.md' },
+      {
+        id: 'KB-001',
+        title: 'First',
+        description: 'd1',
+        edition: '2026-01-01',
+        path: 'references/KB-001.md',
+      },
+      {
+        id: 'KB-002',
+        title: 'Second',
+        description: 'd2',
+        edition: '2026-01-02',
+        path: 'references/KB-002.md',
+      },
     ]);
   });
 });
@@ -134,8 +158,20 @@ describe('parseRegistry / renderRegistryTable (FR-009, the root registry)', () =
 describe('parseSkillSlugMap / renderSkillSlugMapTable (FR-004 MODIFY, the SKILL.md-inlined map)', () => {
   it('round-trips a 5-column slug map, sorted by slug', () => {
     const table = renderSkillSlugMapTable([
-      { slug: '002-clearing-cutover', title: 'Clearing cutover', description: 'd2', edition: '2026-07-25', path: 'references/002-clearing-cutover.md' },
-      { slug: '001-settlement-windows', title: 'Settlement windows', description: 'd1', edition: '2026-07-25', path: 'references/001-settlement-windows.md' },
+      {
+        slug: '002-clearing-cutover',
+        title: 'Clearing cutover',
+        description: 'd2',
+        edition: '2026-07-25',
+        path: 'references/002-clearing-cutover.md',
+      },
+      {
+        slug: '001-settlement-windows',
+        title: 'Settlement windows',
+        description: 'd1',
+        edition: '2026-07-25',
+        path: 'references/001-settlement-windows.md',
+      },
     ]);
     const parsed = parseSkillSlugMap(table);
     expect(parsed.map((r) => r.slug)).toEqual(['001-settlement-windows', '002-clearing-cutover']); // sorted
@@ -159,7 +195,10 @@ describe('parseSkillSlugMap / renderSkillSlugMapTable (FR-004 MODIFY, the SKILL.
     ].join('\n');
     const parsed = parseSkillSlugMap(skillMd);
     expect(parsed).toHaveLength(1);
-    expect(parsed[0]).toMatchObject({ slug: '001-settlement-windows', title: 'Settlement windows' });
+    expect(parsed[0]).toMatchObject({
+      slug: '001-settlement-windows',
+      title: 'Settlement windows',
+    });
   });
 
   it('never mistakes a KB- id for a slug (a pack never mints one, FR-002)', () => {

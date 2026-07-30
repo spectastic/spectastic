@@ -6,11 +6,11 @@
  */
 
 import { orderCommand } from '../commands/order.js';
-import { buildSyntheticCorpus } from './corpus.js';
-import type { CandidateChild } from './types.js';
-import type { KernelContext } from '../types.js';
 import { decideChoice } from '../decider/choice.js';
 import type { DeciderConfig } from '../decider/types.js';
+import type { KernelContext } from '../types.js';
+import { buildSyntheticCorpus } from './corpus.js';
+import type { CandidateChild } from './types.js';
 
 /** The choice checkpoint's default decider (spec 036): a human, unless configured otherwise. */
 const HUMAN: DeciderConfig = { role: 'human', effort: 'medium' };
@@ -38,14 +38,20 @@ export async function confirmRice(
         question: 'Accept the estimated RICE inputs for the candidate children?',
         header: 'RICE',
         options: [
-          { label: 'Accept', description: 'Use the estimates as the ranking inputs.' },
-          { label: 'Adjust', description: 'Leave provisional — revisit the inputs before ranking.' },
+          {
+            label: 'Accept',
+            description: 'Use the estimates as the ranking inputs.',
+          },
+          {
+            label: 'Adjust',
+            description: 'Leave provisional — revisit the inputs before ranking.',
+          },
         ],
       },
     ],
     ctx.ai,
   );
-  const accepted = res['RICE'] === 'Accept';
+  const accepted = res.RICE === 'Accept';
   return children.map((c) => ({ ...c, riceConfirmed: accepted }));
 }
 

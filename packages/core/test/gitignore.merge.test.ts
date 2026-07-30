@@ -46,7 +46,7 @@ describe('mergeBlock', () => {
 
   it('appends the block after existing content with a single blank line', () => {
     const out = mergeBlock('a/\n', BASE);
-    expect(out).toContain('a/\n\n' + BLOCK_START);
+    expect(out).toContain(`a/\n\n${BLOCK_START}`);
   });
 });
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { corpusWellFormedFindings, corpusRegistryFindings } from '../src/knowledge/validate.js';
 import type { CorpusDocument, CorpusPack, IndexEntry, RegistryEntry } from '../src/knowledge/types.js';
+import { corpusRegistryFindings, corpusWellFormedFindings } from '../src/knowledge/validate.js';
 
 /**
  * 051-knowledge-corpus T-100: red-first tests for corpusWellFormedFindings —
@@ -60,7 +60,10 @@ describe('corpusWellFormedFindings', () => {
     // defaults below stay single-layer-shaped deliberately (most of this
     // file's other checks are pre-migration-specific), so this one test
     // builds its own explicit two-layer fixture rather than relying on them.
-    const twoLayer = pack({ documents: [doc({ id: null, slug: '001-alpha' })], index: [] });
+    const twoLayer = pack({
+      documents: [doc({ id: null, slug: '001-alpha' })],
+      index: [],
+    });
     expect(corpusWellFormedFindings([twoLayer])).toEqual([]);
   });
 
@@ -74,9 +77,7 @@ describe('corpusWellFormedFindings', () => {
   // shipped exactly such a pack).
   it('flags a pack that has reference documents but no SKILL.md', () => {
     const findings = corpusWellFormedFindings([pack({ hasSkillFile: false })]);
-    expect(
-      findings.some((f) => f.rule === 'corpus-well-formed' && /SKILL\.md/.test(f.message)),
-    ).toBe(true);
+    expect(findings.some((f) => f.rule === 'corpus-well-formed' && /SKILL\.md/.test(f.message))).toBe(true);
   });
 
   it('does NOT flag a missing SKILL.md on a pack with no documents (not yet a real pack)', () => {
@@ -90,32 +91,35 @@ describe('corpusWellFormedFindings', () => {
       provenance: { ...FULL_PROVENANCE, license: undefined },
     });
     const findings = corpusWellFormedFindings([pack({ documents: [bad] })]);
-    expect(
-      findings.some((f) => f.rule === 'corpus-well-formed' && f.message.includes('license')),
-    ).toBe(true);
+    expect(findings.some((f) => f.rule === 'corpus-well-formed' && f.message.includes('license'))).toBe(true);
   });
 
   it('flags a dangling index row with no matching document', () => {
-    const danglingEntry = entry({ id: 'KB-002', path: 'references/KB-002-missing.md' });
+    const danglingEntry = entry({
+      id: 'KB-002',
+      path: 'references/KB-002-missing.md',
+    });
     const findings = corpusWellFormedFindings([pack({ index: [danglingEntry], documents: [] })]);
-    expect(
-      findings.some((f) => f.rule === 'corpus-well-formed' && f.message.includes('KB-002')),
-    ).toBe(true);
+    expect(findings.some((f) => f.rule === 'corpus-well-formed' && f.message.includes('KB-002'))).toBe(true);
   });
 
   it('flags an orphan reference file with no matching index row', () => {
-    const orphanDoc = doc({ id: 'KB-003', filePath: 'knowledge/pack/references/KB-003-orphan.md' });
+    const orphanDoc = doc({
+      id: 'KB-003',
+      filePath: 'knowledge/pack/references/KB-003-orphan.md',
+    });
     const findings = corpusWellFormedFindings([pack({ index: [], documents: [orphanDoc] })]);
-    expect(
-      findings.some((f) => f.rule === 'corpus-well-formed' && f.message.includes('KB-003')),
-    ).toBe(true);
+    expect(findings.some((f) => f.rule === 'corpus-well-formed' && f.message.includes('KB-003'))).toBe(true);
   });
 
   it('flags two documents sharing one KB-NNN id', () => {
     const dupA = doc({ filePath: 'knowledge/pack/references/a.md' });
     const dupB = doc({ filePath: 'knowledge/pack/references/b.md' });
     const findings = corpusWellFormedFindings([
-      pack({ index: [entry(), entry({ path: 'references/b.md' })], documents: [dupA, dupB] }),
+      pack({
+        index: [entry(), entry({ path: 'references/b.md' })],
+        documents: [dupA, dupB],
+      }),
     ]);
     expect(
       findings.some(
@@ -136,12 +140,22 @@ describe('corpusWellFormedFindings', () => {
     // deprecation warning now legitimately fires on it — this test's own
     // claim is narrower: the SLUG-duplicate check specifically stays quiet.
     const findings = corpusWellFormedFindings([pack()]);
-    expect(findings.some((f) => f.message.toLowerCase().includes('duplicate') && f.message.toLowerCase().includes('slug'))).toBe(false);
+    expect(
+      findings.some((f) => f.message.toLowerCase().includes('duplicate') && f.message.toLowerCase().includes('slug')),
+    ).toBe(false);
   });
 
   it('flags two documents sharing one pack-internal slug', () => {
-    const dupA = doc({ id: 'KB-010', slug: '001-settlement-windows', filePath: 'knowledge/pack/references/a.md' });
-    const dupB = doc({ id: 'KB-011', slug: '001-settlement-windows', filePath: 'knowledge/pack/references/b.md' });
+    const dupA = doc({
+      id: 'KB-010',
+      slug: '001-settlement-windows',
+      filePath: 'knowledge/pack/references/a.md',
+    });
+    const dupB = doc({
+      id: 'KB-011',
+      slug: '001-settlement-windows',
+      filePath: 'knowledge/pack/references/b.md',
+    });
     const findings = corpusWellFormedFindings([
       pack({
         index: [entry({ id: 'KB-010' }), entry({ id: 'KB-011', path: 'references/b.md' })],
@@ -167,7 +181,9 @@ describe('corpusWellFormedFindings', () => {
         documents: [a, b],
       }),
     ]);
-    expect(findings.some((f) => f.message.toLowerCase().includes('duplicate') && f.message.toLowerCase().includes('slug'))).toBe(false);
+    expect(
+      findings.some((f) => f.message.toLowerCase().includes('duplicate') && f.message.toLowerCase().includes('slug')),
+    ).toBe(false);
   });
 
   // 066-corpus-single-layer-retire, US3: the deprecation warning (T-300/T-301).
@@ -176,11 +192,15 @@ describe('corpusWellFormedFindings', () => {
       // The default `pack()`/`doc()` fixtures are single-layer-shaped: an
       // `id:` document with no `slug:`.
       const findings = corpusWellFormedFindings([pack()]);
-      const warning = findings.find((f) => f.severity === 'warning' && f.message.toLowerCase().includes('single-layer'));
+      const warning = findings.find(
+        (f) => f.severity === 'warning' && f.message.toLowerCase().includes('single-layer'),
+      );
       expect(warning).toBeDefined();
       expect(warning!.message).toContain('corpus migrate');
       // Never an error — this phase is deprecate-first, not reject (NFR-002/D-003).
-      expect(findings.some((f) => f.severity === 'error' && f.message.toLowerCase().includes('single-layer'))).toBe(false);
+      expect(findings.some((f) => f.severity === 'error' && f.message.toLowerCase().includes('single-layer'))).toBe(
+        false,
+      );
     });
 
     it('warns on a pack whose only single-layer signal is a pack-local index.md (no id: document)', () => {
@@ -188,11 +208,16 @@ describe('corpusWellFormedFindings', () => {
       // pack-local index — still single-layer per D-003's OR clause.
       const migratedDoc = doc({ id: null, slug: '001-alpha' });
       const findings = corpusWellFormedFindings([pack({ documents: [migratedDoc], index: [entry()] })]);
-      expect(findings.some((f) => f.severity === 'warning' && f.message.toLowerCase().includes('single-layer'))).toBe(true);
+      expect(findings.some((f) => f.severity === 'warning' && f.message.toLowerCase().includes('single-layer'))).toBe(
+        true,
+      );
     });
 
     it('is silent on a two-layer pack — no false positive, no new error (NFR-002)', () => {
-      const twoLayer = pack({ documents: [doc({ id: null, slug: '001-alpha' })], index: [] });
+      const twoLayer = pack({
+        documents: [doc({ id: null, slug: '001-alpha' })],
+        index: [],
+      });
       const findings = corpusWellFormedFindings([twoLayer]);
       expect(findings).toEqual([]);
     });
@@ -225,7 +250,9 @@ describe('corpusRegistryFindings (FR-009, the root registry)', () => {
     const bad = registryRow({ title: '' });
     const findings = corpusRegistryFindings([bad]);
     expect(
-      findings.some((f) => f.rule === 'corpus-well-formed' && f.message.includes('KB-0001') && f.message.includes('title')),
+      findings.some(
+        (f) => f.rule === 'corpus-well-formed' && f.message.includes('KB-0001') && f.message.includes('title'),
+      ),
     ).toBe(true);
   });
 
@@ -236,9 +263,7 @@ describe('corpusRegistryFindings (FR-009, the root registry)', () => {
     const findings = corpusRegistryFindings([bad]);
     expect(
       findings.some(
-        (f) =>
-          f.message.includes('KB-finance-settlement-0001') &&
-          f.message.toLowerCase().includes('opaque'),
+        (f) => f.message.includes('KB-finance-settlement-0001') && f.message.toLowerCase().includes('opaque'),
       ),
     ).toBe(true);
   });
@@ -249,13 +274,14 @@ describe('corpusRegistryFindings (FR-009, the root registry)', () => {
 
   it('flags two registry rows sharing one KB-NNNN (the cross-pack collision this amendment fixes)', () => {
     const rowA = registryRow({ path: 'knowledge/pack-a/references/001-a.md' });
-    const rowB = registryRow({ plugin: 'other-pack', path: 'knowledge/pack-b/references/001-b.md' });
+    const rowB = registryRow({
+      plugin: 'other-pack',
+      path: 'knowledge/pack-b/references/001-b.md',
+    });
     const findings = corpusRegistryFindings([rowA, rowB]);
-    expect(
-      findings.some(
-        (f) => f.message.includes('KB-0001') && f.message.toLowerCase().includes('duplicate'),
-      ),
-    ).toBe(true);
+    expect(findings.some((f) => f.message.includes('KB-0001') && f.message.toLowerCase().includes('duplicate'))).toBe(
+      true,
+    );
   });
 
   /**

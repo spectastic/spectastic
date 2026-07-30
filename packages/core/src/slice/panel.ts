@@ -11,12 +11,12 @@
  */
 
 import type { RiceInputs } from '@spectastic/schema';
-import type { CandidateChild } from './types.js';
-import type { KernelContext } from '../types.js';
-import { median } from '../decider/panel.js';
+import { type RequestedEffort, resolveEffort } from '../decider/auto.js';
 import { effortToDepth } from '../decider/effort.js';
-import { resolveEffort, type RequestedEffort } from '../decider/auto.js';
+import { median } from '../decider/panel.js';
 import { mapPool } from '../helpers/map-pool.js';
+import type { KernelContext } from '../types.js';
+import type { CandidateChild } from './types.js';
 
 /** Median of each RICE input across a panel's votes (shared Decider median, 035 FR-005). */
 export function medianRice(votes: RiceInputs[]): RiceInputs {
@@ -55,11 +55,17 @@ export async function panelScore(
 
   const roster = children.map((c) => `- ${c.specId} "${c.title}": ${c.scope}`).join('\n');
   const scoreOnce = async (i: number): Promise<Record<string, unknown>> => {
-    const res = await ai.subagent(`${SCORER_SYSTEM}\n\nChildren:\n${roster}`, { task: `ranking-scorer-${i}` });
+    const res = await ai.subagent(`${SCORER_SYSTEM}\n\nChildren:\n${roster}`, {
+      task: `ranking-scorer-${i}`,
+    });
     return parseScores(res.output);
   };
   // Fan the scorers out under the bounded pool (spec 032) instead of a serial loop.
-  const results = await mapPool(Array.from({ length: scorers }, (_, i) => i), scoreOnce, scorers);
+  const results = await mapPool(
+    Array.from({ length: scorers }, (_, i) => i),
+    scoreOnce,
+    scorers,
+  );
 
   const votes = new Map<string, RiceInputs[]>(children.map((c) => [c.specId, []]));
   for (const scored of results) {
@@ -93,10 +99,10 @@ function isRice(v: unknown): v is RiceInputs {
   if (v === null || typeof v !== 'object') return false;
   const r = v as Record<string, unknown>;
   return (
-    typeof r['reach'] === 'number' &&
-    typeof r['impact'] === 'number' &&
-    typeof r['confidence'] === 'number' &&
-    typeof r['effort'] === 'number' &&
-    r['effort'] > 0
+    typeof r.reach === 'number' &&
+    typeof r.impact === 'number' &&
+    typeof r.confidence === 'number' &&
+    typeof r.effort === 'number' &&
+    r.effort > 0
   );
 }

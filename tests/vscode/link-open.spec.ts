@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { expect, test } from '@playwright/test';
 
 /**
  * Spec 020 T-011. A cross-artifact link clicked inside an artifact webview must

@@ -6,8 +6,8 @@
  * O(V+E) — no IO, no clock.
  */
 
-import { CycleError } from './types.js';
 import type { Edge, OrderTag, RankedNode, ScoredNode } from './types.js';
+import { CycleError } from './types.js';
 
 /** Deterministic ascending spec-id comparison. */
 function byId(a: string, b: string): number {
@@ -53,12 +53,12 @@ function descendants(id: string, out: ReadonlyMap<string, string[]>): Set<string
 function subtreeValues(
   ids: readonly string[],
   out: ReadonlyMap<string, string[]>,
-  valueOf: ReadonlyMap<string, number | null>,
+  valueMap: ReadonlyMap<string, number | null>,
 ): Map<string, number> {
   const sub = new Map<string, number>();
   for (const id of ids) {
     let s = 0;
-    for (const d of descendants(id, out)) s += valueOf.get(d) ?? 0;
+    for (const d of descendants(id, out)) s += valueMap.get(d) ?? 0;
     sub.set(id, s);
   }
   return sub;
@@ -110,9 +110,9 @@ function tagFor(value: number | null, subtreeValue: number): OrderTag {
 export function topoOrder(nodes: readonly ScoredNode[], edges: readonly Edge[]): RankedNode[] {
   const { ids, out, indeg } = adjacency(nodes, edges);
   const nodeOf = new Map(nodes.map((n) => [n.specId, n]));
-  const valueOf = new Map(nodes.map((n) => [n.specId, n.value]));
-  const subtree = subtreeValues(ids, out, valueOf);
-  const priority = (id: string): number => (valueOf.get(id) ?? 0) + (subtree.get(id) ?? 0);
+  const valueMap = new Map(nodes.map((n) => [n.specId, n.value]));
+  const subtree = subtreeValues(ids, out, valueMap);
+  const priority = (id: string): number => (valueMap.get(id) ?? 0) + (subtree.get(id) ?? 0);
 
   // Stable, priority-ordered ready set: highest priority first, then spec id asc.
   const ready = ids.filter((id) => indeg.get(id) === 0);

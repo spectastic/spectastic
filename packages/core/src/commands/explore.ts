@@ -19,12 +19,7 @@
  */
 
 import type { Finding } from '@spectastic/schema';
-import type {
-  CapturedRun,
-  ExploreInput,
-  ExploreResult,
-  QuarantineMarker,
-} from '../types.js';
+import type { CapturedRun, ExploreInput, ExploreResult, QuarantineMarker } from '../types.js';
 
 export class ExploreError extends Error {
   constructor(message: string) {
@@ -37,11 +32,7 @@ export class ExploreError extends Error {
 
 /** Escape text for safe interpolation into HTML. */
 function escapeHtml(s: string): string {
-  return s
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;');
+  return s.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;');
 }
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -64,8 +55,7 @@ function dmyDisplay(iso: string): string {
 export function renderExploreRunBlock(captured: CapturedRun | undefined): string {
   const c = captured ?? {};
   const field = (val?: string): string => (val ? escapeHtml(val) : '');
-  const cites = (ids?: string[]): string =>
-    ids && ids.length > 0 ? ` cites="${escapeHtml(ids.join(' '))}"` : '';
+  const cites = (ids?: string[]): string => (ids && ids.length > 0 ? ` cites="${escapeHtml(ids.join(' '))}"` : '');
   return `<spec-runblock>
   <spec-run>${field(c.run)}</spec-run>
   <spec-toggle>${field(c.toggle)}</spec-toggle>
@@ -118,10 +108,7 @@ export function buildMarker(input: ExploreInput): QuarantineMarker {
  * `validate` action calls this for every `explorations/**\/quarantine.json` it
  * finds, regardless of the path args, so the merge gate cannot be sidestepped.
  */
-export function quarantineFinding(
-  marker: { id?: string; status?: string },
-  file: string,
-): Finding | null {
+export function quarantineFinding(marker: { id?: string; status?: string }, file: string): Finding | null {
   if (marker.status !== 'quarantined') return null;
   const id = marker.id ?? '(unknown id)';
   return {
@@ -131,7 +118,7 @@ export function quarantineFinding(
     rule: 'explore-quarantined',
     severity: 'error',
     message: `Exploration ${id} is quarantined — un-graduated work must not ship.`,
-    fixHint: 'Graduate the exploration into a spec/plan/tasks, or delete explorations/' + id + '/ to clear.',
+    fixHint: `Graduate the exploration into a spec/plan/tasks, or delete explorations/${id}/ to clear.`,
   };
 }
 

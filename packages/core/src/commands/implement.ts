@@ -16,21 +16,14 @@
  * confirmation.
  */
 
-import type {
-  ImplementInput,
-  ImplementResult,
-  KernelContext,
-} from '../types.js';
+import type { ImplementInput, ImplementResult, KernelContext } from '../types.js';
 
 const TASK_TICK_RE = /(<spec-task\s+id=["']{TARGET}["'][^>]*>\s*<input\s+type=["']checkbox["'])(?!\s+checked)/;
 const INBOX_TICK_RE = /(<spec-triage\s+id=["']{TARGET}["'])(?![^>]*\bdata-status=)/;
 const UNCHECKED_RE = /<input\s+type=["']checkbox["'](?!\s+checked)/g;
 const DRAFT_STATUS_RE = /<spec-status\s+value=["']draft["']/i;
 
-export async function implementCommand(
-  input: ImplementInput,
-  _ctx: KernelContext,
-): Promise<ImplementResult> {
+export async function implementCommand(input: ImplementInput, _ctx: KernelContext): Promise<ImplementResult> {
   const targetKind = classifyTarget(input.target);
 
   if (targetKind === 'task') {
@@ -41,8 +34,7 @@ export async function implementCommand(
     }
     const ticked = input.tasksHtml.replace(re, '$1 checked');
     const remainingUnchecked = (ticked.match(UNCHECKED_RE) ?? []).length;
-    const flipPromptFired =
-      remainingUnchecked === 0 && !!input.specHtml && DRAFT_STATUS_RE.test(input.specHtml);
+    const flipPromptFired = remainingUnchecked === 0 && !!input.specHtml && DRAFT_STATUS_RE.test(input.specHtml);
     return {
       ticked: { kind: 'task', id: input.target, file: 'tasks.html' },
       remainingUnchecked,
@@ -64,7 +56,9 @@ export async function implementCommand(
     };
   }
 
-  throw new Error(`implementCommand: target "${input.target}" is not a recognised T-NNN or I-NNN. (Spec-id resolution requires the caller to scan tasks.html for the first unchecked task and pass its T-NNN.)`);
+  throw new Error(
+    `implementCommand: target "${input.target}" is not a recognised T-NNN or I-NNN. (Spec-id resolution requires the caller to scan tasks.html for the first unchecked task and pass its T-NNN.)`,
+  );
 }
 
 function classifyTarget(target: string): 'task' | 'just-do' | 'spec' {

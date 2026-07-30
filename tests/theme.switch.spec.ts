@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { expect, test } from '@playwright/test';
 
 // US1 — pick a typographic theme. Targets the contrast fixture, which loads the
 // shared assets (theme-boot.js + spec.js) exactly like a real artifact.
@@ -9,9 +9,7 @@ test.describe('US1 · theme switch (FR-001, SC-001)', () => {
     await page.goto(FIXTURE);
     const select = page.locator('select.theme-select:visible');
     await expect(select).toBeVisible();
-    const values = await select.locator('option').evaluateAll((os) =>
-      os.map((o) => (o as HTMLOptionElement).value)
-    );
+    const values = await select.locator('option').evaluateAll((os) => os.map((o) => (o as HTMLOptionElement).value));
     expect(values).toEqual(['spectastic-calm', 'spectastic-vivid']);
   });
 

@@ -23,7 +23,12 @@ describe('scan — new-dependency detector', () => {
     ].join('\n');
     const findings = scan({ patch, numstat: '1\t0\tpackage.json\n' });
     expect(findings).toEqual([
-      { category: 'new-dependency', weight: 'low', file: 'package.json', evidence: expect.any(String) },
+      {
+        category: 'new-dependency',
+        weight: 'low',
+        file: 'package.json',
+        evidence: expect.any(String),
+      },
     ]);
   });
 

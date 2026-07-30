@@ -42,41 +42,62 @@ describe('contract-first: interface-gating (FR-014)', () => {
   });
 
   it('interface + a root OpenAPI document → covered', () => {
-    const dir = fixture({ 'package.json': EXPRESS, 'openapi.yaml': 'openapi: 3.0.0\n' });
+    const dir = fixture({
+      'package.json': EXPRESS,
+      'openapi.yaml': 'openapi: 3.0.0\n',
+    });
     expect(detectTooling(dir).has('contract-first')).toBe(true);
   });
 
   it('interface + a contract in a conventional subdir (api/openapi.json) → covered', () => {
-    const dir = fixture({ 'package.json': EXPRESS, 'api/openapi.json': '{"openapi":"3.0.0"}' });
+    const dir = fixture({
+      'package.json': EXPRESS,
+      'api/openapi.json': '{"openapi":"3.0.0"}',
+    });
     expect(detectContract(dir)).toBe(true);
     expect(detectTooling(dir).has('contract-first')).toBe(true);
   });
 
   it('interface + a *.proto → covered', () => {
-    const dir = fixture({ 'package.json': EXPRESS, 'proto/service.proto': 'syntax = "proto3";\n' });
+    const dir = fixture({
+      'package.json': EXPRESS,
+      'proto/service.proto': 'syntax = "proto3";\n',
+    });
     expect(detectTooling(dir).has('contract-first')).toBe(true);
   });
 
   it('interface + a GraphQL SDL → covered', () => {
-    const dir = fixture({ 'package.json': EXPRESS, 'schema.graphql': 'type Query { ok: Boolean }\n' });
+    const dir = fixture({
+      'package.json': EXPRESS,
+      'schema.graphql': 'type Query { ok: Boolean }\n',
+    });
     expect(detectTooling(dir).has('contract-first')).toBe(true);
   });
 });
 
 describe('contract-first: JSON Schema is a contract only under contracts/ (adversarial R-1)', () => {
   it('interface + a bare config.schema.json at root → still a gap (config schema is not an interface contract)', () => {
-    const dir = fixture({ 'package.json': EXPRESS, 'config.schema.json': '{"type":"object"}' });
+    const dir = fixture({
+      'package.json': EXPRESS,
+      'config.schema.json': '{"type":"object"}',
+    });
     expect(detectContract(dir)).toBe(false);
     expect(detectTooling(dir).has('contract-first')).toBe(false);
   });
 
   it('interface + a *.schema.json under schema/ (not contracts/) → still a gap', () => {
-    const dir = fixture({ 'package.json': EXPRESS, 'schema/data.schema.json': '{"type":"object"}' });
+    const dir = fixture({
+      'package.json': EXPRESS,
+      'schema/data.schema.json': '{"type":"object"}',
+    });
     expect(detectContract(dir)).toBe(false);
   });
 
   it('interface + a *.schema.json under contracts/ → covered', () => {
-    const dir = fixture({ 'package.json': EXPRESS, 'contracts/user.schema.json': '{"type":"object"}' });
+    const dir = fixture({
+      'package.json': EXPRESS,
+      'contracts/user.schema.json': '{"type":"object"}',
+    });
     expect(detectContract(dir)).toBe(true);
     expect(detectTooling(dir).has('contract-first')).toBe(true);
   });
@@ -96,7 +117,9 @@ describe('contract-first: interface detection across ecosystems', () => {
 
   it('an unlisted framework is silently exempt (recorded false-negative, never a false failure)', () => {
     // a bespoke/unlisted HTTP lib is not in INTERFACE_SIGNALS → treated as no interface → exempt.
-    const dir = fixture({ 'package.json': '{"dependencies":{"my-bespoke-http-lib":"^1"}}' });
+    const dir = fixture({
+      'package.json': '{"dependencies":{"my-bespoke-http-lib":"^1"}}',
+    });
     expect(exposesInterface(dir)).toBe(false);
     expect(detectTooling(dir).has('contract-first')).toBe(true);
   });

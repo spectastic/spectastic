@@ -1,22 +1,12 @@
-import { validateMany } from '@spectastic/schema';
 import type { Finding } from '@spectastic/schema';
-import { parse, findAll, getAttr, getLocation } from '@spectastic/schema/parser';
+import { validateMany } from '@spectastic/schema';
 import type { Element } from '@spectastic/schema/parser';
+import { findAll, getAttr, getLocation, parse } from '@spectastic/schema/parser';
 import { isQuantifiedTarget } from '@spectastic/schema/slo';
-import type {
-  KernelContext,
-  ValidateInput,
-  ValidateResult,
-} from '../types.js';
-import { MODEL_TIER_ALIASES, VERB_MODEL_POLICY, isModelTier } from '../model-policy/index.js';
+import { daysBetween, isBoilerplateReason, MAX_WAIVER_DAYS, parseIsoDate, type RawWaiver } from '../enforce/config.js';
 import type { EnforcementCategory } from '../enforce/types.js';
-import {
-  daysBetween,
-  isBoilerplateReason,
-  MAX_WAIVER_DAYS,
-  parseIsoDate,
-  type RawWaiver,
-} from '../enforce/config.js';
+import { isModelTier, MODEL_TIER_ALIASES, VERB_MODEL_POLICY } from '../model-policy/index.js';
+import type { KernelContext, ValidateInput, ValidateResult } from '../types.js';
 
 interface WaiverProblem {
   message: string;
@@ -46,11 +36,7 @@ export const REQUIRED_SKILL_KEYS = ['triggers', 'use-when', 'sibling-boundary'] 
  * quarantine scans, this compares gitignored markdown, so it lives here rather
  * than the HTML-bound schema rule registry, and the CLI folds it in.
  */
-export function commandsDriftFinding(
-  source: string,
-  adapter: string | null,
-  file: string,
-): Finding | null {
+export function commandsDriftFinding(source: string, adapter: string | null, file: string): Finding | null {
   if (adapter === source) return null;
   const detail = adapter === null ? 'is missing' : 'has drifted from its source';
   return {
@@ -89,8 +75,7 @@ export function skillMetadataFinding(content: string, file: string): Finding | n
       ? [...REQUIRED_SKILL_KEYS]
       : REQUIRED_SKILL_KEYS.filter((key) => !new RegExp(`^${key}:`, 'm').test(frontmatter));
   if (missing.length === 0) return null;
-  const detail =
-    frontmatter === undefined ? 'has no YAML frontmatter' : `is missing key(s): ${missing.join(', ')}`;
+  const detail = frontmatter === undefined ? 'has no YAML frontmatter' : `is missing key(s): ${missing.join(', ')}`;
   return {
     file,
     line: 1,
@@ -257,8 +242,8 @@ function helpStringArgs(masked: string): { text: string; line: number }[] {
   const results: { text: string; line: number }[] = [];
   const call = /\.(?:description|option|argument)\s*\(/g;
   const n = masked.length;
-  let m: RegExpExecArray | null;
-  while ((m = call.exec(masked)) !== null) {
+  let m = call.exec(masked);
+  while (m !== null) {
     let i = m.index + m[0].length;
     let depth = 1;
     while (i < n && depth > 0) {
@@ -288,6 +273,7 @@ function helpStringArgs(masked: string): { text: string; line: number }[] {
       else if (c === ')') depth--;
       i++;
     }
+    m = call.exec(masked);
   }
   return results;
 }
@@ -311,7 +297,8 @@ export function copyLeakFindings(content: string, file: string): Finding[] {
       rule: 'no-internal-id-in-copy',
       severity: 'error',
       message: `User-facing help text leaks an internal artifact id "${leak}" — describe the behaviour, not its spec provenance.`,
-      fixHint: 'Remove the spec/requirement id (e.g. "(spec 042)", "(037)", "REQ-…") from the help string; keep provenance in comments and the artifact trail. An illustrative slug in argument help must use the neutral placeholder 001-auth-service.',
+      fixHint:
+        'Remove the spec/requirement id (e.g. "(spec 042)", "(037)", "REQ-…") from the help string; keep provenance in comments and the artifact trail. An illustrative slug in argument help must use the neutral placeholder 001-auth-service.',
     });
   }
   return findings;
@@ -332,35 +319,60 @@ export function copyLeakFindings(content: string, file: string): Finding[] {
  */
 function categoryProblem(w: RawWaiver, label: string, ctx: WaiverCtx): WaiverProblem | null {
   if (typeof w.category !== 'string') {
-    return { message: `Waiver ${label} has no string "category".`, fixHint: 'Set category to one of the enforcement categories in your profile floor.' };
+    return {
+      message: `Waiver ${label} has no string "category".`,
+      fixHint: 'Set category to one of the enforcement categories in your profile floor.',
+    };
   }
   const cat = w.category as EnforcementCategory;
   if (!ctx.validCategories.includes(cat)) {
-    return { message: `Waiver ${label} names an unknown enforcement category.`, fixHint: `Use a valid category: ${ctx.validCategories.join(', ')}.` };
+    return {
+      message: `Waiver ${label} names an unknown enforcement category.`,
+      fixHint: `Use a valid category: ${ctx.validCategories.join(', ')}.`,
+    };
   }
   if (ctx.unwaivable.includes(cat)) {
-    return { message: `Waiver ${label} names an un-relaxable category — it has no effect (the category keeps gating).`, fixHint: 'Remove the waiver; this category cannot be relaxed on this profile. Cover it with a tool or choose a different profile.' };
+    return {
+      message: `Waiver ${label} names an un-relaxable category — it has no effect (the category keeps gating).`,
+      fixHint:
+        'Remove the waiver; this category cannot be relaxed on this profile. Cover it with a tool or choose a different profile.',
+    };
   }
   if (!ctx.required.includes(cat)) {
-    return { message: `Waiver ${label} names a category not in this profile's floor — a dead waiver.`, fixHint: 'Remove it; only a required category needs a waiver.' };
+    return {
+      message: `Waiver ${label} names a category not in this profile's floor — a dead waiver.`,
+      fixHint: 'Remove it; only a required category needs a waiver.',
+    };
   }
   return null;
 }
 
 function untilProblem(w: RawWaiver, label: string, now: Date): WaiverProblem | null {
   if (typeof w.until !== 'string') {
-    return { message: `Waiver ${label} has no "until" expiry.`, fixHint: 'Set until to an ISO YYYY-MM-DD date within 365 days.' };
+    return {
+      message: `Waiver ${label} has no "until" expiry.`,
+      fixHint: 'Set until to an ISO YYYY-MM-DD date within 365 days.',
+    };
   }
   const until = parseIsoDate(w.until);
   if (until === null) {
-    return { message: `Waiver ${label} has an invalid "until" (${w.until}) — expected ISO YYYY-MM-DD.`, fixHint: 'Use an ISO YYYY-MM-DD date, e.g. 2026-10-01.' };
+    return {
+      message: `Waiver ${label} has an invalid "until" (${w.until}) — expected ISO YYYY-MM-DD.`,
+      fixHint: 'Use an ISO YYYY-MM-DD date, e.g. 2026-10-01.',
+    };
   }
   const days = daysBetween(now, until);
   if (days < 0) {
-    return { message: `Waiver ${label} expired on ${w.until} — remove or renew it.`, fixHint: 'An expired waiver auto-blocks; delete it or set a fresh until within 365 days.' };
+    return {
+      message: `Waiver ${label} expired on ${w.until} — remove or renew it.`,
+      fixHint: 'An expired waiver auto-blocks; delete it or set a fresh until within 365 days.',
+    };
   }
   if (days > MAX_WAIVER_DAYS) {
-    return { message: `Waiver ${label} expires ${w.until}, more than ${MAX_WAIVER_DAYS} days out.`, fixHint: `Set until within ${MAX_WAIVER_DAYS} days so the waiver can't be written to never expire.` };
+    return {
+      message: `Waiver ${label} expires ${w.until}, more than ${MAX_WAIVER_DAYS} days out.`,
+      fixHint: `Set until within ${MAX_WAIVER_DAYS} days so the waiver can't be written to never expire.`,
+    };
   }
   return null;
 }
@@ -371,10 +383,17 @@ function waiverProblems(w: RawWaiver, label: string, ctx: WaiverCtx): WaiverProb
   const category = categoryProblem(w, label, ctx);
   if (category) problems.push(category);
   if (typeof w.reason !== 'string' || isBoilerplateReason(w.reason)) {
-    problems.push({ message: `Waiver ${label} has an empty or boilerplate reason.`, fixHint: 'Give a specific justification (what and why, ideally a ticket ref) — a placeholder like "n/a"/"todo" is rejected.' });
+    problems.push({
+      message: `Waiver ${label} has an empty or boilerplate reason.`,
+      fixHint:
+        'Give a specific justification (what and why, ideally a ticket ref) — a placeholder like "n/a"/"todo" is rejected.',
+    });
   }
   if (typeof w.owner !== 'string' || w.owner.trim().length === 0) {
-    problems.push({ message: `Waiver ${label} has no owner.`, fixHint: 'Set owner to whoever accepted the risk.' });
+    problems.push({
+      message: `Waiver ${label} has no owner.`,
+      fixHint: 'Set owner to whoever accepted the risk.',
+    });
   }
   const until = untilProblem(w, label, ctx.now);
   if (until) problems.push(until);
@@ -386,7 +405,15 @@ export function enforceWaiverFindings(waivers: readonly RawWaiver[], ctx: Waiver
   waivers.forEach((w, i) => {
     const label = typeof w.category === 'string' ? `"${w.category}"` : `#${i + 1}`;
     for (const { message, fixHint } of waiverProblems(w, label, ctx)) {
-      findings.push({ file, line: 1, column: 1, rule: 'enforce-waiver-well-formed', severity: 'error', message, fixHint });
+      findings.push({
+        file,
+        line: 1,
+        column: 1,
+        rule: 'enforce-waiver-well-formed',
+        severity: 'error',
+        message,
+        fixHint,
+      });
     }
   });
   return findings;
@@ -409,12 +436,24 @@ export function isQuantifiedNfrGatedTier(tier: string | undefined): boolean {
 function textOf(el: Element): string {
   let out = '';
   const visit = (node: unknown): void => {
-    const n = node as { tagName?: string; value?: string; childNodes?: unknown[] };
+    const n = node as {
+      tagName?: string;
+      value?: string;
+      childNodes?: unknown[];
+    };
     if (n.tagName === undefined && typeof n.value === 'string') out += n.value;
     if (n.childNodes) for (const child of n.childNodes) visit(child);
   };
   visit(el);
   return out.replace(/\s+/g, ' ').trim();
+}
+
+/** Leading numeric spec id from a validated file path (e.g. "specs/032-x/spec.html" → 32);
+ *  null when the path carries no parseable spec directory number. Mirrors
+ *  `verify-view-missing.ts`'s own `specNum` helper — same convention-floor shape. */
+function specNumFromFile(file: string): number | null {
+  const m = /(?:^|\/)specs\/(\d+)[^/]*\/spec\.html$/.exec(file);
+  return m?.[1] ? Number.parseInt(m[1], 10) : null;
 }
 
 /**
@@ -430,19 +469,31 @@ function textOf(el: Element): string {
  * A non-empty `slo=` attribute (the light NFR annotation, FR-003) also
  * satisfies "inline-quantified" — same acceptance as prose carrying a
  * measurable target (T-310).
+ *
+ * `ctx.floor` (068-enterprise-enforce-floor FR-009, plan D-003) is an optional
+ * config-declared convention floor: a spec whose leading directory number is
+ * below it predates the quantified-NFR convention and is exempt, mirroring
+ * `verify-view-missing`'s own precedent — except that rule *derives* its floor
+ * from an artifact signal, while this one is config-declared (no clean
+ * equivalent signal exists here). A file whose spec id can't be parsed is
+ * never exempted (fails toward gating, not silence). No floor configured
+ * (`undefined`) leaves today's behavior unchanged — every gated-tier spec
+ * is checked.
  */
 export function quantifiedNfrFindings(
   docs: readonly { html: string; file: string }[],
-  ctx: { tier: string | undefined },
+  ctx: { tier: string | undefined; floor?: number },
 ): Finding[] {
   if (!isQuantifiedNfrGatedTier(ctx.tier)) return [];
 
   const findings: Finding[] = [];
   for (const { html, file } of docs) {
+    if (ctx.floor !== undefined) {
+      const num = specNumFromFile(file);
+      if (num !== null && num < ctx.floor) continue;
+    }
     const doc = parse(html, file);
-    const nfrs = findAll(doc.ast, 'spec-requirement').filter((el) =>
-      (getAttr(el, 'id') ?? '').startsWith('NFR-'),
-    );
+    const nfrs = findAll(doc.ast, 'spec-requirement').filter((el) => (getAttr(el, 'id') ?? '').startsWith('NFR-'));
     if (nfrs.length === 0) continue;
 
     const linkedTargets = new Set(
@@ -489,10 +540,7 @@ export function quantifiedNfrFindings(
  *   1 — at least one error finding
  *   2 — usage / read error (file unreadable, etc.)
  */
-export async function validateCommand(
-  input: ValidateInput,
-  ctx: KernelContext,
-): Promise<ValidateResult> {
+export async function validateCommand(input: ValidateInput, ctx: KernelContext): Promise<ValidateResult> {
   const fs = ctx.fs ?? (await import('../providers/node-fs.js')).nodeFs;
 
   const inputs: Array<{ html: string; file: string }> = [];

@@ -1,5 +1,3 @@
-import { describe, expect, it } from 'vitest';
-import { planCommand } from '@spectastic/core/commands/plan';
 import type {
   AIProvider,
   ChatOpts,
@@ -9,6 +7,8 @@ import type {
   SubagentOpts,
   SubagentResult,
 } from '@spectastic/core';
+import { planCommand } from '@spectastic/core/commands/plan';
+import { describe, expect, it } from 'vitest';
 
 /**
  * Unit tests for planCommand. Stub AIProvider; no network; no
@@ -39,9 +39,7 @@ class StubAI implements AIProvider {
     return JSON.stringify(response.json ?? {});
   }
 
-  async ask<TResult extends Record<string, string>>(
-    _questions: ReadonlyArray<Question>,
-  ): Promise<TResult> {
+  async ask<TResult extends Record<string, string>>(_questions: ReadonlyArray<Question>): Promise<TResult> {
     throw new Error('StubAI.ask: not used in plan tests');
   }
 
@@ -135,7 +133,11 @@ describe('planCommand (012)', () => {
           principles: [
             { id: 'P-1', status: 'OK', note: 'single-file artifact preserved' },
             { id: 'P-2', status: 'OK', note: 'no per-surface duplication' },
-            { id: 'P-3', status: 'EXCEPTION', note: 'minor scope creep, justified' },
+            {
+              id: 'P-3',
+              status: 'EXCEPTION',
+              note: 'minor scope creep, justified',
+            },
           ],
         },
       },
@@ -146,7 +148,11 @@ describe('planCommand (012)', () => {
     expect(ai.chatCalls).toBe(1);
     expect(result.estimabilityBlockers).toEqual([]);
     expect(result.decisionsCount).toBe(2);
-    expect(result.principlesCheck).toEqual({ ok: 2, exceptions: 1, violations: 0 });
+    expect(result.principlesCheck).toEqual({
+      ok: 2,
+      exceptions: 1,
+      violations: 0,
+    });
     expect(result.html).toContain('099-clean');
     expect(result.html).toContain('D-001');
     expect(result.html).toContain('D-002');
@@ -180,9 +186,7 @@ describe('planCommand (012)', () => {
       },
     ]);
 
-    await expect(planCommand(baseInput(), ctxFrom(ai))).rejects.toThrow(
-      /1 principle\(s\) marked VIOLATION/,
-    );
+    await expect(planCommand(baseInput(), ctxFrom(ai))).rejects.toThrow(/1 principle\(s\) marked VIOLATION/);
   });
 
   it('re-entry mode: prompt includes "Sharpen this plan" and changelog reflects re-entry', async () => {
@@ -191,7 +195,13 @@ describe('planCommand (012)', () => {
         json: {
           approach: 'Sharpened approach.',
           decisions: [
-            { id: 'D-003', title: 'New decision', context: 'c', decision: 'd', consequences: 'x' },
+            {
+              id: 'D-003',
+              title: 'New decision',
+              context: 'c',
+              decision: 'd',
+              consequences: 'x',
+            },
           ],
           alternatives: [],
           risks: [],
@@ -204,10 +214,7 @@ describe('planCommand (012)', () => {
 <spec-decision id="D-001"><h4>D-001 · Existing</h4></spec-decision>
 </body></html>`;
 
-    const result = await planCommand(
-      baseInput({ existingPlan }),
-      ctxFrom(ai),
-    );
+    const result = await planCommand(baseInput({ existingPlan }), ctxFrom(ai));
 
     expect(ai.lastPrompt).toContain('Sharpen this plan');
     expect(ai.lastPrompt).toContain('ADD or ENHANCE only');
@@ -216,8 +223,6 @@ describe('planCommand (012)', () => {
   });
 
   it('throws when ctx.ai is undefined', async () => {
-    await expect(
-      planCommand(baseInput(), { cwd: '/tmp/test' }),
-    ).rejects.toThrow(/planCommand requires ctx\.ai/);
+    await expect(planCommand(baseInput(), { cwd: '/tmp/test' })).rejects.toThrow(/planCommand requires ctx\.ai/);
   });
 });

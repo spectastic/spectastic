@@ -1,6 +1,6 @@
-import { describe, expect, it } from 'vitest';
-import { resolveEffort, decide } from '@spectastic/core/decider';
 import type { AIProvider, ChatOpts, Question, SubagentOpts, SubagentResult } from '@spectastic/core';
+import { decide, resolveEffort } from '@spectastic/core/decider';
+import { describe, expect, it } from 'vitest';
 
 /**
  * Behavioural tests for auto effort (spec 034-effort-auto). They exercise the
@@ -48,7 +48,11 @@ class CriticStub implements AIProvider {
   }
   async subagent(_p: string, _o?: SubagentOpts): Promise<SubagentResult> {
     this.subagentCalls += 1;
-    return { output: JSON.stringify({ findings: [{ target: 'FR-001', concern: 'x' }] }) };
+    return {
+      output: JSON.stringify({
+        findings: [{ target: 'FR-001', concern: 'x' }],
+      }),
+    };
   }
 }
 
@@ -56,7 +60,15 @@ describe('auto sizes a panel by resolved level (034 SC-001/003)', () => {
   const runPanel = async (signal: { irreversible: boolean; breadth: number }, floor: 'low' | 'medium' = 'low') => {
     const { level, reason } = resolveEffort('auto', signal, floor);
     const ai = new CriticStub();
-    const v = await decide({ role: 'panel', effort: level }, { reviewPrompt: 'draft', irreversible: signal.irreversible, effortReason: reason }, ai);
+    const v = await decide(
+      { role: 'panel', effort: level },
+      {
+        reviewPrompt: 'draft',
+        irreversible: signal.irreversible,
+        effortReason: reason,
+      },
+      ai,
+    );
     return { voters: ai.subagentCalls, verdict: v };
   };
 

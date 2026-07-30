@@ -45,7 +45,13 @@ function matchCurrent(pack: CorpusPack, citation: CorpusCitation): ResolvedCitat
     if (doc.id !== citation.id) continue;
     const current = doc.provenance.edition ?? null;
     if (!editionMatches(citation.edition, current)) continue;
-    return { id: doc.id, edition: current ?? '', kind: 'current', filePath: doc.filePath, provenance: doc.provenance };
+    return {
+      id: doc.id,
+      edition: current ?? '',
+      kind: 'current',
+      filePath: doc.filePath,
+      provenance: doc.provenance,
+    };
   }
   return null;
 }
@@ -57,7 +63,13 @@ function matchSuperseded(pack: CorpusPack, citation: CorpusCitation): ResolvedCi
   for (const prior of pack.supersededEditions ?? []) {
     if (prior.id !== citation.id) continue;
     if (!editionMatches(citation.edition, prior.edition)) continue;
-    return { id: prior.id, edition: prior.edition, kind: 'superseded', filePath: prior.filePath, provenance: prior.provenance };
+    return {
+      id: prior.id,
+      edition: prior.edition,
+      kind: 'superseded',
+      filePath: prior.filePath,
+      provenance: prior.provenance,
+    };
   }
   return null;
 }
@@ -74,7 +86,13 @@ function matchRegistry(registry: readonly RegistryEntry[], citation: CorpusCitat
   for (const entry of registry) {
     if (entry.id !== citation.id) continue;
     if (!editionMatches(citation.edition, entry.edition)) continue;
-    return { id: entry.id, edition: entry.edition, kind: 'current', filePath: entry.path, provenance: { edition: entry.edition } };
+    return {
+      id: entry.id,
+      edition: entry.edition,
+      kind: 'current',
+      filePath: entry.path,
+      provenance: { edition: entry.edition },
+    };
   }
   return null;
 }

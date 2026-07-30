@@ -1,7 +1,7 @@
-import type { Command } from 'commander';
+import { detectEcosystems } from '@spectastic/core/enforce/detect';
 import { applyGitignore } from '@spectastic/core/gitignore/apply';
 import { BASE_ENTRIES, stackEntries } from '@spectastic/core/gitignore/entries';
-import { detectEcosystems } from '@spectastic/core/enforce/detect';
+import type { Command } from 'commander';
 
 /**
  * `spectastic gitignore [path] [--stack]` — scaffold/merge the spectastic-managed
@@ -29,9 +29,7 @@ export function registerGitignore(program: Command): void {
       const detail = opts.stack
         ? ` (base + stack: ${stacks.length > 0 ? stacks.sort().join(', ') : 'none detected'})`
         : ' (base)';
-      process.stdout.write(
-        `gitignore: ${changed ? 'updated' : 'already current'} .gitignore${detail}\n`,
-      );
+      process.stdout.write(`gitignore: ${changed ? 'updated' : 'already current'} .gitignore${detail}\n`);
       process.exit(0);
     });
 }

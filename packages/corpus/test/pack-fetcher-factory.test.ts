@@ -7,31 +7,32 @@
  * `--from` and env are tested for precedence against each other explicitly,
  * since a caller could plausibly set both by accident.
  */
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createPackFetcher } from '../src/pack-fetcher-factory.js';
 
 describe('createPackFetcher (061 T-012, mirrors createAIProvider precedence)', () => {
   let dir: string;
-  const saved = { stub: process.env['SPECTASTIC_PACK_STUB'] };
+  const saved = { stub: process.env.SPECTASTIC_PACK_STUB };
 
   beforeEach(() => {
     dir = mkdtempSync(join(tmpdir(), 'spectastic-pack-fetcher-'));
-    delete process.env['SPECTASTIC_PACK_STUB'];
+    delete process.env.SPECTASTIC_PACK_STUB;
   });
 
   afterEach(() => {
     rmSync(dir, { recursive: true, force: true });
-    if (saved.stub === undefined) delete process.env['SPECTASTIC_PACK_STUB'];
-    else process.env['SPECTASTIC_PACK_STUB'] = saved.stub;
+    if (saved.stub === undefined) delete process.env.SPECTASTIC_PACK_STUB;
+    else process.env.SPECTASTIC_PACK_STUB = saved.stub;
   });
 
   it('rung 1 — SPECTASTIC_PACK_STUB selects the stub fetcher, resolving a scripted coordinate', async () => {
     const scriptPath = join(dir, 'script.json');
     writeFileSync(scriptPath, JSON.stringify({ 'x@y': '/fixtures/x' }));
-    process.env['SPECTASTIC_PACK_STUB'] = scriptPath;
+    process.env.SPECTASTIC_PACK_STUB = scriptPath;
 
     const fetcher = createPackFetcher();
     await expect(fetcher.fetch('x@y')).resolves.toBe('/fixtures/x');
@@ -40,7 +41,7 @@ describe('createPackFetcher (061 T-012, mirrors createAIProvider precedence)', (
   it('rung 1 wins over --from — the stub is selected even when --from is also passed', async () => {
     const scriptPath = join(dir, 'script.json');
     writeFileSync(scriptPath, JSON.stringify({ 'x@y': '/fixtures/x' }));
-    process.env['SPECTASTIC_PACK_STUB'] = scriptPath;
+    process.env.SPECTASTIC_PACK_STUB = scriptPath;
 
     const fetcher = createPackFetcher({ from: '/some/local/checkout' });
     await expect(fetcher.fetch('x@y')).resolves.toBe('/fixtures/x');

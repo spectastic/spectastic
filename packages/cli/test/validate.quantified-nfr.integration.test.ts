@@ -28,7 +28,10 @@ interface RunResult {
 
 async function runCLI(args: string[], cwd: string): Promise<RunResult> {
   return new Promise((resolveFn) => {
-    const child = spawn('node', [CLI, ...args], { cwd, stdio: ['pipe', 'pipe', 'pipe'] });
+    const child = spawn('node', [CLI, ...args], {
+      cwd,
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
     let stdout = '';
     let stderr = '';
     child.stdout.on('data', (c: Buffer) => (stdout += c.toString('utf8')));
@@ -59,6 +62,10 @@ function project(tag: string): string {
 function withMarker(dir: string, profile: string): void {
   mkdirSync(join(dir, '.spectastic'), { recursive: true });
   writeFileSync(join(dir, '.spectastic', 'profile.json'), JSON.stringify({ profile, schema: 1 }), 'utf8');
+}
+
+function withFloor(dir: string, floor: number): void {
+  writeFileSync(join(dir, 'spectastic.json'), JSON.stringify({ validate: { quantifiedNfrFloor: floor } }), 'utf8');
 }
 
 describe('validate: US2 a verified NFR must be quantified (SC-002)', () => {
@@ -93,5 +100,32 @@ describe('validate: US2 a verified NFR must be quantified (SC-002)', () => {
     writeFileSync(join(dir, 'spec.html'), UNQUANTIFIED_SPEC, 'utf8');
     const r = await runCLI(['validate', 'spec.html'], dir);
     expect(r.code, r.stdout).toBe(0);
+  });
+});
+
+// 068-enterprise-enforce-floor T-211: the real spectastic.json-read convention
+// floor, end-to-end through the CLI binary (not just the unit-tested pure
+// function). Confirms readQuantifiedNfrFloor is actually wired into
+// scanQuantifiedNfr, not only quantifiedNfrFindings itself.
+describe('validate: config-declared convention floor, end-to-end (FR-009)', () => {
+  it('a below-floor spec with an unquantified NFR → exit 0 (exempt)', async () => {
+    const dir = project('floor-below');
+    withMarker(dir, 'verified');
+    withFloor(dir, 100);
+    mkdirSync(join(dir, 'specs', '042-old'), { recursive: true });
+    writeFileSync(join(dir, 'specs', '042-old', 'spec.html'), UNQUANTIFIED_SPEC, 'utf8');
+    const r = await runCLI(['validate', 'specs/042-old/spec.html'], dir);
+    expect(r.code, r.stdout).toBe(0);
+  });
+
+  it('an at/above-floor spec with an unquantified NFR → exit 1 (still gated)', async () => {
+    const dir = project('floor-above');
+    withMarker(dir, 'verified');
+    withFloor(dir, 10);
+    mkdirSync(join(dir, 'specs', '042-old'), { recursive: true });
+    writeFileSync(join(dir, 'specs', '042-old', 'spec.html'), UNQUANTIFIED_SPEC, 'utf8');
+    const r = await runCLI(['validate', 'specs/042-old/spec.html'], dir);
+    expect(r.code, r.stdout).toBe(1);
+    expect(r.stdout).toContain(RULE);
   });
 });

@@ -1,7 +1,7 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { test, expect } from '@playwright/test';
+import { expect, test } from '@playwright/test';
 // Import the built engine directly — the repo root isn't a workspace member.
 // Requires `pnpm --filter @spectastic/core build`.
 import { orderCommand } from '../packages/core/dist/commands/order.js';
@@ -19,14 +19,24 @@ const URL = '/tests/fixtures/roadmap.generated.html';
 
 const corpus = [
   { specId: '001-a', html: htmlFor('001-a', { deferTo: ['002-b', '003-c'] }) },
-  { specId: '002-b', html: htmlFor('002-b', { parent: '001-a', rice: [5, 5, 1, 1] }) },
-  { specId: '003-c', html: htmlFor('003-c', { parent: '001-a', rice: [1, 1, 1, 1] }) },
+  {
+    specId: '002-b',
+    html: htmlFor('002-b', { parent: '001-a', rice: [5, 5, 1, 1] }),
+  },
+  {
+    specId: '003-c',
+    html: htmlFor('003-c', { parent: '001-a', rice: [1, 1, 1, 1] }),
+  },
   { specId: '004-unranked', html: htmlFor('004-unranked', {}) },
 ];
 
 function htmlFor(
   id: string,
-  o: { parent?: string; deferTo?: string[]; rice?: [number, number, number, number] },
+  o: {
+    parent?: string;
+    deferTo?: string[];
+    rice?: [number, number, number, number];
+  },
 ): string {
   const parent = o.parent ? `<spec-parent specid="${o.parent}"></spec-parent>` : '';
   const defers = (o.deferTo ?? []).map((t) => `<li defer-to="${t}">x</li>`).join('');
@@ -58,9 +68,7 @@ test('an un-RICE spec is shown and tagged unranked, never dropped (FR-006)', asy
   await expect(row.locator('spec-pill')).toContainText('unranked');
 });
 
-test('the order table is contained — no horizontal overflow, sits within the viewport', async ({
-  page,
-}) => {
+test('the order table is contained — no horizontal overflow, sits within the viewport', async ({ page }) => {
   await page.goto(URL);
   const table = page.locator('#order table');
   const fits = await table.evaluate((el) => el.scrollWidth <= el.clientWidth + 1);

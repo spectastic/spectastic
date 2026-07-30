@@ -23,17 +23,9 @@ const RULE = 'corpus-license';
  * through to the unrecognised/warn path — the conservative reading of the
  * plan's "CC-BY-*" shorthand. */
 const PERMISSIVE_LICENSES: ReadonlySet<string> = new Set(
-  [
-    'MIT',
-    'Apache-2.0',
-    'BSD-2-Clause',
-    'BSD-3-Clause',
-    'CC0-1.0',
-    'ISC',
-    'Unlicense',
-    '0BSD',
-    'public-domain',
-  ].map((id) => id.toLowerCase()),
+  ['MIT', 'Apache-2.0', 'BSD-2-Clause', 'BSD-3-Clause', 'CC0-1.0', 'ISC', 'Unlicense', '0BSD', 'public-domain'].map(
+    (id) => id.toLowerCase(),
+  ),
 );
 
 /** Plain Creative Commons Attribution only — no NC (non-commercial), ND
@@ -60,7 +52,8 @@ function licenseFinding(file: string, license: string): Finding {
     rule: RULE,
     severity: 'warning',
     message: `${file} declares license "${license}", which restricts or isn't recognised as permissive — redistributing this document may be restricted.`,
-    fixHint: "Confirm the license permits redistribution, or hold the source by reference instead (see the README's redistribution policy).",
+    fixHint:
+      "Confirm the license permits redistribution, or hold the source by reference instead (see the README's redistribution policy).",
   };
 }
 

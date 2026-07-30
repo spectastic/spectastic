@@ -62,8 +62,8 @@ const GROUNDING_DIRECTIVE =
   'When a design-bearing DOMAIN fact — not a local product decision such as a ' +
   'latency target, a UX choice, or a stack pick — rests on one of these documents, ' +
   'cite it in the relevant <spec-decision> as KB-NNNN@edition, pinned to the edition ' +
-  'shown in the index — the referenced document\'s own edition, never a marketplace ' +
-  'plugin version. Pull a document\'s full text only when the work calls for it; ' +
+  "shown in the index — the referenced document's own edition, never a marketplace " +
+  "plugin version. Pull a document's full text only when the work calls for it; " +
   'do not fabricate a citation to a document not listed here.';
 
 function renderRow(entry: IndexEntry): string {

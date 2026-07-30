@@ -1,13 +1,6 @@
-import { describe, expect, it } from 'vitest';
+import type { AIProvider, ChatOpts, KernelContext, Question, SubagentOpts, SubagentResult } from '@spectastic/core';
 import { specCommand } from '@spectastic/core/commands/spec';
-import type {
-  AIProvider,
-  ChatOpts,
-  KernelContext,
-  Question,
-  SubagentOpts,
-  SubagentResult,
-} from '@spectastic/core';
+import { describe, expect, it } from 'vitest';
 
 /**
  * Unit tests for specCommand. Per the 011-core-spec contract: stub
@@ -61,14 +54,30 @@ const validSpecJson = (overrides: Record<string, unknown> = {}): string =>
       },
     ],
     frs: [
-      { id: 'FR-001', priority: 'must', body: 'The kernel MUST emit a spec ID.' },
-      { id: 'FR-002', priority: 'should', body: 'The kernel SHOULD surface smallest-demoable.' },
+      {
+        id: 'FR-001',
+        priority: 'must',
+        body: 'The kernel MUST emit a spec ID.',
+      },
+      {
+        id: 'FR-002',
+        priority: 'should',
+        body: 'The kernel SHOULD surface smallest-demoable.',
+      },
     ],
     nfrs: [
-      { id: 'NFR-001', priority: 'must', body: 'Rendering MUST be deterministic.' },
+      {
+        id: 'NFR-001',
+        priority: 'must',
+        body: 'Rendering MUST be deterministic.',
+      },
     ],
     scs: [
-      { id: 'SC-001', priority: 'must', body: 'Spec opens cleanly in a browser.' },
+      {
+        id: 'SC-001',
+        priority: 'must',
+        body: 'Spec opens cleanly in a browser.',
+      },
     ],
     ...overrides,
   });
@@ -76,10 +85,7 @@ const validSpecJson = (overrides: Record<string, unknown> = {}): string =>
 describe('specCommand (011 FR-* via spec)', () => {
   it('happy path: renders spec ID, requirements, draft status pill, and changelog', async () => {
     const ai = new StubAI([validSpecJson()]);
-    const result = await specCommand(
-      { description: 'add a spec kernel' },
-      ctxFrom(ai),
-    );
+    const result = await specCommand({ description: 'add a spec kernel' }, ctxFrom(ai));
 
     expect(result.specId).toBe('000-add-a-spec-kernel');
     expect(result.html).toContain('000-add-a-spec-kernel');
@@ -101,10 +107,7 @@ describe('specCommand (011 FR-* via spec)', () => {
         smallestDemoable: 'Author one spec end-to-end with no manual HTML editing.',
       }),
     ]);
-    const result = await specCommand(
-      { description: 'demoable surfacing' },
-      ctxFrom(ai),
-    );
+    const result = await specCommand({ description: 'demoable surfacing' }, ctxFrom(ai));
 
     expect(result.html).toContain('<b>Smallest demoable</b>');
     expect(result.html).toContain('Author one spec end-to-end with no manual HTML editing.');
@@ -125,15 +128,10 @@ describe('specCommand (011 FR-* via spec)', () => {
           { id: 'NFR-001', priority: 'must', body: 'd' },
           { id: 'NFR-002', priority: 'should', body: 'e' },
         ],
-        scs: [
-          { id: 'SC-001', priority: 'must', body: 'f' },
-        ],
+        scs: [{ id: 'SC-001', priority: 'must', body: 'f' }],
       }),
     ]);
-    const result = await specCommand(
-      { description: 'count test' },
-      ctxFrom(ai),
-    );
+    const result = await specCommand({ description: 'count test' }, ctxFrom(ai));
 
     expect(result.requirementsCount).toBe(6);
   });
@@ -155,15 +153,10 @@ describe('specCommand (011 FR-* via spec)', () => {
         scs: mkReq('SC', 5),
       }),
     ]);
-    const result = await specCommand(
-      { description: 'over-budget' },
-      ctxFrom(ai),
-    );
+    const result = await specCommand({ description: 'over-budget' }, ctxFrom(ai));
 
     expect(result.requirementsCount).toBe(25);
-    expect(result.warnings).toContain(
-      'requirements count 25 exceeds 20 — consider splitting',
-    );
+    expect(result.warnings).toContain('requirements count 25 exceeds 20 — consider splitting');
   });
 
   it('emits warning when smallestDemoable is missing from AI response', async () => {
@@ -177,20 +170,13 @@ describe('specCommand (011 FR-* via spec)', () => {
         scs: [],
       }),
     ]);
-    const result = await specCommand(
-      { description: 'missing demoable' },
-      ctxFrom(ai),
-    );
+    const result = await specCommand({ description: 'missing demoable' }, ctxFrom(ai));
 
-    expect(result.warnings).toContain(
-      'smallest-demoable not surfaced; spec interview may have failed',
-    );
+    expect(result.warnings).toContain('smallest-demoable not surfaced; spec interview may have failed');
   });
 
   it('throws when ctx.ai is undefined', async () => {
-    await expect(
-      specCommand({ description: 'x' }, { cwd: '/tmp' }),
-    ).rejects.toThrow(/specCommand requires ctx\.ai/);
+    await expect(specCommand({ description: 'x' }, { cwd: '/tmp' })).rejects.toThrow(/specCommand requires ctx\.ai/);
   });
 
   it('re-entry mode: prompt includes "Sharpen this existing spec" and existing content', async () => {

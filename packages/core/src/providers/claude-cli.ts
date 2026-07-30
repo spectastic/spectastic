@@ -19,13 +19,7 @@
 
 import { execFile as execFileCb } from 'node:child_process';
 import { promisify } from 'node:util';
-import type {
-  AIProvider,
-  ChatOpts,
-  Question,
-  SubagentOpts,
-  SubagentResult,
-} from '../types.js';
+import type { AIProvider, ChatOpts, Question, SubagentOpts, SubagentResult } from '../types.js';
 
 const execFile = promisify(execFileCb);
 
@@ -68,9 +62,7 @@ export class ClaudeCliProvider implements AIProvider {
     return this.invoke(prompt);
   }
 
-  async ask<TResult extends Record<string, string>>(
-    questions: ReadonlyArray<Question>,
-  ): Promise<TResult> {
+  async ask<TResult extends Record<string, string>>(questions: ReadonlyArray<Question>): Promise<TResult> {
     const schema = questions.map((q) => ({
       key: q.header,
       question: q.question,
@@ -93,9 +85,7 @@ export class ClaudeCliProvider implements AIProvider {
       );
       parsed = tryParseAnswers(raw);
       if (!parsed) {
-        throw new ClaudeCliProviderError(
-          'claude CLI did not return parseable JSON after one retry.',
-        );
+        throw new ClaudeCliProviderError('claude CLI did not return parseable JSON after one retry.');
       }
     }
     return parsed as TResult;
@@ -120,7 +110,9 @@ export class ClaudeCliProvider implements AIProvider {
   }
 
   private async defaultRun(argv: ReadonlyArray<string>): Promise<ClaudeCliRunResult> {
-    const { stdout } = await execFile(this.bin, [...argv], { maxBuffer: 10 * 1024 * 1024 });
+    const { stdout } = await execFile(this.bin, [...argv], {
+      maxBuffer: 10 * 1024 * 1024,
+    });
     return { stdout };
   }
 }

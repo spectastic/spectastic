@@ -21,8 +21,20 @@
  * decorative `<img aria-hidden="true">` (legitimate and common) would eat
  * every byte of prompt text after it looking for a `</img>` that can't exist. */
 const VOID_ELEMENTS = new Set([
-  'area', 'base', 'br', 'col', 'embed', 'hr', 'img',
-  'input', 'link', 'meta', 'param', 'source', 'track', 'wbr',
+  'area',
+  'base',
+  'br',
+  'col',
+  'embed',
+  'hr',
+  'img',
+  'input',
+  'link',
+  'meta',
+  'param',
+  'source',
+  'track',
+  'wbr',
 ]);
 
 const HIDDEN_MARKER_RE = /aria-hidden\s*=\s*["']?true["']?|(?:^|\s)hidden(?:\s|=|\/|>|$)/i;
@@ -74,12 +86,8 @@ function stripHiddenElements(html: string): string {
   let cursor = 0;
   let hiddenTag: string | null = null;
   let hiddenDepth = 0;
-  let match: RegExpExecArray | null;
-
-  while ((match = TAG_RE.exec(html))) {
-    const [full, closing, tagName, attrs, selfClose] = match as unknown as [
-      string, string, string, string, string,
-    ];
+  for (let match = TAG_RE.exec(html); match; match = TAG_RE.exec(html)) {
+    const [full, closing, tagName, attrs, selfClose] = match as unknown as [string, string, string, string, string];
     const lower = tagName.toLowerCase();
 
     if (hiddenTag) {
@@ -137,10 +145,5 @@ const GUARD =
  */
 export function fenceArtifactText(raw: string, label = 'Artifact'): string {
   const tag = label.toUpperCase().replace(/\s+/g, '_');
-  return [
-    `<<<BEGIN ${tag} DATA>>>`,
-    GUARD,
-    sanitizeArtifactText(raw),
-    `<<<END ${tag} DATA>>>`,
-  ].join('\n');
+  return [`<<<BEGIN ${tag} DATA>>>`, GUARD, sanitizeArtifactText(raw), `<<<END ${tag} DATA>>>`].join('\n');
 }

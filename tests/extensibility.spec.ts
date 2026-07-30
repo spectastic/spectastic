@@ -1,5 +1,5 @@
-import { test, expect } from '@playwright/test';
 import { readFileSync } from 'node:fs';
+import { expect, test } from '@playwright/test';
 
 // Polish — SC-004 (under the D-006 component-override model): adding a theme is
 // one self-contained, attribute-scoped stylesheet SECTION (token block + its
@@ -12,9 +12,11 @@ test('the switcher is generated from the registry (no per-artifact markup)', asy
   const { optionValues, registryIds } = await page.evaluate(() => ({
     // One switcher instance (footer + vivid header carry identical copies).
     optionValues: [...document.querySelector('select.theme-select')!.querySelectorAll('option')].map(
-      (o) => (o as HTMLOptionElement).value
+      (o) => (o as HTMLOptionElement).value,
     ),
-    registryIds: (window as any).__spectastic.THEMES.map((t: any) => t.id),
+    registryIds: (window as unknown as { __spectastic: { THEMES: Array<{ id: string }> } }).__spectastic.THEMES.map(
+      (t) => t.id,
+    ),
   }));
   expect(optionValues).toEqual(registryIds);
   expect(optionValues.length).toBeGreaterThanOrEqual(2);

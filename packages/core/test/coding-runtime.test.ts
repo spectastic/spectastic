@@ -109,7 +109,9 @@ describe('drainTasks — verify-gated drain (038 US1)', () => {
       {
         cwd: process.cwd(),
         // Agent self-reports done, writes a file — but verify fails.
-        coding: new StubCodingAgent({ 'T-100': { status: 'done', files: { 'a.test.ts': '// broken' } } }),
+        coding: new StubCodingAgent({
+          'T-100': { status: 'done', files: { 'a.test.ts': '// broken' } },
+        }),
         sandbox: fakeSandbox(),
         verify: fakeVerify(() => false),
       },
@@ -139,12 +141,16 @@ describe('drainTasks — verify-gated drain (038 US1)', () => {
   });
 
   it('halts blocked when a task has no test path (nothing to verify)', async () => {
-    const tasksHtml = TASKS(`<spec-task id="T-100"><input type="checkbox"><div><strong>impl</strong> <span class="path">src/foo.ts</span></div></spec-task>`);
+    const tasksHtml = TASKS(
+      `<spec-task id="T-100"><input type="checkbox"><div><strong>impl</strong> <span class="path">src/foo.ts</span></div></spec-task>`,
+    );
     const result = await drainTasks(
       { tasksHtml },
       {
         cwd: process.cwd(),
-        coding: new StubCodingAgent({ 'T-100': { files: { 'src/foo.ts': '//' } } }),
+        coding: new StubCodingAgent({
+          'T-100': { files: { 'src/foo.ts': '//' } },
+        }),
         sandbox: fakeSandbox(),
         verify: fakeVerify(() => true),
       },
@@ -163,7 +169,9 @@ describe('drainTasks — verify-gated drain (038 US1)', () => {
       { tasksHtml },
       {
         cwd: process.cwd(),
-        coding: new StubCodingAgent({ 'T-200': { files: { 'b.test.ts': '// b' } } }),
+        coding: new StubCodingAgent({
+          'T-200': { files: { 'b.test.ts': '// b' } },
+        }),
         sandbox: fakeSandbox(),
         verify: fakeVerify(() => true),
       },

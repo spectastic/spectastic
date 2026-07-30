@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { expect, test } from '@playwright/test';
 
 // US2 — switch mode within any theme (FR-003, FR-004, FR-005, SC-001).
 const FIXTURE = '/tests/fixtures/all-components.html';

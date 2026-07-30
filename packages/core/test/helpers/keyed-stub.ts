@@ -1,10 +1,4 @@
-import type {
-  AIProvider,
-  ChatOpts,
-  Question,
-  SubagentOpts,
-  SubagentResult,
-} from '@spectastic/core';
+import type { AIProvider, ChatOpts, Question, SubagentOpts, SubagentResult } from '@spectastic/core';
 
 /**
  * A concurrency-safe stub AIProvider for spec 032-triage-fanout (plan D-004).
@@ -80,9 +74,7 @@ export class KeyedStubAI implements AIProvider {
     return { output: await this.classify(prompt) };
   }
 
-  async ask<TResult extends Record<string, string>>(
-    questions: ReadonlyArray<Question>,
-  ): Promise<TResult> {
+  async ask<TResult extends Record<string, string>>(questions: ReadonlyArray<Question>): Promise<TResult> {
     this.callLog.push('ask');
     this.askCalls.push([...questions]);
     const response = this.askResponses[this.askCalls.length - 1];

@@ -12,22 +12,13 @@
  * prefixes. Author can override via input.adversarial = true | false.
  */
 
-import type {
-  Delta,
-  KernelContext,
-  ProposeInput,
-  ProposeResult,
-  RiskFinding,
-} from '../types.js';
-import { decide, resolveDecider, resolveEffort } from '../decider/index.js';
-import type { Verdict } from '../decider/index.js';
-import { fenceArtifactText } from '@spectastic/schema/fence';
 import { buildCorpusPromptBlock, loadCorpus, withCorpusHint } from '@spectastic/corpus';
+import { fenceArtifactText } from '@spectastic/schema/fence';
+import type { Verdict } from '../decider/index.js';
+import { decide, resolveDecider, resolveEffort } from '../decider/index.js';
+import type { Delta, KernelContext, ProposeInput, ProposeResult, RiskFinding } from '../types.js';
 
-export async function proposeCommand(
-  input: ProposeInput,
-  ctx: KernelContext,
-): Promise<ProposeResult> {
+export async function proposeCommand(input: ProposeInput, ctx: KernelContext): Promise<ProposeResult> {
   if (!ctx.ai) throw new Error('proposeCommand requires ctx.ai');
 
   // Corpus-in-prompt (054-corpus-in-prompt, D-001/D-005): '' when no knowledge/
@@ -43,7 +34,9 @@ export async function proposeCommand(
     corpusBlock ? `\n${corpusBlock}` : '',
     '',
     'Return JSON: { "intent": string, "scope": string, "approach": string, "deltas": [ { "op": "added"|"modified"|"removed"|"renamed", "target": "REQ-ID", "postState"?: string, "reason"?: string, "migration"?: string } ] }',
-  ].filter(Boolean).join('\n');
+  ]
+    .filter(Boolean)
+    .join('\n');
   const draftRaw = await ctx.ai.chat(draftPrompt, {
     temperature: 0,
     system: 'Output ONLY the requested JSON.',
@@ -63,8 +56,7 @@ export async function proposeCommand(
 
   // Irreversible signal for the escalation guardrail (spec 033 FR-008): a
   // removed-op or must-tier change keeps disposition with a human.
-  const irreversible =
-    deltas.some((d) => d.op === 'removed') || touchesMustTier(deltas, input.specHtml);
+  const irreversible = deltas.some((d) => d.op === 'removed') || touchesMustTier(deltas, input.specHtml);
 
   let risks: RiskFinding[] = [];
   let verdict: Verdict | undefined;
@@ -122,8 +114,16 @@ interface ParsedDraft {
 }
 
 function tryParse(raw: string): ParsedDraft | null {
-  const stripped = raw.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
-  try { return JSON.parse(stripped) as ParsedDraft; } catch { return null; }
+  const stripped = raw
+    .trim()
+    .replace(/^```(?:json)?\s*/i, '')
+    .replace(/\s*```$/i, '')
+    .trim();
+  try {
+    return JSON.parse(stripped) as ParsedDraft;
+  } catch {
+    return null;
+  }
 }
 
 function topicPrefixCount(deltas: Delta[]): number {
@@ -152,21 +152,25 @@ function renderProposalHtml(
   verdict?: Verdict,
 ): string {
   const today = new Date().toISOString().slice(0, 10);
-  const deltaBlocks = (draft.deltas ?? []).map((d) =>
-    `<spec-delta op="${d.op}" target="${d.target}">${d.postState ? `<spec-requirement id="${d.target}" priority="must"><p>${esc(d.postState)}</p></spec-requirement>` : ''}${d.reason ? `<div class="reason-block"><p><strong>Reason.</strong> ${esc(d.reason)}</p></div>` : ''}${d.migration ? `<div class="migration-block"><p><strong>Migration.</strong> ${esc(d.migration)}</p></div>` : ''}</spec-delta>`,
-  ).join('\n');
+  const deltaBlocks = (draft.deltas ?? [])
+    .map(
+      (d) =>
+        `<spec-delta op="${d.op}" target="${d.target}">${d.postState ? `<spec-requirement id="${d.target}" priority="must"><p>${esc(d.postState)}</p></spec-requirement>` : ''}${d.reason ? `<div class="reason-block"><p><strong>Reason.</strong> ${esc(d.reason)}</p></div>` : ''}${d.migration ? `<div class="migration-block"><p><strong>Migration.</strong> ${esc(d.migration)}</p></div>` : ''}</spec-delta>`,
+    )
+    .join('\n');
   // Verdict attribution on each risk (spec 033 FR-009): who decided, at what
   // effort, and the grounds (the per-finding vote tally).
-  const deciderAttr = verdict && verdict.role !== 'human'
-    ? ` decider="${verdict.role}" effort="${verdict.effort}"`
-    : '';
-  const riskBlocks = risks.map((r, i) => {
-    const effortNote = verdict?.effortReason ? ` (${esc(verdict.effortReason)})` : '';
-    const grounds = verdict?.tally[i]
-      ? `<div class="grounds"><p><strong>Decider.</strong> ${esc(verdict.role)} · ${esc(verdict.effort)}${effortNote} · ${esc(verdict.tally[i])}</p></div>`
-      : '';
-    return `<spec-risk target="${r.target}" status="identified"${deciderAttr}><header><h4>${esc(r.concern.slice(0, 80))}</h4></header><p><strong>Concern.</strong> ${esc(r.concern)}</p>${grounds}<div class="response"><em>Author response not yet recorded.</em></div></spec-risk>`;
-  }).join('\n');
+  const deciderAttr =
+    verdict && verdict.role !== 'human' ? ` decider="${verdict.role}" effort="${verdict.effort}"` : '';
+  const riskBlocks = risks
+    .map((r, i) => {
+      const effortNote = verdict?.effortReason ? ` (${esc(verdict.effortReason)})` : '';
+      const grounds = verdict?.tally[i]
+        ? `<div class="grounds"><p><strong>Decider.</strong> ${esc(verdict.role)} · ${esc(verdict.effort)}${effortNote} · ${esc(verdict.tally[i])}</p></div>`
+        : '';
+      return `<spec-risk target="${r.target}" status="identified"${deciderAttr}><header><h4>${esc(r.concern.slice(0, 80))}</h4></header><p><strong>Concern.</strong> ${esc(r.concern)}</p>${grounds}<div class="response"><em>Author response not yet recorded.</em></div></spec-risk>`;
+    })
+    .join('\n');
 
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
@@ -189,7 +193,11 @@ ${risks.length > 0 ? `<section id="risks"><h2>5 · Risk register</h2><spec-risk-
 }
 
 function slugify(s: string): string {
-  return s.toLowerCase().replace(/[^a-z0-9-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40);
+  return s
+    .toLowerCase()
+    .replace(/[^a-z0-9-]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 40);
 }
 
 function esc(s: string): string {

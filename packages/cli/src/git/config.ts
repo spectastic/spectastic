@@ -54,16 +54,14 @@ export function loadGitConfig(cwd: string): GitConfig {
   try {
     parsed = JSON.parse(raw) as unknown;
   } catch (err) {
-    throw new GitConfigError(
-      `spectastic.json is not valid JSON — ${(err as Error).message}`,
-    );
+    throw new GitConfigError(`spectastic.json is not valid JSON — ${(err as Error).message}`);
   }
 
   if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
     throw new GitConfigError('spectastic.json must contain a JSON object at its root.');
   }
 
-  const git = (parsed as Record<string, unknown>)['git'];
+  const git = (parsed as Record<string, unknown>).git;
   if (git === undefined) return { ...DEFAULT_GIT_CONFIG };
   if (git === null || typeof git !== 'object' || Array.isArray(git)) {
     throw new GitConfigError('spectastic.json "git" must be an object.');
@@ -71,14 +69,14 @@ export function loadGitConfig(cwd: string): GitConfig {
 
   const gitObj = git as Record<string, unknown>;
 
-  const auto = gitObj['auto'] ?? 'off';
+  const auto = gitObj.auto ?? 'off';
   if (typeof auto !== 'string' || !VALID_AUTO.includes(auto as GitAuto)) {
     throw new GitConfigError(
       `spectastic.json "git.auto" must be one of ${VALID_AUTO.join(', ')} (got ${JSON.stringify(auto)}).`,
     );
   }
 
-  const trailers = gitObj['trailers'] ?? 'off';
+  const trailers = gitObj.trailers ?? 'off';
   if (typeof trailers !== 'string' || !VALID_TRAILERS.includes(trailers as GitTrailers)) {
     throw new GitConfigError(
       `spectastic.json "git.trailers" must be one of ${VALID_TRAILERS.join(', ')} (got ${JSON.stringify(trailers)}).`,

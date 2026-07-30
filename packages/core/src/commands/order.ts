@@ -14,13 +14,13 @@ import { join } from 'node:path';
 import { buildGraph } from '../ordering/graph.js';
 import { scoreNodes } from '../ordering/score.js';
 import { topoOrder } from '../ordering/topo.js';
-import { applyWsjf, renderRoadmapHtml } from './order.render.js';
 import type { CorpusEntry, Ordering } from '../ordering/types.js';
 import type { KernelContext } from '../types.js';
+import { applyWsjf, renderRoadmapHtml } from './order.render.js';
 
-export { renderRoadmapHtml, applyWsjf } from './order.render.js';
-export { CycleError } from '../ordering/types.js';
 export type { Ordering, RankedNode } from '../ordering/types.js';
+export { CycleError } from '../ordering/types.js';
+export { applyWsjf, renderRoadmapHtml } from './order.render.js';
 
 export interface OrderInput {
   /** Pre-read corpus to order. When omitted, the kernel reads `specs/` via ctx.fs. */
@@ -64,6 +64,8 @@ export async function orderCommand(input: OrderInput, ctx: KernelContext): Promi
   const ordered = topoOrder(scored, edges); // throws CycleError on a cycle (FR-005)
   const entries = applyWsjf(ordered);
   const ordering: Ordering = { entries, dangling };
-  const html = renderRoadmapHtml(ordering, { ...(input.assetsPrefix ? { assetsPrefix: input.assetsPrefix } : {}) });
+  const html = renderRoadmapHtml(ordering, {
+    ...(input.assetsPrefix ? { assetsPrefix: input.assetsPrefix } : {}),
+  });
   return { ids: entries.map((e) => e.specId), html, ordering };
 }

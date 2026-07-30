@@ -13,10 +13,10 @@
  * subagents against the question — it never ratifies an author's own prior output.
  */
 
-import type { AIProvider, Question } from '../types.js';
-import type { DeciderConfig } from './types.js';
-import { effortToDepth } from './effort.js';
 import { mapPool } from '../helpers/map-pool.js';
+import type { AIProvider, Question } from '../types.js';
+import { effortToDepth } from './effort.js';
+import type { DeciderConfig } from './types.js';
 
 /** Answer a bounded-choice checkpoint by the configured role. Returns { header: chosenLabel }. */
 export async function decideChoice(
@@ -36,11 +36,10 @@ export async function decideChoice(
   return tally(questions, answers);
 }
 
-async function answerOnce(
-  questions: ReadonlyArray<Question>,
-  ai: AIProvider,
-): Promise<Record<string, string>> {
-  const res = await ai.subagent(buildChoicePrompt(questions), { task: 'decider-choice' });
+async function answerOnce(questions: ReadonlyArray<Question>, ai: AIProvider): Promise<Record<string, string>> {
+  const res = await ai.subagent(buildChoicePrompt(questions), {
+    task: 'decider-choice',
+  });
   return parseChoice(res.output, questions);
 }
 
@@ -56,7 +55,11 @@ function buildChoicePrompt(questions: ReadonlyArray<Question>): string {
 
 function parseChoice(raw: string, questions: ReadonlyArray<Question>): Record<string, string> {
   let parsed: Record<string, unknown> = {};
-  const stripped = raw.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
+  const stripped = raw
+    .trim()
+    .replace(/^```(?:json)?\s*/i, '')
+    .replace(/\s*```$/i, '')
+    .trim();
   try {
     const p = JSON.parse(stripped) as unknown;
     if (p && typeof p === 'object') parsed = p as Record<string, unknown>;

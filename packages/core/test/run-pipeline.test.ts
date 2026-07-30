@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { runPipeline, needsCheckpoint } from '../src/run/pipeline.js';
+import type { DeciderConfig } from '../src/decider/types.js';
+import { needsCheckpoint, runPipeline } from '../src/run/pipeline.js';
 import type { Checkpoint, PipelineStep, RunContext, StepOutcome } from '../src/run/types.js';
 import type { AIProvider, ChatOpts, Question, SubagentOpts, SubagentResult } from '../src/types.js';
-import type { DeciderConfig } from '../src/decider/types.js';
 
 /**
  * 037 driver tests. They RUN the driver over fake steps and assert order, the
@@ -82,10 +82,7 @@ describe('runPipeline — the chain, validated, decisions answered (037 SC-001)'
 
   it('halts + escalates on a validate finding, not proceeding to the next step', async () => {
     const ran: string[] = [];
-    const steps = [
-      fakeStep('plan', ran, { outcome: { findings: ['spec-question-open'] } }),
-      fakeStep('tasks', ran),
-    ];
+    const steps = [fakeStep('plan', ran, { outcome: { findings: ['spec-question-open'] } }), fakeStep('tasks', ran)];
     const esc = recorder('approve');
     const result = await runPipeline({ specId: 'x', decider: AGENT, checkpoints: 'minimal' }, ctx(steps, esc.fn));
     expect(result.completed).toBe(false);
@@ -97,7 +94,9 @@ describe('runPipeline — the chain, validated, decisions answered (037 SC-001)'
   it('halts on a drain halt from the implement step (038)', async () => {
     const ran: string[] = [];
     const steps = [
-      fakeStep('implement', ran, { outcome: { halted: { taskId: 'T-100', reason: 'verify failed' } } }),
+      fakeStep('implement', ran, {
+        outcome: { halted: { taskId: 'T-100', reason: 'verify failed' } },
+      }),
       fakeStep('verify', ran),
     ];
     const result = await runPipeline(
@@ -126,7 +125,14 @@ describe('runPipeline — decider role (037 SC-002)', () => {
   it('refuses a human decider — an unattended run cannot answer by hand', async () => {
     const steps = [fakeStep('plan', [], {})];
     await expect(
-      runPipeline({ specId: 'x', decider: { role: 'human', effort: 'medium' }, checkpoints: 'minimal' }, ctx(steps, recorder('approve').fn)),
+      runPipeline(
+        {
+          specId: 'x',
+          decider: { role: 'human', effort: 'medium' },
+          checkpoints: 'minimal',
+        },
+        ctx(steps, recorder('approve').fn),
+      ),
     ).rejects.toThrow(/human/);
   });
 });
@@ -145,7 +151,10 @@ describe('runPipeline — escalation gate (037 SC-003)', () => {
   it('resumes on approval and completes', async () => {
     const ran: string[] = [];
     const steps = [fakeStep('plan', ran), fakeStep('implement', ran), fakeStep('verify', ran)];
-    const result = await runPipeline({ specId: 'x', decider: AGENT, checkpoints: 'minimal' }, ctx(steps, recorder('approve').fn));
+    const result = await runPipeline(
+      { specId: 'x', decider: AGENT, checkpoints: 'minimal' },
+      ctx(steps, recorder('approve').fn),
+    );
     expect(result.completed).toBe(true);
     expect(ran).toContain('implement');
   });

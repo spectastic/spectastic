@@ -18,8 +18,9 @@ export interface Principle {
 // Enforcement primitives live in the core kernel (triage 042/T-001); imported
 // for local use and re-exported so this module's consumers (compose.ts, …) keep
 // importing them from './profiles.js'.
-import type { EnforcementCategory, EnforceGate } from '@spectastic/core/enforce/types';
-export type { EnforcementCategory, EnforceGate };
+import type { EnforceGate, EnforcementCategory } from '@spectastic/core/enforce/types';
+
+export type { EnforceGate, EnforcementCategory };
 
 export interface EnforcePolicy {
   gate: EnforceGate;
@@ -41,7 +42,11 @@ export interface Profile {
   agents: string[];
 }
 
-const NO_ENFORCE: EnforcePolicy = { gate: 'none', required: [], unwaivable: [] };
+const NO_ENFORCE: EnforcePolicy = {
+  gate: 'none',
+  required: [],
+  unwaivable: [],
+};
 
 export interface ProfileManifest {
   schema: number;

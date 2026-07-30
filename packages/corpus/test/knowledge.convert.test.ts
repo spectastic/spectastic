@@ -1,19 +1,19 @@
 import { createHash } from 'node:crypto';
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
+import {
+  CONVERTERS,
+  type ConverterSpec,
+  convertDocument,
+  ExecFileConverterRunner,
+  resolveConverterSpec,
+  StubConverterRunner,
+} from '../src/knowledge/convert.js';
 import { parseRegistry } from '../src/knowledge/index-format.js';
 import type { RegistryEntry } from '../src/knowledge/types.js';
-import {
-  convertDocument,
-  CONVERTERS,
-  resolveConverterSpec,
-  ExecFileConverterRunner,
-  StubConverterRunner,
-  type ConverterSpec,
-} from '../src/knowledge/convert.js';
 
 const FIXTURE_CONVERTER = fileURLToPath(new URL('./fixtures/fake-converter.mjs', import.meta.url));
 const MKT = 'test-marketplace';
@@ -35,7 +35,13 @@ describe('ConverterRunner — StubConverterRunner (T-010)', () => {
   it('records every call it received, for assertions on argv shape', async () => {
     const runner = new StubConverterRunner({ stdout: 'x' });
     await runner.run('docling', ['paper.pdf', '--to', 'md', '--output', '/tmp/x']);
-    expect(runner.calls).toEqual([{ bin: 'docling', argv: ['paper.pdf', '--to', 'md', '--output', '/tmp/x'], opts: undefined }]);
+    expect(runner.calls).toEqual([
+      {
+        bin: 'docling',
+        argv: ['paper.pdf', '--to', 'md', '--output', '/tmp/x'],
+        opts: undefined,
+      },
+    ]);
   });
 });
 
@@ -84,9 +90,17 @@ describe('convertDocument — US1: default convert registers a two-layer documen
   it('files a slug: document at references/<NNN-slug>.md, a root-registry KB-NNNN row, and a SKILL.md', async () => {
     const sourceFile = tempSourceFile('paper.pdf', 'the original pdf bytes');
     const knowledgeDir = tempKnowledgeDir();
-    const runner = new StubConverterRunner({ stdout: '# Converted\n\nBody text.\n' });
+    const runner = new StubConverterRunner({
+      stdout: '# Converted\n\nBody text.\n',
+    });
 
-    const result = await convertDocument({ sourceFile, knowledgeDir, pack: 'research', marketplace: MKT, runner });
+    const result = await convertDocument({
+      sourceFile,
+      knowledgeDir,
+      pack: 'research',
+      marketplace: MKT,
+      runner,
+    });
 
     // NNN-slug filename + returned path.
     expect(result.filePath).toBe('research/references/001-paper.md');
@@ -101,7 +115,11 @@ describe('convertDocument — US1: default convert registers a two-layer documen
 
     // Root-registry row (the registry is authoritative, 062 FR-006).
     const row = readRegistry(knowledgeDir).find((r) => r.id === result.id);
-    expect(row).toMatchObject({ marketplace: MKT, plugin: 'research', slug: '001-paper' });
+    expect(row).toMatchObject({
+      marketplace: MKT,
+      plugin: 'research',
+      slug: '001-paper',
+    });
 
     // SKILL.md created — the pack functions as an Agent Skill (057; the 065 T-003 gate).
     expect(existsSync(join(knowledgeDir, 'research', 'SKILL.md'))).toBe(true);
@@ -115,7 +133,9 @@ describe('convertDocument — US1: default convert registers a two-layer documen
     const sourceFile = tempSourceFile('paper.pdf', 'bytes');
     const knowledgeDir = tempKnowledgeDir();
     const runner = new StubConverterRunner({ stdout: '# x\n' });
-    await expect(convertDocument({ sourceFile, knowledgeDir, pack: 'research', runner })).rejects.toThrow(/marketplace/i);
+    await expect(convertDocument({ sourceFile, knowledgeDir, pack: 'research', runner })).rejects.toThrow(
+      /marketplace/i,
+    );
   });
 
   it('is idempotent — re-converting the same source reuses its slug and mints no duplicate registry row', async () => {
@@ -123,8 +143,20 @@ describe('convertDocument — US1: default convert registers a two-layer documen
     const knowledgeDir = tempKnowledgeDir();
     const runner = new StubConverterRunner({ stdout: '# Converted\n' });
 
-    const first = await convertDocument({ sourceFile, knowledgeDir, pack: 'research', marketplace: MKT, runner });
-    const second = await convertDocument({ sourceFile, knowledgeDir, pack: 'research', marketplace: MKT, runner });
+    const first = await convertDocument({
+      sourceFile,
+      knowledgeDir,
+      pack: 'research',
+      marketplace: MKT,
+      runner,
+    });
+    const second = await convertDocument({
+      sourceFile,
+      knowledgeDir,
+      pack: 'research',
+      marketplace: MKT,
+      runner,
+    });
 
     expect(second.filePath).toBe(first.filePath);
     const rows = readRegistry(knowledgeDir).filter((r) => r.plugin === 'research');
@@ -135,7 +167,11 @@ describe('convertDocument — US1: default convert registers a two-layer documen
 /** Wraps a real registry entry so it runs the fixture shim (via `node`) instead of
  * the real binary, keeping its own buildArgs/collectOutput shape intact (T-200/T-211). */
 function fixtureSpec(real: ConverterSpec): ConverterSpec {
-  return { ...real, bin: 'node', buildArgs: (file, tmpDir) => [FIXTURE_CONVERTER, ...real.buildArgs(file, tmpDir)] };
+  return {
+    ...real,
+    bin: 'node',
+    buildArgs: (file, tmpDir) => [FIXTURE_CONVERTER, ...real.buildArgs(file, tmpDir)],
+  };
 }
 
 describe('convertDocument — US2: --converter routes to the right registry entry (T-200)', () => {
@@ -144,8 +180,13 @@ describe('convertDocument — US2: --converter routes to the right registry entr
     const knowledgeDir = tempKnowledgeDir();
 
     const result = await convertDocument({
-      sourceFile, knowledgeDir, pack: 'research', marketplace: MKT,
-      converter: 'docling', runner: new ExecFileConverterRunner(), registry: { docling: fixtureSpec(CONVERTERS.docling) },
+      sourceFile,
+      knowledgeDir,
+      pack: 'research',
+      marketplace: MKT,
+      converter: 'docling',
+      runner: new ExecFileConverterRunner(),
+      registry: { docling: fixtureSpec(CONVERTERS.docling) },
     });
 
     const filed = readFiled(knowledgeDir, result.filePath!);
@@ -158,8 +199,13 @@ describe('convertDocument — US2: --converter routes to the right registry entr
     const knowledgeDir = tempKnowledgeDir();
 
     const result = await convertDocument({
-      sourceFile, knowledgeDir, pack: 'research', marketplace: MKT,
-      converter: 'marker', runner: new ExecFileConverterRunner(), registry: { marker: fixtureSpec(CONVERTERS.marker) },
+      sourceFile,
+      knowledgeDir,
+      pack: 'research',
+      marketplace: MKT,
+      converter: 'marker',
+      runner: new ExecFileConverterRunner(),
+      registry: { marker: fixtureSpec(CONVERTERS.marker) },
     });
 
     const filed = readFiled(knowledgeDir, result.filePath!);
@@ -172,10 +218,19 @@ describe('resolveConverterSpec — US2: unrecognised converter rejected pre-run 
   it('throws before any process runs, even against a custom registry', async () => {
     const sourceFile = tempSourceFile('paper.pdf', 'bytes');
     const knowledgeDir = tempKnowledgeDir();
-    const runner = new StubConverterRunner({ stdout: 'should never be reached' });
+    const runner = new StubConverterRunner({
+      stdout: 'should never be reached',
+    });
 
     await expect(
-      convertDocument({ sourceFile, knowledgeDir, pack: 'research', marketplace: MKT, converter: 'not-a-real-converter', runner }),
+      convertDocument({
+        sourceFile,
+        knowledgeDir,
+        pack: 'research',
+        marketplace: MKT,
+        converter: 'not-a-real-converter',
+        runner,
+      }),
     ).rejects.toThrow(/unknown converter/i);
 
     expect(runner.calls).toHaveLength(0);
@@ -186,9 +241,17 @@ describe('convertDocument — US3: content-hash pins the SOURCE, preserved throu
   it('the filed content-hash equals the SHA-256 of the original file bytes, not the markdown', async () => {
     const sourceFile = tempSourceFile('paper.pdf', 'the real source bytes');
     const knowledgeDir = tempKnowledgeDir();
-    const runner = new StubConverterRunner({ stdout: '# Totally different markdown text, not the source\n' });
+    const runner = new StubConverterRunner({
+      stdout: '# Totally different markdown text, not the source\n',
+    });
 
-    const result = await convertDocument({ sourceFile, knowledgeDir, pack: 'research', marketplace: MKT, runner });
+    const result = await convertDocument({
+      sourceFile,
+      knowledgeDir,
+      pack: 'research',
+      marketplace: MKT,
+      runner,
+    });
 
     const filed = readFiled(knowledgeDir, result.filePath!);
     const expectedHash = `sha256:${createHash('sha256').update('the real source bytes', 'utf8').digest('hex')}`;
@@ -204,7 +267,13 @@ describe('convertDocument — US3: converter + origin recorded, TODO otherwise (
       argv.includes('--version') ? { stdout: 'markitdown 1.2.3\n' } : { stdout: '# Converted\n' },
     );
 
-    const result = await convertDocument({ sourceFile, knowledgeDir, pack: 'research', marketplace: MKT, runner });
+    const result = await convertDocument({
+      sourceFile,
+      knowledgeDir,
+      pack: 'research',
+      marketplace: MKT,
+      runner,
+    });
 
     const filed = readFiled(knowledgeDir, result.filePath!);
     expect(filed).toContain('converter: markitdown 1.2.3');
@@ -223,8 +292,13 @@ describe('convertDocument — US3: converter + origin recorded, TODO otherwise (
     const runner = new StubConverterRunner({ stdout: '# Converted\n' });
 
     const result = await convertDocument({
-      sourceFile, knowledgeDir, pack: 'research', marketplace: MKT,
-      converter: 'whatever-tool', runner, registry: { 'whatever-tool': noVersionSpec },
+      sourceFile,
+      knowledgeDir,
+      pack: 'research',
+      marketplace: MKT,
+      converter: 'whatever-tool',
+      runner,
+      registry: { 'whatever-tool': noVersionSpec },
     });
 
     const filed = readFiled(knowledgeDir, result.filePath!);
@@ -237,11 +311,18 @@ describe('convertDocument — FR-007: title/description overrides + filename-ste
   it('--title / --description set the registry title and the SKILL slug-map description', async () => {
     const sourceFile = tempSourceFile('dodbook.pdf', 'bytes');
     const knowledgeDir = tempKnowledgeDir();
-    const runner = new StubConverterRunner({ stdout: '# noisy pdf heading\n\nnoisy first paragraph\n' });
+    const runner = new StubConverterRunner({
+      stdout: '# noisy pdf heading\n\nnoisy first paragraph\n',
+    });
 
     const result = await convertDocument({
-      sourceFile, knowledgeDir, pack: 'research', marketplace: MKT, runner,
-      title: 'Data-Oriented Design', description: 'A hand-written summary of the book.',
+      sourceFile,
+      knowledgeDir,
+      pack: 'research',
+      marketplace: MKT,
+      runner,
+      title: 'Data-Oriented Design',
+      description: 'A hand-written summary of the book.',
     });
 
     const row = readRegistry(knowledgeDir).find((r) => r.id === result.id);
@@ -253,9 +334,17 @@ describe('convertDocument — FR-007: title/description overrides + filename-ste
   it('falls back to the humanised filename stem for the title when there is no heading and no --title', async () => {
     const sourceFile = tempSourceFile('dodbook.pdf', 'bytes');
     const knowledgeDir = tempKnowledgeDir();
-    const runner = new StubConverterRunner({ stdout: 'no heading here, just prose\n' });
+    const runner = new StubConverterRunner({
+      stdout: 'no heading here, just prose\n',
+    });
 
-    const result = await convertDocument({ sourceFile, knowledgeDir, pack: 'research', marketplace: MKT, runner });
+    const result = await convertDocument({
+      sourceFile,
+      knowledgeDir,
+      pack: 'research',
+      marketplace: MKT,
+      runner,
+    });
 
     const row = readRegistry(knowledgeDir).find((r) => r.id === result.id);
     expect(row?.title).toBe('Dodbook');

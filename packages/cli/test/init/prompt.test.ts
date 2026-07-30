@@ -1,9 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-  applyAnswer,
-  applyForce,
-  type LoopMode,
-} from '../../src/commands/init/prompt.js';
+import { applyAnswer, applyForce, type LoopMode } from '../../src/commands/init/prompt.js';
 import type { FileWriteDecision } from '../../src/commands/init/types.js';
 
 function mkConflict(dest: string): FileWriteDecision {

@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest';
-import { ARTIFACT_GLOBS, HOOK_MARKER, buildHookScript } from '../src/commands/init/hook.js';
+import { describe, expect, it } from 'vitest';
+import { ARTIFACT_GLOBS, buildHookScript, HOOK_MARKER } from '../src/commands/init/hook.js';
 
 /**
  * T-103 of specs/031-init-tools/tasks.html. The generated pre-commit hook script
@@ -28,7 +28,7 @@ describe('buildHookScript', () => {
     for (const g of ARTIFACT_GLOBS) expect(script).toContain(g);
   });
 
-  it('adds no custom bypass — --no-verify is git\'s own (FR-005)', () => {
+  it("adds no custom bypass — --no-verify is git's own (FR-005)", () => {
     expect(script.toLowerCase()).not.toContain('no-verify');
   });
 });

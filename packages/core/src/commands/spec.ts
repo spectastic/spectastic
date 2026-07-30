@@ -13,21 +13,14 @@
  * The kernel returns the rendered HTML; the caller writes it.
  */
 
-import { extractHealth } from '@spectastic/schema';
-import { sliceCommand, appendSplitToParent } from './slice.js';
-import { shouldAutoOffer } from '../slice/gate.js';
-import { fenceArtifactText } from '@spectastic/schema/fence';
 import { buildCorpusPromptBlock, loadCorpus, withCorpusHint } from '@spectastic/corpus';
-import type {
-  KernelContext,
-  SpecInput,
-  SpecResult,
-} from '../types.js';
+import { extractHealth } from '@spectastic/schema';
+import { fenceArtifactText } from '@spectastic/schema/fence';
+import { shouldAutoOffer } from '../slice/gate.js';
+import type { KernelContext, SpecInput, SpecResult } from '../types.js';
+import { appendSplitToParent, sliceCommand } from './slice.js';
 
-export async function specCommand(
-  input: SpecInput,
-  ctx: KernelContext,
-): Promise<SpecResult> {
+export async function specCommand(input: SpecInput, ctx: KernelContext): Promise<SpecResult> {
   if (!ctx.ai) {
     throw new Error('specCommand requires ctx.ai');
   }
@@ -39,19 +32,19 @@ export async function specCommand(
     if (!input.existingSpec) {
       throw new Error('specCommand: split mode requires the existing parent spec (existingSpec)');
     }
-    const slice = await sliceCommand(
-      { parentSpecId: specId, parentHtml: input.existingSpec },
-      ctx,
-    );
+    const slice = await sliceCommand({ parentSpecId: specId, parentHtml: input.existingSpec }, ctx);
     const html = appendSplitToParent(input.existingSpec, slice.splitSection);
     const warnings =
-      slice.verdict.kind === 'dont-split'
-        ? [`don't-split verdict: ${slice.verdict.reasons.join('; ')}`]
-        : [];
+      slice.verdict.kind === 'dont-split' ? [`don't-split verdict: ${slice.verdict.reasons.join('; ')}`] : [];
     if (!slice.model.coverage.isTotalAndDisjoint) {
       warnings.push('coverage partition is incomplete — see the <spec-split> coverage table');
     }
-    return { html, specId, requirementsCount: slice.model.orderedChildren.length, warnings };
+    return {
+      html,
+      specId,
+      requirementsCount: slice.model.orderedChildren.length,
+      warnings,
+    };
   }
 
   const isReentry = !!input.existingSpec;
@@ -83,8 +76,7 @@ export async function specCommand(
   }
 
   const html = renderSpecHtml(specId, parsed, input.description, isReentry);
-  const reqCount =
-    (parsed.frs?.length ?? 0) + (parsed.nfrs?.length ?? 0) + (parsed.scs?.length ?? 0);
+  const reqCount = (parsed.frs?.length ?? 0) + (parsed.nfrs?.length ?? 0) + (parsed.scs?.length ?? 0);
 
   const warnings: string[] = [];
   if (reqCount > 20) warnings.push(`requirements count ${reqCount} exceeds 20 — consider splitting`);
@@ -104,14 +96,26 @@ export async function specCommand(
 interface ParsedSpec {
   tldr?: string;
   smallestDemoable?: string;
-  stories?: Array<{ id: string; title: string; role: string; want: string; outcome: string; acceptance: string; priority: string }>;
+  stories?: Array<{
+    id: string;
+    title: string;
+    role: string;
+    want: string;
+    outcome: string;
+    acceptance: string;
+    priority: string;
+  }>;
   frs?: Array<{ id: string; priority: string; body: string }>;
   nfrs?: Array<{ id: string; priority: string; body: string }>;
   scs?: Array<{ id: string; priority: string; body: string }>;
 }
 
 function tryParse(raw: string): ParsedSpec | null {
-  const stripped = raw.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
+  const stripped = raw
+    .trim()
+    .replace(/^```(?:json)?\s*/i, '')
+    .replace(/\s*```$/i, '')
+    .trim();
   try {
     return JSON.parse(stripped) as ParsedSpec;
   } catch {
@@ -128,12 +132,7 @@ function deriveSpecId(description: string): string {
   return `000-${slug || 'unnamed'}`;
 }
 
-function renderSpecHtml(
-  specId: string,
-  s: ParsedSpec,
-  description: string,
-  isReentry: boolean,
-): string {
+function renderSpecHtml(specId: string, s: ParsedSpec, description: string, isReentry: boolean): string {
   const today = new Date().toISOString().slice(0, 10);
   const stories = (s.stories ?? [])
     .map(
@@ -141,13 +140,10 @@ function renderSpecHtml(
         `<h3>${st.id} · ${esc(st.title)} <spec-pill>${st.priority}</spec-pill></h3>\n<p>As a <strong>${esc(st.role)}</strong>, I want to <strong>${esc(st.want)}</strong> so that <strong>${esc(st.outcome)}</strong>.</p>\n<p><em>Acceptance:</em> ${esc(st.acceptance)}</p>`,
     )
     .join('\n\n');
-  const reqBlock = (
-    list: Array<{ id: string; priority: string; body: string }>,
-  ): string =>
+  const reqBlock = (list: Array<{ id: string; priority: string; body: string }>): string =>
     list
       .map(
-        (r) =>
-          `<spec-requirement id="${r.id}" priority="${r.priority}">\n<p>${esc(r.body)}</p>\n</spec-requirement>`,
+        (r) => `<spec-requirement id="${r.id}" priority="${r.priority}">\n<p>${esc(r.body)}</p>\n</spec-requirement>`,
       )
       .join('\n\n');
 
@@ -191,9 +187,5 @@ ${reqBlock(s.scs ?? [])}
 }
 
 function esc(s: string): string {
-  return String(s)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
+  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }

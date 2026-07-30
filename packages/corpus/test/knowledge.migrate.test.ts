@@ -1,10 +1,10 @@
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { migratePack } from '../src/knowledge/migrate.js';
 import { loadCorpus, loadRegistry } from '../src/knowledge/index.js';
-import { corpusWellFormedFindings } from '../src/knowledge/validate.js';
+import { migratePack } from '../src/knowledge/migrate.js';
 import { KB_ID_RE } from '../src/knowledge/types.js';
+import { corpusWellFormedFindings } from '../src/knowledge/validate.js';
 import { tempProjectRoot, writeSingleLayerPack, writeTwoLayerDoc } from './fixtures/single-layer-pack.js';
 
 /**
@@ -31,13 +31,27 @@ describe('migratePack — converts a single-layer pack in place (066, T-200)', (
       // Realistic single-layer filenames: the pre-062 adaptFolder wrote each
       // document under its ORIGINAL source filename, never a KB-/NNN-prefixed
       // one — the id lived only in frontmatter.
-      'alpha.md': { id: 'KB-001', body: 'Alpha body.', title: 'Alpha', description: 'The alpha doc.' },
-      'beta.md': { id: 'KB-002', body: 'Beta body.', title: 'Beta', description: 'The beta doc.' },
+      'alpha.md': {
+        id: 'KB-001',
+        body: 'Alpha body.',
+        title: 'Alpha',
+        description: 'The alpha doc.',
+      },
+      'beta.md': {
+        id: 'KB-002',
+        body: 'Beta body.',
+        title: 'Beta',
+        description: 'The beta doc.',
+      },
     });
     const knowledgeDir = join(cwd, 'knowledge');
     expect(existsSync(join(knowledgeDir, 'example', 'index.md'))).toBe(true);
 
-    const result = migratePack({ knowledgeDir, pack: 'example', marketplace: 'test-mp' });
+    const result = migratePack({
+      knowledgeDir,
+      pack: 'example',
+      marketplace: 'test-mp',
+    });
 
     expect(result.migrated).toHaveLength(2);
     expect(result.skipped).toHaveLength(0);
@@ -82,7 +96,11 @@ describe('migratePack — allocates a fresh repo-unique id (066, T-201)', () => 
       'gamma.md': { id: 'KB-001', body: 'Gamma body.' },
     });
 
-    const result = migratePack({ knowledgeDir, pack: 'example', marketplace: 'test-mp' });
+    const result = migratePack({
+      knowledgeDir,
+      pack: 'example',
+      marketplace: 'test-mp',
+    });
 
     expect(result.migrated).toHaveLength(1);
     const newId = result.migrated[0]!;
@@ -106,7 +124,11 @@ describe('migratePack — allocates a fresh repo-unique id (066, T-201)', () => 
       '010-custom.md': { id: 'KB-010', body: 'Custom body.' },
     });
 
-    const result = migratePack({ knowledgeDir, pack: 'example', marketplace: 'test-mp' });
+    const result = migratePack({
+      knowledgeDir,
+      pack: 'example',
+      marketplace: 'test-mp',
+    });
 
     expect(result.migrated).toHaveLength(1);
     const packs = loadCorpus(cwd);
@@ -123,13 +145,21 @@ describe('migratePack — idempotent and mixed-pack-safe (066, T-202)', () => {
       'delta.md': { id: 'KB-001', body: 'Delta body.' },
     });
 
-    const first = migratePack({ knowledgeDir, pack: 'example', marketplace: 'test-mp' });
+    const first = migratePack({
+      knowledgeDir,
+      pack: 'example',
+      marketplace: 'test-mp',
+    });
     expect(first.migrated).toHaveLength(1);
 
     const referencesBefore = readFileSync(join(knowledgeDir, 'example', 'references', '001-delta.md'), 'utf8');
     const registryBefore = readFileSync(join(knowledgeDir, 'index.md'), 'utf8');
 
-    const second = migratePack({ knowledgeDir, pack: 'example', marketplace: 'test-mp' });
+    const second = migratePack({
+      knowledgeDir,
+      pack: 'example',
+      marketplace: 'test-mp',
+    });
     expect(second.migrated).toHaveLength(0);
     expect(second.skipped).toEqual(['001-delta.md']);
 
@@ -143,7 +173,11 @@ describe('migratePack — idempotent and mixed-pack-safe (066, T-202)', () => {
     writeTwoLayerDoc(cwd, 'example', '001-epsilon', 'Epsilon body.');
     expect(existsSync(join(knowledgeDir, 'example', 'index.md'))).toBe(false);
 
-    const result = migratePack({ knowledgeDir, pack: 'example', marketplace: 'test-mp' });
+    const result = migratePack({
+      knowledgeDir,
+      pack: 'example',
+      marketplace: 'test-mp',
+    });
 
     expect(result.migrated).toHaveLength(0);
     expect(result.skipped).toEqual(['001-epsilon.md']);
@@ -159,7 +193,11 @@ describe('migratePack — idempotent and mixed-pack-safe (066, T-202)', () => {
     writeTwoLayerDoc(cwd, 'example', '002-eta', 'Eta body, already two-layer.');
     const alreadyTwoLayerRaw = readFileSync(join(knowledgeDir, 'example', 'references', '002-eta.md'), 'utf8');
 
-    const result = migratePack({ knowledgeDir, pack: 'example', marketplace: 'test-mp' });
+    const result = migratePack({
+      knowledgeDir,
+      pack: 'example',
+      marketplace: 'test-mp',
+    });
 
     expect(result.migrated).toHaveLength(1);
     expect(result.skipped).toEqual(['002-eta.md']);

@@ -1,5 +1,5 @@
-import { test, expect } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
+import { expect, test } from '@playwright/test';
 import { SAMPLE_GRAPH } from './fixtures/graph.js';
 
 // Polish / T-901 (spec NFR-003, also exercises FR-012). The canvas must stay
@@ -15,14 +15,9 @@ for (const theme of ['vscode-light', 'vscode-dark'] as const) {
     await page.evaluate((graph) => window.postMessage({ type: 'graph', graph }, '*'), SAMPLE_GRAPH);
     await page.waitForSelector('.node');
 
-    const results = await new AxeBuilder({ page })
-      .include('#canvas-root')
-      .withTags(['wcag2a', 'wcag2aa'])
-      .analyze();
+    const results = await new AxeBuilder({ page }).include('#canvas-root').withTags(['wcag2a', 'wcag2aa']).analyze();
 
-    const serious = results.violations.filter(
-      (v) => v.impact === 'serious' || v.impact === 'critical',
-    );
+    const serious = results.violations.filter((v) => v.impact === 'serious' || v.impact === 'critical');
     expect(serious, JSON.stringify(serious, null, 2)).toEqual([]);
   });
 }

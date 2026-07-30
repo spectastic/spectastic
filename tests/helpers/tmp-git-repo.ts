@@ -172,7 +172,7 @@ export function createTmpGitRepo(): TmpGitRepo {
     if (options.stub) {
       const scriptPath = join(dir, '.stub-ai.json');
       writeFileSync(scriptPath, JSON.stringify(options.stub), 'utf8');
-      env['SPECTASTIC_AI_STUB'] = scriptPath;
+      env.SPECTASTIC_AI_STUB = scriptPath;
     }
     return spawnNode([CLI_BIN, ...args], dir, env);
   };
@@ -239,8 +239,14 @@ export function createTmpGitRepo(): TmpGitRepo {
       `<!doctype html><html><head><meta charset="utf-8"><title>t</title></head><body><main>` +
       `<header><spec-meta><b>Status</b><span><spec-status value="${status}">${status}</spec-status></span></spec-meta></header>` +
       `${body}</main></body></html>`;
-    writeFile('specs/900-accepted/spec.html', artifact('accepted', '<section id="questions"><spec-questions><p>None.</p></spec-questions></section>'));
-    writeFile('specs/901-draft/spec.html', artifact('draft', '<section id="questions"><spec-questions><p>None.</p></spec-questions></section>'));
+    writeFile(
+      'specs/900-accepted/spec.html',
+      artifact('accepted', '<section id="questions"><spec-questions><p>None.</p></spec-questions></section>'),
+    );
+    writeFile(
+      'specs/901-draft/spec.html',
+      artifact('draft', '<section id="questions"><spec-questions><p>None.</p></spec-questions></section>'),
+    );
   };
 
   const cleanup = (): void => {

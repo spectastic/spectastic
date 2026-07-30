@@ -18,11 +18,7 @@
  * than overwriting.
  */
 
-import type {
-  KernelContext,
-  PrinciplesInput,
-  PrinciplesResult,
-} from '../types.js';
+import type { KernelContext, PrinciplesInput, PrinciplesResult } from '../types.js';
 
 const DEFAULT_COUNT = 5;
 
@@ -32,10 +28,7 @@ interface PrincipleSpec {
   body: string;
 }
 
-export async function principlesCommand(
-  input: PrinciplesInput,
-  ctx: KernelContext,
-): Promise<PrinciplesResult> {
+export async function principlesCommand(input: PrinciplesInput, ctx: KernelContext): Promise<PrinciplesResult> {
   if (!ctx.ai) {
     throw new Error('principlesCommand requires ctx.ai (an AIProvider); got undefined');
   }
@@ -106,17 +99,10 @@ function parsePrinciples(raw: string, expected: number): PrincipleSpec[] {
   });
 }
 
-function renderPrinciplesHtml(
-  projectName: string,
-  tagline: string,
-  principles: PrincipleSpec[],
-): string {
+function renderPrinciplesHtml(projectName: string, tagline: string, principles: PrincipleSpec[]): string {
   const today = new Date().toISOString().slice(0, 10);
   const principlesSection = principles
-    .map(
-      (p) =>
-        `\n<h3 id="${p.id}">${p.id} · ${escapeHtml(p.shortLabel)}</h3>\n<p>${escapeHtml(p.body)}</p>`,
-    )
+    .map((p) => `\n<h3 id="${p.id}">${p.id} · ${escapeHtml(p.shortLabel)}</h3>\n<p>${escapeHtml(p.body)}</p>`)
     .join('\n');
   return `<!doctype html>
 <html lang="en">
@@ -168,9 +154,5 @@ ${principlesSection}
 }
 
 function escapeHtml(s: string): string {
-  return s
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }

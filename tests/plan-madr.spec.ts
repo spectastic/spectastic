@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { expect, test } from '@playwright/test';
 
 /**
  * Behavioural guard for the MADR Considered-Options card (spec 050-stack-selection,

@@ -23,8 +23,7 @@ export const idWithinFileUniqueRule: PerFileRule = {
   id: 'id-within-file-unique',
   scope: 'per-file',
   defaultSeverity: 'error',
-  description:
-    'A spec-local id (FR/NFR/SC/D/T) must not be declared twice within one document.',
+  description: 'A spec-local id (FR/NFR/SC/D/T) must not be declared twice within one document.',
   check({ doc }) {
     const sites = new Map<string, Location[]>();
     walk(doc.ast, (el) => {

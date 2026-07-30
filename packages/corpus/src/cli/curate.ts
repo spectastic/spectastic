@@ -1,17 +1,17 @@
-import { basename, dirname, resolve } from 'node:path';
 import { statSync } from 'node:fs';
+import { basename, dirname, resolve } from 'node:path';
 import type { Command } from 'commander';
+import { resolveCorpusConfig } from '../config.js';
 import {
   adaptCorpus,
   installPack,
   migratePack,
-  publishCorpus,
-  registerDocument,
   NOT_CITABLE_UNTIL_CONFIRMED_STATUS,
   NOT_CITABLE_UNTIL_SIGNED_OFF_STATUS,
+  publishCorpus,
+  registerDocument,
 } from '../knowledge/index.js';
 import { createPackFetcher } from '../pack-fetcher-factory.js';
-import { resolveCorpusConfig } from '../config.js';
 
 /**
  * The standalone binary's curation verbs (064-corpus-package-extraction, FR-004, US2) —
@@ -25,9 +25,11 @@ import { resolveCorpusConfig } from '../config.js';
 export function registerCurate(program: Command): void {
   program
     .command('adapt')
-    .description('Adapt an existing corpus shape (a markdown folder, or an llms.txt) into the spectastic knowledge/ convention.')
+    .description(
+      'Adapt an existing corpus shape (a markdown folder, or an llms.txt) into the spectastic knowledge/ convention.',
+    )
     .argument('<path>', 'a folder of markdown files, or an llms.txt file')
-    .option('--pack <name>', 'the pack name under knowledge/ (default: the source folder/parent-folder\'s name)')
+    .option('--pack <name>', "the pack name under knowledge/ (default: the source folder/parent-folder's name)")
     .action((path: string, opts: { pack?: string }) => {
       const target = resolve(process.cwd(), path);
       const isDir = statSync(target).isDirectory();
@@ -35,7 +37,13 @@ export function registerCurate(program: Command): void {
       const { marketplace, root } = resolveCorpusConfig(process.cwd());
       const knowledgeDir = resolve(process.cwd(), root);
 
-      const result = adaptCorpus({ target, knowledgeDir, pack, marketplace, corpusMarketplaceName: marketplace });
+      const result = adaptCorpus({
+        target,
+        knowledgeDir,
+        pack,
+        marketplace,
+        corpusMarketplaceName: marketplace,
+      });
 
       process.stdout.write(
         `corpus adapt: ${result.written.length} written, ${result.skipped.length} already registered (untouched), ` +
@@ -60,7 +68,12 @@ export function registerCurate(program: Command): void {
       const { marketplace, root } = resolveCorpusConfig(process.cwd());
       const knowledgeDir = resolve(process.cwd(), root);
 
-      const result = migratePack({ knowledgeDir, pack, marketplace, corpusMarketplaceName: marketplace });
+      const result = migratePack({
+        knowledgeDir,
+        pack,
+        marketplace,
+        corpusMarketplaceName: marketplace,
+      });
 
       process.stdout.write(
         `corpus migrate: ${result.migrated.length} document(s) migrated, ${result.skipped.length} already two-layer ` +
@@ -71,7 +84,9 @@ export function registerCurate(program: Command): void {
 
   program
     .command('import')
-    .description('Install a marketplace skill (<plugin>@<marketplace>) and register its references in the root corpus registry.')
+    .description(
+      'Install a marketplace skill (<plugin>@<marketplace>) and register its references in the root corpus registry.',
+    )
     .argument('<coordinate>', 'the plugin to install, as <plugin>@<marketplace>')
     .option('--from <path>', 'register an already-fetched local checkout instead of installing one')
     .action(async (coordinate: string, opts: { from?: string }) => {
@@ -80,7 +95,12 @@ export function registerCurate(program: Command): void {
       const knowledgeDir = resolve(process.cwd(), root);
 
       try {
-        const result = await installPack({ fetcher, coordinate, knowledgeDir, corpusMarketplaceName: marketplace });
+        const result = await installPack({
+          fetcher,
+          coordinate,
+          knowledgeDir,
+          corpusMarketplaceName: marketplace,
+        });
         process.stdout.write(
           `corpus import: ${result.written.length} registered, ${result.skipped.length} already registered ` +
             `(untouched) → ${root}/${result.plugin}/\n`,
@@ -100,38 +120,52 @@ export function registerCurate(program: Command): void {
   program
     .command('interview')
     .description('Register a subject-matter expert interview as a corpus reference, pending their sign-off.')
-    .argument('<role>', 'the interviewed expert\'s role (e.g. settlement-desk-lead)')
+    .argument('<role>', "the interviewed expert's role (e.g. settlement-desk-lead)")
     .requiredOption('--marketplace <name>', 'the project-local namespace this reference is filed under')
     .requiredOption('--plugin <name>', 'the pack this reference belongs to')
     .requiredOption('--slug <slug>', 'the pack-internal slug for this reference')
     .requiredOption('--title <title>', 'a short title for this reference')
     .requiredOption('--body <text>', 'the captured text')
     .option('--date <date>', 'the interview date (YYYY-MM-DD)')
-    .action((role: string, opts: { marketplace: string; plugin: string; slug: string; title: string; body: string; date?: string }) => {
-      const { marketplace: corpusMarketplaceName, root } = resolveCorpusConfig(process.cwd());
-      const knowledgeDir = resolve(process.cwd(), root);
-      const origin = `interview: ${role}, ${opts.date ?? 'TODO'}`;
+    .action(
+      (
+        role: string,
+        opts: {
+          marketplace: string;
+          plugin: string;
+          slug: string;
+          title: string;
+          body: string;
+          date?: string;
+        },
+      ) => {
+        const { marketplace: corpusMarketplaceName, root } = resolveCorpusConfig(process.cwd());
+        const knowledgeDir = resolve(process.cwd(), root);
+        const origin = `interview: ${role}, ${opts.date ?? 'TODO'}`;
 
-      const result = registerDocument({
-        knowledgeDir,
-        marketplace: opts.marketplace,
-        plugin: opts.plugin,
-        slug: opts.slug,
-        title: opts.title,
-        body: opts.body,
-        origin,
-        status: NOT_CITABLE_UNTIL_SIGNED_OFF_STATUS,
-        corpusMarketplaceName,
-      });
+        const result = registerDocument({
+          knowledgeDir,
+          marketplace: opts.marketplace,
+          plugin: opts.plugin,
+          slug: opts.slug,
+          title: opts.title,
+          body: opts.body,
+          origin,
+          status: NOT_CITABLE_UNTIL_SIGNED_OFF_STATUS,
+          corpusMarketplaceName,
+        });
 
-      process.stdout.write(`corpus interview: registered ${result.id} → ${root}/${opts.plugin}/\n`);
-      process.stdout.write('  Not citable until the expert signs off.\n');
-      process.exit(0);
-    });
+        process.stdout.write(`corpus interview: registered ${result.id} → ${root}/${opts.plugin}/\n`);
+        process.stdout.write('  Not citable until the expert signs off.\n');
+        process.exit(0);
+      },
+    );
 
   program
     .command('source')
-    .description('Register a document fetched from an allowlisted authority as a corpus reference, pending confirmation.')
+    .description(
+      'Register a document fetched from an allowlisted authority as a corpus reference, pending confirmation.',
+    )
     .argument('<url>', 'the URL the text was fetched from')
     .requiredOption('--marketplace <name>', 'the project-local namespace this reference is filed under')
     .requiredOption('--plugin <name>', 'the pack this reference belongs to')
@@ -143,7 +177,15 @@ export function registerCurate(program: Command): void {
     .action(
       (
         url: string,
-        opts: { marketplace: string; plugin: string; slug: string; title: string; body: string; date?: string; allow?: string },
+        opts: {
+          marketplace: string;
+          plugin: string;
+          slug: string;
+          title: string;
+          body: string;
+          date?: string;
+          allow?: string;
+        },
       ) => {
         const host = (() => {
           try {
@@ -185,12 +227,15 @@ export function registerCurate(program: Command): void {
 
   program
     .command('publish')
-    .description('Generate or refresh this corpus\'s marketplace.json from its root registry.')
+    .description("Generate or refresh this corpus's marketplace.json from its root registry.")
     .action(() => {
       const { marketplace, root } = resolveCorpusConfig(process.cwd());
       const knowledgeDir = resolve(process.cwd(), root);
 
-      const result = publishCorpus({ marketplaceName: marketplace, knowledgeDir });
+      const result = publishCorpus({
+        marketplaceName: marketplace,
+        knowledgeDir,
+      });
       process.stdout.write(
         `corpus publish: ${result.alreadyExisted ? 'refreshed' : 'generated'} ${root}/marketplace.json ` +
           `(marketplace=${marketplace})\n`,

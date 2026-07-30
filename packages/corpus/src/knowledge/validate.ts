@@ -31,7 +31,7 @@
  */
 import type { Finding } from '@spectastic/schema';
 import { isSingleLayerPack } from './migrate.js';
-import { KB_ID_RE, type CorpusDocument, type CorpusPack, type RegistryEntry } from './types.js';
+import { type CorpusDocument, type CorpusPack, KB_ID_RE, type RegistryEntry } from './types.js';
 
 const REGISTRY_FILE = 'knowledge/index.md';
 
@@ -47,7 +47,14 @@ function errorFinding(file: string, message: string): Finding {
  * vanished from a re-import), never a build-blocking defect. Mirrors 053's
  * `corpus-staleness` posture, not its `corpus-provenance` one. */
 function warningFinding(file: string, message: string): Finding {
-  return { file, line: 1, column: 1, rule: 'corpus-registry-orphan', severity: 'warning', message };
+  return {
+    file,
+    line: 1,
+    column: 1,
+    rule: 'corpus-registry-orphan',
+    severity: 'warning',
+    message,
+  };
 }
 
 /** Every document with a non-empty `missingFields` (parse.ts already
@@ -56,18 +63,13 @@ function missingFieldFindings(pack: CorpusPack): Finding[] {
   return pack.documents
     .filter((doc) => doc.missingFields.length > 0)
     .map((doc) =>
-      errorFinding(
-        doc.filePath,
-        `${doc.filePath} is missing required field(s): ${doc.missingFields.join(', ')}.`,
-      ),
+      errorFinding(doc.filePath, `${doc.filePath} is missing required field(s): ${doc.missingFields.join(', ')}.`),
     );
 }
 
 /** Every index row whose id has no matching document in the pack. */
 function danglingIndexFindings(pack: CorpusPack): Finding[] {
-  const documentIds = new Set(
-    pack.documents.map((d) => d.id).filter((id): id is string => id !== null),
-  );
+  const documentIds = new Set(pack.documents.map((d) => d.id).filter((id): id is string => id !== null));
   return pack.index
     .filter((row) => !documentIds.has(row.id))
     .map((row) =>
@@ -84,10 +86,7 @@ function orphanDocumentFindings(pack: CorpusPack): Finding[] {
   return pack.documents
     .filter((doc): doc is CorpusDocument & { id: string } => doc.id !== null && !indexIds.has(doc.id))
     .map((doc) =>
-      errorFinding(
-        doc.filePath,
-        `${doc.filePath} (${doc.id}) has no matching row in ${pack.name}'s curated index.`,
-      ),
+      errorFinding(doc.filePath, `${doc.filePath} (${doc.id}) has no matching row in ${pack.name}'s curated index.`),
     );
 }
 
@@ -139,7 +138,10 @@ function duplicateSlugFindings(pack: CorpusPack): Finding[] {
     const firstPath = docs[0]?.filePath ?? pack.dirPath;
     const paths = docs.map((d) => d.filePath).join(', ');
     findings.push(
-      errorFinding(firstPath, `Duplicate pack-internal slug "${slug}" in ${paths} — a slug must be unique within its pack.`),
+      errorFinding(
+        firstPath,
+        `Duplicate pack-internal slug "${slug}" in ${paths} — a slug must be unique within its pack.`,
+      ),
     );
   }
   return findings;
@@ -166,7 +168,14 @@ function missingSkillFileFindings(pack: CorpusPack): Finding[] {
  * widened further here). Warning severity, the "deprecate first, reject
  * later" window (P-9). */
 function singleLayerWarningFinding(file: string, message: string): Finding {
-  return { file, line: 1, column: 1, rule: 'corpus-single-layer-deprecated', severity: 'warning', message };
+  return {
+    file,
+    line: 1,
+    column: 1,
+    rule: 'corpus-single-layer-deprecated',
+    severity: 'warning',
+    message,
+  };
 }
 
 /** Flags a pack still carrying a single-layer signal (an `id:` document with
@@ -261,7 +270,9 @@ function duplicateRegistryIdFindings(entries: readonly RegistryEntry[]): Finding
   for (const [id, group] of byId) {
     if (group.length < 2) continue;
     const paths = group.map((e) => e.path).join(', ');
-    findings.push(errorFinding(REGISTRY_FILE, `Duplicate registry id ${id} in ${paths} — a KB-NNNN must be repo-unique.`));
+    findings.push(
+      errorFinding(REGISTRY_FILE, `Duplicate registry id ${id} in ${paths} — a KB-NNNN must be repo-unique.`),
+    );
   }
   return findings;
 }

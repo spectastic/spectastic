@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
+import type { DeciderConfig } from '../src/decider/types.js';
 import { BudgetTracker, budgeted, degradeEffort, estimateTokens } from '../src/run/budget.js';
 import { runPipeline } from '../src/run/pipeline.js';
 import type { Checkpoint, PipelineStep, StepOutcome } from '../src/run/types.js';
 import type { AIProvider, ChatOpts, Question, SubagentOpts, SubagentResult } from '../src/types.js';
-import type { DeciderConfig } from '../src/decider/types.js';
 
 /**
  * 040 — the run budget. Unit: estimate, phase bands, degradeEffort, the budgeted
@@ -43,7 +43,13 @@ function fakeStep(name: PipelineStep['name'], ran: string[], decisionVerb?: stri
 
 function recorder() {
   const seen: Checkpoint[] = [];
-  return { fn: async (c: Checkpoint) => (seen.push(c), 'approve' as const), seen };
+  return {
+    fn: async (c: Checkpoint) => {
+      seen.push(c);
+      return 'approve' as const;
+    },
+    seen,
+  };
 }
 
 const PANEL_HIGH: DeciderConfig = { role: 'panel', effort: 'high' };
@@ -89,7 +95,12 @@ describe('runPipeline under budget (040)', () => {
     const stub = new Stub(DECISIONS);
     await runPipeline(
       { specId: 'x', decider: PANEL_HIGH, checkpoints: 'minimal' },
-      { ai: stub, steps: [fakeStep('plan', [], 'plan')], escalate: recorder().fn, budget: tracker },
+      {
+        ai: stub,
+        steps: [fakeStep('plan', [], 'plan')],
+        escalate: recorder().fn,
+        budget: tracker,
+      },
     );
     // high = 3 voters → degraded to medium = 1 voter.
     expect(stub.subCalls).toBe(1);
@@ -102,7 +113,12 @@ describe('runPipeline under budget (040)', () => {
     const esc = recorder();
     const result = await runPipeline(
       { specId: 'x', decider: PANEL_HIGH, checkpoints: 'minimal' },
-      { ai: new Stub(DECISIONS), steps: [fakeStep('plan', ran, 'plan')], escalate: esc.fn, budget: tracker },
+      {
+        ai: new Stub(DECISIONS),
+        steps: [fakeStep('plan', ran, 'plan')],
+        escalate: esc.fn,
+        budget: tracker,
+      },
     );
     expect(result.completed).toBe(false);
     expect(result.halted?.reason).toMatch(/budget exhausted/);
@@ -114,7 +130,11 @@ describe('runPipeline under budget (040)', () => {
     const stub = new Stub(DECISIONS);
     const result = await runPipeline(
       { specId: 'x', decider: PANEL_HIGH, checkpoints: 'minimal' },
-      { ai: stub, steps: [fakeStep('plan', [], 'plan')], escalate: recorder().fn },
+      {
+        ai: stub,
+        steps: [fakeStep('plan', [], 'plan')],
+        escalate: recorder().fn,
+      },
     );
     expect(result.completed).toBe(true);
     expect(stub.subCalls).toBe(3); // high = 3 voters, undegraded

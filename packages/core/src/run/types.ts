@@ -8,8 +8,8 @@
  * the verb kernels (038 drainTasks / 039 answerDecisions / plan / tasks / verify).
  */
 
-import type { AIProvider } from '../types.js';
 import type { DeciderConfig } from '../decider/types.js';
+import type { AIProvider } from '../types.js';
 
 /** A human checkpoint the run yields between phases (FR-006/FR-007). */
 export interface Checkpoint {

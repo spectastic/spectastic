@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { expect, test } from '@playwright/test';
 
 // US3 — legacy preference migration (FR-006, SC-005). The old `spectastic-theme`
 // key stored a MODE ('light'|'dark'); it must migrate into `spectastic-mode`

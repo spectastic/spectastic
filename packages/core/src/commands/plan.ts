@@ -9,31 +9,32 @@
  * the rendered plan.html. Caller writes it.
  */
 
-import type {
-  KernelContext,
-  PlanInput,
-  PlanResult,
-} from '../types.js';
-import { fenceArtifactText } from '@spectastic/schema/fence';
 import { buildCorpusPromptBlock, loadCorpus, withCorpusHint } from '@spectastic/corpus';
+import { fenceArtifactText } from '@spectastic/schema/fence';
+import type { KernelContext, PlanInput, PlanResult } from '../types.js';
 
 const BLOCKER_PATTERNS: ReadonlyArray<{ name: string; re: RegExp }> = [
-  { name: 'open <spec-question>', re: /<spec-questions?>[\s\S]*?<ol>[\s\S]*?<li[^>]*>(?!\s*(?:<\/li>|None at write time))/i },
+  {
+    name: 'open <spec-question>',
+    re: /<spec-questions?>[\s\S]*?<ol>[\s\S]*?<li[^>]*>(?!\s*(?:<\/li>|None at write time))/i,
+  },
   { name: '[NEEDS CLARIFICATION]', re: /\[NEEDS CLARIFICATION/i },
-  { name: 'missing defer-to', re: /<spec-out-of-scope[^>]*>[\s\S]*?<li(?![^>]*\bdefer-to=)/i },
+  {
+    name: 'missing defer-to',
+    re: /<spec-out-of-scope[^>]*>[\s\S]*?<li(?![^>]*\bdefer-to=)/i,
+  },
 ];
 
 /** Fold answered decisions (037 FR-005 / 039) into a prompt line; '' when absent (parity). */
 function formatDecisions(decisions?: Record<string, string>): string {
   if (!decisions || Object.keys(decisions).length === 0) return '';
-  const pairs = Object.entries(decisions).map(([k, v]) => `${k}: ${v}`).join('; ');
+  const pairs = Object.entries(decisions)
+    .map(([k, v]) => `${k}: ${v}`)
+    .join('; ');
   return `\nDecisions already made (honour these): ${pairs}`;
 }
 
-export async function planCommand(
-  input: PlanInput,
-  ctx: KernelContext,
-): Promise<PlanResult> {
+export async function planCommand(input: PlanInput, ctx: KernelContext): Promise<PlanResult> {
   if (!ctx.ai) throw new Error('planCommand requires ctx.ai');
 
   // Estimability gate.
@@ -59,12 +60,16 @@ export async function planCommand(
     isReentry
       ? `Sharpen this plan. ADD or ENHANCE only; never remove existing ADRs.\nExisting plan:\n${fenceArtifactText(input.existingPlan!.slice(0, 6000), 'Existing plan')}`
       : `Author an implementation plan for the spec below.\nSpec:\n${fenceArtifactText(input.specHtml.slice(0, 6000), 'Spec')}`,
-    input.principlesHtml ? `\nPrinciples to check:\n${fenceArtifactText(input.principlesHtml.slice(0, 3000), 'Principles')}` : '',
+    input.principlesHtml
+      ? `\nPrinciples to check:\n${fenceArtifactText(input.principlesHtml.slice(0, 3000), 'Principles')}`
+      : '',
     formatDecisions(input.decisions),
     corpusBlock ? `\n${corpusBlock}` : '',
     '',
     'Return JSON: { "approach": string, "decisions": [ { "id": "D-001", "title": string, "context": string, "decision": string, "consequences": string } ], "alternatives": [ { "name": string, "scores": [number, number, number], "isWinner": boolean } ], "risks": [ { "risk": string, "mitigation": string } ], "principles": [ { "id": "P-1", "status": "OK"|"EXCEPTION"|"VIOLATION", "note": string } ] }',
-  ].filter(Boolean).join('\n');
+  ]
+    .filter(Boolean)
+    .join('\n');
 
   const raw = await ctx.ai.chat(prompt, {
     temperature: 0,
@@ -88,39 +93,67 @@ export async function planCommand(
 
   const html = renderPlanHtml(input.specId, parsed, isReentry);
   return withCorpusHint(
-    { html, decisionsCount: (parsed.decisions ?? []).length, estimabilityBlockers: [], principlesCheck },
+    {
+      html,
+      decisionsCount: (parsed.decisions ?? []).length,
+      estimabilityBlockers: [],
+      principlesCheck,
+    },
     corpusBlock,
   );
 }
 
 interface ParsedPlan {
   approach?: string;
-  decisions?: Array<{ id: string; title: string; context: string; decision: string; consequences: string }>;
+  decisions?: Array<{
+    id: string;
+    title: string;
+    context: string;
+    decision: string;
+    consequences: string;
+  }>;
   alternatives?: Array<{ name: string; scores: number[]; isWinner?: boolean }>;
   risks?: Array<{ risk: string; mitigation: string }>;
-  principles?: Array<{ id: string; status: 'OK' | 'EXCEPTION' | 'VIOLATION'; note: string }>;
+  principles?: Array<{
+    id: string;
+    status: 'OK' | 'EXCEPTION' | 'VIOLATION';
+    note: string;
+  }>;
 }
 
 function tryParse(raw: string): ParsedPlan | null {
-  const stripped = raw.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
-  try { return JSON.parse(stripped) as ParsedPlan; } catch { return null; }
+  const stripped = raw
+    .trim()
+    .replace(/^```(?:json)?\s*/i, '')
+    .replace(/\s*```$/i, '')
+    .trim();
+  try {
+    return JSON.parse(stripped) as ParsedPlan;
+  } catch {
+    return null;
+  }
 }
 
 function renderPlanHtml(specId: string, p: ParsedPlan, isReentry: boolean): string {
   const today = new Date().toISOString().slice(0, 10);
-  const decisions = (p.decisions ?? []).map((d) =>
-    `<spec-decision id="${d.id}"><h4>${d.id} · ${esc(d.title)}</h4><dl><dt>Status</dt><dd><spec-status value="accepted">Accepted</spec-status></dd><dt>Context</dt><dd>${esc(d.context)}</dd><dt>Decision</dt><dd>${esc(d.decision)}</dd><dt>Consequences</dt><dd>${esc(d.consequences)}</dd></dl></spec-decision>`,
-  ).join('\n');
-  const alternatives = (p.alternatives ?? []).map((a) => {
-    const total = a.scores.reduce((s, n) => s + n, 0);
-    return `<tr${a.isWinner ? ' data-winner' : ''}><td>${esc(a.name)}</td>${a.scores.map((n) => `<td>${n}</td>`).join('')}<td class="score">${total}</td></tr>`;
-  }).join('\n');
-  const principlesRows = (p.principles ?? []).map((pp) =>
-    `<tr><td>${esc(pp.id)}</td><td><spec-pill>${pp.status}</spec-pill></td><td>${esc(pp.note)}</td></tr>`,
-  ).join('\n');
-  const risksRows = (p.risks ?? []).map((r) =>
-    `<tr><td>${esc(r.risk)}</td><td>${esc(r.mitigation)}</td></tr>`,
-  ).join('\n');
+  const decisions = (p.decisions ?? [])
+    .map(
+      (d) =>
+        `<spec-decision id="${d.id}"><h4>${d.id} · ${esc(d.title)}</h4><dl><dt>Status</dt><dd><spec-status value="accepted">Accepted</spec-status></dd><dt>Context</dt><dd>${esc(d.context)}</dd><dt>Decision</dt><dd>${esc(d.decision)}</dd><dt>Consequences</dt><dd>${esc(d.consequences)}</dd></dl></spec-decision>`,
+    )
+    .join('\n');
+  const alternatives = (p.alternatives ?? [])
+    .map((a) => {
+      const total = a.scores.reduce((s, n) => s + n, 0);
+      return `<tr${a.isWinner ? ' data-winner' : ''}><td>${esc(a.name)}</td>${a.scores.map((n) => `<td>${n}</td>`).join('')}<td class="score">${total}</td></tr>`;
+    })
+    .join('\n');
+  const principlesRows = (p.principles ?? [])
+    .map((pp) => `<tr><td>${esc(pp.id)}</td><td><spec-pill>${pp.status}</spec-pill></td><td>${esc(pp.note)}</td></tr>`)
+    .join('\n');
+  const risksRows = (p.risks ?? [])
+    .map((r) => `<tr><td>${esc(r.risk)}</td><td>${esc(r.mitigation)}</td></tr>`)
+    .join('\n');
 
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8">

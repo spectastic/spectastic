@@ -1,7 +1,7 @@
-import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { isModelTier } from '@spectastic/core/model-policy';
+import { describe, expect, it } from 'vitest';
 
 /**
  * The tracked subagent definitions (spec 044 Tier C, FR-004). Sources live in

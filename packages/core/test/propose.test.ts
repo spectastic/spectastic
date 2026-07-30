@@ -1,13 +1,6 @@
-import { describe, expect, it } from 'vitest';
+import type { AIProvider, ChatOpts, KernelContext, Question, SubagentOpts, SubagentResult } from '@spectastic/core';
 import { proposeCommand } from '@spectastic/core/commands/propose';
-import type {
-  AIProvider,
-  ChatOpts,
-  KernelContext,
-  Question,
-  SubagentOpts,
-  SubagentResult,
-} from '@spectastic/core';
+import { describe, expect, it } from 'vitest';
 
 /**
  * Unit tests for proposeCommand. Per 013-core-propose plan:
@@ -44,9 +37,7 @@ class StubAI implements AIProvider {
     return JSON.stringify(response.json);
   }
 
-  async ask<TResult extends Record<string, string>>(
-    questions: ReadonlyArray<Question>,
-  ): Promise<TResult> {
+  async ask<TResult extends Record<string, string>>(questions: ReadonlyArray<Question>): Promise<TResult> {
     this.askCalls.push([...questions]);
     throw new Error('StubAI.ask: not used in 013 tests');
   }
@@ -132,7 +123,10 @@ describe('proposeCommand (013)', () => {
         {
           output: JSON.stringify({
             risks: [
-              { target: 'FR-100', concern: 'Callers may exist that we missed.' },
+              {
+                target: 'FR-100',
+                concern: 'Callers may exist that we missed.',
+              },
               { target: 'FR-100', concern: 'Documentation references remain.' },
               { target: 'FR-100', concern: 'Audit trail will lose context.' },
             ],
@@ -183,8 +177,14 @@ describe('proposeCommand (013)', () => {
         {
           output: JSON.stringify({
             risks: [
-              { target: 'REQ-AUTH-001', concern: 'Auth tightening may break sessions.' },
-              { target: 'REQ-LIFECYCLE-002', concern: 'Lifecycle ripple effects.' },
+              {
+                target: 'REQ-AUTH-001',
+                concern: 'Auth tightening may break sessions.',
+              },
+              {
+                target: 'REQ-LIFECYCLE-002',
+                concern: 'Lifecycle ripple effects.',
+              },
               { target: 'cross', concern: 'Coordination cost across topics.' },
             ],
           }),
@@ -230,8 +230,14 @@ describe('proposeCommand (013)', () => {
           output: JSON.stringify({
             risks: [
               { target: 'FR-001', concern: 'Rewording may shift semantics.' },
-              { target: 'FR-001', concern: 'Downstream tests may need updates.' },
-              { target: 'FR-001', concern: 'Audit consumers expect old wording.' },
+              {
+                target: 'FR-001',
+                concern: 'Downstream tests may need updates.',
+              },
+              {
+                target: 'FR-001',
+                concern: 'Audit consumers expect old wording.',
+              },
             ],
           }),
         },

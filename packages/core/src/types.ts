@@ -13,6 +13,7 @@
  */
 
 import type { Finding } from '@spectastic/schema';
+
 export type { Finding };
 
 // --- IO ----------------------------------------------------------------
@@ -112,9 +113,7 @@ export interface AIProvider {
   /** Freeform model invocation. */
   chat(prompt: string, opts?: ChatOpts): Promise<string>;
   /** Typed bounded-choice prompt. */
-  ask<TResult extends Record<string, string>>(
-    questions: ReadonlyArray<Question>,
-  ): Promise<TResult>;
+  ask<TResult extends Record<string, string>>(questions: ReadonlyArray<Question>): Promise<TResult>;
   /** Spawn a critic / specialized sub-agent. */
   subagent(prompt: string, opts?: SubagentOpts): Promise<SubagentResult>;
 }

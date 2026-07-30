@@ -1,13 +1,6 @@
+import type { AIProvider, ChatOpts, DeciderConfig, Question, SubagentOpts, SubagentResult } from '@spectastic/core';
+import { answerDecisions, DECISION_TAXONOMY } from '@spectastic/core/decider';
 import { describe, expect, it } from 'vitest';
-import { DECISION_TAXONOMY, answerDecisions } from '@spectastic/core/decider';
-import type {
-  AIProvider,
-  ChatOpts,
-  DeciderConfig,
-  Question,
-  SubagentOpts,
-  SubagentResult,
-} from '@spectastic/core';
 
 /**
  * 039 — the verb decision taxonomy registry + answerer. Tests RUN the dispatch:

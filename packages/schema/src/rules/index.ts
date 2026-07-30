@@ -1,5 +1,5 @@
 import type { Rule } from '../types.js';
-
+import { corpusCitationFormRule } from './corpus-citation-form.js';
 import { dataDeltaShapeRule } from './data-delta-shape.js';
 import { dateFormatRule } from './date-format.js';
 import { deltaOpRequiredRule } from './delta-op-required.js';
@@ -7,31 +7,30 @@ import { deltaTargetRequiredRule } from './delta-target-required.js';
 import { emptyDocumentRule } from './empty-document.js';
 import { fileTooLargeRule } from './file-too-large.js';
 import { formatBandCouplingRule } from './format-band-coupling.js';
+import { hiddenInstructionPatternRule } from './hidden-instruction-pattern.js';
 import { idWithinFileUniqueRule } from './id-within-file-unique.js';
 import { investRowFailedRule } from './invest-row-failed.js';
+import { matrixWinnerIntegrityRule } from './matrix-winner-integrity.js';
 import { noBrokenDeferToRule } from './no-broken-defer-to.js';
 import { noDuplicateIdsRule } from './no-duplicate-ids.js';
+import { noExecutableContentRule } from './no-executable-content.js';
 import { noMissingDeferToRule } from './no-missing-defer-to.js';
 import { noPlaceholderQuestionRule } from './no-placeholder-question.js';
 import { noUnresolvedQuestionRule } from './no-unresolved-question.js';
 import { parentChildReciprocityRule } from './parent-child-reciprocity.js';
 import { requirementIdRequiredRule } from './requirement-id-required.js';
 import { riceWellFormedRule } from './rice-well-formed.js';
-import { splitWellFormedRule } from './split-well-formed.js';
 import { riskStatusRequiredRule } from './risk-status-required.js';
 import { riskTargetRequiredRule } from './risk-target-required.js';
+import { sloTargetRequiredRule } from './slo-target-required.js';
+import { sloWellFormedRule } from './slo-well-formed.js';
 import { specIdUniqueRule } from './spec-id-unique.js';
 import { specParentWellFormedRule } from './spec-parent-well-formed.js';
+import { splitWellFormedRule } from './split-well-formed.js';
 import { taskIdRequiredRule } from './task-id-required.js';
 import { taskTitleBoldScopeRule } from './task-title-bold-scope.js';
 import { verifyViewMissingRule } from './verify-view-missing.js';
 import { verifyViewStaleRule } from './verify-view-stale.js';
-import { noExecutableContentRule } from './no-executable-content.js';
-import { hiddenInstructionPatternRule } from './hidden-instruction-pattern.js';
-import { sloTargetRequiredRule } from './slo-target-required.js';
-import { sloWellFormedRule } from './slo-well-formed.js';
-import { matrixWinnerIntegrityRule } from './matrix-winner-integrity.js';
-import { corpusCitationFormRule } from './corpus-citation-form.js';
 
 /**
  * The canonical spectastic rule registry.

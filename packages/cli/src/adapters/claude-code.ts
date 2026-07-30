@@ -41,7 +41,9 @@ export class ClaudeCodeAgent implements CodingAgent {
     });
 
     // The agent's changes are whatever it left in the worktree — read them from git.
-    const { stdout } = await exec('git', ['status', '--porcelain'], { cwd: work.cwd });
+    const { stdout } = await exec('git', ['status', '--porcelain'], {
+      cwd: work.cwd,
+    });
     const filesChanged = stdout
       .split('\n')
       .map((l) => l.trim())
@@ -51,10 +53,7 @@ export class ClaudeCodeAgent implements CodingAgent {
     return {
       status: filesChanged.length > 0 ? 'done' : 'blocked',
       filesChanged,
-      summary:
-        filesChanged.length > 0
-          ? `claude changed ${filesChanged.length} file(s)`
-          : 'claude produced no changes',
+      summary: filesChanged.length > 0 ? `claude changed ${filesChanged.length} file(s)` : 'claude produced no changes',
     };
   }
 }

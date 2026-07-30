@@ -20,7 +20,11 @@ describe('scan — install/post-install-hook detector', () => {
     const findings = scan({ patch, numstat: '4\t0\tpackage.json\n' });
     const hookFindings = findings.filter((f) => f.category === 'install-hook');
     expect(hookFindings).toHaveLength(1);
-    expect(hookFindings[0]).toMatchObject({ category: 'install-hook', weight: 'high', file: 'package.json' });
+    expect(hookFindings[0]).toMatchObject({
+      category: 'install-hook',
+      weight: 'high',
+      file: 'package.json',
+    });
   });
 
   it('flags a scripts block spanning multiple lines with a preinstall hook', () => {
@@ -39,7 +43,12 @@ describe('scan — install/post-install-hook detector', () => {
     ].join('\n');
     const findings = scan({ patch, numstat: '1\t0\tpackage.json\n' });
     expect(findings).toEqual([
-      { category: 'install-hook', weight: 'high', file: 'package.json', evidence: expect.any(String) },
+      {
+        category: 'install-hook',
+        weight: 'high',
+        file: 'package.json',
+        evidence: expect.any(String),
+      },
     ]);
   });
 

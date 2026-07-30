@@ -1,7 +1,7 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { test, expect } from '@playwright/test';
+import { expect, test } from '@playwright/test';
 // Import the built kernel directly — the repo root isn't a workspace member, so the
 // package specifier doesn't resolve here. Requires `pnpm --filter @spectastic/core build`.
 import { assembleCourse } from '../packages/core/dist/commands/course.js';
@@ -21,8 +21,30 @@ const draft = {
   target: 'gate-fixture',
   title: 'Gate fixture',
   objectives: [
-    { title: 'First objective', read: 'r1', quiz: { question: 'q1', options: ['a', 'b', 'c'], correctIndex: 2, feedback: ['fb-a', 'fb-b', 'fb-c'], }, teachBack: 'Explain the first.', refs: [] },
-    { title: 'Last objective', read: 'r2', quiz: { question: 'q2', options: ['x', 'y'], correctIndex: 0, feedback: ['yes', ''] }, teachBack: 'Explain the last.', refs: [] },
+    {
+      title: 'First objective',
+      read: 'r1',
+      quiz: {
+        question: 'q1',
+        options: ['a', 'b', 'c'],
+        correctIndex: 2,
+        feedback: ['fb-a', 'fb-b', 'fb-c'],
+      },
+      teachBack: 'Explain the first.',
+      refs: [],
+    },
+    {
+      title: 'Last objective',
+      read: 'r2',
+      quiz: {
+        question: 'q2',
+        options: ['x', 'y'],
+        correctIndex: 0,
+        feedback: ['yes', ''],
+      },
+      teachBack: 'Explain the last.',
+      refs: [],
+    },
   ],
 };
 
@@ -35,9 +57,7 @@ test.beforeAll(() => {
 async function answer(page: import('@playwright/test').Page, objId: string, value: number) {
   await page.evaluate(
     ({ objId, value }) => {
-      const r = document.querySelector(
-        `input[name="quiz-${objId}"][value="${value}"]`,
-      ) as HTMLInputElement | null;
+      const r = document.querySelector(`input[name="quiz-${objId}"][value="${value}"]`) as HTMLInputElement | null;
       if (!r) throw new Error(`radio quiz-${objId} value ${value} not found`);
       r.checked = true;
       r.dispatchEvent(new Event('change', { bubbles: true }));

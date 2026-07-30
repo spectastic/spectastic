@@ -47,7 +47,10 @@ export const BOILERPLATE_REASONS: readonly string[] = [
 export function isBoilerplateReason(reason: string): boolean {
   const trimmed = reason.trim();
   if (trimmed.length === 0) return true;
-  const normalized = trimmed.toLowerCase().replace(/[.\-_/\\!?,;:'"]/g, '').trim();
+  const normalized = trimmed
+    .toLowerCase()
+    .replace(/[.\-_/\\!?,;:'"]/g, '')
+    .trim();
   if (BOILERPLATE_REASONS.includes(normalized)) return true;
   return trimmed.length < MIN_REASON_LENGTH;
 }
@@ -102,9 +105,9 @@ export function readRawWaivers(cwd: string): RawWaiver[] {
     return []; // invalid JSON: the git config reader owns the loud error for that
   }
   if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) return [];
-  const enforce = (parsed as Record<string, unknown>)['enforce'];
+  const enforce = (parsed as Record<string, unknown>).enforce;
   if (enforce === null || typeof enforce !== 'object' || Array.isArray(enforce)) return [];
-  const waivers = (enforce as Record<string, unknown>)['waivers'];
+  const waivers = (enforce as Record<string, unknown>).waivers;
   if (!Array.isArray(waivers)) return [];
   return waivers.filter((w): w is RawWaiver => w !== null && typeof w === 'object' && !Array.isArray(w));
 }

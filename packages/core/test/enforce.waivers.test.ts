@@ -2,14 +2,8 @@ import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import {
-  daysBetween,
-  isBoilerplateReason,
-  loadWaivers,
-  parseIsoDate,
-  readRawWaivers,
-} from '../src/enforce/config.js';
 import { enforceWaiverFindings } from '../src/commands/validate.js';
+import { daysBetween, isBoilerplateReason, loadWaivers, parseIsoDate, readRawWaivers } from '../src/enforce/config.js';
 import type { EnforcementCategory } from '../src/enforce/types.js';
 
 /** Unit tests for the waiver config loader + validate scan (spec 042 FR-011/FR-013). */
@@ -81,8 +75,7 @@ describe('enforceWaiverFindings (validate scan, FR-013)', () => {
     validCategories: ['formatter', 'observability', 'security', 'coverage'] as EnforcementCategory[],
     now: new Date('2026-07-11T00:00:00.000Z'),
   };
-  const rules = (ws: unknown[]) =>
-    enforceWaiverFindings(ws as never, ctx, 'spectastic.json').map((f) => f.message);
+  const rules = (ws: unknown[]) => enforceWaiverFindings(ws as never, ctx, 'spectastic.json').map((f) => f.message);
 
   it('a well-formed waiver produces no findings', () => {
     expect(enforceWaiverFindings([goodWaiver] as never, ctx, 'spectastic.json')).toEqual([]);
@@ -112,6 +105,8 @@ describe('enforceWaiverFindings (validate scan, FR-013)', () => {
     expect(rules([{ ...goodWaiver, until: 'soon' }]).join()).toMatch(/invalid "until"/);
   });
   it('reports multiple problems on one waiver', () => {
-    expect(rules([{ category: 'security', reason: 'todo', owner: '', until: 'soon' }]).length).toBeGreaterThanOrEqual(4);
+    expect(rules([{ category: 'security', reason: 'todo', owner: '', until: 'soon' }]).length).toBeGreaterThanOrEqual(
+      4,
+    );
   });
 });

@@ -1,4 +1,4 @@
-import { VERB_TOKEN, type ArtifactNode } from '../host/messaging.js';
+import { type ArtifactNode, VERB_TOKEN } from '../host/messaging.js';
 import type { NodePos } from './layout.js';
 
 /**
@@ -55,10 +55,7 @@ export function updateNode(el: HTMLElement, node: ArtifactNode, pos: NodePos): v
   el.style.position = 'absolute';
   // Derived-view nodes (FR-014) sit outside the fixed verb palette (FR-002): a
   // muted, non-verb colour rather than VERB_TOKEN[verb].
-  el.style.setProperty(
-    '--verb-color',
-    node.derived ? 'var(--c-muted)' : `var(${VERB_TOKEN[node.verb]})`,
-  );
+  el.style.setProperty('--verb-color', node.derived ? 'var(--c-muted)' : `var(${VERB_TOKEN[node.verb]})`);
 
   el.dataset.path = node.path;
   el.dataset.derived = String(Boolean(node.derived));

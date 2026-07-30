@@ -18,15 +18,24 @@ function missing(docs: Array<{ file: string; html: string }>) {
   return validateMany(docs).filter((f) => f.rule === 'verify-view-missing');
 }
 
-const FLOOR = { file: 'specs/021-verify-view/verify.html', html: verify('021') };
-const FLOOR_SPEC = { file: 'specs/021-verify-view/spec.html', html: spec('021-verify-view', 'accepted') };
+const FLOOR = {
+  file: 'specs/021-verify-view/verify.html',
+  html: verify('021'),
+};
+const FLOOR_SPEC = {
+  file: 'specs/021-verify-view/spec.html',
+  html: spec('021-verify-view', 'accepted'),
+};
 
 describe('verify-view-missing (021 FR-010)', () => {
   it('flags a terminal spec at/above the floor with no verify.html', () => {
     const f = missing([
       FLOOR_SPEC,
       FLOOR,
-      { file: 'specs/032-triage-fanout/spec.html', html: spec('032-triage-fanout', 'accepted') },
+      {
+        file: 'specs/032-triage-fanout/spec.html',
+        html: spec('032-triage-fanout', 'accepted'),
+      },
     ]);
     expect(f).toHaveLength(1);
     expect(f[0]!.file).toBe('specs/032-triage-fanout/spec.html');
@@ -34,20 +43,12 @@ describe('verify-view-missing (021 FR-010)', () => {
   });
 
   it('exempts a spec below the convention floor (predates verify-view)', () => {
-    const f = missing([
-      FLOOR_SPEC,
-      FLOOR,
-      { file: 'specs/010-old/spec.html', html: spec('010-old', 'accepted') },
-    ]);
+    const f = missing([FLOOR_SPEC, FLOOR, { file: 'specs/010-old/spec.html', html: spec('010-old', 'accepted') }]);
     expect(f).toHaveLength(0);
   });
 
   it('exempts a non-terminal (Draft) spec — verify.html is a completion artifact', () => {
-    const f = missing([
-      FLOOR_SPEC,
-      FLOOR,
-      { file: 'specs/040-wip/spec.html', html: spec('040-wip', 'draft') },
-    ]);
+    const f = missing([FLOOR_SPEC, FLOOR, { file: 'specs/040-wip/spec.html', html: spec('040-wip', 'draft') }]);
     expect(f).toHaveLength(0);
   });
 
@@ -55,14 +56,22 @@ describe('verify-view-missing (021 FR-010)', () => {
     const f = missing([
       FLOOR_SPEC,
       FLOOR,
-      { file: 'specs/032-triage-fanout/spec.html', html: spec('032-triage-fanout', 'accepted') },
+      {
+        file: 'specs/032-triage-fanout/spec.html',
+        html: spec('032-triage-fanout', 'accepted'),
+      },
       { file: 'specs/032-triage-fanout/verify.html', html: verify('032') },
     ]);
     expect(f).toHaveLength(0);
   });
 
   it('is silent when no verify.html exists anywhere (no convention established)', () => {
-    const f = missing([{ file: 'specs/032-triage-fanout/spec.html', html: spec('032-triage-fanout', 'accepted') }]);
+    const f = missing([
+      {
+        file: 'specs/032-triage-fanout/spec.html',
+        html: spec('032-triage-fanout', 'accepted'),
+      },
+    ]);
     expect(f).toHaveLength(0);
   });
 });

@@ -1,13 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import {
-  chmodSync,
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  renameSync,
-  rmSync,
-  writeFileSync,
-} from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 
 /**
@@ -33,7 +25,9 @@ export const ARTIFACT_GLOBS = ['specs/**/*.html', '*.html', 'examples/*.html'];
  */
 export function hooksDir(cwd: string): string {
   const git = (args: string[]): string =>
-    execFileSync('git', args, { cwd, stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim();
+    execFileSync('git', args, { cwd, stdio: ['ignore', 'pipe', 'ignore'] })
+      .toString()
+      .trim();
   let configured = '';
   try {
     configured = git(['config', '--get', 'core.hooksPath']);
@@ -52,18 +46,16 @@ export function hooksDir(cwd: string): string {
  */
 export function buildHookScript(cliEntry: string): string {
   const globs = ARTIFACT_GLOBS.map((g) => `'${g}'`).join(' ');
-  return (
-    [
-      '#!/usr/bin/env bash',
-      HOOK_MARKER,
-      'set -euo pipefail',
-      '# Chain a preserved prior hook first (FR-006); its non-zero exit blocks too.',
-      'prior="$(dirname "$0")/pre-commit.prior"',
-      'if [ -x "$prior" ]; then "$prior" || exit $?; fi',
-      '# The gate: validate the corpus; a non-zero exit blocks the commit (FR-002..005).',
-      `exec node ${JSON.stringify(cliEntry)} validate ${globs}`,
-    ].join('\n') + '\n'
-  );
+  return `${[
+    '#!/usr/bin/env bash',
+    HOOK_MARKER,
+    'set -euo pipefail',
+    '# Chain a preserved prior hook first (FR-006); its non-zero exit blocks too.',
+    'prior="$(dirname "$0")/pre-commit.prior"',
+    'if [ -x "$prior" ]; then "$prior" || exit $?; fi',
+    '# The gate: validate the corpus; a non-zero exit blocks the commit (FR-002..005).',
+    `exec node ${JSON.stringify(cliEntry)} validate ${globs}`,
+  ].join('\n')}\n`;
 }
 
 export interface HookInstallResult {

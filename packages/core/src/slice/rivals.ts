@@ -9,19 +9,15 @@
  */
 
 import { riceValue } from '@spectastic/schema';
+import type { KernelContext } from '../types.js';
 import { buildCoverage } from './coverage.js';
 import type { CandidateChild, Decomposition } from './types.js';
-import type { KernelContext } from '../types.js';
 
 const RIVALS_SYSTEM =
   'You are an experienced spec author. Propose distinct ways to decompose an over-budget spec into covering child slices. Output ONLY the requested JSON; no prose, no fences.';
 
 /** Draft up to `max` distinct rival decompositions in one call (default 2, medium effort). */
-export async function decomposeRivals(
-  parentHtml: string,
-  ctx: KernelContext,
-  max = 2,
-): Promise<Decomposition[]> {
+export async function decomposeRivals(parentHtml: string, ctx: KernelContext, max = 2): Promise<Decomposition[]> {
   if (!ctx.ai) throw new Error('decomposeRivals requires ctx.ai');
   const prompt = [
     `Propose up to ${max} distinct decompositions of this over-budget spec. Each decomposition covers every FR/NFR/SC exactly once with independently-demoable children.`,
@@ -30,7 +26,10 @@ export async function decomposeRivals(
     'Spec:',
     parentHtml.slice(0, 6000),
   ].join('\n');
-  const raw = await ctx.ai.chat(prompt, { temperature: 0.4, system: RIVALS_SYSTEM });
+  const raw = await ctx.ai.chat(prompt, {
+    temperature: 0.4,
+    system: RIVALS_SYSTEM,
+  });
   return parseRivals(raw).slice(0, max);
 }
 
@@ -44,7 +43,9 @@ function parseRivals(raw: string): Decomposition[] {
     .trim();
   let parsed: { decompositions?: Array<{ children?: DraftChild[] }> };
   try {
-    parsed = JSON.parse(stripped) as { decompositions?: Array<{ children?: DraftChild[] }> };
+    parsed = JSON.parse(stripped) as {
+      decompositions?: Array<{ children?: DraftChild[] }>;
+    };
   } catch {
     throw new Error('decomposeRivals: AI returned non-JSON rivals');
   }
@@ -62,10 +63,7 @@ function totalValue(children: readonly CandidateChild[]): number {
  * Select the best rival: a total + disjoint decomposition beats an incomplete one;
  * ties break by higher total RICE value. Returns `null` for an empty rival set.
  */
-export function selectBestDecomposition(
-  rivals: readonly Decomposition[],
-  parentHtml: string,
-): Decomposition | null {
+export function selectBestDecomposition(rivals: readonly Decomposition[], parentHtml: string): Decomposition | null {
   if (rivals.length === 0) return null;
   const scored = rivals.map((d) => ({
     d,

@@ -51,7 +51,9 @@ describe('readBundle: the NFR -> SLO observables derivation (T-010, US1)', () =>
   });
 
   it('classifies a quantified NFR (prose) with no SLO as a loud gap', () => {
-    const spec = NFR_SPEC(`<spec-requirement id="NFR-001" priority="must"><p>p95 latency &lt; 200 ms.</p></spec-requirement>`);
+    const spec = NFR_SPEC(
+      `<spec-requirement id="NFR-001" priority="must"><p>p95 latency &lt; 200 ms.</p></spec-requirement>`,
+    );
     const row = readBundle(spec, EMPTY_TASKS, '999-obs').observables.find((r) => r.nfrId === 'NFR-001');
     expect(row?.slos).toEqual([]);
     expect(row?.gap).toBe('loud');
@@ -60,20 +62,26 @@ describe('readBundle: the NFR -> SLO observables derivation (T-010, US1)', () =>
   it('classifies a quantified NFR via slo= (light annotation, no element) as a loud gap', () => {
     // A bare slo= satisfies 047's minimal quantified gate but has no SLI/window/
     // signal to trace here — still correctly a gap at this fuller bar.
-    const spec = NFR_SPEC(`<spec-requirement id="NFR-001" priority="must" slo="99% &lt; 200ms / 28d"><p>The system must be fast.</p></spec-requirement>`);
+    const spec = NFR_SPEC(
+      `<spec-requirement id="NFR-001" priority="must" slo="99% &lt; 200ms / 28d"><p>The system must be fast.</p></spec-requirement>`,
+    );
     const row = readBundle(spec, EMPTY_TASKS, '999-obs').observables.find((r) => r.nfrId === 'NFR-001');
     expect(row?.gap).toBe('loud');
   });
 
   it('classifies a non-quantified NFR with no SLO as a quiet n/a', () => {
-    const spec = NFR_SPEC(`<spec-requirement id="NFR-001" priority="must"><p>The system must be secure.</p></spec-requirement>`);
+    const spec = NFR_SPEC(
+      `<spec-requirement id="NFR-001" priority="must"><p>The system must be secure.</p></spec-requirement>`,
+    );
     const row = readBundle(spec, EMPTY_TASKS, '999-obs').observables.find((r) => r.nfrId === 'NFR-001');
     expect(row?.slos).toEqual([]);
     expect(row?.gap).toBe('quiet');
   });
 
   it('never includes a non-NFR requirement (FR-*)', () => {
-    const spec = NFR_SPEC(`<spec-requirement id="FR-001" priority="must"><p>The system must be fast.</p></spec-requirement>`);
+    const spec = NFR_SPEC(
+      `<spec-requirement id="FR-001" priority="must"><p>The system must be fast.</p></spec-requirement>`,
+    );
     expect(readBundle(spec, EMPTY_TASKS, '999-obs').observables).toEqual([]);
   });
 
@@ -116,7 +124,9 @@ describe('renderVerifyHtml: §Observables trace (T-110, FR-001, SC-001)', () => 
   });
 
   it('renders a quiet n/a for a non-quantified NFR with no SLO, not the loud style', () => {
-    const spec = NFR_SPEC(`<spec-requirement id="NFR-001" priority="must"><p>The system must be secure.</p></spec-requirement>`);
+    const spec = NFR_SPEC(
+      `<spec-requirement id="NFR-001" priority="must"><p>The system must be secure.</p></spec-requirement>`,
+    );
     const html = render(spec);
     expect(html).toMatch(/n\/a/i);
   });
@@ -140,11 +150,16 @@ const SLO_SPEC = NFR_SPEC(`
 `);
 
 describe('renderVerifyHtml: the observables capture (T-210, US2, FR-002)', () => {
-  const render = (captured?: CapturedRun): string => renderVerifyHtml(readBundle(SLO_SPEC, EMPTY_TASKS, '999-obs'), captured);
+  const render = (captured?: CapturedRun): string =>
+    renderVerifyHtml(readBundle(SLO_SPEC, EMPTY_TASKS, '999-obs'), captured);
 
   it('writes the captured endpoint and observed signals into typed elements', () => {
     const html = render({
-      observables: { endpoint: 'GET /metrics', signals: ['latency', 'errors'], slosCite: ['NFR-001'] },
+      observables: {
+        endpoint: 'GET /metrics',
+        signals: ['latency', 'errors'],
+        slosCite: ['NFR-001'],
+      },
     });
     expect(html).toContain('<spec-observed-endpoint>GET /metrics</spec-observed-endpoint>');
     expect(html).toContain('<spec-observed-signals>latency, errors</spec-observed-signals>');
@@ -157,7 +172,13 @@ describe('renderVerifyHtml: the observables capture (T-210, US2, FR-002)', () =>
   });
 
   it('marks a verified:false observed block as suggested with a warning', () => {
-    const html = render({ observables: { endpoint: 'GET /metrics', signals: ['latency'], verified: false } });
+    const html = render({
+      observables: {
+        endpoint: 'GET /metrics',
+        signals: ['latency'],
+        verified: false,
+      },
+    });
     expect(html).toContain('<spec-observed-block data-status="suggested">');
     expect(html).toMatch(/Suggested — not yet run/);
   });
@@ -186,14 +207,27 @@ function memFs(files: Record<string, string>): FileSystem {
     rename: async () => undefined,
   };
 }
-const ctxFor = (files: Record<string, string>): KernelContext => ({ cwd: '/repo', fs: memFs(files), ai: undefined as never });
+const ctxFor = (files: Record<string, string>): KernelContext => ({
+  cwd: '/repo',
+  fs: memFs(files),
+  ai: undefined as never,
+});
 
 describe('verifyCommand: standalone regen preserves the observables capture (T-211, NFR-001)', () => {
   it('preserves the captured observables block on a links-only regeneration', async () => {
-    const captured: CapturedRun = { observables: { endpoint: 'GET /metrics', signals: ['latency'], slosCite: ['NFR-001'] } };
+    const captured: CapturedRun = {
+      observables: {
+        endpoint: 'GET /metrics',
+        signals: ['latency'],
+        slosCite: ['NFR-001'],
+      },
+    };
     const first = await verifyCommand(
       { specId: '999-obs', capturedRun: captured },
-      ctxFor({ '999-obs/spec.html': SLO_SPEC, '999-obs/tasks.html': EMPTY_TASKS }),
+      ctxFor({
+        '999-obs/spec.html': SLO_SPEC,
+        '999-obs/tasks.html': EMPTY_TASKS,
+      }),
     );
     expect(first.html).toContain('<spec-observed-endpoint>GET /metrics</spec-observed-endpoint>');
 
@@ -218,22 +252,33 @@ describe('verifyCommand: standalone regen preserves the observables capture (T-2
  * test-first — FAILS until T-310 lands.
  */
 describe('renderVerifyHtml: the declared-vs-observed signal cross-check (T-310, US3, FR-003)', () => {
-  const render = (captured?: CapturedRun): string => renderVerifyHtml(readBundle(SLO_SPEC, EMPTY_TASKS, '999-obs'), captured);
+  const render = (captured?: CapturedRun): string =>
+    renderVerifyHtml(readBundle(SLO_SPEC, EMPTY_TASKS, '999-obs'), captured);
 
   it('renders no gap when the verified capture observed the declared signal', () => {
-    const html = render({ observables: { endpoint: 'GET /metrics', signals: ['latency'] } });
+    const html = render({
+      observables: { endpoint: 'GET /metrics', signals: ['latency'] },
+    });
     expect(html).toContain('<code>latency</code>');
     expect(html).not.toMatch(/not observed|unobserved/i);
   });
 
   it('renders a loud gap when the verified capture did NOT observe the declared signal', () => {
-    const html = render({ observables: { endpoint: 'GET /metrics', signals: ['errors'] } }); // latency missing
+    const html = render({
+      observables: { endpoint: 'GET /metrics', signals: ['errors'] },
+    }); // latency missing
     expect(html).toMatch(/<strong[^>]*>[\s\S]*?latency[\s\S]*?<\/strong>/);
     expect(html).toMatch(/not observed|unobserved/i);
   });
 
   it('does NOT gap a suggested (verified:false) capture missing the signal — not checked, not "not emitted"', () => {
-    const html = render({ observables: { endpoint: 'GET /metrics', signals: ['errors'], verified: false } });
+    const html = render({
+      observables: {
+        endpoint: 'GET /metrics',
+        signals: ['errors'],
+        verified: false,
+      },
+    });
     expect(html).toContain('<code>latency</code>');
     expect(html).not.toMatch(/not observed|unobserved/i);
   });

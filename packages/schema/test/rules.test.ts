@@ -65,9 +65,7 @@ async function loadFixture(
 describe.each(rules.map((r) => ({ id: r.id })))('rule: $id', ({ id }) => {
   it('positive fixture triggers this rule', async () => {
     const { inputs, multiFile } = await loadFixture(id, 'positive');
-    const findings = multiFile
-      ? validateMany(inputs)
-      : validate(inputs[0]!.html, { file: inputs[0]!.file });
+    const findings = multiFile ? validateMany(inputs) : validate(inputs[0]!.html, { file: inputs[0]!.file });
     const matched = findings.filter((f) => f.rule === id);
     expect(
       matched.length,
@@ -77,9 +75,7 @@ describe.each(rules.map((r) => ({ id: r.id })))('rule: $id', ({ id }) => {
 
   it('negative fixture does not trigger this rule', async () => {
     const { inputs, multiFile } = await loadFixture(id, 'negative');
-    const findings = multiFile
-      ? validateMany(inputs)
-      : validate(inputs[0]!.html, { file: inputs[0]!.file });
+    const findings = multiFile ? validateMany(inputs) : validate(inputs[0]!.html, { file: inputs[0]!.file });
     const matched = findings.filter((f) => f.rule === id);
     expect(
       matched.length,

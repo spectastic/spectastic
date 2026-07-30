@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { expect, test } from '@playwright/test';
 
 // US1 — vivid is heavier (FR-007), and a theme owns type/structure but NOT
 // colour (FR-002). getComputedStyle returns the specified font-weight whether
@@ -6,12 +6,12 @@ import { test, expect } from '@playwright/test';
 const FIXTURE = '/tests/fixtures/all-components.html';
 
 const weight = (page, sel: string) =>
-  page.locator(sel).first().evaluate((el) => getComputedStyle(el).fontWeight);
+  page
+    .locator(sel)
+    .first()
+    .evaluate((el) => getComputedStyle(el).fontWeight);
 const cssVar = (page, name: string) =>
-  page.evaluate(
-    (n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim(),
-    name
-  );
+  page.evaluate((n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim(), name);
 
 test('vivid raises heading weights vs calm; colour tokens are theme-invariant', async ({ page }) => {
   await page.goto(FIXTURE);

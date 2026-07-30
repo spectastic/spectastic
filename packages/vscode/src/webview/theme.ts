@@ -5,8 +5,7 @@
  * themselves are wired to --vscode-* directly in canvas.css.
  */
 export function applyTheme(root: HTMLElement, body: HTMLElement = document.body): void {
-  const dark =
-    body.classList.contains('vscode-dark') || body.classList.contains('vscode-high-contrast');
+  const dark = body.classList.contains('vscode-dark') || body.classList.contains('vscode-high-contrast');
   root.dataset.mode = dark ? 'dark' : 'light';
 }
 

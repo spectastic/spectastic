@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { expect, test } from '@playwright/test';
 import { SAMPLE_GRAPH } from './fixtures/graph.js';
 
 // Phase 5 / T-401 (spec FR-004, NFR-004). Vertical is the default spine; the
@@ -7,15 +7,14 @@ const HARNESS = '/tests/vscode/fixtures/canvas-harness.html';
 
 async function postGraph(page: import('@playwright/test').Page, orientation?: string): Promise<void> {
   await page.goto(HARNESS);
-  await page.evaluate(
-    ({ graph, orientation }) => window.postMessage({ type: 'graph', graph, orientation }, '*'),
-    { graph: SAMPLE_GRAPH, orientation },
-  );
+  await page.evaluate(({ graph, orientation }) => window.postMessage({ type: 'graph', graph, orientation }, '*'), {
+    graph: SAMPLE_GRAPH,
+    orientation,
+  });
   await page.waitForSelector('.node[data-id="tasks"]');
 }
 
-const box = (page: import('@playwright/test').Page, id: string) =>
-  page.locator(`.node[data-id="${id}"]`).boundingBox();
+const box = (page: import('@playwright/test').Page, id: string) => page.locator(`.node[data-id="${id}"]`).boundingBox();
 
 test('defaults to a vertical spine — nodes stack top-to-bottom', async ({ page }) => {
   await postGraph(page); // no orientation → default vertical

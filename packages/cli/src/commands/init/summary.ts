@@ -23,9 +23,7 @@ export function printSummary(summary: InitSummary): void {
   lines.push(`  ${pad('skipped', summary.skipped)}`);
   lines.push('');
   lines.push(pc.bold('Next step:'));
-  lines.push(
-    "  Open the project in Claude Code and run /spectastic.principles",
-  );
+  lines.push('  Open the project in Claude Code and run /spectastic.principles');
   lines.push("  to author your project's principles.html.");
   lines.push('');
   process.stdout.write(`${lines.join('\n')}\n`);

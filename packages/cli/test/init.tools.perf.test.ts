@@ -36,7 +36,9 @@ let repo: TmpGitRepo;
 afterEach(() => repo?.cleanup());
 
 describe('init --tools · gate latency (NFR-001)', () => {
-  it('T-900/SC-005: the gate adds ≤ 1 s at p95 on a 200-artifact project', { timeout: 30_000 }, async () => {
+  it('T-900/SC-005: the gate adds ≤ 1 s at p95 on a 200-artifact project', {
+    timeout: 30_000,
+  }, async () => {
     repo = createTmpGitRepo();
     repo.seedProject();
     for (let i = 0; i < 200; i++) repo.writeFile(`specs/${1000 + i}-x/spec.html`, CLEAN_ARTIFACT);

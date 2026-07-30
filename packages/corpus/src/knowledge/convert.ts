@@ -15,14 +15,14 @@
  * counterpart export surface.
  */
 import { execFile as execFileCb } from 'node:child_process';
-import { promisify } from 'node:util';
 import { createHash } from 'node:crypto';
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
+import { promisify } from 'node:util';
 import { deriveTitleAndDescription } from './adapt.js';
-import { registerDocument, NOT_YET_SPOT_CHECKED_STATUS } from './ingest.js';
 import { parseRegistry } from './index-format.js';
+import { NOT_YET_SPOT_CHECKED_STATUS, registerDocument } from './ingest.js';
 import type { RegistryEntry } from './types.js';
 
 const execFile = promisify(execFileCb);
@@ -35,7 +35,11 @@ export const DEFAULT_TIMEOUT_MS = 120_000;
  * bounded, overridable timeout (D-005). Stub impl (tests): returns canned output, no
  * process ever spawned — mirrors StubPackFetcher's shape. */
 export interface ConverterRunner {
-  run(bin: string, argv: readonly string[], opts?: { timeoutMs?: number | undefined } | undefined): Promise<{ stdout: string }>;
+  run(
+    bin: string,
+    argv: readonly string[],
+    opts?: { timeoutMs?: number | undefined } | undefined,
+  ): Promise<{ stdout: string }>;
 }
 
 /** One converter's shape: its binary name, how to build its argv (the heterogeneous
@@ -64,7 +68,11 @@ export interface ConverterSpec {
  * and rejects; the caller (convertDocument, T-111) turns that into a clean non-zero
  * exit with no partial write. */
 export class ExecFileConverterRunner implements ConverterRunner {
-  async run(bin: string, argv: readonly string[], opts?: { timeoutMs?: number | undefined }): Promise<{ stdout: string }> {
+  async run(
+    bin: string,
+    argv: readonly string[],
+    opts?: { timeoutMs?: number | undefined },
+  ): Promise<{ stdout: string }> {
     const { stdout } = await execFile(bin, [...argv], {
       timeout: opts?.timeoutMs ?? DEFAULT_TIMEOUT_MS,
       maxBuffer: 10 * 1024 * 1024,
@@ -78,13 +86,23 @@ export class ExecFileConverterRunner implements ConverterRunner {
  * the argv it was invoked with. Records every call it received, for assertions on
  * the argv a spec built. Mirrors `StubPackFetcher`'s shape. */
 export class StubConverterRunner implements ConverterRunner {
-  public readonly calls: Array<{ bin: string; argv: readonly string[]; opts: { timeoutMs?: number | undefined } | undefined }> = [];
+  public readonly calls: Array<{
+    bin: string;
+    argv: readonly string[];
+    opts: { timeoutMs?: number | undefined } | undefined;
+  }> = [];
 
   constructor(
-    private readonly result: { stdout: string } | ((bin: string, argv: readonly string[]) => { stdout: string }) = { stdout: '' },
+    private readonly result: { stdout: string } | ((bin: string, argv: readonly string[]) => { stdout: string }) = {
+      stdout: '',
+    },
   ) {}
 
-  async run(bin: string, argv: readonly string[], opts?: { timeoutMs?: number | undefined }): Promise<{ stdout: string }> {
+  async run(
+    bin: string,
+    argv: readonly string[],
+    opts?: { timeoutMs?: number | undefined },
+  ): Promise<{ stdout: string }> {
     this.calls.push({ bin, argv, opts });
     return typeof this.result === 'function' ? this.result(bin, argv) : this.result;
   }
@@ -147,7 +165,10 @@ export const CONVERTERS: Record<string, ConverterSpec> = {
  * exists as an override seam for tests exercising a real converter shape against a
  * fixture binary without mutating the shared registry (mirrors `resolveCitation`'s
  * own registry-injection pattern). */
-export function resolveConverterSpec(name: string, registry: Record<string, ConverterSpec> = CONVERTERS): ConverterSpec {
+export function resolveConverterSpec(
+  name: string,
+  registry: Record<string, ConverterSpec> = CONVERTERS,
+): ConverterSpec {
   const spec = registry[name];
   if (!spec) {
     throw new Error(`Unknown converter "${name}"; expected one of: ${Object.keys(registry).join(', ')}`);
@@ -221,7 +242,9 @@ export async function convertDocument(input: ConvertDocumentInput): Promise<Conv
     const argv = spec.buildArgs(input.sourceFile, tmpDir);
     let run: { stdout: string };
     try {
-      run = await input.runner.run(spec.bin, argv, { timeoutMs: input.timeoutMs });
+      run = await input.runner.run(spec.bin, argv, {
+        timeoutMs: input.timeoutMs,
+      });
     } catch (err) {
       if ((err as NodeJS.ErrnoException)?.code === 'ENOENT') {
         throw new ConverterNotFoundError(converterName, spec.installHint);
@@ -240,7 +263,9 @@ export async function convertDocument(input: ConvertDocumentInput): Promise<Conv
   let converterField = converterName;
   if (spec.versionArgs) {
     try {
-      const versionRun = await input.runner.run(spec.bin, spec.versionArgs, { timeoutMs: input.timeoutMs });
+      const versionRun = await input.runner.run(spec.bin, spec.versionArgs, {
+        timeoutMs: input.timeoutMs,
+      });
       const version = versionRun.stdout.trim().split(/\s+/).pop();
       if (version) converterField = `${converterName} ${version}`;
     } catch {
@@ -290,13 +315,22 @@ export async function convertDocument(input: ConvertDocumentInput): Promise<Conv
     ...(input.corpusMarketplaceName !== undefined ? { corpusMarketplaceName: input.corpusMarketplaceName } : {}),
   });
 
-  return { id, filePath: `${input.pack}/references/${slug}.md`, converter: converterField };
+  return {
+    id,
+    filePath: `${input.pack}/references/${slug}.md`,
+    converter: converterField,
+  };
 }
 
 /** A URL/filename-safe slug body: lowercase, non-alphanumerics collapsed to single
  * hyphens, trimmed. Falls back to `document` for an all-symbol stem. */
 function slugify(s: string): string {
-  return s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'document';
+  return (
+    s
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '') || 'document'
+  );
 }
 
 /** A human title fallback from a filename stem when the converted markdown has no

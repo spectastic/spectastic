@@ -38,10 +38,7 @@ async function dirNames(dir: string): Promise<string[]> {
 
 /** The highest `NNN` across local `specs/` and `explorations/`. */
 export async function highestLocalSpecNumber(cwd: string): Promise<number> {
-  const [specs, explorations] = await Promise.all([
-    dirNames(join(cwd, 'specs')),
-    dirNames(join(cwd, 'explorations')),
-  ]);
+  const [specs, explorations] = await Promise.all([dirNames(join(cwd, 'specs')), dirNames(join(cwd, 'explorations'))]);
   return Math.max(highestNumberInDirs(specs), highestNumberInDirs(explorations));
 }
 
@@ -67,11 +64,7 @@ export interface AllocateOpts {
  * Resolve the next `NNN-slug` spec id. Allocates against local ∪ origin when a
  * runner is supplied and the remote is reachable; otherwise local only.
  */
-export async function resolveNextSpecId(
-  cwd: string,
-  slug: string,
-  opts: AllocateOpts = {},
-): Promise<string> {
+export async function resolveNextSpecId(cwd: string, slug: string, opts: AllocateOpts = {}): Promise<string> {
   const local = await highestLocalSpecNumber(cwd);
 
   let originMax = 0;

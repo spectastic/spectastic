@@ -19,14 +19,24 @@ describe('scan — build-script/CI/packaging-edit detector', () => {
   it('flags a changed GitHub Actions workflow as MEDIUM', () => {
     const patch = patchFor('.github/workflows/ci.yml');
     expect(scan({ patch, numstat: '1\t1\t.github/workflows/ci.yml\n' })).toEqual([
-      { category: 'build-script-edit', weight: 'medium', file: '.github/workflows/ci.yml', evidence: expect.any(String) },
+      {
+        category: 'build-script-edit',
+        weight: 'medium',
+        file: '.github/workflows/ci.yml',
+        evidence: expect.any(String),
+      },
     ]);
   });
 
   it('flags a changed Dockerfile as MEDIUM', () => {
     const patch = patchFor('Dockerfile');
     expect(scan({ patch, numstat: '1\t1\tDockerfile\n' })).toEqual([
-      { category: 'build-script-edit', weight: 'medium', file: 'Dockerfile', evidence: expect.any(String) },
+      {
+        category: 'build-script-edit',
+        weight: 'medium',
+        file: 'Dockerfile',
+        evidence: expect.any(String),
+      },
     ]);
   });
 

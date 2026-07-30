@@ -47,7 +47,12 @@ const BINARY_ADD_RE = /Binary files \/dev\/null and b\/(.+?) differ/g;
 function detectBinaryBlobs(patch: string): RedFlagFinding[] {
   const out: RedFlagFinding[] = [];
   for (const m of patch.matchAll(BINARY_ADD_RE)) {
-    out.push({ category: 'binary-blob', weight: 'high', file: m[1] ?? '', evidence: 'binary file added' });
+    out.push({
+      category: 'binary-blob',
+      weight: 'high',
+      file: m[1] ?? '',
+      evidence: 'binary file added',
+    });
   }
   return out;
 }
@@ -69,7 +74,14 @@ const BUILD_CI_PATTERNS: readonly RegExp[] = [
 
 function detectBuildScriptEdit(file: string): RedFlagFinding[] {
   if (!BUILD_CI_PATTERNS.some((re) => re.test(file))) return [];
-  return [{ category: 'build-script-edit', weight: 'medium', file, evidence: 'build/CI/packaging surface changed' }];
+  return [
+    {
+      category: 'build-script-edit',
+      weight: 'medium',
+      file,
+      evidence: 'build/CI/packaging surface changed',
+    },
+  ];
 }
 
 // ---------------------------------------------------------------------------
@@ -103,12 +115,7 @@ interface BlockAccumulator {
  * fixture shape) whose entries register immediately, or a multi-line
  * block's open line. Returns whether a multi-line block was entered.
  */
-function scanBlockStartLine(
-  line: string,
-  inlineBlockRe: RegExp,
-  blockOpenRe: RegExp,
-  acc: BlockAccumulator,
-): boolean {
+function scanBlockStartLine(line: string, inlineBlockRe: RegExp, blockOpenRe: RegExp, acc: BlockAccumulator): boolean {
   const inlineMatch = inlineBlockRe.exec(line);
   if (inlineMatch) {
     const sign = inlineMatch[1] ?? '';
@@ -166,7 +173,12 @@ function detectInstallHook(file: string, hunk: string): RedFlagFinding[] {
   const out: RedFlagFinding[] = [];
   for (const key of INSTALL_HOOK_KEYS) {
     if (added.has(key)) {
-      out.push({ category: 'install-hook', weight: 'high', file, evidence: `scripts.${key} added or changed` });
+      out.push({
+        category: 'install-hook',
+        weight: 'high',
+        file,
+        evidence: `scripts.${key} added or changed`,
+      });
     }
   }
   return out;
@@ -187,7 +199,14 @@ function detectEntropyPayload(file: string, hunk: string): RedFlagFinding[] {
     if (!line.startsWith('+') || line.startsWith('+++')) continue;
     const body = line.slice(1);
     if (BASE64_RUN_RE.test(body) || HEX_RUN_RE.test(body)) {
-      return [{ category: 'entropy-payload', weight: 'high', file, evidence: 'long high-entropy/base64 payload added' }];
+      return [
+        {
+          category: 'entropy-payload',
+          weight: 'high',
+          file,
+          evidence: 'long high-entropy/base64 payload added',
+        },
+      ];
     }
   }
   return [];
@@ -206,7 +225,12 @@ function detectNewDependency(file: string, hunk: string): RedFlagFinding[] {
   const out: RedFlagFinding[] = [];
   for (const key of added.keys()) {
     if (!removed.has(key)) {
-      out.push({ category: 'new-dependency', weight: 'low', file, evidence: `dependency "${key}" added` });
+      out.push({
+        category: 'new-dependency',
+        weight: 'low',
+        file,
+        evidence: `dependency "${key}" added`,
+      });
     }
   }
   return out;

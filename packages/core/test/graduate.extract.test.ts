@@ -1,6 +1,6 @@
-import { describe, expect, it } from 'vitest';
 import { graduateExtract } from '@spectastic/core/commands/graduate';
 import { StubAIProvider } from '@spectastic/core/providers/stub';
+import { describe, expect, it } from 'vitest';
 
 // T-100 (spec 023-explore-graduation, US1): the AI-coupled extract leg reads a
 // build + run record into a Draft spec + plan, seeding the run's proven facts as
@@ -20,16 +20,41 @@ const LEDGER = `<!doctype html><html><body>
 const EXTRACT_JSON = JSON.stringify({
   intent: 'A drag-to-reorder list editor',
   tldr: 'Pointer-driven reorder with optimistic persistence.',
-  stories: [{ id: 'US1', title: 'Reorder rows', role: 'user', want: 'to drag rows', outcome: 'order persists', acceptance: 'dragging a row reorders and persists across reload' }],
-  frs: [{ id: 'FR-001', priority: 'must', body: 'reorder rows by pointer drag and persist the order' }],
-  scs: [{ id: 'SC-001', priority: 'must', body: 'a reordered list survives a reload' }],
+  stories: [
+    {
+      id: 'US1',
+      title: 'Reorder rows',
+      role: 'user',
+      want: 'to drag rows',
+      outcome: 'order persists',
+      acceptance: 'dragging a row reorders and persists across reload',
+    },
+  ],
+  frs: [
+    {
+      id: 'FR-001',
+      priority: 'must',
+      body: 'reorder rows by pointer drag and persist the order',
+    },
+  ],
+  scs: [
+    {
+      id: 'SC-001',
+      priority: 'must',
+      body: 'a reordered list survives a reload',
+    },
+  ],
 });
 
 describe('graduateExtract (US1)', () => {
   it('reads the build into a spec + plan, seeding verified rows in the plan ledger', async () => {
     const ai = new StubAIProvider({ chat: [EXTRACT_JSON] });
     const { specHtml, planHtml } = await graduateExtract(
-      { specId: '088-sortable-list', classification: 'tracer-bullet', ledger: LEDGER },
+      {
+        specId: '088-sortable-list',
+        classification: 'tracer-bullet',
+        ledger: LEDGER,
+      },
       { cwd: '', ai },
     );
 

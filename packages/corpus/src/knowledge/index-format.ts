@@ -16,7 +16,7 @@
  * the shared-grammar-subpath pattern (mirrors `citation-shared.ts`'s split
  * between the schema package's rule and core's gate).
  */
-import { KB_ID_RE, SLUG_RE, type IndexEntry, type RegistryEntry } from './types.js';
+import { type IndexEntry, KB_ID_RE, type RegistryEntry, SLUG_RE } from './types.js';
 
 const INDEX_COLUMNS = 5;
 const REGISTRY_COLUMNS = 8;
@@ -60,7 +60,13 @@ export function parseIndex(raw: string): IndexEntry[] {
     if (!cells || cells.length !== INDEX_COLUMNS) continue;
     const [id, title, description, edition, path] = cells;
     if (!id || !KB_ID_RE.test(id)) continue; // header / separator / malformed row
-    entries.push({ id, title: title ?? '', description: description ?? '', edition: edition ?? '', path: path ?? '' });
+    entries.push({
+      id,
+      title: title ?? '',
+      description: description ?? '',
+      edition: edition ?? '',
+      path: path ?? '',
+    });
   }
   return entries;
 }
@@ -157,8 +163,6 @@ export const SLUG_MAP_HEADER = '| Slug | Title | Description | Edition | Path |'
 export function renderSkillSlugMapTable(rows: readonly SkillSlugMapEntry[]): string {
   const sorted = [...rows].sort((a, b) => a.slug.localeCompare(b.slug));
   const header = `${SLUG_MAP_HEADER}\n| --- | --- | --- | --- | --- |`;
-  const body = sorted
-    .map((r) => `| ${r.slug} | ${r.title} | ${r.description} | ${r.edition} | ${r.path} |`)
-    .join('\n');
+  const body = sorted.map((r) => `| ${r.slug} | ${r.title} | ${r.description} | ${r.edition} | ${r.path} |`).join('\n');
   return `${header}\n${body}\n`;
 }

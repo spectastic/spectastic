@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process';
-import { mkdirSync, mkdtempSync, writeFileSync, readFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -23,7 +23,10 @@ interface RunResult {
 
 async function runCLI(args: string[], cwd: string, extraEnv: Record<string, string> = {}): Promise<RunResult> {
   return new Promise((resolveFn) => {
-    const child = spawn('node', [CLI, ...args], { cwd, env: { ...process.env, ...extraEnv } });
+    const child = spawn('node', [CLI, ...args], {
+      cwd,
+      env: { ...process.env, ...extraEnv },
+    });
     let stdout = '';
     let stderr = '';
     child.stdout.on('data', (chunk: Buffer) => {
@@ -45,7 +48,10 @@ function setupSpecDir(opts: { planStatus?: string }): {
   const specId = 'foo-bar';
   const specDir = join(cwd, 'specs', specId);
   mkdirSync(specDir, { recursive: true });
-  writeFileSync(join(specDir, 'spec.html'), '<!doctype html><html><body><main><spec-meta></spec-meta></main></body></html>');
+  writeFileSync(
+    join(specDir, 'spec.html'),
+    '<!doctype html><html><body><main><spec-meta></spec-meta></main></body></html>',
+  );
   const planPath = join(specDir, 'plan.html');
   if (opts.planStatus) {
     writeFileSync(
@@ -80,7 +86,9 @@ describe('CLI integration: plan (T-112)', () => {
   it('--force on past-Draft bypasses with warning', async () => {
     const { cwd, specId } = setupSpecDir({ planStatus: 'accepted' });
 
-    const r = await runCLI(['plan', specId, '--force'], cwd, { ANTHROPIC_API_KEY: '' });
+    const r = await runCLI(['plan', specId, '--force'], cwd, {
+      ANTHROPIC_API_KEY: '',
+    });
     expect(r.stderr).toContain('warn: bypassing change-management surface');
     expect(r.stderr).toContain('status was accepted');
     expect(r.code).not.toBe(0);
@@ -100,11 +108,10 @@ describe('CLI integration: plan (T-112)', () => {
     const { cwd, specId, planPath } = setupSpecDir({});
     const scriptPath = resolve(here, 'fixtures', 'plan-script.json');
 
-    const r = await runCLI(
-      ['plan', specId],
-      cwd,
-      { SPECTASTIC_AI_STUB: scriptPath, ANTHROPIC_API_KEY: '' },
-    );
+    const r = await runCLI(['plan', specId], cwd, {
+      SPECTASTIC_AI_STUB: scriptPath,
+      ANTHROPIC_API_KEY: '',
+    });
 
     expect(r.code, `stdout: ${r.stdout}\nstderr: ${r.stderr}`).toBe(0);
     expect(r.stdout).toContain('Wrote');

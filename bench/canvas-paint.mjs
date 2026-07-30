@@ -3,12 +3,11 @@
 // parsing + extracting + validating each artifact, which this measures directly
 // over the real specs/020 files. Run: node bench/canvas-paint.mjs
 import { readFile } from 'node:fs/promises';
-import { join, dirname } from 'node:path';
+import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
-const { extractHealth, validate } = await import(
-  join(root, 'packages', 'schema', 'dist', 'index.js')
-);
+const { extractHealth, validate } = await import(join(root, 'packages', 'schema', 'dist', 'index.js'));
 const specDir = join(root, 'specs', '020-vscode-extension');
 
 const files = [

@@ -11,22 +11,14 @@
 
 import { loadGitConfig } from './config.js';
 import { branchName, commitSubject, shouldCreateBranch } from './derive.js';
-import { gitRunner, type GitRunner, type Trailer } from './run.js';
+import { type GitRunner, gitRunner, type Trailer } from './run.js';
 import { gatherTrailers } from './trailers.js';
 
 /** The `git.auto` config switch (spec 026 §4; default `off`, FR-004). */
 export type GitAuto = 'off' | 'commit' | 'branch+commit';
 
 /** The eight lifecycle verbs the layer can commit for (the small verb surface). */
-export type Verb =
-  | 'spec'
-  | 'plan'
-  | 'tasks'
-  | 'implement'
-  | 'propose'
-  | 'apply'
-  | 'triage'
-  | 'principles';
+export type Verb = 'spec' | 'plan' | 'tasks' | 'implement' | 'propose' | 'apply' | 'triage' | 'principles';
 
 /**
  * What a verb action hands the layer. The action already knows its verb, the
@@ -155,7 +147,10 @@ async function countBlockingFindings(cwd: string, paths: string[]): Promise<numb
   const markers = await expandGlobs([`${cwd}/explorations/**/quarantine.json`]);
   for (const file of markers) {
     try {
-      const marker = JSON.parse(await readFile(file, 'utf8')) as { id?: string; status?: string };
+      const marker = JSON.parse(await readFile(file, 'utf8')) as {
+        id?: string;
+        status?: string;
+      };
       if (quarantineFinding(marker, file)) errors += 1;
     } catch {
       errors += 1; // a corrupt/unreadable marker still signals a live exploration
@@ -200,7 +195,11 @@ export async function commitForVerb(ctx: CommitContext): Promise<CommitOutcome> 
   const trailers = cfg.trailers === 'on' ? await gatherCommitTrailers(ctx, runner) : [];
   await runner.commit(subject, trailers);
 
-  return { committed: true, commitSubject: subject, ...(branch ? { branch } : {}) };
+  return {
+    committed: true,
+    commitSubject: subject,
+    ...(branch ? { branch } : {}),
+  };
 }
 
 /**
@@ -224,7 +223,11 @@ async function gatherCommitTrailers(ctx: CommitContext, runner: GitRunner): Prom
     ? join(ctx.cwd, 'specs', ctx.specId, 'spec.html')
     : ctx.paths.find((p) => p.endsWith('.html'));
 
-  let meta: { owner: string | null; author: string | null; reviewers: string | null } = {
+  let meta: {
+    owner: string | null;
+    author: string | null;
+    reviewers: string | null;
+  } = {
     owner: null,
     author: null,
     reviewers: null,

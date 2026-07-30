@@ -14,9 +14,7 @@ import type { Command } from 'commander';
 export function registerTriage(program: Command): void {
   program
     .command('triage')
-    .description(
-      'Triage a defect (or list) into structured cards. Reads description from arg or stdin.',
-    )
+    .description('Triage a defect (or list) into structured cards. Reads description from arg or stdin.')
     .argument('[description]', 'failure description, error, stack, or list (omit to read stdin)')
     .option('--spec <spec-id>', 'spec ID for single-card mode; ignored for list-intake')
     .option('--mode <mode>', 'force "single" | "list"; default auto-detect')

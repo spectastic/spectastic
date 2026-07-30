@@ -1,22 +1,14 @@
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
-import { planCommand } from '@spectastic/core/commands/plan';
-import { specCommand } from '@spectastic/core/commands/spec';
-import { proposeCommand } from '@spectastic/core/commands/propose';
-import { tasksCommand } from '@spectastic/core/commands/tasks';
+import type { AIProvider, ChatOpts, FileSystem, Question, SubagentOpts, SubagentResult } from '@spectastic/core';
 import { graduateExtract } from '@spectastic/core/commands/graduate';
+import { planCommand } from '@spectastic/core/commands/plan';
+import { proposeCommand } from '@spectastic/core/commands/propose';
+import { specCommand } from '@spectastic/core/commands/spec';
+import { tasksCommand } from '@spectastic/core/commands/tasks';
 import { buildCorpusPromptBlock, loadCorpus } from '@spectastic/corpus';
-import type {
-  AIProvider,
-  ChatOpts,
-  FileSystem,
-  KernelContext,
-  Question,
-  SubagentOpts,
-  SubagentResult,
-} from '@spectastic/core';
+import { afterEach, describe, expect, it } from 'vitest';
 
 /**
  * 054-corpus-in-prompt T-101/T-300: integration tests for the five-verb
@@ -114,13 +106,21 @@ function noCorpusDir(): string {
   return dir;
 }
 
-async function runAllFive(cwd: string): Promise<{ ai: CapturingAI; tasksResult: Awaited<ReturnType<typeof tasksCommand>> }> {
+async function runAllFive(cwd: string): Promise<{
+  ai: CapturingAI;
+  tasksResult: Awaited<ReturnType<typeof tasksCommand>>;
+}> {
   const ai = new CapturingAI();
 
   await planCommand({ specId: '099-corpus-inject', specHtml: CLEAN_SPEC }, { cwd, ai });
   await specCommand({ description: 'a corpus-injection test feature' }, { cwd, ai });
   await proposeCommand(
-    { specId: '099-corpus-inject', description: 'add a thing', specHtml: CLEAN_SPEC, adversarial: false },
+    {
+      specId: '099-corpus-inject',
+      description: 'add a thing',
+      specHtml: CLEAN_SPEC,
+      adversarial: false,
+    },
     { cwd, ai },
   );
   const fs = stubFs({ '/spec.html': CLEAN_SPEC, '/plan.html': PLAN });
@@ -131,7 +131,7 @@ async function runAllFive(cwd: string): Promise<{ ai: CapturingAI; tasksResult: 
 }
 
 describe('corpus prompt injection — present (054, T-101)', () => {
-  it('every one of the five AI-coupled verbs\' prompt(s) contains the corpus block', async () => {
+  it("every one of the five AI-coupled verbs' prompt(s) contains the corpus block", async () => {
     const cwd = corpusDir();
     const { ai } = await runAllFive(cwd);
 
@@ -144,7 +144,7 @@ describe('corpus prompt injection — present (054, T-101)', () => {
 });
 
 describe('corpus prompt injection — absent (054, T-300)', () => {
-  it('none of the five verbs\' prompts contain any corpus content with no knowledge/ directory', async () => {
+  it("none of the five verbs' prompts contain any corpus content with no knowledge/ directory", async () => {
     const cwd = noCorpusDir();
     const { ai } = await runAllFive(cwd);
 

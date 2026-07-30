@@ -24,11 +24,14 @@
  * post-state in verbatim on both the `added` and `modified` branches — no re-basing at all.
  */
 
-import { describe, expect, it } from 'vitest';
-import { applyCommand } from '@spectastic/core/commands/apply';
 import type { FileSystem, KernelContext } from '@spectastic/core';
+import { applyCommand } from '@spectastic/core/commands/apply';
+import { describe, expect, it } from 'vitest';
 
-function stubFs(initial: Record<string, string>): { fs: FileSystem; files: Map<string, string> } {
+function stubFs(initial: Record<string, string>): {
+  fs: FileSystem;
+  files: Map<string, string>;
+} {
   const files = new Map(Object.entries(initial));
   const fs: FileSystem = {
     async readFile(path) {
@@ -96,10 +99,7 @@ describe('apply kernel — embedded requirement link re-basing, proposal depth �
     });
     const ctx: KernelContext = { cwd: '', fs };
 
-    const result = await applyCommand(
-      { kind: 'apply', specId: '019', slug: '2026-01-01-rebase' },
-      ctx,
-    );
+    const result = await applyCommand({ kind: 'apply', specId: '019', slug: '2026-01-01-rebase' }, ctx);
 
     expect(result.deltas[0]?.result).toBe('success');
     const updated = files.get('/specs/019/spec.html')!;
@@ -110,9 +110,7 @@ describe('apply kernel — embedded requirement link re-basing, proposal depth �
 
     expect(requirementBlock).toContain('href="#FR-999"'); // untouched, depth-independent
     expect(requirementBlock).toContain('href="../../principles.html#P-8"'); // 4 → 2
-    expect(requirementBlock).toContain(
-      'href="../006-kernel-extraction/spec.html#FR-009"',
-    ); // 3 → 1
+    expect(requirementBlock).toContain('href="../006-kernel-extraction/spec.html#FR-009"'); // 3 → 1
     expect(requirementBlock).toContain('href="triage-log.html#T-004"'); // 2 → 0
 
     // Never the unconverted proposal-depth forms.
@@ -128,10 +126,7 @@ describe('apply kernel — embedded requirement link re-basing, proposal depth �
     });
     const ctx: KernelContext = { cwd: '', fs };
 
-    const result = await applyCommand(
-      { kind: 'apply', specId: '019', slug: '2026-01-01-rebase' },
-      ctx,
-    );
+    const result = await applyCommand({ kind: 'apply', specId: '019', slug: '2026-01-01-rebase' }, ctx);
 
     expect(result.deltas[0]?.result).toBe('success');
     const updated = files.get('/specs/019/spec.html')!;

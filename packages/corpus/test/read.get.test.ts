@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { get } from '../src/read/get.js';
 import type { CorpusPack, RegistryEntry } from '../src/knowledge/types.js';
+import { get } from '../src/read/get.js';
 
 /**
  * 064-corpus-package-extraction, US3 (T-300, FR-005): get<id> resolves one document via

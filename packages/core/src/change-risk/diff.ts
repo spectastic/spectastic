@@ -34,7 +34,10 @@ export interface DiffResult {
 }
 
 async function git(cwd: string, args: string[]): Promise<string> {
-  const { stdout } = await exec('git', args, { cwd, maxBuffer: 64 * 1024 * 1024 });
+  const { stdout } = await exec('git', args, {
+    cwd,
+    maxBuffer: 64 * 1024 * 1024,
+  });
   return stdout;
 }
 

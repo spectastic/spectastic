@@ -62,7 +62,10 @@ const SCP_OWNER_REPO_RE = /^[^@\s]+@[^:]+:([^/]+)\/([^/]+)$/;
 /** Parse a git remote URL into an owner/repo pair, or `null` when the shape
  * isn't confidently one of the two supported forms. Pure — no fs, no git. */
 export function parseRemoteOwnerRepo(url: string): OwnerRepo | null {
-  const stripped = url.trim().replace(/\.git\/?$/, '').replace(/\/$/, '');
+  const stripped = url
+    .trim()
+    .replace(/\.git\/?$/, '')
+    .replace(/\/$/, '');
   const match = URL_OWNER_REPO_RE.exec(stripped) ?? SCP_OWNER_REPO_RE.exec(stripped);
   if (!match?.[1] || !match[2]) return null;
   return { owner: match[1], repo: match[2] };
@@ -92,7 +95,9 @@ export interface GitRunner {
 export function gitRunner(cwd: string, exec: GitExec = realExec): GitRunner {
   return {
     async currentBranch() {
-      const { stdout } = await exec(['symbolic-ref', '--short', 'HEAD'], { cwd });
+      const { stdout } = await exec(['symbolic-ref', '--short', 'HEAD'], {
+        cwd,
+      });
       return stdout.trim();
     },
 
@@ -157,7 +162,9 @@ export function gitRunner(cwd: string, exec: GitExec = realExec): GitRunner {
       // 3. No usable remote → the current branch (T-901). Null only if HEAD is
       //    unborn; the caller then falls back to the local-only id scan.
       try {
-        const { stdout } = await exec(['symbolic-ref', '--short', 'HEAD'], { cwd });
+        const { stdout } = await exec(['symbolic-ref', '--short', 'HEAD'], {
+          cwd,
+        });
         return stdout.trim() || null;
       } catch {
         return null;

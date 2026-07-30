@@ -1,8 +1,8 @@
-import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { loadGitConfig, GitConfigError } from '../src/git/config.js';
+import { GitConfigError, loadGitConfig } from '../src/git/config.js';
 
 /**
  * T-010 of specs/026-git-strategy/tasks.html. Unit tests for the git.auto config
@@ -24,15 +24,24 @@ afterEach(() => {
 
 describe('loadGitConfig (T-010)', () => {
   it('absent spectastic.json → defaults (auto+trailers off)', () => {
-    expect(loadGitConfig(tmpProject())).toEqual({ auto: 'off', trailers: 'off' });
+    expect(loadGitConfig(tmpProject())).toEqual({
+      auto: 'off',
+      trailers: 'off',
+    });
   });
 
   it('present file with no git section → defaults', () => {
-    expect(loadGitConfig(tmpProject('{ "unrelated": true }'))).toEqual({ auto: 'off', trailers: 'off' });
+    expect(loadGitConfig(tmpProject('{ "unrelated": true }'))).toEqual({
+      auto: 'off',
+      trailers: 'off',
+    });
   });
 
   it('git section with no keys → defaults', () => {
-    expect(loadGitConfig(tmpProject('{ "git": {} }'))).toEqual({ auto: 'off', trailers: 'off' });
+    expect(loadGitConfig(tmpProject('{ "git": {} }'))).toEqual({
+      auto: 'off',
+      trailers: 'off',
+    });
   });
 
   it.each(['off', 'commit', 'branch+commit'] as const)('parses git.auto=%s', (auto) => {

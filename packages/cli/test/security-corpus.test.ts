@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { describe, expect, it } from 'vitest';
 import { validate } from '@spectastic/schema';
+import { describe, expect, it } from 'vitest';
 import { expandGlobs } from '../src/glob.js';
 
 /**
@@ -22,13 +22,7 @@ const REPO_ROOT = join(__dirname, '..', '..', '..');
 const RULE = 'no-executable-content';
 
 // Mirrors the ci.yml dogfood glob. Keep in sync if the dogfood corpus changes.
-const CORPUS = [
-  'specs/**/*.html',
-  'examples/*.html',
-  'principles.html',
-  'inbox.html',
-  'index.html',
-];
+const CORPUS = ['specs/**/*.html', 'examples/*.html', 'principles.html', 'inbox.html', 'index.html'];
 
 describe('security corpus: no shipped artifact carries executable content (FR-003)', () => {
   it('every corpus artifact is clean of no-executable-content findings', async () => {
@@ -40,7 +34,7 @@ describe('security corpus: no shipped artifact carries executable content (FR-00
       const html = readFileSync(file, 'utf8');
       const hits = validate(html, file).filter((f) => f.rule === RULE);
       for (const h of hits) {
-        offenders.push(`${file.replace(REPO_ROOT + '/', '')}:${h.line} — ${h.message}`);
+        offenders.push(`${file.replace(`${REPO_ROOT}/`, '')}:${h.line} — ${h.message}`);
       }
     }
 

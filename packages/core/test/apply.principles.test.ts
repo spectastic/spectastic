@@ -1,7 +1,7 @@
-import { describe, expect, it } from 'vitest';
-import { applyCommand } from '@spectastic/core/commands/apply';
 import type { FileSystem, KernelContext } from '@spectastic/core';
+import { applyCommand } from '@spectastic/core/commands/apply';
 import { validate } from '@spectastic/schema';
+import { describe, expect, it } from 'vitest';
 import { PRINCIPLES_LIVE, PRINCIPLES_PROPOSAL } from './fixtures/principles.js';
 
 /**
@@ -142,7 +142,9 @@ describe('applyCommand — principles (spec 030)', () => {
     it('validate reports zero error findings after apply', async () => {
       const { fs, files } = freshRepo();
       await applyCommand(INPUT, CTX(fs));
-      const findings = validate(files.get('/principles.html')!, { file: 'principles.html' });
+      const findings = validate(files.get('/principles.html')!, {
+        file: 'principles.html',
+      });
       const errors = findings.filter((f) => f.severity === 'error');
       expect(errors).toEqual([]);
     });

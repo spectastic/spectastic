@@ -45,6 +45,24 @@ Worked example: [`packages/cli/test/principles.integration.test.ts`](./packages/
 
 A separate `pnpm test:smoke` tier that runs the same tests against real Claude is a deferred slice (`TBD-smoke-tier-tests`); until it lands, real-LLM testing is a hand operation against your local key.
 
+## Local quality gates
+
+CI runs these blocking; run them locally before pushing so nothing surprises you in review.
+
+| Command | What it checks |
+| --- | --- |
+| `pnpm lint` | Format + lint, via Biome (`biome check .`). `pnpm lint:fix` applies safe/unsafe auto-fixes. |
+| `pnpm typecheck` | `tsc --noEmit` across the four core packages. |
+| `pnpm test` | The full vitest suite. |
+| `pnpm test:coverage` | The suite with coverage instrumentation (writes `coverage/lcov.info`, gitignored). |
+| `pnpm patch-coverage -- --base=<ref>` | The diff-aware coverage gate — ≥80% of *this change's* lines covered, scoped to `packages/{schema,corpus,core,cli}/src`. Run `pnpm test:coverage` first so `coverage/lcov.info` exists; defaults to `HEAD~1` if `--base` is omitted. |
+| `.venv/bin/semgrep --config .semgrep.yml packages/*/src --error` (or your own semgrep install) | SAST over the tool's own source — additive to the artifact-scoped injection red-team below. |
+| `pnpm audit --audit-level high` | Dependency-vulnerability advisory scan (should-tier — surfaces findings, doesn't block). |
+| `npx depcruise --config .dependency-cruiser.cjs --output-type err packages/core packages/cli packages/corpus packages/schema` | The one-way `@spectastic/corpus` → `@spectastic/core` package boundary. |
+| `node packages/cli/bin/spectastic enforce` | Confirms your local `.spectastic/profile.json` tier's required categories are covered, waived, or exempt. |
+
+None of these add a runtime dependency — Biome, `@vitest/coverage-v8`, and Semgrep are devDependencies/local tooling only.
+
 ## Expectations pre-1.0
 
 - The slash-command surface (eight verbs) is stable; behaviours within them are not.

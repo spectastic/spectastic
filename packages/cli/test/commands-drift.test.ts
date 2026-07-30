@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest';
 import { commandsDriftFinding } from '@spectastic/core/commands/validate';
+import { describe, expect, it } from 'vitest';
 
 /**
  * T-201 of specs/031-init-tools/tasks.html. The commands-drift finding (US2 /

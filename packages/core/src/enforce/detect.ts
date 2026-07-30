@@ -25,28 +25,64 @@ export interface Signal {
 
 export const SIGNALS: readonly Signal[] = [
   // --- Python --------------------------------------------------------------
-  { ecosystem: 'python', category: 'formatter', file: 'pyproject.toml', contains: '[tool.ruff' },
-  { ecosystem: 'python', category: 'formatter', file: 'pyproject.toml', contains: '[tool.black]' },
+  {
+    ecosystem: 'python',
+    category: 'formatter',
+    file: 'pyproject.toml',
+    contains: '[tool.ruff',
+  },
+  {
+    ecosystem: 'python',
+    category: 'formatter',
+    file: 'pyproject.toml',
+    contains: '[tool.black]',
+  },
   { ecosystem: 'python', category: 'formatter', file: '.ruff.toml' },
-  { ecosystem: 'python', category: 'linter', file: 'pyproject.toml', contains: '[tool.ruff' },
+  {
+    ecosystem: 'python',
+    category: 'linter',
+    file: 'pyproject.toml',
+    contains: '[tool.ruff',
+  },
   { ecosystem: 'python', category: 'linter', file: '.ruff.toml' },
   { ecosystem: 'python', category: 'linter', file: '.flake8' },
   { ecosystem: 'python', category: 'linter', file: '.pylintrc' },
-  { ecosystem: 'python', category: 'type-checker', file: 'pyproject.toml', contains: '[tool.mypy]' },
+  {
+    ecosystem: 'python',
+    category: 'type-checker',
+    file: 'pyproject.toml',
+    contains: '[tool.mypy]',
+  },
   { ecosystem: 'python', category: 'type-checker', file: 'mypy.ini' },
   { ecosystem: 'python', category: 'type-checker', file: 'pyrightconfig.json' },
-  { ecosystem: 'python', category: 'security', file: 'pyproject.toml', contains: '[tool.bandit]' },
+  {
+    ecosystem: 'python',
+    category: 'security',
+    file: 'pyproject.toml',
+    contains: '[tool.bandit]',
+  },
   { ecosystem: 'python', category: 'security', file: '.bandit' },
-  { ecosystem: 'python', category: 'test-runner', file: 'pyproject.toml', contains: '[tool.pytest' },
+  {
+    ecosystem: 'python',
+    category: 'test-runner',
+    file: 'pyproject.toml',
+    contains: '[tool.pytest',
+  },
   { ecosystem: 'python', category: 'test-runner', file: 'pytest.ini' },
   { ecosystem: 'python', category: 'test-runner', file: 'tox.ini' },
 
   // --- JS / TS -------------------------------------------------------------
   { ecosystem: 'js', category: 'formatter', file: 'biome.json' },
+  // biome.jsonc — Biome's own comment-carrying config variant (068 dogfooding
+  // finding: biome.json is strict JSON and silently fails to parse with a `//`
+  // comment in it; biome.jsonc is the sanctioned way to record an inline rule
+  // rationale, per FR-002). Additive beside biome.json, not a replacement.
+  { ecosystem: 'js', category: 'formatter', file: 'biome.jsonc' },
   { ecosystem: 'js', category: 'formatter', file: '.prettierrc' },
   { ecosystem: 'js', category: 'formatter', file: '.prettierrc.json' },
   { ecosystem: 'js', category: 'formatter', file: 'prettier.config.js' },
   { ecosystem: 'js', category: 'linter', file: 'biome.json' },
+  { ecosystem: 'js', category: 'linter', file: 'biome.jsonc' },
   { ecosystem: 'js', category: 'linter', file: '.eslintrc' },
   { ecosystem: 'js', category: 'linter', file: '.eslintrc.json' },
   { ecosystem: 'js', category: 'linter', file: '.eslintrc.cjs' },
@@ -55,32 +91,97 @@ export const SIGNALS: readonly Signal[] = [
   { ecosystem: 'js', category: 'type-checker', file: 'tsconfig.json' },
   { ecosystem: 'js', category: 'security', file: '.semgrep.yml' },
   { ecosystem: 'js', category: 'supply-chain', file: 'renovate.json' },
+  // 068-enterprise-enforce-floor T-310 (plan D-004): additive-only, sits beside
+  // the existing Renovate row — signalMatches already joins `sig.file` against
+  // cwd (T-310's grounding, detect.ts's own join-based matcher), so a
+  // subdirectory-prefixed signal needs no engine change.
+  { ecosystem: 'js', category: 'supply-chain', file: '.github/dependabot.yml' },
   { ecosystem: 'js', category: 'test-runner', file: 'vitest.config.ts' },
   { ecosystem: 'js', category: 'test-runner', file: 'vitest.config.js' },
   { ecosystem: 'js', category: 'test-runner', file: 'jest.config.js' },
   { ecosystem: 'js', category: 'test-runner', file: 'jest.config.ts' },
-  { ecosystem: 'js', category: 'test-runner', file: 'package.json', contains: '"vitest"' },
-  { ecosystem: 'js', category: 'test-runner', file: 'package.json', contains: '"jest"' },
+  {
+    ecosystem: 'js',
+    category: 'test-runner',
+    file: 'package.json',
+    contains: '"vitest"',
+  },
+  {
+    ecosystem: 'js',
+    category: 'test-runner',
+    file: 'package.json',
+    contains: '"jest"',
+  },
 
   // --- Java / JVM ----------------------------------------------------------
-  { ecosystem: 'java', category: 'formatter', file: 'build.gradle', contains: 'spotless' },
+  {
+    ecosystem: 'java',
+    category: 'formatter',
+    file: 'build.gradle',
+    contains: 'spotless',
+  },
   { ecosystem: 'java', category: 'formatter', file: '.editorconfig' },
-  { ecosystem: 'java', category: 'linter', file: 'build.gradle', contains: 'errorprone' },
-  { ecosystem: 'java', category: 'linter', file: 'build.gradle', contains: 'spotbugs' },
-  { ecosystem: 'java', category: 'linter', file: 'build.gradle', contains: 'checkstyle' },
+  {
+    ecosystem: 'java',
+    category: 'linter',
+    file: 'build.gradle',
+    contains: 'errorprone',
+  },
+  {
+    ecosystem: 'java',
+    category: 'linter',
+    file: 'build.gradle',
+    contains: 'spotbugs',
+  },
+  {
+    ecosystem: 'java',
+    category: 'linter',
+    file: 'build.gradle',
+    contains: 'checkstyle',
+  },
   { ecosystem: 'java', category: 'linter', file: 'checkstyle.xml' },
-  { ecosystem: 'java', category: 'type-checker', file: 'build.gradle', contains: 'nullaway' },
-  { ecosystem: 'java', category: 'security', file: 'build.gradle', contains: 'findsecbugs' },
-  { ecosystem: 'java', category: 'security', file: 'build.gradle', contains: 'dependency-check' },
-  { ecosystem: 'java', category: 'supply-chain', file: 'build.gradle', contains: 'dependency-check' },
-  { ecosystem: 'java', category: 'test-runner', file: 'build.gradle', contains: 'test' },
+  {
+    ecosystem: 'java',
+    category: 'type-checker',
+    file: 'build.gradle',
+    contains: 'nullaway',
+  },
+  {
+    ecosystem: 'java',
+    category: 'security',
+    file: 'build.gradle',
+    contains: 'findsecbugs',
+  },
+  {
+    ecosystem: 'java',
+    category: 'security',
+    file: 'build.gradle',
+    contains: 'dependency-check',
+  },
+  {
+    ecosystem: 'java',
+    category: 'supply-chain',
+    file: 'build.gradle',
+    contains: 'dependency-check',
+  },
+  {
+    ecosystem: 'java',
+    category: 'test-runner',
+    file: 'build.gradle',
+    contains: 'test',
+  },
   { ecosystem: 'java', category: 'test-runner', file: 'pom.xml' },
 
   // --- Go ------------------------------------------------------------------
   { ecosystem: 'go', category: 'formatter', file: 'go.mod' }, // gofmt ships with the toolchain
   { ecosystem: 'go', category: 'linter', file: '.golangci.yml' },
   { ecosystem: 'go', category: 'linter', file: '.golangci.yaml' },
-  { ecosystem: 'go', category: 'security', file: '.golangci.yml', contains: 'gosec' },
+  {
+    ecosystem: 'go',
+    category: 'security',
+    file: '.golangci.yml',
+    contains: 'gosec',
+  },
   { ecosystem: 'go', category: 'test-runner', file: 'go.mod' }, // go test is built in
 
   // --- Rust ----------------------------------------------------------------
@@ -113,19 +214,84 @@ export const SIGNALS: readonly Signal[] = [
   // from becoming a false hard-failure). Swift/C++ have no established static
   // coverage-threshold config convention today — no signal, rather than a
   // guessed one.
-  { ecosystem: 'python', category: 'coverage', file: 'pyproject.toml', contains: 'fail_under' },
-  { ecosystem: 'python', category: 'coverage', file: '.coveragerc', contains: 'fail_under' },
-  { ecosystem: 'python', category: 'coverage', file: 'tox.ini', contains: 'fail_under' },
-  { ecosystem: 'js', category: 'coverage', file: 'jest.config.js', contains: 'coverageThreshold' },
-  { ecosystem: 'js', category: 'coverage', file: 'jest.config.ts', contains: 'coverageThreshold' },
-  { ecosystem: 'js', category: 'coverage', file: 'package.json', contains: 'coverageThreshold' },
-  { ecosystem: 'js', category: 'coverage', file: 'vitest.config.ts', contains: 'thresholds' },
-  { ecosystem: 'js', category: 'coverage', file: 'vitest.config.js', contains: 'thresholds' },
-  { ecosystem: 'js', category: 'coverage', file: '.nycrc', contains: 'check-coverage' },
-  { ecosystem: 'java', category: 'coverage', file: 'build.gradle', contains: 'jacocoTestCoverageVerification' },
-  { ecosystem: 'java', category: 'coverage', file: 'pom.xml', contains: 'haltOnFailure' },
-  { ecosystem: 'rust', category: 'coverage', file: 'tarpaulin.toml', contains: 'fail-under' },
-  { ecosystem: 'rust', category: 'coverage', file: 'Cargo.toml', contains: 'fail-under' },
+  {
+    ecosystem: 'python',
+    category: 'coverage',
+    file: 'pyproject.toml',
+    contains: 'fail_under',
+  },
+  {
+    ecosystem: 'python',
+    category: 'coverage',
+    file: '.coveragerc',
+    contains: 'fail_under',
+  },
+  {
+    ecosystem: 'python',
+    category: 'coverage',
+    file: 'tox.ini',
+    contains: 'fail_under',
+  },
+  {
+    ecosystem: 'js',
+    category: 'coverage',
+    file: 'jest.config.js',
+    contains: 'coverageThreshold',
+  },
+  {
+    ecosystem: 'js',
+    category: 'coverage',
+    file: 'jest.config.ts',
+    contains: 'coverageThreshold',
+  },
+  {
+    ecosystem: 'js',
+    category: 'coverage',
+    file: 'package.json',
+    contains: 'coverageThreshold',
+  },
+  {
+    ecosystem: 'js',
+    category: 'coverage',
+    file: 'vitest.config.ts',
+    contains: 'thresholds',
+  },
+  {
+    ecosystem: 'js',
+    category: 'coverage',
+    file: 'vitest.config.js',
+    contains: 'thresholds',
+  },
+  {
+    ecosystem: 'js',
+    category: 'coverage',
+    file: '.nycrc',
+    contains: 'check-coverage',
+  },
+  {
+    ecosystem: 'java',
+    category: 'coverage',
+    file: 'build.gradle',
+    contains: 'jacocoTestCoverageVerification',
+  },
+  {
+    ecosystem: 'java',
+    category: 'coverage',
+    file: 'pom.xml',
+    contains: 'haltOnFailure',
+  },
+  {
+    ecosystem: 'rust',
+    category: 'coverage',
+    file: 'tarpaulin.toml',
+    contains: 'fail-under',
+  },
+  {
+    ecosystem: 'rust',
+    category: 'coverage',
+    file: 'Cargo.toml',
+    contains: 'fail-under',
+  },
 
   // --- Observability (spec 042, observability-enforce-category change) -------
   // Match a metrics registry/exporter/starter dependency by its DELIBERATE
@@ -135,24 +301,114 @@ export const SIGNALS: readonly Signal[] = [
   // possible"), not proof the /metrics endpoint is wired (FR-002 ceiling).
   // Swift and C++ have no exporter-manifest convention → no signal; they take an
   // FR-010 STRUCTURALLY_UNDETECTABLE entry (policy.ts) so they warn, not fail.
-  { ecosystem: 'java', category: 'observability', file: 'pom.xml', contains: 'micrometer-registry-prometheus' },
-  { ecosystem: 'java', category: 'observability', file: 'pom.xml', contains: 'spring-boot-starter-actuator' },
-  { ecosystem: 'java', category: 'observability', file: 'pom.xml', contains: 'quarkus-micrometer-registry-prometheus' },
-  { ecosystem: 'java', category: 'observability', file: 'pom.xml', contains: 'quarkus-opentelemetry' },
-  { ecosystem: 'java', category: 'observability', file: 'build.gradle', contains: 'micrometer-registry-prometheus' },
-  { ecosystem: 'java', category: 'observability', file: 'build.gradle', contains: 'spring-boot-starter-actuator' },
-  { ecosystem: 'java', category: 'observability', file: 'build.gradle', contains: 'quarkus-micrometer-registry-prometheus' },
-  { ecosystem: 'java', category: 'observability', file: 'build.gradle', contains: 'quarkus-opentelemetry' },
-  { ecosystem: 'go', category: 'observability', file: 'go.mod', contains: 'prometheus/client_golang' },
-  { ecosystem: 'go', category: 'observability', file: 'go.mod', contains: 'go.opentelemetry.io/otel/exporters/prometheus' },
-  { ecosystem: 'js', category: 'observability', file: 'package.json', contains: 'prom-client' },
-  { ecosystem: 'js', category: 'observability', file: 'package.json', contains: '@opentelemetry/exporter-prometheus' },
-  { ecosystem: 'js', category: 'observability', file: 'package.json', contains: '@opentelemetry/sdk-metrics' },
-  { ecosystem: 'python', category: 'observability', file: 'pyproject.toml', contains: 'prometheus-client' },
-  { ecosystem: 'python', category: 'observability', file: 'pyproject.toml', contains: 'opentelemetry-exporter-prometheus' },
-  { ecosystem: 'python', category: 'observability', file: 'requirements.txt', contains: 'prometheus-client' },
-  { ecosystem: 'python', category: 'observability', file: 'requirements.txt', contains: 'opentelemetry-exporter-prometheus' },
-  { ecosystem: 'rust', category: 'observability', file: 'Cargo.toml', contains: 'prometheus' },
+  {
+    ecosystem: 'java',
+    category: 'observability',
+    file: 'pom.xml',
+    contains: 'micrometer-registry-prometheus',
+  },
+  {
+    ecosystem: 'java',
+    category: 'observability',
+    file: 'pom.xml',
+    contains: 'spring-boot-starter-actuator',
+  },
+  {
+    ecosystem: 'java',
+    category: 'observability',
+    file: 'pom.xml',
+    contains: 'quarkus-micrometer-registry-prometheus',
+  },
+  {
+    ecosystem: 'java',
+    category: 'observability',
+    file: 'pom.xml',
+    contains: 'quarkus-opentelemetry',
+  },
+  {
+    ecosystem: 'java',
+    category: 'observability',
+    file: 'build.gradle',
+    contains: 'micrometer-registry-prometheus',
+  },
+  {
+    ecosystem: 'java',
+    category: 'observability',
+    file: 'build.gradle',
+    contains: 'spring-boot-starter-actuator',
+  },
+  {
+    ecosystem: 'java',
+    category: 'observability',
+    file: 'build.gradle',
+    contains: 'quarkus-micrometer-registry-prometheus',
+  },
+  {
+    ecosystem: 'java',
+    category: 'observability',
+    file: 'build.gradle',
+    contains: 'quarkus-opentelemetry',
+  },
+  {
+    ecosystem: 'go',
+    category: 'observability',
+    file: 'go.mod',
+    contains: 'prometheus/client_golang',
+  },
+  {
+    ecosystem: 'go',
+    category: 'observability',
+    file: 'go.mod',
+    contains: 'go.opentelemetry.io/otel/exporters/prometheus',
+  },
+  {
+    ecosystem: 'js',
+    category: 'observability',
+    file: 'package.json',
+    contains: 'prom-client',
+  },
+  {
+    ecosystem: 'js',
+    category: 'observability',
+    file: 'package.json',
+    contains: '@opentelemetry/exporter-prometheus',
+  },
+  {
+    ecosystem: 'js',
+    category: 'observability',
+    file: 'package.json',
+    contains: '@opentelemetry/sdk-metrics',
+  },
+  {
+    ecosystem: 'python',
+    category: 'observability',
+    file: 'pyproject.toml',
+    contains: 'prometheus-client',
+  },
+  {
+    ecosystem: 'python',
+    category: 'observability',
+    file: 'pyproject.toml',
+    contains: 'opentelemetry-exporter-prometheus',
+  },
+  {
+    ecosystem: 'python',
+    category: 'observability',
+    file: 'requirements.txt',
+    contains: 'prometheus-client',
+  },
+  {
+    ecosystem: 'python',
+    category: 'observability',
+    file: 'requirements.txt',
+    contains: 'opentelemetry-exporter-prometheus',
+  },
+  {
+    ecosystem: 'rust',
+    category: 'observability',
+    file: 'Cargo.toml',
+    contains: 'prometheus',
+  },
 ];
 
 // --- Contract-first (spec 042, 2026-07-11-contract-first-enforce) -------------

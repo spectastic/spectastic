@@ -1,5 +1,3 @@
-import { describe, expect, it } from 'vitest';
-import { planCommand } from '@spectastic/core/commands/plan';
 import type {
   AIProvider,
   ChatOpts,
@@ -9,6 +7,8 @@ import type {
   SubagentOpts,
   SubagentResult,
 } from '@spectastic/core';
+import { planCommand } from '@spectastic/core/commands/plan';
+import { describe, expect, it } from 'vitest';
 
 /**
  * Re-entry coverage for planCommand (012-core-plan, T-200 / FR-006).
@@ -48,9 +48,7 @@ class StubAI implements AIProvider {
     return JSON.stringify(response.json ?? {});
   }
 
-  async ask<TResult extends Record<string, string>>(
-    _questions: ReadonlyArray<Question>,
-  ): Promise<TResult> {
+  async ask<TResult extends Record<string, string>>(_questions: ReadonlyArray<Question>): Promise<TResult> {
     throw new Error('StubAI.ask: not used in plan re-entry tests');
   }
 
@@ -85,9 +83,27 @@ describe('planCommand re-entry (012 T-200, FR-006)', () => {
         json: {
           approach: 'Sharpened.',
           decisions: [
-            { id: 'D-001', title: 'Storage engine', context: 'c', decision: 'Use SQLite.', consequences: 'x' },
-            { id: 'D-002', title: 'Auth strategy', context: 'c', decision: 'Session cookies.', consequences: 'x' },
-            { id: 'D-003', title: 'Caching layer', context: 'c', decision: 'Add an LRU.', consequences: 'x' },
+            {
+              id: 'D-001',
+              title: 'Storage engine',
+              context: 'c',
+              decision: 'Use SQLite.',
+              consequences: 'x',
+            },
+            {
+              id: 'D-002',
+              title: 'Auth strategy',
+              context: 'c',
+              decision: 'Session cookies.',
+              consequences: 'x',
+            },
+            {
+              id: 'D-003',
+              title: 'Caching layer',
+              context: 'c',
+              decision: 'Add an LRU.',
+              consequences: 'x',
+            },
           ],
           alternatives: [],
           risks: [],
@@ -112,9 +128,27 @@ describe('planCommand re-entry (012 T-200, FR-006)', () => {
         json: {
           approach: 'Sharpened.',
           decisions: [
-            { id: 'D-001', title: 'Storage engine', context: 'c', decision: 'Use SQLite.', consequences: 'x' },
-            { id: 'D-002', title: 'Auth strategy', context: 'c', decision: 'Session cookies.', consequences: 'x' },
-            { id: 'D-003', title: 'Caching layer', context: 'c', decision: 'Add an LRU.', consequences: 'x' },
+            {
+              id: 'D-001',
+              title: 'Storage engine',
+              context: 'c',
+              decision: 'Use SQLite.',
+              consequences: 'x',
+            },
+            {
+              id: 'D-002',
+              title: 'Auth strategy',
+              context: 'c',
+              decision: 'Session cookies.',
+              consequences: 'x',
+            },
+            {
+              id: 'D-003',
+              title: 'Caching layer',
+              context: 'c',
+              decision: 'Add an LRU.',
+              consequences: 'x',
+            },
           ],
           alternatives: [],
           risks: [],
@@ -145,8 +179,20 @@ describe('planCommand re-entry (012 T-200, FR-006)', () => {
         json: {
           approach: 'Enhanced wording only.',
           decisions: [
-            { id: 'D-001', title: 'Storage engine', context: 'sharpened context', decision: 'Use SQLite (WAL mode).', consequences: 'x' },
-            { id: 'D-002', title: 'Auth strategy', context: 'c', decision: 'Session cookies.', consequences: 'x' },
+            {
+              id: 'D-001',
+              title: 'Storage engine',
+              context: 'sharpened context',
+              decision: 'Use SQLite (WAL mode).',
+              consequences: 'x',
+            },
+            {
+              id: 'D-002',
+              title: 'Auth strategy',
+              context: 'c',
+              decision: 'Session cookies.',
+              consequences: 'x',
+            },
           ],
           alternatives: [],
           risks: [],
@@ -169,7 +215,15 @@ describe('planCommand re-entry (012 T-200, FR-006)', () => {
       {
         json: {
           approach: 'Fresh.',
-          decisions: [{ id: 'D-001', title: 'First', context: 'c', decision: 'd', consequences: 'x' }],
+          decisions: [
+            {
+              id: 'D-001',
+              title: 'First',
+              context: 'c',
+              decision: 'd',
+              consequences: 'x',
+            },
+          ],
           alternatives: [],
           risks: [],
           principles: [{ id: 'P-1', status: 'OK', note: 'fine' }],

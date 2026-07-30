@@ -1,7 +1,7 @@
-import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { VERB_MODEL_POLICY } from '@spectastic/core/model-policy';
+import { describe, expect, it } from 'vitest';
 
 /**
  * The committed source of truth for the slash commands is `commands/*.md`

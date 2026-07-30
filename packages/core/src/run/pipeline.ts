@@ -35,8 +35,7 @@ async function answerStepDecisions(
   ctx: RunContext,
 ): Promise<Record<string, string>> {
   if (!step.decisionVerb) return {};
-  const effort =
-    ctx.budget?.phase() === 'degrade' ? degradeEffort(input.decider.effort) : input.decider.effort;
+  const effort = ctx.budget?.phase() === 'degrade' ? degradeEffort(input.decider.effort) : input.decider.effort;
   return answerDecisions(step.decisionVerb, { ...input.decider, effort }, ctx.ai);
 }
 
@@ -54,14 +53,27 @@ export async function runPipeline(input: RunInput, ctx: RunContext): Promise<Run
     if (ctx.budget?.phase() === 'halt') {
       const reason = `budget exhausted (~${ctx.budget.spent} est. output tokens)`;
       await ctx.escalate({ phase: step.name, reason });
-      return { completed: false, ranSteps, decisions, halted: { phase: step.name, reason } };
+      return {
+        completed: false,
+        ranSteps,
+        decisions,
+        halted: { phase: step.name, reason },
+      };
     }
 
     // Planned checkpoint before this step.
     if (needsCheckpoint(step.name, input.checkpoints)) {
-      const answer = await ctx.escalate({ phase: step.name, reason: 'planned checkpoint' });
+      const answer = await ctx.escalate({
+        phase: step.name,
+        reason: 'planned checkpoint',
+      });
       if (answer === 'stop') {
-        return { completed: false, ranSteps, decisions, halted: { phase: step.name, reason: 'human stopped at checkpoint' } };
+        return {
+          completed: false,
+          ranSteps,
+          decisions,
+          halted: { phase: step.name, reason: 'human stopped at checkpoint' },
+        };
       }
     }
 
@@ -80,7 +92,12 @@ export async function runPipeline(input: RunInput, ctx: RunContext): Promise<Run
         : outcome.halted?.reason;
     if (stopReason) {
       await ctx.escalate({ phase: step.name, reason: stopReason });
-      return { completed: false, ranSteps, decisions, halted: { phase: step.name, reason: stopReason } };
+      return {
+        completed: false,
+        ranSteps,
+        decisions,
+        halted: { phase: step.name, reason: stopReason },
+      };
     }
   }
 

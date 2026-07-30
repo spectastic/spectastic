@@ -14,10 +14,10 @@
  *    surface an agent reads before anything else. Presence is checked here;
  *    the *quality* of a description's triggering stays authored, review-caught.
  */
-import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
-import { parse as parseYaml } from 'yaml';
 import type { Finding } from '@spectastic/schema';
+import { parse as parseYaml } from 'yaml';
 
 const RULE_PORTABLE = 'pack-not-portable';
 const RULE_DISCOVERABLE = 'pack-not-discoverable';
@@ -55,7 +55,8 @@ function discoverableFinding(file: string): Finding {
     rule: RULE_DISCOVERABLE,
     severity: 'warning',
     message: `${file} has no (or a trivial) SKILL.md description — an agent's discovery pass reads this before anything else.`,
-    fixHint: 'Add a rich description naming the domains/phases this pack is useful for; that is what an agent matches against before reading the full skill.',
+    fixHint:
+      'Add a rich description naming the domains/phases this pack is useful for; that is what an agent matches against before reading the full skill.',
   };
 }
 
@@ -188,8 +189,9 @@ export function readMarketplaceManifest(marketplacePath: string): MarketplaceMan
   return {
     name: raw.name ?? '',
     plugins: (raw.plugins ?? [])
-      .filter((p): p is MarketplacePluginRaw & { name: string; source: string } =>
-        typeof p.name === 'string' && p.name.length > 0 && typeof p.source === 'string' && p.source.length > 0,
+      .filter(
+        (p): p is MarketplacePluginRaw & { name: string; source: string } =>
+          typeof p.name === 'string' && p.name.length > 0 && typeof p.source === 'string' && p.source.length > 0,
       )
       .map((p) => ({ name: p.name, source: p.source, version: p.version })),
     renames: raw.renames ?? {},

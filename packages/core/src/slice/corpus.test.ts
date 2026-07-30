@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { buildSyntheticCorpus } from './corpus.js';
 import { orderChildren } from './rank.js';
 import type { CandidateChild } from './types.js';
@@ -8,17 +8,19 @@ import type { CandidateChild } from './types.js';
  * handoff places children in dependency order (FR-002, SC-003).
  */
 
-function child(
-  specId: string,
-  o: { dependsOn?: string[]; rice: [number, number, number, number] },
-): CandidateChild {
+function child(specId: string, o: { dependsOn?: string[]; rice: [number, number, number, number] }): CandidateChild {
   return {
     specId,
     title: specId,
     scope: '',
     assignedRequirementIds: [],
     dependsOn: o.dependsOn ?? [],
-    rice: { reach: o.rice[0], impact: o.rice[1], confidence: o.rice[2], effort: o.rice[3] },
+    rice: {
+      reach: o.rice[0],
+      impact: o.rice[1],
+      confidence: o.rice[2],
+      effort: o.rice[3],
+    },
     riceConfirmed: true,
   };
 }

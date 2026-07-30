@@ -1,7 +1,7 @@
 import { resolve } from 'node:path';
 import type { Command } from 'commander';
-import { convertDocument, ConverterNotFoundError, ExecFileConverterRunner } from '../knowledge/convert.js';
 import { resolveCorpusConfig } from '../config.js';
+import { ConverterNotFoundError, convertDocument, ExecFileConverterRunner } from '../knowledge/convert.js';
 
 /**
  * The standalone binary's `convert` verb (065-corpus-pdf-convert, US1/US2, D-004) — a
@@ -35,57 +35,72 @@ export function registerConvert(program: Command): void {
         '  marker      pipx install marker-pdf\n' +
         '  (uv users: swap `pipx install` for `uv tool install`.)\n',
     )
-    .action(async (file: string, opts: { pack?: string; converter?: string; adapt: boolean; out?: string; title?: string; description?: string; timeout?: string }) => {
-      const sourceFile = resolve(process.cwd(), file);
-      const timeoutMs = opts.timeout ? Number(opts.timeout) * 1000 : undefined;
-      const runner = new ExecFileConverterRunner();
+    .action(
+      async (
+        file: string,
+        opts: {
+          pack?: string;
+          converter?: string;
+          adapt: boolean;
+          out?: string;
+          title?: string;
+          description?: string;
+          timeout?: string;
+        },
+      ) => {
+        const sourceFile = resolve(process.cwd(), file);
+        const timeoutMs = opts.timeout ? Number(opts.timeout) * 1000 : undefined;
+        const runner = new ExecFileConverterRunner();
 
-      try {
-        if (!opts.adapt) {
+        try {
+          if (!opts.adapt) {
+            const result = await convertDocument({
+              sourceFile,
+              runner,
+              ...(opts.converter !== undefined ? { converter: opts.converter } : {}),
+              ...(timeoutMs !== undefined ? { timeoutMs } : {}),
+              noAdapt: true,
+              ...(opts.out !== undefined ? { out: resolve(process.cwd(), opts.out) } : {}),
+            });
+            if (result.markdown !== undefined) process.stdout.write(result.markdown);
+            else process.stdout.write(`corpus convert: wrote ${opts.out}\n`);
+            process.exit(0);
+          }
+
+          if (!opts.pack) {
+            process.stderr.write('corpus convert: --pack is required unless --no-adapt is given\n');
+            process.exit(2);
+          }
+
+          const { root, marketplace } = resolveCorpusConfig(process.cwd());
+          const knowledgeDir = resolve(process.cwd(), root);
+
           const result = await convertDocument({
             sourceFile,
             runner,
+            knowledgeDir,
+            pack: opts.pack,
+            marketplace,
+            corpusMarketplaceName: marketplace,
             ...(opts.converter !== undefined ? { converter: opts.converter } : {}),
+            ...(opts.title !== undefined ? { title: opts.title } : {}),
+            ...(opts.description !== undefined ? { description: opts.description } : {}),
             ...(timeoutMs !== undefined ? { timeoutMs } : {}),
-            noAdapt: true,
-            ...(opts.out !== undefined ? { out: resolve(process.cwd(), opts.out) } : {}),
           });
-          if (result.markdown !== undefined) process.stdout.write(result.markdown);
-          else process.stdout.write(`corpus convert: wrote ${opts.out}\n`);
+
+          process.stdout.write(
+            `corpus convert: wrote ${result.id} (converter: ${result.converter}) → ${root}/${opts.pack}/\n`,
+          );
+          process.stdout.write('  Newly-converted references are not-yet-spot-checked — review before citing.\n');
           process.exit(0);
-        }
-
-        if (!opts.pack) {
-          process.stderr.write('corpus convert: --pack is required unless --no-adapt is given\n');
-          process.exit(2);
-        }
-
-        const { root, marketplace } = resolveCorpusConfig(process.cwd());
-        const knowledgeDir = resolve(process.cwd(), root);
-
-        const result = await convertDocument({
-          sourceFile,
-          runner,
-          knowledgeDir,
-          pack: opts.pack,
-          marketplace,
-          corpusMarketplaceName: marketplace,
-          ...(opts.converter !== undefined ? { converter: opts.converter } : {}),
-          ...(opts.title !== undefined ? { title: opts.title } : {}),
-          ...(opts.description !== undefined ? { description: opts.description } : {}),
-          ...(timeoutMs !== undefined ? { timeoutMs } : {}),
-        });
-
-        process.stdout.write(`corpus convert: wrote ${result.id} (converter: ${result.converter}) → ${root}/${opts.pack}/\n`);
-        process.stdout.write('  Newly-converted references are not-yet-spot-checked — review before citing.\n');
-        process.exit(0);
-      } catch (err) {
-        if (err instanceof ConverterNotFoundError) {
-          process.stderr.write(`corpus convert: ${err.message}\n`);
+        } catch (err) {
+          if (err instanceof ConverterNotFoundError) {
+            process.stderr.write(`corpus convert: ${err.message}\n`);
+            process.exit(1);
+          }
+          process.stderr.write(`corpus convert failed: ${(err as Error).message}\n`);
           process.exit(1);
         }
-        process.stderr.write(`corpus convert failed: ${(err as Error).message}\n`);
-        process.exit(1);
-      }
-    });
+      },
+    );
 }

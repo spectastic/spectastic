@@ -66,11 +66,7 @@ describe('verify-view-stale: completeness (021 FR-008, amended)', () => {
 });
 
 /** A `phase-usN` with NO Tests subsection — tasks are flat; test-hood decided by path (FR-003 fallback). */
-const flatPhase = (
-  n: number,
-  sc: string,
-  opts: { testId?: string; implId?: string },
-): string =>
+const flatPhase = (n: number, sc: string, opts: { testId?: string; implId?: string }): string =>
   `<section id="phase-us${n}" class="phase"><h2>US${n}</h2>
 ${opts.testId ? `<spec-task id="${opts.testId}"><input type="checkbox"><div><strong>test</strong> <span class="path">packages/core/test/x.test.ts</span></div></spec-task>` : ''}
 ${opts.implId ? `<spec-task id="${opts.implId}"><input type="checkbox"><div><strong>impl</strong> <span class="path">packages/core/src/x.ts</span></div></spec-task>` : ''}
@@ -87,10 +83,7 @@ describe('verify-view-stale: path fallback for subsection-less phases (021 FR-00
   it('fires completeness when a subsection-less phase resolves to only an impl task', () => {
     // Bundle is test-bearing (phase 1 has a .test. task) but SC-002's phase is impl-only.
     const spec = SPEC(['SC-001', 'SC-002']);
-    const tasks = TASKS(
-      flatPhase(1, 'SC-001', { testId: 'T-100' }),
-      flatPhase(2, 'SC-002', { implId: 'T-210' }),
-    );
+    const tasks = TASKS(flatPhase(1, 'SC-001', { testId: 'T-100' }), flatPhase(2, 'SC-002', { implId: 'T-210' }));
     const verify = VERIFY(['SC-001', 'SC-002'], ['T-100']);
     const f = stale(spec, tasks, verify);
     expect(f).toHaveLength(1);
@@ -122,10 +115,7 @@ const NO_NFR_SPEC = `<!doctype html><html lang="en"><body><main>
 const OBSERVABLES_VERIFY = (nfrIds: string[]): string =>
   `<!doctype html><html lang="en"><body><main><header><h1>999-x verify</h1></header>
 <section id="observables"><table><tbody>${nfrIds
-    .map(
-      (id) =>
-        `<tr><td><a href="./spec.html#${id}">${id}</a></td><td>obj</td><td>sli</td><td>—</td></tr>`,
-    )
+    .map((id) => `<tr><td><a href="./spec.html#${id}">${id}</a></td><td>obj</td><td>sli</td><td>—</td></tr>`)
     .join('')}</tbody></table></section>
 </main></body></html>`;
 

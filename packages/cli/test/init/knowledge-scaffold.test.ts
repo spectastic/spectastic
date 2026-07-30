@@ -1,8 +1,8 @@
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { describe, expect, it } from 'vitest';
 import { corpusWellFormedFindings, loadCorpus } from '@spectastic/corpus';
+import { describe, expect, it } from 'vitest';
 import { resolveBundle } from '../../src/commands/init/bundle.js';
 import { buildPlan } from '../../src/commands/init/plan.js';
 import { executeWrites } from '../../src/commands/init/write.js';

@@ -77,20 +77,36 @@ export function planTools(opts: ToolsOptions): ToolsSummary {
   const hookSkippedNoGit = opts.hooks && !git;
 
   if (opts.uninstall) {
-    if (opts.hooks && git) decisions.push({ kind: 'remove-hook', detail: 'remove the pre-commit gate (restoring any chained prior hook)' });
-    if (opts.commands) decisions.push({ kind: 'remove-adapters', detail: 'remove the generated .claude/commands adapters' });
+    if (opts.hooks && git)
+      decisions.push({
+        kind: 'remove-hook',
+        detail: 'remove the pre-commit gate (restoring any chained prior hook)',
+      });
+    if (opts.commands)
+      decisions.push({
+        kind: 'remove-adapters',
+        detail: 'remove the generated .claude/commands adapters',
+      });
     return { decisions, hookSkippedNoGit: false, adaptersGenerated: 0, notes };
   }
 
   if (opts.hooks) {
     if (git) {
-      decisions.push({ kind: 'install-hook', detail: 'install a git pre-commit gate running `spectastic validate`' });
+      decisions.push({
+        kind: 'install-hook',
+        detail: 'install a git pre-commit gate running `spectastic validate`',
+      });
     } else {
-      notes.push('skipped the pre-commit gate — not a git repository (FR-009); run `git init` then re-run `init --tools`.');
+      notes.push(
+        'skipped the pre-commit gate — not a git repository (FR-009); run `git init` then re-run `init --tools`.',
+      );
     }
   }
   if (opts.commands) {
-    decisions.push({ kind: 'generate-adapters', detail: 'generate drift-proof .claude/commands adapters from source' });
+    decisions.push({
+      kind: 'generate-adapters',
+      detail: 'generate drift-proof .claude/commands adapters from source',
+    });
   }
 
   return { decisions, hookSkippedNoGit, adaptersGenerated: 0, notes };

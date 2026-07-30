@@ -22,12 +22,11 @@ export const MODEL_TIER_ALIASES = ['opus', 'sonnet', 'haiku', 'inherit'] as cons
 export type ModelTier = (typeof MODEL_TIER_ALIASES)[number];
 
 /** The resolvable tiers (everything but `inherit`) → their current concrete model id. */
-export const ALIAS_TO_MODEL_ID: Readonly<Record<Exclude<ModelTier, 'inherit'>, string>> =
-  Object.freeze({
-    opus: 'claude-opus-4-8',
-    sonnet: 'claude-sonnet-5',
-    haiku: 'claude-haiku-4-5',
-  });
+export const ALIAS_TO_MODEL_ID: Readonly<Record<Exclude<ModelTier, 'inherit'>, string>> = Object.freeze({
+  opus: 'claude-opus-4-8',
+  sonnet: 'claude-sonnet-5',
+  haiku: 'claude-haiku-4-5',
+});
 
 /**
  * The tier the CLI resolves to when a verb has no per-verb opinion (`inherit` or
@@ -74,11 +73,7 @@ export function tierToModelId(tier: ModelTier): string {
  * policy map > `inherit` (→ the CLI default). Returns a concrete id for
  * `ClaudeProvider`, which flows into the spec-027 `Assisted-by:` trailer.
  */
-export function resolveVerbModel(
-  verb: string,
-  override?: ModelTier,
-  projectCfg?: ModelTier,
-): string {
+export function resolveVerbModel(verb: string, override?: ModelTier, projectCfg?: ModelTier): string {
   const tier = override ?? projectCfg ?? VERB_MODEL_POLICY[verb] ?? 'inherit';
   return tierToModelId(tier);
 }

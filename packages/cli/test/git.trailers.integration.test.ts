@@ -40,7 +40,9 @@ describe('git trailers · US1 (spec 027)', () => {
     seedSpec(repo, 'Brian Corbin · @briancorbinxyz', 'Jane Reviewer · @jane');
     repo.writeFile('spectastic.json', JSON.stringify({ git: { auto: 'commit', trailers: 'on' } }));
 
-    const r = await repo.runVerb(['plan', '027-demo'], { env: { SPECTASTIC_AI_STUB: PLAN_STUB } });
+    const r = await repo.runVerb(['plan', '027-demo'], {
+      env: { SPECTASTIC_AI_STUB: PLAN_STUB },
+    });
     expect(r.code, `stdout: ${r.stdout}\nstderr: ${r.stderr}`).toBe(0);
 
     const body = await repo.git('log', '-1', '--format=%B');
@@ -55,7 +57,9 @@ describe('git trailers · US1 (spec 027)', () => {
     // git.auto commits, but trailers default off.
     repo.writeFile('spectastic.json', JSON.stringify({ git: { auto: 'commit' } }));
 
-    const r = await repo.runVerb(['plan', '027-demo'], { env: { SPECTASTIC_AI_STUB: PLAN_STUB } });
+    const r = await repo.runVerb(['plan', '027-demo'], {
+      env: { SPECTASTIC_AI_STUB: PLAN_STUB },
+    });
     expect(r.code, `stdout: ${r.stdout}\nstderr: ${r.stderr}`).toBe(0);
 
     const body = await repo.git('log', '-1', '--format=%B');
@@ -71,13 +75,17 @@ describe('git trailers · US1 (spec 027)', () => {
 
     // Committer is Bob, not Alice → Co-authored-by: Alice.
     await repo.git('config', 'user.name', 'Bob Builder');
-    const r1 = await repo.runVerb(['plan', '027-demo'], { env: { SPECTASTIC_AI_STUB: PLAN_STUB } });
+    const r1 = await repo.runVerb(['plan', '027-demo'], {
+      env: { SPECTASTIC_AI_STUB: PLAN_STUB },
+    });
     expect(r1.code, `stderr: ${r1.stderr}`).toBe(0);
     expect(await repo.git('log', '-1', '--format=%B')).toContain('Co-authored-by: Alice Author · @alice');
 
     // Now the committer IS Alice → no Co-authored-by (would duplicate authorship).
     await repo.git('config', 'user.name', 'Alice Author');
-    const r2 = await repo.runVerb(['plan', '027-demo', '--force'], { env: { SPECTASTIC_AI_STUB: PLAN_STUB } });
+    const r2 = await repo.runVerb(['plan', '027-demo', '--force'], {
+      env: { SPECTASTIC_AI_STUB: PLAN_STUB },
+    });
     expect(r2.code, `stderr: ${r2.stderr}`).toBe(0);
     expect(await repo.git('log', '-1', '--format=%B')).not.toContain('Co-authored-by:');
   });
@@ -106,7 +114,9 @@ describe('git trailers · US2 — Assisted-by (spec 027)', () => {
     repo.writeFile('spectastic.json', JSON.stringify({ git: { auto: 'commit', trailers: 'on' } }));
 
     // AI-coupled: plan invoked the (stub) provider → Assisted-by: stub-model.
-    const plan = await repo.runVerb(['plan', '027-demo'], { env: { SPECTASTIC_AI_STUB: PLAN_STUB } });
+    const plan = await repo.runVerb(['plan', '027-demo'], {
+      env: { SPECTASTIC_AI_STUB: PLAN_STUB },
+    });
     expect(plan.code, `stderr: ${plan.stderr}`).toBe(0);
     expect(await repo.git('log', '-1', '--format=%B')).toContain('Assisted-by: stub-model');
 
@@ -123,14 +133,14 @@ describe('git trailers · US2 — Assisted-by (spec 027)', () => {
     seedSpec(repo, 'Brian Corbin · @briancorbinxyz', 'Jane · @jane');
     repo.writeFile('spectastic.json', JSON.stringify({ git: { auto: 'commit', trailers: 'on' } }));
 
-    const r = await repo.runVerb(['plan', '027-demo'], { env: { SPECTASTIC_AI_STUB: PLAN_STUB } });
+    const r = await repo.runVerb(['plan', '027-demo'], {
+      env: { SPECTASTIC_AI_STUB: PLAN_STUB },
+    });
     expect(r.code, `stderr: ${r.stderr}`).toBe(0);
 
     const body = await repo.git('log', '-1', '--format=%B');
     // The model appears only on Assisted-by; never on a human-attribution line.
-    const humanLines = body
-      .split('\n')
-      .filter((l) => /^(Author|Co-authored-by|Reviewed-by|Acked-by):/.test(l));
+    const humanLines = body.split('\n').filter((l) => /^(Author|Co-authored-by|Reviewed-by|Acked-by):/.test(l));
     expect(humanLines.length).toBeGreaterThan(0);
     for (const line of humanLines) expect(line).not.toContain('stub-model');
     expect(body).toContain('Assisted-by: stub-model');

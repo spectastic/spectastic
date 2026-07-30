@@ -1,7 +1,7 @@
-import { describe, expect, it } from 'vitest';
-import { triageFanout } from '@spectastic/core/commands/triage';
 import type { TriageInput } from '@spectastic/core';
-import { KeyedStubAI, type KeyedResponse } from './helpers/keyed-stub.js';
+import { triageFanout } from '@spectastic/core/commands/triage';
+import { describe, expect, it } from 'vitest';
+import { type KeyedResponse, KeyedStubAI } from './helpers/keyed-stub.js';
 
 /**
  * Behavioural tests for the list-intake fan-out engine (spec 032-triage-fanout).
@@ -29,10 +29,30 @@ describe('triageFanout (032 US1 · fan out a pasted list)', () => {
   it('emits N input-ordered cards with correct I-/T- ids, stable across runs despite reverse completion (SC-002, FR-002/003)', async () => {
     const items = ['alpha just-do', 'beta spec', 'gamma just-do', 'delta impl'];
     const responses: KeyedResponse[] = [
-      { match: 'alpha', delayMs: 40, json: card({ headline: 'A', layer: 'just-do' }) },
-      { match: 'beta', delayMs: 10, json: card({ headline: 'B', layer: 'spec', regenResult: 'fail' }) },
-      { match: 'gamma', delayMs: 30, json: card({ headline: 'C', layer: 'just-do' }) },
-      { match: 'delta', delayMs: 0, json: card({ headline: 'D', layer: 'implementation', regenResult: 'pass' }) },
+      {
+        match: 'alpha',
+        delayMs: 40,
+        json: card({ headline: 'A', layer: 'just-do' }),
+      },
+      {
+        match: 'beta',
+        delayMs: 10,
+        json: card({ headline: 'B', layer: 'spec', regenResult: 'fail' }),
+      },
+      {
+        match: 'gamma',
+        delayMs: 30,
+        json: card({ headline: 'C', layer: 'just-do' }),
+      },
+      {
+        match: 'delta',
+        delayMs: 0,
+        json: card({
+          headline: 'D',
+          layer: 'implementation',
+          regenResult: 'pass',
+        }),
+      },
     ];
     const run = () => triageFanout(items, base, new KeyedStubAI(responses), { concurrency: 8 });
 
@@ -85,9 +105,27 @@ describe('triageFanout (032 US2 · decide the ambiguous ones in one pass)', () =
   it('resolves hedged items in one consolidated gate AFTER the pass; confident items skip it (SC-004, FR-005/006)', async () => {
     const items = ['confident one', 'hedged two', 'confident three'];
     const responses: KeyedResponse[] = [
-      { match: 'confident one', json: card({ headline: 'one', layer: 'spec', layerConfidence: 'high', regenResult: 'fail' }) },
-      { match: 'hedged two', json: card({ headline: 'two', layer: 'spec', layerConfidence: 'low' }) },
-      { match: 'confident three', json: card({ headline: 'three', layer: 'just-do', layerConfidence: 'high' }) },
+      {
+        match: 'confident one',
+        json: card({
+          headline: 'one',
+          layer: 'spec',
+          layerConfidence: 'high',
+          regenResult: 'fail',
+        }),
+      },
+      {
+        match: 'hedged two',
+        json: card({ headline: 'two', layer: 'spec', layerConfidence: 'low' }),
+      },
+      {
+        match: 'confident three',
+        json: card({
+          headline: 'three',
+          layer: 'just-do',
+          layerConfidence: 'high',
+        }),
+      },
     ];
     // The single hedged item is gated: category → diagnostic, then layer → plan.
     const askResponses = [{ category: 'diagnostic' }, { layer: 'plan' }];
@@ -111,9 +149,23 @@ describe('triageFanout (032 US3 · survive a bad item)', () => {
   it('a failed item still yields a flagged, gate-routed card; others land; N in → N out (SC-003, FR-004)', async () => {
     const items = ['good alpha', 'bad beta', 'good gamma'];
     const responses: KeyedResponse[] = [
-      { match: 'good alpha', json: card({ headline: 'alpha ok', layer: 'just-do', layerConfidence: 'high' }) },
+      {
+        match: 'good alpha',
+        json: card({
+          headline: 'alpha ok',
+          layer: 'just-do',
+          layerConfidence: 'high',
+        }),
+      },
       { match: 'bad beta', throws: true },
-      { match: 'good gamma', json: card({ headline: 'gamma ok', layer: 'just-do', layerConfidence: 'high' }) },
+      {
+        match: 'good gamma',
+        json: card({
+          headline: 'gamma ok',
+          layer: 'just-do',
+          layerConfidence: 'high',
+        }),
+      },
     ];
     // The failed item routes to the gate; stage its resolution (routing → just-do).
     const askResponses = [{ category: 'routing' }, { layer: 'just-do' }];

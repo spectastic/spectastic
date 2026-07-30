@@ -94,7 +94,7 @@ describe('corpusLicenseFindings (058 T-100/T-101/T-102)', () => {
   });
 });
 
-describe('corpusLicenseFindings — missing license is 051\'s concern, not this rule\'s (058 T-200, plan D-002)', () => {
+describe("corpusLicenseFindings — missing license is 051's concern, not this rule's (058 T-200, plan D-002)", () => {
   it('a document with no license field produces a corpus-well-formed error, not a corpus-license finding', () => {
     const packs = loadCorpus(seedPackWithLicense(undefined));
     const licenseFindings = corpusLicenseFindings(packs);

@@ -39,7 +39,9 @@ export function registerPrinciples(program: Command): void {
             import('node:fs/promises'),
           ]);
 
-        const decision = await gateOnDestinationState(fs, opts.output, { force: opts.force });
+        const decision = await gateOnDestinationState(fs, opts.output, {
+          force: opts.force,
+        });
         if (decision.kind === 'refuse') {
           process.stderr.write(
             `${opts.output} exists in <spec-status value="${decision.status}"> — past-Draft per P-6 of principles.html.\nRefusing to overwrite. Amend via /spectastic.propose against principles.html, or pass --force to bypass.\n`,
@@ -65,9 +67,7 @@ export function registerPrinciples(program: Command): void {
 
         const result = await principlesCommand(input, ctx);
         await fs.writeFile(opts.output, result.html, 'utf8');
-        process.stdout.write(
-          `Wrote ${opts.output} (${result.principlesCount} principles).\n`,
-        );
+        process.stdout.write(`Wrote ${opts.output} (${result.principlesCount} principles).\n`);
 
         // Opt-in git layer (spec 026): principles has no spec id → unscoped `principles: <subject>`.
         const { commitVerbAndExit } = await import('../git/index.js');

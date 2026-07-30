@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { specCommand } from '../commands/spec.js';
 import { sliceStub } from './stub-ai.js';
 
@@ -15,8 +15,22 @@ const parent = `<!doctype html><html><body><main>
 
 const decomposition = {
   children: [
-    { specId: '030-a', title: 'A', scope: 'FR-001', assignedRequirementIds: ['FR-001'], dependsOn: [], rice: { reach: 5, impact: 5, confidence: 1, effort: 1 } },
-    { specId: '031-b', title: 'B', scope: 'FR-002', assignedRequirementIds: ['FR-002'], dependsOn: ['030-a'], rice: { reach: 2, impact: 2, confidence: 1, effort: 1 } },
+    {
+      specId: '030-a',
+      title: 'A',
+      scope: 'FR-001',
+      assignedRequirementIds: ['FR-001'],
+      dependsOn: [],
+      rice: { reach: 5, impact: 5, confidence: 1, effort: 1 },
+    },
+    {
+      specId: '031-b',
+      title: 'B',
+      scope: 'FR-002',
+      assignedRequirementIds: ['FR-002'],
+      dependsOn: ['030-a'],
+      rice: { reach: 2, impact: 2, confidence: 1, effort: 1 },
+    },
   ],
 };
 
@@ -29,7 +43,12 @@ describe('specCommand split-mode', () => {
       agents: ['{"ok":true,"notes":[]}'],
     });
     const res = await specCommand(
-      { description: '029-value-ranked-slicer', specId: '029-value-ranked-slicer', existingSpec: parent, split: true },
+      {
+        description: '029-value-ranked-slicer',
+        specId: '029-value-ranked-slicer',
+        existingSpec: parent,
+        split: true,
+      },
       { cwd: '.', ai },
     );
     expect(res.html).toContain('<spec-split data-verdict="split"');
@@ -40,8 +59,6 @@ describe('specCommand split-mode', () => {
 
   it('throws when split mode lacks the parent spec', async () => {
     const ai = sliceStub({});
-    await expect(
-      specCommand({ description: 'x', split: true }, { cwd: '.', ai }),
-    ).rejects.toThrow();
+    await expect(specCommand({ description: 'x', split: true }, { cwd: '.', ai })).rejects.toThrow();
   });
 });

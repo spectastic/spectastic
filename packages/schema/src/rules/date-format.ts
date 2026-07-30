@@ -1,5 +1,5 @@
-import { findAll, getAttr, getLocation } from '../parser.js';
 import type { Element } from '../parser.js';
+import { findAll, getAttr, getLocation } from '../parser.js';
 import type { Finding, PerFileRule } from '../types.js';
 
 /**
@@ -21,14 +21,17 @@ import type { Finding, PerFileRule } from '../types.js';
 /** ISO 8601 calendar date, optionally with a time component. */
 const ISO_DATETIME = /^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}(:\d{2})?(\.\d+)?(Z|[+-]\d{2}:\d{2})?)?$/;
 /** Canonical human display: zero-padded day, title-case 3-letter month, 4-digit year. */
-const DISPLAY =
-  /^(0[1-9]|[12]\d|3[01]) (Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) \d{4}$/;
+const DISPLAY = /^(0[1-9]|[12]\d|3[01]) (Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) \d{4}$/;
 
 /** Collect an element's visible text, collapsed. */
 function textOf(el: Element): string {
   let out = '';
   const visit = (node: unknown): void => {
-    const n = node as { tagName?: string; value?: string; childNodes?: unknown[] };
+    const n = node as {
+      tagName?: string;
+      value?: string;
+      childNodes?: unknown[];
+    };
     if (n.tagName === undefined && typeof n.value === 'string') out += n.value;
     if (n.childNodes) for (const child of n.childNodes) visit(child);
   };
@@ -40,8 +43,7 @@ export const dateFormatRule: PerFileRule = {
   id: 'date-format',
   scope: 'per-file',
   defaultSeverity: 'warning',
-  description:
-    '<time> must carry an ISO 8601 datetime= and render its text as zero-padded "DD Mon YYYY".',
+  description: '<time> must carry an ISO 8601 datetime= and render its text as zero-padded "DD Mon YYYY".',
   check({ doc }) {
     const findings: Finding[] = [];
     for (const time of findAll(doc.ast, 'time')) {

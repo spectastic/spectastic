@@ -1,7 +1,7 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { loadModelsConfig, ModelsConfigError } from '../src/config/models.js';
 
 describe('loadModelsConfig (spec 044 D-003)', () => {
@@ -21,7 +21,12 @@ describe('loadModelsConfig (spec 044 D-003)', () => {
   });
 
   it('reads a valid default + per-verb map', () => {
-    write({ models: { default: 'haiku', verbs: { plan: 'opus', implement: 'sonnet' } } });
+    write({
+      models: {
+        default: 'haiku',
+        verbs: { plan: 'opus', implement: 'sonnet' },
+      },
+    });
     expect(loadModelsConfig(dir)).toEqual({
       default: 'haiku',
       verbs: { plan: 'opus', implement: 'sonnet' },

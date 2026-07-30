@@ -78,9 +78,7 @@ export interface CoverageReport {
  * was found; `dont-split` is a first-class verdict (cohesive spec, or no
  * candidate both covers and fits), never a forced cut.
  */
-export type Verdict =
-  | { kind: 'split' }
-  | { kind: 'dont-split'; reasons: string[] };
+export type Verdict = { kind: 'split' } | { kind: 'dont-split'; reasons: string[] };
 
 /**
  * The full model the renderer turns into the `<spec-split>` section (D-005).

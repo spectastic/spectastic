@@ -17,10 +17,10 @@
  *      once, sequentially (spec NFR-003), matching the pre-fan-out scheme exactly.
  */
 
-import type { AIProvider, TriageCard, TriageInput } from '../types.js';
-import { mapPool } from '../helpers/map-pool.js';
-import { applyLayer, classifyItem, escalateLayer, formatId, isRoutingExit } from './classify.js';
 import type { DeciderConfig } from '../decider/types.js';
+import { mapPool } from '../helpers/map-pool.js';
+import type { AIProvider, TriageCard, TriageInput } from '../types.js';
+import { applyLayer, classifyItem, escalateLayer, formatId, isRoutingExit } from './classify.js';
 
 export interface FanoutOpts {
   /** Max concurrent classifications (spec FR-007). Default 8. */
@@ -74,10 +74,16 @@ export async function triageFanout(
   for (const draft of drafts) {
     if (isRoutingExit(draft.layer)) {
       iCount += 1;
-      cards.push({ ...draft, id: formatId(draft.layer, 0, base.startingIdI ?? 0, iCount) });
+      cards.push({
+        ...draft,
+        id: formatId(draft.layer, 0, base.startingIdI ?? 0, iCount),
+      });
     } else {
       tCount += 1;
-      cards.push({ ...draft, id: formatId(draft.layer, base.startingIdT ?? 0, 0, tCount) });
+      cards.push({
+        ...draft,
+        id: formatId(draft.layer, base.startingIdT ?? 0, 0, tCount),
+      });
     }
   }
   return cards;

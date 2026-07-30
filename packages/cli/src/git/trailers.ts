@@ -12,7 +12,11 @@ import type { Committer, Trailer } from './run.js';
 
 export interface TrailerInput {
   /** Extracted `<spec-meta>` header fields (from extractSpecMetadata). */
-  meta: { owner: string | null; author: string | null; reviewers: string | null };
+  meta: {
+    owner: string | null;
+    author: string | null;
+    reviewers: string | null;
+  };
   /** The local git committer (for the Co-authored-by author≠committer test). */
   committer: Committer;
   /** Provenance link — the archived proposal/changelog (apply). `Refs`. */
@@ -45,11 +49,7 @@ export function gatherTrailers(input: TrailerInput): Trailer[] {
   if (present(author)) trailers.push({ key: 'Author', value: author.trim() });
 
   // Co-authored-by: the artifact author authored but someone else is committing.
-  if (
-    present(author) &&
-    present(input.committer.name) &&
-    nameOf(author) !== input.committer.name.trim()
-  ) {
+  if (present(author) && present(input.committer.name) && nameOf(author) !== input.committer.name.trim()) {
     trailers.push({ key: 'Co-authored-by', value: author.trim() });
   }
 

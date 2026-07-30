@@ -55,8 +55,7 @@ export const noPlaceholderQuestionRule: PerFileRule = {
           column: loc.column,
           rule: 'no-placeholder-question',
           severity,
-          message:
-            'Placeholder "None" <li> in <spec-questions>; a register with no open questions carries no <li>.',
+          message: 'Placeholder "None" <li> in <spec-questions>; a register with no open questions carries no <li>.',
           fixHint:
             'Per REQ-AUTHOR-005, move the resolved rationale into a <p> (e.g. <p>None outstanding — …</p>) and drop the <li>. Each <li> counts as one open question to consumers.',
         });

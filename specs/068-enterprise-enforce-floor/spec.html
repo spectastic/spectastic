@@ -1,0 +1,354 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
+<title>Enterprise enforce floor (dogfood) · Specification</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Specification · 068-enterprise-enforce-floor</p>
+  <h1>Enterprise enforce floor (dogfood)</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    Make spectastic pass the <em>enterprise</em> floor it demands of everyone else — the three absent quality gates, self-certification, the detector gaps dogfooding surfaces, and a principles reconciliation.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>      <span><spec-status value="accepted">Accepted</spec-status></span>
+    <b>Spec ID</b>     <span>068-enterprise-enforce-floor</span>
+    <b>Owner</b>       <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Reviewers</b>   <span>—</span>
+    <b>Created</b>     <span><time datetime="2026-07-29">29 Jul 2026</time></span>
+    <b>Principles</b><span><a href="../../principles.html">v1.8.0</a></span>
+    <b>Smallest demoable</b><span><code>spectastic enforce</code> reports the repo <strong>passes the enterprise floor</strong> (every required category covered, waived, or exempt) with the three new gates blocking in CI.</span>
+    <b>Read time</b>   <span data-reading-time></span>
+  </spec-meta>
+
+  <!-- Live size gauge — green at <80%, amber 80-100%, red over. Words row counts authored prose (excludes the conformance index) per REQ-FORMAT-004. -->
+  <spec-budget words="1950" reqs="20" minutes="13"></spec-budget>
+
+  <spec-tldr>
+    <p>spectastic <em>defines</em> what enterprise means — its own <code>enterprise</code> profile is a hard-gate floor of nine
+    enforce categories plus a fifteen-principle catalog — but it doesn't dogfood that floor on itself: there is no profile marker,
+    and three required categories are <strong>genuinely absent</strong> (no formatter, no CI-enforced linter, no coverage). Two more
+    (security, supply-chain) are <em>covered in substance but invisible to the detector</em> — the repo runs a bespoke security
+    red-team and uses Dependabot, but the detector looks for Semgrep and Renovate. This spec closes that self/downstream gap: it adds
+    the three missing gates (blocking, green from day one), adds real SAST, teaches the detector to recognise Dependabot (a fix every
+    downstream Dependabot user benefits from), waives the categories that don't apply to a CLI (observability), self-certifies via a
+    <code>.spectastic/profile.json = enterprise</code> marker, and reconciles the hand-authored principles against the enterprise
+    catalog. Coverage is diff-aware, never a project percentage. For the spectastic maintainers — and, through the detector fix, every
+    downstream enterprise project.</p>
+  </spec-tldr>
+
+  <dl class="invest">
+    <dt><span class="letter">I</span> Independent</dt> <dd>Builds on the enforce engine (<a href="../042-profile-enforcement/spec.html">042</a>) and the profile system (<a href="../041-init-profiles/spec.html">041</a>), both landed. No shared-data coupling; the detector change is additive.</dd>
+    <dt><span class="letter">N</span> Negotiable</dt>  <dd>Contracts the <em>outcome</em> — the floor passes, the gates block, the detector recognises Dependabot. The specific tools (Biome vs ESLint+Prettier, coverage provider, SAST ruleset) are the plan's.</dd>
+    <dt><span class="letter">V</span> Valuable</dt>    <dd>Unlocks <a href="#SC-001">SC-001</a> — the tool that enforces an enterprise floor on others finally meets it itself, closing a credibility hole; and <a href="#SC-004">SC-004</a> hardens the detector for every downstream Dependabot user.</dd>
+    <dt><span class="letter">E</span> Estimable</dt>   <dd>Each category is a discrete, well-understood config + CI wiring; the detector fix is one signal added to a table; the reconciliation is an audit. The enforce engine already computes pass/fail.</dd>
+    <dt><span class="letter">S</span> Small</dt>       <dd>At the larger end of one spec — the gates, self-certification (incl. the 047 floor amendment the spike forced), the detector fix, and the principles reconciliation — but bounded to the enforce floor. Supply-chain <em>provenance</em> (SBOM/attestation), governance files, and release automation are deferred (§3 Out of scope).</dd>
+    <dt><span class="letter">T</span> Testable</dt>    <dd>Every requirement is observable — <a href="#SC-001">SC-001</a>–<a href="#SC-006">SC-006</a> are green-CI-, fixture-, and enforce-output-checkable.</dd>
+  </dl>
+
+  <spec-audience-map>
+    <dl>
+      <dt>Exec / PM</dt>   <dd>§<a href="#context">Context</a>, §<a href="#scenarios">User scenarios</a>, §<a href="#success">Success criteria</a>.</dd>
+      <dt>Reviewer</dt>    <dd>§<a href="#requirements">Requirements</a>, §<a href="#assumptions">Assumptions</a>, §<a href="#questions">Open questions</a>.</dd>
+      <dt>Implementer</dt> <dd>§<a href="#requirements">Requirements</a>, §<a href="#data">Data model</a>, §<a href="#conformance">Conformance index</a>.</dd>
+    </dl>
+  </spec-audience-map>
+</header>
+
+
+<section id="context">
+<h2>1 · Context</h2>
+<p>spectastic ships an <code>enterprise</code> profile whose <strong>enforce floor is a hard gate</strong> over nine categories —
+formatter, linter, type-checker, test-runner, security, supply-chain, coverage, observability, contract-first (<code>security</code>
+and <code>supply-chain</code> <em>unwaivable</em>) — and a fifteen-principle catalog. It is the standard the tool holds downstream
+projects to. The tool does not hold <em>itself</em> to it: there is no <code>.spectastic/profile.json</code> marker, so
+<code>spectastic enforce</code> has never certified the repo against its own bar.</p>
+<p>Mapping the repo against that floor: <strong>type-checker</strong> (tsc) and <strong>test-runner</strong> (Vitest) are covered;
+<strong>contract-first</strong> is auto-exempt (no web/RPC interface). But <strong>formatter, linter, and coverage are genuinely
+absent</strong> — there is no Prettier/Biome config, no CI-enforced linter (the SonarLint-style diagnostics are an editor plugin, not
+a build gate), and no coverage measurement at all. And <strong>security and supply-chain are covered in substance but invisible to the
+detector</strong>: the repo runs a bespoke injection red-team as a hard CI gate and uses Dependabot, yet the detector's signals are
+Semgrep (<code>.semgrep.yml</code>) and Renovate (<code>renovate.json</code>). The Dependabot blind spot is a real defect —
+<em>every</em> downstream project on Dependabot hits the same false gap.</p>
+<p><strong>Who it's for:</strong> the spectastic maintainers (a tool that enforces a floor it doesn't meet is a credibility hole) and,
+via the detector fix, every downstream enterprise project using Dependabot.</p>
+</section>
+
+
+<section id="scenarios">
+<h2>2 · User scenarios &amp; testing</h2>
+
+<p>Each story <strong>MUST</strong> be independently testable: US1 alone (the three quality gates) is a viable MVP — real robustness
+even before the repo self-certifies.</p>
+
+<h3 id="US1">US1 · The three absent quality gates land, blocking, green from day one <spec-pill>P1</spec-pill></h3>
+<p>As a <strong>spectastic maintainer</strong>, I want <strong>a formatter, a linter, and coverage enforced in CI</strong> so that
+<strong>a formatting drift, a lint error, or a coverage drop on changed lines fails the build — not just an editor squiggle</strong>.</p>
+<p><em>Acceptance:</em> a formatter and a linter run over all repo source (all five packages + bench/scripts) and coverage over the
+four core packages (schema/corpus/core/cli); each is a <strong>blocking</strong> CI gate; the existing codebase is brought to
+<strong>green</strong> (the surfaced backlog fixed, not suppressed); coverage is <strong>diff-aware</strong> — ≥ 80% of changed lines,
+and a change never lowers coverage of the code it touches — never a universal project percentage.</p>
+
+<h3 id="US2">US2 · The repo self-certifies against its own enterprise profile <spec-pill>P1</spec-pill></h3>
+<p>As a <strong>spectastic maintainer</strong>, I want <strong>the repo marked <code>enterprise</code> and <code>spectastic enforce</code>
+to pass</strong> so that <strong>the tool provably meets the floor it demands of everyone else</strong>.</p>
+<p><em>Acceptance:</em> a <code>.spectastic/profile.json = enterprise</code> marker exists; <code>spectastic enforce</code> reports the
+repo <strong>passes</strong> — every required category covered, waived, or exempt, with <strong>zero blocking gaps</strong>; the
+categories that don't apply to a CLI/library (observability — no runtime service, no metrics surface) are handled by a well-formed,
+justified, expiring <strong>waiver</strong>, never a silent pass; and activating the marker leaves the existing spec corpus's
+profile-gated validate (the quantified-NFR gate, <a href="../047-slo-nfr-artifact/spec.html">047</a>) <strong>green</strong>.</p>
+
+<h3 id="US3">US3 · Dogfooding hardens the detector for everyone <spec-pill>P2</spec-pill></h3>
+<p>As a <strong>downstream project on Dependabot</strong>, I want <strong>the enforce detector to recognise Dependabot as
+supply-chain tooling</strong> so that <strong>I'm not falsely failed for using a first-class dependency-update tool</strong>.</p>
+<p><em>Acceptance:</em> the detector recognises <code>.github/dependabot.yml</code> as a <code>supply-chain</code> signal; a real SAST
+config (Semgrep) is added and recognised as a <code>security</code> signal (additive to the bespoke injection red-team, not a
+replacement); both changes are <strong>additive</strong> — a project already passing a category stays passing. A dependency-vulnerability
+audit gate runs in CI.</p>
+
+<h3 id="US4">US4 · Principles reconciled with the enterprise catalog <spec-pill>P2</spec-pill></h3>
+<p>As a <strong>spectastic maintainer</strong>, I want <strong>the hand-authored principles audited against the fifteen-principle
+enterprise catalog</strong> so that <strong>the constitution reflects the enterprise standard where it genuinely applies</strong>.</p>
+<p><em>Acceptance:</em> every enterprise-catalog principle is either <strong>already present</strong> in <code>principles.html</code>,
+<strong>folded in</strong> as a genuinely-missing and scope-applicable rule (e.g. formal accessibility conformance — the repo already
+generates user-facing HTML and runs axe-core), or <strong>recorded as not-applicable with reasoning</strong> (e.g. SLOs for a CLI) —
+never blanket-seeded as noise. The amendments land via <code>/spectastic.principles</code> (the constitution's own verb).</p>
+
+<h3>Edge cases</h3>
+<ul>
+  <li>Adopting a formatter reformats the whole tree once — a large one-time diff, acceptable and expected; subsequent diffs stay clean.</li>
+  <li>The linter surfaces a backlog (unused imports, cognitive-complexity). US1 fixes it; if a rule proves too noisy to satisfy honestly, it is tuned down with a recorded reason, never blanket-disabled.</li>
+  <li>Marking the repo <code>enterprise</code> activates <em>all</em> profile-gated validate rules across the whole <code>specs/</code> corpus, not just enforce — the quantified-NFR gate (047) most of all. The plan spike confirmed 104 historical NFRs would fire; <a href="#FR-009">FR-009</a>'s convention floor exempts them (they predate the discipline) while still gating new specs — never a silent corpus reddening, and never a retroactive marathon.</li>
+  <li>The vscode extension's host-dependent (VS Code) tests can't contribute to a Node coverage number — it is formatter/linter-covered but out of the coverage gate, recorded explicitly, not silently.</li>
+  <li>A detector change that recognised the wrong thing could <em>relax</em> a downstream gate — so the change is strictly additive (new signals only) and covered by a fixture proving a previously-passing project still passes.</li>
+</ul>
+</section>
+
+
+<section id="requirements">
+<h2>3 · Requirements</h2>
+
+<p>Conformance keywords (<spec-rule>MUST</spec-rule>, <spec-rule level="should">SHOULD</spec-rule>,
+<spec-rule level="may">MAY</spec-rule>) follow RFC 2119.</p>
+
+<h3>Functional</h3>
+
+<spec-requirement id="FR-001" priority="must">
+<p>A <strong>formatter</strong> and a <strong>linter</strong> <spec-rule>MUST</spec-rule> be configured over all repo source (all five
+packages plus bench/scripts) and run as <strong>blocking</strong> CI gates; their config <spec-rule>MUST</spec-rule> be the file the
+enforce detector recognises for the <code>formatter</code> and <code>linter</code> categories.</p>
+<details><summary>Rationale</summary><p>The largest robustness hole — zero formatter, no CI-enforced linter today. The detector-recognised config is what makes <code>enforce</code> see the category as covered (US2).</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-002" priority="must">
+<p>The existing codebase <spec-rule>MUST</spec-rule> be brought to a <strong>green</strong> lint + format state (the surfaced backlog
+fixed, not baseline-suppressed) so the gates block genuinely from the first commit. A rule tuned down to stay honest
+<spec-rule>MUST</spec-rule> carry a recorded reason.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-003" priority="must">
+<p><strong>Coverage</strong> <spec-rule>MUST</spec-rule> be measured over the four core packages (schema/corpus/core/cli) with a
+declared threshold the detector recognises, and gated <strong>diff-aware</strong>: ≥ 80% of changed lines covered, and a change
+<spec-rule>MUST NOT</spec-rule> lower coverage of the code it touches. A universal project-wide percentage
+<spec-rule>MUST NOT</spec-rule> be the gate.</p>
+<details><summary>Rationale</summary><p>The tool's own doctrine (<a href="../042-profile-enforcement/spec.html">042</a>): a mandated project % is a Goodhart target and 100% is a smell; the invariant is diff-aware.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-004" priority="must">
+<p>A <code>.spectastic/profile.json</code> marker <spec-rule>MUST</spec-rule> declare the repo <code>enterprise</code>, and
+<code>spectastic enforce</code> <spec-rule>MUST</spec-rule> then report the floor <strong>passes</strong> — every required category
+covered, waived, or exempt, with zero blocking gaps.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-005" priority="must">
+<p>Categories that do not apply to a CLI/library <spec-rule>MUST</spec-rule> be handled explicitly: <code>observability</code>
+(no runtime service / metrics surface) via a well-formed, justified, expiring <strong>waiver</strong> (never a silent pass);
+<code>contract-first</code> via the detector's existing no-interface <strong>exemption</strong> (no work). A waiver
+<spec-rule>MUST</spec-rule> pass the <code>enforce-waiver-well-formed</code> validate rule.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-009" priority="must">
+<p>The quantified-NFR validate gate (<a href="../047-slo-nfr-artifact/spec.html">047</a>) <spec-rule>MUST</spec-rule> gain a
+<strong>convention floor</strong> so that adopting the <code>enterprise</code> marker does not retroactively turn the historical spec
+corpus red: only specs <strong>at or above</strong> the floor are gated; specs below it predate the quantified-NFR discipline and are
+<strong>exempt</strong>. The floor mirrors the existing <code>verify-view-missing</code> rule's convention-floor pattern, and the gate
+<spec-rule>MUST</spec-rule> still fire on new (at/above-floor) specs. The 047 requirement text <spec-rule>MUST</spec-rule> be amended
+to record the floor, via <code>/spectastic.propose</code>.</p>
+<details><summary>Rationale</summary><p>The spike (plan §3) found 104 unquantified NFRs across 59 historical specs — retrofitting a measurable target onto each is a low-value marathon, and many (e.g. "adds no meaningful latency") resist a number. The repo already solved exactly this shape for <code>verify.html</code> with a convention floor ("specs below predate the convention, exempt"); the same pattern makes self-certification honest without a corpus rewrite. This is the amendment US2 depends on.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-006" priority="must">
+<p>The enforce detector <spec-rule>MUST</spec-rule> recognise <code>.github/dependabot.yml</code> as a <code>supply-chain</code>
+signal, and a real SAST config (Semgrep) <spec-rule>MUST</spec-rule> be added and recognised as a <code>security</code> signal
+(additive to the injection red-team). Both detector changes <spec-rule>MUST</spec-rule> be strictly additive — a project already
+covered for a category stays covered.</p>
+<details><summary>Rationale</summary><p>The unwaivable categories must pass on substance, and the Dependabot blind spot is a real defect every downstream Dependabot user hits — fixing the shared detector, not gaming the local gate.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-007" priority="should">
+<p>A <strong>dependency-vulnerability audit gate</strong> (e.g. an advisory-database / OSV scan) <spec-rule level="should">SHOULD</spec-rule>
+run in CI, so a known-vulnerable dependency is caught, not merely auto-updated.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-008" priority="should">
+<p><code>principles.html</code> <spec-rule level="should">SHOULD</spec-rule> be reconciled against the enterprise catalog: each
+catalog principle is present, folded in where genuinely missing and scope-applicable, or recorded not-applicable with reasoning —
+never blanket-seeded. The amendment <spec-rule level="should">SHOULD</spec-rule> land via <code>/spectastic.principles</code>.</p>
+</spec-requirement>
+
+<h3>Non-functional</h3>
+
+<spec-requirement id="NFR-001" priority="must">
+<p>The new gates <spec-rule>MUST</spec-rule> be deterministic and reproducible — the same source yields the same
+formatter/linter/coverage verdict locally and in CI, so a passing local state cannot fail CI on formatting/lint alone.</p>
+</spec-requirement>
+
+<spec-requirement id="NFR-002" priority="must">
+<p>Landing this <spec-rule>MUST NOT</spec-rule> leave CI red: after the backlog fix and the marker, the full gate suite
+(typecheck, dependency-boundary, tests, format, lint, coverage, enforce, and the existing security/dogfood gates)
+<spec-rule>MUST</spec-rule> pass on the current codebase.</p>
+</spec-requirement>
+
+<spec-requirement id="NFR-003" priority="should">
+<p>The added CI gates <spec-rule level="should">SHOULD</spec-rule> keep the pull-request feedback loop practical — the full required
+suite completing within roughly ten minutes on the standard runner, so the floor is a guardrail, not a tax.</p>
+</spec-requirement>
+
+<h3>Out of scope (deferred to other slices)</h3>
+<spec-out-of-scope>
+  <ul>
+    <li defer-to="TBD-supply-chain-provenance">Supply-chain <em>provenance</em> beyond the enforce category — SBOM (CycloneDX/SPDX) generation, build attestation, and pinning GitHub Action versions to commit SHAs. The enforce <em>category</em> needs recognised automation + an audit gate; the enterprise <em>provenance principle</em>'s SBOM/attestation is heavier and separable.</li>
+    <li defer-to="TBD-repo-governance">Governance files — <code>SECURITY.md</code> / vulnerability-disclosure policy, <code>CODEOWNERS</code>. Cheap best-practice, but not part of the enforce floor.</li>
+    <li defer-to="TBD-branch-protection">Branch-protection / required-status-checks configuration — a GitHub repo setting, not a committable file; documented, not file-configured, here.</li>
+    <li defer-to="TBD-release-automation">Migrating the manual <code>chore(release)</code> + version-check flow to a changesets-style automated release.</li>
+    <li defer-to="TBD-build-caching">Turborepo/nx build caching — a DX/perf concern, not a robustness gap.</li>
+  </ul>
+</spec-out-of-scope>
+</section>
+
+
+<section id="data">
+<h2>4 · Data model</h2>
+
+<p>No new persisted entity — this spec adds <em>config</em> and a <em>declaration</em>, consumed by the existing enforce engine and CI.</p>
+
+<h3>Entities</h3>
+<dl>
+  <dt>Profile marker</dt><dd><code>.spectastic/profile.json</code> declaring <code>enterprise</code> — the switch that makes <code>spectastic enforce</code> and the profile-gated validate rules evaluate the repo against the enterprise floor (041).</dd>
+  <dt>Enforce waiver</dt><dd>A <code>{category, reason, until, owner}</code> entry (in <code>spectastic.json</code>) that demotes a required-but-inapplicable category (observability) from a blocking gap to an advisory <em>relaxed</em> tally — justified, expiring, and validate-checked (042).</dd>
+  <dt>Detector signal</dt><dd>A row in the enforce detector's signal table mapping a config file (e.g. <code>.github/dependabot.yml</code>) to a category (<code>supply-chain</code>). This spec adds signals; it removes none.</dd>
+</dl>
+
+<spec-note>
+<p>Invariant: every required category resolves to exactly one of <em>covered</em> (a detected signal), <em>waived</em> (a well-formed
+waiver), or <em>exempt</em> (the detector's own antecedent, e.g. no web interface for contract-first) — never a silent gap. The floor
+passes iff every required category is one of the three.</p>
+</spec-note>
+</section>
+
+
+<section id="success">
+<h2>5 · Success criteria</h2>
+
+<p>Technology-agnostic, measurable outcomes.</p>
+
+<spec-requirement id="SC-001" priority="must">
+<p><code>spectastic enforce</code> against the marked repo reports the <strong>enterprise floor passes</strong> — zero blocking gaps —
+with each of the nine required categories shown as covered, waived, or exempt.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-002" priority="must">
+<p>A pull request that introduces a formatting violation, a lint error, or drops coverage of its changed lines below 80% <strong>fails
+CI</strong>; an equivalent clean pull request <strong>passes</strong> — both observable against a fixture change.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-003" priority="must">
+<p>The full required CI suite (typecheck, dependency-boundary, tests, format, lint, coverage, enforce, and the existing
+security/dogfood gates) runs <strong>green</strong> on the current codebase — the backlog fixed, nothing suppressed.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-004" priority="must">
+<p>A fixture downstream project using Dependabot (and no Renovate) is reported <strong>supply-chain-covered</strong> by the updated
+detector; a fixture project already covered for any category remains covered (additive, no regression).</p>
+</spec-requirement>
+
+<spec-requirement id="SC-005" priority="must">
+<p>With the enterprise marker active and <a href="#FR-009">FR-009</a>'s convention floor in place, a full-corpus <code>validate</code>
+produces <strong>zero</strong> <code>quantified-nfr-required</code> errors on below-floor (historical) specs, while a fixture
+at/above-floor spec with an unquantified NFR <strong>still</strong> errors — the floor exempts the past without disabling the gate.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-006" priority="should">
+<p>Every principle in the enterprise catalog is accounted for in <code>principles.html</code> — present, folded in, or recorded
+not-applicable with a reason — with none blanket-seeded as noise.</p>
+</spec-requirement>
+</section>
+
+
+<section id="assumptions">
+<h2>6 · Assumptions</h2>
+
+<spec-assumption>
+<p>The enforce engine (042) and profile system (041) run correctly against this monorepo root — the detector reads root-level config,
+and per-package tsconfig/test setups don't confuse category detection. The plan verifies this against a real <code>enforce</code> run.</p>
+</spec-assumption>
+
+<spec-assumption>
+<p>The historical spec corpus is <strong>not</strong> broadly quantified — the plan spike found 104 unquantified NFRs across 59 specs,
+so activating the enterprise marker would redden the corpus without <a href="#FR-009">FR-009</a>'s convention floor. This assumption
+was <em>disproven</em> and is recorded here so the floor's necessity is legible; the floor is the resolution, not a corpus rewrite.</p>
+</spec-assumption>
+
+<spec-assumption>
+<p>Bringing the codebase to lint-green is a bounded one-time effort — the code was written under ad-hoc SonarLint discipline, so the
+backlog is small (unused imports, a few cognitive-complexity hotspots), not a rewrite.</p>
+</spec-assumption>
+</section>
+
+
+<section id="questions">
+<h2>7 · Open questions</h2>
+<spec-questions>
+<p>None outstanding — the scope (full floor pass + marker), the detector-gap resolution (fix the shared detector + add real SAST,
+not a config workaround), the principles reconciliation, the diff-aware coverage target (≥ 80% changed lines + never-lower), the
+green-from-day-one backlog fix, and the package scope (all source; coverage on the four core packages) were all anchored in the
+interview. Tool choices (Biome vs ESLint+Prettier, coverage provider, SAST ruleset) are deferred to the plan by design.</p>
+</spec-questions>
+</section>
+
+
+<section id="conformance">
+<h2>8 · Conformance index</h2>
+<p>Auto-built from every <code>&lt;spec-requirement&gt;</code> in this document.</p>
+<spec-conformance></spec-conformance>
+</section>
+
+
+<section id="changelog">
+<h2>9 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-07-29">29 Jul 2026</time><span>Initial draft. Dogfood spectastic's own <code>enterprise</code> enforce floor: add the three absent gates (formatter, linter, coverage — blocking, green from day one), self-certify via a profile marker, fix the detector gaps dogfooding surfaces (Dependabot recognition + real SAST), and reconcile the principles against the enterprise catalog. Supply-chain provenance (SBOM/attestation/SHA-pinning), governance files, and release automation deferred to their own TBDs.</span></li>
+  <li><time datetime="2026-07-29">29 Jul 2026</time><span>Amended during planning after a spike disproved assumption #2: marking the repo <code>enterprise</code> would fire the quantified-NFR gate (047) on <strong>104 unquantified NFRs across 59 historical specs</strong>. Added <a href="#FR-009">FR-009</a> — a convention floor on 047's gate (mirroring <code>verify-view-missing</code>) that exempts below-floor historical specs while still gating new ones — and promoted <a href="#SC-005">SC-005</a> to <code>must</code>. Self-certification (US2) now depends on the floor, not a corpus rewrite.</span></li>
+  <li><time datetime="2026-07-30">30 Jul 2026</time><span>Status flipped Draft → Accepted on 30 Jul 2026 — zero remaining unchecked tasks (37/37); the full required CI suite verified passing (typecheck, dependency-boundary, format/lint, the full test suite, coverage, patch-coverage, Semgrep, dependency audit, <code>enforce</code>, and the dogfood/security-review gates). Sibling bundle (REQ-LIFECYCLE-005) — spec.html, plan.html, tasks.html flip together.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  068-enterprise-enforce-floor · Enterprise enforce floor (dogfood) · authored 29 Jul 2026
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>

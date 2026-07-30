@@ -2,8 +2,8 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { renderMarketplaceManifest, syncMarketplaceManifest, publishCorpus } from '../src/knowledge/publish.js';
 import { renderRegistryTable } from '../src/knowledge/index-format.js';
+import { publishCorpus, renderMarketplaceManifest, syncMarketplaceManifest } from '../src/knowledge/publish.js';
 import type { RegistryEntry } from '../src/knowledge/types.js';
 
 /**
@@ -48,7 +48,10 @@ describe('renderMarketplaceManifest (T-200, FR-002, NFR-002)', () => {
     writeRegistry(dir, [row()]);
     writeSkill(dir, 'finance-settlement', 'Securities-settlement domain knowledge for grounding cash specs.');
 
-    const manifest = renderMarketplaceManifest({ marketplaceName: 'acme', knowledgeDir: dir });
+    const manifest = renderMarketplaceManifest({
+      marketplaceName: 'acme',
+      knowledgeDir: dir,
+    });
     expect(manifest.name).toBe('acme');
     expect(manifest.owner).toEqual({ name: 'acme' });
     expect(manifest.plugins).toEqual([
@@ -66,7 +69,10 @@ describe('renderMarketplaceManifest (T-200, FR-002, NFR-002)', () => {
     writeRegistry(dir, [row(), row({ id: 'KB-0002', slug: '002-fx-risk' })]);
     writeSkill(dir, 'finance-settlement', 'Securities-settlement domain knowledge for grounding cash specs.');
 
-    const manifest = renderMarketplaceManifest({ marketplaceName: 'acme', knowledgeDir: dir });
+    const manifest = renderMarketplaceManifest({
+      marketplaceName: 'acme',
+      knowledgeDir: dir,
+    });
     expect(manifest.plugins).toHaveLength(1);
     rmSync(dir, { recursive: true, force: true });
   });
@@ -75,14 +81,20 @@ describe('renderMarketplaceManifest (T-200, FR-002, NFR-002)', () => {
     const dir = corpusDir('nodesc');
     writeRegistry(dir, [row()]);
     // No SKILL.md at all.
-    const manifest = renderMarketplaceManifest({ marketplaceName: 'acme', knowledgeDir: dir });
+    const manifest = renderMarketplaceManifest({
+      marketplaceName: 'acme',
+      knowledgeDir: dir,
+    });
     expect(manifest.plugins[0]?.description).toBe('Domain knowledge for finance-settlement.');
     rmSync(dir, { recursive: true, force: true });
   });
 
   it('an empty registry renders an empty plugins[], never an error', () => {
     const dir = corpusDir('empty');
-    const manifest = renderMarketplaceManifest({ marketplaceName: 'acme', knowledgeDir: dir });
+    const manifest = renderMarketplaceManifest({
+      marketplaceName: 'acme',
+      knowledgeDir: dir,
+    });
     expect(manifest.plugins).toEqual([]);
     rmSync(dir, { recursive: true, force: true });
   });
@@ -106,7 +118,13 @@ describe('syncMarketplaceManifest (T-201, FR-003, NFR-001)', () => {
         {
           name: 'acme',
           owner: { name: 'Hand-Edited Owner' },
-          plugins: [{ name: 'finance-settlement', source: './finance-settlement', description: 'Stale blurb.' }],
+          plugins: [
+            {
+              name: 'finance-settlement',
+              source: './finance-settlement',
+              description: 'Stale blurb.',
+            },
+          ],
         },
         null,
         2,
@@ -114,12 +132,15 @@ describe('syncMarketplaceManifest (T-201, FR-003, NFR-001)', () => {
       'utf8',
     );
 
-    const merged = syncMarketplaceManifest({ marketplaceName: 'acme', knowledgeDir: dir });
+    const merged = syncMarketplaceManifest({
+      marketplaceName: 'acme',
+      knowledgeDir: dir,
+    });
     expect(merged.owner).toEqual({ name: 'Hand-Edited Owner' });
     rmSync(dir, { recursive: true, force: true });
   });
 
-  it('a plugin description ALWAYS reflects the pack\'s current SKILL.md, never a frozen stale copy', () => {
+  it("a plugin description ALWAYS reflects the pack's current SKILL.md, never a frozen stale copy", () => {
     // Regression for a real bug found dogfooding T-312: the old "existing
     // wins" policy re-shipped a generic auto-generated description forever,
     // even after the pack's own SKILL.md was corrected to something real.
@@ -131,7 +152,13 @@ describe('syncMarketplaceManifest (T-201, FR-003, NFR-001)', () => {
         {
           name: 'acme',
           owner: { name: 'acme' },
-          plugins: [{ name: 'finance-settlement', source: './finance-settlement', description: 'An old, now-wrong description.' }],
+          plugins: [
+            {
+              name: 'finance-settlement',
+              source: './finance-settlement',
+              description: 'An old, now-wrong description.',
+            },
+          ],
         },
         null,
         2,
@@ -140,7 +167,10 @@ describe('syncMarketplaceManifest (T-201, FR-003, NFR-001)', () => {
     );
     writeSkill(dir, 'finance-settlement', 'The corrected, accurate description now in SKILL.md.');
 
-    const merged = syncMarketplaceManifest({ marketplaceName: 'acme', knowledgeDir: dir });
+    const merged = syncMarketplaceManifest({
+      marketplaceName: 'acme',
+      knowledgeDir: dir,
+    });
     expect(merged.plugins[0]?.description).toBe('The corrected, accurate description now in SKILL.md.');
     rmSync(dir, { recursive: true, force: true });
   });
@@ -167,8 +197,16 @@ describe('syncMarketplaceManifest (T-201, FR-003, NFR-001)', () => {
           name: 'acme',
           owner: { name: 'acme' },
           plugins: [
-            { name: 'finance-settlement', source: './finance-settlement', description: 'x' },
-            { name: 'retired-pack', source: './retired-pack', description: 'y' },
+            {
+              name: 'finance-settlement',
+              source: './finance-settlement',
+              description: 'x',
+            },
+            {
+              name: 'retired-pack',
+              source: './retired-pack',
+              description: 'y',
+            },
           ],
         },
         null,
@@ -177,7 +215,10 @@ describe('syncMarketplaceManifest (T-201, FR-003, NFR-001)', () => {
       'utf8',
     );
 
-    const merged = syncMarketplaceManifest({ marketplaceName: 'acme', knowledgeDir: dir });
+    const merged = syncMarketplaceManifest({
+      marketplaceName: 'acme',
+      knowledgeDir: dir,
+    });
     expect(merged.plugins.map((p) => p.name)).toContain('retired-pack');
     rmSync(dir, { recursive: true, force: true });
   });
@@ -187,7 +228,10 @@ describe('publishCorpus (T-202/T-213 primitive, FR-004)', () => {
   it('generates a missing manifest and reports it did not already exist', () => {
     const dir = corpusDir('publish-fresh');
     writeRegistry(dir, [row()]);
-    const result = publishCorpus({ marketplaceName: 'acme', knowledgeDir: dir });
+    const result = publishCorpus({
+      marketplaceName: 'acme',
+      knowledgeDir: dir,
+    });
     expect(result.alreadyExisted).toBe(false);
     expect(existsSync(result.manifestPath)).toBe(true);
     rmSync(dir, { recursive: true, force: true });
@@ -198,7 +242,10 @@ describe('publishCorpus (T-202/T-213 primitive, FR-004)', () => {
     writeRegistry(dir, [row()]);
     publishCorpus({ marketplaceName: 'acme', knowledgeDir: dir });
     const before = readFileSync(join(dir, 'marketplace.json'), 'utf8');
-    const second = publishCorpus({ marketplaceName: 'acme', knowledgeDir: dir });
+    const second = publishCorpus({
+      marketplaceName: 'acme',
+      knowledgeDir: dir,
+    });
     expect(second.alreadyExisted).toBe(true);
     expect(readFileSync(join(dir, 'marketplace.json'), 'utf8')).toBe(before);
     rmSync(dir, { recursive: true, force: true });

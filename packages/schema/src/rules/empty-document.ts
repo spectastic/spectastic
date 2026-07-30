@@ -45,9 +45,7 @@ export const emptyDocumentRule: PerFileRule = {
         column,
         rule: 'empty-document',
         severity: 'error',
-        message: isWhitespaceOnly
-          ? 'Spec input is empty.'
-          : 'Spec input has no body content of substance.',
+        message: isWhitespaceOnly ? 'Spec input is empty.' : 'Spec input has no body content of substance.',
         fixHint: 'Add at least a <spec-meta> block with a <spec-status> pill to begin the spec.',
       });
     }

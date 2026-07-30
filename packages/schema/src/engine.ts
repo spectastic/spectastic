@@ -39,4 +39,3 @@ export function validateMany(inputs: readonly { html: string; file: string }[]):
   }
   return findings;
 }
-

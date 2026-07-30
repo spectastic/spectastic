@@ -1,5 +1,5 @@
-import { findAll, getAttr, getLocation } from '../parser.js';
 import type { Element } from '../parser.js';
+import { findAll, getAttr, getLocation } from '../parser.js';
 import type { Finding, PerFileRule } from '../types.js';
 
 /**
@@ -54,8 +54,7 @@ export const taskTitleBoldScopeRule: PerFileRule = {
   id: 'task-title-bold-scope',
   scope: 'per-file',
   defaultSeverity: 'warning',
-  description:
-    'A <spec-task> row should lead with a short <strong> title, not bold the whole detailed line.',
+  description: 'A <spec-task> row should lead with a short <strong> title, not bold the whole detailed line.',
   check({ doc }) {
     const findings: Finding[] = [];
     for (const task of findAll(doc.ast, 'spec-task')) {

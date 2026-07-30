@@ -9,11 +9,7 @@
 import type { CandidateChild, CoverageReport, SplitModel } from './types.js';
 
 function esc(s: string): string {
-  return s
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;');
+  return s.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;');
 }
 
 function childBlock(c: CandidateChild, rank: number): string {
@@ -34,7 +30,8 @@ function coverageTable(cov: CoverageReport): string {
     .map((a) => {
       let cell: string;
       if (a.childSpecId) cell = `<a href="#${esc(a.childSpecId)}">${esc(a.childSpecId)}</a>`;
-      else if (a.duplicatedIn) cell = `<span class="coverage-gap">duplicated in ${a.duplicatedIn.map(esc).join(', ')}</span>`;
+      else if (a.duplicatedIn)
+        cell = `<span class="coverage-gap">duplicated in ${a.duplicatedIn.map(esc).join(', ')}</span>`;
       else cell = '<span class="coverage-gap">— unassigned —</span>';
       return `      <tr><td>${esc(a.requirementId)}</td><td>${cell}</td></tr>`;
     })

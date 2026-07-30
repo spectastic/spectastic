@@ -22,7 +22,10 @@ interface RunResult {
 
 async function runCLI(args: string[], cwd: string): Promise<RunResult> {
   return new Promise((resolveFn) => {
-    const child = spawn('node', [CLI, ...args], { cwd, stdio: ['pipe', 'pipe', 'pipe'] });
+    const child = spawn('node', [CLI, ...args], {
+      cwd,
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
     let stdout = '';
     let stderr = '';
     child.stdout.on('data', (c: Buffer) => (stdout += c.toString('utf8')));
@@ -99,7 +102,10 @@ describe('change-risk: US2 --range (FR-008 complete, FR-009)', () => {
   it('scans an explicit base..HEAD range, advisory exit 0 with no failAt set', async () => {
     const dir = initRepo();
     dirs.push(dir);
-    const base = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: dir, encoding: 'utf8' }).trim();
+    const base = execFileSync('git', ['rev-parse', 'HEAD'], {
+      cwd: dir,
+      encoding: 'utf8',
+    }).trim();
 
     writeFileSync(join(dir, 'logo.png'), Buffer.from([0, 1, 2, 3, 255, 254, 0x89]));
     git(dir, ['add', '-A']);

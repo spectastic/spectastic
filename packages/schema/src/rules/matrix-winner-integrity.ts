@@ -1,5 +1,5 @@
-import { findAll, getAttr, getLocation } from '../parser.js';
 import type { Element } from '../parser.js';
+import { findAll, getAttr, getLocation } from '../parser.js';
 import type { Finding, PerFileRule } from '../types.js';
 
 /**
@@ -34,7 +34,11 @@ import type { Finding, PerFileRule } from '../types.js';
 function textOf(el: Element): string {
   let out = '';
   const visit = (node: unknown): void => {
-    const n = node as { tagName?: string; value?: string; childNodes?: unknown[] };
+    const n = node as {
+      tagName?: string;
+      value?: string;
+      childNodes?: unknown[];
+    };
     if (n.tagName === undefined && typeof n.value === 'string') out += n.value;
     if (n.childNodes) for (const child of n.childNodes) visit(child);
   };
@@ -104,7 +108,8 @@ export const matrixWinnerIntegrityRule: PerFileRule = {
           rule: 'matrix-winner-integrity',
           severity: 'error',
           message: `<spec-matrix target="${target}"> does not resolve to a <spec-decision id="${target}"> in this document`,
-          fixHint: 'Point target= at a <spec-decision id="D-NNN"> in the same document, or remove target= if this matrix is standalone.',
+          fixHint:
+            'Point target= at a <spec-decision id="D-NNN"> in the same document, or remove target= if this matrix is standalone.',
         });
       }
 

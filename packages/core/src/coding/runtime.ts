@@ -10,13 +10,12 @@
  * from the first unchecked task, so a re-run resumes (FR-005, P-6).
  */
 
-import { parse, findAll, getAttr, walk } from '@spectastic/schema/parser';
 import type { Element } from '@spectastic/schema/parser';
+import { findAll, getAttr, parse, walk } from '@spectastic/schema/parser';
 import type { DrainContext, DrainInput, DrainResult, TaskOutcome, TaskWork } from './types.js';
 
 // Mirrors the 014 implement tick: a `<spec-task id=…>` whose checkbox has no `checked`.
-const FIRST_UNCHECKED =
-  /<spec-task\s+id=["']([^"']+)["'][^>]*>\s*<input\s+type=["']checkbox["'](?!\s+checked)/;
+const FIRST_UNCHECKED = /<spec-task\s+id=["']([^"']+)["'][^>]*>\s*<input\s+type=["']checkbox["'](?!\s+checked)/;
 const UNCHECKED_G = /<input\s+type=["']checkbox["'](?!\s+checked)/g;
 // A task's declared path is a test file iff it matches this (021 FR-003 fallback pattern).
 const TEST_PATH = /\.(test|spec)\.[cm]?[jt]sx?$/;

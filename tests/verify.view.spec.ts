@@ -1,7 +1,7 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { test, expect } from '@playwright/test';
+import { expect, test } from '@playwright/test';
 // Import the built engine directly — the repo root isn't a workspace member.
 // Requires `pnpm --filter @spectastic/core build`.
 import { readBundle, renderVerifyHtml } from '../packages/core/dist/commands/verify.js';
@@ -47,9 +47,7 @@ test('US1 · the Run/Demo block shows the captured commands', async ({ page }) =
 
 test('US1 · an unrecorded field renders LOUDLY, not blank (FR-009)', async ({ page }) => {
   await page.goto(URL);
-  const after = await page.locator('spec-toggle').evaluate(
-    (el) => getComputedStyle(el, '::after').content,
-  );
+  const after = await page.locator('spec-toggle').evaluate((el) => getComputedStyle(el, '::after').content);
   expect(after).toContain('not recorded');
 });
 
@@ -69,9 +67,7 @@ test('US2 · each SC links to its anchor, acceptance and closing test task (SC-0
   await expect(page.locator('#trace a[href="./spec.html#SC-002"]')).toHaveCount(1);
 });
 
-test('US2 · the trace links and Run block survive with JavaScript disabled (SC-005, NFR-001)', async ({
-  browser,
-}) => {
+test('US2 · the trace links and Run block survive with JavaScript disabled (SC-005, NFR-001)', async ({ browser }) => {
   const ctx = await browser.newContext({ javaScriptEnabled: false });
   const page = await ctx.newPage();
   await page.goto(URL);

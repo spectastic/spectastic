@@ -1,6 +1,6 @@
-import { describe, expect, it } from 'vitest';
-import { validateCommand } from '@spectastic/core/commands/validate';
 import type { FileSystem, KernelContext } from '@spectastic/core';
+import { validateCommand } from '@spectastic/core/commands/validate';
+import { describe, expect, it } from 'vitest';
 
 /**
  * Unit tests for validateCommand. Per FR-010 of
@@ -89,7 +89,9 @@ describe('validateCommand (FR-004, FR-010)', () => {
   });
 
   it('returns exitCode 2 + errorMessage when a file is unreadable', async () => {
-    const ctx = ctxWith({ /* nothing here */ });
+    const ctx = ctxWith({
+      /* nothing here */
+    });
     const result = await validateCommand({ files: ['nope.html'] }, ctx);
 
     expect(result.exitCode).toBe(2);

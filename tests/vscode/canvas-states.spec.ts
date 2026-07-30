@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { expect, test } from '@playwright/test';
 import { EMPTY_GRAPH, UNKNOWN_GRAPH } from './fixtures/graph.js';
 
 // US1 / T-103 (spec FR-011). The panel renders a calm empty/first-run state and

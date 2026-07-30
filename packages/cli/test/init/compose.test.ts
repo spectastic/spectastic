@@ -2,9 +2,9 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import {
-  PRINCIPLES_END,
   combinedPrinciples,
   composeArtifacts,
+  PRINCIPLES_END,
   renderAgentsMd,
   renderClaudeMd,
   renderPrinciplesHtml,
@@ -130,11 +130,7 @@ describe('compose: spliceUpgrade (FR-007)', () => {
 
 describe('compose: brownfield enforcement gap-fill (042 FR-006 / SC-004)', () => {
   it('marks a covered category as "do not replace", not "to wire"', () => {
-    const md = renderAgentsMd(
-      manifest,
-      resolveProfile(manifest, 'verified'),
-      new Set(['linter', 'formatter']),
-    );
+    const md = renderAgentsMd(manifest, resolveProfile(manifest, 'verified'), new Set(['linter', 'formatter']));
     expect(md).toContain('## Enforcement floor');
     expect(md).toMatch(/Already covered — do not replace:.*linter/);
     // linter is covered → it must NOT appear in the "still to wire" list.
@@ -152,11 +148,7 @@ describe('compose: brownfield enforcement gap-fill (042 FR-006 / SC-004)', () =>
 describe('compose: composeArtifacts', () => {
   it('emits three content-based decisions (no source path)', () => {
     const decisions = composeArtifacts(opts('standard'));
-    expect(decisions.map((d) => d.destination.split('/').pop())).toEqual([
-      'principles.html',
-      'AGENTS.md',
-      'CLAUDE.md',
-    ]);
+    expect(decisions.map((d) => d.destination.split('/').pop())).toEqual(['principles.html', 'AGENTS.md', 'CLAUDE.md']);
     for (const d of decisions) {
       expect(d.content).toBeTypeOf('string');
       expect(d.source).toBeUndefined();

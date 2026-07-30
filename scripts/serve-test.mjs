@@ -1,10 +1,11 @@
 // Minimal static file server for the Playwright e2e tier — no dependencies.
 // Serves the repo root so artifacts (specs/**, tests/fixtures/**) and the
 // shared assets/ resolve over http for theme-support testing.
-import { createServer } from 'node:http';
+
 import { readFile } from 'node:fs/promises';
+import { createServer } from 'node:http';
+import { extname, join, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { join, normalize, extname } from 'node:path';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const PORT = Number(process.env.TEST_PORT) || 4319;
@@ -30,7 +31,9 @@ const server = createServer(async (req, res) => {
       return;
     }
     const body = await readFile(filePath);
-    res.writeHead(200, { 'content-type': TYPES[extname(filePath)] || 'application/octet-stream' });
+    res.writeHead(200, {
+      'content-type': TYPES[extname(filePath)] || 'application/octet-stream',
+    });
     res.end(body);
   } catch {
     res.writeHead(404).end('Not found');

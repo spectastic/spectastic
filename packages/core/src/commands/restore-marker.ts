@@ -16,11 +16,7 @@
 
 import type { FileSystem, GraduationClass } from '../types.js';
 
-export async function readArchivedClassify(
-  fs: FileSystem,
-  cwd: string,
-  id: string,
-): Promise<GraduationClass | null> {
+export async function readArchivedClassify(fs: FileSystem, cwd: string, id: string): Promise<GraduationClass | null> {
   const markerPath = `${cwd}/explorations/archive/${id}/quarantine.json`;
   let raw: string;
   try {
@@ -29,7 +25,10 @@ export async function readArchivedClassify(
     return null;
   }
   try {
-    const marker = JSON.parse(raw) as { status?: string; classify?: GraduationClass };
+    const marker = JSON.parse(raw) as {
+      status?: string;
+      classify?: GraduationClass;
+    };
     if (marker.status !== 'graduated') return null;
     return marker.classify ?? null;
   } catch {

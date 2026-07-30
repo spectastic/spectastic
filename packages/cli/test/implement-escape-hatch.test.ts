@@ -1,6 +1,6 @@
-import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { describe, expect, it } from 'vitest';
 
 /**
  * Structural guard for the escape hatch (spec 044 US2, FR-003). The runtime
@@ -22,7 +22,7 @@ describe('implement --model escape hatch (spec 044 FR-003)', () => {
     expect(src.toLowerCase()).toMatch(/can'?t change (it |the model )?mid-turn|delegates the task/);
   });
 
-  it("declares model: sonnet in its own frontmatter (the default the hatch escalates from)", () => {
+  it('declares model: sonnet in its own frontmatter (the default the hatch escalates from)', () => {
     const fm = /^---\n([\s\S]*?)\n---/.exec(src)?.[1] ?? '';
     expect(/^model:[ \t]*sonnet/m.test(fm)).toBe(true);
   });

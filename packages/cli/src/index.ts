@@ -56,8 +56,8 @@ program
 // A flag beats a pre-existing SPECTASTIC_MODEL (both are per-run, the flag is
 // the more explicit one).
 program.hook('preAction', (thisCommand) => {
-  const model = thisCommand.opts()['model'] as string | undefined;
-  if (model) process.env['SPECTASTIC_MODEL'] = model;
+  const model = thisCommand.opts().model as string | undefined;
+  if (model) process.env.SPECTASTIC_MODEL = model;
 });
 
 registerInit(program);

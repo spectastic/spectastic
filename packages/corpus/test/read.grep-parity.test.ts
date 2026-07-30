@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { grep, rgAvailable } from '../src/read/grep.js';
 import type { CorpusPack } from '../src/knowledge/types.js';
+import { grep, rgAvailable } from '../src/read/grep.js';
 
 /**
  * 064-corpus-package-extraction, US3 (T-302, FR-005, plan D-005): grep<pattern> matches over
@@ -47,7 +47,14 @@ function pack(overrides: Partial<CorpusPack> = {}): CorpusPack {
 const noIdPack = () =>
   pack({
     documents: [
-      { id: null, filePath: 'knowledge/example/references/no-id.md', provenance: {}, missingFields: ['id'], hasFrontmatter: false, body: 'business day mention' },
+      {
+        id: null,
+        filePath: 'knowledge/example/references/no-id.md',
+        provenance: {},
+        missingFields: ['id'],
+        hasFrontmatter: false,
+        body: 'business day mention',
+      },
     ],
   });
 

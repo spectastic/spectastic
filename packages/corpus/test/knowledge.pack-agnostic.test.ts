@@ -1,10 +1,10 @@
-import { cpSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
-import { packAgnosticismFindings, readMarketplaceManifest } from '../src/knowledge/pack-agnostic.js';
 import { loadCorpus } from '../src/knowledge/index.js';
+import { packAgnosticismFindings, readMarketplaceManifest } from '../src/knowledge/pack-agnostic.js';
 import { resolveCitation } from '../src/knowledge/resolve.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -62,10 +62,18 @@ function cleanPack(root: string, name: string): string {
 /** A marketplace.json listing the given pack directory names as plugins. */
 function writeMarketplace(root: string, packNames: string[]): string {
   const marketplacePath = join(root, 'marketplace.json');
-  writeFile(root, 'marketplace.json', JSON.stringify({
-    name: 'test-marketplace',
-    plugins: packNames.map((name) => ({ name, source: `./${name}` })),
-  }, null, 2));
+  writeFile(
+    root,
+    'marketplace.json',
+    JSON.stringify(
+      {
+        name: 'test-marketplace',
+        plugins: packNames.map((name) => ({ name, source: `./${name}` })),
+      },
+      null,
+      2,
+    ),
+  );
   return marketplacePath;
 }
 
@@ -94,7 +102,7 @@ describe('packAgnosticismFindings — portability leg (057, T-100)', () => {
 });
 
 describe('packAgnosticismFindings — marketplace scoping (057, T-101)', () => {
-  it('spectastic\'s own dogfood + scaffold packs produce zero findings — they are never marketplace-listed', () => {
+  it("spectastic's own dogfood + scaffold packs produce zero findings — they are never marketplace-listed", () => {
     // No marketplace.json exists anywhere over these paths in the real repo.
     const dogfoodMarketplace = join(REPO_ROOT, 'knowledge', 'marketplace.json');
     const scaffoldMarketplace = join(REPO_ROOT, 'templates', 'knowledge', 'marketplace.json');
@@ -152,15 +160,31 @@ describe('readMarketplaceManifest (061 T-011, plan D-006)', () => {
   it('surfaces the marketplace name, per-plugin version, and the renames map', () => {
     const root = projectRoot();
     const marketplacePath = join(root, 'marketplace.json');
-    writeFile(root, 'marketplace.json', JSON.stringify({
-      name: 'acme',
-      plugins: [{ name: 'finance-settlement', source: './finance-settlement', version: '1.2.0' }],
-      renames: { 'finance-old-name': 'finance-settlement' },
-    }));
+    writeFile(
+      root,
+      'marketplace.json',
+      JSON.stringify({
+        name: 'acme',
+        plugins: [
+          {
+            name: 'finance-settlement',
+            source: './finance-settlement',
+            version: '1.2.0',
+          },
+        ],
+        renames: { 'finance-old-name': 'finance-settlement' },
+      }),
+    );
 
     const info = readMarketplaceManifest(marketplacePath);
     expect(info?.name).toBe('acme');
-    expect(info?.plugins).toEqual([{ name: 'finance-settlement', source: './finance-settlement', version: '1.2.0' }]);
+    expect(info?.plugins).toEqual([
+      {
+        name: 'finance-settlement',
+        source: './finance-settlement',
+        version: '1.2.0',
+      },
+    ]);
     expect(info?.renames).toEqual({ 'finance-old-name': 'finance-settlement' });
   });
 
@@ -170,7 +194,11 @@ describe('readMarketplaceManifest (061 T-011, plan D-006)', () => {
     writeFile(root, 'marketplace.json', JSON.stringify({ name: 'acme', plugins: [{ name: 'x', source: './x' }] }));
 
     const info = readMarketplaceManifest(marketplacePath);
-    expect(info?.plugins[0]).toEqual({ name: 'x', source: './x', version: undefined });
+    expect(info?.plugins[0]).toEqual({
+      name: 'x',
+      source: './x',
+      version: undefined,
+    });
     expect(info?.renames).toEqual({});
   });
 
@@ -187,7 +215,7 @@ describe('readMarketplaceManifest (061 T-011, plan D-006)', () => {
 });
 
 describe('the demo pack is citable in a spectastic repo with zero edit (057, T-300)', () => {
-  it('the same, unedited pack resolves KB-001@edition via 052\'s resolveCitation once dropped under knowledge/', () => {
+  it("the same, unedited pack resolves KB-001@edition via 052's resolveCitation once dropped under knowledge/", () => {
     const sourcePack = join(REPO_ROOT, 'examples', 'knowledge', 'finance-settlement');
     const sourceSkillMd = readFileSync(join(sourcePack, 'SKILL.md'), 'utf8');
     const sourceDoc = readFileSync(join(sourcePack, 'references', 'KB-001-settlement-windows.md'), 'utf8');
@@ -195,7 +223,9 @@ describe('the demo pack is citable in a spectastic repo with zero edit (057, T-3
     // "Dropped into a spectastic repo" — a byte-for-byte copy under knowledge/,
     // never an edit. cpSync proves that: it copies verbatim, no transform step.
     const cwd = projectRoot();
-    cpSync(sourcePack, join(cwd, 'knowledge', 'finance-settlement'), { recursive: true });
+    cpSync(sourcePack, join(cwd, 'knowledge', 'finance-settlement'), {
+      recursive: true,
+    });
 
     // The copied files are identical to the source — genuinely unedited.
     expect(readFileSync(join(cwd, 'knowledge', 'finance-settlement', 'SKILL.md'), 'utf8')).toBe(sourceSkillMd);
@@ -204,7 +234,10 @@ describe('the demo pack is citable in a spectastic repo with zero edit (057, T-3
     ).toBe(sourceDoc);
 
     const packs = loadCorpus(cwd);
-    const resolved = resolveCitation(packs, { id: 'KB-001', edition: '2026-07-25' });
+    const resolved = resolveCitation(packs, {
+      id: 'KB-001',
+      edition: '2026-07-25',
+    });
     expect(resolved).not.toBeNull();
     expect(resolved!.kind).toBe('current');
     expect(resolved!.id).toBe('KB-001');

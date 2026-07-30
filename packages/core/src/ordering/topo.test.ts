@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { orderCommand } from '../commands/order.js';
 import type { CorpusEntry } from './types.js';
 
@@ -47,7 +47,12 @@ describe('topoOrder via orderCommand', () => {
     ];
     const { ids, ordering } = await orderCommand({ corpus }, ctx);
     expect(ids).toEqual(['001-a', '002-b', '003-c']);
-    expect(edgesSatisfied(ids, ordering.entries.flatMap((e) => e.unblocks.map((u) => ({ from: e.specId, to: u }))))).toBe(true);
+    expect(
+      edgesSatisfied(
+        ids,
+        ordering.entries.flatMap((e) => e.unblocks.map((u) => ({ from: e.specId, to: u }))),
+      ),
+    ).toBe(true);
   });
 
   it('includes every spec exactly once (SC-004)', async () => {

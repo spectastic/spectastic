@@ -30,11 +30,7 @@ export interface ResolveOptions {
  * the conflict's action and return the (possibly new) loop mode.
  * Independent of any I/O; trivially unit-testable.
  */
-export function applyAnswer(
-  conflict: FileWriteDecision,
-  answer: ConflictAnswer,
-  mode: LoopMode,
-): LoopMode {
+export function applyAnswer(conflict: FileWriteDecision, answer: ConflictAnswer, mode: LoopMode): LoopMode {
   if (mode.allOverwrite) {
     conflict.action = 'overwrite';
     return mode;
@@ -77,10 +73,7 @@ export async function selectProfile(names: string[]): Promise<string | null> {
   const p = await import('@clack/prompts');
   const choice = await p.select({
     message: 'Choose a project profile (or Skip):',
-    options: [
-      ...names.map((n) => ({ value: n, label: n })),
-      { value: '__skip__', label: 'Skip — no profile' },
-    ],
+    options: [...names.map((n) => ({ value: n, label: n })), { value: '__skip__', label: 'Skip — no profile' }],
     initialValue: names.includes('standard') ? 'standard' : names[0],
   });
   if (p.isCancel(choice) || choice === '__skip__') return null;
@@ -94,7 +87,8 @@ export async function selectProfile(names: string[]): Promise<string | null> {
 export async function confirmTools(): Promise<boolean> {
   const p = await import('@clack/prompts');
   const yes = await p.confirm({
-    message: 'Install the guarantee layer now? (git pre-commit validate gate + auto-commit + drift-proof command adapters)',
+    message:
+      'Install the guarantee layer now? (git pre-commit validate gate + auto-commit + drift-proof command adapters)',
     initialValue: false,
   });
   if (p.isCancel(yes)) return false;
@@ -120,10 +114,7 @@ export class UserCancelError extends Error {
  * Throws NonTTYConflictError or UserCancelError on the edge cases so
  * the action handler can map them to exit codes.
  */
-export async function resolveConflicts(
-  conflicts: FileWriteDecision[],
-  options: ResolveOptions = {},
-): Promise<void> {
+export async function resolveConflicts(conflicts: FileWriteDecision[], options: ResolveOptions = {}): Promise<void> {
   if (conflicts.length === 0) return;
 
   if (options.force) {

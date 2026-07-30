@@ -19,19 +19,28 @@ export function registerSpec(program: Command): void {
     .option('--commit', 'force a git commit for this run (overrides git.auto)')
     .option('--no-commit', 'skip the git commit for this run (overrides git.auto)')
     .option('--split', 'run the value-ranked slicer: append a <spec-split> proposal to an over-budget Draft spec')
-    .action(async (description: string, opts: { reentry?: string; force?: boolean; commit?: boolean; split?: boolean }) => {
-      const [
-        { specCommand },
-        { createAIProvider },
-        { nodeFs },
-        { gateOnDestinationState, gateOnQuarantine },
-        { commitForVerb, reportGitOutcome, effectiveAuto, parseCommitOverride },
-        { loadGitConfig },
-        { resolveNextSpecId },
-        { gitRunner },
-        fs,
-        path,
-      ] = await Promise.all([
+    .action(
+      async (
+        description: string,
+        opts: {
+          reentry?: string;
+          force?: boolean;
+          commit?: boolean;
+          split?: boolean;
+        },
+      ) => {
+        const [
+          { specCommand },
+          { createAIProvider },
+          { nodeFs },
+          { gateOnDestinationState, gateOnQuarantine },
+          { commitForVerb, reportGitOutcome, effectiveAuto, parseCommitOverride },
+          { loadGitConfig },
+          { resolveNextSpecId },
+          { gitRunner },
+          fs,
+          path,
+        ] = await Promise.all([
           import('@spectastic/core/commands/spec'),
           import('../ai-factory.js'),
           import('@spectastic/core/providers/node-fs'),
@@ -44,108 +53,113 @@ export function registerSpec(program: Command): void {
           import('node:path'),
         ]);
 
-      // The per-invocation git override (FR-004): --commit → force, --no-commit → skip.
-      const gitOverride = parseCommitOverride(opts.commit);
+        // The per-invocation git override (FR-004): --commit → force, --no-commit → skip.
+        const gitOverride = parseCommitOverride(opts.commit);
 
-      const cwd = process.cwd();
+        const cwd = process.cwd();
 
-      // Split-mode (spec 029, FR-001): append a <spec-split> proposal to a Draft parent.
-      if (opts.split) {
-        await handleSplitMode(opts.reentry ?? description, opts, cwd);
-      }
-
-      // If --reentry given, resolve to its known path; otherwise the kernel decides the ID.
-      const reentryPath = opts.reentry
-        ? path.resolve(cwd, 'specs', opts.reentry, 'spec.html')
-        : null;
-
-      // Branch reservation (FR-006/D-004): under branch+commit, fresh authoring
-      // allocates an origin-aware NNN so the new NNN-slug branch is the claim.
-      const gitAuto = effectiveAuto(loadGitConfig(cwd).auto, gitOverride);
-      let allocatedId: string | undefined;
-      if (!reentryPath && gitAuto === 'branch+commit') {
-        allocatedId = await resolveNextSpecId(cwd, description, { runner: gitRunner(cwd) });
-      }
-
-      let existingSpec: string | undefined;
-      if (reentryPath && opts.reentry) {
-        // Anti-ship guard (022-explore, FR-006): refuse to sharpen a quarantined
-        // exploration's id. (Fresh authoring picks a new id, so there is nothing
-        // to gate there.)
-        const quarantine = await gateOnQuarantine(fs, process.cwd(), opts.reentry);
-        if (quarantine) {
-          process.stderr.write(`${quarantine.message}\n`);
-          process.exit(2);
+        // Split-mode (spec 029, FR-001): append a <spec-split> proposal to a Draft parent.
+        if (opts.split) {
+          await handleSplitMode(opts.reentry ?? description, opts, cwd);
         }
-      }
-      if (reentryPath) {
-        const decision = await gateOnDestinationState(fs, reentryPath, { force: opts.force });
-        if (decision.kind === 'refuse') {
-          process.stderr.write(
-            `${reentryPath} exists in <spec-status value="${decision.status}"> — past-Draft per P-6 of principles.html.\nRefusing to sharpen. Amend via /spectastic.propose against the spec, or pass --force to bypass.\n`,
-          );
-          process.exit(2);
+
+        // If --reentry given, resolve to its known path; otherwise the kernel decides the ID.
+        const reentryPath = opts.reentry ? path.resolve(cwd, 'specs', opts.reentry, 'spec.html') : null;
+
+        // Branch reservation (FR-006/D-004): under branch+commit, fresh authoring
+        // allocates an origin-aware NNN so the new NNN-slug branch is the claim.
+        const gitAuto = effectiveAuto(loadGitConfig(cwd).auto, gitOverride);
+        let allocatedId: string | undefined;
+        if (!reentryPath && gitAuto === 'branch+commit') {
+          allocatedId = await resolveNextSpecId(cwd, description, {
+            runner: gitRunner(cwd),
+          });
         }
-        if (decision.kind === 'edit-in-place') {
-          existingSpec = decision.existing;
-          const note =
-            opts.force && decision.status !== null && decision.status !== 'draft'
-              ? `warn: bypassing change-management surface (status was ${decision.status}); --force in effect.\n`
-              : `Sharpening Draft ${reentryPath} in place per P-6.\n`;
-          process.stderr.write(note);
+
+        let existingSpec: string | undefined;
+        if (reentryPath && opts.reentry) {
+          // Anti-ship guard (022-explore, FR-006): refuse to sharpen a quarantined
+          // exploration's id. (Fresh authoring picks a new id, so there is nothing
+          // to gate there.)
+          const quarantine = await gateOnQuarantine(fs, process.cwd(), opts.reentry);
+          if (quarantine) {
+            process.stderr.write(`${quarantine.message}\n`);
+            process.exit(2);
+          }
         }
-      }
-
-      // Construct AI provider only after the gate decides to proceed — keeps the gate's
-      // informative refuse/warn message reachable when ANTHROPIC_API_KEY is missing.
-      const ai = await createAIProvider({ verb: 'spec' });
-
-      const specIdInput = opts.reentry ?? allocatedId;
-      const input = {
-        description,
-        ...(specIdInput ? { specId: specIdInput } : {}),
-        ...(existingSpec ? { existingSpec } : {}),
-      };
-      const result = await specCommand(input, { cwd, fs: nodeFs, ai });
-      const outPath = path.resolve(cwd, 'specs', result.specId, 'spec.html');
-
-      // Fresh-authoring path: gate the resolved output too, in case the kernel
-      // chose a spec ID that collides with an existing past-Draft artifact.
-      if (!reentryPath) {
-        const decision = await gateOnDestinationState(fs, outPath, { force: opts.force });
-        if (decision.kind === 'refuse') {
-          process.stderr.write(
-            `${outPath} exists in <spec-status value="${decision.status}"> — past-Draft per P-6 of principles.html.\nRefusing to overwrite. Pick a different spec ID, amend via /spectastic.propose, or pass --force.\n`,
-          );
-          process.exit(2);
+        if (reentryPath) {
+          const decision = await gateOnDestinationState(fs, reentryPath, {
+            force: opts.force,
+          });
+          if (decision.kind === 'refuse') {
+            process.stderr.write(
+              `${reentryPath} exists in <spec-status value="${decision.status}"> — past-Draft per P-6 of principles.html.\nRefusing to sharpen. Amend via /spectastic.propose against the spec, or pass --force to bypass.\n`,
+            );
+            process.exit(2);
+          }
+          if (decision.kind === 'edit-in-place') {
+            existingSpec = decision.existing;
+            const note =
+              opts.force && decision.status !== null && decision.status !== 'draft'
+                ? `warn: bypassing change-management surface (status was ${decision.status}); --force in effect.\n`
+                : `Sharpening Draft ${reentryPath} in place per P-6.\n`;
+            process.stderr.write(note);
+          }
         }
-        if (decision.kind === 'edit-in-place' && decision.status === 'draft') {
-          process.stderr.write(`Overwriting Draft ${outPath} in place per P-6.\n`);
+
+        // Construct AI provider only after the gate decides to proceed — keeps the gate's
+        // informative refuse/warn message reachable when ANTHROPIC_API_KEY is missing.
+        const ai = await createAIProvider({ verb: 'spec' });
+
+        const specIdInput = opts.reentry ?? allocatedId;
+        const input = {
+          description,
+          ...(specIdInput ? { specId: specIdInput } : {}),
+          ...(existingSpec ? { existingSpec } : {}),
+        };
+        const result = await specCommand(input, { cwd, fs: nodeFs, ai });
+        const outPath = path.resolve(cwd, 'specs', result.specId, 'spec.html');
+
+        // Fresh-authoring path: gate the resolved output too, in case the kernel
+        // chose a spec ID that collides with an existing past-Draft artifact.
+        if (!reentryPath) {
+          const decision = await gateOnDestinationState(fs, outPath, {
+            force: opts.force,
+          });
+          if (decision.kind === 'refuse') {
+            process.stderr.write(
+              `${outPath} exists in <spec-status value="${decision.status}"> — past-Draft per P-6 of principles.html.\nRefusing to overwrite. Pick a different spec ID, amend via /spectastic.propose, or pass --force.\n`,
+            );
+            process.exit(2);
+          }
+          if (decision.kind === 'edit-in-place' && decision.status === 'draft') {
+            process.stderr.write(`Overwriting Draft ${outPath} in place per P-6.\n`);
+          }
         }
-      }
 
-      await fs.mkdir(path.dirname(outPath), { recursive: true });
-      await fs.writeFile(outPath, result.html, 'utf8');
-      process.stdout.write(
-        `Wrote ${outPath} (${result.requirementsCount} reqs${result.warnings.length ? `; ${result.warnings.length} warning(s)` : ''}).\n`,
-      );
-      for (const w of result.warnings) process.stderr.write(`  warn: ${w}\n`);
-      const { showCorpusHintOnce } = await import('../knowledge/corpus-hint-marker.js');
-      await showCorpusHintOnce(cwd, result.corpusHint);
+        await fs.mkdir(path.dirname(outPath), { recursive: true });
+        await fs.writeFile(outPath, result.html, 'utf8');
+        process.stdout.write(
+          `Wrote ${outPath} (${result.requirementsCount} reqs${result.warnings.length ? `; ${result.warnings.length} warning(s)` : ''}).\n`,
+        );
+        for (const w of result.warnings) process.stderr.write(`  warn: ${w}\n`);
+        const { showCorpusHintOnce } = await import('../knowledge/corpus-hint-marker.js');
+        await showCorpusHintOnce(cwd, result.corpusHint);
 
-      // Opt-in git layer (spec 026): branch + commit the artifact when git.auto is on.
-      const outcome = await commitForVerb({
-        verb: 'spec',
-        model: ai.model, // Assisted-by (spec 027 FR-005)
-        cwd,
-        specId: result.specId,
-        paths: [outPath],
-        subject: description,
-        newSlice: !reentryPath,
-        ...(gitOverride ? { override: gitOverride } : {}),
-      });
-      process.exit(reportGitOutcome(outcome));
-    });
+        // Opt-in git layer (spec 026): branch + commit the artifact when git.auto is on.
+        const outcome = await commitForVerb({
+          verb: 'spec',
+          model: ai.model, // Assisted-by (spec 027 FR-005)
+          cwd,
+          specId: result.specId,
+          paths: [outPath],
+          subject: description,
+          newSlice: !reentryPath,
+          ...(gitOverride ? { override: gitOverride } : {}),
+        });
+        process.exit(reportGitOutcome(outcome));
+      },
+    );
 }
 
 /**
@@ -195,7 +209,12 @@ async function handleSplitMode(
 
   const ai = await createAIProvider({ verb: 'spec' });
   const result = await specCommand(
-    { description: splitSpecId, specId: splitSpecId, existingSpec: parentHtml, split: true },
+    {
+      description: splitSpecId,
+      specId: splitSpecId,
+      existingSpec: parentHtml,
+      split: true,
+    },
     { cwd, fs: nodeFs, ai },
   );
   await fs.writeFile(parentPath, result.html, 'utf8');

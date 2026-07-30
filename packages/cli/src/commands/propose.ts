@@ -81,7 +81,10 @@ export function registerPropose(program: Command): void {
         );
 
         const today = new Date().toISOString().slice(0, 10);
-        const slug = `${today}-${description.toLowerCase().replace(/[^a-z0-9-]+/g, '-').slice(0, 40)}`;
+        const slug = `${today}-${description
+          .toLowerCase()
+          .replace(/[^a-z0-9-]+/g, '-')
+          .slice(0, 40)}`;
         const dir = path.resolve(process.cwd(), 'specs', specId, 'changes', slug);
         await fs.mkdir(dir, { recursive: true });
         await fs.writeFile(path.join(dir, 'proposal.html'), result.html, 'utf8');

@@ -33,7 +33,13 @@ function packWithCurrentId(name: string, id: string, edition: string): CorpusPac
     body: `body of ${name}`,
     filePath: `knowledge/${name}/references/${id}-x.md`,
   };
-  return { name, dirPath: `knowledge/${name}`, hasSkillFile: true, index: [], documents: [doc] };
+  return {
+    name,
+    dirPath: `knowledge/${name}`,
+    hasSkillFile: true,
+    index: [],
+    documents: [doc],
+  };
 }
 
 function packWithSuperseded(): CorpusPack {
@@ -62,7 +68,15 @@ function packWithSuperseded(): CorpusPack {
 }
 
 function registryRow(id: string, path: string, edition = '2026-01-01'): RegistryEntry {
-  return { id, marketplace: 'acme', plugin: 'finance-settlement', slug: '001-settlement-windows', title: 'Settlement windows', edition, path };
+  return {
+    id,
+    marketplace: 'acme',
+    plugin: 'finance-settlement',
+    slug: '001-settlement-windows',
+    title: 'Settlement windows',
+    edition,
+    path,
+  };
 }
 
 describe('resolveCitation — registry is the sole current-edition authority (062 US3, FR-006/SC-002)', () => {
@@ -92,7 +106,10 @@ describe('resolveCitation — registry is the sole current-edition authority (06
   });
 
   it('leaves the no-registry path unchanged — a current edition still resolves via the pack scan', () => {
-    const r = resolveCitation([packWithCurrentId('legacy', 'KB-0009', '2024-05-28')], { id: 'KB-0009', edition: '2024-05-28' });
+    const r = resolveCitation([packWithCurrentId('legacy', 'KB-0009', '2024-05-28')], {
+      id: 'KB-0009',
+      edition: '2024-05-28',
+    });
     expect(r?.kind).toBe('current');
   });
 
@@ -101,7 +118,11 @@ describe('resolveCitation — registry is the sole current-edition authority (06
     // A bare `if (registry)` truthy check would treat that empty array as an
     // authoritative-but-empty registry and skip the pack scan, resolving to null.
     // The guard is `registry.length > 0`, so an empty array falls through to the scan.
-    const r = resolveCitation([packWithCurrentId('legacy', 'KB-0009', '2024-05-28')], { id: 'KB-0009', edition: '2024-05-28' }, []);
+    const r = resolveCitation(
+      [packWithCurrentId('legacy', 'KB-0009', '2024-05-28')],
+      { id: 'KB-0009', edition: '2024-05-28' },
+      [],
+    );
     expect(r?.kind).toBe('current');
   });
 });

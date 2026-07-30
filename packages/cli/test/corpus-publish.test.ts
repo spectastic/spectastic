@@ -1,8 +1,8 @@
 import { spawn } from 'node:child_process';
-import { basename, dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
+import { basename, dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
 /**
@@ -23,7 +23,10 @@ interface RunResult {
 
 async function runCLI(args: string[], cwd: string): Promise<RunResult> {
   return new Promise((resolveFn) => {
-    const child = spawn('node', [CLI, ...args], { cwd, stdio: ['pipe', 'pipe', 'pipe'] });
+    const child = spawn('node', [CLI, ...args], {
+      cwd,
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
     let stdout = '';
     let stderr = '';
     child.stdout.on('data', (c: Buffer) => (stdout += c.toString('utf8')));
@@ -46,7 +49,9 @@ describe('spectastic corpus publish (063 T-202/T-213, FR-004)', () => {
     // predates that wiring (a hand-edited or pre-063 registry).
     const { mkdirSync, writeFileSync } = await import('node:fs');
     const knowledgeDir = join(dir, 'knowledge');
-    mkdirSync(join(knowledgeDir, 'ops-knowledge', 'references'), { recursive: true });
+    mkdirSync(join(knowledgeDir, 'ops-knowledge', 'references'), {
+      recursive: true,
+    });
     writeFileSync(
       join(knowledgeDir, 'ops-knowledge', 'references', '001-fact.md'),
       '---\nslug: 001-fact\n---\n\n# A fact\n\nBody.\n',
@@ -65,7 +70,10 @@ describe('spectastic corpus publish (063 T-202/T-213, FR-004)', () => {
     expect(r.stdout).toContain('generated');
 
     const manifestPath = join(knowledgeDir, 'marketplace.json');
-    const manifest = JSON.parse(readFileSync(manifestPath, 'utf8')) as { name: string; plugins: Array<{ name: string }> };
+    const manifest = JSON.parse(readFileSync(manifestPath, 'utf8')) as {
+      name: string;
+      plugins: Array<{ name: string }>;
+    };
     expect(manifest.name).toBe(basename(dir));
     expect(manifest.plugins.map((p) => p.name)).toContain('ops-knowledge');
   });

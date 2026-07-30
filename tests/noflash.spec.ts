@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { expect, test } from '@playwright/test';
 
 // US3 — return without a flash (NFR-001, SC-002) + JS-off baseline (NFR-002).
 const FIXTURE = '/tests/fixtures/all-components.html';

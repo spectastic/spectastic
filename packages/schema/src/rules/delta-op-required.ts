@@ -15,8 +15,7 @@ export const deltaOpRequiredRule: PerFileRule = {
   id: 'delta-op-required',
   scope: 'per-file',
   defaultSeverity: 'error',
-  description:
-    '<spec-delta> elements must declare op= with one of: added, modified, removed, renamed.',
+  description: '<spec-delta> elements must declare op= with one of: added, modified, removed, renamed.',
   check({ doc }) {
     const findings: Finding[] = [];
     for (const delta of findAll(doc.ast, 'spec-delta')) {

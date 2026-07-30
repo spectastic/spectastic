@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { orderCommand } from '../commands/order.js';
 import type { CorpusEntry } from './types.js';
 
@@ -20,7 +20,10 @@ function mkSpec(id: string, o: SpecOpts = {}): CorpusEntry {
   const rice = o.rice
     ? `<spec-rice reach="${o.rice[0]}" impact="${o.rice[1]}" confidence="${o.rice[2]}" effort="${o.rice[3]}"></spec-rice>`
     : '';
-  return { specId: id, html: `<!doctype html><html><body><h1>${id}</h1>${parent}${oos}${rice}</body></html>` };
+  return {
+    specId: id,
+    html: `<!doctype html><html><body><h1>${id}</h1>${parent}${oos}${rice}</body></html>`,
+  };
 }
 
 describe('foundation elevation + WSJF cross-check', () => {

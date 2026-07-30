@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, expect, it } from 'vitest';
 // Import the built engine — the repo root isn't a workspace member.
 // Requires `pnpm --filter @spectastic/core build`.
 import { sliceCommand } from '../../packages/core/dist/commands/slice.js';
@@ -11,7 +11,7 @@ import { ClaudeProvider } from '../../packages/core/dist/providers/claude.js';
  * with `pnpm test:smoke`.
  */
 
-const live = !!process.env['ANTHROPIC_API_KEY'] && !process.env['SPECTASTIC_AI_STUB'];
+const live = !!process.env.ANTHROPIC_API_KEY && !process.env.SPECTASTIC_AI_STUB;
 
 // A deliberately over-budget parent: many requirements spanning distinct concerns.
 const parentHtml = `<!doctype html><html><body><main>

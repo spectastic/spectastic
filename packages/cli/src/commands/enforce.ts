@@ -1,7 +1,7 @@
-import type { Command } from 'commander';
+import { loadWaivers } from '@spectastic/core/enforce/config';
 import { detectEcosystems, detectTooling } from '@spectastic/core/enforce/detect';
 import { evaluateEnforcement } from '@spectastic/core/enforce/policy';
-import { loadWaivers } from '@spectastic/core/enforce/config';
+import type { Command } from 'commander';
 import { resolveBundle } from './init/bundle.js';
 import { readMarker } from './init/marker.js';
 import { loadProfiles } from './init/profiles.js';
@@ -58,9 +58,7 @@ export function registerEnforce(program: Command): void {
       if (warned.length > 0) {
         // FR-010: required but structurally undetectable in this project's
         // ecosystem(s) — never a blocking gap, regardless of gate severity.
-        process.stdout.write(
-          `  ⚠ undetectable in this ecosystem (not blocking): ${warned.join(', ')}\n`,
-        );
+        process.stdout.write(`  ⚠ undetectable in this ecosystem (not blocking): ${warned.join(', ')}\n`);
       }
       for (const r of relaxed) {
         // FR-004 / FR-011: a deliberately-waived category — advisory, never silent,
@@ -74,9 +72,7 @@ export function registerEnforce(program: Command): void {
         process.stdout.write(`  ✗ waiver for ${w.category} expired ${w.until} — now blocking; renew or cover.\n`);
       }
       // The distinct tally (never fold relaxed into covered): N covered · M relaxed · K missing.
-      process.stdout.write(
-        `  → ${covered.size} covered · ${relaxed.length} relaxed · ${missing.length} missing\n`,
-      );
+      process.stdout.write(`  → ${covered.size} covered · ${relaxed.length} relaxed · ${missing.length} missing\n`);
       if (missing.length === 0) {
         process.stdout.write('  ✓ no blocking gaps.\n');
         process.exit(0);

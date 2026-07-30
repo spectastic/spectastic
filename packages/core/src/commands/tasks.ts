@@ -12,22 +12,12 @@
  * <spec-warning> in the output rather than silently dropping it.
  */
 
+import { buildCorpusPromptBlock, loadCorpus, withCorpusHint } from '@spectastic/corpus';
 import { extractSpecMetadata } from '@spectastic/schema';
 import { fenceArtifactText } from '@spectastic/schema/fence';
-import { buildCorpusPromptBlock, loadCorpus, withCorpusHint } from '@spectastic/corpus';
-import type {
-  GraduationClass,
-  KernelContext,
-  TaskItem,
-  TaskPhase,
-  TasksInput,
-  TasksResult,
-} from '../types.js';
+import type { GraduationClass, KernelContext, TaskItem, TaskPhase, TasksInput, TasksResult } from '../types.js';
 
-export async function tasksCommand(
-  input: TasksInput,
-  ctx: KernelContext,
-): Promise<TasksResult> {
+export async function tasksCommand(input: TasksInput, ctx: KernelContext): Promise<TasksResult> {
   if (!ctx.ai) {
     throw new Error('tasksCommand requires ctx.ai (an AIProvider); got undefined');
   }
@@ -55,16 +45,11 @@ export async function tasksCommand(
 
   const phases = await deriveAndDescribePhases(meta, planHtml, ctx, input.decisions);
   const referencedIds = collectReferenced(phases);
-  const unreferenced = [...meta.fr, ...meta.nfr, ...meta.sc]
-    .map((r) => r.id)
-    .filter((id) => !referencedIds.has(id));
+  const unreferenced = [...meta.fr, ...meta.nfr, ...meta.sc].map((r) => r.id).filter((id) => !referencedIds.has(id));
 
   const html = renderTasksHtml(meta.specId ?? 'unknown', phases, unreferenced);
   const totalTasks = phases.reduce((sum, p) => sum + p.tasks.length, 0);
-  const parallelTasks = phases.reduce(
-    (sum, p) => sum + p.tasks.filter((t) => t.parallel).length,
-    0,
-  );
+  const parallelTasks = phases.reduce((sum, p) => sum + p.tasks.filter((t) => t.parallel).length, 0);
 
   return withCorpusHint({ html, phases, totalTasks, parallelTasks }, corpusBlock);
 }
@@ -117,8 +102,16 @@ async function deriveAndDescribePhases(
       id: 'polish',
       title: 'Polish',
       tasks: [
-        { id: 'T-900', title: 'Bench + perf verification per NFRs', parallel: true },
-        { id: 'T-901', title: 'CHANGELOG entry + version bump + tag + publish', parallel: false },
+        {
+          id: 'T-900',
+          title: 'Bench + perf verification per NFRs',
+          parallel: true,
+        },
+        {
+          id: 'T-901',
+          title: 'CHANGELOG entry + version bump + tag + publish',
+          parallel: false,
+        },
       ],
     });
   }
@@ -140,11 +133,7 @@ async function deriveAndDescribePhases(
   return phases;
 }
 
-function buildUsPhase(
-  id: TaskPhase['id'],
-  label: string,
-  reqs: ReadonlyArray<{ id: string }>,
-): TaskPhase {
+function buildUsPhase(id: TaskPhase['id'], label: string, reqs: ReadonlyArray<{ id: string }>): TaskPhase {
   const startNum = id === 'us1' ? 100 : id === 'us2' ? 200 : 300;
   const tasks: TaskItem[] = [];
   tasks.push({
@@ -168,10 +157,10 @@ async function enrichDescriptions(
   decisions?: Record<string, string>,
 ): Promise<Record<string, string>> {
   if (!ctx.ai) return {};
-  const reqList = [...meta.fr, ...meta.nfr, ...meta.sc]
-    .map((r) => `${r.id} (${r.priority}): ${r.summary}`)
-    .join('\n');
-  const decisionPairs = Object.entries(decisions ?? {}).map(([k, v]) => `${k}: ${v}`).join('; ');
+  const reqList = [...meta.fr, ...meta.nfr, ...meta.sc].map((r) => `${r.id} (${r.priority}): ${r.summary}`).join('\n');
+  const decisionPairs = Object.entries(decisions ?? {})
+    .map(([k, v]) => `${k}: ${v}`)
+    .join('; ');
   const decisionsLine = decisionPairs ? `Chosen approach (honour it): ${decisionPairs}` : '';
   // Corpus-in-prompt (054-corpus-in-prompt, D-001/D-005): '' when no knowledge/
   // corpus exists, so filter(Boolean) drops it — byte-identical to before.
@@ -184,11 +173,12 @@ async function enrichDescriptions(
       `Requirements:`,
       fenceArtifactText(reqList, 'Requirements'),
       corpusBlock ? `\n${corpusBlock}` : '',
-    ].filter(Boolean).join('\n'),
+    ]
+      .filter(Boolean)
+      .join('\n'),
     {
       temperature: 0,
-      system:
-        'You are a deterministic engineering planner. Return ONLY JSON; no prose, no fences.',
+      system: 'You are a deterministic engineering planner. Return ONLY JSON; no prose, no fences.',
     },
   );
   try {
@@ -219,11 +209,7 @@ function collectReferenced(phases: TaskPhase[]): Set<string> {
   return set;
 }
 
-function renderTasksHtml(
-  specId: string,
-  phases: TaskPhase[],
-  unreferenced: string[],
-): string {
+function renderTasksHtml(specId: string, phases: TaskPhase[], unreferenced: string[]): string {
   const today = new Date().toISOString().slice(0, 10);
   const phaseSections = phases
     .map((phase, idx) => {
@@ -313,9 +299,7 @@ async function restoreTasks(
   }
 
   const referenced = collectReferenced(phases);
-  const unreferenced = [...meta.fr, ...meta.nfr, ...meta.sc]
-    .map((r) => r.id)
-    .filter((id) => !referenced.has(id));
+  const unreferenced = [...meta.fr, ...meta.nfr, ...meta.sc].map((r) => r.id).filter((id) => !referenced.has(id));
   const specId = meta.specId ?? 'unknown';
   const html = renderRestoreHtml(specId, classification, sourceArchive, phases, unreferenced);
   const totalTasks = phases.reduce((s, p) => s + p.tasks.length, 0);
@@ -343,20 +327,42 @@ function deriveRestorePhases(
     },
   ];
   meta.fr.forEach((r, i) => {
-    story.push({ id: `T-${110 + i}`, title: `${verb} ${r.id}`, parallel: false, path: 'src/' });
+    story.push({
+      id: `T-${110 + i}`,
+      title: `${verb} ${r.id}`,
+      parallel: false,
+      path: 'src/',
+    });
   });
 
   const polish: TaskItem[] = [];
   if (isTracer) {
     polish.push(
-      { id: 'T-900', title: 'Restore requirement IDs + the INVEST self-check', parallel: true },
-      { id: 'T-901', title: 'Restore full principles compliance', parallel: true },
-      { id: 'T-902', title: 'Restore the estimability + grounding gates', parallel: false },
+      {
+        id: 'T-900',
+        title: 'Restore requirement IDs + the INVEST self-check',
+        parallel: true,
+      },
+      {
+        id: 'T-901',
+        title: 'Restore full principles compliance',
+        parallel: true,
+      },
+      {
+        id: 'T-902',
+        title: 'Restore the estimability + grounding gates',
+        parallel: false,
+      },
     );
   } else {
     // SC-003: the spike path ALWAYS emits a prototype-deletion task — deterministic,
     // never dependent on the AI; the build is marked for deletion, not auto-removed.
-    polish.push({ id: 'T-900', title: 'Delete the discarded prototype', parallel: false, path: sourceArchive });
+    polish.push({
+      id: 'T-900',
+      title: 'Delete the discarded prototype',
+      parallel: false,
+      path: sourceArchive,
+    });
   }
   if (meta.nfr.length > 0) {
     polish.push({
@@ -367,8 +373,16 @@ function deriveRestorePhases(
   }
 
   return [
-    { id: 'us1', title: isTracer ? 'Refactor to comply' : 'Clean rebuild', tasks: story },
-    { id: 'polish', title: isTracer ? 'Restore the relaxed gates' : 'Retire the prototype', tasks: polish },
+    {
+      id: 'us1',
+      title: isTracer ? 'Refactor to comply' : 'Clean rebuild',
+      tasks: story,
+    },
+    {
+      id: 'polish',
+      title: isTracer ? 'Restore the relaxed gates' : 'Retire the prototype',
+      tasks: polish,
+    },
   ];
 }
 
@@ -396,14 +410,20 @@ async function enrichRestore(
       `Return JSON: { "FR-NNN": "task title", ... }.`,
       `Requirements:\n${fenceArtifactText(reqList, 'Requirements')}`,
       corpusBlock ? `\n${corpusBlock}` : '',
-    ].filter(Boolean).join('\n'),
+    ]
+      .filter(Boolean)
+      .join('\n'),
     {
       temperature: 0,
       system: 'You are a deterministic engineering planner. Return ONLY JSON; no prose, no fences.',
     },
   );
   try {
-    const stripped = raw.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
+    const stripped = raw
+      .trim()
+      .replace(/^```(?:json)?\s*/i, '')
+      .replace(/\s*```$/i, '')
+      .trim();
     const parsed = JSON.parse(stripped) as Record<string, unknown>;
     const out: Record<string, string> = {};
     for (const [k, v] of Object.entries(parsed)) {

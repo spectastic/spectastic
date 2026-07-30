@@ -1,5 +1,5 @@
-import type { EnforceGate, EnforcementCategory, EnforceWaiver, RelaxedCategory } from './types.js';
 import { daysBetween, isBoilerplateReason, MAX_WAIVER_DAYS, parseIsoDate } from './config.js';
+import type { EnforceGate, EnforcementCategory, EnforceWaiver, RelaxedCategory } from './types.js';
 
 /**
  * The pure enforcement policy diff (spec 042, D-003) — moved to core from the
@@ -33,9 +33,7 @@ export interface EnforceEvaluation {
  * category/ecosystem gaps surface; never used to suppress a category that
  * genuinely has a detectable signal in the project's stack.
  */
-export const STRUCTURALLY_UNDETECTABLE: Readonly<
-  Partial<Record<EnforcementCategory, readonly string[]>>
-> = {
+export const STRUCTURALLY_UNDETECTABLE: Readonly<Partial<Record<EnforcementCategory, readonly string[]>>> = {
   coverage: ['go'],
   // Swift and C++ have no standard metrics-exporter-in-manifest convention the
   // way Java/Go/JS/Python/Rust do, so an observability exporter can't be
@@ -123,12 +121,7 @@ export function evaluateEnforcement(
     now?: Date;
   } = {},
 ): EnforceEvaluation {
-  const {
-    undetectable = STRUCTURALLY_UNDETECTABLE,
-    waivers = [],
-    unwaivable = [],
-    now = new Date(),
-  } = options;
+  const { undetectable = STRUCTURALLY_UNDETECTABLE, waivers = [], unwaivable = [], now = new Date() } = options;
   const unwaivableSet = new Set(unwaivable);
   // Index the first waiver per category (a project declares at most one per category).
   const waiverByCategory = new Map<EnforcementCategory, EnforceWaiver>();
@@ -140,7 +133,13 @@ export function evaluateEnforcement(
   const warned: EnforcementCategory[] = [];
   const relaxed: RelaxedCategory[] = [];
   const expired: EnforceWaiver[] = [];
-  const ctx = { ecosystems, undetectable, waiverByCategory, unwaivable: unwaivableSet, now };
+  const ctx = {
+    ecosystems,
+    undetectable,
+    waiverByCategory,
+    unwaivable: unwaivableSet,
+    now,
+  };
 
   for (const category of required) {
     if (covered.has(category)) continue;

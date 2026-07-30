@@ -40,7 +40,9 @@ describe('no-executable-content: flags executable content (error)', () => {
 
 describe('no-executable-content: does not flag clean content', () => {
   it('the sanctioned spec.js / theme-boot.js refs are allowed', () => {
-    expect(findings('<script src="../../assets/spec.js"></script><script src="../../assets/theme-boot.js"></script>')).toEqual([]);
+    expect(
+      findings('<script src="../../assets/spec.js"></script><script src="../../assets/theme-boot.js"></script>'),
+    ).toEqual([]);
   });
   it('sanctioned scripts at any depth (by basename)', () => {
     expect(findings('<script src="../../../../assets/spec.js"></script>')).toEqual([]);

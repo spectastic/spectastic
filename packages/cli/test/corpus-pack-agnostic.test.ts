@@ -32,10 +32,7 @@ const BINDING_TOKENS = [/<spec-decision/, /grounding\s*=/];
 
 describe('corpus packs carry zero spectastic binding (052 T-300, SC-003)', () => {
   it('no knowledge/ or templates/knowledge/ markdown embeds a citation-binding instruction', async () => {
-    const files = await expandGlobs([
-      'knowledge/**/*.md',
-      'templates/knowledge/**/*.md',
-    ]);
+    const files = await expandGlobs(['knowledge/**/*.md', 'templates/knowledge/**/*.md']);
     expect(files.length, 'expected at least the dogfood corpus + the init scaffold').toBeGreaterThan(0);
 
     const offenders: string[] = [];

@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, expect, it } from 'vitest';
 // @ts-expect-error — plain .mjs release tooling, no type declarations by design.
 import { deriveDistTags, fetchPublishedVersions, isPrerelease } from './derive-dist-tag.mjs';
 
@@ -8,10 +8,7 @@ import { deriveDistTags, fetchPublishedVersions, isPrerelease } from './derive-d
 describe('deriveDistTags (FR-006)', () => {
   it('pre-release with no stable ever published → moves both next and latest', () => {
     // The pre-1.0 case that froze `latest` at 0.1.0-pre.3 for eighteen releases.
-    expect(deriveDistTags('0.1.0-pre.19', ['0.1.0-pre.17', '0.1.0-pre.18'])).toEqual([
-      'next',
-      'latest',
-    ]);
+    expect(deriveDistTags('0.1.0-pre.19', ['0.1.0-pre.17', '0.1.0-pre.18'])).toEqual(['next', 'latest']);
   });
 
   it('1.0.0-rc before any stable → still moves both (the RC-window gap)', () => {
@@ -48,11 +45,11 @@ describe('isPrerelease', () => {
 
 describe('fetchPublishedVersions', () => {
   it('parses the registry version list', async () => {
-    const run = async () => ({ stdout: '["0.1.0-pre.17","0.1.0-pre.18"]', stderr: '' });
-    expect(await fetchPublishedVersions('@spectastic/cli', run)).toEqual([
-      '0.1.0-pre.17',
-      '0.1.0-pre.18',
-    ]);
+    const run = async () => ({
+      stdout: '["0.1.0-pre.17","0.1.0-pre.18"]',
+      stderr: '',
+    });
+    expect(await fetchPublishedVersions('@spectastic/cli', run)).toEqual(['0.1.0-pre.17', '0.1.0-pre.18']);
   });
 
   it('normalises npm returning a bare string for a single version', async () => {
@@ -62,7 +59,9 @@ describe('fetchPublishedVersions', () => {
 
   it('treats a never-published package as no versions, not a failure', async () => {
     const run = async () => {
-      throw Object.assign(new Error('npm error code E404'), { stderr: 'E404 Not Found' });
+      throw Object.assign(new Error('npm error code E404'), {
+        stderr: 'E404 Not Found',
+      });
     };
     expect(await fetchPublishedVersions('@spectastic/brand-new', run)).toEqual([]);
   });
@@ -71,7 +70,9 @@ describe('fetchPublishedVersions', () => {
     // A network/rate-limit failure must fail the run rather than silently
     // resolving to "no stable exists" and wrongly promoting a pre-release.
     const run = async () => {
-      throw Object.assign(new Error('ETIMEDOUT'), { stderr: 'network timeout' });
+      throw Object.assign(new Error('ETIMEDOUT'), {
+        stderr: 'network timeout',
+      });
     };
     await expect(fetchPublishedVersions('@spectastic/cli', run)).rejects.toThrow(
       /could not determine published versions/,

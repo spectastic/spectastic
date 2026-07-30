@@ -59,7 +59,9 @@ let repo: TmpGitRepo;
 afterEach(() => repo?.cleanup());
 
 describe('init --tools · pre-commit gate (US1)', () => {
-  it('T-100/SC-001: a validate error blocks the commit; a clean commit passes', { timeout: 30_000 }, async () => {
+  it('T-100/SC-001: a validate error blocks the commit; a clean commit passes', {
+    timeout: 30_000,
+  }, async () => {
     repo = createTmpGitRepo();
     repo.seedProject();
     const r = await repo.runVerb(['init', '--hooks-only']);
@@ -86,7 +88,9 @@ describe('init --tools · pre-commit gate (US1)', () => {
     expect(await repo.commitCount()).toBe(before + 1);
   });
 
-  it('T-101/SC-002: an open question blocks in an Accepted spec, not a Draft', { timeout: 30_000 }, async () => {
+  it('T-101/SC-002: an open question blocks in an Accepted spec, not a Draft', {
+    timeout: 30_000,
+  }, async () => {
     repo = createTmpGitRepo();
     repo.seedProject();
     await repo.runVerb(['init', '--hooks-only']);
@@ -108,7 +112,9 @@ describe('init --tools · pre-commit gate (US1)', () => {
     expect(passed.code).toBe(0);
   });
 
-  it('T-102/SC-006/FR-006: a pre-existing pre-commit hook is preserved and chained', { timeout: 30_000 }, async () => {
+  it('T-102/SC-006/FR-006: a pre-existing pre-commit hook is preserved and chained', {
+    timeout: 30_000,
+  }, async () => {
     repo = createTmpGitRepo();
     repo.seedProject();
     // A foreign hook that leaves a side-effect file so we can prove it ran.
@@ -132,7 +138,9 @@ describe('init --tools · pre-commit gate (US1)', () => {
 });
 
 describe('init --tools · drift-proof adapters (US2)', () => {
-  it('T-200/SC-003/FR-007: adapter tracks source; a stale adapter can\'t be committed', { timeout: 30_000 }, async () => {
+  it("T-200/SC-003/FR-007: adapter tracks source; a stale adapter can't be committed", {
+    timeout: 30_000,
+  }, async () => {
     repo = createTmpGitRepo();
     repo.seedProject();
     await repo.runVerb(['init', '--tools']); // both halves: gate + managed adapters
@@ -146,7 +154,7 @@ describe('init --tools · drift-proof adapters (US2)', () => {
     expect((await tryCommit(repo.dir, 'seed with managed adapters')).code).toBe(0);
 
     // Edit the source → the managed adapter is now stale → commit is blocked.
-    repo.writeFile('commands/spectastic.spec.md', src + '\n<!-- edited source -->\n');
+    repo.writeFile('commands/spectastic.spec.md', `${src}\n<!-- edited source -->\n`);
     await repo.git('add', '-A');
     const blocked = await tryCommit(repo.dir, 'ship a stale adapter');
     expect(blocked.code).not.toBe(0);
@@ -154,12 +162,16 @@ describe('init --tools · drift-proof adapters (US2)', () => {
 
     // Regenerate (no manual copy) → the adapter matches again → commit succeeds.
     await repo.runVerb(['init', '--tools', '--commands-only']);
-    expect(readFileSync(adapterPath, 'utf8')).toBe(readFileSync(join(repo.dir, 'commands', 'spectastic.spec.md'), 'utf8'));
+    expect(readFileSync(adapterPath, 'utf8')).toBe(
+      readFileSync(join(repo.dir, 'commands', 'spectastic.spec.md'), 'utf8'),
+    );
     await repo.git('add', '-A');
     expect((await tryCommit(repo.dir, 'regenerated adapter lands')).code).toBe(0);
   });
 
-  it('T-901/SC-004/FR-001: re-running init --tools is idempotent', { timeout: 30_000 }, async () => {
+  it('T-901/SC-004/FR-001: re-running init --tools is idempotent', {
+    timeout: 30_000,
+  }, async () => {
     repo = createTmpGitRepo();
     repo.seedProject();
     await repo.runVerb(['init', '--tools']);

@@ -22,7 +22,10 @@ interface RunResult {
 
 async function runCLI(args: string[], cwd: string): Promise<RunResult> {
   return new Promise((resolveFn) => {
-    const child = spawn('node', [CLI, ...args], { cwd, stdio: ['pipe', 'pipe', 'pipe'] });
+    const child = spawn('node', [CLI, ...args], {
+      cwd,
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
     let stdout = '';
     let stderr = '';
     child.stdout.on('data', (c: Buffer) => (stdout += c.toString('utf8')));
@@ -230,7 +233,11 @@ describe('enforce: contract-first is interface-gated', () => {
     const dir = await project('verified', 'cli');
     // a CLI package with no web/RPC framework: contract-first must NOT appear under missing,
     // even though the project is otherwise untooled (other categories will be missing).
-    writeFileSync(join(dir, 'package.json'), '{"bin":{"mytool":"./cli.js"},"dependencies":{"commander":"^12"}}', 'utf8');
+    writeFileSync(
+      join(dir, 'package.json'),
+      '{"bin":{"mytool":"./cli.js"},"dependencies":{"commander":"^12"}}',
+      'utf8',
+    );
     const r = await runCLI(['enforce'], dir);
     // exempt = covered, never missing: contract-first must not be in the missing list…
     expect(r.stdout).not.toMatch(/missing:[^\n]*contract-first/);

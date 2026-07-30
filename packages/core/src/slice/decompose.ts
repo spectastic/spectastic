@@ -6,8 +6,8 @@
  * non-deterministic draft; the partition + critic verify it downstream.
  */
 
-import type { CandidateChild, Decomposition } from './types.js';
 import type { KernelContext } from '../types.js';
+import type { CandidateChild, Decomposition } from './types.js';
 
 const SYSTEM =
   'You are an experienced spec author following the spectastic discipline. Decompose an over-budget spec into the smallest set of independently-demoable child slices that together cover every requirement exactly once. Output ONLY the requested JSON; no prose, no fences.';
@@ -29,7 +29,10 @@ export async function decompose(parentHtml: string, ctx: KernelContext): Promise
   ].join('\n');
 
   const raw = await ctx.ai.chat(prompt, { temperature: 0, system: SYSTEM });
-  const children = parseChildren(raw).map((c) => ({ ...c, riceConfirmed: false }));
+  const children = parseChildren(raw).map((c) => ({
+    ...c,
+    riceConfirmed: false,
+  }));
   return { children };
 }
 

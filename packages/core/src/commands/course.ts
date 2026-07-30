@@ -23,10 +23,10 @@ import type {
   CourseItemFailure,
   CourseObjective,
   CourseQuizItem,
+  CourseResult,
   CourseWorkedExample,
   FileSystem,
   KernelContext,
-  CourseResult,
   StructuredRead,
 } from '../types.js';
 
@@ -40,10 +40,7 @@ export class CourseDraftError extends Error {
 /** Objectives cap per NFR-001 (≤ ~7 to stay completable in one sitting). */
 export const MAX_OBJECTIVES = 7;
 
-export async function courseCommand(
-  input: CourseInput,
-  ctx: KernelContext,
-): Promise<CourseResult> {
+export async function courseCommand(input: CourseInput, ctx: KernelContext): Promise<CourseResult> {
   validateCourseDraft(input.draft);
   const slug = deriveSlug(input.draft, ctx);
   const objectivesCount = input.draft.objectives.length;
@@ -72,10 +69,10 @@ export function validateCourseDraft(draft: unknown): asserts draft is CourseDraf
     throw new CourseDraftError(`course draft must be an object (got ${describeType(draft)})`);
   }
   const d = draft as Record<string, unknown>;
-  if (typeof d['target'] !== 'string' || d['target'].trim() === '') {
+  if (typeof d.target !== 'string' || d.target.trim() === '') {
     throw new CourseDraftError('course draft.target must be a non-empty string');
   }
-  const objectives = d['objectives'];
+  const objectives = d.objectives;
   if (!Array.isArray(objectives) || objectives.length === 0) {
     throw new CourseDraftError('course draft.objectives must be a non-empty array');
   }
@@ -90,19 +87,19 @@ export function validateCourseDraft(draft: unknown): asserts draft is CourseDraf
       throw new CourseDraftError(`course draft.${at} must be an object (got ${describeType(obj)})`);
     }
     const o = obj as Record<string, unknown>;
-    if (typeof o['title'] !== 'string' || o['title'].trim() === '') {
+    if (typeof o.title !== 'string' || o.title.trim() === '') {
       throw new CourseDraftError(`course draft.${at}.title must be a non-empty string`);
     }
-    validateRead(o['read'], `${at}.read`);
-    if (!Array.isArray(o['refs'])) {
+    validateRead(o.read, `${at}.read`);
+    if (!Array.isArray(o.refs)) {
       throw new CourseDraftError(`course draft.${at}.refs must be an array`);
     }
-    (o['refs'] as unknown[]).forEach((r, j) => {
+    (o.refs as unknown[]).forEach((r, j) => {
       if (typeof r !== 'string') {
         throw new CourseDraftError(`course draft.${at}.refs[${j}] must be a string`);
       }
     });
-    validateQuiz(o['quiz'], `${at}.quiz`);
+    validateQuiz(o.quiz, `${at}.quiz`);
   });
 }
 
@@ -128,13 +125,13 @@ function validateRead(read: unknown, at: string): void {
     );
   }
   const r = read as Record<string, unknown>;
-  if (typeof r['prose'] !== 'string' || r['prose'].trim() === '') {
+  if (typeof r.prose !== 'string' || r.prose.trim() === '') {
     throw new CourseDraftError(`course draft.${at}.prose must be a non-empty string`);
   }
-  if (r['analogy'] !== undefined) validateAnalogy(r['analogy'], `${at}.analogy`);
-  if (r['contrast'] !== undefined) validateContrast(r['contrast'], `${at}.contrast`);
-  if (r['workedExample'] !== undefined) validateWorkedExample(r['workedExample'], `${at}.workedExample`);
-  if (r['illustration'] !== undefined) validateIllustration(r['illustration'], `${at}.illustration`);
+  if (r.analogy !== undefined) validateAnalogy(r.analogy, `${at}.analogy`);
+  if (r.contrast !== undefined) validateContrast(r.contrast, `${at}.contrast`);
+  if (r.workedExample !== undefined) validateWorkedExample(r.workedExample, `${at}.workedExample`);
+  if (r.illustration !== undefined) validateIllustration(r.illustration, `${at}.illustration`);
 }
 
 /** Validate an analogy member (060 FR-002): a mapping from a familiar
@@ -149,7 +146,7 @@ function validateAnalogy(analogy: unknown, at: string): void {
       throw new CourseDraftError(`course draft.${at}.${field} must be a non-empty string`);
     }
   }
-  validateRefsArray(a['refs'], `${at}.refs`);
+  validateRefsArray(a.refs, `${at}.refs`);
 }
 
 /** Validate a contrasting-cases member (060 FR-002): two aligned cases
@@ -164,7 +161,7 @@ function validateContrast(contrast: unknown, at: string): void {
       throw new CourseDraftError(`course draft.${at}.${field} must be a non-empty string`);
     }
   }
-  const dimensions = c['dimensions'];
+  const dimensions = c.dimensions;
   if (!Array.isArray(dimensions) || dimensions.length === 0) {
     throw new CourseDraftError(`course draft.${at}.dimensions must be a non-empty array`);
   }
@@ -180,7 +177,7 @@ function validateContrast(contrast: unknown, at: string): void {
       }
     }
   });
-  validateRefsArray(c['refs'], `${at}.refs`);
+  validateRefsArray(c.refs, `${at}.refs`);
 }
 
 /** Validate a worked-example member (060 FR-003): an ordered, non-empty
@@ -190,7 +187,7 @@ function validateWorkedExample(workedExample: unknown, at: string): void {
     throw new CourseDraftError(`course draft.${at} must be an object (got ${describeType(workedExample)})`);
   }
   const w = workedExample as Record<string, unknown>;
-  const steps = w['steps'];
+  const steps = w.steps;
   if (!Array.isArray(steps) || steps.length === 0) {
     throw new CourseDraftError(`course draft.${at}.steps must be a non-empty array`);
   }
@@ -199,7 +196,7 @@ function validateWorkedExample(workedExample: unknown, at: string): void {
       throw new CourseDraftError(`course draft.${at}.steps[${i}] must be a non-empty string`);
     }
   });
-  validateRefsArray(w['refs'], `${at}.refs`);
+  validateRefsArray(w.refs, `${at}.refs`);
 }
 
 /** Validate an illustration member (060 FR-003): a self-contained inline
@@ -209,13 +206,13 @@ function validateIllustration(illustration: unknown, at: string): void {
     throw new CourseDraftError(`course draft.${at} must be an object (got ${describeType(illustration)})`);
   }
   const ill = illustration as Record<string, unknown>;
-  if (typeof ill['svg'] !== 'string' || ill['svg'].trim() === '') {
+  if (typeof ill.svg !== 'string' || ill.svg.trim() === '') {
     throw new CourseDraftError(`course draft.${at}.svg must be a non-empty string`);
   }
-  if (typeof ill['caption'] !== 'string' || ill['caption'].trim() === '') {
+  if (typeof ill.caption !== 'string' || ill.caption.trim() === '') {
     throw new CourseDraftError(`course draft.${at}.caption must be a non-empty string`);
   }
-  validateRefsArray(ill['refs'], `${at}.refs`);
+  validateRefsArray(ill.refs, `${at}.refs`);
 }
 
 /** Shared refs[] shape check, reused by every teaching member. */
@@ -235,10 +232,10 @@ function validateQuiz(quiz: unknown, at: string): void {
     throw new CourseDraftError(`course draft.${at} must be an object (got ${describeType(quiz)})`);
   }
   const q = quiz as Record<string, unknown>;
-  if (typeof q['question'] !== 'string' || q['question'].trim() === '') {
+  if (typeof q.question !== 'string' || q.question.trim() === '') {
     throw new CourseDraftError(`course draft.${at}.question must be a non-empty string`);
   }
-  const options = q['options'];
+  const options = q.options;
   if (!Array.isArray(options) || options.length < 2) {
     throw new CourseDraftError(`course draft.${at}.options must be an array of ≥2 strings`);
   }
@@ -247,26 +244,25 @@ function validateQuiz(quiz: unknown, at: string): void {
       throw new CourseDraftError(`course draft.${at}.options[${k}] must be a string`);
     }
   });
-  const ci = q['correctIndex'];
+  const ci = q.correctIndex;
   if (typeof ci !== 'number' || !Number.isInteger(ci) || ci < 0 || ci >= options.length) {
-    throw new CourseDraftError(
-      `course draft.${at}.correctIndex must be an integer in [0, ${options.length - 1}]`,
-    );
+    throw new CourseDraftError(`course draft.${at}.correctIndex must be an integer in [0, ${options.length - 1}]`);
   }
 }
 
 /** Derive the `<date>-<slug>` course directory name. */
 export function deriveSlug(draft: CourseDraft, ctx: KernelContext): string {
   const date = courseDate(ctx);
-  const base = (draft.slug ?? draft.target)
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 48) || 'course';
+  const base =
+    (draft.slug ?? draft.target)
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 48) || 'course';
   return `${date}-${base}`;
 }
 
-function courseDate(ctx: KernelContext): string {
+function courseDate(_ctx: KernelContext): string {
   // Allow a deterministic override for tests via ctx (cwd-relative env is the
   // CLI's concern); default to today.
   return new Date().toISOString().slice(0, 10);
@@ -289,9 +285,7 @@ export function findMissingRefs(
   knownIds: ReadonlySet<string>,
   pathExists: (p: string) => boolean,
 ): string[] {
-  return refs.filter((ref) =>
-    isPathLike(ref) ? !pathExists(ref) : !knownIds.has(ref),
-  );
+  return refs.filter((ref) => (isPathLike(ref) ? !pathExists(ref) : !knownIds.has(ref)));
 }
 
 /** Every ref cited by a structured payload's teaching members (060 FR-004)
@@ -307,19 +301,13 @@ function structuredMemberRefs(read: CourseObjective['read']): string[] {
   return refs;
 }
 
-export async function verifyExistence(
-  draft: CourseDraft,
-  ctx: KernelContext,
-): Promise<CourseItemFailure[]> {
+export async function verifyExistence(draft: CourseDraft, ctx: KernelContext): Promise<CourseItemFailure[]> {
   const knownIds = new Set<string>();
   const existingPaths = new Set<string>();
   const fs = ctx.fs;
   if (fs) {
     await gatherKnownIds(fs, ctx.cwd, knownIds);
-    const allRefs = [
-      draft.target,
-      ...draft.objectives.flatMap((o) => [...o.refs, ...structuredMemberRefs(o.read)]),
-    ];
+    const allRefs = [draft.target, ...draft.objectives.flatMap((o) => [...o.refs, ...structuredMemberRefs(o.read)])];
     for (const ref of allRefs) {
       if (isPathLike(ref) && (await statKind(fs, join(ctx.cwd, ref))) !== null) {
         existingPaths.add(ref);
@@ -345,11 +333,7 @@ export async function verifyExistence(
   return failures;
 }
 
-async function gatherKnownIds(
-  fs: FileSystem,
-  cwd: string,
-  out: Set<string>,
-): Promise<void> {
+async function gatherKnownIds(fs: FileSystem, cwd: string, out: Set<string>): Promise<void> {
   const specsDir = join(cwd, 'specs');
   await walkHtml(fs, specsDir, async (path) => {
     const html = await fs.readFile(path, 'utf8');
@@ -372,11 +356,7 @@ async function gatherKnownIds(
   }
 }
 
-async function walkHtml(
-  fs: FileSystem,
-  dir: string,
-  visit: (path: string) => Promise<void>,
-): Promise<void> {
+async function walkHtml(fs: FileSystem, dir: string, visit: (path: string) => Promise<void>): Promise<void> {
   if ((await statKind(fs, dir)) !== 'dir') return;
   for (const name of await fs.readdir(dir)) {
     const full = join(dir, name);
@@ -402,10 +382,7 @@ async function statKind(fs: FileSystem, path: string): Promise<'file' | 'dir' | 
  * source). If the blind call confidently names the correct option, the item is
  * answerable without the source and is flagged guessable.
  */
-export async function verifyGuessability(
-  draft: CourseDraft,
-  ctx: KernelContext,
-): Promise<CourseItemFailure[]> {
+export async function verifyGuessability(draft: CourseDraft, ctx: KernelContext): Promise<CourseItemFailure[]> {
   if (!ctx.ai) {
     throw new CourseDraftError('verifyGuessability requires ctx.ai (an AIProvider)');
   }
@@ -413,7 +390,9 @@ export async function verifyGuessability(
   for (let i = 0; i < draft.objectives.length; i++) {
     const quiz = draft.objectives[i]?.quiz;
     if (!quiz) continue;
-    const result = await ctx.ai.subagent(blindPrompt(quiz), { task: 'course-guessability' });
+    const result = await ctx.ai.subagent(blindPrompt(quiz), {
+      task: 'course-guessability',
+    });
     if (blindIndexFrom(result.output) === quiz.correctIndex) {
       failures.push({
         objectiveIndex: i,
@@ -455,10 +434,7 @@ function blindIndexFrom(output: string): number {
  * failure list, same regenerate-or-drop loop, same stub-driven determinism
  * in CI (NFR-002). A no-op for an objective with no analogy.
  */
-export async function verifyAnalogyFit(
-  draft: CourseDraft,
-  ctx: KernelContext,
-): Promise<CourseItemFailure[]> {
+export async function verifyAnalogyFit(draft: CourseDraft, ctx: KernelContext): Promise<CourseItemFailure[]> {
   if (!ctx.ai) {
     throw new CourseDraftError('verifyAnalogyFit requires ctx.ai (an AIProvider)');
   }
@@ -467,7 +443,9 @@ export async function verifyAnalogyFit(
     const read = draft.objectives[i]?.read;
     const analogy = read && typeof read !== 'string' ? read.analogy : undefined;
     if (!analogy) continue;
-    const result = await ctx.ai.subagent(analogyFitPrompt(analogy), { task: 'course-analogy-fit' });
+    const result = await ctx.ai.subagent(analogyFitPrompt(analogy), {
+      task: 'course-analogy-fit',
+    });
     if (blindFlaggedFrom(result.output)) {
       failures.push({
         objectiveIndex: i,
@@ -621,10 +599,7 @@ function renderAnalogy(a: CourseAnalogy): string {
  * highest-evidence teaching move (Gentner's analogical encoding). */
 function renderContrast(c: CourseContrast): string {
   const rows = c.dimensions
-    .map(
-      (d) =>
-        `      <tr><td>${escapeHtml(d.label)}</td><td>${escapeHtml(d.a)}</td><td>${escapeHtml(d.b)}</td></tr>`,
-    )
+    .map((d) => `      <tr><td>${escapeHtml(d.label)}</td><td>${escapeHtml(d.a)}</td><td>${escapeHtml(d.b)}</td></tr>`)
     .join('\n');
   return `<course-contrast>
   <table>
@@ -725,11 +700,7 @@ ${
 }
 
 function escapeHtml(s: string): string {
-  return s
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
 function describeType(v: unknown): string {

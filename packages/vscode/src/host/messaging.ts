@@ -7,16 +7,7 @@ import type { ArtifactHealth } from '@spectastic/schema';
  */
 
 /** The eight lifecycle verbs, in canonical L→R order (spec FR-001). */
-export const VERB_ORDER = [
-  'principles',
-  'spec',
-  'plan',
-  'tasks',
-  'implement',
-  'propose',
-  'apply',
-  'triage',
-] as const;
+export const VERB_ORDER = ['principles', 'spec', 'plan', 'tasks', 'implement', 'propose', 'apply', 'triage'] as const;
 
 export type VerbType = (typeof VERB_ORDER)[number];
 
@@ -86,6 +77,4 @@ export type HostMessage =
   | { type: 'empty'; reason: string };
 
 /** Webview → host. */
-export type WebviewMessage =
-  | { type: 'ready' }
-  | { type: 'open'; path: string };
+export type WebviewMessage = { type: 'ready' } | { type: 'open'; path: string };

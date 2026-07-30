@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
-import { buildGraph, type ScanContext } from './scanner.js';
 import type { HostMessage } from './messaging.js';
+import { buildGraph, type ScanContext } from './scanner.js';
 
 /**
  * Keep the canvas live (spec FR-009, NFR-002). Watches the spec's artifacts plus
@@ -9,13 +9,8 @@ import type { HostMessage } from './messaging.js';
  * the 500 ms freshness budget; the webview reconciles by node id so there is no
  * full-canvas reload flicker.
  */
-export function watchLifecycle(
-  ctx: ScanContext,
-  post: (message: HostMessage) => void,
-): vscode.Disposable {
-  const specWatcher = vscode.workspace.createFileSystemWatcher(
-    new vscode.RelativePattern(ctx.specDir, '*.html'),
-  );
+export function watchLifecycle(ctx: ScanContext, post: (message: HostMessage) => void): vscode.Disposable {
+  const specWatcher = vscode.workspace.createFileSystemWatcher(new vscode.RelativePattern(ctx.specDir, '*.html'));
   const principlesWatcher = vscode.workspace.createFileSystemWatcher(
     new vscode.RelativePattern(ctx.workspaceRoot, 'principles.html'),
   );

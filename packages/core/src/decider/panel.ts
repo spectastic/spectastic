@@ -15,21 +15,26 @@ import type { Finding } from './types.js';
 export const LENSES = ['security', 'correctness', 'user-impact', 'maintainability', 'cost'] as const;
 
 /** Run one critic from a given lens over the review prompt; returns its findings. */
-export async function runCritic(
-  ai: AIProvider,
-  reviewPrompt: string,
-  lens: string,
-): Promise<Finding[]> {
+export async function runCritic(ai: AIProvider, reviewPrompt: string, lens: string): Promise<Finding[]> {
   const system = `You are an adversarial reviewer judging strictly through the ${lens} lens. Identify concrete risks in the change under review. Judge on the merits; ignore ordering and verbosity. Return ONLY JSON: { "findings": [ { "target": string, "concern": string }, ... ] }.`;
-  const res = await ai.subagent(`${system}\n\n${reviewPrompt}`, { task: `decider-critic-${lens}` });
+  const res = await ai.subagent(`${system}\n\n${reviewPrompt}`, {
+    task: `decider-critic-${lens}`,
+  });
   return parseFindings(res.output).map((f) => ({ ...f, lens }));
 }
 
 /** Parse a critic's JSON, accepting either `findings` or `risks` (both [{target,concern}]). */
 export function parseFindings(raw: string): Finding[] {
-  const stripped = raw.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
+  const stripped = raw
+    .trim()
+    .replace(/^```(?:json)?\s*/i, '')
+    .replace(/\s*```$/i, '')
+    .trim();
   try {
-    const p = JSON.parse(stripped) as { findings?: RawFinding[]; risks?: RawFinding[] };
+    const p = JSON.parse(stripped) as {
+      findings?: RawFinding[];
+      risks?: RawFinding[];
+    };
     const list = p.findings ?? p.risks ?? [];
     return list
       .filter((f) => f && typeof f.target === 'string' && typeof f.concern === 'string')

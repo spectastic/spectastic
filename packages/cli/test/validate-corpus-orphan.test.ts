@@ -24,7 +24,10 @@ interface RunResult {
 
 async function runCLI(args: string[], cwd: string): Promise<RunResult> {
   return new Promise((resolveFn) => {
-    const child = spawn('node', [CLI, ...args], { cwd, stdio: ['pipe', 'pipe', 'pipe'] });
+    const child = spawn('node', [CLI, ...args], {
+      cwd,
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
     let stdout = '';
     let stderr = '';
     child.stdout.on('data', (c: Buffer) => (stdout += c.toString('utf8')));
@@ -42,9 +45,11 @@ function writeRegistry(dir: string, rows: string): void {
   mkdirSync(join(dir, 'knowledge'), { recursive: true });
   writeFileSync(
     join(dir, 'knowledge', 'index.md'),
-    ['| KB-NNNN | Marketplace | Plugin | Slug | Title | Edition | Path | Status |', '| --- | --- | --- | --- | --- | --- | --- | --- |', rows].join(
-      '\n',
-    ),
+    [
+      '| KB-NNNN | Marketplace | Plugin | Slug | Title | Edition | Path | Status |',
+      '| --- | --- | --- | --- | --- | --- | --- | --- |',
+      rows,
+    ].join('\n'),
     'utf8',
   );
 }

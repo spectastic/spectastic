@@ -23,8 +23,13 @@ describe('hands-off Workflow home (037 US4 / FR-008)', () => {
   });
 
   it('drives the same pipeline via `spectastic run` with the resolved decider', () => {
+    // src is a file read, not a template literal being authored — this asserts the
+    // literal `${...}` interpolation syntax appears in the generated workflow script.
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: literal source text, see above.
     expect(src).toContain('spectastic run ${specId}');
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: literal source text, see above.
     expect(src).toContain('--decider=${decider}');
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: literal source text, see above.
     expect(src).toContain('--checkpoints=${checkpoints}');
   });
 

@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process';
-import { mkdtempSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -22,16 +22,15 @@ interface RunResult {
   code: number;
 }
 
-function runCourse(
-  args: string[],
-  cwd: string,
-  stdin: string,
-  stubPath: string,
-): Promise<RunResult> {
+function runCourse(args: string[], cwd: string, stdin: string, stubPath: string): Promise<RunResult> {
   return new Promise((resolveFn) => {
     const child = spawn('node', [CLI, 'course', ...args], {
       cwd,
-      env: { ...process.env, SPECTASTIC_AI_STUB: stubPath, ANTHROPIC_API_KEY: '' },
+      env: {
+        ...process.env,
+        SPECTASTIC_AI_STUB: stubPath,
+        ANTHROPIC_API_KEY: '',
+      },
     });
     let stdout = '';
     let stderr = '';
@@ -69,7 +68,12 @@ function draft(overrides: Record<string, unknown> = {}): string {
       {
         title: 'The fixture requirement',
         read: 'This objective grounds in FR-001 of the fixture spec.',
-        quiz: { question: 'What does FR-001 cover?', options: ['nothing', 'auth', 'a fixture requirement'], correctIndex: 2, feedback: ['', '', 'right'] },
+        quiz: {
+          question: 'What does FR-001 cover?',
+          options: ['nothing', 'auth', 'a fixture requirement'],
+          correctIndex: 2,
+          feedback: ['', '', 'right'],
+        },
         teachBack: 'Explain FR-001 in your own words.',
         refs: ['FR-001'],
       },
@@ -110,7 +114,12 @@ describe('course CLI (T-100, FR-003/FR-004/SC-001/SC-002)', () => {
     const dir = fixtureProject();
     const bad = draft({
       objectives: [
-        { title: 'Ghost', read: 'cites a ghost', quiz: { question: 'q', options: ['a', 'b'], correctIndex: 0 }, refs: ['FR-999'] },
+        {
+          title: 'Ghost',
+          read: 'cites a ghost',
+          quiz: { question: 'q', options: ['a', 'b'], correctIndex: 0 },
+          refs: ['FR-999'],
+        },
       ],
     });
     const r = await runCourse(['--target', '999-fixture'], dir, bad, stubFile(dir, '1'));

@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { expect, test } from '@playwright/test';
 import { SAMPLE_GRAPH } from './fixtures/graph.js';
 
 // US1 / T-100 (spec FR-001, FR-002). Drives the real webview bundle: posts a
@@ -24,9 +24,7 @@ test('each node shows verb dot, title, status pill and one metric', async ({ pag
   await expect(spec.locator('.metric')).toHaveText('14 reqs');
 });
 
-test('orders the spine along the lifecycle: spec before plan before tasks (vertical default)', async ({
-  page,
-}) => {
+test('orders the spine along the lifecycle: spec before plan before tasks (vertical default)', async ({ page }) => {
   const box = async (id: string) => (await page.locator(`.node[data-id="${id}"]`).boundingBox())!;
   const spec = await box('spec');
   const plan = await box('plan');
@@ -47,9 +45,9 @@ test('colours the spec node dot with the fixed 017 brand colour (--spec-2)', asy
 test('node content does not overspill the box (grows to fit, no crop)', async ({ page }) => {
   // Regression: a fixed-height node clipped its stacked content. Every node's
   // content must fit inside its own border box.
-  const overspill = await page.locator('.node').evaluateAll((nodes) =>
-    nodes.map((n) => (n as HTMLElement).scrollHeight - (n as HTMLElement).clientHeight),
-  );
+  const overspill = await page
+    .locator('.node')
+    .evaluateAll((nodes) => nodes.map((n) => (n as HTMLElement).scrollHeight - (n as HTMLElement).clientHeight));
   for (const delta of overspill) expect(delta).toBeLessThanOrEqual(1);
 });
 
@@ -91,8 +89,6 @@ test('a long title is truncated, not wrapped past the box', async ({ page }) => 
   });
   const node = page.locator('.node[data-id="spec"]');
   await node.waitFor();
-  const delta = await node.evaluate(
-    (n) => (n as HTMLElement).scrollHeight - (n as HTMLElement).clientHeight,
-  );
+  const delta = await node.evaluate((n) => (n as HTMLElement).scrollHeight - (n as HTMLElement).clientHeight);
   expect(delta).toBeLessThanOrEqual(1);
 });

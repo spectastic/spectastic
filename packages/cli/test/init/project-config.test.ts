@@ -1,8 +1,8 @@
 import { execFileSync, spawn } from 'node:child_process';
-import { basename, dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
+import { basename, dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
 /**
@@ -26,7 +26,10 @@ interface RunResult {
 
 async function runCLI(args: string[], cwd: string): Promise<RunResult> {
   return new Promise((resolveFn) => {
-    const child = spawn('node', [CLI, ...args], { cwd, stdio: ['pipe', 'pipe', 'pipe'] });
+    const child = spawn('node', [CLI, ...args], {
+      cwd,
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
     let stdout = '';
     let stderr = '';
     child.stdout.on('data', (c: Buffer) => (stdout += c.toString('utf8')));
@@ -45,7 +48,9 @@ function git(cwd: string, ...args: string[]): void {
 }
 
 function readConfig(dir: string): { project?: string } {
-  return JSON.parse(readFileSync(join(dir, 'spectastic.json'), 'utf8')) as { project?: string };
+  return JSON.parse(readFileSync(join(dir, 'spectastic.json'), 'utf8')) as {
+    project?: string;
+  };
 }
 
 describe('spectastic init — project identity (067 T-101/T-102, FR-002)', () => {

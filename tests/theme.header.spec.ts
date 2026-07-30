@@ -1,5 +1,5 @@
-import { test, expect } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
+import { expect, test } from '@playwright/test';
 
 // T-600 / FR-009 — the vivid sticky, backdrop-blurred top header.
 // Written test-first: these FAIL until the header lands (spec.js injection T-610
@@ -19,7 +19,7 @@ const setTheme = (page, theme: string, mode = 'light') =>
       document.documentElement.setAttribute('data-theme', t);
       document.documentElement.setAttribute('data-mode', m);
     },
-    { t: theme, m: mode }
+    { t: theme, m: mode },
   );
 
 test.describe('FR-009 · header (both themes)', () => {
@@ -70,10 +70,7 @@ test.describe('FR-009 · header (both themes)', () => {
         await page.goto(FIXTURE);
         await setTheme(page, theme, mode);
         await page.waitForTimeout(450); // settle the cross-fade + blur
-        const results = await new AxeBuilder({ page })
-          .include(BAR)
-          .withRules(['color-contrast'])
-          .analyze();
+        const results = await new AxeBuilder({ page }).include(BAR).withRules(['color-contrast']).analyze();
         const offenders = results.violations.flatMap((v) => v.nodes.map((n) => `${n.target}`));
         expect(offenders, `${theme} header contrast failures:\n${offenders.join('\n')}`).toEqual([]);
       });

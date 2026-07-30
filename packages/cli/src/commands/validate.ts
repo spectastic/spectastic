@@ -1,5 +1,7 @@
-import type { Command } from 'commander';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import type { Finding } from '@spectastic/schema';
+import type { Command } from 'commander';
 
 interface ValidateOptions {
   format: string;
@@ -14,7 +16,7 @@ interface ValidateOptions {
  * cannot merge (SC-002). The marker is JSON, so this lives here rather than in
  * the HTML-bound schema rule registry (plan §9).
  */
-async function scanQuarantineMarkers(cwd: string): Promise<Finding[]> {
+async function scanQuarantineMarkers(_cwd: string): Promise<Finding[]> {
   const [{ expandGlobs }, { quarantineFinding }, { readFile }] = await Promise.all([
     import('../glob.js'),
     import('@spectastic/core/commands/explore'),
@@ -25,7 +27,10 @@ async function scanQuarantineMarkers(cwd: string): Promise<Finding[]> {
   for (const file of markers) {
     let marker: { id?: string; status?: string };
     try {
-      marker = JSON.parse(await readFile(file, 'utf8')) as { id?: string; status?: string };
+      marker = JSON.parse(await readFile(file, 'utf8')) as {
+        id?: string;
+        status?: string;
+      };
     } catch {
       // A present-but-unreadable marker still signals a live exploration.
       marker = { status: 'quarantined' };
@@ -164,15 +169,21 @@ async function scanCopyLeak(): Promise<Finding[]> {
  * when there's no marker. A no-op when there are no waivers.
  */
 async function scanEnforceWaivers(cwd: string): Promise<Finding[]> {
-  const [{ enforceWaiverFindings }, { readRawWaivers }, { ALL_CATEGORIES }, { readMarker }, { loadProfiles }, { resolveBundle }] =
-    await Promise.all([
-      import('@spectastic/core/commands/validate'),
-      import('@spectastic/core/enforce/config'),
-      import('@spectastic/core/enforce/detect'),
-      import('./init/marker.js'),
-      import('./init/profiles.js'),
-      import('./init/bundle.js'),
-    ]);
+  const [
+    { enforceWaiverFindings },
+    { readRawWaivers },
+    { ALL_CATEGORIES },
+    { readMarker },
+    { loadProfiles },
+    { resolveBundle },
+  ] = await Promise.all([
+    import('@spectastic/core/commands/validate'),
+    import('@spectastic/core/enforce/config'),
+    import('@spectastic/core/enforce/detect'),
+    import('./init/marker.js'),
+    import('./init/profiles.js'),
+    import('./init/bundle.js'),
+  ]);
   const waivers = readRawWaivers(cwd);
   if (waivers.length === 0) return [];
 
@@ -185,6 +196,35 @@ async function scanEnforceWaivers(cwd: string): Promise<Finding[]> {
     { required, unwaivable, validCategories: ALL_CATEGORIES, now: new Date() },
     'spectastic.json',
   );
+}
+
+/**
+ * Read the config-declared quantified-NFR convention floor (068-enterprise-
+ * enforce-floor FR-009, plan D-003) from `<cwd>/spectastic.json`'s
+ * `validate.quantifiedNfrFloor`. Fail-safe to `undefined` on an
+ * absent/unreadable/malformed file or a non-number value — mirrors
+ * `readRawWaivers`'s own fail-safe shape (`enforce/config.ts`); an
+ * unparseable floor leaves the gate's pre-068 behavior unchanged (every
+ * gated-tier spec checked) rather than silently exempting everything.
+ */
+function readQuantifiedNfrFloor(cwd: string): number | undefined {
+  let raw: string;
+  try {
+    raw = readFileSync(join(cwd, 'spectastic.json'), 'utf8');
+  } catch {
+    return undefined;
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw) as unknown;
+  } catch {
+    return undefined;
+  }
+  if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) return undefined;
+  const section = (parsed as Record<string, unknown>).validate;
+  if (section === null || typeof section !== 'object' || Array.isArray(section)) return undefined;
+  const floor = (section as Record<string, unknown>).quantifiedNfrFloor;
+  return typeof floor === 'number' && Number.isFinite(floor) ? floor : undefined;
 }
 
 /**
@@ -208,10 +248,9 @@ async function scanQuantifiedNfr(files: readonly string[], cwd: string): Promise
   if (!isQuantifiedNfrGatedTier(marker?.profile)) return [];
 
   const { readFile } = await import('node:fs/promises');
-  const docs = await Promise.all(
-    files.map(async (file) => ({ html: await readFile(file, 'utf8'), file })),
-  );
-  return quantifiedNfrFindings(docs, { tier: marker?.profile });
+  const docs = await Promise.all(files.map(async (file) => ({ html: await readFile(file, 'utf8'), file })));
+  const floor = readQuantifiedNfrFloor(cwd);
+  return quantifiedNfrFindings(docs, { tier: marker?.profile, ...(floor !== undefined ? { floor } : {}) });
 }
 
 /**
@@ -295,9 +334,7 @@ async function scanCorpusGrounding(files: readonly string[], cwd: string): Promi
   const registry = loadRegistry(cwd);
 
   const { readFile } = await import('node:fs/promises');
-  const docs = await Promise.all(
-    files.map(async (file) => ({ html: await readFile(file, 'utf8'), file })),
-  );
+  const docs = await Promise.all(files.map(async (file) => ({ html: await readFile(file, 'utf8'), file })));
   return corpusGroundingFindings(docs, packs, registry);
 }
 

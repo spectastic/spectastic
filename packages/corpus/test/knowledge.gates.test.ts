@@ -73,7 +73,7 @@ describe('corpusGroundingFindings', () => {
     expect(findings[0]?.message).toContain('KB-999');
   });
 
-  it('errors (corpus-provenance) on a pinned citation to a fabricated/typo\'d edition', () => {
+  it("errors (corpus-provenance) on a pinned citation to a fabricated/typo'd edition", () => {
     // KB-001 exists (current @2024-05-28, superseded @2017-09-05) but this
     // edition was never committed under either — a dead reference, not stale.
     const findings = corpusGroundingFindings([decisionDoc('KB-001@1999-01-01')], [pack()]);
@@ -162,8 +162,16 @@ describe('corpusGroundingFindings', () => {
     });
 
     it('resolves deterministically via the registry even when two packs share the cited id (ends first-pack-wins)', () => {
-      const packA = pack({ name: 'a', documents: [currentDoc('KB-0007', '2099-01-01')], supersededEditions: [] });
-      const packB = pack({ name: 'b', documents: [currentDoc('KB-0007', '2026-01-01')], supersededEditions: [] });
+      const packA = pack({
+        name: 'a',
+        documents: [currentDoc('KB-0007', '2099-01-01')],
+        supersededEditions: [],
+      });
+      const packB = pack({
+        name: 'b',
+        documents: [currentDoc('KB-0007', '2026-01-01')],
+        supersededEditions: [],
+      });
       // Without a registry, array order alone decides which pack wins — packA
       // (a stale/wrong edition) would resolve first and error. The registry
       // pins the correct row deterministically instead.

@@ -1,11 +1,8 @@
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { StubAIProvider, StubAIProviderError } from '@spectastic/core/providers/stub';
 import { describe, expect, it } from 'vitest';
-import {
-  StubAIProvider,
-  StubAIProviderError,
-} from '@spectastic/core/providers/stub';
 
 describe('StubAIProvider', () => {
   it('consumes chat responses sequentially', async () => {
@@ -21,9 +18,7 @@ describe('StubAIProvider', () => {
     const provider = new StubAIProvider({ chat: ['only one'] });
     await provider.chat('p1');
     await expect(provider.chat('p2')).rejects.toThrow(StubAIProviderError);
-    await expect(provider.chat('p3')).rejects.toThrow(
-      /chat\(\) invoked .* times; script only defines 1 response/,
-    );
+    await expect(provider.chat('p3')).rejects.toThrow(/chat\(\) invoked .* times; script only defines 1 response/);
   });
 
   it('consumes ask() responses sequentially', async () => {
@@ -38,9 +33,7 @@ describe('StubAIProvider', () => {
 
   it('throws when ask() overflows the script', async () => {
     const provider = new StubAIProvider({ ask: [] });
-    await expect(provider.ask([])).rejects.toThrow(
-      /ask\(\) invoked 1 times; script only defines 0/,
-    );
+    await expect(provider.ask([])).rejects.toThrow(/ask\(\) invoked 1 times; script only defines 0/);
   });
 
   it('consumes subagent() responses sequentially', async () => {
@@ -61,9 +54,7 @@ describe('StubAIProvider', () => {
   });
 
   it('throws a descriptive error when the script file is missing', () => {
-    expect(() => new StubAIProvider('/no/such/file.json')).toThrow(
-      /failed to read script.*\/no\/such\/file\.json/,
-    );
+    expect(() => new StubAIProvider('/no/such/file.json')).toThrow(/failed to read script.*\/no\/such\/file\.json/);
   });
 
   it('throws a descriptive error when the script file is not valid JSON', () => {
@@ -86,26 +77,38 @@ describe('StubAIProvider', () => {
   // (validateStubScript walker runs at load time, throws with the offending JSON path).
   describe('schema validation', () => {
     it('throws when the root is not an object', () => {
-      expect(() => new StubAIProvider(['not', 'an', 'object'] as unknown as { chat: string[] })).toThrow(
-        /script root must be an object \(got array\)/,
-      );
+      expect(
+        () =>
+          new StubAIProvider(['not', 'an', 'object'] as unknown as {
+            chat: string[];
+          }),
+      ).toThrow(/script root must be an object \(got array\)/);
     });
 
     it('throws when chat is not an array', () => {
-      expect(() => new StubAIProvider({ chat: 'a single string' as unknown as string[] })).toThrow(
-        /script chat must be an array \(got string\)/,
-      );
+      expect(
+        () =>
+          new StubAIProvider({
+            chat: 'a single string' as unknown as string[],
+          }),
+      ).toThrow(/script chat must be an array \(got string\)/);
     });
 
     it('throws when chat[i] is not a string, naming the index', () => {
       expect(
-        () => new StubAIProvider({ chat: ['ok', 42 as unknown as string, 'also ok'] }),
+        () =>
+          new StubAIProvider({
+            chat: ['ok', 42 as unknown as string, 'also ok'],
+          }),
       ).toThrow(/script chat\[1\] must be a string \(got number\)/);
     });
 
     it('throws when ask[i] is not an object, naming the index', () => {
       expect(
-        () => new StubAIProvider({ ask: [null as unknown as Record<string, string>] }),
+        () =>
+          new StubAIProvider({
+            ask: [null as unknown as Record<string, string>],
+          }),
       ).toThrow(/script ask\[0\] must be an object \(got null\)/);
     });
 

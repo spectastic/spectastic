@@ -1,5 +1,5 @@
-import { test, expect } from '@playwright/test';
 import { readFileSync } from 'node:fs';
+import { expect, test } from '@playwright/test';
 
 // SC-006 — spectastic-vivid visual parity with the reference design.
 // Targets are MEASURED from example.html via getComputedStyle (the Chrome
@@ -27,7 +27,10 @@ async function vivid(page) {
   });
 }
 const prop = (page, sel: string, p: string) =>
-  page.locator(sel).first().evaluate((el, p) => getComputedStyle(el)[p as any], p);
+  page
+    .locator(sel)
+    .first()
+    .evaluate((el, p) => getComputedStyle(el)[p as keyof CSSStyleDeclaration], p);
 
 test.describe('SC-006 · vivid parity — Slice 1 (shape)', () => {
   test('pills match the reference radii (status 5px, tag 4px)', async ({ page }) => {
@@ -96,7 +99,7 @@ test.describe('SC-006 · vivid parity — Slice 2 (layout)', () => {
   test('prose cards align to the reading measure (do not overrun the text column)', async ({ page }) => {
     await vivid(page);
     const measurePx = await page.evaluate(
-      () => parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--measure')) * 16
+      () => parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--measure')) * 16,
     );
     const cardW = await page
       .locator('spec-requirement')

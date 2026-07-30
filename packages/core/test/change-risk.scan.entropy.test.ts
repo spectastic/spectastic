@@ -24,7 +24,12 @@ describe('scan — entropy/base64-payload detector', () => {
     const patch = addedLinePatch('src/blob.ts', `const p = "${payload}";`);
     const findings = scan({ patch, numstat: '1\t0\tsrc/blob.ts\n' });
     expect(findings).toEqual([
-      { category: 'entropy-payload', weight: 'high', file: 'src/blob.ts', evidence: expect.any(String) },
+      {
+        category: 'entropy-payload',
+        weight: 'high',
+        file: 'src/blob.ts',
+        evidence: expect.any(String),
+      },
     ]);
   });
 
@@ -43,8 +48,7 @@ describe('scan — entropy/base64-payload detector', () => {
   });
 
   it('does not flag a lockfile sha512 integrity hash', () => {
-    const hash =
-      'sha512-XlY58v4XvT9awz2p4NmJT+ZgNVe6qYSKAP1z1U4wSyE0Yg4x+p93K6oRLnP/j5FPO0xCg5oV6XkIovhwaXWjhw==';
+    const hash = 'sha512-XlY58v4XvT9awz2p4NmJT+ZgNVe6qYSKAP1z1U4wSyE0Yg4x+p93K6oRLnP/j5FPO0xCg5oV6XkIovhwaXWjhw==';
     const patch = addedLinePatch('package-lock.json', `      "integrity": "${hash}",`);
     expect(scan({ patch, numstat: '1\t0\tpackage-lock.json\n' })).toEqual([]);
   });

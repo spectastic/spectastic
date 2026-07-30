@@ -12,7 +12,12 @@ const FILE = 'explorations/023-x/quarantine.json';
 describe('quarantineFinding', () => {
   it('emits an error finding for a quarantined marker', () => {
     const finding = quarantineFinding(
-      { id: '023-x', intent: 'try it', status: 'quarantined', created: '2026-06-24' },
+      {
+        id: '023-x',
+        intent: 'try it',
+        status: 'quarantined',
+        created: '2026-06-24',
+      },
       FILE,
     );
     expect(finding).not.toBeNull();

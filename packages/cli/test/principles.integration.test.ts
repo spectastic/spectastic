@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process';
-import { mkdtempSync, writeFileSync, readFileSync, existsSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -85,11 +85,7 @@ describe('CLI integration: principles (T-112)', () => {
 
     // Without ANTHROPIC_API_KEY the AI call fails — that's exactly the signal we want:
     // "gate let us through, ClaudeProvider was constructed, then died on the missing key".
-    const r = await runCLI(
-      ['principles', '--output', out, '--name', 'test'],
-      tmpDir,
-      { ANTHROPIC_API_KEY: '' },
-    );
+    const r = await runCLI(['principles', '--output', out, '--name', 'test'], tmpDir, { ANTHROPIC_API_KEY: '' });
     expect(r.stderr).toContain('Editing Draft');
     expect(r.stderr).toContain('per P-6');
     // After the gate, the CLI constructed ClaudeProvider and tried to chat.
@@ -103,11 +99,9 @@ describe('CLI integration: principles (T-112)', () => {
     const out = join(tmpDir, 'principles.html');
     writeFakeArtifact(out, 'accepted');
 
-    const r = await runCLI(
-      ['principles', '--output', out, '--force', '--name', 'test'],
-      tmpDir,
-      { ANTHROPIC_API_KEY: '' },
-    );
+    const r = await runCLI(['principles', '--output', out, '--force', '--name', 'test'], tmpDir, {
+      ANTHROPIC_API_KEY: '',
+    });
     expect(r.stderr).toContain('warn: bypassing change-management surface');
     expect(r.stderr).toContain('status was accepted');
     // The gate passed; the AI call then fails on missing key.
@@ -120,11 +114,7 @@ describe('CLI integration: principles (T-112)', () => {
     const out = join(tmpDir, 'principles.html');
     expect(existsSync(out)).toBe(false);
 
-    const r = await runCLI(
-      ['principles', '--output', out, '--name', 'test'],
-      tmpDir,
-      { ANTHROPIC_API_KEY: '' },
-    );
+    const r = await runCLI(['principles', '--output', out, '--name', 'test'], tmpDir, { ANTHROPIC_API_KEY: '' });
     // No "Editing Draft" message — the gate is in the write-fresh branch.
     expect(r.stderr).not.toContain('Editing Draft');
     expect(r.stderr).not.toContain('warn: bypassing');
@@ -140,11 +130,10 @@ describe('CLI integration: principles (T-112)', () => {
     // at packages/cli/test/fixtures/<verb>-script.json, not inline-written here.
     const scriptPath = resolve(here, 'fixtures', 'principles-script.json');
 
-    const r = await runCLI(
-      ['principles', '--output', out, '--name', 'demo'],
-      tmpDir,
-      { SPECTASTIC_AI_STUB: scriptPath, ANTHROPIC_API_KEY: '' },
-    );
+    const r = await runCLI(['principles', '--output', out, '--name', 'demo'], tmpDir, {
+      SPECTASTIC_AI_STUB: scriptPath,
+      ANTHROPIC_API_KEY: '',
+    });
 
     expect(r.code, `stdout: ${r.stdout}\nstderr: ${r.stderr}`).toBe(0);
     expect(r.stdout).toContain('Wrote');

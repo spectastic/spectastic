@@ -1,6 +1,12 @@
-import type { Command } from 'commander';
 import type { Finding } from '@spectastic/schema';
-import { loadCorpus, loadRegistry, corpusWellFormedFindings, corpusRegistryFindings, corpusLicenseFindings } from '../knowledge/index.js';
+import type { Command } from 'commander';
+import {
+  corpusLicenseFindings,
+  corpusRegistryFindings,
+  corpusWellFormedFindings,
+  loadCorpus,
+  loadRegistry,
+} from '../knowledge/index.js';
 
 /**
  * Corpus-intrinsic validate (064-corpus-package-extraction, FR-004, US2) — well-formed,

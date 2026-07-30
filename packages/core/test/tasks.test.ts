@@ -1,5 +1,3 @@
-import { describe, expect, it } from 'vitest';
-import { tasksCommand } from '@spectastic/core/commands/tasks';
 import type {
   AIProvider,
   ChatOpts,
@@ -9,6 +7,8 @@ import type {
   SubagentOpts,
   SubagentResult,
 } from '@spectastic/core';
+import { tasksCommand } from '@spectastic/core/commands/tasks';
+import { describe, expect, it } from 'vitest';
 
 class StubAI implements AIProvider {
   constructor(private readonly response: string = '{}') {}
@@ -62,10 +62,7 @@ describe('tasksCommand (009)', () => {
     const fs = stubFs({ '/spec.html': SPEC, '/plan.html': PLAN });
     const ctx: KernelContext = { cwd: '/', fs, ai };
 
-    const result = await tasksCommand(
-      { specPath: '/spec.html', planPath: '/plan.html' },
-      ctx,
-    );
+    const result = await tasksCommand({ specPath: '/spec.html', planPath: '/plan.html' }, ctx);
 
     expect(result.phases.length).toBeGreaterThanOrEqual(3);
     expect(result.phases[0]?.id).toBe('setup');
@@ -83,10 +80,7 @@ describe('tasksCommand (009)', () => {
     const fs = stubFs({ '/spec.html': SPEC, '/plan.html': PLAN });
     const ctx: KernelContext = { cwd: '/', fs, ai };
 
-    const result = await tasksCommand(
-      { specPath: '/spec.html', planPath: '/plan.html' },
-      ctx,
-    );
+    const result = await tasksCommand({ specPath: '/spec.html', planPath: '/plan.html' }, ctx);
     // FR-001/FR-002 are referenced by phase tasks; NFR/SC may not be in
     // the deterministic skeleton; either way the html is well-formed.
     expect(result.html).toContain('<spec-task');
@@ -100,18 +94,15 @@ describe('tasksCommand (009)', () => {
     });
     const ctx: KernelContext = { cwd: '/', fs, ai };
 
-    await expect(
-      tasksCommand({ specPath: '/spec.html', planPath: '/plan.html' }, ctx),
-    ).rejects.toThrow(/declares no FR-NNN requirements/);
+    await expect(tasksCommand({ specPath: '/spec.html', planPath: '/plan.html' }, ctx)).rejects.toThrow(
+      /declares no FR-NNN requirements/,
+    );
   });
 
   it('throws when ctx.ai is undefined', async () => {
     const fs = stubFs({ '/spec.html': SPEC, '/plan.html': PLAN });
-    await expect(
-      tasksCommand(
-        { specPath: '/spec.html', planPath: '/plan.html' },
-        { cwd: '/', fs },
-      ),
-    ).rejects.toThrow(/ctx\.ai/);
+    await expect(tasksCommand({ specPath: '/spec.html', planPath: '/plan.html' }, { cwd: '/', fs })).rejects.toThrow(
+      /ctx\.ai/,
+    );
   });
 });

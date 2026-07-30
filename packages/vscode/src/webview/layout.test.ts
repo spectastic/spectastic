@@ -1,6 +1,6 @@
-import { describe, it, expect } from 'vitest';
-import { layoutGraph } from './layout.js';
+import { describe, expect, it } from 'vitest';
 import type { ArtifactNode, LifecycleGraph } from '../host/messaging.js';
+import { layoutGraph } from './layout.js';
 
 function node(id: string, verb: ArtifactNode['verb'], specId = '099-demo'): ArtifactNode {
   return {
@@ -28,12 +28,7 @@ function node(id: string, verb: ArtifactNode['verb'], specId = '099-demo'): Arti
 
 const graph: LifecycleGraph = {
   specId: '099-demo',
-  nodes: [
-    node('plan', 'plan'),
-    node('spec', 'spec'),
-    node('tasks', 'tasks'),
-    node('slice:099a', 'spec', '099a-child'),
-  ],
+  nodes: [node('plan', 'plan'), node('spec', 'spec'), node('tasks', 'tasks'), node('slice:099a', 'spec', '099a-child')],
   edges: [
     { from: 'spec', to: 'plan', kind: 'flow' },
     { from: 'plan', to: 'tasks', kind: 'flow' },

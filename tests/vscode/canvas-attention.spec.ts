@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { expect, test } from '@playwright/test';
 import { SAMPLE_GRAPH } from './fixtures/graph.js';
 
 // US3 / T-301 (spec FR-006, SC-002). A node needing attention is visibly distinct
@@ -59,8 +59,6 @@ test('renders a stale node with the stale state', async ({ page }) => {
     window.postMessage({ type: 'graph', graph }, '*');
   });
   await expect(page.locator('.node[data-id="spec"]')).toHaveAttribute('data-stale', 'true');
-  const opacity = await page
-    .locator('.node[data-id="spec"]')
-    .evaluate((el) => Number(getComputedStyle(el).opacity));
+  const opacity = await page.locator('.node[data-id="spec"]').evaluate((el) => Number(getComputedStyle(el).opacity));
   expect(opacity).toBeLessThan(1);
 });

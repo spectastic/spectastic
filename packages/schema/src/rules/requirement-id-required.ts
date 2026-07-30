@@ -16,8 +16,7 @@ export const requirementIdRequiredRule: PerFileRule = {
   id: 'requirement-id-required',
   scope: 'per-file',
   defaultSeverity: 'error',
-  description:
-    '<spec-requirement> elements must declare an id= matching ^[A-Z]+-[A-Z]*-?[0-9]+$.',
+  description: '<spec-requirement> elements must declare an id= matching ^[A-Z]+-[A-Z]*-?[0-9]+$.',
   check({ doc }) {
     const findings: Finding[] = [];
     for (const req of findAll(doc.ast, 'spec-requirement')) {
@@ -30,8 +29,7 @@ export const requirementIdRequiredRule: PerFileRule = {
           rule: 'requirement-id-required',
           severity: 'error',
           message: '<spec-requirement> missing required id=',
-          fixHint:
-            'Add id="FR-001" (or NFR-/REQ-/SC-/D- prefix) matching ^[A-Z]+-[A-Z]*-?[0-9]+$.',
+          fixHint: 'Add id="FR-001" (or NFR-/REQ-/SC-/D- prefix) matching ^[A-Z]+-[A-Z]*-?[0-9]+$.',
         });
         continue;
       }
@@ -44,8 +42,7 @@ export const requirementIdRequiredRule: PerFileRule = {
           rule: 'requirement-id-required',
           severity: 'error',
           message: `<spec-requirement> id="${id}" does not match ^[A-Z]+-[A-Z]*-?[0-9]+$`,
-          fixHint:
-            'Use the canonical pattern, e.g. FR-001, NFR-001, REQ-AUTH-001, SC-001, D-001.',
+          fixHint: 'Use the canonical pattern, e.g. FR-001, NFR-001, REQ-AUTH-001, SC-001, D-001.',
         });
       }
     }

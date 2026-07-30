@@ -1,0 +1,83 @@
+# Real SAST ruleset (068-enterprise-enforce-floor T-311, plan D-004/FR-006).
+#
+# Additive to the existing HTML-artifact injection red-team (spec 045/046),
+# which scans spec/plan/tasks *artifacts* for executable content. This
+# ruleset scans the *tool's own source* (packages/*/src) for the vulnerability
+# classes that matter here: subprocess shell-injection, path traversal, and
+# unsafe dynamic evaluation — real risk categories for a CLI that shells out
+# to git/npx and reads/writes files under paths partly drawn from artifacts
+# (P-11 — artifacts are data, not instructions, applies to this code too).
+#
+# The first rule below (js-ts-shell-string-interpolation) is written from a
+# genuine finding: packages/cli/src/coding-factory.ts previously built a
+# shell command string via template interpolation and handed it to `sh -c`
+# (fixed in this same change — see the code comment there). This rule exists
+# so that class of bug can't reappear silently.
+
+rules:
+  - id: js-ts-shell-string-interpolation
+    languages: [typescript, javascript]
+    severity: ERROR
+    message: >-
+      A template-literal or concatenated string is passed as a shell command
+      (via `sh -c`, `bash -c`, or `{ shell: true }`). If any part of the string
+      is derived from external input — a file path, an artifact's text, a
+      CLI argument — this is a shell-injection vector. Prefer execFile/spawn
+      with an argv array (no shell), so metacharacters are inert data.
+    patterns:
+      - pattern-either:
+          # A generic argv wildcard ([...]), not a rigid ["-c", "..."] shape —
+          # a template literal's AST node doesn't unify with a bare string
+          # ellipsis pattern, so matching on the "sh"/"bash" executable name
+          # alone (regardless of argv shape) is both simpler and catches more.
+          - pattern: execFile("sh", [...], ...)
+          - pattern: execFile("bash", [...], ...)
+          - pattern: exec("sh", [...], ...)
+          - pattern: exec("bash", [...], ...)
+          - pattern: spawn("sh", [...], ...)
+          - pattern: spawn("bash", [...], ...)
+          - pattern: 'execSync($CMD, { shell: true, ... })'
+          - pattern: 'exec($CMD, { ..., shell: true, ... })'
+    metadata:
+      category: security
+      cwe: 'CWE-78: Improper Neutralization of Special Elements used in an OS Command'
+      references:
+        - https://owasp.org/www-community/attacks/Command_Injection
+
+  - id: js-ts-path-join-from-unvalidated-input
+    languages: [typescript, javascript]
+    severity: WARNING
+    message: >-
+      `path.join`/`path.resolve` builds a filesystem path from a variable
+      that isn't obviously a constant or a validated identifier. If the
+      value can contain `..` segments and reaches fs read/write, this is a
+      path-traversal vector. Confirm the segment is validated (an allowlist,
+      a resolved-id, a regex-checked shape) before this call.
+    patterns:
+      - pattern-either:
+          - pattern: $FS.writeFileSync(path.join($BASE, $SEGMENT), ...)
+          - pattern: $FS.readFileSync(path.join($BASE, $SEGMENT), ...)
+      - metavariable-regex:
+          metavariable: $SEGMENT
+          regex: ^(?!['"`]).*$ # flag only when $SEGMENT isn't a literal
+    metadata:
+      category: security
+      cwe: 'CWE-22: Improper Limitation of a Pathname to a Restricted Directory'
+      references:
+        - https://owasp.org/www-community/attacks/Path_Traversal
+
+  - id: js-ts-eval-or-function-constructor
+    languages: [typescript, javascript]
+    severity: ERROR
+    message: >-
+      `eval()` or the `Function(...)` constructor executes a string as code.
+      Both are the dynamic-evaluation channel P-11 (artifact security) exists
+      to keep out of this codebase entirely — there is no legitimate use for
+      it in spectastic's own tooling.
+    patterns:
+      - pattern-either:
+          - pattern: eval(...)
+          - pattern: new Function(...)
+    metadata:
+      category: security
+      cwe: 'CWE-95: Improper Neutralization of Directives in Dynamically Evaluated Code'

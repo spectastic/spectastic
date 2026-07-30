@@ -15,7 +15,7 @@ const exec = promisify(execFile);
 const VERIFY_TIMEOUT_MS = 10 * 60 * 1000;
 
 export async function createCodingAgent(): Promise<CodingAgent> {
-  const stubPath = process.env['SPECTASTIC_CODING_STUB'];
+  const stubPath = process.env.SPECTASTIC_CODING_STUB;
   if (stubPath) {
     const { StubCodingAgent } = await import('@spectastic/core/coding/stub');
     const script = JSON.parse(readFileSync(stubPath, 'utf8')) as Record<string, never>;
@@ -35,7 +35,16 @@ export function createVerifyRunner(): VerifyRunner {
   return {
     async run(command: string, cwd: string): Promise<VerifyResult> {
       try {
-        const { stdout, stderr } = await exec('sh', ['-c', `npx ${command}`], {
+        // 068-enterprise-enforce-floor T-311 dogfooding finding: `command` is
+        // built from a task's own <span class="path"> text in tasks.html
+        // (verifyCommandFor, coding/runtime.ts) — an artifact, not trusted
+        // input (P-11 / spec 045's "artifacts are data, not instructions").
+        // The prior `sh -c \`npx ${command}\`` handed that string straight to
+        // a shell, so a crafted path (still matching the trailing .test.ts
+        // anchor) could smuggle `; rm -rf ~` or `$(curl … | sh)`. Splitting
+        // into argv and calling execFile directly — no shell — closes that:
+        // metacharacters are inert data to argv, never re-interpreted.
+        const { stdout, stderr } = await exec('npx', command.split(/\s+/).filter(Boolean), {
           cwd,
           timeout: VERIFY_TIMEOUT_MS,
           maxBuffer: 64 * 1024 * 1024,
@@ -43,7 +52,10 @@ export function createVerifyRunner(): VerifyRunner {
         return { passed: true, output: `${stdout}${stderr}` };
       } catch (err) {
         const e = err as { stdout?: string; stderr?: string; message?: string };
-        return { passed: false, output: e.stdout ?? e.stderr ?? e.message ?? String(err) };
+        return {
+          passed: false,
+          output: e.stdout ?? e.stderr ?? e.message ?? String(err),
+        };
       }
     },
   };

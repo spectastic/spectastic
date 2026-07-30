@@ -16,7 +16,12 @@ export function registerApply(program: Command): void {
       async (
         specId: string,
         slug: string,
-        opts: { withdraw?: boolean; reason?: string; summary?: string; commit?: boolean },
+        opts: {
+          withdraw?: boolean;
+          reason?: string;
+          summary?: string;
+          commit?: boolean;
+        },
       ) => {
         const [{ applyCommand }, { nodeFs }, { gateOnQuarantine }, fs, path] = await Promise.all([
           import('@spectastic/core/commands/apply'),
@@ -39,28 +44,27 @@ export function registerApply(program: Command): void {
         }
 
         const input = opts.withdraw
-          ? ({ kind: 'withdraw' as const, specId, slug, reason: opts.reason! })
-          : ({
+          ? { kind: 'withdraw' as const, specId, slug, reason: opts.reason! }
+          : {
               kind: 'apply' as const,
               specId,
               slug,
               // Include `summary` only when given — exactOptionalPropertyTypes rejects an explicit undefined.
               ...(opts.summary ? { summary: opts.summary } : {}),
-            });
+            };
 
-        const result = await applyCommand(input, { cwd: process.cwd(), fs: nodeFs });
+        const result = await applyCommand(input, {
+          cwd: process.cwd(),
+          fs: nodeFs,
+        });
 
-        process.stdout.write(
-          `${opts.withdraw ? 'Withdrew' : 'Applied'} ${slug} → ${result.archivedPath}\n`,
-        );
+        process.stdout.write(`${opts.withdraw ? 'Withdrew' : 'Applied'} ${slug} → ${result.archivedPath}\n`);
         if (result.deltas.length > 0) {
           const ok = result.deltas.filter((d) => d.result === 'success').length;
           process.stdout.write(`  ${result.deltas.length} delta(s), ${ok} successful\n`);
         }
         if (result.crossSpecWarnings.length > 0) {
-          process.stdout.write(
-            `  ${result.crossSpecWarnings.length} cross-spec warning(s); follow-up may be needed\n`,
-          );
+          process.stdout.write(`  ${result.crossSpecWarnings.length} cross-spec warning(s); follow-up may be needed\n`);
         }
 
         // Opt-in git layer (spec 026): stage the whole spec dir so the commit captures
