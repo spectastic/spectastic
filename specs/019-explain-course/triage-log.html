@@ -171,6 +171,57 @@
   </details>
 </spec-triage>
 
+<spec-triage id="T-005" layer="implementation">
+  <header>
+    <h4>A <code>--keep</code>'d course was silently un-committable — the blanket <code>.spectastic/</code> ignore defeated <code>--keep</code>'s own allowlist</h4>
+    <span class="meta">
+      <span class="layer-pill">Implementation</span>
+      <span class="regen" data-result="pass">code</span>
+    </span>
+  </header>
+
+  <p class="headline">Debugging why 060's kept teaching-payload course never reached git, root cause was
+  implementation drift — two 019-authored gitignore mechanisms in conflict: the root <code>.spectastic/</code>
+  blanket ignore masked the whole directory, so git never descended to honour the nested per-course allowlist that
+  <code>--keep</code> writes; fixed by narrowing the root ignore to <code>.spectastic/courses/</code> (landed in
+  <a href="../068-enterprise-enforce-floor/spec.html">068</a>) so git reads the child allowlist; regeneration passes
+  — <a href="./spec.html#FR-001">FR-001</a> already mandates <code>--keep</code> = "retained (tracked)", so the
+  contract was clear and the drift was code, not spec.</p>
+
+  <dl>
+    <dt>Expected</dt> <dd>A course saved with <code>--keep</code> (a conscious workflow step) is <em>tracked</em> — committable to git — per <a href="./spec.html#FR-001">FR-001</a> ("<code>--keep</code> … MUST opt a course into being retained (tracked)").</dd>
+    <dt>Actual</dt>   <dd>060's teaching-payload course, written under <code>.spectastic/courses/…/course.html</code> and allowlisted in the nested <code>.spectastic/.gitignore</code> that <code>--keep</code> maintains, was silently invisible to git and never committed — the retention half of <code>--keep</code> was a no-op.</dd>
+    <dt>Diagnosis</dt><dd>The root <code>.gitignore</code>'s blanket <code>.spectastic/</code> exclude (authored by spec 019 to hide ephemeral course output) violates <a href="./spec.html#FR-001">FR-001</a>: git does not descend into an excluded parent directory, so it never reads the nested per-course allowlist <code>--keep</code> writes — a parent-dir exclude can't be re-included by a child <code>.gitignore</code>. The two 019-authored gitignore mechanisms silently cancelled.</dd>
+    <dt>Fix</dt>      <dd><span class="path">.gitignore</span> — scope the ephemeral-course ignore to <code>.spectastic/courses/</code> (not blanket <code>.spectastic/</code>), so git descends into <code>.spectastic/</code> and honours the nested allowlist; then <code>git add</code> the kept course. The root narrowing already landed in 068 (it un-masked the profile marker); this card records the <code>--keep</code>-conformance root cause and the follow-up commit of the course itself.</dd>
+  </dl>
+
+  <spec-diff>
+<del>  .spectastic/            # blanket — masks --keep'd courses AND the profile marker</del>
+<ins>  .spectastic/courses/    # scoped — git descends, honours the nested per-course allowlist --keep writes</ins>
+  </spec-diff>
+
+  <details>
+    <summary>Deep dive — cross-spec (shared <code>.spectastic/</code> namespace) + a follow-up commit</summary>
+    <p><strong>Cross-spec contract.</strong> <code>.spectastic/</code> started life as 019's courses-only home, so a
+    blanket ignore was reasonable <em>then</em>. It later became a <em>shared</em> namespace: spec
+    <a href="../041-init-profiles/spec.html">041</a> put the committed <code>profile.json</code> marker there, and 019's
+    own <code>--keep</code> writes per-course allowlists into a nested <code>.spectastic/.gitignore</code>. The blanket
+    ignore, unchanged, then silently masked both. 068 already resolved the profile-marker half by narrowing the root
+    rule; this card is the <code>--keep</code>/course half of the same root cause. No requirement changes — 041's and
+    019's specs are each correct; the gitignore <em>implementation</em> was over-broad for the shared namespace.</p>
+    <p><strong>Follow-up (not silently promoted).</strong> The kept course at
+    <code>.spectastic/courses/2026-07-26-060-course-teaching-payload/course.html</code> is now trackable but still
+    uncommitted — it needs a plain <code>git add</code> + commit to complete the retention <code>--keep</code>
+    promised. No test depends on it (<code>tests/course.teaching.spec.ts</code> generates its own fixture via
+    <code>assembleCourse</code>), so nothing is broken in CI; this is a workflow-hygiene completion, not a code change.</p>
+    <p><strong>Latent fragility recorded.</strong> The root managed-block still lists <code>.spectastic/courses/</code>,
+    which now relies on the nested allowlist to re-include a specifically-kept course. That layering works but is
+    subtle; if <code>spectastic init --tools</code> ever owns the managed block (still deferred), the course-retention
+    allowlist mechanism should be tested end-to-end (a <code>--keep</code>'d course is genuinely <code>git add</code>-able)
+    rather than assumed — the git-trackability half of FR-001 that this bug shows was never exercised.</p>
+  </details>
+</spec-triage>
+
 </spec-triage-log>
 </section>
 
@@ -183,6 +234,7 @@
   <li><time datetime="2026-06-20">20 Jun 2026</time><span>T-003 added — wrong quiz answer still reads as "Correct"; implementation, regen pass.</span></li>
   <li><time datetime="2026-07-26">26 Jul 2026</time><span>T-004 added — <code>explain --course</code> needs <code>ANTHROPIC_API_KEY</code> inside Claude Code; cross-spec (006 FR-009 ↔ 019 kernel-owned guarantee, P-8), regen fail. Route to /spectastic.propose.</span></li>
   <li><time datetime="2026-07-26">26 Jul 2026</time><span>T-004 closed — applied <a href="./changes/archive/2026-07-26-keyless-in-host-verification/proposal.html">2026-07-26-keyless-in-host-verification</a> (ADD <a href="./spec.html#NFR-003">NFR-003</a>) and drained US3 (<a href="./tasks.html#T-300">T-300</a>–<a href="./tasks.html#T-321">T-321</a>): a keyless in-host <code>ClaudeCliProvider</code>, a <code>createAIProvider</code> precedence rung, and a clean actionable-error exit in <code>course.ts</code>. Verified with a real, keyless <code>claude</code>-CLI run whose guessability check genuinely passed blind (<a href="./smoke.md">smoke.md</a>).</span></li>
+  <li><time datetime="2026-07-30">30 Jul 2026</time><span>T-005 added — a <code>--keep</code>'d course was silently un-committable; the blanket <code>.spectastic/</code> ignore defeated the nested per-course allowlist, violating <a href="./spec.html#FR-001">FR-001</a> ("<code>--keep</code> = retained (tracked)"). Implementation, regen pass — root ignore narrowed to <code>.spectastic/courses/</code> in 068; follow-up is committing the kept course itself.</span></li>
 </ol>
 </spec-changelog>
 </section>
