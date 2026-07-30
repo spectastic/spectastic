@@ -22,6 +22,7 @@ import {
   parseSkillSlugMap,
   renderRegistryTable,
   renderSkillSlugMapTable,
+  SLUG_MAP_HEADER,
   type SkillSlugMapEntry,
 } from './index-format.js';
 import { KB_ID_RE } from './types.js';
@@ -131,6 +132,19 @@ function mergeSlugMapRows(
 function renderTwoLayerDocument(slug: string, provenance: Record<string, string>, body: string): string {
   const yamlBlock = stringifyYaml({ slug, ...provenance }).trimEnd();
   return `---\n${yamlBlock}\n---\n\n${body}\n`;
+}
+
+/** Strip a PRIOR rendering of the slug-map table from an existing `SKILL.md`
+ * body, keeping only whatever prose sits above it (066-corpus-single-layer-
+ * retire: fixes `registerDocument` accumulating one stale table per write
+ * when called repeatedly against the same pack in one run — `adapt`'s new
+ * per-file loop is the first caller to do that; `installPack`'s own
+ * once-per-invocation SKILL.md write never hit this). Locates the table by
+ * its fixed header line (`SLUG_MAP_HEADER`, always emitted verbatim by
+ * `renderSkillSlugMapTable`) rather than trying to reparse table rows. */
+function stripExistingSlugMapTable(body: string): string {
+  const idx = body.indexOf(SLUG_MAP_HEADER);
+  return idx === -1 ? body.trimEnd() : body.slice(0, idx).trimEnd();
 }
 
 /** The body's first non-heading, non-empty line, truncated to a slug-map
@@ -451,6 +465,15 @@ export interface RegisterDocumentInput {
   /** An explicit slug-map description, overriding the first-body-paragraph
    * derivation — `convert`'s optional `--description` (065 FR-007). */
   description?: string;
+  /** Provenance overrides `migrate` (066-corpus-single-layer-retire) needs to
+   * carry a single-layer document's real edition/license/origin-url forward
+   * rather than resetting them to TODO — the same never-fabricate discipline
+   * `converter`/`contentHash` above already follow, widened to the three
+   * fields those didn't yet cover. Unset ⇒ each falls back to
+   * `deriveProvenance`'s own TODO default, as before. */
+  edition?: string;
+  license?: string;
+  originUrl?: string;
 }
 
 /**
@@ -476,6 +499,9 @@ export function registerDocument(input: RegisterDocumentInput): { id: string } {
     status,
     ...(input.converter !== undefined ? { converter: input.converter } : {}),
     ...(input.contentHash !== undefined ? { 'content-hash': input.contentHash } : {}),
+    ...(input.edition !== undefined ? { edition: input.edition } : {}),
+    ...(input.license !== undefined ? { license: input.license } : {}),
+    ...(input.originUrl !== undefined ? { 'origin-url': input.originUrl } : {}),
   });
   const filename = `${slug}.md`;
 
@@ -511,7 +537,8 @@ export function registerDocument(input: RegisterDocumentInput): { id: string } {
     writeFileSync(skillPath, `---\n${frontmatter}\n---\n\n# ${plugin}\n\n${renderSkillSlugMapTable(mergedSlugRows)}`, 'utf8');
   } else {
     const skillBody = readFileSync(skillPath, 'utf8');
-    writeFileSync(skillPath, `${skillBody.trimEnd()}\n\n${renderSkillSlugMapTable(mergedSlugRows)}`, 'utf8');
+    const prose = stripExistingSlugMapTable(skillBody);
+    writeFileSync(skillPath, `${prose}\n\n${renderSkillSlugMapTable(mergedSlugRows)}`, 'utf8');
   }
 
   // 063-corpus-discoverability FR-003: keep marketplace.json in sync — AFTER

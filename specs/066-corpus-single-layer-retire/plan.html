@@ -1,0 +1,300 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
+<title>Retire single-layer corpus support · Plan</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Implementation plan · 066-corpus-single-layer-retire</p>
+  <h1>Retire single-layer corpus support</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    How we will build it.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>     <span><spec-status value="accepted">Accepted</spec-status></span>
+    <b>Spec</b>       <span><a href="./spec.html">066-corpus-single-layer-retire</a></span>
+    <b>Owner</b>      <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Branch</b>     <span><code>066-corpus-single-layer-retire</code></span>
+    <b>Created</b>    <span><time datetime="2026-07-28">28 Jul 2026</time></span>
+    <b>Read time</b>  <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-tldr>
+    <p>Reuse the two-layer <code>registerDocument</code> backbone (065) three ways: re-base <code>adaptCorpus</code>
+    onto it (like <code>convert</code>), add a <code>migratePack</code> that replays existing single-layer documents
+    through it in place (rename to <code>&lt;NNN-slug&gt;.md</code>, re-key to a repo-unique <code>KB-NNNN</code>,
+    drop the pack index), and add a warning-severity validate rule that flags a single-layer pack. Fat-core, thin
+    CLI on both surfaces. Biggest risk: migrate's in-place rewrite — mitigated by making it idempotent and
+    re-runnable (skip already-<code>slug:</code> documents).</p>
+  </spec-tldr>
+</header>
+
+
+<section id="principles-check">
+<h2>1 · Principles check</h2>
+<p>Verify this plan respects every principle in <a href="../../principles.html">v1.8.0</a>.</p>
+
+<table>
+  <thead><tr><th>Principle</th><th>Compliance</th><th>Notes</th></tr></thead>
+  <tbody>
+    <tr><td>P-3 · IDs are contracts</td><td><spec-pill>OK</spec-pill></td><td>Migrate allocates fresh repo-unique <code>KB-NNNN</code> registry ids via <code>allocateRegistryIds</code>; the pack-local <code>slug</code> stays stable. A pack-local <code>id:</code> is never reused as a repo id (<a href="./spec.html#FR-003">FR-003</a>).</td></tr>
+    <tr><td>P-7 · Done means verified</td><td><spec-pill>OK</spec-pill></td><td>No interactive HTML; verification is Vitest against fixture packs + a real end-to-end migrate/adapt/validate run.</td></tr>
+    <tr><td>P-8 · Guarantees live in the kernel or CI</td><td><spec-pill>OK</spec-pill></td><td>adapt re-base, <code>migratePack</code>, and the deprecation rule are all in <code>@spectastic/corpus</code>; the two CLI registrations are thin dispatch.</td></tr>
+    <tr><td>P-9 · The enforcement floor holds</td><td><spec-pill>OK</spec-pill></td><td>The deprecation rule is warning severity (this phase) — the "deprecate first, reject later" discipline; the hard floor is the deferred <code>TBD-corpus-single-layer-reject</code>.</td></tr>
+    <tr><td>P-1 · P-2 · P-4 · P-5 · P-6 · P-10 · P-11 · P-12</td><td><spec-pill>OK</spec-pill></td><td>No document-rendering, copy, or capability surface changes; validate messages carry no internal ids (P-10).</td></tr>
+  </tbody>
+</table>
+</section>
+
+
+<section id="technical-context">
+<h2>2 · Technical context</h2>
+<dl>
+  <dt>Language(s)</dt>      <dd>TypeScript, ESM; Node ≥ 20.</dd>
+  <dt>Frameworks</dt>       <dd><code>commander</code>, <code>yaml</code> (both already in <code>@spectastic/corpus</code>). <strong>No new dependency.</strong></dd>
+  <dt>Architecture</dt>     <dd>Reuse the 065 two-layer <code>registerDocument</code> backbone (<a href="#D-001">D-001</a>) — <code>adapt</code>, <code>migrate</code>, and the validator's per-pack scan are new callers/rules, not new architecture.</dd>
+  <dt>Storage</dt>          <dd>Filesystem — <code>knowledge/&lt;pack&gt;/references/</code>, the root <code>knowledge/index.md</code> registry, and pack <code>SKILL.md</code>. No schema change.</dd>
+  <dt>Testing</dt>          <dd>Vitest, <strong>TDD red-first</strong>, against fixture single-layer / two-layer packs.</dd>
+  <dt>Coverage</dt>         <dd>Not in scope — no coverage enforce floor (no profile marker).</dd>
+  <dt>Perf targets</dt>     <dd>None — migrate/adapt are bounded filesystem transforms over a pack's references.</dd>
+  <dt>Constraints</dt>      <dd>Idempotent + non-destructive (<a href="./spec.html#NFR-001">NFR-001</a>); no false-positive deprecation warning on a two-layer pack (<a href="./spec.html#NFR-002">NFR-002</a>); Node-only.</dd>
+</dl>
+</section>
+
+
+<section id="grounding">
+<h2>3 · Grounding &amp; evidence</h2>
+<p>Every design-bearing fact this plan rests on, and how it was confirmed (<code>REQ-LIFECYCLE-006</code>).</p>
+
+<table class="evidence">
+  <thead><tr><th>Claim the design rests on</th><th>Source</th><th>Status</th><th>Finding / note</th></tr></thead>
+  <tbody>
+    <tr><td><code>adaptFolder</code>/<code>adaptLlmsTxt</code> currently write the legacy single-layer shape (<code>renderDocument(id, …)</code> + a pack-local <code>index.md</code>) — the re-base target.</td>
+        <td><code>knowledge/adapt.ts:191,220-225</code></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td>Re-base is the identical move 065 applied to <code>convert</code> — call <code>registerDocument</code> per file, deriving a slug from the stem.</td></tr>
+    <tr><td>The two-layer <code>registerDocument</code> backbone exists and takes <code>marketplace/plugin/slug/title/body/origin/status</code> (+ 065's <code>converter</code>/<code>contentHash</code>/<code>description</code> overrides).</td>
+        <td><code>knowledge/ingest.ts</code> <code>registerDocument</code> (065)</td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td>The single reuse target; <code>adapt</code> gains a <code>marketplace</code> input (resolved by the CLI), exactly as <code>convert</code> did.</td></tr>
+    <tr><td>A parsed document carries both <code>id</code> and <code>slug</code>; single-layer ⇔ <code>id</code> set and <code>slug</code> absent.</td>
+        <td><code>knowledge/types.ts:65,78</code></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td>The deprecation rule's signal: <code>doc.id &amp;&amp; !doc.slug</code>, OR a pack-local <code>index.md</code> (<code>pack.index.length &gt; 0</code>).</td></tr>
+    <tr><td>The repo's own <code>knowledge/</code> packs are already two-layer (no <code>id:</code> documents, no pack-index).</td>
+        <td><code>knowledge/finance-settlement</code>, <code>knowledge/spectastic-concepts</code> (0 id-docs, no index.md)</td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td>The new deprecation warning cannot redden the repo's own dogfood (NFR-002); the legacy fixture at <code>examples/knowledge/</code> is outside the root scan.</td></tr>
+    <tr><td>A new corpus verb registers on both surfaces — standalone binary + the main CLI's <code>corpus</code> group.</td>
+        <td><code>corpus/src/cli/curate.ts</code> · <code>cli/src/commands/corpus.ts</code> (065 <code>convert</code>)</td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td><code>migrate</code> registers the same way; <code>adapt</code>'s two commands thread the resolved marketplace.</td></tr>
+  </tbody>
+</table>
+</section>
+
+
+<section id="approach">
+<h2>4 · Approach</h2>
+<p>One backbone, three callers. <code>adaptFolder</code>/<code>adaptLlmsTxt</code> stop writing <code>renderDocument(id)</code>
++ a pack index and instead call <code>registerDocument</code> per file (slug from the filename stem, title/description
+from the body) — the same re-base 065 did for <code>convert</code>, so <code>AdaptInput</code> gains a
+<code>marketplace</code> the CLI resolves. A new <code>migratePack(pack)</code> loads the pack, and for every
+single-layer document (<code>id:</code>, no <code>slug:</code>) replays it through <code>registerDocument</code> —
+deriving the slug from the current filename stem (keeping an existing <code>NNN-</code> prefix, else allocating the
+next), renaming the file to <code>&lt;slug&gt;.md</code>, and removing the old <code>id:</code> file and the pack
+<code>index.md</code>. Already-<code>slug:</code> documents are skipped, so it's idempotent and re-runnable. A new
+warning-severity rule in the corpus validator flags a pack that still carries single-layer signals.</p>
+
+<spec-arch>
+<figure>
+<svg viewBox="0 0 700 220" role="img" aria-label="one backbone, three callers">
+  <style>
+    .box { fill:#fcfbf7; stroke:#c4c1bb; stroke-width:1.2; }
+    .core { fill:#f3f0e8; stroke:#7558b2; stroke-width:1.2; }
+    .label { font: 700 10px Lato, sans-serif; fill:#4a4a46; letter-spacing:0.05em; text-transform:uppercase; }
+    .body { font: 400 11px "Source Serif 4", Georgia, serif; fill:#353534; }
+    .arr { stroke:#73706d; stroke-width:1.2; fill:none; }
+  </style>
+  <rect class="box" x="20"  y="20"  width="150" height="46" rx="4"/>
+  <text class="label" x="34" y="40">adapt (re-base)</text>
+  <text class="body"  x="34" y="57">folder → two-layer</text>
+  <rect class="box" x="20"  y="86"  width="150" height="46" rx="4"/>
+  <text class="label" x="34" y="106">migratePack (new)</text>
+  <text class="body"  x="34" y="123">single-layer → two-layer</text>
+  <rect class="box" x="20"  y="152" width="150" height="46" rx="4"/>
+  <text class="label" x="34" y="172">validate rule (new)</text>
+  <text class="body"  x="34" y="189">single-layer → warning</text>
+
+  <rect class="core" x="280" y="86" width="180" height="46" rx="4"/>
+  <text class="label" x="298" y="106">registerDocument</text>
+  <text class="body"  x="298" y="123">two-layer backbone (065)</text>
+
+  <rect class="box" x="540" y="86" width="140" height="46" rx="4"/>
+  <text class="label" x="554" y="106">two-layer pack</text>
+  <text class="body"  x="554" y="123">slug + registry + SKILL</text>
+
+  <path class="arr" d="M170 43 Q240 43 280 100" marker-end="url(#a)"/>
+  <path class="arr" d="M170 109 L280 109" marker-end="url(#a)"/>
+  <path class="arr" d="M460 109 L540 109" marker-end="url(#a)"/>
+  <defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#73706d"/></marker></defs>
+</svg>
+<figcaption>adapt and migrate both file through the one two-layer backbone; the validate rule flags anything still single-layer.</figcaption>
+</figure>
+</spec-arch>
+</section>
+
+
+<section id="alternatives">
+<h2>5 · Alternatives considered</h2>
+
+<spec-matrix>
+<table>
+  <thead><tr><th>Option</th><th>Reuse</th><th>Consistency w/ convert</th><th>Idempotency</th><th>Low churn</th><th class="score">Total</th></tr></thead>
+  <tbody>
+    <tr data-winner><td>Reuse <code>registerDocument</code> for adapt + migrate</td><td>3</td><td>3</td><td>3</td><td>2</td><td class="score">11</td></tr>
+    <tr><td>A separate migration/adapt filing path (fork the two-layer logic)</td><td>1</td><td>1</td><td>2</td><td>2</td><td class="score">6</td></tr>
+    <tr><td>Leave adapt single-layer; add migrate only</td><td>2</td><td>1</td><td>2</td><td>3</td><td class="score">8</td></tr>
+  </tbody>
+</table>
+</spec-matrix>
+<p>The third contradicts <a href="./spec.html#FR-001">FR-001</a> (adapt must produce two-layer) — scored to record why. Reuse wins decisively.</p>
+</section>
+
+
+<section id="decisions">
+<h2>6 · Decisions</h2>
+
+<spec-decision id="D-001" grounding="verified">
+  <h4>D-001 · Re-base adapt + migrate on the one <code>registerDocument</code> backbone</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd><code>adaptFolder</code> writes the legacy single-layer shape (<code>knowledge/adapt.ts:220-225</code>); the two-layer backbone already exists (<code>registerDocument</code>, 065) and <code>convert</code> proved the re-base.</dd>
+    <dt>Decision</dt>     <dd>Both <code>adapt</code>'s new output and <code>migrate</code>'s per-document filing call <code>registerDocument</code>. <code>AdaptInput</code> gains a <code>marketplace</code>, resolved by the CLI from <code>corpus.marketplace</code> (pinned, per 065's identity-fragmentation mitigation).</dd>
+    <dt>Consequences</dt> <dd>+ One tested filing path, three callers. + Consistent output across import/convert/adapt/migrate. − <code>adapt</code>'s signature changes (marketplace input); the two adapt CLI sites thread it.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-002" grounding="verified">
+  <h4>D-002 · migrate is an in-place, idempotent replay; rename to <code>&lt;NNN-slug&gt;.md</code></h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>A single-layer document carries <code>id:</code> (no <code>slug:</code>) at an arbitrary filename; the two-layer convention is <code>references/&lt;NNN-slug&gt;.md</code> (<code>types.ts:65,78</code>).</dd>
+    <dt>Decision</dt>     <dd><code>migratePack</code> replays each single-layer document through <code>registerDocument</code> — slug derived from the filename stem (keep an existing <code>NNN-</code> prefix, else allocate the next), the file renamed to <code>&lt;slug&gt;.md</code>, the old <code>id:</code> file and the pack <code>index.md</code> removed. Documents already carrying <code>slug:</code> are skipped → idempotent, re-runnable, mixed-pack-safe.</dd>
+    <dt>Consequences</dt> <dd>+ Idempotent + non-destructive (NFR-001). + A partially-migrated pack finishes cleanly on a re-run. − An in-place rename/delete is more delicate than a fresh write; the skip-if-<code>slug:</code> guard is what makes it safe.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-003" grounding="verified">
+  <h4>D-003 · Deprecation rule: warning severity, fires on <code>id:</code>-doc OR pack-index</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>The corpus validator scans loaded <code>knowledge/</code> packs; the repo's own packs are already two-layer (0 id-docs, no index), so a new rule stays green (NFR-002). Warning severity matches the orphan/fragmentation findings.</dd>
+    <dt>Decision</dt>     <dd>A new <code>corpus-single-layer-deprecated</code> finding (warning) fires when a pack has any document with <code>id</code> and no <code>slug</code>, OR a pack-local <code>index.md</code> (<code>pack.index.length &gt; 0</code>), naming <code>corpus migrate</code> as the remedy.</dd>
+    <dt>Consequences</dt> <dd>+ Opens the deprecation window without a hard break (P-9's "deprecate first"). + Catches both halves of the legacy shape. − A downstream single-layer corpus now sees a warning on every validate until it migrates — the intended nudge.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-004" grounding="n-a">
+  <h4>D-004 · TDD red-first</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>The whole surface is deterministic filesystem I/O over fixture packs — the house test discipline (047/048/065).</dd>
+    <dt>Decision</dt>     <dd>Write each story's tests first (red), then implement. Fixtures: a single-layer pack (id: docs + index.md) and a two-layer pack.</dd>
+    <dt>Consequences</dt> <dd>+ The two-layer assertions (slug:, registry row, SKILL.md, no index) are pinned before the code. − None material.</dd>
+  </dl>
+</spec-decision>
+</section>
+
+
+<section id="project-structure">
+<h2>7 · Project structure</h2>
+<p>Only new or changed paths; all inside <code>@spectastic/corpus</code> plus the two thin CLI sites.</p>
+
+<pre><code>packages/corpus/src/
+  knowledge/
+    adapt.ts       EDIT  adaptFolder/adaptLlmsTxt re-base on registerDocument; AdaptInput gains marketplace
+    migrate.ts     NEW   migratePack: idempotent in-place single-layer → two-layer replay
+    validate.ts    EDIT  + single-layer-deprecated finding (warning)
+    index.ts       EDIT  export migratePack
+  cli/
+    curate.ts      EDIT  register `migrate`; adapt threads the resolved marketplace
+    index.ts       EDIT  registerMigrate(program) (or fold into registerCurate)
+packages/cli/src/commands/
+  corpus.ts        EDIT  mirror `migrate`; adapt threads the resolved marketplace
+packages/corpus/test/
+  knowledge.adapt.test.ts     EDIT  assert two-layer output (was single-layer)
+  knowledge.migrate.test.ts   NEW   single-layer → two-layer, idempotency, mixed-pack, re-key
+  knowledge.validate.test.ts  EDIT  the deprecation warning (fires on id:/index, silent on two-layer)
+</code></pre>
+</section>
+
+
+<section id="risks">
+<h2>8 · Risks &amp; mitigations</h2>
+
+<table>
+  <thead><tr><th>Risk</th><th>Likelihood</th><th>Impact</th><th>Mitigation</th></tr></thead>
+  <tbody>
+    <tr><td>migrate's in-place rename/delete corrupts a pack if interrupted mid-run.</td><td>L</td><td>M</td><td>Idempotent + re-runnable: skip already-<code>slug:</code> docs, so a re-run finishes a partial migration. Register-then-remove ordering (write the new file + registry row before deleting the old).</td></tr>
+    <tr><td>The <code>adapt</code> re-base breaks existing adapt tests / the 057 portability path.</td><td>M</td><td>M</td><td>The 057 raw input is at <code>examples/knowledge/</code> (ingester input, not adapt output); adapt's own tests are rewritten TDD-first to expect two-layer. Same move 065 made for convert without downstream breakage.</td></tr>
+    <tr><td>Re-keying breaks an id-based pack-scan citation to a migrated doc.</td><td>L</td><td>L</td><td>Accepted (spec §6 assumption): single-layer docs resolve only via the deprecated pack-scan; the doc is re-cited by its registry coordinate. No registry citation existed to break.</td></tr>
+    <tr><td>The deprecation warning false-positives.</td><td>L</td><td>L</td><td>NFR-002 + D-003: scoped to loaded <code>knowledge/</code> packs, fires only on <code>id</code>-without-<code>slug</code> or a real pack-index; the repo's own packs are already two-layer (verified).</td></tr>
+  </tbody>
+</table>
+</section>
+
+
+<section id="complexity">
+<h2>9 · Complexity tracking</h2>
+<p>The only non-trivial mechanic is migrate's in-place rewrite. It is justified by <a href="./spec.html#FR-002">FR-002</a>
+(the whole point is converting an <em>existing</em> pack) and kept safe by the idempotent skip-if-<code>slug:</code>
+guard (<a href="#D-002">D-002</a>) — a re-run is always safe, so a partial run is recoverable.</p>
+
+<spec-assumption>
+<p>Deriving a document's slug from its filename stem is faithful for adapt-produced packs (already <code>NNN-name.md</code>)
+and reasonable for hand-authored ones; a genuinely un-sluggable filename falls back to a slugified default, the same
+rule <code>convert</code> uses.</p>
+</spec-assumption>
+</section>
+
+
+<section id="questions">
+<h2>10 · Open questions</h2>
+<spec-questions>
+<p>None outstanding — architecture (reuse the 065 backbone), test style (TDD), the migrate filename policy
+(rename to <code>&lt;NNN-slug&gt;.md</code>), and the deprecation-warning signal (<code>id:</code>-doc or pack-index)
+were all anchored in the interview. Every must-tier decision (D-001–D-003) is <code>grounding="verified"</code>; no
+spike outstanding.</p>
+</spec-questions>
+</section>
+
+
+<section id="changelog">
+<h2>11 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-07-28">28 Jul 2026</time><span>Initial plan. One <code>registerDocument</code> backbone, three callers (adapt re-base, <code>migratePack</code>, deprecation rule); migrate is an idempotent in-place replay renaming to <code>&lt;NNN-slug&gt;.md</code>. Five grounding facts, all verified; grounding gate clear.</span></li>
+  <li><time datetime="2026-07-29">29 Jul 2026</time><span>Status flipped Draft → Accepted on 29 Jul 2026 — zero remaining unchecked tasks; tests verified passing per author confirmation. Sibling bundle (REQ-LIFECYCLE-005).</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  Plan for 066-corpus-single-layer-retire · authored 28 Jul 2026
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>

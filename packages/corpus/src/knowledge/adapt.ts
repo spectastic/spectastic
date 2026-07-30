@@ -1,27 +1,27 @@
 /**
- * The corpus adapter (056-corpus-adapter, plan D-001–D-005).
+ * The corpus adapter (056-corpus-adapter, plan D-001–D-005; re-based onto
+ * the two-layer backbone by 066-corpus-single-layer-retire D-001).
  *
  * A deterministic Node generator that shapes an existing corpus shape — a
- * folder of markdown, or an `llms.txt` — into 051's frontmatter + index
- * convention. Reuses 051's `parseCorpusDocument`/`KB_ID_RE`/
- * `REQUIRED_PROVENANCE_FIELDS` wholesale rather than inventing a parallel
- * contract.
+ * folder of markdown, or an `llms.txt` — into the two-layer convention
+ * (051/062): a `slug:` document, a repo-unique `KB-NNNN` root-registry row,
+ * and a `SKILL.md` — the same terminal state `convert` (065) and `import`
+ * reach, via the same `registerDocument` backbone (066 FR-001, SC-002).
  *
  * Two foundational rules everything else builds on:
  *  - never fabricate (FR-002/D-004): a provenance field is populated only
  *    from a value genuinely read; everything else is the literal string
  *    `TODO`. A content hash is always computed from the source bytes.
  *  - idempotent + non-destructive (NFR-001/D-005): re-running never
- *    duplicates an id, never re-derives an already-adapted document, and
- *    never rewrites a hand-corrected (non-TODO) field back to `TODO`.
+ *    duplicates a registry row, never re-derives an already-adapted
+ *    document, and never rewrites a hand-corrected (non-TODO) field.
  */
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
-import { stringify as stringifyYaml } from 'yaml';
-import { parseCorpusDocument } from './parse.js';
-import { parseIndex, renderIndexTable } from './index-format.js';
-import { KB_ID_RE, type IndexEntry, type Provenance } from './types.js';
+import { registerDocument } from './ingest.js';
+import { parseRegistry } from './index-format.js';
+import { KB_ID_RE, type Provenance, type RegistryEntry } from './types.js';
 
 export const TODO = 'TODO';
 
@@ -51,8 +51,13 @@ export function deriveProvenance(raw: string, known: Partial<Provenance> = {}): 
   };
 }
 
-/** The highest numeric suffix among a set of existing KB-NNN ids (0 if none
- * match — a fresh pack allocates starting at KB-001). */
+/** The highest numeric suffix among a set of existing pack-local KB-NNN ids
+ * (0 if none match — a fresh single-layer pack allocates starting at
+ * KB-001). Retained for the single-layer back-compat window
+ * (`TBD-corpus-single-layer-reject`) — no longer used by `adaptCorpus`
+ * itself, which now allocates repo-unique ids via the two-layer registry
+ * (066), but still a legitimate general-purpose utility for a caller still
+ * on the pre-062 shape. */
 function maxExistingIdNum(existingIds: readonly string[]): number {
   let max = 0;
   for (const id of existingIds) {
@@ -64,38 +69,41 @@ function maxExistingIdNum(existingIds: readonly string[]): number {
 }
 
 /**
- * Allocate `count` sequential, never-colliding KB-NNN ids, continuing from
- * the pack's current highest id (D-003). Zero-padded to at least 3 digits,
- * matching `KB_ID_RE`. Deterministic given a fixed `existingIds` set and
- * ordering — callers allocate to files already sorted by name.
+ * Allocate `count` sequential, never-colliding pack-local KB-NNN ids,
+ * continuing from the pack's current highest id (D-003). Zero-padded to at
+ * least 3 digits, matching `KB_ID_RE`. Deterministic given a fixed
+ * `existingIds` set and ordering.
  */
 export function allocateIds(existingIds: readonly string[], count: number): string[] {
   const start = maxExistingIdNum(existingIds) + 1;
   return Array.from({ length: count }, (_, i) => `KB-${String(start + i).padStart(3, '0')}`);
 }
 
-const REFERENCES_DIR = 'references';
-const INDEX_FILE = 'index.md';
 const TITLE_FALLBACK_LEN = 137;
 
-/** Render one document's full file content: `---`-fenced YAML frontmatter,
- * then the untouched body. */
-function renderDocument(id: string, provenance: Required<Provenance>, body: string): string {
-  const yamlBlock = stringifyYaml({ id, ...provenance }).trimEnd();
-  return `---\n${yamlBlock}\n---\n\n${body}\n`;
+/** A URL/filename-safe slug body — mirrors `convert.ts`'s own `slugify`
+ * (065); duplicated rather than shared so this spec's diff stays scoped to
+ * adapt's own re-base (066-corpus-single-layer-retire). */
+function slugify(s: string): string {
+  return s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'document';
 }
 
-/** Create a minimal `SKILL.md` for a pack when it lacks one — a pack MUST function as
- * a plain Agent Skill (057-portable-domain-skill; enforced by the corpus-well-formed
- * SKILL-presence gate, 065 triage T-003). Minimal by design: `name` + `description`
- * frontmatter and a heading. adapt's documents are single-layer (they carry `id:`, no
- * slug), so no slug-map table is emitted here — the deeper two-layer migration of adapt
- * is a separate concern. Never overwrites an existing SKILL.md. */
-function ensureSkillFile(packDir: string, packName: string): void {
-  const skillPath = join(packDir, 'SKILL.md');
-  if (existsSync(skillPath)) return;
-  const frontmatter = stringifyYaml({ name: packName, description: `Domain knowledge for ${packName}.` }).trimEnd();
-  writeFileSync(skillPath, `---\n${frontmatter}\n---\n\n# ${packName}\n`, 'utf8');
+/** Derive the pack-internal slug for a freshly-adapted file: reuse an
+ * existing registry row's slug for the same pack + name (idempotent
+ * re-adapt — the file is then recognised as already-registered and left
+ * untouched), else allocate the next free `NNN` for the pack. Mirrors
+ * `convert.ts`'s own `deriveConvertSlug`. */
+function deriveAdaptSlug(registry: readonly RegistryEntry[], plugin: string, stem: string): string {
+  const nameSlug = slugify(stem);
+  const existing = registry.find((e) => e.plugin === plugin && e.slug.replace(/^\d+-/, '') === nameSlug);
+  if (existing) return existing.slug;
+  let max = 0;
+  for (const e of registry) {
+    if (e.plugin !== plugin) continue;
+    const m = /^(\d+)-/.exec(e.slug);
+    if (m?.[1]) max = Math.max(max, Number(m[1]));
+  }
+  return `${String(max + 1).padStart(3, '0')}-${nameSlug}`;
 }
 
 /** A best-effort title + description from a raw markdown body — the first
@@ -123,29 +131,6 @@ export function deriveTitleAndDescription(body: string, fallbackTitle: string): 
   return { title, description };
 }
 
-/** Merge a fresh index row set into whatever the pack's index.md already had
- * (D-005): an existing row's non-empty cells win over a freshly-derived one
- * for the same id, so a hand-edited title/description/edition survives. */
-function mergeIndexRows(existing: readonly IndexEntry[], fresh: readonly IndexEntry[]): IndexEntry[] {
-  const byId = new Map<string, IndexEntry>();
-  for (const row of fresh) byId.set(row.id, row);
-  for (const row of existing) {
-    const current = byId.get(row.id);
-    if (!current) {
-      byId.set(row.id, row);
-      continue;
-    }
-    byId.set(row.id, {
-      id: row.id,
-      title: row.title || current.title,
-      description: row.description || current.description,
-      edition: row.edition || current.edition,
-      path: row.path || current.path,
-    });
-  }
-  return [...byId.values()];
-}
-
 export interface AdaptInput {
   /** Path to a directory of markdown files, or to an `llms.txt` file. */
   target: string;
@@ -153,85 +138,82 @@ export interface AdaptInput {
   knowledgeDir: string;
   /** The pack name — the subdirectory under `knowledgeDir`. */
   pack: string;
+  /** This corpus's own publish identity — the `marketplace` column every
+   * newly-registered row is filed under (066 FR-001, matches `convert`). */
+  marketplace: string;
+  /** Kept in sync with `marketplace.json`. Optional: a caller with no corpus
+   * identity configured gets no sync side effect. */
+  corpusMarketplaceName?: string;
 }
 
 export interface AdaptResult {
   pack: string;
-  /** KB-NNN ids newly written this run. */
+  /** `KB-NNNN` ids newly registered this run. */
   written: string[];
-  /** KB-NNN ids already adapted, left untouched this run (D-005). */
+  /** `KB-NNNN` ids already registered for this pack + filename, left
+   * untouched this run (D-005). */
   skipped: string[];
-  /** Total rows in the pack's index.md after this run. */
-  indexRows: number;
+  /** Total root-registry rows for this pack after this run — the two-layer
+   * replacement for the pre-066 pack-local index row count. */
+  registryRows: number;
 }
 
-/** Every existing, already-adapted (valid id) document under a pack's
- * `references/` dir, keyed by filename — the idempotency source of truth
- * (D-005): the SOURCE is raw and never carries an id, so "already adapted"
- * is judged by what's already at the destination, not by the source. */
-function existingAdaptedByFilename(referencesDir: string): Map<string, { id: string }> {
-  const map = new Map<string, { id: string }>();
-  if (!existsSync(referencesDir)) return map;
-  for (const name of readdirSync(referencesDir).sort()) {
-    if (!name.endsWith('.md')) continue;
-    const filePath = join(referencesDir, name);
-    if (!statSync(filePath).isFile()) continue;
-    const parsed = parseCorpusDocument(readFileSync(filePath, 'utf8'), filePath);
-    if (parsed.id !== null) map.set(name, { id: parsed.id });
-  }
-  return map;
+function readRegistry(knowledgeDir: string): RegistryEntry[] {
+  const registryPath = join(knowledgeDir, 'index.md');
+  return existsSync(registryPath) ? parseRegistry(readFileSync(registryPath, 'utf8')) : [];
 }
 
 /**
- * Adapt a folder of raw markdown files into 051's convention (US1, D-002's
- * folder-mode leg). Each `.md` file becomes one document; a file already
- * adapted at the destination (valid `KB-NNN` in its frontmatter) is left
- * completely untouched (D-005) — not even its body is re-copied.
+ * Adapt a folder of raw markdown files into the two-layer convention (US1,
+ * D-002's folder-mode leg). Each `.md` file becomes one document, filed
+ * through `registerDocument` (066 D-001); a file already registered for this
+ * pack + name is left completely untouched (D-005).
  */
 function adaptFolder(input: AdaptInput): AdaptResult {
-  const packDir = join(input.knowledgeDir, input.pack);
-  const referencesDir = join(packDir, REFERENCES_DIR);
-  mkdirSync(referencesDir, { recursive: true });
-
-  const indexPath = join(packDir, INDEX_FILE);
-  const existingIndex = existsSync(indexPath) ? parseIndex(readFileSync(indexPath, 'utf8')) : [];
-  const alreadyAdapted = existingAdaptedByFilename(referencesDir);
+  let registry = readRegistry(input.knowledgeDir);
 
   const sourceFiles = readdirSync(input.target)
     .filter((f) => f.endsWith('.md'))
     .sort();
 
+  const written: string[] = [];
   const skipped: string[] = [];
-  const freshRows: IndexEntry[] = [];
-  const rawFiles: string[] = [];
   for (const name of sourceFiles) {
-    const already = alreadyAdapted.get(name);
-    if (already) skipped.push(already.id);
-    else rawFiles.push(name);
+    const stem = name.replace(/\.md$/, '');
+    const slug = deriveAdaptSlug(registry, input.pack, stem);
+    const already = registry.find((e) => e.plugin === input.pack && e.slug === slug);
+    if (already) {
+      skipped.push(already.id);
+      continue;
+    }
+
+    const raw = readFileSync(join(input.target, name), 'utf8');
+    const { title } = deriveTitleAndDescription(raw, stem);
+
+    const { id } = registerDocument({
+      knowledgeDir: input.knowledgeDir,
+      marketplace: input.marketplace,
+      plugin: input.pack,
+      slug,
+      title,
+      body: raw,
+      origin: TODO,
+      status: TODO,
+      ...(input.corpusMarketplaceName !== undefined ? { corpusMarketplaceName: input.corpusMarketplaceName } : {}),
+    });
+    written.push(id);
+    registry = [
+      ...registry,
+      { id, marketplace: input.marketplace, plugin: input.pack, slug, title, edition: TODO, path: `${input.pack}/references/${slug}.md`, status: '' },
+    ];
   }
 
-  const existingIds = [
-    ...existingIndex.map((r) => r.id),
-    ...[...alreadyAdapted.values()].map((v) => v.id),
-  ];
-  const newIds = allocateIds(existingIds, rawFiles.length);
-
-  const written: string[] = [];
-  rawFiles.forEach((name, i) => {
-    const id = newIds[i]!;
-    const raw = readFileSync(join(input.target, name), 'utf8');
-    const provenance = deriveProvenance(raw);
-    const { title, description } = deriveTitleAndDescription(raw, name.replace(/\.md$/, ''));
-    writeFileSync(join(referencesDir, name), renderDocument(id, provenance, raw), 'utf8');
-    freshRows.push({ id, title, description, edition: provenance.edition, path: `${REFERENCES_DIR}/${name}` });
-    written.push(id);
-  });
-
-  const mergedRows = mergeIndexRows(existingIndex, freshRows);
-  writeFileSync(indexPath, renderIndexTable(mergedRows), 'utf8');
-  ensureSkillFile(packDir, input.pack);
-
-  return { pack: input.pack, written, skipped, indexRows: mergedRows.length };
+  return {
+    pack: input.pack,
+    written,
+    skipped,
+    registryRows: registry.filter((e) => e.plugin === input.pack).length,
+  };
 }
 
 interface LlmsTxtEntry {
@@ -262,67 +244,64 @@ function parseLlmsTxt(raw: string): LlmsTxtEntry[] {
 }
 
 /**
- * Adapt via an `llms.txt`'s curated entries (US2, D-002's index-seed leg).
- * Each entry's title/description seed its index row directly — never
- * re-derived from the body — and the linked file gains frontmatter. Links
- * resolve relative to the `llms.txt`'s own directory.
+ * Adapt via an `llms.txt`'s curated entries into the two-layer convention
+ * (US2, D-002's index-seed leg). Each entry's title/description seed the
+ * registered document directly — never re-derived from the body — and the
+ * linked file is filed through `registerDocument`. Links resolve relative to
+ * the `llms.txt`'s own directory.
  */
 function adaptLlmsTxt(input: AdaptInput): AdaptResult {
   const llmsDir = dirname(input.target);
   const entries = parseLlmsTxt(readFileSync(input.target, 'utf8'));
 
-  const packDir = join(input.knowledgeDir, input.pack);
-  const referencesDir = join(packDir, REFERENCES_DIR);
-  mkdirSync(referencesDir, { recursive: true });
-
-  const indexPath = join(packDir, INDEX_FILE);
-  const existingIndex = existsSync(indexPath) ? parseIndex(readFileSync(indexPath, 'utf8')) : [];
-  const alreadyAdapted = existingAdaptedByFilename(referencesDir);
-
-  const skipped: string[] = [];
-  const toAdapt: LlmsTxtEntry[] = [];
-  for (const entry of entries) {
-    const already = alreadyAdapted.get(basename(entry.relPath));
-    if (already) skipped.push(already.id);
-    else toAdapt.push(entry);
-  }
-
-  const existingIds = [
-    ...existingIndex.map((r) => r.id),
-    ...[...alreadyAdapted.values()].map((v) => v.id),
-  ];
-  const newIds = allocateIds(existingIds, toAdapt.length);
+  let registry = readRegistry(input.knowledgeDir);
 
   const written: string[] = [];
-  const freshRows: IndexEntry[] = [];
-  toAdapt.forEach((entry, i) => {
-    const id = newIds[i]!;
+  const skipped: string[] = [];
+  for (const entry of entries) {
     const filename = basename(entry.relPath);
+    const stem = filename.replace(/\.md$/, '');
+    const slug = deriveAdaptSlug(registry, input.pack, stem);
+    const already = registry.find((e) => e.plugin === input.pack && e.slug === slug);
+    if (already) {
+      skipped.push(already.id);
+      continue;
+    }
+
     const raw = readFileSync(join(llmsDir, entry.relPath), 'utf8');
-    const provenance = deriveProvenance(raw);
-    writeFileSync(join(referencesDir, filename), renderDocument(id, provenance, raw), 'utf8');
-    freshRows.push({
-      id,
+
+    const { id } = registerDocument({
+      knowledgeDir: input.knowledgeDir,
+      marketplace: input.marketplace,
+      plugin: input.pack,
+      slug,
       title: entry.title,
-      description: entry.description,
-      edition: provenance.edition,
-      path: `${REFERENCES_DIR}/${filename}`,
+      body: raw,
+      origin: TODO,
+      status: TODO,
+      ...(entry.description ? { description: entry.description } : {}),
+      ...(input.corpusMarketplaceName !== undefined ? { corpusMarketplaceName: input.corpusMarketplaceName } : {}),
     });
     written.push(id);
-  });
+    registry = [
+      ...registry,
+      { id, marketplace: input.marketplace, plugin: input.pack, slug, title: entry.title, edition: TODO, path: `${input.pack}/references/${filename}`, status: '' },
+    ];
+  }
 
-  const mergedRows = mergeIndexRows(existingIndex, freshRows);
-  writeFileSync(indexPath, renderIndexTable(mergedRows), 'utf8');
-  ensureSkillFile(packDir, input.pack);
-
-  return { pack: input.pack, written, skipped, indexRows: mergedRows.length };
+  return {
+    pack: input.pack,
+    written,
+    skipped,
+    registryRows: registry.filter((e) => e.plugin === input.pack).length,
+  };
 }
 
 /**
- * Adapt an existing corpus shape into 051's convention (FR-001). Routes on
- * what `target` points at: a directory adapts every `.md` under it
- * (folder mode, US1); an `llms.txt` file seeds the index from its entries
- * (index-seed mode, US2).
+ * Adapt an existing corpus shape into the two-layer convention (FR-001).
+ * Routes on what `target` points at: a directory adapts every `.md` under it
+ * (folder mode, US1); an `llms.txt` file seeds entries directly (index-seed
+ * mode, US2).
  */
 export function adaptCorpus(input: AdaptInput): AdaptResult {
   if (statSync(input.target).isDirectory()) return adaptFolder(input);

@@ -51,6 +51,8 @@ export {
 export type { SkillSlugMapEntry } from './index-format.js';
 export { adaptCorpus, allocateIds, contentHashOf, deriveProvenance } from './adapt.js';
 export type { AdaptInput, AdaptResult } from './adapt.js';
+export { migratePack, singleLayerDocuments, isSingleLayerPack } from './migrate.js';
+export type { MigrateInput, MigrateResult } from './migrate.js';
 export {
   CONVERTERS,
   resolveConverterSpec,

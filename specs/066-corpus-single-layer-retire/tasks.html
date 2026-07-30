@@ -1,0 +1,258 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
+<title>Retire single-layer corpus support · Tasks</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Tasks · 066-corpus-single-layer-retire</p>
+  <h1>Retire single-layer corpus support</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    Ordered, parallelizable work. Tests precede implementation. Drive through with
+    <code>/spectastic.implement</code> — one task per invocation.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>     <span><spec-status value="accepted">Accepted</spec-status></span>
+    <b>Spec</b>       <span><a href="./spec.html">066-corpus-single-layer-retire</a></span>
+    <b>Plan</b>       <span><a href="./plan.html">plan</a></span>
+    <b>Branch</b>     <span><code>066-corpus-single-layer-retire</code></span>
+    <b>Created</b>    <span><time datetime="2026-07-28">28 Jul 2026</time></span>
+    <b>Read time</b>  <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-tldr>
+    <p>22 tasks across five phases. Setup → Foundational → User stories (US1 · US2 · US3) → Polish.
+    Tasks marked <span class="par">[P]</span> can run in parallel — different files, no
+    dependency. Tests for a story <strong>MUST</strong> be written and failing before its
+    implementation tasks start. One <code>registerDocument</code> backbone (065), three callers:
+    <code>adapt</code> re-based, <code>migratePack</code> added, a deprecation warning added.</p>
+  </spec-tldr>
+</header>
+
+
+<section id="strategy">
+<h2>1 · Execution strategy</h2>
+
+<p>Story IDs follow the spec's numbering (T-1xx = US1, T-2xx = US2, T-3xx = US3) regardless of build
+order. Priorities are US1 = P1, US2 = P1, US3 = P2 — the recommended order below runs both P1 stories
+before the P2 deprecation warning.</p>
+
+<spec-tabs>
+  <spec-tab label="Incremental (recommended)">
+    <p>Setup → Foundational → <strong>US1</strong> (adapt → two-layer, P1) → <strong>US2</strong>
+    (<code>migrate</code> an existing pack, P1) → <strong>US3</strong> (deprecation warning, P2) →
+    Polish. US1 and US2 both re-use the 065 backbone but touch distinct files (<code>adapt.ts</code>
+    vs. the new <code>migrate.ts</code>), so once Foundational lands they can also run side by side.</p>
+  </spec-tab>
+  <spec-tab label="MVP-first">
+    <p>Setup → Foundational → US1 only → ship. After US1, no verb produces single-layer any more —
+    a viable MVP on its own (spec §2). Add US2 (migrate existing packs) and US3 (the warning) as
+    fast-follows.</p>
+  </spec-tab>
+  <spec-tab label="Parallel teams">
+    <p>After Foundational, one contributor on US1 (<code>adapt.ts</code> + its two CLI sites) and one
+    on US2 (<code>migrate.ts</code> + its two CLI sites) — the files don't overlap. US3 is a single
+    small edit to <code>validate.ts</code>, best folded in by whoever finishes first.</p>
+  </spec-tab>
+</spec-tabs>
+</section>
+
+
+<section id="phase-setup" class="phase">
+<h2>2 · Phase 1 — Setup</h2>
+
+<!-- Task label form (REQ-LIFECYCLE-003): the leading <strong> wraps a SHORT
+     imperative title only; any supplementary detail follows in plain-weight
+     prose after an em-dash. Never bold the whole detailed line. -->
+<spec-task id="T-001" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Add single-layer / two-layer fixture-pack builders</strong> — a shared test helper that writes a pre-062 single-layer pack (<code>id:</code> documents + a pack-local <code>index.md</code>, no registry) and a two-layer pack, reused by the migrate and validate tests. <span class="path">packages/corpus/test/fixtures/single-layer-pack.ts</span></div>
+</spec-task>
+<spec-task id="T-002" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Scaffold the migrate module</strong> — the <code>migratePack</code>/<code>MigrateInput</code>/<code>MigrateResult</code> signatures, no logic yet. <span class="path">packages/corpus/src/knowledge/migrate.ts</span></div>
+</spec-task>
+</section>
+
+
+<section id="phase-foundation" class="phase">
+<h2>3 · Phase 2 — Foundational</h2>
+<p>The one signal both US2 (which documents to migrate) and US3 (which packs to flag) depend on —
+extracted once so the migrate replay and the deprecation rule agree on what "single-layer" means.</p>
+
+<spec-task id="T-010">
+  <input type="checkbox" checked>
+  <div><strong>Add the shared single-layer predicate</strong> — <code>singleLayerDocuments(pack)</code> (documents with <code>id</code> set and <code>slug</code> absent) and <code>isSingleLayerPack(pack)</code> (any such document <em>or</em> a pack-local <code>index.md</code>, i.e. <code>pack.index.length &gt; 0</code>), exported for both callers. <span class="path">packages/corpus/src/knowledge/migrate.ts</span></div>
+</spec-task>
+
+<spec-note>
+<p>Grounded in plan <a href="./plan.html#D-003">D-003</a> — single-layer ⇔ <code>doc.id &amp;&amp; !doc.slug</code>
+OR a pack-local index. One predicate, so <code>migratePack</code> and the validate rule can never
+disagree on the boundary.</p>
+</spec-note>
+</section>
+
+
+<section id="phase-us1" class="phase">
+<h2>4 · Phase 3a — US1 · adapt produces two-layer <spec-pill>P1</spec-pill></h2>
+
+<h3>Tests (write &amp; fail first)</h3>
+<spec-task id="T-100" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Rewrite adapt's tests to expect two-layer output</strong> — each adapted document carries <code>slug:</code> (never a document <code>id:</code>), a repo-unique <code>KB-NNNN</code> root-registry row, and a <code>SKILL.md</code>; assert <strong>no</strong> pack-local <code>index.md</code> is written. Covers both folder and <code>llms.txt</code> modes. <span class="path">packages/corpus/test/knowledge.adapt.test.ts</span></div>
+</spec-task>
+<spec-task id="T-101" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Write failing test: adapt is idempotent and non-destructive</strong> — a second run adds no duplicate registry row or document, and a hand-edited title/description/edition survives the re-run. <span class="path">packages/corpus/test/knowledge.adapt.test.ts</span></div>
+</spec-task>
+
+<h3>Implementation</h3>
+<spec-task id="T-110">
+  <input type="checkbox" checked>
+  <div><strong>Re-base adaptFolder / adaptLlmsTxt on registerDocument</strong> — each source file files through the two-layer backbone (slug from the filename stem, title/description from the body); <code>AdaptInput</code> gains a <code>marketplace</code> input. <span class="path">packages/corpus/src/knowledge/adapt.ts</span></div>
+</spec-task>
+<spec-task id="T-111">
+  <input type="checkbox" checked>
+  <div><strong>Retire adapt's single-layer filing path</strong> — remove the <code>renderDocument(id, …)</code> + <code>mergeIndexRows</code> + pack-<code>index.md</code> write now that <code>registerDocument</code> owns filing; keep only helpers still used (title/description derivation; id allocation if migrate needs it). <span class="path">packages/corpus/src/knowledge/adapt.ts</span></div>
+</spec-task>
+<spec-task id="T-112" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Thread the resolved marketplace into adapt on both CLI surfaces</strong> — resolve <code>corpus.marketplace</code> and pass it to <code>adaptCorpus</code>; update the success copy that referenced the legacy pack index. <span class="path">packages/corpus/src/cli/curate.ts</span> <span class="path">packages/cli/src/commands/corpus.ts</span></div>
+</spec-task>
+
+<spec-note>
+<p>Closes <a href="./spec.html#FR-001">FR-001</a>, <a href="./spec.html#SC-002">SC-002</a>, and
+adapt's leg of <a href="./spec.html#NFR-001">NFR-001</a> / <a href="./spec.html#SC-003">SC-003</a>.</p>
+</spec-note>
+</section>
+
+
+<section id="phase-us2" class="phase">
+<h2>5 · Phase 3b — US2 · migrate an existing single-layer pack <spec-pill>P1</spec-pill></h2>
+
+<h3>Tests (write &amp; fail first)</h3>
+<spec-task id="T-200" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Write failing test: migrate converts a single-layer pack in place</strong> — after <code>migratePack</code>, every document carries <code>slug:</code> (no <code>id:</code>), the root registry holds one <code>KB-NNNN</code> row per document, a <code>SKILL.md</code> exists, and no pack-local <code>index.md</code> remains. <span class="path">packages/corpus/test/knowledge.migrate.test.ts</span></div>
+</spec-task>
+<spec-task id="T-201" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Write failing test: migrate allocates a fresh repo-unique id</strong> — a pack-local <code>id: KB-001</code> is <strong>never</strong> reused as the repo id; the document's registry <code>KB-NNNN</code> is freshly allocated and repo-unique, while its <code>slug</code> stays stable. <span class="path">packages/corpus/test/knowledge.migrate.test.ts</span></div>
+</spec-task>
+<spec-task id="T-202">
+  <input type="checkbox" checked>
+  <div><strong>Write failing test: migrate is idempotent and mixed-pack-safe</strong> — a second run is a no-op, a run on an already-two-layer pack changes nothing, and a mixed pack (some <code>id:</code>, some <code>slug:</code>) converts only the single-layer documents. <span class="path">packages/corpus/test/knowledge.migrate.test.ts</span></div>
+</spec-task>
+
+<h3>Implementation</h3>
+<spec-task id="T-210">
+  <input type="checkbox" checked>
+  <div><strong>Implement migratePack's per-document replay</strong> — load the pack, and for each <code>singleLayerDocuments</code> entry re-file it through <code>registerDocument</code> (slug from the filename stem, keeping an existing <code>NNN-</code> prefix else allocating the next), renaming to <code>&lt;slug&gt;.md</code>; skip already-<code>slug:</code> documents. <span class="path">packages/corpus/src/knowledge/migrate.ts</span></div>
+</spec-task>
+<spec-task id="T-211">
+  <input type="checkbox" checked>
+  <div><strong>Remove the old id: file and the pack index.md</strong> — register-then-remove ordering (write the new <code>&lt;slug&gt;.md</code> + registry row before deleting the old <code>id:</code> file), then drop the pack-local <code>index.md</code> once every document is migrated. <span class="path">packages/corpus/src/knowledge/migrate.ts</span></div>
+</spec-task>
+<spec-task id="T-212" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Export migratePack from the corpus barrel</strong> — <code>migratePack</code>, its input/result types, and the shared single-layer predicate. <span class="path">packages/corpus/src/knowledge/index.ts</span></div>
+</spec-task>
+<spec-task id="T-213" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Register migrate on the standalone binary</strong> — a <code>migrate &lt;pack&gt;</code> command resolving <code>corpus.marketplace</code>/<code>corpus.root</code> and dispatching to <code>migratePack</code>. <span class="path">packages/corpus/src/cli/curate.ts</span></div>
+</spec-task>
+<spec-task id="T-214" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Mirror migrate on the main CLI's corpus group</strong> — the same <code>corpus migrate &lt;pack&gt;</code> subcommand, same resolution, same dispatch. <span class="path">packages/cli/src/commands/corpus.ts</span></div>
+</spec-task>
+
+<spec-note>
+<p>Closes <a href="./spec.html#FR-002">FR-002</a>, <a href="./spec.html#FR-003">FR-003</a>,
+<a href="./spec.html#SC-001">SC-001</a>, and migrate's leg of <a href="./spec.html#NFR-001">NFR-001</a> /
+<a href="./spec.html#SC-003">SC-003</a>.</p>
+</spec-note>
+</section>
+
+
+<section id="phase-us3" class="phase">
+<h2>6 · Phase 3c — US3 · single-layer is flagged deprecated <spec-pill>P2</spec-pill></h2>
+
+<h3>Tests (write &amp; fail first)</h3>
+<spec-task id="T-300" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Write failing test: a single-layer pack warns</strong> — a pack with an <code>id:</code> document, or a pack-local <code>index.md</code>, yields a <strong>warning</strong> (not an error) naming <code>corpus migrate</code> as the remedy. <span class="path">packages/corpus/test/knowledge.validate.test.ts</span></div>
+</spec-task>
+<spec-task id="T-301" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Write failing test: a two-layer pack is silent</strong> — a migrated (slug-only, no pack-index) pack yields no deprecation warning and no new error (NFR-002, no false positive). <span class="path">packages/corpus/test/knowledge.validate.test.ts</span></div>
+</spec-task>
+
+<h3>Implementation</h3>
+<spec-task id="T-310">
+  <input type="checkbox" checked>
+  <div><strong>Add the corpus-single-layer-deprecated finding</strong> — a warning-severity check in <code>corpusWellFormedFindings</code> that fires (via <code>isSingleLayerPack</code>) on an <code>id:</code>-document or a pack-local index, naming <code>corpus migrate</code>; mirrors the orphan/fragmentation warning shape. <span class="path">packages/corpus/src/knowledge/validate.ts</span></div>
+</spec-task>
+
+<spec-note>
+<p>Closes <a href="./spec.html#FR-004">FR-004</a>, <a href="./spec.html#SC-004">SC-004</a>,
+<a href="./spec.html#NFR-002">NFR-002</a>.</p>
+</spec-note>
+</section>
+
+
+<section id="phase-polish" class="phase">
+<h2>7 · Phase 4 — Polish</h2>
+<spec-task id="T-900" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Write --help copy for migrate on both CLIs</strong> — the <code>migrate</code> command description on the standalone binary and the <code>corpus</code> group; update adapt's help/output copy to note it now files two-layer (registry-cited), not the legacy pack index. <span class="path">packages/corpus/src/cli/curate.ts</span> <span class="path">packages/cli/src/commands/corpus.ts</span></div>
+</spec-task>
+<spec-task id="T-901" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Run a real end-to-end migrate / adapt / validate sweep</strong> — build the CLI, migrate a fixture single-layer pack and adapt a raw folder, then <code>validate</code> the result to confirm two-layer output and zero deprecation warnings on the repo's own packs. <span class="path">packages/corpus/test/knowledge.migrate.test.ts</span></div>
+</spec-task>
+<spec-task id="T-902" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Confirm no new runtime dependency was added</strong> — diff <code>@spectastic/corpus</code>'s manifest against its pre-feature state (migrate/adapt reuse <code>yaml</code> + the existing backbone). <span class="path">packages/corpus/package.json</span></div>
+</spec-task>
+</section>
+
+
+<section id="dependencies">
+<h2>8 · Dependencies</h2>
+<pre><code>Setup           → Foundational
+Foundational    → US1, US2, US3     (the single-layer predicate feeds US2's replay and US3's rule)
+US1, US2        → (independent files — adapt.ts vs migrate.ts — parallelizable after Foundational)
+US1, US2, US3   → Polish
+</code></pre>
+</section>
+
+
+<section id="changelog">
+<h2>9 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-07-28">28 Jul 2026</time><span>Initial task breakdown. 22 tasks (15 parallel-marked) across five phases; Incremental build order recommended (US1 → US2 → US3) with US1/US2 parallelizable on distinct files. One <code>registerDocument</code> backbone, three callers.</span></li>
+  <li><time datetime="2026-07-29">29 Jul 2026</time><span>All 22 tasks implemented and verified. Real bugs found and fixed along the way: <code>registerDocument</code>'s SKILL.md write accumulated a duplicate slug-map table on repeated same-pack calls in one run (latent since 061, first exposed by adapt's new per-file loop); <code>RegisterDocumentInput</code> gained edition/license/origin-url overrides so migrate can carry a single-layer document's real provenance forward instead of resetting it to TODO; and an initial deprecation-warning message draft leaked the internal spec id "pre-062" into CLI copy (P-10), caught by the corpus's own copy-leak gate. Full corpus test suite (245 tests) + typecheck clean; a real end-to-end sweep via both CLI binaries (adapt → registry-cited two-layer pack; migrate → warn/migrate/clean loop) confirmed against the repo's own dogfooded knowledge/.</span></li>
+  <li><time datetime="2026-07-29">29 Jul 2026</time><span>Status flipped Draft → Accepted — zero remaining unchecked tasks (22/22); tests verified passing per author confirmation. Sibling bundle (REQ-LIFECYCLE-005).</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  Tasks for 066-corpus-single-layer-retire · Retire single-layer corpus support · authored 28 Jul 2026
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>

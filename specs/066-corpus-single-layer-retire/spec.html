@@ -1,0 +1,284 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
+<title>Retire single-layer corpus support · Specification</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Specification · 066-corpus-single-layer-retire</p>
+  <h1>Retire single-layer corpus support</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    Stop <em>producing</em> legacy single-layer packs and give existing ones a migration path — the non-breaking first phase of retiring the pre-062 shape.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>      <span><spec-status value="accepted">Accepted</spec-status></span>
+    <b>Spec ID</b>     <span>066-corpus-single-layer-retire</span>
+    <b>Owner</b>       <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Reviewers</b>   <span>—</span>
+    <b>Created</b>     <span><time datetime="2026-07-28">28 Jul 2026</time></span>
+    <b>Principles</b><span><a href="../../principles.html">v1.8.0</a></span>
+    <b>Smallest demoable</b><span><code>corpus migrate &lt;pack&gt;</code> turns a single-layer pack into a two-layer one, and <code>adapt</code> stops producing single-layer.</span>
+    <b>Read time</b>   <span data-reading-time></span>
+  </spec-meta>
+
+  <!-- Live size gauge — green at <80%, amber 80-100%, red over. Words row counts authored prose (excludes the conformance index) per REQ-FORMAT-004. -->
+  <spec-budget words="1800" reqs="20" minutes="12"></spec-budget>
+
+  <spec-tldr>
+    <p>Two corpus-writing verbs still emit the pre-062 <em>single-layer</em> shape — <code>id:</code> in the
+    document frontmatter + a pack-local <code>index.md</code>, invisible to the root registry. <a href="../065-corpus-pdf-convert/spec.html">065</a>
+    fixed <code>convert</code>; <code>adaptCorpus</code> is the one that remains. This spec migrates <code>adapt</code>
+    to two-layer output, adds a <code>corpus migrate &lt;pack&gt;</code> verb to convert existing single-layer packs
+    in place, and marks single-layer <strong>deprecated</strong> with a validate warning. It is the <em>non-breaking</em>
+    first phase: single-layer is still accepted everywhere; a later spec flips the warning to an error. For anyone
+    curating a corpus, with or without the SDD lifecycle.</p>
+  </spec-tldr>
+
+  <dl class="invest">
+    <dt><span class="letter">I</span> Independent</dt> <dd>Builds on <a href="../062-corpus-identity-migration/spec.html">062</a>'s two-layer model and <a href="../065-corpus-pdf-convert/spec.html">065</a>'s registration backbone (both landed). No shared-data coupling.</dd>
+    <dt><span class="letter">N</span> Negotiable</dt>  <dd>Contracts the outcome — no verb produces single-layer, existing packs have a migration path, single-layer is flagged deprecated. The migrate algorithm and the warning's exact wording are the plan's.</dd>
+    <dt><span class="letter">V</span> Valuable</dt>    <dd>Unlocks <a href="#SC-001">SC-001</a> — an existing single-layer pack becomes a registry-cited two-layer pack in one command, and the deprecation window opens.</dd>
+    <dt><span class="letter">E</span> Estimable</dt>   <dd>The two-layer backbone (<code>registerDocument</code>) and the validator's per-pack scan both exist; migrate reuses the former over existing files, the warning extends the latter.</dd>
+    <dt><span class="letter">S</span> Small</dt>       <dd>Under 20 requirements; one verb migrated, one verb added, one warning. The breaking rejection + resolver change are deferred.</dd>
+    <dt><span class="letter">T</span> Testable</dt>    <dd>Every requirement is observable — <a href="#SC-001">SC-001</a>–<a href="#SC-004">SC-004</a> are file-state- and finding-checkable against a fixture pack.</dd>
+  </dl>
+
+  <spec-audience-map>
+    <dl>
+      <dt>Exec / PM</dt>   <dd>§<a href="#context">Context</a>, §<a href="#scenarios">User scenarios</a>, §<a href="#success">Success criteria</a>.</dd>
+      <dt>Reviewer</dt>    <dd>§<a href="#requirements">Requirements</a>, §<a href="#assumptions">Assumptions</a>, §<a href="#questions">Open questions</a>.</dd>
+      <dt>Implementer</dt> <dd>§<a href="#requirements">Requirements</a>, §<a href="#data">Data model</a>, §<a href="#conformance">Conformance index</a>.</dd>
+    </dl>
+  </spec-audience-map>
+</header>
+
+
+<section id="context">
+<h2>1 · Context</h2>
+<p>The two-layer identity migration (<a href="../062-corpus-identity-migration/spec.html">062</a>) moved the corpus
+onto a durable shape: the <code>KB-NNNN</code> lives in the project's root <code>knowledge/index.md</code> registry,
+and each document carries a pack-local <code>slug:</code>. But the <em>pre</em>-062 single-layer shape — <code>id:
+KB-NNN</code> in the document itself, plus a pack-local <code>index.md</code>, and no registry row — is still
+produced by corpus-writing verbs and still accepted everywhere. A single-layer document resolves only through the
+resolver's deprecated pack-scan fallback, at best; an edition-pinned citation to it never resolves via the registry.</p>
+<p>065 fixed one producer: <code>convert</code> now registers two-layer. The other, <code>adaptCorpus</code>, still
+emits single-layer — and there is no command to bring an <em>existing</em> single-layer pack forward. This spec
+closes both gaps and opens a deprecation window, without breaking anything yet: single-layer stays accepted (the
+validator warns, doesn't reject; the resolver's fallback stays). A later spec lands the breaking retirement.</p>
+<p><strong>Who it's for:</strong> anyone curating a corpus — a spectastic project or a standalone
+<code>spectastic-corpus</code> user — who has adapted a markdown folder or inherited a pre-062 pack.</p>
+</section>
+
+
+<section id="scenarios">
+<h2>2 · User scenarios &amp; testing</h2>
+
+<p>Each story <strong>MUST</strong> be independently testable: if you implemented only US1, you would still have a
+viable MVP (no verb produces single-layer any more).</p>
+
+<h3 id="US1">US1 · adapt produces two-layer <spec-pill>P1</spec-pill></h3>
+<p>As a <strong>corpus curator</strong>, I want <strong><code>adapt</code> to file two-layer documents</strong> so
+that <strong>the markdown folder I shape becomes a registry-cited pack, not a legacy single-layer one</strong>.</p>
+<p><em>Acceptance:</em> <code>adapt &lt;folder&gt;</code> writes each document with a <code>slug:</code> (never a
+document <code>id:</code>) at <code>references/&lt;NNN-slug&gt;.md</code>, a repo-unique <code>KB-NNNN</code> row in
+the root registry, and a <code>SKILL.md</code> — and no pack-local <code>index.md</code>. Same terminal shape as
+<code>convert</code> (065) and <code>import</code>.</p>
+
+<h3 id="US2">US2 · migrate an existing single-layer pack <spec-pill>P1</spec-pill></h3>
+<p>As a <strong>curator with a pre-062 pack</strong>, I want <strong>one command that converts it to two-layer in
+place</strong> so that <strong>my existing references become registry-cited without hand-editing every file</strong>.</p>
+<p><em>Acceptance:</em> <code>corpus migrate &lt;pack&gt;</code> rewrites each <code>id:</code> document to
+<code>slug:</code>, allocates a repo-unique <code>KB-NNNN</code> registry row per document, ensures a
+<code>SKILL.md</code>, and removes the pack-local <code>index.md</code>. Running it again is a no-op; running it on
+an already-two-layer pack changes nothing.</p>
+
+<h3 id="US3">US3 · single-layer is flagged deprecated <spec-pill>P2</spec-pill></h3>
+<p>As a <strong>corpus maintainer</strong>, I want <strong>validate to tell me a pack is still single-layer</strong>
+so that <strong>I know to migrate it before the shape is retired</strong>.</p>
+<p><em>Acceptance:</em> validating a project whose loaded <code>knowledge/</code> pack contains a single-layer
+document (an <code>id:</code> frontmatter or a pack-local <code>index.md</code>) yields a <strong>warning</strong>
+(not an error) naming <code>corpus migrate</code> as the fix. A two-layer pack yields no such warning.</p>
+
+<h3>Edge cases</h3>
+<ul>
+  <li>A pack with <em>mixed</em> shapes (some <code>id:</code>, some <code>slug:</code>) — migrate converts the single-layer documents and leaves the two-layer ones untouched.</li>
+  <li>A pack-local <code>id: KB-001</code> is not repo-unique (every pack starts at KB-001) — migrate MUST allocate a fresh repo-unique <code>KB-NNNN</code>, never reuse the pack-local number.</li>
+  <li>A prior pack-scan citation to a document's old <code>id:</code> stops resolving by that id after migration — the document is now cited by its registry <code>KB-NNNN</code> / <code>marketplace·plugin·slug</code> coordinate.</li>
+  <li>A hand-edited title/description/edition in the pack survives migration (non-destructive).</li>
+</ul>
+</section>
+
+
+<section id="requirements">
+<h2>3 · Requirements</h2>
+
+<p>Conformance keywords (<spec-rule>MUST</spec-rule>, <spec-rule level="should">SHOULD</spec-rule>,
+<spec-rule level="may">MAY</spec-rule>) follow RFC 2119.</p>
+
+<h3>Functional</h3>
+
+<spec-requirement id="FR-001" priority="must">
+<p><code>adaptCorpus</code> <spec-rule>MUST</spec-rule> produce two-layer documents — a <code>slug:</code> frontmatter
+(never a document <code>id:</code>), a repo-unique <code>KB-NNNN</code> row in the root registry, and a pack
+<code>SKILL.md</code> — and <spec-rule>MUST NOT</spec-rule> write a pack-local <code>index.md</code>.</p>
+<details><summary>Rationale</summary><p>The same re-base 065 applied to <code>convert</code>: a corpus-writing verb must produce the durable two-layer shape, not the pre-062 legacy one. Reuses the <code>registerDocument</code> backbone.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-002" priority="must">
+<p>The corpus tool <spec-rule>MUST</spec-rule> provide a <code>migrate &lt;pack&gt;</code> verb that converts a
+single-layer pack to two-layer <strong>in place</strong>: each <code>id:</code> document becomes a <code>slug:</code>
+document, gains a repo-unique <code>KB-NNNN</code> registry row, the pack gains a <code>SKILL.md</code>, and the
+pack-local <code>index.md</code> is removed. It <spec-rule>MUST</spec-rule> be idempotent — a second run, or a run
+on an already-two-layer pack, makes no change.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-003" priority="must">
+<p><code>migrate</code> <spec-rule>MUST</spec-rule> allocate a fresh, repo-unique <code>KB-NNNN</code> for each
+migrated document and <spec-rule>MUST NOT</spec-rule> reuse the document's old pack-local <code>id:</code> number
+(which is not repo-unique — every pack numbers from <code>KB-001</code>). The document's pack-local identity becomes
+its <code>slug:</code>.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-004" priority="should">
+<p><code>spectastic validate</code> / <code>corpus validate</code> <spec-rule level="should">SHOULD</spec-rule> emit a
+<strong>warning</strong> (never an error, this phase) for a loaded <code>knowledge/</code> pack that still carries a
+single-layer document (an <code>id:</code> frontmatter or a pack-local <code>index.md</code>), naming
+<code>corpus migrate</code> as the remedy.</p>
+<details><summary>Rationale</summary><p>The "deprecate first, reject later" window: downstream corpora get notice and a migration path before any hard break. Warning severity mirrors the orphan/fragmentation findings, not the well-formed errors.</p></details>
+</spec-requirement>
+
+<h3>Non-functional</h3>
+
+<spec-requirement id="NFR-001" priority="must">
+<p>Both <code>adapt</code> and <code>migrate</code> <spec-rule>MUST</spec-rule> be idempotent and non-destructive:
+re-running never duplicates a registry row or document, and a hand-corrected title/description/edition
+<spec-rule>MUST</spec-rule> survive a re-run (carrying forward 056 NFR-001 / 061 NFR-003).</p>
+</spec-requirement>
+
+<spec-requirement id="NFR-002" priority="must">
+<p>The deprecation warning (FR-004) <spec-rule>MUST NOT</spec-rule> fire on a two-layer pack (no false positives),
+and <spec-rule>MUST</spec-rule> be scoped to loaded <code>knowledge/</code> packs — a project's own corpus — never
+to raw fixtures held outside a corpus root.</p>
+</spec-requirement>
+
+<h3>Out of scope (deferred to other slices)</h3>
+<spec-out-of-scope>
+  <ul>
+    <li defer-to="TBD-corpus-single-layer-reject">Flipping single-layer from a warning to a validate <em>error</em> — the breaking phase-2 retirement, gated on a deprecation window.</li>
+    <li defer-to="TBD-resolver-registry-only">Removing the resolver's pack-scan fallback (the registry becoming the sole authority) — its own breaking concern, unchanged here.</li>
+    <li defer-to="never">Migrating <code>examples/knowledge/finance-settlement</code> — it exists deliberately as pre-062 raw input for 057's portable-skill test; it stays single-layer.</li>
+  </ul>
+</spec-out-of-scope>
+</section>
+
+
+<section id="data">
+<h2>4 · Data model</h2>
+
+<p>No new persisted entity — the target is the existing two-layer document (051/062): a <code>slug:</code> reference
+file, a <code>KB-NNNN</code> root-registry row, and a pack <code>SKILL.md</code>. This spec adds a
+<em>transformation</em> and a <em>classification</em>, not a new shape.</p>
+
+<h3>Entities</h3>
+<dl>
+  <dt>Single-layer pack</dt><dd>The pre-062 shape being retired: documents carrying <code>id: KB-NNN</code> frontmatter + a pack-local <code>index.md</code>, absent from the root registry. The input to <code>migrate</code> and the subject of the deprecation warning.</dd>
+  <dt>Migration</dt><dd>An in-place transformation of a single-layer pack into a two-layer one — re-keying each document's identity from a pack-local <code>id:</code> to a <code>slug:</code> + a repo-unique registry <code>KB-NNNN</code>, and dropping the pack-local index.</dd>
+</dl>
+
+<spec-note>
+<p>Invariant: migration is <em>identity-preserving at the slug layer, re-keying at the registry layer</em> — the
+document's pack-local name (its <code>slug:</code>) is stable, but its repo-wide id is freshly allocated because a
+pack-local <code>id:</code> can collide across packs.</p>
+</spec-note>
+</section>
+
+
+<section id="success">
+<h2>5 · Success criteria</h2>
+
+<p>Technology-agnostic, measurable outcomes.</p>
+
+<spec-requirement id="SC-001" priority="must">
+<p>After <code>corpus migrate &lt;pack&gt;</code> on a single-layer pack, every document carries a <code>slug:</code>
+(no <code>id:</code>), the root registry holds one repo-unique <code>KB-NNNN</code> row per document, a
+<code>SKILL.md</code> exists, and no pack-local <code>index.md</code> remains — verifiable by reading the pack and
+the registry.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-002" priority="must">
+<p><code>adapt &lt;folder&gt;</code> on raw markdown produces a pack of the same two-layer shape (slug documents +
+registry rows + SKILL.md, no pack-index) — the same terminal state a <code>migrate</code> would reach.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-003" priority="must">
+<p>Both <code>migrate</code> and <code>adapt</code> are idempotent: a second run leaves the pack and registry
+byte-for-byte unchanged (a hand-edited cell excepted, which survives).</p>
+</spec-requirement>
+
+<spec-requirement id="SC-004" priority="should">
+<p>Validating a project whose <code>knowledge/</code> pack is single-layer yields a deprecation warning naming
+<code>corpus migrate</code>; validating a two-layer corpus yields no such warning and no new error.</p>
+</spec-requirement>
+</section>
+
+
+<section id="assumptions">
+<h2>6 · Assumptions</h2>
+
+<spec-assumption>
+<p>The two-layer <code>registerDocument</code> backbone (065) is the reuse target for both <code>adapt</code>'s new
+output and <code>migrate</code>'s per-document filing; neither invents a parallel filing path.</p>
+</spec-assumption>
+
+<spec-assumption>
+<p>Single-layer packs are resolved today only via the resolver's pack-scan fallback, so re-keying a document's id
+during migration breaks no <em>registry</em> citation (there were none) — only an id-based pack-scan lookup, which
+is itself deprecated.</p>
+</spec-assumption>
+</section>
+
+
+<section id="questions">
+<h2>7 · Open questions</h2>
+<spec-questions>
+<p>None outstanding — the scope (adapt + migrate + deprecation warning), the phasing (warning now, reject later),
+the resolver-fallback deferral, the legacy-fixture carve-out, story priorities, and the in-place idempotent migrate
+shape were all anchored in the interview.</p>
+</spec-questions>
+</section>
+
+
+<section id="conformance">
+<h2>8 · Conformance index</h2>
+<p>Auto-built from every <code>&lt;spec-requirement&gt;</code> in this document.</p>
+<spec-conformance></spec-conformance>
+</section>
+
+
+<section id="changelog">
+<h2>9 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-07-28">28 Jul 2026</time><span>Initial draft. <code>TBD-corpus-single-layer-retire</code> (deferred from 065) — the non-breaking first phase: <code>adapt</code>→two-layer, a <code>corpus migrate</code> verb, and a single-layer deprecation warning. Breaking rejection and the resolver registry-only change deferred to their own TBDs.</span></li>
+  <li><time datetime="2026-07-29">29 Jul 2026</time><span>Status flipped Draft → Accepted on 29 Jul 2026 — zero remaining unchecked tasks; tests verified passing per author confirmation (245/245 corpus vitest tests, both packages typecheck clean, real end-to-end CLI sweep). Sibling bundle (REQ-LIFECYCLE-005).</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  066-corpus-single-layer-retire · Retire single-layer corpus support · authored 28 Jul 2026
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>

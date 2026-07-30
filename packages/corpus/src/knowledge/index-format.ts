@@ -145,11 +145,18 @@ export function parseSkillSlugMap(raw: string): SkillSlugMapEntry[] {
   return entries;
 }
 
+/** The slug map table's header line — exported (066-corpus-single-layer-retire)
+ * so a caller re-writing an already-existing `SKILL.md` can locate and strip a
+ * PRIOR rendering of this exact table before appending a freshly-merged one,
+ * rather than accumulating one stale table per write (`registerDocument`'s
+ * fix for repeated same-pack calls in one run — see `ingest.ts`). */
+export const SLUG_MAP_HEADER = '| Slug | Title | Description | Edition | Path |';
+
 /** Render a pack's slug map into the same 5-column table, sorted by slug for
  * deterministic output (mirrors `renderIndexTable`). */
 export function renderSkillSlugMapTable(rows: readonly SkillSlugMapEntry[]): string {
   const sorted = [...rows].sort((a, b) => a.slug.localeCompare(b.slug));
-  const header = '| Slug | Title | Description | Edition | Path |\n| --- | --- | --- | --- | --- |';
+  const header = `${SLUG_MAP_HEADER}\n| --- | --- | --- | --- | --- |`;
   const body = sorted
     .map((r) => `| ${r.slug} | ${r.title} | ${r.description} | ${r.edition} | ${r.path} |`)
     .join('\n');

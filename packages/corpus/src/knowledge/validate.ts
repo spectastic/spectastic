@@ -30,6 +30,7 @@
  * pack's ids through it.
  */
 import type { Finding } from '@spectastic/schema';
+import { isSingleLayerPack } from './migrate.js';
 import { KB_ID_RE, type CorpusDocument, type CorpusPack, type RegistryEntry } from './types.js';
 
 const REGISTRY_FILE = 'knowledge/index.md';
@@ -159,18 +160,45 @@ function missingSkillFileFindings(pack: CorpusPack): Finding[] {
   ];
 }
 
+/** `corpus-single-layer-deprecated` (066-corpus-single-layer-retire, FR-004)
+ * — its own rule name, distinct from `warningFinding`'s `corpus-registry-orphan`
+ * (already loosely shared by the orphan AND fragmentation findings above; not
+ * widened further here). Warning severity, the "deprecate first, reject
+ * later" window (P-9). */
+function singleLayerWarningFinding(file: string, message: string): Finding {
+  return { file, line: 1, column: 1, rule: 'corpus-single-layer-deprecated', severity: 'warning', message };
+}
+
+/** Flags a pack still carrying a single-layer signal (an `id:` document with
+ * no `slug:`, or a non-empty pack-local index — `isSingleLayerPack`, the
+ * same predicate `migratePack` uses, so the two can never disagree). Never
+ * fires on a two-layer pack (NFR-002) — including the repo's own dogfooded
+ * `knowledge/` packs, which are already two-layer. */
+function singleLayerDeprecatedFindings(pack: CorpusPack): Finding[] {
+  if (!isSingleLayerPack(pack)) return [];
+  return [
+    singleLayerWarningFinding(
+      pack.dirPath,
+      `Pack "${pack.name}" still carries a single-layer document (a pack-minted id: with no slug:) or a pack-local index.md. Run \`corpus migrate ${pack.name}\` to convert it to the two-layer convention (slug: documents + a root registry row). Single-layer is deprecated and still accepted this phase; a later release will reject it.`,
+    ),
+  ];
+}
+
 /** All corpus well-formedness findings across every loaded pack. A no-op
  * (returns []) when `packs` is empty — the graceful-absence contract holds
  * all the way through to the validate scan (NFR-001). */
 export function corpusWellFormedFindings(packs: readonly CorpusPack[]): Finding[] {
   const findings: Finding[] = [];
   for (const pack of packs) {
-    findings.push(...missingFieldFindings(pack));
-    findings.push(...danglingIndexFindings(pack));
-    findings.push(...orphanDocumentFindings(pack));
-    findings.push(...duplicateIdFindings(pack));
-    findings.push(...duplicateSlugFindings(pack));
-    findings.push(...missingSkillFileFindings(pack));
+    findings.push(
+      ...missingFieldFindings(pack),
+      ...danglingIndexFindings(pack),
+      ...orphanDocumentFindings(pack),
+      ...duplicateIdFindings(pack),
+      ...duplicateSlugFindings(pack),
+      ...missingSkillFileFindings(pack),
+      ...singleLayerDeprecatedFindings(pack),
+    );
   }
   return findings;
 }

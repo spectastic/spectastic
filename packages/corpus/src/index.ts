@@ -57,6 +57,9 @@ export {
   REQUIRED_PROVENANCE_FIELDS,
   loadCorpus,
   loadRegistry,
+  migratePack,
+  singleLayerDocuments,
+  isSingleLayerPack,
 } from './knowledge/index.js';
 export type {
   InstallInput,
@@ -65,6 +68,8 @@ export type {
   SkillSlugMapEntry,
   AdaptInput,
   AdaptResult,
+  MigrateInput,
+  MigrateResult,
   ConverterRunner,
   ConverterSpec,
   ConvertDocumentInput,

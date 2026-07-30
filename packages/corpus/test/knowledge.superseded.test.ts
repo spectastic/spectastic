@@ -68,8 +68,13 @@ describe('superseded-edition loading (052 T-200, FR-003)', () => {
   });
 
   it('a current + superseded pair sharing one KB id produces zero corpus-well-formed findings', () => {
+    // The fixture is single-layer-shaped (066 legitimately warns on it now —
+    // out of scope here); this test's own claim is narrower: supersededEditions
+    // being a SEPARATE collection from documents[] means the duplicate-id
+    // check never false-fires on a legitimate current + prior pair.
     const packs = loadCorpus(seedPackWithSuperseded());
-    expect(corpusWellFormedFindings(packs)).toEqual([]);
+    const findings = corpusWellFormedFindings(packs);
+    expect(findings.some((f) => f.rule === 'corpus-well-formed' && f.message.toLowerCase().includes('duplicate'))).toBe(false);
   });
 
   it('a pack with no superseded/ directory has an empty supersededEditions', () => {

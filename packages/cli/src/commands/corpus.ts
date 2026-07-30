@@ -4,6 +4,7 @@ import type { Command } from 'commander';
 import {
   adaptCorpus,
   installPack,
+  migratePack,
   publishCorpus,
   registerDocument,
   NOT_CITABLE_UNTIL_CONFIRMED_STATUS,
@@ -44,23 +45,40 @@ export function registerCorpus(program: Command): void {
       const target = resolve(process.cwd(), path);
       const isDir = statSync(target).isDirectory();
       const pack = opts.pack ?? basename(isDir ? target : dirname(target));
-      const { root } = resolveCorpusConfig(process.cwd());
+      const { marketplace, root } = resolveCorpusConfig(process.cwd());
       const knowledgeDir = resolve(process.cwd(), root);
 
-      const result = adaptCorpus({ target, knowledgeDir, pack });
+      const result = adaptCorpus({ target, knowledgeDir, pack, marketplace, corpusMarketplaceName: marketplace });
 
       process.stdout.write(
-        `corpus adapt: ${result.written.length} written, ${result.skipped.length} already adapted (untouched), ` +
-          `${result.indexRows} index row(s) → ${root}/${pack}/\n`,
+        `corpus adapt: ${result.written.length} written, ${result.skipped.length} already registered (untouched), ` +
+          `${result.registryRows} registry row(s) → ${root}/${pack}/\n`,
       );
       if (result.written.length > 0) {
         process.stdout.write(
           '  Adaptation is lossy and its losses are silent — spot-check the newly-written documents ' +
-            'against their sources before citing them, and fill in any TODO provenance field you can verify.\n' +
-            '  This writes the pack\'s own legacy index, not the root registry — the pack isn\'t discoverable ' +
-            'via marketplace.json until it\'s also registered through `corpus import --from`.\n',
+            'against their sources before citing them, and fill in any TODO provenance field you can verify.\n',
         );
       }
+      process.exit(0);
+    });
+
+  corpus
+    .command('migrate')
+    .description(
+      'Migrate an existing single-layer pack (a document id: field + a pack-local index.md) to the two-layer convention (slug: + a root registry row) in place. Idempotent — safe to re-run, and a no-op on an already-migrated pack.',
+    )
+    .argument('<pack>', 'the pack name under knowledge/ to migrate')
+    .action((pack: string) => {
+      const { marketplace, root } = resolveCorpusConfig(process.cwd());
+      const knowledgeDir = resolve(process.cwd(), root);
+
+      const result = migratePack({ knowledgeDir, pack, marketplace, corpusMarketplaceName: marketplace });
+
+      process.stdout.write(
+        `corpus migrate: ${result.migrated.length} document(s) migrated, ${result.skipped.length} already two-layer ` +
+          `(untouched) → ${root}/${pack}/\n`,
+      );
       process.exit(0);
     });
 

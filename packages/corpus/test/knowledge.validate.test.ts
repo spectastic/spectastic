@@ -55,7 +55,13 @@ function pack(overrides: Partial<CorpusPack> = {}): CorpusPack {
 
 describe('corpusWellFormedFindings', () => {
   it('returns no findings for a fully well-formed pack', () => {
-    expect(corpusWellFormedFindings([pack()])).toEqual([]);
+    // A genuinely well-formed pack, post-066, is two-layer: slug (never a
+    // document id), no pack-local index — the shared `pack()`/`doc()`
+    // defaults below stay single-layer-shaped deliberately (most of this
+    // file's other checks are pre-migration-specific), so this one test
+    // builds its own explicit two-layer fixture rather than relying on them.
+    const twoLayer = pack({ documents: [doc({ id: null, slug: '001-alpha' })], index: [] });
+    expect(corpusWellFormedFindings([twoLayer])).toEqual([]);
   });
 
   it('returns no findings for an empty corpus', () => {
@@ -126,7 +132,11 @@ describe('corpusWellFormedFindings', () => {
   // `slug` at all (the existing fixtures above never set one).
 
   it('is still a no-op for a pack with no slugs populated (pre-migration, additive)', () => {
-    expect(corpusWellFormedFindings([pack()])).toEqual([]);
+    // The default `pack()` fixture is itself single-layer-shaped (066), so a
+    // deprecation warning now legitimately fires on it — this test's own
+    // claim is narrower: the SLUG-duplicate check specifically stays quiet.
+    const findings = corpusWellFormedFindings([pack()]);
+    expect(findings.some((f) => f.message.toLowerCase().includes('duplicate') && f.message.toLowerCase().includes('slug'))).toBe(false);
   });
 
   it('flags two documents sharing one pack-internal slug', () => {
@@ -157,7 +167,35 @@ describe('corpusWellFormedFindings', () => {
         documents: [a, b],
       }),
     ]);
-    expect(findings.some((f) => f.message.toLowerCase().includes('slug'))).toBe(false);
+    expect(findings.some((f) => f.message.toLowerCase().includes('duplicate') && f.message.toLowerCase().includes('slug'))).toBe(false);
+  });
+
+  // 066-corpus-single-layer-retire, US3: the deprecation warning (T-300/T-301).
+  describe('single-layer deprecation warning (066, FR-004)', () => {
+    it('warns (never errors) on a pack that still carries a single-layer document', () => {
+      // The default `pack()`/`doc()` fixtures are single-layer-shaped: an
+      // `id:` document with no `slug:`.
+      const findings = corpusWellFormedFindings([pack()]);
+      const warning = findings.find((f) => f.severity === 'warning' && f.message.toLowerCase().includes('single-layer'));
+      expect(warning).toBeDefined();
+      expect(warning!.message).toContain('corpus migrate');
+      // Never an error — this phase is deprecate-first, not reject (NFR-002/D-003).
+      expect(findings.some((f) => f.severity === 'error' && f.message.toLowerCase().includes('single-layer'))).toBe(false);
+    });
+
+    it('warns on a pack whose only single-layer signal is a pack-local index.md (no id: document)', () => {
+      // A migrated document (slug, no id) sitting alongside a leftover
+      // pack-local index — still single-layer per D-003's OR clause.
+      const migratedDoc = doc({ id: null, slug: '001-alpha' });
+      const findings = corpusWellFormedFindings([pack({ documents: [migratedDoc], index: [entry()] })]);
+      expect(findings.some((f) => f.severity === 'warning' && f.message.toLowerCase().includes('single-layer'))).toBe(true);
+    });
+
+    it('is silent on a two-layer pack — no false positive, no new error (NFR-002)', () => {
+      const twoLayer = pack({ documents: [doc({ id: null, slug: '001-alpha' })], index: [] });
+      const findings = corpusWellFormedFindings([twoLayer]);
+      expect(findings).toEqual([]);
+    });
   });
 });
 
