@@ -1,7 +1,7 @@
 import { defineConfig } from 'tsup';
 
 /**
- * Multi-entry build per D-002 of specs/006-kernel-extraction/plan.html.
+ * Multi-entry build per D-002 of specs/006-kernel-extraction/design.html.
  *
  * Each entry becomes a distinct dist file with its own .d.ts. The
  * package.json `exports` field references each subpath, so consumers
@@ -23,7 +23,7 @@ export default defineConfig({
     'src/commands/restore-marker.ts',
     'src/commands/apply.ts',
     'src/commands/spec.ts',
-    'src/commands/plan.ts',
+    'src/commands/design.ts',
     'src/commands/propose.ts',
     'src/commands/implement.ts',
     'src/commands/course.ts',

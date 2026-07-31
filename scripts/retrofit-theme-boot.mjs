@@ -12,10 +12,10 @@ const PATTERNS = [
   'templates/*.html',
   'index.html',
   'inbox.html',
-  'plan.html',
+  'design.html',
   'principles.html',
   'specs/**/spec.html',
-  'specs/**/plan.html',
+  'specs/**/design.html',
   'specs/**/tasks.html',
   'specs/**/proposal.html',
 ];

@@ -38,7 +38,7 @@ async function readSafe(fs: FileSystem, path: string): Promise<string | undefine
 export function buildRunSteps(specId: string, deps: RunStepDeps): PipelineStep[] {
   const dir = join(deps.cwd, 'specs', specId);
   const specPath = join(dir, 'spec.html');
-  const planPath = join(dir, 'plan.html');
+  const planPath = join(dir, 'design.html');
   const tasksPath = join(dir, 'tasks.html');
   const verifyPath = join(dir, 'verify.html');
   const principlesPath = join(deps.cwd, 'principles.html');
@@ -47,7 +47,7 @@ export function buildRunSteps(specId: string, deps: RunStepDeps): PipelineStep[]
     const docs: { file: string; html: string }[] = [];
     for (const [name, p] of [
       ['spec.html', specPath],
-      ['plan.html', planPath],
+      ['design.html', planPath],
       ['tasks.html', tasksPath],
       ['verify.html', verifyPath],
     ] as const) {
@@ -61,19 +61,19 @@ export function buildRunSteps(specId: string, deps: RunStepDeps): PipelineStep[]
 
   return [
     {
-      name: 'plan',
-      decisionVerb: 'plan',
+      name: 'design',
+      decisionVerb: 'design',
       async run({ decisions }): Promise<StepOutcome> {
-        const { planCommand } = await import('../commands/plan.js');
+        const { designCommand } = await import('../commands/design.js');
         const specHtml = await deps.fs.readFile(specPath, 'utf8');
         const principlesHtml = await readSafe(deps.fs, principlesPath);
-        const existingPlan = await readSafe(deps.fs, planPath);
-        const res = await planCommand(
+        const existingDesign = await readSafe(deps.fs, planPath);
+        const res = await designCommand(
           {
             specId,
             specHtml,
             decisions,
-            ...(existingPlan ? { existingPlan } : {}),
+            ...(existingDesign ? { existingDesign } : {}),
             ...(principlesHtml ? { principlesHtml } : {}),
           },
           { cwd: deps.cwd, fs: deps.fs, ai: deps.ai },

@@ -1,0 +1,318 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
+<title>Core plan · Design</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Design · 012-core-plan</p>
+  <h1>Core plan — implementation plan</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    How <code>designCommand</code> ships — fresh + re-entry, estimability gate, principles walk, ADR scaffolding — reusing the kernel surface 006 + 007 + 011 established.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>     <span><spec-status value="accepted">Accepted</spec-status></span>
+    <b>Spec</b>       <span><a href="./spec.html">012-core-plan</a></span>
+    <b>Owner</b>      <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Branch</b>     <span><code>main</code> (squashed-snapshot pattern)</span>
+    <b>Created</b>    <span><time datetime="2026-06-16">16 Jun 2026</time></span>
+    <b>Read time</b>  <span data-reading-time></span>
+  </spec-meta>
+
+
+  <spec-tldr>
+    <p>Extract <code>/spectastic.design</code> into <code>@spectastic/core/commands/design</code> following <a href="../006-kernel-extraction/spec.html">006</a>'s kernel contract and <a href="../011-core-spec/spec.html">011</a>'s interview pattern. Fresh + re-entry in scope. Estimability gate is a pure pre-flight scan; principles walk is <code>ai.ask&lt;T&gt;()</code>-driven and halts on <code>VIOLATION</code>; ADR <code>D-NNN</code> IDs preserved across re-entry. CLI adds <code>spectastic design &lt;spec-id&gt;</code>; slash-command markdown gains a MAY-Bash note. Single PR; ships as <code>v0.1.0-pre.14</code>.</p>
+  </spec-tldr>
+</header>
+
+
+<section id="principles-check">
+<h2>1 · Principles check</h2>
+<p>Validated against <a href="../../principles.html">principles v1.0.1</a>. All five principles compatible; no exceptions, no violations.</p>
+
+<table>
+  <thead><tr><th>Principle</th><th>Compliance</th><th>Notes</th></tr></thead>
+  <tbody>
+    <tr><td>P-1 · Source order is reading order</td><td><spec-pill>OK</spec-pill></td><td>Plan output is generated <code>design.html</code>; semantic-tag discipline preserved (existing templates).</td></tr>
+    <tr><td>P-2 · Semantic tags over class soup</td><td><spec-pill>OK</spec-pill></td><td>Kernel emits <code>&lt;spec-decision&gt;</code>, <code>&lt;spec-arch&gt;</code>, <code>&lt;spec-matrix&gt;</code>, etc.; no class soup.</td></tr>
+    <tr><td>P-3 · IDs are contracts</td><td><spec-pill>OK</spec-pill></td><td>ADR <code>D-NNN</code> IDs stable forever; re-entry preserves every existing ID (FR-011).</td></tr>
+    <tr><td>P-4 · Progressive enhancement, never dependence</td><td><spec-pill>OK</spec-pill></td><td>Kernel ships no browser code; produced <code>design.html</code> degrades cleanly.</td></tr>
+    <tr><td>P-5 · Calm density</td><td><spec-pill>OK</spec-pill></td><td>Plan template inherited from existing convention; no UI surface change.</td></tr>
+  </tbody>
+</table>
+</section>
+
+
+<section id="technical-context">
+<h2>2 · Technical context</h2>
+<dl>
+  <dt>Language(s)</dt>      <dd>TypeScript 5.7, Node ≥20 (matches existing packages).</dd>
+  <dt>Frameworks</dt>       <dd>None new. Reuses <code>@spectastic/schema</code>'s parse5-based walker for spec.html + existing design.html parsing (assumption A-002).</dd>
+  <dt>Storage</dt>          <dd>In-process; kernel returns <code>{ html, decisionsCount, principlesCheck }</code>. Caller writes to disk.</dd>
+  <dt>Testing</dt>          <dd>Unit-first per <a href="../006-kernel-extraction/design.html#D-008">006 D-008</a>: <code>packages/core/test/plan.test.ts</code> against stub <code>AIProvider</code> + stub <code>ctx.fs</code>; <code>packages/cli/test/cli.test.ts</code> integration test drives the subcommand against a fixture spec.</dd>
+  <dt>Perf targets</dt>     <dd>All four <code>bench/baselines.json</code> scenarios within budget; <code>init-help-cold-start</code> p50 within ±20% of post-006 baseline — proof the plan subpath stayed off the init path.</dd>
+  <dt>Constraints</dt>      <dd>Kernel pure modulo <code>ctx</code>; no <code>node:fs</code> in <code>plan.ts</code>; gate emits every offence not just the first; re-entry never renumbers.</dd>
+</dl>
+</section>
+
+
+<section id="approach">
+<h2>3 · Approach</h2>
+
+<p>Three moves, one PR. <strong>One</strong>: implement <code>designCommand</code> at <code>packages/core/src/commands/design.ts</code>. The function reads the source spec via <code>ctx.fs</code>, runs the estimability gate, branches fresh-vs-re-entry on existence of <code>design.html</code>, runs the two-phase interview through <code>ctx.ai</code>, walks principles (when present), assigns ADR IDs deterministically, returns assembled HTML. <strong>Two</strong>: factor 011's interview primitives into <code>packages/core/src/helpers/interview.ts</code> so both verbs share them. <strong>Three</strong>: add a <code>spectastic design &lt;spec-id&gt;</code> CLI subcommand that wires up <code>ClaudeProvider</code> + <code>KernelContext</code>, invokes the kernel, writes the result, and translates blocker lists to a readable non-zero exit.</p>
+
+<p>The estimability gate is the architecturally-interesting piece. Rather than failing on the first blocker, it runs to completion and returns every offence in one structured list — four kinds per <a href="./spec.html#FR-005">FR-005</a>, each with parse5 line/column. Fully deterministic; no AI call; the natural Bash-escalation target per <a href="./spec.html#FR-014">FR-014</a>.</p>
+
+<spec-arch>
+<figure>
+<svg viewBox="0 0 720 280" role="img" aria-label="plan architecture: CLI invokes kernel; kernel runs estimability gate first, then two-phase interview through ai.chat/ai.ask, then principles walk, then assembles design.html.">
+  <style>
+    .box { fill:#fcfbf7; stroke:#c4c1bb; stroke-width:1.2; }
+    .gate { fill:#f6f3eb; stroke:#c4c1bb; stroke-width:1.2; }
+    .label { font: 700 11px Lato, sans-serif; fill:#4a4a46; letter-spacing:0.06em; text-transform:uppercase; }
+    .body  { font: 400 12px "Source Serif 4", Georgia, serif; fill:#353534; }
+    .arr   { stroke:#73706d; stroke-width:1.2; fill:none; }
+  </style>
+  <defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#73706d"/></marker></defs>
+
+  <rect class="box" x="20"  y="20"  width="150" height="60" rx="4"/>
+  <text class="label" x="36" y="42">CLI subcmd</text>
+  <text class="body"  x="36" y="62">plan (shim)</text>
+
+  <rect class="box" x="220" y="20"  width="170" height="60" rx="4"/>
+  <text class="label" x="236" y="42">core/commands</text>
+  <text class="body"  x="236" y="62">designCommand</text>
+
+  <rect class="gate" x="440" y="20"  width="160" height="60" rx="4"/>
+  <text class="label" x="456" y="42">pre-flight</text>
+  <text class="body"  x="456" y="62">estimability gate</text>
+
+  <rect class="box" x="220" y="120" width="170" height="60" rx="4"/>
+  <text class="label" x="236" y="142">interview helpers</text>
+  <text class="body"  x="236" y="162">chat + ask&lt;T&gt;</text>
+
+  <rect class="box" x="440" y="120" width="160" height="60" rx="4"/>
+  <text class="label" x="456" y="142">principles walk</text>
+  <text class="body"  x="456" y="162">OK/EXC/VIO</text>
+
+  <rect class="box" x="220" y="220" width="170" height="40" rx="4"/>
+  <text class="body"  x="236" y="245">assemble DesignResult</text>
+
+  <rect class="box" x="20"  y="220" width="150" height="40" rx="4"/>
+  <text class="body"  x="36"  y="245">specs/&lt;id&gt;/design.html</text>
+
+  <path class="arr" d="M170 50 L220 50" marker-end="url(#ah)"/>
+  <path class="arr" d="M390 50 L440 50" marker-end="url(#ah)"/>
+  <path class="arr" d="M305 80 L305 120" marker-end="url(#ah)"/>
+  <path class="arr" d="M390 150 L440 150" marker-end="url(#ah)"/>
+  <path class="arr" d="M305 180 L305 220" marker-end="url(#ah)"/>
+  <path class="arr" d="M220 240 L170 240" marker-end="url(#ah)"/>
+</svg>
+<figcaption>CLI shim → kernel runs gate first (halts on blockers) → two-phase interview via shared helpers → principles walk (halts on VIOLATION) → assemble design.html → caller writes to disk.</figcaption>
+</figure>
+</spec-arch>
+</section>
+
+
+<section id="alternatives">
+<h2>4 · Alternatives considered</h2>
+
+<spec-matrix>
+<table>
+  <thead>
+    <tr><th>Option</th><th>Faithfulness</th><th>Determinism</th><th>Effort</th><th class="score">Total</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Gate as part of the AI loop (LLM judges blockers)</td><td>3</td><td>1</td><td>3</td><td class="score">7</td></tr>
+    <tr><td>Gate as separate <code>preflightCommand</code> verb</td><td>4</td><td>4</td><td>2</td><td class="score">10</td></tr>
+    <tr data-winner><td>Gate inline in <code>designCommand</code>, pure scan — chosen</td><td>4</td><td>4</td><td>4</td><td class="score">12</td></tr>
+  </tbody>
+</table>
+</spec-matrix>
+
+<p>An LLM-judged gate loses determinism and burns tokens every invocation. A separate <code>preflightCommand</code> verb is cleanly composable but doubles the API surface — a future verb that wants it can extract then. Inline + pure: same answer every run, no AI call, no new export.</p>
+</section>
+
+
+<section id="decisions">
+<h2>5 · Decisions</h2>
+
+<spec-decision id="D-001">
+  <h4>D-001 · Estimability gate inline, pure, exhaustive</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd><a href="./spec.html#FR-005">FR-005</a> requires four blocker checks; <a href="./spec.html#SC-002">SC-002</a> requires every blocker named with location. Must be deterministic (CI-runnable, Bash-escalation per FR-014).</dd>
+    <dt>Decision</dt>     <dd>Pure <code>runEstimabilityGate(specHtml): Blocker[]</code> inside <code>plan.ts</code>; walks parse5 AST once, collects all four kinds with <code>{kind, location, snippet}</code>. <code>designCommand</code> calls it first; non-empty → structured <code>EstimabilityError</code>, no write. No AI call; no early-exit.</dd>
+    <dt>Consequences</dt> <dd>+ Same fixture → same list; + cheap. − Adds ~100 LOC of parse5 walker; reusable if another verb needs it.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-002">
+  <h4>D-002 · Principles walk via <code>ai.ask&lt;T&gt;()</code>; <code>VIOLATION</code> halts</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd><a href="./spec.html#FR-007">FR-007</a> requires per-principle <code>OK</code>/<code>EXCEPTION</code>/<code>VIOLATION</code>; <code>VIOLATION</code> halts, <code>EXCEPTION</code> logs §8. Judgement is irreducibly AI-driven.</dd>
+    <dt>Decision</dt>     <dd>Per principle: <code>ask&lt;T&gt;()</code> with three options; non-<code>OK</code> triggers a follow-up <code>chat()</code> for the note. <code>VIOLATION</code> → <code>PrinciplesViolationError</code> immediately; <code>EXCEPTION</code> logs §8 and continues. Absent <code>principles.html</code> → walk skipped, §1 records "no principles defined".</dd>
+    <dt>Consequences</dt> <dd>+ Each verdict is a typed commitment, not prose hedging. − N+1 AI calls per principles file; − walk order matters for early-halt UX.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-003">
+  <h4>D-003 · ADR ID assignment deterministic; re-entry preserves</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd><a href="./spec.html#FR-008">FR-008</a>: <code>D-NNN</code> in encounter order, stable forever. <a href="./spec.html#FR-011">FR-011</a>: re-entry never renumbers. One ID space per plan, scoped to one file — kernel-side assignment is safe.</dd>
+    <dt>Decision</dt>     <dd>Fresh: assign <code>D-001</code> upward in interview encounter order. Re-entry: parse existing <code>design.html</code> via parse5, extract every <code>&lt;spec-decision id="D-NNN"&gt;</code>, compute <code>maxId</code>, assign new ADRs from <code>maxId + 1</code>. Existing ADRs round-trip unchanged unless explicitly enhanced (D-006); superseded ones keep ID + status.</dd>
+    <dt>Consequences</dt> <dd>+ Stable IDs are closed-form; no external state. − Re-entry adds a parse step; cost negligible for plan-sized files.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-004">
+  <h4>D-004 · Architecture SVG — template + LLM-filled labels</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd><a href="./spec.html#FR-009">FR-009</a>: SVG SHOULD for multi-component, skip for trivial. LLM-generated SVG is unreliable (coord math, marker arrows); template + LLM-supplied labels splits the work.</dd>
+    <dt>Decision</dt>     <dd>Three pre-baked templates (2-box, 3-box-linear, 4-box-tree) as string constants; <code>ask&lt;T&gt;()</code> picks template-or-none from the user's component count; one <code>chat()</code> extracts labels + figcaption. Trivial features get a one-sentence paragraph instead.</dd>
+    <dt>Consequences</dt> <dd>+ SVG always renders; + LLM only owns text. − Smaller palette than hand-rolled plans (006/007); expand via follow-up if it bites.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-005">
+  <h4>D-005 · Alternatives matrix — LLM proposes; user confirms; one <code>data-winner</code></h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>Slash-command step-7 asks chat for "1–3 alternatives + the criteria that mattered" — narrative. The matrix needs numeric scores and exactly one winner.</dd>
+    <dt>Decision</dt>     <dd>One <code>chat()</code> surfaces alternatives; a structured <code>chat()</code> scores them (3 criteria, integers 1–4); <code>ask&lt;T&gt;()</code> commits the winner (default: highest total). Kernel asserts exactly one <code>data-winner</code> per FR-010; throws otherwise. Winner MUST match §3's chosen approach and the lead ADR.</dd>
+    <dt>Consequences</dt> <dd>+ Auditable; + winner constraint structural. − Three-pass chat; can collapse if slow.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-006">
+  <h4>D-006 · Re-entry mode — ADD or ENHANCE, never RENUMBER</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd><a href="./spec.html#FR-011">FR-011</a> mandates preservation of every existing <code>&lt;spec-decision&gt;</code>. 011's re-entry pattern (parse, diff, ADD-or-ENHANCE) applies directly.</dd>
+    <dt>Decision</dt>     <dd>Triggered by existing <code>design.html</code> (no flag — FR-003). Kernel parses ADRs (D-003); per-ADR <code>ask&lt;T&gt;()</code> menu: <code>keep</code> / <code>enhance (dated note)</code> / <code>supersede (status flip + forward link)</code>. New ADRs append at <code>maxId + 1</code>. §1 (principles) and §7 (risks) re-walk fully — those represent current state.</dd>
+    <dt>Consequences</dt> <dd>+ Safe iteration; + same UX shape as 011. − ENHANCE-notes grow the plan over time; clean rewrites route through <code>/spectastic.propose</code>.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-007">
+  <h4>D-007 · Two-phase interview — shared helpers extracted from 011</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>011 implemented two-phase interview directly in <code>spec.ts</code>; 012 needs the same shape; propose + triage list-intake will too. Copy-paste invites drift.</dd>
+    <dt>Decision</dt>     <dd>Extract to <code>packages/core/src/helpers/interview.ts</code>: <code>askBatch</code>, <code>chatNarrative</code>, <code>skipKnown</code>, <code>loopUntilExhausted</code>. <code>spec.ts</code> migrates in the same PR to prove the abstraction; net diff there is small.</dd>
+    <dt>Consequences</dt> <dd>+ One source of truth; + future verbs inherit free. − Cross-cutting refactor inside the plan slice; existing 011 tests catch regressions.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-008">
+  <h4>D-008 · Single-PR migration, bench-gated; ships as <code>v0.1.0-pre.14</code></h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>012 lands verb extraction + shared interview helper + slash-command markdown update. Staging would fragment the helper refactor.</dd>
+    <dt>Decision</dt>     <dd>Single PR per 006/007 precedent. Ships as <code>v0.1.0-pre.14</code> (adjust if other slices land first). Bench enforces lazy-load; CLI tests prove wiring; 011 tests validate the helper extraction.</dd>
+    <dt>Consequences</dt> <dd>+ Atomic; + abstraction proven with a first user, not speculative. − Larger diff; bench/test failure blocks the whole slice.</dd>
+  </dl>
+</spec-decision>
+</section>
+
+
+<section id="project-structure">
+<h2>6 · Project structure</h2>
+
+<pre><code>packages/core/
+  package.json                                       <em>(adds ./commands/plan subpath)</em>
+  tsup.config.ts                                     <em>(adds src/commands/design.ts entry)</em>
+  src/
+    commands/
+      plan.ts                                        <em>(new — designCommand + runEstimabilityGate)</em>
+    helpers/
+      interview.ts                                   <em>(new — extracted from spec.ts; D-007)</em>
+    commands/
+      spec.ts                                        <em>(refactored — uses helpers/interview)</em>
+  test/
+    plan.test.ts                                     <em>(new — unit; stub AIProvider + stub ctx.fs; covers SC-001/SC-002/SC-003)</em>
+
+packages/cli/
+  src/commands/
+    plan.ts                                          <em>(new — CLI subcommand; constructs ctx; writes DesignResult.html)</em>
+  test/
+    cli.test.ts                                      <em>(extended — drives `spectastic plan` against fixture spec)</em>
+
+commands/
+  spectastic.plan.md                                 <em>(adds MAY-Bash note per FR-014)</em>
+
+CHANGELOG.md                                         <em>(v0.1.0-pre.14 entry)</em>
+</code></pre>
+
+<p>Five new/modified TS files + one markdown update + one CHANGELOG entry. No new runtime deps; reuses parse5 transitively via <code>@spectastic/schema</code>.</p>
+</section>
+
+
+<section id="risks">
+<h2>7 · Risks &amp; mitigations</h2>
+
+<table>
+  <thead><tr><th>Risk</th><th>Likelihood</th><th>Impact</th><th>Mitigation</th></tr></thead>
+  <tbody>
+    <tr><td>Estimability gate misses a blocker shape the slash command would catch (exotic <code>[NEEDS CLARIFICATION]</code> formatting).</td><td>M</td><td>M</td><td>Unit tests cover all four kinds with variant fixtures; gate extensible via <code>Blocker[]</code>; bugs → new fixture + check.</td></tr>
+    <tr><td>Helper extraction (D-007) regresses 011's behaviour.</td><td>L</td><td>H</td><td>011 tests stay verbatim; failures surface immediately. Migrate in small commits.</td></tr>
+    <tr><td>Re-entry parsing fails on hand-authored ADRs (extra whitespace, wrapped attrs).</td><td>M</td><td>M</td><td>parse5 (tolerant) over regex; round-trip test re-parses 006/007/011 plans cleanly.</td></tr>
+    <tr><td>Principles walk burns tokens on every re-entry.</td><td>M</td><td>L</td><td>D-002 walks only when <code>principles.html</code> exists; re-entry preserves §1 verdicts unless user requests a re-walk.</td></tr>
+    <tr><td>SVG templates (D-004) don't fit the feature shape.</td><td>M</td><td>L</td><td>"None" is an <code>ask&lt;T&gt;()</code> option, falling back to a one-sentence paragraph. Palette expandable.</td></tr>
+  </tbody>
+</table>
+</section>
+
+
+<section id="complexity">
+<h2>8 · Complexity tracking</h2>
+<p>Two deliberate additions warrant flagging:</p>
+
+<spec-assumption>
+<p><strong>Shared interview helpers extracted in this slice (D-007).</strong> Cleaner sequencing would be a standalone helper slice first. Inline-justified: one-consumer abstractions are speculation; 011's tests guard the migration; splitting adds version-bookkeeping cost without behavioural benefit.</p>
+</spec-assumption>
+
+<spec-assumption>
+<p><strong>SVG via three pre-baked templates (D-004).</strong> Costs visual variety vs. the hand-rolled diagrams in 006/007. Justified: LLM-generated SVG is unreliable at the coord-math level, and "write a sentence instead" covers the no-fit case. Expand the palette via follow-up if it bites.</p>
+</spec-assumption>
+</section>
+
+
+<section id="questions">
+<h2>9 · Open questions</h2>
+<spec-questions>
+<p>None. The spec's interview anchored every architectural decision. Issues during implementation route back through <code>/spectastic.propose</code>.</p>
+</spec-questions>
+</section>
+
+
+<section id="changelog">
+<h2>10 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-06-16">16 Jun 2026</time><span>Initial plan. Anchored: estimability gate inline + pure + exhaustive (D-001); principles walk via <code>ask&lt;T&gt;()</code>, <code>VIOLATION</code> halts (D-002); ADR IDs deterministic, re-entry-preserved (D-003); SVG via templates + LLM-filled labels (D-004); alternatives scored via chat, winner via <code>ask&lt;T&gt;()</code> (D-005); re-entry ADD-or-ENHANCE never RENUMBER (D-006); interview helpers extracted from 011 (D-007); single PR as <code>v0.1.0-pre.14</code> (D-008).</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  Plan for 012-core-plan · Core plan · authored 16 Jun 2026 ·
+  <button data-theme-toggle style="background:none;border:none;color:var(--c-link);cursor:pointer;font:inherit;padding:0;border-bottom:1px solid currentColor;">light/dark</button>
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>

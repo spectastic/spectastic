@@ -21,7 +21,7 @@ lifecycle verbs — it does not join or alter them (FR-001). The slogan is **"vi
 
 The only exits from an exploration are **graduate** or **delete** (FR-009). Both halves ship: this verb
 scaffolds and quarantines (spec `022-explore`); **graduation** — classify spike vs tracer-bullet, extract the
-spec + plan from the build, restore the gates — is the `--graduate` mode below (spec `023-explore-graduation`),
+spec + design from the build, restore the gates — is the `--graduate` mode below (spec `023-explore-graduation`),
 and the path-appropriate restore lands as `/spectastic.tasks <id> --restore` (spec `024-explore-restore`).
 
 ## What it does
@@ -49,7 +49,7 @@ An exploration is **quarantined**. The guard has two legs (D-003):
    red by design until you graduate or delete the exploration.** This is intended friction, not a bug — see
    the finding message: *"quarantined — graduate or delete to clear"*.
 2. **The verb state-gate refuses** to advance an exploration id through the core verbs — you cannot
-   `plan`/`tasks`/`propose`/`apply` a quarantined exploration into a terminal state. Graduation is the only
+   `design`/`tasks`/`propose`/`apply` a quarantined exploration into a terminal state. Graduation is the only
    bridge into the spec lifecycle (deferred).
 
 There is no path from a loose build to production that skips graduation (FR-006). That is the whole point: the
@@ -70,18 +70,18 @@ relaxation is safe *because* it is bounded.
 
 ## Graduate mode (`--graduate <id>`, spec 023-explore-graduation)
 
-The back half of the loop: turn a quarantined exploration into a real, verified-grounded **spec + plan**, then
+The back half of the loop: turn a quarantined exploration into a real, verified-grounded **spec + design**, then
 lift the quarantine and archive the exploration as discovered-not-guessed history. Three steps:
 
 1. **Classify.** Ask the explorer (via `AskUserQuestion`) whether the build is a **spike** (threw it together to
    answer a question — keep the *learning*, rebuild clean) or a **tracer-bullet** (a usable skeleton — keep the
    *code*, back-fill the spec, harden in place). Recorded immutably in the archived marker; it decides the
    restore path.
-2. **Extract.** Read the build's demonstrated behaviour into a Draft `specs/<id>/spec.html` + `plan.html`,
-   reusing the id. The run record's proven facts (the ledger's §3) become `verified` rows in the **plan's** §3
-   evidence ledger — the grounding ledger is a plan artifact, `REQ-LIFECYCLE-006` — citing the archived
+2. **Extract.** Read the build's demonstrated behaviour into a Draft `specs/<id>/spec.html` + `design.html`,
+   reusing the id. The run record's proven facts (the ledger's §3) become `verified` rows in the **design's** §3
+   evidence ledger — the grounding ledger is a design artifact, `REQ-LIFECYCLE-006` — citing the archived
    exploration. Interview what the build never answered (intent, quantified NFRs, edge cases) exactly as a cold
-   `/spectastic.spec` + `/spectastic.plan` would (D-007).
+   `/spectastic.spec` + `/spectastic.design` would (D-007).
 3. **Lift + archive.** The deterministic transaction writes the bundle, archives `explorations/<id>/` →
    `explorations/archive/<id>/` (deepening the ledger's paths), and flips the marker `quarantined` →
    `graduated` **last**. All-or-nothing: a failure leaves the exploration quarantined and refusable with no
@@ -90,7 +90,7 @@ lift the quarantine and archive the exploration as discovered-not-guessed histor
 **CLI:** `spectastic explore --graduate <id> --classify <spike|tracer-bullet>` (AI-coupled — needs
 `ANTHROPIC_API_KEY`; the slash path is keyless via the in-host session).
 
-**Next:** review the Draft spec + plan, then `/spectastic.tasks`. After graduating, run
+**Next:** review the Draft spec + design, then `/spectastic.tasks`. After graduating, run
 `/spectastic.tasks <id> --restore` (spec **`024-explore-restore`**) to generate the path-appropriate
 **restore-task scaffolding** — refactor-to-comply for a tracer-bullet, clean-rebuild for a spike.
 

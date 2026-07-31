@@ -8,7 +8,7 @@ triggers:
   - "generate a course for this artifact"
   - "why does this requirement exist"
 use-when: "Getting a grounded, in-chat coaching read of a spec, requirement, decision, or file — or generating a persistent course with --course."
-sibling-boundary: "Extended, read-only — unlike spec/plan/propose it authors nothing; explain teaches an existing artifact, it does not change it."
+sibling-boundary: "Extended, read-only — unlike spec/design/propose it authors nothing; explain teaches an existing artifact, it does not change it."
 model: inherit
 ---
 
@@ -21,8 +21,8 @@ it writes **no artifact** and changes nothing on disk; the `--course` mode is th
 persistent, ephemeral course (see **Course mode** below).
 
 The coach is deliberately small — the in-session agent's own file tools, no kernel (see
-`specs/018-explain/plan.html` D-001). `--course` is the heavier sibling: you draft, and a kernel
-(`spectastic course`) verifies + assembles + writes (see `specs/019-explain-course/plan.html`).
+`specs/018-explain/design.html` D-001). `--course` is the heavier sibling: you draft, and a kernel
+(`spectastic course`) verifies + assembles + writes (see `specs/019-explain-course/design.html`).
 
 ## Inputs
 
@@ -53,7 +53,7 @@ anchor are out of scope.
    stored; the flag governs this invocation only.
 
 2. **Resolve every target against real source — before explaining anything.** A target is one of:
-   - a **spec ID** → `specs/<id>/` (read `spec.html`, and `plan.html` / `tasks.html` where they sharpen the answer);
+   - a **spec ID** → `specs/<id>/` (read `spec.html`, and `design.html` / `tasks.html` where they sharpen the answer);
    - a **requirement / decision / success-criterion ID** (`FR-003`, `NFR-001`, `SC-001`, `D-010`, `P-2`, …) →
      find the element carrying that `id=` and read it in place;
    - a **file or directory path** → read it (or list and sample it) with your own Read/Grep tools.
@@ -105,7 +105,7 @@ anchor are out of scope.
 ## After explaining
 
 - Nothing is persisted; the working tree is unchanged. Offer a natural next target (a linked requirement, the
-  plan behind a spec) or a lifecycle verb if one is the obvious follow-up — but only on request; never push.
+  design behind a spec) or a lifecycle verb if one is the obvious follow-up — but only on request; never push.
 
 ## Course mode (`--course`)
 

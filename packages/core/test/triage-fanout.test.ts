@@ -128,7 +128,7 @@ describe('triageFanout (032 US2 · decide the ambiguous ones in one pass)', () =
       },
     ];
     // The single hedged item is gated: category → diagnostic, then layer → plan.
-    const askResponses = [{ category: 'diagnostic' }, { layer: 'plan' }];
+    const askResponses = [{ category: 'diagnostic' }, { layer: 'design' }];
     const ai = new KeyedStubAI(responses, askResponses);
 
     const cards = await triageFanout(items, base, ai, { concurrency: 8 });
@@ -136,7 +136,7 @@ describe('triageFanout (032 US2 · decide the ambiguous ones in one pass)', () =
     // Exactly one hedged item → two ask calls; confident items never reach the gate.
     expect(ai.askCalls).toHaveLength(2);
     expect(cards[1]?.headline).toBe('two');
-    expect(cards[1]?.layer).toBe('plan');
+    expect(cards[1]?.layer).toBe('design');
     // The gate ran after classification: every chat precedes the first ask (FR-005).
     const firstAsk = ai.callLog.indexOf('ask');
     const lastChat = ai.callLog.lastIndexOf('chat');

@@ -6,7 +6,7 @@ import type { AIProvider } from '../src/types.js';
 /**
  * 037 — structural coverage of the real step wiring. The driver's logic is
  * unit-tested in run-pipeline.test.ts; here we assert the real steps are the
- * ordered plan→tasks→implement→verify chain with the decision verbs wired to the
+ * ordered design→tasks→implement→verify chain with the decision verbs wired to the
  * two generation steps. The end-to-end real-generation run is a local smoke.
  */
 
@@ -22,12 +22,12 @@ describe('buildRunSteps — the real step chain (037)', () => {
     verify: noop as never,
   });
 
-  it('is the plan→tasks→implement→verify chain, in order', () => {
-    expect(steps.map((s) => s.name)).toEqual(['plan', 'tasks', 'implement', 'verify']);
+  it('is the design→tasks→implement→verify chain, in order', () => {
+    expect(steps.map((s) => s.name)).toEqual(['design', 'tasks', 'implement', 'verify']);
   });
 
   it('wires the 039 decision verbs to the generation steps only', () => {
-    expect(steps.find((s) => s.name === 'plan')?.decisionVerb).toBe('plan');
+    expect(steps.find((s) => s.name === 'design')?.decisionVerb).toBe('design');
     expect(steps.find((s) => s.name === 'tasks')?.decisionVerb).toBe('tasks');
     expect(steps.find((s) => s.name === 'implement')?.decisionVerb).toBeUndefined();
     expect(steps.find((s) => s.name === 'verify')?.decisionVerb).toBeUndefined();

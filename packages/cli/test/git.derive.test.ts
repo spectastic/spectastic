@@ -37,7 +37,7 @@ describe('scopeOf / commitSubject (FR-002)', () => {
   it('a whitespace-only spec id is treated as absent (unscoped, never faked)', () => {
     expect(commitSubject('triage', '   ', 'x')).toBe('triage: x');
     // and the scoped form is untouched by the new branch
-    expect(commitSubject('plan', '012-core-plan', 'stack + ADRs')).toBe('plan(012): stack + ADRs');
+    expect(commitSubject('design', '012-core-plan', 'stack + ADRs')).toBe('design(012): stack + ADRs');
   });
 });
 
@@ -50,7 +50,7 @@ describe('branchName (FR-003)', () => {
 describe('VERB_GIT_MAP / shouldCreateBranch (FR-003, FR-005)', () => {
   it('only spec may create a branch', () => {
     expect(VERB_GIT_MAP.spec.createsBranch).toBe(true);
-    for (const v of ['plan', 'tasks', 'implement', 'propose', 'apply', 'triage', 'principles'] as const) {
+    for (const v of ['design', 'tasks', 'implement', 'propose', 'apply', 'triage', 'principles'] as const) {
       expect(VERB_GIT_MAP[v].createsBranch).toBe(false);
     }
   });

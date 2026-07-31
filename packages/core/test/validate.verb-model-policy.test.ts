@@ -11,7 +11,7 @@ describe('verb-model-policy drift-guard (spec 044 FR-009)', () => {
   });
 
   it('passes an inherit verb declaring inherit', () => {
-    const f = verbModelPolicyFinding(withFm('plan', 'model: inherit\n'), 'commands/spectastic.plan.md');
+    const f = verbModelPolicyFinding(withFm('design', 'model: inherit\n'), 'commands/spectastic.design.md');
     expect(f).toBeNull();
   });
 

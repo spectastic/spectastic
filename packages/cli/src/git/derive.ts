@@ -22,7 +22,7 @@ export interface VerbGitPolicy {
 
 export const VERB_GIT_MAP: Record<Verb, VerbGitPolicy> = {
   spec: { createsBranch: true },
-  plan: { createsBranch: false },
+  design: { createsBranch: false },
   tasks: { createsBranch: false },
   implement: { createsBranch: false },
   propose: { createsBranch: false },

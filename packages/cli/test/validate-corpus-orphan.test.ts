@@ -70,9 +70,9 @@ describe('spectastic validate: the registry scan (061 T-204, FR-003/FR-007)', ()
       dir,
       '| KB-0001 | spectastic-examples | finance-settlement | 001-settlement-windows | Settlement windows | 2026-07-25 | knowledge/finance-settlement/references/001-settlement-windows.md | orphaned |',
     );
-    writeFileSync(join(dir, 'plan.html'), MINIMAL_SPEC, 'utf8');
+    writeFileSync(join(dir, 'design.html'), MINIMAL_SPEC, 'utf8');
 
-    const r = await runCLI(['validate', 'plan.html'], dir);
+    const r = await runCLI(['validate', 'design.html'], dir);
     expect(r.code, r.stdout + r.stderr).toBe(0); // warning-only, never blocks
     expect(r.stdout.toLowerCase()).toContain('orphan');
     expect(r.stdout).toContain('KB-0001');
@@ -87,18 +87,18 @@ describe('spectastic validate: the registry scan (061 T-204, FR-003/FR-007)', ()
         '| KB-0001 | spectastic-examples | finance-settlement | 002-clearing-cutover | B | 2026-07-25 | knowledge/finance-settlement/references/002-clearing-cutover.md |  |',
       ].join('\n'),
     );
-    writeFileSync(join(dir, 'plan.html'), MINIMAL_SPEC, 'utf8');
+    writeFileSync(join(dir, 'design.html'), MINIMAL_SPEC, 'utf8');
 
-    const r = await runCLI(['validate', 'plan.html'], dir);
+    const r = await runCLI(['validate', 'design.html'], dir);
     expect(r.code, r.stdout + r.stderr).not.toBe(0);
     expect(r.stdout.toLowerCase()).toContain('duplicate');
   });
 
   it('is a no-op with no knowledge/ directory at all', async () => {
     const dir = project('no-knowledge-dir');
-    writeFileSync(join(dir, 'plan.html'), MINIMAL_SPEC, 'utf8');
+    writeFileSync(join(dir, 'design.html'), MINIMAL_SPEC, 'utf8');
 
-    const r = await runCLI(['validate', 'plan.html'], dir);
+    const r = await runCLI(['validate', 'design.html'], dir);
     expect(r.code, r.stdout + r.stderr).toBe(0);
     expect(r.stdout.toLowerCase()).not.toContain('orphan');
   });

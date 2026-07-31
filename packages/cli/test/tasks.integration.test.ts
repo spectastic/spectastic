@@ -41,7 +41,7 @@ async function runCLI(args: string[], cwd: string, extraEnv: Record<string, stri
 }
 
 /**
- * Sets up a temp project with specs/<id>/{spec.html,plan.html} + optional
+ * Sets up a temp project with specs/<id>/{spec.html,design.html} + optional
  * tasks.html at the given state. Returns the tasks-spec ID + the spec
  * directory + the tasks.html path so the test can assert on them.
  */
@@ -54,13 +54,13 @@ function setupSpecDir(opts: { tasksStatus?: string }): {
   const specId = 'foo-bar';
   const specDir = join(cwd, 'specs', specId);
   mkdirSync(specDir, { recursive: true });
-  // Minimal but valid spec.html + plan.html sources.
+  // Minimal but valid spec.html + design.html sources.
   writeFileSync(
     join(specDir, 'spec.html'),
     '<!doctype html><html><body><main><spec-meta></spec-meta></main></body></html>',
   );
   writeFileSync(
-    join(specDir, 'plan.html'),
+    join(specDir, 'design.html'),
     '<!doctype html><html><body><main><spec-meta></spec-meta></main></body></html>',
   );
   const tasksPath = join(specDir, 'tasks.html');

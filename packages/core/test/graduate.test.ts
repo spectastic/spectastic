@@ -88,7 +88,7 @@ describe('graduateTransaction (US3)', () => {
 
     // bundle written (spec + plan, no tasks — restore split to the sibling)
     expect(files.get('/specs/099/spec.html')).toBe('<spec>S</spec>');
-    expect(files.get('/specs/099/plan.html')).toBe('<plan>P</plan>');
+    expect(files.get('/specs/099/design.html')).toBe('<plan>P</plan>');
     // exploration moved to archive/
     expect(files.has('/explorations/099/quarantine.json')).toBe(false);
     expect(files.has('/explorations/archive/099/prototype.ts')).toBe(true);

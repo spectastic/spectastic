@@ -1,0 +1,375 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
+<title>Lifecycle canvas (VS Code) · Design</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Design · 020-vscode-extension</p>
+  <h1>Lifecycle canvas (VS Code)</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    How we will build it.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>     <span><spec-status value="accepted">Accepted</spec-status></span>
+    <b>Spec</b>       <span><a href="./spec.html">020-vscode-extension</a></span>
+    <b>Owner</b>      <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Branch</b>     <span><code>020-vscode-extension</code></span>
+    <b>Created</b>    <span><time datetime="2026-06-21">21 Jun 2026</time></span>
+    <b>Read time</b>  <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-tldr>
+    <p>A new <code>packages/vscode</code> workspace package consumes <code>@spectastic/schema</code>
+    to scan a selected spec's <code>specs/&lt;id&gt;/</code> artifacts, extract their health, and post a
+    <code>LifecycleGraph</code> to a <strong>vanilla-TS webview</strong> that draws the calm canvas;
+    a file-watcher keeps it live and clicking a node opens the rendered artifact in a second webview.
+    Biggest risk: webview CSP + <code>asWebviewUri</code> asset-rewriting must reproduce spectastic's
+    design system faithfully — spiked first.</p>
+  </spec-tldr>
+</header>
+
+
+<section id="principles-check">
+<h2>1 · Principles check</h2>
+<p>Verify this plan respects every principle in
+<a href="../../principles.html">v1.2.0</a>. Any violation requires either a principles amendment or a
+deliberate exception logged in <a href="#complexity">§8</a>.</p>
+
+<table>
+  <thead><tr><th>Principle</th><th>Compliance</th><th>Notes</th></tr></thead>
+  <tbody>
+    <tr><td>P-1 · Source order is reading order</td><td><spec-pill>OK</spec-pill></td><td>The plan + spec artifacts read top-to-bottom. The webview is tooling, not a shipped artifact, so P-1 does not bind its DOM.</td></tr>
+    <tr><td>P-2 · Semantic tags over class soup</td><td><spec-pill>OK</spec-pill></td><td>Canvas cards reuse <code>spec.css</code> semantic tokens; nodes carry verb/status as data, not class soup.</td></tr>
+    <tr><td>P-3 · IDs are contracts</td><td><spec-pill>OK</spec-pill></td><td>Decisions carry stable <code>D-001…</code> IDs; the plan links spec requirement IDs rather than restating them.</td></tr>
+    <tr><td>P-4 · Progressive enhancement, never dependence</td><td><spec-pill>EXCEPTION</spec-pill></td><td>The canvas webview is inherently JS-driven and does not degrade without JS. It is editor tooling, not a spec artifact; the artifacts it opens (<a href="./spec.html#FR-003">FR-003</a>) still honour P-4. Logged in <a href="#complexity">§8</a> and the spec's <code>&lt;spec-warning&gt;</code>.</td></tr>
+    <tr><td>P-5 · Calm density</td><td><spec-pill>OK</spec-pill></td><td>The whole design mandate; <a href="./spec.html#FR-006">FR-006</a> keeps attention cues quiet until they fire. data-ink ratio is the referee.</td></tr>
+    <tr><td>P-6 · Draft is loose, ratified is locked</td><td><spec-pill>OK</spec-pill></td><td>The extension is strictly read-only — it never mutates an artifact, so it cannot touch a terminal-state file without ceremony.</td></tr>
+    <tr><td>P-7 · Done means verified</td><td><spec-pill>OK</spec-pill></td><td>Honoured: every interactive surface carries a Playwright behaviour test (not presence-only), positioned elements add containment + viewport-bounds (<a href="./spec.html#NFR-004">NFR-004</a>), and the new derived-view + panel-identity work (<a href="#D-008">D-008</a>, <a href="#D-009">D-009</a>) ships with browser-level tests (T-500/T-501).</td></tr>
+  </tbody>
+</table>
+
+<spec-note>
+<p>Two Scope non-goals were checked explicitly. <em>"Adopt a JavaScript framework — progressive
+enhancement only"</em>: honoured — the webview is vanilla TS (<a href="#D-002">D-002</a>), no framework.
+<em>"No build step for the spec artifact"</em>: honoured — only the <em>tooling</em> builds (tsup), which
+the principle expressly permits ("tooling that reads or generates spec artifacts may have its own build
+step"). The <code>.html</code> artifacts still ship as source.</p>
+</spec-note>
+</section>
+
+
+<section id="technical-context">
+<h2>2 · Technical context</h2>
+<dl>
+  <dt>Language(s)</dt>      <dd>TypeScript 5.7, ESM. Extension host targets Node ≥ 20 (VS Code runtime); webview targets browser ES2022.</dd>
+  <dt>Frameworks</dt>       <dd>None (vanilla TS + DOM/SVG — honours the no-framework non-goal). VS Code Extension API ^1.90. Bundled by tsup/esbuild with two entries: a CommonJS host bundle and a browser IIFE webview bundle.</dd>
+  <dt>Storage</dt>          <dd>None. The <code>LifecycleGraph</code> is transient in-memory, re-derived from disk; nothing is persisted (no positions, no index).</dd>
+  <dt>Testing</dt>          <dd>Behaviour-first. vitest for pure extraction in <code>@spectastic/schema</code>; Playwright drives the webview and asserts render + click + attention state; <code>@vscode/test-electron</code> smoke-tests activation + the file-watcher. <strong>Positioned elements (nodes, overlays) carry containment + viewport-bounds assertions</strong> (<code>scrollHeight ≤ clientHeight</code>; rect inside the viewport), not just presence — see <a href="./spec.html#NFR-004">NFR-004</a> and <a href="./triage-log.html#T-001">T-001</a>/<a href="./triage-log.html#T-002">T-002</a>.</dd>
+  <dt>Perf targets</dt>     <dd><a href="./spec.html#NFR-001">NFR-001</a> &lt; 300 ms p95 panel paint (≤ 8 nodes); <a href="./spec.html#NFR-002">NFR-002</a> node update &lt; 500 ms after save.</dd>
+  <dt>Constraints</dt>      <dd>No JS framework; reuse <code>spec.css</code> tokens + the fixed <a href="../017-brand-logo/spec.html">017</a> per-verb colours; strict webview CSP; read-only (never writes artifacts); sideload/dev-host only (no marketplace).</dd>
+</dl>
+</section>
+
+
+<section id="approach">
+<h2>3 · Approach</h2>
+
+<p>Add <code>packages/vscode</code> to the pnpm workspace, consuming <code>@spectastic/schema</code> (and
+<code>@spectastic/core</code> where useful). On activation the <strong>host</strong> registers a webview
+view and a "select spec" command (a native <code>QuickPick</code> — <a href="./spec.html#FR-008">FR-008</a>).
+For the selected spec it scans <code>specs/&lt;id&gt;/</code>, runs an extended
+<code>extractHealth()</code> over each artifact, assembles a <code>LifecycleGraph</code> (nodes + typed
+edges), and <code>postMessage</code>s it to the webview. A
+<code>createFileSystemWatcher('**/specs/&lt;id&gt;/*.html')</code> re-extracts only the touched file and posts
+a node-level patch (<a href="./spec.html#FR-009">FR-009</a>, <a href="./spec.html#NFR-002">NFR-002</a>).</p>
+
+<p>The <strong>webview</strong> is vanilla TS. A pure, deterministic layout function places the linear
+spine on a row with offset lanes for child slices and proposals (<a href="#D-003">D-003</a>); edges are
+inline SVG; nodes and the hover/select compact card are DOM that consumes <code>spec.css</code> custom
+properties, with a small theme layer mapping <code>--vscode-*</code> surface variables onto our tokens
+while keeping spectastic accents, brand colours, and pills (<a href="./spec.html#FR-012">FR-012</a>,
+<a href="#D-007">D-007</a>). Clicking a node posts <code>open</code>; the host opens a
+<code>WebviewPanel</code> that loads the artifact's own HTML with asset links rewritten via
+<code>asWebviewUri</code> under a strict CSP (<a href="#D-005">D-005</a>). Staleness is an mtime
+comparison against upstream artifacts (<a href="#D-006">D-006</a>).</p>
+
+<spec-arch>
+<figure>
+<svg viewBox="0 0 720 220" role="img" aria-label="Extension host scans and extracts; posts a graph to the canvas webview; clicking opens an artifact webview">
+  <style>
+    .box { fill:#fcfbf7; stroke:#c4c1bb; stroke-width:1.2; }
+    .label { font: 700 10px Lato, sans-serif; fill:#4a4a46; letter-spacing:0.05em; text-transform:uppercase; }
+    .body { font: 400 11px "Source Serif 4", Georgia, serif; fill:#353534; }
+    .arr { stroke:#73706d; stroke-width:1.2; fill:none; }
+    .grp { fill:none; stroke:#e3e3e0; stroke-width:1; stroke-dasharray:3 3; }
+  </style>
+  <rect class="grp" x="20" y="20" width="380" height="180" rx="6"/>
+  <text class="label" x="32" y="38">Extension host (Node)</text>
+
+  <rect class="box" x="36"  y="70" width="150" height="56" rx="4"/>
+  <text class="label" x="50" y="92">Scan + Watch</text>
+  <text class="body"  x="50" y="110">specs/&lt;id&gt;/*.html</text>
+
+  <rect class="box" x="230" y="70" width="150" height="56" rx="4"/>
+  <text class="label" x="244" y="92">Extract @schema</text>
+  <text class="body"  x="244" y="110">health → graph</text>
+
+  <rect class="box" x="470" y="40" width="220" height="56" rx="4"/>
+  <text class="label" x="484" y="62">Canvas webview</text>
+  <text class="body"  x="484" y="80">layout · SVG edges · cards</text>
+
+  <rect class="box" x="470" y="138" width="220" height="56" rx="4"/>
+  <text class="label" x="484" y="160">Artifact webview</text>
+  <text class="body"  x="484" y="178">rendered .html (asWebviewUri)</text>
+
+  <path class="arr" d="M186 98 L230 98" marker-end="url(#a)"/>
+  <path class="arr" d="M380 92 Q430 92 470 76" marker-end="url(#a)"/>
+  <text class="body" x="392" y="60">postMessage(graph)</text>
+  <path class="arr" d="M580 96 L580 138" marker-end="url(#a)"/>
+  <text class="body" x="588" y="122">click → open</text>
+  <defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#73706d"/></marker></defs>
+</svg>
+<figcaption>Host scans + extracts and posts a graph to the canvas webview; a node click opens the rendered artifact in a second webview. No write path touches disk.</figcaption>
+</figure>
+</spec-arch>
+</section>
+
+
+<section id="alternatives">
+<h2>4 · Alternatives considered</h2>
+
+<p>The most consequential undecided choice was the layout engine (the webview-UI choice was forced
+vanilla by the no-framework non-goal). Scored 1–5, higher is better.</p>
+
+<spec-matrix>
+<table>
+  <thead>
+    <tr><th>Option</th><th>Deps-free</th><th>Predictable / calm</th><th>Effort (≤ 8 nodes)</th><th>Fit for deferred overview</th><th class="score">Total</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>dagre (graphlib)</td><td>2</td><td>3</td><td>4</td><td>4</td><td class="score">13</td></tr>
+    <tr><td>elkjs</td><td>1</td><td>3</td><td>2</td><td>5</td><td class="score">11</td></tr>
+    <tr data-winner><td>Hand-rolled L→R — chosen</td><td>5</td><td>5</td><td>5</td><td>2</td><td class="score">17</td></tr>
+  </tbody>
+</table>
+</spec-matrix>
+<p>Hand-rolled wins on the axes that matter for this slice (zero deps, full control over calm spacing,
+trivial for ≤ 8 nodes). It scores low only on the deferred project-wide overview — which is out of scope,
+so that column doesn't decide it.</p>
+</section>
+
+
+<section id="decisions">
+<h2>5 · Decisions</h2>
+
+<spec-decision id="D-001">
+  <h4>D-001 · New <code>packages/vscode</code> package consuming the kernel</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd><code>@spectastic/core</code> and <code>@spectastic/schema</code> already name "the future VS Code extension" as a consumer; the repo is a pnpm monorepo.</dd>
+    <dt>Decision</dt>     <dd>A new workspace package <code>@spectastic/vscode</code> with a host entry and a webview entry, bundled by tsup (CJS host, IIFE webview). Depends on <code>@spectastic/schema</code> via <code>workspace:*</code>.</dd>
+    <dt>Consequences</dt> <dd>+ Reuses the grammar + kernel; the extension stays thin. − First dual-bundle-target package and first VSIX in the repo.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-002">
+  <h4>D-002 · Vanilla TS + DOM/SVG for the webview (no framework)</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>The principles' Scope non-goal forbids JS frameworks; the canvas shows ≤ 8 nodes for one spec.</dd>
+    <dt>Decision</dt>     <dd>Hand-written render: cards as DOM, edges as inline SVG, state via a tiny message-driven update loop. No Preact/Svelte/Lit.</dd>
+    <dt>Consequences</dt> <dd>+ Principle-compliant, near-zero runtime, fits the single-file ethos. − More hand-written render/state code than a reactive lib would need.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-003">
+  <h4>D-003 · Hand-rolled deterministic L→R layout</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd><a href="./spec.html#FR-004">FR-004</a> wants deterministic auto-layout with lanes; the graph is linear-ish; calm spacing must be controllable.</dd>
+    <dt>Decision</dt>     <dd>A pure function places the spine on one row and offsets child-slice / proposal nodes onto lanes. No layout dependency.</dd>
+    <dt>Consequences</dt> <dd>+ Zero deps, fully predictable, trivial to test. − We maintain it; it is not built for the deferred whole-project overview.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-004">
+  <h4>D-004 · Health extraction extends <code>@spectastic/schema</code></h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd><a href="./spec.html#FR-010">FR-010</a> derives node state by parsing artifact HTML; schema already has a parse5 AST, <code>findAll/getAttr</code>, and <code>extractSpecMetadata</code>.</dd>
+    <dt>Decision</dt>     <dd>Add <code>extractHealth()</code> returning an <code>ArtifactHealth</code> (status, req counts, budget band, open-question count, regen pass/fail) beside <code>extractSpecMetadata</code>, including a static re-computation of the budget band.</dd>
+    <dt>Consequences</dt> <dd>+ One tested source of truth; the extension stays thin; <code>validate</code> can reuse it. − Pre-1.0 minor bump of schema; consumers pin tightly.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-005">
+  <h4>D-005 · Open the artifact in a <code>WebviewPanel</code> with <code>asWebviewUri</code> + CSP</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd><a href="./spec.html#FR-003">FR-003</a> requires the artifact rendered in spectastic's design system; webviews sandbox local resources.</dd>
+    <dt>Decision</dt>     <dd>Load the artifact HTML into a panel; rewrite its <code>../../assets/*</code> links via <code>asWebviewUri</code>; serve under a strict CSP scoped to the extension's <code>localResourceRoots</code> (repo <code>assets/</code> + the spec folder).</dd>
+    <dt>Consequences</dt> <dd>+ Faithful, in-editor "the document is the artifact". − CSP + URI-rewrite work; must permit <code>spec.js</code>; the riskiest single piece (spiked first).</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-006">
+  <h4>D-006 · Staleness by file mtime comparison</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>Resolves the spec's one open question (<a href="./spec.html#questions">§7</a>) for <a href="./spec.html#FR-007">FR-007</a>: how "predates an upstream change" is computed.</dd>
+    <dt>Decision</dt>     <dd>A node is stale when its file mtime is older than the newest upstream artifact's mtime. No parsing; the watcher already surfaces mtimes.</dd>
+    <dt>Consequences</dt> <dd>+ Simple, robust, fits "no build step". − Coarse: a no-op save bumps mtime. Revisit with a changelog-date hybrid only if it proves noisy.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-007">
+  <h4>D-007 · Theme by mapping <code>--vscode-*</code> onto spectastic tokens</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd><a href="./spec.html#FR-012">FR-012</a>: follow the active VS Code theme for surfaces, keep spectastic accents / brand / pills.</dd>
+    <dt>Decision</dt>     <dd>A small theme layer assigns VS Code surface variables (<code>--vscode-editor-background</code>, etc.) to our surface tokens at runtime; accent, per-verb brand, and pill tokens stay spectastic's own.</dd>
+    <dt>Consequences</dt> <dd>+ Sits natively in any editor theme; brand intact. − A token-mapping layer to maintain; contrast must be re-checked per theme (<a href="./spec.html#NFR-003">NFR-003</a>).</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-008">
+  <h4>D-008 · Derived-view node category for <code>verify.html</code></h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>Spec <a href="../021-verify-view/spec.html">021</a> added <code>verify.html</code> — a regenerated, statusless view. <a href="./spec.html#FR-014">FR-014</a> names a derived-view node category that sits outside <a href="./spec.html#FR-002">FR-002</a>'s fixed verb palette.</dd>
+    <dt>Decision</dt>     <dd>Tag the node with a derived-view kind. The scanner adds a <code>verify</code> candidate (<code>specs/&lt;id&gt;/verify.html</code>) and emits a node with <em>no status pill</em>; its metric is a binary <em>stale</em> flag from 021's <code>verify-view-stale</code> rule (<a href="../021-verify-view/spec.html#FR-008">021 FR-008</a>) — a different signal from D-006's node-mtime staleness. The webview renders it visually distinct from the verb spine, attached adjacent to its source.</dd>
+    <dt>Consequences</dt> <dd>+ Future derived views (e.g. a conformance index) reuse the category; FR-002's verb-node contract stays intact. − A new node kind plus a second, distinct staleness signal to keep separate from D-006; the metric couples 020 to 021's rule.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-009">
+  <h4>D-009 · Artifact-panel identity + reuse map</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd><a href="./triage-log.html#T-007">T-007</a>: <code>open-artifact.ts</code> titled panels by bare verb with no spec id and created a fresh panel per click, so a leftover panel from one spec read as the spec now on the canvas. <a href="./spec.html#FR-003">FR-003</a> now requires identity + reuse.</dd>
+    <dt>Decision</dt>     <dd>The view provider holds a <code>Map&lt;artifactPath, WebviewPanel&gt;</code>. <code>openArtifact</code> titles each panel <code>&lt;spec-id&gt; · &lt;verb&gt;</code> (spec id <em>leads</em>, surviving tab truncation), reveals the existing panel on re-open instead of stacking a duplicate, and clears the entry on <code>onDidDispose</code>. Cross-spec panels stay open — auto-close was deliberately rejected (the proposal's §2) to preserve cross-spec comparison.</dd>
+    <dt>Consequences</dt> <dd>+ Identity + no duplicate panels; cross-spec comparison preserved. − The provider gains panel-lifecycle state (it was stateless); panels can accumulate across many specs (accepted, bounded by the leading-id disambiguation).</dd>
+  </dl>
+</spec-decision>
+</section>
+
+
+<section id="project-structure">
+<h2>6 · Project structure</h2>
+
+<pre><code>packages/vscode/                 # new @spectastic/vscode package
+  package.json                   # engines.vscode ^1.90; main dist/host.cjs; contributes: view + command
+  tsup.config.ts                 # two entries: host (node/cjs), webview (browser/iife)
+  src/
+    host/
+      extension.ts               # activate(): register webview view + "select spec" command
+      scanner.ts                 # scan specs/<id>/, build LifecycleGraph
+      watcher.ts                 # createFileSystemWatcher -> re-extract touched node
+      open-artifact.ts           # WebviewPanel + asWebviewUri + CSP (D-005)
+      messaging.ts               # host <-> webview message protocol types
+    webview/
+      main.ts                    # entry: receive graph/patch, drive render
+      layout.ts                  # deterministic L->R placement (D-003)
+      node.ts                    # minimal node + compact card DOM (FR-002, FR-005)
+      edges.ts                   # inline SVG connectors incl. branch points (FR-004)
+      theme.ts                   # map --vscode-* onto spectastic tokens (D-007)
+      canvas.css                 # derives from assets/spec.css tokens
+
+packages/schema/src/
+  extract.ts                     # + extractHealth(), ArtifactHealth type (D-004)
+
+tests/vscode/
+  extract-health.spec.ts         # vitest: health + budget-band parity vs a fixture artifact
+  canvas.webview.spec.ts         # Playwright: render, click->message, attention state visible
+  activation.e2e.ts              # @vscode/test-electron: activation + file-watcher smoke
+</code></pre>
+</section>
+
+
+<section id="risks">
+<h2>7 · Risks &amp; mitigations</h2>
+
+<table>
+  <thead><tr><th>Risk</th><th>Likelihood</th><th>Impact</th><th>Mitigation</th></tr></thead>
+  <tbody>
+    <tr><td>Webview CSP / <code>asWebviewUri</code> rewriting breaks artifact rendering (D-005)</td><td>M</td><td>H</td><td>Spike the artifact webview <em>first</em>; a Playwright check asserts <code>spec.css</code> actually applies (computed style), not just that the file loaded.</td></tr>
+    <tr><td>Static budget-band recomputation drifts from the runtime <code>spec.js</code> gauge</td><td>M</td><td>M</td><td>Port the word-count + threshold logic into <code>extractHealth()</code>; unit-test parity against a known artifact whose gauge band is asserted in a browser.</td></tr>
+    <tr><td>Dual bundle targets (host CJS / webview browser) misconfigured</td><td>M</td><td>M</td><td>Single tsup two-entry config; typecheck both; CI builds the VSIX as a gate.</td></tr>
+    <tr><td>Health extraction drifts as artifact structure evolves</td><td>M</td><td>M</td><td>Centralise in <code>@spectastic/schema</code> with fixture tests; one source of truth shared with <code>validate</code>.</td></tr>
+    <tr><td>p95 &lt; 300 ms with parse5 over ~8 files (<a href="./spec.html#NFR-001">NFR-001</a>)</td><td>L</td><td>M</td><td>Parse files in parallel; cache per file by mtime so the watcher re-parses only what changed; benchmark in the existing <code>bench/</code> harness.</td></tr>
+    <tr><td>mtime staleness false positives from no-op saves (D-006)</td><td>L</td><td>L</td><td>Accepted as coarse; documented; hybrid changelog-date check is the fallback if noisy.</td></tr>
+    <tr><td>Structural-only tests pass while positioned UI is visibly cropped (<a href="./spec.html#NFR-004">NFR-004</a>; realised as <a href="./triage-log.html#T-001">T-001</a>/<a href="./triage-log.html#T-002">T-002</a>)</td><td>M</td><td>M</td><td>Presence assertions are not enough: every node/overlay test also checks containment (<code>scrollHeight ≤ clientHeight</code>) and that its rect stays inside the viewport (shrink the panel to stress it).</td></tr>
+    <tr><td>Derived-view stale metric (<a href="#D-008">D-008</a>) couples 020 to 021's <code>verify-view-stale</code> signal; a change there silently mis-flags verify nodes</td><td>L</td><td>M</td><td>Read the stale signal through one helper; a Playwright test asserts a drifted verify node flags stale and a regenerated one does not (T-500). Keep it distinct from D-006's node-mtime staleness.</td></tr>
+  </tbody>
+</table>
+</section>
+
+
+<section id="complexity">
+<h2>8 · Complexity tracking</h2>
+<p>Where this plan adds complexity beyond the spec's literal text, the justification lives here.</p>
+
+<spec-assumption>
+<p><strong>P-4 exception.</strong> The canvas webview is JS-dependent and does not degrade to a static
+document. Justified: it is editor tooling, not a shipped spec artifact, and the artifacts it opens still
+honour P-4 (<a href="./spec.html#FR-003">FR-003</a>). Mirrors the spec's <code>&lt;spec-warning&gt;</code>;
+not a precedent for JS-dependent artifacts.</p>
+</spec-assumption>
+
+<spec-assumption>
+<p><strong>Static budget-band recomputation.</strong> <code>spec.js</code> computes the budget band at
+render time; the extension must reproduce it statically because <a href="./spec.html#FR-010">FR-010</a>
+forbids a build step or index. Justified by FR-010; mitigated by centralising the logic in
+<code>@spectastic/schema</code> with parity tests so the two never silently diverge.</p>
+</spec-assumption>
+
+<spec-assumption>
+<p><strong>Token-mapping theme layer.</strong> Mapping <code>--vscode-*</code> onto our tokens is more
+surface than hardcoding spectastic light/dark. Justified by <a href="./spec.html#FR-012">FR-012</a> (native
+fit was the decided theming approach) and bounded by <a href="./spec.html#NFR-003">NFR-003</a> contrast checks.</p>
+</spec-assumption>
+</section>
+
+
+<section id="questions">
+<h2>9 · Open questions</h2>
+<spec-questions>
+<p>None outstanding — the canvas surface was settled during implementation: a dedicated <em>Activity Bar</em>
+view container (<code>contributes.viewsContainers.activitybar</code>), not the bottom Panel; both used the same
+<code>WebviewView</code>, so the choice was non-blocking as anticipated.</p>
+</spec-questions>
+</section>
+
+
+<section id="changelog">
+<h2>10 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-06-24">24 Jun 2026</time><span>Status flipped Draft → Accepted with the sibling bundle (REQ-LIFECYCLE-005) — 42/42 tasks complete; tests verified passing.</span></li>
+  <li><time datetime="2026-06-24">24 Jun 2026</time><span>Re-entry for applied change <a href="./changes/archive/2026-06-24-canvas-derived-views-panel-identity/proposal.html">2026-06-24-canvas-derived-views-panel-identity</a>: added <a href="#D-008">D-008</a> (derived-view node category for <code>verify.html</code>) + <a href="#D-009">D-009</a> (artifact-panel identity + reuse map); principles check re-walked against v1.2.0 with <a href="../../principles.html#P-7">P-7</a> added (OK); resolved §9 open question (Activity Bar surface, settled in implementation). 9 decisions now.</span></li>
+  <li><time datetime="2026-06-22">22 Jun 2026</time><span>Strengthened the testing discipline for <a href="./spec.html#NFR-004">NFR-004</a> — positioned elements (nodes, overlays) carry containment + viewport-bounds assertions, not just presence; added the matching risk row. Encodes the T-001/T-002 lesson.</span></li>
+  <li><time datetime="2026-06-21">21 Jun 2026</time><span>Initial plan. Stack: new <code>packages/vscode</code> (vanilla TS, tsup dual-target) consuming an extended <code>@spectastic/schema</code>; hand-rolled L→R layout; artifact opens in a CSP'd webview; staleness by mtime (resolves spec §7). 7 decisions, P-4 logged as an exception.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  Plan for 020-vscode-extension · Lifecycle canvas (VS Code) · authored 2026-06-21 ·
+  <button data-theme-toggle style="background:none;border:none;color:var(--c-link);cursor:pointer;font:inherit;padding:0;border-bottom:1px solid currentColor;">light/dark</button>
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>

@@ -6,7 +6,7 @@ import { join } from 'node:path';
  * `extended` verbs install only when opted in via `init --with <verb>`.
  *
  * Source of truth is repo-root `commands.json`, copied into the bundle root
- * by prebuild (T-312). Per specs/018-explain/plan.html D-002.
+ * by prebuild (T-312). Per specs/018-explain/design.html D-002.
  */
 export interface VerbManifest {
   core: string[];

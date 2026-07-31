@@ -14,11 +14,11 @@ model: inherit
 
 # /spectastic.principles
 
-You are drafting (or amending) the **project principles** as a single-file HTML artifact in the spectastic design system. The principles establish the non-negotiable rules that bind every downstream `spec.html`, `plan.html`, and `tasks.html`.
+You are drafting (or amending) the **project principles** as a single-file HTML artifact in the spectastic design system. The principles establish the non-negotiable rules that bind every downstream `spec.html`, `design.html`, and `tasks.html`.
 
 ## What spectastic is
 
-Spectastic is a single-file HTML spec-authoring system. The lifecycle has four core phases (principles → spec → plan → tasks) plus ongoing change management (propose → apply) and triage. Each artifact is a self-contained `.html` file that uses a small vocabulary of semantic custom elements (`<spec-requirement>`, `<spec-decision>`, `<spec-status>`, etc.) styled by `assets/spec.css`. Read `specs/000-spectastic/spec.html` to see what a finished artifact looks like.
+Spectastic is a single-file HTML spec-authoring system. The lifecycle has four core phases (principles → spec → design → tasks) plus ongoing change management (propose → apply) and triage. Each artifact is a self-contained `.html` file that uses a small vocabulary of semantic custom elements (`<spec-requirement>`, `<spec-decision>`, `<spec-status>`, etc.) styled by `assets/spec.css`. Read `specs/000-spectastic/spec.html` to see what a finished artifact looks like.
 
 ## Inputs
 
@@ -49,9 +49,9 @@ User input (from `$ARGUMENTS`): either the project name to ratify a new principl
 4. **Sync Impact Report**. If amending, after writing the new principles document, write a short summary at the end of your reply listing:
    - Version bump (e.g. `1.2.0 → 2.0.0`) and why
    - Principles added / changed / removed
-   - Which downstream specs and plans will likely need updates
+   - Which downstream specs and designs will likely need updates
 
-5. **Validate**. Open the file in your head: does it pass its own `Principles check` (the section every plan runs against it)? If a principle is so generic it would never reject a plan, sharpen it.
+5. **Validate**. Open the file in your head: does it pass its own `Principles check` (the section every design runs against it)? If a principle is so generic it would never reject a design, sharpen it.
 
 ## Output style
 

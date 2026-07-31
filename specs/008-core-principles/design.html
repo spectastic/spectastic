@@ -1,0 +1,277 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
+<title>Core principles · Design</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Design · 008-core-principles</p>
+  <h1>Core principles — implementation plan</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    How <code>principlesCommand</code> ships as the smallest of the seven slash verbs — template-driven, fresh-generation only, refuses-if-exists, single PR after 007 lands.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>     <span><spec-status value="accepted">Accepted</spec-status></span>
+    <b>Spec</b>       <span><a href="./spec.html">008-core-principles</a></span>
+    <b>Owner</b>      <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Branch</b>     <span><code>main</code> (squashed-snapshot pattern)</span>
+    <b>Created</b>    <span><time datetime="2026-06-16">16 Jun 2026</time></span>
+    <b>Read time</b>  <span data-reading-time></span>
+  </spec-meta>
+
+
+  <spec-tldr>
+    <p>Implement <code>principlesCommand</code> at <code>packages/core/src/commands/principles.ts</code> per <a href="../006-kernel-extraction/spec.html">006</a>'s contract. Reads <code>templates/principles.html</code> via <code>ctx.fs</code>, calls <code>ctx.ai.chat()</code> for the variable parts, fills placeholders, returns the HTML string. Fresh-generation only (FR-004): rejects if <code>principles.html</code> already exists. Adds a <code>spectastic principles</code> CLI subcommand. Single PR after 007 lands; ships as <code>v0.1.0-pre.10</code>.</p>
+  </spec-tldr>
+</header>
+
+
+<section id="principles-check">
+<h2>1 · Principles check</h2>
+<p>Validated against <a href="../../principles.html">principles v1.0.1</a>. All five principles compatible; no exceptions, no violations.</p>
+
+<table>
+  <thead><tr><th>Principle</th><th>Compliance</th><th>Notes</th></tr></thead>
+  <tbody>
+    <tr><td>P-1 · Source order is reading order</td><td><spec-pill>OK</spec-pill></td><td>Kernel emits HTML from a static template; source order preserved.</td></tr>
+    <tr><td>P-2 · Semantic tags over class soup</td><td><spec-pill>OK</spec-pill></td><td>Template uses <code>&lt;spec-status&gt;</code>, <code>&lt;spec-meta&gt;</code>, <code>&lt;spec-tldr&gt;</code>; no class injection.</td></tr>
+    <tr><td>P-3 · IDs are contracts</td><td><spec-pill>OK</spec-pill></td><td>Principle IDs (<code>P-1</code>…<code>P-N</code>) emitted sequentially; subpath export <code>@spectastic/core/commands/principles</code> is a stable contract.</td></tr>
+    <tr><td>P-4 · Progressive enhancement, never dependence</td><td><spec-pill>OK</spec-pill></td><td>Kernel ships no browser code; emitted file degrades to tall semantic HTML.</td></tr>
+    <tr><td>P-5 · Calm density</td><td><spec-pill>OK</spec-pill></td><td>Template inherited verbatim from <code>templates/principles.html</code>; typographic system unchanged.</td></tr>
+  </tbody>
+</table>
+</section>
+
+
+<section id="technical-context">
+<h2>2 · Technical context</h2>
+<dl>
+  <dt>Language(s)</dt>     <dd>TypeScript 5.7, Node ≥20 (matches existing packages).</dd>
+  <dt>Frameworks</dt>      <dd>None new. Inherits tsup (build), vitest (test), commander (CLI dispatch from <code>@spectastic/cli</code>), <code>@anthropic-ai/sdk</code> (from 007 via <code>ClaudeProvider</code>).</dd>
+  <dt>Storage</dt>         <dd>In-process; the kernel returns an HTML string. The CLI subcommand writes the file.</dd>
+  <dt>Testing</dt>         <dd>Unit-first per <a href="../006-kernel-extraction/design.html#D-008">006 D-008</a>: <code>packages/core/test/principles.test.ts</code> with stub <code>ctx.ai</code> + in-memory <code>ctx.fs</code>; CLI integration tests; real-Claude SC-001 fidelity check via <code>skipIf(!process.env.ANTHROPIC_API_KEY)</code> per <a href="../007-core-triage/design.html#D-007">007 D-007</a>.</dd>
+  <dt>Perf targets</dt>    <dd>All <code>bench/baselines.json</code> scenarios within budget; <code>init-help-cold-start</code> p50 within ±20% of the post-007 baseline — proof the new subcommand stayed off the init path.</dd>
+  <dt>Constraints</dt>     <dd>Byte-identical (modulo trivial whitespace) to today's slash-command output on canned inputs per <a href="./spec.html#SC-001">SC-001</a>; refuses-if-exists per <a href="./spec.html#FR-004">FR-004</a>; bench passes.</dd>
+</dl>
+</section>
+
+
+<section id="approach">
+<h2>3 · Approach</h2>
+
+<p>Three moves, one PR. <strong>One</strong>: implement <code>principlesCommand</code> at <code>packages/core/src/commands/principles.ts</code> per 006's signature; reads template via <code>ctx.fs</code>, interviews through <code>ctx.ai.chat()</code>, fills placeholders, returns <code>{ html, principlesCount }</code>. <strong>Two</strong>: add a <code>spectastic principles</code> CLI subcommand that constructs <code>ClaudeProvider</code> + <code>KernelContext</code>, calls the kernel, writes to <code>./principles.html</code>. <strong>Three</strong>: add the MAY-Bash note to <code>commands/spectastic.principles.md</code> per <a href="./spec.html#FR-006">FR-006</a>.</p>
+
+<p>The refuses-if-exists check happens kernel-side (FR-004): the function stats the output path through <code>ctx.fs</code> and rejects with a typed <code>PrinciplesExistsError</code> before any AI call. Keeps the contract uniform across surfaces — CLI, future MCP, future VS Code all get the same guard.</p>
+
+<spec-arch>
+<figure>
+<svg viewBox="0 0 720 220" role="img" aria-label="principles architecture: CLI invokes kernel; kernel reads template via ctx.fs, calls Claude via ctx.ai, returns HTML string; CLI writes the file.">
+  <style>
+    .box { fill:#fcfbf7; stroke:#c4c1bb; stroke-width:1.2; }
+    .label { font: 700 11px Lato, sans-serif; fill:#4a4a46; letter-spacing:0.06em; text-transform:uppercase; }
+    .body  { font: 400 12px "Source Serif 4", Georgia, serif; fill:#353534; }
+    .arr   { stroke:#73706d; stroke-width:1.2; fill:none; }
+  </style>
+  <defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#73706d"/></marker></defs>
+
+  <rect class="box" x="20"  y="20"  width="160" height="60" rx="4"/>
+  <text class="label" x="36" y="42">CLI subcmd</text>
+  <text class="body"  x="36" y="62">principles (shim)</text>
+
+  <rect class="box" x="270" y="20"  width="180" height="60" rx="4"/>
+  <text class="label" x="286" y="42">core/commands</text>
+  <text class="body"  x="286" y="62">principlesCommand</text>
+
+  <rect class="box" x="530" y="20"  width="170" height="60" rx="4"/>
+  <text class="label" x="546" y="42">core/providers</text>
+  <text class="body"  x="546" y="62">ClaudeProvider</text>
+
+  <rect class="box" x="270" y="130" width="180" height="40" rx="4"/>
+  <text class="body"  x="286" y="155">templates/principles.html</text>
+
+  <rect class="box" x="20"  y="130" width="160" height="40" rx="4"/>
+  <text class="body"  x="36"  y="155">./principles.html</text>
+
+  <path class="arr" d="M180 50 L270 50" marker-end="url(#ah)"/>
+  <path class="arr" d="M450 50 L530 50" marker-end="url(#ah)"/>
+  <path class="arr" d="M360 80 L360 130" marker-end="url(#ah)"/>
+  <path class="arr" d="M100 80 L100 130" marker-end="url(#ah)"/>
+</svg>
+<figcaption>CLI invokes kernel; kernel reads the template via <code>ctx.fs</code>, calls Claude through <code>ctx.ai</code>, returns the rendered HTML string; CLI writes <code>./principles.html</code> to disk.</figcaption>
+</figure>
+</spec-arch>
+</section>
+
+
+<section id="alternatives">
+<h2>4 · Alternatives considered</h2>
+
+<spec-matrix>
+<table>
+  <thead>
+    <tr><th>Option</th><th>Maintainability</th><th>Drift risk</th><th>Effort</th><th class="score">Total</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Inline template as TS string literal</td><td>2</td><td>2</td><td>4</td><td class="score">8</td></tr>
+    <tr><td>Bundle template at build via tsup asset copy</td><td>3</td><td>3</td><td>3</td><td class="score">9</td></tr>
+    <tr data-winner><td>Read <code>templates/principles.html</code> from disk via <code>ctx.fs</code> — chosen</td><td>4</td><td>4</td><td>4</td><td class="score">12</td></tr>
+  </tbody>
+</table>
+</spec-matrix>
+
+<p>Disk-read keeps one source of truth and avoids the inline-string maintenance tax. Inline drifts whenever the template changes; bundle-at-build adds asset-copy config and complicates downstream consumers. Disk-read is also how the slash command works today — parity for free.</p>
+</section>
+
+
+<section id="decisions">
+<h2>5 · Decisions</h2>
+
+<spec-decision id="D-001">
+  <h4>D-001 · <code>principlesCommand</code> reads template via <code>ctx.fs</code>, fills placeholders, returns HTML string</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>Near-pure template generation: <code>templates/principles.html</code> already carries every <code>[PLACEHOLDER]</code>; LLM authors the variable parts, kernel fills and emits.</dd>
+    <dt>Decision</dt>     <dd>Signature <code>async function principlesCommand(input: PrinciplesInput, ctx: KernelContext): Promise&lt;PrinciplesResult&gt;</code> per FR-001. Reads template via <code>ctx.fs.readFile</code>, calls <code>ctx.ai.chat()</code> for variable parts, replaces placeholders, returns <code>{ html, principlesCount }</code>. Kernel does not write — caller decides output path.</dd>
+    <dt>Consequences</dt> <dd>+ One source of truth; + downstream surfaces consume rendered HTML without committing to a filesystem. − Missing template surfaces as a typed error per spec edge-case.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-002">
+  <h4>D-002 · Refuse-if-exists — kernel rejects when <code>principles.html</code> already exists</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>FR-004 mandates fresh-generation only; amendments stay in <code>/spectastic.propose</code>. CLI-only guard would let future MCP / VS Code consumers silently overwrite.</dd>
+    <dt>Decision</dt>     <dd>Before any AI call, <code>principlesCommand</code> stats the resolved output path (<code>input.outputPath</code>, defaulting to <code>&lt;ctx.cwd&gt;/principles.html</code>) via <code>ctx.fs.stat</code>. If the file exists, throw a typed <code>PrinciplesExistsError</code>. CLI surfaces "principles.html already exists; use /spectastic.propose to amend."</dd>
+    <dt>Consequences</dt> <dd>+ Uniform contract; + AI cost saved on rejection. − Caller can't ask kernel to overwrite (intentional).</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-003">
+  <h4>D-003 · <code>PrinciplesInput</code> shape — all fields optional; kernel interviews to fill gaps</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>Spec data-model declares <code>projectName?</code> + <code>principlesCount?</code>. CLI may have argv; future MCP may have nothing. Both surfaces must work without per-caller interview logic.</dd>
+    <dt>Decision</dt>     <dd><code>PrinciplesInput = { projectName?: string; principlesCount?: number; outputPath?: string }</code>. Kernel checks each; if absent, prompts via <code>ctx.ai.chat()</code>; clamps <code>principlesCount</code> to 3–5 with a warning per spec edge-case. <code>outputPath</code> defaults to <code>join(ctx.cwd, 'principles.html')</code>.</dd>
+    <dt>Consequences</dt> <dd>+ Surfaces with no UI get a fully-interviewed result from one call. − Three optional fields means three kernel branches.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-004">
+  <h4>D-004 · Template source — read <code>templates/principles.html</code> from disk; don't inline</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>Three options (matrix above): inline TS string, tsup asset copy, or disk read. Template already lives at <code>templates/principles.html</code> for the slash command.</dd>
+    <dt>Decision</dt>     <dd>Kernel computes <code>join(ctx.cwd, 'templates/principles.html')</code> and reads via <code>ctx.fs.readFile</code>. Missing → typed <code>TemplateNotFoundError</code>. Asset-path adjustment (<code>../assets/</code> → <code>./assets/</code>) per slash-command markdown happens kernel-side as a string replace.</dd>
+    <dt>Consequences</dt> <dd>+ Zero drift between slash and CLI flows. − Kernel binds to repo layout via <code>ctx.cwd</code>; a global-install use case needs a bundled-templates story (deferred).</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-005">
+  <h4>D-005 · Single-PR migration; ships as <code>v0.1.0-pre.10</code> after 007 lands</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>008 depends on 007's <code>ClaudeProvider</code> for <code>ctx.ai.chat()</code>. 006 (pre.8) and 007 (pre.9) established the single-PR cadence.</dd>
+    <dt>Decision</dt>     <dd>Land 008 as a single PR after 007 publishes; ships as <code>v0.1.0-pre.10</code>. Bench enforces lazy-loading; CLI integration tests prove structural byte-identity per 007's precedent; SC-001's real-Claude check runs under <code>skipIf</code>.</dd>
+    <dt>Consequences</dt> <dd>+ Atomic; + reverts cleanly. − Blocked on 007 shipping first.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-006">
+  <h4>D-006 · CLI subcommand owns disk write and exit-code translation</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>FR-003 splits responsibilities: kernel owns deterministic core; CLI owns shell-side concerns (argv, prompts, stdout, exit codes).</dd>
+    <dt>Decision</dt>     <dd>CLI's <code>src/commands/principles.ts</code> imports <code>principlesCommand</code> from <code>@spectastic/core/commands/principles</code>, constructs <code>ClaudeProvider</code> + <code>KernelContext</code>, calls kernel, writes <code>html</code> to <code>./principles.html</code>, exits 0. <code>PrinciplesExistsError</code> → exit 1 + message; usage error → exit 2.</dd>
+    <dt>Consequences</dt> <dd>+ Matches 006 D-007's thin-shim discipline. − Each surface owns its own IO (intentional).</dd>
+  </dl>
+</spec-decision>
+</section>
+
+
+<section id="project-structure">
+<h2>6 · Project structure</h2>
+
+<pre><code>packages/core/
+  package.json                                       <em>(adds ./commands/principles subpath export)</em>
+  tsup.config.ts                                     <em>(adds src/commands/principles.ts entry)</em>
+  src/commands/
+    principles.ts                                    <em>(new — principlesCommand + PrinciplesExistsError + TemplateNotFoundError)</em>
+  test/
+    principles.test.ts                               <em>(new — unit; stub ctx.ai + in-memory ctx.fs; SC-001 + edge cases)</em>
+
+packages/cli/
+  src/commands/
+    principles.ts                                    <em>(new — CLI subcommand; constructs ClaudeProvider; writes file)</em>
+  test/
+    cli.test.ts                                      <em>(extended — spawns spectastic principles; stub-provider happy path)</em>
+
+commands/
+  spectastic.principles.md                           <em>(adds MAY-Bash note per FR-006)</em>
+
+CHANGELOG.md                                          <em>(v0.1.0-pre.10 entry)</em>
+</code></pre>
+
+<p>One new core verb + one new CLI subcommand + tests + a one-paragraph markdown touch. No new runtime dependencies; <code>@anthropic-ai/sdk</code> already lands with 007.</p>
+</section>
+
+
+<section id="risks">
+<h2>7 · Risks &amp; mitigations</h2>
+
+<table>
+  <thead><tr><th>Risk</th><th>Likelihood</th><th>Impact</th><th>Mitigation</th></tr></thead>
+  <tbody>
+    <tr><td>Eager-loading creep — <code>principles.ts</code> imported from <code>src/index.ts</code>.</td><td>L</td><td>H</td><td>Bench's <code>init-help-cold-start</code> (150 ms) catches it; 006 D-002 forbids top-level re-exports.</td></tr>
+    <tr><td>Template-path drift — <code>ctx.cwd</code> resolution finds no template.</td><td>M</td><td>M</td><td>Typed <code>TemplateNotFoundError</code> with resolved path; CLI surfaces a "run from project root" hint.</td></tr>
+    <tr><td>SC-001 byte-identity unattainable — LLM prose non-deterministic.</td><td>M</td><td>M</td><td>Per 007's precedent: assert structural identity (placeholders filled, count 3–5, IDs sequential), not literal byte match.</td></tr>
+    <tr><td>Refuse-if-exists race — concurrent CLI invocations both pass the stat.</td><td>L</td><td>L</td><td>Single-author assumption (principles §Governance); no filesystem locking in v1.</td></tr>
+  </tbody>
+</table>
+</section>
+
+
+<section id="complexity">
+<h2>8 · Complexity tracking</h2>
+<p>One deliberate addition warrants flagging:</p>
+
+<spec-assumption>
+<p><strong>Kernel-side refuses-if-exists guard (D-002).</strong> Could live CLI-only, saving a kernel branch. Pushed kernel-side so every future surface (MCP, VS Code) gets the guard for free — a careless MCP server otherwise overwrites a ratified principles document on a misclick. Cost: one <code>ctx.fs.stat</code> call; benefit: "amendments only via propose" enforced at the contract layer.</p>
+</spec-assumption>
+</section>
+
+
+<section id="questions">
+<h2>9 · Open questions</h2>
+<spec-questions>
+<p>None. All decisions inherit from <a href="../006-kernel-extraction/spec.html">006</a> + <a href="../007-core-triage/spec.html">007</a>; slice-specific ADRs (template source, refuse-if-exists, input shape, CLI ownership, version cadence) anchored above. Issues that surface during implementation route back through <code>/spectastic.propose</code>.</p>
+</spec-questions>
+</section>
+
+
+<section id="changelog">
+<h2>10 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-06-16">16 Jun 2026</time><span>Initial plan. Anchored: template-driven kernel returning HTML string (D-001); kernel-side refuses-if-exists (D-002); all-optional input shape with kernel interview (D-003); disk-read template, not inlined (D-004); single PR shipping as <code>v0.1.0-pre.10</code> after 007 lands (D-005); CLI owns disk write + exit codes (D-006). Bench-gated; SC-001 byte-identity interpreted structurally per 007's precedent.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  Plan for 008-core-principles · Core principles · authored 16 Jun 2026 ·
+  <button data-theme-toggle style="background:none;border:none;color:var(--c-link);cursor:pointer;font:inherit;padding:0;border-bottom:1px solid currentColor;">light/dark</button>
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>

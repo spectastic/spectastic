@@ -70,7 +70,7 @@ export function registerImplement(program: Command): void {
                 /* optional */
               }
               try {
-                planHtml = await fs.readFile(path.join(specDir, 'plan.html'), 'utf8');
+                planHtml = await fs.readFile(path.join(specDir, 'design.html'), 'utf8');
               } catch {
                 /* optional */
               }
@@ -120,7 +120,7 @@ export function registerImplement(program: Command): void {
         let flipped = false;
         if (result.flipPromptFired && specDir && tasksHtml && specHtml) {
           process.stdout.write(
-            '\nLast task ticked on a Draft spec. The bundled flip will set status="accepted" on spec.html, plan.html, and tasks.html.\n',
+            '\nLast task ticked on a Draft spec. The bundled flip will set status="accepted" on spec.html, design.html, and tasks.html.\n',
           );
           process.stdout.write('Verify integration tests covering the Success Criteria pass before confirming.\n');
 
@@ -140,7 +140,7 @@ export function registerImplement(program: Command): void {
         const { commitVerbAndExit } = await import('../git/index.js');
         const implPaths =
           flipped && specDir
-            ? ['spec.html', 'plan.html', 'tasks.html'].map((f) => path.join(specDir, f))
+            ? ['spec.html', 'design.html', 'tasks.html'].map((f) => path.join(specDir, f))
             : [targetFile];
         await commitVerbAndExit({
           verb: 'implement',
@@ -180,7 +180,7 @@ async function runDrain(specId: string): Promise<void> {
     /* optional */
   }
   try {
-    planHtml = await fs.readFile(path.join(specDir, 'plan.html'), 'utf8');
+    planHtml = await fs.readFile(path.join(specDir, 'design.html'), 'utf8');
   } catch {
     /* optional */
   }
@@ -236,7 +236,7 @@ async function flipBundle(
   const todayHuman = formatHumanDate(new Date());
   const entry = `<li><time datetime="${today}">${todayHuman}</time><span>Status flipped Draft → Accepted on ${todayHuman} — zero remaining unchecked tasks; tests verified passing per author confirmation. Sibling bundle (REQ-LIFECYCLE-005).</span></li>`;
 
-  for (const file of ['spec.html', 'plan.html', 'tasks.html'] as const) {
+  for (const file of ['spec.html', 'design.html', 'tasks.html'] as const) {
     const fp = path.join(specDir, file);
     let html: string;
     try {

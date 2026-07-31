@@ -32,7 +32,7 @@ Confirms the fix for [triage T-004](./triage-log.html#T-004) / [NFR-003](./spec.
 [`ClaudeCliProvider`](../../packages/core/src/providers/claude-cli.ts) — no key, using the host session — rather
 than failing outright or silently demoting to advisory ([P-8](../../principles.html#P-8)). Run with
 `ANTHROPIC_API_KEY` unset and no `SPECTASTIC_AI_STUB`, so `createAIProvider`'s precedence rung
-([D-006](./plan.html#D-006)) falls to the `claude`-on-PATH branch:
+([D-006](./design.html#D-006)) falls to the `claude`-on-PATH branch:
 
 ```bash
 printf '%s' '{"target":"NFR-003","title":"Keyless in-host verification",

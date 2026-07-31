@@ -25,7 +25,7 @@ describe('model-policy (spec 044)', () => {
     expect(VERB_MODEL_POLICY.implement).toBe('sonnet');
     expect(VERB_MODEL_POLICY.apply).toBe('sonnet');
     expect(VERB_MODEL_POLICY.tasks).toBe('sonnet');
-    for (const v of ['spec', 'plan', 'propose', 'triage', 'explain', 'principles', 'explore']) {
+    for (const v of ['spec', 'design', 'propose', 'triage', 'explain', 'principles', 'explore']) {
       expect(VERB_MODEL_POLICY[v]).toBe('inherit');
     }
   });
@@ -52,7 +52,7 @@ describe('model-policy (spec 044)', () => {
     // per-run override wins over everything (the --model opus escape hatch shape)
     expect(resolveVerbModel('implement', 'opus', 'haiku')).toBe('claude-opus-4-8');
     // an inherit verb with no override → the CLI default
-    expect(resolveVerbModel('plan')).toBe(DEFAULT_MODEL_ID);
+    expect(resolveVerbModel('design')).toBe(DEFAULT_MODEL_ID);
     // an unregistered verb → inherit → default
     expect(resolveVerbModel('nonesuch')).toBe(DEFAULT_MODEL_ID);
   });

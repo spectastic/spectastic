@@ -2,7 +2,7 @@ import type { GraduationClass } from '@spectastic/core';
 import type { Command } from 'commander';
 
 /**
- * Register the `tasks` subcommand. Reads spec.html + plan.html for the
+ * Register the `tasks` subcommand. Reads spec.html + design.html for the
  * named slice; calls @spectastic/core/commands/tasks; writes the result
  * to specs/<id>/tasks.html. Per FR-012 of specs/009-core-tasks/spec.html
  * (post P-6 cascade): destination state gates the write — Draft accepts
@@ -52,7 +52,7 @@ export function registerTasks(program: Command): void {
       }
 
       const specPath = path.resolve(process.cwd(), 'specs', specId, 'spec.html');
-      const planPath = path.resolve(process.cwd(), 'specs', specId, 'plan.html');
+      const planPath = path.resolve(process.cwd(), 'specs', specId, 'design.html');
       const tasksPath = path.resolve(process.cwd(), 'specs', specId, 'tasks.html');
 
       const decision = await gateOnDestinationState(fs, tasksPath, {

@@ -7,7 +7,7 @@
  * smallest-demoable framings, per-story priorities) stay the adaptive interview
  * (FR-004) and have no registry entry.
  *
- * Labels mirror commands/spectastic.{plan,tasks}.md verbatim — a parity test
+ * Labels mirror commands/spectastic.{design,tasks}.md verbatim — a parity test
  * (SC-003) guards the copy against drift. `answerDecisions` is a thin lookup +
  * `decideChoice` (036) delegation; it re-implements no role dispatch (FR-003).
  */
@@ -17,9 +17,9 @@ import { decideChoice } from './choice.js';
 import type { DeciderConfig } from './types.js';
 
 export const DECISION_TAXONOMY: Readonly<Record<string, ReadonlyArray<Question>>> = Object.freeze({
-  plan: [
+  design: [
     {
-      question: 'What test style should this plan commit to?',
+      question: 'What test style should this design commit to?',
       header: 'Test style',
       options: [
         {
@@ -37,7 +37,7 @@ export const DECISION_TAXONOMY: Readonly<Record<string, ReadonlyArray<Question>>
       ],
     },
     {
-      question: "What is this plan's risk tolerance?",
+      question: "What is this design's risk tolerance?",
       header: 'Risk tolerance',
       options: [
         {

@@ -1,7 +1,7 @@
 /**
  * Default FileSystem implementation wrapping node:fs/promises.
  *
- * Per D-005 of specs/006-kernel-extraction/plan.html. Lives in its own
+ * Per D-005 of specs/006-kernel-extraction/design.html. Lives in its own
  * subpath so callers running in non-Node environments (a future
  * browser-based web editor, an MCP server with capability-scoped IO)
  * don't load it. The main entry of @spectastic/core does NOT re-export

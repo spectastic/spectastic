@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
+<title>Decider rollout · Design</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+<header>
+  <p class="small-caps">Design · 035-decider-rollout</p>
+  <h1>Decider rollout</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">How we will build it.</p>
+  <spec-meta>
+    <b>Status</b>     <span><spec-status value="accepted">Accepted</spec-status></span>
+    <b>Spec</b>       <span><a href="./spec.html">035-decider-rollout</a></span>
+    <b>Owner</b>      <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Branch</b>     <span><code>035-decider-rollout</code></span>
+    <b>Created</b>    <span><time datetime="2026-07-09">09 Jul 2026</time></span>
+    <b>Read time</b>  <span data-reading-time></span>
+  </spec-meta>
+  <spec-tldr>
+    <p>Re-express <code>slice/panel.ts</code>'s <code>panelScore</code> over the Decider: size the scorers from
+    <code>effortToDepth(effort).voters</code> with a <code>high</code> floor (≥ 3, preserving 029), fan them out
+    with 032's <code>mapPool</code> instead of the serial loop, and consolidate onto the Decider's
+    <code>median</code>. Back-compat: an explicit scorer count still wins. Low risk — a delegation + a floor + a
+    concurrency swap, guarded by 029's existing panel tests.</p>
+  </spec-tldr>
+</header>
+
+<section id="principles-check">
+<h2>1 · Principles check</h2>
+<p>Against <a href="../../principles.html">v1.3.0</a>. P-8 binds.</p>
+<table>
+  <thead><tr><th>Principle</th><th>Compliance</th><th>Notes</th></tr></thead>
+  <tbody>
+    <tr><td>P-1..P-5</td><td><spec-pill>OK</spec-pill></td><td>Kernel-only.</td></tr>
+    <tr><td>P-6 · Draft loose</td><td><spec-pill>OK</spec-pill></td><td>Spec Draft; plan in place.</td></tr>
+    <tr><td>P-7 · Done verified</td><td><spec-pill>OK</spec-pill></td><td>Tests count scorers per effort, assert floor + concurrency + parity.</td></tr>
+    <tr><td>P-8 · Guarantees in kernel</td><td><spec-pill>OK</spec-pill></td><td>Sizing/floor/median live in the core Decider + slicer, not markdown.</td></tr>
+  </tbody>
+</table>
+</section>
+
+<section id="grounding">
+<h2>2 · Grounding &amp; evidence</h2>
+<p>All <code>verified</code> — the code this touches was read this session.</p>
+<table class="evidence">
+  <thead><tr><th>Claim</th><th>Source</th><th>Status</th><th>Finding</th></tr></thead>
+  <tbody>
+    <tr><td>panelScore is a fixed-3 serial loop with a private median</td><td><code>packages/core/src/slice/panel.ts:37-61</code></td><td><spec-status value="accepted">verified</spec-status></td><td><code>scorers = 3</code>; <code>for (i&lt;scorers) await subagent</code>; local <code>median</code>/<code>medianRice</code>.</td></tr>
+    <tr><td>panelScore's only caller today is its test (safe to change signature)</td><td><code>packages/core/src/slice/panel.test.ts</code></td><td><spec-status value="accepted">verified</spec-status></td><td><code>panelScore(children, ctx, 3)</code> — an explicit count; keep that overload.</td></tr>
+    <tr><td>Effort table + median are exported to reuse</td><td><code>packages/core/src/decider/index.ts</code></td><td><spec-status value="accepted">verified</spec-status></td><td><code>effortToDepth</code>, <code>median</code>, <code>resolveEffort</code> all public.</td></tr>
+    <tr><td>Bounded pool exists for the fan-out</td><td><code>@spectastic/core/commands/triage</code> (mapPool, spec 032)</td><td><spec-status value="accepted">verified</spec-status></td><td>Input-ordered, capped; the concurrency primitive to reuse.</td></tr>
+    <tr><td>029 requires ≥ 3 scorers</td><td><code>packages/core/src/slice/panel.ts:1-6</code> (NFR-001 note)</td><td><spec-status value="accepted">verified</spec-status></td><td>The <code>high</code> floor (=3) preserves it while allowing 5.</td></tr>
+  </tbody>
+</table>
+</section>
+
+<section id="approach">
+<h2>3 · Approach</h2>
+<p><code>panelScore(children, ctx, opts?)</code> gains a config path: when no explicit count is given it resolves
+one via <code>resolveEffort('auto', { irreversible: false, breadth: children.length }, 'high')</code> →
+<code>effortToDepth(level).voters</code> (≥ 3, ≤ 5). The scorer loop becomes a <code>mapPool</code> fan-out under
+the cap; per-RICE-input aggregation calls the Decider's <code>median</code>, and the slicer's private
+<code>median</code> is deleted (<code>medianRice</code> keeps its name but delegates). An explicit numeric
+<code>opts</code> short-circuits to exactly that count (029 back-compat).</p>
+</section>
+
+<section id="decisions">
+<h2>4 · Decisions</h2>
+<spec-decision id="D-001" grounding="verified">
+  <h4>D-001 · panelScore sizes from the effort table, floored high</h4>
+  <dl>
+    <dt>Status</dt><dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt><dd>panelScore hard-codes <code>scorers=3</code> (<code>panel.ts:40</code>); 029 needs ≥ 3.</dd>
+    <dt>Decision</dt><dd>Resolve the count from <code>effortToDepth(effort).voters</code> via <code>resolveEffort</code> with floor <code>high</code> (FR-001/002/003). An explicit numeric arg overrides (FR-006).</dd>
+    <dt>Consequences</dt><dd>+ One dial across checkpoints; auto works here.<br>− panelScore signature gains an optional config form.</dd>
+  </dl>
+</spec-decision>
+<spec-decision id="D-002" grounding="verified">
+  <h4>D-002 · Concurrent scorers via 032's mapPool</h4>
+  <dl>
+    <dt>Status</dt><dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt><dd>The scorer loop is serial (<code>panel.ts:46</code>); 032 shipped a bounded, input-ordered pool.</dd>
+    <dt>Decision</dt><dd>Replace the loop with <code>mapPool(range(N), scoreOnce, N)</code> — the votes still aggregate deterministically (median is order-independent) (FR-004).</dd>
+    <dt>Consequences</dt><dd>+ Faster ranking; reuses a proven primitive.<br>− A cross-module import (core triage → core slice); both in-package.</dd>
+  </dl>
+</spec-decision>
+<spec-decision id="D-003" grounding="verified">
+  <h4>D-003 · One median</h4>
+  <dl>
+    <dt>Status</dt><dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt><dd>Two identical medians exist (<code>decider/panel.ts</code> + <code>slice/panel.ts</code>).</dd>
+    <dt>Decision</dt><dd>The slicer imports the Decider's <code>median</code>; its private copy is deleted. <code>medianRice</code> keeps its name, calling the shared median per input (FR-005, SC-004).</dd>
+    <dt>Consequences</dt><dd>+ 033's numeric arbitration gets a real consumer; one source of truth.<br>− none material.</dd>
+  </dl>
+</spec-decision>
+</section>
+
+<section id="project-structure">
+<h2>5 · Project structure</h2>
+<pre><code>packages/core/src/slice/panel.ts        # panelScore: config sizing + mapPool + shared median
+packages/core/src/slice/panel.test.ts   # + effort-sizing, floor, concurrency, parity cases
+</code></pre>
+</section>
+
+<section id="risks">
+<h2>6 · Risks &amp; mitigations</h2>
+<table>
+  <thead><tr><th>Risk</th><th>L</th><th>I</th><th>Mitigation</th></tr></thead>
+  <tbody>
+    <tr><td><strong>R-1</strong> · Sizing change lowers the slicer below 3 scorers</td><td>L</td><td>H</td><td>Floor <code>high</code> = 3 (FR-002); a test asserts default = 3 and a no-signal change never drops below.</td></tr>
+    <tr><td><strong>R-2</strong> · Concurrency perturbs the median vs the serial order</td><td>L</td><td>M</td><td>Median is order-independent; a parity test compares the ranking at 3 scorers to 029's.</td></tr>
+  </tbody>
+</table>
+</section>
+
+<section id="complexity">
+<h2>7 · Complexity tracking</h2>
+<spec-assumption>
+<p><strong>Grounding gate.</strong> All decisions <code>verified</code>. No assumed/spike must-tier fact — ready for <code>/spectastic.tasks</code>.</p>
+</spec-assumption>
+</section>
+
+<section id="questions">
+<h2>8 · Open questions</h2>
+<spec-questions>
+<p>None outstanding — the delegation, floor, concurrency, and median consolidation are grounded in the 029/032/033 code.</p>
+</spec-questions>
+</section>
+
+<section id="changelog">
+<h2>9 · Change log</h2>
+<spec-changelog><ol><li><time datetime="2026-07-09">09 Jul 2026</time><span>Initial plan. Effort-sized panel (D-001), concurrent scorers (D-002), one median (D-003).</span></li></ol></spec-changelog>
+</section>
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">Plan for 035-decider-rollout · authored 09 Jul 2026</footer>
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>

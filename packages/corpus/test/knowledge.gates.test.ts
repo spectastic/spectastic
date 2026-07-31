@@ -52,7 +52,7 @@ function pack(overrides: Partial<CorpusPack> = {}): CorpusPack {
   };
 }
 
-function decisionDoc(citationText: string, file = 'plan.html'): { html: string; file: string } {
+function decisionDoc(citationText: string, file = 'design.html'): { html: string; file: string } {
   return {
     file,
     html: `<!doctype html><html><body><main>
@@ -96,7 +96,7 @@ describe('corpusGroundingFindings', () => {
 
   it('produces no finding when the doc has no <spec-decision> citation at all (FR-003, SC-003)', () => {
     const noCitation = {
-      file: 'plan.html',
+      file: 'design.html',
       html: '<!doctype html><html><body><main><p>No decisions here.</p></main></body></html>',
     };
     expect(corpusGroundingFindings([noCitation], [pack()])).toEqual([]);

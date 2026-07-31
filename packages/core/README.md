@@ -99,7 +99,7 @@ At `1.0.0` the surface freezes and strict semver applies. The graduation criteri
 The pattern future extractions follow (see [slicing-gaps.html §1](../../examples/slicing-gaps.html#recipe) for the broader slicing recipe):
 
 1. Author the spec at `specs/NNN-core-<verb>/spec.html` with `<spec-parent specid="006-kernel-extraction">`.
-2. Run `/spectastic.plan` then `/spectastic.tasks`.
+2. Run `/spectastic.design` then `/spectastic.tasks`.
 3. Add the verb's input/result shapes to `packages/core/src/types.ts`.
 4. Create `packages/core/src/commands/<verb>.ts` with `<verb>Command(input, ctx)`.
 5. Add the new entry to `packages/core/tsup.config.ts`.
@@ -112,7 +112,7 @@ The pattern future extractions follow (see [slicing-gaps.html §1](../../example
 ## Linked artifacts
 
 - [006-kernel-extraction spec](../../specs/006-kernel-extraction/spec.html) — the foundation
-- [006-kernel-extraction plan](../../specs/006-kernel-extraction/plan.html) — 8 ADRs
+- [006-kernel-extraction plan](../../specs/006-kernel-extraction/design.html) — 8 ADRs
 - [slicing-gaps register](../../examples/slicing-gaps.html) — parent/child recipe + frozen audit
 - Sibling kernel-extraction slices: [007](../../specs/007-core-triage/spec.html), [008](../../specs/008-core-principles/spec.html), [009](../../specs/009-core-tasks/spec.html), [010](../../specs/010-core-apply/spec.html), [011](../../specs/011-core-spec/spec.html), [012](../../specs/012-core-plan/spec.html), [013](../../specs/013-core-propose/spec.html), [014](../../specs/014-core-implement/spec.html)
 

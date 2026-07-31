@@ -22,11 +22,11 @@ describe('scanner.buildGraph against specs/020-vscode-extension', () => {
     });
     const verbs = graph.nodes.map((n) => n.verb);
     expect(verbs).toContain('spec');
-    expect(verbs).toContain('plan');
+    expect(verbs).toContain('design');
     expect(verbs).toContain('tasks');
     // principles.html lives at the repo root and should appear first.
     expect(verbs).toContain('principles');
-    expect(verbs.indexOf('spec')).toBeLessThan(verbs.indexOf('plan'));
+    expect(verbs.indexOf('spec')).toBeLessThan(verbs.indexOf('design'));
   });
 
   it('reports the spec node metric as its requirement count', async () => {

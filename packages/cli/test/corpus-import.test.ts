@@ -84,11 +84,11 @@ describe('spectastic corpus import (061 T-103, SC-001/SC-004/NFR-002)', () => {
     expect(idMatch).not.toBeNull();
     const id = idMatch![1];
 
-    writeFileSync(join(dir, 'plan.html'), MINIMAL_SPEC(`${id}@TODO`), 'utf8');
+    writeFileSync(join(dir, 'design.html'), MINIMAL_SPEC(`${id}@TODO`), 'utf8');
     // The install door leaves genuinely-unread fields as TODO (FR-009) — the
     // pinned edition here is literally "TODO" because the fixture doc has no
     // edition frontmatter, exactly the never-fabricate contract under test.
-    const v = await runCLI(['validate', 'plan.html'], dir);
+    const v = await runCLI(['validate', 'design.html'], dir);
     expect(v.stdout, v.stdout).not.toContain('corpus-provenance');
   });
 

@@ -49,7 +49,7 @@ export const VERB_MODEL_POLICY: Readonly<Record<string, ModelTier>> = Object.fre
   apply: 'sonnet',
   tasks: 'sonnet',
   spec: 'inherit',
-  plan: 'inherit',
+  design: 'inherit',
   propose: 'inherit',
   triage: 'inherit',
   explain: 'inherit',

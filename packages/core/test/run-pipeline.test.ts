@@ -64,10 +64,10 @@ function ctx(steps: PipelineStep[], escalate: RunContext['escalate'], subOut = D
 }
 
 describe('runPipeline — the chain, validated, decisions answered (037 SC-001)', () => {
-  it('drives plan→tasks→implement→verify in order and records decisions', async () => {
+  it('drives design→tasks→implement→verify in order and records decisions', async () => {
     const ran: string[] = [];
     const steps = [
-      fakeStep('plan', ran, { decisionVerb: 'plan' }),
+      fakeStep('design', ran, { decisionVerb: 'design' }),
       fakeStep('tasks', ran, { decisionVerb: 'tasks' }),
       fakeStep('implement', ran),
       fakeStep('verify', ran),
@@ -75,19 +75,19 @@ describe('runPipeline — the chain, validated, decisions answered (037 SC-001)'
     const esc = recorder('approve');
     const result = await runPipeline({ specId: 'x', decider: AGENT, checkpoints: 'minimal' }, ctx(steps, esc.fn));
     expect(result.completed).toBe(true);
-    expect(result.ranSteps).toEqual(['plan', 'tasks', 'implement', 'verify']);
-    expect(result.decisions.plan?.['Test style']).toBe('TDD');
+    expect(result.ranSteps).toEqual(['design', 'tasks', 'implement', 'verify']);
+    expect(result.decisions.design?.['Test style']).toBe('TDD');
     expect(result.decisions.tasks?.['Execution strategy']).toBe('Incremental');
   });
 
   it('halts + escalates on a validate finding, not proceeding to the next step', async () => {
     const ran: string[] = [];
-    const steps = [fakeStep('plan', ran, { outcome: { findings: ['spec-question-open'] } }), fakeStep('tasks', ran)];
+    const steps = [fakeStep('design', ran, { outcome: { findings: ['spec-question-open'] } }), fakeStep('tasks', ran)];
     const esc = recorder('approve');
     const result = await runPipeline({ specId: 'x', decider: AGENT, checkpoints: 'minimal' }, ctx(steps, esc.fn));
     expect(result.completed).toBe(false);
-    expect(result.ranSteps).toEqual(['plan']); // tasks never ran
-    expect(result.halted?.phase).toBe('plan');
+    expect(result.ranSteps).toEqual(['design']); // tasks never ran
+    expect(result.halted?.phase).toBe('design');
     expect(esc.seen.some((c) => /validate error/.test(c.reason))).toBe(true);
   });
 
@@ -113,7 +113,7 @@ describe('runPipeline — decider role (037 SC-002)', () => {
   it('answers decisions via the agent decider (subagent), not ai.ask', async () => {
     const ran: string[] = [];
     const stub = new Stub(DECISIONS_JSON);
-    const steps = [fakeStep('plan', ran, { decisionVerb: 'plan' })];
+    const steps = [fakeStep('design', ran, { decisionVerb: 'design' })];
     await runPipeline(
       { specId: 'x', decider: AGENT, checkpoints: 'minimal' },
       { ai: stub, steps, escalate: recorder('approve').fn },
@@ -123,7 +123,7 @@ describe('runPipeline — decider role (037 SC-002)', () => {
   });
 
   it('refuses a human decider — an unattended run cannot answer by hand', async () => {
-    const steps = [fakeStep('plan', [], {})];
+    const steps = [fakeStep('design', [], {})];
     await expect(
       runPipeline(
         {
@@ -140,17 +140,17 @@ describe('runPipeline — decider role (037 SC-002)', () => {
 describe('runPipeline — escalation gate (037 SC-003)', () => {
   it('pauses before implement and halts on a human stop (hard gate)', async () => {
     const ran: string[] = [];
-    const steps = [fakeStep('plan', ran), fakeStep('tasks', ran), fakeStep('implement', ran), fakeStep('verify', ran)];
+    const steps = [fakeStep('design', ran), fakeStep('tasks', ran), fakeStep('implement', ran), fakeStep('verify', ran)];
     const esc = recorder((c) => (c.phase === 'implement' ? 'stop' : 'approve'));
     const result = await runPipeline({ specId: 'x', decider: AGENT, checkpoints: 'minimal' }, ctx(steps, esc.fn));
     expect(result.completed).toBe(false);
-    expect(result.ranSteps).toEqual(['plan', 'tasks']); // implement gated off
+    expect(result.ranSteps).toEqual(['design', 'tasks']); // implement gated off
     expect(result.halted?.phase).toBe('implement');
   });
 
   it('resumes on approval and completes', async () => {
     const ran: string[] = [];
-    const steps = [fakeStep('plan', ran), fakeStep('implement', ran), fakeStep('verify', ran)];
+    const steps = [fakeStep('design', ran), fakeStep('implement', ran), fakeStep('verify', ran)];
     const result = await runPipeline(
       { specId: 'x', decider: AGENT, checkpoints: 'minimal' },
       ctx(steps, recorder('approve').fn),
@@ -163,6 +163,6 @@ describe('runPipeline — escalation gate (037 SC-003)', () => {
     expect(needsCheckpoint('tasks', 'each')).toBe(true);
     expect(needsCheckpoint('tasks', 'minimal')).toBe(false);
     expect(needsCheckpoint('implement', 'minimal')).toBe(true);
-    expect(needsCheckpoint('plan', 'each')).toBe(false);
+    expect(needsCheckpoint('design', 'each')).toBe(false);
   });
 });

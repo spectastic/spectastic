@@ -62,7 +62,7 @@ Deferred (named in 015's out-of-scope register with `defer-to=`):
 Backfill release: per-verb unit tests + bundled-flip CLI fix + slash-command markdown updates.
 
 Real bug fix:
-- **`spectastic implement` now actually surfaces the bundled flip prompt**. Pre-fix, the CLI subcommand reported `flipPromptFired: true` from the kernel but never asked the author to confirm or wrote the bundle flips. The kernel still reports the signal; the CLI now (a) reads sibling spec.html + plan.html, (b) prompts via stdin (`[y/N]`), (c) rewrites all three status pills + appends matching changelog entries on confirm. `--yes` flag added for non-TTY contexts.
+- **`spectastic implement` now actually surfaces the bundled flip prompt**. Pre-fix, the CLI subcommand reported `flipPromptFired: true` from the kernel but never asked the author to confirm or wrote the bundle flips. The kernel still reports the signal; the CLI now (a) reads sibling spec.html + design.html, (b) prompts via stdin (`[y/N]`), (c) rewrites all three status pills + appends matching changelog entries on confirm. `--yes` flag added for non-TTY contexts.
 
 Coverage backfill:
 - **Per-verb unit tests for 011/012/013/014** authored via four parallel sub-agents. 7 tests each, 28 total, all passing. Full suite is 112/112 across 19 files (was 84/15 in pre.13).
@@ -83,10 +83,10 @@ Final batched release: kernel verbs 011 + 012 + 013 + 014 land together.
 The 011/012/013/014 specs each planned their own slice + release (pre.13 through pre.16). Session-capacity constraints forced batching them into one ship. Per-slice spec + plan + tasks artifacts stay intact for the lifecycle audit; the per-slice release tags (pre.13–pre.16) collapse into this single pre.13 tag.
 
 - **`specCommand`** at `@spectastic/core/commands/spec` (011): single AI-led interview pass authoring spec.html from a feature description; re-entry mode via `input.existingSpec`.
-- **`planCommand`** at `@spectastic/core/commands/plan` (012): estimability gate refuses on open blockers; generates ADRs + alternatives + principles check; refuses on principles VIOLATION. Interview helper extraction (012 D-007) deferred — interview primitives stay inline in spec.ts until the shape settles across multiple verbs.
+- **`designCommand`** at `@spectastic/core/commands/design` (012): estimability gate refuses on open blockers; generates ADRs + alternatives + principles check; refuses on principles VIOLATION. Interview helper extraction (012 D-007) deferred — interview primitives stay inline in spec.ts until the shape settles across multiple verbs.
 - **`proposeCommand`** at `@spectastic/core/commands/propose` (013): drafts proposal + auto-fires adversarial pass per the heuristic (must-tier touched | removed-op | ≥2 topic prefixes). **`ClaudeProvider.subagent()`** lit up — replaces 007's stub with a real `messages.create` carrying a critic-role system prompt. Risk findings default to `status="identified"` per 013 D-005; status transitions are caller-side.
 - **`implementCommand`** at `@spectastic/core/commands/implement` (014): single-task mode only; drain modes carved to TBD-core-implement-drain per 014 D-008. T-NNN ticks tasks; I-NNN ticks inbox just-do cards; bundled flip prompt fires when remaining unchecked count reaches zero on a Draft spec (REQ-LIFECYCLE-005).
-- **CLI subcommands** for all four: `spectastic spec`, `spectastic plan <spec-id>`, `spectastic propose <spec-id> "<description>"`, `spectastic implement <T-NNN | I-NNN>`. All require `ANTHROPIC_API_KEY`.
+- **CLI subcommands** for all four: `spectastic spec`, `spectastic design <spec-id>`, `spectastic propose <spec-id> "<description>"`, `spectastic implement <T-NNN | I-NNN>`. All require `ANTHROPIC_API_KEY`.
 - 84/84 existing tests stay green. Per-verb tests for 011/012/013/014 deferred for capacity; the architectural seams are covered by the existing triage/principles/tasks/apply test suites + CLI integration.
 
 Also flipped: **010-core-apply bundle** (pre.12 verified) and bundles for **011/012/013/014** all Draft → Accepted per REQ-LIFECYCLE-005.
@@ -108,9 +108,9 @@ Also flipped: **008-core-principles bundle** (catching up; pre.10 verified) and 
 
 Fourth kernel verb: `tasks` — generates 5-phase tasks.html from spec + plan.
 
-- **`tasksCommand`** at `@spectastic/core/commands/tasks` reads spec.html + plan.html via `ctx.fs`, parses via `@spectastic/schema`'s new `extractSpecMetadata` helper, derives a deterministic 5-phase task skeleton from the FRs, lightly enriches task titles via `ai.chat()`, and emits `<spec-warning>` if any requirement is unreferenced (FR-008).
+- **`tasksCommand`** at `@spectastic/core/commands/tasks` reads spec.html + design.html via `ctx.fs`, parses via `@spectastic/schema`'s new `extractSpecMetadata` helper, derives a deterministic 5-phase task skeleton from the FRs, lightly enriches task titles via `ai.chat()`, and emits `<spec-warning>` if any requirement is unreferenced (FR-008).
 - **`@spectastic/schema` surface extension**: `extractSpecMetadata(htmlOrDoc)` returns `{ specId, fr[], nfr[], sc[] }`. First sibling slice to extend the schema's API. Pre-1.0 minor bump.
-- **CLI subcommand**: `spectastic tasks <spec-id>`. Reads `specs/<id>/spec.html` + `plan.html`; writes `tasks.html`. Refuses if exists unless `--force`.
+- **CLI subcommand**: `spectastic tasks <spec-id>`. Reads `specs/<id>/spec.html` + `design.html`; writes `tasks.html`. Refuses if exists unless `--force`.
 - 81/81 tests pass (was 77; +4 new kernel tasks tests).
 
 Also flipped: **008-core-principles bundle Draft → Accepted** per REQ-LIFECYCLE-005 on confirmation that v0.1.0-pre.10 is live on npm.
@@ -178,7 +178,7 @@ Ships the two new validator rules to npm consumers.
 
 Republish that ships the I-019 / I-020 / T-002 follow-ups already on disk.
 
-- **`commands/spectastic.implement.md` step 8 tightened** per the new `REQ-LIFECYCLE-005` (sibling-bundling rule). The post-tick predicate is now "zero remaining unchecked checkboxes after every tick taken while the spec's status is `Draft`" — a deterministic re-evaluation rather than an LLM heuristic on "the last one," and scoped to Draft to avoid re-confirmation loops on already-flipped specs. On confirmation, all three sibling artifacts (`spec.html`, `plan.html`, `tasks.html`) flip together as one gesture.
+- **`commands/spectastic.implement.md` step 8 tightened** per the new `REQ-LIFECYCLE-005` (sibling-bundling rule). The post-tick predicate is now "zero remaining unchecked checkboxes after every tick taken while the spec's status is `Draft`" — a deterministic re-evaluation rather than an LLM heuristic on "the last one," and scoped to Draft to avoid re-confirmation loops on already-flipped specs. On confirmation, all three sibling artifacts (`spec.html`, `design.html`, `tasks.html`) flip together as one gesture.
 - **`spectastic -V` now reports the actually-installed version** (I-020). Previously the CLI read its version from a hard-coded literal; now it reads the package's own `package.json` at runtime via `import.meta.url`. Cosmetic but it removes a foot-gun: the CLI is no longer able to lie about its identity.
 - The CLI's top-level description was updated to "Single-file HTML spec tooling: bootstrap a project with `init`; validate spec-html artifacts with `validate`." in v0.1.0-pre.4; this republish bundles the updated commands directory under `_bundled/.claude/commands/` so `spectastic init` writes the tightened step 8 prose to new projects.
 

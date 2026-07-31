@@ -18,7 +18,7 @@ import { gatherTrailers } from './trailers.js';
 export type GitAuto = 'off' | 'commit' | 'branch+commit';
 
 /** The eight lifecycle verbs the layer can commit for (the small verb surface). */
-export type Verb = 'spec' | 'plan' | 'tasks' | 'implement' | 'propose' | 'apply' | 'triage' | 'principles';
+export type Verb = 'spec' | 'design' | 'tasks' | 'implement' | 'propose' | 'apply' | 'triage' | 'principles';
 
 /**
  * What a verb action hands the layer. The action already knows its verb, the

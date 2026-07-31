@@ -70,5 +70,5 @@ for (const rule of rules) {
 ## Provenance
 
 Implements spec 002-validate-cli. See `specs/002-validate-cli/spec.html` in the
-repo for the contract; `plan.html` for the decisions (parse5, in-house SARIF,
+repo for the contract; `design.html` for the decisions (parse5, in-house SARIF,
 TS-module schema); `tasks.html` for the breakdown.

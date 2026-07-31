@@ -1,0 +1,343 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
+<title>Verb model policy · Design</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Design · 044-verb-model-policy</p>
+  <h1>Verb model policy</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    How we will build it.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>     <span><spec-status value="accepted">Accepted</spec-status></span>
+    <b>Spec</b>       <span><a href="./spec.html">044-verb-model-policy</a></span>
+    <b>Owner</b>      <span>Brian Corbin · me@briancorbin.co.uk</span>
+    <b>Branch</b>     <span><code>main</code></span>
+    <b>Created</b>    <span><time datetime="2026-07-10">10 Jul 2026</time></span>
+    <b>Read time</b>  <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-tldr>
+    <p>One core module (<code>@spectastic/core/model-policy</code>) owns the legal alias set, the alias→model-id table, and the per-verb tier map — the single source of truth. Tier A writes <code>model:</code> into the command frontmatter (three copies: source, <code>.claude/</code>, <code>_bundled/</code>); Tier C adds isolated subagent definitions; Tier D wires <code>--model</code> / <code>SPECTASTIC_MODEL</code> into <code>createAIProvider()</code> through a decider-style precedence resolver, and a drift-guard validate rule enforces frontmatter well-formedness against the map. Biggest risk: the sync fan-out across three frontmatter copies (the T-006 footgun) — mitigated by the drift-guard rule.</p>
+  </spec-tldr>
+</header>
+
+
+<section id="principles-check">
+<h2>1 · Principles check</h2>
+<p>Verify this plan respects every principle in
+<a href="../../principles.html">v1.4.0</a>.</p>
+
+<table>
+  <thead><tr><th>Principle</th><th>Compliance</th><th>Notes</th></tr></thead>
+  <tbody>
+    <tr><td>P-1 · Source order is reading order</td><td><spec-pill>OK</spec-pill></td><td>No artifact-rendering change.</td></tr>
+    <tr><td>P-2 · Semantic tags over class soup</td><td><spec-pill>OK</spec-pill></td><td>No new HTML surface.</td></tr>
+    <tr><td>P-3 · IDs are contracts</td><td><spec-pill>OK</spec-pill></td><td>Verb names are the policy-map keys; <code>MODEL_TIER_ALIASES</code> is the stable alias contract.</td></tr>
+    <tr><td>P-4 · Progressive enhancement</td><td><spec-pill>OK</spec-pill></td><td>N/A — no browser JS.</td></tr>
+    <tr><td>P-5 · Calm density</td><td><spec-pill>OK</spec-pill></td><td>N/A.</td></tr>
+    <tr><td>P-6 · Draft is loose, ratified is locked</td><td><spec-pill>OK</spec-pill></td><td>Spec is Draft; this plan refined it (FR-009 promotion) before ratification.</td></tr>
+    <tr><td>P-7 · Done means verified</td><td><spec-pill>OK</spec-pill></td><td>The escape hatch and tier switch need a real host exercise, not just structural tests — see §8 / SC-001/002. The CLI resolver + drift-guard get vitest units.</td></tr>
+    <tr><td>P-8 · Guarantees live in the kernel or CI</td><td><spec-pill>OK</spec-pill></td><td><strong>Central.</strong> Frontmatter <code>model:</code> is advisory; the guarantee (well-formedness + drift) is the validate rule and the core map — never the markdown.</td></tr>
+    <tr><td>P-9 · The enforcement floor holds</td><td><spec-pill>OK</spec-pill></td><td>The drift-guard rule folds into the same always-run validate scan as <code>skill-metadata-shape</code> / quarantine.</td></tr>
+  </tbody>
+</table>
+</section>
+
+
+<section id="technical-context">
+<h2>2 · Technical context</h2>
+<dl>
+  <dt>Language(s)</dt>      <dd>TypeScript (Node ≥ 20), pnpm workspace.</dd>
+  <dt>Frameworks</dt>       <dd>commander (CLI), tsup (build), vitest (unit), Playwright (e2e — not needed here).</dd>
+  <dt>Storage</dt>          <dd>None. Config is <code>spectastic.json</code> (JSON, read synchronously).</dd>
+  <dt>Testing</dt>          <dd>TDD / unit-first (vitest), stub <code>AIProvider</code> in CI; real-model check local-only (<code>test:smoke</code>).</dd>
+  <dt>Perf targets</dt>     <dd>N/A — resolution is a synchronous map lookup.</dd>
+  <dt>Constraints</dt>      <dd>Deterministic logic in <code>@spectastic/core</code> (fat-core); model aliases only, never pinned IDs, in frontmatter; three frontmatter copies stay byte-synced.</dd>
+</dl>
+</section>
+
+
+<section id="grounding">
+<h2>3 · Grounding &amp; evidence</h2>
+<p>Every design-bearing fact this plan rests on, and how it was confirmed (per <code>REQ-LIFECYCLE-006</code>).</p>
+
+<table class="evidence">
+  <thead>
+    <tr><th>Claim the design rests on</th><th>Source</th><th>Status</th><th>Finding / note</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>The CLI constructs the provider with no model, so Tier D wires here.</td>
+        <td><code>packages/cli/src/ai-factory.ts:22</code></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td><code>return new ClaudeProvider()</code> — no options; the wiring gap.</td></tr>
+    <tr><td>The provider already honours a passed model and a per-call override.</td>
+        <td><code>packages/core/src/providers/claude.ts:33,67,74</code></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td><code>DEFAULT_MODEL='claude-sonnet-4-6'</code> (stale); <code>this.model = options.model ?? DEFAULT_MODEL</code>; <code>model: opts.model ?? this.model</code>.</td></tr>
+    <tr><td>Per-call model seams exist on the interface.</td>
+        <td><code>packages/core/src/types.ts:56,90,111</code></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td><code>ChatOpts.model?</code>, <code>SubagentOpts.model?</code>, <code>AIProvider.model</code>.</td></tr>
+    <tr><td>A precedence resolver already exists to reuse (one path, not parallel).</td>
+        <td><code>packages/core/src/decider/decider.ts:28-35</code></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td><code>resolveDecider</code>: <code>override ?? projectCfg ?? default</code>. Mirror for model.</td></tr>
+    <tr><td>The config loader pattern (fail-fast on unknown/out-of-range) to copy.</td>
+        <td><code>packages/cli/src/config/decider.ts:20,35,60</code></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td><code>DeciderFileConfig</code> + <code>loadDeciderConfig</code>; throws <code>DeciderConfigError</code> on bad values.</td></tr>
+    <tr><td>A frozen per-verb <code>Record</code> map is the established precedent.</td>
+        <td><code>packages/core/src/decider/taxonomy.ts:19</code></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td><code>DECISION_TAXONOMY = Object.freeze({...})</code>. <code>VERB_MODEL_POLICY</code> lives alongside.</td></tr>
+    <tr><td>The drift-guard is a validate scan, following an existing rule shape.</td>
+        <td><code>packages/core/src/commands/validate.ts:15,26,61</code></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td><code>REQUIRED_SKILL_KEYS</code>; <code>commandsDriftFinding</code> (drift precedent); <code>skillMetadataFinding</code> checks only required keys — extra <code>model:</code> already passes.</td></tr>
+    <tr><td>Adding a core module = tsup entry + package.json exports subpath.</td>
+        <td><code>packages/core/tsup.config.ts:15</code>, <code>packages/core/package.json</code> exports</td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td>Decider is a single <code>src/decider/index.ts</code> entry; add <code>src/model-policy/index.ts</code> + <code>./model-policy</code> subpath.</td></tr>
+    <tr><td>Frontmatter ships in THREE copies; no <code>.claude/agents/</code> exists yet.</td>
+        <td><code>commands/</code>, <code>.claude/commands/</code>, <code>packages/cli/_bundled/.claude/commands/</code></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td>10 command files in each; no <code>agents/</code> dir anywhere — Tier C is greenfield.</td></tr>
+    <tr><td>Current model IDs for the alias→id table (never date-suffixed).</td>
+        <td>claude-api skill · Current Models (cached 2026-06-24)</td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td><code>opus→claude-opus-4-8</code>, <code>sonnet→claude-sonnet-5</code>, <code>haiku→claude-haiku-4-5</code>. Refresh stale default to <code>claude-sonnet-5</code>.</td></tr>
+  </tbody>
+</table>
+</section>
+
+
+<section id="approach">
+<h2>4 · Approach</h2>
+
+<p>Build the <strong>core policy module first</strong> — it is the single source of truth every tier reads. It exports <code>MODEL_TIER_ALIASES</code> (the legal set: <code>opus</code>/<code>sonnet</code>/<code>haiku</code>/<code>inherit</code>), an <code>aliasToModelId</code> table for the resolvable tiers, and <code>VERB_MODEL_POLICY</code> (the per-verb tier map). A <code>resolveVerbModel(verb, override, projectCfg)</code> function mirrors <code>resolveDecider</code>'s precedence exactly.</p>
+
+<p>Then the three tiers hang off it. <strong>Tier A</strong> is a mechanical edit: add <code>model:</code> to each command's frontmatter (values matching the map) across all three copies, then <code>cp commands/*.md .claude/commands/</code> and into <code>_bundled/</code>. <strong>Tier C</strong> adds tracked <code>agents/*.md</code> sources (critic <code>inherit</code>, classifier + impl-task <code>sonnet</code>), synced to <code>.claude/agents/</code> and <code>_bundled/.claude/agents/</code>; the propose/triage/implement command bodies point their Agent/Task spawns at the new <code>agentType</code>s, and implement's <code>--model opus</code> path spawns the impl-task agent pinned to the escalated tier. <strong>Tier D</strong> reads <code>--model</code> (commander global option) and <code>SPECTASTIC_MODEL</code> in <code>createAIProvider()</code>, resolves through the new top-level <code>models</code> section of <code>spectastic.json</code> (loaded fail-fast, decider-style) and <code>VERB_MODEL_POLICY</code>, and passes the resolved id into <code>new ClaudeProvider({ model })</code> — which already flows into the spec-027 <code>Assisted-by:</code> trailer. Finally the <strong>drift-guard</strong> validate rule scans the command frontmatter and flags any <code>model:</code> that isn't a legal alias or disagrees with the map.</p>
+
+<spec-arch>
+<figure>
+<svg viewBox="0 0 700 250" role="img" aria-label="Model policy architecture">
+  <style>
+    .box { fill:#fcfbf7; stroke:#c4c1bb; stroke-width:1.2; }
+    .core { fill:#eef6f7; stroke:#04a5bb; stroke-width:1.4; }
+    .label { font: 700 10px Lato, sans-serif; fill:#4a4a46; letter-spacing:0.05em; text-transform:uppercase; }
+    .body { font: 400 11px "Source Serif 4", Georgia, serif; fill:#353534; }
+    .arr { stroke:#73706d; stroke-width:1.2; fill:none; }
+  </style>
+  <rect class="core" x="250" y="15" width="200" height="66" rx="4"/>
+  <text class="label" x="266" y="36">@spectastic/core · model-policy</text>
+  <text class="body"  x="266" y="54">MODEL_TIER_ALIASES · aliasToModelId</text>
+  <text class="body"  x="266" y="70">VERB_MODEL_POLICY · resolveVerbModel</text>
+
+  <rect class="box" x="30"  y="150" width="180" height="66" rx="4"/>
+  <text class="label" x="46" y="171">Tier A · frontmatter</text>
+  <text class="body"  x="46" y="189">model: on 10 commands ×3</text>
+  <text class="body"  x="46" y="205">copies (src/.claude/_bundled)</text>
+
+  <rect class="box" x="260" y="150" width="180" height="66" rx="4"/>
+  <text class="label" x="276" y="171">Tier C · subagents</text>
+  <text class="body"  x="276" y="189">critic / classifier /</text>
+  <text class="body"  x="276" y="205">impl-task (+ escape hatch)</text>
+
+  <rect class="box" x="490" y="150" width="180" height="66" rx="4"/>
+  <text class="label" x="506" y="171">Tier D · CLI + drift-guard</text>
+  <text class="body"  x="506" y="189">--model / SPECTASTIC_MODEL</text>
+  <text class="body"  x="506" y="205">→ ClaudeProvider · validate</text>
+
+  <path class="arr" d="M300 81 L150 150" marker-end="url(#a)"/>
+  <path class="arr" d="M350 81 L350 150" marker-end="url(#a)"/>
+  <path class="arr" d="M400 81 L560 150" marker-end="url(#a)"/>
+  <defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#73706d"/></marker></defs>
+</svg>
+<figcaption>The core module is the single source of truth; all three tiers read it, and the drift-guard enforces frontmatter against it.</figcaption>
+</figure>
+</spec-arch>
+</section>
+
+
+<section id="alternatives">
+<h2>5 · Alternatives considered</h2>
+
+<spec-matrix>
+<table>
+  <thead>
+    <tr><th>Option</th><th>DRY / no drift</th><th>Effort</th><th>Honors P-8</th><th class="score">Total</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Hand-author frontmatter + separate CLI map (two sources)</td><td>1</td><td>3</td><td>1</td><td class="score">5</td></tr>
+    <tr><td>Config-only in spectastic.json, no frontmatter (CLI path only)</td><td>2</td><td>3</td><td>2</td><td class="score">7</td></tr>
+    <tr data-winner><td>Single core policy map; tiers derive; drift-guard enforces</td><td>3</td><td>2</td><td>3</td><td class="score">8</td></tr>
+  </tbody>
+</table>
+</spec-matrix>
+<p>The winner is the only option that gives the frontmatter (a Claude-Code-host surface the CLI can't inject into) a machine-checkable tie back to one source — the drift-guard closes the gap the adversarial pass flagged.</p>
+</section>
+
+
+<section id="decisions">
+<h2>6 · Decisions</h2>
+
+<spec-decision id="D-001" grounding="verified">
+  <h4>D-001 · Core <code>model-policy</code> module is the single source of truth</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>Fat-core (P-8, 000/T-016); the frozen-map precedent is <code>DECISION_TAXONOMY</code> (<code>packages/core/src/decider/taxonomy.ts:19</code>); adding a module = tsup entry + exports subpath (<code>tsup.config.ts:15</code>).</dd>
+    <dt>Decision</dt>     <dd>New <code>src/model-policy/index.ts</code> exporting <code>MODEL_TIER_ALIASES</code>, <code>aliasToModelId</code> (<code>opus→claude-opus-4-8</code>, <code>sonnet→claude-sonnet-5</code>, <code>haiku→claude-haiku-4-5</code>), <code>VERB_MODEL_POLICY</code>, and <code>resolveVerbModel</code>. Registered as the <code>./model-policy</code> export subpath.</dd>
+    <dt>Consequences</dt> <dd>+ One place defines legality, tiers, and ids. + Frontmatter and CLI both derive/verify against it. − A new export subpath to maintain.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-002" grounding="verified">
+  <h4>D-002 · Reuse the decider precedence shape</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd><code>resolveDecider</code> (<code>packages/core/src/decider/decider.ts:28-35</code>) already implements <code>override ?? projectCfg ?? default</code>; 036 FR-006 mandates one resolution path.</dd>
+    <dt>Decision</dt>     <dd><code>resolveVerbModel(verb, override, projectCfg)</code> mirrors that precedence: per-run override (<code>--model</code>/<code>SPECTASTIC_MODEL</code>) &gt; project config &gt; <code>VERB_MODEL_POLICY[verb]</code> &gt; global default.</dd>
+    <dt>Consequences</dt> <dd>+ No parallel resolver. + Familiar to anyone who knows the decider. − Model and effort stay separate functions (correct — orthogonal axes).</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-003" grounding="verified">
+  <h4>D-003 · Tier D config lives in a new top-level <code>models</code> section</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>The decider section (<code>packages/cli/src/config/decider.ts:20</code>) is per-checkpoint role/effort; model tier is per-verb — a different granularity. The loader's fail-fast validation (<code>:60</code>) is the pattern to copy.</dd>
+    <dt>Decision</dt>     <dd>A sibling <code>models</code> block in <code>spectastic.json</code>: <code>{ default?, verbs?: Record&lt;verb, tier&gt; }</code>, read by <code>loadModelsConfig(cwd)</code> that reuses the decider loader's fail-fast shape (throw on unknown key / illegal alias).</dd>
+    <dt>Consequences</dt> <dd>+ Clean separation of the two axes. + Same validation rigor. − A second config section + loader (small).</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-004" grounding="verified">
+  <h4>D-004 · Escape hatch = subagent delegation, not a body-level model swap</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>A slash-command <code>model:</code> is fixed at skill activation for the turn (Claude Code docs); a body arg can't change it. Subagent <code>model:</code> is isolated (resolution order: env &gt; per-invocation &gt; frontmatter &gt; main).</dd>
+    <dt>Decision</dt>     <dd><code>/spectastic.implement</code> stays <code>sonnet</code>; <code>--model opus</code> makes it delegate the task's authoring to the <code>spectastic-impl-task</code> agent pinned (per-invocation) to the escalated tier, while the Sonnet main loop orchestrates. Implements FR-003.</dd>
+    <dt>Consequences</dt> <dd>+ Honest to the mechanism; reuses the Tier C agent. − Escalated tasks run in an isolated context (the status-flip AskUserQuestion stays in the main loop).</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-005" grounding="verified">
+  <h4>D-005 · Agent-def sync mirrors the commands convention</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>No <code>.claude/agents/</code> exists; commands already ship as source → <code>.claude/commands/</code> (gitignored) → <code>_bundled/.claude/commands/</code> (init ships).</dd>
+    <dt>Decision</dt>     <dd>Tracked <code>agents/*.md</code> sources; sync to <code>.claude/agents/</code> and <code>packages/cli/_bundled/.claude/agents/</code>; extend the manual <code>cp</code> note in CLAUDE.md. (The eventual <code>init --tools</code> installer, 031, will own this — deferred.)</dd>
+    <dt>Consequences</dt> <dd>+ One convention for both surfaces. − Adds to the manual-sync footgun surface until 031 lands — mitigated by D-006.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-006" grounding="verified">
+  <h4>D-006 · Drift-guard is a validate scan alongside <code>skill-metadata-shape</code></h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd><code>commandsDriftFinding</code> (<code>packages/core/src/commands/validate.ts:26</code>) is the byte-drift precedent; <code>skillMetadataFinding</code> (<code>:61</code>) only checks required keys, so a stray <code>model:</code> already passes — well-formedness needs its own rule.</dd>
+    <dt>Decision</dt>     <dd>A <code>verb-model-policy</code> rule: for each command, if <code>model:</code> is present and (a) not in <code>MODEL_TIER_ALIASES</code> or (b) ≠ <code>VERB_MODEL_POLICY[verb]</code>, emit a finding. Folds into the always-run scan (P-9). Satisfies FR-009 / SC-003.</dd>
+    <dt>Consequences</dt> <dd>+ The permitted key gains machine coverage (closes the 000 adversarial-pass gap). − One more rule to keep in step with the map (it reads the same map, so it can't disagree).</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-007" grounding="verified">
+  <h4>D-007 · Refresh the stale default; frontmatter uses aliases only</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd><code>DEFAULT_MODEL='claude-sonnet-4-6'</code> (<code>claude.ts:33</code>) is stale; current Sonnet is <code>claude-sonnet-5</code> (claude-api catalog); aliases are complete-as-is, never date-suffixed.</dd>
+    <dt>Decision</dt>     <dd>Frontmatter/agent-defs carry aliases (<code>sonnet</code>/<code>inherit</code>/…); the CLI resolves alias→id via <code>aliasToModelId</code>; refresh <code>DEFAULT_MODEL</code> to the resolved <code>sonnet</code> id and source it from the table (no second literal).</dd>
+    <dt>Consequences</dt> <dd>+ Aliases track the latest model; one id literal in the codebase. − The alias table needs a bump when the model line advances (a single, obvious edit).</dd>
+  </dl>
+</spec-decision>
+</section>
+
+
+<section id="project-structure">
+<h2>7 · Project structure</h2>
+
+<pre><code>packages/core/src/
+  model-policy/
+    index.ts          # MODEL_TIER_ALIASES, aliasToModelId, VERB_MODEL_POLICY, resolveVerbModel
+  commands/validate.ts # + verbModelPolicyFinding (drift-guard rule)
+  providers/claude.ts  # DEFAULT_MODEL refreshed, sourced from aliasToModelId
+packages/core/
+  tsup.config.ts       # + src/model-policy/index.ts entry
+  package.json         # + "./model-policy" export subpath
+packages/cli/src/
+  ai-factory.ts        # read --model / SPECTASTIC_MODEL → resolveVerbModel → new ClaudeProvider({model})
+  config/models.ts     # loadModelsConfig (fail-fast, mirrors config/decider.ts)
+  commands/validate.ts # register the drift-guard scan (like scanSkillMetadata)
+  program / index      # commander: global --model option
+agents/                # NEW tracked sources: spectastic-critic|classifier|impl-task .md
+.claude/agents/                       # synced copies (gitignored)
+packages/cli/_bundled/.claude/agents/ # bundled copies (init ships)
+commands/spectastic.*.md              # + model: frontmatter; propose/triage/implement point at agentType
+packages/*/test/                      # vitest units: resolver, precedence, drift-guard, ai-factory (stub)
+</code></pre>
+</section>
+
+
+<section id="risks">
+<h2>8 · Risks &amp; mitigations</h2>
+
+<table>
+  <thead><tr><th>Risk</th><th>Likelihood</th><th>Impact</th><th>Mitigation</th></tr></thead>
+  <tbody>
+    <tr><td>Frontmatter drifts across the three copies (T-006 footgun) or the map.</td><td>M</td><td>M</td><td>The D-006 drift-guard rule fails validate on any mismatch; re-<code>cp</code> after every source edit.</td></tr>
+    <tr><td>The escape hatch / turn-scoped tier switch can't be proven by structural tests (P-7).</td><td>M</td><td>M</td><td>Exercise in the real host: run <code>/spectastic.implement</code> (see Sonnet), then <code>--model opus</code> (see the Opus subagent), and confirm revert on the next prompt. SC-001/002.</td></tr>
+    <tr><td>Critic on Opus while classifier/impl-task on Sonnet — inconsistent subagent tiers confuse maintainers.</td><td>L</td><td>L</td><td>Documented per-agent in <code>agents/*.md</code> frontmatter + the spec's US3 rationale.</td></tr>
+    <tr><td>Alias table goes stale as models advance.</td><td>M</td><td>L</td><td>Single table, one edit; a future model bump is an obvious one-line change (D-007).</td></tr>
+  </tbody>
+</table>
+</section>
+
+
+<section id="complexity">
+<h2>9 · Complexity tracking</h2>
+<p>No complexity beyond what the spec requires.</p>
+
+<spec-assumption>
+<p>The three-copy frontmatter fan-out is inherent to the current (pre-<code>init --tools</code>) sync model, not introduced here; the drift-guard makes it safe rather than eliminating it.</p>
+</spec-assumption>
+</section>
+
+
+<section id="questions">
+<h2>10 · Open questions</h2>
+<spec-questions>
+<p>None outstanding — every decision was anchored in the interview and grounded against real source; all <code>must</code>-tier decisions are <code>verified</code>, so the grounding gate is clear for <code>/spectastic.tasks</code>.</p>
+</spec-questions>
+</section>
+
+
+<section id="changelog">
+<h2>11 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-07-10">10 Jul 2026</time><span>Initial plan — 7 decisions, all grounding <code>verified</code>.</span></li>
+  <li><time datetime="2026-07-10">10 Jul 2026</time><span>Status flipped Draft → Accepted on 10 Jul 2026 — zero remaining unchecked tasks; tests verified passing per author confirmation (incl. T-903 real-host model behaviour: Sonnet default, <code>--model opus</code> subagent, session reverts). Sibling bundle (REQ-LIFECYCLE-005).</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  Plan for 044-verb-model-policy · Verb model policy · authored 2026-07-10
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>

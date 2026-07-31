@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
+<title>Decider-routed choices · Design</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+<header>
+  <p class="small-caps">Design · 036-decider-choice</p>
+  <h1>Decider-routed choices</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">How we will build it.</p>
+  <spec-meta>
+    <b>Status</b>     <span><spec-status value="accepted">Accepted</spec-status></span>
+    <b>Spec</b>       <span><a href="./spec.html">036-decider-choice</a></span>
+    <b>Owner</b>      <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Branch</b>     <span><code>036-decider-choice</code></span>
+    <b>Created</b>    <span><time datetime="2026-07-09">09 Jul 2026</time></span>
+    <b>Read time</b>  <span data-reading-time></span>
+  </spec-meta>
+  <spec-tldr>
+    <p>Add <code>decideChoice(cfg, questions, ai)</code> to the decider module — <code>human</code> passes through
+    to <code>ai.ask</code>, <code>agent</code> runs one subagent that returns a chosen label per question,
+    <code>panel</code> runs N (effort-sized, concurrent) and majority-votes each. Route <code>confirmRice</code>
+    and <code>escalateLayer</code>'s <code>ai.ask</code> calls through it with a <code>human</code> default, so
+    nothing regresses. The CLIs read the project <code>decider</code> config and thread it in. Low risk — a
+    role-dispatch over the existing <code>Question</code> type, guarded by human-default parity tests.</p>
+  </spec-tldr>
+</header>
+
+<section id="principles-check">
+<h2>1 · Principles check</h2>
+<p>Against <a href="../../principles.html">v1.3.0</a>. P-8 binds.</p>
+<table>
+  <thead><tr><th>Principle</th><th>Compliance</th><th>Notes</th></tr></thead>
+  <tbody>
+    <tr><td>P-1..P-5</td><td><spec-pill>OK</spec-pill></td><td>Kernel-only.</td></tr>
+    <tr><td>P-6 · Draft loose</td><td><spec-pill>OK</spec-pill></td><td>Spec Draft; plan in place.</td></tr>
+    <tr><td>P-7 · Done verified</td><td><spec-pill>OK</spec-pill></td><td>Tests assert human-pass-through, panel vote count, distinct-invocation.</td></tr>
+    <tr><td>P-8 · Guarantees in kernel</td><td><spec-pill>OK</spec-pill></td><td>Role dispatch + no-self-judging live in the core decider, not markdown.</td></tr>
+  </tbody>
+</table>
+</section>
+
+<section id="grounding">
+<h2>2 · Grounding &amp; evidence</h2>
+<p>All <code>verified</code> — read this session.</p>
+<table class="evidence">
+  <thead><tr><th>Claim</th><th>Source</th><th>Status</th><th>Finding</th></tr></thead>
+  <tbody>
+    <tr><td>confirmRice is a single hard-coded ai.ask (Accept/Adjust)</td><td><code>packages/core/src/slice/rank.ts:19-36</code></td><td><spec-status value="accepted">verified</spec-status></td><td><code>ctx.ai.ask([{question, header:'RICE', options:[Accept,Adjust]}])</code>; returns riceConfirmed.</td></tr>
+    <tr><td>escalateLayer is two sequential ai.ask calls</td><td><code>packages/core/src/triage/classify.ts:89-129</code></td><td><spec-status value="accepted">verified</spec-status></td><td>q1 diagnostic-vs-routing → branch → q2 layer; both <code>ai.ask&lt;T&gt;([q])</code>.</td></tr>
+    <tr><td>Question type + categorical arbitration exist to reuse</td><td><code>packages/core/src/types.ts</code> (Question), <code>decider/panel.ts</code></td><td><spec-status value="accepted">verified</spec-status></td><td>Question = {question, header, options[{label,description}]}; a per-header majority tally mirrors arbitrateCategorical.</td></tr>
+    <tr><td>Effort sizing + config precedence exist</td><td><code>packages/core/src/decider/</code> (effortToDepth, resolveDecider)</td><td><spec-status value="accepted">verified</spec-status></td><td>One resolution path (033/034); decideChoice reuses it (FR-005).</td></tr>
+    <tr><td>escalateLayer callers to thread cfg</td><td><code>triage/fanout.ts</code>, <code>commands/triage.ts</code></td><td><spec-status value="accepted">verified</spec-status></td><td>Both call escalateLayer; TriageInput gains decider/effort like ProposeInput.</td></tr>
+  </tbody>
+</table>
+</section>
+
+<section id="approach">
+<h2>3 · Approach</h2>
+<p><code>decideChoice(cfg, questions, ai)</code> dispatches by role. <code>human</code> returns
+<code>ai.ask(questions)</code> verbatim — the default pass-through, so parity is definitional. <code>agent</code>
+builds a choice prompt from the <code>Question[]</code> (each header + labelled options), runs one subagent, and
+parses a <code>{header: label}</code> JSON answer, falling back to the first option on an invalid label.
+<code>panel</code> runs N (= <code>effortToDepth(effort).voters</code>) such subagents concurrently
+(<code>mapPool</code>) and majority-votes each header, tie-breaking to declared order. <code>confirmRice</code> and
+both <code>escalateLayer</code> asks call <code>decideChoice</code> with a cfg threaded from the caller (default
+<code>human</code>); the triage + slice CLIs resolve the project <code>decider</code> config and pass it.</p>
+</section>
+
+<section id="decisions">
+<h2>4 · Decisions</h2>
+<spec-decision id="D-001" grounding="verified">
+  <h4>D-001 · decideChoice — a role-dispatch over Question, human = pass-through</h4>
+  <dl>
+    <dt>Status</dt><dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt><dd>confirmRice/escalateLayer hard-code <code>ai.ask</code> (<code>rank.ts:24</code>, <code>classify.ts:102</code>). The Question type + arbitration already exist.</dd>
+    <dt>Decision</dt><dd>A new <code>decideChoice(cfg, questions, ai): Promise&lt;Record&lt;string,string&gt;&gt;</code>. <code>human</code> → <code>ai.ask</code> (identical result shape → parity, FR-006); <code>agent</code> → one subagent picks; <code>panel</code> → N vote by majority header-wise (FR-001).</dd>
+    <dt>Consequences</dt><dd>+ Same return type as <code>ai.ask</code>, so call sites change one line.<br>− A subagent choice-prompt + label parsing to author.</dd>
+  </dl>
+</spec-decision>
+<spec-decision id="D-002" grounding="verified">
+  <h4>D-002 · No self-judging by construction</h4>
+  <dl>
+    <dt>Status</dt><dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt><dd>An agent accepting its own RICE estimates would be circular (033 FR-006).</dd>
+    <dt>Decision</dt><dd><code>decideChoice</code> only ever runs <em>fresh</em> subagents against the question; it never receives a prior author's own output to ratify. In the slicer pipeline the estimator (<code>panelScore</code>) and the accept-decider (<code>confirmRice</code>) are separate calls — distinct invocations (FR-004).</dd>
+    <dt>Consequences</dt><dd>+ The guardrail holds structurally; a test asserts the accept-decider is a separate subagent call.<br>− none material.</dd>
+  </dl>
+</spec-decision>
+<spec-decision id="D-003" grounding="verified">
+  <h4>D-003 · Thread cfg from callers; CLIs read project config</h4>
+  <dl>
+    <dt>Status</dt><dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt><dd>escalateLayer runs inside triageFanout/triageCommand; confirmRice inside sliceCommand.</dd>
+    <dt>Decision</dt><dd>Add an optional <code>DeciderConfig</code> param to <code>confirmRice</code>/<code>escalateLayer</code> (default <code>{role:'human'}</code>), threaded from <code>TriageInput</code>/<code>SliceInput</code>. The triage + slice CLIs call <code>loadDeciderConfig</code> and pass it. Per-verb flags are deferred (spec §3).</dd>
+    <dt>Consequences</dt><dd>+ Config-file rollout with no new flags; default human = parity.<br>− Two Input types gain a decider field.</dd>
+  </dl>
+</spec-decision>
+</section>
+
+<section id="project-structure">
+<h2>5 · Project structure</h2>
+<pre><code>packages/core/src/decider/choice.ts     # NEW · decideChoice + choice prompt/parse/vote
+packages/core/src/decider/index.ts      # export decideChoice
+packages/core/src/slice/rank.ts         # confirmRice(children, ctx, cfg?) → decideChoice
+packages/core/src/triage/classify.ts    # escalateLayer(desc, hedged, ai, cfg?) → decideChoice
+packages/core/src/triage/fanout.ts      # thread cfg → escalateLayer
+packages/core/src/commands/triage.ts    # TriageInput.decider/effort → cfg
+packages/core/src/commands/slice.ts     # SliceInput.decider/effort → confirmRice cfg
+packages/cli/src/commands/{triage,slice}.ts  # loadDeciderConfig → input (if a CLI exists)
+packages/core/test/decider-choice.test.ts    # NEW · behavioural suite
+</code></pre>
+</section>
+
+<section id="risks">
+<h2>6 · Risks &amp; mitigations</h2>
+<table>
+  <thead><tr><th>Risk</th><th>L</th><th>I</th><th>Mitigation</th></tr></thead>
+  <tbody>
+    <tr><td><strong>R-1</strong> · Routing changes the human default result</td><td>L</td><td>H</td><td>human = <code>ai.ask</code> pass-through (D-001); a parity test asserts identical calls + result at default.</td></tr>
+    <tr><td><strong>R-2</strong> · Agent returns an invalid/absent label</td><td>M</td><td>L</td><td>Fall back to the first declared option; NFR-001 stable tie-break; tested.</td></tr>
+  </tbody>
+</table>
+</section>
+
+<section id="complexity">
+<h2>7 · Complexity tracking</h2>
+<spec-assumption>
+<p><strong>Grounding gate.</strong> All decisions <code>verified</code>. No assumed/spike must-tier fact — ready for <code>/spectastic.tasks</code>.</p>
+</spec-assumption>
+</section>
+
+<section id="questions">
+<h2>8 · Open questions</h2>
+<spec-questions>
+<p>None outstanding — the capability, call sites, human-default parity, and guardrail are grounded in the 033/035 code and the correction that prompted this slice.</p>
+</spec-questions>
+</section>
+
+<section id="changelog">
+<h2>9 · Change log</h2>
+<spec-changelog><ol><li><time datetime="2026-07-09">09 Jul 2026</time><span>Initial plan. decideChoice role-dispatch (D-001), no-self-judging by construction (D-002), cfg threading (D-003).</span></li></ol></spec-changelog>
+</section>
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">Plan for 036-decider-choice · authored 09 Jul 2026</footer>
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>

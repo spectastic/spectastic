@@ -28,10 +28,10 @@ function node(id: string, verb: ArtifactNode['verb'], specId = '099-demo'): Arti
 
 const graph: LifecycleGraph = {
   specId: '099-demo',
-  nodes: [node('plan', 'plan'), node('spec', 'spec'), node('tasks', 'tasks'), node('slice:099a', 'spec', '099a-child')],
+  nodes: [node('design', 'design'), node('spec', 'spec'), node('tasks', 'tasks'), node('slice:099a', 'spec', '099a-child')],
   edges: [
-    { from: 'spec', to: 'plan', kind: 'flow' },
-    { from: 'plan', to: 'tasks', kind: 'flow' },
+    { from: 'spec', to: 'design', kind: 'flow' },
+    { from: 'design', to: 'tasks', kind: 'flow' },
     { from: 'spec', to: 'slice:099a', kind: 'slice' },
   ],
 };
@@ -41,13 +41,13 @@ describe('layoutGraph — vertical (default, FR-004)', () => {
   const pos = (id: string) => layout.positions.find((p) => p.id === id)!;
 
   it('stacks the spine top-to-bottom by canonical verb order, not input order', () => {
-    expect(pos('spec').y).toBeLessThan(pos('plan').y);
-    expect(pos('plan').y).toBeLessThan(pos('tasks').y);
+    expect(pos('spec').y).toBeLessThan(pos('design').y);
+    expect(pos('design').y).toBeLessThan(pos('tasks').y);
   });
 
   it('places the spine in a single column', () => {
-    expect(pos('spec').x).toBe(pos('plan').x);
-    expect(pos('plan').x).toBe(pos('tasks').x);
+    expect(pos('spec').x).toBe(pos('design').x);
+    expect(pos('design').x).toBe(pos('tasks').x);
   });
 
   it('drops a child slice onto a lane right of its parent, aligned in y', () => {
@@ -72,13 +72,13 @@ describe('layoutGraph — horizontal (opt-in)', () => {
   const pos = (id: string) => layout.positions.find((p) => p.id === id)!;
 
   it('orders the spine left-to-right by canonical verb order', () => {
-    expect(pos('spec').x).toBeLessThan(pos('plan').x);
-    expect(pos('plan').x).toBeLessThan(pos('tasks').x);
+    expect(pos('spec').x).toBeLessThan(pos('design').x);
+    expect(pos('design').x).toBeLessThan(pos('tasks').x);
   });
 
   it('places the spine on a single row', () => {
-    expect(pos('spec').y).toBe(pos('plan').y);
-    expect(pos('plan').y).toBe(pos('tasks').y);
+    expect(pos('spec').y).toBe(pos('design').y);
+    expect(pos('design').y).toBe(pos('tasks').y);
   });
 
   it('drops a child slice onto a lane below its parent, aligned in x', () => {

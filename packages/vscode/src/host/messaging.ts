@@ -7,7 +7,7 @@ import type { ArtifactHealth } from '@spectastic/schema';
  */
 
 /** The eight lifecycle verbs, in canonical L→R order (spec FR-001). */
-export const VERB_ORDER = ['principles', 'spec', 'plan', 'tasks', 'implement', 'propose', 'apply', 'triage'] as const;
+export const VERB_ORDER = ['principles', 'spec', 'design', 'tasks', 'implement', 'propose', 'apply', 'triage'] as const;
 
 export type VerbType = (typeof VERB_ORDER)[number];
 
@@ -18,7 +18,7 @@ export type VerbType = (typeof VERB_ORDER)[number];
 export const VERB_TOKEN: Record<VerbType, string> = {
   principles: '--spec-1',
   spec: '--spec-2',
-  plan: '--spec-3',
+  design: '--spec-3',
   tasks: '--spec-4',
   implement: '--spec-5',
   propose: '--spec-6',

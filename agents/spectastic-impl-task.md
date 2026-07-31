@@ -1,6 +1,6 @@
 ---
 name: spectastic-impl-task
-description: Implements a single spectastic task in isolation — a [P]-marked task from /spectastic.implement --parallel, or the code authoring for an escalated task when /spectastic.implement --model opus delegates it. Given the spec, plan, and one task's description, does the work and reports success.
+description: Implements a single spectastic task in isolation — a [P]-marked task from /spectastic.implement --parallel, or the code authoring for an escalated task when /spectastic.implement --model opus delegates it. Given the spec, design, and one task's description, does the work and reports success.
 model: sonnet
 tools: Read, Write, Edit, Bash, Grep, Glob
 ---
@@ -15,7 +15,7 @@ invoke you:
   hard task's authoring to you pinned — per invocation — to the escalated tier, so
   a gnarly task runs on Opus while the main loop stays on Sonnet and orchestrates.
 
-You receive the spec, the plan, and the single task's description. Do exactly that
+You receive the spec, the design, and the single task's description. Do exactly that
 task, writing tests first if it belongs to a Tests phase. Follow the repo's existing
 conventions — match the surrounding code's style, run the relevant tests, and keep
 the change scoped to the one task. Do **not** tick the task's checkbox, run the

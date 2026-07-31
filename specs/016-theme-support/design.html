@@ -1,0 +1,454 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
+<title>Themes · Design</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Design · 016-theme-support</p>
+  <h1>Themes</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    How we will build it.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>     <span><spec-status value="draft">Draft</spec-status></span>
+    <b>Spec</b>       <span><a href="./spec.html">016-theme-support</a></span>
+    <b>Owner</b>      <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Branch</b>     <span><code>016-theme-support</code></span>
+    <b>Created</b>    <span><time datetime="2026-06-18">18 Jun 2026</time></span>
+    <b>Read time</b>  <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-tldr>
+    <p>Promote the theme-owned visual properties (per-role font weights, surface/card treatment,
+    radii, border &amp; rule widths, spacing density) out of hardcoded rules into CSS custom
+    properties, so a theme is one attribute-keyed token block and a mode is one
+    <code>--c-*</code> palette block — the cascade then produces the 2×2 for free. A tiny
+    render-blocking <code>theme-boot.js</code> in <code>&lt;head&gt;</code> applies the saved
+    selection before first paint; <code>spec.js</code> builds the switcher. Biggest risk: regressing
+    today's <em>calm</em> look while tokenising — held down by making calm tokens reproduce the
+    current literals exactly and screenshot-diffing.</p>
+    <p><strong>Re-plan (<a href="./triage-log.html#T-002">T-002</a>):</strong> tokens alone can't
+    reach the reference's pills, columns, boxes and gauges, so the token base (<a href="#D-001">D-001</a>)
+    now carries a <em>per-theme component-override</em> layer (<a href="#D-006">D-006</a>) —
+    <code>[data-theme="spectastic-vivid"]</code>-scoped rules for shape and layout — verified against
+    the <a href="./spec.html#SC-006">SC-006</a> checklist. The work is sliced component-group-first
+    (<a href="#D-007">D-007</a>); risk tolerance steps up to <strong>Medium</strong>.</p>
+  </spec-tldr>
+</header>
+
+
+<section id="principles-check">
+<h2>1 · Principles check</h2>
+<p>Verify this plan respects every principle in
+<a href="../../principles.html">v1.1.0</a>. Any violation requires either a
+principles amendment or a deliberate exception logged in §8.</p>
+
+<table>
+  <thead><tr><th>Principle</th><th>Compliance</th><th>Notes</th></tr></thead>
+  <tbody>
+    <tr><td>P-1 · Source order is reading order</td><td><spec-pill>OK</spec-pill></td><td><code>theme-boot.js</code> sits in <code>&lt;head&gt;</code> and only sets two attributes on <code>&lt;html&gt;</code>. The vivid header (<a href="#D-009">D-009</a>) is injected at the <em>start</em> of <code>&lt;body&gt;</code>, so source order stays header→content; it is chrome, not reordered reading content. <code>cat</code> still reads top-to-bottom.</td></tr>
+    <tr><td>P-2 · Semantic tags over class soup</td><td><spec-pill>OK</spec-pill></td><td>State moves to <code>data-theme</code>/<code>data-mode</code> attributes (not class soup); the switcher is a native <code>&lt;select&gt;</code>. Replaces the lone <code>.dark</code> class.</td></tr>
+    <tr><td>P-3 · IDs are contracts</td><td><spec-pill>OK</spec-pill></td><td>Theme ids (<code>spectastic-calm</code>, <code>spectastic-vivid</code>) and storage keys are stable contracts; the legacy key is migrated, never reused (<a href="./spec.html#FR-006">FR-006</a>).</td></tr>
+    <tr><td>P-4 · Progressive enhancement</td><td><spec-pill>OK</spec-pill></td><td>JS off → <code>:root</code> defaults render calm + light fully (<a href="./spec.html#NFR-002">NFR-002</a>). If <code>theme-boot.js</code> fails to load, the page still paints the default. Switching is the enhancement.</td></tr>
+    <tr><td>P-5 · Calm density</td><td><spec-pill>OK</spec-pill></td><td>Switcher chrome is one native <code>&lt;select&gt;</code> + the existing footer toggle. <em>vivid</em> is denser by design; the reference reads calm-but-dense. The sticky header (<a href="./spec.html#FR-009">FR-009</a>, <a href="#D-009">D-009</a>) is now in <strong>both themes</strong>, but calm renders a minimal, flat treatment (no blur) — the header's position + controls carry meaning; calm adds no decorative density, so P-5 stays honest. Parity must not cross into crowding.</td></tr>
+    <tr><td>P-6 · Draft is loose, ratified is locked</td><td><spec-pill>OK</spec-pill></td><td>Purely additive to the rendering layer; changes no lifecycle/state behaviour of any artifact.</td></tr>
+  </tbody>
+</table>
+</section>
+
+
+<section id="technical-context">
+<h2>2 · Technical context</h2>
+<dl>
+  <dt>Language(s)</dt>      <dd>HTML5, CSS (custom properties + attribute selectors), vanilla ES2019 (IIFE). No artifact framework.</dd>
+  <dt>Frameworks</dt>       <dd>None — progressive enhancement only (per <a href="../../principles.html#P-4">P-4</a>). No build step for the artifact.</dd>
+  <dt>Storage</dt>          <dd>Browser <code>localStorage</code>, two keys: <code>spectastic-theme</code> (theme id), <code>spectastic-mode</code> (<code>light</code>|<code>dark</code>).</dd>
+  <dt>Testing</dt>          <dd>Existing <code>vitest</code> stays for logic; the Playwright + axe-core browser tier (<a href="#D-005">D-005</a>) covers persistence, no-flash, and 4-combo contrast, and now a <strong>computed-style parity gate</strong> for <a href="./spec.html#SC-006">SC-006</a>.</dd>
+  <dt>Perf targets</dt>     <dd><code>theme-boot.js</code> ~835&nbsp;B gzip, render-blocking but &lt; ~5&nbsp;ms parse+exec; zero layout shift; no flash of the default look (<a href="./spec.html#NFR-001">NFR-001</a>).</dd>
+  <dt>Constraints</dt>      <dd>Single self-contained artifact files; AA contrast on all four combos (<a href="./spec.html#NFR-003">NFR-003</a>); <em>calm must stay visually identical to today</em>; risk tolerance <strong>Medium</strong> — attribute-scoped component CSS is proven, but the surface is broader and per-theme layout (2-col grid, gauge-as-bars) is new.</dd>
+</dl>
+</section>
+
+
+<section id="approach">
+<h2>3 · Approach</h2>
+
+<p><strong>Token-based theming.</strong> Today the theme-owned properties are scattered as literals in
+base rules (<code>h1{font-weight:400}</code>, <code>h2{font-weight:300}</code>), global tokens
+(<code>--s-*</code>, <code>--r-*</code>), and inline <code>1px</code> borders. We promote the
+theme-owned set — per-role font weights, surface/card elevation, radii, border &amp; rule widths,
+spacing density — into named custom properties that the base rules consume. <code>:root</code>
+carries the <em>calm</em> token values <em>and</em> the light palette as the no-JS default;
+<code>[data-theme="spectastic-vivid"]</code> overrides only the theme tokens;
+<code>[data-mode="dark"]</code> overrides only the <code>--c-*</code> palette. Because the two axes
+are independent attribute selectors, the cascade yields all four combinations with no
+per-combination rules. Adding a future theme is then exactly one <code>[data-theme=…]</code> block
+(<a href="./spec.html#SC-004">SC-004</a>).</p>
+
+<p><strong>Pre-paint apply, then enhance.</strong> A tiny render-blocking
+<code>assets/theme-boot.js</code> in every <code>&lt;head&gt;</code> reads the two keys, migrates a
+legacy <code>spectastic-theme = light|dark</code> value into <code>spectastic-mode</code>
+(<a href="./spec.html#FR-006">FR-006</a>), and writes <code>data-theme</code>/<code>data-mode</code>
+on <code>&lt;html&gt;</code> before first paint (<a href="./spec.html#NFR-001">NFR-001</a>). The
+body-end <code>spec.js</code> reads that already-resolved state, builds a native
+<code>&lt;select&gt;</code> from a small theme registry, and rewires the existing footer toggle to
+flip mode — persisting both keys on change. Migration lives only in <code>theme-boot.js</code>
+(single source). The slice adds the one <code>&lt;head&gt;</code> line to all 67 artifacts via a
+scripted, depth-aware insertion.</p>
+
+<p><strong>Component parity, layered on the tokens (re-plan).</strong> Tokens carry every scalar a
+theme owns; the reference's pills, two-column grids, carded boxes and bar-style gauges need
+<em>structure</em> tokens can't express. So <code>[data-theme="spectastic-vivid"]</code> gains a
+second layer of <em>component-scoped rules</em> alongside its token block
+(<a href="#D-006">D-006</a>) — e.g. <code>[data-theme=…] spec-status{border-radius:5px}</code>,
+<code>[data-theme=…] spec-goals dl{grid-template-columns:1fr 1fr}</code>. Calm remains the
+untouched <code>:root</code> default, so the blast radius is scoped to the vivid selector. The work
+is sliced by component group (<a href="#D-007">D-007</a>): <strong>Slice&nbsp;1 — shape</strong>
+(pills, cards, surfaces, radii, rule weights; touches every artifact, instantly visible), then
+<strong>Slice&nbsp;2 — layout</strong> (goals two-column grid, budget-gauge-as-bars, decision/matrix
+treatment). Each slice ships against its slice of the <a href="./spec.html#SC-006">SC-006</a>
+checklist. The shipped mechanism (switching, persistence, no-flash, migration, 4-combo AA) is
+regression-guarded and stays green.</p>
+
+<spec-arch>
+<figure>
+<svg viewBox="0 0 720 250" role="img" aria-label="Theme resolution and switch-back flow">
+  <style>
+    .box { fill:#fcfbf7; stroke:#c4c1bb; stroke-width:1.2; }
+    .boxhi { fill:#fff6e9; stroke:#e0a23c; stroke-width:1.4; }
+    .label { font: 700 10.5px Lato, sans-serif; fill:#4a4a46; letter-spacing:0.05em; text-transform:uppercase; }
+    .body { font: 400 11px "Source Serif 4", Georgia, serif; fill:#353534; }
+    .arr { stroke:#73706d; stroke-width:1.2; fill:none; }
+    .arrback { stroke:#7558b2; stroke-width:1.2; fill:none; stroke-dasharray:4 3; }
+  </style>
+  <rect class="box" x="20"  y="30" width="150" height="58" rx="4"/>
+  <text class="label" x="34" y="52">localStorage</text>
+  <text class="body"  x="34" y="70">theme · mode</text>
+
+  <rect class="boxhi" x="210" y="30" width="170" height="58" rx="4"/>
+  <text class="label" x="224" y="52">theme-boot.js</text>
+  <text class="body"  x="224" y="70">head · migrate + set</text>
+
+  <rect class="box" x="420" y="30" width="160" height="58" rx="4"/>
+  <text class="label" x="434" y="52">&lt;html&gt;</text>
+  <text class="body"  x="434" y="70">data-theme/-mode</text>
+
+  <rect class="box" x="420" y="150" width="160" height="58" rx="4"/>
+  <text class="label" x="434" y="172">spec.css</text>
+  <text class="body"  x="434" y="190">token blocks</text>
+
+  <rect class="box" x="210" y="150" width="170" height="58" rx="4"/>
+  <text class="label" x="224" y="172">painted artifact</text>
+  <text class="body"  x="224" y="190">calm/vivid · l/d</text>
+
+  <rect class="box" x="20" y="150" width="150" height="58" rx="4"/>
+  <text class="label" x="34" y="172">spec.js</text>
+  <text class="body"  x="34" y="190">switcher (body)</text>
+
+  <path class="arr" d="M170 59 L210 59" marker-end="url(#a)"/>
+  <path class="arr" d="M380 59 L420 59" marker-end="url(#a)"/>
+  <path class="arr" d="M500 88 L500 150" marker-end="url(#a)"/>
+  <path class="arr" d="M420 179 L380 179" marker-end="url(#a)"/>
+  <path class="arrback" d="M95 150 L95 100 Q95 92 103 92 L470 92 Q500 92 500 100" marker-end="url(#b)"/>
+  <text class="body" x="110" y="120" fill="#7558b2">on change: write attrs + localStorage</text>
+
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#73706d"/></marker>
+    <marker id="b" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#7558b2"/></marker>
+  </defs>
+</svg>
+<figcaption>Pre-paint resolution (solid): saved keys → <code>theme-boot.js</code> → <code>&lt;html&gt;</code> attributes → CSS token blocks → painted artifact. The body-end switcher (dashed) writes attributes and <code>localStorage</code> back on change.</figcaption>
+</figure>
+</spec-arch>
+</section>
+
+
+<section id="alternatives">
+<h2>4 · Alternatives considered</h2>
+<p>The pivotal choice is the CSS theming strategy. Scores out of 5; higher is better.</p>
+
+<spec-matrix>
+<table>
+  <thead>
+    <tr><th>Option</th><th>Extensible (SC-004)</th><th>Maintainable</th><th>No-build (P-1)</th><th>No-flash</th><th class="score">Total</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Per-theme selector overrides (duplicate rule blocks)</td><td>2</td><td>2</td><td>5</td><td>4</td><td class="score">13</td></tr>
+    <tr data-winner><td>Token custom properties, attribute-keyed</td><td>5</td><td>5</td><td>5</td><td>5</td><td class="score">20</td></tr>
+    <tr><td>Separate stylesheet per theme (swap <code>&lt;link&gt;</code>)</td><td>3</td><td>2</td><td>4</td><td>2</td><td class="score">11</td></tr>
+  </tbody>
+</table>
+</spec-matrix>
+<p>Per-theme overrides duplicate every touched selector per theme and degrade with each new theme.
+A stylesheet-per-theme reintroduces a flash on swap and duplicates the shared rules. Tokens keep one
+rule set, isolate per-theme change to a token block, and need no build.</p>
+<p><strong>Re-plan note (<a href="./triage-log.html#T-002">T-002</a>):</strong> the row above scored
+per-theme overrides as a <em>pure</em> strategy (duplicate the whole rule set per theme). <a href="#D-006">D-006</a>
+is not that — it keeps tokens as the base and adds only the <em>targeted</em> shape/layout rules
+tokens can't express (pill radius, grid columns, gauge-as-bars), scoped to the vivid selector. The
+hybrid keeps the token strategy's wins while reaching the component-level parity
+<a href="./spec.html#FR-007">FR-007</a> now demands.</p>
+</section>
+
+
+<section id="decisions">
+<h2>5 · Decisions</h2>
+
+<spec-decision id="D-001">
+  <h4>D-001 · Token-based theming</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd><a href="./spec.html#FR-002">FR-002</a> makes a theme own typography <em>and</em> structure; <a href="./spec.html#SC-004">SC-004</a> wants a new theme to be one stylesheet block.</dd>
+    <dt>Decision</dt>     <dd>Promote theme-owned properties to custom properties consumed by base rules. <code>:root</code> = calm tokens + light palette; <code>[data-theme="spectastic-vivid"]</code> overrides theme tokens; <code>[data-mode="dark"]</code> overrides <code>--c-*</code>.</dd>
+    <dt>Consequences</dt> <dd>+ One rule set, 2×2 for free, a theme = one token block. + No build. − A tokenisation refactor of existing base rules, with calm-regression risk (<a href="#R-1">R-1</a>). <strong>Augmented by <a href="#D-006">D-006</a></strong> — tokens remain the base; component-level parity needs a scoped-rule layer on top.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-002">
+  <h4>D-002 · Pre-paint via dedicated <code>theme-boot.js</code></h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd><a href="./spec.html#NFR-001">NFR-001</a> forbids a flash; CSS can't read <code>localStorage</code>, so something must run in <code>&lt;head&gt;</code> before paint.</dd>
+    <dt>Decision</dt>     <dd>A tiny render-blocking <code>assets/theme-boot.js</code> in <code>&lt;head&gt;</code> migrates + sets the attributes pre-paint; the switcher UI stays in body-end <code>spec.js</code>. Migration lives only in the boot script.</dd>
+    <dt>Consequences</dt> <dd>+ Central source, no logic drift; only the critical path blocks paint, not the full enhancement layer. − A new asset and a one-line <code>&lt;head&gt;</code> edit in every artifact; a small first-load fetch on the critical path (<a href="#R-3">R-3</a>).</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-003">
+  <h4>D-003 · Mode as <code>[data-mode]</code>, drop <code>html.dark</code></h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd><a href="./spec.html#FR-004">FR-004</a> mandates <code>data-theme</code>/<code>data-mode</code> attributes; the current mechanism is a lone <code>html.dark</code> class.</dd>
+    <dt>Decision</dt>     <dd>Move the dark palette under <code>[data-mode="dark"]</code> and remove the <code>html.dark</code> alias. All artifacts are retrofitted in this slice, so nothing in-repo relies on the class.</dd>
+    <dt>Consequences</dt> <dd>+ One mechanism, no dead selector. − An externally forked/saved copy of an old artifact loses dark until it reloads the new assets; accepted given the full in-repo sweep.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-004">
+  <h4>D-004 · JS-built native <code>&lt;select&gt;</code> from a theme registry</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd><a href="./spec.html#FR-001">FR-001</a> wants a dropdown in every artifact; <a href="./spec.html#SC-004">SC-004</a> forbids per-artifact markup edits when a theme is added.</dd>
+    <dt>Decision</dt>     <dd><code>spec.js</code> holds the theme registry and injects a native <code>&lt;select&gt;</code> beside the existing footer toggle (which becomes the mode control). No switcher markup in artifact files.</dd>
+    <dt>Consequences</dt> <dd>+ Native, accessible, keyboard-friendly, no UI library; adding a theme touches only the registry. − Switcher absent with JS off (acceptable per <a href="./spec.html#NFR-002">NFR-002</a>).</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-005">
+  <h4>D-005 · Playwright + axe-core browser test tier</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd><a href="./spec.html#SC-002">SC-002</a> (first-paint frame) and <a href="./spec.html#SC-003">SC-003</a> (rendered contrast ×4) are only faithfully observable in a real browser; the repo today has only <code>vitest</code>.</dd>
+    <dt>Decision</dt>     <dd>Add Playwright + axe-core as a browser test tier: persistence + no-flash specs, and an axe contrast sweep across all four combinations. Migration/registry logic may also be unit-checkable, but the must-SCs drive the browser tier.</dd>
+    <dt>Consequences</dt> <dd>+ Faithful coverage of the must-level criteria. − A new dev dependency and CI tier to maintain (<a href="#R-2">R-2</a> is gated by it).</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-006">
+  <h4>D-006 · Per-theme component overrides (layered on D-001 tokens)</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd><a href="./spec.html#FR-007">FR-007</a> parity (after <a href="./triage-log.html#T-002">T-002</a>) needs pill shape, two-column grids, carded boxes and bar-style gauges — structure the <a href="#D-001">D-001</a> token set cannot express.</dd>
+    <dt>Decision</dt>     <dd>Keep tokens as the base; add a layer of component-scoped rules under <code>[data-theme="spectastic-vivid"]</code> (e.g. <code>spec-status{border-radius:5px}</code>, <code>spec-goals dl{grid-template-columns:1fr 1fr}</code>, the bar-style budget gauge). Calm stays the untouched <code>:root</code> default. Bounded by <a href="#D-008">D-008</a>: these rules are CSS-only over existing elements and add nothing to documents.</dd>
+    <dt>Consequences</dt> <dd>+ Reaches full component parity without a build or a flash; blast radius scoped to the vivid selector. + Tokens still win for scalars. − Broader CSS surface raises calm-regression risk (<a href="#R-1">R-1</a>) and per-theme layout is new (<a href="#R-6">R-6</a>). − A theme is now a stylesheet <em>section</em> (tokens + overrides), loosening <a href="./spec.html#SC-004">SC-004</a>'s "one block" to "one self-contained section" (no markup/switch-logic edits still holds).</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-007">
+  <h4>D-007 · Slice the parity work by component group, demoable-first</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>The sharpened spec's INVEST-S is strained — full parity across every artifact type is large and must not land as one opaque batch.</dd>
+    <dt>Decision</dt>     <dd><strong>Slice 1 — shape:</strong> pills, cards/admonitions, surfaces, radii, rule weights (touches every artifact, instantly visible). <strong>Slice 2 — layout:</strong> goals two-column grid, budget-gauge-as-bars, decision/matrix treatment. Each ships against its slice of the <a href="./spec.html#SC-006">SC-006</a> checklist.</dd>
+    <dt>Consequences</dt> <dd>+ Intermediate demoables; calm-regression caught early on the cheap slice. + <code>/spectastic.tasks</code> can phase the work cleanly. − Two passes over <code>spec.css</code> rather than one.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-008">
+  <h4>D-008 · Themes are CSS-only over the existing vocabulary — opt-in, additive</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd><a href="./spec.html#NFR-005">NFR-005</a>. The reconsideration of <a href="#D-006">D-006</a> was about carrying cost, not the override layer itself: as themes 3/4/5 arrive, rich styling must not tax documents that don't use a feature, and a new theme must not complicate existing ones.</dd>
+    <dt>Decision</dt>     <dd>Every theme is a self-contained <code>[data-theme]</code> CSS section over the <em>existing</em> semantic elements. No theme adds document markup; a document pays for a component's theming only by using that component. Hard layout cases use CSS over existing parents first (<code>section:has(spec-goals):has(spec-non-goals){grid}</code>); only if impossible, a minimal <em>opt-in</em> authoring-template hook — never a globally-forced wrapper.</dd>
+    <dt>Consequences</dt> <dd>+ Adding theme N is additive CSS, bounded, with zero document or other-theme cost. + Reconciles <a href="#D-006">D-006</a> with the §4 token win — scoped rules are acceptable precisely because they are CSS-only and opt-in by usage. + Bounds D-006 so it can never drift into forced scaffolding. − A few reference layouts need <code>:has()</code>/grid work or a small template hook (<a href="#R-8">R-8</a>). − Candidate to promote to a principle (P-7) once the theme count grows — flagged, not amended (§8).</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-009">
+  <h4>D-009 · Vivid header — inject once, reveal per-theme via CSS (no runtime DOM moves)</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd><a href="./spec.html#FR-009">FR-009</a>: every artifact gets a sticky top header carrying the brand/back-link, artifact path, theme dropdown, and a sun/moon mode toggle; the controls move out of the footer into it (calm renders the bar flat, vivid backdrop-blurred). Must honour <a href="../../principles.html#P-1">P-1</a> (source order = reading order), <a href="../../principles.html#P-4">P-4</a> (degrade without JS), and <a href="../../principles.html#P-5">P-5</a> (calm density).</dd>
+    <dt>Decision</dt>     <dd><code>spec.js</code> injects a semantic <code>&lt;header&gt;</code> at the <em>start</em> of <code>&lt;body&gt;</code> on every load (P-1). The theme dropdown + mode toggle render in the header, wired to the <code>window.__spectastic</code> registry + reflect handlers; CSS shows the header in <strong>both themes</strong> (<code>position:sticky;top:0</code>; calm a flat opaque-cream bar, vivid a <code>backdrop-filter:blur()</code> bar with an <code>@supports</code> solid-surface fallback), and the footer switcher is removed. Brand links to <code>index.html</code>; the path auto-derives from <code>location.pathname</code> (trailing segments) with a <code>&lt;body data-doc-path&gt;</code> override; the mode toggle is an inline sun/moon SVG. No runtime DOM relocation.</dd>
+    <dt>Consequences</dt> <dd>+ No DOM churn on theme switch; both control sets stay in sync because they read one registry. + Header sits first in source order (P-1) and, being JS-injected + vivid-only, vanishes under no-JS/calm — degrading to today's footer switcher (P-4). + Vivid-only keeps calm's chrome minimal (P-5). − Two control instances to keep wired (mitigated: shared reflect handlers, one source of truth). − <code>backdrop-filter</code> is uneven across browsers (mitigated by the <code>@supports</code> fallback, <a href="#R-9">R-9</a>).</dd>
+  </dl>
+  <spec-matrix>
+  <table>
+    <thead><tr><th>Approach</th><th>Simplicity</th><th>P-1 source order</th><th>Switch cost</th><th class="score">Total</th></tr></thead>
+    <tbody>
+      <tr data-winner><td>Inject once + CSS toggle</td><td>4</td><td>5</td><td>5</td><td class="score">14</td></tr>
+      <tr><td>Runtime relocate on switch</td><td>3</td><td>3</td><td>2</td><td class="score">8</td></tr>
+      <tr><td>Build header only in vivid</td><td>2</td><td>3</td><td>2</td><td class="score">7</td></tr>
+    </tbody>
+  </table>
+  </spec-matrix>
+</spec-decision>
+</section>
+
+
+<section id="project-structure">
+<h2>6 · Project structure</h2>
+
+<pre><code>assets/
+  spec.css          # tokenise theme-owned props; :root = calm + light;
+                    #   [data-theme="spectastic-vivid"]; [data-mode="dark"];
+                    #   drop html.dark; extend Fraunces @import to 700
+  spec.js           # replace §7 toggle: theme registry + &lt;select&gt; builder
+                    #   + mode rewire; read pre-migrated state
+  theme-boot.js     # NEW — render-blocking &lt;head&gt;: read keys, migrate
+                    #   legacy value, set data-theme/data-mode pre-paint
+
+templates/*.html                 # +1 &lt;head&gt; boot line            (7 files)
+index.html inbox.html
+design.html principles.html        # +1 &lt;head&gt; boot line            (4 files)
+specs/**/(spec|plan|tasks|
+  proposal).html                 # +1 &lt;head&gt; boot line            (56 files)
+
+tests/                # NEW Playwright tier
+  theme.persistence.spec.ts   # SC-001: 4 combos persist across reload + nav
+  theme.noflash.spec.ts       # SC-002: first painted frame already correct
+  theme.contrast.spec.ts      # SC-003: axe AA across {calm,vivid}×{light,dark}
+  theme.migration.spec.ts     # FR-006/SC-005: legacy dark → mode
+playwright.config.ts  # NEW
+package.json          # + @playwright/test, @axe-core/playwright; test:e2e script
+
+# ── Re-plan (T-002): component parity, layered on the above (which shipped) ──
+assets/
+  spec.css          # ADD a [data-theme="spectastic-vivid"] component layer:
+                    #   Slice 1 (shape)  — spec-status/pill radius, card &amp;
+                    #     admonition radius, surfaces, rule weights
+                    #   Slice 2 (layout) — spec-goals/non-goals 2-col grid,
+                    #     spec-budget as horizontal bars, decision/matrix
+                    #   (calm :root untouched; rules scoped to the vivid selector)
+tests/
+  theme.parity.spec.ts  # NEW — SC-006 computed-style checklist vs example.html
+
+# ── Re-plan (FR-009): vivid sticky header, layered on the above ──
+assets/
+  spec.js           # inject a semantic &lt;header&gt; at body-start; render the
+                    #   theme dropdown + sun/moon mode toggle in BOTH header
+                    #   and footer, wired to window.__spectastic (D-009)
+  spec.css          # [data-theme="spectastic-vivid"] header: sticky + blur
+                    #   (@supports solid fallback); reveal header in vivid,
+                    #   footer controls in calm; brand → index.html
+tests/
+  theme.header.spec.ts  # NEW — FR-009: vivid header sticky + controls work;
+                        #   calm has none; no-JS falls back; axe AA over blur
+</code></pre>
+</section>
+
+
+<section id="risks">
+<h2>7 · Risks &amp; mitigations</h2>
+
+<table>
+  <thead><tr><th>Risk</th><th>Likelihood</th><th>Impact</th><th>Mitigation</th></tr></thead>
+  <tbody>
+    <tr id="R-1"><td>Tokenising regresses the <em>calm</em> (current) look</td><td>Med</td><td>High</td><td>Calm tokens reproduce today's exact literals (weights 400/300/…, <code>--r-*</code>, 1px rules); screenshot-diff calm before/after; calm is default so any regression is immediately visible across all 67 artifacts.</td></tr>
+    <tr id="R-2"><td>A dark combo fails AA 4.5:1 (e.g. crimson link on dark surface)</td><td>Med</td><td>Med</td><td>axe-core gate (<a href="#D-005">D-005</a>) across all four combos; tune dark <code>--c-*</code> from the reference palette as the starting point.</td></tr>
+    <tr id="R-3"><td><code>theme-boot.js</code> render-block adds a fetch to first paint</td><td>Low</td><td>Low</td><td>Keep it &lt; 1&nbsp;KB; same-origin, cached after first load; accept a sub-frame delay over a flash.</td></tr>
+    <tr id="R-4"><td>67-file <code>&lt;head&gt;</code> retrofit drifts or uses the wrong relative depth</td><td>Med</td><td>Med</td><td>Scripted, idempotent insertion keyed by path depth (<code>./</code>, <code>../</code>, <code>../../</code>); a test asserts the boot line is present and resolvable.</td></tr>
+    <tr id="R-5"><td>Fraunces 700 missing from the current <code>@import</code> → vivid headings fall back / synthesise bold</td><td>Med</td><td>Med</td><td>Extend the <code>@import</code> weight range to include 700; assert computed <code>font-weight</code> in the render test.</td></tr>
+    <tr id="R-6"><td>Per-theme layout rules (2-col grid, gauge-as-bars) leak into calm or break the narrow-viewport layout</td><td>Med</td><td>Med</td><td>Every component rule is scoped under <code>[data-theme="spectastic-vivid"]</code>, so calm is structurally untouched; screenshot-diff <em>both</em> themes at wide + narrow widths; a calm "no-change" gate complements the vivid <a href="./spec.html#SC-006">SC-006</a> gate.</td></tr>
+    <tr id="R-7"><td>SC-006 checklist values drift from the reference (guessed, or <code>example.html</code> moves)</td><td>Low</td><td>Med</td><td>Capture target values directly from <code>example.html</code> at implementation; encode them as explicit constants in <code>theme.parity.spec.ts</code> with the reference as the cited source of truth.</td></tr>
+    <tr id="R-8"><td>A parity feature genuinely needs document structure (no CSS-only path) → pressure to force markup on every document</td><td>Med</td><td>Med</td><td><a href="#D-008">D-008</a>/<a href="./spec.html#NFR-005">NFR-005</a> forbid forced markup; try <code>:has()</code>/grid on existing parents first, and if truly impossible add an <em>opt-in</em> template hook only. Each such feature is reviewed against the contract before landing.</td></tr>
+    <tr id="R-9"><td>Header <code>backdrop-filter</code> unsupported or janky; or the sticky bar fails AA over translucent content (<a href="./spec.html#FR-009">FR-009</a>)</td><td>Med</td><td>Med</td><td><code>@supports (backdrop-filter)</code> guard with a solid near-opaque surface fallback (<a href="#D-009">D-009</a>); axe-core asserts the header's AA over its settled background in the <code>{vivid}×{light,dark}</code> combos; sticky offset measured against the centered column.</td></tr>
+  </tbody>
+</table>
+</section>
+
+
+<section id="complexity">
+<h2>8 · Complexity tracking</h2>
+<p>Where this plan adds complexity beyond the literal spec, the justification lives here.</p>
+
+<spec-assumption>
+<p><strong>A separate <code>theme-boot.js</code> asset</strong> is more moving parts than a single
+toggle, but it is the only way to guarantee no-flash (<a href="./spec.html#NFR-001">NFR-001</a>)
+across 67 files without copying the migration logic into each — trading one small fetch for
+unbounded drift. Justified.</p>
+</spec-assumption>
+
+<spec-assumption>
+<p><strong>A new Playwright + axe-core tier</strong> sits beyond the existing <code>vitest</code>/CLI
+stack. The deterministic parts (migration, registry resolution) could be unit-tested, but
+<a href="./spec.html#SC-002">SC-002</a> (first-paint frame) and <a href="./spec.html#SC-003">SC-003</a>
+(rendered contrast) are only honestly observable in a browser — so the new tier earns its keep.</p>
+</spec-assumption>
+
+<spec-assumption>
+<p><strong>Vivid weight map and dark hex values</strong> are taken from the reference design
+(Fraunces 500–700, Lato 900; the documented dark palette) as the starting point, tuned only where
+the AA gate (<a href="#R-2">R-2</a>) requires. The exact per-role map is settled in
+<code>/spectastic.tasks</code> / implementation, not here.</p>
+</spec-assumption>
+
+<spec-assumption>
+<p><strong>A per-theme component-override layer</strong> (<a href="#D-006">D-006</a>) adds CSS beyond
+the token block, which superficially resembles the per-theme-override strategy the §4 matrix
+rejected. The justification: it is <em>targeted</em> (only what tokens can't express) and
+vivid-scoped, not a duplicated rule set — and <a href="./spec.html#FR-007">FR-007</a> component
+parity is unreachable by tokens alone. The cost is a broader calm-regression surface, paid down by
+strict selector scoping and a dual screenshot gate (<a href="#R-6">R-6</a>).</p>
+</spec-assumption>
+
+<spec-assumption>
+<p><strong>The theme-scaling contract (<a href="#D-008">D-008</a> / <a href="./spec.html#NFR-005">NFR-005</a>)
+reads like a project-wide invariant</strong> — it governs every future theme, not just vivid. It is
+<em>flagged as a candidate principle (P-7)</em> rather than amended into
+<a href="../../principles.html">principles.html</a> now: principle amendments are owner-gated, and
+one alternative theme isn't yet enough evidence. Promote when theme 3 lands and the pattern has held.</p>
+</spec-assumption>
+</section>
+
+
+<section id="questions">
+<h2>9 · Open questions</h2>
+<spec-questions>
+<p>None outstanding. Every mechanism, scope, and verification decision was anchored during the plan
+interview (see the change log); the spec's §7 is likewise clear. Remaining literals (the exact
+weight-per-role map and dark hex values) are Negotiable implementation detail, not blockers.</p>
+</spec-questions>
+</section>
+
+
+<section id="changelog">
+<h2>10 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-06-19">19 Jun 2026</time><span>Added <a href="#D-009">D-009</a> — vivid sticky header: inject a semantic <code>&lt;header&gt;</code> at body-start once, render controls in both header + footer wired to one registry, reveal per-theme via CSS (sticky + blur, <code>@supports</code> solid fallback). Plans <a href="./spec.html#FR-009">FR-009</a>; added <a href="#R-9">R-9</a> (backdrop-filter / AA-over-blur); refreshed the P-1 and P-5 checks (header injected at top preserves source order; vivid-only keeps calm minimal).</span></li>
+  <li><time datetime="2026-06-18">18 Jun 2026</time><span>Added D-008 — themes are CSS-only over the existing vocabulary, opt-in by element usage, additive across themes (no forced document markup; CSS-only-first with an opt-in template-hook fallback). Bounds D-006; implements <a href="./spec.html#NFR-005">NFR-005</a>; added R-8; flagged as principle candidate P-7.</span></li>
+  <li><time datetime="2026-06-18">18 Jun 2026</time><span>Re-plan after <a href="./triage-log.html#T-002">T-002</a>: added per-theme component-override layer on the token base (D-006) and a component-group, demoable-first slicing strategy (D-007); raised risk tolerance Low → Medium; added R-6 (per-theme layout leakage) and R-7 (parity-checklist drift); extended the test tier with an SC-006 computed-style parity gate. D-001 augmented (not superseded).</span></li>
+  <li><time datetime="2026-06-18">18 Jun 2026</time><span>Initial plan. Decisions: token-based theming (D-001); pre-paint <code>theme-boot.js</code> in <code>&lt;head&gt;</code> with the switcher in <code>spec.js</code> (D-002); mode as <code>[data-mode]</code>, drop <code>html.dark</code> (D-003); JS-built native <code>&lt;select&gt;</code> from a registry (D-004); Playwright + axe-core test tier (D-005); full 67-file retrofit; risk tolerance Low.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  Plan for 016-theme-support · Themes · authored 2026-06-18 ·
+  <button data-theme-toggle style="background:none;border:none;color:var(--c-link);cursor:pointer;font:inherit;padding:0;border-bottom:1px solid currentColor;">light/dark</button>
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>

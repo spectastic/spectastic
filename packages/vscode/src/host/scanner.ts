@@ -27,7 +27,7 @@ function candidates(ctx: ScanContext): Candidate[] {
       path: path.join(ctx.workspaceRoot, 'principles.html'),
     },
     { verb: 'spec', path: path.join(ctx.specDir, 'spec.html') },
-    { verb: 'plan', path: path.join(ctx.specDir, 'plan.html') },
+    { verb: 'design', path: path.join(ctx.specDir, 'design.html') },
     { verb: 'tasks', path: path.join(ctx.specDir, 'tasks.html') },
     { verb: 'propose', path: path.join(ctx.specDir, 'proposal.html') },
     { verb: 'triage', path: path.join(ctx.specDir, 'triage-log.html') },

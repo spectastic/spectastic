@@ -1,0 +1,331 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
+<title>spec-html schema + spectastic validate · Design</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Design · 002-validate-cli</p>
+  <h1>spec-html schema + <code>spectastic validate</code></h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    How we will build it.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>     <span><spec-status value="accepted">Accepted</spec-status></span>
+    <b>Spec</b>       <span><a href="./spec.html">002-validate-cli</a></span>
+    <b>Owner</b>      <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Branch</b>     <span><code>002-validate-cli</code></span>
+    <b>Created</b>    <span><time datetime="2026-06-14">14 Jun 2026</time></span>
+    <b>Read time</b>  <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-tldr>
+    <p>Two TypeScript packages under a pnpm-compatible monorepo: <code>@spectastic/schema</code> owns parsing, the rule registry, and the engine; <code>@spectastic/cli</code> owns argv (commander), glob expansion, and the three output formatters (human / JSON / SARIF). parse5 reads spec.html with per-element source locations; vitest drives fixture pairs per rule. Biggest risk: SARIF subset compatibility across GitHub Code Scanning and GitLab Security Reports — pinned to documented common subset, smoke-tested via two CI workflow examples under <code>docs/ci-examples/</code>.</p>
+  </spec-tldr>
+</header>
+
+
+<section id="principles-check">
+<h2>1 · Principles check</h2>
+<p>Verify this plan respects every principle in <a href="../../principles.html">v1.0.1</a>. The amendment applied via <a href="../../changes/archive/2026-06-14-clarify-tooling-scope/proposal.html">2026-06-14-clarify-tooling-scope</a> clarified that consuming tooling may have its own build step; the no-build-step non-goal scopes to the spec artifact only.</p>
+
+<table>
+  <thead><tr><th>Principle</th><th>Compliance</th><th>Notes</th></tr></thead>
+  <tbody>
+    <tr><td>P-1 · Source order is reading order</td><td><spec-pill>OK</spec-pill></td><td>Applies to design.html itself. Plan body reads top-to-bottom; no JS reorders content. The validator runtime is consuming-tooling per v1.0.1.</td></tr>
+    <tr><td>P-2 · Semantic tags over class soup</td><td><spec-pill>OK</spec-pill></td><td>This artifact uses <code>&lt;spec-decision&gt;</code>, <code>&lt;spec-matrix&gt;</code>, <code>&lt;spec-arch&gt;</code> rather than divs.</td></tr>
+    <tr><td>P-3 · IDs are contracts</td><td><spec-pill>OK</spec-pill></td><td>D-001 through D-007 are stable forever; superseded decisions will keep status <code>superseded</code> and link forward.</td></tr>
+    <tr><td>P-4 · Progressive enhancement, never dependence</td><td><spec-pill>OK</spec-pill></td><td>design.html reads fully without JS. The validator's TS build is consuming-tooling per the v1.0.1 amendment.</td></tr>
+    <tr><td>P-5 · Calm density</td><td><spec-pill>OK</spec-pill></td><td>Tight ADRs, no decorative chrome.</td></tr>
+  </tbody>
+</table>
+</section>
+
+
+<section id="technical-context">
+<h2>2 · Technical context</h2>
+<dl>
+  <dt>Language(s)</dt>  <dd>TypeScript 5.x targeting Node 20 LTS+. ESM-only packages.</dd>
+  <dt>Frameworks</dt>   <dd><a href="https://github.com/inikulin/parse5">parse5</a> (HTML5 parser w/ source-location tracking), <a href="https://github.com/tj/commander.js">commander</a> (CLI argv), <a href="https://github.com/SuperchupuDev/tinyglobby">tinyglobby</a> (glob expansion), <a href="https://github.com/alexeyraspopov/picocolors">picocolors</a> (terminal colour). No web framework, no runtime DI.</dd>
+  <dt>Build</dt>        <dd><a href="https://tsup.egoist.dev/">tsup</a> (esbuild wrapper) per package; emits ESM + .d.ts. Single root <code>pnpm-workspace.yaml</code>; the canonical installer is pnpm, with <a href="https://github.com/pnpm/pacquet">pacquet</a> permitted as a faster local alternative.</dd>
+  <dt>Storage</dt>      <dd>None. Validator is a pure function over an HTML string; engine state is request-local.</dd>
+  <dt>Testing</dt>      <dd><a href="https://vitest.dev/">vitest</a>. Fixture-driven per rule (one positive + one negative spec.html under <code>packages/schema/fixtures/&lt;rule-id&gt;/</code>); integration tests validate every real artifact in the repo; perf test asserts NFR-001 against the canonical examples.</dd>
+  <dt>Perf targets</dt> <dd><a href="./spec.html#NFR-001">NFR-001</a>: &lt;100 ms p95 per file under 5,000 lines.</dd>
+  <dt>Constraints</dt>  <dd>Schema package <a href="./spec.html#FR-013">SHOULD</a> have zero runtime deps beyond parse5. CLI installable via <code>npx</code> and <code>npm i -g</code> per <a href="./spec.html#NFR-002">NFR-002</a>. Output formats fixed at three (<a href="./spec.html#FR-003">FR-003</a>/<a href="./spec.html#FR-004">FR-004</a>/<a href="./spec.html#FR-005">FR-005</a>).</dd>
+</dl>
+</section>
+
+
+<section id="approach">
+<h2>3 · Approach</h2>
+
+<p>A five-stage pipeline. The CLI shell (commander) reads argv and expands globs into a flat list of file paths. Each file is read into a string and handed to the schema package's <code>validate(html, options)</code> function, which parses with parse5 (preserving source locations on every element), walks the rule registry once per file, and returns an array of <code>Finding</code>. The CLI accumulates findings across files, runs the cross-file <code>no-duplicate-ids</code> rule once over the aggregate, then dispatches the full list to the requested formatter — human (default, with picocolors), JSON (structured array), or SARIF (minimal 2.1.0 subset both GitHub Code Scanning and GitLab Security Reports accept). Exit code is computed from finding severities: 0 on no errors, 1 if any error-severity finding exists, 2 on usage errors.</p>
+
+<p>The schema package is the contract surface for every future consumer (VS Code extension, MCP server, kernel). It exports the <code>validate</code> function, the <code>Finding</code> and <code>Rule</code> types, and the frozen rule registry — nothing else. No filesystem code, no process exits, no globals. The CLI package is a thin shell wrapping the engine for terminal users. That separation matches <a href="./spec.html#US3">US3</a> — the schema is the library, the CLI is one consumer.</p>
+
+<spec-arch>
+<figure>
+<svg viewBox="0 0 760 280" role="img" aria-label="Pipeline: CLI shell → parser → rule registry → engine → formatter dispatcher">
+  <style>
+    .box { fill:#fcfbf7; stroke:#c4c1bb; stroke-width:1.2; }
+    .pkg { fill:#f6f5f1; stroke:#7558b2; stroke-width:1; stroke-dasharray:4 3; }
+    .label { font: 700 10px Lato, sans-serif; fill:#4a4a46; letter-spacing:0.08em; text-transform:uppercase; }
+    .body { font: 400 11px "Source Serif 4", Georgia, serif; fill:#353534; }
+    .pkglabel { font: 700 9px Lato, sans-serif; fill:#7558b2; letter-spacing:0.1em; text-transform:uppercase; }
+    .arr { stroke:#73706d; stroke-width:1.2; fill:none; }
+  </style>
+  <defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#73706d"/></marker></defs>
+
+  <rect class="pkg" x="20" y="30" width="160" height="220" rx="6"/>
+  <text class="pkglabel" x="32" y="48">@spectastic/cli</text>
+  <rect class="pkg" x="200" y="30" width="540" height="220" rx="6"/>
+  <text class="pkglabel" x="212" y="48">@spectastic/schema</text>
+
+  <rect class="box" x="36"  y="110" width="128" height="60" rx="4"/>
+  <text class="label" x="50" y="132">CLI shell</text>
+  <text class="body"  x="50" y="150">commander · glob</text>
+
+  <rect class="box" x="220" y="110" width="120" height="60" rx="4"/>
+  <text class="label" x="234" y="132">parser</text>
+  <text class="body"  x="234" y="150">parse5 + loc</text>
+
+  <rect class="box" x="370" y="110" width="120" height="60" rx="4"/>
+  <text class="label" x="384" y="132">rule registry</text>
+  <text class="body"  x="384" y="150">frozen Rule[]</text>
+
+  <rect class="box" x="520" y="110" width="120" height="60" rx="4"/>
+  <text class="label" x="534" y="132">engine</text>
+  <text class="body"  x="534" y="150">walk + collect</text>
+
+  <rect class="box" x="36"  y="200" width="128" height="40" rx="4"/>
+  <text class="label" x="50" y="225">formatters</text>
+
+  <rect class="box" x="670" y="110" width="70" height="60" rx="4"/>
+  <text class="label" x="678" y="132">Finding[]</text>
+
+  <path class="arr" d="M164 140 L220 140" marker-end="url(#a)"/>
+  <path class="arr" d="M340 140 L370 140" marker-end="url(#a)"/>
+  <path class="arr" d="M490 140 L520 140" marker-end="url(#a)"/>
+  <path class="arr" d="M640 140 L670 140" marker-end="url(#a)"/>
+  <path class="arr" d="M670 155 Q400 230 165 220" marker-end="url(#a)"/>
+</svg>
+<figcaption>Two packages, five components, one direction. The CLI shell calls <code>validate(html)</code> per file, accumulates findings, then dispatches them to one of three formatters (human / JSON / SARIF). Engine and rule registry live in <code>@spectastic/schema</code> so VS Code and MCP consume the same surface.</figcaption>
+</figure>
+</spec-arch>
+</section>
+
+
+<section id="alternatives">
+<h2>4 · Alternatives considered</h2>
+
+<p>The foundational pick: which HTML parser carries source-location information through every <code>&lt;spec-*&gt;</code> element. Scored 1–5 (higher is better).</p>
+
+<spec-matrix>
+<table>
+  <thead>
+    <tr><th>Option</th><th>Parse accuracy</th><th>Loc info quality</th><th>Bundle size</th><th>Lint ecosystem</th><th class="score">Total</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>htmlparser2</td><td>3</td><td>4</td><td>5</td><td>3</td><td class="score">15</td></tr>
+    <tr><td>linkedom</td><td>4</td><td>3</td><td>4</td><td>2</td><td class="score">13</td></tr>
+    <tr data-winner><td>parse5 — chosen</td><td>5</td><td>5</td><td>3</td><td>5</td><td class="score">18</td></tr>
+  </tbody>
+</table>
+</spec-matrix>
+
+<p>parse5 wins on accuracy and location precision — the two qualities that determine finding fidelity. Bundle size is the cost (~150 KB compressed); the <a href="./spec.html#NFR-001">&lt;100 ms NFR</a> still clears with room.</p>
+</section>
+
+
+<section id="decisions">
+<h2>5 · Decisions</h2>
+
+<spec-decision id="D-001">
+  <h4>D-001 · Schema as a single TypeScript module</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>The implicit grammar lives in CSS, JS, and slash-command prose. Every future consumer (VS Code, MCP, kernel) needs the same rules. Two reasonable forms exist: a separate schema file (RelaxNG / JSON Schema) + a runner, or a TypeScript module that <em>is</em> the schema.</dd>
+    <dt>Decision</dt>     <dd>The <code>@spectastic/schema</code> package's <code>rules/</code> directory is the canonical schema. Each rule is a typed <code>Rule</code> definition with a <code>check(doc, ctx) =&gt; Finding[]</code> function. No parallel RNG/JSON Schema file.</dd>
+    <dt>Consequences</dt> <dd>+ One source of truth; no sync drift between formats; full TS type-safety in consumers. + Adding a rule is a single file. − Cannot be consumed by non-TS tools without a port; mitigated because every planned consumer is TS/JS. − Documentation generation requires a generator (out of scope for v1).</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-002">
+  <h4>D-002 · parse5 as the HTML parser</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>Finding fidelity depends on per-element source locations. The validator must agree with the editor's gutter line numbers.</dd>
+    <dt>Decision</dt>     <dd>parse5 with <code>sourceCodeLocationInfo: true</code>. Use the tree-walker API; no jsdom layer.</dd>
+    <dt>Consequences</dt> <dd>+ WHATWG-spec compliant; location info is precise. + Battle-tested via jsdom / html-validate / linthtml. − Larger bundle than htmlparser2 (~150 KB vs ~30 KB). − Tree API is verbose; mitigated with a thin helper in <code>parser.ts</code>.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-003">
+  <h4>D-003 · commander for CLI argv</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>v1 ships one subcommand (<code>validate</code>); Tier 4 brings <code>adopt</code> and <code>import</code>; later tiers bring more. Raw argv parsing scales badly; lean libraries (sade) are less battle-tested.</dd>
+    <dt>Decision</dt>     <dd>commander. Each subcommand lives in <code>packages/cli/src/commands/&lt;name&gt;.ts</code> and registers itself from the binary entry.</dd>
+    <dt>Consequences</dt> <dd>+ Familiar shape for contributors. + Subcommand growth is mechanical. − ~50 KB of deps that won't be tree-shaken; acceptable for a CLI.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-004">
+  <h4>D-004 · vitest as the test runner</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd><a href="./spec.html#SC-002">SC-002</a> requires one positive + one negative fixture per rule, run as a suite. The runner must support TypeScript natively, ESM, fast watch.</dd>
+    <dt>Decision</dt>     <dd>vitest at the workspace root, shared across packages. Fixtures live under <code>packages/schema/fixtures/&lt;rule-id&gt;/&lt;positive|negative&gt;.html</code> and are discovered by glob.</dd>
+    <dt>Consequences</dt> <dd>+ Fast watch loop while writing rules. + jest-compatible API for any contributor familiar with it. − One extra dev-only dependency vs node:test; acceptable trade.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-005">
+  <h4>D-005 · pnpm-compatible workspaces; pacquet permitted</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>Multi-package layout from day one — schema and CLI in v1; core, MCP, VS Code extension joining later. The chosen workspace shape must outlive Tier 1.</dd>
+    <dt>Decision</dt>     <dd><code>pnpm-workspace.yaml</code> at the repo root with <code>packages/*</code>. CI uses pnpm (canonical); local dev may use pacquet for faster installs since it reads the same lockfile and workspace config. README documents both flows.</dd>
+    <dt>Consequences</dt> <dd>+ Future packages drop in by adding a folder. + Independent versioning per package. − Contributors need pnpm or pacquet installed (not npm); documented in CONTRIBUTING and the README. − pacquet still maturing; treated as opt-in, not the default.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-006">
+  <h4>D-006 · SARIF 2.1.0 — minimal in-house emitter</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>GitHub Code Scanning and GitLab Security Reports both accept SARIF 2.1.0, but each only reads a subset of the spec (tool driver + results + locations). Pulling in a full SARIF library or schema validator is overkill for the subset we emit.</dd>
+    <dt>Decision</dt>     <dd>Hand-roll a minimal SARIF emitter in <code>packages/cli/src/formatters/sarif.ts</code>. Output is validated in test against the official SARIF 2.1.0 JSON Schema (vendored once, no runtime dependency) and smoke-tested by the two CI workflow examples under <code>docs/ci-examples/</code>.</dd>
+    <dt>Consequences</dt> <dd>+ Zero new runtime deps for SARIF. + Full control over which fields are emitted. − If GH or GL extends what they require, we add a field; small ongoing maintenance. − The schema-validation test depends on a vendored SARIF schema; refresh on SARIF version bumps (≤ once a year historically).</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-007">
+  <h4>D-007 · Small-pick libraries: tsup, picocolors, tinyglobby</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>Three low-stakes utility picks the spec doesn't constrain: build tool, terminal colour, glob expansion. Each has 3+ reasonable options; the differences don't change the architecture.</dd>
+    <dt>Decision</dt>     <dd><strong>tsup</strong> for builds (esbuild under the hood; ESM + .d.ts in one config). <strong>picocolors</strong> for terminal colour (tiny, fast, zero deps; chalk and kleur are heavier without a meaningful capability gap for our use). <strong>tinyglobby</strong> for glob expansion (modern, fast, no deps; fast-glob would also work but ships with micromatch's full surface).</dd>
+    <dt>Consequences</dt> <dd>+ Tiny runtime footprint; CLI install via npx feels instant. + No vendor lock-in — each is one file's worth of dependency to swap. − tinyglobby is newer; if a pattern surfaces it can't handle, fallback to fast-glob is a one-day port.</dd>
+  </dl>
+</spec-decision>
+</section>
+
+
+<section id="project-structure">
+<h2>6 · Project structure</h2>
+
+<pre><code>spectastic/                              (existing repo root)
+├── pnpm-workspace.yaml                  (new)
+├── package.json                         (new — root devDeps + scripts)
+├── tsconfig.base.json                   (new — shared TS config)
+├── packages/                            (new)
+│   ├── schema/                          @spectastic/schema
+│   │   ├── src/
+│   │   │   ├── index.ts                 exports: validate, types, registry
+│   │   │   ├── parser.ts                parse5 wrapper + helpers
+│   │   │   ├── types.ts                 Finding, Rule, Severity
+│   │   │   ├── engine.ts                runs rules, aggregates findings
+│   │   │   └── rules/
+│   │   │       ├── index.ts             frozen Rule[] registry
+│   │   │       ├── no-missing-defer-to.ts
+│   │   │       ├── no-unresolved-question.ts
+│   │   │       ├── delta-op-required.ts
+│   │   │       ├── delta-target-required.ts
+│   │   │       ├── risk-target-required.ts
+│   │   │       ├── risk-status-required.ts
+│   │   │       ├── requirement-id-required.ts
+│   │   │       ├── task-id-required.ts
+│   │   │       ├── no-duplicate-ids.ts
+│   │   │       ├── invest-row-failed.ts
+│   │   │       ├── empty-document.ts
+│   │   │       └── file-too-large.ts
+│   │   ├── fixtures/&lt;rule-id&gt;/{positive,negative}.html
+│   │   ├── test/{rules,integration,perf}.test.ts
+│   │   ├── tsup.config.ts
+│   │   └── package.json
+│   └── cli/                             @spectastic/cli
+│       ├── src/
+│       │   ├── index.ts                 commander setup; subcommand registry
+│       │   ├── commands/validate.ts     wires schema engine + glob + formatter
+│       │   ├── formatters/{human,json,sarif}.ts
+│       │   └── glob.ts                  tinyglobby wrapper + matched-nothing check
+│       ├── bin/spectastic               shebang; imports compiled index
+│       ├── test/cli.test.ts             spawn child process; assert exit codes
+│       ├── tsup.config.ts
+│       └── package.json
+├── docs/
+│   └── ci-examples/                     (new)
+│       ├── github-actions.yml
+│       └── gitlab-ci.yml
+└── (existing files unchanged)</code></pre>
+</section>
+
+
+<section id="risks">
+<h2>7 · Risks &amp; mitigations</h2>
+
+<table>
+  <thead><tr><th>Risk</th><th>Likelihood</th><th>Impact</th><th>Mitigation</th></tr></thead>
+  <tbody>
+    <tr><td>SARIF subset GH and GL accept diverges over time</td><td>M</td><td>M</td><td>Pin to the documented common subset; both CI examples in <code>docs/ci-examples/</code> run on every release; D-006's vendored SARIF schema catches structural drift.</td></tr>
+    <tr><td>parse5 perf misses NFR-001 on outlier-sized specs</td><td>L</td><td>M</td><td><code>test/perf.test.ts</code> measures p95 against existing examples on each CI run; <code>file-too-large</code> rule warns once a file exceeds 5,000 lines (no longer covered by NFR).</td></tr>
+    <tr><td>pacquet lockfile diverges from pnpm in the wild</td><td>L</td><td>L</td><td>CI canonicalises on pnpm; pacquet is documented as a local-dev convenience, not the build-of-record. If divergence appears, drop pacquet from docs without code change.</td></tr>
+    <tr><td>Coexisting Python <code>spectastic init</code> and Node <code>spectastic validate</code> on the same binary name confuses PATH</td><td>M</td><td>L</td><td>Documented in spec <a href="./spec.html#assumptions">§6 Assumptions</a>. Resolved fully when the Node CLI grows an <code>init</code> subcommand at parity and Python is retired in a later slice.</td></tr>
+    <tr><td>Cross-file <code>no-duplicate-ids</code> rule false-positives on archived proposals (legitimate copies of stable IDs)</td><td>M</td><td>M</td><td>Default <code>--ignore</code> patterns exclude <code>**/archive/**</code> and <code>**/withdrawn/**</code>. Documented in CLI help; can be overridden.</td></tr>
+  </tbody>
+</table>
+</section>
+
+
+<section id="complexity">
+<h2>8 · Complexity tracking</h2>
+<p>Two complexity additions worth justifying.</p>
+
+<spec-assumption>
+<p><strong>Two packages instead of one.</strong> The spec could ship as a single package with both schema and CLI surface. Splitting (<code>@spectastic/schema</code> + <code>@spectastic/cli</code>) costs a touch of monorepo overhead for v1. Justified because the VS Code extension, MCP server, and future kernel all consume <em>only</em> the schema; bundling CLI internals into their dependency closure would force fs/process imports into the browser bundle. The split is structural, not premature.</p>
+</spec-assumption>
+
+<spec-assumption>
+<p><strong>Vendored SARIF schema for tests.</strong> Pulling a SARIF-validation library at test time would solve a one-shot problem at ongoing cost. Vendoring one JSON file (no runtime dependency, refresh on SARIF version bumps) keeps the runtime closure clean. Justified by D-006.</p>
+</spec-assumption>
+</section>
+
+
+<section id="questions">
+<h2>9 · Open questions</h2>
+<spec-questions>
+<p>None at write time. Library picks were anchored in the decision phase; structural picks live in the ADRs above.</p>
+</spec-questions>
+</section>
+
+
+<section id="changelog">
+<h2>10 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-06-14">14 Jun 2026</time><span>Initial plan. Anchored: parse5 (D-002), commander (D-003), vitest (D-004), pnpm-workspaces + pacquet (D-005), in-house SARIF emitter (D-006), small-picks bundle tsup/picocolors/tinyglobby (D-007). Schema-as-TS-module formalised as D-001.</span></li>
+  <li><time datetime="2026-06-16">16 Jun 2026</time><span>Status flipped Draft → Accepted via the sibling-bundling rule introduced by <a href="../000-spectastic/changes/archive/2026-06-16-lifecycle-sibling-bundling/proposal.html">REQ-LIFECYCLE-005</a>: catches up to <a href="./spec.html">002 spec.html</a>, already Accepted from the T-001 hotfix. Affirmation gesture is REQ-LIFECYCLE-005 retroactively applied.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  Plan for 002-validate-cli · spec-html schema + <code>spectastic validate</code> · authored 14 Jun 2026 ·
+  <button data-theme-toggle style="background:none;border:none;color:var(--c-link);cursor:pointer;font:inherit;padding:0;border-bottom:1px solid currentColor;">light/dark</button>
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>

@@ -1,0 +1,323 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
+<title>SLO-from-NFR artifact model · Design</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Design · 047-slo-nfr-artifact</p>
+  <h1>SLO-from-NFR artifact model</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    Three loci, every one a copy of a shipped pattern: a typed element like <code>&lt;spec-risk&gt;</code>, two shape rules like <code>risk-target-required</code>, and a profile-gated scan like the enforce-waiver fold.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>     <span><spec-status value="draft">Draft</spec-status></span>
+    <b>Spec</b>       <span><a href="./spec.html">047-slo-nfr-artifact</a></span>
+    <b>Owner</b>      <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Branch</b>     <span><code>slo-nfr-artifact</code></span>
+    <b>Created</b>    <span><time datetime="2026-07-12">12 Jul 2026</time></span>
+    <b>Read time</b>  <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-tldr>
+    <p>Slice 1 (the representation) is a first-class <code>&lt;spec-slo&gt;</code> element — scalars as attributes, SLI as content —
+    rendered and click-through-linked to its NFR by <code>spec.js</code>/<code>spec.css</code> (copying the
+    <code>spec-delta[target]</code> block), plus two schema shape rules copying <code>risk-target-required</code>. The should-tier
+    <a href="./spec.html#FR-004">FR-004</a> quantified-NFR check is a <strong>folded CLI scan</strong> (not a schema rule) so it can read the
+    profile tier — mirroring <code>scanEnforceWaivers</code>. Biggest risk: the quantification heuristic mis-firing — mitigated by the
+    liberal inline-OR-linked acceptance and should-tier gating. All grounding <code>verified</code>; no spikes.</p>
+  </spec-tldr>
+</header>
+
+
+<section id="principles-check">
+<h2>1 · Principles check</h2>
+<p>Against <a href="../../principles.html">v1.7.0</a>. Every principle <spec-pill>OK</spec-pill>; no exceptions, no violations.</p>
+
+<table>
+  <thead><tr><th>Principle</th><th>Compliance</th><th>Notes</th></tr></thead>
+  <tbody>
+    <tr><td>P-1 · Source order is reading order</td><td><spec-pill>OK</spec-pill></td><td>The element renders in place; no JS reordering.</td></tr>
+    <tr><td>P-2 · Semantic tags over class soup</td><td><spec-pill>OK</spec-pill></td><td><code>&lt;spec-slo&gt;</code> <em>is</em> the semantic tag — greppable, LLM-legible.</td></tr>
+    <tr><td>P-3 · IDs are contracts</td><td><spec-pill>OK</spec-pill></td><td>An SLO links to its NFR by stable <code>target=</code> id.</td></tr>
+    <tr><td>P-4 · Progressive enhancement</td><td><spec-pill>OK</spec-pill></td><td>Content visible with JS off; click-through is the enhancement (<a href="./spec.html#NFR-001">NFR-001</a>).</td></tr>
+    <tr><td>P-5 · Calm density</td><td><spec-pill>OK</spec-pill></td><td>Card styled like the existing typed blocks (<code>spec-decision</code>).</td></tr>
+    <tr><td>P-6 · Draft loose, ratified locked</td><td><spec-pill>OK</spec-pill></td><td>No lifecycle-state change.</td></tr>
+    <tr><td>P-7 · Done means verified</td><td><spec-pill>OK</spec-pill></td><td>Behavioral Playwright test exercises render + click-through; sets up the NFR proof leg (sibling trace).</td></tr>
+    <tr><td>P-8 · Guarantees in kernel/CI</td><td><spec-pill>OK</spec-pill></td><td>Shape rules + the quantified scan are deterministic kernel/CI code, not prose.</td></tr>
+    <tr><td>P-9 · The enforcement floor holds</td><td><spec-pill>OK</spec-pill></td><td>FR-004 adds a verified-tier gate, aligned with the floor; no gate loosened.</td></tr>
+    <tr><td>P-10 · Internal ids out of copy</td><td><spec-pill>OK</spec-pill></td><td>Rule messages name the offending field/element, never a spec/FR id (checked at author time).</td></tr>
+    <tr><td>P-11 · Artifacts are data</td><td><spec-pill>OK</spec-pill></td><td><code>&lt;spec-slo&gt;</code> carries no executable content; passes <code>no-executable-content</code>.</td></tr>
+  </tbody>
+</table>
+</section>
+
+
+<section id="technical-context">
+<h2>2 · Technical context</h2>
+<dl>
+  <dt>Language(s)</dt>      <dd>TypeScript (Node ≥ 20); vanilla JS/CSS for <code>assets/spec.js</code>, <code>assets/spec.css</code>.</dd>
+  <dt>Frameworks</dt>       <dd>No new deps — parse5 (schema), commander (cli), vitest + Playwright (test).</dd>
+  <dt>Architecture</dt>     <dd>n/a — extends the existing fat-core / thin-CLI boundary; no new pattern (see D-002 for the one placement call).</dd>
+  <dt>Storage</dt>          <dd>None.</dd>
+  <dt>Testing</dt>          <dd>vitest fixture-pairs + unit for the rules; Playwright for the element render + click-through (D-005).</dd>
+  <dt>Coverage</dt>         <dd>Not in scope — no coverage floor (no profile marker in this repo).</dd>
+  <dt>Perf targets</dt>     <dd>Not in scope — deterministic; the folded scan's re-parse is negligible over the small spec corpus.</dd>
+  <dt>Constraints</dt>      <dd>Must not break existing artifacts (<a href="./spec.html#NFR-001">NFR-001</a>); the schema engine stays profile-agnostic (so FR-004 is a CLI scan, not a schema rule).</dd>
+</dl>
+</section>
+
+
+<section id="grounding">
+<h2>3 · Grounding &amp; evidence</h2>
+<p>Every design-bearing fact, and how it was confirmed. All <code>verified</code> this turn — no spikes, no must-tier assumptions.</p>
+
+<table class="evidence">
+  <thead>
+    <tr><th>Claim the design rests on</th><th>Source</th><th>Status</th><th>Finding / note</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>A typed element + a target-required rule is a copyable pattern</td>
+        <td><code>packages/schema/src/rules/risk-target-required.ts</code></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td><code>PerFileRule</code>; <code>findAll(ast,'spec-risk')</code> + <code>hasAttr(el,'target')</code> + <code>getLocation</code>. <code>slo-target-required</code> is a near-clone.</td></tr>
+    <tr><td>Parser exposes the readers the rules need</td>
+        <td><code>packages/schema/src/parser.ts:23-57</code></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td><code>findAll / getAttr / hasAttr / getLocation / walk</code> exported; no text helper — walk <code>childNodes</code> for SLI content (as <code>no-executable-content.ts</code> does).</td></tr>
+    <tr><td>Click-through to a target id is an existing block</td>
+        <td><code>assets/spec.js:171-184</code></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td><code>spec-delta[target]</code>: <code>getElementById</code> + <code>scrollIntoView</code>, cross-file <code>spec.html#id</code> fallback. <code>spec-slo[target]</code> copies it.</td></tr>
+    <tr><td>Typed blocks have a card style to mirror</td>
+        <td><code>assets/spec.css:798</code> + shared lists <code>:581,:587</code></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td><code>spec-decision</code> card + the typed-block selector lists; add <code>spec-slo</code> to both + a dedicated rule.</td></tr>
+    <tr><td>A rule registers with one import + one array entry</td>
+        <td><code>packages/schema/src/rules/index.ts</code></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td>Explicit registry array; add both rules under a new "SLO rules" comment.</td></tr>
+    <tr><td>A profile-gated check is a folded CLI scan reading the marker</td>
+        <td><code>packages/cli/src/commands/validate.ts:164-259</code></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td><code>scanEnforceWaivers</code>: <code>readMarker(cwd)</code> → <code>loadProfiles(...).profiles[marker.profile]</code>; core fn in <code>@spectastic/core/commands/validate</code>; findings folded into the array, <code>exitCode</code> = error ⇒ 1.</td></tr>
+    <tr><td>The marker records the profile <em>tier</em> name</td>
+        <td><code>packages/cli/src/commands/init/marker.ts:14-32</code></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td><code>ProfileMarker { profile: string; schema: 1 }</code>; tiers are lean/standard/verified/enterprise (041). FR-004 gates on <code>profile ∈ {verified, enterprise}</code>.</td></tr>
+    <tr><td>Schema rules ship with positive/negative fixtures + vitest</td>
+        <td><code>packages/schema/fixtures/no-executable-content/</code></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td>The pair convention (positive triggers, negative clean) + a unit test file; the SLO rules follow it.</td></tr>
+  </tbody>
+</table>
+</section>
+
+
+<section id="approach">
+<h2>4 · Approach</h2>
+
+<p>Three independent loci, each a copy of shipped code. <strong>(A) The element</strong> — <code>&lt;spec-slo&gt;</code> is a typed block:
+<code>spec.css</code> gets a card style (mirroring <code>spec-decision</code>) and <code>spec.js</code> gets a <code>spec-slo[target]</code>
+click-through block (mirroring <code>spec-delta[target]</code>). Fields are scalars-as-attributes (<code>target</code>, <code>objective</code>,
+<code>window</code>, <code>budgeting</code>, <code>signal</code>) with the SLI as content (D-003). <strong>(B) The shape rules</strong> —
+two schema <code>PerFileRule</code>s (<code>slo-target-required</code>, <code>slo-well-formed</code>) copying
+<code>risk-target-required</code>, registered in the rule index, with fixture pairs. <strong>(C) The quantified-NFR check</strong> — a
+folded CLI scan (<code>scanQuantifiedNfr</code>) that reads the profile marker and, only at verified/enterprise, flags an unquantified NFR;
+its pure core (<code>quantifiedNfrFindings</code>) lives in <code>@spectastic/core/commands/validate</code> beside
+<code>enforceWaiverFindings</code>.</p>
+
+<spec-arch>
+<figure>
+<svg viewBox="0 0 700 250" role="img" aria-label="The three loci: element, shape rules, and the profile-gated scan">
+  <style>
+    .box { fill:#fcfbf7; stroke:#c4c1bb; stroke-width:1.2; }
+    .label { font: 700 11px Lato, sans-serif; fill:#4a4a46; letter-spacing:0.06em; text-transform:uppercase; }
+    .body { font: 400 12px "Source Serif 4", Georgia, serif; fill:#353534; }
+    .arr { stroke:#73706d; stroke-width:1.2; fill:none; }
+  </style>
+  <rect class="box" x="40"  y="100" width="170" height="60" rx="4"/>
+  <text class="label" x="56" y="122">&lt;spec-slo target&gt;</text>
+  <text class="body"  x="56" y="142">the artifact element</text>
+
+  <rect class="box" x="270" y="20"  width="180" height="52" rx="4"/>
+  <text class="label" x="286" y="41">spec.js / spec.css</text>
+  <text class="body"  x="286" y="60">render + click-through (A)</text>
+
+  <rect class="box" x="270" y="100" width="180" height="52" rx="4"/>
+  <text class="label" x="286" y="121">schema shape rules</text>
+  <text class="body"  x="286" y="140">target + well-formed (B)</text>
+
+  <rect class="box" x="270" y="180" width="180" height="52" rx="4"/>
+  <text class="label" x="286" y="201">scanQuantifiedNfr</text>
+  <text class="body"  x="286" y="220">verified-tier gate (C)</text>
+
+  <rect class="box" x="510" y="180" width="150" height="52" rx="4"/>
+  <text class="label" x="526" y="201">profile marker</text>
+  <text class="body"  x="526" y="220">.spectastic/…</text>
+
+  <path class="arr" d="M210 120 L270 55"  marker-end="url(#a)"/>
+  <path class="arr" d="M210 128 L270 126" marker-end="url(#a)"/>
+  <path class="arr" d="M210 138 L270 200" marker-end="url(#a)"/>
+  <path class="arr" d="M510 206 L450 206" marker-end="url(#a)"/>
+  <defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#73706d"/></marker></defs>
+</svg>
+<figcaption>One element, three consumers. (A) is open-time, (B) is author-time, (C) is the CI gate — and only (C) reads the profile.</figcaption>
+</figure>
+</spec-arch>
+</section>
+
+
+<section id="alternatives">
+<h2>5 · Alternatives considered</h2>
+<p>The live choice is where the quantified-NFR check (FR-004) lives, since it must know the profile tier.</p>
+
+<spec-matrix>
+<table>
+  <thead>
+    <tr><th>Option</th><th>Tier-accurate</th><th>Keeps schema profile-agnostic</th><th>Reuse</th><th class="score">Total</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Schema <code>PerFileRule</code> (warn, profile-blind)</td><td>1</td><td>3</td><td>2</td><td class="score">6</td></tr>
+    <tr><td>Profile-aware core <code>validateCommand</code></td><td>3</td><td>0</td><td>1</td><td class="score">4</td></tr>
+    <tr data-winner><td>Folded CLI scan (reads marker) — chosen</td><td>3</td><td>3</td><td>3</td><td class="score">9</td></tr>
+  </tbody>
+</table>
+</spec-matrix>
+</section>
+
+
+<section id="decisions">
+<h2>6 · Decisions</h2>
+
+<spec-decision id="D-001" grounding="verified">
+  <h4>D-001 · A first-class <code>&lt;spec-slo&gt;</code> element, mirroring <code>&lt;spec-risk target&gt;</code></h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>The spec's hybrid model needs a rich SLO shape; <code>risk-target-required.ts</code> + <code>assets/spec.js:171</code> show a typed, target-linked, click-through element is a copyable pattern.</dd>
+    <dt>Decision</dt>     <dd>Add <code>&lt;spec-slo&gt;</code> as a typed block: a <code>spec.css</code> card + a <code>spec.js</code> <code>spec-slo[target]</code> click-through, both cloned from existing code. The light <code>slo=</code> NFR attribute (<a href="./spec.html#FR-003">FR-003</a>) rides alongside.</dd>
+    <dt>Consequences</dt> <dd>+ Zero new concepts; degrades with JS off (P-4). + Consistent with <code>spec-risk</code>/<code>spec-delta</code>. − One more typed block to keep in the shared style lists.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-002" grounding="verified">
+  <h4>D-002 · FR-004 is a folded CLI scan, not a schema rule</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>The quantified-NFR check must gate by profile tier, but the schema engine never sees project state. <code>packages/cli/src/commands/validate.ts:164</code> (<code>scanEnforceWaivers</code>) is the exact precedent: read the marker, resolve the profile, fold findings.</dd>
+    <dt>Decision</dt>     <dd>Core <code>quantifiedNfrFindings(docs, {tier, now})</code> in <code>@spectastic/core/commands/validate</code>; CLI <code>scanQuantifiedNfr(files, cwd)</code> reads the marker, parses the files, calls core, folds into the findings array. No-op below verified / with no marker.</dd>
+    <dt>Consequences</dt> <dd>+ Tier-accurate; keeps the schema engine profile-agnostic (the invariant). + Reuses the waiver-scan shape wholesale. − Re-parses the validated files a second time (cheap; noted in §9).</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-003" grounding="verified">
+  <h4>D-003 · Scalars as attributes, SLI as content</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>The spec left the attribute-vs-content split to the plan; <code>parser.ts</code> validates attributes trivially with <code>getAttr</code>, while content needs a <code>childNodes</code> walk.</dd>
+    <dt>Decision</dt>     <dd><code>target</code>, <code>objective</code>, <code>window</code>, <code>budgeting</code>, <code>signal</code> are attributes; the SLI description is element content. <code>slo-well-formed</code> checks required attrs via <code>getAttr</code> + non-empty SLI content + a known <code>signal</code> value.</dd>
+    <dt>Consequences</dt> <dd>+ Scalars are greppable (P-2) and validate simply; the prose SLI reads naturally. − Two field homes (attrs + content) the rule must check.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-004" grounding="n-a">
+  <h4>D-004 · The quantification heuristic (should-tier)</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>"Quantified" is judged from prose; no external fact settles the exact regex — pure judgment (<code>grounding="n-a"</code>), on a should-tier requirement so it does not block the gate.</dd>
+    <dt>Decision</dt>     <dd>An NFR is quantified if its prose or its <code>slo=</code> attribute carries a number with a unit / percentile / comparison-threshold, <em>or</em> a <code>&lt;spec-slo target=this-NFR&gt;</code> refines it. Liberal by design.</dd>
+    <dt>Consequences</dt> <dd>+ The inline-OR-linked escape hatch avoids false-failing a legitimately SLO-linked or thresholded NFR. − Heuristic false-pos/neg is a recorded ceiling (§8); tune from real use, not up front.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-005" grounding="n-a">
+  <h4>D-005 · Structural fixtures + behavioral Playwright</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>The element is positioned/rendered; the verification discipline (CLAUDE.md, "presence is not containment") says a structural check can't prove click-through works.</dd>
+    <dt>Decision</dt>     <dd>Fixture pairs + vitest for the two rules and the quantified scan; a Playwright spec drives a page and asserts <code>&lt;spec-slo&gt;</code> renders and click-through scrolls to the NFR.</dd>
+    <dt>Consequences</dt> <dd>+ Proves behaviour, not just presence. − One browser spec to maintain (the course.gate / theme precedent).</dd>
+  </dl>
+</spec-decision>
+</section>
+
+
+<section id="project-structure">
+<h2>7 · Project structure</h2>
+<p>Only new or changed paths, grouped by locus.</p>
+<pre><code>packages/schema/src/rules/
+  slo-target-required.ts      (new — FR-002, clone of risk-target-required)
+  slo-well-formed.ts          (new — FR-002, target resolves + required fields)
+  index.ts                    (edit — register both under "SLO rules")
+packages/schema/fixtures/
+  slo-target-required/{positive,negative}.html   (new)
+  slo-well-formed/{positive,negative}.html        (new)
+packages/schema/test/
+  slo-rules.test.ts           (new — vitest unit)
+packages/core/src/commands/validate.ts
+  quantifiedNfrFindings()     (new export — FR-004 core, pure)
+packages/cli/src/commands/validate.ts
+  scanQuantifiedNfr() + fold  (new — FR-004, mirrors scanEnforceWaivers)
+assets/spec.css               (edit — spec-slo card + shared typed-block lists, FR-001/NFR-002)
+assets/spec.js                (edit — spec-slo[target] click-through, FR-001)
+tests/slo.render.spec.ts      (new — Playwright: render + click-through, SC-001)
+</code></pre>
+</section>
+
+
+<section id="risks">
+<h2>8 · Risks &amp; mitigations</h2>
+<table>
+  <thead><tr><th>Risk</th><th>Likelihood</th><th>Impact</th><th>Mitigation</th></tr></thead>
+  <tbody>
+    <tr><td>Quantification heuristic mis-fires (a real target read as vague, or vice-versa)</td><td>M</td><td>M</td><td>Liberal inline-OR-linked acceptance (D-004); should-tier only; recorded ceiling; tune from use.</td></tr>
+    <tr><td>The <code>slo=</code> attribute and a full <code>&lt;spec-slo&gt;</code> on the same NFR disagree</td><td>L</td><td>L</td><td>Independent by design — the quantified rule accepts either; no v1 cross-check.</td></tr>
+    <tr><td>Folded scan re-parses validated files (double parse)</td><td>L</td><td>L</td><td>parse5 is fast, corpus small; acceptable — a later optimization can share parsed docs.</td></tr>
+  </tbody>
+</table>
+</section>
+
+
+<section id="complexity">
+<h2>9 · Complexity tracking</h2>
+<spec-assumption>
+<p>FR-004 lives in the CLI as a folded scan rather than a schema rule — the one deviation from "all validation is a schema rule." It is forced by the schema-engine-stays-profile-agnostic invariant (D-002) and is not new complexity: it copies the shipped <code>scanEnforceWaivers</code> shape one-for-one.</p>
+</spec-assumption>
+</section>
+
+
+<section id="questions">
+<h2>10 · Open questions</h2>
+<spec-questions>
+<p>None outstanding — the field shape (D-003), FR-004's placement (D-002), test style (D-005), and risk tolerance were all anchored in the interview; all grounding is <code>verified</code>.</p>
+</spec-questions>
+</section>
+
+
+<section id="changelog">
+<h2>11 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-07-12">12 Jul 2026</time><span>Initial plan. Three loci (typed element + click-through; two schema shape rules; a profile-gated folded scan), each cloning a shipped pattern. 8 facts verified, 0 spike, 0 assumed; grounding gate clear. Decisions: D-001 element, D-002 folded-scan placement, D-003 scalars-as-attributes, D-004 heuristic (n-a), D-005 test style (n-a).</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  Plan for 047-slo-nfr-artifact · SLO-from-NFR artifact model · authored 12 Jul 2026
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>

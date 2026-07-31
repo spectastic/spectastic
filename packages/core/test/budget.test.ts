@@ -97,7 +97,7 @@ describe('runPipeline under budget (040)', () => {
       { specId: 'x', decider: PANEL_HIGH, checkpoints: 'minimal' },
       {
         ai: stub,
-        steps: [fakeStep('plan', [], 'plan')],
+        steps: [fakeStep('design', [], 'design')],
         escalate: recorder().fn,
         budget: tracker,
       },
@@ -115,7 +115,7 @@ describe('runPipeline under budget (040)', () => {
       { specId: 'x', decider: PANEL_HIGH, checkpoints: 'minimal' },
       {
         ai: new Stub(DECISIONS),
-        steps: [fakeStep('plan', ran, 'plan')],
+        steps: [fakeStep('design', ran, 'design')],
         escalate: esc.fn,
         budget: tracker,
       },
@@ -132,7 +132,7 @@ describe('runPipeline under budget (040)', () => {
       { specId: 'x', decider: PANEL_HIGH, checkpoints: 'minimal' },
       {
         ai: stub,
-        steps: [fakeStep('plan', [], 'plan')],
+        steps: [fakeStep('design', [], 'design')],
         escalate: recorder().fn,
       },
     );

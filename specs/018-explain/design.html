@@ -1,0 +1,310 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
+<title>explain — the grounded coach · Design</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Design · 018-explain</p>
+  <h1>explain — the grounded coach</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    How we will build it.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>     <span><spec-status value="draft">Draft</spec-status></span>
+    <b>Spec</b>       <span><a href="./spec.html">018-explain</a></span>
+    <b>Owner</b>      <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Branch</b>     <span><code>018-explain</code></span>
+    <b>Created</b>    <span><time datetime="2026-06-19">19 Jun 2026</time></span>
+    <b>Read time</b>  <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-tldr>
+    <p>Ship the coach as a <strong>single markdown command file</strong>
+    (<code>commands/spectastic.explain.md</code>) that drives the in-session agent to ground its explanation in
+    real repo source via its own file tools — no CLI subcommand, kernel, or <code>AIProvider</code> call, because
+    the coach writes no artifact (<a href="./spec.html#FR-001">FR-001</a>). The only code is a
+    <strong>bundler change</strong>: a <code>commands.json</code> tier manifest so <code>init</code> installs the
+    eight core verbs by default and <code>explain</code> only via <code>init --with explain</code>. Biggest risk:
+    procedural grounding leans on the agent actually reading source — guarded by a mandatory read-then-refuse step
+    and a manual smoke, with the heavier verification layer deferred to the course.</p>
+  </spec-tldr>
+</header>
+
+
+<section id="principles-check">
+<h2>1 · Principles check</h2>
+<p>Verify this plan respects every principle in
+<a href="../../principles.html">v1.1.0</a>. Any violation requires either a principles amendment or a deliberate
+exception logged below.</p>
+
+<table>
+  <thead><tr><th>Principle</th><th>Compliance</th><th>Notes</th></tr></thead>
+  <tbody>
+    <tr><td>P-1 · Source order is reading order</td><td><spec-pill>OK</spec-pill></td><td>The command file is linear prose; the bundler change is ordinary TypeScript. Nothing reorders.</td></tr>
+    <tr><td>P-2 · Semantic tags over class soup</td><td><spec-pill>OK</spec-pill></td><td>The coach emits chat, not artifacts; <code>commands.json</code> is tooling config, not a spec document.</td></tr>
+    <tr><td>P-3 · IDs are contracts</td><td><spec-pill>OK</spec-pill></td><td>The coach <em>cites</em> stable IDs (<a href="./spec.html#FR-003">FR-003</a>) and grounds in them; it never mutates one.</td></tr>
+    <tr><td>P-4 · Progressive enhancement, never dependence</td><td><spec-pill>OK</spec-pill></td><td>No JS-dependence added; <code>init</code> still emits the no-JS-degrading artifacts; the coach is plain chat.</td></tr>
+    <tr><td>P-5 · Calm density</td><td><spec-pill>OK</spec-pill></td><td>The command file follows the existing house voice and command-file shape (<a href="./spec.html#FR-010">FR-010</a>).</td></tr>
+    <tr><td>P-6 · Draft is loose, ratified is locked</td><td><spec-pill>OK</spec-pill></td><td>The coach is read-only (<a href="./spec.html#NFR-001">NFR-001</a>) — it reads artifacts, never mutates a terminal-state one, so the change-management gate cannot be bypassed.</td></tr>
+  </tbody>
+</table>
+</section>
+
+
+<section id="technical-context">
+<h2>2 · Technical context</h2>
+<dl>
+  <dt>Language(s)</dt>      <dd>Command file is markdown prose. The only code is TypeScript 5.7+ on Node 20+ (the <code>init</code> bundler change).</dd>
+  <dt>Frameworks</dt>       <dd>commander.js (CLI), vitest (tests), tsup (build), pnpm workspace. No new dependency.</dd>
+  <dt>Storage</dt>          <dd>None. <a href="./spec.html#NFR-002">NFR-002</a> — no persistent state; <code>--proficiency</code> is supplied per-invocation.</dd>
+  <dt>Testing</dt>          <dd>vitest integration over <code>init</code> (default excludes <code>explain</code>; <code>--with explain</code> includes it) + a documented manual smoke for the coach.</dd>
+  <dt>Perf targets</dt>     <dd>None new. The coach is in-session conversational, not a latency-bound surface; the manifest read is a single small file, so the <code>init</code> cold-start budget is unaffected.</dd>
+  <dt>Constraints</dt>      <dd>Reuse the existing command-file shape (<a href="./spec.html#FR-010">FR-010</a>); keep the eight hero verbs the default surface; add no persistent state; the packaging seam must exist before this first extended verb ships (<a href="./spec.html#FR-009">FR-009</a>).</dd>
+</dl>
+</section>
+
+
+<section id="approach">
+<h2>3 · Approach</h2>
+
+<p>Two work streams, almost independent. <strong>The coach</strong> is one markdown file under
+<code>commands/</code> following the same front-matter + Procedure + Output-style shape as the other verbs. Its
+procedure drives the in-session agent: parse <code>&lt;target&gt;</code> and <code>--proficiency</code> from
+<code>$ARGUMENTS</code>; resolve the target against real source with the agent's own Read/Grep tools; if it
+doesn't resolve, report the miss and stop; otherwise explain, citing only references confirmed to exist, at a
+depth set by the band. Grounding is achieved by the agent literally reading the source — the same way
+<code>/spectastic.spec</code> grounded itself by reading the handover — so no retrieval or verification code is
+built in this slice.</p>
+
+<p><strong>The packaging seam</strong> is the only code. A new <code>commands.json</code> at the repo root lists
+verbs by tier; the prebuild step copies it into <code>_bundled/</code>; <code>init</code> reads it to filter the
+bundle inventory so the eight core verbs install by default and extended verbs install only when named via a new
+repeatable <code>--with &lt;verb&gt;</code> flag. The filter slots in between
+<a href="../../packages/cli/src/commands/init.ts">resolveBundle()</a> and <code>buildPlan()</code>; everything
+downstream (conflict prompts, writes, summary) is untouched.</p>
+
+<spec-arch>
+<figure>
+<svg viewBox="0 0 700 250" role="img" aria-label="Architecture: runtime coaching lane and install packaging lane">
+  <style>
+    .box { fill:#fcfbf7; stroke:#c4c1bb; stroke-width:1.2; }
+    .label { font: 700 11px Lato, sans-serif; fill:#4a4a46; letter-spacing:0.06em; text-transform:uppercase; }
+    .body { font: 400 12px "Source Serif 4", Georgia, serif; fill:#353534; }
+    .lane { font: 700 10px Lato, sans-serif; fill:#8a8780; letter-spacing:0.08em; text-transform:uppercase; }
+    .arr { stroke:#73706d; stroke-width:1.2; fill:none; }
+  </style>
+
+  <text class="lane" x="20" y="24">Runtime — pull on demand</text>
+  <rect class="box" x="20"  y="34" width="150" height="56" rx="4"/>
+  <text class="label" x="34" y="56">explain.md</text>
+  <text class="body"  x="34" y="76">coach procedure</text>
+  <rect class="box" x="250" y="34" width="170" height="56" rx="4"/>
+  <text class="label" x="264" y="56">CC agent</text>
+  <text class="body"  x="264" y="76">Read/Grep grounds</text>
+  <rect class="box" x="500" y="34" width="180" height="56" rx="4"/>
+  <text class="label" x="514" y="56">explanation</text>
+  <text class="body"  x="514" y="76">cited refs resolve</text>
+  <rect class="box" x="250" y="120" width="170" height="44" rx="4"/>
+  <text class="label" x="264" y="138">repo source</text>
+  <text class="body"  x="264" y="156">specs · files</text>
+  <path class="arr" d="M170 62 L250 62" marker-end="url(#a)"/>
+  <path class="arr" d="M420 62 L500 62" marker-end="url(#a)"/>
+  <path class="arr" d="M335 90 L335 120" marker-end="url(#a)"/>
+  <path class="arr" d="M345 120 L345 90" marker-end="url(#a)"/>
+
+  <text class="lane" x="20" y="196">Install — opt-in packaging</text>
+  <rect class="box" x="20"  y="204" width="150" height="40" rx="4"/>
+  <text class="label" x="34" y="222">commands.json</text>
+  <text class="body"  x="34" y="238">verb tiers</text>
+  <rect class="box" x="250" y="204" width="170" height="40" rx="4"/>
+  <text class="label" x="264" y="222">init --with explain</text>
+  <text class="body"  x="264" y="238">filters inventory</text>
+  <rect class="box" x="500" y="204" width="180" height="40" rx="4"/>
+  <text class="label" x="514" y="222">.claude/commands</text>
+  <text class="body"  x="514" y="238">core + opted-in</text>
+  <path class="arr" d="M170 224 L250 224" marker-end="url(#a)"/>
+  <path class="arr" d="M420 224 L500 224" marker-end="url(#a)"/>
+
+  <defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#73706d"/></marker></defs>
+</svg>
+<figcaption>Runtime lane: the command file drives the agent, which grounds in repo source and returns an
+in-chat explanation — no artifact written. Install lane: the tier manifest lets <code>init</code> keep
+<code>explain</code> out of the default eight until opted in.</figcaption>
+</figure>
+</spec-arch>
+</section>
+
+
+<section id="alternatives">
+<h2>4 · Alternatives considered</h2>
+
+<p>The decisive choice is the implementation surface. Scores are 1 (poor) – 5 (excellent).</p>
+
+<spec-matrix>
+<table>
+  <thead>
+    <tr><th>Option</th><th>Effort</th><th>Spec-fit (ephemeral / no-artifact)</th><th>Grounding rigour</th><th>Testability</th><th class="score">Total</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>CLI-backed verb (kernel + AIProvider + new retrieval/verify layer)</td><td>2</td><td>2</td><td>5</td><td>5</td><td class="score">14</td></tr>
+    <tr><td>Hybrid (markdown + thin CLI resolve/verify helper)</td><td>3</td><td>3</td><td>5</td><td>4</td><td class="score">15</td></tr>
+    <tr data-winner><td>Markdown command only (in-session grounding)</td><td>5</td><td>5</td><td>4</td><td>3</td><td class="score">17</td></tr>
+  </tbody>
+</table>
+</spec-matrix>
+
+<p>The CLI-backed path scores highest on grounding/testability but loses on the two criteria that matter most
+here: the coach writes no artifact, so the CLI engine's reason-to-exist (deterministic artifact generation,
+stub-tested in CI) doesn't apply, and building a retrieval/verify layer is exactly the complexity the spec
+defers to the course. Markdown-only wins; its lower grounding/testability scores are addressed by D-003 and the
+manual smoke.</p>
+</section>
+
+
+<section id="decisions">
+<h2>5 · Decisions</h2>
+
+<spec-decision id="D-001">
+  <h4>D-001 · The coach is a markdown command file only — no CLI/kernel/AIProvider</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>The six AI verbs carry a CLI subcommand + <code>@spectastic/core</code> kernel + <code>AIProvider</code> because they generate artifact files deterministically and stub-test them in CI. The coach generates no artifact (<a href="./spec.html#FR-001">FR-001</a>) and is ephemeral, in-chat.</dd>
+    <dt>Decision</dt>     <dd>Ship <code>commands/spectastic.explain.md</code> only. The in-session agent grounds via its own Read/Grep tools and parses <code>&lt;target&gt;</code> + <code>--proficiency</code> from <code>$ARGUMENTS</code>. No <code>packages/cli</code> or <code>packages/core</code> command module.</dd>
+    <dt>Consequences</dt> <dd>+ Smallest possible surface; matches the ephemeral nature exactly. + No new retrieval/verify infra. − No vitest unit test for the coaching itself (verified by manual smoke, R3). − Diverges from the six-verb CLI pattern (logged in §8).</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-002">
+  <h4>D-002 · <code>commands.json</code> tier manifest; <code>init --with</code> installs extended verbs opt-in</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd><a href="./spec.html#FR-009">FR-009</a>/D-011 require the installer to distinguish core from extended and keep <code>explain</code> out of the default install. Today no verb registry exists — the core set is duplicated across four places (the <code>commands/</code> dir, <code>cli/src/index.ts</code>, core <code>tsup.config.ts</code>, core <code>package.json</code> exports).</dd>
+    <dt>Decision</dt>     <dd>Add repo-root <code>commands.json</code>: <code>{ "core": [&#8230;8 verbs], "extended": ["explain"] }</code>. <a href="../../packages/cli/scripts/prebuild.mjs">prebuild.mjs</a> copies it into <code>_bundled/</code>. A new <code>init/manifest.ts</code> reads it; <code>init</code> filters the bundle inventory so extended command files are written only when their verb is named by a repeatable <code>--with &lt;verb&gt;</code> flag. Unknown/unlisted command files default to <strong>core</strong> (fail-safe: a verb installs unless explicitly marked extended).</dd>
+    <dt>Consequences</dt> <dd>+ One real registry; retires the four-place duplication. + Forward-compatible as more extended verbs land. − Manifest can drift from the file set (mitigated by the default-to-core rule + R2 test). − The filter is a new branch in the <code>init</code> path (covered by the integration test).</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-003">
+  <h4>D-003 · Procedural grounding + refuse-and-report; verification code deferred to the course</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd><a href="./spec.html#FR-003">FR-003</a>/<a href="./spec.html#SC-001">SC-001</a> demand zero hallucinated references; <a href="./spec.html#FR-004">FR-004</a> demands refuse-and-report. No grounding/verification utility exists, and D-001 leaves no code layer to run one.</dd>
+    <dt>Decision</dt>     <dd>Grounding is procedural: the command mandates the agent <em>read the real target first</em>, cite only references it has confirmed exist, and stop with a reported miss if the target doesn't resolve. No post-processing verifier in v1. The retrieval/verify layer (handover D-010) is reserved for <code>explain --course</code>.</dd>
+    <dt>Consequences</dt> <dd>+ Proportionate to an ephemeral, low-stakes coach. + Nothing to build. − The guarantee rests on the agent's tool-use discipline, not an algorithm (R3); the procedure makes the read-then-explain order non-optional and the smoke checks both the grounded and refusal paths.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-004">
+  <h4>D-004 · <code>--proficiency</code> parsed in-prose, default <code>wheels</code>, no persisted state</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd><a href="./spec.html#FR-006">FR-006</a> (D-012 seam) fixes the flag vocabulary in v1 so personalization arrives additively; <a href="./spec.html#NFR-002">NFR-002</a> defers storage.</dd>
+    <dt>Decision</dt>     <dd>The procedure parses <code>--proficiency=wheels|completion|independent</code> from <code>$ARGUMENTS</code>, defaults to <code>wheels</code> when absent, rejects any other value against the fixed vocabulary, and tunes explanation depth (<a href="./spec.html#FR-007">FR-007</a>). No state is read or written.</dd>
+    <dt>Consequences</dt> <dd>+ CLI contract is stable from v1; later "default from stored band" is purely additive. − Until storage lands, the band is set by hand each call.</dd>
+  </dl>
+</spec-decision>
+</section>
+
+
+<section id="project-structure">
+<h2>6 · Project structure</h2>
+
+<pre><code>commands/
+  spectastic.explain.md          # NEW — the coach procedure (front-matter + Procedure + Output style)
+commands.json                    # NEW — { "core": [8 verbs], "extended": ["explain"] }
+packages/cli/
+  scripts/prebuild.mjs           # CHANGED — also copy commands.json into _bundled/
+  src/commands/
+    init.ts                      # CHANGED — add repeatable --with &lt;verb&gt;; filter inventory before buildPlan
+    init/
+      manifest.ts                # NEW — read commands.json; classify a command file as core | extended
+  test/
+    init.integration.test.ts     # CHANGED — default install excludes explain; --with explain includes it;
+                                 #           unknown command file defaults to core
+docs/
+  (manual smoke steps captured in the tasks list, not a shipped file)
+</code></pre>
+</section>
+
+
+<section id="risks">
+<h2>7 · Risks &amp; mitigations</h2>
+
+<table>
+  <thead><tr><th>Risk</th><th>Likelihood</th><th>Impact</th><th>Mitigation</th></tr></thead>
+  <tbody>
+    <tr><td>Inventory filter wrong — a core verb dropped, or <code>explain</code> leaks into the default install</td><td>M</td><td>H</td><td>Integration test asserts the exact installed file set for both default and <code>--with explain</code>.</td></tr>
+    <tr><td>Manifest drifts from the <code>commands/</code> file set (new verb added, not listed)</td><td>L</td><td>L</td><td>Unlisted files default to <strong>core</strong> (D-002) — a verb installs unless explicitly marked extended; a test pins this default.</td></tr>
+    <tr><td>Coach cites a non-existent reference despite procedural grounding (R3)</td><td>M</td><td>M</td><td>Procedure makes read-then-explain non-optional and refuse-and-report mandatory; manual smoke exercises a real target and a bogus one. Heavier verification deferred to the course tier.</td></tr>
+    <tr><td><code>prebuild.mjs</code> ships the bundle without <code>commands.json</code>, so production <code>init</code> can't classify</td><td>L</td><td>M</td><td>Add <code>commands.json</code> to the prebuild SOURCES; manifest reader falls back to dev-root in dev mode; test runs against the dev fallback.</td></tr>
+  </tbody>
+</table>
+
+<spec-warning>
+<p>The coach's "zero hallucinated references" guarantee (<a href="./spec.html#SC-001">SC-001</a>) is enforced by
+procedure and the agent's tool-use, not by code, in this slice. Accept this before implementation: it is
+proportionate for an ephemeral coach, and the algorithmic verifier lands with <code>explain --course</code>.</p>
+</spec-warning>
+</section>
+
+
+<section id="complexity">
+<h2>8 · Complexity tracking</h2>
+<p>Two deviations from the established pattern, each required-or-justified.</p>
+
+<spec-assumption>
+<p><strong>Markdown-only diverges from the six-verb CLI-backed pattern (D-001).</strong> Justified: those verbs
+exist in TypeScript because they emit artifact files that must be generated deterministically and stub-tested in
+CI. The coach emits no artifact (<a href="./spec.html#FR-001">FR-001</a>), so a kernel + <code>AIProvider</code> +
+retrieval/verify layer would be complexity the spec explicitly defers to the course — not complexity this slice
+needs.</p>
+</spec-assumption>
+
+<spec-assumption>
+<p><strong><code>commands.json</code> is a new config file (D-002).</strong> Justified: <a href="./spec.html#FR-009">FR-009</a>/D-011
+require the installer to distinguish core from extended <em>before</em> the first extended verb ships, and no
+such registry exists today. The manifest is the minimal mechanism that satisfies that and retires the existing
+four-place duplication of the core set.</p>
+</spec-assumption>
+</section>
+
+
+<section id="questions">
+<h2>9 · Open questions</h2>
+<spec-questions>
+<p>None block implementation. The two decisions the spec deferred to this plan are resolved above:
+extended-verb packaging is D-002 (<code>commands.json</code> + <code>init --with</code>); the grounding approach
+is D-003 (procedural + refuse-and-report). Storage of the proficiency band and the algorithmic verifier remain
+owned by the deferred <code>explain --course</code> sibling, not this slice.</p>
+</spec-questions>
+</section>
+
+
+<section id="changelog">
+<h2>10 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-06-19">19 Jun 2026</time><span>Initial plan. Markdown-command-only coach (D-001); <code>commands.json</code> tier manifest with <code>init --with</code> opt-in (D-002); procedural grounding + refuse-and-report (D-003); <code>--proficiency</code> parsed in-prose, default <code>wheels</code> (D-004). Checked against principles v1.1.0 — all OK.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  Plan for 018-explain · explain — the grounded coach · authored 2026-06-19 ·
+  <button data-theme-toggle style="background:none;border:none;color:var(--c-link);cursor:pointer;font:inherit;padding:0;border-bottom:1px solid currentColor;">light/dark</button>
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>

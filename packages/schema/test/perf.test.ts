@@ -16,7 +16,7 @@ const TARGETS = [
   'specs/000-spectastic/spec.html',
   'principles.html',
   'specs/002-validate-cli/spec.html',
-  'specs/002-validate-cli/plan.html',
+  'specs/002-validate-cli/design.html',
   'specs/002-validate-cli/tasks.html',
 ];
 

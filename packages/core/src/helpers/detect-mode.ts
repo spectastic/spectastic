@@ -1,6 +1,6 @@
 /**
  * List-intake detection heuristic. Per D-006 of
- * specs/007-core-triage/plan.html: ported verbatim from the slash-command
+ * specs/007-core-triage/design.html: ported verbatim from the slash-command
  * markdown's discipline (commas, semicolons, newlines, numbered items,
  * phrases like "things" / "items" / "stuff").
  *

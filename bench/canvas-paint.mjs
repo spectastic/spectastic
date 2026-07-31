@@ -13,7 +13,7 @@ const specDir = join(root, 'specs', '020-vscode-extension');
 const files = [
   join(root, 'principles.html'),
   join(specDir, 'spec.html'),
-  join(specDir, 'plan.html'),
+  join(specDir, 'design.html'),
   join(specDir, 'tasks.html'),
 ];
 

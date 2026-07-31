@@ -87,7 +87,7 @@ export async function graduateTransaction(
     // 1. Write the extracted spec + plan bundle.
     await fs.mkdir(specDir);
     await fs.writeFile(`${specDir}/spec.html`, input.extract.specHtml);
-    await fs.writeFile(`${specDir}/plan.html`, input.extract.planHtml);
+    await fs.writeFile(`${specDir}/design.html`, input.extract.planHtml);
     wroteBundle = true;
 
     // 2. Archive the exploration tree. Ensure the archive parent exists first —

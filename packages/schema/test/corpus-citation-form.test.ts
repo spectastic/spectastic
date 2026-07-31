@@ -11,7 +11,7 @@ import { validate } from '../src/engine.js';
 const RULE = 'corpus-citation-form';
 
 function findings(html: string) {
-  return validate(html, { file: 'plan.html' }).filter((f) => f.rule === RULE);
+  return validate(html, { file: 'design.html' }).filter((f) => f.rule === RULE);
 }
 
 const decision = (inner: string) =>

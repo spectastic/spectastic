@@ -97,7 +97,7 @@ describe('spectastic explore', () => {
     await run(['explore', 'try a graph view'], dir);
     // The exploration is 002-try-a-graph-view; plan must refuse it (exit 2)
     // before it ever looks for a (non-existent) spec.html.
-    const r = await run(['plan', '002-try-a-graph-view'], dir);
+    const r = await run(['design', '002-try-a-graph-view'], dir);
     expect(r.code).toBe(2);
     expect(r.stderr).toContain('quarantined exploration');
   });

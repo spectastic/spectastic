@@ -2,7 +2,7 @@
  * Generate a tasks.html from a spec + plan pair.
  *
  * Canonical procedure: commands/spectastic.tasks.md. Per spec 009 +
- * its plan (7 ADRs): kernel reads spec.html + plan.html via ctx.fs;
+ * its plan (7 ADRs): kernel reads spec.html + design.html via ctx.fs;
  * parses via @spectastic/schema's extractSpecMetadata; computes the
  * deterministic 5-phase structure; lightly uses ai.chat() to generate
  * task description prose; returns TasksResult. Caller writes to disk.
@@ -243,7 +243,7 @@ function renderTasksHtml(specId: string, phases: TaskPhase[], unreferenced: stri
 <spec-meta>
 <b>Status</b><span><spec-status value="draft">Draft</spec-status></span>
 <b>Spec</b><span><a href="./spec.html">${specId}</a></span>
-<b>Plan</b><span><a href="./plan.html">plan</a></span>
+<b>Plan</b><span><a href="./design.html">plan</a></span>
 <b>Created</b><span><time datetime="${today}">${today}</time></span>
 </spec-meta>
 ${warning}
@@ -489,7 +489,7 @@ function renderRestoreHtml(
 <spec-meta>
 <b>Status</b><span><spec-status value="draft">Draft</spec-status></span>
 <b>Spec</b><span><a href="./spec.html">${specId}</a></span>
-<b>Plan</b><span><a href="./plan.html">plan</a></span>
+<b>Plan</b><span><a href="./design.html">plan</a></span>
 <b>Created</b><span><time datetime="${today}">${today}</time></span>
 </spec-meta>
 ${banner}

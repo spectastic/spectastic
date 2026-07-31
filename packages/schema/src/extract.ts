@@ -1,7 +1,7 @@
 /**
  * Structured metadata extraction from a parsed spec-html document.
  *
- * Per D-006 of specs/009-core-tasks/plan.html: surfaces the FR/NFR/SC
+ * Per D-006 of specs/009-core-tasks/design.html: surfaces the FR/NFR/SC
  * IDs + priorities + summaries so the kernel's tasks command can
  * map requirements to phases + assert traceability without re-parsing.
  *

@@ -30,7 +30,7 @@ describe('CLI model resolution (spec 044 Tier D · FR-006/007/008)', () => {
 
   it('resolves the per-verb map default (implement → sonnet id)', () => {
     expect(resolveProviderModel({ verb: 'implement', cwd: dir })).toBe('claude-sonnet-5');
-    expect(resolveProviderModel({ verb: 'plan', cwd: dir })).toBe('claude-sonnet-5'); // inherit → default
+    expect(resolveProviderModel({ verb: 'design', cwd: dir })).toBe('claude-sonnet-5'); // inherit → default
   });
 
   it('precedence: override > env > project config > map', () => {
@@ -45,7 +45,7 @@ describe('CLI model resolution (spec 044 Tier D · FR-006/007/008)', () => {
   });
 
   it('throws fail-fast on an illegal override alias', () => {
-    expect(() => resolveProviderModel({ verb: 'plan', override: 'gpt-4', cwd: dir })).toThrow(/not a legal tier alias/);
+    expect(() => resolveProviderModel({ verb: 'design', override: 'gpt-4', cwd: dir })).toThrow(/not a legal tier alias/);
   });
 
   it('the resolved model reaches ClaudeProvider.model (the Assisted-by source)', async () => {

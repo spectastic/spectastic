@@ -9,7 +9,7 @@
  * Atomic: writes to _bundled.tmp/ first, then renames the directory.
  * An interrupted run leaves no partial bundle.
  *
- * Per D-003 of specs/003-init-node-port/plan.html.
+ * Per D-003 of specs/003-init-node-port/design.html.
  */
 
 import { cp, mkdir, rm, rename } from 'node:fs/promises';
@@ -33,7 +33,7 @@ const SOURCES = [
   ['assets', 'assets'],
   ['templates', 'templates'],
   // Verb tier manifest — read by init to keep extended verbs out of the
-  // default install (specs/018-explain/plan.html D-002, T-312). Lives at the
+  // default install (specs/018-explain/design.html D-002, T-312). Lives at the
   // bundle root, not under an installed subdir, so it is never written to cwd.
   ['commands.json', 'commands.json'],
   // Init profile manifest — read by `init --profile` to compose principles/

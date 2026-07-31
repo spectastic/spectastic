@@ -16,7 +16,7 @@ import { expandGlobs } from '../src/glob.js';
  * the `<spec-decision grounding>` artifact markup FR-004 names — not any
  * mention of a spectastic verb. The `spectastic-concepts` dogfood corpus is a
  * corpus whose *domain is spectastic itself*, so it legitimately names
- * `/spectastic.plan` and `<spec-rule>` as subject matter while teaching the
+ * `/spectastic.design` and `<spec-rule>` as subject matter while teaching the
  * grounding discipline; that is content, not a binding. The broader
  * "zero spectastic knowledge" agnosticism that a *distributable* pack (a
  * finance-settlement skill) must satisfy is 057's concern, not this one.

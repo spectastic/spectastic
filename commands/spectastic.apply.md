@@ -160,7 +160,7 @@ Report:
 - The new entry added to the spec's changelog.
 - Any cross-spec references that may need follow-up.
 - The **task fold** (per `REQ-CHANGE-006`): the target `tasks.html` the §6 tasks were folded into (and whether it was created), and the new phase / `T-NNN` range. Apply implemented none of them.
-- The **post-apply routing nudge** (per `REQ-CHANGE-003`): one line — small change → run `/spectastic.implement` on the folded phase; large change → optionally re-run `/spectastic.plan` + `/spectastic.tasks` (regenerates, supersedes the fold).
+- The **post-apply routing nudge** (per `REQ-CHANGE-003`): one line — small change → run `/spectastic.implement` on the folded phase; large change → optionally re-run `/spectastic.design` + `/spectastic.tasks` (regenerates, supersedes the fold).
 - The **originating inbox-card nudge** (if the proposal's `<spec-meta>` `Source` row points at `inbox.html#I-NNN`, or if the proposal's prose references an inbox card by ID): one line suggesting that the originating card be transitioned to `data-status="done"` with a new `<dt>Closed by</dt>` row pointing at the archived proposal and the requirement that landed. Apply does **not** make this transition automatically; the inbox-card update is the author's gesture (mirrors the Surface-A discipline in `REQ-CHANGE-005`). Without this nudge in the report, the lifecycle's view and the inbox's view drift apart silently.
 
 Suggest opening the live spec in a browser to confirm the apply rendered cleanly.
@@ -172,9 +172,9 @@ Per `REQ-CHANGE-003` of the meta-spec, after `/spectastic.apply` lands a change,
 The proposal's §6 tasks have already been **folded into the target's `tasks.html`** as a new provenance-linked phase (by the kernel, step 5). Apply implemented nothing — `/spectastic.implement` drains the folded phase.
 
 - **Small change** — one or two requirements, behavioural addition, no new ADRs. Run `/spectastic.implement` to drain the folded phase.
-- **Large change** — multi-requirement, architectural shift, new topic group. You may instead re-run `/spectastic.plan` against the updated spec to revisit ADRs, then `/spectastic.tasks` to derive a fresh breakdown — which regenerates `tasks.html` and **supersedes the folded phase** — then `/spectastic.implement`.
+- **Large change** — multi-requirement, architectural shift, new topic group. You may instead re-run `/spectastic.design` against the updated spec to revisit ADRs, then `/spectastic.tasks` to derive a fresh breakdown — which regenerates `tasks.html` and **supersedes the folded phase** — then `/spectastic.implement`.
 
-The boundary heuristic: **more than one new ADR would land → large**. State the rule as guidance, not a guardrail — apply always folds (it never self-classifies); the large-change re-plan is the author's choice, not apply's.
+The boundary heuristic: **more than one new ADR would land → large**. State the rule as guidance, not a guardrail — apply always folds (it never self-classifies); the large-change re-design is the author's choice, not apply's.
 
 ## Note on the kernel
 
@@ -186,4 +186,4 @@ the author summary, the cross-spec exception, and the routing nudges need a huma
 command) in the loop.
 
 Apply and withdraw are **keyless** — the kernel is deterministic and needs no `ANTHROPIC_API_KEY`.
-Only the AI-coupled verbs (`spec`, `plan`) require the key (006 FR-009).
+Only the AI-coupled verbs (`spec`, `design`) require the key (006 FR-009).

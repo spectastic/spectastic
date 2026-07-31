@@ -1,0 +1,339 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
+<title>corpus convert · Design</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Design · 065-corpus-pdf-convert</p>
+  <h1>corpus convert — document conversion into the corpus</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    How we will build it.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>     <span><spec-status value="accepted">Accepted</spec-status></span>
+    <b>Spec</b>       <span><a href="./spec.html">065-corpus-pdf-convert</a></span>
+    <b>Owner</b>      <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Branch</b>     <span><code>065-corpus-pdf-convert</code></span>
+    <b>Created</b>    <span><time datetime="2026-07-27">27 Jul 2026</time></span>
+    <b>Read time</b>  <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-tldr>
+    <p>Add <code>convert</code> to <code>@spectastic/corpus</code> as a fat-core orchestrator behind a
+    <em>ConverterRunner</em> port (the same injectable-<code>execFile</code> seam as
+    <code>claude-cli</code>/<code>pack-fetcher</code>/<code>git</code>): a per-converter registry adapts the three
+    heterogeneous CLI shapes, the orchestrator runs the chosen binary, computes a hash of the <em>source</em>
+    bytes, and files the markdown through a new <code>fileConvertedDocument</code> helper that reuses the adapt
+    primitives. Both CLIs (standalone binary + the main CLI's <code>corpus</code> group) are thin dispatch. Biggest
+    risk: the converters' CLI flags drift across versions — isolated per-converter in the registry and pinned by an
+    integration test against a fixture binary.</p>
+  </spec-tldr>
+</header>
+
+
+<section id="principles-check">
+<h2>1 · Principles check</h2>
+<p>Verify this plan respects every principle in
+<a href="../../principles.html">v1.8.0</a>. Any violation requires either a principles amendment or a deliberate
+exception logged below.</p>
+
+<table>
+  <thead><tr><th>Principle</th><th>Compliance</th><th>Notes</th></tr></thead>
+  <tbody>
+    <tr><td>P-3 · IDs are contracts</td><td><spec-pill>OK</spec-pill></td><td>Converted documents allocate stable <code>KB-NNN</code> ids via the existing <code>allocateIds</code>; idempotent re-convert reuses the same id (adapt's non-destructive rule).</td></tr>
+    <tr><td>P-7 · Done means verified</td><td><spec-pill>OK</spec-pill></td><td>No interactive HTML; verification is Vitest (stub runner) + a real end-to-end run against a fixture converter binary asserting pack state and the source-bytes hash (<a href="./spec.html#SC-001">SC-001</a>).</td></tr>
+    <tr><td>P-8 · Guarantees live in the kernel or CI</td><td><spec-pill>OK</spec-pill></td><td>All conversion/filing logic is in <code>@spectastic/corpus</code>; both CLI registrations are thin dispatch (fat-core/thin-CLI). The injection-safety guarantee is the kernel's, not the command markdown's.</td></tr>
+    <tr><td>P-11 · Artifacts are data, not instructions</td><td><spec-pill>OK</spec-pill></td><td>Converted markdown is filed as corpus <em>data</em> at a not-yet-spot-checked status and is never executed; a hostile PDF's text can only enter an AI verb after the human spot-check + grounding gate, exactly as any other source.</td></tr>
+    <tr><td>P-12 · Capability accountability</td><td><spec-pill>OK</spec-pill></td><td>Convert adds a process-execution capability. It is accounted for: <code>execFile</code> with an argv array (never a shell string), a bounded child-process timeout, and the converter recorded in provenance so a conversion is attributable to its tool (<a href="./spec.html#NFR-001">NFR-001</a>).</td></tr>
+    <tr><td>P-1 · Source order · P-2 · Semantic tags · P-4 · Progressive enhancement · P-5 · Calm density · P-6 · Draft loose / ratified locked · P-9 · Enforcement floor · P-10 · Ids out of copy</td><td><spec-pill>OK</spec-pill></td><td>No document-rendering or copy surface changes; the CLI <code>--help</code>/error strings carry no internal ids (P-10). No enforcement-floor category is touched.</td></tr>
+  </tbody>
+</table>
+</section>
+
+
+<section id="technical-context">
+<h2>2 · Technical context</h2>
+<dl>
+  <dt>Language(s)</dt>      <dd>TypeScript, ESM; Node ≥ 20 (verified on v25).</dd>
+  <dt>Frameworks</dt>       <dd><code>commander@^12.1.0</code>, <code>yaml@^2.9.0</code> (both already in <code>@spectastic/corpus</code>); <code>node:child_process</code> (built-in). <strong>No new runtime dependency.</strong></dd>
+  <dt>Architecture</dt>     <dd>Hexagonal ports-and-adapters at the <em>ConverterRunner</em> seam (<a href="#D-001">D-001</a>) — mirrors the <code>AIProvider</code>/<code>GitRunner</code>/<code>PackFetcher</code> seams.</dd>
+  <dt>Storage</dt>          <dd>Filesystem — the existing <code>knowledge/&lt;pack&gt;/references/</code> + <code>index.md</code> convention. No schema change.</dd>
+  <dt>Testing</dt>          <dd>Vitest, <strong>TDD red-first</strong>. A stub <code>ConverterRunner</code> (canned markdown + version) runs the whole path with no converter installed — the CI-stub pattern the corpus already uses for <code>PackFetcher</code>. One integration test drives a fixture converter shim on <code>PATH</code>.</dd>
+  <dt>Coverage</dt>         <dd>Not in scope — no coverage enforce floor (no profile marker in this repo).</dd>
+  <dt>Perf targets</dt>     <dd>No latency target (conversion time is the converter's). A bounded child-process timeout, default 120 s, <code>--timeout &lt;sec&gt;</code> override (<a href="#D-005">D-005</a>).</dd>
+  <dt>Constraints</dt>      <dd>Node-only distribution — no bundled Python/GPU (<a href="./spec.html#NFR-002">NFR-002</a>); injection-safe argv (<a href="./spec.html#NFR-001">NFR-001</a>, P-12); the one-way <code>corpus ↛ core</code> boundary stays intact (this is all corpus-internal).</dd>
+</dl>
+</section>
+
+
+<section id="grounding">
+<h2>3 · Grounding &amp; evidence</h2>
+<p>Every design-bearing fact this plan rests on, and how it was confirmed — read this before the approach: it
+separates what the plan <em>knows</em> from what it <em>assumes</em> (per <code>REQ-LIFECYCLE-006</code>).</p>
+
+<table class="evidence">
+  <thead>
+    <tr><th>Claim the design rests on</th><th>Source</th><th>Status</th><th>Finding / note</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>The codebase shells out via <code>execFile</code>/<code>execFileSync</code> with an <strong>argv array</strong> (never a shell string), behind an injectable runner seam.</td>
+        <td><code>providers/claude-cli.ts:20,123</code> · <code>providers/pack-fetcher.ts</code> (<code>execFileSync</code>, <code>GitRunner</code>) · <code>coding/worktree.ts:14</code> · <code>change-risk/diff.ts:16</code></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td>The exact pattern convert needs — satisfies <a href="./spec.html#NFR-001">NFR-001</a> and P-12; the stub seam is how CI avoids a real binary.</td></tr>
+    <tr><td><code>execFile</code> accepts an options object (<code>timeout</code>, <code>maxBuffer</code>) and rejects/kills on timeout.</td>
+        <td><code>providers/claude-cli.ts:123</code> (<code>{ maxBuffer }</code>); Node built-in <code>timeout</code> option, same call</td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td>The bounded-timeout policy (<a href="#D-005">D-005</a>) is free — no extra dependency.</td></tr>
+    <tr><td>The adapt filing primitives are reusable; <code>deriveProvenance</code> always hashes the <em>body</em> and injects only <code>origin</code>/<code>status</code>; <code>renderDocument</code>/<code>mergeIndexRows</code> are private to the module.</td>
+        <td><code>knowledge/adapt.ts:26,30,40,70,91</code> (exported) &amp; :81,114 (private)</td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td>Convert's source-bytes hash can't ride <code>deriveProvenance</code> without changing a widely-used primitive → a co-located <code>fileConvertedDocument</code> reaching the privates (<a href="#D-003">D-003</a>).</td></tr>
+    <tr><td>The three converters have <strong>heterogeneous</strong> CLI shapes: MarkItDown → stdout or <code>-o</code>; Docling → file/URL with format flags; <code>marker_single &lt;file&gt; &lt;out_folder&gt; --output_format markdown</code> → writes a <code>.md</code> into a folder.</td>
+        <td><a href="https://github.com/microsoft/markitdown">markitdown</a> · <a href="https://docling-project.github.io/docling/reference/cli/">docling CLI</a> · <a href="https://pypi.org/project/marker-pdf/">marker_single</a></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td>Web spike, 27 Jul. The variance is the design cue for a per-converter adapter registry (<a href="#D-002">D-002</a>); Marker needs a managed temp output dir.</td></tr>
+    <tr><td>A verb registers on both surfaces — top-level on the standalone binary, under the <code>corpus</code> group on the main CLI — both resolving root/marketplace from <code>resolveCorpusConfig</code>.</td>
+        <td><code>corpus/src/cli/index.ts</code> · <code>corpus/src/cli/curate.ts:34</code> · <code>cli/src/commands/corpus.ts</code></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td>Two thin registration sites (<a href="#D-004">D-004</a>), same as every existing corpus verb.</td></tr>
+    <tr><td>A converter exposes a version flag for the <code>converter</code> provenance field.</td>
+        <td>the <code>--version</code> probe per converter</td>
+        <td><spec-status value="review">spike</spec-status></td>
+        <td>MarkItDown's <code>--version</code> is undocumented in the CLI reference. <strong>Resolution:</strong> the version probe is best-effort — the <code>converter</code> field records the tool name always, and the version when a probe yields one, else <code>TODO</code> (never fabricate, <a href="./spec.html#FR-004">FR-004</a>). Should-tier detail, not a blocker; the first task confirms each probe.</td></tr>
+  </tbody>
+</table>
+</section>
+
+
+<section id="approach">
+<h2>4 · Approach</h2>
+
+<p>Convert is orchestration in front of the existing adapt machinery. A new <code>knowledge/convert.ts</code> owns
+a <code>convertDocument()</code> orchestrator: it validates the <code>--converter</code> name against a
+<code>CONVERTERS</code> registry (rejecting an unknown one before any process runs), invokes the chosen binary
+through a <code>ConverterRunner</code> port, collects the markdown (however that converter delivers it — stdout,
+<code>-o</code> file, or an output folder for Marker), and then either emits it (<code>--no-adapt</code> → stdout
+or <code>--out</code>) or files it into the target pack. Filing goes through a new
+<code>fileConvertedDocument</code> in <code>adapt.ts</code>, which reuses the adapt sub-helpers
+(<code>allocateIds</code>, <code>deriveTitleAndDescription</code>, the private <code>renderDocument</code>/index
+merge) but stamps convert's own provenance: <code>content-hash</code> = SHA-256 of the source bytes,
+<code>converter</code> = tool (+ version when probeable), <code>origin</code> = the source filename. Both CLI
+surfaces register a thin <code>convert</code> that parses args and delegates.</p>
+
+<spec-arch>
+<figure>
+<svg viewBox="0 0 700 260" role="img" aria-label="convert orchestrator, converter runner port, and adapt filing">
+  <style>
+    .box { fill:#fcfbf7; stroke:#c4c1bb; stroke-width:1.2; }
+    .port { fill:#f3f0e8; stroke:#7558b2; stroke-width:1.2; stroke-dasharray:4 3; }
+    .label { font: 700 10px Lato, sans-serif; fill:#4a4a46; letter-spacing:0.05em; text-transform:uppercase; }
+    .body { font: 400 11px "Source Serif 4", Georgia, serif; fill:#353534; }
+    .arr { stroke:#73706d; stroke-width:1.2; fill:none; }
+  </style>
+  <rect class="box" x="20"  y="100" width="130" height="56" rx="4"/>
+  <text class="label" x="34" y="122">CLI dispatch</text>
+  <text class="body"  x="34" y="140">corpus + binary</text>
+
+  <rect class="box" x="200" y="100" width="150" height="56" rx="4"/>
+  <text class="label" x="214" y="122">convertDocument</text>
+  <text class="body"  x="214" y="140">orchestrator (core)</text>
+
+  <rect class="port" x="400" y="20" width="150" height="56" rx="4"/>
+  <text class="label" x="414" y="42">ConverterRunner</text>
+  <text class="body"  x="414" y="60">execFile · stub</text>
+
+  <rect class="box" x="400" y="100" width="150" height="56" rx="4"/>
+  <text class="label" x="414" y="122">CONVERTERS</text>
+  <text class="body"  x="414" y="140">markitdown/docling/marker</text>
+
+  <rect class="box" x="400" y="180" width="150" height="56" rx="4"/>
+  <text class="label" x="414" y="202">fileConvertedDocument</text>
+  <text class="body"  x="414" y="220">adapt reuse → pack</text>
+
+  <rect class="box" x="600" y="100" width="80" height="56" rx="4"/>
+  <text class="label" x="612" y="122">stdout</text>
+  <text class="body"  x="612" y="140">--no-adapt</text>
+
+  <path class="arr" d="M150 128 L200 128" marker-end="url(#a)"/>
+  <path class="arr" d="M350 120 L400 60"  marker-end="url(#a)"/>
+  <path class="arr" d="M350 128 L400 128" marker-end="url(#a)"/>
+  <path class="arr" d="M350 136 L400 208" marker-end="url(#a)"/>
+  <path class="arr" d="M350 128 Q580 128 600 128" marker-end="url(#a)"/>
+  <defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#73706d"/></marker></defs>
+</svg>
+<figcaption>The orchestrator drives a <em>ConverterRunner</em> port (real <code>execFile</code> / stub) using a per-converter <code>CONVERTERS</code> spec, then either files via the adapt-reusing helper or emits to stdout for <code>--no-adapt</code>.</figcaption>
+</figure>
+</spec-arch>
+</section>
+
+
+<section id="alternatives">
+<h2>5 · Alternatives considered</h2>
+
+<spec-matrix>
+<table>
+  <thead>
+    <tr><th>Option</th><th>Testable w/o converter</th><th>Injection-safe</th><th>Converter-agnostic</th><th>Low churn</th><th class="score">Total</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Inline branching in one <code>convert()</code>, direct <code>execFile</code></td><td>2</td><td>2</td><td>1</td><td>3</td><td class="score">8</td></tr>
+    <tr><td>Bundle a converter (Python/GPU) in the tool</td><td>1</td><td>2</td><td>1</td><td>1</td><td class="score">5</td></tr>
+    <tr data-winner><td>Ports-and-adapters: <code>ConverterRunner</code> port + <code>CONVERTERS</code> registry</td><td>3</td><td>3</td><td>3</td><td>2</td><td class="score">11</td></tr>
+  </tbody>
+</table>
+</spec-matrix>
+<p>Bundling is out by spec (<a href="./spec.html#FR-003">FR-003</a> / survey D-003) — scored only to record why. The
+runner seam wins on testability and converter-agnosticism at a small churn cost (one port + a registry).</p>
+</section>
+
+
+<section id="decisions">
+<h2>6 · Decisions</h2>
+
+<spec-decision id="D-001" grounding="verified">
+  <h4>D-001 · Shell out through an injectable <code>ConverterRunner</code> port</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>The codebase already shells out via <code>execFile</code> with an argv array behind an injectable runner (<code>providers/claude-cli.ts:123</code>, <code>providers/pack-fetcher.ts</code> <code>GitRunner</code>). Convert needs the same testability and the same injection-safety.</dd>
+    <dt>Decision</dt>     <dd>A <code>ConverterRunner</code> interface — real impl <code>execFile(bin, argv, { timeout })</code>, stub impl returning canned markdown + version. Arguments are always an argv array, never interpolated into a shell string.</dd>
+    <dt>Consequences</dt> <dd>+ Injection-safe by construction (<a href="./spec.html#NFR-001">NFR-001</a>, P-12). + The whole path is testable with no converter installed. + Reuses a proven seam. − A stub/fixture converter is needed for tests (cheap).</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-002" grounding="verified">
+  <h4>D-002 · A per-converter adapter registry for the heterogeneous CLI shapes</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>The spike found three different shapes: MarkItDown emits to stdout or <code>-o</code>; Docling takes format flags; <code>marker_single</code> writes a <code>.md</code> into an output <em>folder</em> (<a href="https://pypi.org/project/marker-pdf/">marker-pdf</a>).</dd>
+    <dt>Decision</dt>     <dd>A <code>CONVERTERS</code> map: <code>name → { bin, buildArgs(file, tmpDir), collectOutput(tmpDir|stdout), versionArgs, installHint }</code> for markitdown/docling/marker. The orchestrator validates the name against the map (unknown → non-zero, pre-run) and normalises every shape to "markdown text".</dd>
+    <dt>Consequences</dt> <dd>+ Converter-agnostic — a new converter is one registry entry. + Each shape's quirks are isolated. − Marker's output-folder needs a managed temp dir the orchestrator creates and cleans in a <code>finally</code>.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-003" grounding="verified">
+  <h4>D-003 · A co-located <code>fileConvertedDocument</code> stamps source-bytes hash + converter</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd><code>deriveProvenance</code> always hashes the body and injects only <code>origin</code>/<code>status</code> (<code>adapt.ts:40-50</code>); <code>renderDocument</code>/<code>mergeIndexRows</code> are private to the module. Convert must pin the <em>source</em>, not the derived markdown (<a href="./spec.html#FR-004">FR-004</a>).</dd>
+    <dt>Decision</dt>     <dd>A new <code>fileConvertedDocument</code> <em>in <code>adapt.ts</code></em> (so it reaches the private render/merge helpers), reusing <code>allocateIds</code>/<code>deriveTitleAndDescription</code> but stamping <code>content-hash</code> = SHA-256(source bytes), <code>converter</code> = tool(+version), <code>origin</code> = filename, <code>status</code> = the not-yet-spot-checked sentinel. <code>deriveProvenance</code> is left untouched.</dd>
+    <dt>Consequences</dt> <dd>+ Convert's distinct hash rule is explicit, not a hidden override of a widely-reused primitive. + Full adapt reuse (id allocation, idempotency, index merge). − A second filing path beside <code>adaptFolder</code>/<code>adaptLlmsTxt</code>, mitigated by sharing every sub-helper.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-004" grounding="verified">
+  <h4>D-004 · Orchestrator in core; thin <code>convert</code> on both CLI surfaces</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>Fat-core/thin-CLI (P-8); every corpus verb registers on both the standalone binary (<code>cli/curate.ts</code>) and the main CLI's <code>corpus</code> group (<code>cli/src/commands/corpus.ts</code>).</dd>
+    <dt>Decision</dt>     <dd><code>convertDocument()</code> owns validate-name → run → hash → file/emit. A <code>registerConvert</code> in the corpus binary and a <code>convert</code> subcommand in the main CLI's <code>corpus</code> group are thin dispatch, each resolving root/marketplace from <code>resolveCorpusConfig</code>.</dd>
+    <dt>Consequences</dt> <dd>+ One tested code path, two entry points. + Matches the existing verb-mirroring exactly. − Two registration sites to keep in sync (true of every corpus verb already).</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-005" grounding="verified">
+  <h4>D-005 · <code>--no-adapt</code> emits to stdout (<code>--out</code> redirects); bounded timeout default</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>MarkItDown's own default is stdout; a pipe-friendly raw emit composes with the corpus read path. A converter can hang on an encrypted/huge source.</dd>
+    <dt>Decision</dt>     <dd><code>--no-adapt</code> writes markdown to stdout, <code>--out &lt;path&gt;</code> to a file; no file is created unless asked, and no pack is touched. The child process runs under a default 120 s timeout, overridable with <code>--timeout &lt;sec&gt;</code>; a timeout kills the child, exits non-zero, and writes nothing.</dd>
+    <dt>Consequences</dt> <dd>+ Unix-filter composability; + a hung convert can't wedge a script forever. − A very large legitimate scan may need <code>--timeout</code> raised (documented in <code>--help</code>).</dd>
+  </dl>
+</spec-decision>
+</section>
+
+
+<section id="project-structure">
+<h2>7 · Project structure</h2>
+
+<p>Only new or changed paths; all inside <code>@spectastic/corpus</code> plus the one main-CLI dispatch site.</p>
+
+<pre><code>packages/corpus/src/
+  knowledge/
+    convert.ts          NEW  convertDocument orchestrator · ConverterRunner port · CONVERTERS registry
+    adapt.ts            EDIT +fileConvertedDocument (source-hash + converter filing; reuses private render/merge)
+    index.ts (barrel)   EDIT export convertDocument, ConverterRunner, CONVERTERS, fileConvertedDocument
+  cli/
+    convert.ts          NEW  registerConvert — standalone-binary dispatch
+    index.ts            EDIT registerConvert(program)
+packages/cli/src/commands/
+  corpus.ts             EDIT `convert` subcommand (thin dispatch)
+packages/corpus/test/
+  knowledge.convert.test.ts     NEW  orchestrator units — stub runner, each converter shape, name validation, source-hash, idempotency
+  read.convert.cli.test.ts      NEW  CLI dispatch — --no-adapt (stdout/--out), missing-binary exit + hint, timeout
+  fixtures/fake-converter.mjs   NEW  a shim binary on PATH for the one integration test
+</code></pre>
+</section>
+
+
+<section id="risks">
+<h2>8 · Risks &amp; mitigations</h2>
+
+<table>
+  <thead><tr><th>Risk</th><th>Likelihood</th><th>Impact</th><th>Mitigation</th></tr></thead>
+  <tbody>
+    <tr><td>Converter CLI flags drift across versions (esp. Docling/Marker).</td><td>M</td><td>M</td><td>Isolated per-converter in <code>CONVERTERS</code>; an integration test pins the invocation against a fixture shim; the version is recorded in provenance so a drift is attributable.</td></tr>
+    <tr><td>Marker's output-folder leaves temp files behind.</td><td>L</td><td>L</td><td>Orchestrator owns a managed temp dir, removed in a <code>finally</code> regardless of outcome.</td></tr>
+    <tr><td>A converter offers no version flag.</td><td>M</td><td>L</td><td>Record the tool name + <code>TODO</code> for version — never fabricate (<a href="./spec.html#FR-004">FR-004</a>); §3 spike row.</td></tr>
+    <tr><td>A converted PDF carries hostile text (prompt-injection) that later reaches an AI verb.</td><td>L</td><td>M</td><td>P-11: filed as data at not-yet-spot-checked status, never executed; the human spot-check + grounding gate stand between it and any citation, same as every source.</td></tr>
+  </tbody>
+</table>
+</section>
+
+
+<section id="complexity">
+<h2>9 · Complexity tracking</h2>
+<p>The one non-obvious choice is a <em>second</em> filing path (<code>fileConvertedDocument</code>) rather than
+bending <code>deriveProvenance</code>. Justified in <a href="#D-003">D-003</a>: the source-bytes hash is a genuinely
+different provenance rule, and hiding it as an override on a primitive six other call sites use would make every
+caller's hash silently overridable. The helper shares all adapt sub-logic, so the duplication is a thin wrapper,
+not a fork.</p>
+
+<spec-assumption>
+<p>Users install their chosen converter themselves (documented prerequisite, surfaced in <code>--help</code> and
+the missing-binary hint); the tool's own distribution stays pure-Node with no Python/GPU dependency
+(<a href="./spec.html#NFR-002">NFR-002</a>).</p>
+</spec-assumption>
+</section>
+
+
+<section id="questions">
+<h2>10 · Open questions</h2>
+<spec-questions>
+<p>None outstanding — architecture (ports-and-adapters runner seam), test style (TDD red-first), timeout policy
+(bounded default, <code>--timeout</code> override), raw-emit target (stdout / <code>--out</code>), and the
+provenance-injection mechanism (a dedicated <code>fileConvertedDocument</code>) were all anchored in the interview.
+Every must-tier decision (D-001–D-004) is <code>grounding="verified"</code>; the only <code>spike</code> row (a
+converter's version flag) is a should-tier detail resolved to best-effort, not a blocker.</p>
+</spec-questions>
+</section>
+
+
+<section id="changelog">
+<h2>11 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-07-27">27 Jul 2026</time><span>Initial plan. Ports-and-adapters <code>ConverterRunner</code> seam + per-converter <code>CONVERTERS</code> registry (converter shapes spiked via web); a co-located <code>fileConvertedDocument</code> stamps the source-bytes hash; fat-core orchestrator, thin dispatch on both CLIs; bounded child-process timeout. Six grounding facts (5 verified, 1 should-tier spike resolved).</span></li>
+  <li><time datetime="2026-07-27">27 Jul 2026</time><span>Status flipped Draft → Accepted — zero remaining unchecked tasks (27/27); tests verified passing per author confirmation. Sibling bundle (REQ-LIFECYCLE-005).</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  Plan for 065-corpus-pdf-convert · corpus convert · authored 27 Jul 2026
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>

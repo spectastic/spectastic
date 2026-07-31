@@ -97,8 +97,8 @@ describe('spectastic validate: corpus grounding gates (053 T-101/T-201)', () => 
   it('errors on a citation to a KB id with no committed document', async () => {
     const dir = project('dangling');
     seedCorpus(dir);
-    writeFileSync(join(dir, 'plan.html'), MINIMAL_SPEC('KB-999@2024-05-28'), 'utf8');
-    const r = await runCLI(['validate', 'plan.html'], dir);
+    writeFileSync(join(dir, 'design.html'), MINIMAL_SPEC('KB-999@2024-05-28'), 'utf8');
+    const r = await runCLI(['validate', 'design.html'], dir);
     expect(r.code, r.stdout).not.toBe(0);
     expect(r.stdout).toContain(PROVENANCE_RULE);
     expect(r.stdout).toContain('KB-999');
@@ -106,8 +106,8 @@ describe('spectastic validate: corpus grounding gates (053 T-101/T-201)', () => 
 
   it('is a no-op with no knowledge/ directory at all', async () => {
     const dir = project('no-knowledge-dir');
-    writeFileSync(join(dir, 'plan.html'), MINIMAL_SPEC('KB-999@2024-05-28'), 'utf8');
-    const r = await runCLI(['validate', 'plan.html'], dir);
+    writeFileSync(join(dir, 'design.html'), MINIMAL_SPEC('KB-999@2024-05-28'), 'utf8');
+    const r = await runCLI(['validate', 'design.html'], dir);
     expect(r.code, r.stdout).toBe(0);
     expect(r.stdout).not.toContain(PROVENANCE_RULE);
   });
@@ -115,8 +115,8 @@ describe('spectastic validate: corpus grounding gates (053 T-101/T-201)', () => 
   it('warns (zero exit) on a citation pinned to a superseded edition', async () => {
     const dir = project('superseded');
     seedCorpus(dir);
-    writeFileSync(join(dir, 'plan.html'), MINIMAL_SPEC('KB-001@2017-09-05'), 'utf8');
-    const r = await runCLI(['validate', 'plan.html'], dir);
+    writeFileSync(join(dir, 'design.html'), MINIMAL_SPEC('KB-001@2017-09-05'), 'utf8');
+    const r = await runCLI(['validate', 'design.html'], dir);
     expect(r.code, r.stdout).toBe(0);
     expect(r.stdout).toContain(STALENESS_RULE);
   });
@@ -138,8 +138,8 @@ describe('spectastic validate: corpus grounding gates (053 T-101/T-201)', () => 
 </spec-decision>
 </main></body></html>
 `;
-    writeFileSync(join(dir, 'plan.html'), html, 'utf8');
-    const r = await runCLI(['validate', 'plan.html'], dir);
+    writeFileSync(join(dir, 'design.html'), html, 'utf8');
+    const r = await runCLI(['validate', 'design.html'], dir);
     expect(r.code, r.stdout).not.toBe(0);
     expect(r.stdout).toContain(PROVENANCE_RULE);
     expect(r.stdout).toContain(STALENESS_RULE);

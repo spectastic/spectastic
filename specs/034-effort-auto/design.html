@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
+<title>Auto effort · Design</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Design · 034-effort-auto</p>
+  <h1>Auto effort</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">How we will build it.</p>
+  <spec-meta>
+    <b>Status</b>     <span><spec-status value="accepted">Accepted</spec-status></span>
+    <b>Spec</b>       <span><a href="./spec.html">034-effort-auto</a></span>
+    <b>Owner</b>      <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Branch</b>     <span><code>034-effort-auto</code></span>
+    <b>Created</b>    <span><time datetime="2026-07-09">09 Jul 2026</time></span>
+    <b>Read time</b>  <span data-reading-time></span>
+  </spec-meta>
+  <spec-tldr>
+    <p>Add a pure <code>resolveEffort(requested, signal, floor)</code> to the 033 decider module: when
+    <code>requested='auto'</code> it derives a level from a verb-agnostic risk <code>signal</code>
+    (irreversible / breadth), clamped to a floor; an explicit level short-circuits. Propose builds its signal from
+    its existing predicates and passes the resolved concrete level (plus the reason) into <code>decide</code>.
+    <code>auto</code> becomes the default. Low risk — it is one pure function plus a wiring change.</p>
+  </spec-tldr>
+</header>
+
+<section id="principles-check">
+<h2>1 · Principles check</h2>
+<p>Against <a href="../../principles.html">v1.3.0</a>. P-8 binds.</p>
+<table>
+  <thead><tr><th>Principle</th><th>Compliance</th><th>Notes</th></tr></thead>
+  <tbody>
+    <tr><td>P-1..P-5</td><td><spec-pill>OK</spec-pill></td><td>Kernel-only; artifacts unchanged.</td></tr>
+    <tr><td>P-6 · Draft loose</td><td><spec-pill>OK</spec-pill></td><td>Spec Draft; plan in place.</td></tr>
+    <tr><td>P-7 · Done verified</td><td><spec-pill>OK</spec-pill></td><td>Tests assert resolved level + reason per change shape.</td></tr>
+    <tr><td>P-8 · Guarantees in kernel</td><td><spec-pill>OK</spec-pill></td><td>Resolution + floor clamp + override live in core, not markdown.</td></tr>
+  </tbody>
+</table>
+</section>
+
+<section id="technical-context">
+<h2>2 · Technical context</h2>
+<dl>
+  <dt>Language</dt><dd>TypeScript, Node ≥ 20, ESM.</dd>
+  <dt>Testing</dt><dd>vitest, test-first; the 033 CriticStub counts voters to observe the resolved level.</dd>
+  <dt>Constraints</dt><dd>033's <code>effortToDepth</code> + panel sizing unchanged; <code>auto</code> only picks the level. Pure/deterministic resolver (NFR-001).</dd>
+</dl>
+</section>
+
+<section id="grounding">
+<h2>3 · Grounding &amp; evidence</h2>
+<p>All <code>verified</code> — the 033 code this extends was authored this session and re-read.</p>
+<table class="evidence">
+  <thead><tr><th>Claim</th><th>Source</th><th>Status</th><th>Finding</th></tr></thead>
+  <tbody>
+    <tr><td>decide() takes a concrete EffortLevel; a resolver can precede it</td><td><code>packages/core/src/decider/decider.ts</code></td><td><spec-status value="accepted">verified</spec-status></td><td><code>decide(cfg,…)</code> reads <code>cfg.effort</code>; resolving auto→level upstream needs no decide change.</td></tr>
+    <tr><td>Propose already computes the risk signals</td><td><code>packages/core/src/commands/propose.ts</code></td><td><spec-status value="accepted">verified</spec-status></td><td><code>irreversible = removed-op || must-tier</code>; <code>topicPrefixCount(deltas)</code> — the breadth signal.</td></tr>
+    <tr><td>Effort levels + ordering to clamp against</td><td><code>packages/core/src/decider/effort.ts</code></td><td><spec-status value="accepted">verified</spec-status></td><td><code>low·medium·high·xhigh·max</code>; <code>DEFAULT_EFFORT='medium'</code> (this slice makes the default <code>auto</code>).</td></tr>
+    <tr><td>Config reader to extend for the floor</td><td><code>packages/cli/src/config/decider.ts</code></td><td><spec-status value="accepted">verified</spec-status></td><td><code>loadDeciderConfig</code> reads <code>decider.{role,effort}</code>; add optional <code>floor</code>.</td></tr>
+    <tr><td>Verdict carries grounds; add the reason</td><td><code>packages/core/src/decider/types.ts</code> (Verdict.tally)</td><td><spec-status value="accepted">verified</spec-status></td><td>Render the effort reason alongside the existing decider grounds (FR-005).</td></tr>
+  </tbody>
+</table>
+</section>
+
+<section id="approach">
+<h2>4 · Approach</h2>
+<p>New <code>decider/auto.ts</code>: a <code>RequestedEffort = EffortLevel | 'auto'</code>, an
+<code>EffortSignal = { irreversible: boolean; breadth: number }</code>, and a pure
+<code>resolveEffort(requested, signal, floor='low'): { level, reason }</code> — explicit short-circuits;
+<code>auto</code> maps irreversible→high, breadth≥2→medium, else floor, then clamps to ≥ floor. Propose builds the
+signal from its deltas, resolves, and passes the concrete level into <code>decide</code>; the reason joins the
+verdict grounds. <code>ProposeInput.effort</code> and the CLI <code>--effort</code> accept <code>auto</code>, and
+<code>auto</code> is the default when nothing is set.</p>
+</section>
+
+<section id="decisions">
+<h2>5 · Decisions</h2>
+<spec-decision id="D-001" grounding="verified">
+  <h4>D-001 · A pure resolver upstream of decide()</h4>
+  <dl>
+    <dt>Status</dt><dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt><dd><code>decide()</code> reads a concrete <code>cfg.effort</code> (<code>decider.ts</code>); auto is a pre-step, not a decide change.</dd>
+    <dt>Decision</dt><dd><code>resolveEffort(requested, signal, floor)</code> in <code>decider/auto.ts</code> — pure, deterministic (NFR-001). Explicit wins (FR-004); auto derives from the signal (FR-001/002) clamped to the floor (FR-003).</dd>
+    <dt>Consequences</dt><dd>+ No change to 033's panel machinery; trivially testable.<br>− A new <code>RequestedEffort</code> type alongside <code>EffortLevel</code>.</dd>
+  </dl>
+</spec-decision>
+<spec-decision id="D-002" grounding="verified">
+  <h4>D-002 · Verb-agnostic signal; propose supplies the first</h4>
+  <dl>
+    <dt>Status</dt><dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt><dd>Propose already computes irreversible + breadth (<code>propose.ts</code>); other verbs come with 035.</dd>
+    <dt>Decision</dt><dd>The signal is a plain <code>{ irreversible, breadth }</code> struct a verb fills in — no per-verb registry needed in v1; propose maps its predicates to it. FR-006's "unknown verb → floor" is the default when a caller passes a null signal.</dd>
+    <dt>Consequences</dt><dd>+ One heuristic, reused; no coupling to a verb registry.<br>− 035 threads the signal for each new verb it wires.</dd>
+  </dl>
+</spec-decision>
+<spec-decision id="D-003" grounding="verified">
+  <h4>D-003 · Floor is a config knob, default low</h4>
+  <dl>
+    <dt>Status</dt><dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt><dd><code>loadDeciderConfig</code> already reads the <code>decider</code> section.</dd>
+    <dt>Decision</dt><dd>Add optional <code>decider.floor</code> (default <code>low</code>), passed into <code>resolveEffort</code>. Validated like the other fields.</dd>
+    <dt>Consequences</dt><dd>+ Tunable minimum rigour (FR-003).<br>− One more optional config key.</dd>
+  </dl>
+</spec-decision>
+</section>
+
+<section id="project-structure">
+<h2>6 · Project structure</h2>
+<pre><code>packages/core/src/decider/auto.ts     # NEW · RequestedEffort, EffortSignal, resolveEffort
+packages/core/src/decider/types.ts    # Verdict += effortReason?
+packages/core/src/decider/index.ts    # export resolveEffort + types
+packages/core/src/commands/propose.ts # build signal, resolve, pass concrete level + reason
+packages/core/src/types.ts            # ProposeInput.effort += 'auto'
+packages/cli/src/config/decider.ts    # read decider.floor
+packages/cli/src/commands/propose.ts  # --effort accepts 'auto' (default)
+packages/core/test/effort-auto.test.ts# NEW · behavioural suite
+</code></pre>
+</section>
+
+<section id="risks">
+<h2>7 · Risks &amp; mitigations</h2>
+<table>
+  <thead><tr><th>Risk</th><th>L</th><th>I</th><th>Mitigation</th></tr></thead>
+  <tbody>
+    <tr><td><strong>R-1</strong> · Default flip medium→auto changes propose's default depth</td><td>M</td><td>M</td><td>auto's floor=low + no-signal → low = 1 voter, same as medium's 1 voter; a parity test asserts a trivial propose still runs 1 critic.</td></tr>
+    <tr><td><strong>R-2</strong> · 'auto' leaks into decide() as a level</td><td>L</td><td>M</td><td>Type split: decide takes EffortLevel; only ProposeInput/CLI take RequestedEffort; resolver is the single narrowing point.</td></tr>
+  </tbody>
+</table>
+</section>
+
+<section id="complexity">
+<h2>8 · Complexity tracking</h2>
+<spec-assumption>
+<p><strong>Grounding gate.</strong> All decisions <code>verified</code> against the 033 code. No assumed/spike must-tier fact — ready for <code>/spectastic.tasks</code>.</p>
+</spec-assumption>
+</section>
+
+<section id="questions">
+<h2>9 · Open questions</h2>
+<spec-questions>
+<p>None outstanding — the resolver shape, signal, floor, and precedence are grounded in 033's code.</p>
+</spec-questions>
+</section>
+
+<section id="changelog">
+<h2>10 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-07-09">09 Jul 2026</time><span>Initial plan. Pure resolver (D-001), verb-agnostic signal (D-002), config floor (D-003).</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  Plan for 034-effort-auto · authored 09 Jul 2026
+</footer>
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>

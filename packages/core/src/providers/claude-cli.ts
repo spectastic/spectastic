@@ -1,6 +1,6 @@
 /**
  * Keyless, in-host implementation of AIProvider. Per D-006 / D-007 of
- * specs/019-explain-course/plan.html (resolves triage T-004): when
+ * specs/019-explain-course/design.html (resolves triage T-004): when
  * `explain --course` runs inside an agent host that already carries model
  * access (Claude Code), the kernel's blind checks (FR-004, and 060's
  * analogy-fit check) must run without an `ANTHROPIC_API_KEY` — using that

@@ -23,7 +23,7 @@ import type { AIProvider, Question, TriageCard, TriageInput, TriageLayer } from 
 
 export const ALL_LAYERS: ReadonlyArray<TriageLayer> = [
   'spec',
-  'plan',
+  'design',
   'implementation',
   'cross-spec',
   'principles',
@@ -111,12 +111,12 @@ export async function escalateLayer(
   cfg: DeciderConfig = { role: 'human', effort: 'medium' },
 ): Promise<TriageLayer> {
   const q1: Question = {
-    question: `Defect description: "${description.slice(0, 200)}". The first-pass classification was ambiguous (hedged: "${hedged}"). Is this a diagnostic-layer defect (spec / plan / implementation / cross-spec / principles / platform) or a routing-exit item (just-do / defer)?`,
+    question: `Defect description: "${description.slice(0, 200)}". The first-pass classification was ambiguous (hedged: "${hedged}"). Is this a diagnostic-layer defect (spec / design / implementation / cross-spec / principles / platform) or a routing-exit item (just-do / defer)?`,
     header: 'category',
     options: [
       {
         label: 'diagnostic',
-        description: 'A defect in the spec, plan, code, cross-spec contract, principles, or platform.',
+        description: 'A defect in the spec, design, code, cross-spec contract, principles, or platform.',
       },
       {
         label: 'routing',
@@ -151,12 +151,12 @@ export async function escalateLayer(
         description: 'User-visible behavior / NFR / contract is missing or wrong.',
       },
       {
-        label: 'plan',
+        label: 'design',
         description: 'Spec correct; technical decision violates a constraint.',
       },
       {
         label: 'implementation',
-        description: 'Spec + plan correct; code drifted.',
+        description: 'Spec + design correct; code drifted.',
       },
       {
         label: 'cross-spec',

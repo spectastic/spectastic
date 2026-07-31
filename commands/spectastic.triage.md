@@ -37,7 +37,7 @@ Detection heuristic: if the input contains explicit list markers (commas, semico
    - Skip steps 1–2 (no per-spec context needed for cross-cutting items).
    - **Fan out — classify concurrently, not in a serial loop (spec 032 FR-009).** For a multi-item list, dispatch **one `spectastic-classifier` subagent per item in parallel** (a single message with multiple Agent calls, `subagent_type: spectastic-classifier` — Sonnet-pinned per spec 044 US3; respect a bounded cap of ~8 in flight), each running the abbreviated steps 3–7 for its own item and returning its classification. Then collect and write the cards in **input order**. This is the in-host equivalent of the CLI's `triageFanout`. For a *deterministic, guaranteed-concurrent* run — or outside Claude Code — invoke the CLI backend instead: `echo "<items>" | spectastic triage --mode list` (P-8: the guarantee is the CLI, the in-host fan-out is a best-effort nudge). Serial classification is the fallback only when parallel subagent dispatch isn't available.
    - For each list item, run an abbreviated walk of steps 3–7: characterise, classify with one of the eight `layer=` values (including `just-do` and `defer`), and write one `<spec-triage>` card. Per-item output is one line: `Item N → layer=X (one-sentence reason)`. The final write appends all cards to `./inbox.html`.
-   - Skip the regeneration test for `just-do` and `defer` items — those classifications already encode the size/scope judgment. Run the regen test for items routed to diagnostic layers (`spec`, `plan`, `implementation`, etc.) just as for single-item mode.
+   - Skip the regeneration test for `just-do` and `defer` items — those classifications already encode the size/scope judgment. Run the regen test for items routed to diagnostic layers (`spec`, `design`, `implementation`, etc.) just as for single-item mode.
    - Skip the deep-dive section by default for list items unless an item explicitly needs cascade/cross-spec/constitutional context.
 
    Otherwise, continue with single-item mode below.
@@ -48,11 +48,11 @@ Detection heuristic: if the input contains explicit list markers (commas, semico
 
    **Adjust asset paths on copy.** The template's `<link>` and `<script>` use `../assets/spec.css` (one level up — correct for in-place preview from `templates/`). The destination is two levels deep (`specs/<spec-id>/`), so on copy rewrite `../assets/` → `../../assets/` for both the stylesheet and the script. Adjust the parent-link reference in the TL;DR (`../../examples/triage-log.html`) similarly: `../../examples/triage-log.html` is already correct for the destination depth — no rewrite needed there.
 
-3. **Load context.** Read principles, spec, plan, related specs that share a contract, and only the implementation files implicated by the failure. State explicitly what you read; if you skipped a file you should have read, say so.
+3. **Load context.** Read principles, spec, design, related specs that share a contract, and only the implementation files implicated by the failure. State explicitly what you read; if you skipped a file you should have read, say so.
 
 4. **Reproduce and characterise.** Capture *Expected*, *Actual*, and one-sentence *Diagnosis* (cause, not symptom). These are narrative — gather in chat. Don't use `AskUserQuestion` here.
 
-5. **Apply the regeneration test.** Ask: "Given only the current spec and plan, would another LLM session reproduce this bug?" Result is `pass` (bug would NOT recur — gap is in code) or `fail` (bug WOULD recur — gap is upstream).
+5. **Apply the regeneration test.** Ask: "Given only the current spec and design, would another LLM session reproduce this bug?" Result is `pass` (bug would NOT recur — gap is in code) or `fail` (bug WOULD recur — gap is upstream).
 
    If you reason your way to a confident answer, just write it. If the answer is genuinely ambiguous, use `AskUserQuestion` to commit the user to `pass` / `fail` / `unsure (needs more investigation)` — don't paper over with prose.
 
@@ -62,8 +62,8 @@ Detection heuristic: if the input contains explicit list markers (commas, semico
 
    *Diagnostic layers (defects):*
    - `spec` — user-visible behavior, NFR, or contract is missing/wrong.
-   - `plan` — spec is correct, technical decision violates a constraint or NFR.
-   - `implementation` — spec and plan correct, code drifted.
+   - `design` — spec is correct, technical decision violates a constraint or NFR.
+   - `implementation` — spec and design correct, code drifted.
    - `cross-spec` — two specs disagree on a shared contract.
    - `principles` — a project-wide invariant is missing or being violated.
    - `platform` — defect is upstream of every API the project owns; reproduces with vendor's own tools.
@@ -155,7 +155,7 @@ This is the **pre-propose rejection path**. For the **post-propose** path (an au
 
 ## After writing
 
-**Single-item mode:** report the path (`specs/<spec-id>/triage-log.html`), the new T-ID, and whether any cascade is needed (`/spectastic.plan` re-run, `/spectastic.tasks` re-run, etc.).
+**Single-item mode:** report the path (`specs/<spec-id>/triage-log.html`), the new T-ID, and whether any cascade is needed (`/spectastic.design` re-run, `/spectastic.tasks` re-run, etc.).
 
 **List-intake mode:** report `./inbox.html`, a numbered list of the items written, and how many landed in each routing exit. Suggest `/spectastic.implement` next if any `just-do` items were added. Example:
 

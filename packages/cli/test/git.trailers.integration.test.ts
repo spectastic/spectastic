@@ -40,7 +40,7 @@ describe('git trailers · US1 (spec 027)', () => {
     seedSpec(repo, 'Brian Corbin · @briancorbinxyz', 'Jane Reviewer · @jane');
     repo.writeFile('spectastic.json', JSON.stringify({ git: { auto: 'commit', trailers: 'on' } }));
 
-    const r = await repo.runVerb(['plan', '027-demo'], {
+    const r = await repo.runVerb(['design', '027-demo'], {
       env: { SPECTASTIC_AI_STUB: PLAN_STUB },
     });
     expect(r.code, `stdout: ${r.stdout}\nstderr: ${r.stderr}`).toBe(0);
@@ -57,7 +57,7 @@ describe('git trailers · US1 (spec 027)', () => {
     // git.auto commits, but trailers default off.
     repo.writeFile('spectastic.json', JSON.stringify({ git: { auto: 'commit' } }));
 
-    const r = await repo.runVerb(['plan', '027-demo'], {
+    const r = await repo.runVerb(['design', '027-demo'], {
       env: { SPECTASTIC_AI_STUB: PLAN_STUB },
     });
     expect(r.code, `stdout: ${r.stdout}\nstderr: ${r.stderr}`).toBe(0);
@@ -75,7 +75,7 @@ describe('git trailers · US1 (spec 027)', () => {
 
     // Committer is Bob, not Alice → Co-authored-by: Alice.
     await repo.git('config', 'user.name', 'Bob Builder');
-    const r1 = await repo.runVerb(['plan', '027-demo'], {
+    const r1 = await repo.runVerb(['design', '027-demo'], {
       env: { SPECTASTIC_AI_STUB: PLAN_STUB },
     });
     expect(r1.code, `stderr: ${r1.stderr}`).toBe(0);
@@ -83,7 +83,7 @@ describe('git trailers · US1 (spec 027)', () => {
 
     // Now the committer IS Alice → no Co-authored-by (would duplicate authorship).
     await repo.git('config', 'user.name', 'Alice Author');
-    const r2 = await repo.runVerb(['plan', '027-demo', '--force'], {
+    const r2 = await repo.runVerb(['design', '027-demo', '--force'], {
       env: { SPECTASTIC_AI_STUB: PLAN_STUB },
     });
     expect(r2.code, `stderr: ${r2.stderr}`).toBe(0);
@@ -114,7 +114,7 @@ describe('git trailers · US2 — Assisted-by (spec 027)', () => {
     repo.writeFile('spectastic.json', JSON.stringify({ git: { auto: 'commit', trailers: 'on' } }));
 
     // AI-coupled: plan invoked the (stub) provider → Assisted-by: stub-model.
-    const plan = await repo.runVerb(['plan', '027-demo'], {
+    const plan = await repo.runVerb(['design', '027-demo'], {
       env: { SPECTASTIC_AI_STUB: PLAN_STUB },
     });
     expect(plan.code, `stderr: ${plan.stderr}`).toBe(0);
@@ -133,7 +133,7 @@ describe('git trailers · US2 — Assisted-by (spec 027)', () => {
     seedSpec(repo, 'Brian Corbin · @briancorbinxyz', 'Jane · @jane');
     repo.writeFile('spectastic.json', JSON.stringify({ git: { auto: 'commit', trailers: 'on' } }));
 
-    const r = await repo.runVerb(['plan', '027-demo'], {
+    const r = await repo.runVerb(['design', '027-demo'], {
       env: { SPECTASTIC_AI_STUB: PLAN_STUB },
     });
     expect(r.code, `stderr: ${r.stderr}`).toBe(0);

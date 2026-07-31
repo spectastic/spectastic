@@ -148,7 +148,7 @@ describe('git layer · US1 (spec 026)', () => {
 
   // T-113: the other verbs route through the same helper. Two cases prove both
   // grammar branches end-to-end — a scoped non-spec verb, and an unscoped one.
-  it('T-113: plan commits the scoped plan(NNN): subject on the current branch (no branch)', async () => {
+  it('T-113: design commits the scoped design(NNN): subject on the current branch (no branch)', async () => {
     repo = createTmpGitRepo();
     await repo.git('commit', '--allow-empty', '-m', 'seed');
     mkdirSync(join(repo.dir, 'specs', '001-foo'), { recursive: true });
@@ -158,12 +158,12 @@ describe('git layer · US1 (spec 026)', () => {
     );
     repo.writeFile('spectastic.json', JSON.stringify({ git: { auto: 'commit' } }));
 
-    const r = await repo.runVerb(['plan', '001-foo'], {
+    const r = await repo.runVerb(['design', '001-foo'], {
       env: { SPECTASTIC_AI_STUB: join(FIXTURES, 'plan-script.json') },
     });
     expect(r.code, `stdout: ${r.stdout}\nstderr: ${r.stderr}`).toBe(0);
     expect(await repo.currentBranch()).toBe('main'); // plan never opens a branch
-    expect(await repo.headSubject()).toBe('plan(001): foo');
+    expect(await repo.headSubject()).toBe('design(001): foo');
   });
 
   it('T-113: principles commits the unscoped principles: subject (spec-less verb)', async () => {

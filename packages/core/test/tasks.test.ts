@@ -59,10 +59,10 @@ const PLAN = `<!doctype html><html><body>
 describe('tasksCommand (009)', () => {
   it('produces 5-phase task structure with deterministic IDs', async () => {
     const ai = new StubAI();
-    const fs = stubFs({ '/spec.html': SPEC, '/plan.html': PLAN });
+    const fs = stubFs({ '/spec.html': SPEC, '/design.html': PLAN });
     const ctx: KernelContext = { cwd: '/', fs, ai };
 
-    const result = await tasksCommand({ specPath: '/spec.html', planPath: '/plan.html' }, ctx);
+    const result = await tasksCommand({ specPath: '/spec.html', planPath: '/design.html' }, ctx);
 
     expect(result.phases.length).toBeGreaterThanOrEqual(3);
     expect(result.phases[0]?.id).toBe('setup');
@@ -77,10 +77,10 @@ describe('tasksCommand (009)', () => {
 
   it('emits <spec-warning> when a requirement is unreferenced (none here; verifies happy path)', async () => {
     const ai = new StubAI();
-    const fs = stubFs({ '/spec.html': SPEC, '/plan.html': PLAN });
+    const fs = stubFs({ '/spec.html': SPEC, '/design.html': PLAN });
     const ctx: KernelContext = { cwd: '/', fs, ai };
 
-    const result = await tasksCommand({ specPath: '/spec.html', planPath: '/plan.html' }, ctx);
+    const result = await tasksCommand({ specPath: '/spec.html', planPath: '/design.html' }, ctx);
     // FR-001/FR-002 are referenced by phase tasks; NFR/SC may not be in
     // the deterministic skeleton; either way the html is well-formed.
     expect(result.html).toContain('<spec-task');
@@ -90,18 +90,18 @@ describe('tasksCommand (009)', () => {
     const ai = new StubAI();
     const fs = stubFs({
       '/spec.html': '<!doctype html><html><body><p class="small-caps">Specification · 099-empty</p></body></html>',
-      '/plan.html': PLAN,
+      '/design.html': PLAN,
     });
     const ctx: KernelContext = { cwd: '/', fs, ai };
 
-    await expect(tasksCommand({ specPath: '/spec.html', planPath: '/plan.html' }, ctx)).rejects.toThrow(
+    await expect(tasksCommand({ specPath: '/spec.html', planPath: '/design.html' }, ctx)).rejects.toThrow(
       /declares no FR-NNN requirements/,
     );
   });
 
   it('throws when ctx.ai is undefined', async () => {
-    const fs = stubFs({ '/spec.html': SPEC, '/plan.html': PLAN });
-    await expect(tasksCommand({ specPath: '/spec.html', planPath: '/plan.html' }, { cwd: '/', fs })).rejects.toThrow(
+    const fs = stubFs({ '/spec.html': SPEC, '/design.html': PLAN });
+    await expect(tasksCommand({ specPath: '/spec.html', planPath: '/design.html' }, { cwd: '/', fs })).rejects.toThrow(
       /ctx\.ai/,
     );
   });

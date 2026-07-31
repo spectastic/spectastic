@@ -14,8 +14,8 @@ import type { BundleInventory, FileWriteDecision } from './types.js';
  * extended verbs to include: a command file whose verb is marked extended
  * in the bundle manifest is dropped unless its verb appears in `withVerbs`.
  * Non-command files (assets, templates) and core verbs always stay.
- * Per D-005 of specs/003-init-node-port/plan.html (FR-002) and
- * specs/018-explain/plan.html D-002 (FR-009).
+ * Per D-005 of specs/003-init-node-port/design.html (FR-002) and
+ * specs/018-explain/design.html D-002 (FR-009).
  */
 /**
  * The canonical sizes of a default (core-only) scaffold — the single source of

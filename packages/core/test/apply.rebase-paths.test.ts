@@ -14,7 +14,7 @@
  *     `../../principles.html` (2).
  *   - a sibling spec (`specs/<other>/spec.html`, itself 2 deep, one level up-and-over from
  *     `specs/<id>/`): proposal `../../../<other>/spec.html` (3) → live `../<other>/spec.html` (1).
- *   - a sibling artifact in the *same* spec's own directory (`triage-log.html`, `plan.html`):
+ *   - a sibling artifact in the *same* spec's own directory (`triage-log.html`, `design.html`):
  *     proposal `../../triage-log.html` (2) → live `triage-log.html` (0 — a bare relative path,
  *     since it now sits beside `spec.html` in the same directory).
  *   - a same-document `#ID` anchor carries no `../` at all and is depth-independent — untouched,

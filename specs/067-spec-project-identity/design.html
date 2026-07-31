@@ -1,0 +1,360 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
+<title>Spec project identity · Design</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Design · 067-spec-project-identity</p>
+  <h1>Spec project identity</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    How we will build it.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>     <span><spec-status value="accepted">Accepted</spec-status></span>
+    <b>Spec</b>       <span><a href="./spec.html">067-spec-project-identity</a></span>
+    <b>Owner</b>      <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Branch</b>     <span><code>067-spec-project-identity</code></span>
+    <b>Created</b>    <span><time datetime="2026-07-29">29 Jul 2026</time></span>
+    <b>Read time</b>  <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-tldr>
+    <p>Split the identity across the layer it belongs to: the <strong>pure grammar</strong> — the project-id shape and the
+    <code>spectastic://&lt;owner&gt;/&lt;repo&gt;/spec/&lt;id&gt;</code> URI composer — lands in <code>@spectastic/schema</code> (the
+    dependency-free floor, beside the citation grammar); the <strong>fs reader</strong> (<code>resolveProjectConfig</code>) joins
+    <code>@spectastic/corpus</code>'s <code>config.ts</code>, and <code>project</code> folds into <code>resolveCorpusConfig</code>'s
+    marketplace precedence so every caller gets the unified derivation free; the <strong>engine + CLI</strong> for <code>spectastic id</code>
+    is fat-core, thin-CLI; and the <strong>owner-qualified git derivation</strong> is confined to <code>init</code>'s write path in the
+    CLI. Biggest risk: git-remote → owner/repo parsing across hosts — mitigated by treating a non-confidently-parsed remote as
+    <em>not resolved</em>, leaving the identity provisional rather than persisting a wrong value.</p>
+  </spec-tldr>
+</header>
+
+
+<section id="principles-check">
+<h2>1 · Principles check</h2>
+<p>Verify this plan respects every principle in <a href="../../principles.html">v1.8.0</a>. Any violation requires either a
+principles amendment or a deliberate exception logged below.</p>
+
+<table>
+  <thead><tr><th>Principle</th><th>Compliance</th><th>Notes</th></tr></thead>
+  <tbody>
+    <tr><td>P-3 · IDs are contracts</td><td><spec-pill>OK</spec-pill></td><td>The <code>project</code> identity and the derived resource URI are stable contracts; repo-local spec ids are unchanged (additive, <a href="./spec.html#NFR-002">NFR-002</a>). A firmed-up identity is frozen (<a href="./spec.html#FR-003">FR-003</a>).</td></tr>
+    <tr><td>P-8 · Guarantees live in the kernel or CI</td><td><spec-pill>OK</spec-pill></td><td>The grammar (schema), the resolver (corpus), the URI engine (core), and the validate rule are all kernel-side; the two CLI sites (<code>id</code>, <code>init</code> writer) are thin dispatch — the fat-core/thin-CLI convention.</td></tr>
+    <tr><td>P-10 · No internal ids on tool surfaces</td><td><spec-pill>OK</spec-pill></td><td><a href="./spec.html#NFR-003">NFR-003</a> binds the <code>spectastic id</code> <code>--help</code> and any diagnostic to carry no internal spec id; the <code>copyLeakFindings</code> gate enforces it at commit.</td></tr>
+    <tr><td>P-12 · Least privilege / injection-safe</td><td><spec-pill>OK</spec-pill></td><td>The only external call is a bounded <code>git remote</code> read via <code>execFile</code> (argv array, no shell string), init-side only — the established <code>GitRunner</code> shape.</td></tr>
+    <tr><td>P-1 · P-2 · P-4 · P-5 · P-6 · P-7 · P-9 · P-11</td><td><spec-pill>OK</spec-pill></td><td>No document-rendering or JS surface (P-4 n/a); deterministic fs/string logic; no new authored copy that leaks attribution; secure-by-default (a non-confident remote → provisional, never a wrong persisted value).</td></tr>
+  </tbody>
+</table>
+</section>
+
+
+<section id="technical-context">
+<h2>2 · Technical context</h2>
+<dl>
+  <dt>Language(s)</dt>      <dd>TypeScript, ESM; Node ≥ 20.</dd>
+  <dt>Frameworks</dt>       <dd><code>commander</code> (CLI). <strong>No new dependency</strong> — git via <code>node:child_process.execFile</code>, the same shape <code>GitRunner</code> already uses (no git library).</dd>
+  <dt>Architecture</dt>     <dd>Layered-by-purity across the existing package graph (<a href="#D-001">D-001</a>): pure grammar → <code>schema</code>; fs config reader → <code>corpus</code>; engine → <code>core</code>; dispatch + git derivation → <code>cli</code>. No new package.</dd>
+  <dt>Storage</dt>          <dd>Filesystem — the top-level <code>project</code> field in the root <code>spectastic.json</code>. No new store, no schema migration.</dd>
+  <dt>Testing</dt>          <dd>Vitest, <strong>TDD red-first</strong> (<a href="#D-005">D-005</a>), against fixture configs + an injected <code>GitExec</code> / a temp git repo for the derivation.</dd>
+  <dt>Coverage</dt>         <dd>Not in scope — no coverage enforce floor (no profile marker present).</dd>
+  <dt>Perf targets</dt>     <dd>None — the only latency is a bounded, init-time <code>git remote</code> shell-out; read-path resolution is pure fs + string.</dd>
+  <dt>Constraints</dt>      <dd>Deterministic read (<a href="./spec.html#NFR-001">NFR-001</a> — no live git/clock/env at read time); non-breaking (<a href="./spec.html#NFR-002">NFR-002</a>); the <code>@spectastic/corpus</code> → <code>@spectastic/core</code> boundary (never crossed).</dd>
+</dl>
+</section>
+
+
+<section id="grounding">
+<h2>3 · Grounding &amp; evidence</h2>
+<p>Every design-bearing fact this plan rests on, and how it was confirmed (<code>REQ-LIFECYCLE-006</code>).</p>
+
+<table class="evidence">
+  <thead>
+    <tr><th>Claim the design rests on</th><th>Source</th><th>Status</th><th>Finding / note</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>The package graph is <code>schema &lt; corpus &lt; core &lt; cli</code>: <code>core</code> may import <code>corpus</code>, but <code>corpus</code> must never import <code>core</code>.</td>
+        <td><code>.dependency-cruiser.cjs:15-22</code> (<code>no-corpus-to-core</code>) · each <code>package.json</code> deps</td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td>Forces the reader out of <code>core</code> (corpus couldn't read it for FR-006) and into a layer corpus can import.</td></tr>
+    <tr><td><code>@spectastic/schema</code> is pure — it does no <code>node:fs</code> and depends only on <code>parse5</code>.</td>
+        <td><code>packages/schema/src/**</code> (no fs import) · <code>packages/schema/package.json</code></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td>Schema can host the pure grammar + URI composer, but NOT the fs config reader — hence the split.</td></tr>
+    <tr><td>Schema already hosts a shared string grammar used by a corpus rule AND a core gate (the citation grammar) — the exact precedent for the split.</td>
+        <td><code>packages/schema</code> citation grammar (064 shared-floor)</td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td>The project-id shape + <code>spectastic://</code> composer follow the same shared-grammar pattern.</td></tr>
+    <tr><td><code>resolveCorpusConfig</code> resolves marketplace as <code>file.marketplace ?? file.namespace ?? basename(cwd)</code>, over a <code>loadCorpusConfig</code> (raw) / <code>resolveCorpusConfig</code> (resolved) two-layer split.</td>
+        <td><code>packages/corpus/src/config.ts:119-124</code> · <code>:63-110</code></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td>FR-006 inserts the raw <code>project</code> as a new tier: <code>… ?? file.namespace ?? rawProject ?? basename</code>. Mirror the raw/resolved split for <code>project</code>.</td></tr>
+    <tr><td><code>resolveCorpusConfig</code> is called from ~15 sites, including the standalone <code>spectastic-corpus</code> binary's curation verbs.</td>
+        <td><code>packages/corpus/src/cli/*.ts</code> · <code>packages/cli/src/commands/corpus.ts</code> (15 call sites)</td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td>Folding <code>project</code> into it (not threading) gives unified derivation to every caller, incl. the no-core standalone binary — the FR-006-faithful placement.</td></tr>
+    <tr><td>A <code>GitRunner</code> shells out via <code>execFile</code> behind an injectable <code>GitExec</code>; it has <code>defaultBranch()</code> but <strong>no remote-URL getter</strong>.</td>
+        <td><code>packages/cli/src/git/run.ts:24-140</code></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td>Add one method (<code>remoteOwnerRepo()</code>) in the same shape; the injectable exec makes the derivation unit-testable without a real remote.</td></tr>
+    <tr><td>A deterministic command's engine lives in <code>@spectastic/core/commands/*</code> with a thin <code>register*</code> CLI wrapper.</td>
+        <td><code>packages/cli/src/commands/verify.ts:16-45</code></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td><code>spectastic id</code> follows verify's exact shape (core engine, thin dispatch); main-CLI-only (the standalone binary has no <code>specs/</code>).</td></tr>
+    <tr><td><code>writeCorpusConfig</code> is create-or-merge, never-overwrite: it adds a section only when absent and never touches an existing value.</td>
+        <td><code>packages/cli/src/commands/init.ts:66-80</code></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td>The <code>project</code> writer clones this; "firm up only when absent" (FR-002) falls straight out of never-overwrite.</td></tr>
+    <tr><td>A last-two-<code>[:/]</code>-segments regex (after stripping <code>.git</code>) extracts <code>&lt;owner&gt;/&lt;repo&gt;</code> from a git remote URL.</td>
+        <td>throwaway parse over https / SSH / ssh:// / GitLab / Bitbucket / Azure forms</td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td><strong>Spike ran.</strong> Correct for GitHub / Bitbucket / simple GitLab (https + SSH); <em>mis-parses</em> Azure DevOps <code>/_git/</code> (→ <code>_git/repo</code>) and flattens GitLab subgroups. Mitigation: treat a non-confident parse as <em>not resolved</em> → leave provisional (§8 R1). Confirmed <code>spectastic/spectastic</code> for this repo.</td></tr>
+  </tbody>
+</table>
+</section>
+
+
+<section id="approach">
+<h2>4 · Approach</h2>
+<p>One identity, placed by purity across the layers that already exist. <code>@spectastic/schema</code> gains the two pure primitives —
+a project-id well-formedness predicate and <code>specResourceUri(project, specId, anchor?)</code> that composes
+<code>spectastic://&lt;owner&gt;/&lt;repo&gt;/spec/&lt;id&gt;#&lt;anchor&gt;</code> (owner-as-authority, <a href="#D-004">D-004</a>) — beside the
+citation grammar it already hosts. <code>@spectastic/corpus</code>'s <code>config.ts</code> gains <code>loadProjectConfig</code> (raw) /
+<code>resolveProjectConfig</code> (basename fallback), mirroring its own corpus-config split, and <code>resolveCorpusConfig</code> inserts
+the raw <code>project</code> as a new marketplace tier (<a href="./spec.html#FR-006">FR-006</a>) — so all ~15 callers, standalone binary
+included, unify for free. <code>@spectastic/core</code> holds the <code>id</code> engine: resolve the project, confirm <code>specs/&lt;id&gt;</code>
+exists, render the URI. The CLI adds a thin <code>registerId</code>, a <code>remoteOwnerRepo()</code> method on <code>GitRunner</code>, and a
+<code>writeProjectConfig</code> in <code>init</code> that persists the owner-qualified id <em>only when the remote confidently resolves one</em>
+(<a href="./spec.html#FR-002">FR-002</a>) — otherwise leaving it absent for a later firm-up. The validate finding wraps schema's predicate
+in corpus (beside <code>corpusRegistryFindings</code>), so the standalone binary checks it too.</p>
+
+<spec-arch>
+<figure>
+<svg viewBox="0 0 700 250" role="img" aria-label="identity placed by purity across schema, corpus, core, cli">
+  <style>
+    .box { fill:#fcfbf7; stroke:#c4c1bb; stroke-width:1.2; }
+    .core { fill:#f3f0e8; stroke:#7558b2; stroke-width:1.2; }
+    .label { font: 700 10px Lato, sans-serif; fill:#4a4a46; letter-spacing:0.05em; text-transform:uppercase; }
+    .body { font: 400 10.5px "Source Serif 4", Georgia, serif; fill:#353534; }
+    .arr { stroke:#73706d; stroke-width:1.2; fill:none; }
+  </style>
+  <rect class="core" x="20"  y="100" width="150" height="52" rx="4"/>
+  <text class="label" x="34" y="120">schema (pure)</text>
+  <text class="body"  x="34" y="137">id shape + URI composer</text>
+
+  <rect class="box" x="200" y="100" width="150" height="52" rx="4"/>
+  <text class="label" x="214" y="120">corpus/config.ts</text>
+  <text class="body"  x="214" y="137">resolveProjectConfig</text>
+
+  <rect class="box" x="200" y="30" width="150" height="46" rx="4"/>
+  <text class="label" x="214" y="50">resolveCorpusConfig</text>
+  <text class="body"  x="214" y="67">+ project tier (FR-006)</text>
+
+  <rect class="box" x="380" y="100" width="140" height="52" rx="4"/>
+  <text class="label" x="394" y="120">core: id engine</text>
+  <text class="body"  x="394" y="137">resolve → URI</text>
+
+  <rect class="box" x="545" y="100" width="135" height="52" rx="4"/>
+  <text class="label" x="559" y="120">cli</text>
+  <text class="body"  x="559" y="137">id · init writer</text>
+
+  <rect class="box" x="545" y="182" width="135" height="46" rx="4"/>
+  <text class="label" x="559" y="202">GitRunner</text>
+  <text class="body"  x="559" y="219">remoteOwnerRepo()</text>
+
+  <path class="arr" d="M170 126 L200 126" marker-end="url(#a)"/>
+  <path class="arr" d="M275 100 L275 76" marker-end="url(#a)"/>
+  <path class="arr" d="M350 126 L380 126" marker-end="url(#a)"/>
+  <path class="arr" d="M520 126 L545 126" marker-end="url(#a)"/>
+  <path class="arr" d="M612 182 L612 152" marker-end="url(#a)"/>
+  <defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#73706d"/></marker></defs>
+</svg>
+<figcaption>Pure grammar in schema; the fs reader in corpus (feeding both <code>resolveCorpusConfig</code> and core); the engine in core; git derivation confined to the CLI's init writer.</figcaption>
+</figure>
+</spec-arch>
+</section>
+
+
+<section id="alternatives">
+<h2>5 · Alternatives considered</h2>
+
+<spec-matrix>
+<table>
+  <thead>
+    <tr><th>Option</th><th>Honours boundary + FR-006</th><th>Semantic fit (not corpus-specific)</th><th>Low overhead</th><th>Standalone parity</th><th class="score">Total</th></tr>
+  </thead>
+  <tbody>
+    <tr data-winner><td>Split: grammar+URI → schema; fs reader → corpus/config.ts</td><td>3</td><td>3</td><td>3</td><td>3</td><td class="score">12</td></tr>
+    <tr><td>New <code>@spectastic/model</code> package for all of it</td><td>3</td><td>3</td><td>1</td><td>3</td><td class="score">10</td></tr>
+    <tr><td>All in <code>corpus/config.ts</code></td><td>3</td><td>1</td><td>3</td><td>3</td><td class="score">10</td></tr>
+    <tr><td>All in <code>core</code>, thread project into corpus callers</td><td>1</td><td>2</td><td>2</td><td>1</td><td class="score">6</td></tr>
+  </tbody>
+</table>
+</spec-matrix>
+<p>The new package scores identically on correctness but loses on overhead (a 5th release-bumped workspace for one config field + a URI
+string — YAGNI until the identity surface grows). "All in corpus" loses on the semantic smell the interview flagged. "All in core"
+contradicts the <code>corpus↛core</code> boundary and drops standalone parity. The split wins by putting the <em>shared, pure</em> concept
+in the shared floor and only the fs plumbing where fs plumbing already lives.</p>
+</section>
+
+
+<section id="decisions">
+<h2>6 · Decisions</h2>
+
+<spec-decision id="D-001" grounding="verified">
+  <h4>D-001 · Place the identity by purity: grammar+URI in schema, fs reader in corpus</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Decision drivers</dt> <dd>the <code>corpus↛core</code> boundary · FR-006 unified derivation with zero threading · "shared, not corpus-specific" semantics · new-package overhead</dd>
+    <dt>Considered options</dt>
+    <dd>
+      <ul class="considered-options">
+        <li><strong>Split — grammar+URI → schema, fs reader → corpus/config.ts (chosen)</strong> — + the shared concept lives in the shared floor beside the citation-grammar precedent; + FR-006 folds into <code>resolveCorpusConfig</code> free; + no new package. − the concept spans two files.</li>
+        <li><strong>New <code>@spectastic/model</code> package</strong> — + cleanest naming/home for future identity primitives. − a 5th workspace (package.json/tsup/tsconfig/exports/CI/dependency-cruiser + release bump) for one field today.</li>
+        <li><strong>All in <code>corpus/config.ts</code></strong> — + zero overhead. − the spec-identity concept nesting inside the corpus package (the smell the interview flagged).</li>
+        <li><strong>All in <code>core</code></strong> — − corpus can't import core, so FR-006 needs per-call threading and the standalone binary loses unified derivation.</li>
+      </ul>
+    </dd>
+    <dt>Context</dt>      <dd>Boundary + graph verified (<code>.dependency-cruiser.cjs:15-22</code>, package deps); schema is pure/fs-free (<code>packages/schema</code>, only <code>parse5</code>); <code>resolveCorpusConfig</code> is called from ~15 sites incl. the standalone binary (<code>corpus/config.ts:119</code>).</dd>
+    <dt>Decision</dt>     <dd>The pure project-id predicate + <code>specResourceUri</code> go in <code>@spectastic/schema</code>; <code>loadProjectConfig</code>/<code>resolveProjectConfig</code> go in <code>corpus/config.ts</code>, and <code>resolveCorpusConfig</code> gains a raw-<code>project</code> marketplace tier. Extracting a dedicated <code>@spectastic/identity</code> package is deferred until the surface (owner-config, federation URIs) proves the coupling.</dd>
+    <dt>Consequences</dt> <dd>+ Every corpus-config caller unifies for free; + no new-package cost; + the shared primitive is reusable by the deferred MCP/federation specs. − The identity spans schema + corpus rather than one module (documented here).</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-002" grounding="verified">
+  <h4>D-002 · Derivation is write-time only; absence is the provisional state that firms up</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>The common fresh-repo flow has no remote at <code>init</code> time; <code>writeCorpusConfig</code> already models create-or-merge / never-overwrite (<code>init.ts:66-80</code>), and <code>GitRunner</code> already bounds a git shell-out via injectable <code>execFile</code> (<code>git/run.ts</code>).</dd>
+    <dt>Decision</dt>     <dd><code>init</code>'s <code>writeProjectConfig</code> persists the owner-qualified id <strong>only when <code>remoteOwnerRepo()</code> confidently resolves one</strong>; otherwise it leaves <code>project</code> absent. <code>resolveProjectConfig</code> reads the persisted value and never re-derives live, falling back to <code>basename(cwd)</code> when absent (<a href="./spec.html#FR-003">FR-003</a>, <a href="./spec.html#NFR-001">NFR-001</a>). A re-run after the remote appears firms it up, guarded by never-overwrite.</dd>
+    <dt>Consequences</dt> <dd>+ No federation-fragile bare-dir value is ever locked in; + the read path is pure and deterministic; + firm-up needs no new command (a re-run of <code>init</code>). − An owner who never re-runs <code>init</code> stays on the provisional bare-dir coordinate (the collision warning is the nudge). − "Confidently resolves" must be defined narrowly (see the parser spike + §8 R1).</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-003" grounding="verified">
+  <h4>D-003 · <code>spectastic id</code> is a fat-core engine + thin CLI, main-CLI-only</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd><code>verify</code> is the precedent: a deterministic command whose engine lives in <code>@spectastic/core/commands</code> with a thin <code>register*</code> wrapper (<code>verify.ts:16-45</code>). The standalone corpus binary has no <code>specs/</code>.</dd>
+    <dt>Decision</dt>     <dd>The <code>id</code> engine (resolve project → confirm <code>specs/&lt;id&gt;</code> exists → render the URI, erroring on an unknown spec, appending an optional anchor mechanically) lives in core; the CLI is a thin <code>registerId</code>. It registers only on the main CLI, not the standalone binary.</dd>
+    <dt>Consequences</dt> <dd>+ Testable without spawning a binary; + consistent with every other deterministic verb. − One more core command module + one CLI registration (trivial).</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-004" grounding="n-a">
+  <h4>D-004 · URI grammar: owner-as-authority</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>A design choice, not an external fact — the spec left the <code>&lt;owner&gt;/&lt;repo&gt;</code> → URI mapping to the plan. MCP aggregators namespace resources by source; a DOI names a registrant authority.</dd>
+    <dt>Decision</dt>     <dd>The owner is the URI authority; repo + spec are the path: <code>spectastic://&lt;owner&gt;/&lt;repo&gt;/spec/&lt;id&gt;#&lt;anchor&gt;</code>. No percent-encoding, reads naturally, and composes with a future corpus URI (<code>spectastic://&lt;owner&gt;/&lt;repo&gt;/corpus/…</code>).</dd>
+    <dt>Consequences</dt> <dd>+ Clean, extensible, encoding-free. − A project identity with no owner segment (the provisional bare-dir fallback) yields a single-segment authority with an empty repo path — acceptable for the warned provisional state, and the reason the collision warning exists.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-005" grounding="n-a">
+  <h4>D-005 · TDD, red-first</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>The whole surface is deterministic fs/string logic over fixtures — the house discipline (047/048/065/066).</dd>
+    <dt>Decision</dt>     <dd>Write each requirement's test failing first, then implement. Fixtures: configs with/without <code>project</code>, an injected <code>GitExec</code> for the derivation, temp <code>specs/</code> dirs for the <code>id</code> engine.</dd>
+    <dt>Consequences</dt> <dd>+ The determinism (NFR-001) and precedence (FR-006) edges are pinned before the code. − None material.</dd>
+  </dl>
+</spec-decision>
+</section>
+
+
+<section id="project-structure">
+<h2>7 · Project structure</h2>
+<p>Only new or changed paths, grouped by the <a href="#D-001">D-001</a> placement.</p>
+
+<pre><code>packages/schema/src/
+  project-id.ts        NEW   isWellFormedProjectId + specResourceUri (pure grammar + URI composer)
+  index.ts             EDIT  export the two primitives (a ./project subpath, mirroring ./parser precedent)
+packages/corpus/src/
+  config.ts            EDIT  loadProjectConfig (raw) / resolveProjectConfig (basename fallback);
+                             resolveCorpusConfig gains the raw-project marketplace tier (FR-006)
+  index.ts             EDIT  export resolveProjectConfig
+  knowledge/validate.ts EDIT project-identity finding (malformed=error, bare-default=warning) via schema's predicate
+packages/core/src/commands/
+  id.ts                NEW   the id engine: resolve project -> confirm specs/&lt;id&gt; -> render URI
+packages/cli/src/
+  commands/id.ts       NEW   thin registerId dispatch
+  commands/init.ts     EDIT  writeProjectConfig — persist owner-qualified only when the remote resolves
+  git/run.ts           EDIT  GitRunner.remoteOwnerRepo() (execFile, injectable)
+  commands/validate.ts EDIT  scanProjectIdentity wrapper (folds the corpus finding into the CLI sweep)
+  index.ts             EDIT  registerId(program)
+packages/*/test/
+  project-id / config / id / init + git-derive tests   NEW/EDIT  (TDD, red-first)
+</code></pre>
+</section>
+
+
+<section id="risks">
+<h2>8 · Risks &amp; mitigations</h2>
+
+<table>
+  <thead><tr><th>Risk</th><th>Likelihood</th><th>Impact</th><th>Mitigation</th></tr></thead>
+  <tbody>
+    <tr><td><strong>R1</strong> · git-remote → owner/repo parsing is wrong for some hosts (Azure DevOps <code>/_git/</code>, GitLab subgroups) — the spike confirmed both.</td><td>M</td><td>L</td><td>Define "confidently resolves" narrowly (a clean <code>host…/owner/repo(.git)</code> shape); anything else counts as <em>not resolved</em> → leave <code>project</code> absent/provisional (D-002), never persist a wrong value. The owner can always set <code>project</code> by hand. Secure-by-default.</td></tr>
+    <tr><td><strong>R2</strong> · The provisional state is sticky — an owner never re-runs <code>init</code>, so the identity stays a bare-dir coordinate.</td><td>M</td><td>L</td><td>The <code>validate</code> warning (FR-007) is the standing nudge; the coordinate still works (degraded, unambiguous within the repo). A dedicated firm-up prompt is a possible fast-follow, not required for this slice.</td></tr>
+    <tr><td><strong>R3</strong> · Folding <code>project</code> into <code>resolveCorpusConfig</code> shifts an existing project's marketplace.</td><td>L</td><td>M</td><td><code>project</code> slots <em>below</em> explicit <code>marketplace</code>/<code>namespace</code> in precedence, so any repo that set either is unaffected; only a repo relying on the bare-dir default AND with <code>project</code> set changes — the intended unification. A test pins the precedence.</td></tr>
+    <tr><td><strong>R4</strong> · The <code>spectastic://</code> scheme defined here diverges from what the deferred MCP serving spec needs.</td><td>L</td><td>M</td><td>Owner-as-authority (D-004) matches the MCP source-namespacing convention the survey grounded; the scheme is additive and the serving spec consumes it. Recorded as the identity/transport split in the spec's out-of-scope.</td></tr>
+  </tbody>
+</table>
+</section>
+
+
+<section id="complexity">
+<h2>9 · Complexity tracking</h2>
+<p>The only non-obvious mechanic is the two-file placement of one concept (schema grammar + corpus reader). It is justified by the
+<code>corpus↛core</code> boundary and schema's purity (<a href="#D-001">D-001</a>): neither the pure grammar nor the fs reader can live
+in a single existing package that serves all consumers, and a new package for one field is not yet earned. Everything else clones an
+in-repo precedent (<code>resolveCorpusConfig</code>, <code>verify</code>, <code>writeCorpusConfig</code>, <code>GitRunner</code>).</p>
+
+<spec-assumption>
+<p>"Confidently resolves a remote" is treated as a clean <code>&lt;host&gt;[:/]&lt;owner&gt;/&lt;repo&gt;(.git)?</code> match; atypical shapes
+(Azure <code>/_git/</code>, GitLab subgroups, self-hosted paths) are deliberately treated as unresolved and left provisional rather than
+guessed — a false provisional is cheap (a warning + a hand-set value), a wrong persisted identity is not.</p>
+</spec-assumption>
+</section>
+
+
+<section id="questions">
+<h2>10 · Open questions</h2>
+<spec-questions>
+<p>None outstanding — placement (split: schema grammar + corpus reader), derivation timing (write-time-only, provisional-until-firmed),
+the <code>spectastic id</code> core/CLI split, the owner-as-authority URI grammar, and TDD were all anchored in the interview, and the
+one git-remote-parsing spike was run (finding recorded in §3 / §8 R1). Every <code>must</code>-tier decision is
+<code>grounding="verified"</code>; the two <code>n-a</code> decisions are pure design judgment. Grounding gate clear.</p>
+</spec-questions>
+</section>
+
+
+<section id="changelog">
+<h2>11 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-07-29">29 Jul 2026</time><span>Initial plan. Identity placed by purity — pure grammar + <code>spectastic://</code> URI in <code>@spectastic/schema</code>, fs reader in <code>corpus/config.ts</code> (FR-006 folded into <code>resolveCorpusConfig</code>), engine in core, git derivation confined to the CLI init writer. Owner-as-authority URI; write-time-only derivation with a provisional-until-firmed identity (the amendment the interview surfaced). Nine grounding facts verified, one spike run (git-remote parsing — host limits recorded); grounding gate clear.</span></li>
+  <li><time datetime="2026-07-29">29 Jul 2026</time><span>Status flipped Draft → Accepted on 29 Jul 2026 — zero remaining unchecked tasks; tests verified passing per author confirmation (316/316 relevant tests green; one real bug — <code>writeCorpusConfig</code> shadowing the unified project identity — caught and fixed during the end-to-end sweep, beyond what D-001's grounding anticipated). Sibling bundle (REQ-LIFECYCLE-005).</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  Plan for 067-spec-project-identity · authored 29 Jul 2026
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>

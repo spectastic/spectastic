@@ -1,5 +1,5 @@
 ---
-description: Derive the task breakdown from a spec + plan — an ordered, parallelizable, test-first task list. Use when turning a spec and plan into the executable checklist that /spectastic.implement drains — not the architecture (/spectastic.plan) or the execution itself (/spectastic.implement).
+description: Derive the task breakdown from a spec + design — an ordered, parallelizable, test-first task list. Use when turning a spec and design into the executable checklist that /spectastic.implement drains — not the architecture (/spectastic.design) or the execution itself (/spectastic.implement).
 argument-hint: [spec-id, defaults to most recent]
 triggers:
   - "break the spec into tasks"
@@ -7,14 +7,14 @@ triggers:
   - "generate an ordered task breakdown"
   - "what tasks implement this spec"
   - "test-first task breakdown"
-use-when: "Deriving an ordered, parallelizable, test-first task list from an existing spec + plan — the executable breakdown implement drains."
-sibling-boundary: "Not plan (architecture and decisions, not the task list); not implement (which executes the tasks this produces)."
+use-when: "Deriving an ordered, parallelizable, test-first task list from an existing spec + design — the executable breakdown implement drains."
+sibling-boundary: "Not design (architecture and decisions, not the task list); not implement (which executes the tasks this produces)."
 model: sonnet
 ---
 
 # /spectastic.tasks
 
-You are deriving a **task breakdown** from an existing spec and plan. Output is a single-file HTML artifact at `specs/<spec-id>/tasks.html`.
+You are deriving a **task breakdown** from an existing spec and design. Output is a single-file HTML artifact at `specs/<spec-id>/tasks.html`.
 
 ## Inputs
 
@@ -22,7 +22,7 @@ User input (from `$ARGUMENTS`): a Spec ID such as `001-auth-service`, or empty (
 
 ## Procedure
 
-1. **Locate inputs**: `specs/<spec-id>/spec.html` and `specs/<spec-id>/plan.html`. Read both end-to-end before generating tasks. You need every requirement, success criterion, and decision in working memory.
+1. **Locate inputs**: `specs/<spec-id>/spec.html` and `specs/<spec-id>/design.html`. Read both end-to-end before generating tasks. You need every requirement, success criterion, and decision in working memory.
 
 2. **Copy** `templates/tasks.html` to `specs/<spec-id>/tasks.html`.
 

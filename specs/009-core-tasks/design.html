@@ -1,0 +1,308 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
+<title>Core tasks · Design</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Design · 009-core-tasks</p>
+  <h1>Core tasks — implementation plan</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    How <code>tasksCommand</code> ships — kernel reads spec + plan via <code>ctx.fs</code>, parses via <code>@spectastic/schema</code>, deterministic phase + ID skeleton, one chat call per phase for prose, structured <code>TasksResult</code> back.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>     <span><spec-status value="accepted">Accepted</spec-status></span>
+    <b>Spec</b>       <span><a href="./spec.html">009-core-tasks</a></span>
+    <b>Owner</b>      <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Branch</b>     <span><code>main</code> (squashed-snapshot pattern)</span>
+    <b>Created</b>    <span><time datetime="2026-06-16">16 Jun 2026</time></span>
+    <b>Read time</b>  <span data-reading-time></span>
+  </spec-meta>
+
+
+  <spec-tldr>
+    <p>Extract <code>/spectastic.tasks</code> into <code>@spectastic/core/commands/tasks</code> under <a href="../006-kernel-extraction/spec.html">006</a>'s kernel contract. The verb takes <code>{ specPath, planPath }</code> through <code>ctx.fs</code>, parses both with <code>@spectastic/schema</code> (one new helper surfaces FR / NFR / SC / user-story IDs), computes the five-phase skeleton + every <code>T-NNN</code> deterministically in code, and uses <code>ctx.ai.chat()</code> once per non-empty phase for task-description prose. Returns a structured <code>TasksResult</code>; CLI subcommand owns disk writes. Slash command keeps working with a MAY-Bash note. Single PR; ships as <code>v0.1.0-pre.11</code>.</p>
+  </spec-tldr>
+</header>
+
+
+<section id="principles-check">
+<h2>1 · Principles check</h2>
+<p>Validated against <a href="../../principles.html">principles v1.0.1</a>. All five principles compatible; no exceptions, no violations.</p>
+
+<table>
+  <thead><tr><th>Principle</th><th>Compliance</th><th>Notes</th></tr></thead>
+  <tbody>
+    <tr><td>P-1 · Source order is reading order</td><td><spec-pill>OK</spec-pill></td><td>Tasks file's source order = reading order; phases emit sequentially.</td></tr>
+    <tr><td>P-2 · Semantic tags over class soup</td><td><spec-pill>OK</spec-pill></td><td>Output uses <code>&lt;spec-task&gt;</code> per <code>REQ-LIFECYCLE-003</code>; never <code>&lt;div class="task"&gt;</code>.</td></tr>
+    <tr><td>P-3 · IDs are contracts</td><td><spec-pill>OK</spec-pill></td><td><code>T-NNN</code> stable across re-runs because phase + ID assignment is deterministic (D-002, D-003).</td></tr>
+    <tr><td>P-4 · Progressive enhancement, never dependence</td><td><spec-pill>OK</spec-pill></td><td>Kernel emits no browser code; rendered <code>tasks.html</code> degrades as tall semantic HTML.</td></tr>
+    <tr><td>P-5 · Calm density</td><td><spec-pill>OK</spec-pill></td><td>Reuses <code>templates/tasks.html</code>; no UI surface change.</td></tr>
+  </tbody>
+</table>
+</section>
+
+
+<section id="technical-context">
+<h2>2 · Technical context</h2>
+<dl>
+  <dt>Language(s)</dt>      <dd>TypeScript 5.7, Node ≥20.</dd>
+  <dt>Frameworks</dt>       <dd>None new. Uses <code>@spectastic/schema</code>'s parser (already a runtime dep of core) and <code>ClaudeProvider</code> from 007 for the <code>ctx.ai.chat()</code> calls.</dd>
+  <dt>Storage</dt>          <dd>In-process; the CLI subcommand writes <code>tasks.html</code> via <code>ctx.fs.writeFile</code>. Kernel returns structured data only.</dd>
+  <dt>Testing</dt>          <dd>Unit-first per <a href="../006-kernel-extraction/design.html#D-008">006 D-008</a>: <code>packages/core/test/tasks.test.ts</code> with stub <code>ctx.fs</code> + stub <code>ctx.ai</code>; CLI integration test against <code>002-validate-cli</code>'s real spec + plan; network tests <code>skipIf(!process.env.ANTHROPIC_API_KEY)</code> per <a href="../007-core-triage/design.html#D-007">007 D-007</a>.</dd>
+  <dt>Perf targets</dt>     <dd>All four <code>bench/baselines.json</code> scenarios within budget; <code>init-help-cold-start</code> p50 within ±20% of today's baseline — proof <code>@spectastic/core/commands/tasks</code> stayed off the init path.</dd>
+  <dt>Constraints</dt>      <dd>Byte-identical phase / ID structure on the same inputs (<a href="./spec.html#SC-001">SC-001</a>, <a href="./spec.html#SC-002">SC-002</a>); no implicit <code>process.cwd()</code> / <code>process.env</code> / <code>console</code> (FR-001); bench green; CLI tests cover both happy path and missing-input failure modes.</dd>
+</dl>
+</section>
+
+
+<section id="approach">
+<h2>3 · Approach</h2>
+
+<p>Three moves, one PR. <strong>One</strong>: extend <code>@spectastic/schema</code> with <code>extractSpecMetadata(doc)</code> so the kernel enumerates FR / NFR / SC / user-story IDs without re-parsing (D-006). <strong>Two</strong>: implement <code>tasksCommand</code> at <code>packages/core/src/commands/tasks.ts</code>; reads + parses spec + plan, computes the deterministic phase + ID skeleton (D-002, D-003), invokes <code>ctx.ai.chat()</code> once per non-empty phase for prose (D-004), emits traceability (D-005), returns <code>{ html, phases, totalTasks, parallelTasks }</code>. <strong>Three</strong>: add a <code>spectastic tasks &lt;spec-id&gt;</code> CLI subcommand that resolves paths, builds <code>ClaudeProvider</code> + <code>KernelContext</code>, calls the kernel, writes <code>tasks.html</code>, prints the after-write report.</p>
+
+<p>The deterministic-skeleton-plus-light-AI split is the architecturally-interesting piece. Phase IDs, task-ID ranges (<code>T-001+</code>, <code>T-010+</code>, <code>T-1NN</code>, <code>T-2NN</code>, <code>T-3NN</code>, <code>T-900+</code>), and requirement → phase mapping are pure functions over the parsed spec — no LLM, no flakiness. Chat only fills the imperative one-liner + optional target path. Per-phase calls give intra-story style consistency without ballooning call count.</p>
+
+<spec-arch>
+<figure>
+<svg viewBox="0 0 720 260" role="img" aria-label="tasks architecture: CLI passes spec-id; kernel reads + parses spec + plan via ctx.fs and schema; deterministic skeleton + per-phase chat call; structured TasksResult back; CLI writes tasks.html.">
+  <style>
+    .box { fill:#fcfbf7; stroke:#c4c1bb; stroke-width:1.2; }
+    .label { font: 700 11px Lato, sans-serif; fill:#4a4a46; letter-spacing:0.06em; text-transform:uppercase; }
+    .body  { font: 400 12px "Source Serif 4", Georgia, serif; fill:#353534; }
+    .arr   { stroke:#73706d; stroke-width:1.2; fill:none; }
+  </style>
+  <defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#73706d"/></marker></defs>
+
+  <rect class="box" x="20"  y="20"  width="160" height="60" rx="4"/>
+  <text class="label" x="36" y="42">CLI subcmd</text>
+  <text class="body"  x="36" y="62">tasks (shim)</text>
+
+  <rect class="box" x="270" y="20"  width="180" height="60" rx="4"/>
+  <text class="label" x="286" y="42">core/commands</text>
+  <text class="body"  x="286" y="62">tasksCommand</text>
+
+  <rect class="box" x="530" y="20"  width="170" height="60" rx="4"/>
+  <text class="label" x="546" y="42">core/providers</text>
+  <text class="body"  x="546" y="62">ClaudeProvider.chat</text>
+
+  <rect class="box" x="270" y="110" width="180" height="40" rx="4"/>
+  <text class="body"  x="286" y="135">@spectastic/schema parser</text>
+
+  <rect class="box" x="20"  y="180" width="200" height="40" rx="4"/>
+  <text class="body"  x="36"  y="205">specs/&lt;id&gt;/tasks.html</text>
+  <rect class="box" x="240" y="180" width="200" height="40" rx="4"/>
+  <text class="body"  x="256" y="205">stdout report</text>
+
+  <path class="arr" d="M180 50 L270 50" marker-end="url(#ah)"/>
+  <path class="arr" d="M450 50 L530 50" marker-end="url(#ah)"/>
+  <path class="arr" d="M360 80 L360 110" marker-end="url(#ah)"/>
+
+  <path class="arr" d="M100 80 L100 180" marker-end="url(#ah)"/>
+  <path class="arr" d="M170 80 L290 180" marker-end="url(#ah)"/>
+
+  <text class="body" x="240" y="240" style="font-size:11px;font-style:italic;">caller writes file + prints summary</text>
+</svg>
+<figcaption>Kernel reads spec + plan via <code>ctx.fs</code>, parses both with schema, computes the deterministic skeleton, calls Claude once per non-empty phase for task prose, returns structured <code>TasksResult</code>. CLI writes <code>tasks.html</code> and prints the after-write report.</figcaption>
+</figure>
+</spec-arch>
+</section>
+
+
+<section id="alternatives">
+<h2>4 · Alternatives considered</h2>
+
+<spec-matrix>
+<table>
+  <thead>
+    <tr><th>Option</th><th>Determinism</th><th>AI cost</th><th>Effort</th><th class="score">Total</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Per-task chat call — one LLM round per <code>T-NNN</code></td><td>2</td><td>1</td><td>3</td><td class="score">6</td></tr>
+    <tr><td>Single chat call — one LLM round for the entire tasks file</td><td>2</td><td>4</td><td>3</td><td class="score">9</td></tr>
+    <tr data-winner><td>One chat call per non-empty phase — chosen</td><td>4</td><td>3</td><td>4</td><td class="score">11</td></tr>
+  </tbody>
+</table>
+</spec-matrix>
+
+<p>Per-task calls drift in style; one big call risks dropped tasks. Per-phase calls keep prompts small, share style within a story, bound cost to 4–6 calls, and on failure fall back to placeholder prose with a warning — IDs and structure still hold.</p>
+</section>
+
+
+<section id="decisions">
+<h2>5 · Decisions</h2>
+
+<spec-decision id="D-001">
+  <h4>D-001 · Spec + plan as paths via <code>ctx.fs</code>; parsed inside the kernel</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>Verb needs the two docs as <code>ParsedDocument</code>s. Options: raw strings, pre-parsed ASTs, or paths read+parsed inside. <a href="./spec.html#FR-004">FR-004</a> locks paths.</dd>
+    <dt>Decision</dt>     <dd><code>TasksInput = { specPath, planPath }</code>; kernel calls <code>ctx.fs.readFile</code> then <code>schema.parse</code>. Re-uses the existing parser surface — no duplicate parse path.</dd>
+    <dt>Consequences</dt> <dd>+ Matches IO-injection rule (006 D-005); + unit tests stub <code>ctx.fs.readFile</code> with fixture strings. − Two read+parse ops per call; trivially cheap (~2 ms / doc).</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-002">
+  <h4>D-002 · Phase assignment — deterministic heuristic, not AI</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>Five-phase shape is fixed per the slash-command markdown. Phase boundaries are stable across re-runs only if a pure function decides them.</dd>
+    <dt>Decision</dt>     <dd>Six fixed slots: <code>setup</code>, <code>foundation</code>, <code>us1..us3</code>, <code>polish</code>; emitted in order, empty omitted. Heuristic: scaffolding / install → setup; shared types / schemas / middleware → foundation; requirements referenced from a US block → that story; perf / docs / observability / cleanup → polish. In <code>tasks-phases.ts</code> with branch-coverage tests.</dd>
+    <dt>Consequences</dt> <dd>+ Same input → same mapping; reviewable, testable. − Unusual phrasing may misroute; FR-008 warning catches obvious gaps.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-003">
+  <h4>D-003 · Task-ID assignment — deterministic per-phase counter</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>IDs are contracts (P-3). <a href="./spec.html#FR-005">FR-005</a> fixes the ranges; slash-command markdown lays out the discipline.</dd>
+    <dt>Decision</dt>     <dd>Each phase has a start ID (1, 10, 100, 200, 300, 900) and a counter; tasks append in source-requirement order. Within a US phase, test-tagged tasks precede impl via a stable sort key. No LLM input.</dd>
+    <dt>Consequences</dt> <dd>+ <a href="./spec.html#SC-001">SC-001</a>'s ID guarantee is structural. − Re-ordering requirements renumbers tasks (the future <code>implement</code> verb's checked-state merge handles amendments, deferred). − ≥4 stories overflow into <code>T-4NN</code>+ with a warning.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-004">
+  <h4>D-004 · Light AI — one <code>ctx.ai.chat()</code> per non-empty phase</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>D-002 / D-003 do the structural work; AI only writes the imperative one-liner + optional target path. Per-task (no context), one-big-call (drops tasks), or per-phase.</dd>
+    <dt>Decision</dt>     <dd>One <code>chat()</code> per non-empty phase at <code>temperature: 0</code>. Prompt: phase's requirement context + task IDs to title. Response: JSON list of <code>{ id, title, path? }</code>. Kernel validates length + IDs; parse failure → placeholder prose for that phase with a <code>&lt;spec-warning&gt;</code> on <code>TasksResult.warnings</code>.</dd>
+    <dt>Consequences</dt> <dd>+ Bounded cost (4–6 calls); intra-phase style consistency; scoped failure. − Wording isn't bit-stable; SC-002 carves out wording variance.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-005">
+  <h4>D-005 · Traceability — <code>&lt;spec-note&gt;</code> per US phase + <code>&lt;spec-warning&gt;</code> for uncovered</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd><a href="./spec.html#FR-008">FR-008</a> requires every FR/NFR/SC to be referenced by ≥1 task; uncovered → warning. The per-task requirement linkage comes from D-002.</dd>
+    <dt>Decision</dt>     <dd>Each task carries a closed-requirement set. End of each US phase emits a <code>&lt;spec-note&gt;</code> listing union of FR/SC IDs closed, with anchor links. After all phases, renderer compares full FR/NFR/SC set against referenced; uncovered → <code>&lt;spec-warning&gt;</code> atop §6 Polish. <code>TasksResult.warnings</code> mirrors for non-HTML consumers.</dd>
+    <dt>Consequences</dt> <dd>+ Traceability is a function of structured data, not LLM prose; degrades gracefully. − One extra pass at render time, trivially cheap.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-006">
+  <h4>D-006 · Schema gains <code>extractSpecMetadata</code> helper</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>Spec author flagged: does the parser need a method to enumerate FR/SC IDs? Today's parser exposes only the AST primitives; the kernel could re-implement enumeration but duplicates schema knowledge.</dd>
+    <dt>Decision</dt>     <dd>Add <code>extractSpecMetadata(doc): { frIds, nfrIds, scIds, userStories }</code> to <code>@spectastic/schema</code>; each story carries <code>{ id, heading, requirementIds }</code>. ~40 LoC over <code>findAll</code>/<code>getAttr</code>. Core peer-bumps.</dd>
+    <dt>Consequences</dt> <dd>+ Single source of truth for spec structure; reusable by 011 / 012 / 014. − Schema gains a structured-introspection surface; future helpers cluster there.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-007">
+  <h4>D-007 · Single-PR migration; ships as <code>v0.1.0-pre.11</code></h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>Slice lands four pieces (schema helper, kernel verb, CLI subcommand, markdown note); staging couples kernel to an unshipped helper.</dd>
+    <dt>Decision</dt>     <dd>Single PR per 006 / 007 precedent. Ships as <code>v0.1.0-pre.11</code> (007=pre.9, 008=pre.10). Three packages bump in lockstep per 004's policy. Bench enforces lazy loading; CLI test asserts SC-002; unit tests cover SC-001.</dd>
+    <dt>Consequences</dt> <dd>+ Atomic; reverts cleanly. − Larger diff; bench/test failure blocks the whole slice.</dd>
+  </dl>
+</spec-decision>
+</section>
+
+
+<section id="project-structure">
+<h2>6 · Project structure</h2>
+
+<pre><code>packages/schema/
+  src/
+    extract-metadata.ts                            <em>(new — extractSpecMetadata helper)</em>
+    index.ts                                       <em>(re-exports extractSpecMetadata + SpecMetadata)</em>
+  test/
+    extract-metadata.test.ts                       <em>(new — unit; real spec fixtures)</em>
+
+packages/core/
+  package.json                                     <em>(adds ./commands/tasks subpath export)</em>
+  tsup.config.ts                                   <em>(adds src/commands/tasks.ts entry)</em>
+  src/
+    commands/
+      tasks.ts                                     <em>(new — tasksCommand)</em>
+      tasks-phases.ts                              <em>(new — phase heuristic + ID counters; pure)</em>
+      tasks-render.ts                              <em>(new — HTML template rendering)</em>
+  test/
+    tasks.test.ts                                  <em>(new — unit; stub ctx.fs + stub ctx.ai; SC-001 fixture)</em>
+
+packages/cli/
+  src/commands/
+    tasks.ts                                       <em>(new — CLI subcommand; resolves paths, writes file, prints report)</em>
+  test/
+    tasks.integration.test.ts                      <em>(new — real 002-validate-cli spec + plan; asserts SC-002)</em>
+
+commands/
+  spectastic.tasks.md                              <em>(adds MAY-Bash note per FR-010)</em>
+
+CHANGELOG.md                                       <em>(v0.1.0-pre.11 entry)</em>
+</code></pre>
+
+<p>Three TS files in core, one schema helper, one CLI subcommand, one markdown update; bench untouched.</p>
+</section>
+
+
+<section id="risks">
+<h2>7 · Risks &amp; mitigations</h2>
+
+<table>
+  <thead><tr><th>Risk</th><th>Likelihood</th><th>Impact</th><th>Mitigation</th></tr></thead>
+  <tbody>
+    <tr><td>Tasks module creeps onto the init path through an eager top-level import.</td><td>M</td><td>H</td><td>Bench's <code>init-help-cold-start</code> (150 ms) catches it; tsup multi-entry per 006 D-002 forces subpath isolation.</td></tr>
+    <tr><td>Phase heuristic (D-002) misroutes a requirement.</td><td>M</td><td>M</td><td>Unit tests cover every branch; FR-008 warning surfaces gaps; heuristic changes ship as pre-1.0 minor bumps.</td></tr>
+    <tr><td>SC-002 byte-identity unattainable — chat prose isn't bit-stable even at <code>temperature: 0</code>.</td><td>M</td><td>L</td><td>SC-002 carves out "modulo wording"; assertions compare phase IDs + task-ID ranges + counts, not titles.</td></tr>
+    <tr><td><code>ctx.ai.chat()</code> returns malformed JSON for a phase.</td><td>M</td><td>L</td><td>D-004 per-phase fallback with <code>&lt;spec-warning&gt;</code>; unit test exercises the malformed-response path.</td></tr>
+    <tr><td><code>extractSpecMetadata</code> (D-006) misses an unusual spec shape.</td><td>L</td><td>M</td><td>Helper documents the expected shape; <code>spectastic validate</code>'s structural rules keep it stable.</td></tr>
+  </tbody>
+</table>
+</section>
+
+
+<section id="complexity">
+<h2>8 · Complexity tracking</h2>
+<p>Two deliberate additions warrant flagging:</p>
+
+<spec-assumption>
+<p><strong>Three-file split in <code>packages/core/src/commands/</code>.</strong> <code>tasks.ts</code> + <code>tasks-phases.ts</code> + <code>tasks-render.ts</code> rather than one file. Phase heuristic + renderer are pure, independently testable, and reused by future verbs (renderer for <code>implement</code> amendments; heuristic when <code>spec</code> evolves). Single-file would couple the three.</p>
+</spec-assumption>
+
+<spec-assumption>
+<p><strong>New helper bumps schema's API surface (D-006).</strong> Adds <code>extractSpecMetadata</code> + <code>SpecMetadata</code> exports — pre-1.0 minor bump per 006 FR-012. Schema gains a structured-introspection surface; future verbs (011 / 012 / 014) cluster there. Justified: the alternative is re-parsing inside core, which duplicates schema knowledge.</p>
+</spec-assumption>
+</section>
+
+
+<section id="questions">
+<h2>9 · Open questions</h2>
+<spec-questions>
+<p>None. Seven plan-phase decisions anchored; kernel-pattern inherits from <a href="../006-kernel-extraction/design.html">006</a>, <code>ClaudeProvider</code> wiring from <a href="../007-core-triage/design.html">007</a>. Implementation issues route through <code>/spectastic.propose</code>.</p>
+</spec-questions>
+</section>
+
+
+<section id="changelog">
+<h2>10 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-06-16">16 Jun 2026</time><span>Initial plan. Anchored: paths via <code>ctx.fs</code>, parsed inside the kernel (D-001); deterministic phase heuristic (D-002); deterministic per-phase ID counter (D-003); one <code>chat()</code> per non-empty phase for prose (D-004); traceability via <code>&lt;spec-note&gt;</code> + <code>&lt;spec-warning&gt;</code> (D-005); schema gains <code>extractSpecMetadata</code> (D-006); single-PR shipping as <code>v0.1.0-pre.11</code> (D-007). Bench-gated; kernel + CLI tests; CLI structurally equivalent to today's slash command on the same inputs.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  Plan for 009-core-tasks · Core tasks · authored 16 Jun 2026 ·
+  <button data-theme-toggle style="background:none;border:none;color:var(--c-link);cursor:pointer;font:inherit;padding:0;border-bottom:1px solid currentColor;">light/dark</button>
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>

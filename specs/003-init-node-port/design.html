@@ -1,0 +1,297 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
+<title>spectastic init (Node port) · Design</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Design · 003-init-node-port</p>
+  <h1><code>spectastic init</code> — Node port</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    How we will build it.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>     <span><spec-status value="accepted">Accepted</spec-status></span>
+    <b>Spec</b>       <span><a href="./spec.html">003-init-node-port</a></span>
+    <b>Owner</b>      <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Branch</b>     <span><code>003-init-node-port</code></span>
+    <b>Created</b>    <span><time datetime="2026-06-14">14 Jun 2026</time></span>
+    <b>Read time</b>  <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-tldr>
+    <p>Add an <code>init</code> subcommand to <code>@spectastic/cli</code> that ports the Python <code>scripts/spectastic</code> at parity. A small prebuild script copies <code>templates/</code>, <code>assets/</code>, and <code>commands/</code> from the repo root into <code>packages/cli/_bundled/</code> (gitignored); runtime resolves via <code>import.meta.url</code> with a dev-mode fallback up the workspace. Conflict UX uses <code>@clack/prompts</code> for a calmer feel than raw readline. Test style is unit-first (decision/planner/writer functions covered individually) with one smoke integration test spawning the CLI against a tmp dir. Biggest risk: byte-identity parity with the Python output across line endings and trailing-newline conventions.</p>
+  </spec-tldr>
+</header>
+
+
+<section id="principles-check">
+<h2>1 · Principles check</h2>
+<p>Verify this plan respects every principle in <a href="../../principles.html">v1.0.1</a>. Consuming tooling may have its own build step per the v1.0.1 amendment; this plan's prebuild copy is exactly the kind of tooling step the clarification permits.</p>
+
+<table>
+  <thead><tr><th>Principle</th><th>Compliance</th><th>Notes</th></tr></thead>
+  <tbody>
+    <tr><td>P-1 · Source order is reading order</td><td><spec-pill>OK</spec-pill></td><td>Applies to design.html itself. Body reads top-to-bottom; no JS reorders.</td></tr>
+    <tr><td>P-2 · Semantic tags over class soup</td><td><spec-pill>OK</spec-pill></td><td>Plan uses <code>&lt;spec-decision&gt;</code>, <code>&lt;spec-matrix&gt;</code>, <code>&lt;spec-arch&gt;</code>.</td></tr>
+    <tr><td>P-3 · IDs are contracts</td><td><spec-pill>OK</spec-pill></td><td>D-001..D-005 stable forever; superseded decisions will link forward.</td></tr>
+    <tr><td>P-4 · Progressive enhancement, never dependence</td><td><spec-pill>OK</spec-pill></td><td>Plan reads without JS. The validator CLI's TS build is consuming-tooling per v1.0.1.</td></tr>
+    <tr><td>P-5 · Calm density</td><td><spec-pill>OK</spec-pill></td><td>Brief ADRs; no decorative chrome.</td></tr>
+  </tbody>
+</table>
+</section>
+
+
+<section id="technical-context">
+<h2>2 · Technical context</h2>
+<dl>
+  <dt>Language(s)</dt>  <dd>TypeScript 5.x, Node 20 LTS+, ESM only (inherited from Tier 1).</dd>
+  <dt>Frameworks</dt>   <dd><a href="https://github.com/tj/commander.js">commander</a> (existing dep — register a second subcommand), <a href="https://github.com/natemoo-re/clack">@clack/prompts</a> (new dep, for conflict UX), <a href="https://github.com/alexeyraspopov/picocolors">picocolors</a> (existing).</dd>
+  <dt>Build</dt>        <dd>tsup (existing); new <code>prebuild</code> npm script runs a small Node ESM file (<code>packages/cli/scripts/prebuild.mjs</code>) that copies repo-root <code>templates/</code>, <code>assets/</code>, <code>commands/</code> into <code>packages/cli/_bundled/</code> before tsup compiles.</dd>
+  <dt>Storage</dt>      <dd>None. Filesystem-only; no state beyond the destination directory.</dd>
+  <dt>Testing</dt>      <dd>vitest (existing). Unit tests against the planner / prompt / writer functions in isolation; one smoke integration test spawning the built CLI against <code>os.tmpdir()</code>.</dd>
+  <dt>Perf targets</dt> <dd><a href="./spec.html#NFR-001">NFR-001</a>: &lt;500 ms p95 in an empty directory.</dd>
+  <dt>Constraints</dt>  <dd>Byte-identity parity with the Python output per <a href="./spec.html#SC-001">SC-001</a> (modulo trailing-newline normalisation). Templates resolve correctly under <code>npx</code>, global install, and workspace-symlinked dev install per <a href="./spec.html#FR-009">FR-009</a>.</dd>
+</dl>
+</section>
+
+
+<section id="approach">
+<h2>3 · Approach</h2>
+
+<p>Five-stage pipeline, all in <code>@spectastic/cli</code>: the commander entry registers an <code>init</code> subcommand; the action handler builds a <em>plan</em> (a list of <code>FileWriteDecision</code>s) from the bundle inventory and a CWD scan; the prompt loop consults the plan to ask the user about each conflict (or applies <code>--force</code> / refuses on non-TTY); the writer executes the finalised plan in a single atomic pass; the summary printer reports counts and the next-step hint. The bundle resolver is a small helper that tries the production path first (<code>_bundled/</code> next to the compiled binary) and falls back to the dev workspace path (<code>../../</code> from the CLI package root) — so dev mode without a prebuild still works on a freshly-cloned repo.</p>
+
+<p>The two-pass design (plan everything before writing anything) is the load-bearing invariant from <a href="./spec.html#FR-008">FR-008</a> — Ctrl-C during the prompt loop must leave zero partial writes. Implementation: <code>plan.ts</code> returns <code>FileWriteDecision[]</code> with every entry marked <code>"write"</code> initially; <code>prompt.ts</code> mutates entries to <code>"overwrite"</code> or <code>"skip"</code> based on user choices; <code>write.ts</code> only runs after the loop returns cleanly. The writer itself doesn't need temp-file shuffling because conflicts are decided up front; it just does <code>writeFile</code> sequentially.</p>
+
+<spec-arch>
+<figure>
+<svg viewBox="0 0 760 250" role="img" aria-label="Pipeline: commander → design → prompt loop → writer → summary; bundle resolver feeds plan">
+  <style>
+    .box { fill:#fcfbf7; stroke:#c4c1bb; stroke-width:1.2; }
+    .helper { fill:#fcfbf7; stroke:#7558b2; stroke-width:1; stroke-dasharray:4 3; }
+    .label { font: 700 10px Lato, sans-serif; fill:#4a4a46; letter-spacing:0.08em; text-transform:uppercase; }
+    .body { font: 400 11px "Source Serif 4", Georgia, serif; fill:#353534; }
+    .arr { stroke:#73706d; stroke-width:1.2; fill:none; }
+    .helperarr { stroke:#7558b2; stroke-width:1; fill:none; stroke-dasharray:3 2; }
+  </style>
+  <defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#73706d"/></marker></defs>
+
+  <rect class="box" x="20"  y="110" width="120" height="60" rx="4"/>
+  <text class="label" x="34" y="132">commander</text>
+  <text class="body"  x="34" y="150">init action</text>
+
+  <rect class="box" x="170" y="110" width="120" height="60" rx="4"/>
+  <text class="label" x="184" y="132">plan</text>
+  <text class="body"  x="184" y="150">build decisions</text>
+
+  <rect class="box" x="320" y="110" width="120" height="60" rx="4"/>
+  <text class="label" x="334" y="132">prompt</text>
+  <text class="body"  x="334" y="150">@clack/prompts</text>
+
+  <rect class="box" x="470" y="110" width="120" height="60" rx="4"/>
+  <text class="label" x="484" y="132">writer</text>
+  <text class="body"  x="484" y="150">atomic 2nd pass</text>
+
+  <rect class="box" x="620" y="110" width="120" height="60" rx="4"/>
+  <text class="label" x="634" y="132">summary</text>
+  <text class="body"  x="634" y="150">N/M/K + hint</text>
+
+  <rect class="helper" x="170" y="200" width="120" height="40" rx="4"/>
+  <text class="label" x="184" y="225">bundle resolver</text>
+
+  <path class="arr" d="M140 140 L170 140" marker-end="url(#a)"/>
+  <path class="arr" d="M290 140 L320 140" marker-end="url(#a)"/>
+  <path class="arr" d="M440 140 L470 140" marker-end="url(#a)"/>
+  <path class="arr" d="M590 140 L620 140" marker-end="url(#a)"/>
+  <path class="helperarr" d="M230 200 L230 170" marker-end="url(#a)"/>
+</svg>
+<figcaption>Five-stage pipeline; bundle resolver feeds the planner with the source-file inventory. The plan is built once, mutated by the prompt loop, executed by the writer in one pass. Ctrl-C between prompt and writer leaves zero files written.</figcaption>
+</figure>
+</spec-arch>
+</section>
+
+
+<section id="alternatives">
+<h2>4 · Alternatives considered</h2>
+
+<p>The foundational pick: how templates get from repo root into the published <code>@spectastic/cli</code> package. Scored 1–5 (higher is better).</p>
+
+<spec-matrix>
+<table>
+  <thead>
+    <tr><th>Option</th><th>Dev ergonomics</th><th>Published artifact cleanliness</th><th>Drift risk</th><th>Inspectability</th><th class="score">Total</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Commit duplicate copies under packages/cli/</td><td>5</td><td>3</td><td>2</td><td>5</td><td class="score">15</td></tr>
+    <tr><td>tsup inline as JS strings</td><td>3</td><td>5</td><td>5</td><td>2</td><td class="score">15</td></tr>
+    <tr data-winner><td>Prebuild copy + runtime fallback — chosen</td><td>4</td><td>5</td><td>5</td><td>5</td><td class="score">19</td></tr>
+  </tbody>
+</table>
+</spec-matrix>
+
+<p>Prebuild copy wins on no drift (single source of truth at repo root), clean published artifact (<code>_bundled/</code> contains real files reviewers can inspect), and inspectability (the published <code>spec.css</code> is still a real CSS file in the install, not a string in JS). The dev-ergonomics cost (runtime fallback path) is one small helper.</p>
+</section>
+
+
+<section id="decisions">
+<h2>5 · Decisions</h2>
+
+<spec-decision id="D-001">
+  <h4>D-001 · init lives in @spectastic/cli as a second subcommand</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>Single binary on PATH is the user-visible goal. validate already lives in <code>@spectastic/cli</code>; spinning up <code>@spectastic/init</code> as its own package would re-introduce the dual-binary problem this spec exists to retire.</dd>
+    <dt>Decision</dt>     <dd>Register <code>init</code> as a commander subcommand inside <code>@spectastic/cli/src/commands/init.ts</code>. Shared CLI shell, shared <code>bin/spectastic</code>.</dd>
+    <dt>Consequences</dt> <dd>+ One binary. + Reuses commander setup and the picocolors output convention. − CLI package grows slightly (init logic ~200 LOC); acceptable.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-002">
+  <h4>D-002 · @clack/prompts for conflict UX</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>Conflict prompts (<code>[y/N/a/s]</code>) are the only interactive moment in <code>spectastic init</code>. Built-in readline works but feels janky; the parity argument doesn't justify a worse user experience than competing CLIs (cargo new, vite create, etc.).</dd>
+    <dt>Decision</dt>     <dd><a href="https://github.com/natemoo-re/clack">@clack/prompts</a> for the conflict UX. Use its <code>select</code> primitive with four options matching the Python prompt's [y/N/a/s]. picocolors stays for non-interactive output.</dd>
+    <dt>Consequences</dt> <dd>+ Calm, modern terminal UX that matches Tier 1's design sensibility. + Built-in Ctrl-C handling. − One new runtime dependency (~30 KB). − Output differs slightly from Python parity; SC-001 covers byte-identity of <em>written files</em>, not terminal output, so this is fine.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-003">
+  <h4>D-003 · Prebuild copy bundles templates; runtime falls back for dev</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>Templates, assets, and slash-command files live at the repo root. The published npm package needs them too. Committing duplicates risks drift; inlining as JS strings makes the install opaque; symlinks don't survive npm pack.</dd>
+    <dt>Decision</dt>     <dd><code>packages/cli/scripts/prebuild.mjs</code> copies <code>../../templates/</code>, <code>../../assets/</code>, and <code>../../commands/</code> into <code>packages/cli/_bundled/</code> on every build. <code>_bundled/</code> is gitignored but included in the <code>files</code> field of <code>packages/cli/package.json</code>. At runtime, <code>bundle.ts</code> resolves via <code>import.meta.url</code> to <code>_bundled/</code>; if missing (dev without prebuild), it falls back to the workspace root and warns.</dd>
+    <dt>Consequences</dt> <dd>+ Single source of truth at repo root. + Published install is real files users can inspect. + Drift impossible at release time. − One extra build step. − Runtime fallback adds a few lines; cost is bounded.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-004">
+  <h4>D-004 · Unit-first testing; one smoke integration</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>The planner, prompt-decision function, and writer are pure-ish functions amenable to fast unit tests. A heavy integration suite would re-validate the same logic at higher cost. Parity verification (<a href="./spec.html#SC-001">SC-001</a>) does need one real spawn-the-CLI test against a tmp directory.</dd>
+    <dt>Decision</dt>     <dd>Unit tests cover: <code>plan.ts</code> (given bundle inventory + cwd scan, produces correct <code>FileWriteDecision[]</code>); <code>prompt.ts</code> (given conflict + user answer, mutates plan correctly); <code>write.ts</code> (given plan, writes correct files to a tmp dir). One smoke integration test spawns the compiled binary against an empty tmp dir and asserts the 16-file structure.</dd>
+    <dt>Consequences</dt> <dd>+ Fast feedback loop while iterating. + Surface for regression catch-rate is comprehensive (unit + smoke). − Slightly more test files to maintain than an integration-only approach.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-005">
+  <h4>D-005 · Two-pass atomic-plan-then-write (mandated by FR-008)</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd><a href="./spec.html#FR-008">FR-008</a> requires zero partial writes on Ctrl-C. Two designs satisfy this: temp-file-shuffle (write to <code>.tmp</code> + rename atomically) or plan-then-write (decide everything first, write in one pass at the end).</dd>
+    <dt>Decision</dt>     <dd>Plan-then-write. The first pass builds <code>FileWriteDecision[]</code> and runs the prompt loop. The writer only fires after the loop returns cleanly; Ctrl-C during the loop exits before any <code>writeFile</code> call.</dd>
+    <dt>Consequences</dt> <dd>+ Simpler than tempfile shuffle; no orphaned <code>.tmp</code> files to clean up. + Single point of decision before any IO. − Doesn't protect against mid-write failure (e.g. disk full at file 12 of 16). Trade is acceptable: such failures are rare and partial state is recoverable via <code>spectastic init --force</code> on a re-run; FR-008 specifies the Ctrl-C case, not the disk-full case.</dd>
+  </dl>
+</spec-decision>
+</section>
+
+
+<section id="project-structure">
+<h2>6 · Project structure</h2>
+
+<pre><code>packages/cli/
+├── src/
+│   ├── commands/
+│   │   ├── init.ts                  (new) commander registration + action handler
+│   │   ├── init/                    (new submodule)
+│   │   │   ├── bundle.ts            resolve _bundled/ (production) or workspace (dev)
+│   │   │   ├── plan.ts              build FileWriteDecision[] from bundle + cwd
+│   │   │   ├── prompt.ts            @clack/prompts conflict loop
+│   │   │   ├── write.ts             execute the planned writes
+│   │   │   └── summary.ts           print "wrote N, overwrote M, skipped K" + hint
+│   │   └── validate.ts              (existing)
+│   ├── index.ts                     (modified) register init alongside validate
+│   └── ... existing
+├── scripts/
+│   └── prebuild.mjs                 (new) copies templates/assets/commands → _bundled/
+├── _bundled/                        (new, gitignored)
+│   ├── .claude/commands/spectastic.*.md   (8 files, copied at prebuild)
+│   ├── assets/spec.{css,js}                (2 files)
+│   └── templates/{principles,spec,plan,tasks,proposal,inbox}.html (6 files)
+├── test/
+│   ├── init/
+│   │   ├── plan.test.ts             unit: FileWriteDecision builder
+│   │   ├── prompt.test.ts           unit: per-answer plan mutation
+│   │   ├── write.test.ts            unit: writer against tmp dirs
+│   │   └── smoke.test.ts            integration: spawn compiled CLI, assert 16 files
+│   └── ... existing
+├── package.json                     (modified) +@clack/prompts dep, +prebuild script,
+│                                                +_bundled in files field
+└── ... existing (tsup.config.ts, tsconfig.json, bin/spectastic)
+
+# At apply time (manual, executed via /spectastic.implement on the relevant task)
+- DELETE scripts/spectastic
+- DELETE scripts/test_spectastic.py
+- MODIFY specs/001-cli/spec.html → status="superseded" + forward link to 003</code></pre>
+</section>
+
+
+<section id="risks">
+<h2>7 · Risks &amp; mitigations</h2>
+
+<table>
+  <thead><tr><th>Risk</th><th>Likelihood</th><th>Impact</th><th>Mitigation</th></tr></thead>
+  <tbody>
+    <tr><td>Byte-identity parity fails on line endings (CRLF vs LF) or trailing-newline conventions</td><td>M</td><td>M</td><td>Smoke integration test runs Python <code>scripts/spectastic init</code> against tmp dir A, Node init against tmp dir B, diffs the trees; CI runs on both ubuntu and macOS to catch platform-specific drift.</td></tr>
+    <tr><td><code>_bundled/</code> missing in dev (prebuild never ran on a fresh clone)</td><td>M</td><td>L</td><td>Runtime fallback in <code>bundle.ts</code> resolves to the workspace root with a one-line warning ("dev mode — running prebuild now"). The warning is visible in dev and absent in production.</td></tr>
+    <tr><td>@clack/prompts Ctrl-C handling differs from raw readline; could swallow exits or leave plan-builder mid-flight</td><td>L</td><td>M</td><td>Unit test in <code>prompt.test.ts</code> verifies that thrown <code>ClackCancelError</code> propagates and the writer is never called. Smoke test exits the prompt loop with a sigint and asserts zero files written.</td></tr>
+    <tr><td>Prebuild copy is non-atomic; if interrupted mid-copy, <code>_bundled/</code> is partially populated and runtime can't detect that</td><td>L</td><td>L</td><td><code>prebuild.mjs</code> writes to <code>_bundled.tmp/</code> then renames to <code>_bundled/</code> atomically; interrupted prebuild leaves no partial bundle.</td></tr>
+    <tr><td>Python deletion at implement time leaves dangling references in docs/READMEs</td><td>M</td><td>L</td><td>A task in tasks.html greps for references to <code>scripts/spectastic</code> across the repo and updates each; the integration test re-runs validate over the artifact set to catch broken <code>&lt;a href&gt;</code> targets.</td></tr>
+  </tbody>
+</table>
+</section>
+
+
+<section id="complexity">
+<h2>8 · Complexity tracking</h2>
+<p>Two complexity decisions worth justifying.</p>
+
+<spec-assumption>
+<p><strong>Submodule under <code>src/commands/init/</code>.</strong> The init subcommand splits into bundle / plan / prompt / write / summary — five files where a single 250-line file would also work. Justified by D-004: unit testing is much cleaner with separable functions. The split serves testability, not preemptive abstraction.</p>
+</spec-assumption>
+
+<spec-assumption>
+<p><strong>Runtime fallback path in <code>bundle.ts</code>.</strong> Dev-mode without prebuild is a real scenario (fresh clone, contributor explores the CLI before running <code>pnpm build</code>). The fallback adds ~15 LOC and one warning. The alternative — requiring prebuild before any <code>node packages/cli/bin/spectastic init</code> — would frustrate first-time contributors. Cost is minimal.</p>
+</spec-assumption>
+</section>
+
+
+<section id="questions">
+<h2>9 · Open questions</h2>
+<spec-questions>
+<p>None at write time.</p>
+</spec-questions>
+</section>
+
+
+<section id="changelog">
+<h2>10 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-06-14">14 Jun 2026</time><span>Initial plan. Anchored: init as a commander subcommand on <code>@spectastic/cli</code> (D-001); @clack/prompts for the conflict UX (D-002); prebuild copy + runtime fallback for templates (D-003); unit-first testing with one smoke integration (D-004); plan-then-write atomic design (D-005).</span></li>
+  <li><time datetime="2026-06-16">16 Jun 2026</time><span>Status flipped Draft → Accepted via the sibling-bundling rule introduced by <a href="../000-spectastic/changes/archive/2026-06-16-lifecycle-sibling-bundling/proposal.html">REQ-LIFECYCLE-005</a>: catches up to <a href="./spec.html">003 spec.html</a>, already Accepted from the T-001 hotfix. Affirmation gesture is REQ-LIFECYCLE-005 retroactively applied.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  Plan for 003-init-node-port · <code>spectastic init</code> — Node port · authored 14 Jun 2026 ·
+  <button data-theme-toggle style="background:none;border:none;color:var(--c-link);cursor:pointer;font:inherit;padding:0;border-bottom:1px solid currentColor;">light/dark</button>
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>

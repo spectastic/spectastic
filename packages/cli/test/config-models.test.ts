@@ -24,12 +24,12 @@ describe('loadModelsConfig (spec 044 D-003)', () => {
     write({
       models: {
         default: 'haiku',
-        verbs: { plan: 'opus', implement: 'sonnet' },
+        verbs: { design: 'opus', implement: 'sonnet' },
       },
     });
     expect(loadModelsConfig(dir)).toEqual({
       default: 'haiku',
-      verbs: { plan: 'opus', implement: 'sonnet' },
+      verbs: { design: 'opus', implement: 'sonnet' },
     });
   });
 
@@ -39,8 +39,8 @@ describe('loadModelsConfig (spec 044 D-003)', () => {
   });
 
   it('throws on an illegal per-verb alias', () => {
-    write({ models: { verbs: { plan: 'claude-opus-4-8' } } });
-    expect(() => loadModelsConfig(dir)).toThrow(/models\.verbs\.plan/);
+    write({ models: { verbs: { design: 'claude-opus-4-8' } } });
+    expect(() => loadModelsConfig(dir)).toThrow(/models\.verbs\.design/);
   });
 
   it('throws on malformed JSON', () => {

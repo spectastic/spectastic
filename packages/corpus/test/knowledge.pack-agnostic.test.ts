@@ -83,7 +83,7 @@ describe('packAgnosticismFindings — portability leg (057, T-100)', () => {
     writeFile(
       root,
       'dirty/SKILL.md',
-      `---\nname: dirty\ndescription: ${RICH_DESCRIPTION}\n---\n\nCite this in a <spec-decision grounding="verified"> per /spectastic.plan.\n`,
+      `---\nname: dirty\ndescription: ${RICH_DESCRIPTION}\n---\n\nCite this in a <spec-decision grounding="verified"> per /spectastic.design.\n`,
     );
     const marketplacePath = writeMarketplace(root, ['dirty']);
 
@@ -258,7 +258,7 @@ describe('packAgnosticismFindings — the tool-specific exemption (063 T-300, FR
     writeFile(
       root,
       'dogfood/SKILL.md',
-      `---\nname: dogfood\ndescription: ${RICH_DESCRIPTION}\ntool-specific: true\n---\n\nCite this in a <spec-decision grounding="verified"> per /spectastic.plan.\n`,
+      `---\nname: dogfood\ndescription: ${RICH_DESCRIPTION}\ntool-specific: true\n---\n\nCite this in a <spec-decision grounding="verified"> per /spectastic.design.\n`,
     );
     const marketplacePath = writeMarketplace(root, ['dogfood']);
 
@@ -271,7 +271,7 @@ describe('packAgnosticismFindings — the tool-specific exemption (063 T-300, FR
     writeFile(
       root,
       'undeclared/SKILL.md',
-      `---\nname: undeclared\ndescription: ${RICH_DESCRIPTION}\n---\n\nCite this in a <spec-decision grounding="verified"> per /spectastic.plan.\n`,
+      `---\nname: undeclared\ndescription: ${RICH_DESCRIPTION}\n---\n\nCite this in a <spec-decision grounding="verified"> per /spectastic.design.\n`,
     );
     const marketplacePath = writeMarketplace(root, ['undeclared']);
 

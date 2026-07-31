@@ -32,7 +32,7 @@ export interface StepOutcome {
 
 /** One phase of the run. The driver answers `decisionVerb`'s decisions and passes them to `run`. */
 export interface PipelineStep {
-  name: 'plan' | 'tasks' | 'implement' | 'verify';
+  name: 'design' | 'tasks' | 'implement' | 'verify';
   /** The 039 verb whose bounded decisions the driver answers before running this step (if any). */
   decisionVerb?: string;
   /** Execute the step (write the artifact, run validate); receives the answered decisions. */

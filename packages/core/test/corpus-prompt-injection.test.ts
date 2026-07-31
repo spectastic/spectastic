@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { AIProvider, ChatOpts, FileSystem, Question, SubagentOpts, SubagentResult } from '@spectastic/core';
 import { graduateExtract } from '@spectastic/core/commands/graduate';
-import { planCommand } from '@spectastic/core/commands/plan';
+import { designCommand } from '@spectastic/core/commands/design';
 import { proposeCommand } from '@spectastic/core/commands/propose';
 import { specCommand } from '@spectastic/core/commands/spec';
 import { tasksCommand } from '@spectastic/core/commands/tasks';
@@ -112,7 +112,7 @@ async function runAllFive(cwd: string): Promise<{
 }> {
   const ai = new CapturingAI();
 
-  await planCommand({ specId: '099-corpus-inject', specHtml: CLEAN_SPEC }, { cwd, ai });
+  await designCommand({ specId: '099-corpus-inject', specHtml: CLEAN_SPEC }, { cwd, ai });
   await specCommand({ description: 'a corpus-injection test feature' }, { cwd, ai });
   await proposeCommand(
     {
@@ -123,8 +123,8 @@ async function runAllFive(cwd: string): Promise<{
     },
     { cwd, ai },
   );
-  const fs = stubFs({ '/spec.html': CLEAN_SPEC, '/plan.html': PLAN });
-  const tasksResult = await tasksCommand({ specPath: '/spec.html', planPath: '/plan.html' }, { cwd, ai, fs });
+  const fs = stubFs({ '/spec.html': CLEAN_SPEC, '/design.html': PLAN });
+  const tasksResult = await tasksCommand({ specPath: '/spec.html', planPath: '/design.html' }, { cwd, ai, fs });
   await graduateExtract({ specId: '099-corpus-inject', classification: 'spike', ledger: LEDGER }, { cwd, ai });
 
   return { ai, tasksResult };

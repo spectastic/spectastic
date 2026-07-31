@@ -1,0 +1,317 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
+<title>Core triage · Design</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Design · 007-core-triage</p>
+  <h1>Core triage — implementation plan</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    How <code>triageCommand</code> + the first <code>ClaudeProvider</code> ship — single PR, bench-gated, key-redaction tested, network tests auto-skipped when the env var isn't set.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>     <span><spec-status value="accepted">Accepted</spec-status></span>
+    <b>Spec</b>       <span><a href="./spec.html">007-core-triage</a></span>
+    <b>Owner</b>      <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Branch</b>     <span><code>main</code> (squashed-snapshot pattern)</span>
+    <b>Created</b>    <span><time datetime="2026-06-16">16 Jun 2026</time></span>
+    <b>Read time</b>  <span data-reading-time></span>
+  </spec-meta>
+
+
+  <spec-tldr>
+    <p>Extract <code>/spectastic.triage</code> into <code>@spectastic/core/commands/triage</code> following the kernel contract <a href="../006-kernel-extraction/spec.html">006</a> established. Both modes (single-card and list-intake) in scope. The slice also ships the <strong>first concrete <code>ClaudeProvider</code></strong> at <code>@spectastic/core/providers/claude</code>, lazy-loaded so the bench's <code>init-help-cold-start</code> scenario doesn't trip on <code>@anthropic-ai/sdk</code> creep. <code>ask&lt;T&gt;()</code> implements bounded-choice via structured-prompt + JSON parse + one-retry fallback. Card-ID assignment stays caller-side per the spec's <code>kernel-pure</code> mandate. Network-using tests <code>skipIf</code> on the env var. Single PR; ships as <code>v0.1.0-pre.9</code>.</p>
+  </spec-tldr>
+</header>
+
+
+<section id="principles-check">
+<h2>1 · Principles check</h2>
+<p>Validated against <a href="../../principles.html">principles v1.0.1</a>. All five principles compatible; no exceptions, no violations.</p>
+
+<table>
+  <thead><tr><th>Principle</th><th>Compliance</th><th>Notes</th></tr></thead>
+  <tbody>
+    <tr><td>P-1 · Source order is reading order</td><td><spec-pill>OK</spec-pill></td><td>Triage produces <code>&lt;spec-triage&gt;</code> HTML cards; semantic tags only.</td></tr>
+    <tr><td>P-2 · Semantic tags over class soup</td><td><spec-pill>OK</spec-pill></td><td>Card output uses <code>&lt;spec-triage&gt;</code> + <code>&lt;dl&gt;</code>; layer pill stays as <code>&lt;span class="layer-pill"&gt;</code> (existing convention).</td></tr>
+    <tr><td>P-3 · IDs are contracts</td><td><spec-pill>OK</spec-pill></td><td>Card IDs (<code>T-NNN</code>/<code>I-NNN</code>) stay stable forever; caller's max-existing-ID scan enforces no-reuse.</td></tr>
+    <tr><td>P-4 · Progressive enhancement, never dependence</td><td><spec-pill>OK</spec-pill></td><td>Kernel emits no browser code; produced cards degrade as tall semantic HTML.</td></tr>
+    <tr><td>P-5 · Calm density</td><td><spec-pill>OK</spec-pill></td><td>Card shape inherited from existing triage-log + inbox conventions.</td></tr>
+  </tbody>
+</table>
+</section>
+
+
+<section id="technical-context">
+<h2>2 · Technical context</h2>
+<dl>
+  <dt>Language(s)</dt      ><dd>TypeScript 5.7, Node ≥20.</dd>
+  <dt>Frameworks</dt>      <dd>None new for the kernel. New runtime dep: <code>@anthropic-ai/sdk</code> ^0.32.0 (regular dependency, caret range — bundled and dependabot-managed).</dd>
+  <dt>Storage</dt>         <dd>In-process; cards persist via the CLI subcommand's <code>ctx.fs</code> writes. Kernel returns structured data only.</dd>
+  <dt>Testing</dt>         <dd>Unit-first per <a href="../006-kernel-extraction/design.html#D-008">006 D-008</a>: <code>packages/core/test/triage.test.ts</code> with stub <code>AIProvider</code>; CLI integration tests; a real-Claude SC-004 test that <code>skipIf(!process.env.ANTHROPIC_API_KEY)</code>.</dd>
+  <dt>Perf targets</dt>    <dd>All four <code>bench/baselines.json</code> scenarios within budget; <code>init-help-cold-start</code> p50 within ±20% of the post-006 baseline — proof <code>@anthropic-ai/sdk</code> stayed off the init path.</dd>
+  <dt>Constraints</dt>     <dd>CLI behaviour matches today's slash-command flow per <a href="./spec.html#SC-001">SC-001</a>; <code>ANTHROPIC_API_KEY</code> redacted from every surfaced error per <a href="./spec.html#NFR-002">NFR-002</a>; bench passes.</dd>
+</dl>
+</section>
+
+
+<section id="approach">
+<h2>3 · Approach</h2>
+
+<p>Three moves, one PR. <strong>One</strong>: implement <code>triageCommand</code> at <code>packages/core/src/commands/triage.ts</code> following 006's signature; both modes (single-card + list-intake) in scope; the kernel returns structured <code>TriageCard</code>s and does no IO beyond the AI call. <strong>Two</strong>: ship the first concrete <code>ClaudeProvider</code> at <code>packages/core/src/providers/claude.ts</code> using <code>@anthropic-ai/sdk</code>; lazy-loaded via its own subpath. <strong>Three</strong>: add a <code>spectastic triage</code> CLI subcommand that constructs the <code>ClaudeProvider</code> + <code>KernelContext</code>, reads the current max-existing-ID from the destination, invokes <code>triageCommand</code>, and routes each returned card to its destination based on layer.</p>
+
+<p><code>ask&lt;T&gt;()</code> is the architecturally-interesting piece. The interface mirrors Claude Code's <code>AskUserQuestion</code> exactly so future surfaces (MCP, VS Code) can route the call to native UI without re-shaping. The Claude implementation here can't escalate to a human at run-time (the CLI runs unattended), so the kernel uses <code>ask&lt;T&gt;()</code> the way the slash-command markdown intends: as a typed prompt to the LLM itself, returning the LLM's pick across the bounded set. The implementation is a structured-prompt + JSON-parse with one stricter-prompt retry; raw <code>chat()</code> with <code>temperature: 0</code> gives reliable JSON for small option sets.</p>
+
+<spec-arch>
+<figure>
+<svg viewBox="0 0 720 280" role="img" aria-label="triage architecture: CLI invokes kernel which calls Claude via lazy-loaded provider; output cards routed to per-spec or inbox destinations.">
+  <style>
+    .box { fill:#fcfbf7; stroke:#c4c1bb; stroke-width:1.2; }
+    .label { font: 700 11px Lato, sans-serif; fill:#4a4a46; letter-spacing:0.06em; text-transform:uppercase; }
+    .body  { font: 400 12px "Source Serif 4", Georgia, serif; fill:#353534; }
+    .arr   { stroke:#73706d; stroke-width:1.2; fill:none; }
+  </style>
+  <defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#73706d"/></marker></defs>
+
+  <rect class="box" x="20"  y="20"  width="160" height="60" rx="4"/>
+  <text class="label" x="36" y="42">CLI subcmd</text>
+  <text class="body"  x="36" y="62">triage (shim)</text>
+
+  <rect class="box" x="270" y="20"  width="180" height="60" rx="4"/>
+  <text class="label" x="286" y="42">core/commands</text>
+  <text class="body"  x="286" y="62">triageCommand</text>
+
+  <rect class="box" x="530" y="20"  width="170" height="60" rx="4"/>
+  <text class="label" x="546" y="42">core/providers</text>
+  <text class="body"  x="546" y="62">ClaudeProvider</text>
+
+  <rect class="box" x="530" y="110" width="170" height="40" rx="4"/>
+  <text class="body"  x="546" y="135">@anthropic-ai/sdk</text>
+
+  <rect class="box" x="20"  y="180" width="200" height="40" rx="4"/>
+  <text class="body"  x="36"  y="205">specs/&lt;id&gt;/triage-log.html</text>
+  <rect class="box" x="240" y="180" width="200" height="40" rx="4"/>
+  <text class="body"  x="256" y="205">inbox.html</text>
+
+  <path class="arr" d="M180 50 L270 50" marker-end="url(#ah)"/>
+  <path class="arr" d="M450 50 L530 50" marker-end="url(#ah)"/>
+  <path class="arr" d="M615 80 L615 110" marker-end="url(#ah)"/>
+
+  <path class="arr" d="M100 80 L100 180" marker-end="url(#ah)"/>
+  <path class="arr" d="M170 80 L290 180" marker-end="url(#ah)"/>
+
+  <text class="body" x="240" y="240" style="font-size:11px;font-style:italic;">caller routes cards by layer</text>
+</svg>
+<figcaption>CLI passes input to kernel; kernel calls Claude through its lazy-loaded provider; kernel returns structured cards; CLI routes each to its destination (per-spec log for diagnostic layers, inbox for routing exits).</figcaption>
+</figure>
+</spec-arch>
+</section>
+
+
+<section id="alternatives">
+<h2>4 · Alternatives considered</h2>
+
+<spec-matrix>
+<table>
+  <thead>
+    <tr><th>Option</th><th>Robustness</th><th>SDK churn</th><th>Effort</th><th class="score">Total</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Tool-use API for <code>ask&lt;T&gt;()</code></td><td>4</td><td>2</td><td>3</td><td class="score">9</td></tr>
+    <tr><td>structured-output / JSON-schema mode</td><td>4</td><td>1</td><td>2</td><td class="score">7</td></tr>
+    <tr data-winner><td>Structured prompt + JSON parse + retry — chosen</td><td>3</td><td>4</td><td>4</td><td class="score">11</td></tr>
+  </tbody>
+</table>
+</spec-matrix>
+
+<p>The two SDK-feature alternatives offer stricter contracts at the cost of needing recent-enough SDK versions and tying the kernel's <code>ask&lt;T&gt;()</code> shape to Anthropic-specific surface area. The chosen structured-prompt approach works on every SDK version that ships <code>messages.create</code>; if the JSON parse fails once, a retry with a stricter system prompt almost always succeeds for bounded option sets. The 011 / 012 / 013 specs will exercise <code>ask&lt;T&gt;()</code> much harder; if the JSON-parse approach proves flaky in practice, switching to tool-use is a Claude-provider-internal change with no API surface impact.</p>
+</section>
+
+
+<section id="decisions">
+<h2>5 · Decisions</h2>
+
+<spec-decision id="D-001">
+  <h4>D-001 · <code>ClaudeProvider</code> implementation via <code>@anthropic-ai/sdk</code></h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>The kernel's <code>AIProvider</code> interface (006 FR-007) declared three methods; this slice lands the first concrete implementation. The official Anthropic SDK is the lowest-friction path.</dd>
+    <dt>Decision</dt>     <dd>Class <code>ClaudeProvider implements AIProvider</code> at <code>packages/core/src/providers/claude.ts</code>; <code>@anthropic-ai/sdk</code> as a regular dependency with caret range (<code>^0.32.0</code> at land time). <code>subagent()</code> stays unimplemented (throws "not implemented in v1" — 013 lights it up). Lazy-loaded via subpath; never imported from the umbrella entry.</dd>
+    <dt>Consequences</dt> <dd>+ Batteries-included (auth, retries, errors); + dependabot manages updates. − Bundles SDK weight; − the unimplemented <code>subagent()</code> stub is dead code until 013.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-002">
+  <h4>D-002 · <code>ask&lt;T&gt;()</code> via structured prompt + JSON parse + one-retry</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>The kernel calls <code>ctx.ai.ask&lt;T&gt;(questions)</code>; the Claude provider has to translate. Tool-use API or JSON-schema response_format would be stricter but tie the kernel to SDK feature flags.</dd>
+    <dt>Decision</dt>     <dd>Format the <code>Question[]</code> as a JSON description in the prompt body + a strict system instruction ("return ONLY JSON matching schema X"); call <code>chat()</code> with <code>temperature: 0</code>; parse the response; if parse fails, retry once with a stricter system prompt. Validate parsed shape against the <code>Question</code> structure before returning.</dd>
+    <dt>Consequences</dt> <dd>+ Works on any SDK version with <code>messages.create</code>; + isolates provider-internal concerns from the kernel surface. − Two-call worst case; − validation logic per call; − bounded option sets only (large sets risk truncation).</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-003">
+  <h4>D-003 · Card-ID assignment — caller passes <code>startingId</code></h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>Cards have stable IDs (<code>T-NNN</code> per-spec, <code>I-NNN</code> for inbox). Per FR-010 the kernel <strong>MUST NOT</strong> hard-code destination paths — which would also include max-ID scanning of those destinations.</dd>
+    <dt>Decision</dt>     <dd>The CLI subcommand reads the target file (<code>specs/&lt;spec-id&gt;/triage-log.html</code> or <code>inbox.html</code>) before invoking the kernel, finds the max existing ID via regex on <code>id="T-(\d+)"</code> / <code>id="I-(\d+)"</code>, passes it as <code>input.startingId</code>. Kernel returns cards numbered from <code>startingId + 1</code>. For list-intake mode the kernel may need to know both starting IDs (per-spec for diagnostic cards, inbox for routing exits) — passed as <code>{ startingIdT, startingIdI }</code>.</dd>
+    <dt>Consequences</dt> <dd>+ Kernel stays pure; + caller serialises writes against its own destination. − Two-pass per invocation (caller reads, then kernel produces); − caller has to know about both ID spaces for mixed list-intake.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-004">
+  <h4>D-004 · Layer classification — LLM-based with <code>ask&lt;T&gt;()</code> escalation</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>The eight layer values (FR-009) require judgement; pure heuristics undercount. The skill markdown today uses LLM reasoning + escalates to AskUserQuestion when boundary cases are ambiguous (e.g., implementation-vs-spec, just-do-vs-spec).</dd>
+    <dt>Decision</dt>     <dd>Single-card mode: kernel asks Claude to classify in one chat call alongside characterisation. If the response indicates ambiguity (low confidence, explicit "could be X or Y" hedge), kernel calls <code>ctx.ai.ask&lt;T&gt;()</code> with the narrow choice (e.g. Diagnostic-or-Routing? then narrower layer choice — matching today's two-step split for the &gt;4-option limit). List-intake mode: per-card classification; ambiguous items get their own ask call.</dd>
+    <dt>Consequences</dt> <dd>+ Matches the slash-command's discipline; + ask escalation is a typed commitment, not prose hedging. − Two-pass on ambiguous cards; − tuning the "ambiguous" detector is a real concern.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-005">
+  <h4>D-005 · <code>ANTHROPIC_API_KEY</code> redaction strategy</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>NFR-002 forbids the key from appearing in any surfaced output. The SDK's default error messages may include request headers including auth.</dd>
+    <dt>Decision</dt>     <dd><code>ClaudeProvider</code> catches every error from <code>messages.create</code> calls and rewraps as a typed <code>ClaudeProviderError</code> whose <code>.message</code> + <code>.stack</code> are scrubbed: any substring matching the key value (read once at construction) is replaced with <code>[REDACTED]</code>. Default Node error handlers can't expose the raw error because the wrapping is final. Unit test deliberately constructs a provider with a known fake key and asserts the key value doesn't appear in any thrown error's serialised form.</dd>
+    <dt>Consequences</dt> <dd>+ Defence-in-depth: even if the SDK changes how it formats errors, the rewrap stays effective. − Wraps every error path; the original stack-trace shape is partially obscured for non-key debugging.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-006">
+  <h4>D-006 · List-intake heuristic — preserved from existing skill markdown</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>FR-005 requires detecting list inputs. The slash-command markdown defines the heuristic (commas, semicolons, newlines, numbered items, phrases like "things"/"items"/"stuff").</dd>
+    <dt>Decision</dt>     <dd>Port the heuristic verbatim to a small pure function <code>detectMode(description)</code> inside <code>triage.ts</code>; when caller supplies <code>input.mode</code> explicitly, kernel honours it without detection. Ambiguous detection in the unit test triggers a warning; the CLI subcommand prompts the user.</dd>
+    <dt>Consequences</dt> <dd>+ One source of truth for the heuristic (the TS function); markdown can refer to it. − Heuristic-vs-LLM detection has trade-offs; sticking with heuristic for v1 matches today's behaviour.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-007">
+  <h4>D-007 · Network-test gating via <code>vitest.skipIf</code></h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>SC-004's real-Claude integration test runs in dev (env var set) and must skip cleanly in CI when the secret isn't exposed. Custom <code>--network-tests</code> flag would be another knob to remember.</dd>
+    <dt>Decision</dt>     <dd><code>test.skipIf(!process.env.ANTHROPIC_API_KEY)</code> per test that hits the real API. The CI workflow exposes <code>ANTHROPIC_API_KEY</code> as an Actions secret on push events to main only (not forks); local dev runs the test whenever the env var is set.</dd>
+    <dt>Consequences</dt> <dd>+ Zero flags; + skipped count surfaces in test output (visible signal that the test exists but wasn't exercised). − Forks contributing PRs don't run SC-004; relies on maintainer-side validation on main.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-008">
+  <h4>D-008 · Single-PR migration, bench-gated</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>007 lands three things: the verb extraction + the first AI provider implementation + the slash-command markdown update. Staging could reduce per-PR scope but the pieces are tightly coupled (no provider → no verb tests; no markdown update → discoverability gap).</dd>
+    <dt>Decision</dt>     <dd>Single PR per 006's precedent (D-008 there too). Ships as <code>v0.1.0-pre.9</code>. The bench enforces the lazy-loading discipline; CLI integration tests prove SC-001 byte-identity; <code>npm view</code> on the published tag confirms the slice.</dd>
+    <dt>Consequences</dt> <dd>+ Atomic; + reverts cleanly; + simpler version bookkeeping. − Larger diff than typical; − bench/test failure during apply blocks the whole slice.</dd>
+  </dl>
+</spec-decision>
+</section>
+
+
+<section id="project-structure">
+<h2>6 · Project structure</h2>
+
+<pre><code>packages/core/
+  package.json                                       <em>(adds @anthropic-ai/sdk dep + ./providers/claude subpath)</em>
+  tsup.config.ts                                     <em>(adds src/providers/claude.ts entry)</em>
+  src/
+    commands/
+      triage.ts                                      <em>(new — triageCommand)</em>
+    providers/
+      claude.ts                                      <em>(new — ClaudeProvider class + JSON-parse ask impl + key redaction)</em>
+    helpers/
+      detect-mode.ts                                 <em>(new — list-intake heuristic; pure function)</em>
+  test/
+    triage.test.ts                                   <em>(new — unit; stub AIProvider; covers SC-003)</em>
+    claude-provider.test.ts                          <em>(new — key redaction unit test; SC-004 integration via skipIf)</em>
+
+packages/cli/
+  src/commands/
+    triage.ts                                        <em>(new — CLI subcommand; reads max IDs; calls kernel; routes cards)</em>
+  test/
+    triage.integration.test.ts                       <em>(new — both modes; stub provider for happy-path; real for SC-004)</em>
+
+commands/
+  spectastic.triage.md                               <em>(adds MAY-Bash note per FR-012)</em>
+
+.github/workflows/
+  ci.yml                                             <em>(expose ANTHROPIC_API_KEY secret on push-to-main jobs)</em>
+
+CHANGELOG.md                                          <em>(v0.1.0-pre.9 entry)</em>
+</code></pre>
+
+<p>One new dep (<code>@anthropic-ai/sdk</code>); five new TS files + one markdown update + one CI tweak; bench config untouched.</p>
+</section>
+
+
+<section id="risks">
+<h2>7 · Risks &amp; mitigations</h2>
+
+<table>
+  <thead><tr><th>Risk</th><th>Likelihood</th><th>Impact</th><th>Mitigation</th></tr></thead>
+  <tbody>
+    <tr><td><code>@anthropic-ai/sdk</code> creeps onto the init path through an eager top-level import in <code>src/index.ts</code>.</td><td>M</td><td>H</td><td>Bench's <code>init-help-cold-start</code> (150 ms budget) catches it; D-001 forbids it explicitly.</td></tr>
+    <tr><td><code>ask&lt;T&gt;()</code> JSON parse flakes on edge inputs.</td><td>M</td><td>M</td><td>One-retry fallback with stricter prompt (D-002); unit tests exercise both happy + malformed-JSON paths; later slices can switch to tool-use without changing the kernel surface.</td></tr>
+    <tr><td>Key leaks into a surfaced error after an SDK change.</td><td>L</td><td>H</td><td>Defence-in-depth scrub (D-005); unit test asserts redaction on a constructed error path; CI fails if the assertion stops holding.</td></tr>
+    <tr><td>SC-001 byte-identity is unattainable because today's slash command produces non-deterministic LLM prose.</td><td>M</td><td>M</td><td>Compare structured fields (layer, ID, FR/SC references) not free prose; allow whitespace and prose-wording variance; the integration test asserts on structure, not LLM-generated bytes.</td></tr>
+    <tr><td>Card-ID race when caller batches list-intake against a shared destination.</td><td>L</td><td>L</td><td>D-003 documents caller-serialised writes as the contract; single-author assumption (spec §6).</td></tr>
+  </tbody>
+</table>
+</section>
+
+
+<section id="complexity">
+<h2>8 · Complexity tracking</h2>
+<p>Two deliberate additions warrant flagging:</p>
+
+<spec-assumption>
+<p><strong>Stub <code>subagent()</code> on <code>ClaudeProvider</code> (D-001).</strong> The forward-looking <code>AIProvider</code> interface (006 D-004) requires implementations to declare the method; v1's Claude impl throws "not implemented; lands with 013-core-propose." Dead code until 013. Justified: declaring the unimplemented method in v1 keeps 013's PR additive.</p>
+</spec-assumption>
+
+<spec-assumption>
+<p><strong>SC-001 byte-identity is structural, not literal (Risks table).</strong> The spec writes "byte-identical modulo trivial whitespace"; the implementation has to interpret that pragmatically because LLM prose isn't bit-stable. The integration test asserts shape + IDs + classifications match, not exact words. Documenting here so a reviewer reading the assertion shape doesn't think it under-delivers.</p>
+</spec-assumption>
+</section>
+
+
+<section id="questions">
+<h2>9 · Open questions</h2>
+<spec-questions>
+<p>None. Four plan-phase decisions anchored upfront (ask impl, SDK shape, ID strategy, test gating); the other four ADRs are forced by spec FRs. Issues that surface during implementation route back through <code>/spectastic.propose</code>.</p>
+</spec-questions>
+</section>
+
+
+<section id="changelog">
+<h2>10 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-06-16">16 Jun 2026</time><span>Initial plan. Anchored: <code>ClaudeProvider</code> via <code>@anthropic-ai/sdk</code> (D-001); <code>ask&lt;T&gt;()</code> via structured prompt + JSON parse + one-retry (D-002); card-ID assigned caller-side via <code>startingId</code> (D-003); layer classification LLM-based with <code>ask&lt;T&gt;()</code> escalation on ambiguity (D-004); key redaction wraps every SDK error (D-005); list-intake heuristic ported verbatim from skill markdown (D-006); network-test gating via <code>vitest.skipIf</code> (D-007); single PR shipping as <code>v0.1.0-pre.9</code> (D-008). Bench gated; CLI behaviour byte-identical at the structural level.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  Plan for 007-core-triage · Core triage · authored 16 Jun 2026 ·
+  <button data-theme-toggle style="background:none;border:none;color:var(--c-link);cursor:pointer;font:inherit;padding:0;border-bottom:1px solid currentColor;">light/dark</button>
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>

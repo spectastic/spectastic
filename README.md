@@ -2,7 +2,7 @@
 
 > Single-file HTML specs. The HTML-native alternative to markdown-based spec tooling.
 
-Spectastic runs a structured spec lifecycle — `principles → spec → plan → tasks → implement → propose → apply → triage` — and emits a single self-contained `.html` file per artifact. The file uses a small vocabulary of semantic custom elements styled by a calm typographic system, so a spec reads like a quiet essay yet packs tables, diagrams, diffs, decision matrices, and progressive disclosure that markdown can't.
+Spectastic runs a structured spec lifecycle — `principles → spec → design → tasks → implement → propose → apply → triage` — and emits a single self-contained `.html` file per artifact. The file uses a small vocabulary of semantic custom elements styled by a calm typographic system, so a spec reads like a quiet essay yet packs tables, diagrams, diffs, decision matrices, and progressive disclosure that markdown can't.
 
 **See it first:** open [`index.html`](./index.html) in a browser for the landing page, then [`specs/000-spectastic/spec.html`](./specs/000-spectastic/spec.html) for a worked example — the spec for spectastic itself.
 
@@ -24,7 +24,7 @@ A directory you copy into your project:
 spectastic/
 ├── index.html                    landing page (this design language, applied)
 ├── principles.html               project's five non-negotiable principles (v1.0.0)
-├── plan.html                     implementation plan for spectastic itself
+├── design.html                     design doc for spectastic itself
 ├── inbox.html                    project-root small-batch entry point (live)
 ├── assets/
 │   ├── spec.css                  ~25 KB design system (calm cream palette, serif+sans+mono trio)
@@ -34,7 +34,7 @@ spectastic/
 ├── templates/
 │   ├── principles.html           project principles scaffold
 │   ├── spec.html                 feature specification scaffold
-│   ├── plan.html                 implementation plan scaffold
+│   ├── design.html                 design-doc scaffold
 │   ├── tasks.html                ordered task breakdown scaffold
 │   ├── proposal.html             change-proposal scaffold
 │   └── inbox.html                small-batch inbox scaffold
@@ -46,7 +46,7 @@ spectastic/
 ├── commands/
 │   ├── spectastic.principles.md
 │   ├── spectastic.spec.md
-│   ├── spectastic.plan.md
+│   ├── spectastic.design.md
 │   ├── spectastic.tasks.md
 │   ├── spectastic.implement.md
 │   ├── spectastic.propose.md
@@ -65,7 +65,7 @@ Eight Claude Code slash commands. Five cover the core spec lifecycle, two cover 
 | --- | --- | --- |
 | 1. Establish principles     | `/spectastic.principles <project name>`   | `./principles.html` |
 | 2. Spec a feature           | `/spectastic.spec <feature>`              | `specs/<id>/spec.html` |
-| 3. Plan the build           | `/spectastic.plan [spec-id]`              | `specs/<id>/plan.html` |
+| 3. Design the build           | `/spectastic.design [spec-id]`              | `specs/<id>/design.html` |
 | 4. Derive tasks             | `/spectastic.tasks [spec-id]`             | `specs/<id>/tasks.html` |
 | 5. Implement a task         | `/spectastic.implement [T-NNN \| spec-id]`| code edits + ticked checkbox |
 | 6. Propose a change         | `/spectastic.propose <change name>`       | `specs/<id>/changes/<date>-<slug>/proposal.html` |
@@ -87,7 +87,7 @@ spectastic init --with explain      # also install the extended `explain` verb
 | explain | `/spectastic.explain <target> [--proficiency=wheels\|completion\|independent]` | A grounded, in-chat coaching read of a spec, requirement, decision, or file. Ephemeral — writes no artifact, cites only real source, pulled on demand. |
 | explain --course | `/spectastic.explain --course <target> [--keep]` | Generates a persistent, grounded **course** — a handful of objectives, each a reading (optionally a structured teaching payload — analogy, contrast, worked example, illustration) + a quiz, on a mastery ledger. Every reference is verified to exist, every quiz item is checked to be unanswerable without the source, and an analogy is checked for a mis-mapping. Courses are ephemeral: written under `.spectastic/courses/`, git-ignored by default (`--keep` retains). Backed by the `spectastic course` engine. |
 | explore | `/spectastic.explore <intent>` | **Vibe to learn, spec to keep.** Scaffolds a *quarantined* exploration under `explorations/<id>/` — a git-ignored `explore.html` ledger plus a tracked `quarantine.json` marker — that you build loosely (SDD ceremony off, a thin P-1+P-2 floor on). The marker is the anti-ship gate: **`spectastic validate` errors while any exploration is quarantined**, so an un-graduated build can never merge (your branch is red by design until you *graduate* or *delete* it). |
-| explore --graduate | `/spectastic.explore --graduate <id>` | **The back half of the loop.** Turns a quarantined exploration into a real, verified-grounded **spec + plan**, then lifts the quarantine and archives the exploration. Three steps: *classify* (spike → rebuild clean, or tracer-bullet → harden in place; recorded immutably), *extract* (read the build into a Draft spec + plan, the run record's proven facts seeded as `verified` rows in the **plan's** evidence ledger), and *lift + archive* (all-or-nothing: a failure leaves the build quarantined, no partial spec). Restore tasks for the graduated build are the sibling slice — see `tasks --restore`. |
+| explore --graduate | `/spectastic.explore --graduate <id>` | **The back half of the loop.** Turns a quarantined exploration into a real, verified-grounded **spec + design**, then lifts the quarantine and archives the exploration. Three steps: *classify* (spike → rebuild clean, or tracer-bullet → harden in place; recorded immutably), *extract* (read the build into a Draft spec + design, the run record's proven facts seeded as `verified` rows in the **design's** evidence ledger), and *lift + archive* (all-or-nothing: a failure leaves the build quarantined, no partial spec). Restore tasks for the graduated build are the sibling slice — see `tasks --restore`. |
 | tasks --restore | `spectastic tasks <id> --restore` | **The other back half of graduation.** Generates path-appropriate restore tasks for a graduated exploration, reading the frozen classification from the archived marker: *refactor-to-comply* for a tracer-bullet (keep the build, harden it in place) or *clean-rebuild* for a spike (prototype marked for deletion). Output is banner-labelled. The trigger is always explicit — a flag, or an announced prompt on a TTY, and a refuse when piped — so it never emits the wrong task shape silently. |
 
 **A course objective can teach by more than a paragraph.** A flat reading is, mechanically, rereading — the
@@ -144,7 +144,7 @@ It's deterministic and filesystem-only, so it drops straight into CI or a pre-co
 
 ### Ignore files — `init` + `spectastic gitignore`
 
-A bootstrapped project shouldn't commit build output or tool noise. `init` writes a base `.gitignore` covering spectastic's own ephemera (generated courses; *not* the tracked profile marker), and — once the stack is known at plan time — `spectastic gitignore --stack` appends the ecosystem's build-artifact ignores:
+A bootstrapped project shouldn't commit build output or tool noise. `init` writes a base `.gitignore` covering spectastic's own ephemera (generated courses; *not* the tracked profile marker), and — once the stack is known at design time — `spectastic gitignore --stack` appends the ecosystem's build-artifact ignores:
 
 ```sh
 spectastic init                 # writes the base .gitignore block
@@ -152,7 +152,7 @@ spectastic gitignore --stack    # detects the stack, adds node_modules/, __pycac
 spectastic init --no-gitignore  # opt out
 ```
 
-Every spectastic entry lives inside a marked block, so a brownfield `.gitignore` is **appended to, never clobbered** — your own rules outside the block are untouched, and re-runs are idempotent. This is [spec 043](./specs/043-init-project-config/spec.html), mirroring the same init-writes-base / plan-resolves-stack split as profiles→enforcement.
+Every spectastic entry lives inside a marked block, so a brownfield `.gitignore` is **appended to, never clobbered** — your own rules outside the block are untouched, and re-runs are idempotent. This is [spec 043](./specs/043-init-project-config/spec.html), mirroring the same init-writes-base / design-resolves-stack split as profiles→enforcement.
 
 ### Knowledge corpus — `spectastic init`
 
@@ -167,17 +167,17 @@ spectastic init                              # scaffolds knowledge/<pack>/ along
 spectastic validate                          # a dangling KB-NNN citation or missing provenance field errors
 ```
 
-Every document under `references/` carries a stable `KB-NNN` id — independent of file path, cited from a plan
+Every document under `references/` carries a stable `KB-NNN` id — independent of file path, cited from a design
 decision as `KB-NNN@edition` — plus provenance frontmatter (`origin`, `origin-url`, `edition`, `license`,
 `converter`, `content-hash`, `status`). A curated `index.md` gives an agent a cheap map before it reads
 anything; no vector database, no retrieval index — agentic search over committed files, matching the way the
 tool itself is already read.
 
-**Cite an id *at an edition*.** A plan decision grounds a domain fact by citing `KB-NNN@edition` — the id
+**Cite an id *at an edition*.** A design decision grounds a domain fact by citing `KB-NNN@edition` — the id
 pinned to the exact edition it was read against — so a later re-ingest at a newer edition can never silently
 change what a historical decision claimed. A prior edition is retained under `references/superseded/` (never
 overwritten), so an edition-pinned citation always resolves; `spectastic validate` warns on a bare, unpinned
-citation. This is [spec 052](./specs/052-corpus-citation-contract/spec.html); it also widens the plan verb's
+citation. This is [spec 052](./specs/052-corpus-citation-contract/spec.html); it also widens the design verb's
 grounding discipline so a domain fact can finally be `verified` against a corpus document instead of only
 `assumed`.
 
@@ -195,7 +195,7 @@ that stays advisory, never a gate.
 **Presence is guaranteed; use is only directable.** A corpus the harness merely told a verb's markdown to
 "look for" is exactly the soft nudge that lets a model fabricate a citation instead of admitting there's
 nothing to cite. So when a corpus exists, core **injects** its index and a fixed grounding directive into
-every AI-verb prompt — `plan`, `spec`, `propose`, `tasks`, and `explore --graduate` — deterministically,
+every AI-verb prompt — `design`, `spec`, `propose`, `tasks`, and `explore --graduate` — deterministically,
 through the same fence-and-join mechanism that already places the principles in front of the model. That's
 the guarantee: the corpus is *placed* in context, not merely pointed at. Grounding *use* stays honestly
 advisory — a prompt can't force a citation, and no build gate infers a *missed* one (that's undecidable and
@@ -319,9 +319,9 @@ The lineage is [ISO 31000](https://www.iso.org/iso-31000-risk-management.html)'s
 [`REQ-CHANGE-003`](./specs/000-spectastic/spec.html#REQ-CHANGE-003) names the rule for *where the follow-up implementation work lives* after `/spectastic.apply` lands a change:
 
 - **Small change** (one or two requirements, behavioural addition, no new ADRs) → drive the inline task list inside the archived proposal. `/spectastic.implement` can target those tasks directly.
-- **Large change** (multi-requirement, architectural shift, new topic group) → re-run `/spectastic.plan` then `/spectastic.tasks` against the updated spec to derive a fresh breakdown.
+- **Large change** (multi-requirement, architectural shift, new topic group) → re-run `/spectastic.design` then `/spectastic.tasks` against the updated spec to derive a fresh breakdown.
 
-Boundary heuristic: *more than one new ADR would land → large.* The rule is guidance, not a guardrail — `/spectastic.apply` never auto-triggers plan/tasks and never refuses based on its own classification.
+Boundary heuristic: *more than one new ADR would land → large.* The rule is guidance, not a guardrail — `/spectastic.apply` never auto-triggers design/tasks and never refuses based on its own classification.
 
 ### Keeping specs small — INVEST + DORA small-batches
 
@@ -329,11 +329,11 @@ Specs grow because each "just one more edge case" is cheaper to add than to extr
 
 Spectastic embeds the discipline that prevents this without adding new verbs:
 
-- **`<spec-budget>`** in the header renders a live gauge. Default budgets: 1,500 words, 20 requirements, 12-minute read. Override with attributes (`<spec-budget words="2500" reqs="25" minutes="15">`). Amber from 80% of budget; red over (the industry-standard "approaching limit" warn point). The Words row counts **authored** prose — the auto-built conformance index is excluded, since it's generated, not written. Specs that cross the threshold are signalled for splitting. **Spec-only** — the budget is the spec-sizing discipline, so it ships only in `spec.html`; plans, tasks, and principles show read-time in their `<spec-meta>` and carry no budget (a requirements gauge on a plan would always read 0).
+- **`<spec-budget>`** in the header renders a live gauge. Default budgets: 1,500 words, 20 requirements, 12-minute read. Override with attributes (`<spec-budget words="2500" reqs="25" minutes="15">`). Amber from 80% of budget; red over (the industry-standard "approaching limit" warn point). The Words row counts **authored** prose — the auto-built conformance index is excluded, since it's generated, not written. Specs that cross the threshold are signalled for splitting. **Spec-only** — the budget is the spec-sizing discipline, so it ships only in `spec.html`; designs, tasks, and principles show read-time in their `<spec-meta>` and carry no budget (a requirements gauge on a design would always read 0).
 - **`<spec-out-of-scope>`** with required `defer-to=` makes excluded items into deferrals. Each entry points at a sibling spec ID, or `TBD` if the slice does not yet exist. Missing `defer-to` renders visibly broken.
-- **INVEST self-check** in the header `<dl class="invest">` — six rows the author fills honestly. `V` and `T` carry linked evidence; failures (`<dd class="fail">`) block the plan.
-- **Estimability gate** in `/spectastic.plan` — refuses to run while any `<spec-question>`, `[NEEDS CLARIFICATION]`, missing `defer-to=`, or failing INVEST row exists.
-- **Grounded planning** in `/spectastic.plan` (`REQ-LIFECYCLE-006`) — before the interview, the plan reads the real consuming code, dependency signatures at the resolved lockfile version, and platform constraints, and records each design-bearing fact in a §3 **Grounding & evidence** ledger as `verified` / `spike` / `assumed`. Every `<spec-decision>` carries `grounding="…"` and cites its source; an ungrounded one renders `UNGROUNDED`. The discipline is a `SHOULD`; the **gate** is the `MUST` — no hand-off to `/spectastic.tasks` while a `must`-tier decision rests on an unverified assumption the author hasn't accepted as a `<spec-risk>`. Moves discovery from implementation back to planning.
+- **INVEST self-check** in the header `<dl class="invest">` — six rows the author fills honestly. `V` and `T` carry linked evidence; failures (`<dd class="fail">`) block the design.
+- **Estimability gate** in `/spectastic.design` — refuses to run while any `<spec-question>`, `[NEEDS CLARIFICATION]`, missing `defer-to=`, or failing INVEST row exists.
+- **Grounded design** in `/spectastic.design` (`REQ-LIFECYCLE-006`) — before the interview, the design reads the real consuming code, dependency signatures at the resolved lockfile version, and platform constraints, and records each design-bearing fact in a §3 **Grounding & evidence** ledger as `verified` / `spike` / `assumed`. Every `<spec-decision>` carries `grounding="…"` and cites its source; an ungrounded one renders `UNGROUNDED`. The discipline is a `SHOULD`; the **gate** is the `MUST` — no hand-off to `/spectastic.tasks` while a `must`-tier decision rests on an unverified assumption the author hasn't accepted as a `<spec-risk>`. Moves discovery from implementation back to design.
 - **`<spec-parent specid="…">`** marks a spec as a child slice of a larger umbrella. The slice is still a regular spec.html; the parent reference is the only marker. The conformance index in the parent auto-aggregates child slices.
 - **`verify.html`** is a *generated, derived* per-spec view answering "how do I run it, and how do I know it works?" (spec [`021-verify-view`](./specs/021-verify-view/spec.html)). It **aggregates** the bundle's success criteria → acceptance → closing test-task trace *by reference* (links, never copied prose) and adds the one authored thing — a medium-agnostic **Run/Demo block** of typed elements (`<spec-run>`, `<spec-toggle>`, `<spec-tests cites="…">`, `<spec-demo cites="…">`) that `/spectastic.implement` fills from the commands it *actually ran* on completion (an unrecorded field renders loudly, never blank). It carries no `<spec-status>` of its own (it derives the spec's), and `spectastic validate` flags it as stale when its links drift from the bundle. Regenerate (or rebuild the links while preserving the captured Run block) with `spectastic verify <spec-id>`.
 - **Budget-aware splitting nudge** in `/spectastic.propose` — proposals over ~5 deltas or crossing >2 topic prefixes get a "would these read better as two or three proposals?" prompt.
@@ -361,7 +361,7 @@ The structured lifecycle is overkill for "I have three small unrelated things in
 | Unrouted | (absent) | Just-captured items waiting for classification. |
 | Just-do | `just-do` | Small enough that a spec wouldn't change the decision; one file, no contract change, revert-safe. |
 | Defer | `defer` | Back-burner with `defer-to=` pointing at a sibling spec, `TBD-<topic>`, or `never`. |
-| Routed | `spec` \| `plan` \| `implementation` \| `cross-spec` \| `principles` \| `platform` | Item became (or needs to become) a real spec change-proposal. |
+| Routed | `spec` \| `design` \| `implementation` \| `cross-spec` \| `principles` \| `platform` | Item became (or needs to become) a real spec change-proposal. |
 
 The flow is three commands at most:
 
@@ -410,7 +410,7 @@ Each verb knows its own git shape — the type is the verb, the scope is the spe
 | Verb | Branch | Commit subject |
 | --- | --- | --- |
 | `spec` (new slice) | creates `NNN-slug` | `spec(NNN): <title>` |
-| `plan` / `tasks` / `propose` / `apply` | stays on the current branch | `<verb>(NNN): <subject>` |
+| `design` / `tasks` / `propose` / `apply` | stays on the current branch | `<verb>(NNN): <subject>` |
 | `implement` (spec task) | stays put | `implement(NNN): <summary>` — one commit per run |
 | `triage` (list) / `principles` / `implement` (inbox card) | stays put | `<verb>: <subject>` — unscoped, no spec id |
 
@@ -435,15 +435,15 @@ Assisted-by: claude-…
 Refs: changes/archive/2026-…-slug
 ```
 
-`Author`, `Reviewed-by`, `Co-authored-by` (when the artifact author isn't the committer), `Acked-by`, and `Refs` name **humans only** — a missing source is omitted, never faked. The assisting model is acknowledged distinctly as **`Assisted-by:`** — a tool acknowledgment, never authorship — and is the only trailer the AI ever appears on. `Assisted-by` is emitted on AI-coupled verb commits (`spec`/`plan`/`tasks`/`triage`/`principles`/`propose`); deterministic verbs (`apply`, an `implement` tick) carry none.
+`Author`, `Reviewed-by`, `Co-authored-by` (when the artifact author isn't the committer), `Acked-by`, and `Refs` name **humans only** — a missing source is omitted, never faked. The assisting model is acknowledged distinctly as **`Assisted-by:`** — a tool acknowledgment, never authorship — and is the only trailer the AI ever appears on. `Assisted-by` is emitted on AI-coupled verb commits (`spec`/`design`/`tasks`/`triage`/`principles`/`propose`); deterministic verbs (`apply`, an `implement` tick) carry none.
 
 ```json
 { "git": { "auto": "branch+commit", "trailers": "on" } }
 ```
 
-### Stack-selection interview (`plan.stackInterview`)
+### Stack-selection interview (`design.stackInterview`)
 
-At plan time, `/spectastic.plan` can offer a bounded, context-seeded choice for any undecided stack pick — language,
+At design time, `/spectastic.design` can offer a bounded, context-seeded choice for any undecided stack pick — language,
 framework, test framework, coverage tool, persistence — instead of waiting for you to hand-fill §2 Technical context.
 The recommendation is seeded from repo detection, standing docs (`CLAUDE.md`/`AGENTS.md`/a linked architecture doc),
 and the profile's `frameworks` axis stance — never a maintained house catalog — and it self-skips anything already
@@ -453,13 +453,13 @@ It's **on by default**. Opt out with a `spectastic.json` at your project root:
 
 ```json
 {
-  "plan": {
+  "design": {
     "stackInterview": false
   }
 }
 ```
 
-- **absent / `true`** (default) — the plan's decision phase offers each undecided material stack dimension as a
+- **absent / `true`** (default) — the design's decision phase offers each undecided material stack dimension as a
   bounded choice with a context-seeded recommendation.
 - **`false`** — the pass does not run; §2 is authored by hand, exactly as before this feature shipped.
 
@@ -526,7 +526,7 @@ Open `assets/spec.css` to tweak. Everything is CSS custom properties at the top.
 ### Brand logo
 
 The mark is the **spectrum asterisk** — one prong path rotated eight times at 45°, its eight fills the
-eight lifecycle commands in fixed clockwise order (principles `#5f023e` → spec → plan → tasks →
+eight lifecycle commands in fixed clockwise order (principles `#5f023e` → spec → design → tasks →
 implement → propose → apply → triage `#7558b2`). It is always the canonical inline SVG (`var(--spec-1…8)`
 fills, `favicon.svg` for tabs) — **never** a Unicode glyph; the order and colours never change. The
 spectrum is the default; a mono variant follows the ink for single-colour use, and dark mode swaps in a

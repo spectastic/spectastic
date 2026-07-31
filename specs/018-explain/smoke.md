@@ -1,7 +1,7 @@
 # Manual smoke — `/spectastic.explain` (the coach)
 
 The coach is a markdown command that drives the in-session agent; it writes no artifact, so it has no
-automated unit test (per [plan.html](./plan.html) D-001). This checklist is the verification of record for
+automated unit test (per [design.html](./design.html) D-001). This checklist is the verification of record for
 US1 / US2. It is a **dev aid** — it is not bundled or installed by `spectastic init`.
 
 Run each case in a Claude Code session with the repository open. A case **passes** only if every assertion

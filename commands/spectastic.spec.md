@@ -1,5 +1,5 @@
 ---
-description: Write a feature specification — what to build, for whom, and how success is measured. Use when starting a new feature, specifying requirements and success criteria, or capturing what a feature must do before any planning — not project-wide rules (/spectastic.principles), the how (/spectastic.plan), or throwaway learning (/spectastic.explore).
+description: Write a feature specification — what to build, for whom, and how success is measured. Use when starting a new feature, specifying requirements and success criteria, or capturing what a feature must do before designing the implementation — not project-wide rules (/spectastic.principles), the how (/spectastic.design), or throwaway learning (/spectastic.explore).
 argument-hint: <feature name or one-line description>
 triggers:
   - "write a spec for a feature"
@@ -7,14 +7,14 @@ triggers:
   - "define requirements and success criteria"
   - "start a new feature"
   - "what should this feature do"
-use-when: "Capturing what a single feature must do, for whom, and how success is measured — before any implementation planning."
-sibling-boundary: "Not principles (project-wide rules, not one feature); not plan (the how); not explore (throwaway learning before a spec exists)."
+use-when: "Capturing what a single feature must do, for whom, and how success is measured — before designing the implementation."
+sibling-boundary: "Not principles (project-wide rules, not one feature); not design (the how); not explore (throwaway learning before a spec exists)."
 model: inherit
 ---
 
 # /spectastic.spec
 
-You are drafting a **feature specification** as a single-file HTML artifact in the spectastic design system. A spec describes *what* a feature is, *who* it's for, and *how* we'll know it worked. It does **not** describe *how* to build it — that belongs in the plan.
+You are drafting a **feature specification** as a single-file HTML artifact in the spectastic design system. A spec describes *what* a feature is, *who* it's for, and *how* we'll know it worked. It does **not** describe *how* to build it — that belongs in the design.
 
 ## Inputs
 
@@ -94,7 +94,7 @@ User input (from `$ARGUMENTS`): a feature name or one-line description.
 
 ## After writing
 
-Report the path, count of requirements, and propose `/spectastic.plan` next.
+Report the path, count of requirements, and propose `/spectastic.design` next.
 
 ## Optional: CLI dispatch
 

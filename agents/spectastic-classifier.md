@@ -12,7 +12,7 @@ spawned per item in parallel.
 
 For your single item:
 
-1. **Regeneration test** — given only the current spec and plan, would another LLM
+1. **Regeneration test** — given only the current spec and design, would another LLM
    session reproduce this bug? If yes, the root cause is upstream of the code.
 2. **Root-cause ladder** (REQ-LIFECYCLE-007) — walk `implementation → spec →
    cross-spec → principles` and stop at the first layer that owns the fix.

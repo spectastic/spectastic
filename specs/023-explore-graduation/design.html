@@ -1,0 +1,396 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
+<title>explore --graduate — the back half of the loop · Design</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Design · 023-explore-graduation</p>
+  <h1>explore --graduate — the back half of the loop</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    How we will build it.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>     <span><spec-status value="accepted">Accepted</spec-status></span>
+    <b>Spec</b>       <span><a href="./spec.html">023-explore-graduation</a></span>
+    <b>Owner</b>      <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Branch</b>     <span><code>main</code></span>
+    <b>Created</b>    <span><time datetime="2026-06-26">26 Jun 2026</time></span>
+    <b>Read time</b>  <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-tldr>
+    <p>Graduation is an AI-coupled <strong>extract</strong> leg (read the build + its run record into a Draft
+    <code>spec + plan</code>, the run's proven facts seeded as <code>verified</code> rows in the plan's §3
+    evidence ledger) feeding a pure <strong>deterministic transaction</strong> kernel (flip the quarantine marker
+    to <code>graduated</code>, archive the exploration). Extract runs first; the irreversible transaction runs last
+    with the quarantine-lift as the final write — apply's fold-before-rename atomicity, so a failure leaves the
+    exploration quarantined and refusable. Biggest risk: the extract reading a build into <em>honest</em>
+    requirements — bounded by seeding from the real run record, the full-rigor gates downstream, and
+    stub-provider tests.</p>
+  </spec-tldr>
+</header>
+
+
+<section id="principles-check">
+<h2>1 · Principles check</h2>
+<p>Verify this plan respects every principle in
+<a href="../../principles.html">v1.2.0</a>. Any violation requires either a principles amendment or a
+deliberate exception logged below.</p>
+
+<table>
+  <thead><tr><th>Principle</th><th>Compliance</th><th>Notes</th></tr></thead>
+  <tbody>
+    <tr><td>P-1 · Source order is reading order</td><td><spec-pill>OK</spec-pill></td><td>The extracted <code>spec.html</code> follows the normal template order; the marker is JSON, the ledger unchanged.</td></tr>
+    <tr><td>P-2 · Semantic tags over class soup</td><td><spec-pill>OK</spec-pill></td><td>Extract emits the standard semantic elements; run facts promote via <code>&lt;spec-decision grounding&gt;</code>.</td></tr>
+    <tr><td>P-3 · IDs are contracts</td><td><spec-pill>OK</spec-pill></td><td>The exploration id is reused verbatim for <code>specs/&lt;id&gt;/</code> (FR's traceability); extracted requirement IDs are stable.</td></tr>
+    <tr><td>P-4 · Progressive enhancement, never dependence</td><td><spec-pill>OK</spec-pill></td><td>Outputs are static HTML/JSON artifacts; no runtime dependence introduced.</td></tr>
+    <tr><td>P-5 · Calm density</td><td><spec-pill>OK</spec-pill></td><td>The extracted spec is a normal bundle under the budget gauge; graduation adds no UI.</td></tr>
+    <tr><td>P-6 · Draft is loose, ratified is locked</td><td><spec-pill>OK</spec-pill></td><td>Graduate writes a <em>Draft</em> bundle; the gate it touches (quarantine) is orthogonal to P-6's draft-lock.</td></tr>
+    <tr><td>P-7 · Done means verified</td><td><spec-pill>OK</spec-pill></td><td>The plan <em>embodies</em> P-7: the run record becomes <code>verified</code> grounding, and the atomicity guarantee is directly tested (D-008).</td></tr>
+  </tbody>
+</table>
+</section>
+
+
+<section id="technical-context">
+<h2>2 · Technical context</h2>
+<dl>
+  <dt>Language(s)</dt>      <dd>TypeScript (Node ESM), the existing <code>@spectastic/{core,cli,schema}</code> monorepo.</dd>
+  <dt>Frameworks</dt>       <dd><code>commander</code> (CLI); the in-host Claude session for the slash path.</dd>
+  <dt>Storage</dt>          <dd>Filesystem only — a JSON marker + HTML artifacts. No database.</dd>
+  <dt>Testing</dt>          <dd>vitest, kernel-first TDD + an explicit failure-injection test (D-008); stub <code>AIProvider</code> in CI for the extract leg. No Playwright — outputs are standard specs, not interactive HTML.</dd>
+  <dt>Perf targets</dt>     <dd>None. <a href="./spec.html#NFR-001">NFR-001</a> is a determinism/atomicity guarantee, not a latency budget; the extract is LLM-bound.</dd>
+  <dt>Constraints</dt>      <dd>Kernel stays pure — CLI owns fs/date/id (the explore/verify pattern). All-or-nothing (<a href="./spec.html#NFR-001">NFR-001</a>). Slash path keyless; CLI path needs <code>ANTHROPIC_API_KEY</code> (<a href="./spec.html#NFR-002">NFR-002</a>). Reuse, don't fork (<a href="./spec.html#FR-009">FR-009</a>).</dd>
+</dl>
+</section>
+
+
+<section id="grounding">
+<h2>3 · Grounding &amp; evidence</h2>
+<p>Every design-bearing fact this plan rests on, and how it was confirmed — read this before the approach: it
+separates what the plan <em>knows</em> from what it <em>assumes</em> (per <code>REQ-LIFECYCLE-006</code>). A
+<code>must</code>-tier decision may not rest on an <code>assumed</code>/unresolved-<code>spike</code> fact
+unless accepted as a <code>&lt;spec-risk&gt;</code> (§8).</p>
+
+<table class="evidence">
+  <thead>
+    <tr><th>Claim the design rests on</th><th>Source</th><th>Status</th><th>Finding / note</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>The quarantine marker is JSON with a literal <code>status</code> field</td>
+        <td><code>packages/core/src/types.ts:528-547</code></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td><code>{ id, intent, status: 'quarantined', created }</code> — widen the union to add <code>'graduated'</code> + a <code>classify</code> field.</td></tr>
+    <tr><td>Flipping the marker is the <em>entire</em> quarantine-lift — the verb gate already passes on non-quarantined</td>
+        <td><code>packages/cli/src/state-gate.ts:75</code></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td><code>if (marker.status !== 'quarantined') return null</code> — no gate change needed.</td></tr>
+    <tr><td>…and so does the validate leg — no rule change needed</td>
+        <td><code>packages/core/src/commands/explore.ts:113</code></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td><code>quarantineFinding</code> returns <code>null</code> when <code>status !== 'quarantined'</code>; rule <code>explore-quarantined</code>.</td></tr>
+    <tr><td>The run record's fields are exactly what verify consumes</td>
+        <td><code>packages/core/src/types.ts:492-505</code></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td><code>CapturedRun { run, toggle, tests, testsCite[], demo, demoCite[] }</code>, rendered <code>&lt;spec-runblock&gt;</code> (explore.ts:53-64). These promote to <code>verified</code> grounding.</td></tr>
+    <tr><td>The kernel-purity pattern: CLI owns fs/date/id, kernel is pure functions</td>
+        <td><code>packages/core/src/commands/explore.ts:1-19, 132-141</code></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td>The transaction kernel follows it; the extract leg is the AI-coupled exception (like spec/plan).</td></tr>
+    <tr><td>The fold-before-rename atomicity pattern + the path-deepen helper</td>
+        <td><code>packages/core/src/commands/apply.ts</code> (<code>foldProposalTasks</code> before <code>fs.rename</code>; <code>deepenArchivePaths</code>)</td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td>Built this session. Graduation reuses both: fallible work first, irreversible move last; <code>+1 ../</code> per relative link on the archived ledger.</td></tr>
+    <tr><td><code>--graduate</code> is a mode of an existing extended verb — no new seam</td>
+        <td><code>commands.json</code> (<code>extended:["explain","explore"]</code>); <code>packages/cli/src/commands/init/manifest.ts:52-54</code></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td>Mounts on the existing <code>.command('explore')</code> (explore.ts:15-57).</td></tr>
+    <tr><td>The exploration id is already reused for <code>specs/&lt;id&gt;/</code></td>
+        <td><code>packages/cli/src/commands/explore.ts:61-76</code></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td><code>resolveNextId</code> scans <em>both</em> <code>specs/</code> and <code>explorations/</code>, so the id is graduation-ready.</td></tr>
+    <tr><td>Grounding is a decision attribute the CSS already renders</td>
+        <td><code>assets/spec.css:818-860</code>; <code>specs/000-spectastic/spec.html#REQ-LIFECYCLE-006</code></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td><code>&lt;spec-decision grounding="verified|spike|assumed|n-a"&gt;</code>; missing renders <code>UNGROUNDED</code>.</td></tr>
+    <tr><td>The <code>tasks</code> verb exists and owns test-first task generation, to be seeded by classification</td>
+        <td><code>commands/spectastic.tasks.md</code> (core verb)</td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td>Restore tasks reuse it (D-006) rather than a bespoke generator (FR-009).</td></tr>
+  </tbody>
+</table>
+</section>
+
+
+<section id="approach">
+<h2>4 · Approach</h2>
+
+<p>Two legs, in the established house shapes. <strong>Extract</strong> (AI-coupled, the <code>spec</code>/<code>plan</code>
+pattern): the explorer classifies (<code>spike</code> | <code>tracer-bullet</code>), then the build and its
+captured run record are read into a Draft <code>specs/&lt;id&gt;/spec.html</code> — the demonstrated behaviour
+becomes stories/requirements/SC and plan decisions, the run's proven facts become <code>verified</code> rows in
+the plan's §3 evidence ledger, and what the build never answered is interviewed exactly as a cold
+<code>/spectastic.spec</code> + <code>/spectastic.design</code> would (reusing both re-entry interviews, D-007).
+<strong>Transaction</strong> (pure deterministic kernel, the <code>explore</code>/<code>apply</code> pattern):
+given the written spec + plan + the classification, it archives <code>explorations/&lt;id&gt;/</code> →
+<code>explorations/archive/&lt;id&gt;/</code> (deepening the ledger's relative paths) and flips the marker
+<code>quarantined</code> → <code>graduated</code> with the <code>classify</code> stamp. (The restore-task
+generation, former D-006, split to TBD-explore-restore.)</p>
+
+<p>The <strong>quarantine-lift is the last write</strong> — the point of no return for shippability. Everything
+fallible (the AI extract, the spec/tasks writes, the archive move) happens before it, so a failure leaves the id
+still <em>refused</em> (the gate + validate still bite). On failure a best-effort rollback removes a partial
+<code>specs/&lt;id&gt;/</code> so a retry is clean (it would otherwise be refused by FR-003). This is the
+all-or-nothing guarantee of <a href="./spec.html#NFR-001">NFR-001</a> / <a href="./spec.html#SC-003">SC-003</a>.</p>
+
+<spec-arch>
+<figure>
+<svg viewBox="0 0 700 200" role="img" aria-label="Graduation flow: exploration → extract → transaction → graduated bundle">
+  <style>
+    .box { fill:#fcfbf7; stroke:#c4c1bb; stroke-width:1.2; }
+    .label { font: 700 10px Lato, sans-serif; fill:#4a4a46; letter-spacing:0.05em; text-transform:uppercase; }
+    .body { font: 400 11px "Source Serif 4", Georgia, serif; fill:#353534; }
+    .arr { stroke:#73706d; stroke-width:1.2; fill:none; }
+    .ai { fill:#f3eefb; stroke:#7558b2; }
+    .det { fill:#eaf7f9; stroke:#04a5bb; }
+  </style>
+  <rect class="box" x="8"   y="70" width="150" height="64" rx="4"/>
+  <text class="label" x="20" y="92">Exploration</text>
+  <text class="body"  x="20" y="110">quarantined:</text>
+  <text class="body"  x="20" y="125">ledger · marker · run</text>
+
+  <rect class="box ai" x="190" y="70" width="150" height="64" rx="4"/>
+  <text class="label" x="202" y="92">Extract · AI</text>
+  <text class="body"  x="202" y="110">build + run →</text>
+  <text class="body"  x="202" y="125">spec.html (verified)</text>
+
+  <rect class="box det" x="372" y="70" width="150" height="64" rx="4"/>
+  <text class="label" x="384" y="92">Transaction</text>
+  <text class="body"  x="384" y="110">archive + deepen</text>
+  <text class="body"  x="384" y="125">→ flip marker (last)</text>
+
+  <rect class="box" x="554" y="70" width="138" height="64" rx="4"/>
+  <text class="label" x="566" y="92">Graduated</text>
+  <text class="body"  x="566" y="110">specs/&lt;id&gt;/ +</text>
+  <text class="body"  x="566" y="125">archive/&lt;id&gt;/ frozen</text>
+
+  <path class="arr" d="M158 102 L190 102" marker-end="url(#a)"/>
+  <path class="arr" d="M340 102 L372 102" marker-end="url(#a)"/>
+  <path class="arr" d="M522 102 L554 102" marker-end="url(#a)"/>
+  <text class="label" x="196" y="58" style="text-transform:none;font-weight:400;fill:#7558b2;">fallible — runs first</text>
+  <text class="label" x="372" y="58" style="text-transform:none;font-weight:400;fill:#04a5bb;">deterministic — lift is the last write</text>
+  <defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#73706d"/></marker></defs>
+</svg>
+<figcaption>The fallible extract runs first; the deterministic transaction commits last with the marker-flip as the final write, so any failure leaves the exploration quarantined and refusable.</figcaption>
+</figure>
+</spec-arch>
+</section>
+
+
+<section id="alternatives">
+<h2>5 · Alternatives considered</h2>
+
+<p>The load-bearing choice is how graduation satisfies <a href="./spec.html#FR-005">FR-005</a> (path-appropriate
+restore tasks). Scored on reuse of existing machinery, predictability/testability, and whether it actually
+delivers FR-005 (1 = weak, 5 = strong).</p>
+
+<spec-matrix>
+<table>
+  <thead>
+    <tr><th>Option</th><th>Reuse (FR-009)</th><th>Predictable</th><th>Delivers FR-005</th><th class="score">Total</th></tr>
+  </thead>
+  <tbody>
+    <tr data-winner><td>Seed the normal /tasks flow by classification</td><td>5</td><td>3</td><td>5</td><td class="score">13</td></tr>
+    <tr><td>Bespoke classification-templated tasks.html</td><td>2</td><td>5</td><td>4</td><td class="score">11</td></tr>
+    <tr><td>Spec-only; user runs /tasks afterward</td><td>5</td><td>5</td><td>2</td><td class="score">12</td></tr>
+  </tbody>
+</table>
+</spec-matrix>
+<p>Seeding <code>/tasks</code> wins: it reuses the test-first task machinery rather than duplicating it, and it
+honestly delivers FR-005 (graduation <em>produces</em> the restore tasks). The spec-only option scores close on
+predictability but under-delivers "graduation MUST generate"; the bespoke template duplicates logic <code>/tasks</code>
+already owns.</p>
+</section>
+
+
+<section id="decisions">
+<h2>6 · Decisions</h2>
+
+<spec-decision id="D-001" grounding="verified">
+  <h4>D-001 · <code>--graduate &lt;id&gt;</code> is a mode of the <code>explore</code> command</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd><a href="./spec.html#FR-001">FR-001</a> mandates a mode, not a new verb; <code>explore</code> is already an extended verb (<code>commands.json</code>) with a single <code>.command('explore')</code> registration (<code>packages/cli/src/commands/explore.ts:15-57</code>).</dd>
+    <dt>Decision</dt>     <dd>Add <code>.option('--graduate &lt;id&gt;')</code> and relax the positional to <code>[intent]</code>; the action requires exactly one of <code>intent</code> (scaffold) or <code>--graduate</code> (graduate) and branches accordingly.</dd>
+    <dt>Consequences</dt> <dd>+ One loop under one verb, no new packaging seam, installs with <code>--with explore</code>. − The command action gains a mode branch.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-002" grounding="verified">
+  <h4>D-002 · Two legs: AI-coupled extract + a pure transaction kernel</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>The explore kernel is pure — CLI owns fs/date/id (<code>packages/core/src/commands/explore.ts:1-19</code>); the extract reads a build into requirements, so it is AI-coupled like <code>spec</code>/<code>plan</code>.</dd>
+    <dt>Decision</dt>     <dd>A pure <code>graduateTransaction</code> kernel (marker flip, archive plan, ledger path-deepen, classify record) in <code>@spectastic/core</code>; the extract leg runs as in-host Claude (slash) or via an injected <code>AIProvider</code> (CLI).</dd>
+    <dt>Consequences</dt> <dd>+ The irreversible/deterministic core is unit-testable without an LLM (the apply.fold pattern). − Two code paths for the AI leg — the established house pattern for every AI-coupled verb.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-003" grounding="verified">
+  <h4>D-003 · All-or-nothing: extract + writes first, quarantine-lift last</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd><a href="./spec.html#NFR-001">NFR-001</a> / <a href="./spec.html#SC-003">SC-003</a> forbid a half-graduated, silently-shippable state; <code>apply</code> sets the precedent (<code>foldProposalTasks</code> before <code>fs.rename</code>, this session).</dd>
+    <dt>Decision</dt>     <dd>Order the fs commits so the marker-flip (the point that un-refuses the id) is the <strong>last write</strong>: extract → write <code>spec.html</code> + seeded <code>tasks.html</code> → archive move → flip marker. On any prior failure, a best-effort rollback removes a partial <code>specs/&lt;id&gt;/</code> so retry is clean.</dd>
+    <dt>Consequences</dt> <dd>+ No silent-ship window — a failure leaves the id quarantined and refusable. − FS rollback is best-effort, not transactional (the residual: a crash between the archive move and the flip, narrowed by their adjacency); accepted in §9.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-004" grounding="verified">
+  <h4>D-004 · Evolve the marker; the gate and validate need no change</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd><code>gateOnQuarantine</code> (<code>state-gate.ts:75</code>) and <code>quarantineFinding</code> (<code>explore.ts:113</code>) both <code>return null</code> for any <code>status !== 'quarantined'</code>.</dd>
+    <dt>Decision</dt>     <dd>Widen <code>QuarantineMarker.status</code> to <code>'quarantined' | 'graduated'</code> and add <code>classify?: 'spike' | 'tracer-bullet'</code> and <code>graduated?: string</code> (date). The marker stays in <code>explorations/archive/&lt;id&gt;/</code>, frozen.</dd>
+    <dt>Consequences</dt> <dd>+ Zero change to the gate/validate logic — they are already status-generic. − The shared marker type widens; <code>exploreScaffold</code> keeps writing the <code>'quarantined'</code> literal.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-005" grounding="verified">
+  <h4>D-005 · Lift <code>deepenArchivePaths</code> into a shared util</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>The archived ledger sits one level deeper, so its <code>../</code>-relative links need <code>+1 ../</code> — exactly what <code>apply.ts</code>'s <code>deepenArchivePaths</code> already does.</dd>
+    <dt>Decision</dt>     <dd>Extract <code>deepenArchivePaths</code> from <code>apply.ts</code> into <code>packages/core/src/archive-paths.ts</code> and import it from both <code>apply</code> and <code>graduate</code>.</dd>
+    <dt>Consequences</dt> <dd>+ One path-deepen implementation, tested once. − A small, mechanical refactor of <code>apply.ts</code> (covered by the existing apply tests).</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-006" grounding="n-a">
+  <h4>D-006 · Restore tasks via the seeded <code>/tasks</code> flow <span class="par">(superseded — moved to TBD-explore-restore)</span></h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="superseded">Superseded</spec-status></dd>
+    <dt>Context</dt>      <dd>This decision owned the restore-task generation (US2 / former <a href="./spec.html">FR-005</a>) — tracer-bullet → refactor-to-comply, spike → clean-rebuild with the prototype marked for deletion, via the seeded <code>/tasks</code> flow.</dd>
+    <dt>Decision</dt>     <dd>US2 (restore-scaffold) was <strong>split to the sibling slice <code>TBD-explore-restore</code></strong> when 023's budget went red (the spec's INVEST·Small trigger). This decision, and the §5 alternatives that informed it, move to that slice's plan. 023's graduation now produces <code>spec + plan</code>; the restore tasks are the sibling's concern.</dd>
+    <dt>Consequences</dt> <dd>+ 023 stays within budget and scope (extract + lift/archive). − The restore-task design must be re-decided in <code>TBD-explore-restore</code>; §5 below is retained as the historical reasoning that fed it.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-007" grounding="verified">
+  <h4>D-007 · Extract reuses the <code>/spec</code> + <code>/plan</code> re-entry interviews</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd><a href="./spec.html#FR-003">FR-003</a> says interview the gaps "exactly as a cold <code>/spectastic.spec</code> + <code>/spectastic.design</code> would"; both already have re-entry interview modes, and the evidence ledger is a plan artifact (<a href="../000-spectastic/spec.html#REQ-LIFECYCLE-006">REQ-LIFECYCLE-006</a>).</dd>
+    <dt>Decision</dt>     <dd>The graduate flow seeds the <code>/spec</code> and <code>/plan</code> interviews with the build's demonstrated behaviour + the run record — the run's proven facts becoming <code>verified</code> rows in the plan's §3 evidence ledger — rather than forking new interviews.</dd>
+    <dt>Consequences</dt> <dd>+ One interview implementation per artifact, consistent decision discipline. − Graduate's markdown must thread the run record into the plan interview as grounding input.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-008" grounding="n-a">
+  <h4>D-008 · Kernel-first TDD + a failure-injection test</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>The deterministic transaction is the risk surface for <a href="./spec.html#SC-003">SC-003</a>; a pure-judgment test-style choice, no external fact (<code>n-a</code>).</dd>
+    <dt>Decision</dt>     <dd>Unit-test <code>graduateTransaction</code> (marker flip, archive plan, path-deepen, classify) like <code>apply.fold.test.ts</code>; add a failure-injection test asserting the post-failure invariant (marker still <code>quarantined</code>, no <code>specs/&lt;id&gt;/</code>); stub-<code>AIProvider</code> test for extract; one CLI integration test.</dd>
+    <dt>Consequences</dt> <dd>+ The atomicity guarantee is directly tested, not assumed. − The AI extract's <em>quality</em> is only stub-tested — accepted as the Medium risk (§8).</dd>
+  </dl>
+</spec-decision>
+</section>
+
+
+<section id="project-structure">
+<h2>7 · Project structure</h2>
+
+<pre><code>packages/core/src/
+  commands/graduate.ts     NEW  — pure transaction kernel: marker flip + classify, archive plan,
+                                  ledger path-deepen; extract orchestration types
+  archive-paths.ts         NEW  — deepenArchivePaths lifted from apply.ts (D-005), shared
+  commands/apply.ts        EDIT — import deepenArchivePaths from archive-paths.ts
+  types.ts                 EDIT — QuarantineMarker.status union + classify/graduated; GraduateInput/Result
+packages/cli/src/
+  commands/explore.ts      EDIT — add --graduate &lt;id&gt; mode; route to graduate kernel + AIProvider extract
+packages/core/test/
+  graduate.test.ts         NEW  — kernel-first TDD + failure-injection (SC-003)
+commands/
+  spectastic.explore.md    EDIT — document the --graduate mode (classify → extract → restore → lift → archive)
+templates/
+  (none)                        — graduate reuses templates/spec.html + tasks.html via the spec/tasks machinery
+</code></pre>
+</section>
+
+
+<section id="risks">
+<h2>8 · Risks &amp; mitigations</h2>
+
+<table>
+  <thead><tr><th>Risk</th><th>Likelihood</th><th>Impact</th><th>Mitigation</th></tr></thead>
+  <tbody>
+    <tr><td>The AI extract reads the build into dishonest or incomplete requirements</td><td>M</td><td>M</td><td>Seed from the real run record (verified facts, not invented); interview the gaps (D-007); the Draft is reviewed before <code>/plan</code>; downstream full-rigor gates catch holes.</td></tr>
+    <tr><td>FS non-atomicity — a crash mid-commit leaves a partial <code>specs/&lt;id&gt;/</code> that FR-003 then refuses to overwrite, blocking retry</td><td>L</td><td>M</td><td>Marker-flip-last ordering + best-effort cleanup of a partial <code>specs/&lt;id&gt;/</code> on failure; the failure-injection test asserts the invariant (D-008).</td></tr>
+    <tr><td>Lifting <code>deepenArchivePaths</code> into a shared util regresses <code>apply</code></td><td>L</td><td>M</td><td>The existing apply + apply.fold tests cover the move; the shared util gets its own unit test.</td></tr>
+  </tbody>
+</table>
+</section>
+
+
+<section id="complexity">
+<h2>9 · Complexity tracking</h2>
+<p>Anywhere this plan introduces complexity not strictly required by the spec, justify it here.</p>
+
+<spec-assumption>
+<p>The AI leg has two code paths (in-host Claude for the slash command, an injected <code>AIProvider</code> for
+the CLI). This duplication is accepted: it is the established house pattern for every AI-coupled verb
+(<code>spec</code>, <code>plan</code>), and the slash path is keyless while the CLI path is the deterministic-dispatch
+escape hatch (006 FR-009).</p>
+</spec-assumption>
+
+<spec-assumption>
+<p>FS rollback is best-effort, not transactional. Accepted because the property that actually matters
+(<a href="./spec.html#NFR-001">NFR-001</a>) is "no silent-ship window," which the marker-flip-last ordering
+guarantees — a crash can at worst leave a partial <code>specs/&lt;id&gt;/</code> while the id stays quarantined
+and refusable, and the cleanup-on-failure path keeps retry clean.</p>
+</spec-assumption>
+</section>
+
+
+<section id="questions">
+<h2>10 · Open questions</h2>
+<spec-questions>
+<p>None outstanding — every decision was anchored in the interview. Restore-task generation resolved to seeding
+<code>/tasks</code> (D-006, §5 winner); the verb shape, kernel split, atomicity ordering, and marker evolution
+are all <code>verified</code> against real source (§3). No <code>must</code>-tier decision rests on an
+<code>assumed</code> fact, so the grounding gate is clear.</p>
+</spec-questions>
+</section>
+
+
+<section id="changelog">
+<h2>11 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-06-26">26 Jun 2026</time><span>Initial plan. Two-leg architecture (AI extract + pure transaction kernel) grounded in the explore/verify kernel-purity pattern and the apply fold-before-rename atomicity; restore tasks seed the <code>/tasks</code> flow. 10 facts verified, 0 spike, 0 assumed.</span></li>
+  <li><time datetime="2026-06-26">26 Jun 2026</time><span>Revised (T-1001): extract emits spec + plan; grounding seeded as verified rows in the plan's §3 ledger (D-002/D-007); D-006 superseded — restore tasks split to TBD-explore-restore.</span></li>
+  <li><time datetime="2026-06-26">26 Jun 2026</time><span>Status flipped Draft → Accepted on 26 Jun 2026 — zero remaining unchecked tasks; tests verified passing per author confirmation. Sibling bundle (REQ-LIFECYCLE-005).</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  Plan for 023-explore-graduation · explore --graduate — the back half of the loop · authored 2026-06-26
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>

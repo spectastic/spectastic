@@ -16,7 +16,7 @@ glance and click through to the full rendered document. Three fidelity levels:
 spectastic is single-file-HTML spec tooling with a deliberately **calm, editorial** visual
 identity — warm cream surfaces, serif-led typography, generous whitespace, status conveyed by
 small pills, *data-ink-ratio* discipline (nothing on screen that doesn't carry meaning). The
-artifacts themselves (`spec.html`, `plan.html`, …) are **already designed**; the full webview
+artifacts themselves (`spec.html`, `design.html`, …) are **already designed**; the full webview
 reuses that system as-is. What's new is the **canvas** and the **cards**.
 
 ## The model — what nodes and edges mean
@@ -24,7 +24,7 @@ reuses that system as-is. What's new is the **canvas** and the **cards**.
 Each **node = one artifact file** in the lifecycle:
 
 ```
-principles → spec → plan → tasks → implement → propose → apply → triage
+principles → spec → design → tasks → implement → propose → apply → triage
 ```
 
 …plus branches: a spec can have **child slices** (parent/child); a **proposal** branches off a

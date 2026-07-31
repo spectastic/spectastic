@@ -16,7 +16,7 @@ module.exports = {
       comment:
         '@spectastic/corpus must not import @spectastic/core — the extraction (064) makes ' +
         'corpus a lower layer than core; a back-edge here recreates the coupling the slice ' +
-        'removes. See specs/064-corpus-package-extraction/plan.html D-004.',
+        'removes. See specs/064-corpus-package-extraction/design.html D-004.',
       severity: 'error',
       from: { path: '^packages/corpus' },
       to: { path: '^packages/core' },

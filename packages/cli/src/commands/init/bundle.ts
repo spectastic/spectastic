@@ -9,7 +9,7 @@ import type { BundleInventory } from './types.js';
  * (_bundled/ next to the compiled binary) and falling back to the
  * workspace root for dev mode when prebuild hasn't run.
  *
- * Per D-003 of specs/003-init-node-port/plan.html.
+ * Per D-003 of specs/003-init-node-port/design.html.
  */
 export function resolveBundle(): BundleInventory {
   const productionRoot = productionBundleRoot();

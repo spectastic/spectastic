@@ -51,7 +51,7 @@ const commandFiles = (files: string[]) => files.filter((f) => f.startsWith('.cla
 describe('init: extended-verb tiering (T-300, FR-009)', () => {
   describe('manifest classification', () => {
     const manifest: VerbManifest = {
-      core: ['spec', 'plan'],
+      core: ['spec', 'design'],
       extended: ['explain'],
     };
 

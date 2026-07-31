@@ -1,7 +1,7 @@
 /**
  * @spectastic/core public types.
  *
- * Per D-003..D-005 of specs/006-kernel-extraction/plan.html, the kernel's
+ * Per D-003..D-005 of specs/006-kernel-extraction/design.html, the kernel's
  * surface is three interfaces (KernelContext, FileSystem, AIProvider) +
  * per-verb input/result shapes. The AIProvider is forward-looking
  * (declares chat + ask + subagent in v1 even though the validate verb
@@ -166,7 +166,7 @@ export interface ValidateResult {
 /** Eight layer values per FR-009 of 007-core-triage. */
 export type TriageLayer =
   | 'spec'
-  | 'plan'
+  | 'design'
   | 'implementation'
   | 'cross-spec'
   | 'principles'
@@ -259,7 +259,7 @@ export interface PrinciplesResult {
 export interface TasksInput {
   /** Path to the source spec.html (resolved). */
   specPath: string;
-  /** Path to the source plan.html (resolved). */
+  /** Path to the source design.html (resolved). */
   planPath: string;
   /**
    * Restore mode (spec 024-explore-restore, FR-001). When set, the kernel
@@ -400,13 +400,13 @@ export interface SpecResult {
   corpusHint?: string;
 }
 
-export interface PlanInput {
+export interface DesignInput {
   /** Spec ID to plan against. */
   specId: string;
   /** Existing spec.html content (kernel reads). */
   specHtml: string;
-  /** Existing plan.html content (for re-entry; undefined = fresh). */
-  existingPlan?: string;
+  /** Existing design.html content (for re-entry; undefined = fresh). */
+  existingDesign?: string;
   /** Existing principles.html content (for the principles check). */
   principlesHtml?: string;
   /**
@@ -417,7 +417,7 @@ export interface PlanInput {
   decisions?: Record<string, string>;
 }
 
-export interface PlanResult {
+export interface DesignResult {
   html: string;
   decisionsCount: number;
   estimabilityBlockers: string[];
@@ -625,7 +625,7 @@ export interface ImplementInput {
   target: string;
   /** Source spec.html content (for estimability gate). */
   specHtml?: string;
-  /** Source plan.html content. */
+  /** Source design.html content. */
   planHtml?: string;
   /** Source tasks.html content (for tick + remaining count). */
   tasksHtml?: string;
@@ -800,7 +800,7 @@ export type GraduationClass = 'spike' | 'tracer-bullet';
 export interface GraduateExtract {
   /** The extracted Draft `spec.html`. */
   specHtml: string;
-  /** The extracted Draft `plan.html`, carrying the verified evidence ledger. */
+  /** The extracted Draft `design.html`, carrying the verified evidence ledger. */
   planHtml: string;
   /**
    * Discoverability hint (054-corpus-in-prompt, FR-003 / D-004). Set only when
@@ -820,7 +820,7 @@ export interface GraduateTransactionInput {
   specId: string;
   /** spike (clean rebuild) | tracer-bullet (refactor-to-comply). */
   classification: GraduationClass;
-  /** The extracted Draft `spec.html` + `plan.html` (from the extract leg). */
+  /** The extracted Draft `spec.html` + `design.html` (from the extract leg). */
   extract: GraduateExtract;
   /** ISO date (YYYY-MM-DD); caller-supplied to keep the kernel deterministic. */
   date: string;

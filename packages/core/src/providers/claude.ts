@@ -1,6 +1,6 @@
 /**
  * Claude implementation of AIProvider. Per D-001 / D-002 / D-005 of
- * specs/007-core-triage/plan.html.
+ * specs/007-core-triage/design.html.
  *
  * Lazy-loaded only — never imported from packages/core/src/index.ts.
  * The bench's `init-help-cold-start` scenario is the regression guard

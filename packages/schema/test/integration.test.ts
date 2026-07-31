@@ -18,7 +18,7 @@ const REPO_ROOT = resolve(here, '..', '..', '..');
  */
 const PATTERNS = [
   'principles.html',
-  'plan.html',
+  'design.html',
   'inbox.html',
   'index.html',
   'examples/*.html',

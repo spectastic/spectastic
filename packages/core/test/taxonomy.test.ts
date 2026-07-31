@@ -35,14 +35,14 @@ const AGENT: DeciderConfig = { role: 'agent', effort: 'medium' };
 const HUMAN: DeciderConfig = { role: 'human', effort: 'medium' };
 
 describe('DECISION_TAXONOMY — parity with the command markdown (039 SC-003)', () => {
-  it('mirrors plan test-style + risk-tolerance labels exactly', () => {
-    expect(DECISION_TAXONOMY.plan?.map((q) => q.header)).toEqual(['Test style', 'Risk tolerance']);
-    expect(DECISION_TAXONOMY.plan?.[0]?.options.map((o) => o.label)).toEqual([
+  it('mirrors design test-style + risk-tolerance labels exactly', () => {
+    expect(DECISION_TAXONOMY.design?.map((q) => q.header)).toEqual(['Test style', 'Risk tolerance']);
+    expect(DECISION_TAXONOMY.design?.[0]?.options.map((o) => o.label)).toEqual([
       'TDD',
       'integration-first',
       'smoke-only',
     ]);
-    expect(DECISION_TAXONOMY.plan?.[1]?.options.map((o) => o.label)).toEqual(['Low', 'Medium', 'High']);
+    expect(DECISION_TAXONOMY.design?.[1]?.options.map((o) => o.label)).toEqual(['Low', 'Medium', 'High']);
   });
 
   it('mirrors tasks execution-strategy labels exactly', () => {
@@ -60,9 +60,9 @@ describe('DECISION_TAXONOMY — parity with the command markdown (039 SC-003)', 
 });
 
 describe('answerDecisions — role dispatch (039 SC-001/SC-002)', () => {
-  it('answers plan decisions via the agent decider (SC-001)', async () => {
+  it('answers design decisions via the agent decider (SC-001)', async () => {
     const stub = new Stub({}, ['{"Test style":"TDD","Risk tolerance":"Low"}']);
-    const res = await answerDecisions('plan', AGENT, stub);
+    const res = await answerDecisions('design', AGENT, stub);
     expect(res['Test style']).toBe('TDD');
     expect(res['Risk tolerance']).toBe('Low');
     expect(stub.subCalls).toBeGreaterThan(0);
@@ -77,7 +77,7 @@ describe('answerDecisions — role dispatch (039 SC-001/SC-002)', () => {
 
   it('routes to ai.ask at role human — interview parity (SC-002)', async () => {
     const stub = new Stub({ 'Test style': 'TDD', 'Risk tolerance': 'Medium' }, []);
-    const res = await answerDecisions('plan', HUMAN, stub);
+    const res = await answerDecisions('design', HUMAN, stub);
     expect(stub.askCalls).toBe(1);
     expect(stub.subCalls).toBe(0);
     expect(res['Risk tolerance']).toBe('Medium');

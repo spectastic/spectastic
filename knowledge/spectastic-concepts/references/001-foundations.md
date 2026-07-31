@@ -18,7 +18,7 @@ third-party excerpt.
 
 Spec-driven development treats the specification as the source of truth a system is built *from*, rather than
 documentation written *about* a system after the fact. Spectastic's own lifecycle is a direct instance:
-`principles → spec → plan → tasks → implement → propose → apply → triage`. Each stage produces a durable,
+`principles → spec → design → tasks → implement → propose → apply → triage`. Each stage produces a durable,
 single-file HTML artifact; a later stage reads the earlier ones rather than re-deriving intent from
 conversation history or tribal knowledge. The discipline pays off precisely when a decision needs to be
 revisited months later — the spec still says what was wanted, the plan still says why a particular approach
@@ -39,7 +39,7 @@ every `must`-tier requirement without parsing prose.
 
 ## The grounding discipline
 
-Per `REQ-LIFECYCLE-006` of the meta-spec, `/spectastic.plan` grounds every design-bearing fact against real
+Per `REQ-LIFECYCLE-006` of the meta-spec, `/spectastic.design` grounds every design-bearing fact against real
 source before writing a decision, and classifies each as one of three states:
 
 - **verified** — the source was opened this turn; the citation names it (a file path, a symbol, a dependency

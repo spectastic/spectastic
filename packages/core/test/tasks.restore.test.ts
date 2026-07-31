@@ -53,7 +53,7 @@ function harness(reply: string): { ctx: KernelContext; prompts: string[] } {
 
 const paths = {
   specPath: '/p/specs/019-demo/spec.html',
-  planPath: '/p/specs/019-demo/plan.html',
+  planPath: '/p/specs/019-demo/design.html',
 };
 const ARCHIVE = 'explorations/archive/019-demo';
 

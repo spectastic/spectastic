@@ -55,7 +55,7 @@ function graduatedProject(classify: 'spike' | 'tracer-bullet'): string {
   const cwd = mkdtempSync(join(tmpdir(), 'spectastic-restore-'));
   mkdirSync(join(cwd, 'specs', '019-demo'), { recursive: true });
   writeFileSync(join(cwd, 'specs', '019-demo', 'spec.html'), SPEC);
-  writeFileSync(join(cwd, 'specs', '019-demo', 'plan.html'), PLAN);
+  writeFileSync(join(cwd, 'specs', '019-demo', 'design.html'), PLAN);
   mkdirSync(join(cwd, 'explorations', 'archive', '019-demo'), {
     recursive: true,
   });

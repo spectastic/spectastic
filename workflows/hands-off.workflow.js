@@ -1,7 +1,7 @@
 export const meta = {
   name: 'hands-off',
   description:
-    'Drive an approved spec through plan→tasks→implement→verify unattended — the 037 Workflow home. Shares runPipeline with the CLI by invoking `spectastic run`.',
+    'Drive an approved spec through design→tasks→implement→verify unattended — the 037 Workflow home. Shares runPipeline with the CLI by invoking `spectastic run`.',
   whenToUse: 'Submit an approved spec and walk away, on the Claude Workflow surface.',
   phases: [{ title: 'Run' }],
 };
@@ -28,7 +28,7 @@ const result = await agent(
     `  spectastic run ${specId} --decider=${decider} --checkpoints=${checkpoints}${effortFlag} --yes`,
     ``,
     `The CLI convenes the Decider per decision (role=${decider}) and drives`,
-    `plan → tasks → implement → verify with validate between steps. Report the final`,
+    `design → tasks → implement → verify with validate between steps. Report the final`,
     `"run ${specId}: completed|halted — ran [...]" line and any halt reason verbatim.`,
   ].join('\n'),
   { label: `run:${specId}` },

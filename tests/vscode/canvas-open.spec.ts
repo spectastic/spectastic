@@ -28,7 +28,7 @@ test('Enter on a focused node also opens it (keyboard a11y)', async ({ page }) =
   const posted = await page.evaluate(() => window.__posted);
   expect(posted).toContainEqual({
     type: 'open',
-    path: '/repo/specs/099-demo/plan.html',
+    path: '/repo/specs/099-demo/design.html',
   });
 });
 
