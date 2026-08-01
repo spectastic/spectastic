@@ -8,6 +8,7 @@ export default defineConfig({
     'src/citation-shared.ts',
     'src/fence.ts',
     'src/project-shared.ts',
+    'src/contract-shared.ts',
   ],
   format: ['esm'],
   dts: true,

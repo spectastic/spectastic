@@ -152,26 +152,43 @@ lives at the git/CI boundary where P-8 says it must.</p>
   when the project exposes a <em>detectable public interface</em> — an HTTP/RPC framework declared as a dependency (e.g.
   <code>express</code>/<code>fastify</code>/<code>@nestjs</code>, <code>flask</code>/<code>fastapi</code>/<code>django</code>,
   <code>spring-web</code>/<code>jakarta.ws.rs</code>, <code>gin</code>/<code>echo</code>,
-  <code>actix-web</code>/<code>axum</code>, or a gRPC/Protobuf toolchain) — <em>and</em> no checked-in contract is present.
-  A project with <em>no</em> detected interface framework <spec-rule>MUST</spec-rule> be treated as covered for
-  contract-first (there is nothing to contract) — <spec-rule>MUST NOT</spec-rule> hard-fail — so a CLI, batch job, or
-  internal library is never false-failed for lacking an API schema. This is categorically distinct from
-  <a href="#FR-010">FR-010</a> and does <spec-rule>NOT</spec-rule> override it: FR-010 warns when a category that
-  <em>does</em> apply cannot be expressed in the project's stack (an applicable-but-undetectable gap); contract-first's
-  applicability is itself <em>conditional</em> — "no interface detected" means the category may not apply at all, not that
-  an applicable category is invisible — so the correct posture is exempt, not warn. Warning on every interface-less
-  project (each CLI, batch job, and library) would be the warn-washing FR-010's demotion is expressly not meant to cause.
-  Because the gate fails safe on the antecedent, it requires no FR-010 undetectable entry; the residual is that an
-  interface exposed via a framework outside the signal set is <em>silently exempt</em> (a false-negative), which
-  <spec-rule level="should">SHOULD</spec-rule> be recorded as the honest ceiling rather than closed by widening the gate
-  into false failures.</p>
+  <code>actix-web</code>/<code>axum</code>), a gRPC/Protobuf toolchain, a GraphQL server, <em>or</em> an event-driven
+  interface — a message-broker or managed-bus client (e.g. Kafka, AMQP/RabbitMQ, NATS, Pulsar, SQS/SNS, EventBridge,
+  Service Bus, Redis streams) declared as a dependency — <em>and</em> no checked-in contract is present. Detection of an
+  event-driven interface alone, with no HTTP/RPC/GraphQL/gRPC signal also present, <spec-rule>MUST</spec-rule> report the
+  gap at <em>advisory</em> severity via the existing per-category mechanism (the same one that already demotes an
+  undetectable stack under <a href="#FR-010">FR-010</a>) and <spec-rule>MUST NOT</spec-rule> hard-fail a profile floor on
+  that branch alone, until the signal set is deliberately promoted — this is a distinct mechanism from FR-010's
+  stack-cannot-express-this-category demotion: here the category plainly applies (an interface was detected), and only the
+  detecting signal's strength is weaker.</p>
+  <p>Where a design (per <a href="../../069-design-contract-section/spec.html">069</a>/<a href="../../070-contract-sidecar-convention/spec.html">070</a>)
+  declares an interface's shape or a contract's path, that declaration <spec-rule>MUST</spec-rule> take precedence over
+  inference from dependencies or the filesystem, in both directions: a declared contract path establishes one is owed even
+  where dependency or filesystem inference alone would find none, and a declaration of <code>shape="none"</code>
+  establishes none is owed even where a broker dependency is present. This is conditional on a design existing and
+  declaring — a project with no spectastic design gets inference only, exactly as before.</p>
+  <p>A project with <em>no</em> detected interface — by dependency inference or an overriding declaration —
+  <spec-rule>MUST</spec-rule> be treated as covered for contract-first (there is nothing to contract) —
+  <spec-rule>MUST NOT</spec-rule> hard-fail — so a CLI, batch job, or internal library is never false-failed for lacking
+  an API schema. This is categorically distinct from <a href="#FR-010">FR-010</a> and does <spec-rule>NOT</spec-rule>
+  override it: FR-010 warns when a category that <em>does</em> apply cannot be expressed in the project's stack (an
+  applicable-but-undetectable gap); contract-first's applicability is itself <em>conditional</em> — "no interface
+  detected" means the category may not apply at all, not that an applicable category is invisible — so the correct posture
+  is exempt, not warn. Warning on every interface-less project (each CLI, batch job, and library) would be the
+  warn-washing FR-010's demotion is expressly not meant to cause. Because the gate fails safe on the antecedent, it
+  requires no FR-010 undetectable entry; the residual is that an interface exposed via a mechanism outside the named
+  signal set is <em>silently exempt</em> (a false-negative), which <spec-rule level="should">SHOULD</spec-rule> be
+  recorded as the honest ceiling rather than closed by widening the gate into false failures.</p>
   <details><summary>Rationale — fail safe on "does this even expose an interface?"</summary><p>The other eight categories
   are unconditionally applicable at their tiers; contract-first is conditional on the project's nature. The choices are:
-  hard-require it everywhere (false-fails interface-less projects — the P-9 reflex), make it advisory (a weaker,
-  non-gating category), or gate it on a detectable antecedent. Interface-gating is the only option that keeps it a
-  <em>real</em> hard gate where a contract is genuinely owed while never false-failing where it isn't. The trade is a
-  false-negative on unlisted frameworks — deliberately preferred over a false-positive, because a false failure trains
-  teams to disable the gate, while a false-negative is a missed nudge the principle (advisory, at standard) still covers.</p></details>
+  hard-require it everywhere (false-fails interface-less projects — the P-9 reflex), make it advisory everywhere (a
+  weaker, non-gating category for projects that plainly do expose an HTTP/RPC surface), or gate it on a detectable
+  antecedent with a graduated signal strength. Interface-gating with an advisory-only event-driven branch is the option
+  that keeps the HTTP/RPC/GraphQL/gRPC case a <em>real</em> hard gate, adds a genuinely new signal for event-driven
+  services without inventing a false confidence in it, and never false-fails where no interface is detected at all. The
+  trade is a persisting false-negative on unlisted mechanisms — deliberately preferred over a false-positive, because a
+  false failure trains teams to disable the gate, while a false-negative is a missed nudge the principle (advisory, at
+  standard) still covers.</p></details>
   </spec-requirement>
 </section>
 
@@ -244,14 +261,31 @@ the toolchain provides.</p>
   directory — and the category is <em>interface-gated</em> per <a href="#FR-014">FR-014</a>. Detection proves a contract
   is <em>checked in</em>; it
   <spec-rule>MUST NOT</spec-rule> be surfaced as proof that the contract is valid, complete, or matches the running
-  interface.</p>
+  interface. <strong>At the verified tier and above only</strong>, holding a contract additionally
+  <spec-rule>MUST</spec-rule> require a configured contract <em>linter</em> and a configured breaking-change
+  <em>differ</em> — the mechanical meaning of the <code>contract-checked</code> posture the profile axis already names.
+  The signal <spec-rule>MUST</spec-rule> be a <em>declared configuration</em> (a ruleset file, a <code>buf.yaml</code>
+  breaking stanza, an oasdiff/buf invocation in a CI definition) and <spec-rule>MUST NOT</spec-rule> be satisfied by the
+  mere presence of a tool as a dependency — the same distinction <code>coverage</code> draws between a declared threshold
+  and a bare coverage library, for the same reason: an installed tool that never runs certifies nothing. Where a
+  contract's <em>format</em> has no mainstream tool for one half of the check, that half <spec-rule>MUST</spec-rule> be
+  reported at advisory strength with the limitation stated and <spec-rule>MUST NOT</spec-rule> hard-fail the floor. This
+  condition <spec-rule>MUST NOT</spec-rule> change the verdict below verified: a lean- or standard-profile project is
+  evaluated exactly as before. Detection proves a check is <em>configured</em>; it <spec-rule>MUST NOT</spec-rule> be
+  surfaced as proof that the check passes, or that it blocks a merge.</p>
   <details><summary>Rationale — thresholds, gaps, ceilings, and interface-gating</summary><p>An <code>.eslintrc</code>
   means lint runs, so most categories survive presence-detection; <strong>coverage</strong> breaks that (threshold-bearing
   signal; Go flag-only gap → <a href="#FR-010">FR-010</a>), and <strong>observability</strong> has an exporter-manifest
   convention outside Swift/C++ (FR-010) with a "declared ≠ wired" ceiling. <strong>Contract-first</strong> breaks it
   differently: a contract is only owed if an interface is exposed, so the signal is paired with an interface-gate
   (<a href="#FR-014">FR-014</a>) rather than an FR-010 undetectable entry — the gate fails safe on "no interface
-  detected", and its ceiling is that a contract is <em>checked in</em>, not that it is correct.</p></details>
+  detected", and its ceiling is that a contract is <em>checked in</em>, not that it is correct. The verified-and-above
+  tightening raises that ceiling by one rung without pretending to clear it: a configured linter and differ is a
+  materially stronger claim than a file existing, and still a claim about <em>configuration</em>, not about a check
+  passing. It is tier-gated rather than universal because the <code>contracts</code> axis already ladders posture by
+  rigor — standard says contract-first, verified says contract-checked — so the floor is following a distinction the
+  profiles already draw, not inventing one. Asymmetric tool maturity per format (AsyncAPI's diff story is thinner than
+  OpenAPI's) is handled by an advisory carve-out rather than by lowering the bar for everyone.</p></details>
   </spec-requirement>
 
 <spec-requirement id="FR-003" priority="must">
@@ -416,6 +450,8 @@ severity model, and the brownfield boundary were anchored against 041 and the co
   <li><time datetime="2026-07-11">11 Jul 2026</time><span>Applied <a href="./changes/archive/2026-07-11-observability-enforce-category/proposal.html">2026-07-11-observability-enforce-category</a>: Add observability as an enforcement category (teeth for the P1b verified observability principle): MODIFY FR-002 to detect a metrics registry/exporter/starter dependency by its deliberate export name (never a transitive core/tracing lib like @opentelemetry/api), plus a data/content delta adding observability to the verified/enterprise floor + axis labels. Adversarial pass: 3 risks (exporter-specific signals; an FR-010 observability:['swift','cpp'] entry so unsupported stacks warn not false-fail — the second user of that machinery; kept the hard gate with an explicit deliberate-choice justification). Present != wired ceiling recorded..</span></li>
   <li><time datetime="2026-07-12">11 Jul 2026</time><span>Applied <a href="./changes/archive/2026-07-11-relax-a-requirement/proposal.html">2026-07-11-relax-a-requirement</a>: Relax a requirement: per-category enforcement waivers (spectastic.json enforce.waivers[]) that demote a floor category to an advisory 'relaxed' warning, with mandatory reason+owner and an auto-expiring 365-day horizon; security+supply-chain un-relaxable at enterprise; well-formed validate scan + fail-closed runtime. Adversarial pass: 3 risks (1 rejected, 2 mitigated incl. NFR-001 determinism scoped to filesystem+injected clock)..</span></li>
   <li><time datetime="2026-07-12">11 Jul 2026</time><span>Applied <a href="./changes/archive/2026-07-11-contract-first-enforce/proposal.html">2026-07-11-contract-first-enforce</a>: Add contract-first as the 9th enforce category — detects a checked-in interface contract (OpenAPI/Swagger, *.proto, GraphQL SDL, AsyncAPI, or JSON Schema under contracts/), interface-gated (FR-014) so it's a gap only when a web/RPC framework is detected without a contract; a project with no interface is exempt (fails safe, no FR-010 entry needed). Verified/enterprise floor. Adversarial pass: 3 risks mitigated (dropped bare *.schema.json, reconciled FR-014 with FR-010, scoped subdir detection to contract signals only). Resolves TBD-contract-first-enforce..</span></li>
+  <li><time datetime="2026-08-01">01 Aug 2026</time><span>Applied <a href="./changes/archive/2026-08-01-widen-interface-detection/proposal.html">2026-08-01-widen-interface-detection</a>: MODIFY FR-014: widen the contract-first interface antecedent with an advisory-only event-driven branch, and add declaration-precedence in both directions (073-interface-detection-widening, D-005).</span></li>
+  <li><time datetime="2026-08-01">01 Aug 2026</time><span>Applied <a href="./changes/archive/2026-08-01-contract-checked-rung/proposal.html">2026-08-01-contract-checked-rung</a>: MODIFY FR-002: at verified and above, holding a contract also requires a configured linter and breaking-change differ — declared configuration only, with a capability-limited advisory carve-out and no verdict change below verified (074-contract-checked-tier, task one).</span></li>
 </ol>
 </spec-changelog>
 </section>

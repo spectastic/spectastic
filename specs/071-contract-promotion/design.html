@@ -1,0 +1,400 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
+<title>Contract promotion · Design</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Design · 071-contract-promotion</p>
+  <h1>Contract promotion</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    How we will build it.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>     <span><spec-status value="accepted">Accepted</spec-status></span>
+    <b>Spec</b>       <span><a href="./spec.html">071-contract-promotion</a></span>
+    <b>Owner</b>      <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Branch</b>     <span><code>main</code></span>
+    <b>Created</b>    <span><time datetime="2026-08-01">01 Aug 2026</time></span>
+    <b>Read time</b>  <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-tldr>
+    <p>Promotion is a side effect of <code>apply</code>, which already folds a proposal and archives it — contracts ride the same
+    gesture. The one genuinely new piece of state is the <em>baseline</em>: a verbatim copy of the effective contract, written
+    beside the proposal when it is authored, so landing can ask "has the destination moved since?" rather than the useless
+    "does it differ from what I am about to write?". Atomicity comes from a plan-then-execute split — resolve every contract,
+    refuse on any conflict, and only then touch the disk — which also gives the dry-run for free, since a dry-run is the plan
+    printed instead of executed.</p>
+  </spec-tldr>
+</header>
+
+
+<section id="principles-check">
+<h2>1 · Principles check</h2>
+<p>Verify this design respects every principle in <a href="../../principles.html">v1.9.0</a>. Any violation requires either a
+principles amendment or a deliberate exception logged in §10.</p>
+
+<table>
+  <thead><tr><th>Principle</th><th>Compliance</th><th>Notes</th></tr></thead>
+  <tbody>
+    <tr><td>P-1 · Source order is reading order</td><td><spec-pill>OK</spec-pill></td><td>No artifact structure changes; promotion moves files, it does not rewrite documents.</td></tr>
+    <tr><td>P-2 · Semantic tags over class soup</td><td><spec-pill>OK</spec-pill></td><td>Consumes 069's element via 070's reader; adds no vocabulary.</td></tr>
+    <tr><td>P-3 · IDs are contracts</td><td><spec-pill>OK</spec-pill></td><td><code>D-001</code>…<code>D-006</code> stable.</td></tr>
+    <tr><td>P-4 · Progressive enhancement, never dependence</td><td><spec-pill>OK</spec-pill></td><td>No runtime surface.</td></tr>
+    <tr><td>P-5 · Calm density</td><td><spec-pill>OK</spec-pill></td><td>A silent success, a one-line summary per promoted contract, a refusal that names the conflict.</td></tr>
+    <tr><td>P-6 · Draft is loose, ratified is locked</td><td><spec-pill>OK</spec-pill></td><td>Promotion runs at apply time, which is already the sanctioned mutation path for a past-Draft spec.</td></tr>
+    <tr><td>P-7 · Done means verified</td><td><spec-pill>OK</spec-pill></td><td>No browser runtime. Verified by fixtures covering promote, conflict, re-run, and no-contract.</td></tr>
+    <tr><td>P-8 · Guarantees live in the kernel or CI</td><td><spec-pill>OK</spec-pill></td><td>Load-bearing. Promotion is a mandatory <em>side effect</em>, which P-8 says must have a deterministic owner — so it lands in the apply kernel, never in command markdown.</td></tr>
+    <tr><td>P-9 · The enforcement floor holds</td><td><spec-pill>OK</spec-pill></td><td>No gate weakened. The conflict refusal is a new gate, and it fails closed.</td></tr>
+    <tr><td>P-10 · Internal artifact ids stay out of user-facing copy</td><td><spec-pill>OK</spec-pill></td><td>The refusal names paths and, where determinable, the spec whose change moved the file — an artifact coordinate the user needs, not a requirement id.</td></tr>
+    <tr><td>P-11 · Artifacts are data, not instructions</td><td><spec-pill>OK</spec-pill></td><td>A declared path is data; promotion writes <em>to</em> it and never executes it. Inherits 070's <a href="../070-contract-sidecar-convention/design.html#D-004">D-004</a> containment.</td></tr>
+    <tr><td>P-12 · Capability accountability</td><td><spec-pill>EXCEPTION</spec-pill></td><td>This slice writes files outside <code>specs/</code> for the first time in the lifecycle — a real capability widening. Justified and bounded in §10.</td></tr>
+    <tr><td>P-13 · Accessibility conformance</td><td><spec-pill>OK</spec-pill></td><td>No interactive surface.</td></tr>
+    <tr><td>P-14 · Library-first boundaries</td><td><spec-pill>OK</spec-pill></td><td>Planning and execution are core functions taking a filesystem port; the CLI adds only the <code>--dry-run</code> flag wiring.</td></tr>
+  </tbody>
+</table>
+
+<h3>Toolchain / enforcement</h3>
+<p>Profile <code>enterprise</code>; 8 covered · 1 relaxed · 0 missing. No gaps for this design to fill.</p>
+</section>
+
+
+<section id="technical-context">
+<h2>2 · Technical context</h2>
+<dl>
+  <dt>Language(s)</dt>      <dd>TypeScript <code>^5.7.0</code>.</dd>
+  <dt>Frameworks</dt>       <dd>None new. The existing <code>FileSystem</code> port the apply kernel already takes.</dd>
+  <dt>Architecture</dt>     <dd>Plan-then-execute inside the apply kernel — a pure planner returning a <code>PromotionPlan</code>, and an executor that applies it. See <a href="#D-003">D-003</a>.</dd>
+  <dt>Storage</dt>          <dd>One new on-disk artifact: the baseline copy (<a href="#D-001">D-001</a>). No database, no index.</dd>
+  <dt>Testing</dt>          <dd>vitest <code>^2.1.0</code> against a temp-directory filesystem, as the existing apply integration tests do. Tests written red first.</dd>
+  <dt>Coverage</dt>         <dd>100% of changed lines; a change never lowers coverage of what it touches.</dd>
+  <dt>Perf targets</dt>     <dd><a href="./spec.html#NFR-002">NFR-002</a> — under 200 ms added to the hosting command for up to 10 contracts. Cheap: a read and a write per contract.</dd>
+  <dt>Constraints</dt>      <dd><a href="./spec.html#NFR-001">NFR-001</a> — deterministic, 0 network calls, no wall-clock dependence. Atomicity (<a href="./spec.html#FR-004">FR-004</a>) and idempotence (<a href="./spec.html#FR-005">FR-005</a>) are hard requirements that shape the whole approach.</dd>
+</dl>
+</section>
+
+
+<section id="contracts">
+<h2>3 · Data model &amp; contracts</h2>
+
+<p>Promotion moves files between the two locations <a href="../070-contract-sidecar-convention/spec.html">070</a> defines. The one
+genuinely new piece of state is the baseline; everything else is derived at plan time and discarded.</p>
+
+<table>
+  <thead><tr><th>Conceptual entity</th><th>Physical shape</th><th>Notes</th></tr></thead>
+  <tbody>
+    <tr><td><a href="./spec.html#data">Promotion baseline</a></td>
+        <td><code>specs/&lt;id&gt;/contracts/.baseline/&lt;name&gt;</code> — a verbatim byte copy</td>
+        <td>Written when the proposal is authored, not when it lands. An <em>absent</em> baseline file means "no effective contract existed at authoring time", which is a distinct and legal state from an empty one.</td></tr>
+    <tr><td><a href="./spec.html#data">Archived proposal</a></td>
+        <td><code>specs/&lt;id&gt;/changes/archive/&lt;slug&gt;/contracts/&lt;name&gt;</code></td>
+        <td>Co-located with the archived <code>proposal.html</code> that carried it, so provenance travels together. Never readable as a live contract because it is not at any declared effective path.</td></tr>
+    <tr><td>Promotion plan</td>
+        <td>Derived, in memory — <code>{ writes[], archives[], conflicts[] }</code></td>
+        <td>Computed in full before any write. Non-empty <code>conflicts</code> aborts everything (<a href="./spec.html#FR-004">FR-004</a>); printed instead of executed for the dry-run (<a href="./spec.html#FR-008">FR-008</a>).</td></tr>
+  </tbody>
+</table>
+
+<spec-contract shape="none">
+  <p>No interface. Promotion is a filesystem side effect inside an existing command — no endpoint, no event, no wire surface.
+  The contracts it moves belong to the projects using spectastic, not to spectastic.</p>
+</spec-contract>
+</section>
+
+
+<section id="grounding">
+<h2>4 · Grounding &amp; evidence</h2>
+
+<table class="evidence">
+  <thead><tr><th>Claim the design rests on</th><th>Source</th><th>Status</th><th>Finding / note</th></tr></thead>
+  <tbody>
+    <tr><td><code>apply</code> already owns a folder-move-and-archive side effect</td>
+        <td><code>packages/core/src/commands/apply.ts:41,187-207</code></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td>It resolves <code>specs/&lt;id&gt;/changes/&lt;slug&gt;</code>, rewrites the proposal's relative paths, then moves the folder to <code>changes/archive/</code>. Promotion is the same kind of gesture in the same place — the basis for <a href="#D-002">D-002</a>.</td></tr>
+    <tr><td>Apply's archive step is already ordered to fail safe</td>
+        <td><code>packages/core/src/commands/apply.ts:187-194</code> (comment)</td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td>"written before the archive move so a fold failure leaves the proposal in <code>changes/</code> for a clean retry rather than a half-applied state." The precedent for <a href="#D-003">D-003</a>'s ordering is explicit in the code.</td></tr>
+    <tr><td>The apply kernel takes an injectable filesystem port</td>
+        <td><code>packages/core/src/commands/apply.ts</code> — <code>fs</code> parameter threaded through</td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td>So the planner and executor are testable against a temp directory with no process spawn, and <a href="./spec.html#NFR-001">NFR-001</a>'s determinism is achievable.</td></tr>
+    <tr><td>No hashing primitive exists anywhere in the codebase</td>
+        <td>grep for <code>createHash</code> over <code>packages/*/src</code></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td>Zero matches. A digest-based baseline would introduce crypto as a new primitive; a verbatim copy needs nothing new. Anchors <a href="#D-001">D-001</a>.</td></tr>
+    <tr><td>070 provides the declaration reader this slice consumes</td>
+        <td><code>specs/070-contract-sidecar-convention/design.html</code> <a href="../070-contract-sidecar-convention/design.html#D-001">D-001</a></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td><code>readContractDeclarations()</code> at <code>@spectastic/schema/contract</code>, returning <code>path</code> among other fields. 070 is a hard prerequisite.</td></tr>
+    <tr><td>No spec in the estate carries a proposed contract yet</td>
+        <td><code>ls specs/*/contracts/</code> — no such directory exists</td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td><a href="./spec.html#SC-004">SC-004</a>'s "writes at most 0 files across the existing estate" holds by construction; the no-contract path is the only one exercised today.</td></tr>
+    <tr><td>Apply is the verb that lands a change</td>
+        <td><code>commands/spectastic.apply.md</code> · <code>packages/cli/src/commands/apply.ts</code></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td>Confirms there is exactly one landing moment to host promotion, so "when a change lands" in <a href="./spec.html#FR-001">FR-001</a> has an unambiguous referent.</td></tr>
+  </tbody>
+</table>
+</section>
+
+
+<section id="approach">
+<h2>5 · Approach</h2>
+
+<p>Promotion hooks into the apply kernel, which already resolves a change folder, folds it, and archives it. Two new core
+functions sit in front of the existing archive step: <code>planPromotion()</code> reads the design's declarations (via 070's
+reader), pairs each with its proposed file and its baseline, and returns a <code>PromotionPlan</code> of writes, archives and
+conflicts; <code>executePromotion()</code> applies that plan. A conflict is detected by comparing the <em>current</em> effective
+file against the <em>baseline copy</em> — not against the incoming content, which would flag every legitimate promotion.</p>
+
+<p>Atomicity falls out of the split: the planner touches nothing, so a conflict on the tenth contract aborts before the first
+write. Idempotence falls out of the same structure — after a successful promotion the proposal is archived, so the planner finds
+nothing to do and returns an empty plan, which executes as a no-op and exits zero. The dry-run is the plan rendered rather than
+executed, so it cannot drift from what a real run would do. A change with no proposed contract produces an empty plan and stays
+completely silent, satisfying <a href="./spec.html#FR-006">FR-006</a> by construction rather than by a guard.</p>
+
+<spec-arch>
+<figure>
+<svg viewBox="0 0 700 260" role="img" aria-label="Planner reads declarations, proposed contracts and baselines, compares the baseline to the current effective file, and either returns conflicts or a plan the executor applies">
+  <style>
+    .box { fill:#fcfbf7; stroke:#c4c1bb; stroke-width:1.2; }
+    .label { font: 700 11px Lato, sans-serif; fill:#4a4a46; letter-spacing:0.06em; text-transform:uppercase; }
+    .body { font: 400 12px "Source Serif 4", Georgia, serif; fill:#353534; }
+    .arr { stroke:#73706d; stroke-width:1.2; fill:none; }
+    .note { font: 400 11px Lato, sans-serif; fill:#73706d; }
+  </style>
+  <rect class="box" x="20"  y="70" width="150" height="60" rx="4"/>
+  <text class="label" x="34"  y="94">baseline</text>
+  <text class="body"  x="34"  y="114">@ authoring</text>
+  <rect class="box" x="20"  y="150" width="150" height="60" rx="4"/>
+  <text class="label" x="34"  y="174">effective now</text>
+  <text class="body"  x="34"  y="194">on disk</text>
+  <rect class="box" x="255" y="110" width="150" height="60" rx="4"/>
+  <text class="label" x="269" y="134">planner</text>
+  <text class="body"  x="269" y="154">equal? plan : refuse</text>
+  <rect class="box" x="490" y="110" width="150" height="60" rx="4"/>
+  <text class="label" x="504" y="134">executor</text>
+  <text class="body"  x="504" y="154">write + archive</text>
+  <path class="arr" d="M170 100 L255 132" marker-end="url(#a)"/>
+  <path class="arr" d="M170 180 L255 148" marker-end="url(#a)"/>
+  <path class="arr" d="M405 140 L490 140" marker-end="url(#a)"/>
+  <text class="note" x="255" y="205">nothing is written until the whole plan is conflict-free — that is the atomicity</text>
+  <defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#73706d"/></marker></defs>
+</svg>
+<figcaption>The comparison that matters is baseline-versus-current, not incoming-versus-current. Getting that backwards is the
+failure mode the spec's data-model section calls out by name.</figcaption>
+</figure>
+</spec-arch>
+</section>
+
+
+<section id="alternatives">
+<h2>6 · Alternatives considered</h2>
+
+<p>The load-bearing choice is how the baseline is recorded, since <a href="./spec.html#FR-003">FR-003</a> is impossible without it.
+Scored 1–5, higher is better.</p>
+
+<spec-matrix>
+<table>
+  <thead>
+    <tr><th>Option</th><th>No new primitive</th><th>Refusal quality</th><th>Portability</th><th class="score">Total</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>A sha-256 digest in the proposal</td><td>1</td><td>2</td><td>5</td><td class="score">8</td></tr>
+    <tr><td>Resolve via git at the base commit</td><td>4</td><td>4</td><td>1</td><td class="score">9</td></tr>
+    <tr data-winner><td>A verbatim baseline copy beside the proposal — chosen</td><td>5</td><td>5</td><td>5</td><td class="score">15</td></tr>
+  </tbody>
+</table>
+</spec-matrix>
+
+<p>The digest is the tempting answer — it is tiny and answers exactly the yes/no question asked. It loses on two counts: a grep
+confirms <code>createHash</code> appears nowhere in this codebase, so it introduces cryptography as a new primitive for one
+boolean; and a digest can only say <em>that</em> the destination moved, never show what moved, which makes
+<a href="./spec.html#FR-007">FR-007</a>'s "name the conflicting path" the most it can ever offer. Git scores well on refusal
+quality but couples a filesystem-only guarantee to a VCS, breaking a plain checkout or an exported tarball.</p>
+</section>
+
+
+<section id="decisions">
+<h2>7 · Decisions</h2>
+
+<spec-decision id="D-001" grounding="verified">
+  <h4>D-001 · The baseline is a verbatim copy at <code>contracts/.baseline/&lt;name&gt;</code></h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd><a href="./spec.html#FR-003">FR-003</a> needs to know what the effective contract looked like when the proposal was authored. A grep for <code>createHash</code> over <code>packages/*/src</code> returns zero matches, so a digest would be a new codebase primitive.</dd>
+    <dt>Decision drivers</dt> <dd>No new primitive · quality of the refusal message · portability without git</dd>
+    <dt>Considered options</dt>
+    <dd>
+      <ul class="considered-options">
+        <li><strong>A sha-256 digest in the proposal</strong> — + tiny, sufficient for a boolean. − Introduces crypto for one comparison; the refusal can never show what changed.</li>
+        <li><strong>Resolve via git at the base commit</strong> — + no stored state. − Couples promotion to git; breaks in a plain checkout or tarball.</li>
+        <li><strong>A verbatim baseline copy — chosen</strong> — + no new primitive, and the refusal can show the divergence. − Duplicates bytes on disk.</li>
+      </ul>
+    </dd>
+    <dt>Decision</dt>     <dd>When a proposal carrying a contract is authored, copy the current effective file to <code>specs/&lt;id&gt;/contracts/.baseline/&lt;name&gt;</code>. Absence of that file records "no effective contract existed", distinct from an empty one.</dd>
+    <dt>Consequences</dt> <dd>+ Comparison is a byte equality with no algorithm choice. + The refusal can name exactly what diverged. − Contract bytes are duplicated while a proposal is in flight; contracts are small and the copy is archived on landing.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-002" grounding="verified">
+  <h4>D-002 · Promotion is hosted by the apply kernel</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd><a href="./spec.html#FR-001">FR-001</a> says "when a change lands". <code>packages/core/src/commands/apply.ts:41,187-207</code> shows apply is that moment and already performs a structurally identical move-and-archive. P-8 requires a mandatory side effect to have a deterministic owner rather than living in command markdown.</dd>
+    <dt>Decision</dt>     <dd>Promotion runs inside <code>applyCommand</code>, immediately before the existing proposal-archive step. No new verb.</dd>
+    <dt>Consequences</dt> <dd>+ Cannot be skipped by a model declining to run a documented step. + Reuses the injected filesystem port and the existing temp-dir test harness. − Apply grows a responsibility; bounded by keeping the planner and executor as separate exported functions rather than inlined logic.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-003" grounding="verified">
+  <h4>D-003 · Plan-then-execute delivers atomicity, idempotence and the dry-run together</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd><a href="./spec.html#FR-004">FR-004</a> demands all-or-nothing across a change's contracts, <a href="./spec.html#FR-005">FR-005</a> idempotence, <a href="./spec.html#FR-008">FR-008</a> a dry-run. Apply's own comment at <code>apply.ts:187-194</code> already establishes ordering-to-fail-safe as the house technique.</dd>
+    <dt>Decision</dt>     <dd>A pure <code>planPromotion()</code> that reads but never writes, returning writes, archives and conflicts; a separate <code>executePromotion()</code>. A non-empty conflict list aborts before any write. The dry-run prints the plan.</dd>
+    <dt>Consequences</dt> <dd>+ One structure satisfies three requirements. + The dry-run cannot drift from the real run because it is the same plan. + Idempotence is emergent: after success the proposal is archived, so the plan is empty. − True crash-mid-write atomicity is not achievable without a journal; bounded and recorded in §10.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-004" grounding="verified">
+  <h4>D-004 · The archived proposal travels with its change, not with the contracts directory</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd><a href="./spec.html#FR-002">FR-002</a> requires no readable contract remain at the proposed location. Apply already moves the change folder to <code>specs/&lt;id&gt;/changes/archive/&lt;slug&gt;/</code>, which is where the proposal that carried the contract ends up.</dd>
+    <dt>Decision</dt>     <dd>Archive to <code>specs/&lt;id&gt;/changes/archive/&lt;slug&gt;/contracts/&lt;name&gt;</code>, alongside the archived <code>proposal.html</code>, carrying the baseline with it.</dd>
+    <dt>Consequences</dt> <dd>+ Provenance is co-located: the proposal, its contract and the baseline it was authored against sit together. + <code>specs/&lt;id&gt;/contracts/</code> is left genuinely empty, so "no readable contract remains" is literally true. − A reader looking for a spec's contract history must open the archive rather than one directory.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-005" grounding="verified">
+  <h4>D-005 · A missing baseline means "no predecessor", and promotion proceeds</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>The first contract for an interface has no effective file to copy at authoring time. Treating that as a conflict would make it impossible to land a project's first contract at all — the same first-contract trap <a href="../074-contract-checked-tier/spec.html">074</a> resolved in its own register.</dd>
+    <dt>Decision</dt>     <dd>No baseline file recorded <em>and</em> no effective file present → promote. No baseline recorded but an effective file now exists → refuse, since something else created it.</dd>
+    <dt>Consequences</dt> <dd>+ A project's first contract lands cleanly. + The refusal still catches a genuine race where a sibling change created the file first. − Relies on the baseline being written at authoring time; if it is missing for any other reason the check degrades to the second branch and refuses, which fails closed.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-006" grounding="n-a">
+  <h4>D-006 · Comparison is exact bytes, with no normalisation</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>A conflict check could normalise line endings, trailing whitespace, or YAML key order before comparing. Each normalisation is a judgment about what "unchanged" means, and every one of them can hide a real edit. Pure judgment, no external fact.</dd>
+    <dt>Decision</dt>     <dd>Byte equality. A whitespace-only change to the effective contract counts as a conflict and refuses.</dd>
+    <dt>Consequences</dt> <dd>+ No semantics to get wrong, and the check can never claim two differing files are the same. + Deterministic across platforms. − A reformatting of the effective file forces a re-authored proposal; the correct response, since a reformat means someone else touched the destination.</dd>
+  </dl>
+</spec-decision>
+</section>
+
+
+<section id="project-structure">
+<h2>8 · Project structure</h2>
+
+<pre><code>packages/core/src/contracts/
+  promote.ts                        new — planPromotion() + executePromotion(), the whole slice
+  types.ts                          new — PromotionPlan, PromotionConflict
+packages/core/src/commands/
+  apply.ts                          + plan/execute called before the existing archive step
+  propose.ts                        + write the baseline copy when a proposal carries a contract
+packages/core/test/
+  promote.plan.test.ts              new — conflict, no-predecessor, multi-contract, empty
+  promote.execute.test.ts           new — write, archive, idempotent re-run
+  apply.contracts.test.ts           new — end-to-end through the apply kernel
+packages/cli/src/commands/
+  apply.ts                          + --dry-run flag wiring only
+packages/cli/test/
+  apply.contracts.integration.test.ts  new
+</code></pre>
+
+<p>Deliberately absent: no new verb, and no change to the schema package — the declaration reader is 070's and is imported, not
+re-derived.</p>
+</section>
+
+
+<section id="risks">
+<h2>9 · Risks &amp; mitigations</h2>
+
+<table>
+  <thead><tr><th>Risk</th><th>Likelihood</th><th>Impact</th><th>Mitigation</th></tr></thead>
+  <tbody>
+    <tr><td>The conflict comparison is written the wrong way round — incoming-versus-current instead of baseline-versus-current — making every legitimate promotion refuse</td><td>M</td><td>H</td><td>The spec's own data-model section names this trap explicitly. A fixture where the incoming content differs from the effective file but the baseline matches <em>must</em> promote; it is the first test written.</td></tr>
+    <tr><td>A crash between the write and the archive leaves a half-promoted state</td><td>L</td><td>M</td><td>Ordering follows apply's existing fail-safe precedent: write the effective contract first, archive second, so a crash leaves the proposal in place and a re-run is a clean retry. Recorded as a bounded ceiling in §10.</td></tr>
+    <tr><td>The baseline is never written because the proposal was authored by hand rather than through the verb</td><td>M</td><td>M</td><td><a href="#D-005">D-005</a> fails closed — a missing baseline with an existing effective file refuses rather than clobbering. The author re-authors through the verb.</td></tr>
+    <tr><td>Writing outside <code>specs/</code> surprises a user who expected the lifecycle to touch only its own tree</td><td>M</td><td>M</td><td>The dry-run exists for exactly this; the write is to a path the design itself declared, and the summary names every file written.</td></tr>
+  </tbody>
+</table>
+</section>
+
+
+<section id="complexity">
+<h2>10 · Complexity tracking</h2>
+
+<spec-assumption>
+<p><strong>P-12 exception — this slice writes outside <code>specs/</code>.</strong> Every lifecycle verb until now has confined
+its writes to the spec tree and its own artifacts. Promotion, by definition, writes to a project path the design declares. The
+capability is real and is justified by the spec's whole purpose, but it is bounded three ways: the destination is not chosen by
+the tool but declared in a reviewed artifact; it inherits
+<a href="../070-contract-sidecar-convention/design.html#D-004">070's D-004</a> containment, so it cannot escape the project
+directory; and the dry-run makes the full write set inspectable before anything happens. Logged here rather than waved through,
+per the principles-check requirement that an exception carry a justification.</p>
+</spec-assumption>
+
+<spec-assumption>
+<p><strong>Atomicity is plan-level, not crash-level.</strong> <a href="./spec.html#FR-004">FR-004</a> is satisfied against
+conflicts — no partial write occurs because of a detected conflict. It is <em>not</em> satisfied against a process kill between
+two writes; that would need a journal or a staging directory with an atomic rename, which is disproportionate for a handful of
+small files. The mitigation is ordering: the fail-safe sequence leaves a retryable state, exactly as apply's own archive step
+already does.</p>
+</spec-assumption>
+
+<spec-assumption>
+<p><strong>Two proposals against one interface refuse rather than merge.</strong> The spec puts merging out of scope, and this
+design does not smuggle it back in. The second proposal to land sees a moved destination and refuses — correct, because a schema
+merge is not a text merge and pretending otherwise would silently produce an invalid contract.</p>
+</spec-assumption>
+</section>
+
+
+<section id="questions">
+<h2>11 · Open questions</h2>
+<spec-questions>
+<p>None outstanding. The baseline representation, the hosting verb, the atomicity structure, the archive destination, the
+no-predecessor case and the comparison strictness were all settled here; merging was settled by the spec as out of scope.</p>
+</spec-questions>
+</section>
+
+
+<section id="changelog">
+<h2>12 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-08-01">01 Aug 2026</time><span>Initial design. Seven grounding facts, all verified; no spikes and no assumed facts, so the design-to-tasks grounding gate is clear. Carries one deliberate P-12 exception — the first lifecycle write outside <code>specs/</code> — justified and bounded in §10.</span></li>
+  <li><time datetime="2026-08-01">01 Aug 2026</time><span>Status flipped Draft → Accepted on 01 Aug 2026 — zero remaining unchecked tasks; tests verified passing per author confirmation. Sibling bundle (REQ-LIFECYCLE-005).</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  Design for 071-contract-promotion · Contract promotion · authored 01 Aug 2026
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>

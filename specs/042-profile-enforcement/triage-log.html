@@ -70,6 +70,123 @@
   </details>
 </spec-triage>
 
+<spec-triage id="T-002" layer="spec">
+  <header>
+    <h4>An event-driven service is silently exempt from <code>contract-first</code> at every tier</h4>
+    <span class="meta">
+      <span class="layer-pill">Spec</span>
+      <span class="regen" data-result="fail">upstream</span>
+    </span>
+  </header>
+
+  <p class="headline">Debugging why a broker-only backend never sees the contract gate, root cause was
+  <a href="./spec.html#FR-014">FR-014</a> defining "detectable public interface" as an HTTP/RPC framework dependency, so
+  <code>INTERFACE_SIGNALS</code> carries no message broker and <code>exposesInterface()</code> returns false; fixed by amending
+  FR-014 to admit event-driven interfaces; regeneration fails — any session implementing today's FR-014 rebuilds the same
+  HTTP-only signal list, so the gap is upstream of the code.</p>
+
+  <dl>
+    <dt>Expected</dt> <dd>A service that publishes messages to Kafka/AMQP/NATS/Pulsar/SQS/SNS/Service Bus/Pub&nbsp;Sub exposes a public interface, so at verified and enterprise it owes a checked-in contract — an <code>asyncapi.yaml</code>, which <code>isContractFile()</code> already accepts.</dd>
+    <dt>Actual</dt>   <dd><code>exposesInterface()</code> matches only HTTP, GraphQL and gRPC dependency names, so the antecedent fails, <code>evaluateEnforcement</code> marks <code>contract-first</code> <em>covered</em> ("nothing to contract"), and no warning is emitted — the gate deliberately fails safe on the antecedent so CLIs and batch jobs aren't false-failed.</dd>
+    <dt>Diagnosis</dt><dd><a href="./spec.html#FR-014">FR-014</a> enumerates only HTTP/RPC frameworks and treats the residual as an accepted ceiling ("SHOULD be recorded as the honest ceiling rather than closed by widening the gate into false failures"). That framing is right for an <em>unlisted HTTP framework</em> and wrong for an entire architectural style: the tool recognises the answer (AsyncAPI) to a question it can never ask. Correctly distinct from <a href="./spec.html#FR-010">FR-010</a> — this is not undetectable, merely undetected.</dd>
+    <dt>Fix</dt>      <dd><code>specs/042-profile-enforcement/</code> — a <code>/spectastic.propose</code> MODIFY on <a href="./spec.html#FR-014">FR-014</a> admitting message-broker dependencies as interface signals, then the matching <code>INTERFACE_SIGNALS</code> entries. Widen the antecedent only; leave the fail-safe posture intact. Sibling copy fix: the standard-tier seeded principle in <code>spectastic-profiles.json</code> names OpenAPI/JSON&nbsp;Schema/typed signatures and omits AsyncAPI, <code>.proto</code> and GraphQL SDL.</dd>
+  </dl>
+
+  <details>
+    <summary>Deep dive — deferred functionality exposed + a cross-spec copy inconsistency</summary>
+    <p><strong>Scope-deferred functionality exposed — surfaced, not promoted.</strong> FR-014 does not omit brokers by oversight;
+    it records the miss as a deliberate ceiling. So this card asks for that ceiling to be <em>revisited</em>, not for the gate to
+    be quietly widened. The counter-argument FR-014 anticipated still applies and must be answered by the proposal: a broker
+    client is often a transitive or infrastructural dependency, and the signal cannot distinguish <em>publishing</em> a topic
+    from <em>consuming</em> one — so widening the antecedent risks false failures in the direction FR-014 was written to prevent.
+    That trade is a requirement-level decision, which is why this sits at <code>spec</code> and not <code>implementation</code>.</p>
+    <p><strong>Cross-spec (copy only).</strong> The seeded principle text lives in <code>spectastic-profiles.json</code>, owned by
+    041's profile catalog, while the gate is 042's. Amending FR-014 without the principle's format list leaves the two saying
+    different things about what counts as a contract. Small, but it should land in the same batch as a data/content delta.</p>
+    <p>No hotfix required — the failure mode is a silent pass, not a break. Surfaced by the audit in
+    <code>docs/event-driven-interface-considerations.html</code>, which owns the full audit (D-001, D-002).</p>
+  </details>
+</spec-triage>
+
+<spec-triage id="T-003" layer="spec">
+  <header>
+    <h4>Contract detection misses most ecosystem-conventional layouts</h4>
+    <span class="meta">
+      <span class="layer-pill">Spec</span>
+      <span class="regen" data-result="fail">upstream</span>
+    </span>
+  </header>
+
+  <p class="headline">Debugging why a project with a perfectly good contract can still fail <code>contract-first</code>, root cause
+  was <code>detectContract</code>'s four-directory, one-level search — scoped that way by
+  <a href="./spec.html#NFR-002">NFR-002</a>'s shallow-detection invariant and the adversarial narrowing recorded with
+  <a href="./spec.html#FR-014">FR-014</a>; fixed by widening the searched paths to conventional layouts; regeneration fails — the
+  narrow scan is what the spec describes, so a fresh session rebuilds it.</p>
+
+  <dl>
+    <dt>Expected</dt> <dd>A checked-in contract is found where its ecosystem conventionally puts it — a project should not have to rearrange itself to be detectable.</dd>
+    <dt>Actual</dt>   <dd><code>detectContract</code> lists the root plus one level into <code>api/ proto/ schema/ contracts/</code>, no recursion. It misses Gradle/Maven's <code>src/main/proto/**</code> (the protobuf-plugin default), multi-module <code>&lt;module&gt;/src/main/proto/</code>, buf workspaces (<code>proto/&lt;module&gt;/v1/</code>), Go's <code>api/proto/v1/</code>, Spring's <code>src/main/resources/</code>, the <code>openapi/ protos/ graphql/</code> directory names, and any AsyncAPI document not literally named <code>asyncapi.{yaml,yml,json}</code>.</dd>
+    <dt>Diagnosis</dt><dd>The four-dir/one-level reach was a deliberate compromise — <a href="./spec.html#NFR-002">NFR-002</a> asks detection to stay shallow and sub-500&nbsp;ms, and the contract-dir widening was already scoped narrowly on adversarial review. But "shallow" was calibrated against root manifests, not against build-tool conventions that are three levels deep by default. The result is a hard gate that can fail a compliant project.</dd>
+    <dt>Fix</dt>      <dd><code>specs/042-profile-enforcement/</code> — a <code>/spectastic.propose</code> widening the contract search paths to conventional layouts (bounded, so NFR-002's budget still holds), and preferring an explicitly <em>declared</em> contract path over filesystem inference where one is available. Benchmark against NFR-002's 500&nbsp;ms budget as part of the change.</dd>
+  </dl>
+
+  <details>
+    <summary>Deep dive — an NFR trade, plus a false-positive the same mechanism creates</summary>
+    <p><strong>The fix trades against <a href="./spec.html#NFR-002">NFR-002</a>,</strong> which is why it is a requirement-level
+    change rather than a code tweak: every added directory or level costs a <code>readdirSync</code>, and NFR-002 sets both a
+    posture (shallow) and a budget (well under 500&nbsp;ms). A proposal should widen by <em>named convention</em> rather than by
+    general recursion, so the cost stays bounded and predictable.</p>
+    <p><strong>The same mechanism produces a false positive in the other direction.</strong> Detection by file presence cannot
+    tell a contract a project <em>publishes</em> from one it <em>consumes</em>: a Rust crate using <code>progenitor</code>, or any
+    project vendoring an upstream <code>.proto</code> to generate a client, checks in a contract for an API it does not own — and
+    is marked covered. Only a declaration can distinguish the two, which is the second half of the fix above and the reason it is
+    worth doing alongside the path widening rather than after it.</p>
+    <p>No hotfix required. Surfaced by the same audit as <a href="#T-002">T-002</a>
+    (<code>docs/data-model-contract-considerations.html</code>, §6).</p>
+  </details>
+</spec-triage>
+
+<spec-triage id="T-004" layer="cross-spec">
+  <header>
+    <h4>A standard-profile project declares <code>contract-first</code> as its posture, and nothing checks it</h4>
+    <span class="meta">
+      <span class="layer-pill">Cross-spec</span>
+      <span class="regen" data-result="fail">upstream</span>
+    </span>
+  </header>
+
+  <p class="headline">Debugging why the <code>contracts</code> posture ladder and the enforcement floor disagree, root cause was
+  <strong>cross-spec</strong>: <a href="../041-init-profiles/spec.html">041</a> seeds the axis value
+  <code>contract-first</code> at <em>standard</em>, while this spec only admits the <code>contract-first</code> category to
+  <code>enforce.required</code> at <em>verified</em> — so a standard project is told it holds a posture no gate enforces; fixed by
+  deciding, in a proposal, which of the two moves; regeneration <strong>fails</strong> — neither spec states that the axis and the
+  floor must agree, so any future session would re-seed exactly this mismatch.</p>
+
+  <dl>
+    <dt>Expected</dt> <dd>A profile's declared <code>contracts</code> posture and the enforcement floor at that tier describe the same commitment, or the divergence is stated deliberately.</dd>
+    <dt>Actual</dt>   <dd>Measured across the manifest: <code>lean</code> → axis <code>informal</code>, not required (consistent); <strong><code>standard</code> → axis <code>contract-first</code>, <em>not</em> required</strong>; <code>verified</code> → axis <code>contract-checked</code>, <code>contract-first</code> required; <code>enterprise</code> → axis <code>versioned+governed</code>, <code>contract-first</code> required.</dd>
+    <dt>Diagnosis</dt><dd>Two specs own two halves of one idea and neither owns their relationship. 041 landed the axis as <em>advisory vocabulary</em> — a pure data delta, with the machine teeth explicitly deferred — while 042's <a href="./spec.html#FR-014">FR-014</a> set the floor at verified. Both are internally correct; together they let a tier advertise a posture with no gate behind it. Note the axis runs ahead of the floor at <em>verified</em> and <em>enterprise</em> too, but there it is arguably the intended aspirational ladder; at standard the gap is a full rung with nothing at all beneath it.</dd>
+    <dt>Fix</dt>      <dd>A proposal, not a patch — the two credible resolutions have different costs and only the owner should pick: <strong>(a)</strong> lower the standard axis to <code>informal</code>, making the ladder describe what is enforced; <strong>(b)</strong> admit <code>contract-first</code> to the standard floor, which would newly gap real standard projects; or <strong>(c)</strong> state explicitly in 041 that axes are aspirational and may lead the floor, which legitimises the gap at every tier. Target <span class="path">specs/041-init-profiles/spec.html</span> or <span class="path">specs/042-profile-enforcement/spec.html</span> depending on the choice.</dd>
+  </dl>
+
+  <details>
+    <summary>Deep dive — cross-spec contract</summary>
+    <p><strong>Shared contract:</strong> the meaning of a <code>contracts</code> axis value. 041 owns the vocabulary
+    (<code>informal → contract-first → contract-checked → versioned+governed</code>); 042 owns which enforcement categories are
+    required per tier. Nothing binds the two, which is why this reads as a disagreement rather than a bug in either.</p>
+    <p><strong>Do not resolve by patching the manifest.</strong> Editing either value silently would pick one of three answers
+    without recording why, and the drift-guard test in <span class="path">packages/cli/test/init/profiles.test.ts</span> pins the
+    current per-tier values deliberately — it would have to move in the same change, which is exactly the signal that this needs a
+    proposal.</p>
+    <p><strong>Timing.</strong> <a href="../074-contract-checked-tier/spec.html">074</a> is about to define what
+    <code>contract-checked</code> means mechanically at verified. Resolving this card <em>before</em> 074 lands is worth
+    considering, since 074 sharpens the verified rung and would otherwise be built on a ladder whose lower rung is known to be
+    unbacked. No hotfix required — the mismatch is advisory-only today and breaks nothing at runtime.</p>
+    <p>Surfaced by the same audit as <a href="#T-002">T-002</a> and <a href="#T-003">T-003</a>
+    (<code>docs/data-model-contract-considerations.html</code>), which flagged it in passing as worth a triage.</p>
+  </details>
+</spec-triage>
+
 </spec-triage-log>
 </section>
 
@@ -78,6 +195,9 @@
 <h2>Change log</h2>
 <spec-changelog>
 <ol>
+  <li><time datetime="2026-08-01">01 Aug 2026</time><span>T-004 added — the <code>contracts</code> axis seeds <code>contract-first</code> at standard while the enforcement floor requires it only at verified, so a standard project declares a posture nothing checks; cross-spec between 041 and 042, needs a proposal to pick between lowering the axis, raising the floor, or stating that axes may lead the floor.</span></li>
+  <li><time datetime="2026-07-31">31 Jul 2026</time><span>T-003 added — <code>detectContract</code>'s four-directory, one-level search misses most ecosystem-conventional contract layouts (Gradle/Maven <code>src/main/proto/**</code>, buf and Go nested trees, <code>openapi/</code>, AsyncAPI under other names), so a compliant project can hard-fail the gate. <code>spec</code>, regen <code>fail</code>: widen the searched paths by named convention within <a href="./spec.html#NFR-002">NFR-002</a>'s budget, and prefer a declared contract path over inference — which also addresses the producer/consumer false positive a vendored upstream spec creates.</span></li>
+  <li><time datetime="2026-07-31">31 Jul 2026</time><span>T-002 added — a service whose public surface is message-broker topics is silently exempt from <code>contract-first</code> at every tier, because <a href="./spec.html#FR-014">FR-014</a> defines the interface as an HTTP/RPC framework dependency and <code>INTERFACE_SIGNALS</code> carries no broker. <code>spec</code>, regen <code>fail</code>: amend FR-014 to admit event-driven interfaces, with the transitive-dependency and publish-vs-consume risks answered in the proposal; sibling copy fix for the 041-owned seeded principle, which omits AsyncAPI. Deferred functionality exposed — surfaced, not promoted.</span></li>
   <li><time datetime="2026-07-10">10 Jul 2026</time><span>T-001 resolved — moved the signal table + <code>detectTooling</code>/<code>detectEcosystems</code> (→ <code>@spectastic/core/enforce/detect</code>), <code>evaluateEnforcement</code> (→ <code>enforce/policy</code>), and the <code>EnforcementCategory</code>/<code>EnforceGate</code> types (→ <code>enforce/types</code>) into core with tsup entries + exports; <code>enforce.ts</code>/<code>init.ts</code>/<code>gitignore.ts</code>/<code>profiles.ts</code> now import from core, <code>registerEnforce</code> stays thin. Unit tests moved to <code>core/test</code>. 39 tests + driver 15/15 green; no behaviour change.</span></li>
   <li><time datetime="2026-07-10">10 Jul 2026</time><span>T-001 added — 042's detection (<code>detect.ts</code>) + policy (<code>evaluateEnforcement</code>) are CLI-local, against the fat-core/thin-CLI convention + P-8. <code>implementation</code>, regen <code>pass</code>: move the deterministic pieces to <code>@spectastic/core</code>, keep the command thin (mirrors the 043 review fix). Recurrence across 041/042/043 suggests writing the convention down — surfaced in the deep-dive, not promoted.</span></li>
 </ol>

@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
+<title>Contract distribution recipes — Spectastic</title>
+<meta name="description" content="Two worked recipes for getting a contract from the repository that owns it to the repositories that depend on it — vendoring and a published artifact — consuming the same coordinate and the same notification.">
+<link rel="stylesheet" href="../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../assets/favicon.svg">
+<script src="../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Recipes · Contract distribution</p>
+  <h1>Getting a contract across a repository boundary</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    Two mechanisms, one coordinate. Neither is blessed, and the surface works identically under both — which is the point.
+  </p>
+
+  <spec-tldr>
+    <p>Spec <a href="../specs/076-contract-export-handover/spec.html">076</a> gives a contract a federation-unique
+    <strong>coordinate</strong> and emits a <strong>notification</strong> when a promotion changes it. It deliberately
+    does <em>not</em> ship a distribution mechanism: <a href="../specs/076-contract-export-handover/spec.html#FR-004">FR-004</a>
+    requires the export surface be mechanism-agnostic, and forbids it requiring any particular package registry, schema
+    registry or generator. Choosing one is an organisational decision, not a tooling one.</p>
+    <p>These are two worked recipes — <strong>vendoring</strong> and a <strong>published artifact</strong> — showing the
+    same coordinate and the same notification serving both. Neither is built by spectastic; both are described so the
+    claim "mechanism-agnostic" is something you can check rather than something you have to take on trust.</p>
+  </spec-tldr>
+</header>
+
+
+<section id="shared">
+<h2>1 · What both recipes share</h2>
+
+<p>Whichever mechanism you pick, three things are identical, because they come from the producing repository's own
+artifacts rather than from the transport:</p>
+
+<dl>
+  <dt>The coordinate</dt>
+  <dd><code>spectastic://&lt;owner&gt;/&lt;repo&gt;/contract/&lt;name&gt;</code> — stable across the contract's whole life.
+  It names <em>what the contract is</em>, never where its file sits, so the producer reorganising its own tree cannot
+  break a consumer that pinned one. Resolve it locally with <code>spectastic contract &lt;name&gt;</code>.</dd>
+
+  <dt>The notification</dt>
+  <dd>Emitted by the promotion kernel when a contract lands, carrying the coordinate and the producer's <em>claim</em>
+  about whether the change is breaking. A withdrawal is a breaking change carrying a reason, not a separate kind — so a
+  consumer branching only on breaking-versus-not is still correct.</dd>
+
+  <dt>The consumer declaration</dt>
+  <dd>An optional <code>consumes</code> array in <code>spectastic.json</code>, listing the coordinates this project
+  depends on. Absent by default; a monorepo where producer and consumer sit together needs no entry at all.</dd>
+</dl>
+
+<spec-note>
+<p>None of the three mentions a registry, a package manager, or a generator. That is the property the two recipes below
+exist to demonstrate — not a claim about how you <em>should</em> ship a contract.</p>
+</spec-note>
+</section>
+
+
+<section id="vendoring">
+<h2>2 · Recipe A — vendoring</h2>
+
+<p>The consumer keeps a copy of the contract in its own repository. Simplest to set up, no publishing infrastructure,
+and the copy is visible in review; the cost is that the copy can go stale, which is exactly what the notification is
+for.</p>
+
+<h3>Producer</h3>
+<ol>
+  <li>Declare the contract in the design's <em>Data model &amp; contracts</em> section, with a stable
+  <code>name=</code>.</li>
+  <li>Land it through the normal lifecycle. Promotion writes the effective contract and emits the notification.</li>
+</ol>
+
+<h3>Consumer</h3>
+<ol>
+  <li>Copy the contract file into the consuming repository — conventionally under <code>contracts/vendor/</code>, so it
+  reads as someone else's artifact rather than one this project owns.</li>
+  <li>Record the coordinate it came from in <code>spectastic.json</code>:
+  <pre><code>{
+  "consumes": ["spectastic://acme/billing/contract/invoices"]
+}</code></pre></li>
+  <li>On a notification for that coordinate, re-copy the file and re-run your own checks. A breaking claim means read
+  the diff before doing so.</li>
+</ol>
+
+<p><strong>What spectastic does here:</strong> gives you the coordinate, and tells you when it changed. The copy is
+yours to make — the tool never fetches it.</p>
+</section>
+
+
+<section id="published">
+<h2>3 · Recipe B — a published artifact</h2>
+
+<p>The producer publishes the contract as a versioned artifact — an npm package, a Maven artifact, a schema-registry
+entry, an OCI artifact; the recipe does not care which. More setup, and the consumer's dependency tooling does the
+fetching and version pinning it already knows how to do.</p>
+
+<h3>Producer</h3>
+<ol>
+  <li>Declare the contract exactly as in Recipe A — <em>no change</em>. The declaration is unaware of the mechanism.</li>
+  <li>Add a publish step to your existing release pipeline that ships the promoted contract file. Spectastic has no
+  opinion about which packaging you use, and no step here is a spectastic command.</li>
+</ol>
+
+<h3>Consumer</h3>
+<ol>
+  <li>Depend on the published artifact through your ordinary dependency tooling.</li>
+  <li>Record the same coordinate in <code>spectastic.json</code> — <em>identical</em> to Recipe A:
+  <pre><code>{
+  "consumes": ["spectastic://acme/billing/contract/invoices"]
+}</code></pre></li>
+  <li>On a notification for that coordinate, bump the dependency. A breaking claim means read the changelog before
+  doing so.</li>
+</ol>
+
+<p><strong>What spectastic does here:</strong> exactly what it did in Recipe A. The coordinate, the notification and the
+<code>consumes</code> entry are byte-identical between the two recipes; only the steps spectastic has no part in
+differ.</p>
+</section>
+
+
+<section id="comparison">
+<h2>4 · What changed between the recipes</h2>
+
+<table>
+  <thead><tr><th>Element</th><th>Recipe A (vendoring)</th><th>Recipe B (published)</th><th>Differs?</th></tr></thead>
+  <tbody>
+    <tr><td>Contract declaration</td><td>a <code>&lt;spec-contract&gt;</code> with a stable name</td><td>the same</td><td>no</td></tr>
+    <tr><td>Coordinate</td><td><code>spectastic://acme/billing/contract/invoices</code></td><td>the same</td><td>no</td></tr>
+    <tr><td>Notification</td><td>coordinate + claimed change class</td><td>the same</td><td>no</td></tr>
+    <tr><td><code>consumes</code> entry</td><td>the coordinate</td><td>the same</td><td>no</td></tr>
+    <tr><td>Resolution command</td><td><code>spectastic contract invoices</code></td><td>the same</td><td>no</td></tr>
+    <tr><td>How bytes travel</td><td>a copied file</td><td>a dependency bump</td><td><strong>yes</strong> — and spectastic is absent from both</td></tr>
+  </tbody>
+</table>
+
+<p>Five of six rows are identical, and the one that differs is the row spectastic contributes nothing to. That is the
+mechanism-agnosticism claim, stated as something checkable. It is also
+<a href="../specs/076-contract-export-handover/spec.html#SC-004">SC-004</a>, and the integration test exercises both
+recipes against the same surface rather than asserting the property in prose.</p>
+</section>
+
+
+<section id="not-here">
+<h2>5 · What is deliberately not here</h2>
+
+<spec-out-of-scope>
+  <ul>
+    <li defer-to="TBD-contract-distribution-tier">A per-tier <em>recommendation</em> of which mechanism to use. That
+    would be an addition to the profile catalog — a posture ladder like the existing axes — rather than part of this
+    surface, and it was re-deferred rather than left blocking a slice that does not depend on it.</li>
+    <li defer-to="TBD-contract-runtime-testing">Consumer-driven contract testing, which needs both sides of an
+    integration running and belongs to the testing categories.</li>
+    <li defer-to="never">Spectastic fetching a remote coordinate. The tool resolves against local declarations and makes
+    0 network calls; adding a fetch would be a new capability, and the surface is designed not to need one.</li>
+  </ul>
+</spec-out-of-scope>
+</section>
+
+
+<section id="changelog">
+<h2>6 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-08-01">01 Aug 2026</time><span>Written for <a href="../specs/076-contract-export-handover/spec.html">076</a> T-900. Two recipes documented, neither built; the comparison table is the mechanism-agnosticism claim made checkable, and the integration test exercises both.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  Contract distribution recipes · Spectastic · 01 Aug 2026
+</footer>
+
+</main>
+<script src="../assets/spec.js"></script>
+</body>
+</html>

@@ -43,19 +43,56 @@ export function classifyProjectId(value: string): ProjectIdShape {
 }
 
 /**
- * Compose the canonical, federation-unique resource URI for a spec (FR-004, D-004):
- * `spectastic://<owner>/<repo…>/spec/<spec-id>#<anchor>`. Owner-as-authority — the
- * project identity's first `/`-delimited segment is the URI authority; everything after
- * it (if any) becomes leading path segments before `spec/<spec-id>`. A bare (no-slash)
- * project — the provisional, not-yet-owner-qualified state (plan D-002) — degrades to a
- * single-segment authority with no extra path prefix: `spectastic://<project>/spec/<id>`.
+ * The resource kinds a coordinate can name. `spec` is 067's original; `contract`
+ * is the sibling kind that design anticipated, added by spec
+ * 076-contract-export-handover (D-001).
+ */
+export type ResourceKind = 'spec' | 'contract';
+
+/**
+ * Compose the canonical, federation-unique resource URI for a project resource
+ * (067 FR-004/D-004; generalised by 076 D-001):
+ * `spectastic://<owner>/<repo…>/<kind>/<name>#<anchor>`.
+ *
+ * Owner-as-authority — the project identity's first `/`-delimited segment is the
+ * URI authority; everything after it (if any) becomes leading path segments before
+ * `<kind>/<name>`. A bare (no-slash) project — the provisional, not-yet-owner-qualified
+ * state (067 D-002) — degrades to a single-segment authority with no extra path prefix.
+ *
+ * The kind is a PARAMETER rather than a hardcoded segment so a second kind needs no
+ * second composer: one authority rule, applied identically, which is what keeps a
+ * contract coordinate and a spec coordinate from drifting apart (D-001).
+ *
  * Pure: no fs, no clock, no environment (NFR-001) — identical input, identical output.
  */
-export function specResourceUri(project: string, specId: string, anchor?: string): string {
+export function resourceUri(project: string, kind: ResourceKind, name: string, anchor?: string): string {
   const slashIndex = project.indexOf('/');
   const authority = slashIndex === -1 ? project : project.slice(0, slashIndex);
   const rest = slashIndex === -1 ? '' : project.slice(slashIndex + 1);
-  const path = rest ? `${rest}/spec/${specId}` : `spec/${specId}`;
+  const path = rest ? `${rest}/${kind}/${name}` : `${kind}/${name}`;
   const fragment = anchor ? `#${anchor}` : '';
   return `spectastic://${authority}/${path}${fragment}`;
+}
+
+/**
+ * Compose a spec's resource URI: `spectastic://<owner>/<repo…>/spec/<spec-id>#<anchor>`.
+ * A thin wrapper over `resourceUri` (076 D-001) — kept so 067's callers are untouched,
+ * and so the spec kind keeps a name at the call site rather than a string literal.
+ */
+export function specResourceUri(project: string, specId: string, anchor?: string): string {
+  return resourceUri(project, 'spec', specId, anchor);
+}
+
+/**
+ * Compose a contract's resource URI:
+ * `spectastic://<owner>/<repo…>/contract/<name>#<anchor>`.
+ *
+ * Takes the contract's stable NAME, never its path (076 SC-002): a coordinate names
+ * what a contract *is*, not where its file currently sits, so a producer
+ * reorganising its own repository cannot break a consumer that pinned one. The
+ * signature has no path parameter at all, which makes that structural rather than a
+ * rule someone must remember.
+ */
+export function contractResourceUri(project: string, name: string, anchor?: string): string {
+  return resourceUri(project, 'contract', name, anchor);
 }

@@ -1,0 +1,291 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
+<title>Contract sidecar convention · Specification</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Specification · 070-contract-sidecar-convention</p>
+  <h1>Contract sidecar convention</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    Two lifecycle states for one contract — proposed beside its spec, effective at the project's own path — and a check that a declared path actually resolves.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>      <span><spec-status value="accepted">Accepted</spec-status></span>
+    <b>Spec ID</b>     <span>070-contract-sidecar-convention</span>
+    <b>Owner</b>       <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Reviewers</b>   <span>—</span>
+    <b>Created</b>     <span><time datetime="2026-07-31">31 Jul 2026</time></span>
+    <b>Principles</b><span><a href="../../principles.html">v1.9.0</a></span>
+    <b>Smallest demoable</b><span><code>spectastic validate</code> reports an error when a design declares a contract path that resolves to no file.</span>
+    <b>Read time</b>   <span data-reading-time></span>
+  </spec-meta>
+
+  <!-- Live size gauge — green at <80%, amber 80-100%, red over. Words row counts authored prose (excludes the conformance index) per REQ-FORMAT-004. -->
+  <spec-budget words="2000" reqs="20" minutes="14"></spec-budget>
+
+  <spec-tldr>
+    <p>A contract has two lives and only one of them is authoritative at a time. While a change is in flight, the contract it
+    proposes belongs to that change — the way <code>changes/&lt;slug&gt;/proposal.html</code> belongs to its change and not to the
+    live spec. Once the change lands, the contract is the <em>project's</em>, and a consumer must be able to find it without knowing
+    a spec id. This spec names both locations and the rule that separates them: a <strong>proposed</strong> contract at
+    <code>specs/&lt;spec-id&gt;/contracts/</code>, an <strong>effective</strong> contract at the path the design declares — the
+    project's own ecosystem-conventional location, not a spectastic-shaped one. Exactly one is live at any instant, so the
+    single-authoritative-location rule holds without giving up per-spec provenance. It also adds the one new deterministic check the
+    survey recommended: a declared contract path that resolves to nothing is a broken artifact, and <code>validate</code> should
+    say so. For authors, reviewers, and the consuming repository.</p>
+  </spec-tldr>
+
+  <dl class="invest">
+    <dt><span class="letter">I</span> Independent</dt> <dd>Depends on <a href="../069-design-contract-section/spec.html">069</a> for the declaration it checks; nothing else. The promotion step is a named sibling, not a prerequisite.</dd>
+    <dt><span class="letter">N</span> Negotiable</dt>  <dd>Contracts the <em>convention and the guarantee</em> — two states, one live copy, a resolving path. Rule id, severity wording, and where the check is folded in are the design's.</dd>
+    <dt><span class="letter">V</span> Valuable</dt>    <dd>Unlocks <a href="#SC-001">SC-001</a> — a design can no longer point at a contract that isn't there, which is the failure mode a hand-maintained convention produces first.</dd>
+    <dt><span class="letter">E</span> Estimable</dt>   <dd>One documented convention plus one per-file check on a path that already exists in the artifact. The rule shape clones existing per-file rules.</dd>
+    <dt><span class="letter">S</span> Small</dt>       <dd>Convention plus one check. Promotion, detection widening, and the embedded view are deferred to named siblings (§3 Out of scope).</dd>
+    <dt><span class="letter">T</span> Testable</dt>    <dd>Fixture-checkable end to end: a design with a good path passes, one with a bad path errors, a proposed contract never satisfies an effective declaration.</dd>
+  </dl>
+
+  <spec-audience-map>
+    <dl>
+      <dt>Exec / PM</dt>   <dd>§<a href="#context">Context</a>, §<a href="#scenarios">User scenarios</a>, §<a href="#success">Success criteria</a>.</dd>
+      <dt>Reviewer</dt>    <dd>§<a href="#requirements">Requirements</a>, §<a href="#assumptions">Assumptions</a>, §<a href="#questions">Open questions</a>.</dd>
+      <dt>Implementer</dt> <dd>§<a href="#requirements">Requirements</a>, §<a href="#data">Data model</a>, §<a href="#conformance">Conformance index</a>.</dd>
+    </dl>
+  </spec-audience-map>
+</header>
+
+
+<section id="context">
+<h2>1 · Context</h2>
+<p>Once a design can declare a contract path (<a href="../069-design-contract-section/spec.html">069</a>), two questions follow
+immediately: where should that file be, and what stops the declaration pointing at nothing.</p>
+<p>The location question looks like a fork and isn't. Putting the contract beside its spec gives excellent provenance — it is how
+the nearest comparable tool arranges its planning outputs — but makes the current interface's home depend on which spec last
+touched it, and forces a consumer to know spec ids. Putting it at the project root serves the consumer and the enforcement gate,
+but leaves an in-flight interface change nowhere to live except the live contract, where a proposed shape and an effective one
+become indistinguishable while the work is open. The resolution is that these are two <em>states</em> of one artifact, not two
+locations competing for it — precisely the relationship the propose/apply cycle already models, where an authored change sits with
+its spec until apply folds it in and archives the source.</p>
+<p>The second question is the cheaper one and the reason this slice carries a check at all: a declared path is a promise, and a
+promise nothing verifies decays. Whose problem: the reviewer who cannot find the file, and the consuming team who discovers the
+path was stale only after generating from it.</p>
+</section>
+
+
+<section id="scenarios">
+<h2>2 · User scenarios &amp; testing</h2>
+
+<p>Each story <strong>MUST</strong> be independently testable: if you implemented only US1, you would
+still have a viable MVP.</p>
+
+<h3 id="US1">US1 · A declared path that isn't there is caught <spec-pill>P1</spec-pill></h3>
+<p>As a <strong>reviewer</strong>, I want <strong>validate to error when a design names a contract file that does not
+exist</strong> so that <strong>a broken declaration is caught at the git boundary rather than by the team consuming it</strong>.</p>
+<p><em>Acceptance:</em> A design declaring a path with no file behind it produces exactly one error naming the path; the same design
+with the file present produces none.</p>
+
+<h3 id="US2">US2 · An in-flight contract is visibly not live <spec-pill>P1</spec-pill></h3>
+<p>As an <strong>author</strong>, I want to <strong>write a proposed contract next to my spec</strong> so that
+<strong>reviewers can see the shape I am proposing without it being mistaken for the interface in force</strong>.</p>
+<p><em>Acceptance:</em> A contract under <code>specs/&lt;spec-id&gt;/contracts/</code> is treated as proposed by every consumer; it
+never satisfies an effective declaration and never marks an enforcement category covered.</p>
+
+<h3 id="US3">US3 · A consumer finds the contract without a spec id <spec-pill>P2</spec-pill></h3>
+<p>As an <strong>engineer in a consuming repository</strong>, I want <strong>the effective contract at the project's own
+conventional path</strong> so that <strong>I can find and generate from it without reading the spec estate</strong>.</p>
+<p><em>Acceptance:</em> The effective path is a project-relative location the project's ecosystem already uses; no spec id appears
+in it.</p>
+
+<h3>Edge cases</h3>
+<ul>
+  <li>A spec that changes an existing contract: its proposed copy is a full file, since a partial delta of a schema is not itself a
+  valid schema.</li>
+  <li>A design declaring a path inside another spec's directory — a proposed contract masquerading as an effective one.</li>
+  <li>A project whose ecosystem has no conventional location, so the declared path is simply wherever the author chose.</li>
+  <li>A declared path that exists but is a directory, or is empty.</li>
+  <li>Two specs in flight declaring the same effective path — legal here; the conflict is promotion's problem.</li>
+</ul>
+</section>
+
+
+<section id="requirements">
+<h2>3 · Requirements</h2>
+
+<p>Conformance keywords (<spec-rule>MUST</spec-rule>, <spec-rule level="should">SHOULD</spec-rule>,
+<spec-rule level="may">MAY</spec-rule>) follow RFC 2119.</p>
+
+<h3>Functional</h3>
+
+<spec-requirement id="FR-001" priority="must">
+<p>A <em>proposed</em> contract — one belonging to an unlanded change — <strong>MUST</strong> live under
+<code>specs/&lt;spec-id&gt;/contracts/</code>.</p>
+<details><summary>Rationale</summary><p>Mirrors where an unlanded change proposal already lives, so the same mental model and the
+same review flow apply.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-002" priority="must">
+<p>The <em>effective</em> contract <strong>MUST</strong> live at the project-relative path the design declares, which
+<strong>MUST NOT</strong> be inside <code>specs/</code>.</p>
+<details><summary>Rationale</summary><p>The effective contract belongs to the project, not to whichever spec last changed it, and a
+consumer must reach it without knowing the spec estate.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-003" priority="must">
+<p>A proposed contract <strong>MUST NOT</strong> be treated as effective by any consumer — it <strong>MUST NOT</strong> satisfy a
+design's effective declaration and <strong>MUST NOT</strong> mark an enforcement category covered.</p>
+<details><summary>Rationale</summary><p>This is what keeps exactly one copy authoritative. Without it the two states collapse and
+the convention becomes ordinary duplication.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-004" priority="must">
+<p><code>spectastic validate</code> <strong>MUST</strong> emit an error when a design declares an effective contract path that
+resolves to no readable file.</p>
+<details><summary>Rationale</summary><p>The one new deterministic check this work adds. It is also the only check no external tool
+can perform, because it is about spectastic's own artifacts.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-005" priority="must">
+<p>The convention <strong>MUST</strong> use the directory name <code>contracts/</code> for the proposed location, and
+<strong>MUST NOT</strong> use <code>references/</code>.</p>
+<details><summary>Rationale</summary><p><code>references/</code> already denotes a corpus pack's citable documents, at the same
+depth under a per-unit directory. Reusing it would collide in vocabulary while sharing no semantics.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-006" priority="should">
+<p>The error <strong>SHOULD</strong> name the declared path and the design that declared it, and <strong>SHOULD</strong>
+distinguish "no such file" from "path exists but is not a readable file".</p>
+</spec-requirement>
+
+<spec-requirement id="FR-007" priority="may">
+<p>A spec <strong>MAY</strong> carry more than one proposed contract, and a design <strong>MAY</strong> declare more than one
+effective path.</p>
+</spec-requirement>
+
+<h3>Non-functional</h3>
+
+<spec-requirement id="NFR-001" priority="must">
+<p>The check <strong>MUST</strong> be deterministic and filesystem-only — at most 0 network calls, and no dependence on wall-clock
+time or environment beyond the project directory.</p>
+<details><summary>Rationale</summary><p>Matches the determinism the validate engine already guarantees, so the check is safe in the
+pre-commit gate and in CI.</p></details>
+</spec-requirement>
+
+<spec-requirement id="NFR-002" priority="should">
+<p>The check <strong>SHOULD</strong> add under 50 ms to a whole-project validate run.</p>
+</spec-requirement>
+
+<h3>Out of scope (deferred to other slices)</h3>
+<spec-out-of-scope>
+  <ul>
+    <li defer-to="071-contract-promotion">Moving a proposed contract to its effective path when the change lands, and refusing to clobber.</li>
+    <li defer-to="072-contract-embedded-view">Showing any of the contract's content inside the design artifact.</li>
+    <li defer-to="TBD-contract-detection-paths">Teaching the enforcement detector to find contracts at ecosystem-conventional paths, so a declared effective contract also satisfies the floor.</li>
+    <li defer-to="TBD-contract-export-handover">Making the effective contract addressable and consumable across repository boundaries.</li>
+  </ul>
+</spec-out-of-scope>
+</section>
+
+
+<section id="data">
+<h2>4 · Data model</h2>
+
+<p>No persisted entity beyond files already on disk. This spec fixes the meaning of two locations and adds one derived judgment.</p>
+
+<h3>Entities</h3>
+<dl>
+  <dt>Proposed contract</dt><dd>A contract file under a spec's own <code>contracts/</code> directory. Belongs to an unlanded
+  change; never authoritative.</dd>
+  <dt>Effective contract</dt><dd>The contract file at the path a design declares, outside <code>specs/</code>. The single
+  authoritative shape of that interface at any instant.</dd>
+  <dt>Resolution result</dt><dd>Derived, not stored: whether a declared effective path names a readable file. Feeds the
+  <a href="#FR-004">FR-004</a> finding.</dd>
+</dl>
+
+<spec-note>
+<p>The invariant worth stating: at any instant, for a given interface, exactly one file is effective. A proposed contract does not
+reduce that count and does not compete with it — which is the whole reason two locations are safe here and would not be if both
+were live.</p>
+</spec-note>
+</section>
+
+
+<section id="success">
+<h2>5 · Success criteria</h2>
+
+<p>Technology-agnostic, measurable outcomes. These are how we know it worked.</p>
+
+<spec-requirement id="SC-001" priority="must">
+<p>A design declaring a contract path with no file behind it produces exactly 1 validate error; the same design with the file
+present produces 0.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-002" priority="must">
+<p>Across 100% of fixtures, a contract present only under <code>specs/&lt;id&gt;/contracts/</code> fails to satisfy an effective
+declaration — the proposed state never counts as the effective one.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-003" priority="should">
+<p>A whole-project validate run over the existing spec estate gains under 50 ms and reports 0 new findings, since no design
+declares a contract path yet.</p>
+</spec-requirement>
+</section>
+
+
+<section id="assumptions">
+<h2>6 · Assumptions</h2>
+
+<spec-assumption>
+<p>Declared paths are project-relative and stable across checkouts. Absolute paths and paths outside the project are treated as
+malformed rather than resolved.</p>
+</spec-assumption>
+
+<spec-assumption>
+<p>A contract small enough to be worth checking in is small enough to read from disk during a validate run without a caching
+layer.</p>
+</spec-assumption>
+</section>
+
+
+<section id="questions">
+<h2>7 · Open questions</h2>
+<spec-questions>
+<p>None outstanding — the two-state model, the directory naming, and the single new check were settled by the survey that produced
+this slice.</p>
+</spec-questions>
+</section>
+
+
+<section id="conformance">
+<h2>8 · Conformance index</h2>
+<p>Auto-built from every <code>&lt;spec-requirement&gt;</code> in this document.</p>
+<spec-conformance></spec-conformance>
+</section>
+
+
+<section id="changelog">
+<h2>9 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-07-31">31 Jul 2026</time><span>Initial draft. Resolves <code>TBD-contract-sidecar-convention</code>, planted by the data-model and contract survey; carries that survey's location decision, whose justification is the propose/apply precedent rather than a new mechanism.</span></li>
+  <li><time datetime="2026-08-01">01 Aug 2026</time><span>Status flipped Draft → Accepted on 01 Aug 2026 — zero remaining unchecked tasks; tests verified passing per author confirmation. Sibling bundle (REQ-LIFECYCLE-005).</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  070-contract-sidecar-convention · Contract sidecar convention · authored 31 Jul 2026
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>

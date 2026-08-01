@@ -446,6 +446,43 @@
   </details>
 </spec-triage>
 
+<spec-triage id="T-013" layer="implementation">
+  <header>
+    <h4>The canvas keyboard-open test fails — the graph fixture still emits the retired <code>plan</code> verb</h4>
+    <span class="meta">
+      <span class="layer-pill">Implementation</span>
+      <span class="regen" data-result="pass">code</span>
+    </span>
+  </header>
+
+  <p class="headline">Debugging a failing <code>canvas-open.spec.ts</code> keyboard-a11y assertion, root cause was
+  <strong>implementation</strong> drift from the <code>plan</code>&nbsp;→&nbsp;<code>design</code> verb rename: the test was
+  updated to expect <code>design.html</code> but the shared graph fixture still declares its node with verb <code>plan</code>,
+  and the fixture derives the path from the verb; fixed by moving the fixture to <code>design</code>; regeneration
+  <strong>passes</strong> — the rename is complete and correct in the spec, design and product code, so nothing upstream would
+  reproduce a stale test fixture.</p>
+
+  <dl>
+    <dt>Expected</dt> <dd>Pressing Enter on the focused node posts <code>{ type: 'open', path: '/repo/specs/099-demo/design.html' }</code>.</dd>
+    <dt>Actual</dt>   <dd>It posts <code>…/plan.html</code>, so the assertion fails. 135/136 Playwright tests pass; this is the one.</dd>
+    <dt>Diagnosis</dt><dd>Half-completed rename. <span class="path">tests/vscode/fixtures/graph.ts</span> line 14 builds the node as <code>mkNode('plan', 'plan', …)</code> — the second argument is the <em>verb</em> — and line 62 composes <code>path: `/repo/specs/${specId}/${verb}.html`</code>. The assertion side was migrated when the verb was renamed (<code>836dc1a</code>); the fixture side was not. Confirmed pre-existing on <code>main</code> via <code>git stash</code>, so it is not fallout from any current work.</dd>
+    <dt>Fix</dt>      <dd><span class="path">tests/vscode/fixtures/graph.ts</span> — change the node's <em>verb</em> argument to <code>design</code>, keeping the node <em>id</em> as <code>plan</code> so the two edge definitions on lines 36–37 and the <code>.node[data-id="plan"]</code> selector keep resolving. Renaming the id as well is a larger, optional tidy.</dd>
+  </dl>
+
+  <spec-diff>
+<del>    mkNode('plan', 'plan', '099-demo', { status: 'draft' }, { metric: 'draft' }),</del>
+<ins>    mkNode('plan', 'design', '099-demo', { status: 'draft' }, { metric: 'draft' }),</ins>
+  </spec-diff>
+
+  <details>
+    <summary>Deep dive — none required</summary>
+    <p>No cross-spec contract, no invariant, no hotfix needed. The rename itself was deliberate and is recorded in
+    <code>CLAUDE.md</code>; only this one test fixture was missed, which is why it presents as a single red test rather than a
+    behavioural fault. Worth noting the fixture is shared across the <code>tests/vscode/</code> suite, but no other spec
+    references the <code>plan</code> node, so the blast radius is this one assertion.</p>
+  </details>
+</spec-triage>
+
 </spec-triage-log>
 </section>
 
@@ -454,6 +491,7 @@
 <h2>Change log</h2>
 <spec-changelog>
 <ol>
+  <li><time datetime="2026-08-01">01 Aug 2026</time><span>T-013 added — the canvas keyboard-open test fails because the shared graph fixture still declares its node with the retired <code>plan</code> verb; implementation-layer rename drift, pre-existing on <code>main</code>, one-line fix in <code>tests/vscode/fixtures/graph.ts</code>.</span></li>
   <li><time datetime="2026-07-23">23 Jul 2026</time><span>T-012 added + fixed — opened artifacts rendered unstyled with no JS-built header (no theme dropdown) in the webview: the artifact's own strict CSP <code>&lt;meta&gt;</code> (spec 045, <code>4197091</code>) intersected with the webview's injected CSP and blocked the <code>cspSource</code>-origin <code>spec.css</code>/<code>spec.js</code>. <code>cross-spec</code>, regen <code>fail</code> (045 CSP × 020 webview interaction uncaptured). Fixed in <code>open-artifact.ts</code> — <code>rewriteForWebview</code> strips the artifact CSP before injecting the webview one; regression test added (exactly one CSP survives, and it is the webview's), extension <code>dist</code> rebuilt. Pre-existing since 045's CSP backfill; independent of the same-day vivid CSS pass.</span></li>
   <li><time datetime="2026-07-10">10 Jul 2026</time><span>T-011 resolved — FR-015 added + implemented in <code>open-artifact.ts</code>: cross-artifact <code>.html</code> links are marked (not <code>asWebviewUri</code>-rewritten), a nonce'd interceptor posts <code>openLink</code> to the host, which resolves the target against the source dir and opens it with the anchor baked in for an on-load scroll. vitest (4 cases) + Playwright (click→post, scroll) regressions added. Links now navigate in-extension.</span></li>
   <li><time datetime="2026-07-10">10 Jul 2026</time><span>T-011 added — cross-artifact anchor links escape the webview as external <code>vscode-resource</code> URLs instead of navigating to the target artifact's anchor. <code>spec</code>, regen <code>fail</code>: 020's nav contract is silent on intra-corpus link interception; needs a <code>/spectastic.propose</code>. From dogfooding on spec-tictactoe-2.</span></li>

@@ -1,6 +1,11 @@
 import { loadWaivers } from '@spectastic/core/enforce/config';
-import { detectEcosystems, detectTooling } from '@spectastic/core/enforce/detect';
-import { evaluateEnforcement } from '@spectastic/core/enforce/policy';
+import {
+  contractFirstIsAdvisory,
+  detectContractChecks,
+  detectEcosystems,
+  detectTooling,
+} from '@spectastic/core/enforce/detect';
+import { contractCheckedApplies, evaluateContractChecks, evaluateEnforcement } from '@spectastic/core/enforce/policy';
 import type { Command } from 'commander';
 import { resolveBundle } from './init/bundle.js';
 import { readMarker } from './init/marker.js';
@@ -45,20 +50,43 @@ export function registerEnforce(program: Command): void {
       const covered = detectTooling(cwd);
       const ecosystems = detectEcosystems(cwd);
       const waivers = loadWaivers(cwd);
+      // Spec 073 FR-004: a contract-first gap recognised ONLY through an
+      // event-driven signal reports advisory, never a hard fail — the decision
+      // itself is core's (contractFirstIsAdvisory), this is just the wiring.
+      const advisory = contractFirstIsAdvisory(cwd) ? (['contract-first'] as const) : [];
+      // Spec 074 FR-001: at verified and above, holding a contract also requires
+      // a configured linter and breaking-change differ. Tier-gated FIRST, so a
+      // lean/standard project short-circuits before any signal is read and its
+      // verdict cannot change (NFR-002).
+      const contractChecks = contractCheckedApplies(marker.profile)
+        ? evaluateContractChecks(detectContractChecks(cwd))
+        : { blocking: [], advisory: [] };
       const { missing, warned, relaxed, expired, exitCode } = evaluateEnforcement(
         profile.enforce.required,
         covered,
         profile.enforce.gate,
         ecosystems,
-        { waivers, unwaivable: profile.enforce.unwaivable },
+        { advisory, waivers, unwaivable: profile.enforce.unwaivable },
       );
 
       process.stdout.write(`enforce: profile ${profile.name} (${profile.enforce.gate} gate)\n`);
       process.stdout.write(`  covered: ${[...covered].sort().join(', ') || '(none)'}\n`);
-      if (warned.length > 0) {
+      // Both reasons land in `warned`, but they mean different things to a
+      // reader, so they are reported apart (spec 073 FR-004 vs. FR-010): one
+      // says the stack cannot express the category at all, the other says the
+      // category applies and only the signal that found it is weak.
+      const advisorySet = new Set<string>(advisory);
+      const undetectableWarned = warned.filter((c) => !advisorySet.has(c));
+      const advisoryWarned = warned.filter((c) => advisorySet.has(c));
+      if (undetectableWarned.length > 0) {
         // FR-010: required but structurally undetectable in this project's
         // ecosystem(s) — never a blocking gap, regardless of gate severity.
-        process.stdout.write(`  ⚠ undetectable in this ecosystem (not blocking): ${warned.join(', ')}\n`);
+        process.stdout.write(`  ⚠ undetectable in this ecosystem (not blocking): ${undetectableWarned.join(', ')}\n`);
+      }
+      if (advisoryWarned.length > 0) {
+        process.stdout.write(
+          `  ⚠ advisory (not blocking): ${advisoryWarned.join(', ')} — an event-driven interface is declared but no contract is checked in. Add a payload contract (e.g. an AsyncAPI document), or declare the interface shape in the design if this service publishes nothing.\n`,
+        );
       }
       for (const r of relaxed) {
         // FR-004 / FR-011: a deliberately-waived category — advisory, never silent,
@@ -71,22 +99,50 @@ export function registerEnforce(program: Command): void {
         // An expired waiver auto-blocks (FR-011): surfaced loudly so it is renewed or removed.
         process.stdout.write(`  ✗ waiver for ${w.category} expired ${w.until} — now blocking; renew or cover.\n`);
       }
+      // Spec 074 FR-004: the contract-checked rung names WHICH contract and
+      // WHICH half is short, rather than a bare category verdict. Advisory
+      // shortfalls state their limitation (FR-003) so a reader can tell
+      // "no tooling exists" from "you didn't configure it".
+      for (const a of contractChecks.advisory) {
+        process.stdout.write(`  ⚠ contract check (advisory): ${a.path} has no ${a.half} configured — ${a.limitation}\n`);
+      }
+      for (const b of contractChecks.blocking) {
+        process.stdout.write(
+          `  ✗ contract check: ${b.path} has no ${b.half} configured — ${profile.name} expects a checked contract, not merely a present one.\n`,
+        );
+      }
       // The distinct tally (never fold relaxed into covered): N covered · M relaxed · K missing.
       process.stdout.write(`  → ${covered.size} covered · ${relaxed.length} relaxed · ${missing.length} missing\n`);
-      if (missing.length === 0) {
+      // A blocking contract-check shortfall gates on the same terms as a missing
+      // category: only under a hard gate (074 FR-001 — the rung is tier-gated to
+      // verified/enterprise, both of which are hard, but the gate severity is
+      // still read rather than assumed).
+      const checksGate = profile.enforce.gate === 'hard' && contractChecks.blocking.length > 0;
+      const finalExitCode = checksGate ? 1 : exitCode;
+
+      if (missing.length === 0 && !checksGate) {
         process.stdout.write('  ✓ no blocking gaps.\n');
         process.exit(0);
       }
 
-      const marker2 = exitCode === 1 ? '✗' : '⚠';
-      process.stdout.write(`  ${marker2} missing: ${missing.join(', ')}\n`);
-      if (exitCode === 1) {
-        process.stderr.write(
-          `enforce: ${profile.name} requires these enforcement categories — wire a tool for each, waive it (spectastic.json enforce.waivers), or lower the profile.\n`,
-        );
+      if (missing.length > 0) {
+        const marker2 = exitCode === 1 ? '✗' : '⚠';
+        process.stdout.write(`  ${marker2} missing: ${missing.join(', ')}\n`);
+      }
+      if (finalExitCode === 1) {
+        if (missing.length > 0) {
+          process.stderr.write(
+            `enforce: ${profile.name} requires these enforcement categories — wire a tool for each, waive it (spectastic.json enforce.waivers), or lower the profile.\n`,
+          );
+        }
+        if (checksGate) {
+          process.stderr.write(
+            `enforce: ${profile.name} expects every checked-in contract to have a configured linter and breaking-change differ. Configure the named check, or lower the profile.\n`,
+          );
+        }
       } else {
         process.stdout.write('  (soft gate — not blocking, but recommended.)\n');
       }
-      process.exit(exitCode);
+      process.exit(finalExitCode);
     });
 }

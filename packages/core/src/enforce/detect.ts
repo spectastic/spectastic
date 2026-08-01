@@ -419,11 +419,64 @@ export const SIGNALS: readonly Signal[] = [
 /** A file-match signal without a category — used for interface-framework detection. */
 type FileSignal = { file: string; contains?: string };
 
-// Conventional directories a checked-in contract lives in. Detection reaches ONE
-// level into these — a widening scoped to the contract signals ONLY (adversarial
+// Conventional directories a checked-in contract lives in. Detection reaches into
+// these named paths ONLY — a widening scoped to the contract signals (adversarial
 // R-3); the other eight categories stay strictly root-only, so NFR-002's
 // shallow-detection invariant is unchanged for them.
-const CONTRACT_DIRS = ['api', 'proto', 'schema', 'contracts'] as const;
+//
+// Widened by spec 073-interface-detection-widening (FR-002 / D-002) from the
+// original four (`api`, `proto`, `schema`, `contracts`) to the layouts build
+// tools actually produce. Deliberately a finite list of EXPLICIT segments rather
+// than a recursive walk: a walk would find a vendored upstream spec under
+// node_modules/ and cost unbounded time on a monorepo (the alternatives matrix
+// rejected it by name). The bound is asserted structurally by
+// detect.contract-paths.test.ts, not merely trusted — max 4 segments, no globs.
+//
+// The tradeoff this accepts, recorded rather than hidden: a project using a
+// convention outside this list is missed, and its escape hatch is declaring the
+// path in its design (FR-003), not rearranging its tree to be detectable.
+export const CONTRACT_SEARCH_PATHS: readonly string[] = [
+  // The original four, unchanged — every currently-covered project keeps its verdict.
+  'api',
+  'proto',
+  'schema',
+  'contracts',
+  // Additional root-level conventions.
+  'openapi',
+  'protos',
+  'graphql',
+  // Gradle/Maven: where the protobuf plugin puts generated-from sources.
+  'src/main/proto',
+  'src/main/resources/openapi',
+  'src/main/graphql',
+  // Nested module trees — buf (proto/<module>/v1), Go (api/proto/v1), and the
+  // Gradle equivalent. Enumerated one level of module + one of version rather
+  // than walked, so the depth stays fixed.
+  'proto/v1',
+  'protos/v1',
+  'api/proto',
+  'api/proto/v1',
+  'api/v1',
+  'contracts/v1',
+  'openapi/v1',
+];
+
+/**
+ * Roots under which a project-specific MODULE name appears before the contract
+ * — buf's `proto/<module>/v1/`, Gradle's `src/main/proto/<module>/`. The module
+ * name varies per project and so cannot be enumerated above; it is expanded at
+ * most `MODULE_EXPANSION_DEPTH` levels, which keeps the search bounded without
+ * becoming a walk. Only these roots expand — a non-proto directory never does.
+ */
+const MODULE_TREE_ROOTS: readonly string[] = ['proto', 'protos', 'src/main/proto', 'api/proto'];
+
+/**
+ * How many project-named levels may sit between a MODULE_TREE_ROOT and the
+ * contract file — `<root>/<module>/` and `<root>/<module>/<version>/`. Two is
+ * the deepest real convention (buf); a third would start finding unrelated
+ * trees, which is exactly the recursive-walk failure D-002 rejects.
+ */
+const MODULE_EXPANSION_DEPTH = 2;
 
 /** True if `name`, in directory `dir` ('' = root), is a checked-in interface contract. */
 function isContractFile(name: string, dir: string): boolean {
@@ -447,15 +500,64 @@ function dirHasContract(cwd: string, dir: string): boolean {
   }
 }
 
+/** The immediate subdirectory names of `dir`, or [] if it is missing/unreadable. */
+function subdirsOf(cwd: string, dir: string): string[] {
+  try {
+    return readdirSync(join(cwd, dir), { withFileTypes: true })
+      .filter((e) => e.isDirectory())
+      .map((e) => e.name);
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Expand a module-tree root into the bounded set of project-named directories
+ * beneath it — `<root>/<module>` and `<root>/<module>/<version>`. Iterative and
+ * hard-capped at MODULE_EXPANSION_DEPTH, so it can never become a walk: a
+ * contract buried deeper than the convention allows is a recorded miss, not a
+ * reason to recurse (D-002).
+ */
+function expandModuleTree(cwd: string, root: string): string[] {
+  const found: string[] = [];
+  let frontier = [root];
+  for (let depth = 0; depth < MODULE_EXPANSION_DEPTH; depth += 1) {
+    const next: string[] = [];
+    for (const dir of frontier) {
+      for (const child of subdirsOf(cwd, dir)) {
+        const path = `${dir}/${child}`;
+        found.push(path);
+        next.push(path);
+      }
+    }
+    if (next.length === 0) break;
+    frontier = next;
+  }
+  return found;
+}
+
 /** True if a checked-in interface contract exists at the root or a conventional dir. */
 export function detectContract(cwd: string): boolean {
-  return dirHasContract(cwd, '') || CONTRACT_DIRS.some((dir) => dirHasContract(cwd, dir));
+  if (dirHasContract(cwd, '')) return true;
+  if (CONTRACT_SEARCH_PATHS.some((dir) => dirHasContract(cwd, dir))) return true;
+  // Only the module-tree roots expand, and only to a fixed depth (073, D-002).
+  return MODULE_TREE_ROOTS.some((root) => expandModuleTree(cwd, root).some((dir) => dirHasContract(cwd, dir)));
 }
 
 // A web/RPC framework declared as a dependency signals the project EXPOSES a
 // public interface (FR-014), matched by dependency name on the manifest exactly
-// like the observability exporters. An interface exposed via a framework outside
-// this set is silently exempt — a recorded false-negative, never a false failure.
+// like the observability exporters.
+//
+// RECORDED CEILING (spec 073, FR-007) — narrowed by that spec, not closed:
+// an interface exposed through a mechanism outside these tables is silently
+// exempt. Concretely that still includes a bespoke or unlisted framework, a
+// broker reached through a framework abstraction rather than a declared client,
+// a raw-socket or FFI surface, and any convention newer than this list. Each is
+// a FALSE-NEGATIVE, deliberately preferred over a false failure: a false failure
+// trains teams to disable the gate, while a missed nudge is still covered by the
+// advisory principle at standard. The escape hatch for an undetectable project
+// is to DECLARE its interface in the design (FR-003 / declaredInterfaceState),
+// which outranks these tables — not to rearrange itself to be detectable.
 const INTERFACE_SIGNALS: readonly FileSignal[] = [
   // JS/TS — quoted names avoid substring false-positives (e.g. "express" vs "expressive").
   { file: 'package.json', contains: '"express"' },
@@ -510,9 +612,359 @@ const INTERFACE_SIGNALS: readonly FileSignal[] = [
   { file: 'Package.swift', contains: 'grpc-swift' },
 ];
 
-/** True if the project declares a web/RPC framework — i.e. it exposes a public interface (FR-014). */
+// Event-driven interfaces (spec 073-interface-detection-widening, FR-001).
+// A message-broker or managed-bus client declared as a dependency is a public
+// interface just as much as an HTTP route is — a service whose entire surface is
+// published topics owes its consumers a payload contract. Matched by the
+// DELIBERATE client name, following the observability category's precedent:
+// never a transitive core/serialization library, which would false-positive.
+//
+// These are held SEPARATE from INTERFACE_SIGNALS above rather than merged into
+// it, because D-003 needs to know *which kind* of signal fired: an interface
+// recognised only this way reports advisory, never a hard fail (FR-004), since
+// a broker client is a weaker declaration of public surface than a web
+// framework and cannot distinguish publishing from consuming.
+const EVENT_INTERFACE_SIGNALS: readonly FileSignal[] = [
+  // JS/TS — quoted names avoid substring false-positives, as above.
+  { file: 'package.json', contains: '"kafkajs"' },
+  { file: 'package.json', contains: '"@confluentinc/kafka-javascript"' },
+  { file: 'package.json', contains: '"amqplib"' },
+  { file: 'package.json', contains: '"rhea"' },
+  { file: 'package.json', contains: '"nats"' },
+  { file: 'package.json', contains: '"pulsar-client"' },
+  { file: 'package.json', contains: '"@aws-sdk/client-sqs"' },
+  { file: 'package.json', contains: '"@aws-sdk/client-sns"' },
+  { file: 'package.json', contains: '"@aws-sdk/client-eventbridge"' },
+  { file: 'package.json', contains: '"@azure/service-bus"' },
+  { file: 'package.json', contains: '"@google-cloud/pubsub"' },
+  // Python
+  { file: 'pyproject.toml', contains: 'kafka-python' },
+  { file: 'pyproject.toml', contains: 'confluent-kafka' },
+  { file: 'pyproject.toml', contains: 'aiokafka' },
+  { file: 'pyproject.toml', contains: 'pika' },
+  { file: 'pyproject.toml', contains: 'aio-pika' },
+  { file: 'pyproject.toml', contains: 'nats-py' },
+  { file: 'pyproject.toml', contains: 'pulsar-client' },
+  { file: 'pyproject.toml', contains: 'azure-servicebus' },
+  { file: 'pyproject.toml', contains: 'google-cloud-pubsub' },
+  { file: 'requirements.txt', contains: 'kafka-python' },
+  { file: 'requirements.txt', contains: 'confluent-kafka' },
+  { file: 'requirements.txt', contains: 'aiokafka' },
+  { file: 'requirements.txt', contains: 'pika' },
+  { file: 'requirements.txt', contains: 'nats-py' },
+  { file: 'requirements.txt', contains: 'azure-servicebus' },
+  { file: 'requirements.txt', contains: 'google-cloud-pubsub' },
+  // Java
+  { file: 'pom.xml', contains: 'spring-kafka' },
+  { file: 'pom.xml', contains: 'kafka-clients' },
+  { file: 'pom.xml', contains: 'spring-boot-starter-amqp' },
+  { file: 'pom.xml', contains: 'amqp-client' },
+  { file: 'pom.xml', contains: 'jnats' },
+  { file: 'pom.xml', contains: 'pulsar-client' },
+  { file: 'pom.xml', contains: 'quarkus-smallrye-reactive-messaging' },
+  { file: 'build.gradle', contains: 'spring-kafka' },
+  { file: 'build.gradle', contains: 'kafka-clients' },
+  { file: 'build.gradle', contains: 'spring-boot-starter-amqp' },
+  { file: 'build.gradle', contains: 'amqp-client' },
+  { file: 'build.gradle', contains: 'pulsar-client' },
+  // Go
+  { file: 'go.mod', contains: 'IBM/sarama' },
+  { file: 'go.mod', contains: 'Shopify/sarama' },
+  { file: 'go.mod', contains: 'segmentio/kafka-go' },
+  { file: 'go.mod', contains: 'confluentinc/confluent-kafka-go' },
+  { file: 'go.mod', contains: 'nats-io/nats.go' },
+  { file: 'go.mod', contains: 'rabbitmq/amqp091-go' },
+  { file: 'go.mod', contains: 'streadway/amqp' },
+  { file: 'go.mod', contains: 'apache/pulsar-client-go' },
+  { file: 'go.mod', contains: 'aws-sdk-go-v2/service/sqs' },
+  { file: 'go.mod', contains: 'aws-sdk-go-v2/service/sns' },
+  { file: 'go.mod', contains: 'cloud.google.com/go/pubsub' },
+  // Rust
+  { file: 'Cargo.toml', contains: 'rdkafka' },
+  { file: 'Cargo.toml', contains: 'lapin' },
+  { file: 'Cargo.toml', contains: 'async-nats' },
+  { file: 'Cargo.toml', contains: 'pulsar' },
+  { file: 'Cargo.toml', contains: 'aws-sdk-sqs' },
+  { file: 'Cargo.toml', contains: 'aws-sdk-sns' },
+];
+
+/**
+ * How a project's public interface was recognised (073, D-003). The two flags
+ * are independent — a service can expose both an HTTP surface and an event
+ * stream, and one recognised *only* by `event` takes the advisory path (FR-004)
+ * rather than hard-failing the floor.
+ */
+export interface InterfaceEvidence {
+  /** An HTTP / GraphQL / gRPC framework is declared. */
+  http: boolean;
+  /** A message-broker or managed-bus client is declared. */
+  event: boolean;
+}
+
+/** Classify how (if at all) the project declares a public interface (073, FR-001). */
+export function interfaceEvidence(cwd: string): InterfaceEvidence {
+  return {
+    http: INTERFACE_SIGNALS.some((sig) => signalMatches(cwd, sig)),
+    event: EVENT_INTERFACE_SIGNALS.some((sig) => signalMatches(cwd, sig)),
+  };
+}
+
+/** True if the project declares any public interface — HTTP/RPC/GraphQL or event-driven (FR-014). */
 export function exposesInterface(cwd: string): boolean {
-  return INTERFACE_SIGNALS.some((sig) => signalMatches(cwd, sig));
+  const evidence = interfaceEvidence(cwd);
+  return evidence.http || evidence.event;
+}
+
+/**
+ * What a project's own design artifacts DECLARE about its interface (073,
+ * FR-003 / D-004) — authored intent, which outranks inference in both
+ * directions because dependency matching cannot tell a publisher from a
+ * consumer, nor a project's own contract from one it vendored.
+ *
+ * `null` when the project declares nothing (no design, no <spec-contract>, or
+ * an unreadable one) — inference then runs exactly as before.
+ */
+export interface ContractDeclarationState {
+  /** Declared paths that must resolve for the project to be covered. */
+  declaredPaths: string[];
+  /** True when every declaration is shape="none" — nothing is owed. */
+  declaresNoInterface: boolean;
+}
+
+/** Read the most recent design's `<spec-contract>` declarations, if any. */
+export function declaredInterfaceState(cwd: string): ContractDeclarationState | null {
+  let specDirs: string[];
+  try {
+    specDirs = readdirSync(join(cwd, 'specs'), { withFileTypes: true })
+      .filter((e) => e.isDirectory())
+      .map((e) => e.name)
+      .sort();
+  } catch {
+    return null; // no specs/ — nothing declared
+  }
+
+  // Last spec directory wins, so the project's most recent stated posture is the
+  // one that counts. Deterministic (lexicographic over zero-padded ids), never
+  // mtime — NFR-001 forbids a verdict that depends on the clock.
+  for (const specDir of [...specDirs].reverse()) {
+    let html: string;
+    try {
+      html = readFileSync(join(cwd, 'specs', specDir, 'design.html'), 'utf8');
+    } catch {
+      continue; // no design in this spec dir — try the next-newest
+    }
+    // Attribute-level read rather than a full parse: this module is the
+    // filesystem-facing detector and must not take a parser dependency, and a
+    // malformed design must degrade to "declares nothing", never throw (D-004).
+    const declarations = [...html.matchAll(/<spec-contract\b([^>]*)>/gi)];
+    if (declarations.length === 0) continue;
+
+    const declaredPaths: string[] = [];
+    let sawNonNone = false;
+    for (const [, attrs = ''] of declarations) {
+      const shape = /\bshape=["']([^"']*)["']/i.exec(attrs)?.[1]?.toLowerCase();
+      const path = /\bpath=["']([^"']+)["']/i.exec(attrs)?.[1];
+      if (shape !== undefined && shape !== 'none') sawNonNone = true;
+      if (path !== undefined) declaredPaths.push(path);
+    }
+    return { declaredPaths, declaresNoInterface: !sawNonNone && declaredPaths.length === 0 };
+  }
+
+  return null;
+}
+
+// --- Contract-checked rung (spec 074-contract-checked-tier) ------------------
+// At verified and above, holding a contract also requires a configured LINTER
+// and a configured breaking-change DIFFER. Per FR-002 / D-002 the signal is a
+// declared CONFIGURATION — a ruleset file, a CI invocation — never the mere
+// presence of a tool as a dependency: an installed linter that no configuration
+// ever runs certifies nothing, exactly as coverage counts a declared threshold
+// rather than a coverage library.
+//
+// Per D-004 / NFR-001 this reads config files and CI definitions as TEXT and
+// spawns no subprocess under any circumstance: the engine detects
+// configuration, it does not run linters.
+
+/** CI definition files scanned as text for a tool invocation. */
+const CI_DEFINITION_FILES: readonly string[] = [
+  '.github/workflows/ci.yml',
+  '.github/workflows/ci.yaml',
+  '.github/workflows/main.yml',
+  '.github/workflows/main.yaml',
+  '.gitlab-ci.yml',
+  'Makefile',
+  'justfile',
+];
+
+/** A configured-check signal: a ruleset file, or a tool invocation in CI. */
+interface CheckSignal {
+  /** Config files whose mere existence declares the check. */
+  configFiles?: readonly string[];
+  /** A config file that must also CONTAIN a substring (e.g. buf's breaking stanza). */
+  configContains?: readonly { file: string; contains: string }[];
+  /** Command names whose appearance in a CI definition declares the check. */
+  ciCommands?: readonly string[];
+}
+
+/** Per-format linter and differ signals. Extending is a data edit. */
+const CONTRACT_CHECK_SIGNALS: Readonly<Record<string, { linter: CheckSignal; differ: CheckSignal }>> = {
+  openapi: {
+    linter: {
+      configFiles: ['.spectral.yaml', '.spectral.yml', '.spectral.json', '.spectral.js', 'spectral.yaml'],
+      ciCommands: ['spectral lint', 'redocly lint', 'vacuum lint'],
+    },
+    differ: { ciCommands: ['oasdiff', 'openapi-diff', 'redocly diff'] },
+  },
+  proto: {
+    linter: { configContains: [{ file: 'buf.yaml', contains: 'lint' }], ciCommands: ['buf lint'] },
+    differ: { configContains: [{ file: 'buf.yaml', contains: 'breaking' }], ciCommands: ['buf breaking'] },
+  },
+  graphql: {
+    linter: {
+      configFiles: ['.graphqlrc', '.graphqlrc.yml', '.graphqlrc.yaml', '.graphql-eslintrc.json'],
+      ciCommands: ['graphql-eslint', 'graphql-schema-linter'],
+    },
+    differ: { ciCommands: ['graphql-inspector diff'] },
+  },
+  asyncapi: {
+    linter: {
+      configFiles: ['.spectral.yaml', '.spectral.yml', '.spectral.json'],
+      ciCommands: ['spectral lint', 'asyncapi validate'],
+    },
+    differ: { ciCommands: ['asyncapi diff'] },
+  },
+};
+
+/** One declared contract paired with the state of its two checks (074, FR-004). */
+export interface ContractCheckState {
+  /** Project-relative path of the contract file. */
+  path: string;
+  /** Contract format — the key into the signal and capability tables. */
+  format: string;
+  linted: boolean;
+  diffed: boolean;
+}
+
+/** Infer a contract's format from its filename, or null if it is not a contract. */
+function contractFormatOf(name: string): string | null {
+  const lower = name.toLowerCase();
+  if (/^asyncapi\.(ya?ml|json)$/.test(lower)) return 'asyncapi';
+  if (/^(openapi|swagger)\.(ya?ml|json)$/.test(lower)) return 'openapi';
+  if (lower.endsWith('.proto')) return 'proto';
+  if (lower.endsWith('.graphql') || lower.endsWith('.graphqls')) return 'graphql';
+  return null;
+}
+
+/** True if any CI definition invokes one of `commands`. Text-only; no spawn. */
+function ciInvokes(cwd: string, commands: readonly string[]): boolean {
+  for (const file of CI_DEFINITION_FILES) {
+    let text: string;
+    try {
+      text = readFileSync(join(cwd, file), 'utf8');
+    } catch {
+      continue;
+    }
+    if (commands.some((cmd) => text.includes(cmd))) return true;
+  }
+  return false;
+}
+
+/** True if the signal's declared configuration is present (FR-002 — never a bare dependency). */
+function checkIsConfigured(cwd: string, signal: CheckSignal): boolean {
+  if (signal.configFiles?.some((f) => existsSync(join(cwd, f)))) return true;
+  if (
+    signal.configContains?.some(({ file, contains }) => {
+      try {
+        return readFileSync(join(cwd, file), 'utf8').includes(contains);
+      } catch {
+        return false;
+      }
+    })
+  ) {
+    return true;
+  }
+  return signal.ciCommands !== undefined && ciInvokes(cwd, signal.ciCommands);
+}
+
+/**
+ * Pair every checked-in contract with the state of its linter and differ
+ * (074, FR-004). One entry per contract, so the report can name which contract
+ * and which half is short rather than a bare category verdict.
+ */
+export function detectContractChecks(cwd: string): ContractCheckState[] {
+  const found: ContractCheckState[] = [];
+  const seenFormats = new Set<string>();
+
+  const searchDirs = ['', ...CONTRACT_SEARCH_PATHS, ...MODULE_TREE_ROOTS.flatMap((r) => expandModuleTree(cwd, r))];
+  for (const dir of searchDirs) {
+    let names: string[];
+    try {
+      names = readdirSync(dir === '' ? cwd : join(cwd, dir));
+    } catch {
+      continue;
+    }
+    for (const name of names) {
+      const format = contractFormatOf(name);
+      if (format === null) continue;
+      // One entry per FORMAT: the rung's checks are configured per format, so a
+      // second .proto adds no new information and would make the report noisy.
+      if (seenFormats.has(format)) continue;
+      seenFormats.add(format);
+      const signals = CONTRACT_CHECK_SIGNALS[format];
+      found.push({
+        path: dir === '' ? name : `${dir}/${name}`,
+        format,
+        linted: signals !== undefined && checkIsConfigured(cwd, signals.linter),
+        diffed: signals !== undefined && checkIsConfigured(cwd, signals.differ),
+      });
+    }
+  }
+
+  return found;
+}
+
+/**
+ * True when contract-first should report at ADVISORY strength rather than
+ * hard-failing (073 FR-004 / D-003): the project's interface is recognised
+ * *only* through an event-driven signal, and no contract is checked in. An
+ * HTTP/RPC surface alongside it keeps the gate hard, exactly as today.
+ *
+ * A DECLARED contract path is authored intent, not a weak inference, so it
+ * keeps the gate hard too — the advisory strength exists because a broker
+ * dependency cannot distinguish publishing from consuming, and a declaration
+ * resolves exactly that ambiguity (D-004).
+ */
+export function contractFirstIsAdvisory(cwd: string): boolean {
+  if (contractFirstCovered(cwd)) return false;
+  if ((declaredInterfaceState(cwd)?.declaredPaths.length ?? 0) > 0) return false;
+  const evidence = interfaceEvidence(cwd);
+  return evidence.event && !evidence.http;
+}
+
+/**
+ * Whether contract-first is satisfied (073, FR-003 / D-004). Precedence is the
+ * load-bearing part, and it runs strictly in this order:
+ *
+ *   1. A DECLARATION, where the design makes one — it outranks inference in
+ *      both directions, since dependency/filesystem matching can tell neither a
+ *      publisher from a consumer nor an owned contract from a vendored one.
+ *   2. Otherwise INFERENCE — a checked-in contract, or no detected interface.
+ *
+ * Reversing 1 and 2 would make a design's stated intent unable to correct a
+ * wrong guess, which is the only reason the declaration exists.
+ */
+function contractFirstCovered(cwd: string): boolean {
+  const declared = declaredInterfaceState(cwd);
+  if (declared !== null) {
+    // Declared "no interface" → nothing is owed, whatever the manifest says.
+    if (declared.declaresNoInterface) return true;
+    // Declared a path → it must resolve. A different contract elsewhere on disk
+    // does not satisfy a declaration naming this one.
+    if (declared.declaredPaths.length > 0) {
+      return declared.declaredPaths.every((p) => existsSync(join(cwd, p)));
+    }
+  }
+  return detectContract(cwd) || !exposesInterface(cwd);
 }
 
 const ALL_CATEGORIES: readonly EnforcementCategory[] = [
@@ -545,11 +997,12 @@ export function detectTooling(cwd: string): Set<EnforcementCategory> {
     if (covered.has(sig.category)) continue;
     if (signalMatches(cwd, sig)) covered.add(sig.category);
   }
-  // contract-first (FR-014): interface-gated. Covered if a contract is checked in,
-  // OR the project exposes no detectable interface (nothing to contract). It is a
-  // gap only when an interface is exposed and no contract is present — so the gate
-  // fails safe on the antecedent (no interface → exempt), needing no FR-010 entry.
-  if (detectContract(cwd) || !exposesInterface(cwd)) covered.add('contract-first');
+  // contract-first (FR-014): interface-gated, with declaration taking precedence
+  // over inference (073 FR-003). See contractFirstCovered for the ordering; in
+  // brief — a design's declaration decides where it makes one, otherwise the gate
+  // fails safe on the antecedent (no detected interface → exempt), needing no
+  // FR-010 entry. An event-only recognition is advisory, never blocking (FR-004).
+  if (contractFirstCovered(cwd)) covered.add('contract-first');
   return covered;
 }
 

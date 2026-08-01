@@ -1,0 +1,259 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
+<title>Design contract section · Tasks</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Tasks · 069-design-contract-section</p>
+  <h1>Design contract section</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    Ordered, parallelizable work. Tests precede implementation. Drive through with
+    <code>/spectastic.implement</code> — one task per invocation.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>     <span><spec-status value="accepted">Accepted</spec-status></span>
+    <b>Spec</b>       <span><a href="./spec.html">069-design-contract-section</a></span>
+    <b>Plan</b>       <span><a href="./design.html">plan</a></span>
+    <b>Branch</b>     <span><code>main</code></span>
+    <b>Created</b>    <span><time datetime="2026-07-31">31 Jul 2026</time></span>
+    <b>Read time</b>  <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-tldr>
+    <p>25 tasks across five phases. Setup → Foundational → User stories (US1·US2·US3) → Polish.
+    Tasks marked <span class="par">[P]</span> can run in parallel — different files, no
+    dependency. Tests for a story <strong>MUST</strong> be written and failing before its
+    implementation tasks start. Foundational carries the one deterministic guarantee this slice
+    adds (the shape rule); the three stories are otherwise a single template and a single command
+    markdown file, edited in sequence where they share a file.</p>
+  </spec-tldr>
+</header>
+
+
+<section id="strategy">
+<h2>1 · Execution strategy</h2>
+
+<spec-tabs>
+  <spec-tab label="MVP-first">
+    <p>Implement US1 end-to-end — the section exists and declares a path. Ship. US2's linking
+    discipline and US3's event-driven prompt follow once US1 is verified.</p>
+  </spec-tab>
+  <spec-tab label="Incremental">
+    <p>Setup → Foundational → US1 → US2 → US3 → Polish. Each story closes its conformance
+    before the next opens. Recommended here: US1 and US2 both edit
+    <code>templates/design.html</code>'s §3 body, so running them in sequence avoids a merge
+    collision on the same section.</p>
+  </spec-tab>
+  <spec-tab label="Parallel teams">
+    <p>Not a good fit for this slice — the whole surface is one template section and one command
+    markdown file. US3 (the command markdown) can run alongside US1/US2 (the template) as two
+    people, not three.</p>
+  </spec-tab>
+</spec-tabs>
+</section>
+
+
+<section id="phase-setup" class="phase">
+<h2>2 · Phase 1 — Setup</h2>
+
+<spec-task id="T-001" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Scaffold the schema fixture directory</strong> — <code>positive.html</code> holding four malformed <code>&lt;spec-contract&gt;</code> cases (no <code>shape=</code>, an unrecognised <code>shape=</code>, a non-<code>none</code> shape with no <code>path=</code>, and a second unrecognised-shape case) and <code>negative.html</code> holding a well-formed <code>shape="none"</code> element, a well-formed <code>shape="request-response"</code> element with <code>path=</code>, and a document with zero <code>&lt;spec-contract&gt;</code> elements. <span class="path">packages/schema/fixtures/contract-declaration-shape/</span></div>
+</spec-task>
+<spec-task id="T-002" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Scaffold the Playwright card fixture</strong> — a minimal standalone page rendering one <code>&lt;spec-contract&gt;</code> per shape (including an <code>event-driven</code> case with <code>direction=</code>), for the rendering test. <span class="path">tests/fixtures/contract-card.html</span></div>
+</spec-task>
+</section>
+
+
+<section id="phase-foundation" class="phase">
+<h2>3 · Phase 2 — Foundational</h2>
+<p>The one deterministic guarantee this slice adds (P-8), and the CSS that renders the element every story depends on. Sequential where the rule and its registration share a file; the CSS is independent.</p>
+
+<h3>Tests (write &amp; fail first)</h3>
+<spec-task id="T-010" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Write the failing rule unit tests</strong> — assert <code>contract-declaration-shape</code> errors on each malformed fixture case (missing <code>shape=</code>, unrecognised <code>shape=</code>, missing <code>path=</code> on a non-<code>none</code> shape) with a message naming the missing/invalid attribute, and returns zero findings on the well-formed and zero-element fixtures. <span class="path">packages/schema/test/contract-declaration-shape.test.ts</span></div>
+</spec-task>
+<spec-task id="T-011" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Write the failing card render test</strong> — Playwright opens the fixture page and asserts, in both light and dark mode: the card is a bordered surface with a composed header line (shape · format · path), the <code>[direction]</code> badge appears only on the event-driven case, the card has no vertical/horizontal overflow (containment, not just presence), and the header line is still present with JavaScript disabled (<code>browserContext.setJavaScriptEnabled(false)</code>) per NFR-002. <span class="path">tests/contract-card.spec.ts</span></div>
+</spec-task>
+
+<h3>Implementation</h3>
+<spec-task id="T-012">
+  <input type="checkbox" checked>
+  <div><strong>Implement <code>contractDeclarationShapeRule</code></strong> — <code>findAll(doc.ast, 'spec-contract')</code>, early return on zero matches; error on a missing or unrecognised <code>shape=</code>, and on a non-<code>none</code> shape carrying no <code>path=</code>; clone <code>no-placeholder-question.ts</code>'s shape for the finding/fixHint pattern. <span class="path">packages/schema/src/rules/contract-declaration-shape.ts</span></div>
+</spec-task>
+<spec-task id="T-013">
+  <input type="checkbox" checked>
+  <div><strong>Register the rule</strong> <span class="path">packages/schema/src/rules/index.ts</span></div>
+</spec-task>
+<spec-task id="T-014" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Add the <code>spec-contract</code> card CSS block</strong> — bordered surface, a <code>::before</code> composing <code>shape</code>/<code>format</code>/<code>path</code> into one uppercase header line, a <code>[direction]::after</code> badge for the event-driven case, and the vivid-theme accent bar — cloned line-for-line from the <code>spec-slo</code> block. <span class="path">assets/spec.css</span></div>
+</spec-task>
+
+<spec-note>
+<p>Mechanism for <a href="./spec.html#FR-002">FR-002</a> and <a href="./spec.html#FR-003">FR-003</a> (a declaration, well-formed or explicitly absent-of-interface); the deterministic half of <a href="./spec.html#NFR-002">NFR-002</a>.</p>
+</spec-note>
+</section>
+
+
+<section id="phase-us1" class="phase">
+<h2>4 · Phase 3a — US1 · The design declares its contract</h2>
+
+<h3>Tests (write &amp; fail first)</h3>
+<spec-task id="T-100" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Write the failing template-content test</strong> — assert <code>templates/design.html</code> carries a <code>§3</code> heading titled <em>Data model &amp; contracts</em>, containing a placeholder physical-model table and one placeholder <code>&lt;spec-contract shape="[SHAPE]"&gt;</code>, positioned immediately after the Technical-context section. <span class="path">packages/cli/test/design.contract-section.test.ts</span></div>
+</spec-task>
+<spec-task id="T-101" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Extend the test for renumbering</strong> — assert the sections following §3 are numbered §4 through §12 in document order, with no gap or repeat. <span class="path">packages/cli/test/design.contract-section.test.ts</span></div>
+</spec-task>
+
+<h3>Implementation</h3>
+<spec-task id="T-110">
+  <input type="checkbox" checked>
+  <div><strong>Insert the new §3 section</strong> — <em>Data model &amp; contracts</em>, immediately after Technical context, carrying a placeholder physical-model table and one placeholder <code>&lt;spec-contract&gt;</code>. <span class="path">templates/design.html</span></div>
+</spec-task>
+<spec-task id="T-111">
+  <input type="checkbox" checked>
+  <div><strong>Renumber the remaining sections</strong> — Grounding through Change log shift from §3–§11 to §4–§12; update every <code>&lt;h2&gt;</code> numeral. <span class="path">templates/design.html</span></div>
+</spec-task>
+
+<spec-note>
+<p>Closes <a href="./spec.html#FR-001">FR-001</a>, <a href="./spec.html#FR-002">FR-002</a>, <a href="./spec.html#FR-003">FR-003</a>; contributes to <a href="./spec.html#SC-001">SC-001</a> and <a href="./spec.html#SC-003">SC-003</a>.</p>
+</spec-note>
+</section>
+
+
+<section id="phase-us2" class="phase">
+<h2>5 · Phase 3b — US2 · A consumer can find the shape</h2>
+
+<h3>Tests (write &amp; fail first)</h3>
+<spec-task id="T-200" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Extend the template-content test</strong> — assert §3's guidance text points authors at the spec's own §4 conceptual entities (an <code>href="./spec.html#..."</code>-shaped reference) rather than asking for a restated field list, and asks for boundaries/error-shape/consumer-reliance reasoning rather than a schema copy. <span class="path">packages/cli/test/design.contract-section.test.ts</span></div>
+</spec-task>
+
+<h3>Implementation</h3>
+<spec-task id="T-210">
+  <input type="checkbox" checked>
+  <div><strong>Add the linking guidance to §3</strong> — a short instruction directing the author to link the spec's conceptual entities and record boundaries/error-shape/consumer-reliance reasoning as the element's content, not a field-by-field copy of the schema. <span class="path">templates/design.html</span></div>
+</spec-task>
+
+<spec-note>
+<p>Closes <a href="./spec.html#FR-006">FR-006</a>; contributes to <a href="./spec.html#SC-003">SC-003</a>.</p>
+</spec-note>
+</section>
+
+
+<section id="phase-us3" class="phase">
+<h2>6 · Phase 3c — US3 · An event-driven feature is asked too</h2>
+
+<h3>Tests (write &amp; fail first)</h3>
+<spec-task id="T-300" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Write the failing interview-content test</strong> — assert <code>commands/spectastic.design.md</code> asks for the interface shape (naming all five tokens) <em>before</em> any format question, seeds the offered format from the answer, never states a fixed default, and presents no <code>(Recommended)</code> crown where nothing decisive implies a winner. <span class="path">packages/cli/test/design.contract-section.test.ts</span></div>
+</spec-task>
+<spec-task id="T-301" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Extend the test for the event-driven branch</strong> — assert the markdown offers the <code>publishes</code>/<code>consumes</code>/<code>both</code> direction sub-question only for the event-driven shape, seeds AsyncAPI, and states the both-HTTP-and-events case seeds both formats rather than forcing a single choice. <span class="path">packages/cli/test/design.contract-section.test.ts</span></div>
+</spec-task>
+<spec-task id="T-302" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Extend the test for the decision-phase limits</strong> — assert the new question(s) are described as respecting the ≤4-questions/2–4-options limit and as skipped when an upstream artifact or detection already answers them. <span class="path">packages/cli/test/design.contract-section.test.ts</span></div>
+</spec-task>
+
+<h3>Implementation</h3>
+<spec-task id="T-310">
+  <input type="checkbox" checked>
+  <div><strong>Add the interface-shape question</strong> — placed before any format question in the decision-phase list, offering request/response, RPC, GraphQL, event-driven, or none. <span class="path">commands/spectastic.design.md</span></div>
+</spec-task>
+<spec-task id="T-311">
+  <input type="checkbox" checked>
+  <div><strong>Add the format-seeding rule</strong> — request/response → OpenAPI, RPC → proto, GraphQL → SDL, event-driven → AsyncAPI, both surfaces → both; state the format is never a fixed default and carries no crown absent a decisive source. <span class="path">commands/spectastic.design.md</span></div>
+</spec-task>
+<spec-task id="T-312">
+  <input type="checkbox" checked>
+  <div><strong>Add the event-direction sub-question and the multi-contract note</strong> — publishes/consumes/both for the event-driven case; a feature may declare more than one contract with a different format each. <span class="path">commands/spectastic.design.md</span></div>
+</spec-task>
+<spec-task id="T-313">
+  <input type="checkbox" checked>
+  <div><strong>Add the decision-phase-limits clause</strong> — the new question(s) respect the existing ≤4-per-call, 2–4-option limits, and are skipped when the spec, an upstream artifact, or detection already answers them. <span class="path">commands/spectastic.design.md</span></div>
+</spec-task>
+<spec-task id="T-314">
+  <input type="checkbox" checked>
+  <div><strong>Re-sync the harness copy</strong> — per <code>CLAUDE.md</code>'s command-markdown sync discipline, the gitignored <code>.claude/commands/</code> copy does not auto-update. <span class="path">.claude/commands/spectastic.design.md</span></div>
+</spec-task>
+
+<spec-note>
+<p>Closes <a href="./spec.html#FR-004">FR-004</a>, <a href="./spec.html#FR-005">FR-005</a>, <a href="./spec.html#FR-007">FR-007</a>, <a href="./spec.html#NFR-001">NFR-001</a>; contributes to <a href="./spec.html#SC-002">SC-002</a>.</p>
+</spec-note>
+</section>
+
+
+<section id="phase-polish" class="phase">
+<h2>7 · Phase 4 — Polish</h2>
+<spec-task id="T-900" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Run a full-project validate sweep</strong> — confirm zero new findings across <code>specs/**/*.html</code> and <code>examples/**/*.html</code>, including the dogfooded <code>&lt;spec-contract shape="none"&gt;</code> already living in this spec's own <code>design.html</code>.</div>
+</spec-task>
+<spec-task id="T-901" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Browser-verify a non-<code>none</code> card</strong> — render a design declaring a real path and format, and confirm containment and on-screen bounds in both themes per P-7 ("presence ≠ containment"), not just that the element exists. <span class="path">specs/069-design-contract-section/design.html</span></div>
+</spec-task>
+<spec-task id="T-902" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Run the accessibility sweep against the fixture</strong> — confirm the existing <code>@axe-core/playwright</code> pass reports no new violations on a page rendering <code>&lt;spec-contract&gt;</code>, per P-13. <span class="path">tests/contract-card.spec.ts</span></div>
+</spec-task>
+<spec-task id="T-903" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Confirm the enforcement floor and stack ignores are unaffected</strong> — re-run <code>spectastic enforce</code> and <code>spectastic gitignore --stack</code> and confirm the tally is unchanged (8 covered · 1 relaxed · 0 missing).</div>
+</spec-task>
+</section>
+
+
+<section id="dependencies">
+<h2>8 · Dependencies</h2>
+<pre><code>Setup           → Foundational
+Foundational    → US1
+US1             → US2        (same file: templates/design.html §3 body)
+Foundational    → US3        (independent file: commands/spectastic.design.md)
+US1, US2, US3   → Polish
+</code></pre>
+</section>
+
+
+<section id="changelog">
+<h2>9 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-07-31">31 Jul 2026</time><span>Initial task breakdown. 25 tasks across five phases; every FR/NFR/SC in the spec is closed by at least one task (see the per-story <code>&lt;spec-note&gt;</code> trace).</span></li>
+  <li><time datetime="2026-08-01">01 Aug 2026</time><span>All 25 tasks drained. Status flipped Draft → Accepted on 01 Aug 2026 — zero remaining unchecked tasks; tests verified passing per author confirmation (1383/1384 vitest, 135/136 Playwright, 0 validate errors — both remaining failures pre-existing and unrelated). Sibling bundle (REQ-LIFECYCLE-005).</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  Tasks for 069-design-contract-section · Design contract section · authored 31 Jul 2026
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>

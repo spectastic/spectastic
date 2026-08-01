@@ -1,0 +1,394 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
+<title>Contract export handover · Design</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Design · 076-contract-export-handover</p>
+  <h1>Contract export handover</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    How we will build it.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>     <span><spec-status value="accepted">Accepted</spec-status></span>
+    <b>Spec</b>       <span><a href="./spec.html">076-contract-export-handover</a></span>
+    <b>Owner</b>      <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Branch</b>     <span><code>main</code></span>
+    <b>Created</b>    <span><time datetime="2026-08-01">01 Aug 2026</time></span>
+    <b>Read time</b>  <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-tldr>
+    <p>Generalise one function and add two artifacts. <code>specResourceUri()</code> already composes
+    <code>spectastic://&lt;owner&gt;/&lt;repo…&gt;/spec/&lt;id&gt;</code> with <code>spec/</code> hardcoded as the kind segment —
+    so a contract coordinate is that same function with the kind lifted to a parameter, which is exactly the "sibling resource
+    kind" 067's design anticipated. On top of it: a change notification emitted at promotion, and an optional consumer
+    dependency record so notification can be routed rather than broadcast. The distribution mechanism is deliberately absent —
+    descoped, not undecided, because <a href="./spec.html#FR-004">FR-004</a> forbids the surface requiring one.</p>
+  </spec-tldr>
+</header>
+
+
+<section id="principles-check">
+<h2>1 · Principles check</h2>
+<p>Verify this design respects every principle in <a href="../../principles.html">v1.9.0</a>. Any violation requires either a
+principles amendment or a deliberate exception logged in §10.</p>
+
+<table>
+  <thead><tr><th>Principle</th><th>Compliance</th><th>Notes</th></tr></thead>
+  <tbody>
+    <tr><td>P-1 · Source order is reading order</td><td><spec-pill>OK</spec-pill></td><td>No artifact structure changes.</td></tr>
+    <tr><td>P-2 · Semantic tags over class soup</td><td><spec-pill>OK</spec-pill></td><td>Consumes 069's element; the consumer record is configuration, not markup — see <a href="#D-004">D-004</a>.</td></tr>
+    <tr><td>P-3 · IDs are contracts</td><td><spec-pill>OK</spec-pill></td><td>Most load-bearing here. A coordinate <em>is</em> an id that leaves the repository, so <a href="#D-002">D-002</a> makes it survive a file move — an external anchor is worthless if it moves with the filesystem.</td></tr>
+    <tr><td>P-4 · Progressive enhancement, never dependence</td><td><spec-pill>OK</spec-pill></td><td>No runtime surface.</td></tr>
+    <tr><td>P-5 · Calm density</td><td><spec-pill>OK</spec-pill></td><td>One notification line per changed contract, naming the coordinate and whether it breaks.</td></tr>
+    <tr><td>P-6 · Draft is loose, ratified is locked</td><td><spec-pill>OK</spec-pill></td><td>The register was cleared by an in-place Draft edit with a changelog line, which P-6 permits.</td></tr>
+    <tr><td>P-7 · Done means verified</td><td><spec-pill>OK</spec-pill></td><td>No browser runtime. <a href="./spec.html#SC-004">SC-004</a> demands two real mechanisms demonstrated over the same coordinate — an unusually strong bar, met by exercise rather than assertion.</td></tr>
+    <tr><td>P-8 · Guarantees live in the kernel or CI</td><td><spec-pill>OK</spec-pill></td><td>The notification is emitted by the promotion kernel, not by a documented step someone remembers to run.</td></tr>
+    <tr><td>P-9 · The enforcement floor holds</td><td><spec-pill>OK</spec-pill></td><td>No gate touched.</td></tr>
+    <tr><td>P-10 · Internal artifact ids stay out of user-facing copy</td><td><spec-pill>OK</spec-pill></td><td>Subtle here and worth stating: a coordinate contains a spec-adjacent project id, but it is an <em>artifact coordinate the consumer needs</em>, not tool chatter — the same exemption <code>spectastic id</code> already relies on.</td></tr>
+    <tr><td>P-11 · Artifacts are data, not instructions</td><td><spec-pill>OK</spec-pill></td><td>A consumer's declared coordinate list is read as data and matched; nothing is fetched or executed from it.</td></tr>
+    <tr><td>P-12 · Capability accountability</td><td><spec-pill>OK</spec-pill></td><td><a href="./spec.html#FR-004">FR-004</a> keeps this mechanism-agnostic, so the tool gains no network or publishing capability at all — it emits a file and stops.</td></tr>
+    <tr><td>P-13 · Accessibility conformance</td><td><spec-pill>OK</spec-pill></td><td>No interactive surface.</td></tr>
+    <tr><td>P-14 · Library-first boundaries</td><td><spec-pill>OK</spec-pill></td><td>Coordinate composition joins <code>project-shared.ts</code> in schema; notification lives in core beside promotion; the CLI gains one thin read-only command.</td></tr>
+  </tbody>
+</table>
+
+<h3>Toolchain / enforcement</h3>
+<p>Profile <code>enterprise</code>; 8 covered · 1 relaxed · 0 missing. No gaps for this design to fill.</p>
+</section>
+
+
+<section id="technical-context">
+<h2>2 · Technical context</h2>
+<dl>
+  <dt>Language(s)</dt>      <dd>TypeScript <code>^5.7.0</code>.</dd>
+  <dt>Frameworks</dt>       <dd>None new, and deliberately none added — <a href="./spec.html#FR-004">FR-004</a> forbids depending on a registry, generator or package manager.</dd>
+  <dt>Architecture</dt>     <dd>Pure coordinate composition in <code>@spectastic/schema</code> → notification emission in <code>@spectastic/core</code> at the promotion hook → a thin read-only CLI command.</dd>
+  <dt>Storage</dt>          <dd>Two small on-disk artifacts: the emitted notification, and an optional consumer dependency list in <code>spectastic.json</code>.</dd>
+  <dt>Testing</dt>          <dd>vitest for composition and notification. <a href="./spec.html#SC-004">SC-004</a> additionally needs two mechanisms demonstrated — done as documented recipes exercised in a test, per <a href="#D-005">D-005</a>. Tests written red first.</dd>
+  <dt>Coverage</dt>         <dd>100% of changed lines; a change never lowers coverage of what it touches.</dd>
+  <dt>Perf targets</dt>     <dd>Not in scope beyond <a href="./spec.html#NFR-001">NFR-001</a>'s determinism; composition is string work and notification is one small write.</dd>
+  <dt>Constraints</dt>      <dd><a href="./spec.html#NFR-001">NFR-001</a> — deterministic, 0 wall-clock dependence. <a href="./spec.html#NFR-002">NFR-002</a> — a monorepo where producer and consumer coexist gains 0 extra steps, which makes the whole feature opt-in by construction.</dd>
+</dl>
+</section>
+
+
+<section id="contracts">
+<h2>3 · Data model &amp; contracts</h2>
+
+<p>The coordinate is the load-bearing entity — a mechanism can be swapped, but a coordinate consumers have written down cannot.</p>
+
+<table>
+  <thead><tr><th>Conceptual entity</th><th>Physical shape</th><th>Notes</th></tr></thead>
+  <tbody>
+    <tr><td><a href="./spec.html#data">Contract coordinate</a></td>
+        <td><code>spectastic://&lt;owner&gt;/&lt;repo…&gt;/contract/&lt;name&gt;</code></td>
+        <td>The same composition <code>specResourceUri</code> performs, with the kind segment lifted from a hardcoded <code>spec</code> to a parameter. The name is declaration-derived, never path-derived (<a href="#D-002">D-002</a>).</td></tr>
+    <tr><td><a href="./spec.html#data">Change notification</a></td>
+        <td>A file emitted at promotion — coordinate, change class, and a reason for the withdrawal subtype</td>
+        <td>Breaking / non-breaking is the required split; <code>withdrawn</code> is a <em>reason on a breaking change</em>, not a third class (<a href="#D-003">D-003</a>).</td></tr>
+    <tr><td><a href="./spec.html#data">Consumer declaration</a></td>
+        <td>An optional array of coordinates in <code>spectastic.json</code></td>
+        <td>Configuration, not artifact markup — it is a project-level fact, and <code>spectastic.json</code> already holds exactly that kind (<a href="#D-004">D-004</a>).</td></tr>
+  </tbody>
+</table>
+
+<spec-contract shape="none">
+  <p>No interface of its own. The irony is worth naming: this slice is about making <em>other</em> projects' contracts travel, and
+  it exposes none itself. It emits a file and prints a string; whatever carries them is the consuming project's choice, which is
+  precisely what <a href="./spec.html#FR-004">FR-004</a> protects.</p>
+</spec-contract>
+</section>
+
+
+<section id="grounding">
+<h2>4 · Grounding &amp; evidence</h2>
+
+<table class="evidence">
+  <thead><tr><th>Claim the design rests on</th><th>Source</th><th>Status</th><th>Finding / note</th></tr></thead>
+  <tbody>
+    <tr><td>The URI composer already exists and hardcodes exactly one kind segment</td>
+        <td><code>packages/schema/src/project-shared.ts:54-61</code></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td><code>specResourceUri()</code> builds <code>`${rest}/spec/${specId}`</code> — the string <code>spec/</code> is literal. Generalising the kind is a parameter, not a new scheme. The single most decisive fact here.</td></tr>
+    <tr><td>067's design explicitly anticipated sibling resource kinds</td>
+        <td><code>packages/schema/src/project-shared.ts:45-53</code> (doc comment) · <code>specs/067-spec-project-identity/spec.html</code></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td>Owner-as-authority with the remainder as leading path segments, documented as the federation-unique form. <a href="./spec.html#FR-001">FR-001</a>'s "MUST NOT introduce a contract-specific naming scheme" is satisfiable by reuse.</td></tr>
+    <tr><td>A bare, not-yet-owner-qualified project degrades gracefully</td>
+        <td><code>packages/schema/src/project-shared.ts:55-59</code></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td>A no-slash project becomes a single-segment authority with no path prefix. So a contract coordinate works before a project is owner-qualified, and this slice inherits that behaviour rather than re-deciding it.</td></tr>
+    <tr><td>The composer is pure — no fs, no clock, no environment</td>
+        <td><code>packages/schema/src/project-shared.ts:52</code> (comment)</td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td>"Pure: no fs, no clock, no environment (NFR-001) — identical input, identical output." <a href="./spec.html#NFR-001">NFR-001</a> here is satisfied by inheritance.</td></tr>
+    <tr><td>A read-only resolution command already has a template</td>
+        <td><code>packages/cli/src/commands/id.ts:5,16-20</code></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td><code>spectastic id &lt;spec-id&gt; [--anchor]</code> prints a canonical URI. <a href="./spec.html#FR-006">FR-006</a>'s optional command clones its shape.</td></tr>
+    <tr><td>Promotion is the moment a contract changes, and it is kernel-owned</td>
+        <td><code>specs/071-contract-promotion/design.html</code> <a href="../071-contract-promotion/design.html#D-002">D-002</a></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td>Promotion runs inside <code>applyCommand</code> with a plan-then-execute split, so the notification has an unambiguous, deterministic emission point. 071 is a hard prerequisite.</td></tr>
+    <tr><td><code>spectastic.json</code> already carries project-level configuration sections</td>
+        <td><code>spectastic.json</code> — <code>git</code>, <code>validate</code>, <code>enforce</code> sections</td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td>A <code>consumes</code> array is the same kind of fact in the same file, so <a href="#D-004">D-004</a> needs no new config surface.</td></tr>
+    <tr><td>Every requirement here is mechanism-neutral</td>
+        <td><code>specs/076-contract-export-handover/spec.html</code> FR-001–FR-007</td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td>Read end to end after the descope: coordinate, stability, notification, agnosticism, consumer record, resolution command. None names a registry or generator — which is what made the blocked question droppable rather than answerable.</td></tr>
+  </tbody>
+</table>
+</section>
+
+
+<section id="approach">
+<h2>5 · Approach</h2>
+
+<p>The coordinate comes first and is the smallest change: <code>specResourceUri()</code> becomes
+<code>resourceUri(project, kind, name, anchor?)</code> with <code>specResourceUri</code> kept as a thin wrapper so no existing
+caller moves, and <code>contractResourceUri()</code> added beside it. The kind segment was already the only difference between a
+spec address and a contract address, which is why 067's design called sibling kinds out in advance.</p>
+
+<p>Stability under a file move (<a href="./spec.html#FR-002">FR-002</a>) forces one real decision: the coordinate's name segment
+must come from the <em>declaration</em>, not the path. A design declaring <code>path="api/openapi.yaml"</code> today and
+<code>path="openapi/service.yaml"</code> tomorrow must keep one address, so the name is a stable identifier carried alongside the
+declaration rather than the file's basename. Then promotion emits a notification naming the coordinate and the change class, and
+an optional <code>consumes</code> array in <code>spectastic.json</code> lets a consuming project record which coordinates it
+depends on so notification can be routed. Finally a read-only <code>spectastic contract</code> command prints the contract at a
+coordinate, cloning <code>spectastic id</code>'s shape.</p>
+
+<spec-arch>
+<figure>
+<svg viewBox="0 0 700 250" role="img" aria-label="A declaration yields a stable coordinate; promotion emits a notification against that coordinate; a consumer that declared the coordinate is routed the notification">
+  <style>
+    .box { fill:#fcfbf7; stroke:#c4c1bb; stroke-width:1.2; }
+    .label { font: 700 11px Lato, sans-serif; fill:#4a4a46; letter-spacing:0.06em; text-transform:uppercase; }
+    .body { font: 400 12px "Source Serif 4", Georgia, serif; fill:#353534; }
+    .arr { stroke:#73706d; stroke-width:1.2; fill:none; }
+    .note { font: 400 11px Lato, sans-serif; fill:#73706d; }
+  </style>
+  <rect class="box" x="20"  y="95" width="145" height="60" rx="4"/>
+  <text class="label" x="34"  y="119">declaration</text>
+  <text class="body"  x="34"  y="139">stable name</text>
+  <rect class="box" x="205" y="95" width="145" height="60" rx="4"/>
+  <text class="label" x="219" y="119">coordinate</text>
+  <text class="body"  x="219" y="139">contract/&lt;name&gt;</text>
+  <rect class="box" x="390" y="95" width="145" height="60" rx="4"/>
+  <text class="label" x="404" y="119">promotion</text>
+  <text class="body"  x="404" y="139">emits notice</text>
+  <rect class="box" x="570" y="95" width="110" height="60" rx="4"/>
+  <text class="label" x="584" y="119">consumer</text>
+  <text class="body"  x="584" y="139">routed</text>
+  <path class="arr" d="M165 125 L205 125" marker-end="url(#a)"/>
+  <path class="arr" d="M350 125 L390 125" marker-end="url(#a)"/>
+  <path class="arr" d="M535 125 L570 125" marker-end="url(#a)"/>
+  <text class="note" x="205" y="190">no arrow leaves this diagram — what carries the notice onward is the project's choice, not ours</text>
+  <defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#73706d"/></marker></defs>
+</svg>
+<figcaption>The chain stops at the emitted notification. That the diagram has no fifth box is the point of
+<a href="./spec.html#FR-004">FR-004</a>.</figcaption>
+</figure>
+</spec-arch>
+</section>
+
+
+<section id="alternatives">
+<h2>6 · Alternatives considered</h2>
+
+<p>The load-bearing choice is what the coordinate's name segment derives from, since <a href="./spec.html#FR-002">FR-002</a>
+requires it survive a file move. Scored 1–5, higher is better.</p>
+
+<spec-matrix>
+<table>
+  <thead>
+    <tr><th>Option</th><th>Survives a move</th><th>No new state</th><th>Readable to a consumer</th><th class="score">Total</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>The contract file's basename</td><td>1</td><td>5</td><td>4</td><td class="score">10</td></tr>
+    <tr><td>An opaque generated identifier</td><td>5</td><td>2</td><td>1</td><td class="score">8</td></tr>
+    <tr data-winner><td>A stable name on the declaration — chosen</td><td>5</td><td>3</td><td>5</td><td class="score">13</td></tr>
+  </tbody>
+</table>
+</spec-matrix>
+
+<p>The basename is what everyone reaches for and it fails the one requirement that matters: rename
+<code>api/openapi.yaml</code> to <code>openapi/service.yaml</code> and every consumer's written-down address breaks — the precise
+failure <a href="./spec.html#SC-002">SC-002</a> forbids. An opaque identifier survives anything and is unreadable, which for an
+address humans paste into issues and configs is a real cost.</p>
+</section>
+
+
+<section id="decisions">
+<h2>7 · Decisions</h2>
+
+<spec-decision id="D-001" grounding="verified">
+  <h4>D-001 · Generalise <code>specResourceUri</code>; add no scheme</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd><code>packages/schema/src/project-shared.ts:54-61</code> composes <code>`${rest}/spec/${specId}`</code> with <code>spec/</code> literal, and its doc comment describes the form as federation-unique. <a href="./spec.html#FR-001">FR-001</a> forbids a contract-specific naming scheme.</dd>
+    <dt>Decision</dt>     <dd>Lift the kind to a parameter — <code>resourceUri(project, kind, name, anchor?)</code> — keep <code>specResourceUri</code> as a wrapper so no caller changes, and add <code>contractResourceUri</code>.</dd>
+    <dt>Consequences</dt> <dd>+ One composer, one authority rule, one degradation path for bare projects. + Existing callers untouched. + A third kind later is a parameter, not a design. − <code>project-shared.ts</code> now serves more than specs; its name becomes slightly narrow for what it holds, noted rather than renamed mid-cohort.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-002" grounding="verified">
+  <h4>D-002 · The coordinate's name is declaration-derived, never path-derived</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd><a href="./spec.html#FR-002">FR-002</a> requires the coordinate survive a file-path change, and <a href="./spec.html#SC-002">SC-002</a> permits 0 exceptions. A basename cannot: it changes by definition when the file moves. P-3 makes this sharper — a coordinate is an id that has left the repository, so it is a contract with people the tool cannot see.</dd>
+    <dt>Decision drivers</dt> <dd>Survives a move · avoids new state · readable when pasted into an issue</dd>
+    <dt>Considered options</dt>
+    <dd>
+      <ul class="considered-options">
+        <li><strong>The file's basename</strong> — + zero new state. − Breaks on rename, which is the one thing FR-002 forbids.</li>
+        <li><strong>An opaque generated id</strong> — + immune to everything. − Unreadable in an issue or a config file.</li>
+        <li><strong>A stable declared name — chosen</strong> — + survives moves and stays readable. − One more attribute to author.</li>
+      </ul>
+    </dd>
+    <dt>Decision</dt>     <dd>The name segment comes from a stable identifier carried with the declaration, defaulting to the basename at first authoring and thereafter independent of it.</dd>
+    <dt>Consequences</dt> <dd>+ A file move never breaks a published address. + The address stays human-readable. − An author can rename the identifier and break consumers; that is a semantic act the tool should not silently prevent, and it is visible in the diff.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-003" grounding="n-a">
+  <h4>D-003 · A withdrawal is a breaking change with a reason, not a third class</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>The spec's register carried this as an open fork, with the stated objection that a separate kind "adds a state that every consumer must handle". <a href="./spec.html#FR-003">FR-003</a> requires only that breaking be distinguishable from non-breaking. Pure judgment; no external fact decides it.</dd>
+    <dt>Decision</dt>     <dd>Model withdrawal as a <em>subtype</em>: the change class stays breaking, and a reason field carries <code>withdrawn</code>.</dd>
+    <dt>Consequences</dt> <dd>+ A consumer branching only on breaking-versus-non-breaking is still correct, since a withdrawal is unambiguously breaking — the objection disappears rather than being traded off. + A consumer that cares learns there is no successor shape to migrate to. − The distinction is a field rather than a type, so a careless consumer can ignore it; acceptable, because ignoring it still yields the safe behaviour.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-004" grounding="verified">
+  <h4>D-004 · The consumer declaration is configuration, not artifact markup</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd><a href="./spec.html#FR-005">FR-005</a> asks a project to record the coordinates it depends on. That is a project-level fact, not a statement any single design makes, and <code>spectastic.json</code> already carries exactly this kind of section (<code>git</code>, <code>validate</code>, <code>enforce</code>).</dd>
+    <dt>Decision</dt>     <dd>An optional <code>consumes</code> array of coordinates in <code>spectastic.json</code>. No new element, no new file.</dd>
+    <dt>Consequences</dt> <dd>+ Lives where project-level facts already live, and is readable without parsing HTML. + Absent by default, so <a href="./spec.html#NFR-002">NFR-002</a>'s monorepo-costs-nothing holds. − A consuming project that uses no spectastic artifacts still needs a <code>spectastic.json</code> to participate; a one-line file, and the feature is optional.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-005" grounding="verified">
+  <h4>D-005 · Two mechanisms are demonstrated as recipes, not built</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd><a href="./spec.html#SC-004">SC-004</a> requires at least 2 distinct distribution mechanisms demonstrated over the same coordinate with 0 changes to this spec's guarantees. <a href="./spec.html#FR-004">FR-004</a> forbids requiring any particular one, and the spec's out-of-scope list excludes SDK generation and registry operation.</dd>
+    <dt>Decision</dt>     <dd>Demonstrate by documented recipe — vendoring, and a published artifact — each exercised in a test that consumes the emitted notification. The recipes ship as documentation; neither mechanism is implemented in the tool.</dd>
+    <dt>Consequences</dt> <dd>+ Proves the surface really is mechanism-agnostic rather than asserting it, which is the whole point of the criterion. + Adds no dependency. − A recipe can rot as external tooling moves; it is documentation, reviewed like documentation, and the guarantee it evidences is the tool's own surface.</dd>
+  </dl>
+</spec-decision>
+</section>
+
+
+<section id="project-structure">
+<h2>8 · Project structure</h2>
+
+<pre><code>packages/schema/src/
+  project-shared.ts                 resourceUri(project, kind, name) generalised;
+                                    specResourceUri kept as a wrapper; contractResourceUri added
+packages/schema/test/
+  resource-uri.test.ts              new — kinds, owner-qualified vs bare, existing spec URIs unchanged
+packages/core/src/contracts/
+  notify.ts                         new — build + emit the change notification
+  promote.ts                        + emit on successful promotion (071's hook)
+packages/core/test/
+  notify.test.ts                    new — breaking, non-breaking, withdrawn subtype, routing
+packages/cli/src/commands/
+  contract.ts                       new — read-only resolution, cloning id.ts
+docs/
+  contract-distribution-recipes.html  new — the two SC-004 recipes
+spectastic.json schema              + optional `consumes` array
+</code></pre>
+
+<p>Deliberately absent: no registry client, no SDK generator, no publishing step. That absence is <a href="./spec.html#FR-004">FR-004</a> honoured, not work deferred.</p>
+</section>
+
+
+<section id="risks">
+<h2>9 · Risks &amp; mitigations</h2>
+
+<table>
+  <thead><tr><th>Risk</th><th>Likelihood</th><th>Impact</th><th>Mitigation</th></tr></thead>
+  <tbody>
+    <tr><td>A coordinate is published, then the declared name is changed, silently breaking consumers</td><td>M</td><td>H</td><td>The residual of <a href="#D-002">D-002</a>. The tool cannot know who has written an address down, so it cannot prevent this — but a name change is a visible diff on a reviewed artifact, and a renamed coordinate emits a withdrawal notification for the old one plus a change for the new.</td></tr>
+    <tr><td>The generalised composer changes an existing spec URI, breaking 067's guarantees</td><td>L</td><td>H</td><td>A regression test asserts <code>specResourceUri</code>'s output is byte-identical for a corpus of inputs before and after the refactor. Written before the generalisation lands.</td></tr>
+    <tr><td>Notification is emitted but nothing consumes it, so the feature looks inert</td><td>H</td><td>L</td><td>Expected and correct — <a href="./spec.html#FR-004">FR-004</a> means the tool stops at emission. The recipes in <a href="#D-005">D-005</a> exist so "what do I do with this" has a documented answer.</td></tr>
+    <tr><td>Scope creeps back toward blessing a mechanism</td><td>M</td><td>M</td><td>The descope is recorded in the spec's register and re-deferred as its own slug, so a future proposal has to argue against FR-004 rather than quietly extend this slice.</td></tr>
+  </tbody>
+</table>
+</section>
+
+
+<section id="complexity">
+<h2>10 · Complexity tracking</h2>
+
+<spec-assumption>
+<p><strong>The mechanism question was descoped, not answered.</strong> The spec's register originally treated it as blocking. Read
+against <a href="./spec.html#FR-004">FR-004</a> — which forbids the export surface requiring any particular registry, generator or
+package manager — it was asking whether to bless something the requirements already forbid the surface from depending on, and no
+requirement here needs the answer. It is re-deferred as <code>TBD-contract-distribution-tier</code>, a profile-catalog question,
+rather than left blocking a slice that is complete without it. Recorded because "we dropped the hard question" and "the hard
+question was not in scope" look identical from outside.</p>
+</spec-assumption>
+
+<spec-assumption>
+<p><strong>A coordinate is a promise the tool cannot keep alone.</strong> Once an address leaves the repository, its stability
+depends on humans not renaming it. <a href="#D-002">D-002</a> removes the accidental breakage — a file move no longer breaks the
+address — but a deliberate rename still can. That residual is inherent to any naming scheme that stays human-readable, and the
+alternative (an opaque id) trades a real usability cost for it.</p>
+</spec-assumption>
+
+<spec-assumption>
+<p><strong>Breaking-versus-non-breaking is classified by the producer, not detected.</strong> The spec's out-of-scope list is
+explicit that deciding whether a change is breaking belongs to another slice; this one reports what it is told. So the
+notification carries a <em>claim</em>, and the copy should say so — the same posture <a href="../077-event-schema-evolution/spec.html">077</a>
+takes about compatibility stances.</p>
+</spec-assumption>
+</section>
+
+
+<section id="questions">
+<h2>11 · Open questions</h2>
+<spec-questions>
+<p>None outstanding. The coordinate scheme, the name's derivation, the withdrawal shape, the consumer record's home and the
+two-mechanism demonstration were settled here; the distribution mechanism was descoped against FR-004 and re-deferred as
+<code>TBD-contract-distribution-tier</code>.</p>
+</spec-questions>
+</section>
+
+
+<section id="changelog">
+<h2>12 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-08-01">01 Aug 2026</time><span>Initial design, written after the spec's register was cleared. Eight grounding facts, all verified; no spikes and no assumed facts, so the design-to-tasks grounding gate is clear. The decisive finding is that <code>specResourceUri</code> hardcodes its single kind segment, making a contract coordinate a parameterisation of an existing composer rather than a new scheme.</span></li>
+  <li><time datetime="2026-08-01">01 Aug 2026</time><span>Status flipped Draft → Accepted on 01 Aug 2026 — zero remaining unchecked tasks; tests verified passing per author confirmation. Sibling bundle (REQ-LIFECYCLE-005).</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  Design for 076-contract-export-handover · Contract export handover · authored 01 Aug 2026
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>

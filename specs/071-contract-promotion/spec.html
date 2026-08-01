@@ -1,0 +1,298 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
+<title>Contract promotion · Specification</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Specification · 071-contract-promotion</p>
+  <h1>Contract promotion</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    When a change lands, its proposed contract becomes the effective one — written, archived, and refused rather than silently overwritten.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>      <span><spec-status value="accepted">Accepted</spec-status></span>
+    <b>Spec ID</b>     <span>071-contract-promotion</span>
+    <b>Owner</b>       <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Reviewers</b>   <span>—</span>
+    <b>Created</b>     <span><time datetime="2026-07-31">31 Jul 2026</time></span>
+    <b>Principles</b><span><a href="../../principles.html">v1.9.0</a></span>
+    <b>Smallest demoable</b><span>Landing a change whose spec carries a proposed contract writes the effective contract at its declared path and archives the proposal — one command, no manual copy.</span>
+    <b>Read time</b>   <span data-reading-time></span>
+  </spec-meta>
+
+  <!-- Live size gauge — green at <80%, amber 80-100%, red over. Words row counts authored prose (excludes the conformance index) per REQ-FORMAT-004. -->
+  <spec-budget words="2000" reqs="20" minutes="14"></spec-budget>
+
+  <spec-tldr>
+    <p>The two-state convention (<a href="../070-contract-sidecar-convention/spec.html">070</a>) only holds if something moves a
+    contract between states. Left manual, it degrades exactly the way every hand-maintained copy does: the proposal stays behind as
+    a second live file, or the effective contract is edited directly and the proposal is forgotten. This spec adds the transition —
+    a <strong>promotion</strong> step at the point a change lands, mirroring the fold-and-archive the apply verb already performs on
+    a change proposal. It writes the proposed contract to its declared effective path, archives the spec-local copy so two live
+    copies never coexist, and <strong>refuses</strong> rather than silently overwriting when the effective contract has moved since
+    the proposal was authored — the case where two specs are in flight against one interface. The operation is atomic and
+    idempotent: it either writes and archives or does neither, and running it twice is indistinguishable from running it once. For
+    authors landing an interface change, and the reviewers who have to trust that what shipped is what was approved.</p>
+  </spec-tldr>
+
+  <dl class="invest">
+    <dt><span class="letter">I</span> Independent</dt> <dd>Depends on <a href="../070-contract-sidecar-convention/spec.html">070</a> for the two locations and <a href="../069-design-contract-section/spec.html">069</a> for the declaration. Both are named, landed prerequisites, not co-designed peers.</dd>
+    <dt><span class="letter">N</span> Negotiable</dt>  <dd>Contracts the <em>transition and its guarantees</em> — write, archive, refuse, atomically. Which verb hosts it, the archive layout, and the conflict-detection mechanism are the design's.</dd>
+    <dt><span class="letter">V</span> Valuable</dt>    <dd>Unlocks <a href="#SC-001">SC-001</a> — the convention becomes self-maintaining instead of a rule people remember, which is the difference between a workflow and a wish.</dd>
+    <dt><span class="letter">E</span> Estimable</dt>   <dd>The fold-and-archive shape already exists in the apply kernel and can be followed; the new work is conflict detection and atomicity.</dd>
+    <dt><span class="letter">S</span> Small</dt>       <dd>One transition with three guarantees. Cross-repo export, detection widening, and the rendered view are deferred to named siblings (§3 Out of scope).</dd>
+    <dt><span class="letter">T</span> Testable</dt>    <dd>Fixture-checkable: file present at the effective path, proposal archived, conflicting case refused with a non-zero exit and nothing written.</dd>
+  </dl>
+
+  <spec-audience-map>
+    <dl>
+      <dt>Exec / PM</dt>   <dd>§<a href="#context">Context</a>, §<a href="#scenarios">User scenarios</a>, §<a href="#success">Success criteria</a>.</dd>
+      <dt>Reviewer</dt>    <dd>§<a href="#requirements">Requirements</a>, §<a href="#assumptions">Assumptions</a>, §<a href="#questions">Open questions</a>.</dd>
+      <dt>Implementer</dt> <dd>§<a href="#requirements">Requirements</a>, §<a href="#data">Data model</a>, §<a href="#conformance">Conformance index</a>.</dd>
+    </dl>
+  </spec-audience-map>
+</header>
+
+
+<section id="context">
+<h2>1 · Context</h2>
+<p>Spec <a href="../070-contract-sidecar-convention/spec.html">070</a> establishes that a contract has two states — proposed beside
+its spec, effective at the project's declared path — and that exactly one is authoritative at a time. That invariant is only as
+good as the mechanism that moves a contract between them. Without one, the convention survives on discipline: someone must
+remember to copy the file and delete the original, at the moment a change lands, correctly, every time.</p>
+<p>The tool already performs this exact shape of move elsewhere. Applying a change proposal folds its content into the live spec
+and relocates the source into an archive directory, so the proposal cannot later be mistaken for the current requirement. A
+contract promotion is the same operation over a different pair of files, and should behave the same way — including the part people
+forget to specify, which is what happens when the destination has changed underneath you.</p>
+<p>That last case is not hypothetical. Two specs can be in flight against one interface, each carrying a proposed contract written
+against a different baseline. Whichever lands second would, under a naive copy, silently discard the first. Whose problem: the
+author who loses work without being told, and the consumer who receives an interface nobody approved.</p>
+</section>
+
+
+<section id="scenarios">
+<h2>2 · User scenarios &amp; testing</h2>
+
+<p>Each story <strong>MUST</strong> be independently testable: if you implemented only US1, you would
+still have a viable MVP.</p>
+
+<h3 id="US1">US1 · Landing a change promotes its contract <spec-pill>P1</spec-pill></h3>
+<p>As an <strong>author</strong>, I want <strong>my proposed contract to become the effective one when the change lands</strong>
+so that <strong>the interface ships without a manual copy step I can forget</strong>.</p>
+<p><em>Acceptance:</em> After landing, the declared effective path holds the proposed contract's content byte-for-byte, and the
+spec-local proposal is no longer at its original location.</p>
+
+<h3 id="US2">US2 · Exactly one live copy afterwards <spec-pill>P1</spec-pill></h3>
+<p>As a <strong>reviewer</strong>, I want <strong>the proposal archived rather than left in place</strong> so that
+<strong>nobody can mistake a landed proposal for a pending one, or edit the wrong file</strong>.</p>
+<p><em>Acceptance:</em> After promotion, no readable contract remains at the proposed location; the archived copy is retained and
+identifiable.</p>
+
+<h3 id="US3">US3 · A conflicting promotion refuses <spec-pill>P2</spec-pill></h3>
+<p>As an <strong>author</strong>, I want <strong>promotion to stop when the effective contract has changed since I authored my
+proposal</strong> so that <strong>I am told about the conflict instead of silently overwriting someone else's landed
+interface</strong>.</p>
+<p><em>Acceptance:</em> Given an effective contract that differs from the baseline the proposal was written against, promotion
+exits non-zero, writes nothing, archives nothing, and names the conflict.</p>
+
+<h3>Edge cases</h3>
+<ul>
+  <li>Promotion run twice — the second run must be a no-op, not a failure and not a duplicate archive entry.</li>
+  <li>No proposed contract at all: the overwhelming majority of changes. Promotion must do nothing and say nothing.</li>
+  <li>A declared effective path whose parent directory does not yet exist — the first contract a project ever ships.</li>
+  <li>A proposal whose declared path changed after it was authored, so the baseline is a file at a different location.</li>
+  <li>Promotion interrupted partway — the destination must not be left holding a partial file.</li>
+  <li>A spec carrying several proposed contracts where one conflicts: none should be promoted.</li>
+</ul>
+</section>
+
+
+<section id="requirements">
+<h2>3 · Requirements</h2>
+
+<p>Conformance keywords (<spec-rule>MUST</spec-rule>, <spec-rule level="should">SHOULD</spec-rule>,
+<spec-rule level="may">MAY</spec-rule>) follow RFC 2119.</p>
+
+<h3>Functional</h3>
+
+<spec-requirement id="FR-001" priority="must">
+<p>When a change carrying a proposed contract lands, the tool <strong>MUST</strong> write that contract's content to the effective
+path the design declares.</p>
+<details><summary>Rationale</summary><p>The transition is the mechanism that makes the two-state convention real rather than
+aspirational.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-002" priority="must">
+<p>Promotion <strong>MUST</strong> archive the spec-local proposal so that no readable contract remains at the proposed location.</p>
+<details><summary>Rationale</summary><p>Retains provenance while restoring the one-live-copy invariant, mirroring how a folded
+change proposal is archived rather than deleted.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-003" priority="must">
+<p>Promotion <strong>MUST</strong> refuse — writing nothing and archiving nothing — when the effective contract differs from the
+baseline the proposal was authored against.</p>
+<details><summary>Rationale</summary><p>Two specs in flight against one interface is the case that loses work silently. Refusing is
+the only outcome that neither discards a landed change nor guesses at a merge.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-004" priority="must">
+<p>Promotion <strong>MUST</strong> be atomic across all of a change's contracts: either every contract is written and archived, or
+none is.</p>
+<details><summary>Rationale</summary><p>A half-promoted change leaves the estate in a state no invariant describes, and leaves the
+author to reconstruct what happened.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-005" priority="must">
+<p>Promotion <strong>MUST</strong> be idempotent: running it again after a successful promotion <strong>MUST</strong> make at most 0
+further changes and <strong>MUST NOT</strong> fail.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-006" priority="must">
+<p>A change carrying no proposed contract <strong>MUST</strong> be unaffected — at most 0 files written, and no output about
+contracts.</p>
+<details><summary>Rationale</summary><p>Most changes touch no interface. The step must be invisible to them, or it becomes noise
+that trains people to ignore it.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-007" priority="should">
+<p>A refusal <strong>SHOULD</strong> name the conflicting path and, where determinable, the spec whose landed change moved it.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-008" priority="should">
+<p>The tool <strong>SHOULD</strong> offer a dry-run that reports what promotion would write and archive, changing at most 0 files.</p>
+</spec-requirement>
+
+<h3>Non-functional</h3>
+
+<spec-requirement id="NFR-001" priority="must">
+<p>Promotion <strong>MUST</strong> be deterministic — given the same inputs it produces the same result, with at most 0 network
+calls and no dependence on wall-clock time.</p>
+</spec-requirement>
+
+<spec-requirement id="NFR-002" priority="should">
+<p>Promotion <strong>SHOULD</strong> add under 200 ms to the command that hosts it, for a change carrying up to 10 contracts.</p>
+</spec-requirement>
+
+<h3>Out of scope (deferred to other slices)</h3>
+<spec-out-of-scope>
+  <ul>
+    <li defer-to="072-contract-embedded-view">Refreshing any rendered view of the contract after promotion.</li>
+    <li defer-to="TBD-contract-export-handover">Telling a consuming repository that the effective contract changed.</li>
+    <li defer-to="TBD-contract-checked-gate">Linting the promoted contract or diffing it for breaking changes before it lands.</li>
+    <li defer-to="TBD-contract-promotion-merge">Merging two proposals against one interface rather than refusing — deliberately not attempted, since a schema merge is not a text merge.</li>
+  </ul>
+</spec-out-of-scope>
+</section>
+
+
+<section id="data">
+<h2>4 · Data model</h2>
+
+<p>No new persisted entity. Promotion moves existing files between the two locations
+<a href="../070-contract-sidecar-convention/spec.html">070</a> defines, and needs one piece of state it does not have today.</p>
+
+<h3>Entities</h3>
+<dl>
+  <dt>Promotion baseline</dt><dd>What the effective contract looked like when the proposal was authored — the reference
+  <a href="#FR-003">FR-003</a> compares against to detect a conflict. Recorded when the proposal is written, not when it lands.</dd>
+  <dt>Archived proposal</dt><dd>The retained spec-local contract after promotion, kept for provenance and never readable as a live
+  contract.</dd>
+</dl>
+
+<spec-note>
+<p>The baseline is the only genuinely new state here, and it is what makes <a href="#FR-003">FR-003</a> possible at all: without
+it, "has the destination changed?" can only be answered as "does it differ from what I am about to write", which is true of every
+legitimate promotion.</p>
+</spec-note>
+</section>
+
+
+<section id="success">
+<h2>5 · Success criteria</h2>
+
+<p>Technology-agnostic, measurable outcomes. These are how we know it worked.</p>
+
+<spec-requirement id="SC-001" priority="must">
+<p>Landing a change with a proposed contract leaves exactly 1 readable contract for that interface — at the declared effective
+path — in 100% of fixtures.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-002" priority="must">
+<p>A conflicting promotion exits non-zero and leaves the working tree byte-identical to its pre-run state — at most 0 files
+written, at most 0 archived.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-003" priority="must">
+<p>Re-running promotion after success changes at most 0 files and exits zero.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-004" priority="should">
+<p>Across the existing spec estate, where no spec carries a proposed contract, promotion writes at most 0 files and adds under
+200 ms to the hosting command.</p>
+</spec-requirement>
+</section>
+
+
+<section id="assumptions">
+<h2>6 · Assumptions</h2>
+
+<spec-assumption>
+<p>Contracts are small text files, so writing one atomically is a write-and-rename rather than a streaming concern.</p>
+</spec-assumption>
+
+<spec-assumption>
+<p>The project is under version control, so an archived proposal and a promoted contract are both recoverable if a promotion turns
+out to have been wrong.</p>
+</spec-assumption>
+
+<spec-assumption>
+<p>Concurrent promotions on one working tree are not a case worth designing for — the conflicting-baseline refusal covers the
+sequential version of the same hazard, which is the one that actually occurs.</p>
+</spec-assumption>
+</section>
+
+
+<section id="questions">
+<h2>7 · Open questions</h2>
+<spec-questions>
+<p>None outstanding — refuse-rather-than-merge, atomicity, and idempotence were settled when the two-state convention was chosen;
+the baseline is the mechanism that follows from them.</p>
+</spec-questions>
+</section>
+
+
+<section id="conformance">
+<h2>8 · Conformance index</h2>
+<p>Auto-built from every <code>&lt;spec-requirement&gt;</code> in this document.</p>
+<spec-conformance></spec-conformance>
+</section>
+
+
+<section id="changelog">
+<h2>9 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-07-31">31 Jul 2026</time><span>Initial draft. Resolves <code>TBD-contract-promotion</code>, named by the data-model and contract survey as the heaviest part of its first slice. Adds one <code>TBD-contract-promotion-merge</code> for the merge case this spec deliberately refuses rather than attempts.</span></li>
+  <li><time datetime="2026-08-01">01 Aug 2026</time><span>Status flipped Draft → Accepted on 01 Aug 2026 — zero remaining unchecked tasks; tests verified passing per author confirmation. Sibling bundle (REQ-LIFECYCLE-005).</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  071-contract-promotion · Contract promotion · authored 31 Jul 2026
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>

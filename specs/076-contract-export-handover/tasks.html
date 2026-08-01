@@ -1,0 +1,241 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
+<title>Contract export handover · Tasks</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Tasks · 076-contract-export-handover</p>
+  <h1>Contract export handover</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    Ordered, parallelizable work. Tests precede implementation. Drive through with
+    <code>/spectastic.implement</code> — one task per invocation.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>     <span><spec-status value="accepted">Accepted</spec-status></span>
+    <b>Spec</b>       <span><a href="./spec.html">076-contract-export-handover</a></span>
+    <b>Plan</b>       <span><a href="./design.html">plan</a></span>
+    <b>Branch</b>     <span><code>main</code></span>
+    <b>Created</b>    <span><time datetime="2026-08-01">01 Aug 2026</time></span>
+    <b>Read time</b>  <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-tldr>
+    <p>21 tasks across five phases. <strong>Requires <a href="../070-contract-sidecar-convention/spec.html">070</a>'s reader and
+    <a href="../071-contract-promotion/spec.html">071</a>'s promotion hook</strong> — the deepest dependency in the cohort, so
+    drain it last. Foundational refactors 067's URI composer, so its first task is a regression net proving existing spec URIs
+    come out byte-identical.</p>
+  </spec-tldr>
+</header>
+
+
+<section id="strategy">
+<h2>1 · Execution strategy</h2>
+
+<spec-tabs>
+  <spec-tab label="MVP-first">
+    <p>US1 — a consumer resolves a contract by coordinate — is the headline and is demoable alone. Notification and routing
+    follow.</p>
+  </spec-tab>
+  <spec-tab label="Incremental">
+    <p>Setup → Foundational → US1 → US2 → US3 → Polish. Recommended. The coordinate must be right before anything is emitted
+    against it, since a published address cannot be taken back.</p>
+  </spec-tab>
+  <spec-tab label="Parallel teams">
+    <p>Workable in two after Foundational: the notification half (US2) touches core and promotion, while the resolution command
+    and recipes (US1, US3) touch the CLI and docs.</p>
+  </spec-tab>
+</spec-tabs>
+</section>
+
+
+<section id="phase-setup" class="phase">
+<h2>2 · Phase 1 — Setup</h2>
+
+<spec-task id="T-001" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Scaffold coordinate fixtures</strong> — owner-qualified, multi-segment and bare project identities, each with one and two declared contracts. <span class="path">packages/schema/test/fixtures/resource-uri/</span></div>
+</spec-task>
+<spec-task id="T-002" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Scaffold a producer/consumer fixture pair</strong> — a producing project with a declared contract and a consuming project declaring the coordinate, for routing and end-to-end resolution. <span class="path">packages/core/test/fixtures/export-handover/</span></div>
+</spec-task>
+</section>
+
+
+<section id="phase-foundation" class="phase">
+<h2>3 · Phase 2 — Foundational</h2>
+<p>Generalising a shipped composer that 067's guarantees depend on. The regression net comes first — an existing spec URI must not move by a single byte.</p>
+
+<h3>Tests (write &amp; fail first)</h3>
+<spec-task id="T-010">
+  <input type="checkbox" checked>
+  <div><strong>Pin existing spec URIs in a regression set</strong> — assert <code>specResourceUri</code>'s output over a corpus of project shapes, written and <em>passing</em> before the refactor so any drift is unmistakable. <span class="path">packages/schema/test/resource-uri.test.ts</span></div>
+</spec-task>
+<spec-task id="T-011" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Write the failing contract-coordinate tests</strong> — assert <code>contractResourceUri</code> composes <code>contract/&lt;name&gt;</code> under the same authority rule, and that a bare project degrades to a single-segment authority exactly as the spec kind does. <span class="path">packages/schema/test/resource-uri.test.ts</span></div>
+</spec-task>
+
+<h3>Implementation</h3>
+<spec-task id="T-012">
+  <input type="checkbox" checked>
+  <div><strong>Lift the kind segment to a parameter</strong> — <code>resourceUri(project, kind, name, anchor?)</code>, with <code>specResourceUri</code> kept as a wrapper so no existing caller changes, per <a href="./design.html#D-001">D-001</a>. <span class="path">packages/schema/src/project-shared.ts</span></div>
+</spec-task>
+<spec-task id="T-013">
+  <input type="checkbox" checked>
+  <div><strong>Add <code>contractResourceUri</code></strong> — the sibling kind 067's design anticipated. <span class="path">packages/schema/src/project-shared.ts</span></div>
+</spec-task>
+
+<spec-note>
+<p>Mechanism for <a href="./spec.html#FR-001">FR-001</a> and <a href="./spec.html#NFR-001">NFR-001</a>; the coordinate every other task addresses.</p>
+</spec-note>
+</section>
+
+
+<section id="phase-us1" class="phase">
+<h2>4 · Phase 3a — US1 · A consumer resolves the shape by coordinate</h2>
+
+<h3>Tests (write &amp; fail first)</h3>
+<spec-task id="T-100" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Write the failing path-stability tests</strong> — assert moving the contract's file within the producing repository changes the coordinate in 0 cases, per <a href="./spec.html#SC-002">SC-002</a>. The requirement this slice most easily gets wrong. <span class="path">packages/schema/test/resource-uri.test.ts</span></div>
+</spec-task>
+<spec-task id="T-101" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Write the failing resolution-command tests</strong> — assert the command prints the contract at a coordinate, is read-only, and errors cleanly on an unknown coordinate. <span class="path">packages/cli/test/contract-command.test.ts</span></div>
+</spec-task>
+
+<h3>Implementation</h3>
+<spec-task id="T-110">
+  <input type="checkbox" checked>
+  <div><strong>Derive the coordinate name from the declaration</strong> — a stable identifier defaulting to the basename at first authoring and thereafter independent of the path, per <a href="./design.html#D-002">D-002</a>. <span class="path">packages/schema/src/contract-shared.ts</span></div>
+</spec-task>
+<spec-task id="T-111">
+  <input type="checkbox" checked>
+  <div><strong>Implement the read-only resolution command</strong> — clone <code>id.ts</code>'s shape; print, never fetch. <span class="path">packages/cli/src/commands/contract.ts</span></div>
+</spec-task>
+
+<spec-note>
+<p>Closes <a href="./spec.html#FR-002">FR-002</a>, <a href="./spec.html#FR-006">FR-006</a>; contributes to <a href="./spec.html#SC-001">SC-001</a> and <a href="./spec.html#SC-002">SC-002</a>.</p>
+</spec-note>
+</section>
+
+
+<section id="phase-us2" class="phase">
+<h2>5 · Phase 3b — US2 · A change is announced against the coordinate</h2>
+
+<h3>Tests (write &amp; fail first)</h3>
+<spec-task id="T-200" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Write the failing notification tests</strong> — assert a promoted breaking change produces exactly 1 notification naming the coordinate and its breaking nature, distinguishable from a non-breaking one, per <a href="./spec.html#SC-003">SC-003</a>. <span class="path">packages/core/test/notify.test.ts</span></div>
+</spec-task>
+<spec-task id="T-201" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Write the failing withdrawal-subtype tests</strong> — assert a withdrawal is classed breaking and carries a <code>withdrawn</code> reason, so a consumer branching only on breaking-versus-non-breaking is still correct, per <a href="./design.html#D-003">D-003</a>. <span class="path">packages/core/test/notify.test.ts</span></div>
+</spec-task>
+
+<h3>Implementation</h3>
+<spec-task id="T-210">
+  <input type="checkbox" checked>
+  <div><strong>Implement the notification builder</strong> — coordinate, change class and reason; the class is the producer's claim, and the copy says so. <span class="path">packages/core/src/contracts/notify.ts</span></div>
+</spec-task>
+<spec-task id="T-211">
+  <input type="checkbox" checked>
+  <div><strong>Emit on successful promotion</strong> — hook into 071's executor so emission is kernel-owned and cannot be skipped. <span class="path">packages/core/src/contracts/promote.ts</span></div>
+</spec-task>
+
+<spec-note>
+<p>Closes <a href="./spec.html#FR-003">FR-003</a>; contributes to <a href="./spec.html#SC-003">SC-003</a>.</p>
+</spec-note>
+</section>
+
+
+<section id="phase-us3" class="phase">
+<h2>6 · Phase 3c — US3 · Notification is routed, not broadcast</h2>
+
+<h3>Tests (write &amp; fail first)</h3>
+<spec-task id="T-300" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Write the failing routing tests</strong> — assert a consumer declaring a coordinate is matched by a notification for it and not by one for another, per <a href="./spec.html#FR-005">FR-005</a>. <span class="path">packages/core/test/notify.test.ts</span></div>
+</spec-task>
+<spec-task id="T-301" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Write the failing monorepo test</strong> — assert a project where producer and consumer coexist incurs 0 additional steps and needs no <code>consumes</code> entry, per <a href="./spec.html#NFR-002">NFR-002</a>. <span class="path">packages/core/test/notify.test.ts</span></div>
+</spec-task>
+
+<h3>Implementation</h3>
+<spec-task id="T-310">
+  <input type="checkbox" checked>
+  <div><strong>Add the optional <code>consumes</code> array</strong> — a project-level list of depended-on coordinates in the existing config file, absent by default, per <a href="./design.html#D-004">D-004</a>. <span class="path">spectastic.json</span></div>
+</spec-task>
+
+<spec-note>
+<p>Closes <a href="./spec.html#FR-005">FR-005</a>, <a href="./spec.html#NFR-002">NFR-002</a>.</p>
+</spec-note>
+</section>
+
+
+<section id="phase-polish" class="phase">
+<h2>7 · Phase 4 — Polish</h2>
+<spec-task id="T-900">
+  <input type="checkbox" checked>
+  <div><strong>Write the two distribution recipes</strong> — vendoring and a published artifact, each consuming the same coordinate and notification, per <a href="./spec.html#SC-004">SC-004</a>. Documentation; neither mechanism is built. <span class="path">docs/contract-distribution-recipes.html</span></div>
+</spec-task>
+<spec-task id="T-901">
+  <input type="checkbox" checked>
+  <div><strong>Exercise both recipes in a test</strong> — prove the surface is genuinely mechanism-agnostic rather than asserting it, with 0 changes to this spec's guarantees between them. <span class="path">packages/core/test/export-handover.integration.test.ts</span></div>
+</spec-task>
+<spec-task id="T-902" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Confirm no capability was added</strong> — assert the tool makes 0 network calls and spawns 0 subprocesses across the whole feature, which is <a href="./spec.html#FR-004">FR-004</a> observed rather than promised.</div>
+</spec-task>
+<spec-task id="T-903" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Run a full-project validate sweep</strong> — confirm 0 new findings, and that every existing <code>spectastic id</code> output is unchanged after the composer refactor.</div>
+</spec-task>
+</section>
+
+
+<section id="dependencies">
+<h2>8 · Dependencies</h2>
+<pre><code>070 Foundational  → this slice     (readContractDeclarations)
+071 US1           → US2            (the promotion hook the notification fires from)
+
+Setup             → Foundational (composer refactor + regression net)
+Foundational      → US1 → US2 → US3
+US1, US2, US3     → Polish
+
+Deepest dependency in the cohort — drain last.
+</code></pre>
+</section>
+
+
+<section id="changelog">
+<h2>9 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-08-01">01 Aug 2026</time><span>Initial task breakdown. 21 tasks across five phases; every FR/NFR/SC is closed by at least one task. T-010 is written green-first — it pins 067's existing URI output before the composer is generalised, since this slice refactors a function other specs' guarantees rest on.</span></li>
+  <li><time datetime="2026-08-01">01 Aug 2026</time><span>Status flipped Draft → Accepted on 01 Aug 2026 — zero remaining unchecked tasks; tests verified passing per author confirmation. Sibling bundle (REQ-LIFECYCLE-005).</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  Tasks for 076-contract-export-handover · Contract export handover · authored 01 Aug 2026
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>

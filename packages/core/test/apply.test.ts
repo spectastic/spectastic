@@ -1,6 +1,6 @@
 import type { FileSystem, KernelContext } from '@spectastic/core';
 import { applyCommand } from '@spectastic/core/commands/apply';
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 function stubFs(initial: Record<string, string>): {
   fs: FileSystem;
@@ -64,6 +64,29 @@ const BLOCKED_PROPOSAL = `<!doctype html><html><body>
 </body></html>`;
 
 describe('applyCommand (010)', () => {
+  // A single-digit day (caught applying 2026-08-01-widen-interface-detection):
+  // a bare Number() on the split ISO date strips a leading zero, so every
+  // prior apply happened to land past the 10th to ever surface it.
+  describe('changelog date text is zero-padded (formatHumanDate)', () => {
+    beforeEach(() => vi.useFakeTimers());
+    afterEach(() => vi.useRealTimers());
+
+    it('renders a single-digit day as "01 Aug 2026", not "1 Aug 2026"', async () => {
+      vi.setSystemTime(new Date('2026-08-01T12:00:00Z'));
+      const { fs, files } = stubFs({
+        '/specs/001/spec.html': LIVE_SPEC,
+        '/specs/001/changes/2026-06-16-foo/proposal.html': APPLY_PROPOSAL,
+      });
+      const ctx: KernelContext = { cwd: '', fs };
+
+      await applyCommand({ kind: 'apply', specId: '001', slug: '2026-06-16-foo' }, ctx);
+
+      const updated = files.get('/specs/001/spec.html')!;
+      expect(updated).toContain('01 Aug 2026');
+      expect(updated).not.toContain('>1 Aug 2026<');
+    });
+  });
+
   it('apply mode: folds delta into live spec + archives folder', async () => {
     const { fs, files, renames } = stubFs({
       '/specs/001/spec.html': LIVE_SPEC,

@@ -1,0 +1,288 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
+<title>Contract-checked tier · Specification</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Specification · 074-contract-checked-tier</p>
+  <h1>Contract-checked tier</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    Give the <code>contract-checked</code> rung mechanical meaning — a linted contract and a breaking-change diff — without promising for events what the tooling only delivers for REST.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>      <span><spec-status value="accepted">Accepted</spec-status></span>
+    <b>Spec ID</b>     <span>074-contract-checked-tier</span>
+    <b>Owner</b>       <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Reviewers</b>   <span>—</span>
+    <b>Created</b>     <span><time datetime="2026-07-31">31 Jul 2026</time></span>
+    <b>Principles</b><span><a href="../../principles.html">v1.9.0</a></span>
+    <b>Smallest demoable</b><span>At the verified tier, <code>spectastic enforce</code> reports a gap when a project has a contract but no configured contract linter or breaking-change differ.</span>
+    <b>Read time</b>   <span data-reading-time></span>
+  </spec-meta>
+
+  <!-- Live size gauge — green at <80%, amber 80-100%, red over. Words row counts authored prose (excludes the conformance index) per REQ-FORMAT-004. -->
+  <spec-budget words="2000" reqs="20" minutes="14"></spec-budget>
+
+  <spec-tldr>
+    <p>The <code>contracts</code> profile axis already ladders <code>informal → contract-first → contract-checked →
+    versioned+governed</code>, and nothing reads any rung of it. <code>contract-first</code> now has teeth; this spec gives the
+    next rung the same. <em>Checked</em> means two commodity things a project either wired up or did not: the contract is linted
+    against a style ruleset, and it is diffed against its predecessor for breaking changes. Both are mature, permissively-licensed
+    tools with CI actions, so the enforcement engine's job is to detect that they are configured — the same posture the coverage
+    category takes toward a declared threshold rather than a coverage library. The honest complication is that this parity does not
+    hold across formats: linting and diffing are commodity for OpenAPI and thinner for AsyncAPI, thinner still for its current
+    major version. So the rung is defined per format, with the gap reported at the strength the tooling actually supports rather
+    than at the strength the ladder implies. Runtime compatibility testing stays out — it needs both sides of an integration
+    running and belongs to the testing categories.</p>
+  </spec-tldr>
+
+  <dl class="invest">
+    <dt><span class="letter">I</span> Independent</dt> <dd>Builds on <a href="../073-interface-detection-widening/spec.html">073</a>, which decides that a contract exists at all. Amends <a href="../042-profile-enforcement/spec.html">042</a>'s category definition; nothing else must move.</dd>
+    <dt><span class="letter">N</span> Negotiable</dt>  <dd>Contracts <em>what checked means</em> — linted and diffed, detected as configuration. Which tools count, and how their config is recognised, are the design's.</dd>
+    <dt><span class="letter">V</span> Valuable</dt>    <dd>Unlocks <a href="#SC-001">SC-001</a> — a verified project can no longer satisfy its contract obligation with a file nobody checks, which is the difference between having a contract and honouring one.</dd>
+    <dt><span class="letter">E</span> Estimable</dt>   <dd>Signal detection over config files, in an engine already shaped for exactly that. The judgment is which signals count, not how to detect them.</dd>
+    <dt><span class="letter">S</span> Small</dt>       <dd>One rung of one axis. Versioning, deprecation windows, and registries — the rung above — are out of scope, as is runtime contract testing.</dd>
+    <dt><span class="letter">T</span> Testable</dt>    <dd>Fixture-checkable per format and per tier: configured, unconfigured, and the format where the tooling cannot honestly support the check.</dd>
+  </dl>
+
+  <spec-audience-map>
+    <dl>
+      <dt>Exec / PM</dt>   <dd>§<a href="#context">Context</a>, §<a href="#scenarios">User scenarios</a>, §<a href="#success">Success criteria</a>.</dd>
+      <dt>Reviewer</dt>    <dd>§<a href="#requirements">Requirements</a>, §<a href="#assumptions">Assumptions</a>, §<a href="#questions">Open questions</a>.</dd>
+      <dt>Implementer</dt> <dd>§<a href="#requirements">Requirements</a>, §<a href="#data">Data model</a>, §<a href="#conformance">Conformance index</a>.</dd>
+    </dl>
+  </spec-audience-map>
+</header>
+
+
+<section id="context">
+<h2>1 · Context</h2>
+<p>A checked-in contract proves someone wrote one. It does not prove the contract is consistent, house-styled, or that the change
+about to land will not break every consumer. The gap between those is where most real interface pain lives, and it is exactly the
+distance between the <code>contract-first</code> and <code>contract-checked</code> rungs of a profile axis that currently has no
+mechanical meaning at any rung.</p>
+<p>The industry answer to this rung is settled and unglamorous: a linter with a ruleset, and a differ that classifies changes as
+breaking or not, both wired into CI. Maturity models put automated linting one level above written convention for exactly this
+reason. Spectastic should not build either — it should detect that a project has them, which is the posture the enforcement engine
+already takes everywhere else.</p>
+<p>What makes this more than a copy of the coverage category is an asymmetry worth stating before it becomes a broken promise:
+this tooling is commodity for OpenAPI and materially thinner for event-driven formats, where the mainstream ruleset trails the
+current specification version. A rung that demands equal rigour of both would either fail honest projects or be quietly waived
+into meaninglessness. Whose problem: verified and enterprise projects, and anyone consuming an interface that changes under them.</p>
+</section>
+
+
+<section id="scenarios">
+<h2>2 · User scenarios &amp; testing</h2>
+
+<p>Each story <strong>MUST</strong> be independently testable: if you implemented only US1, you would
+still have a viable MVP.</p>
+
+<h3 id="US1">US1 · An unchecked contract is a gap at verified <spec-pill>P1</spec-pill></h3>
+<p>As a <strong>platform reviewer</strong>, I want <strong>a verified project with a contract but no linting or diffing to be
+reported as a gap</strong> so that <strong>"has a contract" cannot be mistaken for "honours a contract"</strong>.</p>
+<p><em>Acceptance:</em> A verified-profile fixture with a contract and no configured linter or differ reports a
+<code>contract-first</code> gap naming what is missing; adding either configuration changes the report accordingly.</p>
+
+<h3 id="US2">US2 · A configured project passes without extra ceremony <spec-pill>P1</spec-pill></h3>
+<p>As an <strong>engineer who already lints and diffs my OpenAPI</strong>, I want <strong>my existing configuration to satisfy
+the rung</strong> so that <strong>I am not asked to adopt a spectastic-specific mechanism for work I already do</strong>.</p>
+<p><em>Acceptance:</em> A project with a recognised linter ruleset and a recognised differ in CI is reported covered, with at most
+0 new files required.</p>
+
+<h3 id="US3">US3 · An event-driven project is not held to a promise the tooling cannot keep <spec-pill>P2</spec-pill></h3>
+<p>As an <strong>author of an AsyncAPI-described service</strong>, I want <strong>the rung to demand what is actually available
+for my format</strong> so that <strong>I am neither failed for a gap I cannot close nor told I am checked when I am not</strong>.</p>
+<p><em>Acceptance:</em> Where a format has no mainstream differ, the missing half is reported at advisory strength and the
+limitation is stated, rather than hard-failing or silently passing.</p>
+
+<h3>Edge cases</h3>
+<ul>
+  <li>A project holding several contracts in different formats, with tooling configured for only one.</li>
+  <li>A linter present as a dependency but never invoked in CI — installed is not wired.</li>
+  <li>A differ that runs but never blocks, so a breaking change is reported and merged anyway.</li>
+  <li>A project whose contract is generated from an upstream DSL, where linting the generated artifact is the wrong target.</li>
+  <li>The very first contract, which has no predecessor to diff against.</li>
+</ul>
+</section>
+
+
+<section id="requirements">
+<h2>3 · Requirements</h2>
+
+<p>Conformance keywords (<spec-rule>MUST</spec-rule>, <spec-rule level="should">SHOULD</spec-rule>,
+<spec-rule level="may">MAY</spec-rule>) follow RFC 2119.</p>
+
+<h3>Functional</h3>
+
+<spec-requirement id="FR-001" priority="must">
+<p>At the verified tier and above, a project holding a contract <strong>MUST</strong> also have a configured contract
+<em>linter</em> and a configured <em>breaking-change differ</em>, or be reported as a gap.</p>
+<details><summary>Rationale</summary><p>Gives the <code>contract-checked</code> rung the mechanical meaning it has never had, and
+closes the distance between holding a contract and honouring one.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-002" priority="must">
+<p>Detection <strong>MUST</strong> recognise a <em>declared configuration</em> — a ruleset file, a CI invocation — and
+<strong>MUST NOT</strong> treat the mere presence of a tool as a dependency as sufficient.</p>
+<details><summary>Rationale</summary><p>Mirrors the coverage category, which counts a declared threshold rather than a coverage
+library, for the same reason: an installed tool that never runs certifies nothing.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-003" priority="must">
+<p>Where a contract's format has no mainstream tool for one half of the check, that half <strong>MUST</strong> be reported at
+advisory strength with the limitation stated, and <strong>MUST NOT</strong> hard-fail the floor.</p>
+<details><summary>Rationale</summary><p>Honest asymmetry. Failing a project for tooling that does not exist is the warn-washing
+the enforcement design exists to avoid, and passing it silently would overstate what the rung means.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-004" priority="must">
+<p>The gap report <strong>MUST</strong> distinguish which half is missing — linting, diffing, or both — and for which contract.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-005" priority="should">
+<p>The enforcement copy <strong>SHOULD</strong> state that detection proves a check is <em>configured</em>, not that it passes or
+that it blocks a merge.</p>
+<details><summary>Rationale</summary><p>The same recorded ceiling the security and observability categories carry. Overstating it
+in generated documentation is how a floor loses credibility.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-006" priority="may">
+<p>A project <strong>MAY</strong> satisfy the rung with a single tool performing both checks, and <strong>MAY</strong> configure
+different tooling per contract format.</p>
+</spec-requirement>
+
+<h3>Non-functional</h3>
+
+<spec-requirement id="NFR-001" priority="must">
+<p>Detection <strong>MUST</strong> remain config-file-only and bounded — completing in under 500 ms on a typical project with at
+most 0 network calls and at most 0 tool invocations.</p>
+<details><summary>Rationale</summary><p>The engine detects configuration; it does not run linters. Running them would make
+<code>enforce</code> as slow and as failure-prone as the tools it inspects.</p></details>
+</spec-requirement>
+
+<spec-requirement id="NFR-002" priority="must">
+<p>The new requirement <strong>MUST NOT</strong> change the verdict below the verified tier: at most 0 lean- or standard-profile
+projects may gain a gap from this spec.</p>
+</spec-requirement>
+
+<h3>Out of scope (deferred to other slices)</h3>
+<spec-out-of-scope>
+  <ul>
+    <li defer-to="077-event-schema-evolution">Payload compatibility over time for events, where replay makes the problem different in kind.</li>
+    <li defer-to="TBD-contract-versioned-governed">The rung above — versioning policy, deprecation windows, and an approval path for breaking changes.</li>
+    <li defer-to="TBD-contract-runtime-testing">Consumer-driven contract testing, which needs both sides of an integration running and belongs to the testing categories.</li>
+    <li defer-to="TBD-contract-diff-gate-blocking">Requiring that a differ actually <em>blocks</em> rather than merely reports — the same reported-versus-enforced ceiling the other categories carry.</li>
+  </ul>
+</spec-out-of-scope>
+</section>
+
+
+<section id="data">
+<h2>4 · Data model</h2>
+
+<p>No persisted entity. This spec adds detection state and one per-format capability judgment.</p>
+
+<h3>Entities</h3>
+<dl>
+  <dt>Check configuration</dt><dd>Evidence that a contract linter or breaking-change differ is wired up: a ruleset file, a CI step,
+  or an equivalent declaration. Detected per contract format.</dd>
+  <dt>Format capability</dt><dd>Whether a mainstream linter and differ exist for a given contract format. Decides whether a missing
+  half is a gap or an advisory limitation under <a href="#FR-003">FR-003</a>.</dd>
+</dl>
+
+<spec-note>
+<p>Format capability is a claim about the world that will age. It should be data the project can read and revise, not a judgment
+baked into control flow — otherwise the rung silently misreports as the ecosystem catches up.</p>
+</spec-note>
+</section>
+
+
+<section id="success">
+<h2>5 · Success criteria</h2>
+
+<p>Technology-agnostic, measurable outcomes. These are how we know it worked.</p>
+
+<spec-requirement id="SC-001" priority="must">
+<p>A verified fixture with a contract and no configured checks reports a gap naming both missing halves; configuring each in turn
+reduces the report to 1 missing half, then to 0.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-002" priority="must">
+<p>A fixture whose format lacks a mainstream differ reports that half at advisory strength and does not hard-fail — verified across
+100% of formats marked capability-limited.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-003" priority="must">
+<p>At most 0 lean- or standard-profile fixtures change verdict, and at most 0 verified fixtures already configured with recognised
+tooling gain a gap.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-004" priority="should">
+<p>Detection adds under 100 ms to an <code>enforce</code> run on a project holding at least 5 contracts.</p>
+</spec-requirement>
+</section>
+
+
+<section id="assumptions">
+<h2>6 · Assumptions</h2>
+
+<spec-assumption>
+<p>A configured check correlates well enough with a running one to be worth detecting. The gap between configured and enforced is
+recorded as a ceiling rather than closed here.</p>
+</spec-assumption>
+
+<spec-assumption>
+<p>Projects at verified and above already run CI, so "configured in CI" is a reachable bar rather than a new obligation.</p>
+</spec-assumption>
+</section>
+
+
+<section id="questions">
+<h2>7 · Open questions</h2>
+<spec-questions>
+<p>None outstanding. The no-predecessor fork — whether a first contract satisfies the differ half — was settled in the design
+interview in favour of <strong>yes, a configured differ satisfies it</strong>: <a href="#FR-002">FR-002</a> defines detection as
+recognising a declared configuration, and <a href="#FR-005">FR-005</a> already forbids claiming a check <em>passes</em>. A differ
+with nothing yet to compare against is configured; introducing a third configured-but-not-yet-exercised state would contradict
+both and add a case every consumer must handle, which no other enforcement category carries.</p>
+</spec-questions>
+</section>
+
+
+<section id="conformance">
+<h2>8 · Conformance index</h2>
+<p>Auto-built from every <code>&lt;spec-requirement&gt;</code> in this document.</p>
+<spec-conformance></spec-conformance>
+</section>
+
+
+<section id="changelog">
+<h2>9 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-07-31">31 Jul 2026</time><span>Initial draft. Resolves <code>TBD-contract-checked-gate</code> and <code>TBD-async-contract-checked</code> together — the second was planted as a separate survey, but its finding (that lint and diff tooling is thinner for events) is a constraint on how this rung is defined rather than a different question, so it lands as <a href="#FR-003">FR-003</a> instead of a sibling doc. Carries one genuine open question about the no-predecessor case.</span></li>
+  <li><time datetime="2026-08-01">01 Aug 2026</time><span>Open question resolved in the design interview: a first contract with no predecessor <strong>does</strong> satisfy the differ half, provided a differ is configured — consistent with <a href="#FR-002">FR-002</a> (detection recognises declared configuration) and <a href="#FR-005">FR-005</a> (configured, never passing). Register cleared; the estimability gate for <code>/spectastic.design</code> now passes.</span></li>
+  <li><time datetime="2026-08-01">01 Aug 2026</time><span>Status flipped Draft → Accepted on 01 Aug 2026 — zero remaining unchecked tasks; tests verified passing per author confirmation. Sibling bundle (REQ-LIFECYCLE-005).</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  074-contract-checked-tier · Contract-checked tier · authored 31 Jul 2026
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>

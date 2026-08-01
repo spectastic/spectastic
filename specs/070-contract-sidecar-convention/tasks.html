@@ -1,0 +1,235 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
+<title>Contract sidecar convention · Tasks</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Tasks · 070-contract-sidecar-convention</p>
+  <h1>Contract sidecar convention</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    Ordered, parallelizable work. Tests precede implementation. Drive through with
+    <code>/spectastic.implement</code> — one task per invocation.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>     <span><spec-status value="accepted">Accepted</spec-status></span>
+    <b>Spec</b>       <span><a href="./spec.html">070-contract-sidecar-convention</a></span>
+    <b>Plan</b>       <span><a href="./design.html">plan</a></span>
+    <b>Branch</b>     <span><code>main</code></span>
+    <b>Created</b>    <span><time datetime="2026-08-01">01 Aug 2026</time></span>
+    <b>Read time</b>  <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-tldr>
+    <p>20 tasks across five phases. <strong>This slice is the cohort's prerequisite</strong> — Foundational lands the shared
+    <code>readContractDeclarations()</code> that 071–074 all import, so it must complete before those specs start. Tests for a
+    story <strong>MUST</strong> be written and failing before its implementation tasks start.</p>
+  </spec-tldr>
+</header>
+
+
+<section id="strategy">
+<h2>1 · Execution strategy</h2>
+
+<spec-tabs>
+  <spec-tab label="MVP-first">
+    <p>Foundational plus US1 is the whole value: a declared path that resolves to nothing is caught. US2 and US3 are the
+    structural exclusion and the documented convention, and can follow.</p>
+  </spec-tab>
+  <spec-tab label="Incremental">
+    <p>Setup → Foundational → US1 → US2 → US3 → Polish. Recommended. US1 and US2 both touch
+    <code>contractResolveFindings()</code>, so running them in sequence avoids a collision in one function.</p>
+  </spec-tab>
+  <spec-tab label="Parallel teams">
+    <p>Poor fit within this slice — it is one reader, one finding producer and one scan. The parallelism this cohort has is
+    <em>between</em> specs, and it unlocks only once this one is done.</p>
+  </spec-tab>
+</spec-tabs>
+</section>
+
+
+<section id="phase-setup" class="phase">
+<h2>2 · Phase 1 — Setup</h2>
+
+<spec-task id="T-001" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Scaffold the declaration-reader fixtures</strong> — design documents carrying zero declarations, one <code>shape="none"</code>, one declared path, and two declared paths, for the reader's unit tests. <span class="path">packages/schema/fixtures/contract-declarations/</span></div>
+</spec-task>
+<spec-task id="T-002" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Scaffold the resolve-check fixture project</strong> — a temp-project shape with a design declaring a present path, an absent path, a path that is a directory, and a path escaping the project root. <span class="path">packages/core/test/fixtures/contract-resolve/</span></div>
+</spec-task>
+</section>
+
+
+<section id="phase-foundation" class="phase">
+<h2>3 · Phase 2 — Foundational</h2>
+<p>The shared reader every sibling spec imports. Nothing else in the cohort can start until this is exported and stable.</p>
+
+<h3>Tests (write &amp; fail first)</h3>
+<spec-task id="T-010" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Write the failing reader tests</strong> — assert <code>readContractDeclarations()</code> returns one record per element with <code>shape</code>, <code>direction</code>, <code>path</code>, <code>format</code>, <code>line</code> and <code>column</code>; returns an empty array for a document with none; and tolerates a <code>shape="none"</code> element carrying no path. <span class="path">packages/schema/test/contract-shared.test.ts</span></div>
+</spec-task>
+
+<h3>Implementation</h3>
+<spec-task id="T-011">
+  <input type="checkbox" checked>
+  <div><strong>Implement the declaration reader</strong> — a pure <code>readContractDeclarations(html)</code> cloning <code>slo-shared.ts</code>'s file shape; deliberately returns every attribute the cohort needs, not only the <code>path</code> this spec uses. <span class="path">packages/schema/src/contract-shared.ts</span></div>
+</spec-task>
+<spec-task id="T-012">
+  <input type="checkbox" checked>
+  <div><strong>Publish the <code>./contract</code> subpath</strong> — one <code>exports</code> entry and one build entry, following the <code>./slo</code> precedent. <span class="path">packages/schema/package.json</span></div>
+</spec-task>
+
+<spec-note>
+<p>Unblocks <a href="../071-contract-promotion/spec.html">071</a>, <a href="../072-contract-embedded-view/spec.html">072</a>, <a href="../073-interface-detection-widening/spec.html">073</a> and <a href="../074-contract-checked-tier/spec.html">074</a>, all of which import this reader.</p>
+</spec-note>
+</section>
+
+
+<section id="phase-us1" class="phase">
+<h2>4 · Phase 3a — US1 · A declared path that isn't there is caught</h2>
+
+<h3>Tests (write &amp; fail first)</h3>
+<spec-task id="T-100" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Write the failing resolve-check tests</strong> — assert exactly 1 error for an absent path and 0 for a present one, and that the two failure kinds are distinguishable per <a href="./spec.html#FR-006">FR-006</a>: no such file versus exists-but-not-a-readable-file. <span class="path">packages/core/test/contract-resolve.test.ts</span></div>
+</spec-task>
+<spec-task id="T-101" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Write the failing containment tests</strong> — assert an absolute path, a <code>..</code> traversal and a symlink escaping the project root are each reported rather than followed, per <a href="./design.html#D-004">D-004</a>. <span class="path">packages/core/test/contract-resolve.test.ts</span></div>
+</spec-task>
+
+<h3>Implementation</h3>
+<spec-task id="T-110">
+  <input type="checkbox" checked>
+  <div><strong>Implement <code>contractResolveFindings()</code></strong> — resolve each declared path against the project root, classify the outcome, and emit one finding per unresolved declaration naming the path and the declaring design. <span class="path">packages/core/src/commands/validate.ts</span></div>
+</spec-task>
+<spec-task id="T-111">
+  <input type="checkbox" checked>
+  <div><strong>Fold the scan into the CLI</strong> — a thin <code>scanContractResolve(files, cwd)</code> shaped like <code>scanQuantifiedNfr</code>. <span class="path">packages/cli/src/commands/validate.ts</span></div>
+</spec-task>
+<spec-task id="T-112" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Add the end-to-end CLI test</strong> — a fixture project validated through the real binary, asserting the finding surfaces and its exit code. <span class="path">packages/cli/test/validate-contract-resolve.test.ts</span></div>
+</spec-task>
+
+<spec-note>
+<p>Closes <a href="./spec.html#FR-004">FR-004</a>, <a href="./spec.html#FR-006">FR-006</a>, <a href="./spec.html#NFR-001">NFR-001</a>; contributes to <a href="./spec.html#SC-001">SC-001</a>.</p>
+</spec-note>
+</section>
+
+
+<section id="phase-us2" class="phase">
+<h2>5 · Phase 3b — US2 · An in-flight contract is visibly not live</h2>
+
+<h3>Tests (write &amp; fail first)</h3>
+<spec-task id="T-200" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Write the failing proposed-never-effective tests</strong> — assert a declared path resolving inside <code>specs/</code> is itself an error even when the file exists, and that a byte-identical proposed contract never satisfies an effective declaration. <span class="path">packages/core/test/contract-resolve.test.ts</span></div>
+</spec-task>
+<spec-task id="T-201" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Add the prefix-collision regression test</strong> — assert a project path like <code>myspecs/api.yaml</code> is unaffected, so the containment check is a resolved-prefix comparison and not a substring match. <span class="path">packages/core/test/contract-resolve.test.ts</span></div>
+</spec-task>
+
+<h3>Implementation</h3>
+<spec-task id="T-210">
+  <input type="checkbox" checked>
+  <div><strong>Reject a declared path inside <code>specs/</code></strong> — the structural exclusion of <a href="./design.html#D-003">D-003</a>, which enforces <a href="./spec.html#FR-002">FR-002</a> and <a href="./spec.html#FR-003">FR-003</a> with one rule. <span class="path">packages/core/src/commands/validate.ts</span></div>
+</spec-task>
+
+<spec-note>
+<p>Closes <a href="./spec.html#FR-002">FR-002</a>, <a href="./spec.html#FR-003">FR-003</a>; contributes to <a href="./spec.html#SC-002">SC-002</a>.</p>
+</spec-note>
+</section>
+
+
+<section id="phase-us3" class="phase">
+<h2>6 · Phase 3c — US3 · A consumer finds the contract without a spec id</h2>
+
+<h3>Tests (write &amp; fail first)</h3>
+<spec-task id="T-300" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Write the failing convention-content tests</strong> — assert the design template and the command markdown both name <code>contracts/</code> as the proposed location and neither uses <code>references/</code>, which the corpus already owns. <span class="path">packages/cli/test/design.contract-section.test.ts</span></div>
+</spec-task>
+
+<h3>Implementation</h3>
+<spec-task id="T-310">
+  <input type="checkbox" checked>
+  <div><strong>Document the two locations in the template</strong> — extend §3's comment to state proposed versus effective and the <code>contracts/</code> directory name. <span class="path">templates/design.html</span></div>
+</spec-task>
+<spec-task id="T-311">
+  <input type="checkbox" checked>
+  <div><strong>Document the convention in the design command</strong> — one line on where a proposed contract lives and where the effective one goes. <span class="path">commands/spectastic.design.md</span></div>
+</spec-task>
+<spec-task id="T-312">
+  <input type="checkbox" checked>
+  <div><strong>Re-sync the harness copy</strong> — the gitignored <code>.claude/commands/</code> mirror does not auto-update. <span class="path">.claude/commands/spectastic.design.md</span></div>
+</spec-task>
+
+<spec-note>
+<p>Closes <a href="./spec.html#FR-001">FR-001</a>, <a href="./spec.html#FR-005">FR-005</a>, <a href="./spec.html#FR-007">FR-007</a>; contributes to <a href="./spec.html#SC-002">SC-002</a>.</p>
+</spec-note>
+</section>
+
+
+<section id="phase-polish" class="phase">
+<h2>7 · Phase 4 — Polish</h2>
+<spec-task id="T-900" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Run a full-project validate sweep</strong> — confirm 0 new findings across the estate, which <a href="./spec.html#SC-003">SC-003</a> expects since no design declares a contract path yet.</div>
+</spec-task>
+<spec-task id="T-901" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Confirm the validate perf budget holds</strong> — re-run the schema perf test and check the whole-project run gains under 50 ms, per <a href="./spec.html#NFR-002">NFR-002</a>. <span class="path">packages/schema/test/perf.test.ts</span></div>
+</spec-task>
+<spec-task id="T-902" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Verify the reader is importable from a clean build</strong> — rebuild both packages and import <code>@spectastic/schema/contract</code> from a scratch script, so the siblings that depend on it are not blocked by a missing build entry.</div>
+</spec-task>
+</section>
+
+
+<section id="dependencies">
+<h2>8 · Dependencies</h2>
+<pre><code>Setup            → Foundational
+Foundational     → US1 → US2        (both touch contractResolveFindings)
+Foundational     → US3              (independent: template + command markdown)
+US1, US2, US3    → Polish
+
+Foundational (T-010..T-012) also gates specs 071, 072, 073 and 074 —
+the whole cohort waits on the shared reader, and only on that.
+</code></pre>
+</section>
+
+
+<section id="changelog">
+<h2>9 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-08-01">01 Aug 2026</time><span>Initial task breakdown. 20 tasks across five phases; every FR/NFR/SC is closed by at least one task (see the per-story <code>&lt;spec-note&gt;</code> trace). Foundational is called out as the cohort-wide prerequisite.</span></li>
+  <li><time datetime="2026-08-01">01 Aug 2026</time><span>Status flipped Draft → Accepted on 01 Aug 2026 — zero remaining unchecked tasks; tests verified passing per author confirmation. Sibling bundle (REQ-LIFECYCLE-005).</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  Tasks for 070-contract-sidecar-convention · Contract sidecar convention · authored 01 Aug 2026
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>

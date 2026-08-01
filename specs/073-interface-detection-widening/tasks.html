@@ -1,0 +1,229 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
+<title>Interface detection widening · Tasks</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Tasks · 073-interface-detection-widening</p>
+  <h1>Interface detection widening</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    Ordered, parallelizable work. Tests precede implementation. Drive through with
+    <code>/spectastic.implement</code> — one task per invocation.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>     <span><spec-status value="accepted">Accepted</spec-status></span>
+    <b>Spec</b>       <span><a href="./spec.html">073-interface-detection-widening</a></span>
+    <b>Plan</b>       <span><a href="./design.html">plan</a></span>
+    <b>Branch</b>     <span><code>main</code></span>
+    <b>Created</b>    <span><time datetime="2026-08-01">01 Aug 2026</time></span>
+    <b>Read time</b>  <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-tldr>
+    <p>19 tasks across five phases. <strong>Two hard orderings.</strong> The amendment to 042's FR-014 is task one — that spec
+    records today's narrow detection as an accepted ceiling, so code must not cross it first. And the regression set pinning
+    every current verdict is written before anything widens, because <a href="./spec.html#NFR-002">NFR-002</a> allows at most 0
+    projects to change verdict.</p>
+  </spec-tldr>
+</header>
+
+
+<section id="strategy">
+<h2>1 · Execution strategy</h2>
+
+<spec-tabs>
+  <spec-tab label="MVP-first">
+    <p>US1 alone — an event-driven service finally gets asked for a contract — is the headline value, but shipping it without
+    US3's declaration precedence means warning consumers as if they were publishers.</p>
+  </spec-tab>
+  <spec-tab label="Incremental">
+    <p>Amendment → Setup → Foundational → US1 → US2 → US3 → Polish. Recommended. US1 and US2 both edit
+    <code>detect.ts</code> tables, so sequencing avoids collisions.</p>
+  </spec-tab>
+  <spec-tab label="Parallel teams">
+    <p>Workable in two after the amendment: the broker-signal half (US1) and the contract-path half (US2) touch different tables.
+    US3's precedence rule must follow both.</p>
+  </spec-tab>
+</spec-tabs>
+</section>
+
+
+<section id="phase-setup" class="phase">
+<h2>2 · Phase 1 — Setup</h2>
+
+<spec-task id="T-001">
+  <input type="checkbox" checked>
+  <div><strong>Amend 042's FR-014 by proposal</strong> — task one per <a href="./design.html#D-005">D-005</a>. FR-014 records the narrow signal set and shallow scan as accepted ceilings; the estate must not hold a spec asserting a ceiling the code has crossed. <span class="path">specs/042-profile-enforcement/changes/</span></div>
+</spec-task>
+<spec-task id="T-002" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Scaffold per-ecosystem broker fixtures</strong> — a manifest per ecosystem for each broker family, in publisher and consumer variants, plus a contract-present and contract-absent pair. <span class="path">packages/core/test/fixtures/detect-brokers/</span></div>
+</spec-task>
+<spec-task id="T-003" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Scaffold conventional-layout fixtures</strong> — projects placing contracts at each newly-recognised location: Gradle/Maven <code>src/main/proto</code>, nested buf and Go trees, <code>openapi/</code>, <code>protos/</code>, <code>graphql/</code>. <span class="path">packages/core/test/fixtures/detect-paths/</span></div>
+</spec-task>
+</section>
+
+
+<section id="phase-foundation" class="phase">
+<h2>3 · Phase 2 — Foundational</h2>
+<p>The regression net. <a href="./spec.html#NFR-002">NFR-002</a> permits at most 0 verdict changes, and that must be proven before any widening lands, not argued after.</p>
+
+<h3>Tests (write &amp; fail first)</h3>
+<spec-task id="T-010">
+  <input type="checkbox" checked>
+  <div><strong>Pin every current verdict in a regression set</strong> — a fixture per currently-covered and currently-gapped shape, asserting today's outcome. Written and <em>passing</em> before any widening, so a later regression is unmistakable. <span class="path">packages/core/test/detect.regression.test.ts</span></div>
+</spec-task>
+
+<spec-note>
+<p>Guards <a href="./spec.html#NFR-002">NFR-002</a> and <a href="./spec.html#SC-002">SC-002</a> for every task that follows. This is the one task in the cohort written green rather than red — its job is to hold, not to fail.</p>
+</spec-note>
+</section>
+
+
+<section id="phase-us1" class="phase">
+<h2>4 · Phase 3a — US1 · An event-driven service is asked for a contract</h2>
+
+<h3>Tests (write &amp; fail first)</h3>
+<spec-task id="T-100" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Write the failing broker-detection tests</strong> — assert a broker-only fixture with no contract is reported a <code>contract-first</code> gap, and the same fixture with an AsyncAPI document is covered, across every ecosystem given broker signals. <span class="path">packages/core/test/detect.brokers.test.ts</span></div>
+</spec-task>
+<spec-task id="T-101" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Write the failing advisory-strength tests</strong> — assert a project recognised <em>only</em> through an event-driven signal reports advisory and does not hard-fail the floor, per <a href="./spec.html#FR-004">FR-004</a>. <span class="path">packages/core/test/enforce.advisory-events.test.ts</span></div>
+</spec-task>
+
+<h3>Implementation</h3>
+<spec-task id="T-110">
+  <input type="checkbox" checked>
+  <div><strong>Add broker signals to <code>INTERFACE_SIGNALS</code></strong> — Kafka, AMQP, NATS, Pulsar, SQS/SNS, EventBridge, Service Bus, Pub/Sub and Redis streams across the six ecosystems, matching the deliberately-declared client library. <span class="path">packages/core/src/enforce/detect.ts</span></div>
+</spec-task>
+<spec-task id="T-111">
+  <input type="checkbox" checked>
+  <div><strong>Implement advisory strength for event-only recognition</strong> — reuse the existing per-category mechanism rather than inventing a severity system, per <a href="./design.html#D-003">D-003</a>. <span class="path">packages/core/src/enforce/policy.ts</span></div>
+</spec-task>
+
+<spec-note>
+<p>Closes <a href="./spec.html#FR-001">FR-001</a>, <a href="./spec.html#FR-004">FR-004</a>; contributes to <a href="./spec.html#SC-001">SC-001</a>.</p>
+</spec-note>
+</section>
+
+
+<section id="phase-us2" class="phase">
+<h2>5 · Phase 3b — US2 · A conventional layout is found where it lives</h2>
+
+<h3>Tests (write &amp; fail first)</h3>
+<spec-task id="T-200" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Write the failing path-widening tests</strong> — assert a contract at each newly-recognised location is found, and re-assert the regression set is untouched, per <a href="./spec.html#SC-002">SC-002</a>. <span class="path">packages/core/test/detect.contract-paths.test.ts</span></div>
+</spec-task>
+<spec-task id="T-201" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Write the bounded-search test</strong> — assert no directory outside the named set is ever read, so the widening cannot drift into a recursive walk. <span class="path">packages/core/test/detect.contract-paths.test.ts</span></div>
+</spec-task>
+
+<h3>Implementation</h3>
+<spec-task id="T-210">
+  <input type="checkbox" checked>
+  <div><strong>Replace <code>CONTRACT_DIRS</code> with a named-convention path set</strong> — explicit segments and a small fixed depth, never unbounded recursion, per <a href="./design.html#D-002">D-002</a>. <span class="path">packages/core/src/enforce/detect.ts</span></div>
+</spec-task>
+
+<spec-note>
+<p>Closes <a href="./spec.html#FR-002">FR-002</a>; contributes to <a href="./spec.html#SC-002">SC-002</a>.</p>
+</spec-note>
+</section>
+
+
+<section id="phase-us3" class="phase">
+<h2>6 · Phase 3c — US3 · A consumer is not mistaken for a publisher</h2>
+
+<h3>Tests (write &amp; fail first)</h3>
+<spec-task id="T-300" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Write the failing precedence tests, both directions</strong> — assert a declaration naming a contract makes it owed despite an empty filesystem, and a <code>shape="none"</code> declaration establishes none is owed despite a broker dependency. <span class="path">packages/core/test/detect.declaration-precedence.test.ts</span></div>
+</spec-task>
+<spec-task id="T-301" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Write the vendored-spec false-positive test</strong> — assert a pure API consumer vendoring an upstream contract is <em>not</em> marked covered when its declaration says it exposes none. The mirror bug the companion survey found. <span class="path">packages/core/test/detect.declaration-precedence.test.ts</span></div>
+</spec-task>
+
+<h3>Implementation</h3>
+<spec-task id="T-310">
+  <input type="checkbox" checked>
+  <div><strong>Consult the declaration before inferring</strong> — read via 070's reader; inference runs only where the design is silent, per <a href="./design.html#D-004">D-004</a>. <span class="path">packages/core/src/enforce/detect.ts</span></div>
+</spec-task>
+
+<spec-note>
+<p>Closes <a href="./spec.html#FR-003">FR-003</a>, <a href="./spec.html#FR-006">FR-006</a>; contributes to <a href="./spec.html#SC-003">SC-003</a>.</p>
+</spec-note>
+</section>
+
+
+<section id="phase-polish" class="phase">
+<h2>7 · Phase 4 — Polish</h2>
+<spec-task id="T-900">
+  <input type="checkbox" checked>
+  <div><strong>Correct the seeded principle's copy</strong> — name every format the detector accepts, including AsyncAPI, Protobuf and GraphQL SDL, per <a href="./spec.html#FR-005">FR-005</a>. <span class="path">spectastic-profiles.json</span></div>
+</spec-task>
+<spec-task id="T-901" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Assert the format parity in the profile drift guard</strong> — extend the existing profile test so the copy cannot silently fall out of step with the detector again. <span class="path">packages/cli/test/init/profiles.test.ts</span></div>
+</spec-task>
+<spec-task id="T-902" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Record the residual ceiling</strong> — state in the enforce documentation that an interface exposed through a mechanism outside the signal set stays undetected, per <a href="./spec.html#FR-007">FR-007</a>. An honest ceiling, not a gap awaiting work.</div>
+</spec-task>
+<spec-task id="T-903" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Check the detection budget</strong> — confirm whole-project detection stays under 500 ms on a repository of at least 50 modules, per <a href="./spec.html#SC-004">SC-004</a>.</div>
+</spec-task>
+<spec-task id="T-904" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Confirm this repository's own verdict is unchanged</strong> — re-run <code>spectastic enforce</code> and check the tally still reads 8 covered · 1 relaxed · 0 missing.</div>
+</spec-task>
+</section>
+
+
+<section id="dependencies">
+<h2>8 · Dependencies</h2>
+<pre><code>T-001 (amend 042)  → everything else      hard: the ceiling must move before the code does
+070 Foundational   → US3                  (readContractDeclarations, for precedence)
+
+Setup              → Foundational (the regression net)
+Foundational       → US1, US2             (parallel: different tables)
+US1, US2           → US3 → Polish
+</code></pre>
+</section>
+
+
+<section id="changelog">
+<h2>9 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-08-01">01 Aug 2026</time><span>Initial task breakdown. 19 tasks across five phases; every FR/NFR/SC is closed by at least one task. Two orderings are load-bearing: the 042 amendment is task one, and the regression net (T-010) is written before any widening because NFR-002 permits at most 0 verdict changes.</span></li>
+  <li><time datetime="2026-08-01">01 Aug 2026</time><span>Status flipped Draft → Accepted on 01 Aug 2026 — zero remaining unchecked tasks; tests verified passing per author confirmation. Sibling bundle (REQ-LIFECYCLE-005).</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  Tasks for 073-interface-detection-widening · Interface detection widening · authored 01 Aug 2026
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>

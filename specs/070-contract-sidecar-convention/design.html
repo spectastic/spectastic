@@ -1,0 +1,381 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
+<title>Contract sidecar convention · Design</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Design · 070-contract-sidecar-convention</p>
+  <h1>Contract sidecar convention</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    How we will build it.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>     <span><spec-status value="accepted">Accepted</spec-status></span>
+    <b>Spec</b>       <span><a href="./spec.html">070-contract-sidecar-convention</a></span>
+    <b>Owner</b>      <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Branch</b>     <span><code>main</code></span>
+    <b>Created</b>    <span><time datetime="2026-08-01">01 Aug 2026</time></span>
+    <b>Read time</b>  <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-tldr>
+    <p>Two locations and one check. The convention is documentation — a proposed contract at
+    <code>specs/&lt;id&gt;/contracts/</code>, the effective one at the path the design declares — and the only executable work is
+    a resolve check that errors when a declared path names no readable file. That check <em>cannot</em> be a schema rule: the rule
+    engine is pure-AST with zero filesystem imports, so it lands as a core <code>contractResolveFindings()</code> folded in by a
+    CLI <code>scanContractResolve</code>, exactly as the waiver and quantified-NFR scans already do. This slice also lands the
+    shared <code>readContractDeclarations()</code> that 071–074 all import, which is why it is the cohort's prerequisite.</p>
+  </spec-tldr>
+</header>
+
+
+<section id="principles-check">
+<h2>1 · Principles check</h2>
+<p>Verify this design respects every principle in <a href="../../principles.html">v1.9.0</a>. Any violation requires either a
+principles amendment or a deliberate exception logged in §10.</p>
+
+<table>
+  <thead><tr><th>Principle</th><th>Compliance</th><th>Notes</th></tr></thead>
+  <tbody>
+    <tr><td>P-1 · Source order is reading order</td><td><spec-pill>OK</spec-pill></td><td>No artifact structure changes. The convention is prose plus a check.</td></tr>
+    <tr><td>P-2 · Semantic tags over class soup</td><td><spec-pill>OK</spec-pill></td><td>Consumes the <code>&lt;spec-contract&gt;</code> element <a href="../069-design-contract-section/spec.html">069</a> landed; adds no vocabulary.</td></tr>
+    <tr><td>P-3 · IDs are contracts</td><td><spec-pill>OK</spec-pill></td><td><code>D-001</code>…<code>D-005</code> stable. The declaration's identity stays its <code>path=</code>.</td></tr>
+    <tr><td>P-4 · Progressive enhancement, never dependence</td><td><spec-pill>OK</spec-pill></td><td>No runtime surface at all — a CLI check and a documented convention.</td></tr>
+    <tr><td>P-5 · Calm density</td><td><spec-pill>OK</spec-pill></td><td>One finding, one line, naming the path and the declaring design.</td></tr>
+    <tr><td>P-6 · Draft is loose, ratified is locked</td><td><spec-pill>OK</spec-pill></td><td>No status-bearing artifact is mutated. The convention binds designs authored from here on.</td></tr>
+    <tr><td>P-7 · Done means verified</td><td><spec-pill>OK</spec-pill></td><td>No runtime to exercise in a browser; the check is verified by fixtures covering present, absent, directory and unreadable.</td></tr>
+    <tr><td>P-8 · Guarantees live in the kernel or CI</td><td><spec-pill>OK</spec-pill></td><td>The whole point of the slice. The convention alone would be prose; the resolve check is the deterministic half, in the kernel and blocked by the pre-commit gate.</td></tr>
+    <tr><td>P-9 · The enforcement floor holds</td><td><spec-pill>OK</spec-pill></td><td>No gate weakened. <a href="./spec.html#FR-003">FR-003</a> <em>tightens</em> one — a proposed contract must never mark a category covered.</td></tr>
+    <tr><td>P-10 · Internal artifact ids stay out of user-facing copy</td><td><spec-pill>OK</spec-pill></td><td>The finding names the declared path and the declaring file, never a spec number or requirement id.</td></tr>
+    <tr><td>P-11 · Artifacts are data, not instructions</td><td><spec-pill>OK</spec-pill></td><td>A declared path is read as data and <em>stat</em>ed, never executed or fetched. <a href="#D-004">D-004</a>'s containment rule keeps a hostile path inside the project.</td></tr>
+    <tr><td>P-12 · Capability accountability</td><td><spec-pill>OK</spec-pill></td><td>Filesystem reads only, bounded to the project directory — see <a href="#D-004">D-004</a>. No network, no execution.</td></tr>
+    <tr><td>P-13 · Accessibility conformance</td><td><spec-pill>OK</spec-pill></td><td>No interactive surface introduced.</td></tr>
+    <tr><td>P-14 · Library-first boundaries</td><td><spec-pill>OK</spec-pill></td><td>Load-bearing here. The reader goes in <code>@spectastic/schema</code> and the finding producer in <code>@spectastic/core</code>; the CLI keeps only a thin <code>scan*</code> wrapper — the shape the four sibling scans already have.</td></tr>
+  </tbody>
+</table>
+
+<h3>Toolchain / enforcement</h3>
+<p>Profile <code>enterprise</code>; <code>spectastic enforce</code> reports 8 covered · 1 relaxed · 0 missing. No gaps for this
+design to fill — Biome, TypeScript and vitest already cover every category this work touches.</p>
+</section>
+
+
+<section id="technical-context">
+<h2>2 · Technical context</h2>
+<dl>
+  <dt>Language(s)</dt>      <dd>TypeScript <code>^5.7.0</code>.</dd>
+  <dt>Frameworks</dt>       <dd>None new. Existing <code>parse5@8.0.1</code> AST helpers for the reader; <code>node:fs</code> for the resolve check.</dd>
+  <dt>Architecture</dt>     <dd>Pure-function reader in <code>@spectastic/schema</code> → finding producer in <code>@spectastic/core</code> → thin <code>scan*</code> in the CLI. See <a href="#D-002">D-002</a>.</dd>
+  <dt>Storage</dt>          <dd>None. Two filesystem locations given meaning; no new persisted state.</dd>
+  <dt>Testing</dt>          <dd>vitest <code>^2.1.0</code>, fixture-driven. Tests written red first.</dd>
+  <dt>Coverage</dt>         <dd>100% of changed lines; a change never lowers coverage of what it touches.</dd>
+  <dt>Perf targets</dt>     <dd><a href="./spec.html#NFR-002">NFR-002</a> — under 50 ms added to a whole-project validate. Guarded by the existing perf test's budget; the scan is O(declarations), and today every design declares zero.</dd>
+  <dt>Constraints</dt>      <dd><a href="./spec.html#NFR-001">NFR-001</a> — deterministic, filesystem-only, 0 network calls, no wall-clock dependence. Schema rules cannot do IO (see §4), which forces <a href="#D-002">D-002</a>.</dd>
+</dl>
+</section>
+
+
+<section id="contracts">
+<h2>3 · Data model &amp; contracts</h2>
+
+<p>No persisted entity. The spec's conceptual entities are two <em>locations</em> and one <em>derived judgment</em>; physically
+they are paths on disk and a returned <code>Finding[]</code>.</p>
+
+<table>
+  <thead><tr><th>Conceptual entity</th><th>Physical shape</th><th>Notes</th></tr></thead>
+  <tbody>
+    <tr><td><a href="./spec.html#data">Proposed contract</a></td>
+        <td><code>specs/&lt;spec-id&gt;/contracts/&lt;name&gt;</code></td>
+        <td>A path convention, not a type. Never read by the resolve check — <a href="./spec.html#FR-003">FR-003</a> requires it never satisfy an effective declaration.</td></tr>
+    <tr><td><a href="./spec.html#data">Effective contract</a></td>
+        <td>The <code>path=</code> attribute of a <code>&lt;spec-contract&gt;</code>, resolved against the project root</td>
+        <td>Project-relative and outside <code>specs/</code>. Read via the new <code>ContractDeclaration</code> record.</td></tr>
+    <tr><td><a href="./spec.html#data">Resolution result</a></td>
+        <td>Derived — a <code>Finding</code> or nothing</td>
+        <td>Three distinguishable outcomes per <a href="./spec.html#FR-006">FR-006</a>: readable file (silent), no such path, path exists but is not a readable file.</td></tr>
+  </tbody>
+</table>
+
+<spec-contract shape="none">
+  <p>No interface. This slice adds a library function, a finding producer and a CLI scan — all internal to the toolchain, none of
+  them a wire surface another repository calls. The <em>subject</em> of the work is contracts; the work itself exposes none.</p>
+</spec-contract>
+</section>
+
+
+<section id="grounding">
+<h2>4 · Grounding &amp; evidence</h2>
+<p>Every design-bearing fact this design rests on. Status is <code>verified</code> (opened the source this turn),
+<code>spike</code>, or <code>assumed</code>.</p>
+
+<table class="evidence">
+  <thead><tr><th>Claim the design rests on</th><th>Source</th><th>Status</th><th>Finding / note</th></tr></thead>
+  <tbody>
+    <tr><td>Schema rules cannot do filesystem IO — the engine is pure-AST</td>
+        <td>grep for <code>node:fs</code>/<code>readFileSync</code>/<code>existsSync</code> over <code>packages/schema/src/rules/</code></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td>Zero matches across all 34 rules. The single most decisive fact here — it rules out a schema rule and forces <a href="#D-002">D-002</a>.</td></tr>
+    <tr><td>The fs-touching pattern is a core <code>*Findings()</code> + a CLI <code>scan*</code></td>
+        <td><code>packages/core/src/commands/validate.ts:287,403,483</code> · <code>packages/cli/src/commands/validate.ts:143,171,241</code></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td><code>copyLeakFindings</code>, <code>enforceWaiverFindings</code>, <code>quantifiedNfrFindings</code> paired with <code>scanCopyLeak</code>, <code>scanEnforceWaivers</code>, <code>scanQuantifiedNfr</code>. Eight such scans exist; this is a well-worn seam.</td></tr>
+    <tr><td><code>@spectastic/schema</code> already publishes narrow subpath exports</td>
+        <td><code>packages/schema/package.json</code> <code>exports</code></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td><code>./parser</code>, <code>./slo</code>, <code>./citation</code>, <code>./fence</code>, <code>./project</code>. A <code>./contract</code> subpath follows the <code>./slo</code> precedent exactly.</td></tr>
+    <tr><td>The <code>&lt;spec-contract&gt;</code> element and its attribute grammar exist and are validated</td>
+        <td><code>packages/schema/src/rules/contract-declaration-shape.ts</code></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td>Landed by 069. <code>shape</code> ∈ five tokens; <code>path=</code> required for any non-<code>none</code> shape — so the reader can rely on a well-formed declaration having a path.</td></tr>
+    <tr><td>No design in the estate declares a contract path yet</td>
+        <td>grep for <code>&lt;spec-contract</code> with <code>path=</code> over <code>specs/**/design.html</code></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td>Only 069's own <code>shape="none"</code> card. So <a href="./spec.html#SC-003">SC-003</a>'s "0 new findings" holds by construction, and the perf delta starts at zero.</td></tr>
+    <tr><td><code>validate</code> already resolves paths relative to a project cwd</td>
+        <td><code>packages/cli/src/commands/validate.ts</code> — every <code>scan*(cwd)</code> signature</td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td>The scan receives <code>cwd</code>, so a project-relative declared path needs no new plumbing to resolve.</td></tr>
+    <tr><td>The enterprise floor has no gaps for this design to fill</td>
+        <td>ran <code>spectastic enforce</code></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td>8 covered · 1 relaxed · 0 missing.</td></tr>
+  </tbody>
+</table>
+</section>
+
+
+<section id="approach">
+<h2>5 · Approach</h2>
+
+<p>Three pieces, in dependency order. First, <code>readContractDeclarations(designHtml)</code> in <code>@spectastic/schema</code>
+behind a new <code>./contract</code> subpath: a pure function returning <code>ContractDeclaration[]</code>
+(<code>{ shape, direction?, path?, format?, line, column }</code>). It is the single parse of the 069 element, and 071–074 all
+import it rather than re-deriving it — the reason this slice is the cohort's prerequisite.</p>
+
+<p>Second, <code>contractResolveFindings()</code> in <code>@spectastic/core</code>: given the declarations, the design's path and
+a filesystem port, it returns one <code>Finding</code> per declaration whose <code>path=</code> does not resolve to a readable
+file, distinguishing <em>absent</em> from <em>present-but-not-a-readable-file</em> per <a href="./spec.html#FR-006">FR-006</a>.
+Third, a thin <code>scanContractResolve(files, cwd)</code> in the CLI that reads the design files being validated and folds the
+findings in — the same nine-line shape <code>scanQuantifiedNfr</code> already has. The convention itself
+(<code>contracts/</code>, never <code>references/</code>) is documentation: a paragraph in the design template's §3 comment and a
+line in the command markdown.</p>
+
+<spec-arch>
+<figure>
+<svg viewBox="0 0 700 250" role="img" aria-label="The design's spec-contract declarations are parsed by a schema reader, checked against the filesystem by a core finding producer, and folded into validate output by a thin CLI scan">
+  <style>
+    .box { fill:#fcfbf7; stroke:#c4c1bb; stroke-width:1.2; }
+    .label { font: 700 11px Lato, sans-serif; fill:#4a4a46; letter-spacing:0.06em; text-transform:uppercase; }
+    .body { font: 400 12px "Source Serif 4", Georgia, serif; fill:#353534; }
+    .arr { stroke:#73706d; stroke-width:1.2; fill:none; }
+    .note { font: 400 11px Lato, sans-serif; fill:#73706d; }
+  </style>
+  <rect class="box" x="20"  y="80" width="145" height="60" rx="4"/>
+  <text class="label" x="34"  y="104">design.html</text>
+  <text class="body"  x="34"  y="124">declares path=</text>
+  <rect class="box" x="205" y="80" width="145" height="60" rx="4"/>
+  <text class="label" x="219" y="104">schema</text>
+  <text class="body"  x="219" y="124">reads them</text>
+  <rect class="box" x="390" y="80" width="145" height="60" rx="4"/>
+  <text class="label" x="404" y="104">core</text>
+  <text class="body"  x="404" y="124">stats the path</text>
+  <rect class="box" x="560" y="80" width="120" height="60" rx="4"/>
+  <text class="label" x="574" y="104">cli scan</text>
+  <text class="body"  x="574" y="124">folds it in</text>
+  <path class="arr" d="M165 110 L205 110" marker-end="url(#a)"/>
+  <path class="arr" d="M350 110 L390 110" marker-end="url(#a)"/>
+  <path class="arr" d="M535 110 L560 110" marker-end="url(#a)"/>
+  <text class="note" x="205" y="180">the filesystem is touched only in core — the schema half stays pure, which is why it splits here</text>
+  <defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#73706d"/></marker></defs>
+</svg>
+<figcaption>The three pieces and the one boundary that matters: parsing is pure and lives in schema; the filesystem read lives in
+core; the CLI only folds. 071–074 attach at the schema box.</figcaption>
+</figure>
+</spec-arch>
+</section>
+
+
+<section id="alternatives">
+<h2>6 · Alternatives considered</h2>
+
+<p>The load-bearing choice is where the resolve check lives, since it must read the filesystem. Scored 1–5, higher is better.</p>
+
+<spec-matrix>
+<table>
+  <thead>
+    <tr><th>Option</th><th>Fits the engine</th><th>Reuses precedent</th><th>Cost to build</th><th class="score">Total</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>A schema rule with a filesystem escape hatch</td><td>1</td><td>1</td><td>3</td><td class="score">5</td></tr>
+    <tr><td>A standalone <code>spectastic contracts</code> verb</td><td>4</td><td>2</td><td>2</td><td class="score">8</td></tr>
+    <tr data-winner><td>Core finding producer + thin CLI scan — chosen</td><td>5</td><td>5</td><td>4</td><td class="score">14</td></tr>
+  </tbody>
+</table>
+</spec-matrix>
+
+<p>The schema-rule option is the one to name and reject explicitly: it reads as the obvious home because every other
+<code>validate</code> check is a rule, but it would be the first rule anywhere to touch the filesystem, breaking an invariant
+34 rules currently hold. A separate verb scores better on fit but worse on everything else — it would put a check nobody runs
+outside the gate that already blocks commits, which is precisely the P-8 failure mode.</p>
+</section>
+
+
+<section id="decisions">
+<h2>7 · Decisions</h2>
+
+<spec-decision id="D-001" grounding="verified">
+  <h4>D-001 · <code>readContractDeclarations()</code> lands in <code>@spectastic/schema</code> behind a <code>./contract</code> subpath</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>Four sibling specs (071–074) each need to read the same 069 element. P-14's test — would a second caller want this without the CLI — answers yes four times over. <code>packages/schema/package.json</code> already publishes <code>./slo</code> and <code>./project</code> as narrow subpaths, so the shape is established.</dd>
+    <dt>Decision</dt>     <dd>A pure <code>readContractDeclarations(html): ContractDeclaration[]</code> in <code>packages/schema/src/contract-shared.ts</code>, exported as <code>@spectastic/schema/contract</code>, cloning <code>slo-shared.ts</code>'s file and export shape.</dd>
+    <dt>Consequences</dt> <dd>+ One parse, four consumers; the attribute grammar has a single owner. + 071–074 touch disjoint files afterwards and genuinely parallelise. − 070 becomes a hard prerequisite for the cohort, so the drain is one-then-four rather than five-abreast.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-002" grounding="verified">
+  <h4>D-002 · The resolve check is a folded core scan, not a schema rule</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>A grep for <code>node:fs</code>, <code>readFileSync</code> and <code>existsSync</code> across <code>packages/schema/src/rules/</code> returns zero matches — all 34 rules are pure AST over a parsed document. <a href="./spec.html#FR-004">FR-004</a> needs a filesystem stat. The established seam is a core <code>*Findings()</code> plus a CLI <code>scan*</code>, used by <code>copyLeakFindings</code>/<code>scanCopyLeak</code> and six siblings.</dd>
+    <dt>Decision</dt>     <dd><code>contractResolveFindings()</code> in <code>@spectastic/core</code>, folded by <code>scanContractResolve(files, cwd)</code> in the CLI. No schema rule is added.</dd>
+    <dt>Consequences</dt> <dd>+ The pure-AST invariant survives intact. + Inherits the pre-commit gate for free, like every other folded scan. − The check does not fire from a bare <code>validate(html)</code> library call, only through the CLI — the same boundary the waiver and quantified-NFR scans already accept, recorded in §10.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-003" grounding="verified">
+  <h4>D-003 · A proposed contract is excluded structurally, by path, not by inspection</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd><a href="./spec.html#FR-003">FR-003</a> requires a proposed contract never satisfy an effective declaration. Since a proposed and an effective contract can be byte-identical, no content test can separate them — only location can.</dd>
+    <dt>Decision</dt>     <dd>A declared <code>path=</code> resolving inside <code>specs/</code> is itself the error: the resolve check rejects it rather than stat-ing it. This makes <a href="./spec.html#FR-002">FR-002</a>'s "MUST NOT be inside <code>specs/</code>" machine-checked rather than merely stated.</dd>
+    <dt>Consequences</dt> <dd>+ One rule enforces FR-002 and FR-003 together. + A proposed contract can never be mistaken for effective, even byte-identical. − A project that genuinely wants a contract under <code>specs/</code> cannot have one; that is the intended constraint, not a limitation.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-004" grounding="verified">
+  <h4>D-004 · A declared path is contained to the project directory</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>P-11 treats artifact text as data, and a <code>path=</code> is attacker-influenceable text in an ingested artifact. <a href="./spec.html#NFR-001">NFR-001</a> already bounds the check to the project directory.</dd>
+    <dt>Decision</dt>     <dd>Resolve the declared path against <code>cwd</code> and reject anything escaping it — a leading <code>/</code>, any <code>..</code> traversal, or a resolved path outside the project root — as a finding rather than following it. No symlink is traversed out of the project.</dd>
+    <dt>Consequences</dt> <dd>+ A hostile design cannot make <code>validate</code> stat arbitrary filesystem locations. + Keeps the "project-relative" wording of FR-002 literally true. − An intentional out-of-tree contract (a sibling checkout) is unsupported; that is a monorepo-boundary question 076 owns.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-005" grounding="n-a">
+  <h4>D-005 · The convention itself ships as documentation, not a check</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd><a href="./spec.html#FR-005">FR-005</a> fixes the directory name <code>contracts/</code> and forbids <code>references/</code>. Nothing generates the proposed directory, so there is no write path to gate; a check would have to invent an occasion to fire. Pure judgment.</dd>
+    <dt>Decision</dt>     <dd>State the convention in the design template's §3 comment and the command markdown. Add no rule for the directory name.</dd>
+    <dt>Consequences</dt> <dd>+ No rule that fires on a project which simply has no contracts yet. − The <code>references/</code> prohibition is review-caught; acceptable because the corpus already owns that word and the collision would be immediately obvious.</dd>
+  </dl>
+</spec-decision>
+</section>
+
+
+<section id="project-structure">
+<h2>8 · Project structure</h2>
+
+<p>Only the new or changed paths. The P-14 boundary is visible: pure parsing in schema, filesystem work in core, a wrapper in the CLI.</p>
+
+<pre><code>packages/schema/src/
+  contract-shared.ts                new — readContractDeclarations(), cloned from slo-shared.ts
+  package.json / tsup.config.ts     one exports entry + one build entry ("./contract")
+packages/schema/test/
+  contract-shared.test.ts           new — reader unit tests
+packages/core/src/commands/
+  validate.ts                       + contractResolveFindings()
+packages/core/test/
+  contract-resolve.test.ts          new — absent / present / directory / escaping-path cases
+packages/cli/src/commands/
+  validate.ts                       + scanContractResolve(), folded like scanQuantifiedNfr
+packages/cli/test/
+  validate-contract-resolve.test.ts new — end-to-end through the CLI
+templates/design.html               §3 comment states the contracts/ convention
+commands/spectastic.design.md       one line on proposed vs effective location
+</code></pre>
+</section>
+
+
+<section id="risks">
+<h2>9 · Risks &amp; mitigations</h2>
+
+<table>
+  <thead><tr><th>Risk</th><th>Likelihood</th><th>Impact</th><th>Mitigation</th></tr></thead>
+  <tbody>
+    <tr><td>The reader's shape is wrong for a sibling, forcing a breaking change mid-cohort</td><td>M</td><td>M</td><td>The record is deliberately wider than 070 needs — it carries <code>shape</code>, <code>direction</code> and <code>format</code> though only <code>path</code> is used here, precisely so 072/073/074 need no change. Additive fields stay additive.</td></tr>
+    <tr><td>The scan misses the design files because validate was invoked on a narrow glob</td><td>M</td><td>L</td><td>The scan reads the files it is given, exactly as <code>scanQuantifiedNfr</code> does; a narrowed glob narrows every check equally, which is understood behaviour rather than a new trap.</td></tr>
+    <tr><td>The <code>specs/</code>-containment rule (<a href="#D-003">D-003</a>) false-positives on a project that nests its whole tree under a directory called <code>specs</code></td><td>L</td><td>M</td><td>The comparison is against the resolved project-relative prefix, not a substring match, so a path like <code>myspecs/api.yaml</code> is unaffected. Covered by a fixture.</td></tr>
+    <tr><td>Perf regression on very large estates</td><td>L</td><td>L</td><td>The scan is O(declarations) with one <code>stat</code> each, and the estate currently declares zero. The existing perf test holds the budget.</td></tr>
+  </tbody>
+</table>
+</section>
+
+
+<section id="complexity">
+<h2>10 · Complexity tracking</h2>
+<p>Where this design accepts a ceiling, the reasoning lives here.</p>
+
+<spec-assumption>
+<p><strong>The resolve check does not fire from the library API.</strong> <a href="#D-002">D-002</a> puts it in the folded-scan
+layer, so a caller invoking <code>validate(html)</code> directly gets every schema rule but not this check. That is the boundary
+the eight existing folded scans already sit behind — the alternative is a filesystem-touching rule engine, which is a much larger
+change than this slice justifies. Recorded, not hidden.</p>
+</spec-assumption>
+
+<spec-assumption>
+<p><strong>The <code>references/</code> prohibition is review-caught.</strong> <a href="#D-005">D-005</a> ships the naming
+convention as prose. A machine check would need an occasion to fire and would fire on every contract-less project. The collision
+it guards against — the corpus already owning <code>references/</code> — is loud enough that a reviewer catches it.</p>
+</spec-assumption>
+
+<spec-assumption>
+<p><strong>Readability is judged by a successful read, not by a permissions model.</strong> <a href="./spec.html#FR-006">FR-006</a>
+asks the finding to distinguish "no such file" from "exists but is not a readable file". The check answers that by attempting the
+read and classifying the failure, rather than by reasoning about modes and ownership — which is portable across platforms where a
+mode bit is not the whole story.</p>
+</spec-assumption>
+</section>
+
+
+<section id="questions">
+<h2>11 · Open questions</h2>
+<spec-questions>
+<p>None outstanding. The check's placement, the shared reader's home, the structural exclusion of proposed contracts, and the
+path-containment posture were all settled here; the location convention itself was settled by the data-model/contract survey that
+produced this spec.</p>
+</spec-questions>
+</section>
+
+
+<section id="changelog">
+<h2>12 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-08-01">01 Aug 2026</time><span>Initial design. Seven grounding facts, all verified; no spikes and no assumed facts, so the design-to-tasks grounding gate is clear. The decisive finding is that all 34 schema rules are pure-AST with zero filesystem imports, which moves the resolve check to the folded-scan seam (<a href="#D-002">D-002</a>).</span></li>
+  <li><time datetime="2026-08-01">01 Aug 2026</time><span>Status flipped Draft → Accepted on 01 Aug 2026 — zero remaining unchecked tasks; tests verified passing per author confirmation. Sibling bundle (REQ-LIFECYCLE-005).</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  Design for 070-contract-sidecar-convention · Contract sidecar convention · authored 01 Aug 2026
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>

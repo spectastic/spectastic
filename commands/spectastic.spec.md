@@ -40,7 +40,7 @@ User input (from `$ARGUMENTS`): a feature name or one-line description.
    - Context: what exists today, why it isn't enough, what triggered this spec
    - User stories — each *As a [ROLE], I want to [DO_THING] so that [OUTCOME]*
    - Edge cases and assumptions
-   - Data model: the entities this feature owns or substantially changes
+   - Data model — the **conceptual** model only (075-spec-data-model-layering): the entities this feature owns or substantially changes, the relationships between them, the invariants that must always hold, and the state transitions they undergo. Ask what a thing *is* and what must be true of it, never how it is persisted or serialised. The **physical** model (field types, storage shape, wire representation) and the consumer-facing contract belong downstream in the design's *Data model & contracts* section — redirect there rather than capturing them here. Precision **is** in scope where an invariant genuinely requires it (a range, a uniqueness rule, a decimal precision that changes what is correct); "no fields" does not mean "no numbers".
    - Out-of-scope items: where each one lives instead (capture as `defer-to=`)
 
    **Decision phase — use `AskUserQuestion` to anchor each of these before writing:**

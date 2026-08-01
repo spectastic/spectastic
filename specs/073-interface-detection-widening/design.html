@@ -1,0 +1,377 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
+<title>Interface detection widening · Design</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Design · 073-interface-detection-widening</p>
+  <h1>Interface detection widening</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    How we will build it.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>     <span><spec-status value="accepted">Accepted</spec-status></span>
+    <b>Spec</b>       <span><a href="./spec.html">073-interface-detection-widening</a></span>
+    <b>Owner</b>      <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Branch</b>     <span><code>main</code></span>
+    <b>Created</b>    <span><time datetime="2026-08-01">01 Aug 2026</time></span>
+    <b>Read time</b>  <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-tldr>
+    <p>Three widenings to <code>detect.ts</code> and one to the seeded principle's copy. Broker dependencies join
+    <code>INTERFACE_SIGNALS</code>; contract discovery grows a named-convention path list beyond today's root-plus-four shallow
+    scan; and a design's own declaration is made to outrank both, in <em>both</em> directions — which is the only thing that can
+    tell a publisher from a consumer, since the same <code>kafkajs</code> entry appears in each. The event-driven signals land
+    <strong>advisory-only</strong> behind a severity split, so a real service that publishes gets warned without any existing
+    project's verdict changing.</p>
+  </spec-tldr>
+</header>
+
+
+<section id="principles-check">
+<h2>1 · Principles check</h2>
+<p>Verify this design respects every principle in <a href="../../principles.html">v1.9.0</a>. Any violation requires either a
+principles amendment or a deliberate exception logged in §10.</p>
+
+<table>
+  <thead><tr><th>Principle</th><th>Compliance</th><th>Notes</th></tr></thead>
+  <tbody>
+    <tr><td>P-1 · Source order is reading order</td><td><spec-pill>OK</spec-pill></td><td>No artifact structure changes.</td></tr>
+    <tr><td>P-2 · Semantic tags over class soup</td><td><spec-pill>OK</spec-pill></td><td>Consumes 069's element via 070's reader; adds no vocabulary.</td></tr>
+    <tr><td>P-3 · IDs are contracts</td><td><spec-pill>OK</spec-pill></td><td><code>D-001</code>…<code>D-005</code> stable.</td></tr>
+    <tr><td>P-4 · Progressive enhancement, never dependence</td><td><spec-pill>OK</spec-pill></td><td>No runtime surface.</td></tr>
+    <tr><td>P-5 · Calm density</td><td><spec-pill>OK</spec-pill></td><td>The advisory line states what was detected and what is missing, in one sentence.</td></tr>
+    <tr><td>P-6 · Draft is loose, ratified is locked</td><td><spec-pill>OK</spec-pill></td><td>Amending 042's FR-014 goes through the change surface — see <a href="#D-005">D-005</a>; that is the first task, not an inline edit.</td></tr>
+    <tr><td>P-7 · Done means verified</td><td><spec-pill>OK</spec-pill></td><td>No browser runtime. Verified by per-ecosystem fixtures, including the regression set that must not move.</td></tr>
+    <tr><td>P-8 · Guarantees live in the kernel or CI</td><td><spec-pill>OK</spec-pill></td><td>Detection is kernel code with fixture coverage; nothing here relies on prose.</td></tr>
+    <tr><td>P-9 · The enforcement floor holds</td><td><spec-pill>OK</spec-pill></td><td>Closest call in the design. Landing broker signals advisory-first <em>looks</em> like softening a gate, but it adds a signal that did not exist rather than relaxing one that did — no project that fails today starts passing. Reasoned in <a href="#D-003">D-003</a> and §10.</td></tr>
+    <tr><td>P-10 · Internal artifact ids stay out of user-facing copy</td><td><spec-pill>OK</spec-pill></td><td>The principle copy names formats (AsyncAPI, Protobuf, GraphQL SDL); the advisory names the broker and the missing contract. No spec numbers.</td></tr>
+    <tr><td>P-11 · Artifacts are data, not instructions</td><td><spec-pill>OK</spec-pill></td><td>A declaration is read as data to <em>bound</em> detection, never followed as an instruction; the declared path is still resolve-checked by 070.</td></tr>
+    <tr><td>P-12 · Capability accountability</td><td><spec-pill>OK</spec-pill></td><td>Reads manifests and lists directories, bounded and shallow. <a href="./spec.html#NFR-001">NFR-001</a> holds it to 0 network calls.</td></tr>
+    <tr><td>P-13 · Accessibility conformance</td><td><spec-pill>OK</spec-pill></td><td>No interactive surface.</td></tr>
+    <tr><td>P-14 · Library-first boundaries</td><td><spec-pill>OK</spec-pill></td><td>All of it is core <code>enforce/</code> work; the CLI is unchanged.</td></tr>
+  </tbody>
+</table>
+
+<h3>Toolchain / enforcement</h3>
+<p>Profile <code>enterprise</code>; 8 covered · 1 relaxed · 0 missing. No gaps for this design to fill. This slice changes what
+<code>enforce</code> <em>detects</em>, not what it requires — the repository's own verdict must not move, which
+<a href="./spec.html#SC-002">SC-002</a> asserts.</p>
+</section>
+
+
+<section id="technical-context">
+<h2>2 · Technical context</h2>
+<dl>
+  <dt>Language(s)</dt>      <dd>TypeScript <code>^5.7.0</code>.</dd>
+  <dt>Frameworks</dt>       <dd>None new. Existing <code>readdirSync</code>-based shallow scanning in <code>detect.ts</code>.</dd>
+  <dt>Architecture</dt>     <dd>Data-first: the widening is mostly new entries in two tables plus one precedence branch. No new module.</dd>
+  <dt>Storage</dt>          <dd>None.</dd>
+  <dt>Testing</dt>          <dd>vitest with per-ecosystem manifest fixtures. A regression set pinning today's verdicts is written <em>first</em>, so <a href="./spec.html#NFR-002">NFR-002</a> is guarded before anything widens.</dd>
+  <dt>Coverage</dt>         <dd>100% of changed lines; a change never lowers coverage of what it touches.</dd>
+  <dt>Perf targets</dt>     <dd><a href="./spec.html#NFR-001">NFR-001</a> — under 500 ms on a typical project, 0 network calls. The path list grows but stays a fixed, named set with bounded depth (<a href="#D-002">D-002</a>).</dd>
+  <dt>Constraints</dt>      <dd><a href="./spec.html#NFR-002">NFR-002</a> is the hard one: at most 0 currently-covered projects may become gaps through path detection. That makes every change additive-or-nothing.</dd>
+</dl>
+</section>
+
+
+<section id="contracts">
+<h2>3 · Data model &amp; contracts</h2>
+
+<p>No persisted entity. This slice widens two lookup tables and adds one precedence rule; all state is derived per run.</p>
+
+<table>
+  <thead><tr><th>Conceptual entity</th><th>Physical shape</th><th>Notes</th></tr></thead>
+  <tbody>
+    <tr><td>Interface signal</td>
+        <td>An entry in <code>INTERFACE_SIGNALS</code> — <code>{ file, contains }</code></td>
+        <td>Gains broker and managed-bus dependencies across the six ecosystems. Each carries a severity class so event-driven ones stay advisory (<a href="#D-003">D-003</a>).</td></tr>
+    <tr><td>Contract location</td>
+        <td>The <code>CONTRACT_DIRS</code> list plus a bounded named-path set</td>
+        <td>Named conventions only — <code>src/main/proto</code>, <code>openapi/</code>, <code>protos/</code>, <code>graphql/</code> and nested <code>proto/&lt;module&gt;/v1</code> shapes — never unbounded recursion (<a href="./spec.html#FR-002">FR-002</a>).</td></tr>
+    <tr><td>Declared override</td>
+        <td>A <code>ContractDeclaration[]</code> from 070's reader</td>
+        <td>Outranks inference in both directions (<a href="#D-004">D-004</a>): it can establish a contract is owed, and that one is not.</td></tr>
+  </tbody>
+</table>
+
+<spec-contract shape="none">
+  <p>No interface. This slice changes how the tool recognises <em>other</em> projects' interfaces; it exposes none of its own.</p>
+</spec-contract>
+</section>
+
+
+<section id="grounding">
+<h2>4 · Grounding &amp; evidence</h2>
+
+<table class="evidence">
+  <thead><tr><th>Claim the design rests on</th><th>Source</th><th>Status</th><th>Finding / note</th></tr></thead>
+  <tbody>
+    <tr><td><code>INTERFACE_SIGNALS</code> holds ~40 signals and not one broker</td>
+        <td><code>packages/core/src/enforce/detect.ts:459-511</code></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td>Counted across JS/TS, Python, Java, Go, Rust, Swift: every entry is HTTP, GraphQL or gRPC. Zero Kafka, AMQP, NATS, Pulsar, SQS/SNS, EventBridge, Service Bus, Pub/Sub or Redis streams. The gap the spec exists to close.</td></tr>
+    <tr><td>Contract discovery is root plus exactly four directories, one level deep</td>
+        <td><code>packages/core/src/enforce/detect.ts:426,441-453</code></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td><code>CONTRACT_DIRS = ['api','proto','schema','contracts']</code>; <code>dirHasContract</code> uses a non-recursive <code>readdirSync</code>. Misses Gradle/Maven <code>src/main/proto/**</code>, nested buf and Go trees, and <code>openapi/</code>.</td></tr>
+    <tr><td><code>isContractFile</code> already accepts AsyncAPI</td>
+        <td><code>packages/core/src/enforce/detect.ts:432</code></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td><code>/^(openapi|swagger|asyncapi)\.(ya?ml|json)$/</code>. The tool already recognises the answer to a question it cannot ask — so the event half of this slice is antecedent work only, not format work.</td></tr>
+    <tr><td>The gate fails safe on the antecedent, so widening it is what changes verdicts</td>
+        <td><code>packages/core/src/enforce/detect.ts:415-417</code> (comment) · <code>:514</code></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td>"contract-first is NOT in SIGNALS: it is interface-gated — a gap only when the project exposes a detectable interface AND no contract is checked in." Confirms a broker-only service is currently marked <em>covered</em>, not warned.</td></tr>
+    <tr><td>A per-category advisory mechanism already exists and is extensible</td>
+        <td><code>packages/core/src/enforce/policy.ts:36,124</code></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td><code>STRUCTURALLY_UNDETECTABLE</code> is an injectable <code>Partial&lt;Record&lt;EnforcementCategory, readonly string[]&gt;&gt;</code> consumed by <code>evaluateEnforcement</code>. Proven extensible twice already (coverage/Go, observability/Swift+C++), which is what makes <a href="#D-003">D-003</a> cheap.</td></tr>
+    <tr><td>Dependency matching cannot distinguish producing from consuming</td>
+        <td><code>packages/core/src/enforce/detect.ts:459-511</code> — signals match a manifest string only</td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td>A signal is a substring test against a manifest; the identical <code>kafkajs</code> entry appears in a publisher and a subscriber. No filesystem-only method can separate them, which is why <a href="#D-004">D-004</a> is required rather than merely nice.</td></tr>
+    <tr><td>042 FR-014 records the current misses as accepted ceilings</td>
+        <td><code>specs/042-profile-enforcement/spec.html</code> FR-014 · <code>CLAUDE.md</code></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td>The narrow signal set and shallow scan are documented as deliberate. Landing this therefore <em>amends</em> a past-Draft spec, which per P-6 must go through propose/apply — the basis for <a href="#D-005">D-005</a>.</td></tr>
+    <tr><td>070's reader is the declaration source</td>
+        <td><code>specs/070-contract-sidecar-convention/design.html</code> <a href="../070-contract-sidecar-convention/design.html#D-001">D-001</a></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td><code>readContractDeclarations()</code> at <code>@spectastic/schema/contract</code>. 070 is a hard prerequisite for <a href="#D-004">D-004</a>.</td></tr>
+  </tbody>
+</table>
+</section>
+
+
+<section id="approach">
+<h2>5 · Approach</h2>
+
+<p>Mostly data. <code>INTERFACE_SIGNALS</code> gains broker and managed-bus entries across the six ecosystems it already covers,
+each tagged so the event-driven ones can be treated as advisory. <code>CONTRACT_DIRS</code> is replaced by a named-convention
+path set that includes the ecosystem layouts today's scan misses — <code>src/main/proto</code> for Gradle and Maven,
+<code>openapi/</code>, <code>protos/</code>, <code>graphql/</code>, and the nested <code>proto/&lt;module&gt;/v1</code> shape buf
+and Go projects use — expressed as explicit named segments with a bounded depth, never a recursive walk.</p>
+
+<p>The precedence rule is the part that carries real weight. Before inferring anything, detection asks 070's reader what the
+design actually declared. A declaration that names a contract makes that contract owed even if the filesystem has nothing; a
+declaration of <code>shape="none"</code> establishes that none is owed even if a broker dependency is present. This is the only
+mechanism that can separate a publisher from a consumer, and it simultaneously fixes the mirror false-positive the companion
+survey found — a crate vendoring an upstream spec to generate a client currently reads as <em>covered</em> when it is a pure
+consumer. Finally the seeded principle's copy is corrected to name every format the detector already accepts.</p>
+
+<spec-arch>
+<figure>
+<svg viewBox="0 0 700 250" role="img" aria-label="Detection consults the design declaration first, and only falls back to dependency signals and filesystem paths when no declaration is present">
+  <style>
+    .box { fill:#fcfbf7; stroke:#c4c1bb; stroke-width:1.2; }
+    .label { font: 700 11px Lato, sans-serif; fill:#4a4a46; letter-spacing:0.06em; text-transform:uppercase; }
+    .body { font: 400 12px "Source Serif 4", Georgia, serif; fill:#353534; }
+    .arr { stroke:#73706d; stroke-width:1.2; fill:none; }
+    .note { font: 400 11px Lato, sans-serif; fill:#73706d; }
+  </style>
+  <rect class="box" x="245" y="20" width="200" height="55" rx="4"/>
+  <text class="label" x="259" y="43">declaration</text>
+  <text class="body"  x="259" y="63">wins, both directions</text>
+  <rect class="box" x="60"  y="130" width="170" height="55" rx="4"/>
+  <text class="label" x="74"  y="153">dependency</text>
+  <text class="body"  x="74"  y="173">broker · http · rpc</text>
+  <rect class="box" x="460" y="130" width="170" height="55" rx="4"/>
+  <text class="label" x="474" y="153">filesystem</text>
+  <text class="body"  x="474" y="173">named paths</text>
+  <path class="arr" d="M245 60 L150 130" marker-end="url(#a)"/>
+  <path class="arr" d="M445 60 L540 130" marker-end="url(#a)"/>
+  <text class="note" x="150" y="215">inference runs only where the design is silent — it can never overrule a stated answer</text>
+  <defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#73706d"/></marker></defs>
+</svg>
+<figcaption>Declaration first, inference second. The arrows point down deliberately: inference is the fallback, not the default.</figcaption>
+</figure>
+</spec-arch>
+</section>
+
+
+<section id="alternatives">
+<h2>6 · Alternatives considered</h2>
+
+<p>The load-bearing choice is how a widened contract search finds files without becoming slow or false-positive. Scored 1–5.</p>
+
+<spec-matrix>
+<table>
+  <thead>
+    <tr><th>Option</th><th>Finds real layouts</th><th>Bounded cost</th><th>False-positive risk</th><th class="score">Total</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Recursive walk for any contract-shaped file</td><td>5</td><td>1</td><td>1</td><td class="score">7</td></tr>
+    <tr><td>Keep root-plus-four; require projects to move files</td><td>1</td><td>5</td><td>5</td><td class="score">11</td></tr>
+    <tr data-winner><td>A named-convention path set, bounded depth — chosen</td><td>4</td><td>4</td><td>4</td><td class="score">12</td></tr>
+  </tbody>
+</table>
+</spec-matrix>
+
+<p>The recursive walk is the tempting one and the survey rejected it by name: it finds everything, including a vendored upstream
+spec in <code>node_modules</code> or a fixture directory, and its cost is unbounded on a large monorepo. The status quo scores
+well on safety and fails the requirement — <a href="./spec.html#FR-002">FR-002</a> is explicit that detection follows the
+ecosystem's own layout rather than making a project rearrange itself to be detectable.</p>
+</section>
+
+
+<section id="decisions">
+<h2>7 · Decisions</h2>
+
+<spec-decision id="D-001" grounding="verified">
+  <h4>D-001 · Broker signals are added as data, per ecosystem, by deliberate export name</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd><code>detect.ts:459-511</code> shows the existing table matches a manifest substring per ecosystem. The observability category set a precedent worth copying: match the <em>deliberate</em> dependency (an exporter), never a transitive core library, because the latter false-positives.</dd>
+    <dt>Decision</dt>     <dd>Add broker and managed-bus client entries — Kafka, AMQP/RabbitMQ, NATS, Pulsar, SQS/SNS, EventBridge, Service Bus, Pub/Sub, Redis streams — across the six ecosystems, matching the client library a service deliberately depends on.</dd>
+    <dt>Consequences</dt> <dd>+ Pure data; no control-flow change and trivially reviewable. + Extends to a new broker by one line. − A service reaching a broker through a framework abstraction is still missed; kept as a recorded ceiling per <a href="./spec.html#FR-007">FR-007</a> rather than chased into false failures.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-002" grounding="verified">
+  <h4>D-002 · Contract discovery widens by named convention with bounded depth</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd><code>detect.ts:426,441-453</code> — four directories, one level, non-recursive. Real layouts it misses are enumerable: Gradle/Maven <code>src/main/proto/**</code>, nested buf <code>proto/&lt;module&gt;/v1/</code>, Go <code>api/proto/v1/</code>, plus <code>openapi/</code>, <code>protos/</code> and <code>graphql/</code>. <a href="./spec.html#FR-002">FR-002</a> forbids unbounded recursion.</dd>
+    <dt>Decision</dt>     <dd>Replace the flat four-directory list with a named path set carrying explicit segments and a small fixed maximum depth. No recursive walk, and no directory not named in the set is ever entered.</dd>
+    <dt>Consequences</dt> <dd>+ Finds the layouts ecosystems actually use, so a project is never asked to rearrange itself. + Cost stays bounded and predictable, protecting <a href="./spec.html#NFR-001">NFR-001</a>. − The set needs occasional extension as conventions shift; that is a one-line data change, not a redesign.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-003" grounding="verified">
+  <h4>D-003 · Event-driven signals land advisory-only, via the existing per-category mechanism</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd><a href="./spec.html#FR-004">FR-004</a> requires advisory-first. <code>policy.ts:36,124</code> shows <code>STRUCTURALLY_UNDETECTABLE</code> is already an injectable per-category map consumed by <code>evaluateEnforcement</code>, extended twice before (coverage/Go, observability/Swift+C++).</dd>
+    <dt>Decision</dt>     <dd>Reuse that mechanism rather than inventing a severity system: a project whose interface is recognised <em>only</em> through an event-driven signal reports the contract-first gap at advisory strength and does not hard-fail. Promotion to the hard floor is a later, deliberate act.</dd>
+    <dt>Consequences</dt> <dd>+ No new concept; the third user of a proven extension point. + A real event producer gets told, immediately, without breaking anyone's build. − Two strengths for one category means the report must say which applies; that is <a href="./spec.html#FR-004">FR-004</a>'s intent, not a wart.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-004" grounding="verified">
+  <h4>D-004 · A declaration outranks inference, in both directions</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>Signals are substring tests against a manifest (<code>detect.ts:459-511</code>), so the same <code>kafkajs</code> entry appears in a publisher and a subscriber — producing and consuming are indistinguishable by inference. The design artifact is the only place that knows, and 070's reader makes it readable.</dd>
+    <dt>Decision</dt>     <dd>Consult <code>readContractDeclarations()</code> first. A declared contract establishes one is owed regardless of the filesystem; a declared <code>shape="none"</code> establishes none is owed regardless of dependencies. Inference runs only where the design is silent.</dd>
+    <dt>Consequences</dt> <dd>+ Separates publisher from consumer, which no filesystem-only method can. + Fixes the mirror false-positive where a vendored upstream spec marks a pure API consumer covered. + Rewards declaring. − A project with no design gets inference only, exactly as today, so the benefit accrues to projects using the lifecycle.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-005" grounding="verified">
+  <h4>D-005 · Amending 042 is the first task, not a side effect</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>042's FR-014 records the narrow signal set and shallow scan as <em>accepted ceilings</em>. Widening them contradicts a past-Draft spec, which P-6 requires route through propose/apply rather than an inline edit.</dd>
+    <dt>Decision</dt>     <dd>A change proposal against 042 MODIFY-ing FR-014 is task one; the detection work follows it. The spec's own changelog notes this ordering.</dd>
+    <dt>Consequences</dt> <dd>+ The estate never holds a spec asserting a ceiling the code has already crossed. + The amendment is the audit trail for why the ceiling moved. − One extra propose/apply cycle before code; correct rather than costly, and it is the reason this slice cannot be drained purely in parallel with its siblings.</dd>
+  </dl>
+</spec-decision>
+</section>
+
+
+<section id="project-structure">
+<h2>8 · Project structure</h2>
+
+<pre><code>specs/042-profile-enforcement/changes/
+  &lt;date&gt;-widen-interface-detection/  new — MODIFY FR-014; task one per D-005
+
+packages/core/src/enforce/
+  detect.ts                          + broker signals; named-path contract set;
+                                     declaration-first precedence
+  policy.ts                          + advisory handling for event-only recognition
+packages/core/test/
+  detect.brokers.test.ts             new — one fixture per ecosystem, publisher and consumer
+  detect.contract-paths.test.ts      new — each newly-recognised layout, plus the regression set
+  detect.declaration-precedence.test.ts  new — both directions, incl. the vendored-spec case
+  enforce.advisory-events.test.ts    new — advisory strength, no hard fail
+packages/cli/test/init/profiles.test.ts  + assert the principle copy names every accepted format
+spectastic-profiles.json             contract-first principle copy — add AsyncAPI, Protobuf, GraphQL SDL
+</code></pre>
+
+<p>Deliberately absent: no recursive directory walk, and no new severity system — <a href="#D-003">D-003</a> reuses the existing
+per-category mechanism.</p>
+</section>
+
+
+<section id="risks">
+<h2>9 · Risks &amp; mitigations</h2>
+
+<table>
+  <thead><tr><th>Risk</th><th>Likelihood</th><th>Impact</th><th>Mitigation</th></tr></thead>
+  <tbody>
+    <tr><td>Widening the path set flips a currently-covered project to a gap, breaking <a href="./spec.html#NFR-002">NFR-002</a></td><td>M</td><td>H</td><td>Path widening can only find <em>more</em> contracts, so it can only move a project toward covered — but that argument must be proven, not asserted. A regression fixture set pinning today's verdicts is written first, before any widening lands.</td></tr>
+    <tr><td>A broker signal fires on a library that merely reads from a queue, warning a pure consumer</td><td>H</td><td>M</td><td>Inherent to dependency matching and the reason <a href="#D-004">D-004</a> exists. Advisory-only strength (<a href="#D-003">D-003</a>) means the cost of being wrong is a warning, not a broken build, until the signal set has earned promotion.</td></tr>
+    <tr><td>The named-path set grows until it is a recursive walk in disguise</td><td>L</td><td>M</td><td>Depth is a fixed constant and segments are explicit; a test asserts no directory outside the named set is ever read.</td></tr>
+    <tr><td>The 042 amendment and the code land out of order, leaving the estate self-contradictory</td><td>M</td><td>L</td><td><a href="#D-005">D-005</a> makes the amendment task one, and the tasks file orders it before any detection work.</td></tr>
+  </tbody>
+</table>
+</section>
+
+
+<section id="complexity">
+<h2>10 · Complexity tracking</h2>
+
+<spec-assumption>
+<p><strong>Advisory-first is not a P-9 softening.</strong> The distinction matters enough to state: P-9 forbids weakening a gate
+that currently catches something. These signals catch nothing today — a broker-only service is presently marked <em>covered</em>,
+not warned. Landing them advisory-first therefore moves a project from silence to a warning, never from a failure to a warning.
+No project that fails today starts passing. Promotion to the hard floor is named in the spec's own out-of-scope list as a later
+deliberate act, which is the honest sequencing rather than a permanent softening.</p>
+</spec-assumption>
+
+<spec-assumption>
+<p><strong>The producer/consumer distinction is only solved for projects that declare.</strong> <a href="#D-004">D-004</a> fixes
+it where a design exists. A project with a broker dependency and no spectastic design still cannot be classified, and gets the
+advisory. That residual is exactly <a href="./spec.html#FR-007">FR-007</a>'s recorded ceiling, and widening inference to close it
+would reintroduce the false failures this design is built to avoid.</p>
+</spec-assumption>
+
+<spec-assumption>
+<p><strong>The path set encodes conventions that will drift.</strong> Ecosystem layouts change, and a named set is a snapshot.
+This is accepted over a recursive walk because a stale entry costs a missed detection (a recorded ceiling) while an unbounded
+walk costs false positives and unbounded time on every run.</p>
+</spec-assumption>
+</section>
+
+
+<section id="questions">
+<h2>11 · Open questions</h2>
+<spec-questions>
+<p>None outstanding. The signal-matching strategy, the bounded path widening, the advisory mechanism, the precedence rule and the
+042 amendment ordering were all settled here; promotion of the event signals to the hard floor was settled by the spec as out of
+scope.</p>
+</spec-questions>
+</section>
+
+
+<section id="changelog">
+<h2>12 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-08-01">01 Aug 2026</time><span>Initial design. Eight grounding facts, all verified; no spikes and no assumed facts, so the design-to-tasks grounding gate is clear. The decisive facts: <code>INTERFACE_SIGNALS</code> contains zero broker entries across all six ecosystems, and <code>STRUCTURALLY_UNDETECTABLE</code> is an already-proven extension point that supplies the advisory mechanism without inventing one.</span></li>
+  <li><time datetime="2026-08-01">01 Aug 2026</time><span>Status flipped Draft → Accepted on 01 Aug 2026 — zero remaining unchecked tasks; tests verified passing per author confirmation. Sibling bundle (REQ-LIFECYCLE-005).</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  Design for 073-interface-detection-widening · Interface detection widening · authored 01 Aug 2026
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>

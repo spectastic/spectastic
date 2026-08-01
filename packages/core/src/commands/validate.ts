@@ -1,12 +1,14 @@
+import { isAbsolute, relative, resolve as resolvePath } from 'node:path';
 import type { Finding } from '@spectastic/schema';
 import { validateMany } from '@spectastic/schema';
+import type { ContractDeclaration } from '@spectastic/schema/contract';
 import type { Element } from '@spectastic/schema/parser';
 import { findAll, getAttr, getLocation, parse } from '@spectastic/schema/parser';
 import { isQuantifiedTarget } from '@spectastic/schema/slo';
 import { daysBetween, isBoilerplateReason, MAX_WAIVER_DAYS, parseIsoDate, type RawWaiver } from '../enforce/config.js';
 import type { EnforcementCategory } from '../enforce/types.js';
 import { isModelTier, MODEL_TIER_ALIASES, VERB_MODEL_POLICY } from '../model-policy/index.js';
-import type { KernelContext, ValidateInput, ValidateResult } from '../types.js';
+import type { FileSystem, KernelContext, ValidateInput, ValidateResult } from '../types.js';
 
 interface WaiverProblem {
   message: string;
@@ -570,4 +572,186 @@ export async function validateCommand(input: ValidateInput, ctx: KernelContext):
     exitCode: hasError ? 1 : 0,
     filesValidated,
   };
+}
+
+/**
+ * The contract resolve check (spec 070-contract-sidecar-convention, FR-004/
+ * FR-006, design D-002/D-003/D-004). Cannot be a schema rule — the rule
+ * engine is pure-AST with zero filesystem imports (design's decisive
+ * grounding fact) — so this is the folded-scan half `scanContractResolve`
+ * calls, given the declarations 070's own reader already parsed out.
+ *
+ * For each declaration carrying a `path=`, in order:
+ *  1. Containment (D-004) — an absolute path, a `..` segment, or a resolved
+ *     path outside `cwd` is rejected as escaping, never stat-ed.
+ *  2. specs/-exclusion (D-003) — a path resolving inside `<cwd>/specs/` is
+ *     itself the error, even when the file exists and is byte-identical to
+ *     a real proposed contract; this is what keeps a proposed contract from
+ *     ever satisfying an effective declaration (FR-002/FR-003).
+ *  3. Resolution — stat the path; classify absent vs. a directory vs. an
+ *     unreadable file vs. a genuinely readable one (silent), per FR-006.
+ *
+ * A declaration with no `path=` (shape="none", or a still-malformed one the
+ * shape rule will separately flag) is skipped — nothing to resolve.
+ */
+export async function contractResolveFindings(
+  declarations: readonly ContractDeclaration[],
+  file: string,
+  fs: FileSystem,
+  cwd: string,
+): Promise<Finding[]> {
+  const findings: Finding[] = [];
+
+  for (const decl of declarations) {
+    if (decl.path === undefined) continue;
+
+    const flag = (message: string, fixHint: string): void => {
+      findings.push({
+        file,
+        line: decl.line,
+        column: decl.column,
+        rule: 'contract-resolve',
+        severity: 'error',
+        message,
+        fixHint,
+      });
+    };
+
+    // 1. Containment (D-004) — checked on the declared string and the
+    // resolved path both, so neither a leading `/` nor a `..` segment nor a
+    // resolution that lands outside cwd is ever stat-ed.
+    if (isAbsolute(decl.path)) {
+      flag(
+        `<spec-contract path="${decl.path}"> in ${file} is an absolute path, which escapes the project directory`,
+        'Declare a project-relative path (spec.html FR-002) — an absolute path is rejected rather than followed.',
+      );
+      continue;
+    }
+    const resolved = resolvePath(cwd, decl.path);
+    const rel = relative(cwd, resolved);
+    if (rel.startsWith('..') || isAbsolute(rel)) {
+      flag(
+        `<spec-contract path="${decl.path}"> in ${file} resolves outside the project directory`,
+        'Remove the .. traversal — a declared path must stay inside the project (spec.html NFR-001).',
+      );
+      continue;
+    }
+
+    // 2. specs/-exclusion (D-003) — structural, by resolved-path prefix, never
+    // by content comparison (a proposed and an effective contract can be
+    // byte-identical). A resolved-prefix comparison, not a substring match —
+    // `myspecs/api.yaml` must NOT match (T-201's regression case).
+    if (rel === 'specs' || rel.startsWith('specs/')) {
+      flag(
+        `<spec-contract path="${decl.path}"> in ${file} resolves inside specs/, so it can never be an effective declaration`,
+        'The effective contract MUST live outside specs/ (spec.html FR-002) — a path under specs/ is always a proposed contract, never effective, regardless of whether the file exists (FR-003).',
+      );
+      continue;
+    }
+
+    // 3. Resolution — absent vs. directory vs. unreadable vs. readable (silent).
+    let stat: { isFile: boolean; isDirectory: boolean };
+    try {
+      stat = await fs.stat(resolved);
+    } catch {
+      flag(
+        `<spec-contract path="${decl.path}"> in ${file} — no such file`,
+        `Check for a typo, or that the contract was committed (spec.html FR-004).`,
+      );
+      continue;
+    }
+    if (stat.isDirectory) {
+      flag(
+        `<spec-contract path="${decl.path}"> in ${file} names a directory, not a readable file`,
+        'Declare the path to the contract file itself, not its containing directory (spec.html FR-006).',
+      );
+      continue;
+    }
+    try {
+      await fs.readFile(resolved, 'utf8');
+    } catch {
+      flag(
+        `<spec-contract path="${decl.path}"> in ${file} exists but is not a readable file`,
+        'Check the file\'s permissions, or that it is a regular file (spec.html FR-006).',
+      );
+    }
+  }
+
+  return findings;
+}
+
+/**
+ * Flag a materialised `<spec-contract-view>` (072-contract-embedded-view,
+ * FR-004) that no longer matches the contract file it projects. Live
+ * re-read and compare, no stored digest (design D-005) — matches
+ * `verify-view-stale`'s precedent for the same shape of problem.
+ *
+ * Deliberately normalises line endings and trailing-newline count before
+ * comparing (design §10) — unlike 071-contract-promotion's D-006, which
+ * compares exact bytes. There, a difference means someone else changed the
+ * destination and a false negative would clobber their work; here, a
+ * difference means the *projection* is stale, and a checkout that merely
+ * rewrote line endings has not made anything stale.
+ *
+ * A declaration with no view (FR-007/FR-008 — the common case) is skipped
+ * entirely; there is nothing to have gone stale.
+ */
+export async function contractViewDriftFindings(
+  declarations: readonly ContractDeclaration[],
+  file: string,
+  fs: FileSystem,
+  cwd: string,
+): Promise<Finding[]> {
+  const findings: Finding[] = [];
+  // Fully strips trailing newlines (to zero) rather than collapsing to one:
+  // the materialiser never appends one (packages/core/src/contracts/
+  // materialise-view.ts strips it before joining), while a real file
+  // conventionally ends with exactly one — stripping to zero on both sides
+  // is what makes "no trailing newline" and "one trailing newline" compare
+  // equal, not just "two or more" vs "one".
+  const normalise = (s: string): string => s.replace(/\r\n/g, '\n').replace(/\n+$/, '');
+
+  for (const decl of declarations) {
+    if (decl.path === undefined || decl.viewText === undefined) continue; // no view — nothing to check
+
+    const resolved = `${cwd}/${decl.path}`;
+    let current: string;
+    try {
+      current = await fs.readFile(resolved, 'utf8');
+    } catch {
+      findings.push({
+        file,
+        line: decl.line,
+        column: decl.column,
+        rule: 'contract-view-stale',
+        severity: 'error',
+        message: `the projected view of "${decl.path}" in ${file} no longer matches — the file could not be read`,
+        fixHint: 'Regenerate the design to refresh or remove the stale projection.',
+      });
+      continue;
+    }
+
+    const currentNormalised = normalise(current);
+    const projectedNormalised = normalise(decl.viewText);
+    // For an excerpt, compare only the leading lines the view claims to show
+    // (design §10 — closing this fully would need a whole-file digest, which
+    // D-005 rejects on precedent; the residual is recorded, not papered over).
+    const compareTarget = decl.viewExcerpt
+      ? currentNormalised.split('\n').slice(0, projectedNormalised.split('\n').length).join('\n')
+      : currentNormalised;
+
+    if (compareTarget !== projectedNormalised) {
+      findings.push({
+        file,
+        line: decl.line,
+        column: decl.column,
+        rule: 'contract-view-stale',
+        severity: 'error',
+        message: `the projected view of "${decl.path}" in ${file} no longer matches the file's current content`,
+        fixHint: 'Regenerate the design (spectastic design, or re-run /spectastic.design) to refresh the projection.',
+      });
+    }
+  }
+
+  return findings;
 }

@@ -14,12 +14,18 @@
 
 import { buildCorpusPromptBlock, loadCorpus, withCorpusHint } from '@spectastic/corpus';
 import { fenceArtifactText } from '@spectastic/schema/fence';
-import type { Verdict } from '../decider/index.js';
 import { decide, resolveDecider, resolveEffort } from '../decider/index.js';
 import type { Delta, KernelContext, ProposeInput, ProposeResult, RiskFinding } from '../types.js';
+import type { Verdict } from '../decider/index.js';
 
 export async function proposeCommand(input: ProposeInput, ctx: KernelContext): Promise<ProposeResult> {
   if (!ctx.ai) throw new Error('proposeCommand requires ctx.ai');
+
+  // Contract baseline capture (071-contract-promotion, D-001/D-005): a
+  // side effect independent of the AI draft above, so it runs regardless of
+  // what the drafted deltas end up touching — the author may hand-edit the
+  // spec-local contract file outside the delta grammar entirely.
+  await captureContractBaseline(input.specId, ctx);
 
   // Corpus-in-prompt (054-corpus-in-prompt, D-001/D-005): '' when no knowledge/
   // corpus exists, so filter(Boolean) drops it — byte-identical to before.
@@ -104,6 +110,51 @@ export async function proposeCommand(input: ProposeInput, ctx: KernelContext): P
 
   const html = renderProposalHtml(input.specId, input.description, draft, risks, verdict);
   return withCorpusHint({ html, deltasCount: deltas.length, risks }, corpusBlock);
+}
+
+/**
+ * Baseline capture at propose time (071-contract-promotion, D-001/D-005).
+ * Reads the target spec's design.html for a declared `<spec-contract path=…>`
+ * (070's reader) and, when the declared effective file currently exists,
+ * copies it verbatim to specs/<id>/contracts/.baseline/<name>. Overwrites any
+ * prior baseline unconditionally — concurrent in-flight proposals against one
+ * interface are a deliberately out-of-scope hazard (design §10); the
+ * conflicting-baseline refusal at promotion time covers the sequential case,
+ * which is the one that occurs.
+ *
+ * No design.html yet, or a design declaring no contract (shape="none"),
+ * leaves nothing to capture. No effective file yet leaves *no* baseline
+ * written — absence is D-005's "no predecessor" signal, distinct from an
+ * empty file.
+ */
+async function captureContractBaseline(specId: string, ctx: KernelContext): Promise<void> {
+  const fs = ctx.fs ?? (await import('../providers/node-fs.js')).nodeFs;
+  const designPath = `${ctx.cwd}/specs/${specId}/design.html`;
+  let designHtml: string;
+  try {
+    designHtml = await fs.readFile(designPath, 'utf8');
+  } catch {
+    return;
+  }
+
+  const { readContractDeclarations } = await import('@spectastic/schema/contract');
+  const { basename } = await import('node:path');
+  const declarations = readContractDeclarations(designHtml, designPath);
+
+  for (const decl of declarations) {
+    if (decl.path === undefined) continue;
+    const name = basename(decl.path);
+    const effectivePath = `${ctx.cwd}/${decl.path}`;
+    let content: string;
+    try {
+      content = await fs.readFile(effectivePath, 'utf8');
+    } catch {
+      continue; // D-005: no effective file yet — absence is the recorded state
+    }
+    const baselinePath = `${ctx.cwd}/specs/${specId}/contracts/.baseline/${name}`;
+    await fs.mkdir(`${ctx.cwd}/specs/${specId}/contracts/.baseline`);
+    await fs.writeFile(baselinePath, content);
+  }
 }
 
 interface ParsedDraft {

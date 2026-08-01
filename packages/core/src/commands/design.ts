@@ -11,6 +11,7 @@
 
 import { buildCorpusPromptBlock, loadCorpus, withCorpusHint } from '@spectastic/corpus';
 import { fenceArtifactText } from '@spectastic/schema/fence';
+import { materialiseContractViews } from '../contracts/materialise-view.js';
 import type { KernelContext, DesignInput, DesignResult } from '../types.js';
 
 const BLOCKER_PATTERNS: ReadonlyArray<{ name: string; re: RegExp }> = [
@@ -91,7 +92,14 @@ export async function designCommand(input: DesignInput, ctx: KernelContext): Pro
     );
   }
 
-  const html = renderDesignHtml(input.specId, parsed, isReentry);
+  const rawHtml = renderDesignHtml(input.specId, parsed, isReentry);
+  // Contract view materialisation (072-contract-embedded-view, T-112): a
+  // no-op for the overwhelming majority of designs, which declare no
+  // <spec-contract path=…> at all (renderDesignHtml doesn't emit one today).
+  // Runs over whatever html the draft produced so a future contract-bearing
+  // design is materialised without this call site needing to change.
+  const fs = ctx.fs ?? (await import('../providers/node-fs.js')).nodeFs;
+  const html = await materialiseContractViews(rawHtml, fs, ctx.cwd);
   return withCorpusHint(
     {
       html,

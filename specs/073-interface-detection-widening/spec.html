@@ -1,0 +1,299 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
+<title>Interface detection widening · Specification</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Specification · 073-interface-detection-widening</p>
+  <h1>Interface detection widening</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    Teach the enforcement gate the two things it cannot currently see — an interface that isn't HTTP, and a contract that isn't in one of four directories.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>      <span><spec-status value="accepted">Accepted</spec-status></span>
+    <b>Spec ID</b>     <span>073-interface-detection-widening</span>
+    <b>Owner</b>       <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Reviewers</b>   <span>—</span>
+    <b>Created</b>     <span><time datetime="2026-07-31">31 Jul 2026</time></span>
+    <b>Principles</b><span><a href="../../principles.html">v1.9.0</a></span>
+    <b>Smallest demoable</b><span><code>spectastic enforce</code> on a Kafka-only service reports <code>contract-first</code> as a gap instead of silently exempt, and finds a Gradle project's contract at <code>src/main/proto/</code>.</span>
+    <b>Read time</b>   <span data-reading-time></span>
+  </spec-meta>
+
+  <!-- Live size gauge — green at <80%, amber 80-100%, red over. Words row counts authored prose (excludes the conformance index) per REQ-FORMAT-004. -->
+  <spec-budget words="2000" reqs="20" minutes="14"></spec-budget>
+
+  <spec-tldr>
+    <p>The <code>contract-first</code> gate has two blind spots that point in opposite directions. It cannot see an
+    <strong>interface</strong> that isn't HTTP, GraphQL or gRPC — the signal list contains no message broker of any kind, so a
+    service whose entire public surface is published topics is marked <em>covered</em> at verified and enterprise on the grounds
+    that it has nothing to contract. And it cannot find a <strong>contract</strong> outside the project root or four named
+    directories, one level deep — so a Gradle project keeping its protos where the protobuf plugin puts them
+    (<code>src/main/proto/</code>) can be failed for lacking a contract it has. This spec widens both, and adds the thing that
+    makes widening safe: dependency presence cannot distinguish <em>publishing</em> a topic from <em>consuming</em> one, nor a
+    contract a project publishes from one it vendored to generate a client, so a contract path <em>declared</em> by the design
+    outranks anything inferred from the filesystem. Both widenings amend requirements that currently record these misses as
+    accepted ceilings, so they land as changes to <a href="../042-profile-enforcement/spec.html">042</a> rather than as new
+    behaviour bolted beside it. Advisory first, promoted once the signals prove themselves.</p>
+  </spec-tldr>
+
+  <dl class="invest">
+    <dt><span class="letter">I</span> Independent</dt> <dd>Amends <a href="../042-profile-enforcement/spec.html">042</a>'s detection contract and consumes <a href="../069-design-contract-section/spec.html">069</a>'s declaration where present. Both are named; nothing else must move first.</dd>
+    <dt><span class="letter">N</span> Negotiable</dt>  <dd>Contracts <em>what must be seen</em> — event-driven interfaces, conventional contract layouts, declaration over inference. The specific signal names, path list, and detection order are the design's.</dd>
+    <dt><span class="letter">V</span> Valuable</dt>    <dd>Unlocks <a href="#SC-001">SC-001</a> — an entire architectural style stops being silently exempt from a floor it should be held to, and <a href="#SC-002">SC-002</a> stops a compliant project being failed for its own build convention.</dd>
+    <dt><span class="letter">E</span> Estimable</dt>   <dd>Two signal tables and a precedence rule, all inside an existing detector whose shape is well understood. The risk is calibration, not construction.</dd>
+    <dt><span class="letter">S</span> Small</dt>       <dd>Detection only. What a detected contract must then satisfy — linting, breaking-change diffing — is deferred to <a href="../074-contract-checked-tier/spec.html">074</a>.</dd>
+    <dt><span class="letter">T</span> Testable</dt>    <dd>Fixture-checkable per ecosystem: a broker-only project, a Gradle project, a consumer-only project, and a project with a declaration that contradicts inference.</dd>
+  </dl>
+
+  <spec-audience-map>
+    <dl>
+      <dt>Exec / PM</dt>   <dd>§<a href="#context">Context</a>, §<a href="#scenarios">User scenarios</a>, §<a href="#success">Success criteria</a>.</dd>
+      <dt>Reviewer</dt>    <dd>§<a href="#requirements">Requirements</a>, §<a href="#assumptions">Assumptions</a>, §<a href="#questions">Open questions</a>.</dd>
+      <dt>Implementer</dt> <dd>§<a href="#requirements">Requirements</a>, §<a href="#data">Data model</a>, §<a href="#conformance">Conformance index</a>.</dd>
+    </dl>
+  </spec-audience-map>
+</header>
+
+
+<section id="context">
+<h2>1 · Context</h2>
+<p>The <code>contract-first</code> enforcement category is interface-gated: it is a gap only when a project exposes a detectable
+public interface and has no checked-in contract. Both halves of that test are narrower than the sentence suggests.</p>
+<p>The antecedent matches roughly forty dependency names across six ecosystems, and every one is an HTTP framework, a GraphQL
+server, or a gRPC toolchain. A service built entirely on Kafka, AMQP, NATS, SQS or Pub/Sub fails the antecedent and is marked
+covered — no warning, because the gate deliberately fails safe there so CLIs and batch jobs are never false-failed. The oddity is
+that the answer is already recognised: an <code>asyncapi</code> document has always counted as a valid contract. The tool can
+accept an answer to a question it cannot ask.</p>
+<p>The other half is the mirror. Contract detection lists the project root and reaches one level into four conventional
+directories, without recursion — so it misses the layouts most build tools actually produce: the protobuf plugin's
+<code>src/main/proto/</code>, nested module trees, and directory names outside its four. A project can hold a perfectly good
+contract and be failed for it.</p>
+<p>Both misses are recorded in <a href="../042-profile-enforcement/spec.html">042</a> as accepted ceilings, which is why this
+arrives as an amendment rather than a patch. Whose problem: every event-driven project silently exempted from a floor it should
+meet, and every JVM project asked to rearrange itself to be seen.</p>
+</section>
+
+
+<section id="scenarios">
+<h2>2 · User scenarios &amp; testing</h2>
+
+<p>Each story <strong>MUST</strong> be independently testable: if you implemented only US1, you would
+still have a viable MVP.</p>
+
+<h3 id="US1">US1 · An event-driven service is asked for a contract <spec-pill>P1</spec-pill></h3>
+<p>As a <strong>platform reviewer</strong>, I want <strong>a service whose public surface is broker topics to be held to the
+contract floor</strong> so that <strong>its consumers get a payload contract instead of an undocumented message shape</strong>.</p>
+<p><em>Acceptance:</em> A project declaring a broker client and no contract is reported as a <code>contract-first</code> gap; the
+same project with an <code>asyncapi</code> document is reported as covered.</p>
+
+<h3 id="US2">US2 · A conventional layout is found where it lives <spec-pill>P1</spec-pill></h3>
+<p>As a <strong>JVM engineer</strong>, I want <strong>my protos found at <code>src/main/proto/</code></strong> so that
+<strong>I am not asked to move them into a tool-shaped directory to satisfy a gate</strong>.</p>
+<p><em>Acceptance:</em> A Gradle or Maven project with contracts only under <code>src/main/proto/</code> is reported as covered.</p>
+
+<h3 id="US3">US3 · A consumer is not mistaken for a publisher <spec-pill>P2</spec-pill></h3>
+<p>As an <strong>author of a service that only consumes events</strong>, I want <strong>the gate not to demand a contract I have
+no business publishing</strong> so that <strong>widening the antecedent does not trade one wrong answer for another</strong>.</p>
+<p><em>Acceptance:</em> A project whose design declares that it publishes nothing is not reported as a gap, even when a broker
+dependency is present.</p>
+
+<h3>Edge cases</h3>
+<ul>
+  <li>A broker client pulled in transitively by a framework the project never uses directly.</li>
+  <li>A project with both an HTTP surface and published events, holding only one of the two contracts.</li>
+  <li>A vendored upstream contract checked in to generate a client — present, but not published by this project.</li>
+  <li>A monorepo where one module publishes events and its siblings do not.</li>
+  <li>An ecosystem with no conventional contract location at all.</li>
+  <li>A declaration that contradicts inference in both directions — claims a contract the filesystem lacks, or disclaims one it has.</li>
+</ul>
+</section>
+
+
+<section id="requirements">
+<h2>3 · Requirements</h2>
+
+<p>Conformance keywords (<spec-rule>MUST</spec-rule>, <spec-rule level="should">SHOULD</spec-rule>,
+<spec-rule level="may">MAY</spec-rule>) follow RFC 2119.</p>
+
+<h3>Functional</h3>
+
+<spec-requirement id="FR-001" priority="must">
+<p>The interface antecedent <strong>MUST</strong> recognise event-driven interfaces — message-broker and managed-bus dependencies
+— as exposing a public interface.</p>
+<details><summary>Rationale</summary><p>Closes the case where an entire architectural style is exempt from a floor at every
+tier, including enterprise.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-002" priority="must">
+<p>Contract detection <strong>MUST</strong> find contracts at ecosystem-conventional locations beyond the current root-plus-four
+shallow scan, by named convention rather than unbounded recursion.</p>
+<details><summary>Rationale</summary><p>A tool that makes projects rearrange themselves to be detectable has inverted its charter.
+Naming the conventions keeps the cost bounded, which unbounded recursion would not.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-003" priority="must">
+<p>Where a design declares an interface or a contract path, that declaration <strong>MUST</strong> take precedence over inference
+from dependencies or the filesystem — in both directions, establishing that a contract is owed and that one is not.</p>
+<details><summary>Rationale</summary><p>Inference cannot distinguish publishing from consuming, nor a published contract from a
+vendored one. Only a declaration carries intent, and both false directions have been observed.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-004" priority="must">
+<p>A newly-recognised event-driven interface <strong>MUST</strong> first be reported at advisory severity, and
+<strong>MUST NOT</strong> hard-fail a profile floor until the signal set has been promoted deliberately.</p>
+<details><summary>Rationale</summary><p>A broker client is a weaker declaration of public surface than a web framework. Landing
+hard would produce exactly the false failures the existing ceiling was written to prevent.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-005" priority="must">
+<p>The seeded contract-first principle's copy <strong>MUST</strong> name every format the detector accepts, including AsyncAPI,
+Protobuf and GraphQL SDL.</p>
+<details><summary>Rationale</summary><p>A project reading its own constitution should be able to learn which artifacts satisfy the
+rule. Today the copy names three formats and the detector accepts six.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-006" priority="should">
+<p>Detection <strong>SHOULD</strong> prefer signals that indicate <em>producing</em> over mere client presence where the ecosystem
+makes that distinguishable.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-007" priority="should">
+<p>The residual false-negative — an interface exposed through a mechanism outside the signal set — <strong>SHOULD</strong> remain
+recorded as an honest ceiling rather than closed by widening into false failures.</p>
+</spec-requirement>
+
+<h3>Non-functional</h3>
+
+<spec-requirement id="NFR-001" priority="must">
+<p>Detection <strong>MUST</strong> remain shallow and bounded: it <strong>MUST</strong> complete in under 500 ms on a typical
+project, and <strong>MUST</strong> make at most 0 network calls.</p>
+<details><summary>Rationale</summary><p>Preserves the existing detection budget that the widened path list trades against.</p></details>
+</spec-requirement>
+
+<spec-requirement id="NFR-002" priority="must">
+<p>The widening <strong>MUST NOT</strong> change the verdict for any project that passes today: at most 0 currently-covered
+projects may become gaps through path detection alone.</p>
+<details><summary>Rationale</summary><p>Finding contracts in more places can only add coverage. Any regression here would be a
+defect, not a trade.</p></details>
+</spec-requirement>
+
+<h3>Out of scope (deferred to other slices)</h3>
+<spec-out-of-scope>
+  <ul>
+    <li defer-to="074-contract-checked-tier">What a detected contract must then satisfy — style linting and breaking-change detection.</li>
+    <li defer-to="077-event-schema-evolution">Payload compatibility over time, which detection cannot speak to.</li>
+    <li defer-to="TBD-interface-signal-promotion">Promoting the event-driven signals from advisory to the hard floor once field evidence supports it.</li>
+  </ul>
+</spec-out-of-scope>
+</section>
+
+
+<section id="data">
+<h2>4 · Data model</h2>
+
+<p>No persisted entity. This spec widens two signal sets and adds one precedence rule over existing derived state.</p>
+
+<h3>Entities</h3>
+<dl>
+  <dt>Interface signal</dt><dd>A dependency pattern indicating a project exposes a public interface. Gains an event-driven class
+  alongside the existing HTTP, GraphQL and RPC ones.</dd>
+  <dt>Contract location</dt><dd>A conventional path where a checked-in contract may be found. Gains ecosystem-specific entries
+  beyond the current shallow set.</dd>
+  <dt>Interface declaration</dt><dd>Authored, not inferred — from <a href="../069-design-contract-section/spec.html">069</a>. When
+  present it decides the question that inference would otherwise guess at.</dd>
+</dl>
+
+<spec-note>
+<p>The precedence order is the load-bearing part: declaration, then inference, then the fail-safe exemption. Reversing the first
+two would make a design's stated intent unable to correct a wrong guess, which is the only reason the declaration exists.</p>
+</spec-note>
+</section>
+
+
+<section id="success">
+<h2>5 · Success criteria</h2>
+
+<p>Technology-agnostic, measurable outcomes. These are how we know it worked.</p>
+
+<spec-requirement id="SC-001" priority="must">
+<p>A broker-only fixture with no contract is reported as a <code>contract-first</code> gap; the same fixture with an AsyncAPI
+document is reported covered — across 100% of the ecosystems given broker signals.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-002" priority="must">
+<p>Fixtures placing contracts at each newly-recognised conventional location are reported covered, and at most 0 previously-covered
+fixtures regress to a gap.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-003" priority="must">
+<p>A fixture declaring that it publishes nothing is not reported as a gap despite a broker dependency, and a fixture whose
+declaration names a contract the filesystem lacks is reported as a gap despite a vendored file being present.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-004" priority="should">
+<p>Whole-project detection stays under 500 ms on a repository of at least 50 modules after the path list widens.</p>
+</spec-requirement>
+</section>
+
+
+<section id="assumptions">
+<h2>6 · Assumptions</h2>
+
+<spec-assumption>
+<p>Declaring a broker client in a manifest correlates well enough with using it that the signal is worth acting on — advisory
+first precisely because this is an assumption rather than a certainty.</p>
+</spec-assumption>
+
+<spec-assumption>
+<p>Conventional contract locations are stable enough per ecosystem to enumerate. Where a project is unconventional, its design's
+declaration is the intended escape hatch.</p>
+</spec-assumption>
+</section>
+
+
+<section id="questions">
+<h2>7 · Open questions</h2>
+<spec-questions>
+<p>None outstanding — the symmetry framing, advisory-first landing, and declaration-over-inference precedence were settled by the
+two considerations surveys that produced this slice. Which specific broker packages constitute the signal set per ecosystem is an
+implementation detail for the design, not an undecided requirement.</p>
+</spec-questions>
+</section>
+
+
+<section id="conformance">
+<h2>8 · Conformance index</h2>
+<p>Auto-built from every <code>&lt;spec-requirement&gt;</code> in this document.</p>
+<spec-conformance></spec-conformance>
+</section>
+
+
+<section id="changelog">
+<h2>9 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-07-31">31 Jul 2026</time><span>Initial draft. Resolves three slugs the surveys planted as separate proposals — <code>TBD-async-interface-signals</code>, <code>TBD-contract-detection-paths</code> and <code>TBD-contract-principle-format-parity</code> — grouped here because they are one coherent slice: both blind spots are detection, and the principle's copy is the same list said in prose. Landing them still amends <a href="../042-profile-enforcement/spec.html">042</a>, whose FR-014 records both misses as accepted ceilings; this spec owns the work and the amendment is its first task. Tracked as triage <code>T-002</code> and <code>T-003</code> on 042.</span></li>
+  <li><time datetime="2026-08-01">01 Aug 2026</time><span>Status flipped Draft → Accepted on 01 Aug 2026 — zero remaining unchecked tasks; tests verified passing per author confirmation. Sibling bundle (REQ-LIFECYCLE-005).</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  073-interface-detection-widening · Interface detection widening · authored 31 Jul 2026
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>

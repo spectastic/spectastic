@@ -1,0 +1,927 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
+<title>The data model has to leave the repo — Considerations for Spectastic</title>
+<meta name="description" content="A feature's entities are prose in the spec and its interface contract is nowhere. Both hold until another team — another repository — needs the shape. A survey of where the data model and the API contract should live, how a single-file HTML artifact can carry a schema honestly, and what each rung of the contracts profile axis should actually buy.">
+<link rel="stylesheet" href="../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../assets/favicon.svg">
+<script src="../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Considerations · Data models &amp; contracts</p>
+  <h1>The data model has to leave the repo</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    Entities are prose in the spec. The interface contract is nowhere at all. Both are survivable right up to the moment another team — in another repository — needs the shape, and prose turns out to be the one format nothing can generate from, diff, lint, or hand over.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>     <span><spec-status value="draft">Draft</spec-status></span>
+    <b>Type</b>       <span>Architecture &amp; landscape survey</span>
+    <b>Author</b>     <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Created</b>    <span><time datetime="2026-07-30">30 Jul 2026</time></span>
+    <b>Companion</b>  <span><a href="./event-driven-interface-considerations.html">event-driven-interface</a> · <a href="./engineering-principles-considerations.html">engineering-principles</a></span>
+    <b>Sources</b>    <span>16 external, retrieved 30 Jul 2026 · codebase audit</span>
+    <b>Read time</b>  <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-tldr>
+    <p>The premise turned out to understate the problem: it isn't that <em>design</em> squeezes data models into prose, it's that
+    the model sits at the <strong>wrong altitude</strong> and the contract has <strong>no home at all</strong>. Today
+    <code>spec.html</code> §4 is a <code>&lt;dl&gt;</code> of entity → sentence (67 of 69 specs use it), and
+    <code>design.html</code> — the artifact that actually decides <em>how</em> — has no data-model or contract section anywhere in
+    its eleven. Meanwhile the vocabulary is already built everywhere <em>except</em> the artifact: the <code>contract-first</code>
+    enforce category detects OpenAPI, <code>.proto</code>, GraphQL SDL, AsyncAPI and <code>contracts/*.schema.json</code>; the
+    <code>contracts</code> profile axis ladders <code>informal → contract-first → contract-checked → versioned+governed</code>; and
+    the seeded principle already promises a contract ships "before the code behind it." Nothing in the design verb honours any of
+    it. The landscape is unambiguous — in 2026 <mark>the unit of an API is the schema, not the endpoint</mark>, design-first is the
+    default, and machine-readable contracts measurably outperform prose as an <em>agent's</em> target. Decisively, the closest peer
+    tool has already answered the "one verb = one artifact" objection: Spec Kit's <code>/plan</code> emits <code>plan.md</code>
+    <em>plus</em> <code>data-model.md</code> and a <code>contracts/</code> directory of OpenAPI/GraphQL files. One verb, one
+    <em>primary</em> artifact, sidecars alongside. On <em>where</em> the file goes, two lifecycle states settle it — a spec authors
+    a <strong>proposed</strong> contract beside its design, and promotion writes the <strong>effective</strong> one to the
+    project's ecosystem-conventional path and archives the proposal, exactly as apply already folds and archives a change
+    proposal, so one live copy exists at every instant. A third gap found along the way — the enforcement gate recognises no
+    message broker of any kind, so an event-driven service owes no contract at all — outgrew this doc and became the
+    <a href="./event-driven-interface-considerations.html">companion survey</a>. Recommendation: three staged slices —
+    <strong>give the contract a home</strong>, <strong>render it honestly</strong> (a bounded, generated, drift-guarded view — the
+    CSP forbids transclusion, so an embed is a materialised copy and must be policed like one), and
+    <strong>make it exportable</strong> across the repo boundary as the headline bet — which
+    <a href="../specs/067-spec-project-identity/spec.html">067</a> has already unblocked by landing the
+    <code>spectastic://&lt;project&gt;/…</code> coordinate an exported contract should inherit rather than duplicate.</p>
+  </spec-tldr>
+
+  <spec-audience-map>
+    <dl>
+      <dt>Exec / PM</dt>   <dd>The TL;DR, then §<a href="#recommendation">9</a> (the three slices).</dd>
+      <dt>Reviewer</dt>    <dd>§<a href="#today">2</a> (the three gaps, quoted) + §<a href="#layering">3</a> (which artifact owns what).</dd>
+      <dt>Implementer</dt> <dd>§<a href="#representation">5</a> (the four options, scored) + §<a href="#location">6</a> (where the file goes) + §<a href="#tiering">8</a> (profile tiering) + §<a href="#recommendation">9</a>.</dd>
+      <dt>Event-driven</dt><dd>The companion survey, <a href="./event-driven-interface-considerations.html">Not every interface is an endpoint</a> — why a broker-only service is currently exempt from the contract floor entirely.</dd>
+      <dt>In a hurry</dt>  <dd>The contract is a file, not markup. A spec proposes one; promotion makes it effective at the root. §<a href="#recommendation">9</a>.</dd>
+    </dl>
+  </spec-audience-map>
+</header>
+
+
+<!-- ======================================================= -->
+<section id="ask">
+<h2>1 · The ask — a shape that outlives one repository</h2>
+
+<p><spec-newthought>The scenario is concrete.</spec-newthought> A spectastic project is a backend service. Somewhere in its design
+stage it settles what a <code>Settlement</code> looks like on the wire: which fields, which are nullable, which enum values are
+legal, what the error envelope is. A different team, in a <em>different repository</em>, is building the UI against it. They need
+that shape — not a paragraph describing it, the shape itself, in a form their code generator, their type-checker, and their mock
+server can all read.</p>
+
+<p>Today spectastic gives them a paragraph. The entities live as a definition list in the spec, which is excellent for a reader and
+useless for a compiler. Nothing in the lifecycle produces a file the other repository could consume, and nothing references one if
+a human happens to write it by hand.</p>
+
+<p>The instinct to resist is a good one and worth naming precisely, because it is the reason the gap exists. Spectastic holds a
+strong line that each verb owns exactly one honest artifact — <code>design.html</code> <em>is</em> the design doc, the way
+<code>tasks</code> owns the work plan. Multiplying outputs per verb is how tools acquire the sprawl this one was built to avoid. So
+the question is not "should we relax the principle" but the sharper one: <strong>is a machine-readable contract a second artifact,
+or is it the same artifact in the form a machine can read?</strong> §4 shows the field has already answered this, and §5 shows the
+answer survives contact with a single-file HTML design system.</p>
+
+<p>Two secondary pressures push the same way. A large model — thirty entities, not three — is unreadable as prose regardless of
+where it lives; the reading-measure that makes a spec calm makes a schema illegible. And the primary consumer of these artifacts is
+increasingly an agent, for which the difference between prose and schema is not stylistic but functional.</p>
+</section>
+
+
+<!-- ======================================================= -->
+<section id="today">
+<h2>2 · Where spectastic puts models today — three gaps, not one</h2>
+
+<p><spec-newthought>The audit found the problem one level up from where it was reported.</spec-newthought> The complaint was that
+the design doc forces data models into prose. In fact the design doc doesn't hold them at all — and a third gap, wider than either,
+sits underneath both.</p>
+
+<p><strong>Gap one — the spec holds the model, as prose.</strong> <code>templates/spec.html</code> §4 Data model is a definition
+list and a note:</p>
+
+<pre><code>&lt;h3&gt;Entities&lt;/h3&gt;
+&lt;dl&gt;
+  &lt;dt&gt;[ENTITY_1]&lt;/dt&gt;&lt;dd&gt;[FIELDS_AND_PURPOSE]&lt;/dd&gt;
+  &lt;dt&gt;[ENTITY_2]&lt;/dt&gt;&lt;dd&gt;[FIELDS_AND_PURPOSE]&lt;/dd&gt;
+&lt;/dl&gt;</code></pre>
+
+<p>Sixty-seven of sixty-nine shipped specs carry the section. In this repo it reads well, because this repo's specs mostly
+introduce no persisted entities at all — 064's §4 says the slice "introduces <strong>no new persisted artifact</strong>", 068's says
+"No new persisted entity." That is a self-selecting sample. A settlement service or a booking system fills the same
+<code>&lt;dl&gt;</code> with thirty rows of fields-and-purpose, and it degrades exactly as you'd expect.</p>
+
+<p><strong>Gap two — the design doc has nowhere to put a contract.</strong> <code>templates/design.html</code> runs Principles
+check, Technical context, Grounding, Approach, Alternatives, Decisions, Project structure, Risks, Complexity, Open questions,
+Change log. No data section, no schema section, no contract section. The nearest thing is a single interview prompt in
+<code>commands/spectastic.design.md</code> — "<em>Persistence shape</em> if storage was discussed (e.g. SQL / KV / object store /
+in-memory only)" — whose answer lands as a row in the Technical-context table. Storage <em>class</em>, not storage <em>shape</em>.</p>
+
+<p><strong>Gap three — the whole apparatus assumes a synchronous request/response interface.</strong> The gate that decides whether
+a contract is owed at all matches a fixed list of dependency names, every one of them an HTTP framework, a GraphQL server, or a
+gRPC toolchain. A service whose public surface is broker topics is therefore exempt from the contract floor at every tier. That
+finding outgrew this survey and has its own:
+<a href="./event-driven-interface-considerations.html"><em>Not every interface is an endpoint</em></a>. It matters here only as
+context — the sections below assume a synchronous interface throughout, and where they say "endpoint" or "response", an
+event-driven project should read "message" and "payload" without the argument changing.</p>
+
+<p><spec-newthought>The strange part is that everything else is already built.</spec-newthought> The vocabulary for contracts exists
+throughout the codebase; it simply never reaches the artifact:</p>
+
+<div style="overflow-x:auto;">
+<table>
+  <thead>
+    <tr><th>Machinery</th><th>Where</th><th>What it already knows</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>contract-first</code> enforce category</td>
+      <td><code>packages/core/src/enforce/detect.ts</code></td>
+      <td>Detects <code>openapi|swagger|asyncapi.{yaml,json}</code>, <code>*.proto</code>, <code>*.graphql</code>, and
+      <code>*.schema.json</code> under <code>contracts/</code> — searching root plus <code>api/ proto/ schema/ contracts/</code>,
+      one level, no recursion. Interface-gated: a gap only when a web/RPC framework is detected without a contract. The search path
+      is narrow enough to miss most ecosystem-conventional layouts — see §<a href="#location">6</a>.</td>
+    </tr>
+    <tr>
+      <td><code>contracts</code> profile axis</td>
+      <td><code>spectastic-profiles.json</code></td>
+      <td>Four rungs already named: <code>informal</code> → <code>contract-first</code> → <code>contract-checked</code> →
+      <code>versioned+governed</code>. Advisory vocabulary; nothing reads it.</td>
+    </tr>
+    <tr>
+      <td>Seeded principle (standard tier and up)</td>
+      <td><code>spectastic-profiles.json</code></td>
+      <td>"A component that exposes an interface ships a checked-in contract … <em>before the code behind it</em>. The contract is
+      the agent's target and the consumer's guarantee." Names OpenAPI, JSON Schema and typed signatures — <strong>not</strong>
+      AsyncAPI, and not <code>.proto</code> or GraphQL SDL either.</td>
+    </tr>
+    <tr>
+      <td><code>INTERFACE_SIGNALS</code> — the gate's antecedent</td>
+      <td><code>packages/core/src/enforce/detect.ts</code></td>
+      <td>Forty-odd dependency signals across six ecosystems, <strong>all HTTP, GraphQL or gRPC</strong> — the subject of the
+      <a href="./event-driven-interface-considerations.html">companion survey</a>.</td>
+    </tr>
+    <tr>
+      <td>The design verb</td>
+      <td><code>templates/design.html</code>, <code>commands/spectastic.design.md</code></td>
+      <td><strong>Nothing.</strong> No section, no interview question, no element, no link.</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+
+<p>So the enforcement floor can already fail a project for not having a contract that the lifecycle gives it no way to author, no
+place to record, and no prompt to consider — and can simultaneously pass, in silence, a project whose interface it cannot see. That
+is the actual defect, and it has two faces.</p>
+
+<p>One further inconsistency falls out of the same audit, worth fixing whatever else is decided: the <code>contracts</code> axis
+sets <strong>standard</strong> tier to <code>contract-first</code>, but <code>contract-first</code> only enters
+<code>enforce.required</code> at <strong>verified</strong>. A standard-profile project therefore declares a contract-first posture
+that nothing checks — the axis and the floor disagree by one rung.</p>
+</section>
+
+
+<!-- ======================================================= -->
+<section id="layering">
+<h2>3 · Altitude — conceptual, logical, physical</h2>
+
+<p><spec-newthought>Before deciding where a schema lives, decide which schema.</spec-newthought> "Data model" names at least three
+different documents, and conflating them is what makes the placement question feel unanswerable. The separation is old and
+well-settled: the three-schema architecture distinguishes an <strong>external</strong> level ("a user's view of the database
+describes a part of the database that is relevant to a particular user"), a <strong>conceptual</strong> level ("a way of describing
+what data is stored within the whole database and how the data is inter-related"), and an <strong>internal</strong> level, which
+"involves how the database is physically represented on the computer system."<spec-sidenote>The ANSI-SPARC three-level
+architecture, whose stated purpose is data independence — separating the levels so "the DBA can change the database storage
+structures without affecting the users' views"
+<a href="https://en.wikipedia.org/wiki/ANSI-SPARC_Architecture">[8]</a>.</spec-sidenote></p>
+
+<p>Map that onto the lifecycle and the answer is almost mechanical:</p>
+
+<div style="overflow-x:auto;">
+<table>
+  <thead>
+    <tr><th>Level</th><th>What it is</th><th>Artifact that should own it</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Conceptual</td>
+      <td>Entities, relationships, invariants, state transitions. Technology-agnostic. Survives a rewrite.</td>
+      <td><code>spec.html</code> §4 — <em>where it already is</em>. Prose is the right medium here.</td>
+    </tr>
+    <tr>
+      <td>Internal / physical</td>
+      <td>Tables, columns, indexes, serialization, partitioning. Consequences of the stack choice.</td>
+      <td><code>design.html</code> — <em>currently homeless</em>.</td>
+    </tr>
+    <tr>
+      <td>External</td>
+      <td>What a <em>consumer</em> sees: request/response shapes, event payloads, error envelopes. The published projection.</td>
+      <td><code>design.html</code>, as a referenced contract file — <em>currently homeless</em>.</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+
+<p>The third row is the one that repays the framing. An API contract is not a description of the persistence model; it is the
+external schema — deliberately <em>not</em> the internal one, deliberately stable while the internal one churns. That is the whole
+point of the separation, and it is why "the data model" and "the API contract" are two artifacts that must be allowed to differ. A
+spec that pins the conceptual model, a design that records the physical one, and a contract file that publishes the external one is
+not three competing sources of truth; it is one model observed from the three altitudes the lifecycle already has verbs for.</p>
+
+<p>It also resolves the tension in §1 without touching the spec's prose. §4 keeps doing what it does well — naming the entities a
+feature owns and the invariants a reviewer should look twice at — and stops being asked to carry field types it was never shaped
+for. Practitioner reports of design-first work describe the same direction of travel: changes were "done first in the API design,
+and then trickle down until the data-model."<spec-sidenote>A team's account of adopting design-first with a typed API DSL,
+including the review sessions, the decision log, and the CI drift checks
+<a href="https://devblogs.microsoft.com/ise/design-api-first-with-typespec/">[3]</a>.</spec-sidenote></p>
+
+<spec-decision id="D-001" grounding="verified">
+  <h4>D-001 · The spec keeps the conceptual model; the design owns the physical model and the external contract</h4>
+  <dl>
+    <dt>Status</dt><dd><spec-status value="draft">Proposed</spec-status></dd>
+    <dt>Context</dt><dd>"Data model" conflates three levels. Spec §4 is already the right home for one of them and the wrong home
+    for the other two, and the design artifact — which decides the stack that determines both — holds neither.</dd>
+    <dt>Decision</dt><dd>Fix the altitude rather than the format. <code>spec.html</code> §4 stays conceptual and
+    technology-agnostic: entities, relationships, invariants, state transitions, no field types, no wire format. The physical
+    schema and the consumer-facing contract belong to <code>design.html</code>, which is also where the stack choice that
+    constrains them is recorded.</dd>
+    <dt>Consequences</dt><dd>+ The spec stays readable and stack-independent — a rewrite invalidates the design, not the spec.
+    + Puts the contract next to the decisions that shape it, so an ADR and the schema it justifies sit in one document.
+    + Costs nothing for the 67 existing §4 sections, which are already conceptual. − Introduces a judgment call at authoring time
+    ("is this field-level detail conceptual?") that the interview must actively resolve rather than leave to taste.
+    − Two artifacts must now be read together to see the whole model; the design must link back to spec §4 rather than restate it.</dd>
+  </dl>
+</spec-decision>
+</section>
+
+
+<!-- ======================================================= -->
+<section id="landscape">
+<h2>4 · The landscape — the schema is the unit, and the peers already ship sidecars</h2>
+
+<p><spec-newthought>The field has consolidated hard since the last time this question was open.</spec-newthought> The 2026 framing
+is that "the unit of an API is the schema, not the endpoint" — schemas are authoritative, and documentation, client SDKs, server
+stubs, test fixtures, and agent tool definitions are all <em>generated</em> from them rather than written alongside
+them.<spec-sidenote>A survey mapping JSON Schema, OpenAPI 3.1, AsyncAPI 3.0, GraphQL SDL, Protobuf, Smithy and TypeSpec against
+each other, dated May 2026: "A good 2026 API is not hand-coded — it falls out of the schema"
+<a href="https://www.youngju.dev/blog/culture/2026-05-14-api-schema-2026-json-schema-openapi-3-1-asyncapi-graphql-grpc-deep-dive.en">[2]</a>.</spec-sidenote>
+The standards body is blunter still: the OpenAPI Initiative writes that "the importance of using Design-first cannot be stressed
+strongly enough," and warns that arriving at the description after the code yields "unintuitive and incomplete descriptions, that
+will rarely scale in the future."<spec-sidenote>OpenAPI Initiative, Best Practices — which also insists on exactly one
+authoritative location, because with two "newcomers to the project will not know which one is actually in use and mistakes will be
+made" <a href="https://learn.openapis.org/best-practices.html">[1]</a>.</spec-sidenote></p>
+
+<p>Notably, the consolidation has a second floor: authorable DSLs — TypeSpec, Smithy — are increasingly the source of truth, with
+OpenAPI itself <em>demoted to a generated artifact</em> <a href="https://www.youngju.dev/blog/culture/2026-05-14-api-schema-2026-json-schema-openapi-3-1-asyncapi-graphql-grpc-deep-dive.en">[2]</a>.
+That matters for spectastic only as a warning: whatever home the contract gets must not assume the file is hand-written OpenAPI,
+because for a growing fraction of projects it will itself be generated from something upstream.</p>
+
+<p><spec-newthought>The agent argument is the one closest to this tool's purpose.</spec-newthought> Documentation written only for
+humans measurably degrades machine consumption — agents "hallucinate parameters that don't exist, miss authentication requirements,
+and generate code that fails" — while a machine-readable definition lets docs, token-efficient markdown, index files and SDK
+examples all fall out of one source, so "when the API changes, everything updates
+together."<spec-sidenote>On preparing API surfaces for agent consumption; the same source notes that HTML "includes navigation
+menus, styling markup, and visual formatting that AI models must process but cannot use" — a caution worth holding onto for §5
+<a href="https://buildwithfern.com/post/prepare-apis-documentation-ai-agent-consumption">[4]</a>.</spec-sidenote> Spectastic's own
+seeded principle already asserts this — the contract is "the agent's target" — which makes the absence of a place to put one
+awkward rather than merely incomplete.</p>
+
+<p><spec-newthought>And the peer tools have already settled the artifact-count objection.</spec-newthought> This is the decisive
+finding, because it is the closest available prior art.<spec-sidenote>Spec Kit's plan template lists the Phase 1 outputs as
+<code>data-model.md</code>, <code>/contracts/*</code> and <code>quickstart.md</code>
+<a href="https://github.com/github/spec-kit/blob/main/templates/plan-template.md">[5]</a>; its methodology document states the
+ordering constraint plainly — create <code>contracts/</code> with API specifications <em>before</em> creating source files
+<a href="https://github.com/github/spec-kit/blob/main/spec-driven.md">[6]</a>. Kiro's spec documentation names no data model or
+schema among its design contents <a href="https://kiro.dev/docs/specs/">[7]</a> — the omission is the point: the
+strict-one-artifact position exists in the field, and it is the position spectastic currently shares.</spec-sidenote></p>
+
+<div style="overflow-x:auto;">
+<table>
+  <thead>
+    <tr><th>Tool</th><th>Design-stage outputs</th><th>Where the model and contract go</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Spec Kit</td>
+      <td><code>plan.md</code> + <code>research.md</code> + <code>data-model.md</code> + <code>contracts/</code> + <code>quickstart.md</code></td>
+      <td>Explicit sidecars. <code>data-model.md</code> carries "entities, fields, and relationships"; <code>contracts/</code> holds
+      API specifications "in OpenAPI/GraphQL format", one file per surface area. The task verb reads them as inputs.</td>
+    </tr>
+    <tr>
+      <td>Kiro</td>
+      <td><code>requirements.md</code> + <code>design.md</code> + <code>tasks.md</code></td>
+      <td>One design doc, covering "system architecture and component design, sequence diagrams and data flow, error handling and
+      testing strategy." No data model or schema named.</td>
+    </tr>
+    <tr>
+      <td>Spectastic (today)</td>
+      <td><code>design.html</code></td>
+      <td>Neither. The conceptual model sits one artifact upstream; the contract is absent.</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+
+<p>The reframing this permits is exact, and it is what §1 was reaching for. Spec Kit did not abandon one-verb-one-artifact; it
+distinguished the <strong>primary authored artifact</strong> (the plan a human reads and reviews) from <strong>sidecar
+artifacts</strong> the same verb produces because a machine has to read them. Spectastic already has this distinction and already
+relies on it: <code>verify.html</code> is a derived view, not a second authored output, and the repo's own note on the pattern is
+that "one authored artifact per verb" is <em>preserved</em> precisely because the derived thing is a view rather than an output. A
+contract file is that same category — not a rival design doc, but the design's external schema in the only format a code generator,
+a linter, a mock server, or another team's build can consume.</p>
+</section>
+
+
+<!-- ======================================================= -->
+<section id="representation">
+<h2>5 · Representation — four options, and two hard constraints</h2>
+
+<p><spec-newthought>Two findings from the codebase bound the design space before any preference does.</spec-newthought></p>
+
+<p><strong>The CSP forbids transclusion.</strong> Every spec-family template ships a strict deny-by-default policy —
+<code>default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' …; img-src 'self'; object-src 'none'; base-uri 'none';
+frame-ancestors 'none'</code> — and the element vocabulary contains no <code>src=</code>-style include anywhere. There is no
+mechanism, and deliberately so, by which an artifact can load a schema file at view time. "Embed the schema in the page" can
+therefore only mean <em>materialise a copy of it at generate time</em>. That is not a detail: a copy is a second source of truth
+unless something actively polices it, which turns a rendering question into a drift question.</p>
+
+<p><strong>There is no bounded-scroll container.</strong> <code>pre</code> is styled <code>overflow-x: auto</code> and is
+vertically unbounded; nothing in <code>assets/spec.css</code> caps a block's height and scrolls it. A four-hundred-line schema
+pasted into a design doc today does not scroll — it runs the document, and takes the calm-density property of the whole design
+system with it. Any embedded view needs a new bounded container, not just a new element name.</p>
+
+<p>A third constraint is external and points the same way: the OpenAPI Initiative's own guidance for large descriptions is to
+<em>split</em> them — factor repeated blocks into <code>components</code> and reference them with <code>$ref</code>, and distribute
+a big description across multiple documents along the URL hierarchy <a href="https://learn.openapis.org/best-practices.html">[1]</a>.
+The industry answer to "this schema is too big to read" is not a taller scrollbar; it is references. Whatever spectastic renders
+should assume the authoritative thing is a file — possibly several — and that the artifact shows a view of it.</p>
+
+<p>With that established, the options:</p>
+
+<spec-matrix target="D-002">
+<div style="overflow-x:auto;">
+<table>
+  <thead>
+    <tr><th>Option</th><th>Handover</th><th>Tooling</th><th>Review</th><th>Drift</th><th>Cost</th><th class="score">Total</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>A · Prose <code>&lt;dl&gt;</code> only</strong> — the status quo</td>
+      <td>0</td><td>0</td><td>4</td><td>3</td><td>5</td><td class="score">12</td>
+    </tr>
+    <tr>
+      <td><strong>B · Author the schema inside the HTML</strong> — the artifact is the contract</td>
+      <td>1</td><td>1</td><td>3</td><td>4</td><td>4</td><td class="score">13</td>
+    </tr>
+    <tr data-winner>
+      <td><strong>C · Sidecar file, referenced, with a bounded generated view</strong></td>
+      <td>5</td><td>5</td><td>4</td><td>3</td><td>3</td><td class="score">20</td>
+    </tr>
+    <tr>
+      <td><strong>D · Published package or registry only</strong> — no in-repo artifact</td>
+      <td>5</td><td>5</td><td>1</td><td>4</td><td>1</td><td class="score">16</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+</spec-matrix>
+
+<p><em>Handover</em> — can another repository consume it. <em>Tooling</em> — can a generator, linter or differ read it.
+<em>Review</em> — does it read well in a browser and a pull request. <em>Drift</em> — how few copies can disagree.
+<em>Cost</em> — effort to author and to build, higher is cheaper.</p>
+
+<p><strong>A</strong> scores well only on the axes that measure doing nothing. <strong>B</strong> is the tempting one and the
+trap: it keeps the single-file promise, but a schema authored inside HTML is invisible to the <code>contract-first</code> detector
+that already scans the filesystem, unreadable by every generator in §4, and — per the agent finding — wrapped in exactly the
+presentational markup that machine consumers must process and cannot use. It buys tidiness at the cost of every reason to have a
+contract. <strong>D</strong> is where a mature organisation ends up but is wrong as a starting point: it strands the reviewer,
+who now has to leave the artifact to see what was decided, and it presumes distribution machinery that §6 shows is not yet
+groundable here.</p>
+
+<p><strong>C</strong> is the one the constraints select. The contract is a file, in the places the enforce detector already
+searches — root, or <code>api/ proto/ schema/ contracts/</code>. The design doc <em>references</em> it, the way a decision
+references a requirement. And because a reviewer should not have to leave the page to see what shape was agreed, the artifact may
+carry a <em>generated, bounded</em> view of it — explicitly a projection, never the source.</p>
+
+<spec-decision id="D-002" grounding="verified">
+  <h4>D-002 · The contract is a sidecar file where the enforce detector already looks; the design references it</h4>
+  <dl>
+    <dt>Status</dt><dd><spec-status value="draft">Proposed</spec-status></dd>
+    <dt>Context</dt><dd>A contract's entire value is being machine-readable by things outside this document — generators, linters,
+    differs, another team's build. Authoring it inside HTML forfeits all of that, and would also be invisible to the
+    <code>contract-first</code> gate that already scans the filesystem for exactly these files.</dd>
+    <dt>Decision</dt><dd>The contract is a plain file (OpenAPI, <code>.proto</code>, GraphQL SDL, AsyncAPI, or JSON Schema),
+    checked in where <code>detect.ts</code> already searches. It is the single source of truth. <code>design.html</code> gains a
+    section that <em>links</em> it and argues about it — why these boundaries, why this error envelope, what a consumer may rely
+    on — rather than restating it. <strong>Which</strong> path, and how an in-flight change to it is held, is settled separately by
+    §<a href="#location">6</a>.</dd>
+    <dt>Consequences</dt><dd>+ The artifact and the enforcement gate agree by construction rather than by a second convention;
+    a project that satisfies the design section satisfies <code>contract-first</code> automatically. + Standard tooling works with
+    no adapter — a consumer generates a client, a linter lints, a differ diffs. + Keeps one authoritative location, which the
+    OpenAPI guidance treats as non-negotiable. − The design artifact is no longer wholly self-contained: opened alone, it links to
+    a file that may not travel with it. − Spec folders acquire non-HTML contents for the first time, so the "everything is a
+    self-contained <code>.html</code>" description of the tool needs an honest qualifier.</dd>
+  </dl>
+</spec-decision>
+
+<p><spec-newthought>The embedded view needs the same discipline as the verify page.</spec-newthought> Once the artifact carries a
+copy of any part of the contract, the copy can go stale — and spectastic has already solved this exact problem once. The
+<code>verify-view-stale</code> rule exists because <code>verify.html</code> materialises links that can drift from the bundle it
+was generated against, and the answer was a validate finding, not a promise to remember. An embedded contract excerpt is the same
+shape of hazard and should get the same shape of guard, rather than a new mechanism invented for the occasion.</p>
+
+<spec-decision id="D-003" grounding="verified">
+  <h4>D-003 · Any in-artifact rendering is a bounded, generated, drift-guarded view — never the source</h4>
+  <dl>
+    <dt>Status</dt><dd><spec-status value="draft">Proposed</spec-status></dd>
+    <dt>Context</dt><dd>The CSP forbids runtime transclusion, so an embed is necessarily a materialised copy; no bounded-scroll
+    container exists, so a large schema would run the page; and the industry answer to a large description is references, not
+    scrollbars.</dd>
+    <dt>Decision</dt><dd>Render the contract as a generated view: materialised at generate time, height-bounded and scrolled within
+    its own container, visibly labelled as a projection of a named file, and drift-guarded by a validate finding that clones the
+    <code>verify-view-stale</code> shape. For a large contract the view is an <em>excerpt</em> — the surface being argued about —
+    with the file as the link, never a full paste.</dd>
+    <dt>Consequences</dt><dd>+ A reviewer sees the agreed shape without leaving the page, and cannot be silently shown a stale one.
+    + Reuses a proven staleness mechanism instead of inventing a second one. + Bounding the container protects the calm-density
+    property the design system trades on. − A new element plus new CSS plus a new rule is real surface area for a convenience,
+    and must earn it. − "Excerpt" is a judgment call, and a badly chosen excerpt can mislead more than no excerpt at all —
+    review-caught, not machine-caught.</dd>
+  </dl>
+</spec-decision>
+</section>
+
+
+<!-- ======================================================= -->
+<section id="location">
+<h2>6 · Where the file lives</h2>
+
+<p><spec-newthought>"A checked-in file" is not yet an answer.</spec-newthought> The path decides three things at once: whether the
+enforcement gate can see it, whether a consuming repo can address it, and who owns it as the interface changes over the years. Two
+facts from the codebase constrain the choice before any preference does.</p>
+
+<p><strong>The detector cannot see into <code>specs/</code>.</strong> <code>detectContract</code> lists the project root and then
+reaches exactly one level into <code>api/ proto/ schema/ contracts/</code> — five non-recursive directory listings, no recursion
+anywhere. A contract at <code>specs/042-orders/contracts/orders.openapi.yaml</code> is <em>never found</em>; the same file at
+<code>contracts/orders.openapi.yaml</code> is found immediately.</p>
+
+<spec-warning><strong>This is a fact about today's detector, not a law.</strong> It is worth stating plainly because the rest of
+this section could easily be written as if the detector's reach were a constraint to design around. It is not — it is a narrow
+implementation that should be widened, and the convention below is chosen on its merits, then detection is expected to follow.
+Designing the artifact layout around a fifty-line function's current search path would be the tail wagging the dog.</spec-warning>
+
+<p><spec-newthought>And that reach is narrower than it first appears.</spec-newthought> Held against the conventional layouts of
+the ecosystems spectastic already claims to detect, it misses more than it finds:</p>
+
+<div style="overflow-x:auto;">
+<table>
+  <thead>
+    <tr><th>Ecosystem convention</th><th>Conventional path</th><th>Found?</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Gradle / Maven protobuf plugin</td><td><code>src/main/proto/**/*.proto</code></td><td><strong>No</strong> — <code>src/</code> is never descended</td></tr>
+    <tr><td>Multi-module Gradle</td><td><code>service-a/src/main/proto/…</code></td><td><strong>No</strong></td></tr>
+    <tr><td>Rust, <code>tonic</code> server</td><td><code>proto/*.proto</code></td><td>Yes</td></tr>
+    <tr><td>Rust, <code>progenitor</code> client</td><td>an arbitrary <code>build.rs</code> path, e.g. <code>../sample_openapi/keeper.json</code></td><td><strong>No</strong> — unlisted dir <em>and</em> unmatched filename</td></tr>
+    <tr><td>Buf workspace</td><td><code>proto/&lt;module&gt;/v1/*.proto</code></td><td><strong>No</strong> — two levels under <code>proto/</code></td></tr>
+    <tr><td>Go convention</td><td><code>api/proto/v1/service.proto</code></td><td><strong>No</strong> — two levels under <code>api/</code></td></tr>
+    <tr><td>Spring resources</td><td><code>src/main/resources/openapi.yaml</code></td><td><strong>No</strong></td></tr>
+    <tr><td>Common directory names</td><td><code>openapi/</code>, <code>protos/</code>, <code>graphql/</code></td><td><strong>No</strong> — not in the four-dir list</td></tr>
+    <tr><td>AsyncAPI under another name</td><td><code>events.yaml</code>, <code>asyncapi/orders.yaml</code></td><td><strong>No</strong> — only a literal <code>asyncapi.{yaml,yml,json}</code></td></tr>
+  </tbody>
+</table>
+</div>
+
+<p>Two consequences follow. The narrow one: a purely spec-local convention would make a project with a perfectly good contract
+<em>fail</em> <code>contract-first</code>, so location still has to account for what the gate sees — but as a defect to fix
+alongside, not a boundary to respect. The broader one: <strong>the effective contract belongs wherever its ecosystem
+conventionally puts it</strong>, and a Gradle project should not be asked to move its protos out of <code>src/main/proto/</code>
+into a spectastic-shaped <code>contracts/</code> to satisfy a gate. A tool that makes projects rearrange themselves to be
+detectable has inverted its own charter.</p>
+
+<p><spec-newthought>The detector also cannot tell a producer from a consumer.</spec-newthought> The progenitor case makes this
+concrete: a crate using it is <em>generating a client for someone else's API</em>, so the OpenAPI document it points at is an
+upstream contract it consumes, not one it publishes. Vendor that document into <code>api/</code> and the gate marks the project
+covered — a false positive whose mirror image, a whole class of interface the gate cannot see at all, is the subject of the
+<a href="./event-driven-interface-considerations.html">companion survey</a>. The same
+applies to a checked-in <code>.proto</code> for an upstream gRPC service. Detection by file presence cannot distinguish the two;
+only a declaration can, which is an argument for the design artifact naming its contract explicitly rather than the gate inferring
+one from the filesystem.</p>
+
+<p><strong>A contract outlives the spec that introduced it.</strong> Spec 042 does not own "042's contract"; the project owns one
+interface, which many specs change over time. Under a spec-local rule, the current interface's location would depend on which spec
+last touched it, and a consumer would have to know spec ids to find it — the opposite of a handover.</p>
+
+<p><spec-newthought>Against that, the spec-local instinct is not wrong, and the closest peer does exactly it.</spec-newthought> Spec
+Kit writes <code>contracts/</code> <em>inside</em> the feature directory, alongside <code>data-model.md</code> — because during the
+work, the contract is a property of the change being made, and keeping it there is what lets the task verb read it as an input.
+The provenance that buys is real: which spec introduced this interface, and what did it look like when that spec was approved.</p>
+
+<spec-matrix target="D-004">
+<div style="overflow-x:auto;">
+<table>
+  <thead>
+    <tr><th>Option</th><th>Verdict</th><th>Note</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Project root only</td>
+      <td>Insufficient</td>
+      <td>Gate and consumers are served, but an in-flight interface change has nowhere to live except the live contract — so a
+      proposed shape and the effective one are indistinguishable while the work is open.</td>
+    </tr>
+    <tr>
+      <td>Spec-local only</td>
+      <td>Reject</td>
+      <td>Spec Kit's shape, and unusable here: invisible to <code>detectContract</code>, addressable only by spec id, and the
+      current contract's home moves with edit history.</td>
+    </tr>
+    <tr data-winner>
+      <td>Spec-local <em>proposed</em>, promoted to root <em>effective</em></td>
+      <td>Adopt</td>
+      <td>Two lifecycle states, one live copy. Exactly the relationship <code>changes/&lt;slug&gt;/proposal.html</code> already has
+      with the live <code>spec.html</code>.</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+</spec-matrix>
+
+<p><spec-newthought>The winning option is not a compromise; it is a pattern this tool already runs on.</spec-newthought> The
+objection to holding a contract in two places is the one the OpenAPI guidance makes in §6 — with two copies, "newcomers to the
+project will not know which one is actually in use." That objection lands against two <em>live</em> copies. It does not land
+against a proposal and the artifact it will be folded into, which is the entire propose/apply cycle: an authored change sits in
+<code>specs/&lt;id&gt;/changes/&lt;slug&gt;/</code>, apply folds it into the live spec, and the source is moved to
+<code>changes/archive/</code> so it can never be mistaken for current. A contract can travel the same road. The spec-local file is
+the <em>proposed</em> contract; the root file is the <em>effective</em> one; promotion archives the proposal. At every instant
+exactly one copy is authoritative, and which one is never ambiguous.</p>
+
+<p>That also gives both URI shapes an honest job, rather than forcing a choice between them.
+<code>spectastic://&lt;project&gt;/spec/&lt;id&gt;/contract/&lt;name&gt;</code> addresses the proposed contract — genuinely a
+sub-resource of that spec, because before promotion it belongs to nothing else.
+<code>spectastic://&lt;project&gt;/contract/&lt;name&gt;</code> addresses the effective one as a sibling kind, which is the
+composition <a href="../specs/067-spec-project-identity/spec.html">067</a>'s own design anticipated when it noted the scheme
+"composes with a future corpus URI." Same coordinate, two kinds, one of them nested — and the nesting means something rather than
+being a filing convention.</p>
+
+<p>One naming note. The word <code>references/</code> is already spoken for: in the corpus it means a pack's flat set of citable
+<code>.md</code> documents plus a <code>superseded/</code> subdirectory, sitting one level under a per-unit directory — the same
+shape and position a contracts folder would occupy, with entirely different semantics. Using <code>contracts/</code> at both ends
+avoids that collision and has the further merit that the proposed and effective directories share a name, differing only in
+location and lifecycle state.</p>
+
+<spec-decision id="D-004" grounding="verified">
+  <h4>D-004 · The spec-local contract is a proposal; the root contract is effective; promotion archives the proposal</h4>
+  <dl>
+    <dt>Status</dt><dd><spec-status value="draft">Proposed</spec-status></dd>
+    <dt>Context</dt><dd>A contract must be where the detector looks (root or one of four conventional dirs) and where a consumer can
+    find it without knowing spec ids — but an in-flight interface change also needs somewhere to live that is not yet the live
+    contract. Those are two states of one artifact, not two artifacts, and the propose/apply cycle already models exactly that
+    relationship.</dd>
+    <dt>Decision</dt><dd>A spec authors its contract at <code>specs/&lt;spec-id&gt;/contracts/&lt;name&gt;</code> — the
+    <em>proposed</em> interface. Promotion writes it to the project's <strong>ecosystem-conventional</strong> contract location —
+    <code>src/main/proto/</code> for a Gradle project, <code>proto/</code> for a tonic crate, <code>contracts/</code> where the
+    project has no convention of its own — as the <em>effective</em> interface, and archives the spec-local copy, mirroring how
+    apply archives a folded proposal. The design artifact names that path explicitly, so the effective contract is
+    <em>declared</em>, not inferred. Use <code>contracts/</code> for the spec-local half, not <code>references/</code>, which the
+    corpus already owns. Address the two states as
+    <code>spectastic://&lt;project&gt;/spec/&lt;id&gt;/contract/&lt;name&gt;</code> and
+    <code>spectastic://&lt;project&gt;/contract/&lt;name&gt;</code> respectively.</dd>
+    <dt>Consequences</dt><dd>+ One live copy at every instant, so the single-authoritative-location rule holds without giving up
+    per-spec provenance. + Projects keep their ecosystem's layout instead of rearranging to be detectable. + An explicit declared
+    path sidesteps the producer/consumer ambiguity that pure filesystem inference cannot resolve. + Reuses a cycle the tool and its
+    users already understand instead of inventing a second one. + An un-promoted contract is invisible to the gate, which is
+    correct: it is not yet effective. − <strong>Requires widening <code>detectContract</code></strong>, whose four-directory,
+    one-level reach misses most conventional layouts — so this decision creates detector work rather than avoiding it.
+    − Promotion is new machinery on <code>apply</code> or <code>implement</code>, including the archival step, and until it exists
+    the convention is manual. − Nothing prevents a hand-edited effective contract that never passed through a spec, so this is a
+    workflow, not an invariant — review-caught, like the fat-core/thin-CLI boundary. − A spec that only <em>changes</em> an
+    existing contract must copy the whole file to amend it, since a partial delta of a schema is not itself a valid schema.</dd>
+  </dl>
+</spec-decision>
+</section>
+
+
+<!-- ======================================================= -->
+<section id="handover">
+<h2>7 · Crossing the repo boundary</h2>
+
+<p><spec-newthought>The motivating scenario is a distribution problem wearing an authoring problem's clothes.</spec-newthought>
+Getting the contract into a file solves authorship. It does not yet get the file to the team in the other repository, and the
+options for that are well-mapped and differ enormously in cost.<spec-sidenote>The vendoring pain is named by the protobuf
+ecosystem itself — "teams feel that their only option is to copy/paste (vendor) these schemas manually" — against which a registry
+offers modules that depend on modules, automatic SDK publication to NPM/Go/Maven/Gradle/Swift, and governance where "schema owners
+can audit, approve, and reject breaking changes before they're deployed to production clients"
+<a href="https://buf.build/blog/why-a-protobuf-schema-registry">[10]</a>,
+<a href="https://github.com/bufbuild/buf">[11]</a>. Generation tooling for the package route is mature and multi-language
+<a href="https://github.com/OpenAPITools/openapi-generator">[12]</a>, and multi-team guidance frames sharing contracts in a
+unified way as "a must", recommending the interface be stored "as structured metadata in code" rather than in curated wikis
+<a href="https://docs.aws.amazon.com/prescriptive-guidance/latest/micro-frontends-aws/api-contracts.html">[9]</a>.</spec-sidenote></p>
+
+<div style="overflow-x:auto;">
+<table>
+  <thead>
+    <tr><th>Mechanism</th><th>What it costs</th><th>When it fits</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Monorepo — both sides share the file directly</td>
+      <td>Nothing, if you already have one</td>
+      <td>The common case, and genuinely the right answer when available. Consumers read the path.</td>
+    </tr>
+    <tr>
+      <td>Vendored copy — the consumer checks in a duplicate</td>
+      <td>Near zero, then silent divergence</td>
+      <td>The default people fall into. Protobuf's own ecosystem names this as the pain a registry exists to remove.</td>
+    </tr>
+    <tr>
+      <td>Generated client published as a package</td>
+      <td>CI job, versioning policy, a release cadence</td>
+      <td>The mainstream cross-repo answer — generate an SDK from the contract and publish it to npm, Maven, PyPI or Go
+      modules.</td>
+    </tr>
+    <tr>
+      <td>Schema registry</td>
+      <td>Infrastructure, governance workflow, org buy-in</td>
+      <td>Where large estates land. Modules can depend on modules, SDKs are published automatically to native package managers, and
+      breaking changes are approved or rejected before reaching clients.</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+
+<p><spec-newthought>Spectastic should own the first link in this chain and none of the others.</spec-newthought> Its job is to make
+the design stage <em>produce</em> a checked-in, correctly-located, referenced contract — which makes every mechanism above
+available, since all four take a file as their input. Publishing packages, running registries and brokering compatibility are
+solved by tools whose whole purpose that is, and a spec tool that grew a package publisher would be repeating precisely the
+category error the corpus survey warned against when it refused to absorb a vector store.</p>
+
+<p><spec-newthought>The naming problem this would have hit is already solved.</spec-newthought> A cross-repo contract needs a
+stable, globally-meaningful name, and until recently spectastic's spec estate had none — spec ids are repo-local integers. That gap
+closed with <a href="../specs/067-spec-project-identity/spec.html">067</a>: an owner-qualified <code>project</code> identity in
+<code>spectastic.json</code> read through a single-source-of-truth resolver, a canonical federation-unique URI of the form
+<code>spectastic://&lt;project&gt;/spec/&lt;spec-id&gt;</code> with an optional anchor fragment, and a deterministic
+<code>spectastic id</code> to print it. Critically for this question, that identity is <em>unified</em> rather than parallel — an
+unset <code>corpus.marketplace</code> derives from <code>project</code>, so one coordinate already qualifies both specs and the
+corpus.</p>
+
+<p>So a contract does not need a naming scheme invented for it; it needs to be another <em>resource kind</em> under the coordinate
+that exists — the same shape as the spec URI, differing in the kind segment rather than in the authority. That is a materially
+better position than this survey expected to find, and it removes the only structural blocker on the third slice. What remains
+open is not <em>what to call an exported contract</em> but <em>which distribution mechanism to bless</em> — and that is an
+organizational question the profile tier is better placed to answer than this doc is.</p>
+
+<spec-decision id="D-005" grounding="verified">
+  <h4>D-005 · The in-repo file is the export unit; an exported contract inherits 067's coordinate rather than minting one</h4>
+  <dl>
+    <dt>Status</dt><dd><spec-status value="draft">Proposed</spec-status></dd>
+    <dt>Context</dt><dd>Every distribution mechanism — vendoring, generated SDK packages, registries — consumes a checked-in
+    contract file. Producing that file reliably is the part only the lifecycle can do; distributing it is well served by existing
+    tools. The cross-repo identity this would otherwise have needed already exists: 067 landed an owner-qualified
+    <code>project</code> and a <code>spectastic://&lt;project&gt;/…</code> URI scheme, unified with the corpus coordinate.</dd>
+    <dt>Decision</dt><dd>Ship the contract file and its reference now, and treat that file as the export unit: a consumer vendors
+    it, generates from it, or publishes it with tooling of their choice. When a spectastic-owned export surface is built, it MUST
+    address contracts as a resource kind under 067's existing coordinate rather than introduce a contract-specific naming scheme —
+    the identity question is settled, so only the distribution mechanism remains open.</dd>
+    <dt>Consequences</dt><dd>+ Unblocks the motivating scenario immediately — a UI repo can consume the file the day it exists.
+    + Avoids building a package publisher or registry that mature tools already do better. + Inherits a solved, federation-unique
+    identity instead of minting a second scheme to reconcile later. − The handover stays manual in the interim; nothing detects
+    that a consumer's copy has fallen behind. − A team wanting governed versioning today gets a pointer to external tooling rather
+    than a lifecycle answer. − Binds a future export surface to 067's coordinate shape, so a later change there propagates here.</dd>
+  </dl>
+</spec-decision>
+</section>
+
+
+<!-- ======================================================= -->
+<section id="tiering">
+<h2>8 · Profile sensitivity — what each rung should buy</h2>
+
+<p><spec-newthought>This should not be a flat behaviour, and the ladder already exists.</spec-newthought> A throwaway internal
+tool and a governed enterprise interface want very different amounts of this, which is exactly what profiles are for — and the
+<code>contracts</code> axis already names four rungs that nothing currently reads. The useful move is to give them mechanical
+meaning rather than invent a parallel scale.</p>
+
+<p>API maturity models converge on the same progression and, helpfully, on <em>where</em> automation enters. Style guides appear
+first as written expectations checked in code review; linting becomes automated a rung later; registries, versioning policy and
+spec-as-source-of-truth arrive later still.<spec-sidenote>A five-level API management maturity model: ad-hoc → standardized
+("a written API style guide exists … compliance is checked in code reviews") → managed ("linting catches style guide violations
+before merge") → automated (schema registries, policy as code) → optimizing
+<a href="https://zuplo.com/learning-center/api-management-maturity-model">[16]</a>.</spec-sidenote> Mapped onto the existing axis:</p>
+
+<div style="overflow-x:auto;">
+<table>
+  <thead>
+    <tr><th>Rung</th><th>Profile</th><th>What it should mean mechanically</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>informal</code></td>
+      <td>lean</td>
+      <td>Nothing. The design section is offered and skippable; no gate. A spike must not owe anyone an OpenAPI file.</td>
+    </tr>
+    <tr>
+      <td><code>contract-first</code></td>
+      <td>standard</td>
+      <td>A project that exposes an interface has a contract file, and the design references it. The
+      <em>reference resolves</em> — a cheap, deterministic, kernel-side check. This is also the rung where the axis-versus-floor
+      inconsistency from §2 gets settled.</td>
+    </tr>
+    <tr>
+      <td><code>contract-checked</code></td>
+      <td>verified</td>
+      <td>The contract is linted against a style ruleset and diffed for breaking changes in CI. Both are commodity: a JSON/YAML
+      linter with OpenAPI and AsyncAPI rulesets, and a breaking-change differ with a ready-made action.</td>
+    </tr>
+    <tr>
+      <td><code>versioned+governed</code></td>
+      <td>enterprise</td>
+      <td>Versioning policy, a deprecation window, and an approval path for breaking changes — the registry rung. Almost entirely
+      organizational; spectastic's contribution is recording the policy as a decision and keeping the artifact honest about it.</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+
+<p><spec-newthought>One new machine check, not four.</spec-newthought> The temptation here is to build the whole ladder. But
+almost all of it already exists as mature external tooling, and the enforce engine's job is to detect whether a project has wired
+that tooling up — which is precisely the shape of the eight categories it already runs.<spec-sidenote>Spectral lints OpenAPI
+2.0/3.x, AsyncAPI 2.x and generic JSON/YAML against extendable rulesets, and is built for "editors, Git hooks, continuous
+integration, GitHub Actions" <a href="https://github.com/stoplightio/spectral">[13]</a>. oasdiff detects changes that "break
+existing API clients", emits a consumer-facing changelog and ships a GitHub Action
+<a href="https://github.com/Tufin/oasdiff">[14]</a>. Both Apache-2.0; the protobuf equivalent is the registry's own compatibility
+check <a href="https://github.com/bufbuild/buf">[11]</a>.</spec-sidenote> So the only genuinely new deterministic
+check worth spectastic owning is the one no external tool can perform, because it is about spectastic's own artifacts: <strong>does
+the contract path a design references actually exist?</strong> A design that links a schema which was renamed or never written is
+a broken artifact, and nothing today would notice. Everything above that rung is a tightening of the existing
+<code>contract-first</code> category — detect a configured linter and differ, the same way the <code>coverage</code> category
+detects a declared threshold rather than a coverage library.</p>
+
+<p>Runtime compatibility — consumer-driven contract testing, where consumers publish expectations and providers verify them before
+deploying<spec-sidenote>Pact's definition: contract testing checks "each application in isolation to ensure the messages it sends
+or receives conform to a shared understanding that is documented in a 'contract'"
+<a href="https://docs.pact.io/">[15]</a>.</spec-sidenote> — is deliberately left outside this. It is a test-suite and deployment
+concern, it needs both sides of an integration running, and it belongs to the <code>testing</code> and <code>coverage</code>
+categories if anywhere. Naming it here is to mark the boundary, not to plan it.</p>
+
+<spec-decision id="D-006" grounding="verified">
+  <h4>D-006 · Tier on the existing <code>contracts</code> axis, and add exactly one new machine check</h4>
+  <dl>
+    <dt>Status</dt><dd><spec-status value="draft">Proposed</spec-status></dd>
+    <dt>Context</dt><dd>The axis already names four rungs and nothing reads them; maturity models agree on where automation
+    enters; and linting plus breaking-change detection are commodity, permissively-licensed, CI-ready tools that the enforce engine
+    is already shaped to detect rather than replace.</dd>
+    <dt>Decision</dt><dd>Give the four existing rungs mechanical meaning rather than a new scale. Add one new deterministic check —
+    a design's referenced contract path must resolve — because only spectastic can perform it. Express
+    <code>contract-checked</code> as a tightening of the existing <code>contract-first</code> enforce category (a configured linter
+    and breaking-change differ detected), not as new rules. Leave consumer-driven contract testing out of scope, and reconcile the
+    standard-tier axis-versus-floor mismatch found in §2.</dd>
+    <dt>Consequences</dt><dd>+ Reuses the whole profile mechanism — waivers, structurally-undetectable handling, the fail-safe
+    posture — rather than duplicating it. + One small rule is cheap to build and impossible to argue with. + Keeps spectastic out
+    of the API-linter business. − A resolving path proves the file exists, not that it is valid, current, or actually served —
+    a ceiling worth recording explicitly, as the security and observability categories already record theirs.
+    − Detecting "a linter is configured" is weaker than "the linter passes", the same known limitation the other categories carry.</dd>
+  </dl>
+</spec-decision>
+</section>
+
+
+<!-- ======================================================= -->
+<section id="recommendation">
+<h2>9 · Recommendation — three staged slices</h2>
+
+<p>Two theses anchor this: <strong>the contract is a file, and the artifact is the argument about it</strong>; and
+<strong>fix the altitude before adding any markup</strong>. Ordered so each slice stands alone and de-risks the next.</p>
+
+<ol>
+  <li><strong>Slice 1 — give the contract a home.</strong> Add a data-and-contracts section to <code>templates/design.html</code>
+  and the matching interview questions to <code>commands/spectastic.design.md</code>, so the design verb asks about physical shape,
+  interface shape and consumer contract the way it already asks about persistence class. The spec authors a proposed contract
+  beside its design; promotion makes it effective at the project's conventional path, which the design <em>declares</em>. Add the
+  one new check — a declared contract path must resolve — and settle the standard-tier axis-versus-floor mismatch. Widen contract
+  detection to the ecosystem-conventional paths it misses today, which this slice depends on. Also tighten spec §4's guidance to
+  conceptual-only, which is a wording change, not a schema change.</li>
+
+  <li><strong>Slice 2 — render it honestly.</strong> A bounded, generated view of the contract inside the design artifact: a new
+  element, a height-capped scrolling container (the first in the design system), a visible "projection of <em>file</em>" label, and
+  a staleness finding cloning <code>verify-view-stale</code>. Pure reviewer convenience, deliberately built after the
+  authoritative path is proven, so a copy never precedes the original.</li>
+
+  <li><strong>Slice 3 — cross the repo boundary (the bet).</strong> Make the contract a first-class export: a named, versioned
+  thing another repository can depend on and be told about when it changes, addressed as a resource kind under the
+  <code>spectastic://&lt;project&gt;/…</code> coordinate <a href="../specs/067-spec-project-identity/spec.html">067</a> already
+  landed. Highest value, and still correctly last — not because identity blocks it (that is solved) but because the choice between
+  "publish a generated SDK" and "point at a registry" is an organizational one the profile tier is better placed to make, and
+  deserves its own survey.</li>
+</ol>
+
+<spec-warning><strong>Do not let the design doc become the schema.</strong> The pressure will be constant and reasonable-sounding:
+the view is right there, the file is one more thing to open, why not just author the fields in the artifact where they render
+nicely. The moment that happens there are two sources of truth, and the HTML one is the one no generator reads, no linter checks,
+no differ diffs, and no other team can consume — which is every reason the contract exists. The line to hold: <em>the file is the
+contract; the artifact is the argument about it.</em> If a change to the shape can be made without touching the file, the boundary
+has already been lost.</spec-warning>
+
+<h3>Suggested next artifacts</h3>
+<spec-out-of-scope>
+  <ul>
+    <li defer-to="TBD-design-contract-section">A new spec: a data-and-contracts section in <code>design.html</code> plus the interview questions behind it — physical shape, consumer contract, and the link to the checked-in file. Slice 1, the authoring half.</li>
+    <li defer-to="TBD-contract-sidecar-convention">A new spec: the two-state convention and its guarantee — a proposed contract beside the spec, promotion to the project's declared conventional path, archival of the proposal, and a validate rule that a declared contract path resolves. Slice 1, the machine half (D-004).</li>
+    <li defer-to="TBD-contract-promotion">A new spec: the promotion step itself on <code>apply</code>/<code>implement</code> — write the effective contract, archive the spec-local proposal, and refuse silently overwriting an effective contract a different spec is mid-change on. The heaviest part of Slice 1.</li>
+    <li defer-to="TBD-spec-data-model-layering">A <code>/spectastic.propose</code> against <a href="../specs/000-spectastic/spec.html">000</a>: scope spec §4 to the conceptual model explicitly, so field-level and wire-level detail has a named home downstream rather than drifting upstream by habit (D-001).</li>
+    <li defer-to="TBD-contract-detection-paths">A <code>/spectastic.propose</code> against <a href="../specs/042-profile-enforcement/spec.html">042</a>: widen contract <em>detection</em> beyond its four-directory, one-level reach to the ecosystem-conventional layouts it misses — <code>src/main/proto/</code>, nested <code>proto/</code> and <code>api/</code> trees, <code>openapi/</code>, and AsyncAPI documents under other names — and prefer a declared path over filesystem inference where the design supplies one — which also addresses the producer/consumer false positive. Slice 1 depends on it.</li>
+    <li defer-to="TBD-contract-embedded-view">A new spec: a bounded, generated, drift-guarded contract view — the element, the first height-capped scrolling container in the design system, and a staleness finding cloning <code>verify-view-stale</code>. Slice 2.</li>
+    <li defer-to="TBD-contract-checked-gate">A <code>/spectastic.propose</code> against <a href="../specs/042-profile-enforcement/spec.html">042</a>: tighten <code>contract-first</code> at the verified tier to require a configured contract linter and breaking-change differ, matching how the coverage category detects a declared threshold rather than a library.</li>
+    <li defer-to="TBD-contract-export-handover">A follow-on survey then spec: the cross-repo export surface — which distribution mechanism to bless, versioning, and how a consuming repository learns a contract moved, addressing contracts as a resource kind under the coordinate <a href="../specs/067-spec-project-identity/spec.html">067</a> landed rather than a new scheme. Slice 3.</li>
+  </ul>
+</spec-out-of-scope>
+</section>
+
+
+<!-- ======================================================= -->
+<section id="caveats">
+<h2>10 · Caveats on the sources</h2>
+<ul>
+  <li><strong>The maturity-model rungs are a framing device, not a measurement.</strong> Vendor-published API maturity models are
+  marketing-adjacent and their level boundaries vary between publishers. What is durable — and is corroborated by the standards
+  guidance and by practitioner accounts — is the <em>ordering</em>: written convention precedes automated linting, which precedes
+  registries and governed versioning. The mapping onto spectastic's four existing rungs is this doc's inference, not a citation.</li>
+  <li><strong>"Sixty-seven of sixty-nine specs" measures this repo, which is unrepresentative.</strong> Spectastic's own specs
+  mostly introduce no persisted entities, so the §4 prose format has never been stressed here. The claim that it degrades at scale
+  is reasoned from the format's properties and from what peer tools chose, not observed in this corpus — a real project with thirty
+  entities would be the honest test, and none was available.</li>
+  <li><strong>The peer-tool comparison is a snapshot of fast-moving tools.</strong> Spec Kit's plan outputs and Kiro's design
+  contents were read from current documentation in July 2026; both projects iterate quickly and either could add or drop a sidecar
+  artifact. The structural point — that the field contains both a sidecar position and a single-artifact position, and that the
+  sidecar position is compatible with one-artifact-per-verb — is more durable than either tool's current file list.</li>
+  <li><strong>The ecosystem-layout table is reasoned from convention, not measured.</strong> The paths listed as missed follow from
+  reading <code>detectContract</code> against each ecosystem's documented default layout; no corpus of real repositories was
+  sampled. Conventions also vary within an ecosystem — plenty of Gradle projects do keep protos in a top-level <code>proto/</code>.
+  The claim that survives is directional: the search path is narrow relative to the space of normal layouts, and the two examples
+  that prompted the check both fell outside it.</li>
+  <li><strong>The agent-consumption evidence is largely vendor-reported.</strong> The claim that machine-readable schemas
+  outperform prose for agent code generation is well-attested directionally and matches this project's own experience, but the
+  supporting write-ups come from companies selling schema tooling. Treated here as motivation, not as a measured effect size.</li>
+</ul>
+</section>
+
+
+<!-- ======================================================= -->
+<section id="sources">
+<h2>11 · Sources</h2>
+<p>External landscape retrieved 30 Jul 2026 via search; canonical standard, tool and practitioner pages cited. Fused with a direct
+codebase audit (the spec and design templates, the design command's interview phase, the <code>contract-first</code> detector, the
+<code>contracts</code> profile axis and its seeded principle, the CSP in the shipped templates, and the absence of any bounded
+scroll container in the stylesheet).</p>
+<ol>
+  <li>Best Practices — <a href="https://learn.openapis.org/best-practices.html">learn.openapis.org/best-practices</a>: the OpenAPI Initiative on Design-first, on keeping exactly one authoritative location, and on splitting large descriptions with <code>components</code> and <code>$ref</code>.</li>
+  <li>API Schema Landscape 2026 — JSON Schema, OpenAPI 3.1, AsyncAPI, GraphQL, gRPC, Smithy, TypeSpec in one map — <a href="https://www.youngju.dev/blog/culture/2026-05-14-api-schema-2026-json-schema-openapi-3-1-asyncapi-graphql-grpc-deep-dive.en">youngju.dev/blog/culture/2026-05-14-api-schema-2026…</a>: the schema as the unit of an API; authorable DSLs promoted to source of truth, OpenAPI demoted to a generated artifact.</li>
+  <li>A Technical Journey into API Design-First: Best Practices and Lessons Learned — <a href="https://devblogs.microsoft.com/ise/design-api-first-with-typespec/">devblogs.microsoft.com/ise/design-api-first-with-typespec</a>: a contract repository, live design review, an architectural decision log, and breaking-change detection wired into CI.</li>
+  <li>Prepare APIs for AI agents — <a href="https://buildwithfern.com/post/prepare-apis-documentation-ai-agent-consumption">buildwithfern.com/post/prepare-apis-documentation-ai-agent-consumption</a>: machine-readable definitions versus human-only prose for agent consumption; one definition generating docs, markdown, indexes and SDK examples.</li>
+  <li>Spec Kit — plan template — <a href="https://github.com/github/spec-kit/blob/main/templates/plan-template.md">github.com/github/spec-kit/blob/main/templates/plan-template.md</a>: the Phase 1 outputs <code>data-model.md</code>, <code>/contracts/*</code>, <code>quickstart.md</code>.</li>
+  <li>Spec Kit — spec-driven methodology — <a href="https://github.com/github/spec-kit/blob/main/spec-driven.md">github.com/github/spec-kit/blob/main/spec-driven.md</a>: what the data-model and contracts artifacts contain, and that contracts are created before source files.</li>
+  <li>Kiro — Specs — <a href="https://kiro.dev/docs/specs/">kiro.dev/docs/specs</a>: the three-artifact shape and what <code>design.md</code> covers — architecture, sequence diagrams, data flow, error handling, testing strategy.</li>
+  <li>ANSI-SPARC Architecture — <a href="https://en.wikipedia.org/wiki/ANSI-SPARC_Architecture">en.wikipedia.org/wiki/ANSI-SPARC_Architecture</a>: the external / conceptual / internal levels and data independence as the purpose of separating them.</li>
+  <li>API contracts (micro-frontends prescriptive guidance) — <a href="https://docs.aws.amazon.com/prescriptive-guidance/latest/micro-frontends-aws/api-contracts.html">docs.aws.amazon.com/prescriptive-guidance/…/api-contracts</a>: sharing contracts in a unified way as a requirement at multi-team scale; structured metadata in code over curated wikis.</li>
+  <li>Why a Protobuf schema registry? — <a href="https://buf.build/blog/why-a-protobuf-schema-registry">buf.build/blog/why-a-protobuf-schema-registry</a>: the copy/paste vendoring problem, modules depending on modules, automatic SDK publication, and approval workflows for breaking changes.</li>
+  <li>buf — <a href="https://github.com/bufbuild/buf">github.com/bufbuild/buf</a>: the protobuf toolchain, including backward-compatibility checking in CI.</li>
+  <li>OpenAPI Generator — <a href="https://github.com/OpenAPITools/openapi-generator">github.com/OpenAPITools/openapi-generator</a>: client SDK and server stub generation across languages from an OpenAPI description.</li>
+  <li>Spectral — <a href="https://github.com/stoplightio/spectral">github.com/stoplightio/spectral</a>: a JSON/YAML linter with OpenAPI, AsyncAPI and Arazzo rulesets, built for editors, git hooks and CI. Apache-2.0.</li>
+  <li>oasdiff — <a href="https://github.com/Tufin/oasdiff">github.com/Tufin/oasdiff</a>: OpenAPI diffing, breaking-change detection, consumer-facing changelogs, and a GitHub Action. Apache-2.0.</li>
+  <li>Pact — <a href="https://docs.pact.io/">docs.pact.io</a>: consumer-driven contract testing, and the definition of a contract as a shared understanding verified against each side in isolation.</li>
+  <li>The API Management Maturity Model — <a href="https://zuplo.com/learning-center/api-management-maturity-model">zuplo.com/learning-center/api-management-maturity-model</a>: five levels, with style guides appearing as manual convention, linting becoming automated a level later, and schema registries later still.</li>
+</ol>
+</section>
+
+
+<!-- ======================================================= -->
+<section id="changelog">
+<h2>12 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-07-30">30 Jul 2026</time><span>Initial survey, prompted by discomfort with data models being fitted into prose in the name of one-verb-one-artifact, and by the concrete case of a backend project needing to hand a shape to a UI team in another repository. A codebase audit relocated the problem: <code>spec.html</code> §4 holds the model as a <code>&lt;dl&gt;</code> (67 of 69 specs) while <code>design.html</code> has no data or contract section at all, even though the <code>contract-first</code> enforce category, the <code>contracts</code> profile axis and the seeded standard-tier principle all already exist — so the floor can fail a project for lacking a contract the lifecycle gives it no way to author. Two hard constraints were found and shaped the answer: the templates' deny-by-default CSP forbids runtime transclusion (so any embed is a materialised copy, hence a drift problem), and no bounded-scroll container exists in the stylesheet. One web-backed landscape pass (16 sources: the OpenAPI Initiative's design-first and single-source guidance, the 2026 schema-landscape survey, a practitioner design-first account, agent-consumption evidence, Spec Kit's and Kiro's design-stage artifacts, the three-schema architecture, cross-repo sharing guidance, the protobuf registry model, and the Spectral / oasdiff / Pact / maturity-model tooling field) established that the schema is the unit of an API and, decisively, that the closest peer tool already emits <code>data-model.md</code> and a <code>contracts/</code> directory alongside its plan — one <em>primary</em> artifact per verb, sidecars alongside, the same distinction <code>verify.html</code> already relies on. Lands five decisions: the conceptual / physical / external altitude split (D-001), the contract as a sidecar file where the enforce detector already looks (D-002), any in-artifact rendering as a bounded generated view drift-guarded like the verify page (D-003), the in-repo file as the export unit, with a future export surface bound to inherit <a href="../specs/067-spec-project-identity/spec.html">067</a>'s coordinate rather than mint a contract-specific scheme (D-005), and mechanical meaning for the four existing <code>contracts</code> rungs plus exactly one new machine check (D-006). Recommends three staged slices — give the contract a home, render it honestly, cross the repo boundary — with a hard line against the design doc becoming the schema. Also records an axis-versus-floor inconsistency found in passing: standard tier declares <code>contract-first</code> but the enforce floor only requires it at verified.</span></li>
+  <li><time datetime="2026-07-31">31 Jul 2026</time><span>Correction on review: the first draft treated the cross-repo naming problem as an open blocker on the third slice, citing <code>TBD-spec-project-identity</code> as an unlanded gap. It landed as <a href="../specs/067-spec-project-identity/spec.html">067</a> (Accepted) — an owner-qualified <code>project</code> in <code>spectastic.json</code> behind a single-source-of-truth resolver, the federation-unique <code>spectastic://&lt;project&gt;/spec/&lt;spec-id&gt;</code> URI, a deterministic <code>spectastic id</code>, and a <em>unified</em> identity where an unset <code>corpus.marketplace</code> derives from <code>project</code>. §6 and D-005 are rewritten accordingly: the blocker framing is withdrawn, and the decision now says an exported contract must be addressed as a resource kind under that existing coordinate rather than given a scheme of its own. Slice 3 stays last, but for the weaker and more honest reason that choosing a distribution mechanism is an organizational call, not because identity is unsolved.</span></li>
+  <li><time datetime="2026-07-31">31 Jul 2026</time><span>Two gaps the first draft left open, both raised on review. <strong>Where the file lives</strong> gets a new §7 and <strong>D-004</strong>: the spec-local-versus-root question resolves as two <em>lifecycle states</em> rather than two locations — a spec authors a <em>proposed</em> contract beside its design, promotion writes the <em>effective</em> one and archives the proposal, exactly as apply already folds a change proposal and archives it, so one live copy exists at every instant and the single-authoritative-location rule survives. Both URI shapes then have distinct jobs (<code>…/spec/&lt;id&gt;/contract/&lt;name&gt;</code> proposed, <code>…/contract/&lt;name&gt;</code> effective). <code>contracts/</code> is used rather than <code>references/</code>, which the corpus already owns. <strong>The event-driven blind spot</strong> gets a new §5 and <strong>D-002</strong>, after an audit found <code>INTERFACE_SIGNALS</code> contains no message broker of any kind: a service whose surface is Kafka topics passes <code>contract-first</code> at verified and enterprise as "nothing to contract", though <code>asyncapi.yaml</code> is already an accepted contract file and the seeded principle names neither AsyncAPI nor <code>.proto</code> nor GraphQL SDL. The fix is framed as symmetry rather than a default, because a "reach for AsyncAPI absent context" rule would be a crowned recommendation in exactly the case <a href="../specs/050-stack-selection/spec.html">050</a> FR-002 requires to be crownless. A second review pass then corrected an over-anchoring: the first version of §7 treated <code>detectContract</code>'s four-directory, one-level search as a constraint to design around. It is a narrow implementation to widen — it misses Gradle/Maven's <code>src/main/proto/</code>, nested buf and Go trees, <code>openapi/</code>, and any AsyncAPI file not literally named <code>asyncapi.yaml</code> — so the convention is now chosen on merit (the ecosystem's own layout, <em>declared</em> by the design) with detection expected to follow, and D-004 admits it creates detector work rather than avoiding it. The progenitor case added a matching false-<em>positive</em>: a vendored upstream spec makes a pure API <em>consumer</em> look covered, which filesystem inference cannot distinguish and a declared path can. Sections renumbered to 13, decisions to D-006, slices to four (the new Slice 2 is the gate widening, and is noted as independent of Slice 1), nine <code>TBD-</code> slugs, and two sources added.</span></li>
+  <li><time datetime="2026-07-31">31 Jul 2026</time><span>Split. The event-driven material added earlier the same day grew past what one survey could carry — the doc had reached roughly 10,700 words, about double its largest sibling — so §5 and its decision moved out to <a href="./event-driven-interface-considerations.html"><em>Not every interface is an endpoint</em></a>, which now owns the <code>INTERFACE_SIGNALS</code> audit, the AsyncAPI landscape, the crownless-rule argument against defaulting to a format, and the publish-versus-consume problem. This doc keeps a one-paragraph pointer in §2 and a note that its own sections assume a synchronous interface throughout. Sections renumbered to 12, decisions to D-006, slices back to three with the contract-detection widening folded into Slice 1 (it is a precondition for the promotion model, not an event-driven concern), eight <code>TBD-</code> slugs, and the two AsyncAPI-specific sources moved with the text. The producer/consumer false positive stays here, in §6, since it is a property of contract <em>detection</em> — its mirror image, an interface the gate cannot see at all, is the sibling's subject.</span></li>
+  <li><time datetime="2026-07-31">31 Jul 2026</time><span>Backlog drained into specs. Four of this doc's eight <code>TBD-</code> slugs are now authored specifications: <code>TBD-design-contract-section</code> → <a href="../specs/069-design-contract-section/spec.html">069</a> (which also absorbs the sibling doc's <code>TBD-design-interface-shape</code>, since the interface-shape question is what seeds the contract declaration), <code>TBD-contract-sidecar-convention</code> → <a href="../specs/070-contract-sidecar-convention/spec.html">070</a>, <code>TBD-contract-promotion</code> → <a href="../specs/071-contract-promotion/spec.html">071</a>, and <code>TBD-contract-embedded-view</code> → <a href="../specs/072-contract-embedded-view/spec.html">072</a>. The remaining four are now specced too, after review asked for full coverage rather than the partial drain: <code>TBD-contract-detection-paths</code> joins the sibling doc's two detection slugs in <a href="../specs/073-interface-detection-widening/spec.html">073</a> (both blind spots are detection, so one slice), <code>TBD-contract-checked-gate</code> pairs with the sibling's tooling-parity slug in <a href="../specs/074-contract-checked-tier/spec.html">074</a>, <code>TBD-spec-data-model-layering</code> becomes <a href="../specs/075-spec-data-model-layering/spec.html">075</a>, and <code>TBD-contract-export-handover</code> becomes <a href="../specs/076-contract-export-handover/spec.html">076</a> — specced with its settled half as requirements and the distribution-mechanism choice recorded as a <em>blocking</em> open question, which is the honest state of a survey-gated slice rather than a guess. The slugs are left in place above as the durable record of what this survey asked for; the specs are where the work now lives.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  Spectastic · The data model has to leave the repo · 30 Jul 2026 ·
+  <a href="../index.html">home</a> ·
+  <a href="./event-driven-interface-considerations.html">event-driven-interface</a> ·
+  <a href="./engineering-principles-considerations.html">engineering-principles</a> ·
+  <button data-theme-toggle style="background:none;border:none;color:var(--c-link);cursor:pointer;font:inherit;padding:0;border-bottom:1px solid currentColor;">light/dark</button>
+</footer>
+
+</main>
+<script src="../assets/spec.js"></script>
+</body>
+</html>

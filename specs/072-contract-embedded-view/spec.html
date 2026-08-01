@@ -1,0 +1,307 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
+<title>Contract embedded view · Specification</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Specification · 072-contract-embedded-view</p>
+  <h1>Contract embedded view</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    A reviewer sees the agreed shape without leaving the page — bounded, labelled as a projection, and never silently stale.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>      <span><spec-status value="accepted">Accepted</spec-status></span>
+    <b>Spec ID</b>     <span>072-contract-embedded-view</span>
+    <b>Owner</b>       <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Reviewers</b>   <span>—</span>
+    <b>Created</b>     <span><time datetime="2026-07-31">31 Jul 2026</time></span>
+    <b>Principles</b><span><a href="../../principles.html">v1.9.0</a></span>
+    <b>Smallest demoable</b><span>A design's contract section renders a height-bounded, scrollable excerpt of the declared contract, labelled with the file it projects.</span>
+    <b>Read time</b>   <span data-reading-time></span>
+  </spec-meta>
+
+  <!-- Live size gauge — green at <80%, amber 80-100%, red over. Words row counts authored prose (excludes the conformance index) per REQ-FORMAT-004. -->
+  <spec-budget words="2000" reqs="20" minutes="14"></spec-budget>
+
+  <spec-tldr>
+    <p>Once a design declares a contract, a reviewer still has to open another file to see what shape was agreed. This slice closes
+    that gap — carefully, because the obvious version is a trap. The templates ship a deny-by-default content policy with no
+    include mechanism, so an embedded contract cannot be fetched at view time; it can only be <strong>materialised at generate
+    time</strong>, which makes it a copy, which makes it a drift problem rather than a rendering one. The tool has solved this
+    shape before: the verify view materialises links and a validate rule flags it when they drift from the bundle. This spec clones
+    that discipline. It adds a view that is visibly a <em>projection</em> of a named file, never a source; the design system's
+    first height-bounded scrolling container, so a large schema cannot run the page; an excerpt rather than a full paste when the
+    contract is large; and a staleness finding when the projection no longer matches what it projects. Reviewer convenience,
+    deliberately built last — after the authoritative path is proven, so a copy never precedes the original.</p>
+  </spec-tldr>
+
+  <dl class="invest">
+    <dt><span class="letter">I</span> Independent</dt> <dd>Depends on <a href="../069-design-contract-section/spec.html">069</a> for the declaration and <a href="../070-contract-sidecar-convention/spec.html">070</a> for the resolving path. Promotion is not a prerequisite — a view can project a proposed contract as readily as an effective one.</dd>
+    <dt><span class="letter">N</span> Negotiable</dt>  <dd>Contracts the <em>guarantees</em> — bounded, labelled, excerptable, drift-flagged. Element name, container height, excerpt-selection strategy, and finding severity are the design's.</dd>
+    <dt><span class="letter">V</span> Valuable</dt>    <dd>Unlocks <a href="#SC-001">SC-001</a> — the shape under discussion is visible where the discussion happens, without the artifact becoming a second source of truth.</dd>
+    <dt><span class="letter">E</span> Estimable</dt>   <dd>One element, one CSS container, one generator step, one staleness finding — each with an existing pattern in the codebase to follow.</dd>
+    <dt><span class="letter">S</span> Small</dt>       <dd>Presentation and its guard. No change to where contracts live or how they land.</dd>
+    <dt><span class="letter">T</span> Testable</dt>    <dd>Browser-checkable by computed style and containment, not merely by presence — the discipline this repo already applies to anything positioned or scrolled.</dd>
+  </dl>
+
+  <spec-audience-map>
+    <dl>
+      <dt>Exec / PM</dt>   <dd>§<a href="#context">Context</a>, §<a href="#scenarios">User scenarios</a>, §<a href="#success">Success criteria</a>.</dd>
+      <dt>Reviewer</dt>    <dd>§<a href="#requirements">Requirements</a>, §<a href="#assumptions">Assumptions</a>, §<a href="#questions">Open questions</a>.</dd>
+      <dt>Implementer</dt> <dd>§<a href="#requirements">Requirements</a>, §<a href="#data">Data model</a>, §<a href="#conformance">Conformance index</a>.</dd>
+    </dl>
+  </spec-audience-map>
+</header>
+
+
+<section id="context">
+<h2>1 · Context</h2>
+<p>A design that declares a contract path tells a reviewer where the shape is, not what it is. For the argument the design is
+making — why these boundaries, why this error envelope, what a consumer may rely on — the shape is usually the thing under
+discussion, and sending the reader to another file to find it is exactly the friction the single-file artifact format exists to
+remove.</p>
+<p>Two facts make the naive fix wrong. The spec-family templates ship a deny-by-default content-security policy and the element
+vocabulary contains no include mechanism, so nothing can load a contract at view time; an embed is necessarily a copy written when
+the artifact is generated. And no bounded-scroll container exists in the design system today — code blocks scroll horizontally and
+are vertically unbounded, so a few hundred lines of schema pasted into a design would simply run the document and take the calm
+reading measure with it.</p>
+<p>Both problems have precedent. The verify view already materialises derived content and is policed by a staleness rule when it
+drifts from its bundle; the same shape of guard applies here. Whose problem: the reviewer deciding whether an interface is right,
+and the author who would otherwise be tempted to keep the shape in the artifact where it renders nicely — the failure this slice is
+built to prevent.</p>
+</section>
+
+
+<section id="scenarios">
+<h2>2 · User scenarios &amp; testing</h2>
+
+<p>Each story <strong>MUST</strong> be independently testable: if you implemented only US1, you would
+still have a viable MVP.</p>
+
+<h3 id="US1">US1 · The shape is visible in the design <spec-pill>P1</spec-pill></h3>
+<p>As a <strong>reviewer</strong>, I want to <strong>see the declared contract's shape inside the design doc</strong> so that
+<strong>I can judge the argument being made about it without opening another file</strong>.</p>
+<p><em>Acceptance:</em> Opening a generated design in a browser, the contract's content is visible within the contract section and
+is legible as code.</p>
+
+<h3 id="US2">US2 · A stale projection is caught <spec-pill>P1</spec-pill></h3>
+<p>As a <strong>reviewer</strong>, I want <strong>validate to flag a view that no longer matches the file it projects</strong> so
+that <strong>I am never shown an out-of-date shape as though it were current</strong>.</p>
+<p><em>Acceptance:</em> Editing the contract file without regenerating the design produces a finding naming the design and the
+contract; regenerating clears it.</p>
+
+<h3 id="US3">US3 · A large contract does not run the page <spec-pill>P2</spec-pill></h3>
+<p>As a <strong>reader</strong>, I want <strong>a large schema shown as a bounded excerpt</strong> so that <strong>the design stays
+readable instead of becoming a schema dump with prose at either end</strong>.</p>
+<p><em>Acceptance:</em> A contract far exceeding the container height renders within a fixed-height scrolling region; the page
+itself does not grow with the contract, and the file remains one link away.</p>
+
+<h3>Edge cases</h3>
+<ul>
+  <li>A declared path that resolves to nothing — the view must degrade to the declaration alone, not render an empty box that reads
+  as "the contract is empty".</li>
+  <li>A binary or non-text contract.</li>
+  <li>A contract that is legitimately empty.</li>
+  <li>A design whose contract has since been promoted, so the projected file moved.</li>
+  <li>Printing the design, where a scrolling container can hide content that a reader on paper cannot reach.</li>
+  <li>A very wide schema line — horizontal containment matters as much as vertical.</li>
+</ul>
+</section>
+
+
+<section id="requirements">
+<h2>3 · Requirements</h2>
+
+<p>Conformance keywords (<spec-rule>MUST</spec-rule>, <spec-rule level="should">SHOULD</spec-rule>,
+<spec-rule level="may">MAY</spec-rule>) follow RFC 2119.</p>
+
+<h3>Functional</h3>
+
+<spec-requirement id="FR-001" priority="must">
+<p>The design artifact <strong>MUST</strong> be able to render the content of a declared contract as a view materialised at
+generate time.</p>
+<details><summary>Rationale</summary><p>The content policy forbids loading it at view time, so materialisation is the only
+mechanism available — and naming it as such is what makes the drift guarantee necessary rather than optional.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-002" priority="must">
+<p>The view <strong>MUST</strong> be visibly labelled as a projection of a named file, and <strong>MUST NOT</strong> read as the
+contract itself.</p>
+<details><summary>Rationale</summary><p>An unlabelled copy invites editing. The label is what keeps the file authoritative in the
+reader's mind as well as in the tool's.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-003" priority="must">
+<p>The view <strong>MUST</strong> be height-bounded and scroll within its own container, containing both vertical and horizontal
+overflow so the page never scrolls horizontally because of it.</p>
+<details><summary>Rationale</summary><p>Presence is not containment. The design system has no such container today, and an unbounded
+one would break the calm-density property every other artifact depends on.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-004" priority="must">
+<p><code>spectastic validate</code> <strong>MUST</strong> emit a finding when a rendered view no longer matches the contract file
+it projects.</p>
+<details><summary>Rationale</summary><p>A materialised copy that nothing polices is a second source of truth with extra steps. This
+clones the guard the verify view already carries.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-005" priority="must">
+<p>The view <strong>MUST NOT</strong> be a source of truth: no tool <strong>MUST</strong> read it as the contract, and editing it
+<strong>MUST NOT</strong> change the contract.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-006" priority="should">
+<p>For a contract exceeding the container's capacity, the view <strong>SHOULD</strong> render an excerpt and
+<strong>SHOULD</strong> state that it is one, keeping the file one link away.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-007" priority="should">
+<p>Where the declared contract cannot be read — absent, unreadable, or not text — the view <strong>SHOULD</strong> be omitted
+rather than rendered empty, leaving the declaration visible on its own.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-008" priority="may">
+<p>A design <strong>MAY</strong> render a view per declared contract, and <strong>MAY</strong> omit the view entirely while still
+declaring the contract.</p>
+</spec-requirement>
+
+<h3>Non-functional</h3>
+
+<spec-requirement id="NFR-001" priority="must">
+<p>The view <strong>MUST</strong> render with JavaScript disabled: 100% of the projected content readable with scripting off.</p>
+<details><summary>Rationale</summary><p>P-4 — progressive enhancement, never dependence. A schema hidden behind a script is worse
+than no view.</p></details>
+</spec-requirement>
+
+<spec-requirement id="NFR-002" priority="must">
+<p>The view <strong>MUST NOT</strong> introduce executable content or any runtime fetch: at most 0 scripts, event-handler
+attributes, or external requests are added to the artifact by this feature.</p>
+<details><summary>Rationale</summary><p>P-11 — artifacts are data, not instructions. A contract is untrusted text from the
+generator's point of view and must be rendered inert.</p></details>
+</spec-requirement>
+
+<spec-requirement id="NFR-003" priority="should">
+<p>Materialising a view <strong>SHOULD</strong> add under 100 ms to a design generation, for a contract up to 5000 lines.</p>
+</spec-requirement>
+
+<h3>Out of scope (deferred to other slices)</h3>
+<spec-out-of-scope>
+  <ul>
+    <li defer-to="TBD-contract-view-diff">Rendering the difference between a proposed contract and the effective one it would replace.</li>
+    <li defer-to="TBD-contract-view-syntax">Syntax highlighting or schema-aware rendering of the projected content.</li>
+    <li defer-to="TBD-contract-checked-gate">Validating the contract itself — this slice renders it, it does not judge it.</li>
+    <li defer-to="TBD-contract-view-print">A print stylesheet that unrolls the bounded container so paper readers lose nothing.</li>
+  </ul>
+</spec-out-of-scope>
+</section>
+
+
+<section id="data">
+<h2>4 · Data model</h2>
+
+<p>No persisted entity. The view is derived content plus the state needed to tell whether it has gone stale.</p>
+
+<h3>Entities</h3>
+<dl>
+  <dt>Projection</dt><dd>Materialised content from a declared contract, together with the path it came from and whether it is
+  complete or an excerpt.</dd>
+  <dt>Projection fingerprint</dt><dd>Whatever the staleness check compares — enough to tell that the source changed since the view
+  was written, and stable across regenerations that changed nothing.</dd>
+</dl>
+
+<spec-note>
+<p>The invariant: a projection is always downstream of exactly one file, and is never consulted by anything that wants the
+contract. If any consumer ever reads the projection instead of the file, the boundary this slice depends on has been lost.</p>
+</spec-note>
+</section>
+
+
+<section id="success">
+<h2>5 · Success criteria</h2>
+
+<p>Technology-agnostic, measurable outcomes. These are how we know it worked.</p>
+
+<spec-requirement id="SC-001" priority="must">
+<p>A reviewer opening a generated design in a browser can read the declared contract's shape without opening another file, in 100%
+of designs that declare a readable contract.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-002" priority="must">
+<p>Editing a projected contract without regenerating produces exactly 1 staleness finding; regenerating clears it to 0.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-003" priority="must">
+<p>For a contract of at least 2000 lines, the rendered page's own height and horizontal scroll extent are unchanged from the same
+design with no view — containment verified by computed style, not by presence.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-004" priority="should">
+<p>A design generated with a view adds at most 0 scripts and at most 0 external requests to the artifact, verified by a
+scripting-off render and a network trace.</p>
+</spec-requirement>
+</section>
+
+
+<section id="assumptions">
+<h2>6 · Assumptions</h2>
+
+<spec-assumption>
+<p>Reviewers want the shape more often than they want the whole file — so an excerpt is usually the right default and a full paste
+usually is not.</p>
+</spec-assumption>
+
+<spec-assumption>
+<p>Contracts are text. A binary interface definition is a case for the declaration alone, not for a rendering strategy.</p>
+</spec-assumption>
+
+<spec-assumption>
+<p>Regeneration is cheap and routine enough that a staleness finding is an actionable prompt rather than a chronic warning people
+learn to ignore.</p>
+</spec-assumption>
+</section>
+
+
+<section id="questions">
+<h2>7 · Open questions</h2>
+<spec-questions>
+<p>None outstanding — materialise-not-transclude, bound-and-scroll, and clone-the-verify-guard were all settled by the survey that
+produced this slice.</p>
+</spec-questions>
+</section>
+
+
+<section id="conformance">
+<h2>8 · Conformance index</h2>
+<p>Auto-built from every <code>&lt;spec-requirement&gt;</code> in this document.</p>
+<spec-conformance></spec-conformance>
+</section>
+
+
+<section id="changelog">
+<h2>9 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-07-31">31 Jul 2026</time><span>Initial draft. Resolves <code>TBD-contract-embedded-view</code>, the second slice of the data-model and contract survey. Plants four follow-ons — diff rendering, syntax awareness, contract validation, and a print stylesheet — each deliberately outside a slice whose whole job is to show the shape without becoming it.</span></li>
+  <li><time datetime="2026-08-01">01 Aug 2026</time><span>Status flipped Draft → Accepted on 01 Aug 2026 — zero remaining unchecked tasks; tests verified passing per author confirmation. Sibling bundle (REQ-LIFECYCLE-005).</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  072-contract-embedded-view · Contract embedded view · authored 31 Jul 2026
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>

@@ -17,9 +17,19 @@
  * apply if any <spec-risk status="identified"> remains in the
  * proposal. Caller must transition each to accepted/mitigated/rejected
  * first.
+ *
+ * Contract promotion (071-contract-promotion, D-002): a mandatory side
+ * effect, so it has a deterministic owner here rather than living in
+ * command markdown (P-8). The plan is computed and its conflicts checked
+ * BEFORE any of apply's own writes — a conflict refuses the whole apply,
+ * leaving the working tree byte-identical to its pre-run state (SC-002),
+ * exactly like the risk gate above. Execution (the actual write + archive)
+ * happens immediately before the existing proposal-archive step below, once
+ * the plan is already known to be conflict-free.
  */
 
 import { deepenArchivePaths, shallowProposalPaths } from '../archive-paths.js';
+import { executePromotionArchives, executePromotionWrites, planPromotion } from '../contracts/promote.js';
 import type { ApplyInput, ApplyResult, DeltaApplication, KernelContext, WithdrawInput } from '../types.js';
 
 const IDENTIFIED_RISK_RE = /<spec-risk[^>]*\bstatus=["']identified["']/i;
@@ -51,6 +61,16 @@ export async function applyCommand(input: ApplyInput | WithdrawInput, ctx: Kerne
   if (IDENTIFIED_RISK_RE.test(proposalHtml)) {
     throw new Error(
       `applyCommand: proposal at ${proposalPath} contains <spec-risk status="identified">. Transition each to accepted/mitigated/rejected before apply.`,
+    );
+  }
+
+  // Contract promotion pre-flight (071 D-002/D-003): compute the plan and
+  // check conflicts before any write, so a refusal is byte-identical to the
+  // pre-run state (SC-002). Overwhelmingly the plan is empty (FR-006).
+  const promotionPlan = await planPromotion(input.specId, input.slug, fs, ctx.cwd);
+  if (promotionPlan.conflicts.length > 0) {
+    throw new Error(
+      `applyCommand: contract promotion refused — ${promotionPlan.conflicts.map((c) => c.reason).join('; ')}`,
     );
   }
 
@@ -204,12 +224,24 @@ export async function applyCommand(input: ApplyInput | WithdrawInput, ctx: Kerne
   );
   await fs.writeFile(proposalPath, archivedProposal);
 
+  // Contract promotion — write phase (071 D-002): land the effective
+  // contract(s) before the proposal-archive move below, matching apply's own
+  // fail-safe ordering. The archive phase runs AFTER that move (below) — it
+  // must not run before, or its own mkdir+rename would create
+  // changes/archive/<slug>/ ahead of the outer rename and collide with it.
+  await executePromotionWrites(promotionPlan, fs);
+
   // Move folder to archive. Ensure the archive parent exists first — a spec's
   // first apply has no changes/archive/ yet, and fs.rename cannot move into a
   // missing parent (REQ-CHANGE-007 / triage T-007).
   await fs.mkdir(`${ctx.cwd}/specs/${input.specId}/changes/archive`);
   const archiveDir = `${ctx.cwd}/specs/${input.specId}/changes/archive/${input.slug}`;
   await fs.rename(proposalDir, archiveDir);
+
+  // Contract promotion — archive phase: now that changes/archive/<slug>/
+  // exists (just created above), move the proposed contract(s) and their
+  // baseline(s) into it.
+  await executePromotionArchives(promotionPlan, fs);
 
   return {
     liveSpec: specPath,
@@ -218,6 +250,7 @@ export async function applyCommand(input: ApplyInput | WithdrawInput, ctx: Kerne
     changelogEntry,
     crossSpecWarnings: [],
     foldedPhase,
+    promotedContracts: promotionPlan.writes.length,
   };
 }
 
@@ -673,5 +706,10 @@ function findFamilyPrefixInsertionPoint(liveSpec: string, newId: string): number
 function formatHumanDate(isoDate: string): string {
   const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
   const [year, month, day] = isoDate.split('-').map(Number);
-  return `${day} ${months[month! - 1]} ${year}`;
+  // Zero-padded day, per the repo's own date-format convention (CLAUDE.md /
+  // the schema's date-format rule) — a bare Number() strips a leading zero,
+  // which every prior apply happened to land past day 10 to ever surface
+  // (triage: caught applying 2026-08-01-widen-interface-detection).
+  const paddedDay = String(day).padStart(2, '0');
+  return `${paddedDay} ${months[month! - 1]} ${year}`;
 }

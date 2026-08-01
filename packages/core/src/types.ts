@@ -364,6 +364,12 @@ export interface ApplyResult {
     /** True when the tracker did not exist and was created from the template. */
     created: boolean;
   } | null;
+  /**
+   * Count of contracts promoted from their spec-local proposed location to
+   * their declared effective path (071-contract-promotion). 0 for the
+   * overwhelming majority of changes, which touch no contract (FR-006).
+   */
+  promotedContracts?: number;
 }
 
 // --- spec (verb 011) + plan (verb 012) ---------------------------------

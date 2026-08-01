@@ -254,6 +254,60 @@ async function scanQuantifiedNfr(files: readonly string[], cwd: string): Promise
 }
 
 /**
+ * The contract-resolve gate (spec 070-contract-sidecar-convention, FR-004):
+ * a design declaring a contract path that resolves to no readable file, or
+ * one escaping the project directory, or one resolving inside specs/ (never
+ * an effective declaration), is an error. Shaped like `scanQuantifiedNfr` —
+ * re-reads the files already being validated, since the check needs the
+ * filesystem the schema engine's pure-AST rules cannot touch.
+ */
+async function scanContractResolve(files: readonly string[], cwd: string): Promise<Finding[]> {
+  if (files.length === 0) return [];
+  const [{ contractResolveFindings }, { readContractDeclarations }, { nodeFs }, { readFile }] = await Promise.all([
+    import('@spectastic/core/commands/validate'),
+    import('@spectastic/schema/contract'),
+    import('@spectastic/core/providers/node-fs'),
+    import('node:fs/promises'),
+  ]);
+
+  const perFile = await Promise.all(
+    files.map(async (file) => {
+      const html = await readFile(file, 'utf8');
+      const declarations = readContractDeclarations(html, file);
+      if (declarations.length === 0) return [];
+      return contractResolveFindings(declarations, file, nodeFs, cwd);
+    }),
+  );
+  return perFile.flat();
+}
+
+/**
+ * Fold contractViewDriftFindings() into validate (072-contract-embedded-view,
+ * T-211): a materialised <spec-contract-view> that no longer matches the
+ * contract file it projects, is an error. Shaped exactly like
+ * scanContractResolve above — re-reads the files already being validated.
+ */
+async function scanContractViewDrift(files: readonly string[], cwd: string): Promise<Finding[]> {
+  if (files.length === 0) return [];
+  const [{ contractViewDriftFindings }, { readContractDeclarations }, { nodeFs }, { readFile }] = await Promise.all([
+    import('@spectastic/core/commands/validate'),
+    import('@spectastic/schema/contract'),
+    import('@spectastic/core/providers/node-fs'),
+    import('node:fs/promises'),
+  ]);
+
+  const perFile = await Promise.all(
+    files.map(async (file) => {
+      const html = await readFile(file, 'utf8');
+      const declarations = readContractDeclarations(html, file);
+      if (declarations.length === 0) return [];
+      return contractViewDriftFindings(declarations, file, nodeFs, cwd);
+    }),
+  );
+  return perFile.flat();
+}
+
+/**
  * Register the `validate` subcommand. Implements FR-001, FR-002, FR-014
  * of specs/002-validate-cli/spec.html.
  *
@@ -453,6 +507,17 @@ export function registerValidate(program: Command): void {
       // a bare unqualified default (no owner segment) warns; absent or
       // well-formed is silent. No-op-safe — reads spectastic.json only.
       const projectIdentityScanFindings = await scanProjectIdentity(process.cwd());
+      // The contract-resolve gate (spec 070): a declared contract path that
+      // resolves to no readable file, escapes the project, or resolves inside
+      // specs/, is an error. No-op-cheap: returns [] on any file with no
+      // <spec-contract> declarations, which is every design in the estate today.
+      const contractResolveScanFindings = await scanContractResolve(files, process.cwd());
+      // The contract-view-drift gate (spec 072): a materialised
+      // <spec-contract-view> that no longer matches the file it projects is
+      // an error. No-op-cheap: [] on any file with no declarations at all,
+      // and a declaration without a view is skipped too — every design in
+      // the estate today.
+      const contractViewDriftScanFindings = await scanContractViewDrift(files, process.cwd());
       const findings = [
         ...result.findings,
         ...quarantineFindings,
@@ -468,6 +533,8 @@ export function registerValidate(program: Command): void {
         ...corpusLicenseScanFindings,
         ...packAgnosticismScanFindings,
         ...projectIdentityScanFindings,
+        ...contractResolveScanFindings,
+        ...contractViewDriftScanFindings,
       ];
       const exitCode = findings.some((f) => f.severity === 'error') ? 1 : result.exitCode;
 

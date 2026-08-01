@@ -39,6 +39,59 @@ describe('profiles: loadProfiles', () => {
     const empty = loadProfiles('/no/such/dir');
     expect(profileNames(empty)).toEqual([]);
   });
+
+  /**
+   * Spec 073-interface-detection-widening, FR-005 / T-901. The seeded
+   * contract-first principle used to name three formats while the detector
+   * accepted six — a project reading its own constitution could not learn
+   * which artifacts satisfy the rule. This pins the copy to the detector's
+   * actual accept-list so the two cannot silently drift apart again.
+   */
+  /**
+   * Spec 074-contract-checked-tier, FR-005 / T-901. The rung can only see that
+   * a check is CONFIGURED — never that it passes, never that it blocks a merge.
+   * That ceiling is the same one coverage and observability carry, and stating
+   * it is what keeps the floor credible. This pins the honesty clause so a
+   * later edit cannot quietly upgrade "configured" into "passing".
+   */
+  it('the checked-contracts principle states configured, never passing (074, FR-005)', () => {
+    for (const name of ['verified', 'enterprise']) {
+      const principles = resolveProfile(manifest, name).principles ?? [];
+      const statement = principles.find((p) => p.name === 'Checked contracts')?.statement ?? '';
+      expect(statement, `${name} must seed the checked-contracts principle`).toBeTruthy();
+      expect(statement, `${name} must name the linter`).toMatch(/linter/i);
+      expect(statement, `${name} must name the breaking-change differ`).toMatch(/breaking-change differ/i);
+      // The honesty clause itself.
+      expect(statement, `${name} must say detection proves the check is configured`).toMatch(/configured/i);
+      expect(statement, `${name} must disclaim that the check passes`).toMatch(/never that it passes/i);
+      expect(statement, `${name} must disclaim that it blocks a merge`).toMatch(/blocks a merge/i);
+    }
+  });
+
+  it('lean and standard are NOT given the checked-contracts principle — the rung is tier-gated (074, NFR-002)', () => {
+    for (const name of ['lean', 'standard']) {
+      const names = (resolveProfile(manifest, name).principles ?? []).map((p) => p.name);
+      expect(names, `${name} must not seed the contract-checked rung`).not.toContain('Checked contracts');
+    }
+  });
+
+  it('the contract-first principle names every format the detector accepts (FR-005)', () => {
+    // Kept in step with isContractFile() in packages/core/src/enforce/detect.ts.
+    const ACCEPTED_FORMATS = ['OpenAPI', 'Swagger', 'Protobuf', 'GraphQL SDL', 'AsyncAPI', 'JSON Schema'];
+
+    const tiersSeedingIt = ['standard', 'verified', 'enterprise'];
+    for (const name of tiersSeedingIt) {
+      const principles = resolveProfile(manifest, name).principles ?? [];
+      const contractFirst = principles.find((p) => p.name === 'Contract-first interfaces');
+      expect(contractFirst, `${name} must seed the contract-first principle`).toBeDefined();
+      for (const format of ACCEPTED_FORMATS) {
+        expect(
+          contractFirst?.statement,
+          `${name}'s contract-first statement must name ${format} — the detector accepts it`,
+        ).toContain(format);
+      }
+    }
+  });
 });
 
 describe('profiles: principle drift guard', () => {
@@ -98,9 +151,13 @@ describe('profiles: catalog-next tranche (semver, supply-chain, accessibility)',
   });
 
   it('per-tier principle counts match the tranche (standard +2, verified +2, enterprise +4)', () => {
+    // Verified and enterprise each gained one more with 074-contract-checked-tier's
+    // "Checked contracts" — a distinct principle rather than a tier-divergent copy
+    // of "Contract-first interfaces", so the repeated-statement invariant above
+    // still holds (that guard caught the first attempt, which modelled it wrong).
     expect(namesAt('standard')).toHaveLength(7);
-    expect(namesAt('verified')).toHaveLength(10);
-    expect(namesAt('enterprise')).toHaveLength(15);
+    expect(namesAt('verified')).toHaveLength(11);
+    expect(namesAt('enterprise')).toHaveLength(16);
   });
 });
 

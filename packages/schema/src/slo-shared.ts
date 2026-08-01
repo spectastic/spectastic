@@ -25,13 +25,20 @@ export function isGoldenSignal(value: string): value is GoldenSignal {
  * hard error at verified/enterprise. Matches, in order:
  *  - a percentile marker (`p95`, `P99`)
  *  - a comparison against a number (`< 200`, `>= 99%`, `≤ 1s`)
- *  - a number followed by a recognised unit (ms, s, min, %, rps, …)
+ *  - a number followed by a recognised unit (ms, s, min, rps, …) or a `%`
  *  - a threshold word near a number ("under 200ms", "at least 99%")
  */
 const PERCENTILE_RE = /\bp\d{1,3}\b/i;
 const COMPARISON_NUMBER_RE = /[<>≤≥]=?\s*\d/;
-const NUMBER_UNIT_RE =
-  /\d+(\.\d+)?\s*(ms|s|sec|secs|second|seconds|min|mins|minute|minutes|hr|hrs|hour|hours|day|days|%|rps|qps|req\/s|requests?\/s)\b/i;
+// Word units take a trailing \b so `200 mins` matches but `200 minsk` does not.
+// Non-word units (`%`) MUST NOT: \b asserts a word/non-word transition, and
+// after `%` the next character is a space, punctuation, or end of input — never
+// a word character — so a trailing \b made the `%` alternative unreachable and
+// a bare percentage never counted as quantified (T-002). Keep the two classes
+// in separate groups; do not fold `%` back into the word-unit alternation.
+const WORD_UNITS =
+  'ms|s|sec|secs|second|seconds|min|mins|minute|minutes|hr|hrs|hour|hours|day|days|rps|qps|req/s|requests?/s';
+const NUMBER_UNIT_RE = new RegExp(String.raw`\d+(\.\d+)?\s*((${WORD_UNITS})\b|%)`, 'i');
 const THRESHOLD_WORD_RE = /\b(under|below|over|above|at least|at most|within)\b.{0,24}?\d/i;
 
 /** True if `text` carries a measurable target by the heuristic above. */

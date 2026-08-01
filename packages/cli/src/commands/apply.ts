@@ -10,6 +10,10 @@ export function registerApply(program: Command): void {
     .option('--withdraw', 'withdraw mode: reject the proposal instead of applying')
     .option('--reason <reason>', 'rejection reason (required with --withdraw)')
     .option('--summary <text>', 'author-supplied one-line changelog summary (apply mode)')
+    .option(
+      '--dry-run',
+      'report the contract promotion this apply would write and archive, changing 0 files',
+    )
     .option('--commit', 'force a git commit for this run (overrides git.auto)')
     .option('--no-commit', 'skip the git commit for this run (overrides git.auto)')
     .action(
@@ -20,6 +24,7 @@ export function registerApply(program: Command): void {
           withdraw?: boolean;
           reason?: string;
           summary?: string;
+          dryRun?: boolean;
           commit?: boolean;
         },
       ) => {
@@ -41,6 +46,28 @@ export function registerApply(program: Command): void {
         if (opts.withdraw && !opts.reason) {
           process.stderr.write('--withdraw requires --reason "<one-line reason>"\n');
           process.exit(2);
+        }
+
+        // --dry-run (071-contract-promotion, FR-008): the plan rendered rather than
+        // executed, so it cannot drift from what a real run would do (design's
+        // Approach). Scoped to contract promotion only — reports and exits before
+        // any of apply's own writes; withdraw mode has no promotion to preview.
+        if (opts.dryRun && !opts.withdraw) {
+          const { planPromotion } = await import('@spectastic/core/contracts/promote');
+          const plan = await planPromotion(specId, slug, nodeFs, process.cwd());
+          if (plan.conflicts.length > 0) {
+            process.stdout.write(`Dry run: apply would refuse — ${plan.conflicts.length} conflict(s):\n`);
+            for (const c of plan.conflicts) process.stdout.write(`  ${c.path}: ${c.reason}\n`);
+            process.exitCode = 1;
+            return;
+          }
+          if (plan.writes.length === 0) {
+            process.stdout.write('Dry run: no contract would be promoted (0 files changed).\n');
+            return;
+          }
+          process.stdout.write(`Dry run: apply would promote ${plan.writes.length} contract(s):\n`);
+          for (const w of plan.writes) process.stdout.write(`  ${w.from} → ${w.to}\n`);
+          return;
         }
 
         const input = opts.withdraw

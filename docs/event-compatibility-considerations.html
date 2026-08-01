@@ -1,0 +1,238 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
+<title>Event compatibility vocabulary · Considerations</title>
+<link rel="stylesheet" href="../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../assets/favicon.svg">
+<script src="../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Considerations · event compatibility vocabulary</p>
+  <h1>Which words should an event compatibility stance use?</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    The registry world converged on four words. Adopting them is right — but only with the axis their defaults hide.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>      <span><spec-status value="accepted">Accepted</spec-status></span>
+    <b>Author</b>      <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Written</b>     <span><time datetime="2026-08-01">01 Aug 2026</time></span>
+    <b>Resolves</b>    <span>the blocking vocabulary question in <a href="../specs/077-event-schema-evolution/spec.html">077</a></span>
+    <b>Read time</b>   <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-tldr>
+    <p><strong>Adopt the four registry words — <code>backward</code>, <code>forward</code>, <code>full</code>,
+    <code>none</code> — and make the axis their defaults hide into an explicit second question.</strong> The ecosystem's
+    non-transitive default checks a new schema only against the <em>immediately previous</em> version. That is a defensible
+    default for a request/response API and the wrong one for events, because replay means a consumer reads messages written many
+    versions ago. The registry world already has the fix — the <code>_TRANSITIVE</code> variants — but buries it in a suffix most
+    teams never change. Surfacing it as its own question is not an embellishment: it is precisely what
+    <a href="../specs/077-event-schema-evolution/spec.html#FR-003">077 FR-003</a> already demands, which asks the prompt to
+    distinguish <em>compatibility for future messages</em> from <em>readability of already-published ones</em>. Those are the
+    direction and the scope. Recommendation: two bounded questions, four words each, definitions pinned in the artifact.
+    Enforcement: <strong>none</strong>, at any tier.</p>
+  </spec-tldr>
+</header>
+
+
+<section id="ask">
+<h2>1 · The question</h2>
+<p><a href="../specs/077-event-schema-evolution/spec.html">077</a> wants a design to record the producer's <em>intended
+compatibility stance</em> when a declared event contract changes. Its register left two questions blocking, and was explicit that
+the design verb refusing to run was the correct signal rather than a defect:</p>
+<ol>
+  <li><strong>Which compatibility vocabulary should the stance use?</strong> Registry ecosystems have converged on terms like
+  backward, forward and full — but their precise meanings differ between implementations, and adopting one vendor's vocabulary
+  imports its semantics. Expensive to get wrong, because the terms end up in authored artifacts.</li>
+  <li><strong>Should anything enforce the stance, and at which tier?</strong> Explicitly gated on the first.</li>
+</ol>
+<p>This document answers both. It is deliberately narrow: it settles words and an enforcement posture, not a mechanism.</p>
+</section>
+
+
+<section id="gate">
+<h2>2 · What makes events different</h2>
+<p>The spec's context section states the problem precisely, and it is worth restating because everything below follows from it.
+A synchronous API change is bounded by <em>today's callers</em>. An event change is not, in two ways: messages
+<strong>persist</strong>, so a consumer may read something written months ago against a schema that has since moved; and
+consumers are <strong>not enumerable</strong>, so the set of things a change can break is unknown at change time. The field's own
+guidance is blunt about the second — without knowing consumers, you cannot govern breaking changes at all, which is why the
+mature answers are organisational (catalogs, lineage, contract testing) rather than technical.</p>
+<p>Neither of those is something a spec tool can solve. What it can do — and what nothing else in the stack does — is make sure
+the decision was <em>consciously taken and visible to a reviewer</em>. That framing is already the spec's, and this survey does
+not widen it.</p>
+</section>
+
+
+<section id="landscape">
+<h2>3 · The landscape</h2>
+
+<h3>The words are settled</h3>
+<p>Confluent Schema Registry's vocabulary is the de facto standard across the Kafka ecosystem, and its meanings are stable and
+documented:</p>
+<table>
+  <thead><tr><th>Term</th><th>Meaning</th><th>Typical permitted change</th></tr></thead>
+  <tbody>
+    <tr><td><code>BACKWARD</code></td><td>A consumer on the <em>new</em> schema can read data written with the <em>old</em> one</td><td>Add optional fields; remove fields</td></tr>
+    <tr><td><code>FORWARD</code></td><td>A consumer on the <em>old</em> schema can read data written with the <em>new</em> one</td><td>Add fields; remove optional fields</td></tr>
+    <tr><td><code>FULL</code></td><td>Both of the above</td><td>Add or remove optional fields only</td></tr>
+    <tr><td><code>NONE</code></td><td>No compatibility claimed</td><td>Anything</td></tr>
+  </tbody>
+</table>
+<p><code>BACKWARD</code> is the registry default. The four terms apply uniformly across Avro, Protobuf and JSON Schema — the
+serialisation formats differ in <em>mechanism</em>, not in what the four words mean.</p>
+
+<h3>The mechanisms differ; the vocabulary does not</h3>
+<p>Worth knowing, because it is the most common reason people assume the words are format-specific. Avro pairs a writer schema
+with a reader schema and resolves at read time, which is why it leans so heavily on <strong>default values</strong> — a new field
+with a default lets old data be read as though the field had always existed. Protobuf instead tracks compatibility by
+<strong>field number</strong>, so renaming a field changes nothing on the wire, and the cardinal sin is reusing a retired number,
+because old bytes are then silently reinterpreted under a new meaning (hence <code>reserved</code>). Different machinery,
+same four words on top. Adopting the vocabulary therefore does <em>not</em> import a format's mechanism.</p>
+
+<h3>The trap: the default is scoped to one version</h3>
+<p>This is the finding that shapes the recommendation. A non-transitive check compares the new schema only against the
+<strong>latest</strong> version. The <code>_TRANSITIVE</code> variants — <code>BACKWARD_TRANSITIVE</code>,
+<code>FORWARD_TRANSITIVE</code>, <code>FULL_TRANSITIVE</code> — compare against <strong>all</strong> previous versions.</p>
+<spec-warning>
+<p>For a request/response API, checking against the latest version is reasonable: the callers are the callers, and they are
+current. For events it is close to meaningless. Replay is the entire reason events are different, and a replayed message may have
+been written many versions ago — precisely the range a non-transitive check does not examine. A producer can pass
+<code>BACKWARD</code> at every single step and still be unable to read its own topic from six months ago.</p>
+</spec-warning>
+<p>A concrete instance the guidance calls out: making a previously optional field <em>required</em> passes plenty of
+step-wise checks and breaks replay of retained or compacted messages. The registry world has the answer already — it is just a
+suffix that most teams never change away from the default.</p>
+</section>
+
+
+<section id="default">
+<h2>4 · What the spec already asked for</h2>
+<p>The strongest evidence for the recommendation is that <a href="../specs/077-event-schema-evolution/spec.html">077</a> arrived
+at the same distinction independently, before this survey ran.
+<a href="../specs/077-event-schema-evolution/spec.html#FR-003">FR-003</a> requires the prompt to
+<em>"distinguish compatibility for future messages from readability of already-published ones"</em>, and its rationale calls this
+"the distinction that makes events different from requests, and the one a diff-based check silently collapses."</p>
+<p>Those two halves map exactly onto the registry model's two axes:</p>
+<table>
+  <thead><tr><th>FR-003's wording</th><th>Registry concept</th><th>Question to ask</th></tr></thead>
+  <tbody>
+    <tr><td>Compatibility for <em>future</em> messages</td><td>The direction</td><td><code>backward</code> · <code>forward</code> · <code>full</code> · <code>none</code></td></tr>
+    <tr><td>Readability of <em>already-published</em> ones</td><td>Transitivity — the scope</td><td>Against the latest version, or against all retained history?</td></tr>
+  </tbody>
+</table>
+<p>So the recommendation is not to invent a vocabulary, nor to adopt one wholesale. It is to adopt the four words and
+<strong>promote the suffix to a question</strong> — which turns an easily-missed default into a decision a reviewer can see, and
+satisfies FR-003 by construction rather than by interpretation.</p>
+</section>
+
+
+<section id="costs">
+<h2>5 · What adopting the vocabulary costs</h2>
+<ul>
+  <li><strong>The direction names are genuinely confusing.</strong> "Backward compatible" is routinely misread as "old readers
+  can read new data" (which is <em>forward</em>). Mitigation: never ship the bare word. Every option carries its meaning inline —
+  <em>backward — a consumer on the new schema can read old messages</em> — so the artifact is readable by someone who has never
+  used a registry.</li>
+  <li><strong>The words imply a registry that is not there.</strong> A reader may assume something validated the claim.
+  Mitigation is already a requirement: <a href="../specs/077-event-schema-evolution/spec.html#FR-005">FR-005</a> makes the tool
+  say plainly that the stance is the author's claim, not a verified property.</li>
+  <li><strong>Transitive is a stronger promise than most teams keep.</strong> Asking the question will sometimes surface that a
+  team's real answer is "we do not know". That is a useful outcome, not a failure — but the option set must let them say it, so
+  <code>none</code> stays a first-class answer rather than a failure state.</li>
+</ul>
+</section>
+
+
+<section id="recommendation">
+<h2>6 · Recommendation</h2>
+
+<spec-decision id="D-001" grounding="verified">
+  <h4>D-001 · Adopt the four registry words, with meanings pinned in the artifact</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd><code>backward</code>/<code>forward</code>/<code>full</code>/<code>none</code> are the de facto standard across the Kafka ecosystem and are format-independent — Avro, Protobuf and JSON Schema differ in mechanism, not in what the words mean. Inventing a vocabulary would cost every reader a translation.</dd>
+    <dt>Decision</dt>     <dd>Use the four terms. Never present a bare term: each option states its meaning inline, so the artifact is legible without registry experience.</dd>
+    <dt>Consequences</dt> <dd>+ Readers and tools outside spectastic already understand the words. + Format-neutral, so one vocabulary covers AsyncAPI, proto and JSON Schema. − Imports a well-known naming confusion, mitigated by never shipping the word alone.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-002" grounding="verified">
+  <h4>D-002 · Promote transitivity from a suffix to its own question</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>Non-transitive checks compare only against the latest version; the <code>_TRANSITIVE</code> variants compare against all. Replay makes the latter the meaningful question for events, and the ecosystem default is the former. <a href="../specs/077-event-schema-evolution/spec.html#FR-003">FR-003</a> independently asks for exactly this split.</dd>
+    <dt>Decision</dt>     <dd>Two questions, not one: the <em>direction</em> (four options) and the <em>scope</em> — against the latest version, or against all retained history. Record both.</dd>
+    <dt>Consequences</dt> <dd>+ Satisfies FR-003 by construction. + Makes visible the single most consequential thing a step-wise check hides. + Two questions stay well within the decision-phase limits. − A second question on every event-contract change; justified because the answer is the one that governs replay.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-003" grounding="verified">
+  <h4>D-003 · Record the stance; enforce nothing, at any tier</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>077's second question asked whether anything should enforce the stance. Three facts settle it. <a href="../specs/077-event-schema-evolution/spec.html#FR-005">FR-005</a> forbids the tool claiming to determine compatibility. The spec's out-of-scope list already excludes registry validation and structural breaking-change detection. And <a href="../specs/074-contract-checked-tier/spec.html">074</a> already owns the "is a check configured" question for contracts generally — a second, event-specific version of the same detection would duplicate it while proving even less.</dd>
+    <dt>Decision</dt>     <dd>No enforcement and no new enforce category at any tier. The stance is recorded, surfaced to a reviewer, and optionally carried into the change notification. Any future enforcement is its own slug.</dd>
+    <dt>Consequences</dt> <dd>+ The tool never implies it verified something it cannot. + No overlap with 074. + Keeps 077 documentation-and-prompt sized. − The stance is review-caught only, which is the honest ceiling for a claim about consumers the tool cannot see.</dd>
+  </dl>
+</spec-decision>
+</section>
+
+
+<section id="caveats">
+<h2>7 · Recorded ceilings</h2>
+<ul>
+  <li><strong>A stance is a claim, not a property.</strong> Nothing here verifies that a producer's declared stance matches what
+  the payload actually did. A tool that says otherwise would be lying; FR-005 already requires it say so plainly.</li>
+  <li><strong>Retention bounds what "all history" means, and this survey does not settle it.</strong> Transitive compatibility
+  over a topic retained for seven days is a much weaker promise than over an infinitely retained one — and 077's out-of-scope list
+  already defers retention and replay windows. The scope question therefore asks about intent, not about a measured window.</li>
+  <li><strong>Format mechanics still bite beneath the vocabulary.</strong> A Protobuf producer reusing a retired field number
+  breaks consumers while satisfying any stance it declares, because the wire format silently reinterprets old bytes. That is a
+  structural detection problem, explicitly out of 077's scope, and the vocabulary cannot substitute for it.</li>
+  <li><strong>Unknown consumers remain unknown.</strong> The organisational answers — catalogs, lineage, consumer-driven contract
+  testing — are the real solution at scale and are all deliberately out of scope. Recording intent is strictly less than
+  governing change, and is worth doing because nothing else in the stack does even that.</li>
+</ul>
+</section>
+
+
+<section id="sources">
+<h2>8 · Sources</h2>
+<ul>
+  <li><a href="https://docs.confluent.io/platform/current/schema-registry/fundamentals/schema-evolution.html">Schema Evolution &amp; Compatibility Types — Confluent Documentation</a> · the four terms, the default, and the transitive variants</li>
+  <li><a href="https://developer.confluent.io/courses/schema-registry/schema-compatibility/">Schema Registry 101 — Testing Schema Compatibility</a> · latest-version versus all-versions checking</li>
+  <li><a href="https://www.javacodegeeks.com/2025/06/schema-evolution-in-apache-avro-protobuf-and-json-schema.html">Schema Evolution in Apache Avro, Protobuf, and JSON Schema</a> · why the mechanisms differ but the vocabulary does not</li>
+  <li><a href="https://softwaremill.com/schema-evolution-protobuf-scalapb-fs2grpc/">Good practices for schema evolution with Protobuf</a> · field-number reservation and the reuse trap</li>
+  <li><a href="https://medium.com/@zdb.dashti/practical-guide-to-schema-compatibility-in-kafka-f157eee663ef">Practical Guide to Schema Compatibility in Kafka</a> · optional-to-required as a replay-breaking change</li>
+  <li><a href="https://www.nilus.be/blog/event-versioning-strategy-in-kafka-architectures/">Event Versioning Strategy in Kafka Architectures</a> · retention, replay and time-travel reads</li>
+  <li><a href="https://qaskills.sh/blog/asyncapi-contract-testing-kafka-guide">AsyncAPI Contract Testing for Kafka</a> · where AsyncAPI sits relative to a schema registry</li>
+</ul>
+</section>
+
+
+<section id="changelog">
+<h2>9 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-08-01">01 Aug 2026</time><span>Written to unblock <a href="../specs/077-event-schema-evolution/spec.html">077</a>, whose register named a vocabulary survey as its precondition. Lands three decisions: adopt the four registry words with meanings pinned; promote transitivity from a suffix to its own question; record the stance and enforce nothing. The load-bearing finding is that the ecosystem's non-transitive default checks only against the latest version, which is the wrong scope for replay — and that 077's own FR-003 had already asked for exactly that split.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  Event compatibility vocabulary · considerations · 01 Aug 2026
+</footer>
+
+</main>
+<script src="../assets/spec.js"></script>
+</body>
+</html>

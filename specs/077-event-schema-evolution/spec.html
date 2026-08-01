@@ -1,0 +1,291 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
+<title>Event schema evolution · Specification</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Specification · 077-event-schema-evolution</p>
+  <h1>Event schema evolution</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    A published event outlives the consumers it was written for — so "is this change breaking" is a different question for events than for requests.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>      <span><spec-status value="accepted">Accepted</spec-status></span>
+    <b>Spec ID</b>     <span>077-event-schema-evolution</span>
+    <b>Owner</b>       <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Reviewers</b>   <span>—</span>
+    <b>Created</b>     <span><time datetime="2026-07-31">31 Jul 2026</time></span>
+    <b>Principles</b><span><a href="../../principles.html">v1.9.0</a></span>
+    <b>Smallest demoable</b><span>A design changing a published event's payload is prompted for its compatibility stance, and the decision is recorded where a reviewer can see it.</span>
+    <b>Read time</b>   <span data-reading-time></span>
+  </spec-meta>
+
+  <!-- Live size gauge — green at <80%, amber 80-100%, red over. Words row counts authored prose (excludes the conformance index) per REQ-FORMAT-004. -->
+  <spec-budget words="2000" reqs="20" minutes="14"></spec-budget>
+
+  <spec-tldr>
+    <p>For a request/response API, "who breaks if I change this" has a bounded answer: whoever is calling you. For a published
+    event it does not. Events persist, are replayed, and are consumed by systems that did not exist when the payload was written —
+    so a change is not bounded by today's consumers, and the usual diff-the-two-versions check answers a narrower question than the
+    one that matters. The field's own conclusion is that the best outcome is to <em>avoid</em> breaking changes rather than version
+    around them, supported by consumer-driven contracts, schemas published as libraries, or registry-plus-broker validation — three
+    answers with very different operational weight. What spectastic can honestly contribute is not a compatibility engine but the
+    thing it is uniquely placed to hold: the <strong>decision</strong>. A design that changes a published payload should be asked
+    what compatibility it intends, and that stance should be recorded as reviewable provenance rather than discovered later from a
+    replay failure. The enforcement half — whether a registry or a validator is wired up — is deliberately left open until the
+    compatibility model is chosen.</p>
+  </spec-tldr>
+
+  <dl class="invest">
+    <dt><span class="letter">I</span> Independent</dt> <dd>Follows <a href="../073-interface-detection-widening/spec.html">073</a>, which makes an event-driven interface visible at all, and sits beside <a href="../074-contract-checked-tier/spec.html">074</a>, which handles the request/response half of the same question.</dd>
+    <dt><span class="letter">N</span> Negotiable</dt>  <dd>Contracts <em>that a stance is chosen and recorded</em>. The compatibility vocabulary, and whether anything enforces it, are open by design.</dd>
+    <dt><span class="letter">V</span> Valuable</dt>    <dd>Unlocks <a href="#SC-001">SC-001</a> — a payload change stops being an undocumented decision, which is the cheapest available improvement on a problem whose expensive fixes are all infrastructural.</dd>
+    <dt><span class="letter">E</span> Estimable</dt>   <dd><strong>Partially.</strong> The prompt-and-record half is estimable; the enforcement half depends on an unresolved compatibility model and is recorded as an open question rather than an under-specified requirement.</dd>
+    <dt><span class="letter">S</span> Small</dt>       <dd>A question, a recorded stance, and a reviewable trace. Registries, validators and consumer-contract frameworks are external and out of scope.</dd>
+    <dt><span class="letter">T</span> Testable</dt>    <dd>The prompt and the record are fixture-checkable; enforcement acceptance is scoped once the model is chosen.</dd>
+  </dl>
+
+  <spec-audience-map>
+    <dl>
+      <dt>Exec / PM</dt>   <dd>§<a href="#context">Context</a>, §<a href="#scenarios">User scenarios</a>, §<a href="#success">Success criteria</a>.</dd>
+      <dt>Reviewer</dt>    <dd>§<a href="#requirements">Requirements</a>, §<a href="#assumptions">Assumptions</a>, §<a href="#questions">Open questions</a>.</dd>
+      <dt>Implementer</dt> <dd>§<a href="#requirements">Requirements</a>, §<a href="#data">Data model</a>, §<a href="#conformance">Conformance index</a>.</dd>
+    </dl>
+  </spec-audience-map>
+</header>
+
+
+<section id="context">
+<h2>1 · Context</h2>
+<p>Once the tool can see an event-driven interface and ask for a contract, the harder question arrives immediately: what happens
+when the payload changes. For a synchronous API this is well-trodden — diff the old description against the new, classify the
+changes, block the breaking ones. The tooling is commodity and the blast radius is knowable, because the callers are the callers.</p>
+<p>Events break that assumption in two ways. They persist, so a consumer may read a message written months ago against a schema
+that has since moved. And they are consumed by systems the producer may not know about, so the set of things a change can break is
+not enumerable at change time. A diff still tells you something useful; it just answers a narrower question than the one being
+asked.</p>
+<p>The field's practical answers are all heavier than a diff: consumer-driven contracts that require organisation-wide buy-in,
+schemas published as code libraries that shift the problem to dependency management, or a registry that validates at publish and
+runtime and costs real infrastructure. None of these is a thing a spec tool should build, and choosing between them is exactly the
+organisational judgment the tool should not pre-empt. What it <em>can</em> do — and what nothing else in the stack does — is make
+sure the decision was consciously taken and is visible to a reviewer. Whose problem: producers changing a payload, and every
+consumer who would otherwise learn about it from a replay.</p>
+</section>
+
+
+<section id="scenarios">
+<h2>2 · User scenarios &amp; testing</h2>
+
+<p>Each story <strong>MUST</strong> be independently testable: if you implemented only US1, you would
+still have a viable MVP.</p>
+
+<h3 id="US1">US1 · Changing a payload is a conscious decision <spec-pill>P1</spec-pill></h3>
+<p>As a <strong>producer</strong>, I want <strong>to be asked what compatibility I intend when I change a published
+payload</strong> so that <strong>the decision is taken deliberately rather than discovered by a consumer</strong>.</p>
+<p><em>Acceptance:</em> A design that changes a declared event contract prompts for a compatibility stance; a design that changes
+no published payload prompts for nothing.</p>
+
+<h3 id="US2">US2 · A reviewer can see the stance <spec-pill>P1</spec-pill></h3>
+<p>As a <strong>reviewer</strong>, I want <strong>the intended compatibility recorded in the design</strong> so that
+<strong>I can challenge it before it ships rather than after a replay fails</strong>.</p>
+<p><em>Acceptance:</em> The recorded stance is visible in the design artifact and identifies which event contract it applies to.</p>
+
+<h3 id="US3">US3 · The replay case is named, not assumed away <spec-pill>P2</spec-pill></h3>
+<p>As a <strong>producer</strong>, I want <strong>the prompt to raise the possibility of historical consumers</strong> so that
+<strong>I answer for messages already published, not only for the consumers I currently know about</strong>.</p>
+<p><em>Acceptance:</em> The prompt distinguishes compatibility for future messages from readability of already-published ones.</p>
+
+<h3>Edge cases</h3>
+<ul>
+  <li>A field added with a default — non-breaking for readers, potentially breaking for strict validators.</li>
+  <li>A field removed that no known consumer reads, but historical messages still contain.</li>
+  <li>A semantic change with no structural change — same shape, different meaning, invisible to any diff.</li>
+  <li>An event retired entirely while its history is retained.</li>
+  <li>A payload change in a project with no retention at all, where replay is not a concern.</li>
+  <li>A first version, with no history and no consumers.</li>
+</ul>
+</section>
+
+
+<section id="requirements">
+<h2>3 · Requirements</h2>
+
+<p>Conformance keywords (<spec-rule>MUST</spec-rule>, <spec-rule level="should">SHOULD</spec-rule>,
+<spec-rule level="may">MAY</spec-rule>) follow RFC 2119.</p>
+
+<h3>Functional</h3>
+
+<spec-requirement id="FR-001" priority="must">
+<p>A design that changes a declared event contract <strong>MUST</strong> prompt for the intended compatibility stance.</p>
+<details><summary>Rationale</summary><p>The cheapest available improvement on a problem whose other fixes are infrastructural: make
+the decision conscious.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-002" priority="must">
+<p>The chosen stance <strong>MUST</strong> be recorded in the design artifact, identifying the event contract it applies to.</p>
+<details><summary>Rationale</summary><p>An unrecorded decision is indistinguishable from no decision at review time, which is the
+only time it can still be cheaply challenged.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-003" priority="must">
+<p>The prompt <strong>MUST</strong> distinguish compatibility for <em>future</em> messages from readability of
+<em>already-published</em> ones.</p>
+<details><summary>Rationale</summary><p>This is the distinction that makes events different from requests, and the one a
+diff-based check silently collapses.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-004" priority="must">
+<p>A design that changes no published payload <strong>MUST</strong> prompt for nothing: at most 0 additional questions.</p>
+<details><summary>Rationale</summary><p>Most designs touch no event contract. A prompt they always see is noise that trains people
+to dismiss it.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-005" priority="should">
+<p>The tool <strong>SHOULD NOT</strong> claim to determine whether a payload change is compatible: it records a stance and
+<strong>SHOULD</strong> say plainly that the stance is the author's claim, not a verified property.</p>
+<details><summary>Rationale</summary><p>Semantic changes are invisible to structural analysis, and the consumer set is not
+enumerable. Overstating what the record proves would be the same overclaim the security categories are careful to avoid.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-006" priority="may">
+<p>The recorded stance <strong>MAY</strong> feed the change notification produced on promotion, so a consumer receives the
+producer's intent alongside the fact of the change.</p>
+</spec-requirement>
+
+<h3>Non-functional</h3>
+
+<spec-requirement id="NFR-001" priority="must">
+<p>The addition <strong>MUST</strong> be deterministic and local: at most 0 network calls, and at most 0 dependencies on a running
+broker or registry.</p>
+<details><summary>Rationale</summary><p>A design-time question must work offline and in CI, where no messaging infrastructure
+exists.</p></details>
+</spec-requirement>
+
+<spec-requirement id="NFR-002" priority="must">
+<p>The prompt <strong>MUST</strong> respect the existing decision-phase limits — at most 4 questions per call, each offering 2–4
+options.</p>
+</spec-requirement>
+
+<h3>Out of scope (deferred to other slices)</h3>
+<spec-out-of-scope>
+  <ul>
+    <li defer-to="TBD-contract-runtime-testing">Consumer-driven contract testing, which needs both sides running.</li>
+    <li defer-to="TBD-contract-registry-integration">Schema-registry validation at publish or runtime.</li>
+    <li defer-to="074-contract-checked-tier">Structural breaking-change detection, which answers the narrower question well.</li>
+    <li defer-to="TBD-event-retention-policy">Retention and replay windows, which determine how far back compatibility must reach.</li>
+  </ul>
+</spec-out-of-scope>
+</section>
+
+
+<section id="data">
+<h2>4 · Data model</h2>
+
+<p>No persisted entity. One authored decision, recorded in an artifact that already exists.</p>
+
+<h3>Entities</h3>
+<dl>
+  <dt>Compatibility stance</dt><dd>The producer's intent for a payload change: whether existing consumers continue to work, and
+  whether already-published messages remain readable. Authored, not derived.</dd>
+</dl>
+
+<spec-note>
+<p>The invariant worth holding: the stance is a <em>claim</em>, never a verified property. The moment it is presented as verified,
+the record becomes worse than nothing — a reviewer stops checking a thing the tool never actually established.</p>
+</spec-note>
+</section>
+
+
+<section id="success">
+<h2>5 · Success criteria</h2>
+
+<p>Technology-agnostic, measurable outcomes. These are how we know it worked.</p>
+
+<spec-requirement id="SC-001" priority="must">
+<p>100% of designs that change a declared event contract carry a recorded compatibility stance; designs changing none carry at
+most 0 such prompts.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-002" priority="must">
+<p>A reviewer reading the design can state, without consulting the producer, what the author claims about existing consumers and
+about already-published messages.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-003" priority="should">
+<p>Generated copy describing the stance is checked to claim at most 0 verified compatibility properties.</p>
+</spec-requirement>
+</section>
+
+
+<section id="assumptions">
+<h2>6 · Assumptions</h2>
+
+<spec-assumption>
+<p>Producers can answer a compatibility question at design time. Where they cannot, the honest answer is "unknown", which is itself
+worth recording and is a better outcome than an unasked question.</p>
+</spec-assumption>
+
+<spec-assumption>
+<p>A recorded stance changes reviewer behaviour. If it does not, this slice has bought provenance and nothing else — which is the
+weakest honest claim it makes.</p>
+</spec-assumption>
+</section>
+
+
+<section id="questions">
+<h2>7 · Open questions</h2>
+<spec-questions>
+<p>None outstanding. Both were settled on 01 Aug 2026 by the
+<a href="../../docs/event-compatibility-considerations.html">event compatibility vocabulary survey</a> this register called for.</p>
+<p><strong>The vocabulary is the four registry terms</strong> — <code>backward</code>, <code>forward</code>, <code>full</code>,
+<code>none</code> — with each option's meaning pinned inline rather than named bare, so the artifact is legible without registry
+experience. The survey found the words are format-independent: Avro, Protobuf and JSON Schema differ in mechanism (default values
+versus field numbers), not in what the four terms mean, so adopting them imports no format's semantics. The survey also found the
+ecosystem's non-transitive default checks a new schema only against the <em>latest</em> version, which is close to meaningless
+under replay — so transitivity is promoted from a suffix to a second question, which is what
+<a href="#FR-003">FR-003</a> had already asked for.</p>
+<p><strong>Nothing enforces the stance, at any tier.</strong> <a href="#FR-005">FR-005</a> forbids the tool claiming to determine
+compatibility; registry validation and structural detection are already out of scope; and
+<a href="../074-contract-checked-tier/spec.html">074</a> owns the is-a-check-configured question for contracts generally, so an
+event-specific version would duplicate it while proving less. The stance is recorded and surfaced; any future enforcement is its
+own slug.</p>
+</spec-questions>
+</section>
+
+
+<section id="conformance">
+<h2>8 · Conformance index</h2>
+<p>Auto-built from every <code>&lt;spec-requirement&gt;</code> in this document.</p>
+<spec-conformance></spec-conformance>
+</section>
+
+
+<section id="changelog">
+<h2>9 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-07-31">31 Jul 2026</time><span>Initial draft. Resolves <code>TBD-event-schema-evolution</code>, which the event-driven survey deliberately left unscoped as "the compatibility half". Specced with the part spectastic is uniquely placed to own — prompting for and recording the producer's compatibility intent — as requirements, and the two genuinely-undecided parts (the compatibility vocabulary, and whether anything enforces it) recorded as blocking open questions rather than guessed at. The tool records a claim; it does not verify compatibility, and <a href="#FR-005">FR-005</a> requires it to say so.</span></li>
+  <li><time datetime="2026-08-01">01 Aug 2026</time><span>Register cleared by the <a href="../../docs/event-compatibility-considerations.html">event compatibility vocabulary survey</a>, the precondition this spec named. Vocabulary: the four registry terms with meanings pinned inline, plus transitivity promoted from a suffix to a second question — the survey's load-bearing finding being that the ecosystem's non-transitive default checks only against the latest version, which replay makes near-meaningless, and that <a href="#FR-003">FR-003</a> had independently asked for that same split. Enforcement: none, at any tier. The estimability gate now passes.</span></li>
+  <li><time datetime="2026-08-01">01 Aug 2026</time><span>Status flipped Draft → Accepted on 01 Aug 2026 — zero remaining unchecked tasks; tests verified passing per author confirmation (1396/1397 vitest, 139/140 Playwright — both remaining failures pre-existing and unrelated: a timing flake reconfirmed clean in isolation, and the already-triaged plan.html/design.html fixture drift). Sibling bundle (REQ-LIFECYCLE-005).</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  077-event-schema-evolution · Event schema evolution · authored 31 Jul 2026
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>

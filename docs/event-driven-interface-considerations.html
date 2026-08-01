@@ -1,0 +1,390 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
+<title>Not every interface is an endpoint — Considerations for Spectastic</title>
+<meta name="description" content="A service whose entire public surface is message-broker topics passes the contract-first enforcement floor at every tier as 'nothing to contract' — while asyncapi.yaml is already an accepted contract file. An audit of the synchronous assumption running through the enforcement gate, and why the fix is symmetry rather than a new default format.">
+<link rel="stylesheet" href="../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../assets/favicon.svg">
+<script src="../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Considerations · Event-driven interfaces</p>
+  <h1>Not every interface is an endpoint</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    The enforcement floor asks whether a project exposes a public interface, and answers by looking for a web framework. A service that publishes to a topic has consumers, a payload contract, and a compatibility problem — and is waved through in silence at every tier, including enterprise.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>     <span><spec-status value="draft">Draft</spec-status></span>
+    <b>Type</b>       <span>Audit &amp; landscape survey</span>
+    <b>Author</b>     <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Created</b>    <span><time datetime="2026-07-31">31 Jul 2026</time></span>
+    <b>Companion</b>  <span><a href="./data-model-contract-considerations.html">data-model-contract</a> · <a href="./coverage-enforcement-considerations.html">coverage-enforcement</a></span>
+    <b>Sources</b>    <span>8 external, retrieved 31 Jul 2026 · codebase audit</span>
+    <b>Read time</b>  <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-tldr>
+    <p>Split out of the <a href="./data-model-contract-considerations.html">data-model and contract survey</a>, which found this
+    while looking for something else. <code>INTERFACE_SIGNALS</code> — the antecedent deciding whether
+    <code>contract-first</code> applies at all — contains roughly forty dependency signals across six ecosystems, and
+    <strong>every one of them is HTTP, GraphQL or gRPC</strong>. No Kafka, AMQP, NATS, Pulsar, SQS/SNS, EventBridge, Service Bus,
+    Pub/Sub or Redis streams. So <mark>a service whose entire public surface is published topics passes the contract floor at
+    verified <em>and</em> enterprise</mark> — marked <em>covered</em>, not warned, because the gate deliberately fails safe on the
+    antecedent so CLIs and batch jobs are never false-failed. That posture is right for a CLI and wrong for an event producer. The
+    oddity is that the tool already recognises the <em>answer</em>: <code>isContractFile()</code> accepts
+    <code>asyncapi.yaml</code>, and AsyncAPI 3.0 covers request/reply as well as pub/sub, so it is not even a niche format. The
+    tempting fix — reach for AsyncAPI when nothing says otherwise — is the one to avoid, because
+    <a href="../specs/050-stack-selection/spec.html">050</a> FR-002 requires recommendations to be context-seeded and explicitly
+    <strong>crownless</strong> where no source implies a winner. Recommendation: treat this as a <strong>symmetry</strong> defect,
+    not a format preference. Widen the antecedent so an event-driven service is <em>asked</em>; add an interface-shape question to
+    the design interview; let format follow the detected interface. And widen carefully — a broker client is often transitive, and
+    dependency presence cannot distinguish <em>publishing</em> a topic from <em>consuming</em> one, which is exactly the
+    false-failure 042 FR-014 was written to prevent.</p>
+  </spec-tldr>
+
+  <spec-audience-map>
+    <dl>
+      <dt>Exec / PM</dt>   <dd>The TL;DR, then §<a href="#recommendation">6</a>.</dd>
+      <dt>Reviewer</dt>    <dd>§<a href="#gate">2</a> — the audit, and exactly what passes today.</dd>
+      <dt>Implementer</dt> <dd>§<a href="#costs">5</a> (what widening actually costs) + §<a href="#recommendation">6</a>.</dd>
+      <dt>In a hurry</dt>  <dd>A Kafka-only service owes no contract today. Fix the antecedent, not the default format. §<a href="#recommendation">6</a>.</dd>
+    </dl>
+  </spec-audience-map>
+</header>
+
+
+<!-- ======================================================= -->
+<section id="ask">
+<h2>1 · The ask — a service with no endpoints</h2>
+
+<p><spec-newthought>This began as a footnote in another survey.</spec-newthought> The
+<a href="./data-model-contract-considerations.html">data-model and contract doc</a> set out to answer where a backend's schema
+should live so a UI team in another repository could consume it. Reading the enforcement code to check how contracts are detected
+turned up something the question hadn't anticipated: for a large class of backends, the tool never asks for a contract at all.</p>
+
+<p>The class is not exotic. A settlement service that publishes <code>settlement.completed</code> to a topic; an ingestion
+pipeline consuming from a queue and emitting enriched events; anything built on an event backbone rather than a request path. Each
+has downstream consumers who need the payload shape, each has a compatibility problem when that shape changes, and each has the
+same handover problem the companion doc is about. What none of them has is an endpoint.</p>
+
+<p>Spectastic's own vocabulary makes the assumption visible once you look for it. The seeded principle promises that "a component
+that exposes an interface ships a checked-in contract"; the profile axis ladders <code>informal → contract-first →
+contract-checked → versioned+governed</code>. Neither says <em>synchronous</em> anywhere. The implementation does.</p>
+</section>
+
+
+<!-- ======================================================= -->
+<section id="gate">
+<h2>2 · What the gate actually looks for</h2>
+
+<p><spec-newthought>The <code>contract-first</code> category is interface-gated, and the gate is a dependency-name match.</spec-newthought>
+<code>exposesInterface()</code> tests the project's root manifests against a fixed signal list. If nothing matches, the category is
+marked <em>covered</em> — "there is nothing to contract" — and the run moves on.</p>
+
+<div style="overflow-x:auto;">
+<table>
+  <thead>
+    <tr><th>Ecosystem</th><th>What counts as "exposes an interface"</th><th>Broker signals</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>JS / TS</td><td>express, fastify, @nestjs/core, koa, @hapi/hapi, @apollo/server, apollo-server, graphql-yoga, @grpc/grpc-js</td><td><strong>None</strong></td></tr>
+    <tr><td>Python</td><td>fastapi, flask, django, starlette, aiohttp, grpcio, connexion</td><td><strong>None</strong></td></tr>
+    <tr><td>Java</td><td>spring-boot-starter-web, spring-webflux, jakarta/javax.ws.rs, grpc-, quarkus-resteasy, micronaut-http</td><td><strong>None</strong></td></tr>
+    <tr><td>Go</td><td>gin, echo, fiber, gorilla/mux, go-chi, google.golang.org/grpc</td><td><strong>None</strong></td></tr>
+    <tr><td>Rust</td><td>actix-web, axum, rocket, warp, tonic, poem</td><td><strong>None</strong></td></tr>
+    <tr><td>Swift</td><td>Vapor, Hummingbird, grpc-swift</td><td><strong>None</strong></td></tr>
+  </tbody>
+</table>
+</div>
+
+<p>No Kafka client in any ecosystem, no AMQP, no NATS, no Pulsar, no SQS/SNS/EventBridge, no Azure Service Bus, no Google
+Pub/Sub, no Redis streams. Nor does any non-dependency signal contribute — a broker declared in a compose file, a serverless event
+mapping, or a <code>.proto</code> containing a <code>stream</code> all count for nothing, because the gate reads root manifests
+only.</p>
+
+<p><spec-newthought>The consequence is precise, and it is a silent pass rather than a visible gap.</spec-newthought> Run the
+enforcement gate against a service whose entire public surface is published topics, at the <strong>enterprise</strong> profile
+where <code>contract-first</code> sits in the hard floor, and it reports the category satisfied. Not warned. Not degraded to
+advisory. Satisfied — on the grounds that the project has no interface.</p>
+
+<p>That is not a bug in the sense of a mistake. It is the deliberate fail-safe: warning on every interface-less project would fire
+on each CLI, batch job and internal library in the estate, which is precisely the warn-washing the enforcement design set out to
+avoid. The antecedent fails safe so that absence of evidence never becomes a hard failure. The defect is that the evidence being
+looked for is too narrow — a whole architectural style reads as absence.</p>
+
+<p><spec-newthought>The strangest part is that the answer is already recognised.</spec-newthought> <code>isContractFile()</code>
+accepts <code>asyncapi.{yaml,yml,json}</code> as a valid interface contract, and has since the category shipped. AsyncAPI is listed
+as an accepted contract in the spec text and in the generated project documentation. So the tool can recognise the answer to a
+question it has no way to ask. The gap is entirely on the asking side.</p>
+
+<p>One smaller inconsistency sits alongside it. The seeded principle's own copy — the text written into a downstream project's
+constitution — names "OpenAPI, JSON Schema, or a typed signature." It omits AsyncAPI, and also <code>.proto</code> and GraphQL SDL,
+both of which the detector has always accepted. A project reading its own constitution would not learn that an AsyncAPI document
+satisfies the rule.</p>
+</section>
+
+
+<!-- ======================================================= -->
+<section id="landscape">
+<h2>3 · The format — AsyncAPI, and what it now covers</h2>
+
+<p><spec-newthought>If the gate is going to ask, the answer needs somewhere to go.</spec-newthought> AsyncAPI is the event-driven
+counterpart to OpenAPI: a document describing messages, channels and the binding to a particular broker — "depending on the
+protocol (such as MQTT, AMQP, Kafka), your AsyncAPI document may have additional fields."<spec-sidenote>The AsyncAPI document
+concept and its protocol bindings <a href="https://www.asyncapi.com/docs/concepts/asyncapi-document">[1]</a>.</spec-sidenote> It
+occupies the same position in the 2026 schema landscape that OpenAPI does for REST: a specification derived from JSON Schema,
+from which documentation, code and validation are generated rather than written
+alongside.<spec-sidenote>The 2026 schema survey places AsyncAPI 3.0 beside OpenAPI 3.1 as a specification layer over shared JSON
+Schema, in a field whose organising claim is that "the unit of an API is the schema, not the endpoint"
+<a href="https://www.youngju.dev/blog/culture/2026-05-14-api-schema-2026-json-schema-openapi-3-1-asyncapi-graphql-grpc-deep-dive.en">[2]</a>.</spec-sidenote></p>
+
+<p>Worth knowing before treating it as the niche option: version 3.0 removed the assumption that "async" means fire-and-forget. It
+decoupled channels from operations — <code>publish</code> and <code>subscribe</code> were removed from the Channel Object,
+so channels became reusable across operations — and added an Operation Reply Object, making request/reply, "a very common
+messaging paradigm", expressible in an event-driven
+description.<spec-sidenote>AsyncAPI 3.0.0 release notes
+<a href="https://www.asyncapi.com/blog/release-notes-3.0.0">[3]</a>. The practical upshot for this doc: AsyncAPI is not confined to
+one-way pub/sub, so "which format" is a genuine choice for a mixed service rather than a foregone one.</spec-sidenote></p>
+
+<p>So the format question is less binary than it looks. A service with both an HTTP surface and a published event stream does not
+have to pick; it honestly owes two documents, describing two contracts with two sets of consumers. Any rule that resolves to a
+single default would obscure exactly that case.</p>
+</section>
+
+
+<!-- ======================================================= -->
+<section id="default">
+<h2>4 · Why not simply default to it</h2>
+
+<p><spec-newthought>The obvious fix is to reach for AsyncAPI when nothing indicates otherwise.</spec-newthought> It is a
+reasonable instinct — the event-driven case is the one being neglected, AsyncAPI 3.0 generalises to request/reply, and a default
+costs nothing to state. It is also the one move this survey recommends against, and the reason is a standing requirement rather
+than a matter of taste.</p>
+
+<p><a href="../specs/050-stack-selection/spec.html">050</a> FR-002 governs how the design verb recommends anything. Every
+recommendation "MUST be <strong>context-seeded</strong> — drawn from repo detection, standing docs … and the
+<code>frameworks</code> axis stance — and MUST NOT come from a spectastic-maintained house catalog," and, decisively for this
+question: "Where no source decisively implies a winner, options MUST be presented with no '(Recommended)' crown." A rule of the
+form <em>default to format X absent context</em> is precisely a crown in the no-context case — the exact state the requirement
+says must be crownless. The stance is load-bearing enough to carry a drift-guard test asserting the phrase survives in the command
+markdown, and the owning spec lists a maintained house catalog under out-of-scope as "deliberately never built."</p>
+
+<p>The single sanctioned exception is narrow and does not fit: where context leaves contenders genuinely tied, the profile's
+<code>frameworks</code> axis breaks the tie by <em>stance</em> — <code>minimal</code> leans stdlib, <code>staff-level</code> leans
+batteries-included — never by naming a product. AsyncAPI-by-default names a product.</p>
+
+<p><spec-newthought>Separating the instinct from the proposed fix makes it stronger.</spec-newthought> The bias in the current
+system is not that it prefers OpenAPI to AsyncAPI. It is that it <strong>only recognises synchronous interfaces as interfaces at
+all</strong>. Correcting that is not a default; it is symmetry — and once the antecedent recognises a broker, the format follows
+from detection like every other stack choice, which satisfies FR-002 rather than needing an exception carved from it.</p>
+
+<spec-decision id="D-001" grounding="verified">
+  <h4>D-001 · Treat this as a symmetry defect; let the format follow the detected interface, never a default</h4>
+  <dl>
+    <dt>Status</dt><dd><spec-status value="draft">Proposed</spec-status></dd>
+    <dt>Context</dt><dd>A service exposing only broker topics is exempt from <code>contract-first</code> at every tier, though
+    <code>asyncapi.yaml</code> is already an accepted contract file. The obvious remedy — default to AsyncAPI absent context —
+    would be a crowned recommendation in exactly the case 050 FR-002 requires to be crownless.</dd>
+    <dt>Decision</dt><dd>Fix the antecedent, not the default. Widen the interface signal set to include message-broker
+    dependencies so an event-driven project is <em>asked</em> for a contract; add an interface-shape question to the design
+    interview alongside persistence shape; and seed the format from what detection found — HTTP → OpenAPI, gRPC →
+    <code>.proto</code>, GraphQL → SDL, broker → AsyncAPI, and both documents where both surfaces exist. Bring the seeded
+    principle's copy to parity, since it names neither AsyncAPI nor <code>.proto</code> nor GraphQL SDL today.</dd>
+    <dt>Consequences</dt><dd>+ Closes a hole where an entire architectural style is silently exempt at the enterprise floor.
+    + Context-seeded, so it satisfies FR-002 rather than requiring an exception from it. + Needs no new vocabulary — AsyncAPI is
+    already recognised, so only the asking side changes. + A mixed HTTP-and-events service is prompted for both contracts instead
+    of being nudged toward one. − Does nothing for a project whose broker usage is invisible to root manifests (infrastructure-only
+    wiring, a managed bus configured out-of-repo). − Leaves format choice to detection, so an unusual stack still gets no
+    recommendation — correct under FR-002, but less helpful than a default would feel.</dd>
+  </dl>
+</spec-decision>
+</section>
+
+
+<!-- ======================================================= -->
+<section id="costs">
+<h2>5 · What widening actually costs</h2>
+
+<p><spec-newthought>Widening an antecedent is not free, and the requirement it changes says so explicitly.</spec-newthought> 042's
+FR-014 does not omit brokers by oversight. It defines a detectable public interface as "an HTTP/RPC framework declared as a
+dependency", and then records the residual deliberately: an interface exposed via a framework outside the signal set "is silently
+exempt (a false-negative), which SHOULD be recorded as the honest ceiling rather than closed by widening the gate into false
+failures." So this is a change to a stated ceiling, arriving as a proposal, not an edit to a list.</p>
+
+<p>That framing is right for an unlisted HTTP framework and, this survey argues, wrong for an entire architectural style — the
+difference between missing a member of a category and missing the category. But the caution it encodes is real and a proposal has
+to answer it.</p>
+
+<p><strong>A broker dependency is a weaker proxy than a web framework.</strong> Declaring <code>express</code> is close to
+declaring an intention to serve HTTP. Declaring a Kafka client is not: it may be a transitive dependency, an infrastructural
+concern pulled in by a framework, or a client used purely to <em>consume</em> from someone else's topic. Which leads to the
+sharper problem.</p>
+
+<p><strong>Dependency presence cannot distinguish publishing from consuming.</strong> A producer owes its consumers a contract; a
+consumer owes nobody one. The same <code>kafkajs</code> entry appears in both. Widening on the dependency alone would ask a pure
+consumer for a contract it has no business publishing — a false failure in exactly the direction FR-014 guards. The companion
+survey found the mirror image of this on the contract side: a project vendoring an upstream OpenAPI document to generate a client
+is marked <em>covered</em> though it publishes nothing.<spec-sidenote>See the companion doc's §6 — a Rust crate using
+<code>progenitor</code>, an OpenAPI <em>client</em> generator, checks in a spec for an API it consumes
+<a href="https://github.com/oxidecomputer/progenitor">[4]</a>. Both directions have the same root: filesystem and manifest
+inference cannot read intent.</spec-sidenote> Both point the same way: where the design artifact can <em>declare</em> the
+interface, a declaration should outrank inference.</p>
+
+<p><strong>And a newly-caught project inherits a harder compatibility problem than the synchronous case.</strong> Event contracts
+are, if anything, worse to evolve than REST ones: events persist and may be replayed by consumers that did not exist when they
+were written, so a change is not bounded by who is calling you today. The field's own conclusion is that "the best solution is to
+avoid breaking changes and minimise the need for versioning", with consumer-driven contracts, schemas published as code libraries,
+and registry-plus-broker validation as the practical
+options.<spec-sidenote>On event-schema evolution and why replay makes it harder than request/response
+<a href="https://theburningmonk.com/2025/04/how-to-detect-and-prevent-breaking-changes-in-event-schemas/">[5]</a>. The
+schema-registry answer is the same one the protobuf ecosystem converged on
+<a href="https://buf.build/blog/why-a-protobuf-schema-registry">[6]</a>.</spec-sidenote> Catching these projects is the right
+thing to do; it should be done knowing the tool has less to offer them afterwards than it does an OpenAPI project.</p>
+
+<p>The tooling asymmetry is worth stating plainly, because it affects which rung of the <code>contracts</code> axis is honestly
+reachable. Linting and breaking-change detection are commodity for OpenAPI — a ruleset-driven linter and a diffing tool with a
+ready-made CI action, both permissively
+licensed.<spec-sidenote>Spectral lints OpenAPI 2.0/3.x and AsyncAPI <strong>2.x</strong> against extendable rulesets
+<a href="https://github.com/stoplightio/spectral">[7]</a>; oasdiff detects changes that "break existing API clients" for OpenAPI
+<a href="https://github.com/Tufin/oasdiff">[8]</a>. Note the version gap: this doc cites AsyncAPI 3.0 for request/reply and
+channel decoupling, while the built-in lint ruleset covers 2.x.</spec-sidenote> For AsyncAPI the equivalents are thinner, and
+thinner still for 3.x. A <code>contract-checked</code> rung that assumes parity would be overpromising.</p>
+
+<spec-decision id="D-002" grounding="verified">
+  <h4>D-002 · Prefer a declared interface over inferred presence; widen on evidence of publishing</h4>
+  <dl>
+    <dt>Status</dt><dd><spec-status value="draft">Proposed</spec-status></dd>
+    <dt>Context</dt><dd>Dependency-name matching cannot tell a publisher from a consumer, and a broker client is a weaker
+    declaration of public surface than a web framework. Widening naively would produce the false failures FR-014's ceiling was
+    written to avoid, and the companion survey found the mirror false-positive on the contract-detection side.</dd>
+    <dt>Decision</dt><dd>Where the design artifact declares the interface a feature exposes, that declaration is authoritative and
+    outranks manifest inference in both directions — it can establish that a contract is owed, and that one is not. Keep inference
+    as the fallback for projects with no declaration, and when widening on inference alone, prefer signals that indicate
+    <em>producing</em> over mere client presence. Do not raise a hard failure on inference alone for the broker case at first;
+    land it as advisory and promote it once the signal proves itself.</dd>
+    <dt>Consequences</dt><dd>+ Resolves the publish-versus-consume ambiguity in the only place that actually knows the answer.
+    + Same mechanism fixes the companion doc's vendored-spec false positive, so one change serves both. + Landing advisory-first
+    matches how other categories earned their place in the floor. − A declaration is only as good as the design that carries it,
+    so a project that skips the interview gets inference anyway. − Advisory-first means the hole stays open, more visibly, for
+    however long the promotion takes. − Two sources of truth for "does this expose an interface", with a precedence rule to
+    document and test.</dd>
+  </dl>
+</spec-decision>
+</section>
+
+
+<!-- ======================================================= -->
+<section id="recommendation">
+<h2>6 · Recommendation — two moves, in order</h2>
+
+<p>One thesis anchors both: <strong>the defect is that the gate cannot see a whole class of interface, not that it prefers the
+wrong format.</strong> Fixing the seeing is the work; the format follows from it.</p>
+
+<ol>
+  <li><strong>Move 1 — make the gate able to ask.</strong> A proposal against
+  <a href="../specs/042-profile-enforcement/spec.html">042</a> amending FR-014's definition of a detectable public interface to
+  admit event-driven surfaces, with broker signals per ecosystem, landing <em>advisory</em> rather than in the hard floor until
+  the signal proves itself. The proposal has to answer the publish-versus-consume ambiguity rather than defer it — that is the
+  substance of the change, not a detail of it. Bring the seeded principle's format list to parity in the same batch, since it is a
+  data/content delta on the profile catalog rather than a requirement change.</li>
+
+  <li><strong>Move 2 — make the design verb ask.</strong> An interface-shape question in the design interview, alongside the
+  persistence-shape question that already exists: does this feature publish events, consume them, or neither, and on what
+  transport. The answer seeds the contract format and — per <a href="#D-002">D-002</a> — becomes the declaration that outranks
+  inference. This is the half that makes the gate accurate rather than merely wider, and it belongs with the companion doc's
+  design-section work.</li>
+</ol>
+
+<spec-warning><strong>Do not close this by widening the signal list alone.</strong> It is the smallest diff and it is the version
+most likely to cause harm: a project that merely consumes from a queue starts owing a contract it should not publish, the failure
+is hard at verified and enterprise, and the resulting noise is the strongest possible argument for reverting the whole change. The
+ceiling FR-014 recorded is a real warning, not bureaucratic caution. Widen with a way to say "this consumes, it does not publish"
+already in place.</spec-warning>
+
+<h3>Suggested next artifacts</h3>
+<spec-out-of-scope>
+  <ul>
+    <li defer-to="TBD-async-interface-signals">A <code>/spectastic.propose</code> against <a href="../specs/042-profile-enforcement/spec.html">042</a>: amend FR-014 to admit event-driven interfaces, with per-ecosystem broker signals landing advisory-first and the publish-versus-consume ambiguity answered in the proposal. Move 1 (D-001).</li>
+    <li defer-to="TBD-design-interface-shape">An interface-shape question in the design interview — publishes / consumes / neither, and on what transport — seeding the contract format and standing as the declaration that outranks inference. Move 2; pairs with the companion doc's design-section slug.</li>
+    <li defer-to="TBD-contract-principle-format-parity">A data/content delta on the profile catalog: the seeded contract-first principle names OpenAPI, JSON Schema and typed signatures, omitting AsyncAPI, <code>.proto</code> and GraphQL SDL, all of which the detector already accepts. Copy fix, no requirement change.</li>
+    <li defer-to="TBD-async-contract-checked">A survey then spec: what <code>contract-checked</code> can honestly promise for events, given that the mainstream lint ruleset covers AsyncAPI 2.x while 3.0 carries the request/reply and channel-decoupling changes, and that breaking-change tooling is thinner than OpenAPI's.</li>
+    <li defer-to="TBD-event-schema-evolution">The compatibility half, deliberately unscoped here: replayed events mean a payload change is not bounded by today's consumers, so the registry / consumer-driven-contract options are a different problem from "is a contract checked in."</li>
+  </ul>
+</spec-out-of-scope>
+</section>
+
+
+<!-- ======================================================= -->
+<section id="caveats">
+<h2>7 · Caveats on the sources</h2>
+<ul>
+  <li><strong>The exemption is read from code, not observed in a running project.</strong> The audit traced
+  <code>exposesInterface()</code> and the signal list directly and the conclusion follows from them, but no broker-only fixture was
+  built and run through the enforcement gate to watch it pass. That test is the first thing a proposal should write, and it would
+  be the honest confirmation this doc is reasoning toward.</li>
+  <li><strong>"No broker signals" is a claim about the shipped list, which is a moving target.</strong> It was verified by reading
+  the signal table and by searching the source for the obvious client names across ecosystems. A signal added after 31 Jul 2026
+  would not be reflected here.</li>
+  <li><strong>The tooling-parity claim is directional.</strong> AsyncAPI's ecosystem is smaller than OpenAPI's, and the built-in
+  lint ruleset cited covers 2.x — but the field moves quickly, generators and validators exist outside the two tools named, and
+  "thinner" is not "absent". Treat it as a reason to scope <code>contract-checked</code> carefully, not as a verdict on the
+  format.</li>
+  <li><strong>Whether a category miss differs in kind from a member miss is a judgment, not a finding.</strong> This doc argues
+  that missing all of event-driven architecture is different from missing one unlisted web framework, and that the ceiling FR-014
+  records was written with the second in mind. That is an interpretation of a requirement's intent, and the proposal it recommends
+  is the proper place for it to be accepted or rejected.</li>
+</ul>
+</section>
+
+
+<!-- ======================================================= -->
+<section id="sources">
+<h2>8 · Sources</h2>
+<p>External material retrieved 31 Jul 2026; canonical specification and tool pages cited. Fused with a direct codebase audit — the
+interface signal table and <code>exposesInterface()</code>, <code>isContractFile()</code>'s accepted formats, the
+<code>contract-first</code> gating expression, 042's FR-014 and its recorded ceiling, 050's FR-002 and its drift-guard test, and
+the seeded principle text in the profile catalog.</p>
+<ol>
+  <li>AsyncAPI document — <a href="https://www.asyncapi.com/docs/concepts/asyncapi-document">asyncapi.com/docs/concepts/asyncapi-document</a>: what an AsyncAPI document is, and protocol-dependent fields for MQTT, AMQP and Kafka.</li>
+  <li>API Schema Landscape 2026 — <a href="https://www.youngju.dev/blog/culture/2026-05-14-api-schema-2026-json-schema-openapi-3-1-asyncapi-graphql-grpc-deep-dive.en">youngju.dev/blog/culture/2026-05-14-api-schema-2026…</a>: AsyncAPI 3.0 placed beside OpenAPI 3.1 over shared JSON Schema; the schema as the unit of an API.</li>
+  <li>AsyncAPI 3.0.0 release notes — <a href="https://www.asyncapi.com/blog/release-notes-3.0.0">asyncapi.com/blog/release-notes-3.0.0</a>: channels decoupled from operations, and the Operation Reply Object bringing request/reply into an event-driven description.</li>
+  <li>progenitor — <a href="https://github.com/oxidecomputer/progenitor">github.com/oxidecomputer/progenitor</a>: an OpenAPI <em>client</em> generator, cited as the concrete case where a checked-in contract belongs to an API the project consumes rather than publishes.</li>
+  <li>How to detect and prevent breaking changes in event schemas — <a href="https://theburningmonk.com/2025/04/how-to-detect-and-prevent-breaking-changes-in-event-schemas/">theburningmonk.com/2025/04/how-to-detect-and-prevent-breaking-changes-in-event-schemas</a>: replay, consumer-driven contracts, schema packages, and registry-plus-broker validation.</li>
+  <li>Why a Protobuf schema registry? — <a href="https://buf.build/blog/why-a-protobuf-schema-registry">buf.build/blog/why-a-protobuf-schema-registry</a>: the registry answer to schema distribution and compatibility, cited as the convergent pattern for payload contracts.</li>
+  <li>Spectral — <a href="https://github.com/stoplightio/spectral">github.com/stoplightio/spectral</a>: rulesets for OpenAPI 2.0/3.x and AsyncAPI 2.x; the version gap behind this doc's tooling-parity caveat. Apache-2.0.</li>
+  <li>oasdiff — <a href="https://github.com/Tufin/oasdiff">github.com/Tufin/oasdiff</a>: OpenAPI breaking-change detection with a GitHub Action — the OpenAPI-side capability whose AsyncAPI equivalent is thinner. Apache-2.0.</li>
+</ol>
+</section>
+
+
+<!-- ======================================================= -->
+<section id="changelog">
+<h2>9 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-07-31">31 Jul 2026</time><span>Split out of <a href="./data-model-contract-considerations.html">the data-model and contract survey</a>, where this began as a third gap and grew past the weight that doc could carry. The audit finding is unchanged: <code>INTERFACE_SIGNALS</code> holds roughly forty dependency signals across six ecosystems and every one is HTTP, GraphQL or gRPC, so a service whose public surface is broker topics is marked <em>covered</em> by <code>contract-first</code> at verified and enterprise — silently, because the gate fails safe on the antecedent to avoid warn-washing every CLI and batch job. Meanwhile <code>isContractFile()</code> has always accepted <code>asyncapi.yaml</code>, so the tool recognises an answer it cannot ask for, and the seeded principle's copy omits AsyncAPI, <code>.proto</code> and GraphQL SDL alike. Lands two decisions: treat it as a <strong>symmetry</strong> defect and let format follow the detected interface rather than a default (D-001), because "reach for AsyncAPI absent context" is a crowned recommendation in exactly the case <a href="../specs/050-stack-selection/spec.html">050</a> FR-002 requires to be crownless; and prefer a <em>declared</em> interface over inferred dependency presence (D-002), which is the only mechanism that can distinguish publishing from consuming — the same fix that resolves the companion doc's mirror false-positive, where a vendored upstream spec marks a pure consumer covered. Recommends two ordered moves — widen the antecedent advisory-first via a proposal against 042, then make the design verb ask — with a hard line against closing it by widening the signal list alone. Five <code>TBD-</code> slugs planted. Tracked as triage <code>T-002</code> on 042.</span></li>
+  <li><time datetime="2026-07-31">31 Jul 2026</time><span>Backlog triaged against the lifecycle. None of this doc's five slugs becomes a new spec on its own. <code>TBD-design-interface-shape</code> is absorbed by <a href="../specs/069-design-contract-section/spec.html">069</a>, where the interface-shape question lives alongside the contract declaration it seeds — the two are one authoring surface, and splitting them would have produced a spec that asks a question with nowhere to record the answer. <code>TBD-async-interface-signals</code> and <code>TBD-contract-principle-format-parity</code> are changes to existing artifacts — a proposal against <a href="../specs/042-profile-enforcement/spec.html">042</a>'s FR-014 and a data delta on the profile catalog — and remain the correct shape as proposals, since 042 records the current miss as a deliberate ceiling. <code>TBD-async-contract-checked</code> and <code>TBD-event-schema-evolution</code> were left survey-gated by their own terms.</span></li>
+  <li><time datetime="2026-07-31">31 Jul 2026</time><span>Full backlog drained on review, which asked for specs rather than a classification. All five slugs now have one: <code>TBD-async-interface-signals</code> and <code>TBD-contract-principle-format-parity</code> join the companion doc's detection slug in <a href="../specs/073-interface-detection-widening/spec.html">073</a> — grouped because both blind spots are detection and the principle's copy is the same format list said in prose; <code>TBD-async-contract-checked</code> merges into <a href="../specs/074-contract-checked-tier/spec.html">074</a>, where its finding (that lint and diff tooling is thinner for events) lands as a requirement constraining how the rung is defined rather than as a separate survey; and <code>TBD-event-schema-evolution</code> becomes <a href="../specs/077-event-schema-evolution/spec.html">077</a>, specced around the part spectastic can honestly own — prompting for and recording the producer's compatibility intent — with the compatibility vocabulary and any enforcement recorded as blocking open questions. Landing 073 still amends 042; the spec owns the work and the amendment is its first task.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  Spectastic · Not every interface is an endpoint · 31 Jul 2026 ·
+  <a href="../index.html">home</a> ·
+  <a href="./data-model-contract-considerations.html">data-model-contract</a> ·
+  <a href="./coverage-enforcement-considerations.html">coverage-enforcement</a> ·
+  <button data-theme-toggle style="background:none;border:none;color:var(--c-link);cursor:pointer;font:inherit;padding:0;border-bottom:1px solid currentColor;">light/dark</button>
+</footer>
+
+</main>
+<script src="../assets/spec.js"></script>
+</body>
+</html>
