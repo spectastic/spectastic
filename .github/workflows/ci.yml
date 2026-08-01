@@ -154,6 +154,58 @@ jobs:
           pip install semgrep
           semgrep --config .semgrep.yml packages/*/src --error
 
+  # The browser tier (020 triage T-013 / TBD-playwright-in-ci). CLAUDE.md's
+  # verification discipline is explicit that structural checks cannot prove an
+  # artifact's JavaScript *works* — anything with a runtime needs a test that
+  # drives it. That tier existed (`test:e2e`) but no workflow ever invoked it,
+  # so every browser guarantee this repo claims ran only on a developer's
+  # machine. T-013 is what it cost: a fixture/bundle drift that fails three
+  # tests on a fresh build sat undetected on main, and the two that a stale
+  # local bundle happened to mask were invisible to everyone.
+  #
+  # A HARD gate, deliberately — an advisory browser tier reproduces exactly the
+  # gap being closed. Kept as its own job (like security-review) because the
+  # browser download is expensive and independent of the unit tiers.
+  browser-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+      - run: pnpm install --frozen-lockfile
+
+      # Build is load-bearing here, not boilerplate: the vscode canvas specs
+      # load packages/vscode/dist/webview.global.js, and a stale bundle is the
+      # precise failure T-013 recorded. Building from a clean checkout every
+      # run is what makes this tier trustworthy where a local `dist/` is not.
+      - name: Build
+        run: pnpm -r build
+
+      # Only chromium — playwright.config.ts declares exactly one project, so
+      # installing the full browser set would triple the download for nothing.
+      - name: Install Playwright chromium
+        run: pnpm exec playwright install --with-deps chromium
+
+      # The config already handles CI: forbidOnly rejects a committed .only,
+      # and reuseExistingServer is off so the static server starts fresh.
+      - name: Browser tests (hard gate)
+        run: pnpm test:e2e
+
+      # A failed run's traces/screenshots are the whole diagnostic value of a
+      # browser tier; without them a red CI job is just a stack trace.
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7
+
   # The enforcement half of principles.html P-12 (spec 049) — a diff-scoped
   # capability/scope scan. PR-only: a range diff needs a PR to diff against.
   # Advisory (D-006): surfaces findings for review, never fails the build —
