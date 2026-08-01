@@ -19,22 +19,22 @@ const box = (page: import('@playwright/test').Page, id: string) => page.locator(
 test('defaults to a vertical spine — nodes stack top-to-bottom', async ({ page }) => {
   await postGraph(page); // no orientation → default vertical
   const spec = (await box(page, 'spec'))!;
-  const plan = (await box(page, 'plan'))!;
+  const design = (await box(page, 'design'))!;
   const tasks = (await box(page, 'tasks'))!;
-  expect(spec.y).toBeLessThan(plan.y);
-  expect(plan.y).toBeLessThan(tasks.y);
+  expect(spec.y).toBeLessThan(design.y);
+  expect(design.y).toBeLessThan(tasks.y);
   // spine shares a column
-  expect(Math.abs(spec.x - plan.x)).toBeLessThan(2);
+  expect(Math.abs(spec.x - design.x)).toBeLessThan(2);
 });
 
 test('horizontal orientation runs the spine left-to-right', async ({ page }) => {
   await postGraph(page, 'horizontal');
   const spec = (await box(page, 'spec'))!;
-  const plan = (await box(page, 'plan'))!;
+  const design = (await box(page, 'design'))!;
   const tasks = (await box(page, 'tasks'))!;
-  expect(spec.x).toBeLessThan(plan.x);
-  expect(plan.x).toBeLessThan(tasks.x);
-  expect(Math.abs(spec.y - plan.y)).toBeLessThan(2);
+  expect(spec.x).toBeLessThan(design.x);
+  expect(design.x).toBeLessThan(tasks.x);
+  expect(Math.abs(spec.y - design.y)).toBeLessThan(2);
 });
 
 test('content stays contained in both orientations (NFR-004)', async ({ page }) => {

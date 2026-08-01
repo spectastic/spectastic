@@ -24,14 +24,14 @@ test('each node shows verb dot, title, status pill and one metric', async ({ pag
   await expect(spec.locator('.metric')).toHaveText('14 reqs');
 });
 
-test('orders the spine along the lifecycle: spec before plan before tasks (vertical default)', async ({ page }) => {
+test('orders the spine along the lifecycle: spec before design before tasks (vertical default)', async ({ page }) => {
   const box = async (id: string) => (await page.locator(`.node[data-id="${id}"]`).boundingBox())!;
   const spec = await box('spec');
-  const plan = await box('plan');
+  const design = await box('design');
   const tasks = await box('tasks');
   // Default orientation is vertical (FR-004) — the spine runs top-to-bottom.
-  expect(spec.y).toBeLessThan(plan.y);
-  expect(plan.y).toBeLessThan(tasks.y);
+  expect(spec.y).toBeLessThan(design.y);
+  expect(design.y).toBeLessThan(tasks.y);
 });
 
 test('colours the spec node dot with the fixed 017 brand colour (--spec-2)', async ({ page }) => {

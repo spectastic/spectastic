@@ -23,7 +23,7 @@ test('clicking a node posts an open message with the artifact path', async ({ pa
 });
 
 test('Enter on a focused node also opens it (keyboard a11y)', async ({ page }) => {
-  await page.locator('.node[data-id="plan"]').focus();
+  await page.locator('.node[data-id="design"]').focus();
   await page.keyboard.press('Enter');
   const posted = await page.evaluate(() => window.__posted);
   expect(posted).toContainEqual({
@@ -32,7 +32,7 @@ test('Enter on a focused node also opens it (keyboard a11y)', async ({ page }) =
   });
 });
 
-// Regression: the canvas reconciles nodes by id (spec/plan/tasks are the same
+// Regression: the canvas reconciles nodes by id (spec/design/tasks are the same
 // ids for every spec), so on a spec switch the DOM node is REUSED. The click
 // handler must open the CURRENT node's path, not the path it closed over at
 // first render — otherwise selecting 002 and clicking "spec" opens 020's file.

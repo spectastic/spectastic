@@ -11,7 +11,7 @@ export const SAMPLE_GRAPH = {
   specId: '099-demo',
   nodes: [
     mkNode('spec', 'spec', '099-demo', { reqCount: 14, status: 'review' }, { metric: '14 reqs' }),
-    mkNode('plan', 'plan', '099-demo', { status: 'draft' }, { metric: 'draft' }),
+    mkNode('design', 'design', '099-demo', { status: 'draft' }, { metric: 'draft' }),
     mkNode(
       'tasks',
       'tasks',
@@ -33,8 +33,8 @@ export const SAMPLE_GRAPH = {
     ),
   ],
   edges: [
-    { from: 'spec', to: 'plan', kind: 'flow' },
-    { from: 'plan', to: 'tasks', kind: 'flow' },
+    { from: 'spec', to: 'design', kind: 'flow' },
+    { from: 'design', to: 'tasks', kind: 'flow' },
     { from: 'spec', to: 'slice:099a', kind: 'slice' },
   ],
 };

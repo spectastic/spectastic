@@ -458,28 +458,44 @@
   <p class="headline">Debugging a failing <code>canvas-open.spec.ts</code> keyboard-a11y assertion, root cause was
   <strong>implementation</strong> drift from the <code>plan</code>&nbsp;→&nbsp;<code>design</code> verb rename: the test was
   updated to expect <code>design.html</code> but the shared graph fixture still declares its node with verb <code>plan</code>,
-  and the fixture derives the path from the verb; fixed by moving the fixture to <code>design</code>; regeneration
+  and the fixture derives the path from the verb; fixed by moving the fixture's <em>id and verb</em> to <code>design</code>
+  and rebuilding the stale extension bundle that was masking two further failures; regeneration
   <strong>passes</strong> — the rename is complete and correct in the spec, design and product code, so nothing upstream would
   reproduce a stale test fixture.</p>
 
   <dl>
     <dt>Expected</dt> <dd>Pressing Enter on the focused node posts <code>{ type: 'open', path: '/repo/specs/099-demo/design.html' }</code>.</dd>
-    <dt>Actual</dt>   <dd>It posts <code>…/plan.html</code>, so the assertion fails. 135/136 Playwright tests pass; this is the one.</dd>
+    <dt>Actual</dt>   <dd>It posts <code>…/plan.html</code>, so the assertion fails. 135/136 Playwright tests pass; this is the one that presents — though on a fresh build the same drift fails <em>three</em> tests (see the deep dive: a stale bundle was hiding the other two).</dd>
     <dt>Diagnosis</dt><dd>Half-completed rename. <span class="path">tests/vscode/fixtures/graph.ts</span> line 14 builds the node as <code>mkNode('plan', 'plan', …)</code> — the second argument is the <em>verb</em> — and line 62 composes <code>path: `/repo/specs/${specId}/${verb}.html`</code>. The assertion side was migrated when the verb was renamed (<code>836dc1a</code>); the fixture side was not. Confirmed pre-existing on <code>main</code> via <code>git stash</code>, so it is not fallout from any current work.</dd>
-    <dt>Fix</dt>      <dd><span class="path">tests/vscode/fixtures/graph.ts</span> — change the node's <em>verb</em> argument to <code>design</code>, keeping the node <em>id</em> as <code>plan</code> so the two edge definitions on lines 36–37 and the <code>.node[data-id="plan"]</code> selector keep resolving. Renaming the id as well is a larger, optional tidy.</dd>
+    <dt>Fix</dt>      <dd><span class="path">tests/vscode/fixtures/graph.ts</span> — rename <em>both</em> the node's verb and its <em>id</em> to <code>design</code>, updating the two edges and the <code>.node[data-id=…]</code> selector plus the two <code>box('plan')</code> lookups in <span class="path">canvas-render.spec.ts</span> / <span class="path">canvas-orientation.spec.ts</span>. <strong>Amended on fixing</strong> — the original prescription (change the verb only, keep <code>id="plan"</code>) would have left the fixture modelling a node the scanner cannot emit: <code>scanner.ts:68</code> builds every lifecycle node as <code>buildNode(c.verb, c.verb, …)</code>, so <em>id is always the verb</em>. Since the canvas reconciles by id, a fixture pinned to a retired id can mask a real id-handling fault, and the file's own header states it mirrors the scanner. The larger rename is the correct depth, not an optional tidy.</dd>
   </dl>
 
   <spec-diff>
 <del>    mkNode('plan', 'plan', '099-demo', { status: 'draft' }, { metric: 'draft' }),</del>
-<ins>    mkNode('plan', 'design', '099-demo', { status: 'draft' }, { metric: 'draft' }),</ins>
+<ins>    mkNode('design', 'design', '099-demo', { status: 'draft' }, { metric: 'draft' }),</ins>
   </spec-diff>
 
   <details>
-    <summary>Deep dive — none required</summary>
-    <p>No cross-spec contract, no invariant, no hotfix needed. The rename itself was deliberate and is recorded in
-    <code>CLAUDE.md</code>; only this one test fixture was missed, which is why it presents as a single red test rather than a
-    behavioural fault. Worth noting the fixture is shared across the <code>tests/vscode/</code> suite, but no other spec
-    references the <code>plan</code> node, so the blast radius is this one assertion.</p>
+    <summary>Deep dive — a stale build was masking the true blast radius; the browser suite is ungated in CI</summary>
+    <p><strong>The failure was wider than one assertion.</strong> Fixing the fixture turned <code>canvas-open</code> green
+    but turned <code>canvas-render</code> and <code>canvas-orientation</code> <em>red</em> — the design node laid out
+    <em>above</em> spec. Cause: <span class="path">packages/vscode/dist/webview.global.js</span> was a <strong>stale
+    build</strong> predating <code>836dc1a</code>, still carrying <code>VERB_ORDER = [… 'plan' …]</code>.
+    <code>layout.ts</code> sorts on <code>VERB_ORDER.indexOf(n.verb)</code>, and an unrecognised verb returns
+    <code>-1</code>, sorting it ahead of everything. The stale bundle and the stale fixture agreed with each other, which
+    is precisely why only the path assertion failed: two wrongs cancelling. Rebuilding the extension
+    (<code>pnpm build</code> in <span class="path">packages/vscode</span>) resolved it — 34/34 vscode, 153/153 Playwright.</p>
+    <p><strong>Why nobody caught it:</strong> <code>dist/</code> is gitignored and CI runs <code>pnpm -r build</code>, so
+    CI's bundle is always fresh — but <strong>CI never runs Playwright at all</strong>. <code>test:e2e</code> exists in
+    <code>package.json</code> and no workflow step invokes it. On a fresh build the pre-fix fixture would have failed
+    <em>three</em> tests, not one; that simply never ran anywhere except a developer's machine, where a stale bundle hid
+    two of them. The browser tier is the repo's own stated guarantee for anything with a runtime
+    (<code>CLAUDE.md</code>, verification discipline), and it is currently unguarded. Surfaced here rather than fixed:
+    adding it to CI is a workflow decision with a real time cost, and belongs in its own triage
+    (<code>TBD-playwright-in-ci</code>), not folded silently into a fixture fix.</p>
+    <p>No cross-spec contract and no invariant implicated; the rename itself was deliberate and recorded in
+    <code>CLAUDE.md</code>. Product code was correct throughout — <code>VERB_ORDER</code> in
+    <span class="path">packages/vscode/src/host/messaging.ts</span> has said <code>design</code> since the rename.</p>
   </details>
 </spec-triage>
 
@@ -491,6 +507,7 @@
 <h2>Change log</h2>
 <spec-changelog>
 <ol>
+  <li><time datetime="2026-08-01">01 Aug 2026</time><span>T-013 fixed — renamed the fixture node's <em>id and verb</em> to <code>design</code> (deeper than the card's original verb-only prescription: <code>scanner.ts:68</code> makes id always equal the verb, so an id-pinned fixture models a node the scanner cannot emit) and rebuilt the stale <code>packages/vscode/dist</code> bundle whose pre-rename <code>VERB_ORDER</code> was agreeing with the stale fixture and hiding two further layout failures. 34/34 vscode, 153/153 Playwright. Surfaced <code>TBD-playwright-in-ci</code>: the browser tier runs nowhere in CI, so this class of drift is unguarded.</span></li>
   <li><time datetime="2026-08-01">01 Aug 2026</time><span>T-013 added — the canvas keyboard-open test fails because the shared graph fixture still declares its node with the retired <code>plan</code> verb; implementation-layer rename drift, pre-existing on <code>main</code>, one-line fix in <code>tests/vscode/fixtures/graph.ts</code>.</span></li>
   <li><time datetime="2026-07-23">23 Jul 2026</time><span>T-012 added + fixed — opened artifacts rendered unstyled with no JS-built header (no theme dropdown) in the webview: the artifact's own strict CSP <code>&lt;meta&gt;</code> (spec 045, <code>4197091</code>) intersected with the webview's injected CSP and blocked the <code>cspSource</code>-origin <code>spec.css</code>/<code>spec.js</code>. <code>cross-spec</code>, regen <code>fail</code> (045 CSP × 020 webview interaction uncaptured). Fixed in <code>open-artifact.ts</code> — <code>rewriteForWebview</code> strips the artifact CSP before injecting the webview one; regression test added (exactly one CSP survives, and it is the webview's), extension <code>dist</code> rebuilt. Pre-existing since 045's CSP backfill; independent of the same-day vivid CSS pass.</span></li>
   <li><time datetime="2026-07-10">10 Jul 2026</time><span>T-011 resolved — FR-015 added + implemented in <code>open-artifact.ts</code>: cross-artifact <code>.html</code> links are marked (not <code>asWebviewUri</code>-rewritten), a nonce'd interceptor posts <code>openLink</code> to the host, which resolves the target against the source dir and opens it with the anchor baked in for an on-load scroll. vitest (4 cases) + Playwright (click→post, scroll) regressions added. Links now navigate in-extension.</span></li>
