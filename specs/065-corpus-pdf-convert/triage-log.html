@@ -40,7 +40,7 @@
 <h2>Cards</h2>
 <spec-triage-log>
 
-<spec-triage id="T-001" layer="spec">
+<spec-triage id="T-001" layer="spec" data-status="done">
   <header>
     <h4>convert files a legacy single-layer document via the adapt path, never registering it in the two-layer corpus</h4>
     <span class="meta">
@@ -56,6 +56,7 @@
     <dt>Actual</dt>   <dd>The 056-era legacy shape: doc frontmatter carries <code>id: KB-001</code> (single-layer), the file is <code>references/dodbook.md</code> (no <code>NNN-</code> slug), a stray pack-local <code>index.md</code> is written, <strong>no <code>SKILL.md</code></strong> is created, and the root registry is left <strong>empty</strong>. <code>get KB-001</code> resolves only via the deprecated pack-scan fallback (<a href="../052-corpus-citation-contract/spec.html#FR-003">052 FR-003</a>) and only at <code>@TODO</code> edition — an edition-pinned citation never resolves, and the doc vanishes once <code>TBD-resolver-registry-only</code> deletes the fallback.</dd>
     <dt>Diagnosis</dt><dd><code>fileConvertedDocument</code> (<code>packages/corpus/src/knowledge/adapt.ts</code>) was built on <code>adaptFolder</code>'s legacy helpers (<code>renderDocument</code> + pack-index + <code>id:</code> frontmatter) instead of <code>registerDocument</code>'s two-layer backbone (<code>renderTwoLayerDocument</code> + root-registry row + <code>SKILL.md</code> + slug + <a href="../063-corpus-discoverability/spec.html">063</a> marketplace sync). The plan (D-003) and the implementation both faithfully executed FR-001's "adapt provenance path" wording — so the error is the contract, not the code.</dd>
     <dt>Fix</dt>      <dd><strong>MODIFY <a href="./spec.html#FR-001">FR-001</a></strong>: register a converted document through the two-layer <code>registerDocument</code> backbone (root-registry row + <code>slug: NNN-name</code> doc + <code>SKILL.md</code> + marketplace sync + <code>NNN-slug.md</code> filename; drop the pack-local index), and <strong>extend that backbone</strong> to carry convert's own provenance (<code>converter</code>, source-bytes <code>content-hash</code>, <code>not-yet-spot-checked</code> status), which <code>registerDocument</code>'s <code>deriveProvenance(body, {origin, status})</code> does not set today. Cascade: spec → design (D-003) → tasks → re-implement.</dd>
+      <dt>Fixed</dt>    <dd><code>convert</code> now registers through <code>registerDocument</code> on the two-layer backbone (slug, origin, converter, content hash), instead of filing a legacy single-layer document via the adapt path.</dd>
   </dl>
 
   <details>
@@ -66,7 +67,7 @@
   </details>
 </spec-triage>
 
-<spec-triage id="T-002" layer="spec">
+<spec-triage id="T-002" layer="spec" data-status="done">
   <header>
     <h4>Converted-document title and description are derived from noisy PDF text, with no override</h4>
     <span class="meta">
@@ -82,6 +83,7 @@
     <dt>Actual</dt>   <dd>Title and description come only from the converter's first heading/paragraph, which for real PDFs is frequently a cover fragment, a running header, or a page number; there is no <code>--title</code>/<code>--description</code> flag to correct it, and the value is what gets written into the registry row and (post-T-001) the SKILL.md slug-map.</dd>
     <dt>Diagnosis</dt><dd>convert reuses <code>deriveTitleAndDescription</code> unconditionally. It has richer signal it ignores — the source filename (a good title fallback) — and no author override. This is independent of <a href="#T-001">T-001</a>: re-basing on <code>registerDocument</code> keeps the same weak derivation (it also uses <code>firstBodyParagraph</code>).</dd>
     <dt>Fix</dt>      <dd><strong>ADD</strong> optional <code>--title</code> and <code>--description</code> options to the <code>convert</code> verb (both CLIs), threaded into the filing call; when a title isn't derivable from a heading, fall back to the humanised source filename stem rather than <code>"Converted: &lt;stem&gt;"</code>. Should-tier.</dd>
+      <dt>Fixed</dt>    <dd><code>--title</code> and <code>--description</code> overrides on both the standalone and main-CLI <code>corpus convert</code>, with a filename-stem fallback when neither is given.</dd>
   </dl>
 
   <details>
@@ -90,7 +92,7 @@
   </details>
 </spec-triage>
 
-<spec-triage id="T-003" layer="cross-spec">
+<spec-triage id="T-003" layer="cross-spec" data-status="done">
   <header>
     <h4>The corpus validator doesn't catch a malformed pack — missing SKILL.md, single-layer doc, unregistered reference</h4>
     <span class="meta">
@@ -106,6 +108,7 @@
     <dt>Actual</dt>   <dd>All four pass clean — the only finding on the malformed pack is the (correct) <code>corpus-license</code> warning. The validator is blind to structural malformation, so a bad producer (convert today, a bad hand-edit tomorrow) ships an unusable pack with a green check.</dd>
     <dt>Diagnosis</dt><dd>The corpus validate rules (<code>corpusWellFormedFindings</code>/<code>corpusRegistryFindings</code>, owned by <a href="../064-corpus-package-extraction/spec.html">064</a> / the corpus-validate line) never grew a SKILL-presence check. This is why <a href="#T-001">T-001</a> reached a release: the guarantee that should live in the validator (P-8) isn't there.</dd>
     <dt>Fix</dt>      <dd><strong>Done (SKILL-presence gate).</strong> Added <code>missingSkillFileFindings</code> to <code>corpusWellFormedFindings</code> (error severity): a pack with reference documents but no <code>SKILL.md</code> now fails validate, enforcing <a href="../057-portable-domain-skill/spec.html">057</a>'s existing "a pack MUST function as a plain Agent Skill (SKILL.md + references/)". It catches <a href="#T-001">T-001</a>'s output. The other three checks first proposed here — reject a bare <code>id:</code> reference, require root-registry membership, flag a pack-local <code>index.md</code> — were <strong>re-scoped out</strong>: the validator <em>deliberately</em> supports single-layer packs (<a href="../062-corpus-identity-migration/spec.html">062</a> D-003 retains <code>id:</code> + pack-index for unmigrated downstream packs), so those would fight intended back-compat and need a separate "deprecate single-layer" decision, not a bug-fix gate.</dd>
+      <dt>Fixed</dt>    <dd><code>missingSkillFileFindings</code> in <span class="path">packages/corpus/src/knowledge/validate.ts</span> errors on a pack with no <code>SKILL.md</code>, and a single-layer pack raises the <code>corpus-single-layer-deprecated</code> warning. The three checks re-scoped out of the card are correctly absent.</dd>
   </dl>
 
   <details>
@@ -123,7 +126,8 @@
 <h2>Change log</h2>
 <spec-changelog>
 <ol>
-  <li><time datetime="2026-07-27">27 Jul 2026</time><span>Triage log scaffolded.</span></li>
+    <li><time datetime="2026-08-01">01 Aug 2026</time><span>Closure backfill under <a href="../000-spectastic/spec.html#REQ-CHANGE-009">REQ-CHANGE-009</a> — every card in this log was verified against the current code and the resolved ones marked <code>data-status="done"</code> with a <code>&lt;dt&gt;Fixed&lt;/dt&gt;</code> row recording what actually shipped. Cards left unmarked are genuinely still owed work; an unmarked card now means open, per the new contract.</span></li>
+<li><time datetime="2026-07-27">27 Jul 2026</time><span>Triage log scaffolded.</span></li>
   <li><time datetime="2026-07-27">27 Jul 2026</time><span>T-001 added — convert files a legacy single-layer doc via the adapt path (no root-registry row, no SKILL.md, no slug, stray pack index); spec-layer, FR-001 named the wrong primitive; regen fails upstream, cascade spec→design→impl.</span></li>
   <li><time datetime="2026-07-27">27 Jul 2026</time><span>T-002 added — converted-doc title/description derived from noisy PDF text with no <code>--title</code>/<code>--description</code> override; should-tier, folds into the T-001 re-spec.</span></li>
   <li><time datetime="2026-07-27">27 Jul 2026</time><span>T-003 added — corpus validator blind to the malformed pack (no SKILL.md / single-layer doc / unregistered reference); cross-spec, fix owned by the 064 corpus-validate rules — the missing P-8 gate that let T-001 ship.</span></li>

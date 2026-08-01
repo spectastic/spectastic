@@ -111,6 +111,14 @@ preconditions, the author-voiced summary, the cross-spec exception, and the rout
    fold's `T-NNN` range — into the Output section below. If `spectastic apply` exits non-zero,
    surface its error verbatim and stop; never paper over a partial apply.
 
+6b. **Close the triage card this proposal answered (`REQ-CHANGE-009`).** Many proposals exist because a
+   `<spec-triage>` card asked for one — its `Fix` field reads "author via `/spectastic.propose`". If the
+   proposal's `<spec-meta>` `Source` row cites a `T-NNN`, or the applied requirement is the one a card
+   called for, mark that card now: `data-status="done"` on the `<spec-triage>` element plus a
+   `<dt>Fixed</dt>` row naming the applied change. This is the step whose absence produced the estate's
+   false backlog — four of 020's cards each said "needs a propose", all four proposals landed, and all
+   four cards still read as outstanding months later.
+
 ## Withdraw procedure
 
 When invoked with `--withdraw <YYYY-MM-DD>-<slug> --reason="<one-line>"`:

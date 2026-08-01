@@ -128,6 +128,18 @@ Detection heuristic: if the input contains explicit list markers (commas, semico
 
 10. **Append to the change log** at the bottom of the file: `<li><time datetime="YYYY-MM-DD">DD Mon YYYY</time><span>T-NNN added — [one-line summary].</span></li>`.
 
+## Closing a card (`REQ-CHANGE-009`)
+
+A card records what was wrong and what should be done. **Nothing in the card records that it was** — unless you close it. A log where a shipped fix reads exactly like an untouched defect is not a record, it is a pile, and a reader cannot plan from it.
+
+- **Fixed** → add `data-status="done"` to the `<spec-triage>` element, and a `<dt>Fixed</dt><dd>…</dd>` row to its `<dl>` saying what actually shipped. **Do not rewrite `Fix`** — it stays as proposed, so the card preserves the reasoning alongside the result. The two most useful cards in the estate are the ones where those two rows disagree ("host-side only, as it turned out — `spec.js` *already* preferred it").
+- **Closed without a fix** (not a defect, superseded, deliberately declined) → `data-status="rejected"` plus a `<dt>Rejected because</dt>` row. Same markers, same rendering as an inbox card; `REQ-CHANGE-009` widened their scope to diagnostic cards.
+- **No `data-status` means still open.** That is the contract, so an unmarked card is a claim that work is owed.
+
+Closure is owed **when the fix lands**, not in a later sweep — `/spectastic.implement` marks it when draining work that resolves a card, `/spectastic.apply` when applying the proposal a card called for. Cards stay append-only and IDs stay stable: closing annotates, never deletes or renumbers.
+
+**Marking a card done is a claim about the world, not a formatting change.** Verify the fix actually shipped — the requirement exists, the code is there, the test passes — before you mark it. There is deliberately no `validate` rule here and there cannot be one: validate reads artifacts and cannot know whether a proposal landed or a line of code shipped (`REQ-CHANGE-009` records this ceiling rather than implying a gate).
+
 ## Rejection (Surface A — inbox cards)
 
 Per `REQ-CHANGE-005` of the meta-spec, an inbox card MAY be rejected in place by adding `data-status="rejected"` to the `<spec-triage>` element and a `<dt>Rejected because</dt><dd>…one-line reason…</dd>` row to the card's `<dl>`. This mirrors the `data-status="done"` convention used for completed just-do cards.

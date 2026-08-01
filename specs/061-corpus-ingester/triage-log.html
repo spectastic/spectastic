@@ -38,7 +38,7 @@
 <h2>Cards</h2>
 <spec-triage-log>
 
-<spec-triage id="T-001" layer="implementation">
+<spec-triage id="T-001" layer="implementation" data-status="done">
   <header>
     <h4>FR-008 remote-source ceiling lifted — RealPackFetcher now git-clones an object-sourced plugin</h4>
     <span class="meta">
@@ -59,6 +59,7 @@
     <dt>Actual</dt>   <dd>Before: <code>RealPackFetcher</code> threw <code>PackFetcherError</code> on an object source, naming <code>/plugin install</code> / <code>--from</code> as the only paths.</dd>
     <dt>Diagnosis</dt><dd>A recorded scope ceiling (plan D-002), not a bug: the object-source clone was deferred at 061 to avoid re-implementing a git client. Building it fully satisfies the <code>must</code>-tier <a href="./spec.html#FR-008">FR-008</a>.</dd>
     <dt>Fix</dt>      <dd><code>packages/core/src/providers/pack-fetcher.ts</code> — a new <code>GitRunner</code> seam (real impl shells a hardened <code>git</code>; a fake is injected in tests so CI never clones) + <code>parseGitSource</code> for the <code>url</code>/<code>git-subdir</code>/<code>github</code> shapes. Clones shallow, no submodules, hooks disabled, pinned to the manifest <code>sha</code> when present; cached under <code>~/.claude/plugins/.spectastic-cache/&lt;coordinate&gt;@&lt;rev&gt;</code> and reused. 14 fetcher tests green.</dd>
+      <dt>Fixed</dt>    <dd>The FR-008 remote-source ceiling is lifted — <code>RealPackFetcher</code> git-clones an object-sourced plugin (shallow, cached, atomic <code>.partial</code> rename) behind an injectable <code>GitRunner</code>, with fakes in the tests.</dd>
   </dl>
 
   <details>
@@ -75,7 +76,7 @@
   </details>
 </spec-triage>
 
-<spec-triage id="T-002" layer="spec">
+<spec-triage id="T-002" layer="spec" data-status="done">
   <header>
     <h4>No marketplace-free path to register an in-repo pack — <code>import</code> assumes a marketplace coordinate</h4>
     <span class="meta">
@@ -96,6 +97,7 @@
     <dt>Actual</dt>   <dd><code>corpus import</code> (<a href="./spec.html#FR-008">FR-008</a>) requires a marketplace coordinate; the only way to register a local pack today is the 062 workaround — stage a copy and run <code>corpus import &lt;plugin&gt;@&lt;synthetic-namespace&gt; --from &lt;stage&gt;</code>. Downstream that read as "it took our root-level knowledge as canonical but demanded a marketplace we don't have".</dd>
     <dt>Diagnosis</dt><dd>The same gap 062 papered over for <code>spectastic-concepts</code> (synthetic <code>spectastic</code> namespace + staging hack, and <a href="../062-corpus-identity-migration/spec.html#FR-009">062 FR-009</a> recording consumer-only). It resurfaced downstream because the workaround was never generalised into a real requirement/verb.</dd>
     <dt>Fix</dt>      <dd><strong>Direction chosen (26 Jul 2026):</strong> make <code>import</code> marketplace-optional — <code>corpus import &lt;plugin&gt; --from &lt;path&gt;</code> with no <code>@marketplace</code> files the pack under a default project-local namespace (reusing <code>installPack</code> wholesale; no new verb, 8-verb discipline held). <code>import &lt;plugin&gt;@&lt;marketplace&gt;</code> stays the fetch-from-marketplace path. Lands as a <code>/spectastic.propose</code> on 061 (with T-003).</dd>
+      <dt>Fixed</dt>    <dd><code>corpus import &lt;plugin&gt; --from &lt;path&gt;</code> with no <code>@marketplace</code> resolves through the repo-name default and falls back to the <code>local</code> sentinel, never an empty column; a re-import pins to the existing row so a config change cannot re-key the pack.</dd>
   </dl>
 
   <details>
@@ -117,7 +119,7 @@
   </details>
 </spec-triage>
 
-<spec-triage id="T-003" layer="spec">
+<spec-triage id="T-003" layer="spec" data-status="done">
   <header>
     <h4><code>installPack</code> drops a source pack's <code>references/superseded/</code> on import</h4>
     <span class="meta">
@@ -137,6 +139,7 @@
     <dt>Actual</dt>   <dd><code>installPack</code> lists <code>sourceReferencesDir</code> non-recursively and filters <code>.md</code> (<code>ingest.ts:251-254</code>), so the <code>superseded</code> subdir is never read; the dest <code>superseded/</code> is only written when a re-import supersedes a live edition (<a href="./spec.html#FR-005">FR-005</a>). example-cash-snapshot's <code>references/superseded/001-us-equities-settlement-cycle@2017-09-05.md</code> would be dropped.</dd>
     <dt>Diagnosis</dt><dd>FR-005 covers supersede-<em>on-re-import</em> but no requirement covers preserving a source's <em>already-retained</em> superseded editions on first import — a gap between 061's import and 052 FR-003's "prior edition must remain reachable".</dd>
     <dt>Fix</dt>      <dd><strong>Agreed (26 Jul 2026):</strong> pin a 061 requirement — import MUST preserve a source pack's retained superseded editions — and make <code>installPack</code> copy each source <code>references/superseded/*.md</code> into the dest verbatim (no new registry rows — superseded resolves via the pack scan's <code>matchSuperseded</code>). Folds into the same 061 <code>/spectastic.propose</code> as T-002.</dd>
+      <dt>Fixed</dt>    <dd><code>preserveSourceSuperseded</code> in <span class="path">packages/corpus/src/knowledge/ingest.ts</span> copies a source pack’s already-retained <code>references/superseded/</code> editions verbatim (FR-013), so migrating a pack no longer dangles an edition-pinned citation.</dd>
   </dl>
 
   <details>
@@ -159,7 +162,8 @@
 <h2>Change log</h2>
 <spec-changelog>
 <ol>
-  <li><time datetime="2026-07-26">26 Jul 2026</time><span>T-001 added — FR-008's remote-source ceiling (plan D-002 / T-100 spike) lifted: <code>RealPackFetcher</code> git-clones an object-sourced plugin behind a new <code>GitRunner</code> seam (hardened, sha-pinned, cached). Implementation-layer, regen passes.</span></li>
+    <li><time datetime="2026-08-01">01 Aug 2026</time><span>Closure backfill under <a href="../000-spectastic/spec.html#REQ-CHANGE-009">REQ-CHANGE-009</a> — every card in this log was verified against the current code and the resolved ones marked <code>data-status="done"</code> with a <code>&lt;dt&gt;Fixed&lt;/dt&gt;</code> row recording what actually shipped. Cards left unmarked are genuinely still owed work; an unmarked card now means open, per the new contract.</span></li>
+<li><time datetime="2026-07-26">26 Jul 2026</time><span>T-001 added — FR-008's remote-source ceiling (plan D-002 / T-100 spike) lifted: <code>RealPackFetcher</code> git-clones an object-sourced plugin behind a new <code>GitRunner</code> seam (hardened, sha-pinned, cached). Implementation-layer, regen passes.</span></li>
   <li><time datetime="2026-07-26">26 Jul 2026</time><span>T-002 added — no marketplace-free path to register an in-repo pack; <code>import</code> assumes a marketplace coordinate, so a downstream local pack (no <code>marketplace.json</code>) has no clean registration door. Spec-layer, regen fails; design discussion open.</span></li>
   <li><time datetime="2026-07-26">26 Jul 2026</time><span>T-003 added — <code>installPack</code> drops a source pack's <code>references/superseded/</code> on import, dangling edition-pinned citations to prior editions (breaks 052 FR-003). Spec-layer, regen fails; small fix once pinned as a requirement.</span></li>
 </ol>

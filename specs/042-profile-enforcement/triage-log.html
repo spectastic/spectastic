@@ -36,7 +36,7 @@
 <h2>Cards</h2>
 <spec-triage-log>
 
-<spec-triage id="T-001" layer="implementation">
+<spec-triage id="T-001" layer="implementation" data-status="done">
   <header>
     <h4>042's deterministic detection + policy live in the CLI, not the core kernel</h4>
     <span class="meta">
@@ -56,6 +56,7 @@
     <dt>Actual</dt>   <dd><code>packages/cli/src/commands/init/detect.ts</code> (signal table + <code>detectTooling</code>/<code>detectEcosystems</code>) and <code>enforce.ts</code>'s pure <code>evaluateEnforcement</code> are CLI-local; three CLI files (<code>init.ts</code>, <code>enforce.ts</code>, <code>gitignore.ts</code>) import detect from there.</dd>
     <dt>Diagnosis</dt><dd>042 shipped correct behaviour but placed its deterministic pieces in the CLI. The convention (fat core / thin CLI) isn't written as a principle or a validate rule, so nothing caught the drift — and 041, 042, and 043's first pass all drifted the same way. Behaviour-neutral; purely organisational (<a href="./spec.html#NFR-001">NFR-001</a> "deterministic core" is met either way, but the kernel isn't its home).</dd>
     <dt>Fix</dt>      <dd>Move the signal table + <code>detectTooling</code>/<code>detectEcosystems</code> and <code>evaluateEnforcement</code> (+ the shared <code>EnforcementCategory</code>/<code>EnforceGate</code>/<code>Signal</code> types) to <code>packages/core/src/</code> with tsup entries + package.json exports; repoint the three CLI importers; keep <code>registerEnforce</code> CLI-thin. Mirrors the 043 review fix (<code>0cb5330</code>). No behaviour change; tests move with the code.</dd>
+      <dt>Fixed</dt>    <dd>Detection and the policy diff live in the kernel — <span class="path">packages/core/src/enforce/{detect,policy,types}.ts</span> — and <span class="path">packages/cli/src/commands/enforce.ts</span> imports them, so the CLI is the thin edge the fat-core convention asks for.</dd>
   </dl>
 
   <details>
@@ -70,7 +71,7 @@
   </details>
 </spec-triage>
 
-<spec-triage id="T-002" layer="spec">
+<spec-triage id="T-002" layer="spec" data-status="done">
   <header>
     <h4>An event-driven service is silently exempt from <code>contract-first</code> at every tier</h4>
     <span class="meta">
@@ -90,6 +91,7 @@
     <dt>Actual</dt>   <dd><code>exposesInterface()</code> matches only HTTP, GraphQL and gRPC dependency names, so the antecedent fails, <code>evaluateEnforcement</code> marks <code>contract-first</code> <em>covered</em> ("nothing to contract"), and no warning is emitted — the gate deliberately fails safe on the antecedent so CLIs and batch jobs aren't false-failed.</dd>
     <dt>Diagnosis</dt><dd><a href="./spec.html#FR-014">FR-014</a> enumerates only HTTP/RPC frameworks and treats the residual as an accepted ceiling ("SHOULD be recorded as the honest ceiling rather than closed by widening the gate into false failures"). That framing is right for an <em>unlisted HTTP framework</em> and wrong for an entire architectural style: the tool recognises the answer (AsyncAPI) to a question it can never ask. Correctly distinct from <a href="./spec.html#FR-010">FR-010</a> — this is not undetectable, merely undetected.</dd>
     <dt>Fix</dt>      <dd><code>specs/042-profile-enforcement/</code> — a <code>/spectastic.propose</code> MODIFY on <a href="./spec.html#FR-014">FR-014</a> admitting message-broker dependencies as interface signals, then the matching <code>INTERFACE_SIGNALS</code> entries. Widen the antecedent only; leave the fail-safe posture intact. Sibling copy fix: the standard-tier seeded principle in <code>spectastic-profiles.json</code> names OpenAPI/JSON&nbsp;Schema/typed signatures and omits AsyncAPI, <code>.proto</code> and GraphQL SDL.</dd>
+      <dt>Fixed</dt>    <dd>Closed by <a href="../073-interface-detection-widening/spec.html">073</a>: <code>EVENT_INTERFACE_SIGNALS</code> adds broker and managed-bus clients across six ecosystems, and <a href="./spec.html#FR-014">FR-014</a> was amended by proposal to widen the antecedent — advisory-only, so no existing verdict moved.</dd>
   </dl>
 
   <details>
@@ -108,7 +110,7 @@
   </details>
 </spec-triage>
 
-<spec-triage id="T-003" layer="spec">
+<spec-triage id="T-003" layer="spec" data-status="done">
   <header>
     <h4>Contract detection misses most ecosystem-conventional layouts</h4>
     <span class="meta">
@@ -128,6 +130,7 @@
     <dt>Actual</dt>   <dd><code>detectContract</code> lists the root plus one level into <code>api/ proto/ schema/ contracts/</code>, no recursion. It misses Gradle/Maven's <code>src/main/proto/**</code> (the protobuf-plugin default), multi-module <code>&lt;module&gt;/src/main/proto/</code>, buf workspaces (<code>proto/&lt;module&gt;/v1/</code>), Go's <code>api/proto/v1/</code>, Spring's <code>src/main/resources/</code>, the <code>openapi/ protos/ graphql/</code> directory names, and any AsyncAPI document not literally named <code>asyncapi.{yaml,yml,json}</code>.</dd>
     <dt>Diagnosis</dt><dd>The four-dir/one-level reach was a deliberate compromise — <a href="./spec.html#NFR-002">NFR-002</a> asks detection to stay shallow and sub-500&nbsp;ms, and the contract-dir widening was already scoped narrowly on adversarial review. But "shallow" was calibrated against root manifests, not against build-tool conventions that are three levels deep by default. The result is a hard gate that can fail a compliant project.</dd>
     <dt>Fix</dt>      <dd><code>specs/042-profile-enforcement/</code> — a <code>/spectastic.propose</code> widening the contract search paths to conventional layouts (bounded, so NFR-002's budget still holds), and preferring an explicitly <em>declared</em> contract path over filesystem inference where one is available. Benchmark against NFR-002's 500&nbsp;ms budget as part of the change.</dd>
+      <dt>Fixed</dt>    <dd>Closed by <a href="../073-interface-detection-widening/spec.html">073</a>: <code>CONTRACT_SEARCH_PATHS</code> widened from four directories to seventeen named conventions, plus bounded <code>MODULE_TREE_ROOTS</code> expansion for buf/Gradle trees. <strong>Residual, recorded not hidden:</strong> <code>isContractFile</code> still matches only a literal <code>asyncapi.{yaml,json}</code> filename, so an AsyncAPI document under another name is still missed — outside this card’s Fix, and a separate widening if it ever bites.</dd>
   </dl>
 
   <details>
@@ -195,7 +198,8 @@
 <h2>Change log</h2>
 <spec-changelog>
 <ol>
-  <li><time datetime="2026-08-01">01 Aug 2026</time><span>T-004 added — the <code>contracts</code> axis seeds <code>contract-first</code> at standard while the enforcement floor requires it only at verified, so a standard project declares a posture nothing checks; cross-spec between 041 and 042, needs a proposal to pick between lowering the axis, raising the floor, or stating that axes may lead the floor.</span></li>
+    <li><time datetime="2026-08-01">01 Aug 2026</time><span>Closure backfill under <a href="../000-spectastic/spec.html#REQ-CHANGE-009">REQ-CHANGE-009</a> — every card in this log was verified against the current code and the resolved ones marked <code>data-status="done"</code> with a <code>&lt;dt&gt;Fixed&lt;/dt&gt;</code> row recording what actually shipped. Cards left unmarked are genuinely still owed work; an unmarked card now means open, per the new contract.</span></li>
+<li><time datetime="2026-08-01">01 Aug 2026</time><span>T-004 added — the <code>contracts</code> axis seeds <code>contract-first</code> at standard while the enforcement floor requires it only at verified, so a standard project declares a posture nothing checks; cross-spec between 041 and 042, needs a proposal to pick between lowering the axis, raising the floor, or stating that axes may lead the floor.</span></li>
   <li><time datetime="2026-07-31">31 Jul 2026</time><span>T-003 added — <code>detectContract</code>'s four-directory, one-level search misses most ecosystem-conventional contract layouts (Gradle/Maven <code>src/main/proto/**</code>, buf and Go nested trees, <code>openapi/</code>, AsyncAPI under other names), so a compliant project can hard-fail the gate. <code>spec</code>, regen <code>fail</code>: widen the searched paths by named convention within <a href="./spec.html#NFR-002">NFR-002</a>'s budget, and prefer a declared contract path over inference — which also addresses the producer/consumer false positive a vendored upstream spec creates.</span></li>
   <li><time datetime="2026-07-31">31 Jul 2026</time><span>T-002 added — a service whose public surface is message-broker topics is silently exempt from <code>contract-first</code> at every tier, because <a href="./spec.html#FR-014">FR-014</a> defines the interface as an HTTP/RPC framework dependency and <code>INTERFACE_SIGNALS</code> carries no broker. <code>spec</code>, regen <code>fail</code>: amend FR-014 to admit event-driven interfaces, with the transitive-dependency and publish-vs-consume risks answered in the proposal; sibling copy fix for the 041-owned seeded principle, which omits AsyncAPI. Deferred functionality exposed — surfaced, not promoted.</span></li>
   <li><time datetime="2026-07-10">10 Jul 2026</time><span>T-001 resolved — moved the signal table + <code>detectTooling</code>/<code>detectEcosystems</code> (→ <code>@spectastic/core/enforce/detect</code>), <code>evaluateEnforcement</code> (→ <code>enforce/policy</code>), and the <code>EnforcementCategory</code>/<code>EnforceGate</code> types (→ <code>enforce/types</code>) into core with tsup entries + exports; <code>enforce.ts</code>/<code>init.ts</code>/<code>gitignore.ts</code>/<code>profiles.ts</code> now import from core, <code>registerEnforce</code> stays thin. Unit tests moved to <code>core/test</code>. 39 tests + driver 15/15 green; no behaviour change.</span></li>

@@ -37,7 +37,7 @@
 <h2>Cards</h2>
 <spec-triage-log>
 
-<spec-triage id="T-001" layer="implementation">
+<spec-triage id="T-001" layer="implementation" data-status="done">
   <header>
     <h4>Quiz gate marks only the last objective (closure-over-<code>var</code>)</h4>
     <span class="meta">
@@ -55,6 +55,7 @@
     <dt>Actual</dt>   <dd>Answering <em>any</em> quiz revealed only the <strong>last</strong> objective's answer and would tick the last objective's checkbox; objectives 1..N−1 never responded.</dd>
     <dt>Diagnosis</dt><dd>The gate script declared <code>correct</code>, <code>objId</code>, <code>checkbox</code>, <code>answer</code> with <code>var</code> inside a <code>for…of</code> loop. <code>var</code> is function-scoped, so every <code>change</code> handler closed over the same bindings, which hold the final iteration's values. Flagged at author time by linter <code>S1515</code> and dismissed as style. <a href="./spec.html#SC-003">SC-003</a>'s test was structural (asserted the script <em>string</em>) and never executed the JS, so the broken-but-present gate passed.</dd>
     <dt>Fix</dt>      <dd><span class="path">packages/core/src/commands/course.ts</span> — <code>GATE_SCRIPT</code> uses <code>const</code> for the per-iteration bindings. Guard: <span class="path">tests/course.gate.spec.ts</span> drives a generated course in a real browser and asserts the answered objective's checkbox (not the last) is ticked; plus a structural assertion in the integration test that the gate script carries no <code>var</code>.</dd>
+      <dt>Fixed</dt>    <dd>The gate script is <code>const</code>-scoped per loop iteration in <span class="path">packages/core/src/commands/course.ts</span> (zero <code>var</code> in the file); <span class="path">tests/course.gate.spec.ts</span> drives a real course and asserts the <em>answered</em> objective is the one marked.</dd>
   </dl>
 
   <details>
@@ -63,7 +64,7 @@
   </details>
 </spec-triage>
 
-<spec-triage id="T-002" layer="implementation">
+<spec-triage id="T-002" layer="implementation" data-status="done">
   <header>
     <h4>Teach-back prompt has no affordance to respond</h4>
     <span class="meta">
@@ -81,6 +82,7 @@
     <dt>Actual</dt>   <dd><code>assembleCourse</code> rendered <code>&lt;spec-decision&gt;&lt;h4&gt;Teach-back&lt;/h4&gt;&lt;p&gt;prompt&lt;/p&gt;&lt;/spec-decision&gt;</code> — a rhetorical question with nowhere to respond.</dd>
     <dt>Diagnosis</dt><dd><a href="./spec.html#FR-007">FR-007</a> says "teach-back prompt"; the implementation took "prompt" literally and omitted the response affordance. The spec is satisfiable with an input — this is an implementation gap, not a spec defect.</dd>
     <dt>Fix</dt>      <dd><span class="path">packages/core/src/commands/course.ts</span> — render a <code>&lt;textarea&gt;</code> under the teach-back prompt. Content is intentionally <strong>not persisted</strong> (courses are ephemeral/git-ignored, <a href="./spec.html#FR-001">FR-001</a>); the value is articulating in-session. A label states this.</dd>
+      <dt>Fixed</dt>    <dd>The teach-back block now renders a <code>&lt;textarea&gt;</code> with an explicit "not saved" label, so the prompt has an affordance.</dd>
   </dl>
 
   <details>
@@ -89,7 +91,7 @@
   </details>
 </spec-triage>
 
-<spec-triage id="T-003" layer="implementation">
+<spec-triage id="T-003" layer="implementation" data-status="done">
   <header>
     <h4>A wrong quiz answer still reads as "Correct"</h4>
     <span class="meta">
@@ -109,6 +111,7 @@
     <dt>Actual</dt>   <dd>The reveal always reads "Correct: &lt;correct option&gt;" regardless of selection; a wrong pick shows the same panel, and only the correct option's feedback is ever displayed.</dd>
     <dt>Diagnosis</dt><dd><code>renderObjective</code> hard-codes <code>feedback = feedback[correctIndex]</code> and a static <code>Correct: &lt;correctOption&gt;</code> label; the gate toggles <code>.correct</code>/<code>.incorrect</code> classes that carry no CSS, so nothing reflects the learner's answer.</dd>
     <dt>Fix</dt>      <dd><span class="path">packages/core/src/commands/course.ts</span> — the gate writes a per-answer verdict + the chosen option's feedback into the reveal; the static "Correct:" line becomes the neutral reference answer. Guard: extend <span class="path">tests/course.gate.spec.ts</span> to assert a wrong pick surfaces an incorrect verdict and the chosen option's feedback.</dd>
+      <dt>Fixed</dt>    <dd>The verdict reads <code>right ? "✓ Correct." : "✗ Not quite."</code> from the radio’s <code>data-feedback</code>; guarded in <span class="path">tests/course.gate.spec.ts</span>.</dd>
   </dl>
 
   <spec-diff>
@@ -171,7 +174,7 @@
   </details>
 </spec-triage>
 
-<spec-triage id="T-005" layer="implementation">
+<spec-triage id="T-005" layer="implementation" data-status="done">
   <header>
     <h4>A <code>--keep</code>'d course was silently un-committable — the blanket <code>.spectastic/</code> ignore defeated <code>--keep</code>'s own allowlist</h4>
     <span class="meta">
@@ -193,6 +196,7 @@
     <dt>Actual</dt>   <dd>060's teaching-payload course, written under <code>.spectastic/courses/…/course.html</code> and allowlisted in the nested <code>.spectastic/.gitignore</code> that <code>--keep</code> maintains, was silently invisible to git and never committed — the retention half of <code>--keep</code> was a no-op.</dd>
     <dt>Diagnosis</dt><dd>The root <code>.gitignore</code>'s blanket <code>.spectastic/</code> exclude (authored by spec 019 to hide ephemeral course output) violates <a href="./spec.html#FR-001">FR-001</a>: git does not descend into an excluded parent directory, so it never reads the nested per-course allowlist <code>--keep</code> writes — a parent-dir exclude can't be re-included by a child <code>.gitignore</code>. The two 019-authored gitignore mechanisms silently cancelled.</dd>
     <dt>Fix</dt>      <dd><span class="path">.gitignore</span> — scope the ephemeral-course ignore to <code>.spectastic/courses/</code> (not blanket <code>.spectastic/</code>), so git descends into <code>.spectastic/</code> and honours the nested allowlist; then <code>git add</code> the kept course. The root narrowing already landed in 068 (it un-masked the profile marker); this card records the <code>--keep</code>-conformance root cause and the follow-up commit of the course itself.</dd>
+      <dt>Fixed</dt>    <dd><span class="path">.gitignore</span> scopes the entry to <code>.spectastic/courses/</code> instead of a blanket <code>.spectastic/</code>, so a <code>--keep</code>’d course is committable.</dd>
   </dl>
 
   <spec-diff>
@@ -230,7 +234,8 @@
 <h2>Change log</h2>
 <spec-changelog>
 <ol>
-  <li><time datetime="2026-06-20">20 Jun 2026</time><span>Triage log scaffolded with two implementation defects (T-001 gate closure bug, T-002 teach-back affordance) found by opening the first generated course.</span></li>
+    <li><time datetime="2026-08-01">01 Aug 2026</time><span>Closure backfill under <a href="../000-spectastic/spec.html#REQ-CHANGE-009">REQ-CHANGE-009</a> — every card in this log was verified against the current code and the resolved ones marked <code>data-status="done"</code> with a <code>&lt;dt&gt;Fixed&lt;/dt&gt;</code> row recording what actually shipped. Cards left unmarked are genuinely still owed work; an unmarked card now means open, per the new contract.</span></li>
+<li><time datetime="2026-06-20">20 Jun 2026</time><span>Triage log scaffolded with two implementation defects (T-001 gate closure bug, T-002 teach-back affordance) found by opening the first generated course.</span></li>
   <li><time datetime="2026-06-20">20 Jun 2026</time><span>T-003 added — wrong quiz answer still reads as "Correct"; implementation, regen pass.</span></li>
   <li><time datetime="2026-07-26">26 Jul 2026</time><span>T-004 added — <code>explain --course</code> needs <code>ANTHROPIC_API_KEY</code> inside Claude Code; cross-spec (006 FR-009 ↔ 019 kernel-owned guarantee, P-8), regen fail. Route to /spectastic.propose.</span></li>
   <li><time datetime="2026-07-26">26 Jul 2026</time><span>T-004 closed — applied <a href="./changes/archive/2026-07-26-keyless-in-host-verification/proposal.html">2026-07-26-keyless-in-host-verification</a> (ADD <a href="./spec.html#NFR-003">NFR-003</a>) and drained US3 (<a href="./tasks.html#T-300">T-300</a>–<a href="./tasks.html#T-321">T-321</a>): a keyless in-host <code>ClaudeCliProvider</code>, a <code>createAIProvider</code> precedence rung, and a clean actionable-error exit in <code>course.ts</code>. Verified with a real, keyless <code>claude</code>-CLI run whose guessability check genuinely passed blind (<a href="./smoke.md">smoke.md</a>).</span></li>
