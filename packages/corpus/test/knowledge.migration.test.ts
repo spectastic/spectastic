@@ -30,17 +30,34 @@ describe('062 migration — the root registry (SC-001)', () => {
   });
 
   it('files each pack under its expected (marketplace, plugin, slug) coordinate', () => {
+    // Marketplaces became owner-qualified on 02 Aug 2026, resolving
+    // TBD-corpus-owner-config: `corpus.marketplace` was un-pinned so it derives
+    // from the owner-qualified `project` (067 FR-006's unified identity), and
+    // both committed rows were re-keyed to match. A bare marketplace is
+    // collision-prone the moment the estate is federated, which is exactly what
+    // the coordinate scheme exists to prevent.
     const byId = new Map(registry.map((r) => [r.id, r]));
     expect(byId.get('KB-0001')).toMatchObject({
-      marketplace: 'spectastic',
+      marketplace: 'spectastic/spectastic',
       plugin: 'spectastic-concepts',
       slug: '001-foundations',
     });
     expect(byId.get('KB-0002')).toMatchObject({
-      marketplace: 'spectastic-examples',
+      marketplace: 'spectastic/spectastic-examples',
       plugin: 'finance-settlement',
       slug: '001-settlement-windows',
     });
+  });
+
+  it('every committed marketplace is owner-qualified, so no coordinate can collide', () => {
+    // The property the re-key exists for, pinned independently of the two
+    // literals above: a future row added with a bare marketplace fails here even
+    // if it never touches the assertions.
+    for (const row of registry) {
+      expect(row.marketplace, `${row.id} must carry an owner-qualified marketplace`).toMatch(
+        /^[^/]+\/[^/]+$/,
+      );
+    }
   });
 });
 
