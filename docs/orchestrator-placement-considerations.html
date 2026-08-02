@@ -1,0 +1,452 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
+<title>Resemblance is not ownership — Considerations for Spectastic</title>
+<meta name="description" content="An orchestrator given a requirement across a multi-repo estate has to decide where the work belongs — which project, which boundary inside it, or none of them. A survey of what the estate can actually answer that with, why routing by similarity produces the exact failure it was meant to prevent, and what a placement verdict should look like when the honest answer is no.">
+<link rel="stylesheet" href="../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../assets/favicon.svg">
+<script src="../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Considerations · Placement</p>
+  <h1>Resemblance is not ownership</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    A requirement arrives. Somewhere across a dozen repositories sits the project that ought to own it — and one directory inside that project where the change ought to land. The estate can already say what every artifact <em>is</em> and what it is <em>about</em>. It cannot say what depends on what, and the one thing it can rank by is the thing that misleads.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>     <span><spec-status value="draft">Draft</spec-status></span>
+    <b>Type</b>       <span>Architecture &amp; landscape survey</span>
+    <b>Author</b>     <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Created</b>    <span><time datetime="2026-08-02">02 Aug 2026</time></span>
+    <b>Companion</b>  <span><a href="./corpus-extraction-considerations.html">corpus-extraction</a> · <a href="./agent-architecture-considerations.html">agent-architecture</a> · <a href="./data-model-contract-considerations.html">data-model-contract</a></span>
+    <b>Sources</b>    <span>16 external, retrieved 02 Aug 2026 · codebase audit</span>
+    <b>Read time</b>  <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-tldr>
+    <p>The forward-look this survey drains proposed routing a requirement to the service whose specs and corpus it most <em>resembles</em>. <mark>Resemblance produces the exact failure the orchestrator exists to prevent</mark> — a requirement written in the vocabulary of the consumer resembles the consumer's estate most closely, which is precisely how a fix that belongs in a library gets built in the application that calls it. Similarity finds where a topic is <em>discussed</em>; placement needs to know where a change <em>belongs</em>, and those are different questions over different data. The audit corrected three things I expected to find. A dependency graph <strong>already ships</strong> — spec <a href="../specs/028-dependency-ordering/spec.html">028</a>'s precedence DAG, exposed as <code>spectastic order</code> — but its nodes are specs, its scope is one checkout, and its edges mean <em>build this first</em>, not <em>this owns that</em>. The estate's precedence rule is <strong>declaration over inference</strong>, settled at must-tier by <a href="../specs/073-interface-detection-widening/spec.html">073</a> on identical reasoning, so any "infer first" posture contradicts shipped code. And the design artifact <em>is</em> already read as standing project state — the real defect is subtler and worse: declarations <strong>shadow</strong> rather than accumulate, so a project with seventy-nine specs has exactly one visible contract declaration set. The recommendation is a typed edge over <em>units</em> cut on the repo boundary, a verdict shape inherited wholesale from <code>triage</code> and the slicer rather than invented, and two refusals held as first-class outcomes — never mint a service, and never route to a plausible owner because "no owner" was not on the menu.</p>
+  </spec-tldr>
+
+  <spec-audience-map>
+    <dl>
+      <dt>Exec / PM</dt>   <dd>The TL;DR, then §<a href="#recommendation">10</a> (three slices, and what each buys).</dd>
+      <dt>Reviewer</dt>    <dd>§<a href="#graph">2</a> (the graph that already ships) + §<a href="#precedence">4</a> (why the obvious posture is the wrong one).</dd>
+      <dt>Implementer</dt> <dd>§<a href="#substrate">5</a> (where the edge lives, scored) + §<a href="#verdict">8</a> (the verdict shape) + §<a href="#engine">9</a> (the engine, staged).</dd>
+      <dt>Sceptic</dt>     <dd>§<a href="#caveats">11</a> — including the project's own principle saying this judgment resists mechanisation.</dd>
+      <dt>In a hurry</dt>  <dd>Route on declared edges, not on resemblance. Let "I don't know" be an answer. §<a href="#recommendation">10</a>.</dd>
+    </dl>
+  </spec-audience-map>
+</header>
+
+<!-- ======================================================= -->
+<section id="ask">
+<h2>1 · The ask — a change with no address</h2>
+
+<p><spec-newthought>Two failures motivate this, and neither is exotic.</spec-newthought> A team runs a shared library and four services that consume it. A requirement arrives describing a defect in the vocabulary of one consuming service, because that is where a human noticed it. An orchestrator reads the requirement, finds the consuming service's specs discuss exactly this behaviour, opens that repository, and builds a local workaround around a bug that lives one layer up. The library keeps the defect. The other three consumers keep it too. Nothing about the outcome looks wrong until the second consumer reports the same thing.</p>
+
+<p>The second failure is finer-grained and lives inside one service. A requirement lands in a codebase arranged as concentric rings — domain at the centre, application services around it, adapters at the edge. The change might belong to the domain, to an existing service, or to a service that does not exist yet. Getting this wrong does not fail a test. It produces code that works and erodes the arrangement that made the codebase tractable, which is the failure mode that compounds.</p>
+
+<p><spec-newthought>Both are architectural questions, and architecture is the one thing the estate does not hold.</spec-newthought> A <code>spec.html</code> holds requirements. A knowledge corpus holds domain facts. Neither knows that <code>payments-core</code> is upstream of <code>checkout-api</code>, or that this project keeps framework types out of its domain ring. That knowledge — where it is written down at all — lives in the design.</p>
+
+<spec-warning><strong>A different orchestrator already exists; this is not that one.</strong> Spec <a href="../specs/037-hands-off-pipeline/spec.html">037</a> ships <code>spectastic run</code>, which drives design → tasks → implement → verify unattended on an approved spec, answering each decision through the configured decider. It takes a spec id as input — it operates on work that has <em>already been placed</em>. Everything below sits upstream of that entry point: it decides which project's <code>specs/</code> the spec should be created in, and which boundary inside that project the change belongs to. Where the distinction matters this survey says <em>placement</em>, never the bare word.</spec-warning>
+
+<p>The slug being drained, <code>TBD-orchestrator-spec-placement</code>, was planted in <a href="./corpus-extraction-considerations.html">the corpus-extraction survey</a> §5 as a forward-look: once the estate is namespaced and queryable, ask the federated index which service's spec-sensitive corpus and existing specs a requirement is <em>closest to</em>, and propose where the spec should live — semantic CODEOWNERS, human-confirmed. Identity landed (<a href="../specs/067-spec-project-identity/spec.html">067</a>, <a href="../specs/078-federated-resource-uri/spec.html">078</a>); the serving surface landed in a separate repository. The forward-look is now drainable, and the first thing to say about it is that its proposed mechanism is wrong.</p>
+
+<p><spec-newthought>Scope, stated plainly.</spec-newthought> This survey covers <strong>change placement, laddered</strong>: which project, then which boundary inside it, then the case where the honest answer is neither. Spec placement — where a <code>spec.html</code> is created — is the coarsest rung of that same ladder, not a separate problem. That widens the original slug, which asked only about the coarsest rung, and the widening is deliberate: an orchestrator that places specs correctly and changes incorrectly has not helped anyone.</p>
+</section>
+
+<!-- ======================================================= -->
+<section id="graph">
+<h2>2 · The graph that already ships — and why it is the wrong one</h2>
+
+<p><spec-newthought>The obvious claim about this estate is false.</spec-newthought> It is tempting to say spectastic has spent seventy-nine specs describing nodes and never once describing an edge — that <a href="../specs/067-spec-project-identity/spec.html">067</a> and <a href="../specs/078-federated-resource-uri/spec.html">078</a> gave every artifact a federation-unique name and nothing gave any two of them a relationship. It is a clean story and a reviewer would refute it by running one command.</p>
+
+<p>Spec <a href="../specs/028-dependency-ordering/spec.html">028</a> ships a real dependency graph. <code>packages/core/src/ordering/graph.ts</code> builds a typed <code>{nodes, edges, dangling}</code> structure over the spec corpus, with cycle detection, dangling-reference reporting, transitive subtree value, and per-node <code>dependsOn</code> / <code>unblocks</code>. It is exposed as <code>spectastic order</code>. The graph is not hypothetical and it is not small.</p>
+
+<p><spec-newthought>Its edge admission rule is the part worth stealing.</spec-newthought> An edge from parent to child is admitted <em>only when reciprocated</em>: the child's <code>&lt;spec-parent specid="P"&gt;</code> must be matched by the parent's own <code>&lt;li defer-to="child"&gt;</code>. The module comment states the consequence directly — <em>"a bare, unreciprocated <code>defer-to</code> is a see-also, not an edge."</em> One side asserting a relationship is a claim; two sides asserting it is a fact. That is a genuine design idea, already load-bearing, and it is the answer to a question federation raises acutely: in a multi-repo estate, what stops one project from unilaterally declaring itself downstream of another?</p>
+
+<p>So the honest finding is not absence. It is <strong>mismatch</strong>, on all three axes at once:</p>
+
+<div style="overflow-x:auto;">
+<table>
+  <thead>
+    <tr><th>Axis</th><th>028's graph</th><th>What placement needs</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Node</td><td>A spec</td><td>A <em>unit</em> — a project, or a module inside one</td></tr>
+    <tr><td>Scope</td><td>One checkout's <code>specs/</code></td><td>Every project in the estate</td></tr>
+    <tr><td>Edge meaning</td><td><strong>Precedence</strong> — build A before B</td><td><strong>Dependency</strong> — A is built on B, so a change to their shared surface belongs to B</td></tr>
+  </tbody>
+</table>
+</div>
+
+<p><spec-newthought>Precedence and dependency are not the same relation wearing different hats.</spec-newthought> Precedence is a scheduling fact about work: it expires the moment both specs are done. Dependency is a structural fact about artifacts: it holds for as long as the code does, and it is the one that answers "which side does this change belong on". A graph optimised for the first tells you nothing about the second — which is why 028's DAG, for all its machinery, cannot be pointed at this problem.</p>
+
+<spec-decision id="D-001" grounding="verified">
+  <h4>D-001 · Reuse 028's edge-admission rule, not its graph</h4>
+  <dl>
+    <dt>Status</dt><dd><spec-status value="draft">Proposed</spec-status></dd>
+    <dt>Context</dt><dd>A precedence DAG over specs already ships (<code>packages/core/src/ordering/graph.ts</code>, spec 028, surfaced as <code>spectastic order</code>). Its nodes are specs, its scope is one checkout, and its edges encode build order. Placement needs edges over units, across the estate, encoding dependency. Its reciprocity rule — an edge exists only when both ends declare it — is independent of all three and directly addresses federated trust.</dd>
+    <dt>Decision</dt><dd>Do not extend 028's graph and do not model placement as an ordering problem. Build a separate unit graph, and carry the <strong>reciprocity rule</strong> across as the admission test for a cross-project edge: a unilateral claim is a see-also; a matched pair is an edge.</dd>
+    <dt>Consequences</dt><dd>+ Federated trust gets a rule rather than a policy — no project can conscript another into a relationship. + The estate keeps one clear meaning per edge type instead of overloading precedence. + 028 stays untouched, so <code>spectastic order</code> cannot regress. − Reciprocity is cheap within one corpus and expensive across repositories, where the counterpart may be unreadable or absent; the fallback for an unmatched claim must be specified, not assumed (see §<a href="#precedence">4</a>). − Two graphs mean two mental models, and a reader may reasonably ask why <code>spectastic order</code> does not answer placement.</dd>
+  </dl>
+</spec-decision>
+</section>
+
+<!-- ======================================================= -->
+<section id="boundary">
+<h2>3 · One question or two — and where to cut</h2>
+
+<p><spec-newthought>The two motivating failures look like different problems, and the split is real, but the obvious place to cut is wrong.</spec-newthought> The tempting division is by <em>question type</em>: producer-versus-consumer on one side, ring placement on the other, each getting its own mechanism. That cut fails on the case most teams actually have.</p>
+
+<p>Consider a monorepo containing a library and the application that consumes it. Is "does this belong in the library or the app?" a producer/consumer question or a module-boundary question? It is plainly both, and it falls through a question-type split in a way that matters mechanically. Spec <a href="../specs/076-contract-export-handover/spec.html">076</a>'s <code>consumes[]</code> array — the estate's only project-to-project edge — is explicitly designed to be <em>empty</em> in exactly this case. Its NFR-002 states that a monorepo where producer and consumer coexist <em>"SHOULD incur at most 0 additional steps, since the export problem does not arise there"</em>, and <code>notify.ts</code> reiterates it: such a project <em>"needs no entry at all"</em>. The one mechanism a question-type split assigns to the producer/consumer half does not fire for the most common shape of that half.</p>
+
+<p><spec-newthought>Cut on the repository boundary instead and the questions collapse where they should.</spec-newthought> Inside one repository, "library or app?" and "domain or service?" are the same question — <em>which unit owns this?</em> — asked in two vocabularies, and the ecosystem already answers both with one mechanism, module boundary rules over named units. Across repositories, the same question needs a different transport, because there is no shared build graph and no shared filesystem: it needs coordinates and declared edges. The <em>question</em> is invariant; only the transport changes.</p>
+
+<div style="overflow-x:auto;">
+<table>
+  <thead>
+    <tr><th></th><th>Intra-repo</th><th>Cross-repo</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Unit</td><td>Module / package / ring</td><td>Project (an owner-qualified coordinate)</td></tr>
+    <tr><td>Edge source</td><td>Workspace config, boundary rules, import graph</td><td><code>consumes[]</code>, contract coordinates, manifests</td></tr>
+    <tr><td>Already exists?</td><td>Yes — in third-party tooling, not in spectastic</td><td>Partly — <code>consumes[]</code> ships, unplumbed</td></tr>
+    <tr><td>Reciprocity</td><td>Cheap — one checkout, both ends readable</td><td>Expensive — the counterpart may be absent</td></tr>
+  </tbody>
+</table>
+</div>
+
+<spec-decision id="D-002" grounding="verified">
+  <h4>D-002 · Cut on the repository boundary, not the question type</h4>
+  <dl>
+    <dt>Status</dt><dd><spec-status value="draft">Proposed</spec-status></dd>
+    <dt>Context</dt><dd>Splitting by question type (producer/consumer vs. ring placement) leaves the monorepo case falling through both halves: 076 NFR-002 deliberately keeps <code>consumes[]</code> empty in a monorepo, so the cross-repo mechanism does not fire, while the intra-repo mechanism was assigned to the other half. Inside one repository the two questions are the same module-boundary question in different words.</dd>
+    <dt>Decision</dt><dd>Model one relation — a typed edge over <strong>units</strong> — and let the repository boundary select the transport. A unit is a module or package intra-repo and a project coordinate cross-repo. Placement resolves the same way in both; only edge acquisition differs.</dd>
+    <dt>Consequences</dt><dd>+ The monorepo case is served, and it is the common case. + One relation means one verdict shape, one explanation format, one thing to test. + Migrating a module out into its own repository changes the transport, not the model. − "Unit" is a new abstraction the estate does not currently name, and a vocabulary with no artifact behind it is a liability. − Intra-repo edges are dense and cross-repo edges are sparse; one ranking over both risks the dense side dominating.</dd>
+  </dl>
+</spec-decision>
+</section>
+
+<!-- ======================================================= -->
+<section id="precedence">
+<h2>4 · Declaration, then inference — the order is already settled</h2>
+
+<p><spec-newthought>There is a strong argument for inferring the graph rather than authoring it, and it is nearly right.</spec-newthought> The software-catalogue literature is unambiguous about hand-maintained metadata: it rots, and it rots fast enough to poison trust in everything built on it. Practitioner accounts put stale ownership data past the point of usefulness within weeks, and the standing recommendation across the internal-developer-platform field is to auto-discover and reconcile rather than ask humans to maintain entries. The evidence from this repository is worse than the literature: of ten <code>&lt;spec-contract&gt;</code> declarations across seventy-four designs, <strong>every single one is <code>shape="none"</code></strong>. The one machine-readable structural element the design artifact has, in the project that invented it, has never once been used to declare an actual interface. And the root <code>spectastic.json</code> carries no <code>consumes</code> entry.</p>
+
+<p>So a placement engine that waits for humans to author a graph will be a placement engine that never runs. That much is solid. The conclusion I first drew from it — infer first, let declarations override — is nonetheless <em>wrong here</em>, and wrong against shipped code rather than against taste.</p>
+
+<p><spec-newthought>Spec 073 settled this exact question, at must-tier, on identical reasoning.</spec-newthought> <a href="../specs/073-interface-detection-widening/spec.html">073</a> FR-003:</p>
+
+<blockquote>
+<p>Where a design declares an interface or a contract path, that declaration MUST take precedence over inference from dependencies or the filesystem — in both directions, establishing that a contract is owed and that one is not.</p>
+</blockquote>
+
+<p>Its rationale is the argument this survey would otherwise have to make from scratch: <em>"Inference cannot distinguish publishing from consuming, nor a published contract from a vendored one. Only a declaration carries intent, and both false directions have been observed."</em> The spec goes further and names the ordering as load-bearing — <em>"Reversing the first two would make a design's stated intent unable to correct a wrong guess, which is the only reason the declaration exists."</em> It is implemented in <code>declaredInterfaceState</code>, which returns <code>null</code> when a project declares nothing so that inference runs exactly as before.</p>
+
+<p>This matters directly for placement, because the producer/consumer distinction is <em>precisely</em> what dependency presence cannot see. A manifest entry for a messaging client appears identically in a publisher and a subscriber. A checked-in OpenAPI document appears identically in the service that publishes it and the client that vendored it to generate a stub. Inference establishes that an edge exists; only a declaration establishes which end of it owns a change. The engine needs both and must not confuse their roles.</p>
+
+<p><spec-newthought>The third bucket already exists too.</spec-newthought> <code>enforce/policy.ts</code> carries an advisory <code>warned</code> state for the case where a category <em>plainly applies</em> but only through a signal too weak to gate on — today, an event-driven recognition that cannot tell a publisher from a consumer. That is exactly the shape of an inferred edge with unknown direction. Placement should not invent a confidence vocabulary for this; it should reuse the one the enforcement system already ships.</p>
+
+<spec-decision id="D-003" grounding="verified">
+  <h4>D-003 · Declaration outranks inference; inference is never optional</h4>
+  <dl>
+    <dt>Status</dt><dd><spec-status value="draft">Proposed</spec-status></dd>
+    <dt>Context</dt><dd>073 FR-003 settles the precedence at must-tier with reasoning specific to producer/consumer ambiguity, implemented in <code>declaredInterfaceState</code>; the event-driven survey landed the same emphasis. Against that, catalogue-staleness evidence and this repository's own record — ten <code>&lt;spec-contract&gt;</code> declarations, all <code>shape="none"</code>, and no <code>consumes</code> entry in its own config — show that authoring alone yields an empty graph.</dd>
+    <dt>Decision</dt><dd>Keep 073's ordering: <strong>declaration, then inference, then fail-safe</strong>. The staleness evidence changes not the order but the obligation — inference MUST always run as the fallback and MUST NOT be switchable off, so an undeclared estate still produces a graph. An inferred edge whose direction is unknown resolves to the existing advisory state rather than a guess.</dd>
+    <dt>Consequences</dt><dd>+ Agrees with an Accepted must-tier requirement instead of contradicting it. + A project that declares nothing still gets ranked suggestions on day one. + The confidence vocabulary is inherited, not invented. − Placement quality is bimodal: sharply better where designs declare, floor-level where they do not, which will read as inconsistent. − An inferred graph is only as good as manifest conventions, so an unconventional project silently gets the weaker tier with nothing telling it why.</dd>
+  </dl>
+</spec-decision>
+</section>
+
+<!-- ======================================================= -->
+<section id="substrate">
+<h2>5 · Where the edge can live — four candidates, one disqualified on structure</h2>
+
+<p><spec-newthought>The corpus is the first place anyone reaches, and it cannot work.</spec-newthought> It is the obvious candidate: a corpus is where domain knowledge already lives, it is citable, edition-pinned, provenance-carrying, and its type contract is young enough that widening it is still cheap by its own admission. The reason to reject it is not taste and not the advisory markdown rule that corpus citations are for domain facts only — that rule is real and confirms the answer, but it lives in command markdown and is by this survey's own standards not durable enforcement.</p>
+
+<p>The disqualifying reason is <strong>structural</strong>. A corpus is addressed per-marketplace: <code>spectastic://&lt;marketplace&gt;/corpus/&lt;plugin&gt;/&lt;slug&gt;</code>. Every document belongs to exactly one marketplace, and identity is a containment hierarchy — marketplace, plugin, slug, edition — with, as the audit confirms, no concept-to-concept relation of any kind in any type, parser or renderer. An edge <em>between</em> two projects belongs to neither of them alone. It has no owning marketplace, so it has no legal coordinate, so there is nowhere in the corpus for it to be. A relation whose endpoints span the addressing scheme's own root cannot be filed under one root.</p>
+
+<p><spec-newthought>The design artifact is the second candidate, and here the audit contradicted me usefully.</spec-newthought> I expected to find that a design cannot hold standing project state — that §8 <em>Project structure</em> is diff-scoped ("only the new or changed paths"), that <code>&lt;spec-arch&gt;</code> carries no attributes across all sixty-eight of its real usages, and that the architecture pattern survives only as prose in a <code>&lt;dd&gt;</code>. All of that is true, and none of it is the argument.</p>
+
+<p>The design artifact <em>is already read as standing project posture</em>. <code>declaredInterfaceState</code> walks <code>specs/</code> and treats what it finds in a design as the project's current stated position, with the comment: <em>"Last spec directory wins, so the project's most recent stated posture is the one that counts."</em> The user intuition that plans hold this knowledge is not naive; the code already acts on it.</p>
+
+<p>The real defect is in that same sentence, and it is worse than diff-scoping. The loop <code>return</code>s inside the first spec directory that contains any <code>&lt;spec-contract&gt;</code> at all. Designs do not accumulate — they <strong>shadow</strong>. A project with seventy-nine specs has exactly one visible contract-declaration set: whichever design is newest. Every earlier declaration is invisible to the detector that reads them. 073 accepted this because it needed a boolean about the project's current posture, and for that purpose newest-wins is defensible. For a project map it is fatal, because a map is precisely the thing you build by union.</p>
+
+<div style="overflow-x:auto;">
+<table>
+  <thead>
+    <tr><th>Candidate</th><th>Accumulates</th><th>Addressable</th><th>Authored where the fact is known</th><th>Survives absence of the counterpart</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Knowledge corpus</td><td>Yes</td><td><strong>No legal coordinate</strong></td><td>No</td><td>—</td></tr>
+    <tr><td>Design artifact</td><td><strong>No — shadows</strong></td><td>Yes</td><td>Yes</td><td>Yes</td></tr>
+    <tr><td><code>spectastic.json</code></td><td>Yes</td><td>Yes</td><td>No — project-level, not feature-level</td><td>Yes</td></tr>
+    <tr><td>Inferred from manifests</td><td>Yes</td><td>Yes</td><td>—</td><td>Yes, but direction unknown</td></tr>
+  </tbody>
+</table>
+</div>
+
+<spec-matrix target="D-005">
+<div style="overflow-x:auto;">
+<table>
+  <thead>
+    <tr><th>Option</th><th>Accumulation</th><th>Authoring fit</th><th>Federation</th><th>Cost</th><th>Rot resistance</th><th class="score">Total</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>A · Corpus relation layer</strong> — widen the type contract with typed relations</td>
+      <td>5</td><td>1</td><td>0</td><td>2</td><td>2</td><td class="score">10</td>
+    </tr>
+    <tr>
+      <td><strong>B · Design only</strong> — union <code>&lt;spec-contract&gt;</code> across every design</td>
+      <td>2</td><td>5</td><td>3</td><td>4</td><td>3</td><td class="score">17</td>
+    </tr>
+    <tr>
+      <td><strong>C · Config only</strong> — extend <code>consumes[]</code> into a full edge list</td>
+      <td>5</td><td>1</td><td>5</td><td>5</td><td>2</td><td class="score">18</td>
+    </tr>
+    <tr data-winner>
+      <td><strong>D · Config holds the standing edge; designs contribute per-feature evidence; inference fills the rest</strong></td>
+      <td>5</td><td>5</td><td>5</td><td>3</td><td>4</td><td class="score">22</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+
+<spec-decision id="D-004" grounding="verified">
+  <h4>D-004 · The corpus cannot host an inter-project edge, and the reason is structural</h4>
+  <dl>
+    <dt>Status</dt><dd><spec-status value="draft">Proposed</spec-status></dd>
+    <dt>Context</dt><dd>A corpus document is addressed <code>spectastic://&lt;marketplace&gt;/corpus/&lt;plugin&gt;/&lt;slug&gt;</code> and every document belongs to exactly one marketplace. The corpus model carries containment and edition versioning only — no concept-to-concept relation exists in any type, parser or renderer. An edge between two projects belongs to neither alone and therefore has no owning coordinate.</dd>
+    <dt>Decision</dt><dd>Do not host placement edges in the corpus, and do not widen its type contract to admit relations. The corpus stays a set of citable domain documents. It remains a legitimate <em>input</em> to placement — domain proximity is evidence — but it is never where an edge is recorded.</dd>
+    <dt>Consequences</dt><dd>+ The corpus keeps a single clear job and its cheap-to-widen type contract stays unspent on the wrong thing. + The domain-facts-only rule stops being the load-bearing argument and becomes corroboration. − Rejects the intuition that a corpus enriched with relationship and stack knowledge could serve, which is a reasonable thing to have hoped for. − Domain proximity remains available as evidence, so the resemblance failure this survey opens with is <em>mitigated by ranking</em>, never structurally prevented.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-005" grounding="verified">
+  <h4>D-005 · The standing edge lives in config; the design contributes per-feature evidence</h4>
+  <dl>
+    <dt>Status</dt><dd><spec-status value="draft">Proposed</spec-status></dd>
+    <dt>Context</dt><dd><code>declaredInterfaceState</code> already reads designs as standing project posture, so "designs cannot hold project state" is false. But it returns inside the newest spec directory carrying any <code>&lt;spec-contract&gt;</code>, so declarations shadow rather than accumulate — a project has exactly one visible declaration set regardless of how many designs assert one. A map is built by union; shadowing is the opposite operation.</dd>
+    <dt>Decision</dt><dd>Record the standing unit edge in <code>spectastic.json</code>, alongside and generalising 076's <code>consumes[]</code>. A design continues to declare per-feature interface facts (<code>&lt;spec-contract&gt;</code> with <code>direction=</code>), which are <strong>evidence</strong> feeding the edge, not the edge itself. Separately, fix the shadowing: a project's declared posture should be the union across designs with the newest winning per contract name, not the newest design wholesale.</dd>
+    <dt>Consequences</dt><dd>+ One durable location per standing fact, and the design keeps authoring the thing it is genuinely best placed to know. + Fixing shadowing improves 073's existing detection independently of whether placement is ever built. + A project-level edge list is diffable and reviewable in one place. − Two locations for related facts invites drift between the declared edge and the evidence, which needs its own check. − Changing shadowing to union alters an Accepted spec's detection behaviour and must land as a proposal against 073, not a patch.</dd>
+  </dl>
+</spec-decision>
+</section>
+
+<!-- ======================================================= -->
+<section id="landscape">
+<h2>6 · How the field answers this — three traditions, none of them sufficient alone</h2>
+
+<p><spec-newthought>The catalogue tradition models the estate as typed entities with typed relations.</spec-newthought> Backstage's software catalog is the reference implementation: a <code>Component</code> declares <code>providesApis</code>, <code>consumesApis</code>, <code>dependsOn</code>, <code>ownedBy</code> and <code>partOf</code>, grouped into <code>System</code> and <code>Domain</code>. Its own guidance is instructive for the producer/consumer case — even where <code>consumesApis</code> is present, add <code>dependsOn</code> for the direct relationship to the providing component, <em>particularly when the dependency is a shared library rather than an API</em>. The field has already noticed that the library case is the one an API-shaped relation misses.</p>
+
+<p>Backstage also supplies the cautionary half. The catalogue is hand-authored in <code>catalog-info.yaml</code>, and the practitioner literature on stale ownership is consistent enough that "auto-discover and reconcile" is now the standing advice rather than a refinement. The 2026 wave of work exposing Backstage catalogs to agents over the protocol makes the stakes sharper: an agent grounded on a stale catalogue is confidently wrong, and one documented failure is exactly the ownership case — an alert routed to a generic department of 134 people because the metadata was never maintained.</p>
+
+<p><spec-newthought>The domain-driven tradition supplies the vocabulary the catalogue tradition lacks.</spec-newthought> Context mapping names relationships between bounded contexts with a precision that <code>dependsOn</code> cannot reach: <em>Customer/Supplier</em> where the upstream negotiates with the downstream, <em>Conformist</em> where the downstream simply absorbs the upstream's model because the upstream has no incentive to help, <em>Anticorruption Layer</em> where the downstream translates defensively, <em>Open Host Service</em> and <em>Published Language</em> where the upstream deliberately serves many consumers. Every one of these is an <em>upstream/downstream</em> relation — precisely the direction placement needs — and each implies a different answer to "which end absorbs this change".</p>
+
+<p>Better still, this has a machine-readable form. Context Mapper's CML expresses a map directly — <code>VoyagePlanningContext [D,ACL]&lt;-[U,OHS,PL] LocationContext</code> — with the arrow pointing upstream to downstream, plus relationship attributes for implementation technology, exposed aggregates, and <em>downstream rights</em> on a scale from influencer to monopolist. That last attribute is a striking piece of prior art: it encodes how much say the downstream has over the upstream's roadmap, which is the organisational half of "should this change be made upstream or worked around locally".</p>
+
+<p><spec-newthought>The enforcement tradition answers the intra-repo half and is already in this repository.</spec-newthought> Architecture fitness functions — ArchUnit in Java, dependency-cruiser and Nx's module-boundary rule in the JavaScript world, import-linter in Python — encode layering as executable constraints. Nx is the closest fit: projects carry tags, and <code>depConstraints</code> declares which tags may depend on which, giving a <em>named</em> unit vocabulary that a placement engine could read directly.</p>
+
+<p>Two things cut against leaning on this too hard, and §<a href="#rings">7</a> takes them up: the tools split on whether they declare layers positively or forbid edges negatively, and this repository is an example of the weaker form.</p>
+
+<p><spec-newthought>The retrieval tradition is where the original forward-look reached, and it is the weakest of the four for this job.</spec-newthought> Information-retrieval bug localisation has three decades of work on "given a report, which file changes?" — combining report text, stack traces, structural source information, and change history, typically hierarchically from files down to methods. Two findings transfer. First, text similarity alone is a weak signal and the field's gains came from adding <em>structural</em> and <em>historical</em> evidence to it. Second, the accuracy that this literature reports is top-<em>k</em> accuracy with human inspection assumed — the output was always a ranked shortlist for a person, never a decision. Both findings argue against resemblance as a primary router and for it as one evidence class among several.</p>
+
+<p>And the negative result worth naming: CODEOWNERS, the mechanism the original forward-look reached for as an analogy, answers only "which file was modified". The critique in the practitioner literature is exactly this survey's opening failure — it is <em>blind to the destination of the change</em>, and cannot see architectural impact at all. Being semantic CODEOWNERS is not an ambitious target; it is the same blindness with better prose.</p>
+</section>
+
+<!-- ======================================================= -->
+<section id="rings">
+<h2>7 · Inside one repository — the boundary map, and where it goes quiet</h2>
+
+<p><spec-newthought>The intra-repo half looks solved and is half-solved.</spec-newthought> The instinct is right: spectastic should not invent a layering model when the ecosystem already declares one machine-readably, and this is exactly the project's own house pattern for enforcement — the <code>coverage</code> category detects a <em>declared threshold</em> rather than a coverage library, and <code>contract-first</code> detects a <em>checked-in contract</em> rather than a framework. Detecting a declared boundary map is the same move, and <code>enforce/detect.ts</code> already has the machinery for it: <code>FileSignal</code>, <code>ciInvokes</code>, and <code>checkIsConfigured</code>, whose shape <code>detectContractChecks</code> already clones.</p>
+
+<p>The problem is that the four obvious tools split two-and-two, and the split runs along exactly the axis placement cares about.</p>
+
+<div style="overflow-x:auto;">
+<table>
+  <thead>
+    <tr><th>Tool</th><th>Form</th><th>Names units?</th><th>Answers "where does this go"?</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Nx <code>depConstraints</code></td><td>Positive — tag-to-tag allow rules</td><td>Yes, an enumerated tag vocabulary</td><td><strong>Yes</strong></td></tr>
+    <tr><td>import-linter</td><td>Positive — an ordered layer list</td><td>Yes, named layers</td><td><strong>Yes</strong></td></tr>
+    <tr><td>dependency-cruiser</td><td>Negative — forbidden edges over path globs</td><td>No</td><td>Only by elimination</td></tr>
+    <tr><td>ArchUnit</td><td>Negative — arbitrary rules in Java test methods</td><td>No — not a config format</td><td>No</td></tr>
+  </tbody>
+</table>
+</div>
+
+<p><spec-newthought>This repository is the weak example, and the way it is weak is a useful reversal.</spec-newthought> Its <code>.dependency-cruiser.cjs</code> holds a single <code>forbidden</code> rule — <code>packages/corpus</code> must not import <code>packages/core</code> — over path globs, whose own comment says the scope is deliberate: <em>"this is not a general architecture-fitness tool adoption, just the machine-verified half"</em> of one decision. It names no layers and enumerates none. And note what it actually encodes: a <em>pairwise package edge</em>. The repository's single piece of fitness-function evidence supports the producer/consumer half of the story, not the ring-placement half.</p>
+
+<p>A negative constraint set yields a partial order at best, and only over paths that already exist. That limitation bites hardest in the case this survey is obliged to handle: <strong>when the destination directory does not exist yet, a glob-based rule set is silent by construction</strong>. It cannot distinguish "this belongs somewhere new" from "this belongs nowhere", because it was never asked to describe the space of legal destinations — only to forbid some traversals of the existing one.</p>
+
+<p>The enforcement half of this already has a home and this survey should not re-plant it. <a href="./agent-architecture-considerations.html">The agent-architecture survey</a> planted <code>TBD-architecture-fitness-function</code> — a validate or CI check enforcing the chosen pattern's dependency rules — and recorded it as the heavier, later, P-8 guarantee half. Placement is a new and better reason to drain it, because the artifact that enforcement needs and the artifact that placement needs are the same artifact: a declared, named unit vocabulary. What this survey adds is the observation that <em>detecting</em> such a map, where a project already declares one, is much cheaper than authoring one and should come first.</p>
+
+<spec-warning><strong>The word "layer" is taken.</strong> <code>triage</code> owns it with an incompatible meaning — its closed taxonomy of <code>spec</code>, <code>design</code>, <code>implementation</code>, <code>cross-spec</code>, <code>principles</code>, <code>platform</code>, <code>just-do</code>, <code>defer</code> classifies which lifecycle layer owns a <em>fix</em>, not which architectural ring owns a <em>change</em>. Any requirement written as "layer placement" will be misread by anyone who has used the triage verb. This survey says <strong>boundary</strong> or <strong>ring</strong> throughout, and a downstream spec should too.</spec-warning>
+</section>
+
+<!-- ======================================================= -->
+<section id="verdict">
+<h2>8 · What placement returns — two refusals, both first-class</h2>
+
+<p><spec-newthought>The verdict shape does not need inventing; two shipped verbs already have it.</spec-newthought> <code>triage</code>'s classifier is the closest existing thing to a placement decision, and it is the same decision shape: a closed taxonomy of destinations, a model classification carrying <code>layerConfidence: high | medium | low</code>, an automatic <code>hedged</code> status when confidence is low <em>or</em> the returned layer is not valid, and a consolidated human escalation that runs after the concurrent pass rather than interleaved with it. The slicer supplies the other half — its <code>Verdict</code> is <code>{kind:'split'}</code> or <code>{kind:'dont-split', reasons: string[]}</code>, with the comment that <code>dont-split</code> is <em>"a first-class verdict… never a forced cut."</em></p>
+
+<p>Placement should inherit both rather than introduce a parallel confidence vocabulary. Where it needs more structure is in the <em>evidence</em>, and there the house pattern is to type findings, not scores: <code>change-risk</code>'s <code>RedFlagFinding</code> carries a <code>category</code> and a <code>weight</code>, and its composite score is explicitly <em>"a v1 default, not calibrated truth"</em>. A placement suggestion should carry its evidence the same way — a declared edge, an inferred edge with unknown direction, domain proximity, prior art in this project's own specs — each named and weighted, so a human reviewing a suggestion sees <em>why</em> and not merely <em>how confident</em>. That is the difference between a number to argue with and a case to check.</p>
+
+<p><spec-newthought>The first refusal is the one everyone expects, and it is usually stated too strongly.</spec-newthought> "Never bootstrap a service" conflates proposing with executing, and it is stricter than the project's own precedent: the slicer drafts new spec ids that are <em>"provisional until minted"</em> and runs dry, minting nothing. The honest line is <strong>propose, never mint</strong>. An orchestrator may absolutely conclude that no existing unit fits and that the right answer is a new one — that is a useful conclusion, and suppressing it would push work into whichever unit fits least badly. What it must not do is create the thing. Standing up a service is an organisational commitment about team boundaries and cognitive load, and the inverse-Conway literature is clear that architecture migration and team reorganisation are one act, not two.</p>
+
+<p><spec-newthought>The second refusal matters more and is easier to miss.</spec-newthought> A placement engine's most damaging failure is not proposing a service that should not exist. It is <strong>routing confidently to a plausible-but-wrong existing owner because "no confident owner" was not an available answer</strong>. This is the opening failure again, arriving through the back door: forced choice over a ranked list will always return something, and the thing it returns will be the unit whose vocabulary the requirement happened to borrow. "No confident owner", with reasons attached, must be a terminal state on the model — not a fallback, not an error, not the absence of a result.</p>
+
+<spec-warning><strong>There is no ownership field anywhere in spectastic.</strong> The only ownership datum in the entire estate is <code>enforce.waivers[].owner</code> — a free-text string attached to a single waiver, not to a project. A survey that reaches for Team Topologies and inverse Conway while the tool cannot name who owns a repository is gesturing at organisational theory it has no data for. Stated plainly rather than dressed up: ownership routing needs an ownership field first, and that field does not exist.</spec-warning>
+
+<spec-decision id="D-006" grounding="verified">
+  <h4>D-006 · Inherit triage's confidence-and-hedge shape; type the evidence, not the score</h4>
+  <dl>
+    <dt>Status</dt><dd><spec-status value="draft">Proposed</spec-status></dd>
+    <dt>Context</dt><dd><code>triage/classify.ts</code> already routes "which layer owns this fix" with a closed taxonomy, <code>layerConfidence: high|medium|low</code>, an automatic <code>hedged</code> status, and a consolidated human gate. <code>slice/types.ts</code> already makes a negative verdict first-class with attached reasons. <code>change-risk</code> types evidence at the finding level and declares its weights uncalibrated.</dd>
+    <dt>Decision</dt><dd>Placement returns a ranked shortlist with <code>high|medium|low</code> confidence and an automatic hedge, inheriting triage's shape and escalation timing. Evidence is a typed list of named classes with weights, not an opaque score, and the weights are declared uncalibrated defaults from the outset.</dd>
+    <dt>Consequences</dt><dd>+ No new confidence vocabulary, and the escalation ergonomics are already proven in a shipped verb. + A human sees the case, not just the number, which is what makes confirmation meaningful rather than ceremonial. + Uncalibrated-by-declaration avoids the score being read as measured truth. − Three confidence bands are coarse for a ranking problem, and a downstream spec may find they under-discriminate. − Typed evidence classes are a vocabulary that must be got roughly right early, since consumers will bind to the names.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-007" grounding="verified">
+  <h4>D-007 · Propose, never mint — and never route for want of an alternative</h4>
+  <dl>
+    <dt>Status</dt><dd><spec-status value="draft">Proposed</spec-status></dd>
+    <dt>Context</dt><dd>"Never bootstrap a service" is stricter than the project's own precedent — the slicer drafts provisional ids and mints nothing. Meanwhile the more damaging failure is unaddressed: forced choice over a ranked list always returns something, and what it returns is the unit whose vocabulary the requirement borrowed. spectastic has no ownership field beyond a per-waiver string.</dd>
+    <dt>Decision</dt><dd>Two first-class terminal outcomes, both carrying reasons: <strong>new unit proposed</strong> (a proposal that exits to a human; the engine never creates a repository, package or directory) and <strong>no confident owner</strong> (never a fallback and never an error). A suggestion is never auto-applied at any confidence.</dd>
+    <dt>Consequences</dt><dd>+ Matches the slicer's dry-run precedent instead of inventing a stricter rule. + The abstain path closes the survey's opening failure at the verdict level, where forced choice would reopen it. + Reasons make both refusals reviewable rather than opaque. − An engine that abstains often is an engine people stop consulting, so abstention rate becomes a quality metric that must be watched. − Human-confirmed at every confidence caps the throughput benefit, which is a real cost honestly paid.</dd>
+  </dl>
+</spec-decision>
+</section>
+
+<!-- ======================================================= -->
+<section id="engine">
+<h2>9 · The engine — five stages, and what each already has</h2>
+
+<p><spec-newthought>Laid out end to end, the mechanism is smaller than it sounds, because four of its five stages have shipped precedents.</spec-newthought></p>
+
+<div style="overflow-x:auto;">
+<table>
+  <thead>
+    <tr><th></th><th>Stage</th><th>Input</th><th>Precedent to clone</th><th>Genuinely new?</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>1</td><td><strong>Acquire edges</strong> — declared, then inferred</td><td><code>spectastic.json</code>, designs, manifests, boundary configs</td><td><code>declaredInterfaceState</code>, <code>detectContractChecks</code></td><td>No</td></tr>
+    <tr><td>2</td><td><strong>Build the unit graph</strong> — reciprocity-admitted, cycle-checked</td><td>Stage 1</td><td><code>ordering/graph.ts</code></td><td>Node and edge types only</td></tr>
+    <tr><td>3</td><td><strong>Gather evidence</strong> — typed classes per candidate unit</td><td>Requirement text, graph, corpus, specs</td><td><code>change-risk</code>'s finding shape</td><td>The class vocabulary</td></tr>
+    <tr><td>4</td><td><strong>Rank and hedge</strong></td><td>Stage 3</td><td><code>triage/classify.ts</code></td><td>No</td></tr>
+    <tr><td>5</td><td><strong>Verdict</strong> — place, propose-new, or abstain</td><td>Stage 4</td><td><code>slice</code>'s <code>Verdict</code></td><td>The third arm</td></tr>
+  </tbody>
+</table>
+</div>
+
+<p><spec-newthought>Stage 3 is where the survey's opening failure is actually defeated, and it is worth being precise about how.</spec-newthought> Domain proximity — "this requirement resembles that project's corpus and specs" — stays in the evidence set, because it is genuinely informative and it is the only signal available for a project that declares nothing and whose manifests reveal nothing. What changes is that it is <em>one weighted class among several</em> rather than the ranking function, and that a structural edge pointing the other way is allowed to outrank it. The library case then resolves correctly: the requirement resembles the consumer, a declared or inferred edge says the consumer depends on the library for exactly this surface, and the two pieces of evidence are visibly in tension in the output rather than silently resolved in favour of the loudest one.</p>
+
+<p>That tension is the thing to surface, not suppress. A suggestion reading <em>"consumer ranks first on domain proximity; producer ranks first on structural dependency; confidence medium, hedged"</em> is far more useful to a human than either unit returned confidently — and it is the shape the bug-localisation literature converged on for the same reason.</p>
+
+<p><spec-newthought>Staging follows the dependencies, and only the last stage is genuinely gated.</spec-newthought> Stage 1 is buildable now, entirely within this repository, against machinery that already exists. Stages 2–4 need only Stage 1's output and a single checkout — they work on a monorepo on day one and need no aggregating endpoint at all. Only the cross-repo case needs the federated read surface, and only the new-unit arm of Stage 5 needs an ownership field the estate does not have. The forward-look's posture that this is entirely gated behind aggregation turns out to be true of roughly one third of it.</p>
+</section>
+
+<!-- ======================================================= -->
+<section id="recommendation">
+<h2>10 · Recommendation — three slices, in order</h2>
+
+<ol>
+  <li><strong>Make the edge exist.</strong> Generalise <code>consumes[]</code> into a declared unit-edge list in <code>spectastic.json</code>; give it a CLI surface and a design-interview question so something actually authors it; fix declaration shadowing so a project's posture is the union across designs rather than the newest one; add inference from manifests and workspace configs as the always-on fallback, with the advisory state for edges whose direction is unknown. Entirely within this repository, no new artifact kind, and it improves 073's existing detection whether or not placement is ever built.</li>
+  <li><strong>Make the boundary map readable.</strong> Detect a declared boundary map where a project already has one — tag-based rules first, since only the positive forms answer "where does this go" — reusing the <code>FileSignal</code> and <code>checkIsConfigured</code> shape the enforce detector already ships. Pairs with, and gives a fresh reason to drain, the already-planted <code>TBD-architecture-fitness-function</code>.</li>
+  <li><strong>Make the verdict honest.</strong> Rank with typed evidence, hedge on low confidence, and hold both refusals as first-class outcomes. Single-checkout first; the estate-wide form follows the federated read surface.</li>
+</ol>
+
+<spec-warning><strong>Do not build this by making resemblance better.</strong> The temptation, once a read surface can answer "which estate does this look like", is to improve the ranking and call it placement. Every improvement to a similarity ranker makes the opening failure <em>more</em> confident, not less, because the requirement genuinely does resemble the consumer most — the ranker is not making a mistake, it is answering a different question correctly. Structural evidence is not a refinement of resemblance; it is the thing that has to outrank it.</spec-warning>
+
+<h3>Suggested next artifacts</h3>
+<spec-out-of-scope>
+  <ul>
+    <li defer-to="TBD-placement-unit-edge">A new spec: the typed unit edge — its vocabulary, its two transports (module intra-repo, coordinate cross-repo), the reciprocity admission rule carried over from 028, and the fallback when a cross-repo counterpart is unreadable. Slice 1, the model (D-001, D-002).</li>
+    <li defer-to="TBD-consumes-authoring">A new spec: plumb the edge list so something authors it — a CLI surface, a design decision-phase question, and a validate rule that a declared coordinate is well-formed. Today <code>consumes[]</code> has no caller outside its tests and this project's own config carries none. Slice 1, the authoring half.</li>
+    <li defer-to="TBD-design-declaration-accumulation">A <code>/spectastic.propose</code> against <a href="../specs/073-interface-detection-widening/spec.html">073</a>: make a project's declared interface posture the union across designs, newest-wins per contract name, rather than the newest design wholesale. Fixes shadowing independently of placement (D-005).</li>
+    <li defer-to="TBD-boundary-map-detection">A new spec: detect a declared boundary map where a project has one, distinguishing positive (named units) from negative (forbidden edges) forms and recording that the negative form is silent when the destination does not yet exist. Cloning the enforce detector's signal shape. Slice 2.</li>
+    <li defer-to="TBD-placement-verdict">A new spec: the verdict shape — typed evidence classes, three-band confidence with automatic hedge, and both refusals as terminal states carrying reasons. Inherits triage and the slicer wholesale. Slice 3 (D-006, D-007).</li>
+    <li defer-to="TBD-project-ownership-field">A <code>/spectastic.propose</code> against the meta-spec: a project-level owner, which the estate currently lacks entirely — the only ownership datum anywhere is a per-waiver free-text string. Prerequisite for anything that routes to a team rather than a repository.</li>
+    <li defer-to="TBD-contract-key-stability">A <code>/spectastic.propose</code> against <a href="../specs/076-contract-export-handover/spec.html">076</a>: the federation key for a contract is its filename, so renaming or reformatting a contract file silently breaks every downstream entry with no rename detection, and two contracts in one project must have distinct basenames regardless of directory.</li>
+    <li defer-to="TBD-placement-engine">A follow-on survey then spec: the engine itself, once slices 1–3 land and there is real edge data to rank against — including whether the abstention rate is tolerable in practice, which cannot be answered before it runs.</li>
+  </ul>
+</spec-out-of-scope>
+
+<p>Deliberately <em>not</em> planted: <code>TBD-architecture-fitness-function</code>, which <a href="./agent-architecture-considerations.html">the agent-architecture survey</a> already planted for the enforcement half of the boundary question. Slice 2 is its detection-side companion, not a replacement, and re-planting it would double-count a pending slug.</p>
+</section>
+
+<!-- ======================================================= -->
+<section id="caveats">
+<h2>11 · Caveats on the sources</h2>
+
+<ul>
+  <li><strong>The project's own principle says this judgment resists mechanisation.</strong> P-14 (Library-first boundaries) poses exactly the producer/consumer test — <em>"would a second caller want this logic without the CLI attached?"</em> — and then records that the boundary is <em>"a judgment call… not a mechanical property a linter can decide without false positives, so it stays review-caught rather than machine-enforced."</em> Everything above is a suggestion engine precisely because of that. A reviewer is entitled to ask whether a machine that cannot decide should be advising at all, and the only honest answer is that a ranked case with visible evidence is worth more than nothing and less than a decision.</li>
+  <li><strong>075 already refused a neighbouring machine check.</strong> Spec <a href="../specs/075-spec-data-model-layering/spec.html">075</a> deferred any machine check for layer violations, <em>"deliberately not attempted, since the distinction requires judgment"</em>. That is a different sense of "layer", but the refusal rhymes, and a downstream spec should expect to be asked why this one is different.</li>
+  <li><strong>The slicer encodes a bias against horizontal layers.</strong> Its semantic critic flags a horizontal-layer child as a defect. A placement mechanism whose output is frequently "which horizontal ring" sits awkwardly beside that, and the tension is unresolved here.</li>
+  <li><strong>The staleness evidence is practitioner literature, not measurement.</strong> "Stale ownership kills trust within two weeks" is a widely-repeated field observation from platform-engineering vendors with an interest in the conclusion, not a study. It is directionally consistent with this repository's own record — ten <code>shape="none"</code> declarations and an empty <code>consumes</code> — which is a sample of one, honestly weighted.</li>
+  <li><strong>The bug-localisation literature is about files, not repositories.</strong> Its top-<em>k</em> accuracy figures are not transferable to project-level routing, and I have used it only for its two structural findings — that text similarity alone is weak, and that the output was always a human-inspected shortlist.</li>
+  <li><strong>No orchestrator was built or measured.</strong> Every claim about how placement would behave is an argument from artifact shape and shipped precedent, not from a running system. The abstention-rate concern in D-007 is exactly the kind of thing that only a real run can settle, which is why the engine is staged last.</li>
+</ul>
+</section>
+
+<!-- ======================================================= -->
+<section id="sources">
+<h2>12 · Sources</h2>
+
+<p>Retrieved 02 Aug 2026, alongside a codebase audit of this repository and the separate MCP server repository. External sources establish the landscape; every claim about spectastic's own behaviour is grounded in the files named inline.</p>
+
+<ol>
+  <li>Well-known Relations between Catalog Entities — <a href="https://backstage.io/docs/features/software-catalog/well-known-relations/">backstage.io/docs/features/software-catalog/well-known-relations</a>: the typed relation vocabulary (<code>dependsOn</code>, <code>providesApis</code>, <code>consumesApis</code>, <code>ownedBy</code>, <code>partOf</code>), and the guidance to add <code>dependsOn</code> for shared-library dependencies an API relation misses.</li>
+  <li>Backstage System Model — <a href="https://backstage.io/docs/features/software-catalog/system-model/">backstage.io/docs/features/software-catalog/system-model</a>: Component / System / Domain containment, and how entities compose into a catalogued estate.</li>
+  <li>Context Map — <a href="https://contextmapper.org/docs/context-map/">contextmapper.org/docs/context-map</a>: a machine-readable DSL for context maps, upstream/downstream arrow semantics, role annotations (OHS, PL, ACL, CF), and the <em>downstream rights</em> attribute.</li>
+  <li>Context Mapping — <a href="https://github.com/ddd-crew/context-mapping">github.com/ddd-crew/context-mapping</a>: the relationship-pattern catalogue as a collaborative modelling practice.</li>
+  <li>DDD Strategic Patterns — <a href="https://pubs.opengroup.org/architecture/o-aa-standard/DDD-strategic-patterns.html">pubs.opengroup.org — O-AA Standard</a>: Customer/Supplier, Conformist, Anticorruption Layer and Open Host Service as an upstream/downstream taxonomy.</li>
+  <li>Enforce Module Boundaries — <a href="https://nx.dev/docs/features/enforce-module-boundaries">nx.dev/docs/features/enforce-module-boundaries</a>: tag-based <code>depConstraints</code> — the positive, named-unit form a placement engine can read.</li>
+  <li>ArchUnit in practice — <a href="https://www.codecentric.de/en/knowledge-hub/blog/archunit-in-practice">codecentric.de — ArchUnit in practice</a>: layered and onion checks expressed as test methods rather than configuration.</li>
+  <li>Fitness Functions: Automating Your Architecture Decisions — <a href="https://lukasniessen.com/blog/155-fitness-functions-guide/">lukasniessen.com/blog/155-fitness-functions-guide</a>: dependency constraints as executable architecture tests across ecosystems.</li>
+  <li>Structurizr — <a href="https://structurizr.com/">structurizr.com</a>: models-as-code for C4, and the version-controlled architecture model as prior art for a declared unit graph.</li>
+  <li>The definitive guide to CODEOWNERS — <a href="https://dev.to/aleixriba/codeowners-4jn3">dev.to/aleixriba/codeowners</a>: path-only ownership is <em>blind to the destination of the change</em> — the critique that undercuts "semantic CODEOWNERS" as a target.</li>
+  <li>Software Catalog — <a href="https://www.port.io/guide/software-catalog">port.io/guide/software-catalog</a>: catalogue staleness, eroded trust, and auto-discover-and-reconcile as the standing remedy.</li>
+  <li>Turning Backstage into an AI-Ready Platform with MCP — <a href="https://nitin15j.medium.com/turning-backstage-into-an-ai-ready-platform-with-mcp-2412bf744a64">nitin15j.medium.com</a>: catalogue-as-agent-context, and the ownership-metadata failure that grounds agents in vague data.</li>
+  <li>Industry-scale IR-based Bug Localization: A Perspective from Facebook — <a href="https://arxiv.org/pdf/2010.09977">arxiv.org/pdf/2010.09977</a>: ranked shortlists with human inspection assumed, at production scale.</li>
+  <li>Locus: locating bugs from software changes — <a href="https://dl.acm.org/doi/10.1145/2970276.2970359">dl.acm.org — ASE 2016</a>: change history as evidence beyond report-to-source text similarity.</li>
+  <li>Roots — <a href="https://modelcontextprotocol.io/specification/draft/client/roots">modelcontextprotocol.io/specification/draft/client/roots</a>: multiple roots per client, and roots as informational guidance the protocol does not enforce.</li>
+  <li>Monorepo vs Multi-Repo: Why AI Agents Tip the Scale — <a href="https://dortort.com/posts/monorepo-vs-multi-repo-why-ai-agents-tip-the-scale/">dortort.com</a>: agent-era arguments on repository shape, shared hotspot files, and cross-cutting change.</li>
+</ol>
+</section>
+
+<!-- ======================================================= -->
+<section id="changelog">
+<h2>13 · Change log</h2>
+
+<spec-changelog>
+  <ol>
+    <li><time datetime="2026-08-02">02 Aug 2026</time><span>Created. Drains <code>TBD-orchestrator-spec-placement</code> and widens it from spec placement to change placement, laddered. Overturns the forward-look's proposed mechanism: routing by resemblance produces the producer/consumer failure it was meant to prevent. Corrects three first-pass positions against shipped code — a dependency graph already ships (028), declaration-over-inference is settled at must-tier (073 FR-003), and designs are already read as project posture but <em>shadow</em> rather than accumulate. Lands seven decisions and plants eight <code>TBD-</code> next artifacts; deliberately does not re-plant <code>TBD-architecture-fitness-function</code>.</span></li>
+  </ol>
+</spec-changelog>
+</section>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  Spectastic · Resemblance is not ownership · 02 Aug 2026 ·
+  <a href="../index.html">home</a> ·
+  <a href="./corpus-extraction-considerations.html">corpus-extraction</a> ·
+  <a href="./agent-architecture-considerations.html">agent-architecture</a> ·
+  <a href="./data-model-contract-considerations.html">data-model-contract</a> ·
+  <button data-theme-toggle style="background:none;border:none;color:var(--c-link);cursor:pointer;font:inherit;padding:0;border-bottom:1px solid currentColor;">light/dark</button>
+</footer>
+
+</main>
+<script src="../assets/spec.js"></script>
+</body>
+</html>
