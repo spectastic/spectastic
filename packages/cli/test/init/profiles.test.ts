@@ -1,3 +1,4 @@
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
@@ -38,6 +39,55 @@ describe('profiles: loadProfiles', () => {
   it('fails safe to an empty manifest for a missing file', () => {
     const empty = loadProfiles('/no/such/dir');
     expect(profileNames(empty)).toEqual([]);
+  });
+
+  /**
+   * Spec 041-init-profiles, FR-010 (change 2026-08-02-axes-may-lead-the-floor)
+   * — the machine half of "an axis value is never a guarantee".
+   *
+   * Axes declare posture and may deliberately run ahead of the enforced floor:
+   * `contracts` is `contract-first` at standard while the `contract-first`
+   * category only enters `enforce.required` at verified, and the axis leads at
+   * verified and enterprise too. That divergence is legitimate ONLY while
+   * nothing gates on an axis. The moment an enforcement path reads one, a value
+   * would sometimes-but-not-always bind — the same confusion in the opposite
+   * direction, and far harder to see.
+   *
+   * A source scan rather than a behavioural assertion, because the guarantee is
+   * about what no code does; there is no call to make that would fail.
+   */
+  it('FR-010: no enforcement path reads a profile axis value', () => {
+    const srcRoots = ['packages/core/src/enforce', 'packages/cli/src/commands/enforce.ts'];
+    const offenders: string[] = [];
+    for (const rel of srcRoots) {
+      const abs = resolve(REPO_ROOT, rel);
+      if (!existsSync(abs)) continue;
+      const files = statSync(abs).isDirectory()
+        ? readdirSync(abs)
+            .filter((f) => f.endsWith('.ts'))
+            .map((f) => resolve(abs, f))
+        : [abs];
+      for (const file of files) {
+        if (/\.axes\b|\baxes\s*[:[]/.test(readFileSync(file, 'utf8'))) offenders.push(file);
+      }
+    }
+    expect(offenders, 'an enforcement module reads a profile axis — FR-010 forbids gating on posture').toEqual([]);
+  });
+
+  /**
+   * The reader-facing half of the same requirement. A clause about how a value
+   * should be *read* is worth little if the surface implies the opposite, so
+   * this pins what the audit found: axis values reach no generated artifact at
+   * all. The profile marker carries only the profile name, and AGENTS.md states
+   * the enforced floor (`enforce.required`) rather than a posture. If a future
+   * change starts emitting an axis into project-facing output, this fails and
+   * the copy question has to be answered deliberately.
+   */
+  it('FR-010: axis values are not emitted into project-facing output', () => {
+    const compose = readFileSync(resolve(REPO_ROOT, 'packages/cli/src/commands/init/compose.ts'), 'utf8');
+    expect(compose).not.toMatch(/\.axes\b/);
+    // The floor is what gets stated to a reader — that much must stay true.
+    expect(compose).toMatch(/enforce\.required|\brequired\b/);
   });
 
   /**
