@@ -1,0 +1,232 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
+<title>Unit edge authoring · Tasks</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Tasks · 080-unit-edge-authoring</p>
+  <h1>Unit edge authoring</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    Ordered, parallelizable work. Tests precede implementation. Drive through with
+    <code>/spectastic.implement</code> — one task per invocation.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>     <span><spec-status value="draft">Draft</spec-status></span>
+    <b>Spec</b>       <span><a href="./spec.html">080-unit-edge-authoring</a></span>
+    <b>Design</b>     <span><a href="./design.html">design</a></span>
+    <b>Branch</b>     <span><code>main</code></span>
+    <b>Created</b>    <span><time datetime="2026-08-02">02 Aug 2026</time></span>
+    <b>Read time</b>  <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-tldr>
+    <p>21 tasks across five phases. A task is marked <span class="par">[P]</span> only where no
+    sibling in its phase touches the same file — concurrency is bounded by the file, not by the
+    logic. Tests for a story <strong>MUST</strong> be written and failing before its
+    implementation tasks start (<a href="./design.html#D-005">D-005</a>), with the migration in
+    <a href="./design.html#D-003">D-003</a> the deliberate exception: its tests already exist and
+    must stay green throughout.</p>
+  </spec-tldr>
+</header>
+
+
+<section id="strategy">
+<h2>1 · Execution strategy</h2>
+
+<spec-tabs>
+  <spec-tab label="Incremental">
+    <p>The fit. Setup → Foundational (the shared editor) → US1 (write) → US2 (prompt) → US3
+    (validate) → Polish. The editor must exist before anything writes through it, and the
+    migration lands with it rather than after, so no third copy is ever committed.</p>
+  </spec-tab>
+  <spec-tab label="MVP-first">
+    <p>US1 alone is shippable: a maintainer can record a dependency by command. The prompt and
+    the validate rule sharpen it but nothing depends on them.</p>
+  </spec-tab>
+  <spec-tab label="Parallel teams">
+    <p>Not a fit for one author, and the editor is a shared seam every story crosses.</p>
+  </spec-tab>
+</spec-tabs>
+</section>
+
+
+<section id="phase-setup" class="phase">
+<h2>2 · Phase 1 — Setup</h2>
+
+<spec-task id="T-001">
+  <input type="checkbox">
+  <div><strong>Add the config module to the build</strong> — a tsup entry and export subpath, so <code>init</code> can import the editor without reaching into core's internals. <span class="path">packages/core/tsup.config.ts</span></div>
+</spec-task>
+</section>
+
+
+<section id="phase-foundation" class="phase">
+<h2>3 · Phase 2 — Foundational</h2>
+<p>The shared editor, and the migration that stops a third copy existing.</p>
+
+<spec-task id="T-010">
+  <input type="checkbox">
+  <div><strong>Test indentation detection and preservation</strong> — tab, 2-space and 4-space fixtures each survive a one-key edit unchanged outside that key (<a href="./design.html#D-001">D-001</a>). <span class="path">packages/core/test/config.edit.test.ts</span></div>
+</spec-task>
+<spec-task id="T-011">
+  <input type="checkbox">
+  <div><strong>Test the two policies separately</strong> — set-if-absent never overwrites; add-to-set is idempotent and never appends a duplicate. <span class="path">packages/core/test/config.edit.test.ts</span></div>
+</spec-task>
+<spec-task id="T-012">
+  <input type="checkbox">
+  <div><strong>Implement the shared config editor</strong> — one parse-mutate-write path behind two named policies. <span class="path">packages/core/src/config/edit.ts</span></div>
+</spec-task>
+<spec-task id="T-013">
+  <input type="checkbox">
+  <div><strong>Migrate init's two writers onto the editor</strong> — behaviour-preserving by construction; the existing init tests are the red line and must stay green untouched (<a href="./design.html#D-003">D-003</a>). <span class="path">packages/cli/src/commands/init.ts</span></div>
+</spec-task>
+</section>
+
+
+<section id="phase-us1" class="phase">
+<h2>4 · Phase 3a — US1 · Record a dependency without hand-editing config</h2>
+
+<h3>Tests (write &amp; fail first)</h3>
+<spec-task id="T-100">
+  <input type="checkbox">
+  <div><strong>Test that a write lands and re-running changes nothing</strong> — idempotence asserted on the bytes, not on the parsed value (<a href="./spec.html#SC-001">SC-001</a>). <span class="path">packages/core/test/units.write.test.ts</span></div>
+</spec-task>
+<spec-task id="T-101">
+  <input type="checkbox">
+  <div><strong>Test that unrelated keys and formatting survive</strong> — a config carrying other sections is altered only where the edge goes (<a href="./spec.html#SC-002">SC-002</a>). <span class="path">packages/core/test/units.write.test.ts</span></div>
+</spec-task>
+<spec-task id="T-102">
+  <input type="checkbox">
+  <div><strong>Test each refusal leaves the file byte-identical</strong> — self-edge and malformed target, both compared byte-wise before and after (<a href="./spec.html#NFR-002">NFR-002</a>). <span class="path">packages/core/test/units.write.test.ts</span></div>
+</spec-task>
+<spec-task id="T-103">
+  <input type="checkbox">
+  <div><strong>Test that a missing config is created rather than refused</strong> (<a href="./spec.html#FR-004">FR-004</a>). <span class="path">packages/core/test/units.write.test.ts</span></div>
+</spec-task>
+
+<h3>Implementation</h3>
+<spec-task id="T-110">
+  <input type="checkbox">
+  <div><strong>Implement the edge writer</strong> — decide every refusal first, then one call to the editor (<a href="./design.html#D-002">D-002</a>). <span class="path">packages/core/src/units/write.ts</span></div>
+</spec-task>
+<spec-task id="T-111">
+  <input type="checkbox">
+  <div><strong>Add the write subcommand</strong> — a thin register that reports what it wrote or why it refused. <span class="path">packages/cli/src/commands/units.ts</span></div>
+</spec-task>
+
+<spec-note>
+<p>Closes <a href="./spec.html#FR-001">FR-001</a>, <a href="./spec.html#FR-002">FR-002</a>,
+<a href="./spec.html#FR-003">FR-003</a>, <a href="./spec.html#FR-004">FR-004</a>,
+<a href="./spec.html#NFR-001">NFR-001</a>, <a href="./spec.html#NFR-002">NFR-002</a>,
+<a href="./spec.html#SC-001">SC-001</a> and <a href="./spec.html#SC-002">SC-002</a>.</p>
+</spec-note>
+</section>
+
+
+<section id="phase-us2" class="phase">
+<h2>5 · Phase 3b — US2 · Be asked, at the moment it is knowable</h2>
+
+<h3>Tests (write &amp; fail first)</h3>
+<spec-task id="T-200">
+  <input type="checkbox">
+  <div><strong>Test the trigger condition</strong> — the checkable half: a single-unit project with no contract yields no prompt, a multi-unit one does (<a href="./spec.html#SC-004">SC-004</a>). <span class="path">packages/cli/test/design.dependency-prompt.test.ts</span></div>
+</spec-task>
+
+<h3>Implementation</h3>
+<spec-task id="T-210">
+  <input type="checkbox">
+  <div><strong>Add the dependency question to the decision phase</strong> — advisory by nature, so the requirement is a <code>SHOULD</code> and the guarantee claim stays honest (<a href="./spec.html#FR-005">FR-005</a>). <span class="path">commands/spectastic.design.md</span></div>
+</spec-task>
+<spec-task id="T-211">
+  <input type="checkbox">
+  <div><strong>Route a confirmed answer through the write path</strong> — one writer, not a second implementation (<a href="./spec.html#FR-006">FR-006</a>). <span class="path">commands/spectastic.design.md</span></div>
+</spec-task>
+<spec-task id="T-212">
+  <input type="checkbox">
+  <div><strong>Re-sync the command copies the harness loads</strong> — skipping this is the standing footgun. <span class="path">.claude/commands/</span></div>
+</spec-task>
+</section>
+
+
+<section id="phase-us3" class="phase">
+<h2>6 · Phase 3c — US3 · Catch a bad declaration at the boundary</h2>
+
+<h3>Tests (write &amp; fail first)</h3>
+<spec-task id="T-300">
+  <input type="checkbox">
+  <div><strong>Test that malformed and self-referential edges error</strong> (<a href="./spec.html#FR-007">FR-007</a>). <span class="path">packages/schema/test/unit-edge-well-formed.test.ts</span></div>
+</spec-task>
+<spec-task id="T-301">
+  <input type="checkbox">
+  <div><strong>Test that a well-formed absent target produces no finding</strong> — the federated common case is a provider that is not checked out (<a href="./spec.html#FR-008">FR-008</a>, <a href="./spec.html#SC-003">SC-003</a>). <span class="path">packages/schema/test/unit-edge-well-formed.test.ts</span></div>
+</spec-task>
+
+<h3>Implementation</h3>
+<spec-task id="T-310">
+  <input type="checkbox">
+  <div><strong>Implement the validate rule</strong> — error on malformed or self-referential, silent on merely absent. <span class="path">packages/schema/src/rules/unit-edge-well-formed.ts</span></div>
+</spec-task>
+<spec-task id="T-311">
+  <input type="checkbox">
+  <div><strong>Register the rule and rebuild schema</strong> — the CLI validates against the built output, which is where this has bitten before. <span class="path">packages/schema/src/rules/index.ts</span></div>
+</spec-task>
+
+<spec-note>
+<p>Closes <a href="./spec.html#FR-007">FR-007</a>, <a href="./spec.html#FR-008">FR-008</a> and
+<a href="./spec.html#SC-003">SC-003</a>.</p>
+</spec-note>
+</section>
+
+
+<section id="phase-polish" class="phase">
+<h2>7 · Phase 4 — Polish</h2>
+
+<spec-task id="T-900">
+  <input type="checkbox">
+  <div><strong>Assert the write touches at most one file</strong> — a directory snapshot before and after (<a href="./spec.html#NFR-001">NFR-001</a>). <span class="path">packages/core/test/units.write.test.ts</span></div>
+</spec-task>
+<spec-task id="T-901" parallel>
+  <input type="checkbox">
+  <div><strong>Dogfood the verb on this repository</strong> — declare a real edge, confirm the diff is one line, then revert it. <span class="path">spectastic.json</span></div>
+</spec-task>
+</section>
+
+
+<section id="dependencies">
+<h2>8 · Dependencies</h2>
+<ul>
+  <li><strong>T-012 blocks T-013 and T-110</strong> — both write through the editor, so its two policies settle first.</li>
+  <li><strong>T-013 must land with T-012, not after</strong> — the point of the migration is that a third copy is never committed.</li>
+  <li><strong>T-311 blocks any validate run that expects the new rule</strong> — the CLI reads the built schema, not the source.</li>
+  <li><strong>A task is <span class="par">[P]</span> only where no sibling in its phase touches the same file.</strong> Almost nothing qualifies here: US1's four tests share one spec file, and US3's two share another.</li>
+</ul>
+</section>
+
+
+<section id="changelog">
+<h2>9 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-08-02">02 Aug 2026</time><span>Derived from the spec and design. 18 tasks; every FR, NFR and SC is closed by at least one story, and each story opens with its tests.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  080-unit-edge-authoring · Tasks · authored 02 Aug 2026
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>

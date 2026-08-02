@@ -1,0 +1,326 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
+<title>Unit edge authoring · Design</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Design · 080-unit-edge-authoring</p>
+  <h1>Unit edge authoring</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    One config editor, three callers. The write happens last, after every refusal has already been decided.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>      <span><spec-status value="draft">Draft</spec-status></span>
+    <b>Spec</b>        <span><a href="./spec.html">080-unit-edge-authoring</a></span>
+    <b>Author</b>      <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Created</b>     <span><time datetime="2026-08-02">02 Aug 2026</time></span>
+    <b>Principles</b>  <span><a href="../../principles.html">v1.9.0</a></span>
+    <b>Grounding</b>   <span>7 verified · 0 spike · 1 assumed</span>
+    <b>Read time</b>   <span data-reading-time></span>
+  </spec-meta>
+</header>
+
+
+<section id="principles-check">
+<h2>1 · Principles check</h2>
+
+<div style="overflow-x:auto;">
+<table>
+  <thead><tr><th>Principle</th><th>Verdict</th><th>Note</th></tr></thead>
+  <tbody>
+    <tr><td>P-1 · P-2 · P-5 · P-13</td><td>OK</td><td>No artifact or interface authored here.</td></tr>
+    <tr><td>P-3 IDs are contracts</td><td>OK</td><td>The verb writes coordinates; it never mints or rewrites one.</td></tr>
+    <tr><td>P-4 Progressive enhancement</td><td>OK</td><td>CLI and library only.</td></tr>
+    <tr><td>P-6 Draft loose, ratified locked</td><td>OK</td><td>Spec is Draft while this design is authored; the bundle flips together on completion.</td></tr>
+    <tr><td>P-7 Done means verified</td><td>OK</td><td>Tests red first (<a href="#D-005">D-005</a>); a <code>verify.html</code> lands on completion.</td></tr>
+    <tr><td>P-8 Guarantees in the kernel or CI</td><td><strong>OK, with a stated split</strong></td><td>The write, the refusals and the validate rule are kernel and CI. The design-interview prompt (FR-005) is command markdown and therefore advisory — recorded as such rather than claimed as a guarantee, the same honesty <code>REQ-LIFECYCLE-008</code> takes about its own prompt.</td></tr>
+    <tr><td>P-9 The enforcement floor holds</td><td>OK</td><td>Floor met; this slice adds no category.</td></tr>
+    <tr><td>P-10 No internal ids in user-facing copy</td><td>OK</td><td>Messages name the offending coordinate, never a <code>FR-</code> or <code>T-</code> id.</td></tr>
+    <tr><td>P-11 Artifacts are data</td><td>OK</td><td>Config is read as data; nothing read is followed.</td></tr>
+    <tr><td>P-12 Capability accountability</td><td>OK</td><td>At most 1 file written, 0 network calls (NFR-001).</td></tr>
+    <tr><td>P-14 Library-first boundaries</td><td>OK</td><td><a href="#D-003">D-003</a> is P-14 applied literally: a third caller wanted the parse-mutate-write dance, so it moves to core.</td></tr>
+  </tbody>
+</table>
+</div>
+
+<p>No exceptions, no violations. P-8's split is a scope statement, not an exception — the requirement it concerns is already a <code>SHOULD</code>.</p>
+</section>
+
+
+<section id="technical-context">
+<h2>2 · Technical context</h2>
+
+<dl>
+  <dt>Language(s)</dt>   <dd>TypeScript 5.x, Node — no change.</dd>
+  <dt>Frameworks</dt>    <dd>None. No new dependency.</dd>
+  <dt>Architecture</dt>  <dd>Extends <a href="../079-unit-dependency-edge/design.html#D-001">079's ports-and-adapters</a> rather than introducing a pattern: the config editor is a new filesystem-side capability, and the refusal rules stay pure (<a href="#D-004">D-004</a>).</dd>
+  <dt>Storage</dt>       <dd><code>spectastic.json</code> only — read, and written at most once per invocation.</dd>
+  <dt>Testing</dt>       <dd>TDD, tests red before implementation (<a href="#D-005">D-005</a>).</dd>
+  <dt>Coverage</dt>      <dd>90% of changed lines; a change never lowers coverage of the code it touches. Diff-aware, never a project-wide percentage.</dd>
+  <dt>Perf targets</dt>  <dd>At most 0 network calls, at most 1 file written (NFR-001).</dd>
+  <dt>Constraints</dt>   <dd>A refused write leaves the file byte-identical (NFR-002) — structural, per <a href="#D-002">D-002</a>, not defended after the fact.</dd>
+</dl>
+
+<h3>Toolchain / enforcement</h3>
+<p>Enterprise profile, hard gate, and the floor is already met — <code>spectastic enforce</code> reported <strong>8 covered · 1 relaxed · 0 missing</strong> while <a href="../079-unit-dependency-edge/design.html">079</a> was authored and nothing here changes it. No new gate is designed; the coverage row above is the floor's one standing obligation on this work.</p>
+</section>
+
+
+<section id="contracts">
+<h2>3 · Data model &amp; contracts</h2>
+
+<p>No interface crosses a process or repository boundary: a CLI verb, a library function, and a validate rule, all in-process.</p>
+
+<spec-contract shape="none"><p>No request/response, RPC, GraphQL or event-driven surface. The verb edits a local file and exits.</p></spec-contract>
+
+<p>The written shape is unchanged from <a href="../079-unit-dependency-edge/spec.html#FR-009">079 FR-009</a> — a coordinate string appended to the existing <code>consumes</code> array. This slice adds no field and no section.</p>
+</section>
+
+
+<section id="grounding">
+<h2>4 · Grounding &amp; evidence</h2>
+
+<div style="overflow-x:auto;">
+<table>
+  <thead><tr><th>Claim</th><th>Source</th><th>Status</th><th>Finding</th></tr></thead>
+  <tbody>
+    <tr><td>Two ad-hoc config writers already exist</td><td><code>packages/cli/src/commands/init.ts</code> — <code>writeCorpusConfig</code>, <code>writeProjectConfig</code></td><td>verified</td><td>Both do the same parse-mutate-write dance, and both guard with a never-overwrite check. 080 would be the third copy — which is what makes <a href="#D-003">D-003</a> a P-14 case rather than a preference.</td></tr>
+    <tr><td>Those writers round-trip through <code>JSON.stringify(config, null, 2)</code></td><td>Same file</td><td>verified</td><td>Every byte is re-emitted at 2-space. Lossless for this repository only because its config already is 2-space — a coincidence, not a property.</td></tr>
+    <tr><td>This project's config is 2-space indented</td><td><code>spectastic.json</code></td><td>verified</td><td>Confirmed byte-wise. So the existing writers happen to be lossless here and the reformatting risk is invisible in this repo — exactly the sort of thing that only bites a downstream project.</td></tr>
+    <tr><td>Both init writers have dedicated tests</td><td><code>packages/cli/test/init/corpus-config.test.ts</code>, <code>project-config.test.ts</code></td><td>verified</td><td>The migration in <a href="#D-003">D-003</a> is affordable because its safety net already exists: a behaviour change would fail an existing test rather than needing a new one.</td></tr>
+    <tr><td>An idempotent additive-merge precedent exists</td><td><code>packages/core/src/gitignore/apply.ts</code></td><td>verified</td><td>"Additive across callers… everything outside the block is the user's and is preserved." The same posture this slice needs, already proven in the estate.</td></tr>
+    <tr><td>An atomic <code>rename</code> exists in the IO port</td><td><code>packages/core/src/providers/node-fs.ts</code></td><td>verified</td><td>Available if a temp-and-swap were wanted. <a href="#D-002">D-002</a> declines it: validate-then-write makes the guarantee structural without a temp-file lifecycle.</td></tr>
+    <tr><td>The declared-edge reader is already fail-soft</td><td><code>packages/core/src/units/read.ts</code></td><td>verified</td><td>Degrades to <code>[]</code> on every failure. The writer must be stricter — it refuses rather than degrades, because silently not writing is worse than saying no.</td></tr>
+    <tr><td>A downstream project's config may use other formatting</td><td>—</td><td>assumed</td><td>Taken as true that tabs and 4-space configs exist in the wild. Unverifiable from here, and the mitigation (detect and preserve) costs little enough to take on the assumption.</td></tr>
+  </tbody>
+</table>
+</div>
+</section>
+
+
+<section id="approach">
+<h2>5 · Approach</h2>
+
+<p><spec-newthought>The interesting part is the order of operations, not the write.</spec-newthought> Every way this verb can refuse — a self-edge, a malformed coordinate, an unparseable config — is decidable before a single byte is emitted. So the whole thing is: read, decide, and only then write once. NFR-002's byte-identical guarantee falls out of that arrangement rather than being defended by a temp file and a cleanup path; there is no window in which a partial write could exist.</p>
+
+<p>The write itself needs one piece of care. Re-emitting parsed JSON normalises indentation, which is invisible here — this repository's config is already 2-space, exactly what the existing writers emit — and would rewrite every line of a project using tabs. Detecting the file's own indentation and re-emitting with it costs a few lines and removes the whole class. What it cannot preserve is comments or unusual spacing inside a line; JSON has no comments, and the rest is a recorded ceiling rather than a solved problem.</p>
+
+<spec-arch>
+<figure>
+<svg viewBox="0 0 620 200" width="620" height="200" role="img" aria-label="Refusals decided before a single write">
+  <defs>
+    <marker id="b" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="currentColor"/>
+    </marker>
+  </defs>
+  <rect class="box" x="16"  y="74" width="140" height="52" rx="4"/>
+  <text class="label" x="30" y="96">read config</text>
+  <text class="body"  x="30" y="114">+ detect indent</text>
+
+  <rect class="box" x="212" y="74" width="140" height="52" rx="4"/>
+  <text class="label" x="226" y="96">decide</text>
+  <text class="body"  x="226" y="114">pure refusals</text>
+
+  <rect class="box" x="408" y="16" width="196" height="48" rx="4"/>
+  <text class="label" x="422" y="38">refuse — 0 bytes written</text>
+
+  <rect class="box" x="408" y="112" width="196" height="48" rx="4"/>
+  <text class="label" x="422" y="134">write once</text>
+  <text class="body"  x="422" y="152">preserving indent</text>
+
+  <path class="arr" d="M156 100 L212 100" marker-end="url(#b)"/>
+  <path class="arr" d="M352 92  L408 52"  marker-end="url(#b)"/>
+  <path class="arr" d="M352 108 L408 136" marker-end="url(#b)"/>
+</svg>
+<figcaption>Arrows run provider to consumer. Both outcomes leave from <em>decide</em>, so the write is unreachable until every refusal has been ruled out — which is what makes NFR-002 structural rather than defended.</figcaption>
+</figure>
+</spec-arch>
+
+<p>The shared editor needs two policies, because its callers genuinely differ. <code>init</code> sets a key <em>only if absent</em> and never overwrites an owner's value; this verb adds to a <em>set</em>, so re-running is a no-op rather than a duplicate. Those are different enough to be separate functions over one implementation, and conflating them would give <code>init</code> an append it must never do.</p>
+</section>
+
+
+<section id="alternatives">
+<h2>6 · Alternatives considered</h2>
+
+<spec-matrix target="D-001">
+<div style="overflow-x:auto;">
+<table>
+  <thead>
+    <tr><th>Option</th><th>Honours FR-002</th><th>Robustness</th><th>Consistency</th><th>Cost</th><th class="score">Total</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>A · Round-trip at 2-space, as init does</strong></td>
+      <td>1</td><td>5</td><td>5</td><td>5</td><td class="score">16</td>
+    </tr>
+    <tr data-winner>
+      <td><strong>B · Round-trip, preserving detected indent</strong></td>
+      <td>4</td><td>5</td><td>4</td><td>4</td><td class="score">17</td>
+    </tr>
+    <tr>
+      <td><strong>C · Surgical string insertion</strong></td>
+      <td>5</td><td>2</td><td>2</td><td>2</td><td class="score">11</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+</spec-matrix>
+
+<p>C is the strictest reading of FR-002 and scores worst overall: editing JSON by string surgery is exactly what I had to do by hand on a tab-indented manifest earlier in this session, and it took three attempts to get the anchor right. That is a fair sample of its failure mode. A is what ships today and is genuinely simpler, but it contradicts FR-002 for any project whose config is not already 2-space.</p>
+</section>
+
+
+<section id="decisions">
+<h2>7 · Decisions</h2>
+
+<spec-decision id="D-001" grounding="verified">
+  <h4>D-001 · Round-trip the config, re-emitting with its own detected indentation</h4>
+  <dl>
+    <dt>Status</dt><dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt><dd>FR-002 forbids reformatting untouched regions. The two existing writers re-emit everything at 2-space, which is lossless in this repository only because its config already is 2-space — verified byte-wise. A project using tabs would have every line rewritten by a one-key change, making the verb's own diff unreadable.</dd>
+    <dt>Decision</dt><dd>Parse, mutate, and re-emit — but detect the file's existing indentation from its first indented line and re-emit with it. Preserve nothing else: JSON has no comments, and unusual intra-line spacing is a recorded ceiling.</dd>
+    <dt>Consequences</dt><dd>+ A one-key change produces a one-line diff in any project, not just this one. + Keeps the simplicity of the existing precedent rather than trading it for string surgery. + The ceiling is stated rather than implied. − Key order within an object is preserved but a hand-arranged blank line is not. − Detection is a heuristic: a file whose first indented line is unusual gets a reasonable guess, not a guarantee.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-002" grounding="verified">
+  <h4>D-002 · Decide every refusal before writing anything</h4>
+  <dl>
+    <dt>Status</dt><dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt><dd>NFR-002 requires a refused or failed write to leave the file byte-identical. Every refusal this verb can make — self-edge, malformed coordinate, unparseable config — is decidable from inputs already in hand. An atomic <code>rename</code> is available in the IO port if a swap were wanted.</dd>
+    <dt>Decision</dt><dd>Validate fully, then perform exactly one write as the last action. No temp file, no rename, no cleanup path.</dd>
+    <dt>Consequences</dt><dd>+ The guarantee is structural: there is no code path on which a partial write exists to clean up. + One fewer lifecycle to get wrong for a file of a few hundred bytes. − Does not protect against a crash <em>during</em> the single write, which a temp-and-swap would; accepted as out of proportion to the file's size and the verb's blast radius.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-003" grounding="verified">
+  <h4>D-003 · Extract one config editor into core and migrate init's two writers onto it</h4>
+  <dl>
+    <dt>Status</dt><dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt><dd><code>init</code> carries two near-identical writers and this slice would be the third. P-14's test — would a second caller want this without the CLI attached — is plainly yes. Both existing writers have dedicated test files, so a behaviour change during migration fails an existing test rather than escaping unnoticed.</dd>
+    <dt>Decision</dt><dd>One editor in core exposing two policies over one implementation: <em>set-if-absent</em> (init's never-overwrite semantics) and <em>add-to-set</em> (this verb's idempotent append). Migrate both init writers onto it in this slice rather than leaving a third copy behind.</dd>
+    <dt>Consequences</dt><dd>+ Three copies of the parse-mutate-write dance become one, and the indentation fix in <a href="#D-001">D-001</a> reaches init for free. + Both policies are named, so a caller cannot accidentally get an append where it wanted never-overwrite. − Widens this slice into a verb it does not own; mitigated by the existing tests and by the migration being behaviour-preserving by construction. − Two policies on one editor is a small API surface to get right early, since init binds to it immediately.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-004" grounding="verified">
+  <h4>D-004 · Extend 079's arrangement rather than introduce a pattern</h4>
+  <dl>
+    <dt>Status</dt><dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt><dd><code>REQ-LIFECYCLE-008</code> asks for a deliberate architecture choice where a feature has more than one moving part, and this one spans a core editor, a CLI verb, a schema rule and an interview prompt. <a href="../079-unit-dependency-edge/design.html#D-001">079</a> already established ports-and-adapters over a pure core for this module.</dd>
+    <dt>Decision</dt><dd>No new pattern. The config editor is a filesystem-side capability alongside the existing workspace port; the refusal rules stay pure and testable without a directory; the CLI stays thin. The deliberate choice here is <em>not</em> to introduce a second arrangement in one module.</dd>
+    <dt>Consequences</dt><dd>+ One module, one arrangement, so a reader who has understood 079 has understood this. + The refusal rules inherit 079's fixture-free testability. − Records a decision whose content is "keep going", which is only worth writing down because the requirement asks the question be answered rather than skipped.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-005" grounding="n-a">
+  <h4>D-005 · Tests red before implementation</h4>
+  <dl>
+    <dt>Status</dt><dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt><dd>Consistent with <a href="../079-unit-dependency-edge/design.html#D-005">079 D-005</a>. A judgment about method with no external fact to verify. The idempotence and byte-identical properties are both easy to assert after the fact in a way that merely restates the implementation.</dd>
+    <dt>Decision</dt><dd>Each requirement's test is written and seen failing first. The migration in <a href="#D-003">D-003</a> is the exception by nature: its tests already exist and must stay green throughout, which is the point of migrating rather than rewriting.</dd>
+    <dt>Consequences</dt><dd>+ Idempotence and byte-identity are specified rather than observed. + The migration has a pre-existing red line it must not cross. − Slower per cycle.</dd>
+  </dl>
+</spec-decision>
+</section>
+
+
+<section id="project-structure">
+<h2>8 · Project structure</h2>
+
+<p>Only the new or changed paths, grouped by the boundaries <a href="#D-004">D-004</a> keeps from 079.</p>
+
+<pre><code>packages/core/src/config/
+  edit.ts                    # the shared editor: setIfAbsent, addToSet, indent detection
+
+packages/core/src/units/
+  write.ts                   # edge-specific refusals, then one call to the editor
+
+packages/schema/src/rules/
+  unit-edge-well-formed.ts   # malformed or self-referential declared edge → error
+
+packages/cli/src/commands/
+  units.ts                   # gains the write subcommand; stays thin
+  init.ts                    # migrated onto the shared editor (D-003)
+
+commands/
+  spectastic.design.md       # the dependency question in the decision phase (FR-005)
+</code></pre>
+</section>
+
+
+<section id="risks">
+<h2>9 · Risks &amp; mitigations</h2>
+
+<div style="overflow-x:auto;">
+<table>
+  <thead><tr><th>Risk</th><th>Likelihood</th><th>Impact</th><th>Mitigation</th></tr></thead>
+  <tbody>
+    <tr>
+      <td>Migrating init changes its never-overwrite behaviour and a fresh init silently starts clobbering an owner's config</td>
+      <td>Low</td><td>High</td>
+      <td>The highest-impact risk here, and the reason <a href="#D-003">D-003</a> names the existing test files as its safety net. The two policies are separate functions precisely so init cannot accidentally receive an append.</td>
+    </tr>
+    <tr>
+      <td>Indent detection guesses wrong on an unusual file and reformats after all</td>
+      <td>Medium</td><td>Low</td>
+      <td>Falls back to the file's existing behaviour (2-space), which is no worse than today. Asserted against tab, 2-space and 4-space fixtures.</td>
+    </tr>
+    <tr>
+      <td>The design-interview question is added and never fires, or fires everywhere</td>
+      <td>Medium</td><td>Low</td>
+      <td>It is command markdown and therefore advisory — stated in the principles check rather than claimed. The trigger condition is asserted where it <em>is</em> checkable: the unit count the prompt keys on.</td>
+    </tr>
+    <tr>
+      <td>The validate rule errors on a well-formed coordinate whose target is merely absent</td>
+      <td>Low</td><td>Medium</td>
+      <td>FR-008 forbids it explicitly, and it gets its own test — the federated common case is a provider that is not checked out.</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+</section>
+
+
+<section id="complexity">
+<h2>10 · Complexity tracking</h2>
+<p>Nothing logged — no principle exception was taken. <a href="#D-003">D-003</a>'s widening into <code>init</code> is a scope cost rather than a complexity one, and it is recorded as a consequence on that decision.</p>
+</section>
+
+
+<section id="questions">
+<h2>11 · Open questions</h2>
+<spec-questions>
+<p>None outstanding. The write strategy, the atomicity approach and the extract-and-migrate scope were all anchored in the decision phase; the architecture question <code>REQ-LIFECYCLE-008</code> asks was answered deliberately in <a href="#D-004">D-004</a> rather than skipped.</p>
+</spec-questions>
+</section>
+
+
+<section id="changelog">
+<h2>12 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-08-02">02 Aug 2026</time><span>Initial design. Five decisions, seven facts verified against source. Scope widened at interview to migrate init's two existing config writers onto the shared editor rather than leaving a third copy of the same dance.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  080-unit-edge-authoring · Design · authored 02 Aug 2026
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>
