@@ -1,0 +1,328 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
+<title>Boundary map detection · Design</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Design · 081-boundary-map-detection</p>
+  <h1>Boundary map detection</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    Two ecosystems declare their rings in shapes that share almost nothing. One common denominator turns out to hold both losslessly.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>      <span><spec-status value="accepted">Accepted</spec-status></span>
+    <b>Spec</b>        <span><a href="./spec.html">081-boundary-map-detection</a></span>
+    <b>Author</b>      <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Created</b>     <span><time datetime="2026-08-02">02 Aug 2026</time></span>
+    <b>Principles</b>  <span><a href="../../principles.html">v1.9.0</a></span>
+    <b>Grounding</b>   <span>6 verified · 0 spike · 2 assumed</span>
+    <b>Read time</b>   <span data-reading-time></span>
+  </spec-meta>
+</header>
+
+
+<section id="principles-check">
+<h2>1 · Principles check</h2>
+
+<div style="overflow-x:auto;">
+<table>
+  <thead><tr><th>Principle</th><th>Verdict</th><th>Note</th></tr></thead>
+  <tbody>
+    <tr><td>P-1 · P-2 · P-4 · P-5 · P-13</td><td>OK</td><td>No artifact, no interface, no browser runtime.</td></tr>
+    <tr><td>P-3 IDs are contracts</td><td>OK</td><td>Reads a project's own unit names; mints none.</td></tr>
+    <tr><td>P-6 Draft loose, ratified locked</td><td>OK</td><td>Authored while the spec was Draft; the bundle flipped to Accepted together on completion.</td></tr>
+    <tr><td>P-7 Done means verified</td><td>OK</td><td>Tests red first; a <code>verify.html</code> lands on completion.</td></tr>
+    <tr><td>P-8 Guarantees in the kernel or CI</td><td>OK</td><td>Pure deterministic detection. Nothing here is prompt-shaped.</td></tr>
+    <tr><td>P-9 The enforcement floor holds</td><td>OK</td><td>FR-003 makes this explicitly non-enforcing, so the floor is untouched by construction.</td></tr>
+    <tr><td>P-10 No internal ids in user-facing copy</td><td>OK</td><td>Reports a project's own tags and layer names.</td></tr>
+    <tr><td>P-11 Artifacts are data</td><td>OK</td><td>An ESLint config is <em>read as text</em>, never evaluated — see <a href="#D-004">D-004</a>, where that constraint shapes the whole approach.</td></tr>
+    <tr><td>P-12 Capability accountability</td><td>OK</td><td>Read-only: 0 writes, 0 network calls (NFR-001).</td></tr>
+    <tr><td>P-14 Library-first boundaries</td><td>OK</td><td>Detection in core behind the units port; no CLI-only logic.</td></tr>
+  </tbody>
+</table>
+</div>
+
+<p>No exceptions, no violations.</p>
+</section>
+
+
+<section id="technical-context">
+<h2>2 · Technical context</h2>
+
+<dl>
+  <dt>Language(s)</dt>   <dd>TypeScript 5.x, Node — no change.</dd>
+  <dt>Frameworks</dt>    <dd>None, and no new dependency: the INI subset is narrow enough to read directly (<a href="#D-003">D-003</a>).</dd>
+  <dt>Architecture</dt>  <dd>A units-module adapter beside the workspace adapters, behind the same port style (<a href="#D-005">D-005</a>).</dd>
+  <dt>Storage</dt>       <dd>None. Reads config files; writes nothing.</dd>
+  <dt>Testing</dt>       <dd>TDD, tests red before implementation. Fixture projects per format, plus this repository as the unmapped-by-form case.</dd>
+  <dt>Coverage</dt>      <dd>90% of changed lines; a change never lowers coverage of the code it touches. Diff-aware, never a project-wide percentage.</dd>
+  <dt>Perf targets</dt>  <dd>Under 500 ms, at most 0 network calls, and a bounded set of named locations rather than a tree walk (NFR-001, NFR-002).</dd>
+  <dt>Constraints</dt>   <dd>Deterministic; malformed config yields no map and never raises (FR-006).</dd>
+</dl>
+
+<h3>Toolchain / enforcement</h3>
+<p>Enterprise profile, hard gate, floor already met (<strong>8 covered · 1 relaxed · 0 missing</strong>) and untouched here — FR-003 makes a detected map informational, so this slice adds no category and changes no verdict. The coverage row above is the floor's one standing obligation.</p>
+</section>
+
+
+<section id="contracts">
+<h2>3 · Data model &amp; contracts</h2>
+
+<p>No interface crosses a process or repository boundary — a library read path consumed in-process by <a href="../082-placement-verdict/spec.html">082</a>.</p>
+
+<spec-contract shape="none"><p>No request/response, RPC, GraphQL or event-driven surface.</p></spec-contract>
+
+<p>The detected map's shape is the one <a href="#D-002">D-002</a> settles: named units plus permitted directed pairs, with the source format recorded for provenance.</p>
+</section>
+
+
+<section id="grounding">
+<h2>4 · Grounding &amp; evidence</h2>
+
+<div style="overflow-x:auto;">
+<table>
+  <thead><tr><th>Claim</th><th>Source</th><th>Status</th><th>Finding</th></tr></thead>
+  <tbody>
+    <tr><td>Nx constraints live in two places, under two different key names</td><td>Nx docs — Enforce Module Boundaries</td><td>verified</td><td><strong>The finding that reshaped this design.</strong> ESLint config carries <code>@nx/enforce-module-boundaries</code> with <code>onlyDependOnLibsWithTags</code>; <code>nx.json</code> carries <code>@nx/conformance/enforce-project-boundaries</code> with <code>onlyDependOnProjectsWithTags</code>. Reading only <code>nx.json</code> would miss the ESLint form, which is the older and more widespread one.</td></tr>
+    <tr><td>Nx tags live in <code>project.json</code> or <code>package.json</code></td><td>Same</td><td>verified</td><td><code>{"tags": [...]}</code> in <code>project.json</code>, or <code>{"nx": {"tags": [...]}}</code> in <code>package.json</code>. Two locations again, so four combinations across tags and constraints.</td></tr>
+    <tr><td>import-linter layers are ordered, top to bottom</td><td>import-linter docs — Layers contract</td><td>verified</td><td><code>layers = mypackage.high mypackage.medium mypackage.low</code>, and "lower layers are not allowed to depend on higher layers". So the ordering carries the whole constraint — which is what makes the expansion in <a href="#D-002">D-002</a> lossless.</td></tr>
+    <tr><td>import-linter config is INI, in <code>setup.cfg</code> or <code>.importlinter</code></td><td>Same</td><td>verified</td><td><code>[importlinter]</code> with <code>root_package</code>, then one <code>[importlinter:contract:&lt;id&gt;]</code> per contract with <code>type = layers</code>. A flat key in a named section — no nesting.</td></tr>
+    <tr><td>This repository carries only the negative form</td><td>Repo root</td><td>verified</td><td>No <code>nx.json</code>, no <code>.importlinter</code>, no <code>setup.cfg</code> — one <code>.dependency-cruiser.cjs</code> with a single <code>forbidden</code> rule. So this repo is the <em>unmapped-by-form</em> fixture, which is the case FR-002 exists for.</td></tr>
+    <tr><td>The units port already isolates filesystem reads</td><td><code>packages/core/src/units/port.ts</code></td><td>verified</td><td>Established by 079. A boundary adapter slots beside the workspace adapters rather than inventing a second arrangement.</td></tr>
+    <tr><td>An optional layer in parentheses means "may be absent"</td><td>import-linter docs</td><td>assumed</td><td>Documented as not-an-error-if-missing. Taken as true that it does not otherwise change the ordering; unverifiable without a real project, and the mitigation is to strip the parentheses and treat the layer normally.</td></tr>
+    <tr><td>An ESLint flat config is readable as text for this purpose</td><td>—</td><td>assumed</td><td>The constraint block is JSON-shaped inside a JS file. Taken as true that extracting it textually is sufficient for the common case; <a href="#D-004">D-004</a> makes the failure mode "no map", never a wrong one.</td></tr>
+  </tbody>
+</table>
+</div>
+</section>
+
+
+<section id="approach">
+<h2>5 · Approach</h2>
+
+<p><spec-newthought>The two formats look incompatible and are not.</spec-newthought> Nx gives a set of tags and a set of allowed tag-to-tag pairs. import-linter gives an ordered list where lower may not import higher. Expand the ordering — each layer may depend on every layer below it — and it becomes exactly the same thing: named units, and the directed pairs permitted between them. Nothing is lost, because the ordering <em>was</em> the constraint. That common denominator is what a consumer can reason about without knowing which linter produced it.</p>
+
+<p><spec-newthought>The awkward part is where Nx keeps its constraints.</spec-newthought> They live either in an ESLint config or in <code>nx.json</code>, under two different key names, while tags live in either <code>project.json</code> or a <code>package.json</code> sub-key. Reading only <code>nx.json</code> — the obvious guess — would miss the more common form entirely and silently report no map for a project that plainly has one. So detection reads the bounded set of named locations, and treats a partial read as no map rather than a partial one.</p>
+
+<p>An ESLint config is JavaScript, and this project does not execute artifacts it reads (P-11). The constraint block is JSON-shaped, so it is extracted textually; when that fails, the answer is <em>no map</em>. That is the right failure direction for something explicitly informational — a wrong map would mislead a placement verdict, while a missing one merely leaves it with less evidence.</p>
+
+<spec-arch>
+<figure>
+<svg viewBox="0 0 620 210" width="620" height="210" role="img" aria-label="Two format readers normalising into one map shape">
+  <defs>
+    <marker id="c" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="currentColor"/>
+    </marker>
+  </defs>
+  <rect class="box" x="16"  y="16"  width="164" height="52" rx="4"/>
+  <text class="label" x="30" y="38">nx reader</text>
+  <text class="body"  x="30" y="56">tags → pairs</text>
+
+  <rect class="box" x="16"  y="84"  width="164" height="52" rx="4"/>
+  <text class="label" x="30" y="106">import-linter reader</text>
+  <text class="body"  x="30" y="124">order → pairs</text>
+
+  <rect class="box" x="16"  y="152" width="164" height="46" rx="4"/>
+  <text class="label" x="30" y="180">negative forms</text>
+
+  <rect class="box" x="236" y="84"  width="150" height="52" rx="4"/>
+  <text class="label" x="250" y="106">normalise</text>
+  <text class="body"  x="250" y="124">one map shape</text>
+
+  <rect class="box" x="442" y="52"  width="162" height="48" rx="4"/>
+  <text class="label" x="456" y="74">a map</text>
+
+  <rect class="box" x="442" y="124" width="162" height="60" rx="4"/>
+  <text class="label" x="456" y="146">unmapped by form</text>
+  <text class="body"  x="456" y="164">with the reason</text>
+
+  <path class="arr" d="M180 42  L236 100" marker-end="url(#c)"/>
+  <path class="arr" d="M180 110 L236 110" marker-end="url(#c)"/>
+  <path class="arr" d="M180 175 L442 160" marker-end="url(#c)"/>
+  <path class="arr" d="M386 100 L442 80"  marker-end="url(#c)"/>
+</svg>
+<figcaption>Arrows run provider to consumer. The negative forms bypass normalisation entirely — they cannot enumerate destinations, so they produce a stated reason rather than a partial map (FR-002).</figcaption>
+</figure>
+</spec-arch>
+</section>
+
+
+<section id="alternatives">
+<h2>6 · Alternatives considered</h2>
+
+<spec-matrix target="D-002">
+<div style="overflow-x:auto;">
+<table>
+  <thead>
+    <tr><th>Option</th><th>Lossless</th><th>Consumer cost</th><th>Fits both formats</th><th>Simplicity</th><th class="score">Total</th></tr>
+  </thead>
+  <tbody>
+    <tr data-winner>
+      <td><strong>A · Named units + permitted directed pairs</strong></td>
+      <td>5</td><td>5</td><td>5</td><td>4</td><td class="score">19</td>
+    </tr>
+    <tr>
+      <td><strong>B · Keep source shape, tagged by format</strong></td>
+      <td>5</td><td>1</td><td>5</td><td>3</td><td class="score">14</td>
+    </tr>
+    <tr>
+      <td><strong>C · Ordered layers only</strong></td>
+      <td>2</td><td>5</td><td>2</td><td>5</td><td class="score">14</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+</spec-matrix>
+
+<p>C is the intuitive shape and the one that breaks: a tag graph need not be a total order, so any Nx map that is not cleanly layered would be distorted or dropped. B loses nothing but pushes the difference onto every consumer, and 082 would have to learn two vocabularies to ask one question.</p>
+</section>
+
+
+<section id="decisions">
+<h2>7 · Decisions</h2>
+
+<spec-decision id="D-001" grounding="verified">
+  <h4>D-001 · Detect Nx and import-linter, the two positive forms</h4>
+  <dl>
+    <dt>Status</dt><dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt><dd>FR-001 scopes to positive maps — those naming their units. Nx and import-linter are the two mainstream instances, one per major ecosystem, and their shapes differ enough that supporting only one would let the internal representation quietly become whatever that one emits.</dd>
+    <dt>Decision</dt><dd>Read both. Nx from its bounded set of locations; import-linter from <code>setup.cfg</code> or <code>.importlinter</code>.</dd>
+    <dt>Consequences</dt><dd>+ The normalisation in <a href="#D-002">D-002</a> is forced to be genuine rather than shaped by a single source. + Covers the JS and Python sides of the category the spec scopes to. − Two formats is more surface than one, and Nx's is more scattered than it first appears. − Neither can be verified against a real project in this repository; both rest on fixtures built from the documented shapes.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-002" grounding="verified">
+  <h4>D-002 · Normalise to named units plus permitted directed pairs</h4>
+  <dl>
+    <dt>Status</dt><dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt><dd>Nx yields a tag-constraint graph; import-linter yields an ordered layer list where "lower layers are not allowed to depend on higher layers" — verified in its docs. Expanding that ordering into pairs is lossless precisely because the ordering <em>is</em> the constraint.</dd>
+    <dt>Decision</dt><dd>One shape: a set of named units, and the directed pairs permitted between them, with the source format recorded for provenance. An ordered list expands on read; a tag graph is already pairs.</dd>
+    <dt>Consequences</dt><dd>+ A consumer reasons about one shape without knowing the source. + A non-total-order tag graph survives, which an ordered-layers representation would distort. − The pair set is larger than the ordering that produced it, so a deeply layered project expands quadratically; bounded in practice by layer counts that are small by nature. − "Which layer is above which" is no longer directly readable, only derivable.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-003" grounding="verified">
+  <h4>D-003 · Read the INI subset directly rather than take a dependency</h4>
+  <dl>
+    <dt>Status</dt><dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt><dd>import-linter's config is INI: a named section and flat <code>key = value</code> lines, with no nesting. This slice needs two keys from it. Earlier in this same module a YAML parser was taken as a dependency (079 D-003) rather than hand-read, so the asymmetry deserves stating.</dd>
+    <dt>Decision</dt><dd>Read the narrow INI subset directly — section headers and flat keys — and take no dependency.</dd>
+    <dt>Consequences</dt><dd>+ No new supply-chain surface for two keys. + The subset genuinely has no ambiguity: unlike YAML's anchors, block scalars and flow style, an INI section header and a flat key have one reading. − It <em>is</em> the same class of shortcut refused for YAML, and the justification is the format's simplicity rather than a principle; a reviewer is entitled to weigh that differently. − An exotic INI feature (line continuations, interpolation) would be misread; mitigated because the failure direction is "no map".</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-004" grounding="verified">
+  <h4>D-004 · Extract an ESLint config's constraints as text; never evaluate it</h4>
+  <dl>
+    <dt>Status</dt><dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt><dd>Nx's more widespread constraint form lives in an ESLint config, which is JavaScript. P-11 holds that artifacts are data and not instructions, and executing a config file to read it would be exactly the thing that principle forbids. The constraint block itself is JSON-shaped.</dd>
+    <dt>Decision</dt><dd>Extract the constraint block textually and parse it as data. Where extraction fails, report <em>no map</em> rather than a partial one.</dd>
+    <dt>Consequences</dt><dd>+ No arbitrary code from a scanned repository is ever run. + The failure direction is right for something informational: a missing map costs a placement verdict some evidence, a wrong one would mislead it. − A config that computes its constraints programmatically is unreadable, and will silently look unmapped. − Textual extraction is a heuristic; the tests pin the documented shape, not every shape.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-005" grounding="verified">
+  <h4>D-005 · A units-module adapter, not an enforce detector</h4>
+  <dl>
+    <dt>Status</dt><dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt><dd>The reuse argument points at <code>enforce/detect.ts</code>, whose <code>FileSignal</code> shape this resembles. But that module exists to answer enforcement questions, and FR-003 makes a detected map explicitly non-enforcing.</dd>
+    <dt>Decision</dt><dd>Place it in <code>units/adapters/</code> beside the workspace adapters, behind the port style 079 established.</dd>
+    <dt>Consequences</dt><dd>+ The units model — edges and boundaries — stays in one place, and 082 imports one module family. + Nothing in an enforcement path can accidentally start gating on it. − Some shape is duplicated rather than shared with the enforce detector; judged the lesser cost against a map appearing to be an enforcement signal.</dd>
+  </dl>
+</spec-decision>
+</section>
+
+
+<section id="project-structure">
+<h2>8 · Project structure</h2>
+
+<p>Only the new or changed paths, grouped by the boundaries <a href="#D-005">D-005</a> draws.</p>
+
+<pre><code>packages/core/src/units/
+  boundary.ts                    # the map shape + the three-state result
+  adapters/
+    boundary-nx.ts               # tags + depConstraints, from their four locations
+    boundary-import-linter.ts    # the INI subset, ordering expanded to pairs
+    boundary.ts                  # format dispatch; negative forms → unmapped-by-form
+
+packages/core/test/
+  units.boundary.test.ts         # fixtures per format + this repo as unmapped-by-form
+</code></pre>
+</section>
+
+
+<section id="risks">
+<h2>9 · Risks &amp; mitigations</h2>
+
+<div style="overflow-x:auto;">
+<table>
+  <thead><tr><th>Risk</th><th>Likelihood</th><th>Impact</th><th>Mitigation</th></tr></thead>
+  <tbody>
+    <tr>
+      <td>Reading only <code>nx.json</code> misses the ESLint form and reports no map for a project that has one</td>
+      <td>High if unmitigated</td><td>Medium</td>
+      <td>The grounding finding that reshaped the design. Both locations are read, and both key spellings are accepted. Fixtures cover each.</td>
+    </tr>
+    <tr>
+      <td>Neither format can be verified against a real project here</td>
+      <td>Certain</td><td>Medium</td>
+      <td>Stated rather than hidden: fixtures are built from the documented shapes, quoted in the grounding table. The first real project to disagree will be the correction.</td>
+    </tr>
+    <tr>
+      <td>A partial read yields a misleading half-map</td>
+      <td>Medium</td><td>High</td>
+      <td>Partial reads collapse to <em>no map</em> by construction — the same failure direction as <a href="#D-004">D-004</a>. A wrong map would mislead 082; a missing one merely leaves it with less evidence.</td>
+    </tr>
+    <tr>
+      <td>Someone later gates on a detected map</td>
+      <td>Low</td><td>High</td>
+      <td>FR-003 forbids it and SC-003 asserts it: across the fixture set a detected map changes at most 0 enforcement verdicts. <a href="#D-005">D-005</a>'s placement keeps it out of the enforcement module entirely.</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+</section>
+
+
+<section id="complexity">
+<h2>10 · Complexity tracking</h2>
+<p>Nothing logged — no principle exception was taken. <a href="#D-003">D-003</a>'s hand-read INI is a deliberate inconsistency with 079's YAML decision, recorded on that decision rather than here, because it is a tradeoff the principles permit rather than a rule bent.</p>
+</section>
+
+
+<section id="questions">
+<h2>11 · Open questions</h2>
+<spec-questions>
+<p>None outstanding. Format coverage, the normalised map shape and the module's placement were anchored in the decision phase; the two config shapes were verified against their own documentation rather than assumed, which is what turned up the Nx location finding.</p>
+</spec-questions>
+</section>
+
+
+<section id="changelog">
+<h2>12 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-08-02">02 Aug 2026</time><span>Initial design. Five decisions; six facts verified, two assumed and named. Grounding against the Nx documentation found that constraints live in two files under two key names and tags in two more — reading the obvious one would have missed the commoner form.</span></li>
+  <li><time datetime="2026-08-02">02 Aug 2026</time><span>Status flipped Draft → Accepted on 02 Aug 2026 — zero remaining unchecked tasks; tests verified passing per author confirmation. Sibling bundle (REQ-LIFECYCLE-005).</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  081-boundary-map-detection · Design · authored 02 Aug 2026
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>
