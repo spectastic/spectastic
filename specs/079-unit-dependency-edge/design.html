@@ -1,0 +1,350 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
+<title>Unit dependency edge · Design</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Design · 079-unit-dependency-edge</p>
+  <h1>Unit dependency edge</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    A pure edge algebra with the filesystem held at arm's length, so the rules that decide what an edge is worth can be tested without a single fixture directory.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>      <span><spec-status value="draft">Draft</spec-status></span>
+    <b>Spec</b>        <span><a href="./spec.html">079-unit-dependency-edge</a></span>
+    <b>Author</b>      <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Created</b>     <span><time datetime="2026-08-02">02 Aug 2026</time></span>
+    <b>Principles</b>  <span><a href="../../principles.html">v1.9.0</a></span>
+    <b>Grounding</b>   <span>10 verified · 1 spike (run) · 1 assumed</span>
+    <b>Read time</b>   <span data-reading-time></span>
+  </spec-meta>
+</header>
+
+
+<section id="principles-check">
+<h2>1 · Principles check</h2>
+
+<div style="overflow-x:auto;">
+<table>
+  <thead><tr><th>Principle</th><th>Verdict</th><th>Note</th></tr></thead>
+  <tbody>
+    <tr><td>P-1 Source order is reading order</td><td>OK</td><td>No artifact authored here.</td></tr>
+    <tr><td>P-2 Semantic tags over class soup</td><td>OK</td><td>—</td></tr>
+    <tr><td>P-3 IDs are contracts</td><td>OK</td><td>A unit coordinate becomes an id others reference; <a href="#D-002">D-002</a> chooses the form that survives.</td></tr>
+    <tr><td>P-4 Progressive enhancement</td><td>OK</td><td>Read path is a library plus CLI; no browser runtime.</td></tr>
+    <tr><td>P-5 Calm density</td><td>OK</td><td>—</td></tr>
+    <tr><td>P-6 Draft loose, ratified locked</td><td>OK</td><td>Spec is Draft; this design precedes the flip.</td></tr>
+    <tr><td>P-7 Done means verified</td><td>OK</td><td><a href="#D-005">D-005</a> takes tests red-first; a <code>verify.html</code> lands on completion.</td></tr>
+    <tr><td>P-8 Guarantees in the kernel or CI</td><td>OK</td><td>Every rule here is deterministic kernel logic, not prompt guidance.</td></tr>
+    <tr><td>P-9 The enforcement floor holds</td><td>OK</td><td>Floor already met — 8 covered, 0 missing (§<a href="#technical-context">2</a>). This slice adds no category.</td></tr>
+    <tr><td>P-10 No internal ids in user-facing copy</td><td>OK</td><td>The read command prints a project's <em>own</em> unit names, never spectastic's artifact ids.</td></tr>
+    <tr><td>P-11 Artifacts are data, not instructions</td><td>OK</td><td>Manifests are read as data; nothing read is executed or followed.</td></tr>
+    <tr><td>P-12 Capability accountability</td><td>OK</td><td>Read-only: no network (NFR-001), no writes (NFR-002).</td></tr>
+    <tr><td>P-13 Accessibility conformance</td><td>OK</td><td>No user interface.</td></tr>
+    <tr><td>P-14 Library-first boundaries</td><td>OK</td><td><a href="#D-004">D-004</a> puts the grammar in schema and the resolution in core; the CLI stays a thin caller.</td></tr>
+  </tbody>
+</table>
+</div>
+
+<p>No exceptions, no violations.</p>
+</section>
+
+
+<section id="technical-context">
+<h2>2 · Technical context</h2>
+
+<dl>
+  <dt>Language(s)</dt>   <dd>TypeScript 5.x, Node — the existing toolchain; no change.</dd>
+  <dt>Frameworks</dt>    <dd>None. One new runtime dependency, <code>yaml</code>, into <code>@spectastic/core</code> (<a href="#D-003">D-003</a>).</dd>
+  <dt>Architecture</dt>  <dd>Ports-and-adapters over a pure resolution core — filesystem behind a narrow port, one inference adapter per ecosystem (<a href="#D-001">D-001</a>).</dd>
+  <dt>Storage</dt>       <dd>None. Reads <code>spectastic.json</code> and manifests; writes nothing (NFR-002).</dd>
+  <dt>Testing</dt>       <dd>TDD, tests red before implementation (<a href="#D-005">D-005</a>). Unit tests for the algebra, fixture projects for the adapters.</dd>
+  <dt>Coverage</dt>      <dd>90% of changed lines, and a change never lowers coverage of the code it touches. Diff-aware, never a project-wide percentage.</dd>
+  <dt>Perf targets</dt>  <dd>Under 500 ms for at most 200 units; at most 0 network calls (NFR-001).</dd>
+  <dt>Constraints</dt>   <dd>Deterministic — no clock, no iteration-order dependence. Malformed input degrades to a finding, never an exception (NFR-003).</dd>
+</dl>
+
+<h3>Toolchain / enforcement</h3>
+<p>The project is on the <strong>enterprise</strong> profile with a hard gate. <code>spectastic enforce</code>, run while authoring this design, reports <strong>8 covered · 1 relaxed · 0 missing</strong> — formatter, linter, type-checker, test-runner, security, supply-chain, coverage and contract-first are all satisfied by the existing toolchain, and observability carries a live waiver. There is no gap for this slice to close, so no new gate is designed. The one obligation the floor does place on this work is the coverage row above: the patch target is stated diff-aware, per the profile's requirement that a threshold be declared rather than assumed.</p>
+</section>
+
+
+<section id="contracts">
+<h2>3 · Data model &amp; contracts</h2>
+
+<p>This slice exposes no interface across a process or repository boundary. It is a library read path plus a CLI verb, both in-process; the coordinates it emits are identifiers, not an endpoint.</p>
+
+<spec-contract shape="none"><p>No request/response, RPC, GraphQL or event-driven surface. The <em>unit</em> coordinate kind is a naming grammar rather than an interface: nothing serves it, and adding it obliges no producer to publish anything.</p></spec-contract>
+
+<p>The physical shape of a declared edge is the existing <code>consumes</code> array in <code>spectastic.json</code> — a list of coordinate strings, widened by <a href="./spec.html#FR-009">FR-009</a> to carry unit coordinates alongside the contract coordinates it already holds. No new file, no new configuration section.</p>
+</section>
+
+
+<section id="grounding">
+<h2>4 · Grounding &amp; evidence</h2>
+
+<p>Every design-bearing fact below was resolved against real source while authoring, not recalled.</p>
+
+<div style="overflow-x:auto;">
+<table>
+  <thead><tr><th>Claim</th><th>Source</th><th>Status</th><th>Finding</th></tr></thead>
+  <tbody>
+    <tr><td>The coordinate kind set is a closed union, gated on parse</td><td><code>packages/schema/src/project-shared.ts</code> — <code>ResourceKind</code>, <code>KNOWN_KINDS</code></td><td>verified</td><td>Three members today. Adding one means widening the union <em>and</em> the parse-time set; missing either yields a kind that composes but will not parse.</td></tr>
+    <tr><td>A scoped package name survives the coordinate round-trip</td><td>Spike, run this turn</td><td>spike</td><td><code>@spectastic/core</code> composes to <code>…/@spectastic/core</code>, parses back with <code>name</code> intact, and <code>URL.href</code> round-trips byte-identically. No escaping needed — this is what makes <a href="#D-002">D-002</a> affordable.</td></tr>
+    <tr><td>No workspace or package enumerator exists to reuse</td><td>Repo-wide search of <code>packages/*/src</code></td><td>verified</td><td>Nothing enumerates workspace members. The <code>workspace</code> hits in <code>coding/types.ts</code> are a sandbox concept, unrelated. Enumeration is new code.</td></tr>
+    <tr><td>Existing detection cannot parse a dependency list</td><td><code>packages/core/src/enforce/detect.ts</code> — <code>signalMatches</code></td><td>verified</td><td>It is <code>readFileSync(path).includes(substring)</code> against one root file. Deliberately crude, and unusable for enumerating members or reading a dependency section.</td></tr>
+    <tr><td>Core has no YAML parser</td><td><code>packages/core/package.json</code></td><td>verified</td><td>Dependencies are the Anthropic SDK, <code>@spectastic/corpus</code> and <code>@spectastic/schema</code>. Nothing can read YAML.</td></tr>
+    <tr><td><code>yaml</code> is already vendored in the workspace</td><td><code>packages/corpus/package.json</code> — <code>yaml@^2.9.0</code></td><td>verified</td><td>Adding it to core adopts a version already audited and shipped here, not a new supply-chain surface.</td></tr>
+    <tr><td>This repo declares its workspace only in YAML</td><td>Root <code>package.json</code>, <code>pnpm-workspace.yaml</code></td><td>verified</td><td>No <code>workspaces</code> field at root; <code>pnpm-workspace.yaml</code> holds <code>packages: ['packages/*']</code>. JSON-only inference finds <strong>zero</strong> units here — the dogfooding argument behind <a href="#D-003">D-003</a>.</td></tr>
+    <tr><td>The declared-edge reader already exists and fails soft</td><td><code>packages/core/src/contracts/notify.ts</code> — <code>readConsumes</code></td><td>verified</td><td>Reads <code>consumes: string[]</code>, degrading to <code>[]</code> on missing file, unreadable file, bad JSON, or a non-array. The failure posture NFR-003 wants is already implemented.</td></tr>
+    <tr><td>Reciprocity has a shipped precedent</td><td><code>packages/core/src/ordering/graph.ts</code></td><td>verified</td><td>An edge is admitted only when both ends declare it; "a bare, unreciprocated <code>defer-to</code> is a see-also, not an edge." 079 keeps the concept and demotes it from a gate to a mark.</td></tr>
+    <tr><td>The enforcement floor is already met</td><td><code>spectastic enforce</code>, run this turn</td><td>verified</td><td>8 covered · 1 relaxed · 0 missing on the enterprise profile. No gate to build.</td></tr>
+    <tr><td>The unit vocabulary matches what manifests reference</td><td>—</td><td>assumed</td><td>Taken as true that a dependency entry names the same string a workspace member declares as its own name. Standard across the JS ecosystem; if a project violates it, inference misses that edge and a declaration is the escape hatch.</td></tr>
+  </tbody>
+</table>
+</div>
+</section>
+
+
+<section id="approach">
+<h2>5 · Approach</h2>
+
+<p><spec-newthought>The rules worth protecting are not the reading.</spec-newthought> What must be right is the small algebra that decides what an edge <em>is</em>: that a declaration outranks an inference for the same pair, that the same relation asserted twice is one edge, that a far end which agrees marks the edge reciprocated while one that cannot be read marks it unverified, and that these two marks are independent so an unverified edge can never be reciprocated. That algebra is pure. It takes two lists of candidate edges and a lookup of what each far end says, and returns a resolved set.</p>
+
+<p>Everything else is acquisition, and acquisition is where the variety lives: a JSON manifest here, a YAML workspace file there, a config key, a far end that may or may not exist on disk. Holding that behind a narrow port keeps the variety out of the rules — and, more practically, means the state matrix in the paragraph above is testable with plain objects rather than a directory of fixture repositories per case.</p>
+
+<spec-arch>
+<figure>
+<svg viewBox="0 0 620 240" width="620" height="240" role="img" aria-label="A pure resolve core between adapters and consumers">
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="currentColor"/>
+    </marker>
+  </defs>
+  <rect class="box" x="16"  y="24"  width="150" height="52" rx="4"/>
+  <text class="label" x="30" y="46">config reader</text>
+  <text class="body"  x="30" y="64">declared edges</text>
+
+  <rect class="box" x="16"  y="96"  width="150" height="52" rx="4"/>
+  <text class="label" x="30" y="118">workspace port</text>
+  <text class="body"  x="30" y="136">units on disk</text>
+
+  <rect class="box" x="16"  y="168" width="150" height="52" rx="4"/>
+  <text class="label" x="30" y="190">js adapter</text>
+  <text class="body"  x="30" y="208">npm · pnpm</text>
+
+  <rect class="box" x="236" y="96"  width="150" height="52" rx="4"/>
+  <text class="label" x="250" y="118">resolve</text>
+  <text class="body"  x="250" y="136">pure algebra</text>
+
+  <rect class="box" x="456" y="24"  width="150" height="52" rx="4"/>
+  <text class="label" x="470" y="46">read command</text>
+  <text class="body"  x="470" y="64">prints the set</text>
+
+  <rect class="box" x="456" y="168" width="150" height="52" rx="4"/>
+  <text class="label" x="470" y="190">later slices</text>
+  <text class="body"  x="470" y="208">080 · 081 · 082</text>
+
+  <path class="arr" d="M166 50  L236 112" marker-end="url(#a)"/>
+  <path class="arr" d="M166 122 L236 122" marker-end="url(#a)"/>
+  <path class="arr" d="M166 194 L236 132" marker-end="url(#a)"/>
+  <path class="arr" d="M386 112 L456 50"  marker-end="url(#a)"/>
+  <path class="arr" d="M386 132 L456 194" marker-end="url(#a)"/>
+</svg>
+<figcaption>Arrows run from provider to consumer: the readers on the left supply candidate edges, <code>resolve</code> applies the algebra, and its output is what the command prints and what later slices consume. Nothing flows back — <code>resolve</code> touches no filesystem.</figcaption>
+</figure>
+</spec-arch>
+
+<p>The far-end lookup deserves a note, because it is the one place the port is doing something subtle. To mark an edge reciprocated, resolution must know what the far end declares — which means reading another project's <code>spectastic.json</code>. That read can fail for entirely ordinary reasons, and the failure is the signal: <em>not readable</em> is what makes an edge unverified. So the port returns a three-valued answer per far end (agrees · does not agree · unreadable) rather than a boolean, and resolution maps those onto the two marks.</p>
+</section>
+
+
+<section id="alternatives">
+<h2>6 · Alternatives considered</h2>
+
+<spec-matrix target="D-001">
+<div style="overflow-x:auto;">
+<table>
+  <thead>
+    <tr><th>Option</th><th>Rules testable</th><th>Adapter cost</th><th>Fits estate</th><th>Simplicity</th><th class="score">Total</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>A · Layered read → resolve → report</strong></td>
+      <td>1</td><td>4</td><td>4</td><td>5</td><td class="score">14</td>
+    </tr>
+    <tr data-winner>
+      <td><strong>B · Ports-and-adapters over a pure core</strong></td>
+      <td>5</td><td>4</td><td>5</td><td>3</td><td class="score">17</td>
+    </tr>
+    <tr>
+      <td><strong>C · Vertical slice per ecosystem</strong></td>
+      <td>2</td><td>5</td><td>2</td><td>2</td><td class="score">11</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+</spec-matrix>
+
+<p>A is what <code>enforce/detect.ts</code> does today and it is genuinely simpler, but filesystem access threads through the middle, so the edge-mark matrix could only be exercised against real directories — the highest-value logic tested in the most awkward way. C keeps ecosystems fully independent at the cost of reimplementing the reciprocity and verification rules per slice, which is exactly the logic that must not drift between them.</p>
+</section>
+
+
+<section id="decisions">
+<h2>7 · Decisions</h2>
+
+<spec-decision id="D-001" grounding="verified">
+  <h4>D-001 · Ports-and-adapters over a pure resolution core</h4>
+  <dl>
+    <dt>Status</dt><dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt><dd>The edge-mark rules form a small state matrix that must be exactly right, while acquisition spans a JSON manifest, a YAML workspace file, a config key and a possibly-absent far end. Existing detection (<code>enforce/detect.ts</code>, <code>signalMatches</code>) interleaves the two, which is why its logic is only testable against fixture directories. The estate already uses a port for exactly this separation in the corpus <code>IO</code> layer.</dd>
+    <dt>Decision</dt><dd>A pure <code>resolve</code> taking candidate edges plus a far-end lookup and returning the resolved set, with all filesystem access behind a narrow workspace port and one inference adapter per ecosystem. The far-end lookup is three-valued (agrees · does not · unreadable), not boolean.</dd>
+    <dt>Consequences</dt><dd>+ The rules that decide an edge's worth are unit-testable with plain objects, no fixture directories. + A second ecosystem is an adapter, not a change to the rules. + Matches an existing estate precedent rather than inventing a shape. − One more indirection than the layered form, in a codebase whose sibling detector is layered. − The port's three-valued return is a contract that must be got right early, since both marks depend on it.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-002" grounding="verified">
+  <h4>D-002 · A unit is named by its package name, verbatim</h4>
+  <dl>
+    <dt>Status</dt><dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt><dd>Inference matches dependency entries against workspace members, and the string a manifest uses is the package name. A directory path would be more human-legible but needs a name-to-directory lookup on every inferred edge, and a package referenced but absent from the workspace has no directory at all. The spike (§<a href="#grounding">4</a>) confirmed a scoped name survives: <code>@spectastic/core</code> composes, parses back intact, and <code>URL.href</code> round-trips byte-identically.</dd>
+    <dt>Decision</dt><dd>The coordinate name is the package name exactly as the ecosystem writes it, including the scope separator, which the grammar already tolerates as multi-segment (the corpus kind uses <code>plugin/slug</code>). No escaping, no translation table.</dd>
+    <dt>Consequences</dt><dd>+ Inference matches by string equality against what manifests actually contain, so no lookup can be wrong. + A referenced-but-absent package is still nameable. + Coordinates read as the name the ecosystem uses. − A package rename re-keys its coordinate, the same exposure <a href="../076-contract-export-handover/spec.html#FR-007">076 FR-007</a> records for contracts. − A unit name is not a filesystem path, so a reader wanting the directory must resolve it.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-003" grounding="verified">
+  <h4>D-003 · Take <code>yaml</code> as a core dependency so pnpm workspaces are readable</h4>
+  <dl>
+    <dt>Status</dt><dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt><dd>Core has no YAML parser. This repository declares its workspace <em>only</em> in <code>pnpm-workspace.yaml</code> — the root <code>package.json</code> has no <code>workspaces</code> field — so JSON-only inference resolves zero units here. A feature blind to its own repository can only ever be tested against synthetic fixtures, and its dogfooding claim would be hollow. <code>yaml@^2.9.0</code> is already a dependency of <code>@spectastic/corpus</code> in this workspace.</dd>
+    <dt>Decision</dt><dd>Add <code>yaml</code> to <code>@spectastic/core</code> at the version already vendored here, and read pnpm workspace membership properly rather than by hand.</dd>
+    <dt>Consequences</dt><dd>+ Inference works on this repository from the first commit, so every claim about it is checkable here. + Adopts a version already audited and shipped in this workspace rather than widening the supply-chain surface. − One more runtime dependency in the kernel, which the package has so far kept small. − Hand-reading the few lines pnpm actually uses would have avoided it, at the cost of a parser that mis-reads a valid file later; rejected for that reason.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-004" grounding="verified">
+  <h4>D-004 · The <code>unit</code> kind lives in schema; resolution lives in core</h4>
+  <dl>
+    <dt>Status</dt><dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt><dd><code>ResourceKind</code> and the parse-time <code>KNOWN_KINDS</code> set both sit in <code>@spectastic/schema</code>, and every other kind was added there. P-14 puts deterministic reusable logic in the library core with the CLI as a thin caller.</dd>
+    <dt>Decision</dt><dd>Widen the union and the parse set in schema — both, since composing a kind that will not parse is the failure mode the grounding row names. Edge resolution, the port and the adapters go in core under a new module; the CLI registers a verb and prints.</dd>
+    <dt>Consequences</dt><dd>+ One place owns the grammar, so no second kind list can drift from it. + Later slices import resolution without the CLI attached. − Touching schema means rebuilding it before the CLI sees the change, the rebuild trap this estate has hit before.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-005" grounding="n-a">
+  <h4>D-005 · Tests red before implementation</h4>
+  <dl>
+    <dt>Status</dt><dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt><dd>The edge marks are a state matrix — verified × reciprocated × declared-versus-inferred — and an assertion written after the fact tends to encode what the code does rather than what the requirement says. A judgment call about method, with no external fact to verify.</dd>
+    <dt>Decision</dt><dd>Each requirement's test is written and seen failing before its implementation. Unit tests cover the pure algebra; fixture projects cover the adapters, including this repository itself as the pnpm case.</dd>
+    <dt>Consequences</dt><dd>+ The matrix is specified by tests rather than discovered. + A fixture that fails for the wrong reason is caught while the expectation is still fresh. − Slower per cycle than writing the reader first and asserting afterwards.</dd>
+  </dl>
+</spec-decision>
+</section>
+
+
+<section id="project-structure">
+<h2>8 · Project structure</h2>
+
+<p>Only the new or changed paths, grouped by the boundaries the <a href="#D-001">D-001</a> architecture decision draws.</p>
+
+<pre><code>packages/schema/src/
+  project-shared.ts          # widen ResourceKind + KNOWN_KINDS with `unit`
+
+packages/core/src/units/
+  types.ts                   # Unit, Edge, EdgeMark, FarEndVerdict
+  resolve.ts                 # the pure algebra — no fs, no clock
+  port.ts                    # workspace port interface + far-end lookup
+  adapters/
+    node-fs.ts               # the filesystem implementation of the port
+    js.ts                    # npm/yarn `workspaces` + pnpm-workspace.yaml
+  read.ts                    # declared edges from spectastic.json
+
+packages/cli/src/commands/
+  units.ts                   # thin register + print
+
+packages/core/test/
+  units.resolve.test.ts      # the algebra, plain objects
+  units.adapters.test.ts     # fixture projects + this repo as the pnpm case
+</code></pre>
+</section>
+
+
+<section id="risks">
+<h2>9 · Risks &amp; mitigations</h2>
+
+<div style="overflow-x:auto;">
+<table>
+  <thead><tr><th>Risk</th><th>Likelihood</th><th>Impact</th><th>Mitigation</th></tr></thead>
+  <tbody>
+    <tr>
+      <td>Widening the union without widening <code>KNOWN_KINDS</code> ships a kind that composes but never parses</td>
+      <td>Medium</td><td>High</td>
+      <td>Named explicitly in <a href="#D-004">D-004</a> and in the grounding table; the first test written is a compose-then-parse round-trip for the new kind.</td>
+    </tr>
+    <tr>
+      <td>Inference reads a far end's config and mistakes an unrelated <code>consumes</code> entry for agreement</td>
+      <td>Medium</td><td>Medium</td>
+      <td>Reciprocity requires the far end to name <em>this</em> unit's coordinate specifically, not merely to have entries. Asserted as its own case in the algebra tests.</td>
+    </tr>
+    <tr>
+      <td>A monorepo yields a large unit count and blows the 500 ms budget</td>
+      <td>Low</td><td>Medium</td>
+      <td>Enumeration is bounded by declared workspace globs, never a tree walk. Measured against NFR-001 on this repository as a build task, the way 073's budget was.</td>
+    </tr>
+    <tr>
+      <td>Adding <code>yaml</code> to core is resisted in review as kernel bloat</td>
+      <td>Low</td><td>Low</td>
+      <td><a href="#D-003">D-003</a> records the dogfooding argument and that the version is already vendored here; the alternative and why it was rejected are on the record.</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+
+<spec-warning><strong>Reciprocity reads another project's configuration.</strong> That read is ordinary — a local file in a checkout the user already has — but it is the first time this estate reads config belonging to a <em>different</em> project. It must stay read-only, must never follow a path outside the checkout it was given, and must treat every failure as "unreadable" rather than propagating it. NFR-002 and NFR-003 already require this; it is called out because the code is where a shortcut would be tempting.</spec-warning>
+</section>
+
+
+<section id="complexity">
+<h2>10 · Complexity tracking</h2>
+<p>No principle exceptions were taken, so nothing is logged here. The one deliberate cost — an extra indirection over the simpler layered form — is recorded as a consequence on <a href="#D-001">D-001</a> rather than as an exception, because it is a tradeoff the principles permit rather than a rule bent.</p>
+</section>
+
+
+<section id="questions">
+<h2>11 · Open questions</h2>
+<spec-questions>
+<p>None outstanding. The architecture pattern, unit naming, the YAML dependency, module placement, test style and the coverage target were all anchored in the decision phase, and the one fact that could have invalidated D-002 — whether a scoped name survives the coordinate round-trip — was settled by a spike rather than assumed.</p>
+</spec-questions>
+</section>
+
+
+<section id="changelog">
+<h2>12 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-08-02">02 Aug 2026</time><span>Initial design. Five decisions; ten facts verified against source and one spike run (the scoped-name coordinate round-trip). Dogfooding drove D-003: this repository declares its workspace only in YAML, so JSON-only inference would have found zero units in the repo the feature is built in.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  079-unit-dependency-edge · Design · authored 02 Aug 2026
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>
