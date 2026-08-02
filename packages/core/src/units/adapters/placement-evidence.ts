@@ -99,14 +99,45 @@ export interface EvidenceInput {
 export function gatherEvidence(input: EvidenceInput): Candidate[] {
   const candidates: Candidate[] = [];
 
+  // Which units the requirement implicates, from the classes that can know:
+  // resemblance and prior art. Keyed by unit → HOW STRONGLY implicated, not merely whether. Structural
+  // evidence is relative to these candidates (FR-010), so its strength must
+  // reflect theirs: being upstream of a barely-matching candidate is weak
+  // evidence, and treating it as full evidence reproduces the same
+  // always-outranks defect one level down.
+  const implicated = new Map<string, number>();
+  for (const unit of input.units) {
+    const text = input.textByUnit[unit];
+    const overlap = text !== undefined && text !== '' ? lexicalOverlap(input.requirement, text) : 0;
+    const prior = (input.priorArtByUnit?.[unit] ?? []).length > 0 ? 1 : 0;
+    const strength = Math.max(overlap, prior);
+    if (strength > 0) implicated.set(unit, strength);
+  }
+
   for (const unit of [...input.units].sort()) {
     const evidence: Evidence[] = [];
 
-    // Structural: something depends on this unit, or it depends on something.
-    // A unit others are built on is a likelier owner of a shared change.
-    const inbound = input.edges.filter((e) => e.to === unit);
-    for (const edge of inbound) {
-      evidence.push({ cls: 'structural', source: `${edge.from} → ${edge.to}`, strength: 1 });
+    // Structural: this unit stands upstream of something the requirement
+    // implicates. One finding per unit, never one per edge (FR-010).
+    //
+    // Gathered per inbound edge, this was a popularity count: the
+    // most-depended-upon unit accumulated the most points and won every
+    // placement identically, whatever the requirement said. Four unrelated
+    // requirements on this repository all landed at the same unit, same score.
+    const dependants = input.edges.filter((e) => e.to === unit).map((e) => e.from);
+    const implicatedDependants = dependants.filter((d) => implicated.has(d) && d !== unit);
+    if (implicatedDependants.length > 0) {
+      // Strength inherits from the strongest implicated dependant, then gets a
+      // bounded bonus for being upstream of several. Inheriting is what keeps
+      // structural evidence *able* to outrank resemblance (FR-003) without
+      // outranking it unconditionally — the distinction FR-010 turns on.
+      const inherited = Math.max(...implicatedDependants.map((d) => implicated.get(d) ?? 0));
+      const breadth = Math.min(1, 0.75 + 0.25 * (implicatedDependants.length - 1));
+      evidence.push({
+        cls: 'structural',
+        source: `upstream of ${implicatedDependants.sort().join(', ')}`,
+        strength: inherited * breadth,
+      });
     }
 
     // Declared: the project's own boundary map names this unit.

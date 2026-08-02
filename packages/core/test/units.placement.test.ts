@@ -173,9 +173,12 @@ describe('US3 · evidence gathering (082 T-300/T-301)', () => {
         kind: 'mapped',
         map: { source: 'nx', units: [PRODUCER], permitted: [] },
       },
+      // The requirement is phrased in the CONSUMER's vocabulary — which is the
+      // producer/consumer scenario. The original fixture put the matching words
+      // on the producer, so it was not testing the case it claimed to.
       textByUnit: {
-        [PRODUCER]: 'ledger balance settlement rounding rules',
-        [CONSUMER]: 'checkout basket totals and payment capture',
+        [PRODUCER]: 'ledger posting internals',
+        [CONSUMER]: 'settlement amounts rounded on the ledger balance at checkout',
       },
       priorArtByUnit: { [PRODUCER]: ['specs/031-ledger-rounding'] },
     });
@@ -214,5 +217,80 @@ describe('US3 · evidence gathering (082 T-300/T-301)', () => {
     });
     expect(candidates).toHaveLength(1);
     expect(candidates[0]?.evidence).toEqual([]);
+  });
+});
+
+describe('FR-010 · structural evidence is relative, not a popularity count', () => {
+  const SHARED = 'spectastic://p/p/unit/@p/schema';
+  const A = 'spectastic://p/p/unit/@p/cli';
+  const B = 'spectastic://p/p/unit/@p/core';
+  const C = 'spectastic://p/p/unit/@p/corpus';
+  const UNRELATED = 'spectastic://p/p/unit/@p/vscode';
+
+  /** Realistic fan-in: three units depend on one. The shape every earlier fixture lacked. */
+  const fanIn = [
+    { from: A, to: SHARED, origin: 'inferred' as const, marks: { verified: false, reciprocated: false } },
+    { from: B, to: SHARED, origin: 'inferred' as const, marks: { verified: false, reciprocated: false } },
+    { from: C, to: SHARED, origin: 'inferred' as const, marks: { verified: false, reciprocated: false } },
+  ];
+
+  it('the shared dependency does not win a requirement unrelated to anything that depends on it', () => {
+    // The defect this closes. Gathered per inbound edge, SHARED scored 3× and won
+    // every requirement identically — on this repository, four unrelated
+    // requirements all placed at @spectastic/schema with a score of 40.0.
+    const candidates = gatherEvidence({
+      requirement: 'typography and colour tokens in the canvas are cropped',
+      units: [SHARED, A, B, C, UNRELATED],
+      edges: fanIn,
+      boundary: { kind: 'none' },
+      textByUnit: {
+        [UNRELATED]: 'canvas typography colour tokens cropped rendering',
+        [SHARED]: 'validation schema engine',
+        [A]: 'command line interface',
+        [B]: 'verb kernel',
+        [C]: 'corpus curation citation',
+      },
+    });
+
+    const verdict = rankPlacement(candidates);
+    // FR-010 requires that the shared dependency does not win. It does not
+    // require that anything else does — with only resemblance available, the
+    // engine abstains, which is the outcome the proposal's first risk accepted
+    // knowingly. Asserting a placement here would encode my expectation rather
+    // than the requirement.
+    const ranked =
+      verdict.kind === 'placement' ? verdict.ranked : verdict.kind === 'no-confident-owner' ? verdict.ranked : [];
+    expect(ranked[0]?.unit).toBe(UNRELATED);
+    // The shared dependency earns no structural evidence at all, because
+    // nothing the requirement implicates depends on it.
+    const shared = ranked.find((r) => r.unit === SHARED);
+    expect(shared?.classes ?? []).not.toContain('structural');
+  });
+
+  it('earns at most one structural finding however many edges point at a unit', () => {
+    const candidates = gatherEvidence({
+      requirement: 'command line interface behaviour',
+      units: [SHARED, A, B, C],
+      edges: fanIn,
+      boundary: { kind: 'none' },
+      textByUnit: { [A]: 'command line interface', [B]: 'verb kernel', [C]: 'corpus' },
+    });
+    const shared = candidates.find((c) => c.unit === SHARED);
+    const structural = (shared?.evidence ?? []).filter((e) => e.cls === 'structural');
+    expect(structural.length).toBeLessThanOrEqual(1);
+  });
+
+  it('still earns structural evidence when it IS upstream of an implicated candidate', () => {
+    // The headline case must survive the fix: the requirement implicates the
+    // consumer by resemblance, and the producer is upstream of it.
+    const candidates = gatherEvidence({
+      requirement: 'command line interface behaviour',
+      units: [SHARED, A],
+      edges: [{ from: A, to: SHARED, origin: 'inferred' as const, marks: { verified: false, reciprocated: false } }],
+      boundary: { kind: 'none' },
+      textByUnit: { [A]: 'command line interface behaviour' },
+    });
+    const shared = candidates.find((c) => c.unit === SHARED);
+    expect(shared?.evidence.map((e) => e.cls)).toContain('structural');
   });
 });
