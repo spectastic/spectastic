@@ -1,0 +1,322 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
+<title>Placement verdict · Design</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Design · 082-placement-verdict</p>
+  <h1>Placement verdict</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    Four named evidence classes, a deterministic core a reviewer can re-run, and two refusals that are answers rather than failures.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>      <span><spec-status value="accepted">Accepted</spec-status></span>
+    <b>Spec</b>        <span><a href="./spec.html">082-placement-verdict</a></span>
+    <b>Author</b>      <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Created</b>     <span><time datetime="2026-08-02">02 Aug 2026</time></span>
+    <b>Principles</b>  <span><a href="../../principles.html">v1.9.0</a></span>
+    <b>Grounding</b>   <span>6 verified · 0 spike · 1 assumed</span>
+    <b>Read time</b>   <span data-reading-time></span>
+  </spec-meta>
+</header>
+
+
+<section id="principles-check">
+<h2>1 · Principles check</h2>
+
+<div style="overflow-x:auto;">
+<table>
+  <thead><tr><th>Principle</th><th>Verdict</th><th>Note</th></tr></thead>
+  <tbody>
+    <tr><td>P-1 · P-2 · P-4 · P-5 · P-13</td><td>OK</td><td>No artifact, no interface, no browser runtime.</td></tr>
+    <tr><td>P-3 IDs are contracts</td><td>OK</td><td>Ranks existing unit coordinates; mints none. FR-006 forbids creating anything.</td></tr>
+    <tr><td>P-6 Draft loose, ratified locked</td><td>OK</td><td>Authored while the spec was Draft; the bundle flipped to Accepted together on completion.</td></tr>
+    <tr><td>P-7 Done means verified</td><td>OK</td><td>Tests red first; a <code>verify.html</code> lands on completion.</td></tr>
+    <tr><td>P-8 Guarantees in the kernel or CI</td><td>OK</td><td>The scoring, the bands and both refusals are deterministic kernel logic. The optional refinement is explicitly outside that guarantee and is labelled on the verdict (<a href="#D-001">D-001</a>).</td></tr>
+    <tr><td>P-9 The enforcement floor holds</td><td>OK</td><td>Nothing here gates. A verdict is advice.</td></tr>
+    <tr><td>P-10 No internal ids in user-facing copy</td><td>OK</td><td>Evidence names a project's own units and documents.</td></tr>
+    <tr><td>P-11 Artifacts are data</td><td>OK</td><td>Specs and corpus documents are scored as text, never followed as instructions — which matters more here than anywhere, since the input is untrusted prose.</td></tr>
+    <tr><td>P-12 Capability accountability</td><td>OK</td><td>0 files written outside the report, 0 network calls (NFR-002).</td></tr>
+    <tr><td>P-14 Library-first boundaries</td><td>OK</td><td>Ranking in core; any CLI stays a thin caller.</td></tr>
+  </tbody>
+</table>
+</div>
+
+<p>No exceptions, no violations.</p>
+</section>
+
+
+<section id="technical-context">
+<h2>2 · Technical context</h2>
+
+<dl>
+  <dt>Language(s)</dt>   <dd>TypeScript 5.x, Node — no change.</dd>
+  <dt>Frameworks</dt>    <dd>None, and no new dependency. No vector store, per the estate's standing stance.</dd>
+  <dt>Architecture</dt>  <dd>Extends the units module's ports-and-adapters: evidence gathering behind the port, scoring pure (<a href="#D-004">D-004</a>).</dd>
+  <dt>Storage</dt>       <dd>None. Reads artifacts; writes only its own report.</dd>
+  <dt>Testing</dt>       <dd>TDD, tests red before implementation. The producer/consumer case is the headline fixture.</dd>
+  <dt>Coverage</dt>      <dd>90% of changed lines; a change never lowers coverage of the code it touches. Diff-aware.</dd>
+  <dt>Perf targets</dt>  <dd>At most 0 network calls on the deterministic path, at most 0 files written outside the report (NFR-002).</dd>
+  <dt>Constraints</dt>   <dd>The deterministic core is reproducible — no clock, no filesystem ordering, no iteration-order dependence (NFR-003).</dd>
+</dl>
+
+<h3>Toolchain / enforcement</h3>
+<p>Enterprise profile, hard gate, floor met and untouched (<strong>8 covered · 1 relaxed · 0 missing</strong>). This slice adds no enforcement category — a placement verdict is advice, and FR-007 forbids applying one automatically at any confidence.</p>
+</section>
+
+
+<section id="contracts">
+<h2>3 · Data model &amp; contracts</h2>
+
+<p>No interface crosses a process or repository boundary in this slice — a library read path returning a verdict in-process.</p>
+
+<spec-contract shape="none"><p>No request/response, RPC, GraphQL or event-driven surface. The estate-wide form that would need one is deferred to <code>TBD-placement-aggregation</code>.</p></spec-contract>
+</section>
+
+
+<section id="grounding">
+<h2>4 · Grounding &amp; evidence</h2>
+
+<div style="overflow-x:auto;">
+<table>
+  <thead><tr><th>Claim</th><th>Source</th><th>Status</th><th>Finding</th></tr></thead>
+  <tbody>
+    <tr><td>The triage classifier is model-backed, not deterministic</td><td><code>packages/core/src/triage/classify.ts</code></td><td>verified</td><td>It calls <code>ai.chat</code> / <code>ai.subagent</code> and hedges on <code>layerConfidence === 'low'</code>. So 082 inherits its <em>shape</em> — three bands, automatic hedge, consolidated human gate — but cannot inherit its mechanism without breaking NFR-003.</td></tr>
+    <tr><td>NFR-003 constrains clock, filesystem and iteration order — not model use</td><td><a href="./spec.html#NFR-003">082 NFR-003</a></td><td>verified</td><td>Read literally, and it matters: an <em>opt-in</em> refinement outside the deterministic path does not violate it, provided the default path stays reproducible. <a href="#D-001">D-001</a> turns that reading into a labelling obligation rather than treating it as a loophole.</td></tr>
+    <tr><td>change-risk declares its weights uncalibrated</td><td><code>packages/core/src/change-risk/score.ts</code></td><td>verified</td><td>"The constants are a v1 default, not calibrated truth… tunable via <code>spectastic.json</code>." Exactly the posture NFR-001 asks for, already proven here — so <a href="#D-003">D-003</a> clones it rather than inventing one.</td></tr>
+    <tr><td>The slicer makes a negative verdict first-class</td><td><code>packages/core/src/slice/types.ts</code></td><td>verified</td><td><code>{kind:'dont-split'; reasons: string[]}</code> — "a first-class verdict… never a forced cut." The precedent FR-005's <em>no confident owner</em> follows.</td></tr>
+    <tr><td>The corpus resists a vector store deliberately</td><td>Corpus read path — <code>query</code> over metadata, <code>grep</code> over bodies</td><td>verified</td><td>No embeddings anywhere, and a standing test resisting the dependency. So domain resemblance must be lexical (<a href="#D-002">D-002</a>), which suits it: a weak signal is the right strength for the one the survey says must be outrankable.</td></tr>
+    <tr><td>Units and boundary maps are already readable</td><td><code>packages/core/src/units/*</code> (079, 081)</td><td>verified</td><td>Structural and declared evidence have sources; this slice consumes them rather than re-deriving them.</td></tr>
+    <tr><td>Lexical overlap is a usable proxy for domain closeness</td><td>—</td><td>assumed</td><td>Taken as true that token overlap ranks a genuinely-related requirement above an unrelated one often enough to be worth including. Unverifiable without a corpus of confirmed placements — which is precisely what <code>TBD-placement-calibration</code> defers.</td></tr>
+  </tbody>
+</table>
+</div>
+</section>
+
+
+<section id="approach">
+<h2>5 · Approach</h2>
+
+<p><spec-newthought>The whole design turns on one requirement: structural evidence must be able to outrank resemblance.</spec-newthought> That is the survey's central finding made mechanical, and it is why evidence is typed rather than summed into an opaque number. Each candidate accumulates findings of four named classes — <em>structural</em> (a dependency edge from 079), <em>declared</em> (a boundary map from 081 or an explicit declaration), <em>domain</em> (lexical closeness to a candidate's specs and corpus), and <em>prior-art</em> (this project has specced something like it before) — and each finding carries its own weight and source. A reader disagreeing with a verdict can disagree with a specific piece of evidence rather than with the tool.</p>
+
+<p><spec-newthought>The refinement pass needs its own honesty.</spec-newthought> The default path is pure: same inputs, same ranking, no clock and no iteration-order dependence. An opt-in model pass may re-order, and that is genuinely useful for judging closeness a token count cannot see — but a verdict a reviewer cannot reproduce is one they cannot argue with. So the verdict records <em>which mode produced it</em>. That is not decoration: it is the difference between "re-run this and check" and "take my word for it", and leaving it implicit would quietly erode the property NFR-003 exists to protect.</p>
+
+<p>Both refusals fall out of the same accumulation. If no candidate reaches the confidence floor, the answer is <em>no confident owner</em> with the reasons attached — never the least-bad candidate, because forced choice over a ranked list always returns something and what it returns is the unit whose vocabulary the requirement borrowed. If nothing fits at all, the engine may propose a new unit, and creates nothing.</p>
+
+<spec-arch>
+<figure>
+<svg viewBox="0 0 620 220" width="620" height="220" role="img" aria-label="Evidence classes accumulating into a verdict with three outcomes">
+  <defs>
+    <marker id="d" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="currentColor"/>
+    </marker>
+  </defs>
+  <rect class="box" x="16" y="16" width="150" height="44" rx="4"/>
+  <text class="label" x="30" y="36">structural</text>
+  <text class="body"  x="30" y="52">079 edges</text>
+
+  <rect class="box" x="16" y="70" width="150" height="44" rx="4"/>
+  <text class="label" x="30" y="90">declared</text>
+  <text class="body"  x="30" y="106">081 maps</text>
+
+  <rect class="box" x="16" y="124" width="150" height="44" rx="4"/>
+  <text class="label" x="30" y="144">domain</text>
+  <text class="body"  x="30" y="160">lexical overlap</text>
+
+  <rect class="box" x="16" y="178" width="150" height="38" rx="4"/>
+  <text class="label" x="30" y="202">prior-art</text>
+
+  <rect class="box" x="228" y="86" width="150" height="52" rx="4"/>
+  <text class="label" x="242" y="108">rank</text>
+  <text class="body"  x="242" y="126">pure, weighted</text>
+
+  <rect class="box" x="440" y="14" width="164" height="42" rx="4"/>
+  <text class="label" x="454" y="40">ranked placement</text>
+
+  <rect class="box" x="440" y="70" width="164" height="42" rx="4"/>
+  <text class="label" x="454" y="96">propose a new unit</text>
+
+  <rect class="box" x="440" y="126" width="164" height="52" rx="4"/>
+  <text class="label" x="454" y="148">no confident owner</text>
+  <text class="body"  x="454" y="166">with reasons</text>
+
+  <path class="arr" d="M166 38  L228 100" marker-end="url(#d)"/>
+  <path class="arr" d="M166 92  L228 108" marker-end="url(#d)"/>
+  <path class="arr" d="M166 146 L228 118" marker-end="url(#d)"/>
+  <path class="arr" d="M166 197 L228 130" marker-end="url(#d)"/>
+  <path class="arr" d="M378 100 L440 36"  marker-end="url(#d)"/>
+  <path class="arr" d="M378 108 L440 90"  marker-end="url(#d)"/>
+  <path class="arr" d="M378 118 L440 150" marker-end="url(#d)"/>
+</svg>
+<figcaption>Arrows run provider to consumer. All three outcomes leave from the same ranking, which is what makes the two refusals terminal states rather than error paths.</figcaption>
+</figure>
+</spec-arch>
+</section>
+
+
+<section id="alternatives">
+<h2>6 · Alternatives considered</h2>
+
+<spec-matrix target="D-001">
+<div style="overflow-x:auto;">
+<table>
+  <thead>
+    <tr><th>Option</th><th>Reproducible</th><th>Judgement quality</th><th>Honest to NFR-003</th><th>Cost</th><th class="score">Total</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>A · Fully deterministic</strong></td>
+      <td>5</td><td>2</td><td>5</td><td>5</td><td class="score">17</td>
+    </tr>
+    <tr data-winner>
+      <td><strong>B · Deterministic core, opt-in refinement, mode recorded</strong></td>
+      <td>4</td><td>4</td><td>5</td><td>4</td><td class="score">17</td>
+    </tr>
+    <tr>
+      <td><strong>C · Model-backed throughout</strong></td>
+      <td>1</td><td>5</td><td>1</td><td>4</td><td class="score">11</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+</spec-matrix>
+
+<p><spec-newthought>A and B tie, and the tie is the honest result.</spec-newthought> Both are fully honest to NFR-003 — B complies on the default path <em>and</em> labels the exception, which is not a lesser kind of honesty than never offering one. A is cheaper and always reproducible; B judges closeness better where a token count is too blunt. The tiebreak is a judgement rather than a score: a purely lexical ceiling on resemblance is a real limitation, and the reproducibility cost is bounded because the default path stays pure and the mode is visible on every verdict. C loses outright, and would need NFR-003 amended rather than merely interpreted.</p>
+</section>
+
+
+<section id="decisions">
+<h2>7 · Decisions</h2>
+
+<spec-decision id="D-001" grounding="verified">
+  <h4>D-001 · A deterministic core with an opt-in refinement, and the verdict records which produced it</h4>
+  <dl>
+    <dt>Status</dt><dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt><dd>NFR-003 requires the same inputs to yield the same ranking, and names clock, filesystem ordering and iteration order specifically. Read literally, an opt-in pass outside the default path does not violate it. But a verdict a reviewer cannot reproduce is one they cannot argue with, and that property erodes silently if nothing marks which kind they are holding.</dd>
+    <dt>Decision</dt><dd>The default path is pure and reproducible. A model refinement is opt-in and may re-order. Every verdict records its mode, so "re-run this and check" is distinguishable from "take my word for it" without reading the invocation.</dd>
+    <dt>Consequences</dt><dd>+ The default stays checkable, which is what makes a suggestion arguable. + Closeness judgements a token count cannot make become available where they are wanted. + The reproducibility question is answered on the artifact rather than left to the reader. − Two paths mean two behaviours to test and explain. − A refined verdict is genuinely not reproducible; the label makes that visible but does not remove it.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-002" grounding="verified">
+  <h4>D-002 · Domain resemblance is lexical overlap, deliberately weak</h4>
+  <dl>
+    <dt>Status</dt><dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt><dd>The corpus resists a vector store by standing decision, and its read path is metadata <code>query</code> plus body <code>grep</code>. FR-003 requires structural evidence to be able to outrank resemblance, and FR-009 forbids domain evidence alone from reaching the unhedged band.</dd>
+    <dt>Decision</dt><dd>Normalised token overlap between the requirement and each candidate's specs and corpus documents. No embeddings, no index.</dd>
+    <dt>Consequences</dt><dd>+ Deterministic and cheap, with no new dependency. + A weak signal is the correct strength for the one the survey says must be outrankable — a sharper one would make the opening failure more confident, not less. − It will miss a genuinely related requirement phrased in different words; that is what the opt-in refinement exists for. − Common-word noise needs handling, or every candidate scores alike.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-003" grounding="verified">
+  <h4>D-003 · Weights are uncalibrated defaults in core, overridable in config</h4>
+  <dl>
+    <dt>Status</dt><dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt><dd>NFR-001 requires weights to be configurable and declared uncalibrated, with at most 0 presented as measured. <code>change-risk/score.ts</code> already does exactly this and says so in its own comment.</dd>
+    <dt>Decision</dt><dd>Named constants in core carrying an explicit "v1 default, not measured" statement, overridable through <code>spectastic.json</code> — cloning the change-risk shape rather than inventing a second one.</dd>
+    <dt>Consequences</dt><dd>+ One precedent, already proven in this estate. + A tuned-looking number cannot be mistaken for evidence in itself. − Configurable weights mean two projects can reach different verdicts on the same estate; acceptable, since the weights are admittedly a guess.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-004" grounding="verified">
+  <h4>D-004 · Extend the units module's arrangement; scoring stays pure</h4>
+  <dl>
+    <dt>Status</dt><dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt><dd><code>REQ-LIFECYCLE-008</code> asks the architecture question be answered deliberately. 079 established ports-and-adapters for this module and 081 extended it; this slice consumes both.</dd>
+    <dt>Decision</dt><dd>No new pattern. Evidence gathering sits behind the existing port; ranking and the verdict are pure functions over gathered evidence, testable with plain objects.</dd>
+    <dt>Consequences</dt><dd>+ The ranking rules — including FR-003's outranking property — are unit-testable without fixture directories. + One arrangement across the whole units family. − Another decision whose content is "keep going", written because the requirement asks the question be answered rather than skipped.</dd>
+  </dl>
+</spec-decision>
+</section>
+
+
+<section id="project-structure">
+<h2>8 · Project structure</h2>
+
+<pre><code>packages/core/src/units/
+  placement.ts               # Candidate, Evidence, Verdict; the pure ranking
+  placement-weights.ts       # uncalibrated defaults + config override
+  adapters/
+    placement-evidence.ts    # gather the four classes from 079/081 and artifacts
+
+packages/core/test/
+  units.placement.test.ts    # the producer/consumer case as the headline fixture
+</code></pre>
+</section>
+
+
+<section id="risks">
+<h2>9 · Risks &amp; mitigations</h2>
+
+<div style="overflow-x:auto;">
+<table>
+  <thead><tr><th>Risk</th><th>Likelihood</th><th>Impact</th><th>Mitigation</th></tr></thead>
+  <tbody>
+    <tr>
+      <td>Resemblance outranks structure and reproduces the exact failure this slice exists to prevent</td>
+      <td>Medium</td><td>High</td>
+      <td>The headline test: a requirement in consumer vocabulary with a structural edge to the producer must rank the producer first. FR-009 additionally caps domain-only evidence below the unhedged band.</td>
+    </tr>
+    <tr>
+      <td>Lexical overlap scores every candidate alike, so ranking is noise</td>
+      <td>Medium</td><td>Medium</td>
+      <td>Normalise for length and drop very common tokens. Asserted by a test where two candidates differ only in topic.</td>
+    </tr>
+    <tr>
+      <td>Abstention is so frequent the engine stops being consulted</td>
+      <td>Unknown</td><td>Medium</td>
+      <td>Named in the spec's own consequences and genuinely unmeasurable here — it needs real use. Recorded rather than mitigated, and it is why calibration is deferred rather than guessed at.</td>
+    </tr>
+    <tr>
+      <td>A refined verdict is mistaken for a reproducible one</td>
+      <td>Low</td><td>Medium</td>
+      <td>The mode is on the verdict (<a href="#D-001">D-001</a>) and asserted by a test, so the distinction cannot be lost in the output.</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+</section>
+
+
+<section id="complexity">
+<h2>10 · Complexity tracking</h2>
+<p>Nothing logged — no principle exception. The two-path cost of <a href="#D-001">D-001</a> is recorded as a consequence on that decision, and §6 records that the choice was a tiebreak on judgement rather than a margin on the totals.</p>
+</section>
+
+
+<section id="questions">
+<h2>11 · Open questions</h2>
+<spec-questions>
+<p>None outstanding. Determinism, the resemblance measure and the weights' home were anchored in the decision phase. The reading of NFR-003 that makes an opt-in refinement legitimate is stated in <a href="#D-001">D-001</a> rather than assumed, because it is the kind of interpretation a reviewer should be able to disagree with explicitly.</p>
+</spec-questions>
+</section>
+
+
+<section id="changelog">
+<h2>12 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-08-02">02 Aug 2026</time><span>Initial design. Four decisions; six facts verified, one assumed and named. The §6 matrix ties at the top and the tiebreak is stated as a judgement rather than dressed as a margin.</span></li>
+  <li><time datetime="2026-08-02">02 Aug 2026</time><span>Status flipped Draft → Accepted on 02 Aug 2026 — zero remaining unchecked tasks; tests verified passing per author confirmation. Sibling bundle (REQ-LIFECYCLE-005).</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  082-placement-verdict · Design · authored 02 Aug 2026
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>
