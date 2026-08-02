@@ -1,0 +1,232 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
+<title>Boundary map detection · Specification</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Specification · 081-boundary-map-detection</p>
+  <h1>Boundary map detection</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    Where a project already names its own rings, read them. Do not invent a second vocabulary beside the one it maintains.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>      <span><spec-status value="draft">Draft</spec-status></span>
+    <b>Spec ID</b>     <span>081-boundary-map-detection</span>
+    <b>Owner</b>       <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Reviewers</b>   <span>—</span>
+    <b>Created</b>     <span><time datetime="2026-08-02">02 Aug 2026</time></span>
+    <b>Principles</b><span><a href="../../principles.html">v1.9.0</a></span>
+    <b>Smallest demoable</b><span>A project with tag-based module rules is read, and its named units and permitted directions are printed back.</span>
+    <b>Read time</b>   <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-budget words="2000" reqs="20" minutes="14"></spec-budget>
+
+  <spec-tldr>
+    <p><a href="../079-unit-dependency-edge/spec.html">079</a> gives units and the edges between them. It does not say which units are <em>allowed</em> to depend on which — the arrangement a change has to respect when the question is "domain, service, or neither". Projects that care about this already declare it, in a boundary configuration they maintain for their own linter. This reads that declaration rather than asking anyone to restate it. Only <strong>positive</strong> forms are in scope: maps that <em>name</em> their units and the permitted directions between them. Forbidden-edge configurations are recorded as a known gap, because a rule that only says what may not happen is structurally silent about a destination that does not exist yet — which is precisely the case a placement question is hardest on. Nothing gates on the result: <a href="../../principles.html#P-14">P-14</a> already records that this judgment is review-caught, not machine-enforceable.</p>
+  </spec-tldr>
+
+  <dl class="invest">
+    <dt><span class="letter">I</span> Independent</dt> <dd>Depends on <a href="../079-unit-dependency-edge/spec.html">079</a> for the unit vocabulary; reuses the existing detection machinery. Nothing else must move first.</dd>
+    <dt><span class="letter">N</span> Negotiable</dt>  <dd>Contracts that a declared positive map is read and reported, and that nothing gates on it. Which specific configuration formats are recognised is the design's.</dd>
+    <dt><span class="letter">V</span> Valuable</dt>    <dd>Unlocks <a href="#SC-001">SC-001</a> — the intra-repo half of the placement question gets a source of truth that already exists and is already maintained.</dd>
+    <dt><span class="letter">E</span> Estimable</dt>   <dd>No open questions. The positive-only scope and the informational-only posture were both anchored in the interview.</dd>
+    <dt><span class="letter">S</span> Small</dt>       <dd>Detection and reporting only. No enforcement, no authoring, no inference of a map where none is declared.</dd>
+    <dt><span class="letter">T</span> Testable</dt>    <dd>Fixture-checkable per format: a project with a tag-based map yields its units and directions; one with only forbidden edges yields the recorded gap; one with neither yields nothing.</dd>
+  </dl>
+
+  <spec-audience-map>
+    <dl>
+      <dt>Exec / PM</dt>   <dd>§<a href="#context">Context</a>, §<a href="#scenarios">User scenarios</a>, §<a href="#success">Success criteria</a>.</dd>
+      <dt>Reviewer</dt>    <dd>§<a href="#requirements">Requirements</a>, §<a href="#assumptions">Assumptions</a>.</dd>
+      <dt>Implementer</dt> <dd>§<a href="#requirements">Requirements</a>, §<a href="#data">Data model</a>, §<a href="#conformance">Conformance index</a>.</dd>
+    </dl>
+  </spec-audience-map>
+</header>
+
+
+<section id="context">
+<h2>1 · Context</h2>
+<p>The estate's detection convention is to read the declaration an ecosystem already makes rather than to ask for a new one: the coverage category detects a configured threshold, not a coverage library; contract-first detects a checked-in contract, not a web framework. The same move is available for architectural boundaries, because a project that enforces its rings maintains a configuration that names them — and it maintains it for its own reasons, so it stays current.</p>
+
+<p>Two findings shape the scope. The tools split on <em>form</em>: some name their units and the permitted directions between them, while others only forbid specific edges over path patterns. Only the first answers "where does this go" — a forbidden-edge list can rule a destination out but cannot enumerate the destinations, and it says nothing at all about a directory that does not exist yet. This repository is itself an example of the weaker form, and of something more useful: its single rule encodes a <em>pairwise package edge</em>, which is 079's relation, not a ring map.</p>
+</section>
+
+
+<section id="scenarios">
+<h2>2 · User scenarios &amp; testing</h2>
+
+<p>Each story <strong>MUST</strong> be independently testable: if you implemented only US1, you would still have a viable MVP.</p>
+
+<h3 id="US1">US1 · Read the rings a project already declares <spec-pill>P1</spec-pill></h3>
+<p>As a <strong>tool</strong>, I want to <strong>read a project's declared boundary map</strong> so that <strong>I know the named units and which may depend on which without asking anyone to restate it</strong>.</p>
+<p><em>Acceptance:</em> given a project with a tag-based module-boundary configuration, the detected map lists its named units and the permitted directions. A project with no such configuration yields no map, not an empty one.</p>
+
+<h3 id="US2">US2 · Be told when the declaration cannot answer the question <spec-pill>P2</spec-pill></h3>
+<p>As a <strong>reviewer</strong>, I want <strong>a project whose only boundary configuration is a forbidden-edge list to be reported as unmapped</strong> so that <strong>I am not shown a partial order dressed up as a ring map</strong>.</p>
+<p><em>Acceptance:</em> a project carrying only forbidden-edge rules reports no map and states why. It is not an error, and it is not silence.</p>
+
+<h3>Edge cases</h3>
+<ul>
+  <li>A project declaring both a positive map and forbidden edges — the positive map is the map; the forbidden edges are not merged into it.</li>
+  <li>A configuration that names units but declares no constraints between them: a legal map with no directions, distinct from no map.</li>
+  <li>A map whose named units do not correspond to any unit 079 resolves. Reported, not reconciled — the two vocabularies are allowed to differ.</li>
+  <li>A malformed or unparseable boundary configuration: no map, never a crash.</li>
+</ul>
+</section>
+
+
+<section id="requirements">
+<h2>3 · Requirements</h2>
+
+<p>Conformance keywords (<spec-rule>MUST</spec-rule>, <spec-rule level="should">SHOULD</spec-rule>,
+<spec-rule level="may">MAY</spec-rule>) follow RFC 2119.</p>
+
+<h3>Functional</h3>
+
+<spec-requirement id="FR-001" priority="must">
+<p>Detection <spec-rule>MUST</spec-rule> read a project's declared <em>positive</em> boundary map — one that names its units and the permitted directions between them — where the project maintains one.</p>
+<details><summary>Rationale</summary><p>The project already maintains this for its own linter, so it is current by construction. Asking for a restatement would create a second vocabulary to drift against the first.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-002" priority="must">
+<p>Detection <spec-rule>MUST NOT</spec-rule> derive a boundary map from a configuration that only forbids edges, and <spec-rule>MUST</spec-rule> report such a project as having no map together with the reason.</p>
+<details><summary>Rationale</summary><p>A forbidden-edge list yields at best a partial order over paths that already exist, and is silent by construction about a destination that does not — the exact case a placement question is hardest on. Presenting that as a map would let it appear to answer a question it structurally cannot.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-003" priority="must">
+<p>A detected map <spec-rule>MUST</spec-rule> be informational: no enforcement decision <spec-rule>MUST</spec-rule> be derived from its presence, absence, or content.</p>
+<details><summary>Rationale</summary><p><a href="../../principles.html#P-14">P-14</a> records that this judgment is review-caught rather than machine-enforceable, and <a href="../075-spec-data-model-layering/spec.html">075</a> refused a neighbouring layer check for the same reason. Gating here would contradict both and newly gap projects for an architecture the tool cannot actually evaluate.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-004" priority="must">
+<p>Where a project declares both a positive map and forbidden edges, the positive map <spec-rule>MUST</spec-rule> be reported as the map, and the forbidden edges <spec-rule>MUST NOT</spec-rule> be merged into it.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-005" priority="should">
+<p>A map naming units that do not correspond to any unit resolved by <a href="../079-unit-dependency-edge/spec.html">079</a> <spec-rule level="should">SHOULD</spec-rule> be reported as-is rather than reconciled or discarded.</p>
+<details><summary>Rationale</summary><p>A boundary vocabulary is the project's own and need not match the unit vocabulary; forcing a reconciliation would either drop real information or invent a correspondence nobody declared.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-006" priority="must">
+<p>A malformed or unreadable boundary configuration <spec-rule>MUST</spec-rule> yield no map, and <spec-rule>MUST NOT</spec-rule> raise.</p>
+</spec-requirement>
+
+<h3>Non-functional</h3>
+
+<spec-requirement id="NFR-001" priority="must">
+<p>Detection <spec-rule>MUST</spec-rule> make at most 0 network calls, write at most 0 files, and complete within the existing detection budget of under 500 ms.</p>
+<details><summary>Rationale</summary><p>This runs alongside the enforcement detector on ordinary invocations, so it must not widen the cost of a routine run.</p></details>
+</spec-requirement>
+
+<spec-requirement id="NFR-002" priority="must">
+<p>Detection <spec-rule>MUST</spec-rule> read a bounded set of conventional configuration locations rather than searching the tree: at most 0 unbounded recursive scans.</p>
+<details><summary>Rationale</summary><p>The same bound the contract detector holds. Unbounded recursion is how a detector's cost becomes a function of repository size rather than of convention.</p></details>
+</spec-requirement>
+
+<h3>Out of scope (deferred to other slices)</h3>
+<spec-out-of-scope>
+  <ul>
+    <li defer-to="TBD-architecture-fitness-function">Enforcing a declared boundary map. Already planted by the <a href="../../docs/agent-architecture-considerations.html">agent-architecture survey</a> as the P-8 guarantee half; this slice is its detection-side companion, not a replacement.</li>
+    <li defer-to="TBD-negative-boundary-derivation">Deriving a usable partial order from forbidden-edge configurations, including this repository's own — recorded as a gap by FR-002 rather than half-supported.</li>
+    <li defer-to="TBD-boundary-map-authoring">Authoring a boundary map for a project that has none. Detection reads what exists; asking a project to declare rings it has not adopted is a different question.</li>
+    <li defer-to="082-placement-verdict">Using a detected map as evidence in a placement decision.</li>
+  </ul>
+</spec-out-of-scope>
+</section>
+
+
+<section id="data">
+<h2>4 · Data model</h2>
+
+<p>One entity, and the deliberate distinction between two ways of having none.</p>
+
+<h3>Entities</h3>
+<dl>
+  <dt>Boundary map</dt><dd>A project's declared arrangement of its own units: a set of named units, and the permitted dependency directions between them. A map may name units and declare no directions between them; that is a map with no constraints, and it is not the same as having no map.</dd>
+</dl>
+
+<spec-note>
+<p>Three states, and conflating any two of them loses the information this slice exists to carry: <strong>a map</strong> (the project names its rings), <strong>no map</strong> (the project declares nothing about them), and <strong>unmapped-by-form</strong> (the project declares boundaries, but only as forbidden edges, which cannot enumerate destinations). The third is the one a reader most needs distinguished, because it is the case where a project believes it has declared its architecture and the tool cannot use what it declared.</p>
+</spec-note>
+</section>
+
+
+<section id="success">
+<h2>5 · Success criteria</h2>
+
+<p>Technology-agnostic, measurable outcomes.</p>
+
+<spec-requirement id="SC-001" priority="must">
+<p>A project maintaining a positive boundary configuration has its named units and permitted directions read with at most 0 additional authored files.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-002" priority="must">
+<p>A project whose only boundary configuration forbids edges is reported as unmapped with a stated reason, and contributes at most 0 derived directions.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-003" priority="must">
+<p>Across the full fixture set, a detected boundary map changes at most 0 enforcement verdicts.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-004" priority="should">
+<p>A malformed boundary configuration produces at most 0 raised errors and at most 0 maps.</p>
+</spec-requirement>
+</section>
+
+
+<section id="assumptions">
+<h2>6 · Assumptions</h2>
+
+<spec-assumption>
+<p>A project that cares about its boundaries enough for a tool to route by them has already configured a linter to enforce them. Projects that maintain the arrangement only in prose are out of reach here, and that is accepted.</p>
+</spec-assumption>
+
+<spec-assumption>
+<p>Boundary configurations live at conventional, nameable locations per ecosystem — the same assumption the contract detector already makes, and the reason NFR-002's bound is affordable.</p>
+</spec-assumption>
+</section>
+
+
+<section id="questions">
+<h2>7 · Open questions</h2>
+<spec-questions>
+<p>None outstanding. The two decisions this slice turned on — positive forms only in v1, and informational rather than enforcing — were both anchored in the interview, each against a recorded precedent.</p>
+</spec-questions>
+</section>
+
+
+<section id="conformance">
+<h2>8 · Conformance index</h2>
+<p>Auto-built from every <code>&lt;spec-requirement&gt;</code> in this document.</p>
+<spec-conformance></spec-conformance>
+</section>
+
+
+<section id="changelog">
+<h2>9 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-08-02">02 Aug 2026</time><span>Initial draft. Resolves <code>TBD-boundary-map-detection</code> from the <a href="../../docs/orchestrator-placement-considerations.html">placement survey</a>; slice 2. Scoped to positive forms and to informational-only at interview.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  081-boundary-map-detection · Boundary map detection · authored 02 Aug 2026
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>

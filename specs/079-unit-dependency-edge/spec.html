@@ -1,0 +1,267 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
+<title>Unit dependency edge · Specification</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Specification · 079-unit-dependency-edge</p>
+  <h1>Unit dependency edge</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    The estate can name every artifact and nothing that connects them. This is the edge — one relation, addressable at both ends, honest about what it has actually checked.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>      <span><spec-status value="draft">Draft</spec-status></span>
+    <b>Spec ID</b>     <span>079-unit-dependency-edge</span>
+    <b>Owner</b>       <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Reviewers</b>   <span>—</span>
+    <b>Created</b>     <span><time datetime="2026-08-02">02 Aug 2026</time></span>
+    <b>Principles</b><span><a href="../../principles.html">v1.9.0</a></span>
+    <b>Smallest demoable</b><span>A project declares edges; a read-only command prints them resolved, each showing direction, whether it was verified, and whether the far end agrees.</span>
+    <b>Read time</b>   <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-budget words="2000" reqs="20" minutes="14"></spec-budget>
+
+  <spec-tldr>
+    <p>Specs <a href="../067-spec-project-identity/spec.html">067</a> and <a href="../078-federated-resource-uri/spec.html">078</a> gave every artifact a federation-unique name. Nothing gives any two of them a relationship, so no tool can answer <em>which side of a dependency does this change belong on</em> — the question behind both failures the <a href="../../docs/orchestrator-placement-considerations.html">placement survey</a> opens with. This adds the missing relation: a <strong>depends-on edge between units</strong> — a module inside a repository, or a whole project, both on one coordinate grammar. The consumer declares its own dependencies, since only the consumer knows it consumes; where the far end independently agrees, the edge is marked <em>reciprocated</em>. An edge whose far end cannot be read is still an edge, marked <em>unverified</em>: an estate where most providers are not checked out must still produce a graph. And because declaration alone yields an empty one in practice, edges are also <strong>inferred</strong> from manifests and workspace configuration — always, as a fallback that cannot be switched off.</p>
+  </spec-tldr>
+
+  <dl class="invest">
+    <dt><span class="letter">I</span> Independent</dt> <dd>Builds on <a href="../078-federated-resource-uri/spec.html">078</a>'s coordinate grammar and <a href="../076-contract-export-handover/spec.html">076</a>'s <code>consumes</code> key. Both are named; nothing else must move first.</dd>
+    <dt><span class="letter">N</span> Negotiable</dt>  <dd>Contracts the relation, its two verification marks, and that inference always runs. The signal set inference reads, and the shape of the printed output, are the design's.</dd>
+    <dt><span class="letter">V</span> Valuable</dt>    <dd>Unlocks <a href="#SC-001">SC-001</a> — for the first time a project can state, and a reader can see, what it is built on.</dd>
+    <dt><span class="letter">E</span> Estimable</dt>   <dd>No open questions; every decision anchored in the interview. The reciprocity and unverified rules are the two that needed settling and both are.</dd>
+    <dt><span class="letter">S</span> Small</dt>       <dd>One relation, one new coordinate kind, one read-only command. No graph composition, no ranking, no verdict.</dd>
+    <dt><span class="letter">T</span> Testable</dt>    <dd>Every requirement observable from a fixture project: declared edges resolve, marks are correct, inference fires where nothing is declared.</dd>
+  </dl>
+
+  <spec-audience-map>
+    <dl>
+      <dt>Exec / PM</dt>   <dd>§<a href="#context">Context</a>, §<a href="#scenarios">User scenarios</a>, §<a href="#success">Success criteria</a>.</dd>
+      <dt>Reviewer</dt>    <dd>§<a href="#requirements">Requirements</a>, §<a href="#assumptions">Assumptions</a>.</dd>
+      <dt>Implementer</dt> <dd>§<a href="#requirements">Requirements</a>, §<a href="#data">Data model</a>, §<a href="#conformance">Conformance index</a>.</dd>
+    </dl>
+  </spec-audience-map>
+</header>
+
+
+<section id="context">
+<h2>1 · Context</h2>
+<p>Every relation the estate holds today is either <em>containment</em> (a marketplace holds a plugin holds a document) or <em>precedence</em> (spec <a href="../028-dependency-ordering/spec.html">028</a>'s DAG: build this before that). Neither answers the question a change needs answered. A fix reported against a consuming application may belong in the library beneath it; a change inside one service may belong in its domain, one of its services, or none of them. Both are the same question — <em>which side of a dependency does this belong on</em> — and the estate cannot express the dependency, let alone the side.</p>
+
+<p>One relation exists in embryo. Spec <a href="../076-contract-export-handover/spec.html">076</a> added a <code>consumes</code> list of coordinates so a contract-change notification can be routed rather than broadcast. It is contract-scoped, has no authoring surface, and this project's own configuration carries no entry — but it is the right shape, and generalising it is cheaper than inventing a second list beside it.</p>
+
+<p>Two users: a <strong>maintainer</strong> stating what their project is built on, and a <strong>tool</strong> reading those relations uniformly whether or not they cross a repository boundary.</p>
+</section>
+
+
+<section id="scenarios">
+<h2>2 · User scenarios &amp; testing</h2>
+
+<p>Each story <strong>MUST</strong> be independently testable: if you implemented only US1, you would still have a viable MVP.</p>
+
+<h3 id="US1">US1 · Declare what this project is built on <spec-pill>P1</spec-pill></h3>
+<p>As a <strong>maintainer</strong>, I want to <strong>declare the units my project depends on</strong> so that <strong>the relationship is recorded where a reviewer and a tool can both see it</strong>.</p>
+<p><em>Acceptance:</em> given a project declaring one intra-repo and one cross-repo dependency, a read-only command prints both, each with its resolved coordinate and its verification mark. A malformed entry is reported and skipped rather than failing the read.</p>
+
+<h3 id="US2">US2 · Tell a checked relationship from a claimed one <spec-pill>P1</spec-pill></h3>
+<p>As a <strong>reviewer</strong>, I want to <strong>see which declarations were actually verified against the far end</strong> so that <strong>I can weigh a confirmed relationship differently from an assertion</strong>.</p>
+<p><em>Acceptance:</em> an edge whose target resolves and independently declares the counterpart prints as reciprocated; one whose target resolves but does not is plain; one whose target cannot be read at all prints as unverified. All three are edges.</p>
+
+<h3 id="US3">US3 · Get a graph from a project that declared nothing <spec-pill>P2</spec-pill></h3>
+<p>As a <strong>tool</strong>, I want <strong>edges inferred from what the ecosystem already declares</strong> so that <strong>a project that has authored no edges still produces a usable relation set</strong>.</p>
+<p><em>Acceptance:</em> a workspace whose manifests express an internal dependency yields that edge with no authored configuration. Where a declaration and an inference disagree, the declaration is the one reported.</p>
+
+<h3>Edge cases</h3>
+<ul>
+  <li>A declared edge naming a unit that does not exist anywhere — reported as dangling rather than silently dropped, mirroring 028's handling.</li>
+  <li>A self-edge, or two units declaring each other. Cycles are not this spec's concern; it does not compose a graph.</li>
+  <li>A monorepo where an inferred intra-repo edge duplicates a declared one — the same edge, not two.</li>
+  <li>A declared coordinate that is well-formed but names a project this checkout has never heard of. Legal: parsing never dereferences.</li>
+</ul>
+</section>
+
+
+<section id="requirements">
+<h2>3 · Requirements</h2>
+
+<p>Conformance keywords (<spec-rule>MUST</spec-rule>, <spec-rule level="should">SHOULD</spec-rule>,
+<spec-rule level="may">MAY</spec-rule>) follow RFC 2119.</p>
+
+<h3>Functional</h3>
+
+<spec-requirement id="FR-001" priority="must">
+<p>A <em>unit</em> <spec-rule>MUST</spec-rule> be addressable by the existing coordinate grammar, extended with a <code>unit</code> resource kind, so a module inside a repository and a whole project are named the same way and an edge is always coordinate-to-coordinate.</p>
+<details><summary>Rationale</summary><p>A path for modules and a coordinate for projects leaves a module unreferenceable from outside its repository, so promoting one to its own repository breaks every edge naming it. One scheme costs a grammar addition once and survives that migration.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-002" priority="must">
+<p>The relation <spec-rule>MUST</spec-rule> be a single directed <em>depends-on</em> edge in this slice. Additional relation kinds <spec-rule level="may">MAY</spec-rule> be added later.</p>
+<details><summary>Rationale</summary><p>Both motivating failures reduce to "which side of a dependency does this belong on", which one relation answers. A vocabulary is additive to widen and expensive to correct, so shipping one well-understood kind beats guessing at three.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-003" priority="must">
+<p>The <em>depending</em> unit <spec-rule>MUST</spec-rule> be the one that declares an edge. A unit <spec-rule>MUST NOT</spec-rule> be able to place itself on the far end of another unit's edge by its own declaration alone.</p>
+<details><summary>Rationale</summary><p>Only the consumer knows it consumes, and it matches the shape <code>consumes</code> already has. The prohibition is 028's insight restated: one side asserting a relationship is a claim, and a project must not be conscriptable into a relationship it never agreed to.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-004" priority="must">
+<p>Where the far end independently declares the counterpart relationship, the edge <spec-rule>MUST</spec-rule> be marked <em>reciprocated</em>. A one-sided edge <spec-rule>MUST</spec-rule> remain a real edge.</p>
+<details><summary>Rationale</summary><p>028 admits an edge only on reciprocity, which works because both specs sit in one corpus. Across repositories that would yield almost no edges, since it needs every counterpart present and cooperating. Marking rather than gating keeps the stronger signal available to anything that wants to weight it, without making the common case empty.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-005" priority="must">
+<p>An edge whose far end cannot be read — absent, not checked out, inaccessible — <spec-rule>MUST</spec-rule> be reported as an edge marked <em>unverified</em>, and <spec-rule>MUST NOT</spec-rule> be indistinguishable from one whose far end was read.</p>
+<details><summary>Rationale</summary><p>Most consumers do not have their providers checked out, so refusing unverifiable edges makes the model useless in the ordinary case. Equating them instead would conflate "I checked" with "someone claimed" — the distinction the estate's grounding vocabulary exists to preserve.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-006" priority="must">
+<p>Edges <spec-rule>MUST</spec-rule> also be inferred from the ecosystem's own dependency declarations — manifests and workspace configuration — and inference <spec-rule>MUST NOT</spec-rule> be disableable.</p>
+<details><summary>Rationale</summary><p>A declaration-only model produces an empty graph: this repository's own record is ten contract declarations that all decline to declare an interface, and no <code>consumes</code> entry at all. Inference is what makes the relation useful on day one; making it optional would recreate the emptiness it exists to prevent.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-007" priority="must">
+<p>Where a declared edge and an inferred edge describe the same relation, the declared one <spec-rule>MUST</spec-rule> be the one reported; where they disagree, the declaration <spec-rule>MUST</spec-rule> take precedence.</p>
+<details><summary>Rationale</summary><p>Spec <a href="../073-interface-detection-widening/spec.html">073</a> settled this precedence at must-tier for interface detection on reasoning that transfers exactly: inference sees that a relation exists but not what it means, and only a declaration carries intent. Reversing it would make a stated relationship unable to correct a wrong guess.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-008" priority="must">
+<p>A declared edge naming a unit found nowhere <spec-rule>MUST</spec-rule> be reported as dangling rather than silently discarded.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-009" priority="should">
+<p>The existing <code>consumes</code> key <spec-rule level="should">SHOULD</spec-rule> carry the generalised edge, with a contract coordinate remaining a legal target, rather than a second overlapping list being introduced.</p>
+<details><summary>Rationale</summary><p>Two lists a project must keep in sync is a maintenance trap and leaves an author guessing which to use. Widening in place keeps every existing entry valid; the amendment to 076 records it.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-010" priority="should">
+<p>A read-only command <spec-rule level="should">SHOULD</spec-rule> print the resolved edge set, each edge showing its direction, its verification mark, and whether it is reciprocated.</p>
+</spec-requirement>
+
+<h3>Non-functional</h3>
+
+<spec-requirement id="NFR-001" priority="must">
+<p>Resolving a project's edges <spec-rule>MUST</spec-rule> make at most 0 network calls, and <spec-rule>MUST</spec-rule> complete in under 500 ms on a project of at most 200 units.</p>
+<details><summary>Rationale</summary><p>Matches the detection budget the enforcement path already holds itself to, so edge resolution can sit alongside it without widening the cost of a routine run. Reading a far end means reading a local checkout, never a fetch.</p></details>
+</spec-requirement>
+
+<spec-requirement id="NFR-002" priority="must">
+<p>Reading edges <spec-rule>MUST</spec-rule> be free of side effects and <spec-rule>MUST</spec-rule> write at most 0 files.</p>
+</spec-requirement>
+
+<spec-requirement id="NFR-003" priority="should">
+<p>A malformed or unreadable declaration <spec-rule level="should">SHOULD</spec-rule> degrade to a reported finding rather than an exception: at most 0 read failures may abort resolution of the remaining edges.</p>
+</spec-requirement>
+
+<h3>Out of scope (deferred to other slices)</h3>
+<spec-out-of-scope>
+  <ul>
+    <li defer-to="080-unit-edge-authoring">The authoring surface — a command that writes an edge, the design decision-phase question that prompts for one, and a validate rule that a declared coordinate is well-formed.</li>
+    <li defer-to="081-boundary-map-detection">Reading a project's declared boundary map (tag rules, layer lists) as a source of intra-repo structure.</li>
+    <li defer-to="082-placement-verdict">Ranking, evidence weighting, confidence and any verdict. This spec produces relations, never conclusions.</li>
+    <li defer-to="TBD-unit-graph-composition">Composing edges into a traversable graph with cycle detection and transitive reach — deferred until a consumer needs it, since 028 shows what it costs to build and this slice has no traversal requirement.</li>
+    <li defer-to="TBD-unit-edge-kinds">Relation kinds beyond <em>depends-on</em>, including the context-mapping vocabulary (Customer/Supplier, Conformist, anti-corruption layer) the survey found.</li>
+  </ul>
+</spec-out-of-scope>
+</section>
+
+
+<section id="data">
+<h2>4 · Data model</h2>
+
+<p>Two entities, and the marks that qualify one of them.</p>
+
+<h3>Entities</h3>
+<dl>
+  <dt>Unit</dt><dd>A thing that can depend on another thing: a module or package inside a repository, or a whole project. Every unit has exactly one coordinate, and that coordinate is unique across the estate. A unit's identity does not change when it moves between repositories — only which coordinate segment carries it does.</dd>
+  <dt>Edge</dt><dd>A directed <em>depends-on</em> relation from a depending unit to a depended-on unit. An edge is declared by its depending end, or inferred. The pair (depending, depended-on) identifies the edge: the same relation asserted twice, or asserted once and inferred once, is one edge and not two.</dd>
+</dl>
+
+<spec-note>
+<p>An edge carries two independent marks and they answer different questions. <strong>Verified</strong> says the far end was read at all. <strong>Reciprocated</strong> says the far end, having been read, agrees. So an unverified edge can never be reciprocated, while a verified one may or may not be — and the three resulting states are exactly what a reader needs to weigh a relationship. Neither mark is authored; both are established at read time and must never be settable by a declaration.</p>
+</spec-note>
+</section>
+
+
+<section id="success">
+<h2>5 · Success criteria</h2>
+
+<p>Technology-agnostic, measurable outcomes.</p>
+
+<spec-requirement id="SC-001" priority="must">
+<p>A project declaring both an intra-repo and a cross-repo dependency resolves both, and a reader can tell from the output which were verified and which were reciprocated — for at most 0 edges is the verification state unstated.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-002" priority="must">
+<p>A workspace that has authored no edges at all still resolves the internal dependencies its own manifests express: at most 0 authored entries are required to produce a non-empty relation set.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-003" priority="must">
+<p>A unit that declares nothing is named on at most 0 edges as a depending end by any other unit's declaration, demonstrating that no project can be conscripted into a relationship.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-004" priority="should">
+<p>Across a fixture estate containing a declaration that contradicts an inference, the declared relation is the one reported in at most 0 fewer than all such cases.</p>
+</spec-requirement>
+</section>
+
+
+<section id="assumptions">
+<h2>6 · Assumptions</h2>
+
+<spec-assumption>
+<p>A far end is "readable" when its checkout is present on the local filesystem. No fetch, discovery or registry lookup is assumed, and none is permitted by NFR-001.</p>
+</spec-assumption>
+
+<spec-assumption>
+<p>The ecosystems whose manifests inference reads are the ones detection already covers. Widening that set is a detection concern, not this spec's.</p>
+</spec-assumption>
+
+<spec-assumption>
+<p>A module's coordinate segment can be derived from its position in the workspace without an authored name. Where a project's layout makes that ambiguous, the author can declare the unit explicitly — the same escape hatch declaration provides everywhere else.</p>
+</spec-assumption>
+</section>
+
+
+<section id="questions">
+<h2>7 · Open questions</h2>
+<spec-questions>
+<p>None outstanding. The four decisions that shaped this slice — unit addressing, who may declare, what an unreadable far end is worth, and whether to widen <code>consumes</code> or add a key beside it — were all anchored in the interview, along with the scope boundary that put inference here rather than in the authoring slice.</p>
+</spec-questions>
+</section>
+
+
+<section id="conformance">
+<h2>8 · Conformance index</h2>
+<p>Auto-built from every <code>&lt;spec-requirement&gt;</code> in this document.</p>
+<spec-conformance></spec-conformance>
+</section>
+
+
+<section id="changelog">
+<h2>9 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-08-02">02 Aug 2026</time><span>Initial draft. Resolves <code>TBD-placement-unit-edge</code> from the <a href="../../docs/orchestrator-placement-considerations.html">placement survey</a> (D-001, D-002); slice 1's model half. Scope widened at interview to include inference, so the fallback ships with the thing it backs.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  079-unit-dependency-edge · Unit dependency edge · authored 02 Aug 2026
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>

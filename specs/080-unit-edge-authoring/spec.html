@@ -1,0 +1,243 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
+<title>Unit edge authoring · Specification</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Specification · 080-unit-edge-authoring</p>
+  <h1>Unit edge authoring</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    A relation nothing writes is a relation that will not exist. This is the surface that writes one.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>      <span><spec-status value="draft">Draft</spec-status></span>
+    <b>Spec ID</b>     <span>080-unit-edge-authoring</span>
+    <b>Owner</b>       <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Reviewers</b>   <span>—</span>
+    <b>Created</b>     <span><time datetime="2026-08-02">02 Aug 2026</time></span>
+    <b>Principles</b><span><a href="../../principles.html">v1.9.0</a></span>
+    <b>Smallest demoable</b><span>A maintainer runs one command and the edge is in <code>spectastic.json</code>, correctly shaped, with the rest of the file untouched.</span>
+    <b>Read time</b>   <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-budget words="2000" reqs="20" minutes="14"></spec-budget>
+
+  <spec-tldr>
+    <p><a href="../079-unit-dependency-edge/spec.html">079</a> defines the edge and reads it. Nothing writes one. That is exactly how <a href="../076-contract-export-handover/spec.html">076</a>'s <code>consumes</code> key arrived at zero entries across the whole estate including this repository — a config key with no authoring surface is a key nobody fills in. This adds two: a <strong>command</strong> that writes a declared edge idempotently while leaving the rest of the configuration alone, and a <strong>decision-phase question</strong> in the design interview that asks about dependencies where a project plausibly has them. A <strong>validate rule</strong> completes it, so a malformed or self-referential declaration is caught at the boundary rather than discovered by whatever reads it next.</p>
+  </spec-tldr>
+
+  <dl class="invest">
+    <dt><span class="letter">I</span> Independent</dt> <dd>Depends only on <a href="../079-unit-dependency-edge/spec.html">079</a> for the edge shape. Nothing else must move first.</dd>
+    <dt><span class="letter">N</span> Negotiable</dt>  <dd>Contracts that an edge can be written, prompted for, and checked. The verb's name, flag shape, and question wording are the design's.</dd>
+    <dt><span class="letter">V</span> Valuable</dt>    <dd>Unlocks <a href="#SC-001">SC-001</a> — declared edges start existing, which is the precondition for every consumer of them.</dd>
+    <dt><span class="letter">E</span> Estimable</dt>   <dd>No open questions. The write-versus-suggest decision and the prompt's trigger condition were both anchored in the interview.</dd>
+    <dt><span class="letter">S</span> Small</dt>       <dd>One command, one interview question, one validate rule. No editing or removal surface, no bulk import.</dd>
+    <dt><span class="letter">T</span> Testable</dt>    <dd>Every requirement observable against a fixture project: the write lands, re-running changes nothing, unrelated config survives, bad input is refused.</dd>
+  </dl>
+
+  <spec-audience-map>
+    <dl>
+      <dt>Exec / PM</dt>   <dd>§<a href="#context">Context</a>, §<a href="#scenarios">User scenarios</a>, §<a href="#success">Success criteria</a>.</dd>
+      <dt>Reviewer</dt>    <dd>§<a href="#requirements">Requirements</a>, §<a href="#assumptions">Assumptions</a>.</dd>
+      <dt>Implementer</dt> <dd>§<a href="#requirements">Requirements</a>, §<a href="#data">Data model</a>, §<a href="#conformance">Conformance index</a>.</dd>
+    </dl>
+  </spec-audience-map>
+</header>
+
+
+<section id="context">
+<h2>1 · Context</h2>
+<p>The estate has a worked example of what happens when a config key ships without a way to fill it in. <a href="../076-contract-export-handover/spec.html">076</a> added <code>consumes</code> as a should-tier routing list; a year later it has no CLI surface, no interview question, no caller outside its own tests, and not one entry in this project's own configuration. The mechanism is sound and unused, and the reason is that nothing ever asks.</p>
+
+<p><a href="../079-unit-dependency-edge/spec.html">079</a> makes inference the safety net so the relation is useful regardless. But inference sees only that a dependency exists — never which side of it a change belongs on, and never a relationship the manifests do not express. Those are the cases a declaration exists for, and they arrive only if something writes one.</p>
+</section>
+
+
+<section id="scenarios">
+<h2>2 · User scenarios &amp; testing</h2>
+
+<p>Each story <strong>MUST</strong> be independently testable: if you implemented only US1, you would still have a viable MVP.</p>
+
+<h3 id="US1">US1 · Record a dependency without hand-editing config <spec-pill>P1</spec-pill></h3>
+<p>As a <strong>maintainer</strong>, I want to <strong>declare an edge with one command</strong> so that <strong>the relation is recorded correctly without me learning the config shape</strong>.</p>
+<p><em>Acceptance:</em> running the command adds the edge to <code>spectastic.json</code>; every unrelated key, and the file's existing formatting, survives unchanged. Running it twice leaves one edge.</p>
+
+<h3 id="US2">US2 · Be asked, at the moment it is knowable <spec-pill>P2</spec-pill></h3>
+<p>As a <strong>designer</strong>, I want to <strong>be asked what this work depends on while I am deciding the design</strong> so that <strong>the relation is captured when I know it rather than reconstructed later</strong>.</p>
+<p><em>Acceptance:</em> a design for a project with more than one unit, or one declaring a contract, reaches a dependency question in its decision phase. A single-unit project with no contract is not asked.</p>
+
+<h3 id="US3">US3 · Catch a bad declaration at the boundary <spec-pill>P2</spec-pill></h3>
+<p>As a <strong>reviewer</strong>, I want <strong>a malformed or self-referential edge reported by validate</strong> so that <strong>it fails where every other artifact defect fails, not somewhere downstream</strong>.</p>
+<p><em>Acceptance:</em> a declared edge whose coordinate is not well-formed is an error; an edge naming its own declaring unit is an error; a well-formed edge naming a unit absent from this checkout is not.</p>
+
+<h3>Edge cases</h3>
+<ul>
+  <li>No <code>spectastic.json</code> at all — the command creates a minimal one rather than refusing.</li>
+  <li>A hand-edited config with comments or unusual formatting; the write must not reformat what it did not change.</li>
+  <li>An edge that duplicates one inference already finds. Declaring it is legitimate and makes it authoritative per 079.</li>
+  <li>A design interview in a project whose unit count cannot be determined — the question is skipped rather than asked speculatively.</li>
+</ul>
+</section>
+
+
+<section id="requirements">
+<h2>3 · Requirements</h2>
+
+<p>Conformance keywords (<spec-rule>MUST</spec-rule>, <spec-rule level="should">SHOULD</spec-rule>,
+<spec-rule level="may">MAY</spec-rule>) follow RFC 2119.</p>
+
+<h3>Functional</h3>
+
+<spec-requirement id="FR-001" priority="must">
+<p>A command <spec-rule>MUST</spec-rule> write a declared edge into the project's configuration, and re-running it with the same edge <spec-rule>MUST</spec-rule> leave the configuration unchanged.</p>
+<details><summary>Rationale</summary><p>Idempotence is what makes the command safe to put in a script or re-run after an interrupted session, and it is the property a hand-edit cannot promise.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-002" priority="must">
+<p>The write <spec-rule>MUST</spec-rule> preserve every key it did not change, and <spec-rule>MUST NOT</spec-rule> reformat regions of the file it did not touch.</p>
+<details><summary>Rationale</summary><p>The configuration is hand-authored and hand-reviewed. A verb that reformats it makes its own diff unreadable and discourages the very authoring this spec exists to encourage.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-003" priority="must">
+<p>The command <spec-rule>MUST</spec-rule> refuse an edge whose declared target is the declaring unit itself, and <spec-rule>MUST</spec-rule> refuse a target that is not a well-formed coordinate.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-004" priority="must">
+<p>Where no project configuration exists, the command <spec-rule>MUST</spec-rule> create a minimal one rather than failing.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-005" priority="should">
+<p>The design verb's decision phase <spec-rule level="should">SHOULD</spec-rule> ask what the work depends on when the project has more than one unit or declares a contract, and <spec-rule level="should">SHOULD</spec-rule> skip the question otherwise.</p>
+<details><summary>Rationale</summary><p>Asking a single-module project with no interface what it depends on trains authors to dismiss the question, which is how a prompt stops being read. The trigger is the same shape as the architecture-pattern prompt's "more than one moving part".</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-006" priority="should">
+<p>A confirmed answer to that question <spec-rule level="should">SHOULD</spec-rule> be written through the same command path as FR-001, not by a second writer.</p>
+<details><summary>Rationale</summary><p>Two writers for one key drift. The interview is a caller of the command, not a parallel implementation of it.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-007" priority="must">
+<p>Validation <spec-rule>MUST</spec-rule> report a declared edge whose target is malformed, or which names its own declaring unit, at error severity.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-008" priority="must">
+<p>Validation <spec-rule>MUST NOT</spec-rule> report a well-formed edge whose target is merely absent from this checkout.</p>
+<details><summary>Rationale</summary><p>Parsing a coordinate never dereferences it, and most consumers do not have their providers checked out. Erroring on absence would make the ordinary federated case unvalidatable; 079 already reports it as unverified, which is the honest treatment.</p></details>
+</spec-requirement>
+
+<h3>Non-functional</h3>
+
+<spec-requirement id="NFR-001" priority="must">
+<p>The command <spec-rule>MUST</spec-rule> make at most 0 network calls and <spec-rule>MUST</spec-rule> write at most 1 file.</p>
+</spec-requirement>
+
+<spec-requirement id="NFR-002" priority="must">
+<p>A failed or refused write <spec-rule>MUST</spec-rule> leave the configuration byte-identical: at most 0 partial writes are permitted.</p>
+<details><summary>Rationale</summary><p>A half-written config is worse than no write at all, because the next read sees something that parses but is wrong.</p></details>
+</spec-requirement>
+
+<h3>Out of scope (deferred to other slices)</h3>
+<spec-out-of-scope>
+  <ul>
+    <li defer-to="TBD-unit-edge-editing">Editing or removing a declared edge. Hand-editing remains available; a verb for it waits for evidence that edges churn.</li>
+    <li defer-to="TBD-unit-edge-promotion">Presenting inferred edges for confirmation into declarations — deliberately not in v1, since rubber-stamping would convert a weak signal into a strong-looking one without thought.</li>
+    <li defer-to="081-boundary-map-detection">Reading a project's declared boundary map as a source of intra-repo structure.</li>
+  </ul>
+</spec-out-of-scope>
+</section>
+
+
+<section id="data">
+<h2>4 · Data model</h2>
+
+<p>This slice introduces no new entity. It writes the <em>Edge</em> that <a href="../079-unit-dependency-edge/spec.html">079</a> defines, into the project configuration that already exists.</p>
+
+<h3>Entities</h3>
+<dl>
+  <dt>Declared edge</dt><dd>An <em>Edge</em> (079) whose existence is asserted by the depending unit's own configuration rather than inferred. The declaring unit is always the project being configured — a configuration file can only speak for its own project, which is what makes conscription structurally impossible rather than merely forbidden.</dd>
+</dl>
+
+<spec-note>
+<p>The set of declared edges is a set, not a list: the same target declared twice is one edge. That is what makes FR-001's idempotence a property of the data rather than a behaviour of the writer.</p>
+</spec-note>
+</section>
+
+
+<section id="success">
+<h2>5 · Success criteria</h2>
+
+<p>Technology-agnostic, measurable outcomes.</p>
+
+<spec-requirement id="SC-001" priority="must">
+<p>A maintainer records a dependency in a single command, and running that command a second time changes at most 0 bytes of the configuration.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-002" priority="must">
+<p>Across a fixture configuration carrying unrelated keys and hand formatting, a write alters at most 0 of them.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-003" priority="must">
+<p>A malformed or self-referential declared edge produces a validate error, and a well-formed edge naming an absent unit produces at most 0 findings.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-004" priority="should">
+<p>A design for a single-unit project with no declared contract reaches the dependency question at most 0 times.</p>
+</spec-requirement>
+</section>
+
+
+<section id="assumptions">
+<h2>6 · Assumptions</h2>
+
+<spec-assumption>
+<p>The project configuration remains a hand-authored file that a person reads and reviews, so a machine write must behave like a careful editor rather than a serialiser.</p>
+</spec-assumption>
+
+<spec-assumption>
+<p>A project's unit count is determinable from the same workspace signals 079's inference already reads. Where it is not, the interview trigger fails closed and the question is skipped.</p>
+</spec-assumption>
+</section>
+
+
+<section id="questions">
+<h2>7 · Open questions</h2>
+<spec-questions>
+<p>None outstanding. The authoring surface's aggressiveness — write on command, prompt in design, and deliberately not offer inferred edges for bulk confirmation — was anchored in the interview, along with the prompt's trigger condition.</p>
+</spec-questions>
+</section>
+
+
+<section id="conformance">
+<h2>8 · Conformance index</h2>
+<p>Auto-built from every <code>&lt;spec-requirement&gt;</code> in this document.</p>
+<spec-conformance></spec-conformance>
+</section>
+
+
+<section id="changelog">
+<h2>9 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-08-02">02 Aug 2026</time><span>Initial draft. Resolves <code>TBD-consumes-authoring</code> from the <a href="../../docs/orchestrator-placement-considerations.html">placement survey</a>; slice 1's authoring half. Inference moved to <a href="../079-unit-dependency-edge/spec.html">079</a> at interview, leaving this slice purely the write path.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  080-unit-edge-authoring · Unit edge authoring · authored 02 Aug 2026
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>
