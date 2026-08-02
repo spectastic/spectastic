@@ -215,3 +215,40 @@ describe('parseResourceUri — kind detection and failure contract (078 T-210, F
     expect('value' in result).toBe(false);
   });
 });
+
+/**
+ * 079-unit-dependency-edge T-010: the `unit` resource kind, red before T-011.
+ *
+ * The failure this guards is named in the design's grounding table and again in
+ * D-004: `ResourceKind` and `KNOWN_KINDS` are two separate declarations of the
+ * same set, so widening one without the other yields a kind that composes
+ * happily and then fails to parse — a coordinate that looks minted and is not.
+ * Both directions are asserted here for that reason.
+ *
+ * The scoped-name case is the one the spike settled (design §4): a package name
+ * like `@spectastic/core` carries a slash, so it occupies two path segments.
+ * That is legal — the corpus kind already uses `plugin/slug` — and it is what
+ * makes D-002's "name a unit by its package name, verbatim" affordable.
+ */
+describe('the unit resource kind (079 T-010, FR-001)', () => {
+  it('composes a unit coordinate', () => {
+    expect(resourceUri('spectastic/spectastic', 'unit', 'core')).toBe(
+      'spectastic://spectastic/spectastic/unit/core',
+    );
+  });
+
+  it('parses a unit coordinate back — the half a union-only widening would miss', () => {
+    const result = parseResourceUri('spectastic://spectastic/spectastic/unit/core');
+    expect(result.ok).toBe(true);
+    expect(result.ok && result.value.kind).toBe('unit');
+    expect(result.ok && result.value.name).toBe('core');
+  });
+
+  it('round-trips a scoped package name without escaping (D-002)', () => {
+    const uri = resourceUri('spectastic/spectastic', 'unit', '@spectastic/core');
+    expect(uri).toBe('spectastic://spectastic/spectastic/unit/@spectastic/core');
+    const result = parseResourceUri(uri);
+    expect(result.ok && result.value.name).toBe('@spectastic/core');
+    expect(result.ok && result.value.project).toBe('spectastic/spectastic');
+  });
+});

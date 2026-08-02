@@ -47,9 +47,15 @@ export function classifyProjectId(value: string): ProjectIdShape {
  * is the sibling kind added by spec 076-contract-export-handover (D-001); `corpus`
  * is 078-federated-resource-uri's addition (D-001) — the one closing the gap 067
  * explicitly deferred ("rendering corpus resources as spectastic:// URIs … ships
- * with the serving surface").
+ * with the serving surface"); `unit` is 079-unit-dependency-edge's addition
+ * (D-004), naming a module or a whole project so a dependency edge can address
+ * both ends the same way.
+ *
+ * This union and `KNOWN_KINDS` below are two declarations of one set. Widening
+ * either alone yields a kind that composes and then fails to parse — a
+ * coordinate that looks minted and is not — so they move together.
  */
-export type ResourceKind = 'spec' | 'contract' | 'corpus';
+export type ResourceKind = 'spec' | 'contract' | 'corpus' | 'unit';
 
 /**
  * Compose the canonical, federation-unique resource URI for a project resource
@@ -140,13 +146,19 @@ export function contractResourceUri(project: string, name: string, anchor?: stri
  * `resourceUri` treats it as one opaque name segment string; splitting it
  * back into two parts is `parseResourceUri`'s job (078 D-002 companion).
  */
-export function corpusResourceUri(marketplace: string, plugin: string, slug: string, anchor?: string, edition?: string): string {
+export function corpusResourceUri(
+  marketplace: string,
+  plugin: string,
+  slug: string,
+  anchor?: string,
+  edition?: string,
+): string {
   return resourceUri(marketplace.toLowerCase(), 'corpus', `${plugin}/${slug}`, anchor, edition);
 }
 
 /** The closed set of kinds `parseResourceUri` recognises — kept in sync with
  * `ResourceKind` by construction rather than duplicated as a literal union. */
-const KNOWN_KINDS = new Set<ResourceKind>(['spec', 'contract', 'corpus']);
+const KNOWN_KINDS = new Set<ResourceKind>(['spec', 'contract', 'corpus', 'unit']);
 
 /** A `spectastic://` URI parsed back into the coordinate it names
  * (078-federated-resource-uri, D-002). `project` is the reconstructed
