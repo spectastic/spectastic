@@ -13,6 +13,40 @@ import type { Command } from 'commander';
  */
 export function registerUnits(program: Command): void {
   program
+    .command('units:add')
+    .description(
+      'Declare that this project depends on another unit. Idempotent — re-running with the same target changes nothing.',
+    )
+    .argument('<coordinate>', 'the unit this project depends on')
+    .argument('[path]', 'project root to edit', '.')
+    .action(async (coordinate: string, path: string) => {
+      const [{ writeDeclaredEdge }, { selfUnitCoordinate }] = await Promise.all([
+        import('@spectastic/core/units/write'),
+        import('@spectastic/core/units/read'),
+      ]);
+
+      const self = selfUnitCoordinate(path);
+      if (self === null) {
+        process.stderr.write(
+          'units:add: this project has no configured identity, so its own coordinate cannot be composed. Set "project" in spectastic.json.\n',
+        );
+        process.exit(1);
+      }
+
+      const result = writeDeclaredEdge(path, self, coordinate);
+      if (!result.ok) {
+        process.stderr.write(`units:add: ${result.reason}\n`);
+        process.exit(1);
+      }
+      process.stdout.write(
+        result.written
+          ? `units:add: declared ${self} → ${coordinate}\n`
+          : `units:add: already declared — nothing to do\n`,
+      );
+      process.exit(0);
+    });
+
+  program
     .command('units')
     .description(
       "Print this project's dependency edges — what it is built on, and how far each relationship has been checked. Reads local checkouts only; never fetches.",

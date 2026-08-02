@@ -10,10 +10,7 @@ export function registerApply(program: Command): void {
     .option('--withdraw', 'withdraw mode: reject the proposal instead of applying')
     .option('--reason <reason>', 'rejection reason (required with --withdraw)')
     .option('--summary <text>', 'author-supplied one-line changelog summary (apply mode)')
-    .option(
-      '--dry-run',
-      'report the contract promotion this apply would write and archive, changing 0 files',
-    )
+    .option('--dry-run', 'report the contract promotion this apply would write and archive, changing 0 files')
     .option('--commit', 'force a git commit for this run (overrides git.auto)')
     .option('--no-commit', 'skip the git commit for this run (overrides git.auto)')
     .action(

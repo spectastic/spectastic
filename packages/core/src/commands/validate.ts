@@ -672,7 +672,7 @@ export async function contractResolveFindings(
     } catch {
       flag(
         `<spec-contract path="${decl.path}"> in ${file} exists but is not a readable file`,
-        'Check the file\'s permissions, or that it is a regular file (spec.html FR-006).',
+        "Check the file's permissions, or that it is a regular file (spec.html FR-006).",
       );
     }
   }

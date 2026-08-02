@@ -72,3 +72,21 @@ export function selfUnitCoordinate(cwd: string): string | null {
   const name = readRootName(cwd) ?? project.split('/').pop() ?? project;
   return resourceUri(project, 'unit', name);
 }
+
+/**
+ * Whether the design interview should ask what this work depends on
+ * (spec 080-unit-edge-authoring, FR-005).
+ *
+ * The prompt itself is command markdown and therefore advisory — this is the
+ * half that *is* checkable, and it exists so the trigger condition can be
+ * tested even though the asking cannot be. Fires where a project plausibly has
+ * dependencies at all: more than one unit, or a declared interface contract.
+ *
+ * Fails closed. A project whose shape cannot be determined is not asked, on the
+ * grounds that a speculative question trains authors to dismiss the prompt —
+ * which is how a prompt stops being read.
+ */
+export function shouldAskDependencies(unitCount: number, declaresContract: boolean): boolean {
+  if (!Number.isFinite(unitCount) || unitCount < 0) return false;
+  return unitCount > 1 || declaresContract;
+}

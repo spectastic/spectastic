@@ -25,12 +25,7 @@ import type { PromotionArchive, PromotionConflict, PromotionPlan, PromotionWrite
  * disk beyond reads. A non-empty `conflicts` clears `writes`/`archives` to
  * empty — FR-004's all-or-nothing guarantee.
  */
-export async function planPromotion(
-  specId: string,
-  slug: string,
-  fs: FileSystem,
-  cwd: string,
-): Promise<PromotionPlan> {
+export async function planPromotion(specId: string, slug: string, fs: FileSystem, cwd: string): Promise<PromotionPlan> {
   const writes: PromotionWrite[] = [];
   const archives: PromotionArchive[] = [];
   const conflicts: PromotionConflict[] = [];

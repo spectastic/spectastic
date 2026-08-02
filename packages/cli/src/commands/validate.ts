@@ -379,6 +379,19 @@ async function scanMarketplaceIdentity(cwd: string): Promise<Finding[]> {
 }
 
 /**
+ * The declared-unit-edge gate (spec 080-unit-edge-authoring, FR-007/FR-008): a
+ * `consumes` entry that is not a well-formed coordinate, or that names this
+ * project's own unit, is an error. A well-formed coordinate whose target is
+ * merely absent is deliberately silent — most consumers do not have their
+ * providers checked out, and 079 already reports that as an unverified edge.
+ * A no-op when the project declares nothing, which is every project today.
+ */
+async function scanDeclaredEdges(cwd: string): Promise<Finding[]> {
+  const { declaredEdgeFindings } = await import('@spectastic/core/units/findings');
+  return declaredEdgeFindings(cwd);
+}
+
+/**
  * The corpus grounding gates (053-corpus-grounding-gates, plan D-001/D-002):
  * a <spec-decision> citation resolving to no committed document is an error
  * (corpus-provenance); one resolving to a retained superseded edition is a
@@ -526,6 +539,7 @@ export function registerValidate(program: Command): void {
       // default) warns; a well-formed owner-qualified one is silent.
       // Corpus-intrinsic — also mirrored onto the standalone corpus binary.
       const marketplaceIdentityScanFindings = await scanMarketplaceIdentity(process.cwd());
+      const declaredEdgeScanFindings = await scanDeclaredEdges(process.cwd());
       // The contract-resolve gate (spec 070): a declared contract path that
       // resolves to no readable file, escapes the project, or resolves inside
       // specs/, is an error. No-op-cheap: returns [] on any file with no
@@ -553,6 +567,7 @@ export function registerValidate(program: Command): void {
         ...packAgnosticismScanFindings,
         ...projectIdentityScanFindings,
         ...marketplaceIdentityScanFindings,
+        ...declaredEdgeScanFindings,
         ...contractResolveScanFindings,
         ...contractViewDriftScanFindings,
       ];

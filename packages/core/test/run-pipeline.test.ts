@@ -140,7 +140,12 @@ describe('runPipeline — decider role (037 SC-002)', () => {
 describe('runPipeline — escalation gate (037 SC-003)', () => {
   it('pauses before implement and halts on a human stop (hard gate)', async () => {
     const ran: string[] = [];
-    const steps = [fakeStep('design', ran), fakeStep('tasks', ran), fakeStep('implement', ran), fakeStep('verify', ran)];
+    const steps = [
+      fakeStep('design', ran),
+      fakeStep('tasks', ran),
+      fakeStep('implement', ran),
+      fakeStep('verify', ran),
+    ];
     const esc = recorder((c) => (c.phase === 'implement' ? 'stop' : 'approve'));
     const result = await runPipeline({ specId: 'x', decider: AGENT, checkpoints: 'minimal' }, ctx(steps, esc.fn));
     expect(result.completed).toBe(false);

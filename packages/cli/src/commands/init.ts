@@ -1,5 +1,6 @@
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
+import { setIfAbsent } from '@spectastic/core/config/edit';
 import { detectTooling } from '@spectastic/core/enforce/detect';
 import { applyGitignore } from '@spectastic/core/gitignore/apply';
 import { BASE_ENTRIES } from '@spectastic/core/gitignore/entries';
@@ -58,20 +59,12 @@ const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', '
  * `corpus.marketplace: "<dir-name>"`, silently un-unifying the two).
  */
 function writeCorpusConfig(cwd: string): string | null {
-  const path = join(cwd, 'spectastic.json');
-  let config: Record<string, unknown> = {};
-  if (existsSync(path)) {
-    try {
-      config = JSON.parse(readFileSync(path, 'utf8')) as Record<string, unknown>;
-    } catch {
-      config = {};
-    }
-  }
-  if (config.corpus !== undefined) return null; // already configured — never overwrite
+  // Migrated onto the shared editor (080 D-003) — the never-overwrite guard,
+  // the create-when-missing behaviour and the return shape are unchanged; the
+  // editor additionally preserves the file's own indentation rather than
+  // normalising every line to 2-space.
   const marketplace = resolveProjectConfig(cwd).project;
-  config.corpus = { marketplace, root: DEFAULT_CORPUS_ROOT };
-  writeFileSync(path, `${JSON.stringify(config, null, 2)}\n`, 'utf8');
-  return marketplace;
+  return setIfAbsent(cwd, 'corpus', { marketplace, root: DEFAULT_CORPUS_ROOT }) ? marketplace : null;
 }
 
 /**
@@ -86,17 +79,21 @@ function writeCorpusConfig(cwd: string): string | null {
  * name. Re-running `init` after the remote exists firms it up. Returns
  * whether it actually wrote anything, for the caller's summary line.
  */
-async function writeProjectConfig(cwd: string): Promise<string | null> {
-  const path = join(cwd, 'spectastic.json');
-  let config: Record<string, unknown> = {};
-  if (existsSync(path)) {
-    try {
-      config = JSON.parse(readFileSync(path, 'utf8')) as Record<string, unknown>;
-    } catch {
-      config = {};
-    }
+/** The `project` key exactly as on disk, for the pre-shell-out guard above. */
+function readProjectKey(cwd: string): unknown {
+  try {
+    const parsed: unknown = JSON.parse(readFileSync(join(cwd, 'spectastic.json'), 'utf8'));
+    return typeof parsed === 'object' && parsed !== null ? (parsed as Record<string, unknown>).project : undefined;
+  } catch {
+    return undefined;
   }
-  if (config.project !== undefined) return null; // already set — never overwrite
+}
+
+async function writeProjectConfig(cwd: string): Promise<string | null> {
+  // Migrated onto the shared editor (080 D-003). The absent-key guard now lives
+  // in `setIfAbsent`, but it is still checked BEFORE the git shell-out below:
+  // an already-configured project must not pay for a subprocess it cannot use.
+  if (readProjectKey(cwd) !== undefined) return null;
 
   // Skip the git shell-out entirely when cwd isn't even a git repo yet (the
   // common `spectastic init` before `git init` order, and the perf-sensitive
@@ -109,9 +106,7 @@ async function writeProjectConfig(cwd: string): Promise<string | null> {
   if (!ownerRepo) return null; // no confident remote — stay provisional
 
   const project = `${ownerRepo.owner}/${ownerRepo.repo}`;
-  config.project = project;
-  writeFileSync(path, `${JSON.stringify(config, null, 2)}\n`, 'utf8');
-  return project;
+  return setIfAbsent(cwd, 'project', project) ? project : null;
 }
 
 function today(): { iso: string; display: string } {

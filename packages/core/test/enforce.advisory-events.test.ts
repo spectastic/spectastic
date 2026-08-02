@@ -39,9 +39,15 @@ describe('advisory categories demote a gap to a warning (073, FR-004)', () => {
   });
 
   it('a covered category is never reported at all, advisory or not', () => {
-    const result = evaluateEnforcement(REQUIRED, new Set<EnforcementCategory>(['contract-first']), 'hard', new Set(['js']), {
-      advisory: ['contract-first'],
-    });
+    const result = evaluateEnforcement(
+      REQUIRED,
+      new Set<EnforcementCategory>(['contract-first']),
+      'hard',
+      new Set(['js']),
+      {
+        advisory: ['contract-first'],
+      },
+    );
 
     expect(result.warned).toEqual([]);
     expect(result.missing).toEqual([]);

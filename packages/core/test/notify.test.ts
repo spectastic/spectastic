@@ -1,9 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-  buildContractNotification,
-  notificationMatchesConsumer,
-  routeNotification,
-} from '../src/contracts/notify.js';
+import { buildContractNotification, notificationMatchesConsumer, routeNotification } from '../src/contracts/notify.js';
 
 /**
  * Contract-change notification (spec 076-contract-export-handover, US2/US3).

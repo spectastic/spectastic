@@ -77,7 +77,9 @@ describe('T-300/SC-002: a capability-limited half reports advisory, never a hard
 
   it('a capability-limited format still blocks on its NON-limited half', () => {
     // AsyncAPI's differ is limited; its linter is not. A missing linter is a real gap.
-    const verdict = evaluateContractChecks([{ path: 'asyncapi.yaml', format: 'asyncapi', linted: false, diffed: false }]);
+    const verdict = evaluateContractChecks([
+      { path: 'asyncapi.yaml', format: 'asyncapi', linted: false, diffed: false },
+    ]);
 
     expect(verdict.blocking.map((b) => b.half)).toEqual(['linter']);
     expect(verdict.advisory.map((a) => a.half)).toEqual(['differ']);

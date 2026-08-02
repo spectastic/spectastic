@@ -21,7 +21,7 @@ function readDeclarations() {
   return readFileSync(DESIGN_FILE, 'utf8');
 }
 
-describe('contractResolveFindings — US1: a declared path that isn\'t there is caught', () => {
+describe("contractResolveFindings — US1: a declared path that isn't there is caught", () => {
   it('produces exactly 1 finding for an absent path and 0 for a present one', async () => {
     const { contractResolveFindings } = await import('../src/commands/validate.js');
     const { readContractDeclarations } = await import('@spectastic/schema/contract');

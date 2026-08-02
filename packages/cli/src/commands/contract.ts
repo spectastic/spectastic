@@ -12,7 +12,7 @@ export function registerContract(program: Command): void {
   program
     .command('contract')
     .description(
-      "Print a declared contract by its coordinate — for addressing an interface unambiguously across repos. Reads local declarations only; never fetches.",
+      'Print a declared contract by its coordinate — for addressing an interface unambiguously across repos. Reads local declarations only; never fetches.',
     )
     .argument('<coordinate>', 'the contract to resolve — a name, or a full spectastic:// coordinate')
     .option('--uri', 'print the canonical coordinate instead of the contract content')

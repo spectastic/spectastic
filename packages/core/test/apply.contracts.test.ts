@@ -110,9 +110,7 @@ describe('applyCommand — contract promotion wiring (071)', () => {
     const ctx: KernelContext = { cwd: '', fs };
     const before = new Map(files);
 
-    await expect(applyCommand({ kind: 'apply', specId: '501', slug: '2026-08-01-foo' }, ctx)).rejects.toThrow(
-      /refus/i,
-    );
+    await expect(applyCommand({ kind: 'apply', specId: '501', slug: '2026-08-01-foo' }, ctx)).rejects.toThrow(/refus/i);
 
     expect(files).toEqual(before);
   });

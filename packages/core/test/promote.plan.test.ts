@@ -80,9 +80,7 @@ describe('planPromotion (071)', () => {
     expect(plan.writes).toHaveLength(1);
     expect(plan.archives).toHaveLength(1);
     expect(plan.archives[0]?.from).toBe('/repo/specs/301-y/contracts/openapi.yaml');
-    expect(plan.archives[0]?.to).toBe(
-      '/repo/specs/301-y/changes/archive/2026-08-01-y/contracts/openapi.yaml',
-    );
+    expect(plan.archives[0]?.to).toBe('/repo/specs/301-y/changes/archive/2026-08-01-y/contracts/openapi.yaml');
     expect(plan.archives[0]?.baselineFrom).toBe('/repo/specs/301-y/contracts/.baseline/openapi.yaml');
   });
 
@@ -144,7 +142,7 @@ describe('planPromotion (071)', () => {
     expect(plan.archives).toHaveLength(0);
   });
 
-  it('T-301: no baseline and no effective file promotes — a project\'s first contract (D-005)', async () => {
+  it("T-301: no baseline and no effective file promotes — a project's first contract (D-005)", async () => {
     const design = DESIGN_ONE_CONTRACT.replace('api/openapi.yaml', 'api/new.proto');
     const fs = stubFs({
       '/repo/specs/305-first/design.html': design,

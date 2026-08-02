@@ -54,7 +54,9 @@ describe('materialiseContractViews (072)', () => {
     const result = await materialiseContractViews(html, fs, '/repo');
 
     expect(result).toContain('<p>reasoning</p>'); // authored reasoning untouched
-    expect(result).toMatch(/<spec-contract-view lines="2"[^>]*>openapi: 3\.0\.0\ninfo: \{title: v1\}<\/spec-contract-view>/);
+    expect(result).toMatch(
+      /<spec-contract-view lines="2"[^>]*>openapi: 3\.0\.0\ninfo: \{title: v1\}<\/spec-contract-view>/,
+    );
   });
 
   it('T-101: a hostile contract renders as visible escaped characters, never executable', async () => {
