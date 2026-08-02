@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
+<title>A contract's federation key should be authored, not inherited from a filename · Change proposal</title>
+<link rel="stylesheet" href="../../../../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../../../../assets/favicon.svg">
+<script src="../../../../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Change proposal · 076-contract-export-handover</p>
+  <h1>A contract's federation key should be authored, not inherited from a filename</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    The escape hatch exists and nothing asks for it, so everyone lands on the fallback — and the fallback is a filename.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>     <span><spec-status value="applied">Applied</spec-status></span>
+    <b>Change ID</b>  <span>2026-08-02-contract-key-stability</span>
+    <b>Spec</b>       <span><a href="../../../spec.html">076-contract-export-handover</a></span>
+    <b>Source</b>     <span>Considerations: <a href="../../../../../docs/orchestrator-placement-considerations.html">orchestrator-placement</a>; resolves <code>TBD-contract-key-stability</code></span>
+    <b>Author</b>     <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Created</b>    <span><time datetime="2026-08-02">02 Aug 2026</time></span>
+    <b>Targets</b>    <span>1 added (FR-007)</span>
+    <b>Read time</b>  <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-tldr>
+    <p>A contract's coordinate name resolves from its declared <code>name=</code> and falls back to the file's basename. The fallback is doing all the work: <code>templates/design.html</code>'s <code>&lt;spec-contract&gt;</code> scaffold does not include <code>name=</code>, and neither does the design command's contract question — so a coordinate that is meant to be a stable federation key is, in practice, always a filename. Two consequences follow. <strong>Renaming or reformatting a contract silently re-keys it</strong>, breaking every downstream reference with no rename detection anywhere. And <strong>two contracts in one project must have distinct basenames regardless of directory</strong>, since the directory is discarded before the key is formed. Neither is a defect in the resolution logic, which is correct; both come from an escape hatch nothing prompts for. This requires the key to be authored where a contract is expected to be referenced, and makes a collision an error rather than a silent overwrite.</p>
+  </spec-tldr>
+</header>
+
+
+<spec-change id="2026-08-02-contract-key-stability" status="applied">
+
+<header>
+  <h3>A contract's federation key should be authored, not inherited from a filename</h3>
+  <span class="meta"><spec-status value="applied">Applied</spec-status></span>
+</header>
+
+
+<section id="intent">
+<h2>1 · Intent</h2>
+<p>076 made a contract addressable so a consumer in another repository can name it. The name resolves through <code>contractCoordinateName</code>, which prefers an explicitly declared <code>name=</code> and otherwise derives one from the path's basename. That design is right: an author who cares can pin the key, and one who does not gets something reasonable.</p>
+
+<p>What was missed is that nothing ever asks. The design template's <code>&lt;spec-contract&gt;</code> scaffold carries <code>shape</code>, <code>path</code> and <code>format</code> and no <code>name</code>; the design command's contract questions fill exactly those three. So the deliberate escape hatch is unreachable by anyone following the documented path, and every contract in practice is keyed by its filename.</p>
+
+<p><spec-newthought>A filename is a poor federation key for two specific reasons.</spec-newthought> It is <em>editable for reasons unrelated to identity</em> — renaming <code>openapi.yaml</code> to <code>payments-api.yaml</code>, or switching format extension, silently mints a different coordinate while every downstream reference keeps pointing at the old one, and nothing detects a rename. And it is <em>not unique within a project</em>: the directory is discarded before the key is formed, so <code>api/v1/openapi.yaml</code> and <code>api/v2/openapi.yaml</code> collide on one key. Both are latent today because the estate has one contract; both become live the moment a project has two, which is the ordinary case for anything versioned.</p>
+</section>
+
+
+<section id="scope">
+<h2>2 · Scope</h2>
+
+<spec-goals>
+  <h3>In scope</h3>
+  <ul>
+    <li>A requirement that the coordinate name is authored where a contract is expected to be referenced across a repository boundary.</li>
+    <li>A collision between two declarations resolving to the same key becoming an error rather than a silent last-one-wins.</li>
+    <li>Prompting for the key where contracts are authored, so the escape hatch is reachable by the documented path.</li>
+  </ul>
+</spec-goals>
+
+<spec-non-goals>
+  <h3>Out of scope</h3>
+  <ul>
+    <li>Rename detection. Recording that a key moved needs a history the estate does not keep; the fix here is to stop tying the key to something that moves.</li>
+    <li>Changing <code>contractCoordinateName</code>'s resolution order. Declared-then-basename is correct and stays.</li>
+    <li>Making <code>name=</code> unconditionally mandatory. A single-contract project with no cross-repo consumer is well served by the fallback, and requiring ceremony there would be noise.</li>
+  </ul>
+</spec-non-goals>
+</section>
+
+
+<section id="approach">
+<h2>3 · Approach</h2>
+<p>Require the key conditionally rather than universally — at the point where it actually becomes load-bearing, which is when a contract is expected to be referenced from outside its own project, or when a project holds more than one contract. That keeps the simple case simple and closes the case where a filename cannot carry the weight being put on it.</p>
+
+<p>The collision check is the part with real teeth and it is cheap: two declarations in one project resolving to the same coordinate name is unambiguously wrong, detectable from the declarations alone, and today would silently resolve to whichever was read last. Making it an error costs nothing and removes a class of failure that would otherwise surface as a downstream reference quietly pointing at the wrong document.</p>
+</section>
+
+
+<section id="deltas">
+<h2>4 · Deltas</h2>
+<p>One delta.</p>
+
+<spec-delta op="added" target="FR-007">
+  <spec-requirement id="FR-007" priority="should">
+    <p>A contract's coordinate name <spec-rule level="should">SHOULD</spec-rule> be explicitly declared where the contract is expected to be referenced from outside its own project, or where the project declares more than one contract, rather than left to the basename fallback. Two declarations within one project that resolve to the same coordinate name <spec-rule>MUST</spec-rule> be reported as an error.</p>
+    <details><summary>Rationale</summary><p>The name resolves from a declared <code>name=</code> and falls back to the path's basename, but nothing prompts for the attribute — not the design template's scaffold, not the design command's contract questions — so in practice every key is a filename. A filename is editable for reasons unrelated to identity, so a rename silently mints a new coordinate while downstream references keep pointing at the old one, and no rename detection exists anywhere. It is also not unique within a project, since the directory is discarded before the key is formed: two versioned contracts under different directories collide on one key and resolve to whichever was read last. Conditional rather than universal because a single-contract project with no external consumer is well served by the fallback; the collision half is unconditional because it is unambiguously an error and free to detect.</p></details>
+  </spec-requirement>
+</spec-delta>
+</section>
+
+
+<section id="risks">
+<h2>5 · Risk register</h2>
+<p>The adversarial pass does not trigger: one should-tier addition, no removed delta, a single topic prefix. Recorded rather than skipped silently.</p>
+
+<spec-risk-log>
+</spec-risk-log>
+</section>
+
+
+<section id="tasks">
+<h2>6 · Tasks</h2>
+<p>Scoped to this change only.</p>
+
+<ul style="list-style:none;padding-left:0;">
+  <li><input type="checkbox"> Add <code>name=</code> to the <code>&lt;spec-contract&gt;</code> scaffold so the attribute is visible where contracts are authored <span class="path">templates/design.html</span></li>
+  <li><input type="checkbox"> Ask for the coordinate name in the contract question, conditionally per FR-007, and re-sync the command copies <span class="path">commands/spectastic.design.md</span></li>
+  <li><input type="checkbox"> Report two declarations in one project resolving to the same coordinate name as an error <span class="path">packages/schema/src/rules/</span></li>
+  <li><input type="checkbox"> Cover the collision and the rename-re-keys case with fixtures <span class="path">packages/schema/test/</span></li>
+</ul>
+</section>
+
+
+<section id="questions">
+<h2>7 · Open questions</h2>
+<spec-questions>
+<p>None outstanding. The conditional-versus-universal shape of the requirement follows from the same reasoning the spec already applies to its monorepo case: ceremony is owed where the export problem arises and not before.</p>
+</spec-questions>
+</section>
+
+
+<section id="changelog">
+<h2>8 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-08-02">02 Aug 2026</time><span>Proposal authored. Resolves <code>TBD-contract-key-stability</code>. Corrects the survey's framing: the key is not hard-wired to a filename — an escape hatch exists and nothing prompts for it, which is why the fallback carries every case.</span></li>
+  <li><time datetime="2026-08-02">02 Aug 2026</time><span>Applied on 02 Aug 2026 — A contract's federation key should be authored where it is referenced across a boundary, and a key collision within a project is an error (FR-007).</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+</spec-change>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  2026-08-02-contract-key-stability · A contract's federation key should be authored, not inherited from a filename · authored 02 Aug 2026
+</footer>
+
+</main>
+<script src="../../../../../assets/spec.js"></script>
+</body>
+</html>
