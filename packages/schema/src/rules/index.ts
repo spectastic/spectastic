@@ -1,5 +1,6 @@
 import type { Rule } from '../types.js';
 import { contractDeclarationShapeRule } from './contract-declaration-shape.js';
+import { contractNameUniqueRule } from './contract-name-unique.js';
 import { corpusCitationFormRule } from './corpus-citation-form.js';
 import { dataDeltaShapeRule } from './data-delta-shape.js';
 import { dateFormatRule } from './date-format.js';
@@ -86,6 +87,7 @@ export const rules: readonly Rule[] = [
 
   // Contract-declaration rules (per-file) — spec 069-design-contract-section.
   contractDeclarationShapeRule,
+  contractNameUniqueRule,
 
   // Cross-file rules.
   noDuplicateIdsRule,
