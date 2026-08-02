@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -8,6 +8,7 @@ import {
   defaultMarketplaceName,
   loadCorpusConfig,
   loadProjectConfig,
+  marketplaceIdentityFindings,
   projectIdentityFindings,
   resolveCorpusConfig,
   resolveProjectConfig,
@@ -202,5 +203,70 @@ describe('projectIdentityFindings (067 T-300/T-301/T-302, FR-007)', () => {
   it('a well-formed owner-qualified project is silent', () => {
     write({ project: 'acme/widget' });
     expect(projectIdentityFindings(dir)).toEqual([]);
+  });
+});
+
+/**
+ * 078-federated-resource-uri T-400: red-first tests for
+ * marketplaceIdentityFindings — mirrors projectIdentityFindings one axis
+ * over (FR-011), on the RESOLVED marketplace. Unlike `project`, a
+ * marketplace always resolves to SOMETHING (the directory-name default),
+ * so "absent" isn't the graceful-absence trigger here — "no evidence the
+ * corpus is in use at all" is (an explicit corpus.marketplace/namespace, or
+ * at least one pack under knowledge/; neither present stays silent, exactly
+ * like corpusWellFormedFindings and its siblings).
+ */
+describe('marketplaceIdentityFindings (078 T-410, FR-011)', () => {
+  let dir: string;
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'spectastic-marketplace-findings-'));
+  });
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true });
+  });
+  const write = (obj: unknown) => writeFileSync(join(dir, 'spectastic.json'), JSON.stringify(obj));
+
+  it('a malformed marketplace is an error', () => {
+    write({ corpus: { marketplace: '/leading-slash' } });
+    const findings = marketplaceIdentityFindings(dir);
+    expect(findings).toHaveLength(1);
+    expect(findings[0]!.severity).toBe('error');
+  });
+
+  it('a bare unqualified marketplace is a warning, never an error', () => {
+    write({ corpus: { marketplace: 'spectastic' } });
+    const findings = marketplaceIdentityFindings(dir);
+    expect(findings).toHaveLength(1);
+    expect(findings[0]!.severity).toBe('warning');
+  });
+
+  it('a well-formed owner-qualified marketplace is silent', () => {
+    write({ corpus: { marketplace: 'acme/widget-pack' } });
+    expect(marketplaceIdentityFindings(dir)).toEqual([]);
+  });
+
+  it('never fires alongside a name-collision with the project-identity gate (independent scans)', () => {
+    write({ project: 'acme/widget', corpus: { marketplace: 'acme/widget-pack' } });
+    expect(projectIdentityFindings(dir)).toEqual([]);
+    expect(marketplaceIdentityFindings(dir)).toEqual([]);
+  });
+
+  it('graceful absence: no config AND no knowledge/ at all is silent — nothing to warn about yet', () => {
+    expect(marketplaceIdentityFindings(dir)).toEqual([]);
+  });
+
+  it('a real pack present (no explicit config) still fires the directory-name-default warning', () => {
+    mkdirSync(join(dir, 'knowledge', 'some-pack'), { recursive: true });
+    const findings = marketplaceIdentityFindings(dir);
+    expect(findings).toHaveLength(1);
+    expect(findings[0]!.severity).toBe('warning');
+    expect(findings[0]!.message).toContain(basename(dir));
+  });
+
+  it('an explicit config with no pack present still fires — the config itself is the evidence', () => {
+    write({ corpus: { marketplace: 'bare-name' } });
+    const findings = marketplaceIdentityFindings(dir);
+    expect(findings).toHaveLength(1);
+    expect(findings[0]!.severity).toBe('warning');
   });
 });

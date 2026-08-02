@@ -31,6 +31,7 @@
  * superseded editions (`TBD-resolver-registry-only`).
  */
 import type { CorpusCitation } from '@spectastic/schema/citation';
+import { corpusResourceUri } from '@spectastic/schema/project';
 import type { CorpusPack, RegistryEntry, ResolvedCitation } from './types.js';
 
 /** True if a pinned citation edition matches (or the citation is bare). */
@@ -158,4 +159,65 @@ export function renderCitationLabel(id: string, registry: readonly RegistryEntry
     return `${entry.marketplace} · ${entry.plugin} · ${entry.slug}`;
   }
   return entry.title || null;
+}
+
+/**
+ * Render a registry row's federation-unique corpus coordinate
+ * (078-federated-resource-uri, T-111, FR-001/FR-002/FR-003).
+ *
+ * Uses the row's OWN `marketplace` field as the authority — never a
+ * separately-resolved `resolveCorpusConfig(cwd).marketplace` — because a
+ * registry row's `marketplace` is already the document's origin provenance
+ * ("the source marketplace… this reference was imported from", per
+ * `RegistryEntry`'s own docstring), which can genuinely differ from this
+ * repository's own publish identity when a project imports a pack from
+ * elsewhere. FR-009's dedupe guarantee follows the document's origin, not
+ * whichever repository happens to be querying it — so the row already
+ * carries the correct authority, and re-resolving the local config would be
+ * both unnecessary and, for an imported pack, actually wrong.
+ *
+ * `edition` is the caller's choice, not derived from the row: omit it (or
+ * pass `undefined`) for the unpinned, current coordinate; pass the row's
+ * `edition` field explicitly to pin. Mirrors `get`'s own bare-vs-pinned
+ * distinction — an id resolved as bare renders unpinned; one resolved as
+ * `KB-NNNN@edition` renders pinned.
+ */
+export function registryEntryUri(entry: RegistryEntry, edition?: string): string {
+  return corpusResourceUri(entry.marketplace, entry.plugin, entry.slug, undefined, edition);
+}
+
+/**
+ * Resolve a corpus coordinate's `(marketplace, plugin, slug)` against the
+ * local registry (078-federated-resource-uri, T-211, FR-006).
+ *
+ * The deliberately separate half of FR-006: `parseResourceUri` (the schema
+ * grammar) succeeds for ANY well-formed coordinate, whether or not this
+ * repository has ever heard of the marketplace it names — parsing is pure
+ * grammar with no knowledge of the repository around it. THIS function is
+ * the local half — it looks the parsed marketplace/plugin/slug up against
+ * what this repository's registry actually has, and returns `null` rather
+ * than throwing when there is no match. Two operations, two failure modes:
+ * a malformed coordinate fails to parse; a well-formed but foreign one
+ * parses fine and simply resolves to nothing here.
+ *
+ * Marketplace comparison is case-insensitive: a coordinate read off the
+ * wire always carries a lowercased marketplace segment (`corpusResourceUri`
+ * folds it, D-004), but a registry row's own `marketplace` field is stored
+ * exactly as imported and may be mixed-case — so a straight `===` would
+ * silently miss a real match. Plugin and slug are NOT case-folded; they are
+ * not federation-authority segments and the fold is deliberately scoped to
+ * the one field where casing was proven (078 design §4 spike) to threaten
+ * the dedupe guarantee.
+ */
+export function resolveCorpusCoordinate(
+  marketplace: string,
+  plugin: string,
+  slug: string,
+  registry: readonly RegistryEntry[],
+): RegistryEntry | null {
+  const wanted = marketplace.toLowerCase();
+  const found = registry.find(
+    (row) => row.marketplace.toLowerCase() === wanted && row.plugin === plugin && row.slug === slug,
+  );
+  return found ?? null;
 }

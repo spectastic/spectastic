@@ -1,5 +1,6 @@
+import { parseCorpusCitation } from '@spectastic/schema/citation';
 import type { Command } from 'commander';
-import { loadCorpus, loadRegistry } from '../knowledge/index.js';
+import { loadCorpus, loadRegistry, registryEntryUri } from '../knowledge/index.js';
 import { get } from '../read/get.js';
 import { grep } from '../read/grep.js';
 import { query } from '../read/query.js';
@@ -25,6 +26,37 @@ export function registerRead(program: Command): void {
         `${result.id}@${result.edition} (${result.kind}) → ${result.filePath}` +
           `${result.label ? `\n  ${result.label}` : ''}\n`,
       );
+      process.exit(0);
+    });
+
+  program
+    .command('id')
+    .description(
+      "Print a corpus document's federation-unique spectastic:// resource URI, resolved from a KB id.",
+    )
+    .argument('<id>', 'a KB id, e.g. KB-501 or KB-501@2026-01-01 for an edition-pinned coordinate')
+    .action((idArg: string) => {
+      const cwd = process.cwd();
+      const packs = loadCorpus(cwd);
+      const registry = loadRegistry(cwd);
+      const citation = parseCorpusCitation(idArg);
+      const result = citation ? get(idArg, packs, registry) : { found: false as const };
+      if (!result.found) {
+        process.stdout.write(`corpus id: not found — ${idArg}\n`);
+        process.exit(1);
+      }
+      const entry = registry.find((row) => row.id === result.id);
+      if (!entry) {
+        process.stdout.write(
+          `corpus id: no registry entry for ${result.id} — a coordinate needs the root registry (knowledge/index.md)\n`,
+        );
+        process.exit(1);
+      }
+      // Pin the coordinate only when the caller explicitly pinned the citation
+      // (KB-NNNN@edition) — a bare id always renders the unpinned, current
+      // coordinate, matching `get`'s own bare-vs-pinned distinction.
+      const edition = citation?.edition != null ? result.edition : undefined;
+      process.stdout.write(`${registryEntryUri(entry, edition)}\n`);
       process.exit(0);
     });
 

@@ -365,6 +365,20 @@ async function scanProjectIdentity(cwd: string): Promise<Finding[]> {
 }
 
 /**
+ * The marketplace-identity gate (078-federated-resource-uri FR-011): a
+ * malformed resolved marketplace errors, a bare unqualified one (including
+ * the directory-name default — a marketplace is never truly absent) warns,
+ * and a well-formed owner-qualified one is silent. Sibling to
+ * `scanProjectIdentity` one axis over, and — unlike it — also mirrored onto
+ * the standalone `spectastic-corpus validate` (`packages/corpus/src/cli/
+ * validate.ts`), because a marketplace IS corpus-intrinsic (078 D-006).
+ */
+async function scanMarketplaceIdentity(cwd: string): Promise<Finding[]> {
+  const { marketplaceIdentityFindings } = await import('@spectastic/corpus');
+  return marketplaceIdentityFindings(cwd);
+}
+
+/**
  * The corpus grounding gates (053-corpus-grounding-gates, plan D-001/D-002):
  * a <spec-decision> citation resolving to no committed document is an error
  * (corpus-provenance); one resolving to a retained superseded edition is a
@@ -507,6 +521,11 @@ export function registerValidate(program: Command): void {
       // a bare unqualified default (no owner segment) warns; absent or
       // well-formed is silent. No-op-safe — reads spectastic.json only.
       const projectIdentityScanFindings = await scanProjectIdentity(process.cwd());
+      // The marketplace-identity gate (spec 078): a malformed resolved
+      // marketplace errors; a bare unqualified one (incl. the directory-name
+      // default) warns; a well-formed owner-qualified one is silent.
+      // Corpus-intrinsic — also mirrored onto the standalone corpus binary.
+      const marketplaceIdentityScanFindings = await scanMarketplaceIdentity(process.cwd());
       // The contract-resolve gate (spec 070): a declared contract path that
       // resolves to no readable file, escapes the project, or resolves inside
       // specs/, is an error. No-op-cheap: returns [] on any file with no
@@ -533,6 +552,7 @@ export function registerValidate(program: Command): void {
         ...corpusLicenseScanFindings,
         ...packAgnosticismScanFindings,
         ...projectIdentityScanFindings,
+        ...marketplaceIdentityScanFindings,
         ...contractResolveScanFindings,
         ...contractViewDriftScanFindings,
       ];

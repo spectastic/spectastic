@@ -1,0 +1,388 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
+<title>Federated resource URI · Specification</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Specification · 078-federated-resource-uri</p>
+  <h1>Federated resource URI</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    Give a corpus document the federation-unique coordinate specs already have — and make every
+    <code>spectastic://</code> URI readable in both directions.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>      <span><spec-status value="accepted">Accepted</spec-status></span>
+    <b>Spec ID</b>     <span>078-federated-resource-uri</span>
+    <b>Owner</b>       <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Reviewers</b>   <span>—</span>
+    <b>Created</b>     <span><time datetime="2026-08-01">01 Aug 2026</time></span>
+    <b>Principles</b><span><a href="../../principles.html">v1.8.0</a></span>
+    <b>Smallest demoable</b><span>A corpus document renders a <code>spectastic://</code> coordinate, that coordinate parses back, and the same pack in two repos yields one identical URI.</span>
+    <b>Read time</b>   <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-budget words="2200" reqs="20" minutes="14"></spec-budget>
+
+  <spec-tldr>
+    <p><a href="../067-spec-project-identity/spec.html">067</a> gave specs the namespace prefix they lacked
+    and deferred one piece by name: rendering <em>corpus</em> resources as <code>spectastic://</code> URIs.
+    This spec closes it. A corpus document becomes
+    <code>spectastic://&lt;marketplace&gt;/corpus/&lt;plugin&gt;/&lt;slug&gt;</code> — keyed on the
+    marketplace rather than the repo-local <code>KB-NNNN</code>, so the same pack installed in ten
+    repositories collapses to <em>one</em> coordinate. It also adds the reverse direction the estate has
+    never had: a parser reading any <code>spectastic://</code> URI back into the coordinate it names.</p>
+  </spec-tldr>
+
+  <dl class="invest">
+    <dt><span class="letter">I</span> Independent</dt> <dd>Builds on <a href="../067-spec-project-identity/spec.html">067</a>'s URI composer and <a href="../064-corpus-package-extraction/spec.html">064</a>'s corpus package — both shipped. Nothing here waits on unbuilt work.</dd>
+    <dt><span class="letter">N</span> Negotiable</dt>  <dd>Contracts the outcome — a corpus coordinate, a bidirectional parser, a dedupe guarantee. Module layout and the parser's return shape are the design's.</dd>
+    <dt><span class="letter">V</span> Valuable</dt>    <dd>Unlocks <a href="#SC-001">SC-001</a> — one shared pack, one coordinate, so a federated index addresses corpus knowledge without double-counting it.</dd>
+    <dt><span class="letter">E</span> Estimable</dt>   <dd><code>resourceUri</code> already takes the kind as a parameter; the marketplace resolver exists; parsing is pure string work.</dd>
+    <dt><span class="letter">S</span> Small</dt>       <dd>Twelve functional and three non-functional requirements: one new kind, one parser, one dedupe rule, one warning, one standalone path. The servers that consume them are deferred entirely.</dd>
+    <dt><span class="letter">T</span> Testable</dt>    <dd>Every requirement observable — <a href="#SC-001">SC-001</a>–<a href="#SC-005">SC-005</a> are fixture-checkable against two corpus packs and a config, with no network and no running process.</dd>
+  </dl>
+
+  <spec-audience-map>
+    <dl>
+      <dt>Exec / PM</dt>   <dd>§<a href="#context">Context</a>, §<a href="#scenarios">User scenarios</a>, §<a href="#success">Success criteria</a>.</dd>
+      <dt>Reviewer</dt>    <dd>§<a href="#requirements">Requirements</a>, §<a href="#assumptions">Assumptions</a>, §<a href="#questions">Open questions</a>.</dd>
+      <dt>Implementer</dt> <dd>§<a href="#requirements">Requirements</a>, §<a href="#data">Data model</a>, §<a href="#conformance">Conformance index</a>.</dd>
+    </dl>
+  </spec-audience-map>
+</header>
+
+
+<section id="context">
+<h2>1 · Context</h2>
+
+<spec-newthought>The corpus already knew the answer</spec-newthought> before the specs did. Facing "a
+globally-unique id without a global coordinator",
+<a href="../062-corpus-identity-migration/spec.html">062</a> adopted the identifier world's canonical shape
+— a namespace prefix plus a local suffix, the way a DOI works. Spectastic's prefix is the
+<em>marketplace</em>; <code>KB-NNNN</code> is only the repo-local suffix.
+
+<p><a href="../067-spec-project-identity/spec.html">067</a> applied that move to the spec side and built the
+machinery: a <code>project</code> identity, a <code>spectastic://&lt;project&gt;/spec/&lt;id&gt;</code>
+coordinate, and a composer taking the resource <em>kind</em> as a parameter —
+<a href="../076-contract-export-handover/spec.html">076</a> then reused it for a second kind without writing
+a second composer. But 067 deferred one piece by name: <q>Rendering corpus resources as
+<code>spectastic://</code> URIs … ships with the serving surface.</q> That is the gap here.</p>
+
+<p>Two things make it worth closing on its own rather than inside a server. The corpus's coordinate is not the
+project's — a pack installed in ten repositories is <em>one</em> body of knowledge, and a coordinate saying
+otherwise turns a federated index into ten near-identical hits. And the estate can compose these URIs but has
+never been able to <em>read</em> one.</p>
+
+<p><strong>Who it's for:</strong> the read surfaces that come next, and equally someone using
+<a href="../064-corpus-package-extraction/spec.html">064</a>'s corpus on its own — no lifecycle, no
+<code>specs/</code> — who still deserves a citable global coordinate.</p>
+</section>
+
+
+<section id="scenarios">
+<h2>2 · User scenarios &amp; testing</h2>
+
+<p>Each story <strong>MUST</strong> be independently testable: US1 alone is a viable MVP — a corpus document
+with a stable global coordinate, before anything can read one back.</p>
+
+<h3 id="US1">US1 · A corpus document gets a global coordinate <spec-pill>P1</spec-pill></h3>
+<p>As a <strong>corpus curator</strong>, I want to <strong>render any document's federation-unique
+resource URI</strong> so that <strong>I can cite it from outside the repository that happens to hold
+it</strong>.</p>
+<p><em>Acceptance:</em> a corpus document resolves to
+<code>spectastic://&lt;marketplace&gt;/corpus/&lt;plugin&gt;/&lt;slug&gt;</code>, with an edition pin
+appended as <code>?edition=…</code> and an anchor as <code>#…</code>, in that order. It runs with the corpus
+package alone — no kernel, no <code>specs/</code>. Re-running yields byte-identical output.</p>
+
+<h3 id="US2">US2 · A coordinate reads back <spec-pill>P1</spec-pill></h3>
+<p>As a <strong>consumer receiving a coordinate from elsewhere</strong>, I want to <strong>parse any
+<code>spectastic://</code> URI into the parts it names</strong> so that <strong>I can act on a coordinate
+I did not compose</strong>.</p>
+<p><em>Acceptance:</em> one parser accepts all three kinds — spec, contract, corpus — and reports which it
+found. A well-formed URI naming a marketplace this repository has never heard of <em>parses
+successfully</em>; only the separate act of resolving it locally reports "not present". A malformed URI
+yields a typed failure and never throws. Compose-then-parse returns the original coordinate.</p>
+
+<h3 id="US3">US3 · One pack, one coordinate <spec-pill>P1</spec-pill></h3>
+<p>As a <strong>maintainer of several repositories that share a pack</strong>, I want <strong>the same
+knowledge to carry the same coordinate everywhere</strong> so that <strong>an index over all of them shows
+one document, not one per repository</strong>.</p>
+<p><em>Acceptance:</em> the same pack in two repositories — different project identities, different
+<code>KB-NNNN</code> ids — yields byte-identical unpinned coordinates. Two repositories holding
+<em>different editions</em> still share that unpinned coordinate; their pinned coordinates differ, naming
+different content.</p>
+
+<h3 id="US4">US4 · A collision-prone marketplace is called out <spec-pill>P2</spec-pill></h3>
+<p>As a <strong>maintainer preparing to federate</strong>, I want <strong>validation to flag a marketplace
+name that cannot distinguish me from anyone else</strong> so that <strong>I find out before my coordinates
+collide, not after</strong>.</p>
+<p><em>Acceptance:</em> a marketplace that is not owner-qualified — the bare directory-name default — is a
+validate <em>warning</em> naming the fix; an owner-qualified one yields no finding. The warning never
+blocks.</p>
+
+<h3>Edge cases</h3>
+<ul>
+  <li>An unset <code>corpus.marketplace</code> — 067's unified derivation supplies it from <code>project</code>. The authority is still the <em>marketplace</em>; that the two coincide here is derivation, not equivalence.</li>
+  <li>A marketplace deliberately different from the project identity — the explicit value wins and the corpus coordinate diverges from the spec coordinate. Correct, not a conflict: the pack is published by one identity and lives in another.</li>
+  <li>A superseded but retained edition — its pinned coordinate keeps resolving, matching <a href="../052-corpus-citation-contract/spec.html">052</a>'s guarantee that a pinned citation survives supersession.</li>
+  <li>An anchor naming a heading that does not exist — the coordinate is emitted anyway, matching 067's treatment of a spec anchor.</li>
+  <li>An unknown kind segment — parses to a typed failure rather than a partial result, so a consumer rejects it cleanly instead of guessing.</li>
+</ul>
+</section>
+
+
+<section id="requirements">
+<h2>3 · Requirements</h2>
+
+<p>Conformance keywords (<spec-rule>MUST</spec-rule>, <spec-rule level="should">SHOULD</spec-rule>,
+<spec-rule level="may">MAY</spec-rule>) follow RFC 2119.</p>
+
+<h3>Functional</h3>
+
+<spec-requirement id="FR-001" priority="must">
+<p>A corpus document <spec-rule>MUST</spec-rule> resolve to a canonical resource URI of the form
+<code>spectastic://&lt;marketplace&gt;/corpus/&lt;plugin&gt;/&lt;slug&gt;</code>, and that URI
+<spec-rule>MUST NOT</spec-rule> incorporate the repo-local <code>KB-NNNN</code> id.</p>
+<details><summary>Rationale</summary><p>The registry itself calls <code>KB-NNNN</code> "project-assigned and repo-unique" — a local convenience, never a federation key. The durable key is the coordinate the citation label already derives.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-002" priority="must">
+<p>The authority of a corpus resource URI <spec-rule>MUST</spec-rule> be the marketplace — not the project
+identity — even where the two resolve to the same string.</p>
+<details><summary>Rationale</summary><p>The whole dedupe mechanism, and the one place this spec departs from 067's project-as-authority rule. Keying a shared pack on the project would mint one coordinate per installing repository — the double-counting a federated index exists to avoid. 067's derivation makes the two values <em>usually</em> equal; this keeps the corpus case correct when they are not.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-003" priority="must">
+<p>An edition pin <spec-rule>MUST</spec-rule> ride as a query parameter
+(<code>?edition=&lt;edition&gt;</code>), an absent parameter <spec-rule>MUST</spec-rule> mean the current
+edition, and where both a pin and an anchor are present the query <spec-rule>MUST</spec-rule> precede the
+fragment.</p>
+<details><summary>Rationale</summary><p>Conventional URI syntax, so a generic client parses it with no special knowledge. A deliberate divergence from the citation grammar's <code>KB-0001@2026-07-26</code> — the estate now carries two spellings for one concept — accepted because a URI is read by tools that know nothing of that grammar. Query-before-fragment is fixed by URI syntax, not preference.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-004" priority="may">
+<p>A corpus resource URI <spec-rule level="may">MAY</spec-rule> carry a fragment naming a heading slug
+within the document; it <spec-rule>MUST</spec-rule> be appended mechanically, and its existence
+<spec-rule>MUST NOT</spec-rule> be checked at composition time.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-005" priority="must">
+<p>A single parser <spec-rule>MUST</spec-rule> accept every <code>spectastic://</code> resource kind —
+spec, contract and corpus — and <spec-rule>MUST</spec-rule> report the kind it found as part of its
+result.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-006" priority="must">
+<p>Parsing <spec-rule>MUST</spec-rule> succeed for any well-formed URI regardless of whether the
+marketplace or project it names is present locally; resolving a parsed coordinate to a local artifact
+<spec-rule>MUST</spec-rule> be a distinct operation that reports absence rather than failure.</p>
+<details><summary>Rationale</summary><p>Keeps the parser pure grammar, with no knowledge of the repository around it. A read surface fronting several repositories parses foreign coordinates constantly; one that rejected them would need replacing immediately.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-007" priority="must">
+<p>A malformed or unknown-kind URI <spec-rule>MUST</spec-rule> yield a typed failure result and
+<spec-rule>MUST NOT</spec-rule> throw, and <spec-rule>MUST NOT</spec-rule> return a partially-populated
+coordinate.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-008" priority="must">
+<p>Composing a coordinate and then parsing the result <spec-rule>MUST</spec-rule> return a coordinate equal
+to the one composed, for every kind and every combination of edition pin and anchor.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-009" priority="must">
+<p>The same pack installed in any number of repositories <spec-rule>MUST</spec-rule> yield byte-identical
+unpinned coordinates, irrespective of each repository's project identity or locally-assigned
+<code>KB-NNNN</code> ids. Coordinates pinned to <em>different</em> editions
+<spec-rule>MUST</spec-rule> remain distinct.</p>
+<details><summary>Rationale</summary><p>Identity and versioning are separate axes: the unpinned coordinate answers "same document?", the pin answers "which edition?". Collapsing them would either double-count a shared pack or make two genuinely different editions indistinguishable.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-010" priority="must">
+<p>Rendering and parsing a corpus coordinate <spec-rule>MUST</spec-rule> be available from the standalone
+corpus surface, with no lifecycle kernel installed and no <code>specs/</code> directory present.</p>
+<details><summary>Rationale</summary><p>064 made the corpus usable on its own; a coordinate needing the lifecycle to render would quietly retract that, and would breach the one-way package boundary.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-011" priority="should">
+<p>Validation <spec-rule level="should">SHOULD</spec-rule> emit a warning for a marketplace that is not
+owner-qualified, naming the fix; an owner-qualified marketplace
+<spec-rule level="should">SHOULD</spec-rule> yield no finding. The warning
+<spec-rule>MUST NOT</spec-rule> block.</p>
+<details><summary>Rationale</summary><p>Mirrors 067's bare-project warning, one axis over. The marketplace defaults to the repository's directory name, so two repositories with generic directory names collide in the very namespace meant to prevent collisions. A true cross-repository collision check needs the whole estate, and is deferred.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-012" priority="must">
+<p>The change <spec-rule>MUST</spec-rule> be additive: existing spec and contract coordinates
+<spec-rule>MUST</spec-rule> render exactly as they do today, and <code>KB-NNNN</code> citations
+<spec-rule>MUST</spec-rule> keep their current form and behaviour everywhere they are used.</p>
+</spec-requirement>
+
+<h3>Non-functional</h3>
+
+<spec-requirement id="NFR-001" priority="must">
+<p>Composition and parsing <spec-rule>MUST</spec-rule> be deterministic and pure: 100% identical output
+across repeated runs for identical input, with at most 0 reads of the filesystem, the clock, the network, or
+environment state.</p>
+<details><summary>Rationale</summary><p>A federation key that shifted with its environment would not be a key. This restates 067's determinism constraint for the corpus kind and extends it to the new parsing direction.</p></details>
+</spec-requirement>
+
+<spec-requirement id="NFR-002" priority="must">
+<p>A URI submitted for parsing <spec-rule>MUST</spec-rule> be treated as untrusted data: at most 0
+dereferences, filesystem reads, or evaluations of any part of it occur during parsing.</p>
+<details><summary>Rationale</summary><p>Coordinates will arrive from outside the repository once a read surface exists. Honours <a href="../../principles.html#P-11">P-11</a> — artifacts are data, not instructions — at the point the estate first accepts an identifier it did not author.</p></details>
+</spec-requirement>
+
+<spec-requirement id="NFR-003" priority="should">
+<p>The corpus package <spec-rule level="should">SHOULD</spec-rule> gain at most 0 new dependencies on the
+lifecycle kernel in service of this spec; the shared URI grammar
+<spec-rule level="should">SHOULD</spec-rule> stay upstream of both.</p>
+</spec-requirement>
+
+<h3>Out of scope (deferred to other slices)</h3>
+<spec-out-of-scope>
+  <ul>
+    <li defer-to="TBD-corpus-mcp-server">The server serving these coordinates as corpus resources. This spec defines the addressing; that one owns the transport, in its own repository with its own lifecycle.</li>
+    <li defer-to="TBD-spec-mcp-serving">Exposing the <code>specs/</code> estate over the same surface. Consumes these coordinates; does not define them.</li>
+    <li defer-to="TBD-mcp-aggregator">Cross-repository aggregation — one endpoint fronting several checkouts. This spec fixes the rules making aggregation unambiguous; the first serving surface is deliberately single-repository.</li>
+    <li defer-to="TBD-corpus-owner-config">Promoting the marketplace from a directory-name default to an owner-qualified identity. This spec <em>warns</em> about the fragile default; it does not fix it.</li>
+    <li defer-to="TBD-anchor-existence-check">Verifying an anchor names a real heading. Belongs with the read path that would dereference it, matching 067's identical deferral.</li>
+    <li defer-to="TBD-orchestrator-spec-placement">Routing a requirement to its owning service by the spec-sensitive corpus. Gated behind the whole serving surface.</li>
+  </ul>
+</spec-out-of-scope>
+</section>
+
+
+<section id="data">
+<h2>4 · Data model</h2>
+
+<p>Three concepts. The estate already has a resource coordinate; this spec adds the corpus kind and names the
+rule deciding its authority.</p>
+
+<h3>Entities</h3>
+<dl>
+  <dt>Resource coordinate</dt>
+  <dd>The federation-unique name of one addressable artifact: an authority, a kind, a name, and optionally an
+  edition pin and an anchor. It names <em>what a thing is</em>, never where its file sits. Exactly one
+  canonical rendering per coordinate, and every well-formed rendering parses back to exactly one.</dd>
+
+  <dt>Authority</dt>
+  <dd>The namespace prefix making a repo-local name globally unambiguous. Which identity serves depends on
+  the kind: specs and contracts take the <em>project</em>, corpus documents the <em>marketplace</em>. It is
+  owner-qualified when it carries more than one segment; a single-segment authority is valid but
+  collision-prone.</dd>
+
+  <dt>Edition pin</dt>
+  <dd>An optional selector narrowing a coordinate to one edition; absent means current. A pin never changes
+  <em>which document</em> is named — which is why the unpinned form is the identity.</dd>
+</dl>
+
+<spec-note>
+<p><strong>The invariant that carries this spec:</strong> a document's identity is a function of its
+publication coordinate alone — never of the repository holding it or the id assigned to it there. This is
+also where the estate gains a second authority rule. The asymmetry is deliberate: a spec belongs to one
+project, a pack is installed by many.</p>
+</spec-note>
+</section>
+
+
+<section id="success">
+<h2>5 · Success criteria</h2>
+
+<p>Technology-agnostic, measurable outcomes. These are how we know it worked.</p>
+
+<spec-requirement id="SC-001" priority="must">
+<p>The same pack installed in two repositories — different project identities, different locally-assigned
+ids — produces byte-identical unpinned coordinates for every document it contains.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-002" priority="must">
+<p>Every well-formed coordinate, across all three kinds and all four combinations of edition pin and anchor,
+round-trips: compose → parse → compose returns the original string.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-003" priority="must">
+<p>A corpus coordinate renders in an environment containing only the corpus package and a corpus — no
+lifecycle kernel, no <code>specs/</code> directory, no project identity configured.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-004" priority="must">
+<p>A coordinate naming a marketplace absent from the local repository parses successfully and reports its
+parts; the separate attempt to resolve it locally reports absence, and neither operation raises an
+error.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-005" priority="should">
+<p>A repository whose marketplace is the bare directory-name default produces exactly one validation
+warning naming the fix, and validation still exits successfully.</p>
+</spec-requirement>
+</section>
+
+
+<section id="assumptions">
+<h2>6 · Assumptions</h2>
+
+<spec-assumption>
+<p>Marketplace names are stable once published. A rename produces new coordinates rather than migrating old
+ones — the posture 067 takes toward a renamed project, and why both derive at write time.</p>
+</spec-assumption>
+
+<spec-assumption>
+<p>A plugin and slug together identify a document within a marketplace. Already the registry's working
+assumption and the basis of the citation label; this spec relies on it rather than re-verifying it.</p>
+</spec-assumption>
+
+<spec-assumption>
+<p>Two spellings for edition pinning — the citation grammar's <code>@</code> and this URI's
+<code>?edition=</code> — is an acceptable cost, accepted knowingly rather than overlooked. The audiences
+differ: a generic URI consumer should not have to learn a bespoke grammar to read a version selector.</p>
+</spec-assumption>
+</section>
+
+
+<section id="questions">
+<h2>7 · Open questions</h2>
+<spec-questions>
+<p>None outstanding. The authority rule, the edition-pin spelling, the kind segment, the parse/resolve split,
+the dedupe semantics across differing editions, the standalone rendering surface and the validation severity
+were each anchored in the interview. The serving surfaces are deferred, not undecided — including where
+their specs live, which settled as their own repository's estate.</p>
+</spec-questions>
+</section>
+
+
+<section id="conformance">
+<h2>8 · Conformance index</h2>
+<p>Auto-built from every <code>&lt;spec-requirement&gt;</code> in this document.</p>
+<spec-conformance></spec-conformance>
+</section>
+
+
+<section id="changelog">
+<h2>9 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-08-01">01 Aug 2026</time><span>Status flipped Draft → Accepted on 01 Aug 2026 — zero remaining unchecked tasks (23/23); the full repo suite (1711 tests) verified passing (5 session-load flakes in unrelated subsystems reconfirmed clean in isolation) per author confirmation. Sibling bundle (REQ-LIFECYCLE-005): spec.html, design.html, tasks.html.</span></li>
+  <li><time datetime="2026-08-01">01 Aug 2026</time><span>Initial draft. Closes the unbuilt remainder of <code>TBD-mcp-federation-namespace</code> after <a href="../067-spec-project-identity/spec.html">067</a> landed the spec half and deferred the corpus resource-URI form. Adds the corpus kind on a marketplace authority (FR-001/FR-002), the reverse-direction parser (FR-005–FR-008), the dedupe guarantee (FR-009) and a collision warning mirroring 067's (FR-011). Sourced from <a href="../../docs/corpus-extraction-considerations.html">the corpus-extraction survey</a> §5 / D-002.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  078-federated-resource-uri · Federated resource URI · authored 2026-08-01
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>

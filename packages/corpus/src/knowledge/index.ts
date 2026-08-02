@@ -102,7 +102,7 @@ export {
   renderMarketplaceManifest,
   syncMarketplaceManifest,
 } from './publish.js';
-export { renderCitationLabel, resolveCitation } from './resolve.js';
+export { registryEntryUri, renderCitationLabel, resolveCitation, resolveCorpusCoordinate } from './resolve.js';
 export type {
   CorpusDocument,
   CorpusPack,

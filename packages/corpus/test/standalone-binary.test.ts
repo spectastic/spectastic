@@ -130,3 +130,100 @@ describe('spectastic-corpus standalone binary (US2, SC-003)', () => {
     expect(result.code).toBe(0);
   });
 });
+
+/**
+ * 078-federated-resource-uri T-101: red-first test for the `id` verb —
+ * renders a corpus document's federation-unique spectastic:// coordinate
+ * with no @spectastic/core and no specs/ present (FR-010, SC-003).
+ */
+describe('spectastic-corpus id (078 US1, FR-010/SC-003)', () => {
+  function seedRegisteredDoc(cwd: string): void {
+    const packDir = join(cwd, 'knowledge', 'spectastic-concepts');
+    mkdirSync(join(packDir, 'references'), { recursive: true });
+    writeFileSync(
+      join(packDir, 'index.md'),
+      [
+        '| ID | Title | Description | Edition | Path |',
+        '| --- | --- | --- | --- | --- |',
+        '| KB-501 | Foundations | Core concepts | 2026-01-01 | references/KB-501.md |',
+        '',
+      ].join('\n'),
+    );
+    writeFileSync(
+      join(packDir, 'references', 'KB-501.md'),
+      ['---', 'id: KB-501', 'edition: 2026-01-01', '---', '', '# Foundations', '', 'Body.', ''].join('\n'),
+    );
+    // The root registry is what carries marketplace/plugin/slug (FR-001/FR-002) —
+    // an index.md-only pack has no coordinate to render (registry-less is a
+    // pre-062 shape; this test seeds the two-layer registry directly).
+    writeFileSync(
+      join(cwd, 'knowledge', 'index.md'),
+      [
+        '| ID | Marketplace | Plugin | Slug | Title | Edition | Path | Status |',
+        '| --- | --- | --- | --- | --- | --- | --- | --- |',
+        '| KB-501 | spectastic | spectastic-concepts | 001-foundations | Foundations | 2026-01-01 | knowledge/spectastic-concepts/references/KB-501.md |  |',
+        '',
+      ].join('\n'),
+    );
+  }
+
+  it('renders a bare KB id to its spectastic:// coordinate, no core, no specs/', () => {
+    const cwd = freshProjectDir();
+    seedRegisteredDoc(cwd);
+    expect(existsSync(join(cwd, 'specs'))).toBe(false);
+
+    const result = run(['id', 'KB-501'], cwd);
+    expect(result.code).toBe(0);
+    expect(result.stdout.trim()).toBe('spectastic://spectastic/corpus/spectastic-concepts/001-foundations');
+  });
+
+  it('renders an edition-pinned KB id with ?edition= appended', () => {
+    const cwd = freshProjectDir();
+    seedRegisteredDoc(cwd);
+
+    const result = run(['id', 'KB-501@2026-01-01'], cwd);
+    expect(result.code).toBe(0);
+    expect(result.stdout.trim()).toBe(
+      'spectastic://spectastic/corpus/spectastic-concepts/001-foundations?edition=2026-01-01',
+    );
+  });
+
+  it('exits non-zero with no partial output for an unknown id', () => {
+    const cwd = freshProjectDir();
+    const result = run(['id', 'KB-9999'], cwd);
+    expect(result.code).not.toBe(0);
+  });
+
+  it('exits non-zero with no partial output for a malformed id string (not a KB-NNNN shape)', () => {
+    const cwd = freshProjectDir();
+    const result = run(['id', 'not-a-kb-id'], cwd);
+    expect(result.code).not.toBe(0);
+    expect(result.stdout).not.toMatch(/^spectastic:\/\//);
+  });
+
+  it('reports absence — never a partial coordinate — for a document present in a pack but missing from the registry', () => {
+    const cwd = freshProjectDir();
+    // An index.md-only pack (pre-062 shape): the document resolves via
+    // get(), but with no root registry there is no marketplace/plugin/slug
+    // to compose a coordinate from.
+    const packDir = join(cwd, 'knowledge', 'unregistered-pack');
+    mkdirSync(join(packDir, 'references'), { recursive: true });
+    writeFileSync(
+      join(packDir, 'index.md'),
+      [
+        '| ID | Title | Description | Edition | Path |',
+        '| --- | --- | --- | --- | --- |',
+        '| KB-777 | Orphan doc | No registry row | 2026-01-01 | references/KB-777.md |',
+        '',
+      ].join('\n'),
+    );
+    writeFileSync(
+      join(packDir, 'references', 'KB-777.md'),
+      ['---', 'id: KB-777', 'edition: 2026-01-01', '---', '', '# Orphan doc', '', 'Body.', ''].join('\n'),
+    );
+
+    const result = run(['id', 'KB-777'], cwd);
+    expect(result.code).not.toBe(0);
+    expect(result.stdout).not.toMatch(/^spectastic:\/\//);
+  });
+});

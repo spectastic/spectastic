@@ -21,6 +21,7 @@ export {
   defaultMarketplaceName,
   loadCorpusConfig,
   loadProjectConfig,
+  marketplaceIdentityFindings,
   projectIdentityFindings,
   resolveCorpusConfig,
   resolveProjectConfig,

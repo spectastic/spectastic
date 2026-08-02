@@ -1,0 +1,467 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
+<title>Federated resource URI · Design</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Design · 078-federated-resource-uri</p>
+  <h1>Federated resource URI</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    How we will build it.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>     <span><spec-status value="accepted">Accepted</spec-status></span>
+    <b>Spec</b>       <span><a href="./spec.html">078-federated-resource-uri</a></span>
+    <b>Owner</b>      <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Branch</b>     <span><code>078-federated-resource-uri</code></span>
+    <b>Created</b>    <span><time datetime="2026-08-01">01 Aug 2026</time></span>
+    <b>Read time</b>  <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-tldr>
+    <p>Add a third resource kind to the composer that already takes the kind as a parameter, add the
+    reverse direction on top of the platform's own URL parser, and mirror the existing
+    project-identity findings one axis over onto the marketplace. Almost nothing here is new
+    machinery — the work is choosing the <em>authority</em> correctly and folding its case, which is
+    what makes the dedupe guarantee structural rather than a convention. The biggest risk is the one
+    the spike found: a non-special URI scheme does not normalise host case, so without a deliberate
+    fold two repositories spelling their marketplace differently would silently fail to dedupe.</p>
+  </spec-tldr>
+</header>
+
+
+<section id="principles-check">
+<h2>1 · Principles check</h2>
+<p>Verify this plan respects every principle in
+<a href="../../principles.html">v1.8.0</a>. Any violation requires either a principles amendment or a
+deliberate exception logged below.</p>
+
+<table>
+  <thead><tr><th>Principle</th><th>Compliance</th><th>Notes</th></tr></thead>
+  <tbody>
+    <tr><td>P-1 · Source order is reading order</td><td><spec-pill>OK</spec-pill></td><td>No artifact rendering changes.</td></tr>
+    <tr><td>P-2 · Semantic tags over class soup</td><td><spec-pill>OK</spec-pill></td><td>No new markup.</td></tr>
+    <tr><td>P-3 · IDs are contracts</td><td><spec-pill>OK</spec-pill></td><td>Directly upheld — the coordinate is an id contract, and <a href="./spec.html#FR-012">FR-012</a> forbids changing existing spec/contract output. <a href="#D-004">D-004</a> is that clause applied.</td></tr>
+    <tr><td>P-4 · Progressive enhancement, never dependence</td><td><spec-pill>OK</spec-pill></td><td>No browser surface.</td></tr>
+    <tr><td>P-5 · Calm density</td><td><spec-pill>OK</spec-pill></td><td>One new warning, matching the existing wording pattern.</td></tr>
+    <tr><td>P-6 · Draft is loose, ratified is locked</td><td><spec-pill>OK</spec-pill></td><td>Spec is Draft; this design may still shape it.</td></tr>
+    <tr><td>P-7 · Done means verified</td><td><spec-pill>OK</spec-pill></td><td>Pure functions with exact expected strings; <a href="#D-005">D-005</a> takes tests red-first and 100% patch coverage.</td></tr>
+    <tr><td>P-8 · Guarantees live in the kernel or CI</td><td><spec-pill>OK</spec-pill></td><td>The grammar is kernel code, not command markdown; the marketplace warning is a validate finding, so the git/CI boundary enforces it.</td></tr>
+    <tr><td>P-9 · The enforcement floor holds</td><td><spec-pill>OK</spec-pill></td><td><code>enforce</code> reports 8 covered · 1 relaxed · 0 missing; this design adds no gate and disables none.</td></tr>
+    <tr><td>P-10 · Internal artifact ids stay out of user-facing copy</td><td><spec-pill>OK</spec-pill></td><td>The new warning and the new command's help name what they do, never a spec number — matching the existing project-identity message.</td></tr>
+    <tr><td>P-11 · Artifacts are data, not instructions</td><td><spec-pill>OK</spec-pill></td><td>Directly upheld by <a href="./spec.html#NFR-002">NFR-002</a> — a parsed URI is never dereferenced or evaluated. <a href="#D-002">D-002</a> keeps parsing to pure string work.</td></tr>
+    <tr><td>P-12 · Capability accountability</td><td><spec-pill>OK</spec-pill></td><td>Adds no network, filesystem, exec or crypto capability. Parsing is in-memory only.</td></tr>
+    <tr><td>P-13 · Accessibility conformance</td><td><spec-pill>OK</spec-pill></td><td>No user-facing UI surface.</td></tr>
+    <tr><td>P-14 · Library-first boundaries</td><td><spec-pill>OK</spec-pill></td><td>Directly upheld — grammar in <code>@spectastic/schema</code>, consumed by both packages; the corpus→core edge stays absent (<a href="#D-003">D-003</a>).</td></tr>
+  </tbody>
+</table>
+
+<h3>Toolchain / enforcement</h3>
+<p>Profile <strong>enterprise</strong> (<code>.spectastic/profile.json</code>). <code>spectastic enforce</code>
+reports <strong>8 covered · 1 relaxed · 0 missing</strong> — formatter, linter, type-checker, security,
+supply-chain, test-runner, coverage and contract-first are all already wired for this TypeScript
+monorepo (Biome, tsc, vitest with a declared threshold), and <code>observability</code> is waived on the
+standing CLI-toolchain rationale. <strong>No enforcement gap falls to this design</strong>; it inherits the
+existing gates unchanged. The one addition that touches the gate boundary is the new marketplace warning,
+which rides the validate path the pre-commit hook already runs.</p>
+</section>
+
+
+<section id="technical-context">
+<h2>2 · Technical context</h2>
+<dl>
+  <dt>Language(s)</dt>      <dd>TypeScript 5.7, targeting Node ≥ 20 (<code>packages/corpus/package.json</code> engines).</dd>
+  <dt>Frameworks</dt>       <dd>None new. Commander for the CLI verb, vitest for tests — both already in the workspace.</dd>
+  <dt>Architecture</dt>     <dd>Layered, unchanged — shared grammar in <code>@spectastic/schema</code> below both consumers. No new pattern; this extends the existing package layering (<a href="#D-003">D-003</a>).</dd>
+  <dt>Storage</dt>          <dd>None. Composition and parsing are pure; the only reads are the existing config and registry loaders.</dd>
+  <dt>Testing</dt>          <dd>vitest, TDD — tests written red first per story (<a href="#D-005">D-005</a>). Table-driven cases over a fixed coordinate matrix.</dd>
+  <dt>Coverage</dt>         <dd>Patch target <strong>100% of changed lines</strong> — achievable because every unit is a pure function with no environment branch — plus the standing rule that a change never lowers coverage of the code it touches. No universal project percentage.</dd>
+  <dt>Perf targets</dt>     <dd>Not in scope. <a href="./spec.html#NFR-001">NFR-001</a> quantifies purity and determinism, not latency; these are in-memory string operations on the existing read path.</dd>
+  <dt>Constraints</dt>      <dd><code>@spectastic/corpus</code> MUST NOT import <code>@spectastic/core</code> (CI-enforced, <code>.dependency-cruiser.cjs:15</code>). Existing spec and contract coordinates MUST render byte-identically (<a href="./spec.html#FR-012">FR-012</a>).</dd>
+</dl>
+</section>
+
+
+<section id="contracts">
+<h2>3 · Data model &amp; contracts</h2>
+
+<p>The spec's three conceptual entities land as one string grammar and one parsed record — no storage, no
+wire format. The registry row is the physical source of a corpus coordinate's parts and already carries
+every one of them, so nothing new is persisted.</p>
+
+<table>
+  <thead><tr><th>Conceptual entity</th><th>Physical shape</th><th>Notes</th></tr></thead>
+  <tbody>
+    <tr><td><a href="./spec.html#data">Resource coordinate</a></td>
+        <td>A <code>string</code> when rendered; a discriminated record <code>{ kind, authority, name…, edition?, anchor? }</code> when parsed.</td>
+        <td>The parsed form is the parser's return type; the rendered form is canonical and the one that is compared.</td></tr>
+    <tr><td><a href="./spec.html#data">Authority</a></td>
+        <td>The URI host segment — <code>marketplace</code> for the corpus kind, <code>project</code> for spec and contract.</td>
+        <td>Sourced from <code>resolveCorpusConfig</code>'s existing precedence chain; lowercased for the corpus kind only (<a href="#D-004">D-004</a>).</td></tr>
+    <tr><td><a href="./spec.html#data">Edition pin</a></td>
+        <td><code>?edition=&lt;value&gt;</code> query parameter; the value is the registry row's <code>edition</code> field verbatim.</td>
+        <td>Absent parameter means current. Query precedes fragment, fixed by URI syntax.</td></tr>
+  </tbody>
+</table>
+
+<spec-contract shape="none">
+  <p>This feature exposes no request/response, RPC, GraphQL or event-driven interface. It ships a library
+  grammar and a read-only CLI verb; every serving surface that would carry a contract — the corpus server,
+  the specs server, cross-repository aggregation — is deferred by the spec's own out-of-scope block. The
+  <code>spectastic://</code> scheme it defines <em>is</em> an interoperability contract, but a naming one:
+  it has no transport, no request shape and no error envelope to specify, so an OpenAPI or AsyncAPI
+  document would have nothing to describe. The consumer-facing contract arrives with the server that
+  serves these coordinates, in that repository.</p>
+</spec-contract>
+</section>
+
+
+<section id="grounding">
+<h2>4 · Grounding &amp; evidence</h2>
+<p>Every design-bearing fact this plan rests on, and how it was confirmed — read this before the approach:
+it separates what the plan <em>knows</em> from what it <em>assumes</em>. Status is <code>verified</code>
+(opened the source this turn), <code>spike</code> (decidable only by a time-boxed investigation — run it,
+record the finding), or <code>assumed</code>.</p>
+
+<table class="evidence">
+  <thead>
+    <tr><th>Claim the design rests on</th><th>Source</th><th>Status</th><th>Finding / note</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>The URI composer takes the resource kind as a parameter, so a third kind is additive.</td>
+        <td><code>packages/schema/src/project-shared.ts:68</code></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td><code>resourceUri(project, kind, name, anchor)</code>; <code>ResourceKind = 'spec' | 'contract'</code> at :50. A contract kind was added this way by an earlier spec without a second composer.</td></tr>
+
+    <tr><td>The composer supports a fragment but has no query support.</td>
+        <td><code>packages/schema/src/project-shared.ts:73</code></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td>Only <code>const fragment = anchor ? '#'+anchor : ''</code>. The edition parameter is a genuine extension, not a call-site change.</td></tr>
+
+    <tr><td>A shared grammar module can be consumed by both packages without breaching the boundary.</td>
+        <td><code>packages/schema/package.json</code> exports · <code>.dependency-cruiser.cjs:15</code></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td><code>@spectastic/schema</code> already publishes a <code>./project</code> subpath; the <code>no-corpus-to-core</code> rule forbids only corpus→core, and schema sits below both.</td></tr>
+
+    <tr><td>The registry row already carries every part of a corpus coordinate.</td>
+        <td><code>packages/corpus/src/knowledge/types.ts:125</code></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td><code>RegistryEntry</code> holds <code>marketplace</code>, <code>plugin</code>, <code>slug</code> and <code>edition</code> — no new persisted field is needed.</td></tr>
+
+    <tr><td>The marketplace resolves through a single precedence chain.</td>
+        <td><code>packages/corpus/src/config.ts:126</code></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td><code>marketplace ?? namespace ?? project.project ?? defaultMarketplaceName(cwd)</code> — the unified derivation the spec's edge cases depend on.</td></tr>
+
+    <tr><td>There is an existing findings shape to mirror for the marketplace warning.</td>
+        <td><code>packages/corpus/src/config.ts:199</code> · <code>packages/cli/src/commands/validate.ts:362</code></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td><code>projectIdentityFindings</code> lives in the corpus package with a thin CLI wrapper. Its docstring scopes itself out of the standalone corpus validate as "not corpus-intrinsic" — the distinction <a href="#D-006">D-006</a> turns on.</td></tr>
+
+    <tr><td>No <code>spectastic://</code> parser exists today.</td>
+        <td><code>packages/core/src/commands/contract.ts:65</code></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td>The only reverse handling anywhere is a <code>.slice()</code> plus <code>.split('#')</code> for one kind — confirming the parser is genuinely new rather than a refactor.</td></tr>
+
+    <tr><td>Mixed-case identities are legal today, so casing is a live hazard.</td>
+        <td><code>packages/schema/src/project-shared.ts:31</code></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td><code>SEGMENT_RE</code> accepts <code>[A-Za-z0-9._-]</code> — nothing rejects or folds an uppercase marketplace.</td></tr>
+
+    <tr><td>The platform URL parser handles a non-special <code>spectastic://</code> scheme.</td>
+        <td>Spike: parse a full coordinate on the real runtime</td>
+        <td><spec-status value="review">spike</spec-status></td>
+        <td><strong>Resolved.</strong> <code>protocol='spectastic:'</code>, <code>host='spectastic'</code>, <code>pathname='/corpus/…'</code>, <code>searchParams.get('edition')='2026-07-26'</code>, <code>hash='#…'</code>, and <code>href</code> round-trips byte-identically. An owner-qualified authority splits correctly (<code>host='acme'</code>, <code>pathname='/my-repo/corpus/…'</code>).</td></tr>
+
+    <tr><td>A non-special scheme does not normalise host case.</td>
+        <td>Spike: compare <code>spectastic://</code> against <code>https://</code></td>
+        <td><spec-status value="review">spike</spec-status></td>
+        <td><strong>Resolved — the load-bearing finding.</strong> <code>spectastic://Acme-Corp/…</code> preserves <code>Acme-Corp</code>, where <code>https://Acme-Corp/x</code> folds to <code>acme-corp</code>. Without a deliberate fold, two repositories differing only in casing would not dedupe. Drives <a href="#D-004">D-004</a>.</td></tr>
+
+    <tr><td>Node 20 parses non-special schemes as Node 25 does.</td>
+        <td>—</td>
+        <td><spec-status value="blocked">assumed</spec-status></td>
+        <td>Spikes ran on v25.9.0; the package engines allow ≥ 20. WHATWG URL non-special-scheme handling has been stable for many majors and is spec-defined, so verifying across runtimes costs more than the risk warrants. Mitigated in §9 by asserting the behaviour in the test suite, which CI runs on the supported runtime.</td></tr>
+  </tbody>
+</table>
+</section>
+
+
+<section id="approach">
+<h2>5 · Approach</h2>
+
+<p>Three additions in three existing places, in dependency order. First, <code>@spectastic/schema</code>'s
+shared project grammar grows a <code>corpus</code> kind, an optional edition parameter on the composer, and
+a new parser — the whole grammar, both directions, in the one module both packages already consume.
+Second, <code>@spectastic/corpus</code> gains the two things that need a corpus to answer: a function
+turning a registry row into a coordinate, and a marketplace-identity findings function cloned from the
+project-identity one beside it. Third, the <code>spectastic-corpus</code> binary gains an
+<code>id</code> verb alongside <code>get</code>/<code>query</code>/<code>grep</code>, and the marketplace
+findings are wired into both validate surfaces.</p>
+
+<p>The parser is the only genuinely new unit, and the spike removed most of its risk: the platform's URL
+implementation already parses this scheme correctly and round-trips it byte-for-byte, so our code
+validates the <em>kind</em> and shape rather than re-implementing percent-encoding. The one piece of real
+design judgment is the authority: it is the marketplace rather than the project, and it is lowercased on
+the way out, because those two choices together are what make the dedupe guarantee hold structurally
+instead of by convention.</p>
+
+<spec-arch>
+<figure>
+<svg viewBox="0 0 700 240" role="img" aria-label="Where the grammar, the corpus bindings and the two surfaces sit across the package layering">
+  <style>
+    .box { fill:#fcfbf7; stroke:#c4c1bb; stroke-width:1.2; }
+    .label { font: 700 11px Lato, sans-serif; fill:#4a4a46; letter-spacing:0.06em; text-transform:uppercase; }
+    .body { font: 400 12px "Source Serif 4", Georgia, serif; fill:#353534; }
+    .arr { stroke:#73706d; stroke-width:1.2; fill:none; }
+  </style>
+  <rect class="box" x="30"  y="30" width="180" height="72" rx="4"/>
+  <text class="label" x="46" y="54">schema · grammar</text>
+  <text class="body"  x="46" y="74">compose + parse</text>
+  <text class="body"  x="46" y="92">the corpus kind</text>
+
+  <rect class="box" x="270" y="30" width="180" height="72" rx="4"/>
+  <text class="label" x="286" y="54">corpus · bindings</text>
+  <text class="body"  x="286" y="74">registry row → URI</text>
+  <text class="body"  x="286" y="92">marketplace findings</text>
+
+  <rect class="box" x="510" y="10" width="160" height="52" rx="4"/>
+  <text class="label" x="526" y="32">corpus binary</text>
+  <text class="body"  x="526" y="50">id · validate</text>
+
+  <rect class="box" x="510" y="82" width="160" height="52" rx="4"/>
+  <text class="label" x="526" y="104">main cli</text>
+  <text class="body"  x="526" y="122">validate</text>
+
+  <rect class="box" x="270" y="160" width="180" height="52" rx="4"/>
+  <text class="label" x="286" y="182">core · kernel</text>
+  <text class="body"  x="286" y="200">spec + contract kinds</text>
+
+  <path class="arr" d="M210 66 L270 66" marker-end="url(#a)"/>
+  <path class="arr" d="M450 60 L510 40" marker-end="url(#a)"/>
+  <path class="arr" d="M450 78 L510 100" marker-end="url(#a)"/>
+  <path class="arr" d="M120 102 L120 186 L270 186" marker-end="url(#a)"/>
+  <defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#73706d"/></marker></defs>
+</svg>
+<figcaption>The grammar sits below both consumers, so the standalone binary reaches it without the kernel
+and no corpus→core edge is created. Arrows run from a provider to what consumes it — the dependency edge
+points the other way; core consumes the same composer for its own two kinds.</figcaption>
+</figure>
+</spec-arch>
+</section>
+
+
+<section id="alternatives">
+<h2>6 · Alternatives considered</h2>
+
+<p>Scored 1–5, higher is better. The criteria that mattered: whether the dedupe guarantee holds without
+anyone remembering a rule, whether the change is confined to additive code, and how much grammar we own
+versus borrow from the platform.</p>
+
+<spec-matrix>
+<table>
+  <thead>
+    <tr><th>Option</th><th>Dedupe holds structurally</th><th>Additive only</th><th>Grammar we don't own</th><th class="score">Total</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Project authority, hand-rolled parser — one authority rule for all kinds</td><td>1</td><td>4</td><td>2</td><td class="score">7</td></tr>
+    <tr><td>Marketplace authority, case-sensitive, hand-rolled parser</td><td>2</td><td>5</td><td>2</td><td class="score">9</td></tr>
+    <tr><td>Marketplace authority, case-folded, hand-rolled parser</td><td>5</td><td>5</td><td>2</td><td class="score">12</td></tr>
+    <tr data-winner><td>Marketplace authority, case-folded, platform URL parser — chosen</td><td>5</td><td>5</td><td>5</td><td class="score">15</td></tr>
+  </tbody>
+</table>
+</spec-matrix>
+
+<p>The first option scores worst on the criterion that matters most: keying on the project mints one
+coordinate per installing repository, which is the double-counting the whole substrate exists to prevent.
+The second and third differ only by the case fold — the spike is what separated them, and without it the
+third option would have looked identical to the second.</p>
+</section>
+
+
+<section id="decisions">
+<h2>7 · Decisions</h2>
+
+<spec-decision id="D-001" grounding="verified">
+  <h4>D-001 · The corpus kind joins the existing composer rather than getting its own</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd><code>packages/schema/src/project-shared.ts:68</code> takes the kind as a parameter precisely so a second kind needs no second composer, and a contract kind was added that way at :96. A third kind is the same move again.</dd>
+    <dt>Decision</dt>     <dd>Extend <code>ResourceKind</code> with <code>'corpus'</code> and add a thin named wrapper beside the existing spec and contract wrappers. Add an optional edition parameter to the shared composer, emitted as <code>?edition=</code> before any fragment.</dd>
+    <dt>Consequences</dt> <dd>+ One authority-and-path rule, so a corpus coordinate cannot drift from a spec coordinate. + Existing call sites are untouched — the new parameter is optional. − The shared composer now carries a query concept only one kind uses today.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-002" grounding="spike">
+  <h4>D-002 · Parse with the platform's URL implementation, not a hand-rolled grammar</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>Spike (§4): <code>new URL('spectastic://spectastic/corpus/pack/doc?edition=2026-07-26#anchor')</code> yields the correct host, pathname, <code>searchParams</code> and hash, and <code>href</code> round-trips byte-identically. Percent-encoding is handled to spec.</dd>
+    <dt>Decision drivers</dt> <dd>Correctness of encoding · <a href="./spec.html#FR-008">FR-008</a> round-trip · <a href="./spec.html#FR-007">FR-007</a> never-throws · amount of grammar we own</dd>
+    <dt>Considered options</dt>
+    <dd>
+      <ul class="considered-options">
+        <li><strong>Hand-rolled regex grammar</strong> — + total control, no throw path to wrap. − we re-implement percent-encoding and inherit its edge cases forever.</li>
+        <li><strong>Platform URL — chosen</strong> — + spike-verified on the real runtime, encoding correct by construction. − lenient, so the kind and segment count must be validated by us; throws on malformed input, so <a href="./spec.html#FR-007">FR-007</a>'s typed failure is a wrapper.</li>
+      </ul>
+    </dd>
+    <dt>Decision</dt>     <dd>Parse via the platform URL, then validate the kind segment and arity ourselves, returning a typed result. Wrap construction so a malformed input becomes a failure value rather than a thrown error.</dd>
+    <dt>Consequences</dt> <dd>+ Encoding correctness is the platform's problem, not ours. + The round-trip requirement is met by construction. − One assumed fact (runtime parity across supported majors) that §9 mitigates with a test assertion. − Parsing is lenient by default, so validation is explicit rather than implied by the grammar.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-003" grounding="verified">
+  <h4>D-003 · The whole grammar lives in the shared schema package</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd><code>@spectastic/schema</code> already publishes a <code>./project</code> subpath holding the composer, and <code>.dependency-cruiser.cjs:15</code> forbids only a corpus→core edge. Schema sits below both consumers, so it is the one place both can reach.</dd>
+    <dt>Decision</dt>     <dd>Composer, parser and kind union all live in the existing shared project grammar module. The corpus package holds only what needs a corpus to answer — turning a registry row into a coordinate, and the marketplace findings.</dd>
+    <dt>Consequences</dt> <dd>+ Satisfies <a href="./spec.html#FR-010">FR-010</a> and <a href="./spec.html#NFR-003">NFR-003</a> structurally: the standalone binary reaches the grammar without the kernel. + No new package, no new build target. − The schema package accumulates another responsibility, which is the trade it was already making.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-004" grounding="spike">
+  <h4>D-004 · Lowercase the authority — for the corpus kind only</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>Two facts collide. The spike (§4) found a non-special scheme preserves host case where <code>https://</code> folds it, and <code>project-shared.ts:31</code> permits mixed case — so casing can silently break dedupe. But <a href="./spec.html#FR-012">FR-012</a> requires existing spec and contract coordinates to render exactly as today, which folding in the shared composer would violate.</dd>
+    <dt>Decision drivers</dt> <dd><a href="./spec.html#FR-009">FR-009</a> dedupe must hold structurally · <a href="./spec.html#FR-012">FR-012</a> additive-only · avoiding a convention nobody remembers</dd>
+    <dt>Considered options</dt>
+    <dd>
+      <ul class="considered-options">
+        <li><strong>Fold in the shared composer</strong> — + symmetric across kinds. − changes already-emitted spec and contract coordinates, so it needs a proposal against <a href="./spec.html#FR-012">FR-012</a> first.</li>
+        <li><strong>Warn instead of folding</strong> — + no behaviour change. − the headline guarantee then depends on someone heeding a warning.</li>
+        <li><strong>Fold for the corpus kind only — chosen</strong> — + dedupe holds structurally, <a href="./spec.html#FR-012">FR-012</a> intact. − casing becomes asymmetric between a project's spec and corpus coordinates.</li>
+      </ul>
+    </dd>
+    <dt>Decision</dt>     <dd>The corpus composer lowercases the authority before rendering. The shared composer's behaviour for spec and contract is untouched.</dd>
+    <dt>Consequences</dt> <dd>+ Two repositories spelling the marketplace differently still dedupe, with nothing to remember. + <a href="./spec.html#FR-012">FR-012</a> holds, so no proposal blocks this design. − A project with a mixed-case identity renders a lowercase corpus authority and a mixed-case spec authority; recorded in §10 as deliberate, and a candidate for a later symmetry proposal.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-005" grounding="n-a">
+  <h4>D-005 · Tests red first, 100% patch coverage</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>A judgment call with no external fact behind it. Every unit here is a pure function whose expected output is an exact string, and the estate has run tests-red-first on comparable specs.</dd>
+    <dt>Decision</dt>     <dd>Write the failing test before each unit. Patch target 100% of changed lines, plus the standing rule that a change never lowers coverage of what it touches. Table-driven cases over the coordinate matrix — every kind crossed with every combination of edition pin and anchor.</dd>
+    <dt>Consequences</dt> <dd>+ The round-trip and dedupe requirements are literally test tables, so the criteria are executable. + Full patch coverage is realistic rather than aspirational for code with no environment branch. − Slower per unit than writing tests after.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-006" grounding="verified">
+  <h4>D-006 · The marketplace warning fires on both validate surfaces</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd><code>packages/cli/src/commands/validate.ts:353</code> documents why the project-identity gate is <em>not</em> mirrored onto the standalone corpus binary: it "has no dependency on a <code>knowledge/</code> corpus existing". That reasoning distinguishes rather than excludes a marketplace, which is corpus-intrinsic by definition.</dd>
+    <dt>Decision</dt>     <dd>Add marketplace findings beside the project ones in the corpus package, wire them into the main CLI as a sibling scan, and <em>also</em> into <code>packages/corpus/src/cli/validate.ts</code>. The project gate stays main-CLI-only, unchanged.</dd>
+    <dt>Consequences</dt> <dd>+ A standalone corpus user hears about a collision-prone identity from the tool they actually run. + The existing scope docstring stays true — we follow its reasoning rather than contradicting it. − Two registration sites for one findings function; covered by asserting both surfaces emit it.</dd>
+  </dl>
+</spec-decision>
+</section>
+
+
+<section id="project-structure">
+<h2>8 · Project structure</h2>
+
+<p>Only the new or changed paths, grouped by the package layering <a href="#D-003">D-003</a> preserves.</p>
+
+<pre><code>packages/schema/src/
+  project-shared.ts          # + 'corpus' kind, + edition param, + parseResourceUri
+packages/schema/test/
+  project-shared.test.ts     # + round-trip matrix, + parse failure cases
+
+packages/corpus/src/
+  config.ts                  # + marketplaceIdentityFindings (beside projectIdentityFindings)
+  knowledge/resolve.ts       # + coordinate from a RegistryEntry (lowercased authority)
+  cli/read.ts                # + `id` verb beside get/query/grep
+  cli/validate.ts            # + marketplace findings (D-006)
+packages/corpus/test/
+  resource-uri.test.ts       # + dedupe across two configs, + standalone rendering
+
+packages/cli/src/commands/
+  validate.ts                # + scanMarketplaceIdentity wrapper
+</code></pre>
+
+<p>No new package, no new build target, no new dependency. Every file above already exists except the two
+test files.</p>
+</section>
+
+
+<section id="risks">
+<h2>9 · Risks &amp; mitigations</h2>
+
+<table>
+  <thead><tr><th>Risk</th><th>Likelihood</th><th>Impact</th><th>Mitigation</th></tr></thead>
+  <tbody>
+    <tr><td>Non-special-scheme URL behaviour differs on an older supported runtime than the one the spikes ran on.</td><td>L</td><td>M</td><td>Assert the parse shape directly in the test suite rather than trusting the runtime — CI runs it on the supported version, so a divergence fails a test instead of shipping. The behaviour is spec-defined and long stable.</td></tr>
+    <tr><td>The casing asymmetry (<a href="#D-004">D-004</a>) surprises someone reading a project's two coordinate kinds side by side.</td><td>M</td><td>L</td><td>Recorded in §10 as deliberate with its cause, and named as a candidate symmetry proposal. Only visible to a project that chose a mixed-case identity.</td></tr>
+    <tr><td>The lenient platform parser accepts a URI we should reject, producing a plausible-but-wrong coordinate.</td><td>M</td><td>M</td><td>Validate the kind segment and path arity explicitly after parsing; <a href="./spec.html#FR-007">FR-007</a> forbids a partially-populated result, so the failure path is tested with malformed and unknown-kind inputs.</td></tr>
+    <tr><td>Two validate registration sites (<a href="#D-006">D-006</a>) drift, so one surface silently stops warning.</td><td>L</td><td>L</td><td>Assert both surfaces emit the finding for the same fixture, so dropping either fails.</td></tr>
+  </tbody>
+</table>
+</section>
+
+
+<section id="complexity">
+<h2>10 · Complexity tracking</h2>
+<p>Anywhere this plan introduces complexity not strictly required by the spec, justify it here.</p>
+
+<spec-assumption>
+<p><strong>The casing asymmetry is deliberate.</strong> <a href="#D-004">D-004</a> folds case for the corpus
+kind only, so a project with a mixed-case identity renders a lowercase corpus authority beside a
+mixed-case spec authority. The simpler, symmetric alternative — folding everywhere — would change
+coordinates already emitted for spec and contract kinds, which <a href="./spec.html#FR-012">FR-012</a>
+forbids. The asymmetry is therefore the <em>cheaper</em> of the two, and it is confined to projects that
+chose a mixed-case identity. Making it symmetric later is a proposal against FR-012, not a redesign.</p>
+</spec-assumption>
+
+<spec-assumption>
+<p><strong>The shared composer gains a concept only one kind uses.</strong> The optional edition parameter
+is meaningless for spec and contract coordinates today. Keeping it on the shared composer rather than
+forking a corpus-only one preserves the single authority-and-path rule that stops the kinds drifting apart
+— the same trade an earlier spec made when it added the contract kind rather than a second composer.</p>
+</spec-assumption>
+</section>
+
+
+<section id="questions">
+<h2>11 · Open questions</h2>
+<spec-questions>
+<p>None outstanding. The authority and its case fold, the parser choice, the grammar's package home, the
+test style and coverage target, and the reach of the marketplace warning were all anchored in the
+interview. Both spikes ran and resolved this turn; the single <code>assumed</code> fact (runtime parity
+across supported majors) backs no <code>must</code>-tier decision on its own and is mitigated by a test
+assertion, so the grounding gate is clear.</p>
+</spec-questions>
+</section>
+
+
+<section id="changelog">
+<h2>12 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-08-01">01 Aug 2026</time><span>Status flipped Draft → Accepted on 01 Aug 2026 — zero remaining unchecked tasks (23/23); the full repo suite verified passing per author confirmation. Sibling bundle (REQ-LIFECYCLE-005): spec.html, design.html, tasks.html.</span></li>
+  <li><time datetime="2026-08-01">01 Aug 2026</time><span>Initial plan. Six decisions; two spikes run and resolved — the platform URL parser handles the non-special scheme with an exact round-trip, and a non-special scheme does <em>not</em> fold host case, which drove <a href="#D-004">D-004</a>'s corpus-only lowercase and kept <a href="./spec.html#FR-012">FR-012</a> intact. Checked against principles v1.8.0, all fourteen OK; enterprise enforcement floor reports no gap falling to this design.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  Design for 078-federated-resource-uri · Federated resource URI · authored 2026-08-01
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>

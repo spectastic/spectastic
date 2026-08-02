@@ -22,6 +22,7 @@ import { readFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import type { Finding } from '@spectastic/schema';
 import { classifyProjectId } from '@spectastic/schema/project';
+import { loadCorpus } from './knowledge/index.js';
 
 export class CorpusConfigError extends Error {
   constructor(message: string) {
@@ -225,6 +226,73 @@ export function projectIdentityFindings(cwd: string): Finding[] {
       rule: PROJECT_IDENTITY_RULE,
       severity: 'warning',
       message: `spectastic.json "project" ("${project}") has no owner segment — a bare, collision-prone default. Run \`spectastic init\` again once a git remote is set to derive an owner-qualified identity, or set "project" by hand as <owner>/<repo>.`,
+    },
+  ];
+}
+
+const MARKETPLACE_IDENTITY_RULE = 'marketplace-identity';
+
+/**
+ * The marketplace-identity validate finding (078-federated-resource-uri
+ * FR-011) — mirrors `projectIdentityFindings` one axis over, on the
+ * RESOLVED marketplace (`resolveCorpusConfig`, not the raw file section):
+ * a malformed marketplace is an ERROR; a bare, unqualified value — INCLUDING
+ * the directory-name default, since a marketplace is never truly absent the
+ * way `project` can be — is a WARNING naming the fix; a well-formed
+ * owner-qualified marketplace is silent. Reuses the same `classifyProjectId`
+ * shape predicate so this finding can never disagree with what
+ * `corpusResourceUri`'s dedupe guarantee actually depends on.
+ *
+ * Unlike `projectIdentityFindings`, this scan is corpus-intrinsic — a
+ * marketplace identity is a property of the corpus alone, with no
+ * dependency on the lifecycle's `project` field existing — so it is also
+ * wired into the standalone `spectastic-corpus validate` (078 D-006),
+ * where `projectIdentityFindings` deliberately is not.
+ *
+ * Graceful absence (a real regression caught by T-401's own suite, not
+ * anticipated by the design): unlike `project`, a marketplace ALWAYS
+ * resolves to something (the directory-name default), so a naive version of
+ * this scan fired on every project — including one with no corpus in use at
+ * all, breaking the standalone binary's "no knowledge/, no findings"
+ * guarantee (064 FR-007). The fix: fire only when there is actual evidence
+ * the corpus is in use — an explicit `corpus.marketplace`/`corpus.namespace`
+ * in the file, or at least one pack under `knowledge/`. Neither present
+ * means nothing to warn about yet, so this stays silent exactly like its
+ * corpus-intrinsic siblings (`corpusWellFormedFindings`, et al.).
+ */
+export function marketplaceIdentityFindings(cwd: string): Finding[] {
+  const rawConfig = loadCorpusConfig(cwd);
+  const explicitlyConfigured = rawConfig.marketplace !== undefined || rawConfig.namespace !== undefined;
+  if (!explicitlyConfigured && loadCorpus(cwd).length === 0) return [];
+
+  const { marketplace } = resolveCorpusConfig(cwd);
+  const shape = classifyProjectId(marketplace);
+  if (shape === 'owner-qualified') return [];
+
+  const file = 'spectastic.json';
+  if (shape === 'malformed') {
+    return [
+      {
+        file,
+        line: 1,
+        column: 1,
+        rule: MARKETPLACE_IDENTITY_RULE,
+        severity: 'error',
+        message: `The resolved corpus marketplace ("${marketplace}") is not a well-formed identity — expected an owner-qualified <owner>/<name> shape.`,
+      },
+    ];
+  }
+  // bare — collision-prone but not broken. Includes the directory-name
+  // default: a marketplace always resolves to something, so there is no
+  // "absent, therefore silent" branch the way project-identity has.
+  return [
+    {
+      file,
+      line: 1,
+      column: 1,
+      rule: MARKETPLACE_IDENTITY_RULE,
+      severity: 'warning',
+      message: `The resolved corpus marketplace ("${marketplace}") has no owner segment — a bare, collision-prone default. Set "corpus.marketplace" explicitly as <owner>/<name>, or qualify the project identity it derives from.`,
     },
   ];
 }

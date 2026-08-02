@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { renderCitationLabel, resolveCitation } from '../src/knowledge/resolve.js';
+import { registryEntryUri, renderCitationLabel, resolveCitation, resolveCorpusCoordinate } from '../src/knowledge/resolve.js';
 import type { CorpusDocument, CorpusPack, RegistryEntry, SupersededEdition } from '../src/knowledge/types.js';
+import { DEDUPE_REPOS } from './fixtures/dedupe/index.js';
 
 /**
  * 052-corpus-citation-contract T-201: red-first tests for resolveCitation
@@ -200,5 +201,79 @@ describe('renderCitationLabel (T-1002, FR-006)', () => {
   it('returns null when the registry has no row for the id (absent registry / not-yet-imported, FR-006 no-op)', () => {
     expect(renderCitationLabel('KB-9999', [row])).toBeNull();
     expect(renderCitationLabel('KB-0007', [])).toBeNull();
+  });
+});
+
+/**
+ * 078-federated-resource-uri T-202: red-first test for the foreign-
+ * coordinate contract (FR-006, SC-004) — a coordinate naming a marketplace
+ * absent locally parses successfully (proven at the schema layer, T-201);
+ * the SEPARATE local-resolve step reports absence, never an error.
+ */
+describe('resolveCorpusCoordinate — the local-resolve half of FR-006 (078 T-211)', () => {
+  const [repoA] = DEDUPE_REPOS;
+  if (!repoA) throw new Error('DEDUPE_REPOS fixture is empty');
+
+  it('resolves a coordinate this repository recognises', () => {
+    const found = resolveCorpusCoordinate(repoA.entry.marketplace, repoA.entry.plugin, repoA.entry.slug, [
+      repoA.entry,
+    ]);
+    expect(found).toEqual(repoA.entry);
+  });
+
+  it('reports absence — null, never a throw — for a marketplace this repository has never heard of', () => {
+    expect(() => resolveCorpusCoordinate('a-marketplace-nobody-has', 'some-pack', 'some-doc', [repoA.entry])).not.toThrow();
+    expect(resolveCorpusCoordinate('a-marketplace-nobody-has', 'some-pack', 'some-doc', [repoA.entry])).toBeNull();
+  });
+
+  it('reports absence for an empty registry, never a throw', () => {
+    expect(() => resolveCorpusCoordinate(repoA.entry.marketplace, repoA.entry.plugin, repoA.entry.slug, [])).not.toThrow();
+    expect(resolveCorpusCoordinate(repoA.entry.marketplace, repoA.entry.plugin, repoA.entry.slug, [])).toBeNull();
+  });
+
+  it('matches case-insensitively — a lowercased incoming coordinate still finds a mixed-case registry row', () => {
+    const [, repoB] = DEDUPE_REPOS;
+    if (!repoB) throw new Error('DEDUPE_REPOS fixture missing repo B');
+    // repoB.entry.marketplace is 'Spectastic' (mixed case); a coordinate
+    // parsed off the wire always carries the lowercased form (D-004).
+    const found = resolveCorpusCoordinate('spectastic', repoB.entry.plugin, repoB.entry.slug, [repoB.entry]);
+    expect(found).toEqual(repoB.entry);
+  });
+});
+
+/**
+ * 078-federated-resource-uri T-300: the cross-repo dedupe proof (FR-009,
+ * SC-001) — the same pack, read from the T-002 fixture under three
+ * different (project, KB-NNNN, marketplace-casing) combinations, composes
+ * to one byte-identical unpinned coordinate; a differing edition stays
+ * distinct once pinned. No new implementation — proves the guarantee
+ * registryEntryUri + corpusResourceUri's lowercase fold already establish.
+ */
+describe('cross-repo dedupe (078 T-300, FR-009/SC-001)', () => {
+  it('the same pack under three repos — different project ids, different KB-NNNN, one mixed-case marketplace — yields one unpinned coordinate', () => {
+    const unpinned = DEDUPE_REPOS.map((r) => registryEntryUri(r.entry));
+    const [first, ...rest] = unpinned;
+    for (const uri of rest) expect(uri, 'unpinned coordinates must match across repos').toBe(first);
+  });
+
+  it('a differing edition keeps a distinct PINNED coordinate even though the unpinned form matches', () => {
+    const [repoA, repoB, repoC] = DEDUPE_REPOS;
+    if (!repoA || !repoB || !repoC) throw new Error('DEDUPE_REPOS fixture incomplete');
+
+    // A and B share an edition — their pinned coordinates match too.
+    expect(registryEntryUri(repoA.entry, repoA.entry.edition)).toBe(registryEntryUri(repoB.entry, repoB.entry.edition));
+
+    // C holds a different edition — its pinned coordinate must differ from A's,
+    // even though their unpinned coordinates are identical.
+    expect(registryEntryUri(repoC.entry, repoC.entry.edition)).not.toBe(
+      registryEntryUri(repoA.entry, repoA.entry.edition),
+    );
+    expect(registryEntryUri(repoC.entry)).toBe(registryEntryUri(repoA.entry));
+  });
+
+  it('the coordinate never incorporates the locally-assigned KB-NNNN id, which is what makes the dedupe possible', () => {
+    for (const r of DEDUPE_REPOS) {
+      expect(registryEntryUri(r.entry)).not.toContain(r.entry.id);
+    }
   });
 });
