@@ -138,13 +138,35 @@ describe('inference runs only where the design is silent (073, D-004)', () => {
     expect(detectTooling(dir).has('contract-first')).toBe(false);
   });
 
-  it('the newest spec directory wins when several designs declare (deterministic, not arbitrary)', () => {
+  it('declarations compose across designs — a later shape="none" cannot void an earlier one', () => {
+    // Superseded by change 2026-08-02-declarations-accumulate. This fixture used
+    // to assert the opposite: that 002 sorting last made its shape="none" the
+    // project's whole posture, hiding 001's declared-but-missing contract and
+    // reporting covered. That was the false pass FR-003's amendment removes —
+    // a per-feature disclaimer never speaks for the project.
     const dir = fixture({
       'package.json': KAFKA,
       'specs/001-old/design.html': designDeclaring('api/old.yaml'),
       'specs/002-new/design.html': DESIGN_NO_INTERFACE,
     });
-    // 002 sorts last — its shape="none" is the project's current stated posture.
-    expect(detectTooling(dir).has('contract-first')).toBe(true);
+    expect(detectTooling(dir).has('contract-first')).toBe(false);
+  });
+
+  it('the union is order-independent — a declaration binds wherever it sits in the estate', () => {
+    // The determinism the superseded test was reaching for, stated in the form
+    // the amended requirement actually guarantees: composition has no winner, so
+    // sort position cannot change the verdict.
+    const declaredFirst = fixture({
+      'package.json': KAFKA,
+      'specs/001-api/design.html': designDeclaring('api/spec.yaml'),
+      'specs/002-cli/design.html': DESIGN_NO_INTERFACE,
+    });
+    const declaredLast = fixture({
+      'package.json': KAFKA,
+      'specs/001-cli/design.html': DESIGN_NO_INTERFACE,
+      'specs/002-api/design.html': designDeclaring('api/spec.yaml'),
+    });
+    expect(detectTooling(declaredFirst).has('contract-first')).toBe(detectTooling(declaredLast).has('contract-first'));
+    expect(detectTooling(declaredFirst).has('contract-first')).toBe(false);
   });
 });

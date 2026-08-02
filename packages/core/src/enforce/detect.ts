@@ -724,14 +724,53 @@ export function exposesInterface(cwd: string): boolean {
  * `null` when the project declares nothing (no design, no <spec-contract>, or
  * an unreadable one) — inference then runs exactly as before.
  */
+/** One declared contract path, carrying the design that declared it (FR-008). */
+export interface DeclaredContractPath {
+  /** The path as declared, relative to the project root. */
+  path: string;
+  /** The spec directory whose design declared it — provenance for any report. */
+  specId: string;
+  /**
+   * Whether the declaring spec is ratified. An unresolved path from a
+   * non-ratified (Draft, Blocked, unreadable) design is advisory, never a gap:
+   * declaring the contract a spec is about to create must not break the build.
+   */
+  ratified: boolean;
+}
+
 export interface ContractDeclarationState {
-  /** Declared paths that must resolve for the project to be covered. */
-  declaredPaths: string[];
-  /** True when every declaration is shape="none" — nothing is owed. */
+  /** The union of declared paths across every contributing design. */
+  declaredPaths: DeclaredContractPath[];
+  /** True when at least one design was read and none declares an interface. */
   declaresNoInterface: boolean;
 }
 
-/** Read the most recent design's `<spec-contract>` declarations, if any. */
+/** Lifecycle states whose designs contribute nothing — superseding retires what it declared. */
+const RETIRED_STATES = new Set(['superseded', 'deprecated']);
+
+/** Read a design's own `<spec-status>` pill, lowercased; `null` when absent or unreadable. */
+function designStatus(html: string): string | null {
+  return /<spec-status\b[^>]*\bvalue=["']([^"']*)["']/i.exec(html)?.[1]?.toLowerCase() ?? null;
+}
+
+/**
+ * Every design's `<spec-contract>` declarations, composed (073 FR-003 as
+ * amended, FR-008).
+ *
+ * Declarations ACCUMULATE rather than shadow. The previous implementation
+ * returned inside the newest design carrying any declaration, which made a
+ * per-feature `shape="none"` on an unrelated slice a project-wide disclaimer —
+ * silently voiding an earlier declaration that a contract *is* owed, and
+ * reporting `contract-first` covered for a project that publishes an API.
+ *
+ * Status is read from the design being parsed rather than from its sibling
+ * `spec.html`: the bundle flips together (REQ-LIFECYCLE-005), so the value is
+ * the same, and reading it here costs no additional file access — which is why
+ * NFR-001's budget is unaffected by the composition.
+ *
+ * `null` when no contributing design carries a declaration at all — inference
+ * then runs exactly as before.
+ */
 export function declaredInterfaceState(cwd: string): ContractDeclarationState | null {
   let specDirs: string[];
   try {
@@ -743,34 +782,75 @@ export function declaredInterfaceState(cwd: string): ContractDeclarationState | 
     return null; // no specs/ — nothing declared
   }
 
-  // Last spec directory wins, so the project's most recent stated posture is the
-  // one that counts. Deterministic (lexicographic over zero-padded ids), never
-  // mtime — NFR-001 forbids a verdict that depends on the clock.
-  for (const specDir of [...specDirs].reverse()) {
+  const declaredPaths: DeclaredContractPath[] = [];
+  let sawDeclaration = false;
+  let sawNonNone = false;
+
+  for (const specId of specDirs) {
     let html: string;
     try {
-      html = readFileSync(join(cwd, 'specs', specDir, 'design.html'), 'utf8');
+      html = readFileSync(join(cwd, 'specs', specId, 'design.html'), 'utf8');
     } catch {
-      continue; // no design in this spec dir — try the next-newest
+      continue; // no design in this spec dir
     }
-    // Attribute-level read rather than a full parse: this module is the
-    // filesystem-facing detector and must not take a parser dependency, and a
-    // malformed design must degrade to "declares nothing", never throw (D-004).
-    const declarations = [...html.matchAll(/<spec-contract\b([^>]*)>/gi)];
-    if (declarations.length === 0) continue;
-
-    const declaredPaths: string[] = [];
-    let sawNonNone = false;
-    for (const [, attrs = ''] of declarations) {
-      const shape = /\bshape=["']([^"']*)["']/i.exec(attrs)?.[1]?.toLowerCase();
-      const path = /\bpath=["']([^"']+)["']/i.exec(attrs)?.[1];
-      if (shape !== undefined && shape !== 'none') sawNonNone = true;
-      if (path !== undefined) declaredPaths.push(path);
-    }
-    return { declaredPaths, declaresNoInterface: !sawNonNone && declaredPaths.length === 0 };
+    const contracts = readDesignContracts(html, specId);
+    if (contracts === null) continue; // declares nothing, or retired
+    sawDeclaration = true;
+    declaredPaths.push(...contracts.paths);
+    sawNonNone ||= contracts.sawNonNone;
   }
 
-  return null;
+  if (!sawDeclaration) return null;
+  return { declaredPaths, declaresNoInterface: !sawNonNone && declaredPaths.length === 0 };
+}
+
+/**
+ * One design's contribution: its `<spec-contract>` declarations tagged with the
+ * declaring spec and whether that spec is ratified. `null` when the design
+ * contributes nothing — either it carries no declaration, or its spec is
+ * Superseded/Deprecated and its declarations are retired (FR-008).
+ *
+ * Attribute-level reads rather than a full parse: this module is the
+ * filesystem-facing detector and must not take a parser dependency, and a
+ * malformed design must degrade to "declares nothing", never throw (D-004).
+ */
+function readDesignContracts(
+  html: string,
+  specId: string,
+): { paths: DeclaredContractPath[]; sawNonNone: boolean } | null {
+  const declarations = [...html.matchAll(/<spec-contract\b([^>]*)>/gi)];
+  if (declarations.length === 0) return null;
+
+  const status = designStatus(html);
+  // Superseding a spec is the lifecycle's own act of retiring what it declared,
+  // so a retired design must not keep binding the project — otherwise a
+  // contract could never be retired through the mechanism built for it.
+  if (status !== null && RETIRED_STATES.has(status)) return null;
+  // Unreadable status ⇒ Draft. The conservative direction: it can only
+  // downgrade a hard gap to advisory, never invent one.
+  const ratified = status === 'accepted';
+
+  const paths: DeclaredContractPath[] = [];
+  let sawNonNone = false;
+  for (const [, attrs = ''] of declarations) {
+    const shape = /\bshape=["']([^"']*)["']/i.exec(attrs)?.[1]?.toLowerCase();
+    const path = /\bpath=["']([^"']+)["']/i.exec(attrs)?.[1];
+    if (shape !== undefined && shape !== 'none') sawNonNone = true;
+    if (path !== undefined) paths.push({ path, specId, ratified });
+  }
+  return { paths, sawNonNone };
+}
+
+/**
+ * Declared contract paths that do not resolve on disk, with the spec that
+ * declared each (073 FR-008). The provenance is what makes the finding
+ * actionable — a reader told a path is missing cannot act without knowing which
+ * spec asked for it.
+ */
+export function unresolvedDeclaredContracts(cwd: string): DeclaredContractPath[] {
+  const declared = declaredInterfaceState(cwd);
+  if (declared === null) return [];
+  return declared.declaredPaths.filter((p) => !existsSync(join(cwd, p.path)));
 }
 
 // --- Contract-checked rung (spec 074-contract-checked-tier) ------------------
@@ -936,7 +1016,18 @@ export function detectContractChecks(cwd: string): ContractCheckState[] {
  */
 export function contractFirstIsAdvisory(cwd: string): boolean {
   if (contractFirstCovered(cwd)) return false;
-  if ((declaredInterfaceState(cwd)?.declaredPaths.length ?? 0) > 0) return false;
+
+  const declared = declaredInterfaceState(cwd);
+  if (declared !== null && declared.declaredPaths.length > 0) {
+    // A declaration resolves the publisher/consumer ambiguity, so the
+    // event-only advisory below no longer applies. What remains is FR-008: if
+    // the project is uncovered ONLY because non-ratified designs name paths
+    // that do not exist yet, that is work in progress, not a gap. A single
+    // unresolved path from a ratified design makes it a gap outright.
+    const unresolved = declared.declaredPaths.filter((p) => !existsSync(join(cwd, p.path)));
+    return unresolved.length > 0 && unresolved.every((p) => !p.ratified);
+  }
+
   const evidence = interfaceEvidence(cwd);
   return evidence.event && !evidence.http;
 }
@@ -961,7 +1052,7 @@ function contractFirstCovered(cwd: string): boolean {
     // Declared a path → it must resolve. A different contract elsewhere on disk
     // does not satisfy a declaration naming this one.
     if (declared.declaredPaths.length > 0) {
-      return declared.declaredPaths.every((p) => existsSync(join(cwd, p)));
+      return declared.declaredPaths.every((p) => existsSync(join(cwd, p.path)));
     }
   }
   return detectContract(cwd) || !exposesInterface(cwd);

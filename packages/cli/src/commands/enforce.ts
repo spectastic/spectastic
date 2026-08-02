@@ -1,9 +1,11 @@
 import { loadWaivers } from '@spectastic/core/enforce/config';
+import type { DeclaredContractPath } from '@spectastic/core/enforce/detect';
 import {
   contractFirstIsAdvisory,
   detectContractChecks,
   detectEcosystems,
   detectTooling,
+  unresolvedDeclaredContracts,
 } from '@spectastic/core/enforce/detect';
 import { contractCheckedApplies, evaluateContractChecks, evaluateEnforcement } from '@spectastic/core/enforce/policy';
 import type { Command } from 'commander';
@@ -24,6 +26,22 @@ import { loadProfiles } from './init/profiles.js';
  *   hard (Verified/Ent.)    → 1 on any gap
  * Deterministic, filesystem-only — no network, no model (NFR-001).
  */
+
+/**
+ * One line per declared-but-absent contract, naming the design that declared it
+ * (spec 073 FR-008). A ratified design's declaration binds; an unratified one is
+ * intent, and declaring intent must never be the thing that breaks the build —
+ * so the two read differently and only the first is a failure mark.
+ */
+function formatUnresolvedContracts(unresolved: readonly DeclaredContractPath[]): string {
+  return unresolved
+    .map((u) =>
+      u.ratified
+        ? `  ✗ contract ${u.path} is declared by ${u.specId} but not present.\n`
+        : `  ⚠ contract ${u.path} is declared by ${u.specId} but not present — advisory while that spec is unratified.\n`,
+    )
+    .join('');
+}
 
 export function registerEnforce(program: Command): void {
   program
@@ -83,11 +101,19 @@ export function registerEnforce(program: Command): void {
         // ecosystem(s) — never a blocking gap, regardless of gate severity.
         process.stdout.write(`  ⚠ undetectable in this ecosystem (not blocking): ${undetectableWarned.join(', ')}\n`);
       }
-      if (advisoryWarned.length > 0) {
+      // Spec 073 FR-008: an unresolved declared contract path names the spec
+      // whose design declared it. A reader told a path is missing cannot act
+      // without knowing which design asked for it.
+      const unresolved = unresolvedDeclaredContracts(cwd);
+      if (advisoryWarned.length > 0 && unresolved.length === 0) {
+        // Only the event-driven cause gets the event-driven explanation; when a
+        // declared path is what made this advisory, the per-path lines below say
+        // so instead, and this sentence would be actively misleading.
         process.stdout.write(
           `  ⚠ advisory (not blocking): ${advisoryWarned.join(', ')} — an event-driven interface is declared but no contract is checked in. Add a payload contract (e.g. an AsyncAPI document), or declare the interface shape in the design if this service publishes nothing.\n`,
         );
       }
+      process.stdout.write(formatUnresolvedContracts(unresolved));
       for (const r of relaxed) {
         // FR-004 / FR-011: a deliberately-waived category — advisory, never silent,
         // reported as its own tally so a relaxed floor stays visible.
@@ -104,7 +130,9 @@ export function registerEnforce(program: Command): void {
       // shortfalls state their limitation (FR-003) so a reader can tell
       // "no tooling exists" from "you didn't configure it".
       for (const a of contractChecks.advisory) {
-        process.stdout.write(`  ⚠ contract check (advisory): ${a.path} has no ${a.half} configured — ${a.limitation}\n`);
+        process.stdout.write(
+          `  ⚠ contract check (advisory): ${a.path} has no ${a.half} configured — ${a.limitation}\n`,
+        );
       }
       for (const b of contractChecks.blocking) {
         process.stdout.write(
