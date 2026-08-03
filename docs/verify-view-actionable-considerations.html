@@ -26,7 +26,7 @@
     <b>Author</b>     <span>Brian Corbin · @briancorbinxyz</span>
     <b>Created</b>    <span><time datetime="2026-08-02">02 Aug 2026</time></span>
     <b>Companion</b>  <span><a href="./orchestrator-placement-considerations.html">orchestrator-placement</a> · <a href="./observability-slo-considerations.html">observability-slo</a></span>
-    <b>Sources</b>    <span>9 external, retrieved 02 Aug 2026 · full audit of 61 verify views</span>
+    <b>Sources</b>    <span>12 external, retrieved 02 Aug 2026 · full audit of 61 verify views</span>
     <b>Read time</b>  <span data-reading-time></span>
   </spec-meta>
 
@@ -48,13 +48,25 @@
     <strong>its own typed field</strong> distinct from the build, keep the demo as prose where prose is honest, and put the guarantee
     where guarantees go — <strong>execute the captured commands in CI</strong> rather than linting their grammar, which is the one move
     that stops the field rotting quietly the way a string field always does.</p>
+
+    <p>A second finding, raised in review after the first draft and requiring the audit to be read once more: for the
+    <code>tests</code> field, <strong>copy-pasteable is not the same as isolating or durable</strong>. Re-measured on that axis,
+    <mark>44 of 60 commands are explicit file-path lists</mark> — 138 files named across them, up to <strong>11 in a single
+    command</strong> — 6 run the whole suite, and <strong>none use a filter of any kind</strong>. So the estate is split between
+    brittle enumeration and no isolation at all, with nothing between. The list's failure is <em>asymmetric</em>: delete a named file
+    and the command fails loudly, but <em>add</em> a test and it is silently never run — and growth is the direction suites move. Tags
+    fix the selector and buy something better besides: <code>testsCite</code>, the test-task ids a command claims to cover, is
+    rendered as an attribute and read by nothing, so tags at requirement granularity make that citation <strong>derived rather than
+    claimed</strong>. Tagging is a convergent convention — JUnit&nbsp;5 <code>@Tag</code>, pytest markers, Playwright tags, Vitest
+    tags — and the feasibility here is uneven but honest: Playwright is taggable on the installed version today, while first-class
+    Vitest tags arrive only in <strong>4.1.0+</strong> against the <strong>2.1.9</strong> installed here.</p>
   </spec-tldr>
 
   <spec-audience-map>
     <dl>
       <dt>Exec / PM</dt><dd>§1 the ask · §9 recommendation</dd>
-      <dt>Reviewer</dt><dd>§2 the audit · §5 the peer tool · §10 caveats</dd>
-      <dt>Implementer</dt><dd>§3 the missing field · §4 the two documents · §7 the guarantee</dd>
+      <dt>Reviewer</dt><dd>§2 the audit · §6 the peer tool · §10 caveats</dd>
+      <dt>Implementer</dt><dd>§3 the missing field · §4 the selector · §5 the two documents · §7 the guarantee</dd>
     </dl>
   </spec-audience-map>
 </header>
@@ -94,7 +106,7 @@ actually specified to carry, the picture is almost the reverse.</p>
 <table>
   <thead><tr><th>Field</th><th>What it was specified to carry</th><th>What the estate holds</th></tr></thead>
   <tbody>
-    <tr><td><code>tests</code></td><td>"the exact test command"</td><td><strong>60 of 61</strong> copy-pasteable. No placeholders, no prose. The one absence is a spec with no Run/Demo block at all.</td></tr>
+    <tr><td><code>tests</code></td><td>"the exact test command"</td><td><strong>60 of 61</strong> copy-pasteable. No placeholders, no prose. The one absence is a spec with no Run/Demo block at all. But see §4: on a second axis — whether the command <em>isolates</em> and whether it <em>survives</em> — 44 of 60 are hand-maintained file-path lists and none carries a filter.</td></tr>
     <tr><td><code>run</code></td><td>"build/start command(s)"</td><td><strong>58 of 61</strong> present and runnable — but <strong>53 of 58 are a build or install</strong>, not a start.</td></tr>
     <tr><td><code>toggle</code></td><td>"feature flag / env var / setting, or none"</td><td>The literal string <code>none</code> in <strong>50 of 61</strong>.</td></tr>
     <tr><td><code>demo</code></td><td>"the human demo path (click-path, import, or request)"</td><td>27 open with a command · 24 bury one mid-sentence · <strong>9 contain no command at all</strong>. 19 carry a placeholder; 12 require a manual "open and look" step; only 21 say what you should see.</td></tr>
@@ -110,6 +122,11 @@ walks is not a command, which is why nine of them contain no command and nobody 
 run, no tests and no demo. Two more (<a href="../specs/047-slo-nfr-artifact/spec.html">047</a>,
 <a href="../specs/048-verify-slo-trace/spec.html">048</a>) carry no run command. Those are three cards for triage, not evidence about the
 format.</p>
+
+<p>That reading of <code>tests</code> is right and incomplete, which review caught before this survey was a day old. "Copy-pasteable"
+asks only whether a reader can run <em>something</em>. It does not ask whether what runs is <em>this feature's</em> tests, nor whether the
+command will still mean that in six months. Measured on those two axes the field looks quite different, and §4 takes it up — the survey's
+own second under-reading of the same table, recorded rather than quietly amended.</p>
 </section>
 
 <!-- ======================================================= -->
@@ -137,14 +154,86 @@ import snippets and, in nine cases, a paragraph of English.</p>
   <p><b>Consequences</b><br>
   + The one sentence a reader most wants acquires a home, a name and a position, instead of competing for a field with four other kinds of content.<br>
   + Existing views stay valid: nothing currently in <code>demo</code> becomes wrong, and the new field is simply absent until captured — the format's existing "loud gap, never a silent blank" behaviour already covers that.<br>
-  − A fourth command field is more surface to leave empty, and a field that is optional will be omitted; §7 is about why that cannot be fixed by making it required.<br>
+  − A fourth command field is more surface to leave empty, and a field that is optional will be omitted; §8 is about why that cannot be fixed by making it required.<br>
   − The boundary between "exercise" and "demo" is a judgment call for a web UI, where starting the server may be the whole of it.</p>
 </spec-decision>
 </section>
 
 <!-- ======================================================= -->
+<section id="selector">
+<h2>4 · A path list is not a selector</h2>
+
+<p>The <code>tests</code> field passes the test the audit first set it, and fails two it did not. Re-measured for
+<em>isolation</em> — does this run this feature's tests? — and <em>durability</em> — will it still, later? — the estate looks like
+this.</p>
+
+<div style="overflow-x:auto;">
+<table>
+  <thead><tr><th>Shape of the command</th><th>Count</th><th>What it costs</th></tr></thead>
+  <tbody>
+    <tr><td>An explicit list of test-file paths</td><td><strong>44 of 60</strong></td><td>138 files named across them; a mean of 3.1 and <strong>up to 11 in one command</strong>. Every one hand-maintained.</td></tr>
+    <tr><td>The whole suite (<code>pnpm test</code>)</td><td>6</td><td>No isolation at all — the output cannot tell you anything about <em>this</em> feature.</td></tr>
+    <tr><td>Any filter, tag or pattern</td><td><strong>0</strong></td><td>—</td></tr>
+  </tbody>
+</table>
+</div>
+
+<p>The path list is not merely inelegant; it fails <em>asymmetrically</em>, which is what makes the failure hard to notice. Delete or
+rename a file the command names and the command fails loudly — Vitest prints "No test files found" and exits non-zero, which is the
+correct behaviour and means deletion is safe. <em>Add</em> a test, though, and nothing happens: the new file is simply not in the list,
+so it never runs under this spec's command, and every check stays green. Test suites grow far more often than they shrink, so the
+protection sits on the wrong side of the asymmetry. A captured command drifts from the feature it claims to cover in exactly the
+direction nobody is watching.</p>
+
+<p>The browser half of the suite makes the point structurally rather than statistically. The 23 Playwright specs are organised by
+<em>concern</em> — <code>theme.*</code>, <code>verify.*</code>, <code>contract-*</code> — not by spec, because that is the sane way to
+organise them. A file path therefore cannot express "the browser tests for this spec" at all; the mapping exists only in the author's
+head at capture time, and is never written down anywhere a later reader could consult.</p>
+
+<h3>What a tag buys that a path cannot</h3>
+
+<p>Selecting tests by tag rather than by location is a convergent convention, not a novelty: JUnit&nbsp;5 has <code>@Tag</code> with
+platform-level include and exclude filters, pytest has markers, Playwright has first-class tags filtered with <code>--grep</code>, and
+Vitest added declared tags with a boolean <code>--tags-filter</code> expression syntax. Four ecosystems arrived at the same shape, which
+is a reasonable bar for adopting it here.</p>
+
+<p>The durability argument is the obvious half. The more valuable half is that a tag can carry <em>what a path cannot express at
+all</em> — which requirement a test closes. The captured shape already has a field for that claim: <code>testsCite</code> lists the
+test-task ids a command covers, and it is rendered as an attribute (<code>verify.ts:343</code>) and read by nothing — no schema rule
+consults it, no check compares it to reality. It is an author's assertion, made once, verified never. Tags at requirement
+granularity invert that: if a test declares the requirement it closes, the citation is <em>derived from what actually ran</em>, and the
+claim and the reality lose the ability to disagree quietly.</p>
+
+<p>Feasibility here is uneven, and worth stating plainly rather than discovering during implementation. Playwright's tag syntax is
+available in the installed 1.62, so the browser suite — the half where paths fail hardest — can be tagged today with no upgrade at all.
+Vitest's first-class tags require <strong>4.1.0+</strong> against the <strong>2.1.9</strong> installed here, which is a two-major
+upgrade and a real cost. In between sits a test-name convention filtered with <code>-t</code>, which works on 2.1.9 but is a convention
+rather than a mechanism: a mistyped pattern matches zero tests and, unlike a mistyped path, says nothing. Vitest 4 closes precisely that
+hole by requiring tags be declared in configuration, so an unknown tag is an error rather than an empty run.</p>
+
+<spec-decision id="D-005" grounding="verified">
+  <p><b>Status</b> Proposed</p>
+  <p><b>Context</b> 44 of 60 <code>tests</code> commands are hand-maintained file-path lists (up to 11 files each), 6 run the whole
+  suite, and none filters. Deletion of a named file fails loudly; addition of a relevant test is silent. <code>testsCite</code> is
+  rendered at <code>verify.ts:343</code> and read by no rule. Vitest tags need 4.1.0+ against 2.1.9 installed; Playwright tags work on
+  the installed 1.62.</p>
+  <p><b>Decision</b> The tests command should name a <em>durable selector</em>, not a location. Tests carry the spec id and the
+  requirement or task ids they close; the captured command selects on the spec tag; and <code>testsCite</code> becomes derived from the
+  tags rather than asserted by the author. Adopt it staged — Playwright now, a Vitest name convention as the interim, and the Vitest
+  4.1 upgrade as the prerequisite for the real mechanism.</p>
+  <p><b>Consequences</b><br>
+  + Survives the refactors that break a path list, and closes the asymmetry: a newly added test carrying the tag is picked up without anyone editing a captured command.<br>
+  + Makes <code>testsCite</code> checkable for the first time, turning the estate's only traceability claim from prose into something derived.<br>
+  + Makes §7's execute-in-CI proposal materially more tractable — a stable selector is worth running on every commit in a way an eleven-path list is not.<br>
+  − <strong>A missing tag under-selects invisibly.</strong> A path omitted from a list is at least visible in the command; a test nobody tagged is invisible everywhere. Tags trade explicitness for durability, and on Vitest that is mitigated only from 4.1, where an undeclared tag fails.<br>
+  − The Vitest upgrade is two majors and touches every test file's runner, which is a cost this survey imposes on a project that did not ask for it.<br>
+  − Requirement-granular tags are upkeep on every test, and will be applied unevenly at first, which weakens derivation until coverage is good.</p>
+</spec-decision>
+</section>
+
+<!-- ======================================================= -->
 <section id="two-documents">
-<h2>4 · Two documents wearing one field</h2>
+<h2>5 · Two documents wearing one field</h2>
 
 <p>The deeper reason a stricter prose rule would not have caught this is that the Run/Demo block is doing two jobs whose requirements
 point in opposite directions.</p>
@@ -183,7 +272,7 @@ having just finished the work, is always thinking about what they did.</p>
 
 <!-- ======================================================= -->
 <section id="peer">
-<h2>5 · The peer tool — same gap, opposite failure</h2>
+<h2>6 · The peer tool — same gap, opposite failure</h2>
 
 <p>The obvious move is to copy the nearest competitor, and the premise worth correcting first is that there is something there to copy.
 <strong>Spec&nbsp;Kit ships no <code>verify.sh</code>.</strong> Its scripts — <code>check-prerequisites.sh</code>, <code>common.sh</code>,
@@ -207,7 +296,7 @@ field to a strict format is tractable and constraining an unconstrained one is n
 
 <!-- ======================================================= -->
 <section id="landscape">
-<h2>6 · What the field does instead — name the entry point, then run it</h2>
+<h2>7 · What the field does instead — name the entry point, then run it</h2>
 
 <p>Outside spec-driven tooling, the problem of "what do I type" has two well-worn answers, and neither is a document.</p>
 
@@ -259,11 +348,17 @@ only check that distinguishes a command from a sentence about a command.</p>
 
 <p>The two top rows are complements, not rivals: the field tells, the CI run keeps it true. They are scored separately because they land
 separately, and the first is worth having on its own.</p>
+
+<p>§4's selector argument changes the second row's economics rather than its score. Executing captured commands on every commit is only
+worth doing if what is executed remains meaningful, and an eleven-path list is the least meaningful thing to re-run: it will pass long
+after it has stopped covering the feature, because the tests it omits are the ones that were added since. A tag selector re-runs whatever
+currently carries the tag, so the CI check and the durable selector are not two separate improvements but the same one arriving from two
+directions.</p>
 </section>
 
 <!-- ======================================================= -->
 <section id="quiet-fields">
-<h2>7 · Why "make it required" is the wrong fix</h2>
+<h2>8 · Why "make it required" is the wrong fix</h2>
 
 <p>The tempting response to an under-filled field is to make it mandatory. The <code>toggle</code> row is the standing argument against
 that: it is required today, and it is the literal string <code>none</code> in 50 of 61 views. It is filled, conformant, and carries no
@@ -277,7 +372,7 @@ conspicuous, not from a validator that will be satisfied with <code>n/a</code>.<
 <p>The same argument applies one section down the page, and is handed off rather than argued here. The Observables trace on a
 non-service project renders rows of "quantified but has no linked SLO" — technically correct, and noise for a library that will never
 emit a metric. Generated rows with no data are the same defect as a mandatory field with nothing to say. That belongs to the
-<a href="./observability-slo-considerations.html">observability survey</a>'s successor and is named in §8 rather than solved here.</p>
+<a href="./observability-slo-considerations.html">observability survey</a>'s successor and is named in §9 rather than solved here.</p>
 
 <spec-decision id="D-004" grounding="verified">
   <p><b>Status</b> Proposed</p>
@@ -296,7 +391,7 @@ emit a metric. Generated rows with no data are the same defect as a mandatory fi
 
 <!-- ======================================================= -->
 <section id="recommendation">
-<h2>8 · Recommendation — two slices, in order</h2>
+<h2>9 · Recommendation — three slices, in order</h2>
 
 <ol>
   <li><strong>Give the exercise command a field.</strong> Add it to the captured shape, the generator, the rendered block and the
@@ -304,9 +399,16 @@ emit a metric. Generated rows with no data are the same defect as a mandatory fi
   a loud gap when absent. Backfill is not required — every existing view stays valid — but the handful of specs whose demo already opens
   with a bare command are a free first pass. This is small, self-contained, and improves the artifact whether or not the second slice
   ever lands.</li>
+  <li><strong>Make the selector durable.</strong> Tag tests with the spec id and the requirement or task ids they close, and capture a
+  tag selector rather than a path list. Stage it by what each runner supports today: the 23 Playwright specs are taggable on the
+  installed 1.62 and are where paths fail hardest, so they go first; a Vitest test-name convention filtered with <code>-t</code> serves
+  as the interim; and the Vitest <code>2.1.9 → 4.1+</code> upgrade is the prerequisite for first-class tags, worth taking on its own
+  terms rather than smuggled in under this. Requirement-granular tags are what turn <code>testsCite</code> from an unchecked assertion
+  into something derived.</li>
   <li><strong>Run what was captured.</strong> An opt-in check that executes the recorded build, exercise and test commands for a spec and
   fails when one of them no longer runs — the only mechanism that distinguishes a command from a sentence, and the only one that catches
-  a capture that silently stopped being true. Opt-in per project, with the prose fields explicitly out of its reach.</li>
+  a capture that silently stopped being true. Opt-in per project, with the prose fields explicitly out of its reach. Worth landing after
+  the selector, since re-running a stale path list mostly re-confirms a stale answer.</li>
 </ol>
 
 <spec-warning><strong>Do not fix this by tightening the demo field.</strong> Nine demos contain no command, and every one of them is
@@ -318,6 +420,8 @@ a gap that lives in a field which does not exist yet.</spec-warning>
 <spec-out-of-scope>
   <ul>
     <li defer-to="TBD-verify-exercise-command">A new spec: the typed exercise command — its place in the captured shape, the generator and the implement-time capture prompt, its rendering as a loud gap when absent, and the boundary against <code>run</code> for projects where starting the server is the whole of it (D-001, D-002).</li>
+    <li defer-to="TBD-verify-test-tags">A new spec: the durable selector — tests tagged with the spec id and the requirement or task ids they close, a captured tag selector in place of a path list, and <code>testsCite</code> derived from the tags rather than asserted by the author. Playwright first, since it is taggable today and is where paths fail hardest (D-005).</li>
+    <li defer-to="TBD-vitest-tag-upgrade">Its prerequisite, evaluated separately: the Vitest <code>2.1.9 → 4.1+</code> upgrade that first-class tags require. Two majors across every test file, and a cost this survey imposes rather than discovers — it deserves its own justification, not a footnote in someone else's slice.</li>
     <li defer-to="TBD-verify-command-execution">A new spec: the opt-in check that executes a view's captured commands and fails on one that no longer runs, with the prose fields explicitly out of reach and the arbitrary-command hazard addressed rather than noted (D-003).</li>
     <li defer-to="TBD-verify-toggle-optional">A <code>/spectastic.propose</code> against <a href="../specs/021-verify-view/spec.html">021</a>: make <code>toggle</code> optional on the evidence that it is <code>none</code> in 50 of 61 views, so a required row stops costing every other row its attention (D-004).</li>
     <li defer-to="TBD-verify-missing-blocks">Triage, not a spec: <a href="../specs/046-security-review-ci/spec.html">046</a> carries no Run/Demo block at all, and 047 and 048 carry no run command. Three genuine gaps the audit surfaced, distinct from the format question.</li>
@@ -328,11 +432,14 @@ a gap that lives in a field which does not exist yet.</spec-warning>
 
 <!-- ======================================================= -->
 <section id="caveats">
-<h2>9 · Caveats on the sources and the audit</h2>
+<h2>10 · Caveats on the sources and the audit</h2>
 
 <ul>
   <li><strong>The audit's first pass was wrong, and the error is instructive.</strong> Classifying the whole Run/Demo block at once produced "9 of 60 usable", which reads as a broken format and would have justified a much larger intervention. Measuring each field against what it was specified to carry produced almost the opposite result. The numbers in §2 are the second reading; the first is recorded here because a reviewer running their own scan may reproduce it.</li>
   <li><strong>Field classification is heuristic.</strong> "Starts with a command" is a regular expression over the first token, and it initially rejected legitimate commands beginning <code>cd</code> or an opening parenthesis. The corrected counts are hand-checked at the boundaries, but a reader should treat single-digit differences as noise rather than signal.</li>
+  <li><strong>The audit was under-read twice, on different axes.</strong> §9 records the first correction. The second is §4: judging <code>tests</code> healthy because it holds runnable commands answered only whether a reader can run <em>something</em>, never whether the command isolates this feature or survives a refactor. Both errors ran the same way — a measurement that flattered the format — which is worth knowing about the method, not just the result.</li>
+  <li><strong>The tag recommendation carries a dependency upgrade, and that is a real cost.</strong> First-class Vitest tags require 4.1.0+ against 2.1.9 installed here — two majors, touching every test file's runner. The survey recommends it rather than hiding it, but a reader is entitled to weigh the upgrade against a benefit that is, for now, an argument rather than a measurement. Nothing here was prototyped on 4.1.</li>
+  <li><strong>Tags fail in a way paths do not, and the mitigation is version-gated.</strong> A path omitted from a list is visible in the command; a test nobody tagged is invisible everywhere, so tags trade explicitness for durability. Vitest 4's config-declared tags close the typo half of that hole by erroring on an unknown tag — but nothing in any runner detects a test that should have carried a tag and did not. That is the same class of problem as the one this survey is complaining about, one level down, and it is not solved.</li>
   <li><strong>This estate is not a representative sample.</strong> Sixty-one views, one project, one author, one ecosystem — and a project that is itself a CLI and a set of libraries, which is precisely the shape where <code>run</code> collapses into <code>build</code>. A web-application estate might find <code>run</code> entirely sufficient and this whole survey beside the point.</li>
   <li><strong>The peer comparison rests on the peer's public record, not on running it.</strong> The Spec&nbsp;Kit findings come from a discussion thread and an issue report, both of which describe the artifact as unclear or misbehaving. That is evidence the problem is unsolved there; it is not a measurement of how the file behaves on average.</li>
   <li><strong>No mechanism was prototyped.</strong> Both recommended slices are arguments from artifact shape and shipped precedent. In particular, the claim that CI execution is tractable assumes captured commands are mostly short and hermetic — true across this estate's <code>vitest</code> and <code>tsup</code> invocations, and untested anywhere else.</li>
@@ -342,7 +449,7 @@ a gap that lives in a field which does not exist yet.</spec-warning>
 
 <!-- ======================================================= -->
 <section id="sources">
-<h2>10 · Sources</h2>
+<h2>11 · Sources</h2>
 
 <p>External sources retrieved 02 Aug 2026. Every claim about this project's own behaviour is grounded in the audit of all 61
 <code>verify.html</code> files and in the files named inline.</p>
@@ -357,16 +464,20 @@ a gap that lives in a field which does not exist yet.</spec-warning>
   <li>scripts-to-rule-them-all — <a href="https://github.com/github/scripts-to-rule-them-all">github.com/github/scripts-to-rule-them-all</a>: the boilerplate set and the one-unit-of-work-per-script rationale.</li>
   <li>ReadmeOps: Integration Testing Markdown Docs in CI/CD — <a href="https://runme.dev/blog/readmeops-testing-docs-in-ci">runme.dev/blog</a>: executing documented commands on every commit so docs are treated with the care given to source.</li>
   <li>Runme — <a href="https://runme.dev/">runme.dev</a>: parsing and executing shell blocks out of Markdown, with state retained across cells.</li>
+  <li>Test Tags — <a href="https://vitest.dev/guide/test-tags">vitest.dev/guide/test-tags</a>: tags declared in configuration (Vitest provides none built in), applied via <code>{ tags: […] }</code> or inherited from a <code>describe</code>, and filtered with <code>--tags-filter</code> supporting <code>and</code>/<code>or</code>/<code>not</code>, wildcards and grouping. Marked <strong>4.1.0+</strong>.</li>
+  <li>Test annotations — <a href="https://playwright.dev/docs/test-annotations">playwright.dev/docs/test-annotations</a>: the tag object syntax (<code>{ tag: '@fast' }</code>, arrays supported) and the <code>@</code>-in-title form, filtered with <code>--grep</code> and <code>--grep-invert</code>.</li>
+  <li>Tags — <a href="https://docs.junit.org/6.0.3/running-tests/tags.html">docs.junit.org — running tests, tags</a>: <code>@Tag</code> on containers and tests, with tag expressions combining <code>!</code>, <code>&amp;</code>, <code>|</code> and parentheses (<code>product &amp; !end-to-end</code>) — the long-standing precedent that test selection is a declared property, not a file path.</li>
 </ol>
 </section>
 
 <!-- ======================================================= -->
 <section id="changelog">
-<h2>11 · Change log</h2>
+<h2>12 · Change log</h2>
 
 <spec-changelog>
   <ol>
     <li><time datetime="2026-08-02">02 Aug 2026</time><span>Created. Drains <code>TBD-verify-view-actionable</code>. Locates the gap as a missing field rather than authoring laxity: <code>run</code> holds a build in 53 of 58 populated cases, so the command that exercises a feature has no home but <code>demo</code>, which is specified to be prose. Corrects the framing premise — Spec&nbsp;Kit ships no per-feature verification script, and its <code>quickstart.md</code> has a contested purpose — and records that this survey's own first-pass audit was wrong in a way that would have justified a larger intervention. Lands four decisions and plants five <code>TBD-</code> next artifacts.</span></li>
+    <li><time datetime="2026-08-02">02 Aug 2026</time><span>Adds §4 and <strong>D-005</strong> after review raised a second axis the audit had not measured: for <code>tests</code>, copy-pasteable is not the same as isolating or durable. Re-measurement found 44 of 60 commands are hand-maintained file-path lists (up to 11 files each), 6 run the whole suite, and none filters — and the list fails <em>asymmetrically</em>, loudly on deletion but silently on addition. Recommends tag selection at spec <em>and</em> requirement granularity, which additionally makes <code>testsCite</code> derived rather than an unread author claim, and records the uneven feasibility (Playwright taggable on the installed 1.62; first-class Vitest tags need 4.1.0+ against 2.1.9). Adds a third recommendation slice and two <code>TBD-</code> artifacts. Sections 4–11 renumbered to 5–12; the first entry stands as written.</span></li>
   </ol>
 </spec-changelog>
 </section>
