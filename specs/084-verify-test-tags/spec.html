@@ -1,0 +1,322 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
+<title>A durable test selector · Specification</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Specification · 084-verify-test-tags</p>
+  <h1>A durable test selector</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    A list of file paths says where this spec's tests lived on the day it was captured. A tag says which tests are this spec's, including the ones written since.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>      <span><spec-status value="draft">Draft</spec-status></span>
+    <b>Spec ID</b>     <span>084-verify-test-tags</span>
+    <b>Owner</b>       <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Reviewers</b>   <span>—</span>
+    <b>Created</b>     <span><time datetime="2026-08-02">02 Aug 2026</time></span>
+    <b>Principles</b><span><a href="../../principles.html">v1.9.0</a></span>
+    <b>Smallest demoable</b><span>A command that reports which tests carry a given spec's tag, and what that spec's <code>testsCite</code> would be if derived from them.</span>
+    <b>Read time</b>   <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-budget words="1500" reqs="20" minutes="12"></spec-budget>
+
+  <spec-tldr>
+    <p>Across 60 populated verify views, 44 <code>tests</code> commands are hand-maintained lists of file paths —
+    138 files, up to 11 in one command — 6 run the whole suite, and none carries a filter. The list fails
+    <em>asymmetrically</em>: delete a named file and the runner exits non-zero, but <em>add</em> a test and it is
+    silently never run under that spec's command. Suites grow. Separately, <code>testsCite</code> — the test-task
+    ids a command claims to cover — is written into the view and read by nothing, so it is an author's assertion
+    verified never. This spec establishes a <strong>tag convention</strong> (a test declares the spec and the
+    requirements or tasks it closes), a deterministic <strong>reader</strong> that maps tags back to those ids, and
+    <strong>derivation</strong> of <code>testsCite</code> from what is actually tagged. The tags ship where they
+    work today; first-class runner filtering waits on a runner upgrade this spec deliberately does not perform.</p>
+  </spec-tldr>
+
+  <dl class="invest">
+    <dt><span class="letter">I</span> Independent</dt> <dd>Depends on <a href="../021-verify-view/spec.html">021</a> (the captured shape) and <a href="../083-verify-exercise-command/spec.html">083</a> (the shared renderer). No upstream change.</dd>
+    <dt><span class="letter">N</span> Negotiable</dt>  <dd>Fixes the convention's meaning and the derivation contract; the tag syntax per runner and the reader's implementation defer to the design.</dd>
+    <dt><span class="letter">V</span> Valuable</dt>    <dd>Unlocks <a href="#SC-001">SC-001</a> — a spec's test selection stops decaying as its suite grows.</dd>
+    <dt><span class="letter">E</span> Estimable</dt>   <dd>A convention, a reader, a derivation, and a tagged pilot. The runner upgrade is explicitly out of scope, so nothing here is blocked on it.</dd>
+    <dt><span class="letter">S</span> Small</dt>       <dd>One kernel module and one convention. Bounded by tagging a pilot rather than the whole suite.</dd>
+    <dt><span class="letter">T</span> Testable</dt>    <dd>Every requirement observable: tags parse, ids resolve, derivation matches, and an untagged suite degrades rather than fails.</dd>
+  </dl>
+
+  <spec-audience-map>
+    <dl>
+      <dt>Exec / PM</dt>   <dd>§<a href="#context">Context</a>, §<a href="#scenarios">User scenarios</a>, §<a href="#success">Success criteria</a>.</dd>
+      <dt>Reviewer</dt>    <dd>§<a href="#requirements">Requirements</a>, §<a href="#assumptions">Assumptions</a>, §<a href="#questions">Open questions</a>.</dd>
+      <dt>Implementer</dt> <dd>§<a href="#requirements">Requirements</a>, §<a href="#data">Data model</a>, §<a href="#conformance">Conformance index</a>.</dd>
+    </dl>
+  </spec-audience-map>
+</header>
+
+
+<section id="context">
+<h2>1 · Context</h2>
+
+<p>The verify view's <code>tests</code> field is the healthiest in the block — copy-pasteable in 60 of 61 views.
+That measurement asks whether a reader can run <em>something</em>. It does not ask whether what runs is
+<em>this spec's</em> tests, nor whether the command will still mean that later. On those two axes the field looks
+different: 44 of 60 commands enumerate file paths by hand, 6 run the entire suite, and not one uses a filter.</p>
+
+<p>Enumeration fails in one direction only, which is why nobody notices. Remove a named file and the runner reports
+no tests found and exits non-zero — loud, and correct. Add a test and nothing happens: it is not in the list, so it
+never runs under that spec's command, and every check stays green. Suites grow far more often than they shrink,
+so the protection sits on the side that is not the problem.</p>
+
+<p>The browser suite shows the same thing structurally. Its specs are organised by concern — theme, verify,
+contract — which is the sane way to organise them, and it means a file path cannot express "the browser tests for
+this spec" at all. That mapping has only ever existed in the author's head at capture time.</p>
+
+<p><spec-newthought>There is a second, larger prize.</spec-newthought> The captured shape already carries
+<code>testsCite</code>, the test-task ids a command covers. It is rendered into the view and consulted by nothing:
+no rule reads it, no check compares it to reality. It is a claim made once and verified never. If a test declares
+which requirement it closes, that claim can be <em>derived</em> from what actually ran — and a derived citation
+and its subject cannot quietly disagree. The full argument is in
+<a href="../../docs/verify-view-actionable-considerations.html">the actionability survey</a> (D-005).</p>
+</section>
+
+
+<section id="scenarios">
+<h2>2 · User scenarios &amp; testing</h2>
+
+<p>Each story <strong>MUST</strong> be independently testable: if you implemented only US1, you would
+still have a viable MVP.</p>
+
+<h3 id="US1">US1 · Select a spec's tests without naming files <spec-pill>P1</spec-pill></h3>
+<p>As a <strong>reviewer or an author returning to a spec</strong>, I want to <strong>run exactly that spec's
+tests by naming the spec, not its files</strong> so that <strong>the selection keeps working after the files are
+renamed, split or added to</strong>.</p>
+<p><em>Acceptance:</em> A test declaring a spec's tag is selected by a command naming only that tag; a test added
+later carrying the same tag is selected by the same unchanged command; and a file rename changes nothing.</p>
+
+<h3 id="US2">US2 · Derive the citation instead of asserting it <spec-pill>P1</spec-pill></h3>
+<p>As a <strong>reviewer</strong>, I want to <strong>see a citation that came from the tests themselves</strong> so
+that <strong>what the view claims about coverage and what the suite actually covers cannot silently
+diverge</strong>.</p>
+<p><em>Acceptance:</em> Given tagged tests, the tool reports the requirement and task ids they close; that set is
+what the verify view records, and a discrepancy between a hand-written citation and the derived one is
+reportable rather than invisible.</p>
+
+<h3 id="US3">US3 · Adopt it without a flag day <spec-pill>P2</spec-pill></h3>
+<p>As a <strong>maintainer of a large existing suite</strong>, I want to <strong>tag incrementally</strong> so that
+<strong>an untagged suite keeps working exactly as it does now</strong>.</p>
+<p><em>Acceptance:</em> With no tags anywhere, every existing command and view behaves as before; derivation
+reports nothing rather than failing; and a partially tagged suite yields a partial result that is labelled as
+partial rather than presented as complete.</p>
+
+<h3>Edge cases</h3>
+<ul>
+  <li>A test tagged with a spec id that does not exist — reported, not silently dropped, because a typo'd tag otherwise looks exactly like a spec with no tests.</li>
+  <li>A test tagged with a requirement id that its spec does not define — the same failure one level down, and reported the same way.</li>
+  <li>A requirement with no tagged test at all — a legitimate finding, and distinct from a requirement whose tests exist but are untagged. The tool must not conflate them.</li>
+  <li>A test covering two specs — permitted; tags are a set, not a single owner.</li>
+</ul>
+</section>
+
+
+<section id="requirements">
+<h2>3 · Requirements</h2>
+
+<p>Conformance keywords (<spec-rule>MUST</spec-rule>, <spec-rule level="should">SHOULD</spec-rule>,
+<spec-rule level="may">MAY</spec-rule>) follow RFC 2119.</p>
+
+<h3>Functional</h3>
+
+<spec-requirement id="FR-001" priority="must">
+<p>A test <spec-rule>MUST</spec-rule> be able to declare the spec it belongs to, and <spec-rule level="may">MAY</spec-rule>
+additionally declare the requirement or task ids it closes, using a convention expressible in every test runner the
+project uses.</p>
+<details><summary>Rationale</summary><p>Expressible-in-every-runner is the binding constraint, not elegance: a
+convention only one runner supports splits the estate in half and leaves the browser suite — where file paths fail
+hardest — unable to participate.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-002" priority="must">
+<p>A deterministic reader <spec-rule>MUST</spec-rule> scan the project's test files and report, for each declared
+tag, the tests carrying it — using no network, no runner execution and no model.</p>
+<details><summary>Rationale</summary><p>Executing the suite to discover its tags would make every consumer of this
+information as slow and as failure-prone as the suite. Reading is enough, and reading is reproducible.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-003" priority="must">
+<p>The reader <spec-rule>MUST</spec-rule> report a tag naming a spec, requirement or task that does not exist as a
+finding, and <spec-rule>MUST NOT</spec-rule> silently discard it.</p>
+<details><summary>Rationale</summary><p>A typo'd tag is indistinguishable from an untested spec if it is dropped —
+and the two call for opposite responses.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-004" priority="must">
+<p>The reader <spec-rule>MUST</spec-rule> distinguish a requirement with no tagged test from a requirement whose
+tests exist but carry no tag, and report them differently.</p>
+<details><summary>Rationale</summary><p>During incremental adoption almost everything is untagged. A tool that
+reports that as "untested" would be wrong about the entire estate on the day it ships, and would be ignored
+thereafter.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-005" priority="must">
+<p>A verify view's <code>testsCite</code> <spec-rule level="should">SHOULD</spec-rule> be derived from the tags of
+the tests the captured command selects; where it is authored by hand instead, a disagreement with the derived set
+<spec-rule>MUST</spec-rule> be reportable.</p>
+<details><summary>Rationale</summary><p>The field is written into every view and read by nothing. Derivation is the
+point of the tag convention, not a bonus: it converts the estate's only traceability claim from prose into
+something a machine can contradict.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-006" priority="must">
+<p>With no tags present anywhere, every existing command, view and check <spec-rule>MUST</spec-rule> behave exactly
+as it did before this spec, and the reader <spec-rule>MUST</spec-rule> report an empty result rather than an
+error.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-007" priority="should">
+<p>A partially tagged project's derived result <spec-rule>MUST</spec-rule> be labelled as partial, stating how much
+of the suite carries tags, rather than presented as a complete picture of coverage.</p>
+<details><summary>Rationale</summary><p>A derived citation covering three of a spec's twenty tests is more
+dangerous than none, because it looks authoritative. Partial results must announce themselves.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-008" priority="should">
+<p>At least one real suite <spec-rule level="should">SHOULD</spec-rule> be tagged as a pilot, and its derived
+citation compared against the hand-written one, so the convention is proven against real tests rather than
+fixtures.</p>
+</spec-requirement>
+
+<h3>Non-functional</h3>
+
+<spec-requirement id="NFR-001" priority="must">
+<p>The reader <spec-rule>MUST</spec-rule> be deterministic: the same tree yields byte-identical output across runs,
+with results ordered independently of filesystem enumeration order, and <spec-rule>MUST</spec-rule> complete a
+full scan of this repository's ~240 test files in under 5 s.</p>
+</spec-requirement>
+
+<spec-requirement id="NFR-002" priority="should">
+<p>100% of the reader's behaviour <spec-rule level="should">SHOULD</spec-rule> be available without executing any
+test, so that a project with a failing or slow suite can still derive its citations.</p>
+</spec-requirement>
+
+<h3>Out of scope (deferred to other slices)</h3>
+<spec-out-of-scope>
+  <ul>
+    <li defer-to="TBD-vitest-tag-upgrade">Upgrading the unit-test runner to a version with first-class tag filtering. Two majors across every test file, and it earns its own justification rather than riding along here.</li>
+    <li defer-to="TBD-verify-command-execution">Executing a view's captured commands to prove they still run. A tag makes that check worth doing; it is still a separate mechanism.</li>
+    <li defer-to="TBD-verify-tag-coverage-gate">Failing a build because a requirement has no tagged test. Adoption has to come first — a gate on a convention nobody has applied yet would fail everything on day one.</li>
+    <li defer-to="TBD-verify-tag-backfill">Tagging the whole existing suite. This spec proves the convention on a pilot; a sweep of ~240 files is its own piece of work.</li>
+  </ul>
+</spec-out-of-scope>
+</section>
+
+
+<section id="data">
+<h2>4 · Data model</h2>
+
+<p>Two concepts, one of which already exists and is being given a source of truth.</p>
+
+<h3>Entities</h3>
+<dl>
+  <dt>Test tag</dt>
+  <dd>A declaration, attached to a test, that it belongs to a spec and optionally that it closes named requirements
+  or tasks. A tag is one of a set — a test may carry several, and a single test may legitimately serve two specs.
+  A tag names an artifact that must exist; a tag naming nothing is an error, not a no-op.</dd>
+  <dt>Derived citation</dt>
+  <dd>The set of requirement and task ids obtained by reading the tags of the tests a command selects. It replaces
+  the authored <code>testsCite</code> as the source of truth for what a command covers. Its defining property is
+  that it cannot disagree with the suite without something noticing — which is exactly the property the authored
+  form lacks.</dd>
+</dl>
+
+<spec-note>
+<p>The invariant worth stating: a derived citation is only as complete as the tagging beneath it, and
+completeness is not observable from the citation itself. A spec with three tagged tests out of twenty produces a
+confident-looking citation covering three. That is why <a href="#FR-007">FR-007</a> makes partiality part of the
+result rather than something a reader is expected to infer.</p>
+</spec-note>
+</section>
+
+
+<section id="success">
+<h2>5 · Success criteria</h2>
+
+<p>Technology-agnostic, measurable outcomes. These are how we know it worked.</p>
+
+<spec-requirement id="SC-001" priority="must">
+<p>For a tagged spec, adding a new test that carries its tag causes that test to be selected by the spec's
+unchanged recorded command — with 0 edits to the verify view — and renaming a test file changes nothing.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-002" priority="must">
+<p>For the pilot suite, the citation derived from tags is compared against the hand-written one and every
+difference is explained — either the hand-written set was wrong, or the tagging is incomplete and says so.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-003" priority="must">
+<p>On a project with no tags, 100% of existing verify views, commands and validate findings are unchanged, and the
+reader exits successfully reporting an empty result.</p>
+</spec-requirement>
+</section>
+
+
+<section id="assumptions">
+<h2>6 · Assumptions</h2>
+
+<spec-assumption>
+<p>Tags will be applied to new tests once the convention exists. This is the assumption most likely to be wrong —
+it is the same bet the toggle field lost, where a required field was answered <code>none</code> 50 times out of 61
+— which is why <a href="#FR-008">FR-008</a> insists on a real pilot rather than a fixture, and why the coverage
+gate is deferred until adoption is observable rather than hoped for.</p>
+</spec-assumption>
+
+<spec-assumption>
+<p>A tag convention expressible in the current runners is good enough to prove the idea, even though one of them
+cannot filter on it natively until it is upgraded. The reader does not depend on runner support; only the
+convenience of running by tag does.</p>
+</spec-assumption>
+</section>
+
+
+<section id="questions">
+<h2>7 · Open questions</h2>
+<spec-questions>
+<p>None outstanding. Tag granularity (spec plus requirement or task ids) and the staged posture toward the runner
+upgrade were both anchored in the interview behind the survey's D-005; the per-runner syntax is a design
+decision, not an open question.</p>
+</spec-questions>
+</section>
+
+
+<section id="conformance">
+<h2>8 · Conformance index</h2>
+<p>Auto-built from every <code>&lt;spec-requirement&gt;</code> in this document.</p>
+<spec-conformance></spec-conformance>
+</section>
+
+
+<section id="changelog">
+<h2>9 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-08-02">02 Aug 2026</time><span>Initial draft. Drains <code>TBD-verify-test-tags</code> from the verify-view actionability survey (D-005). Scoped to the convention, a deterministic reader and derived citations; the runner upgrade that first-class filtering needs is deferred to its own slug so it is justified on its own terms.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  084-verify-test-tags · A durable test selector · authored 02 Aug 2026
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>
