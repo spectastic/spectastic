@@ -68,7 +68,7 @@ test('US1 · an unrecorded field renders LOUDLY, not blank (FR-009)', async ({ p
  * is added to both by hand, and 048 shipped a block whose typed elements had
  * render logic and zero CSS. "It rendered" would not have caught that.
  */
-test('021 FR-004 · an omitted toggle gaps loudly, so relaxing the requirement changes no behaviour', async ({ page }) => {
+test('021 · an omitted toggle gaps loudly, so relaxing the requirement changes no behaviour @021:FR-004', async ({ page }) => {
   await page.goto(URL);
   // The primary fixture omits `toggle` deliberately. Now that FR-004 permits
   // that instead of demanding the literal string "none", this is the assertion
@@ -78,13 +78,13 @@ test('021 FR-004 · an omitted toggle gaps loudly, so relaxing the requirement c
   expect((await page.locator('spec-toggle').textContent())?.trim()).toBe('');
 });
 
-test('083 · the exercise row is labelled, not an unlabelled mystery column', async ({ page }) => {
+test('083 · the exercise row is labelled, not an unlabelled mystery column @083:FR-003', async ({ page }) => {
   await page.goto(URL);
   const label = await page.locator('spec-exercise').evaluate((el) => getComputedStyle(el, '::before').content);
   expect(label).toContain('Exercise');
 });
 
-test('083 · the exercise label fits its column rather than overlapping the value (T-113)', async ({ page }) => {
+test('083 · the exercise label fits its column rather than overlapping the value @083:T-113', async ({ page }) => {
   await page.goto(URL);
   // Resolves the design's open spike. The grid reserves 5.5rem for the label;
   // "EXERCISE" is the longest label in the block. Arithmetic said it fits, which
@@ -104,7 +104,7 @@ test('083 · the exercise label fits its column rather than overlapping the valu
   expect(labelWidth).toBeLessThanOrEqual(columnWidth);
 });
 
-test('083 · an uncaptured exercise entry point gaps LOUDLY, not blank (T-200, FR-004)', async ({ page }) => {
+test('083 · an uncaptured exercise entry point gaps LOUDLY, not blank @083:FR-004 @083:T-200', async ({ page }) => {
   await page.goto(URL_NO_EX);
   // The failure this guards is precise: a new element added to the renderer but
   // missed in the stylesheet's `:empty` selector list renders as a silent blank,
@@ -113,7 +113,7 @@ test('083 · an uncaptured exercise entry point gaps LOUDLY, not blank (T-200, F
   expect(after).toContain('not recorded');
 });
 
-test('083 · a URL entry point renders as inert text, never a link (NFR-002, P-11)', async ({ page }) => {
+test('083 · a URL entry point renders as inert text, never a link @083:NFR-002', async ({ page }) => {
   await page.goto(URL);
   await expect(page.locator('spec-exercise')).toHaveText('open http://localhost:3000/settings');
   // An artifact is data. A captured address is quoted evidence, not navigation.
