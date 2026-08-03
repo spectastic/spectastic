@@ -14,6 +14,7 @@ import { join } from 'node:path';
 import type { Document, Element } from '@spectastic/schema/parser';
 import { findAll, getAttr, parse, walk } from '@spectastic/schema/parser';
 import { isQuantifiedTarget } from '@spectastic/schema/slo';
+import { renderRunBlock } from '../runblock.js';
 import type { CapturedRun, FileSystem, KernelContext, VerifyInput, VerifyResult } from '../types.js';
 
 export class VerifyError extends Error {
@@ -317,33 +318,11 @@ function escapeHtml(s: string): string {
   return s.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;');
 }
 
-/**
- * The typed Run/Demo block (FR-004). T-013 emits the empty structure — each
- * field renders loudly as "not recorded" via CSS (FR-009); T-110 populates it
- * from the captured run.
- */
-export function renderRunBlock(captured: VerifyInput['capturedRun']): string {
-  const c = captured ?? {};
-  // An absent field stays an EMPTY element (no whitespace) so CSS :empty
-  // renders it loudly (FR-009); cites come from the captured ids (FR-004).
-  const field = (val?: string): string => (val ? escapeHtml(val) : '');
-  const cites = (ids?: string[]): string => (ids && ids.length > 0 ? ` cites="${escapeHtml(ids.join(' '))}"` : '');
-  // Spec 021 T-003: a block whose commands were NOT run is marked suggested so
-  // it never presents unverified commands with the authority of verified ones
-  // (P-7). Default is verified (a /implement capture ran them); only an explicit
-  // verified:false downgrades the block.
-  const suggested = c.verified === false;
-  const status = suggested ? ' data-status="suggested"' : '';
-  const banner = suggested
-    ? '\n  <spec-note><strong>Suggested — not yet run.</strong> These commands were authored, not executed; verify them before trusting the result (<a href="../../principles.html#P-7">P-7</a>).</spec-note>'
-    : '';
-  return `<spec-runblock${status}>${banner}
-  <spec-run>${field(c.run)}</spec-run>
-  <spec-toggle>${field(c.toggle)}</spec-toggle>
-  <spec-tests${cites(c.testsCite)}>${field(c.tests)}</spec-tests>
-  <spec-demo${cites(c.demoCite)}>${field(c.demo)}</spec-demo>
-</spec-runblock>`;
-}
+// The Run/Demo block renderer moved to `../runblock.ts` (spec 083, D-001) so
+// that `explore.ts`'s byte-identical copy could be collapsed into it. Re-exported
+// here because callers and tests already import it from this module — and
+// imported, not merely re-exported, because this module calls it internally.
+export { renderRunBlock };
 
 /**
  * The instrumentation evidence for the §Observables trace (048, FR-002).

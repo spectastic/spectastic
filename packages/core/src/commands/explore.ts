@@ -19,6 +19,7 @@
  */
 
 import type { Finding } from '@spectastic/schema';
+import { renderRunBlock } from '../runblock.js';
 import type { CapturedRun, ExploreInput, ExploreResult, QuarantineMarker } from '../types.js';
 
 export class ExploreError extends Error {
@@ -53,15 +54,11 @@ function dmyDisplay(iso: string): string {
  * verify (021 FR-009).
  */
 export function renderExploreRunBlock(captured: CapturedRun | undefined): string {
-  const c = captured ?? {};
-  const field = (val?: string): string => (val ? escapeHtml(val) : '');
-  const cites = (ids?: string[]): string => (ids && ids.length > 0 ? ` cites="${escapeHtml(ids.join(' '))}"` : '');
-  return `<spec-runblock>
-  <spec-run>${field(c.run)}</spec-run>
-  <spec-toggle>${field(c.toggle)}</spec-toggle>
-  <spec-tests${cites(c.testsCite)}>${field(c.tests)}</spec-tests>
-  <spec-demo${cites(c.demoCite)}>${field(c.demo)}</spec-demo>
-</spec-runblock>`;
+  // Delegates since spec 083 D-001. This was a byte-identical copy of verify's
+  // renderer; the two differed only in the suggested-status branch, which
+  // explore never triggers because it never sets `verified`. Kept as a named
+  // export so existing callers and tests are untouched.
+  return renderRunBlock(captured);
 }
 
 const RUN_BLOCK_SLOT = '<!-- RUN_BLOCK -->';

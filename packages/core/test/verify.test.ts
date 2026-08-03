@@ -110,6 +110,48 @@ describe('renderRunBlock: captured commands -> typed elements (T-101, FR-004)', 
     expect(html).toContain('<spec-tests></spec-tests>');
     expect(html).toContain('<spec-demo></spec-demo>');
   });
+});
+
+/**
+ * The exercise entry point (spec 083). `run` holds a *build* in 53 of 58
+ * populated views across the estate, so the command that actually exercises a
+ * feature had nowhere to go but `demo` — the one field specified to be prose.
+ */
+describe('renderRunBlock: the exercise entry point (083 T-100/T-101)', () => {
+  it('writes a captured entry point into its own element, verbatim (FR-003)', () => {
+    const html = renderRunBlock({ exercise: 'npx spectastic owner "who owns retries"' });
+    expect(html).toContain('<spec-exercise>npx spectastic owner &quot;who owns retries&quot;</spec-exercise>');
+  });
+
+  it('places the row between toggle and tests, the order a reader acts in (D-002)', () => {
+    const html = renderRunBlock({ toggle: 'none', exercise: 'npx spectastic units', tests: 'npx vitest run' });
+    expect(html.indexOf('<spec-exercise>')).toBeGreaterThan(html.indexOf('<spec-toggle>'));
+    expect(html.indexOf('<spec-exercise>')).toBeLessThan(html.indexOf('<spec-tests'));
+  });
+
+  it('leaves an uncaptured entry point EMPTY so it gaps loudly rather than silently (FR-004)', () => {
+    // A schema rule or a CI change genuinely has nothing to exercise. The field
+    // must be absent-and-visible, never invented and never a silent blank.
+    expect(renderRunBlock({ run: 'pnpm -r build' })).toContain('<spec-exercise></spec-exercise>');
+    expect(renderRunBlock(undefined)).toContain('<spec-exercise></spec-exercise>');
+  });
+
+  it('renders a URL entry point as inert escaped text, never a link (NFR-002, P-11)', () => {
+    // The interview settled that where `run` already serves the feature, this
+    // field holds the address. An artifact is data: a captured value is quoted
+    // evidence, not something to navigate to.
+    const html = renderRunBlock({ exercise: 'open http://localhost:3000/settings' });
+    expect(html).toContain('<spec-exercise>open http://localhost:3000/settings</spec-exercise>');
+    expect(html).not.toContain('<a ');
+    expect(html).not.toContain('href=');
+  });
+
+  it('escapes a hostile entry point rather than emitting markup', () => {
+    const html = renderRunBlock({ exercise: '<img src=x onerror="alert(1)">' });
+    expect(html).not.toContain('<img');
+    expect(html).not.toContain('onerror="');
+    expect(html).toContain('&lt;img src=x onerror=&quot;alert(1)&quot;&gt;');
+  });
 
   it('escapes captured content', () => {
     expect(renderRunBlock({ run: 'echo "<a>" & b' })).toContain(
@@ -217,6 +259,31 @@ describe('verifyCommand: standalone regen preserves the Run block + idempotency 
     );
     expect(regen.html).toContain('<spec-run>pnpm build</spec-run>'); // preserved
     expect(regen.html).toContain('tasks.html#T-100'); // trace re-derived
+  });
+
+  it('preserves a captured exercise entry point across a bare regeneration (083 FR-005)', async () => {
+    // The whole <spec-runblock> is matched and re-inserted, so the new field
+    // rides inside the preserved region with no extra machinery. Asserted
+    // rather than assumed, because "it should fall out of the existing
+    // mechanism" is exactly the reasoning that hides a regression.
+    const first = await verifyCommand(
+      {
+        specId: '999-fixture',
+        capturedRun: { run: 'pnpm build', exercise: 'npx spectastic units', tests: 'pnpm test' },
+      },
+      ctxFor({ '999-fixture/spec.html': SPEC, '999-fixture/tasks.html': TASKS }),
+    );
+    expect(first.html).toContain('<spec-exercise>npx spectastic units</spec-exercise>');
+
+    const regen = await verifyCommand(
+      { specId: '999-fixture' },
+      ctxFor({
+        '999-fixture/spec.html': SPEC,
+        '999-fixture/tasks.html': TASKS,
+        '999-fixture/verify.html': first.html,
+      }),
+    );
+    expect(regen.html).toContain('<spec-exercise>npx spectastic units</spec-exercise>');
   });
 
   it('is byte-identical on repeated regeneration of an unchanged bundle (NFR-002)', async () => {

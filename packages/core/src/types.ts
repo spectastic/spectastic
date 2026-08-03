@@ -664,6 +664,25 @@ export interface CapturedRun {
   run?: string;
   /** Feature flag / env var / setting that must be on, or "none" — `<spec-toggle>`. */
   toggle?: string;
+  /**
+   * The entry point that exercises this feature — `<spec-exercise>` (spec 083,
+   * FR-001/FR-002).
+   *
+   * Deliberately "entry point" and not "command". For a library or a CLI it is
+   * the invocation (`spectastic owner "…"`); for something the `run` field
+   * already serves, it is the address that reaches the feature
+   * (`open http://localhost:3000/settings`) rather than a duplicate of the
+   * server command.
+   *
+   * Distinct from `run`, which across the estate holds a *build* in 53 of 58
+   * populated cases — because for a library, building is what running means.
+   * That left the command a reader actually wants with nowhere to go but
+   * `demo`, which is specified to be prose.
+   *
+   * Optional: a schema rule, a CI workflow or a docs change has no entry point,
+   * and an absent field renders as a loud gap rather than being invented.
+   */
+  exercise?: string;
   /** The exact command that exercises this feature's tests — `<spec-tests>`. */
   tests?: string;
   /** The test-task ids the test command runs — `<spec-tests cites="…">` (FR-004). */

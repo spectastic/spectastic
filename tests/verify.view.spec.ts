@@ -18,6 +18,11 @@ const here = dirname(fileURLToPath(import.meta.url));
 const fix = join(here, '..', 'packages', 'core', 'src', 'commands', '__fixtures__', 'verify');
 const FILE = join(here, 'fixtures', 'verify-view.generated.html');
 const URL = '/tests/fixtures/verify-view.generated.html';
+// A second fixture with NO exercise entry point — the real "a schema rule has
+// nothing to exercise" case, which the primary fixture cannot show because it
+// populates the field.
+const FILE_NO_EX = join(here, 'fixtures', 'verify-view.no-exercise.generated.html');
+const URL_NO_EX = '/tests/fixtures/verify-view.no-exercise.generated.html';
 
 const captured = {
   run: 'pnpm --filter @spectastic/core build',
@@ -26,6 +31,10 @@ const captured = {
   testsCite: ['T-100', 'T-101'],
   demo: 'spectastic verify 999-fixture, then open verify.html',
   demoCite: ['SC-001'],
+  // 083: the entry point. Deliberately a URL, which is the case the interview
+  // settled for a feature `run` already serves — and the case NFR-002 says must
+  // stay inert.
+  exercise: 'open http://localhost:3000/settings',
 };
 
 test.beforeAll(() => {
@@ -36,6 +45,8 @@ test.beforeAll(() => {
   );
   mkdirSync(join(here, 'fixtures'), { recursive: true });
   writeFileSync(FILE, renderVerifyHtml(model, captured));
+  const { exercise: _omitted, ...withoutExercise } = captured;
+  writeFileSync(FILE_NO_EX, renderVerifyHtml(model, withoutExercise));
 });
 
 test('US1 · the Run/Demo block shows the captured commands', async ({ page }) => {
@@ -49,6 +60,54 @@ test('US1 · an unrecorded field renders LOUDLY, not blank (FR-009)', async ({ p
   await page.goto(URL);
   const after = await page.locator('spec-toggle').evaluate((el) => getComputedStyle(el, '::after').content);
   expect(after).toContain('not recorded');
+});
+
+/**
+ * The exercise row (spec 083). Three assertions, because a new element inherits
+ * neither its label nor its empty-state from the existing selector lists — it
+ * is added to both by hand, and 048 shipped a block whose typed elements had
+ * render logic and zero CSS. "It rendered" would not have caught that.
+ */
+test('083 · the exercise row is labelled, not an unlabelled mystery column', async ({ page }) => {
+  await page.goto(URL);
+  const label = await page.locator('spec-exercise').evaluate((el) => getComputedStyle(el, '::before').content);
+  expect(label).toContain('Exercise');
+});
+
+test('083 · the exercise label fits its column rather than overlapping the value (T-113)', async ({ page }) => {
+  await page.goto(URL);
+  // Resolves the design's open spike. The grid reserves 5.5rem for the label;
+  // "EXERCISE" is the longest label in the block. Arithmetic said it fits, which
+  // is exactly the kind of claim the containment discipline exists to distrust.
+  const { labelWidth, columnWidth } = await page.locator('spec-exercise').evaluate((el) => {
+    const cs = getComputedStyle(el);
+    const probe = document.createElement('span');
+    const before = getComputedStyle(el, '::before');
+    probe.textContent = before.content.replace(/"/g, '');
+    probe.style.cssText = `position:absolute;visibility:hidden;white-space:nowrap;font-family:${before.fontFamily};font-size:${before.fontSize};font-weight:${before.fontWeight};letter-spacing:${before.letterSpacing};text-transform:${before.textTransform}`;
+    document.body.appendChild(probe);
+    const labelWidth = probe.getBoundingClientRect().width;
+    probe.remove();
+    return { labelWidth, columnWidth: Number.parseFloat(cs.gridTemplateColumns.split(' ')[0] ?? '0') };
+  });
+  expect(columnWidth).toBeGreaterThan(0);
+  expect(labelWidth).toBeLessThanOrEqual(columnWidth);
+});
+
+test('083 · an uncaptured exercise entry point gaps LOUDLY, not blank (T-200, FR-004)', async ({ page }) => {
+  await page.goto(URL_NO_EX);
+  // The failure this guards is precise: a new element added to the renderer but
+  // missed in the stylesheet's `:empty` selector list renders as a silent blank,
+  // which every structural check and every "it exists" assertion would pass.
+  const after = await page.locator('spec-exercise').evaluate((el) => getComputedStyle(el, '::after').content);
+  expect(after).toContain('not recorded');
+});
+
+test('083 · a URL entry point renders as inert text, never a link (NFR-002, P-11)', async ({ page }) => {
+  await page.goto(URL);
+  await expect(page.locator('spec-exercise')).toHaveText('open http://localhost:3000/settings');
+  // An artifact is data. A captured address is quoted evidence, not navigation.
+  expect(await page.locator('spec-exercise a').count()).toBe(0);
 });
 
 test('US1 · the run command is selectable text a reviewer can copy (SC-003)', async ({ page }) => {
