@@ -68,6 +68,16 @@ test('US1 · an unrecorded field renders LOUDLY, not blank (FR-009)', async ({ p
  * is added to both by hand, and 048 shipped a block whose typed elements had
  * render logic and zero CSS. "It rendered" would not have caught that.
  */
+test('021 FR-004 · an omitted toggle gaps loudly, so relaxing the requirement changes no behaviour', async ({ page }) => {
+  await page.goto(URL);
+  // The primary fixture omits `toggle` deliberately. Now that FR-004 permits
+  // that instead of demanding the literal string "none", this is the assertion
+  // that the permission costs a reader nothing: absence is still visible.
+  const after = await page.locator('spec-toggle').evaluate((el) => getComputedStyle(el, '::after').content);
+  expect(after).toContain('not recorded');
+  expect((await page.locator('spec-toggle').textContent())?.trim()).toBe('');
+});
+
 test('083 · the exercise row is labelled, not an unlabelled mystery column', async ({ page }) => {
   await page.goto(URL);
   const label = await page.locator('spec-exercise').evaluate((el) => getComputedStyle(el, '::before').content);
