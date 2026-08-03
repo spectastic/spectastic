@@ -1,0 +1,386 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
+<title>A demonstration is not an instruction — Considerations for Spectastic</title>
+<meta name="description" content="The verify view records the build command, the test command, and a description of what the author looked at. The one command a reader wants — the one that makes the feature do its thing — has no field of its own, and lands in the only field the format lets be prose. A survey of why the artifact is grounded without being actionable, and what would close the gap.">
+<link rel="stylesheet" href="../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../assets/favicon.svg">
+<script src="../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Considerations · The verify view</p>
+  <h1>A demonstration is not an instruction</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    The view records what the author built, what the author tested, and what the author looked at. Every one of those is a fact about the past. The reader wants a sentence in the imperative — and that is the one thing the format has no field for.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>     <span><spec-status value="draft">Draft</spec-status></span>
+    <b>Type</b>       <span>Artifact critique &amp; landscape survey</span>
+    <b>Author</b>     <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Created</b>    <span><time datetime="2026-08-02">02 Aug 2026</time></span>
+    <b>Companion</b>  <span><a href="./orchestrator-placement-considerations.html">orchestrator-placement</a> · <a href="./observability-slo-considerations.html">observability-slo</a></span>
+    <b>Sources</b>    <span>9 external, retrieved 02 Aug 2026 · full audit of 61 verify views</span>
+    <b>Read time</b>  <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-tldr>
+    <p>The complaint that prompted this — <em>"I should have been left with no question of what command to run"</em> — sounds like a
+    failure of the Run/Demo block's discipline. It is not. An audit of all 61 verify views shows the discipline is <strong>working</strong>:
+    the test command is copy-pasteable in 60 of 61, and the run command is present and runnable in 58. The gap is structural and narrower
+    than it looks. <mark><code>run</code> is a <em>build</em> command in 53 of 58 cases</mark> — <code>pnpm -r build</code>,
+    <code>cd packages/core &amp;&amp; npx tsup</code> — because for a library or a CLI, building <em>is</em> what "run" means. The command
+    that makes the feature actually do something therefore has nowhere to go except <code>demo</code>, and <code>demo</code> is the one
+    field the governing spec explicitly permits to be prose: it asks for "a human demo path". So the estate has 24 demos with a command
+    buried mid-sentence, 9 with no command at all, and 19 carrying a placeholder you must substitute. Each of those is
+    <em>conformant</em>. The format is not being violated; it is being satisfied. This is the canonical documentation failure that
+    <a href="https://diataxis.fr/how-to-guides/">Diátaxis</a> names — <strong>reference and how-to are different documents</strong>, and one
+    field cannot be both, because provenance is past-tense and specific to the author's machine while instruction is imperative and must
+    port to the reader's. The closest peer has the same unsolved gap and fails it in the opposite direction: Spec&nbsp;Kit's per-feature
+    <code>quickstart.md</code> has a purpose contested in its own discussions, and has been reported filling with 454 lines of
+    implementation code. There is no <code>verify.sh</code> in Spec&nbsp;Kit to copy. Recommendation: give the exercise command
+    <strong>its own typed field</strong> distinct from the build, keep the demo as prose where prose is honest, and put the guarantee
+    where guarantees go — <strong>execute the captured commands in CI</strong> rather than linting their grammar, which is the one move
+    that stops the field rotting quietly the way a string field always does.</p>
+  </spec-tldr>
+
+  <spec-audience-map>
+    <dl>
+      <dt>Exec / PM</dt><dd>§1 the ask · §9 recommendation</dd>
+      <dt>Reviewer</dt><dd>§2 the audit · §5 the peer tool · §10 caveats</dd>
+      <dt>Implementer</dt><dd>§3 the missing field · §4 the two documents · §7 the guarantee</dd>
+    </dl>
+  </spec-audience-map>
+</header>
+
+<!-- ======================================================= -->
+<section id="ask">
+<h2>1 · The ask — grounded, and still not enough</h2>
+
+<p>Spec <a href="../specs/021-verify-view/spec.html">021</a> built the verify view around a question it stated plainly: <em>"It's built.
+How do I run it, see it work, and what do I turn on?"</em> Its context section is blunt about the failure it was closing — dogfooding
+a downstream project, <em>"the UI shipped with no way to tell how to run the whole thing, and 'done' to 'I can see it' was private
+archaeology."</em></p>
+
+<p>Its first success criterion is correspondingly ambitious: a reviewer who has never seen the spec can <em>run, toggle, test and demo
+the feature using only <code>verify.html</code></em>, without reading the source or asking the author. The acceptance scenario tightens
+it to something machine-checkable in principle — <em>"copy-pasting the Run and Tests commands reproduces the feature's
+verification."</em></p>
+
+<p>So the standard being appealed to is not new, and not imported from a competitor. It is this project's own, already ratified. The
+question this survey answers is why an artifact that meets that standard on its own terms still leaves a reader asking what to type.</p>
+
+<spec-sidenote>The trigger was concrete: after landing a placement engine, the author had to ask which command exercised it. The view's
+demo field at that moment read <code>rankPlacement on the producer/consumer fixture</code> — a function name. Entirely accurate, entirely
+unrunnable, and entirely conformant.</spec-sidenote>
+</section>
+
+<!-- ======================================================= -->
+<section id="audit">
+<h2>2 · The audit — the discipline is working, which is the problem</h2>
+
+<p>All 61 <code>verify.html</code> files in this estate were read and their typed fields extracted. The first-pass reading of the numbers
+was wrong in a way worth recording, because it inverts the recommendation: measured across the whole Run/Demo block, only 9 of 60 views
+looked both copy-pasteable and self-evidencing, which reads as a broken format. Measured field by field, against what each field was
+actually specified to carry, the picture is almost the reverse.</p>
+
+<div style="overflow-x:auto;">
+<table>
+  <thead><tr><th>Field</th><th>What it was specified to carry</th><th>What the estate holds</th></tr></thead>
+  <tbody>
+    <tr><td><code>tests</code></td><td>"the exact test command"</td><td><strong>60 of 61</strong> copy-pasteable. No placeholders, no prose. The one absence is a spec with no Run/Demo block at all.</td></tr>
+    <tr><td><code>run</code></td><td>"build/start command(s)"</td><td><strong>58 of 61</strong> present and runnable — but <strong>53 of 58 are a build or install</strong>, not a start.</td></tr>
+    <tr><td><code>toggle</code></td><td>"feature flag / env var / setting, or none"</td><td>The literal string <code>none</code> in <strong>50 of 61</strong>.</td></tr>
+    <tr><td><code>demo</code></td><td>"the human demo path (click-path, import, or request)"</td><td>27 open with a command · 24 bury one mid-sentence · <strong>9 contain no command at all</strong>. 19 carry a placeholder; 12 require a manual "open and look" step; only 21 say what you should see.</td></tr>
+  </tbody>
+</table>
+</div>
+
+<p>Read that table in the right order and the diagnosis falls out. The two fields specified to hold commands hold commands, reliably,
+across 61 artifacts and many months. The field specified to hold <em>a path a human walks</em> holds exactly that — and a path a human
+walks is not a command, which is why nine of them contain no command and nobody noticed.</p>
+
+<p>One absence is a genuine defect rather than a design consequence: <a href="../specs/046-security-review-ci/spec.html">046</a> carries no
+run, no tests and no demo. Two more (<a href="../specs/047-slo-nfr-artifact/spec.html">047</a>,
+<a href="../specs/048-verify-slo-trace/spec.html">048</a>) carry no run command. Those are three cards for triage, not evidence about the
+format.</p>
+</section>
+
+<!-- ======================================================= -->
+<section id="missing-field">
+<h2>3 · The missing field — <code>run</code> means build, and nothing means <em>try it</em></h2>
+
+<p>For a web application, <code>run</code> is unambiguous and sufficient: <code>npm start</code> serves the thing, and the reader opens a
+browser. For a library or a command-line tool — which is what this estate almost entirely consists of, and what a great many downstream
+projects will be — "run the project" and "exercise the feature" are different acts, and only the first has a field.</p>
+
+<p>The consequence is visible in adjacent rows of the same artifact. A recently landed spec records
+<code>run</code> as <code>(cd packages/core &amp;&amp; npx tsup) &amp;&amp; (cd packages/cli &amp;&amp; npx tsup)</code> — a build — and
+<code>tests</code> as a <code>vitest</code> invocation. Both are correct. Neither tells a reader that the thing they want to type is
+<code>spectastic owner "…"</code>. That sentence exists only in <code>demo</code>, sharing a field with click-paths, HTTP requests,
+import snippets and, in nine cases, a paragraph of English.</p>
+
+<spec-decision id="D-001" grounding="verified">
+  <p><b>Status</b> Proposed</p>
+  <p><b>Context</b> <code>CapturedRun</code> (<code>packages/core/src/types.ts:662</code>) types <code>run</code> as
+  "build/start command(s)" and <code>demo</code> as "the human demo path". An audit of 61 views finds <code>run</code> holds a build or
+  install in 53 of 58 populated cases. The exercise command has no field, so it lands in <code>demo</code> by default.</p>
+  <p><b>Decision</b> Treat this as a missing field, not as authoring laxity. Add a distinct typed field for the command that exercises
+  the feature, separate from the command that builds the project — and leave <code>demo</code> as prose, because a click-path genuinely
+  is prose and forcing it into command shape would make the honest cases dishonest.</p>
+  <p><b>Consequences</b><br>
+  + The one sentence a reader most wants acquires a home, a name and a position, instead of competing for a field with four other kinds of content.<br>
+  + Existing views stay valid: nothing currently in <code>demo</code> becomes wrong, and the new field is simply absent until captured — the format's existing "loud gap, never a silent blank" behaviour already covers that.<br>
+  − A fourth command field is more surface to leave empty, and a field that is optional will be omitted; §7 is about why that cannot be fixed by making it required.<br>
+  − The boundary between "exercise" and "demo" is a judgment call for a web UI, where starting the server may be the whole of it.</p>
+</spec-decision>
+</section>
+
+<!-- ======================================================= -->
+<section id="two-documents">
+<h2>4 · Two documents wearing one field</h2>
+
+<p>The deeper reason a stricter prose rule would not have caught this is that the Run/Demo block is doing two jobs whose requirements
+point in opposite directions.</p>
+
+<p><a href="https://diataxis.fr/">Diátaxis</a> separates <strong>reference</strong> — "technical description; facts a user needs in order
+to do things correctly… free of distraction and interpretation" — from <strong>how-to guides</strong>, which are "goal-oriented",
+address "an already-competent user", and are "strictly about doing". The framework's central claim is that these are different documents,
+and that conflating them degrades both.</p>
+
+<p>The verify view is a <em>reference</em> artifact by design and by principle. <a href="../principles.html#P-7">P-7</a> — done means
+verified — requires that what it records be what actually happened; 021's own criterion insists the fields be "grounded evidence, not
+aspirational". The format already carries a provenance flag for exactly this: <code>verified: false</code> renders a visible <em>"Suggested
+— not yet run"</em> banner. That is a reference document being careful about its facts, and it works.</p>
+
+<p>But the reader arriving at the file wants a how-to. And the two have incompatible tenses. Provenance is past and particular — <em>I ran
+this, on my machine, against that fixture</em>, which is why <code>spectastic change-risk in a real git fixture repo</code> is a perfectly
+good provenance record and a useless instruction: the fixture was real, and it was mine. Instruction is imperative and portable — <em>you
+run this, anywhere</em>. A single free-text field will drift toward whichever the author is thinking about while writing, and the author,
+having just finished the work, is always thinking about what they did.</p>
+
+<spec-decision id="D-002" grounding="verified">
+  <p><b>Status</b> Proposed</p>
+  <p><b>Context</b> The block serves provenance (P-7, the <code>verified</code> flag, "grounded not aspirational") and instruction
+  (021 SC-001, "a reviewer… can run, toggle, test and demo… without asking the author") through the same untyped string fields. Diátaxis
+  names this conflation as a standard failure mode.</p>
+  <p><b>Decision</b> Keep both jobs in one artifact — a reader should not need two files — but stop expecting one field to serve both.
+  Provenance is the record of the run; instruction is what a stranger should type. Where they coincide, capture once and render twice;
+  where they diverge, the instruction is the one that must port.</p>
+  <p><b>Consequences</b><br>
+  + Explains why every previous tightening of this block improved grounding without improving usefulness: the two were never in tension, they were never distinguished.<br>
+  + Gives a principled test for any future field — is this a fact about the past or a direction to the reader?<br>
+  − Some captures genuinely differ between the two, and an artifact showing both risks looking like it contradicts itself.<br>
+  − Two renderings from one capture is more generator complexity for a view that is already the most derived artifact in the estate.</p>
+</spec-decision>
+</section>
+
+<!-- ======================================================= -->
+<section id="peer">
+<h2>5 · The peer tool — same gap, opposite failure</h2>
+
+<p>The obvious move is to copy the nearest competitor, and the premise worth correcting first is that there is something there to copy.
+<strong>Spec&nbsp;Kit ships no <code>verify.sh</code>.</strong> Its scripts — <code>check-prerequisites.sh</code>, <code>common.sh</code>,
+<code>create-new-feature.sh</code>, <code>setup-plan.sh</code>, <code>setup-tasks.sh</code> — are lifecycle plumbing that scaffolds and
+validates the artifacts themselves. None of them verifies a built feature.</p>
+
+<p>What Spec&nbsp;Kit does emit per feature is <code>quickstart.md</code>, and it is instructive precisely because it is
+<em>unsettled</em>. A discussion opened in its own repository asks what the file is for, noting the "exact role isn't clearly described in
+the official documentation"; the answer given is that it is a <em>"lightweight onboarding and context guide rather than a formal part of
+the Spec&nbsp;Kit specification"</em> — no validation scenarios, no runnable commands among its listed contents. Elsewhere the project's
+documentation says <code>/plan</code> "produces a quickstart guide capturing key validation scenarios." Those are two different artifacts
+sharing one filename. And an issue reports the practical result: on a new application, <code>quickstart.md</code> came back with
+<em>454 lines</em> of models, migrations, validations and tests — implementation code, in the onboarding file.</p>
+
+<p>So the comparison does not yield a design to adopt. It yields a useful calibration: this is an unsolved problem in the category, and
+the two tools fail it from opposite ends. Spectastic's verify view is <em>too disciplined</em> — grounded, terse, provably real, and
+quiet about what to type. Spec&nbsp;Kit's quickstart is <em>too loose</em> — a file whose purpose is contested filling with whatever the
+model had most recently generated. Between the two, the disciplined failure is much the better place to be standing, because adding a
+field to a strict format is tractable and constraining an unconstrained one is not.</p>
+</section>
+
+<!-- ======================================================= -->
+<section id="landscape">
+<h2>6 · What the field does instead — name the entry point, then run it</h2>
+
+<p>Outside spec-driven tooling, the problem of "what do I type" has two well-worn answers, and neither is a document.</p>
+
+<p>The first is a <strong>normalized entry point</strong>. GitHub's <em>Scripts to Rule Them All</em> convention fixes the script
+<em>names</em> across every project — <code>script/bootstrap</code>, <code>script/setup</code>, <code>script/test</code>,
+<code>script/server</code> — so that a contributor who has never seen the repository already knows the command. The scripts are
+language-agnostic by design: <code>script/bootstrap</code> may call <code>bundle install</code> or <code>npm install</code> or
+<code>carthage bootstrap</code>, and the caller does not need to know which. This solves the reader's problem by removing the question
+rather than answering it, and it is the right shape for the <em>project</em> level. It does not answer "how do I see <em>this feature</em>
+work", which is what a per-spec view exists for.</p>
+
+<p>The second is <strong>executing the documentation</strong>. Runme parses shell blocks out of Markdown and runs them, and its
+"ReadmeOps" position is the load-bearing one here: run the documented commands in CI on every commit, so that documentation is
+"treat[ed] with the same level of care currently afforded to source code" and cannot bitrot. The same idea is old and proven in narrower
+forms — Rust and Python both execute the examples in their documentation as tests.</p>
+
+<p>That second answer is the one this project's own principles already point at. <a href="../principles.html#P-8">P-8</a> puts guarantees
+in the kernel or CI and nowhere else; the estate has repeatedly learned that a rule expressed as prose in a command file is advisory. A
+validate rule that greps a demo string for an imperative verb would be a fourth restatement of that mistake. Running the command is the
+only check that distinguishes a command from a sentence about a command.</p>
+
+<spec-decision id="D-003" grounding="verified">
+  <p><b>Status</b> Proposed</p>
+  <p><b>Context</b> Four mechanisms could give a reader a runnable command: a typed field, a generated per-spec script, a normalized
+  project-level entry point, or executing the captured commands in CI. The estate's own history (T-009, the guarantee-layer work) is that
+  discipline expressed only in markdown does not hold.</p>
+  <p><b>Decision</b> Typed field first, executed-in-CI as the guarantee. A generated <code>verify.sh</code> per spec is rejected: it
+  introduces an executable artifact into <code>specs/</code>, is not portable across shells, and drifts from the view it was generated
+  from — reproducing the drift problem the embedded-contract work already had to solve once. The normalized entry point is a downstream
+  convention worth recommending, not a mechanism this artifact can own.</p>
+  <p><b>Consequences</b><br>
+  + The cheap change lands first and independently; the expensive guarantee can follow without redesign.<br>
+  + Executing captured commands in CI also detects the <em>silent</em> rot — a command that was true when captured and stopped being true three refactors later, which no format rule can catch.<br>
+  − CI execution cannot cover the honest prose cases: "open the file in a browser and confirm the card is not clipped" is unautomatable, and the block must not start pretending otherwise.<br>
+  − Running arbitrary captured strings in CI is a real hazard and would need to be opt-in per project, which weakens it as a guarantee.</p>
+</spec-decision>
+
+<spec-matrix target="D-003">
+  <table>
+    <thead><tr><th>Mechanism</th><th>Answers "what do I type"</th><th>Resists rot</th><th>Cost</th><th>Fits the format</th><th>Score</th></tr></thead>
+    <tbody>
+      <tr data-winner><td><strong>Typed exercise field</strong></td><td>Yes, per feature</td><td>No — a string still rots</td><td>Low</td><td>Yes — a fifth sibling of four</td><td>7/10</td></tr>
+      <tr><td>Execute captured commands in CI</td><td>No — it checks, it does not tell</td><td>Yes, and silently-rotted cases too</td><td>High</td><td>Neutral — outside the artifact</td><td>6/10</td></tr>
+      <tr><td>Generated per-spec <code>verify.sh</code></td><td>Yes, one entry point</td><td>No — drifts from its source</td><td>Medium</td><td>Poorly — a new executable artifact kind</td><td>4/10</td></tr>
+      <tr><td>Normalized project script names</td><td>At project level only</td><td>Yes, by convention</td><td>Low</td><td>Out of scope — not per-feature</td><td>4/10</td></tr>
+    </tbody>
+  </table>
+</spec-matrix>
+
+<p>The two top rows are complements, not rivals: the field tells, the CI run keeps it true. They are scored separately because they land
+separately, and the first is worth having on its own.</p>
+</section>
+
+<!-- ======================================================= -->
+<section id="quiet-fields">
+<h2>7 · Why "make it required" is the wrong fix</h2>
+
+<p>The tempting response to an under-filled field is to make it mandatory. The <code>toggle</code> row is the standing argument against
+that: it is required today, and it is the literal string <code>none</code> in 50 of 61 views. It is filled, conformant, and carries no
+information five times in six — a row of chrome that a reader learns to skip, which is a cost paid by every other row on the page.</p>
+
+<p>A mandatory exercise field would go the same way for the specs that genuinely have nothing to exercise — a schema rule, a CI workflow,
+a documentation change. The format's existing instinct is better and already implemented: an omitted field renders as a loud gap rather
+than a silent blank, so absence is visible without being forced into a lie. The pressure to fill it should come from the gap being
+conspicuous, not from a validator that will be satisfied with <code>n/a</code>.</p>
+
+<p>The same argument applies one section down the page, and is handed off rather than argued here. The Observables trace on a
+non-service project renders rows of "quantified but has no linked SLO" — technically correct, and noise for a library that will never
+emit a metric. Generated rows with no data are the same defect as a mandatory field with nothing to say. That belongs to the
+<a href="./observability-slo-considerations.html">observability survey</a>'s successor and is named in §8 rather than solved here.</p>
+
+<spec-decision id="D-004" grounding="verified">
+  <p><b>Status</b> Proposed</p>
+  <p><b>Context</b> <code>toggle</code> is a required field holding <code>none</code> in 50 of 61 views. The format already renders an
+  omitted field as a visible gap rather than a blank.</p>
+  <p><b>Decision</b> The new field is optional, and the enforcement is the conspicuousness of its absence plus CI execution of what is
+  present — never a validator that a string exists. Do not add a required field; consider whether <code>toggle</code> should itself
+  become optional on the same reasoning.</p>
+  <p><b>Consequences</b><br>
+  + Avoids manufacturing a second <code>none</code> row and keeps the page's information density honest.<br>
+  + Consistent with how the estate already treats unrecorded evidence everywhere else.<br>
+  − An optional field is omitted more often, and some specs that should carry one will not.<br>
+  − Relaxing <code>toggle</code> is a change to a shipped format and needs its own justification; it is raised here, not decided.</p>
+</spec-decision>
+</section>
+
+<!-- ======================================================= -->
+<section id="recommendation">
+<h2>8 · Recommendation — two slices, in order</h2>
+
+<ol>
+  <li><strong>Give the exercise command a field.</strong> Add it to the captured shape, the generator, the rendered block and the
+  <code>/spectastic.implement</code> capture prompt, distinct from the build command already in <code>run</code>. Optional, rendering as
+  a loud gap when absent. Backfill is not required — every existing view stays valid — but the handful of specs whose demo already opens
+  with a bare command are a free first pass. This is small, self-contained, and improves the artifact whether or not the second slice
+  ever lands.</li>
+  <li><strong>Run what was captured.</strong> An opt-in check that executes the recorded build, exercise and test commands for a spec and
+  fails when one of them no longer runs — the only mechanism that distinguishes a command from a sentence, and the only one that catches
+  a capture that silently stopped being true. Opt-in per project, with the prose fields explicitly out of its reach.</li>
+</ol>
+
+<spec-warning><strong>Do not fix this by tightening the demo field.</strong> Nine demos contain no command, and every one of them is
+conformant: the field asks for "a human demo path", and a click-path, an import snippet and a browser check are all legitimate answers
+that no imperative-verb rule could distinguish from an evasion. Constraining <code>demo</code> would break the honest cases to discipline
+a gap that lives in a field which does not exist yet.</spec-warning>
+
+<h3>Suggested next artifacts</h3>
+<spec-out-of-scope>
+  <ul>
+    <li defer-to="TBD-verify-exercise-command">A new spec: the typed exercise command — its place in the captured shape, the generator and the implement-time capture prompt, its rendering as a loud gap when absent, and the boundary against <code>run</code> for projects where starting the server is the whole of it (D-001, D-002).</li>
+    <li defer-to="TBD-verify-command-execution">A new spec: the opt-in check that executes a view's captured commands and fails on one that no longer runs, with the prose fields explicitly out of reach and the arbitrary-command hazard addressed rather than noted (D-003).</li>
+    <li defer-to="TBD-verify-toggle-optional">A <code>/spectastic.propose</code> against <a href="../specs/021-verify-view/spec.html">021</a>: make <code>toggle</code> optional on the evidence that it is <code>none</code> in 50 of 61 views, so a required row stops costing every other row its attention (D-004).</li>
+    <li defer-to="TBD-verify-missing-blocks">Triage, not a spec: <a href="../specs/046-security-review-ci/spec.html">046</a> carries no Run/Demo block at all, and 047 and 048 carry no run command. Three genuine gaps the audit surfaced, distinct from the format question.</li>
+    <li defer-to="TBD-downstream-entry-point-convention">A follow-on question for the profile catalogue: whether an elevated profile should seed a normalized project entry point, so that "what do I type" is answered by convention at the project level and the per-spec field only has to carry what is feature-specific.</li>
+  </ul>
+</spec-out-of-scope>
+</section>
+
+<!-- ======================================================= -->
+<section id="caveats">
+<h2>9 · Caveats on the sources and the audit</h2>
+
+<ul>
+  <li><strong>The audit's first pass was wrong, and the error is instructive.</strong> Classifying the whole Run/Demo block at once produced "9 of 60 usable", which reads as a broken format and would have justified a much larger intervention. Measuring each field against what it was specified to carry produced almost the opposite result. The numbers in §2 are the second reading; the first is recorded here because a reviewer running their own scan may reproduce it.</li>
+  <li><strong>Field classification is heuristic.</strong> "Starts with a command" is a regular expression over the first token, and it initially rejected legitimate commands beginning <code>cd</code> or an opening parenthesis. The corrected counts are hand-checked at the boundaries, but a reader should treat single-digit differences as noise rather than signal.</li>
+  <li><strong>This estate is not a representative sample.</strong> Sixty-one views, one project, one author, one ecosystem — and a project that is itself a CLI and a set of libraries, which is precisely the shape where <code>run</code> collapses into <code>build</code>. A web-application estate might find <code>run</code> entirely sufficient and this whole survey beside the point.</li>
+  <li><strong>The peer comparison rests on the peer's public record, not on running it.</strong> The Spec&nbsp;Kit findings come from a discussion thread and an issue report, both of which describe the artifact as unclear or misbehaving. That is evidence the problem is unsolved there; it is not a measurement of how the file behaves on average.</li>
+  <li><strong>No mechanism was prototyped.</strong> Both recommended slices are arguments from artifact shape and shipped precedent. In particular, the claim that CI execution is tractable assumes captured commands are mostly short and hermetic — true across this estate's <code>vitest</code> and <code>tsup</code> invocations, and untested anywhere else.</li>
+  <li><strong>Diátaxis is a framework, not a finding.</strong> It is used here as a lens that names the conflation cleanly. It carries no empirical claim about whether splitting the two improves reader outcomes, and none is asserted.</li>
+</ul>
+</section>
+
+<!-- ======================================================= -->
+<section id="sources">
+<h2>10 · Sources</h2>
+
+<p>External sources retrieved 02 Aug 2026. Every claim about this project's own behaviour is grounded in the audit of all 61
+<code>verify.html</code> files and in the files named inline.</p>
+
+<ol>
+  <li>Diátaxis — <a href="https://diataxis.fr/">diataxis.fr</a>: the four-way split, and the claim that conflating documentation types degrades each.</li>
+  <li>How-to guides — <a href="https://diataxis.fr/how-to-guides/">diataxis.fr/how-to-guides</a>: goal-orientation, the already-competent reader, "strictly about doing".</li>
+  <li>Clarification: what is the purpose of <code>quickstart.md</code> — <a href="https://github.com/github/spec-kit/discussions/1131">github.com/github/spec-kit — Discussion 1131</a>: the role "isn't clearly described in the official documentation"; the answer that it is a "lightweight onboarding and context guide rather than a formal part of the Spec Kit specification".</li>
+  <li>Quickstart.md gets full implementation of app code — <a href="https://github.com/github/spec-kit/issues/1400">github.com/github/spec-kit — Issue 1400</a>: 454 lines of models, migrations, validations and tests generated into the onboarding file; the documented intent that it "produces a quickstart guide capturing key validation scenarios".</li>
+  <li>Spec Kit — <a href="https://github.com/github/spec-kit">github.com/github/spec-kit</a>: the shipped script set, which is lifecycle scaffolding and contains no per-feature verification script.</li>
+  <li>Scripts to Rule Them All — <a href="https://github.blog/engineering/engineering-principles/scripts-to-rule-them-all/">github.blog</a>: normalized script names as a language-agnostic contract with the contributor.</li>
+  <li>scripts-to-rule-them-all — <a href="https://github.com/github/scripts-to-rule-them-all">github.com/github/scripts-to-rule-them-all</a>: the boilerplate set and the one-unit-of-work-per-script rationale.</li>
+  <li>ReadmeOps: Integration Testing Markdown Docs in CI/CD — <a href="https://runme.dev/blog/readmeops-testing-docs-in-ci">runme.dev/blog</a>: executing documented commands on every commit so docs are treated with the care given to source.</li>
+  <li>Runme — <a href="https://runme.dev/">runme.dev</a>: parsing and executing shell blocks out of Markdown, with state retained across cells.</li>
+</ol>
+</section>
+
+<!-- ======================================================= -->
+<section id="changelog">
+<h2>11 · Change log</h2>
+
+<spec-changelog>
+  <ol>
+    <li><time datetime="2026-08-02">02 Aug 2026</time><span>Created. Drains <code>TBD-verify-view-actionable</code>. Locates the gap as a missing field rather than authoring laxity: <code>run</code> holds a build in 53 of 58 populated cases, so the command that exercises a feature has no home but <code>demo</code>, which is specified to be prose. Corrects the framing premise — Spec&nbsp;Kit ships no per-feature verification script, and its <code>quickstart.md</code> has a contested purpose — and records that this survey's own first-pass audit was wrong in a way that would have justified a larger intervention. Lands four decisions and plants five <code>TBD-</code> next artifacts.</span></li>
+  </ol>
+</spec-changelog>
+</section>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  Spectastic · A demonstration is not an instruction · 02 Aug 2026 ·
+  <a href="../index.html">home</a> ·
+  <a href="./orchestrator-placement-considerations.html">orchestrator-placement</a> ·
+  <a href="./observability-slo-considerations.html">observability-slo</a> ·
+  <a href="./data-model-contract-considerations.html">data-model-contract</a> ·
+  <button data-theme-toggle style="background:none;border:none;color:var(--c-link);cursor:pointer;font:inherit;padding:0;border-bottom:1px solid currentColor;">light/dark</button>
+</footer>
+
+</main>
+<script src="../assets/spec.js"></script>
+</body>
+</html>
