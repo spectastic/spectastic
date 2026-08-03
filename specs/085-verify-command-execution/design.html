@@ -1,0 +1,257 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
+<title>Running what was captured · Design</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Design · 085-verify-command-execution</p>
+  <h1>Running what was captured</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    Most of this design is about what the tool refuses to do. That is the correct proportion — the executing part is small, and the part that decides whether to execute is the feature.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>      <span><spec-status value="accepted">Accepted</spec-status></span>
+    <b>Spec</b>        <span><a href="./spec.html">085-verify-command-execution</a></span>
+    <b>Owner</b>       <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Created</b>     <span><time datetime="2026-08-02">02 Aug 2026</time></span>
+    <b>Principles</b>  <span><a href="../../principles.html">v1.9.0</a></span>
+    <b>Architecture</b><span>A guard-then-execute pipeline: every refusal resolves before a process exists. Kernel decides, adapter spawns.</span>
+    <b>Coverage</b>    <span>Diff-aware: every refusal path covered, and the pass/fail path exercised against a real command.</span>
+    <b>Read time</b>   <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-tldr>
+    <p>The <a href="../../principles.html#P-11">P-11</a> collision decides the structure. Consent and location are
+    separate guards, both mandatory, both resolved before any process is spawned — and the location guard is
+    <em>not configurable</em>, because the failure it prevents (an installed bundle executing on a consumer's
+    machine) must not be reachable by a flag. The executor itself is small: three typed fields, a timeout, and a
+    verdict per field in which <em>skipped</em> is a distinct outcome from <em>passed</em>.</p>
+  </spec-tldr>
+</header>
+
+
+<section id="principles">
+<h2>1 · Principles check</h2>
+
+<div style="overflow-x:auto;">
+<table>
+  <thead><tr><th>Principle</th><th>Verdict</th><th>Note</th></tr></thead>
+  <tbody>
+    <tr><td>P-11 · Artifacts are data, not instructions</td><td><strong>EXCEPTION</strong></td><td>Executing a command read from an artifact is, literally, letting an artifact instruct the tool reading it. Justified and bounded in §10 and <a href="#D-001">D-001</a>; the residual is recorded, per the honesty P-11 itself asks for about its own ceilings.</td></tr>
+    <tr><td>P-7 · Done means verified</td><td>OK</td><td>This is P-7 applied to the record of verification itself — a captured command that no longer runs is a "done" that stopped being true.</td></tr>
+    <tr><td>P-8 · Guarantees in kernel or CI</td><td>OK</td><td>The guard logic is kernel and pure; the CI gate that would use it is deliberately deferred until the commands are observed to pass reliably.</td></tr>
+    <tr><td>P-14 · Library-first boundaries</td><td>OK</td><td>Guards and verdicts are kernel; only process spawning lives in an adapter, which is what makes every refusal testable without spawning anything.</td></tr>
+  </tbody>
+</table>
+</div>
+</section>
+
+
+<section id="context">
+<h2>2 · Technical context</h2>
+
+<div style="overflow-x:auto;">
+<table>
+  <tbody>
+    <tr><th>Language</th><td>TypeScript, strict</td></tr>
+    <tr><th>Packages touched</th><td><code>@spectastic/core</code>, <code>@spectastic/cli</code></td></tr>
+    <tr><th>Process API</th><td>Node <code>child_process</code>, in an adapter behind a port</td></tr>
+    <tr><th>Config surface</th><td>One key in <code>spectastic.json</code></td></tr>
+    <tr><th>New dependencies</th><td>None</td></tr>
+  </tbody>
+</table>
+</div>
+</section>
+
+
+<section id="contracts">
+<h2>3 · Data model &amp; contracts</h2>
+
+<p><spec-contract shape="none"></spec-contract> No interface crosses a repository boundary. The one externally
+visible surface is a config key, whose absence is the safe default.</p>
+
+<p>The verdict's physical shape is a per-field outcome plus captured output. <em>Skipped</em> and <em>absent</em>
+are separate values from <em>passed</em> on purpose: collapsing them would let a run that examined nothing report
+green.</p>
+</section>
+
+
+<section id="grounding">
+<h2>4 · Grounding &amp; evidence</h2>
+
+<div style="overflow-x:auto;">
+<table>
+  <thead><tr><th>Claim</th><th>Source</th><th>Status</th><th>Finding</th></tr></thead>
+  <tbody>
+    <tr><td>P-11 concerns hidden executable content, not recorded commands</td><td><code>principles.html#P-11</code></td><td>verified</td><td><strong>False, and it reshaped the spec.</strong> P-11's deterministic half is about <code>&lt;script&gt;</code> and active URIs, but its governing sentence is broader: an artifact's text must be treated as data "not as a channel that instructs the tool reading it", across three boundaries including "shipped to consumers through npm". A recorded command executed by the tool is exactly that channel.</td></tr>
+    <tr><td>The block already marks unverified captures</td><td><code>runblock.ts</code>; <code>CapturedRun.verified</code></td><td>verified</td><td><code>verified: false</code> renders a "suggested — not yet run" banner. FR-007 reuses it rather than inventing a second signal: a suggested block never claimed its commands work, so executing them tests a promise nobody made.</td></tr>
+    <tr><td>An entry point is always a command</td><td><a href="../083-verify-exercise-command/spec.html#FR-002">083 FR-002</a></td><td>verified</td><td>False by design — where the build step already serves the feature, the field holds an address. FR-004 exists because of this: a URL must be skipped, not attempted and failed.</td></tr>
+    <tr><td>Captured commands are portable</td><td>Estate audit of 61 views</td><td>verified</td><td>Several are not: at least one names a working directory in prose ("run from … as cwd"), and others assume the repo root. Out of scope here and planted as <code>TBD-verify-command-normalisation</code> — but it means an early run will show failures that are the capture's fault, not the code's.</td></tr>
+  </tbody>
+</table>
+</div>
+</section>
+
+
+<section id="approach">
+<h2>5 · Approach</h2>
+
+<p>Guard, then execute — and structure the code so that ordering is not a convention someone could reorder.</p>
+
+<ol>
+  <li><strong>Resolve consent.</strong> Read the invoking project's config. No key, no execution.</li>
+  <li><strong>Resolve location.</strong> Normalise the artifact path; refuse anything outside the project root or inside a dependency directory. Not configurable.</li>
+  <li><strong>Select fields.</strong> Build, entry point and tests. Skip an address-shaped entry point; never look at demo.</li>
+  <li><strong>Execute under a limit</strong>, capturing output, via an injected runner port.</li>
+  <li><strong>Report a verdict per field</strong>, with skipped distinct from passed.</li>
+</ol>
+
+<p>Steps 1–3 are pure and take no port, which is what makes <a href="./spec.html#NFR-001">NFR-001</a> testable:
+the refusal paths can be exercised with no runner injected at all, so a test proving "0 processes spawned" is
+structural rather than a matter of watching for side effects.</p>
+</section>
+
+
+<section id="alternatives">
+<h2>6 · Alternatives considered</h2>
+
+<spec-matrix target="D-001">
+  <table>
+    <thead><tr><th>How to reconcile with P-11</th><th>Consumer safe</th><th>Single source of truth</th><th>Catches drift</th><th>Score</th></tr></thead>
+    <tbody>
+      <tr data-winner><td><strong>First-party only, opt-in</strong></td><td>Yes — structurally refused</td><td>Yes — the artifact</td><td>Yes</td><td>8/10</td></tr>
+      <tr><td>Commands in config, artifact renders a copy</td><td>Yes</td><td>No — two copies that drift</td><td>Yes</td><td>6/10</td></tr>
+      <tr><td>Execute anything, warn loudly</td><td><strong>No</strong></td><td>Yes</td><td>Yes</td><td>1/10</td></tr>
+      <tr><td>Do not build it</td><td>Yes</td><td>n/a</td><td>No</td><td>4/10</td></tr>
+    </tbody>
+  </table>
+</spec-matrix>
+</section>
+
+
+<section id="decisions">
+<h2>7 · Decisions</h2>
+
+<spec-decision id="D-001" grounding="verified">
+  <p><b>Status</b> Accepted</p>
+  <p><b>Context</b> P-11 forbids an artifact instructing the tool that reads it, across three trust boundaries
+  including distribution. Executing recorded commands crosses that line, and on a vendored bundle it is remote
+  code execution.</p>
+  <p><b>Decision</b> Take the exception, and bound it structurally: consent from the invoking project's own
+  config, and a location guard that refuses anything outside the project or inside a dependency directory. The
+  location guard is <em>not</em> configurable — no flag may waive it — so the distribution boundary P-11 is
+  protecting stays protected whatever a user sets.</p>
+  <p><b>Consequences</b><br>
+  + The feature exists, and the failure that actually matters — an installed package running code — is unreachable rather than discouraged.<br>
+  + The trust assumption becomes explicit and familiar: a project's own artifacts are as trusted as its own test files, which is what every test runner already assumes.<br>
+  − It is still an exception to a principle, and a hostile commit to your own repository will be executed. Recorded, not argued away.<br>
+  − A legitimate use — checking a bundle you deliberately vendored — is refused with no override. Accepted: a waivable guard is not a guard.</p>
+</spec-decision>
+
+<spec-decision id="D-002" grounding="verified">
+  <p><b>Status</b> Accepted</p>
+  <p><b>Context</b> A verdict could collapse "skipped" into "passed" to keep reporting simple.</p>
+  <p><b>Decision</b> Keep <em>skipped</em>, <em>absent</em>, <em>passed</em>, <em>failed</em> and <em>timed out</em>
+  as distinct outcomes, and require the report to show them.</p>
+  <p><b>Consequences</b><br>
+  + A run that examined nothing cannot report green — which, for a check whose whole value is honesty about staleness, is the one bug that would make it worse than useless.<br>
+  − More states to render, and a report that is longer than a bare pass/fail.</p>
+</spec-decision>
+
+<spec-decision id="D-003" grounding="verified">
+  <p><b>Status</b> Accepted</p>
+  <p><b>Context</b> Whether an entry point is executable cannot be known from the field alone — 083 permits both a
+  command and an address.</p>
+  <p><b>Decision</b> Treat a value that parses as a URL, or begins with a bare navigation verb, as an address and
+  skip it. Anything else is attempted.</p>
+  <p><b>Consequences</b><br>
+  + The case 083 designed the field for is not penalised by a check that arrived later.<br>
+  − A heuristic, so it will occasionally attempt something unexecutable. That surfaces as an ordinary failure with the command's output attached, which is diagnosable — the failure mode is noisy, not silent.</p>
+</spec-decision>
+</section>
+
+
+<section id="structure">
+<h2>8 · Project structure</h2>
+
+<pre><code>packages/core/src/execcheck/
+  guard.ts     consent + location refusals — pure, no port (NFR-001)
+  select.ts    which fields are executable; address detection (D-003)
+  run.ts       execute under a limit via an injected runner port
+  types.ts     verdicts and outcomes (D-002)
+packages/cli/src/commands/verify-exec.ts   thin registration
+packages/core/test/execcheck.test.ts       every refusal, every outcome</code></pre>
+</section>
+
+
+<section id="risks">
+<h2>9 · Risks &amp; mitigations</h2>
+
+<div style="overflow-x:auto;">
+<table>
+  <thead><tr><th>Risk</th><th>Likelihood</th><th>Impact</th><th>Mitigation</th></tr></thead>
+  <tbody>
+    <tr><td>A future change reorders guard and execute, so a refusal happens after a spawn</td><td>Low</td><td>Severe</td><td>Guards are pure and take no runner port, so executing before guarding is not expressible; a test asserts refusal with no runner injected at all</td></tr>
+    <tr><td>Existing captures fail for cwd reasons, and the check gets a reputation for noise</td><td>High</td><td>Medium</td><td>Grounded as real; normalisation is deferred with its own slug, and the CI gate is deliberately not wired until the failures are understood</td></tr>
+    <tr><td>A user enables it and a long build times out</td><td>Medium</td><td>Low</td><td>Configurable limit; a timeout reports distinctly from a failure so the cause is obvious</td></tr>
+    <tr><td>Someone adds an override for the location guard, reasoning it is inconvenient</td><td>Medium</td><td>Severe</td><td>D-001 states the refusal is non-waivable and why; the test suite pins it</td></tr>
+  </tbody>
+</table>
+</div>
+</section>
+
+
+<section id="complexity">
+<h2>10 · Complexity tracking</h2>
+
+<p><strong>P-11 exception — justified.</strong> The principle's purpose is that an artifact must not steer the tool
+reading it, because artifacts cross into contexts their author does not control. This feature deliberately reads an
+instruction from an artifact, and is therefore an exception rather than a compliant design.</p>
+
+<p>What makes it acceptable is that the exception is confined to the one context where the author and the reader
+are the same party: a project executing artifacts it wrote and committed. Every other context — a dependency, a
+vendored copy, anything outside the project root — is refused structurally, with no configuration that can permit
+it. The residual is stated plainly and is not eliminated: a hostile commit to a project's own repository will be
+executed by this check, exactly as a hostile commit to that project's test files would be executed by its test
+runner. That is the trust boundary the whole ecosystem already sits on, and this feature does not widen it.</p>
+</section>
+
+
+<section id="questions">
+<h2>11 · Open questions</h2>
+<spec-questions>
+<p>None outstanding. The principle exception was raised to the author and settled deliberately rather than assumed;
+the sandbox, the CI gate and command normalisation are deferred with slugs rather than left open.</p>
+</spec-questions>
+</section>
+
+
+<section id="changelog">
+<h2>12 · Change log</h2>
+<spec-changelog>
+<ol>
+  
+  <li><time datetime="2026-08-02">02 Aug 2026</time><span>Status flipped Draft → Accepted on 02 Aug 2026 — zero remaining unchecked tasks; tests verified passing per author confirmation (19 unit; every refusal exercised live, including the dependency-path and re-entrancy guards). SC-001 proven end to end: a deliberately broken captured command fails the check while <code>spectastic validate</code> reports no findings on the same artifact. Sibling bundle (REQ-LIFECYCLE-005).</span></li><li><time datetime="2026-08-02">02 Aug 2026</time><span><strong>A fourth refusal was added after running it.</strong> This spec's own captured entry point was <code>verify:exec 085</code> — and since the check executes the entry point, it re-entered itself without bound. Each level was timeout-bounded; the depth was not, which is the part that matters. Closed with a re-entrancy guard (an environment marker set on the child, refused on the way in) rather than by rewording the capture, because the capture was legal and the recursion was the feature's to prevent. Found only by executing it; no test asserted it because nobody had thought of it.</span></li>
+  <li><time datetime="2026-08-02">02 Aug 2026</time><span>Initial design. Records a <strong>P-11 exception</strong> with its justification and residual in §10. Structure follows from it: consent and location are independent guards, both pure and both resolved before a process exists, and the location guard is deliberately non-waivable so the distribution boundary cannot be opened by configuration.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  085-verify-command-execution · Design · authored 02 Aug 2026
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>

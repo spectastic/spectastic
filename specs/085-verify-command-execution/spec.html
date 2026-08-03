@@ -1,0 +1,309 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
+<title>Running what was captured · Specification</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Specification · 085-verify-command-execution</p>
+  <h1>Running what was captured</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    A recorded command is a claim about the world. Running it is the only check that tells a command from a sentence about one — and the only way to notice when a true claim quietly stopped being true.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>      <span><spec-status value="accepted">Accepted</spec-status></span>
+    <b>Spec ID</b>     <span>085-verify-command-execution</span>
+    <b>Owner</b>       <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Reviewers</b>   <span>—</span>
+    <b>Created</b>     <span><time datetime="2026-08-02">02 Aug 2026</time></span>
+    <b>Principles</b><span><a href="../../principles.html">v1.9.0</a></span>
+    <b>Smallest demoable</b><span>A command that runs one spec's captured build and test commands and fails when either no longer runs.</span>
+    <b>Read time</b>   <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-budget words="1500" reqs="20" minutes="12"></spec-budget>
+
+  <spec-tldr>
+    <p>The verify view's commands are grounded when captured and unguarded afterwards. A refactor three months later
+    can leave every one of them stale while the artifact still asserts them, and no format rule can notice — only
+    running them can. <spec-newthought>This feature is in direct tension with a principle, and the tension shapes
+    it.</spec-newthought> <a href="../../principles.html#P-11">P-11</a> requires an artifact's text to be data
+    "not a channel that instructs the tool reading it", and names npm-shipped artifacts as one of three trust
+    boundaries an artifact crosses. Executing a command stored in a vendored bundle would be remote code
+    execution. So the check is <strong>first-party and opt-in by construction</strong>: it refuses any artifact
+    outside the invoking project, refuses anything under a dependency directory, and refuses to run at all unless
+    the project has explicitly asked. It executes only typed command fields, never the prose demo. The residual —
+    that a hostile commit to your own repository is executed, exactly as a hostile commit to a test file is — is
+    recorded rather than argued away.</p>
+  </spec-tldr>
+
+  <dl class="invest">
+    <dt><span class="letter">I</span> Independent</dt> <dd>Depends on <a href="../021-verify-view/spec.html">021</a> and <a href="../083-verify-exercise-command/spec.html">083</a> for the fields it reads. Nothing upstream changes.</dd>
+    <dt><span class="letter">N</span> Negotiable</dt>  <dd>Fixes what may be executed and under what refusals; the runner mechanism, timeout defaults and reporting shape defer to the design.</dd>
+    <dt><span class="letter">V</span> Valuable</dt>    <dd>Unlocks <a href="#SC-001">SC-001</a> — a stale captured command becomes a failure instead of a lie nobody notices.</dd>
+    <dt><span class="letter">E</span> Estimable</dt>   <dd>A guarded executor and a reporter. The trust boundary is settled, which was the only open question.</dd>
+    <dt><span class="letter">S</span> Small</dt>       <dd>One kernel module, one CLI flag, one config key. No artifact change.</dd>
+    <dt><span class="letter">T</span> Testable</dt>    <dd>Every refusal is observable, and the pass/fail path is exercised against real commands.</dd>
+  </dl>
+
+  <spec-audience-map>
+    <dl>
+      <dt>Exec / PM</dt>   <dd>§<a href="#context">Context</a>, §<a href="#scenarios">User scenarios</a>, §<a href="#success">Success criteria</a>.</dd>
+      <dt>Reviewer</dt>    <dd>§<a href="#requirements">Requirements</a>, §<a href="#assumptions">Assumptions</a>, §<a href="#questions">Open questions</a>.</dd>
+      <dt>Implementer</dt> <dd>§<a href="#requirements">Requirements</a>, §<a href="#data">Data model</a>, §<a href="#conformance">Conformance index</a>.</dd>
+    </dl>
+  </spec-audience-map>
+</header>
+
+
+<section id="context">
+<h2>1 · Context</h2>
+
+<p>The verify view records commands that were genuinely run at capture time. That grounding is real and it is
+instantaneous: nothing re-checks it afterwards. A package rename, a script removal, a moved test file leaves the
+recorded command false while the artifact goes on asserting it, and every structural check stays green — a format
+rule can tell that a string exists, never that it still works.</p>
+
+<p>The actionability survey's D-003 named this as the guarantee half of its recommendation, and noted the
+mechanism is the only one that distinguishes a command from a sentence about a command. It also named the hazard:
+running arbitrary captured strings.</p>
+
+<p><spec-newthought>The hazard is sharper than "arbitrary strings".</spec-newthought>
+<a href="../../principles.html#P-11">P-11</a> exists because the same artifact is read across three trust
+boundaries — opened by a human, ingested by an agent, and <em>shipped to consumers through npm</em>. A tool that
+executes commands found in a verify view turns an installed or vendored spec bundle into remote code execution.
+That is not a corner case for a project whose artifacts are designed to be distributed. It is the reason this spec
+constrains what it will consent to run before it describes what it does.</p>
+</section>
+
+
+<section id="scenarios">
+<h2>2 · User scenarios &amp; testing</h2>
+
+<p>Each story <strong>MUST</strong> be independently testable: if you implemented only US1, you would
+still have a viable MVP.</p>
+
+<h3 id="US1">US1 · Catch a command that stopped working <spec-pill>P1</spec-pill></h3>
+<p>As a <strong>maintainer</strong>, I want to <strong>run a spec's captured commands and be told when one no
+longer works</strong> so that <strong>a stale claim fails a build instead of misleading the next reader</strong>.</p>
+<p><em>Acceptance:</em> With the check enabled, a spec whose recorded commands all succeed reports success; break
+one — rename the script it calls — and the check fails, naming which field and showing the command's own output.</p>
+
+<h3 id="US2">US2 · Refuse to execute anything foreign <spec-pill>P1</spec-pill></h3>
+<p>As a <strong>consumer who installed this tool</strong>, I want to <strong>be certain it will never execute a
+command from an artifact I did not author</strong> so that <strong>installing a package cannot run code on my
+machine</strong>.</p>
+<p><em>Acceptance:</em> Pointed at an artifact under a dependency directory, or at any path outside the invoking
+project root, the check refuses and explains why; with no explicit opt-in in the project's configuration, it
+refuses regardless of the path.</p>
+
+<h3 id="US3">US3 · Leave the prose alone <spec-pill>P2</spec-pill></h3>
+<p>As an <strong>author</strong>, I want to <strong>keep writing human demo paths in prose</strong> so that
+<strong>enabling the check does not force every field into command shape</strong>.</p>
+<p><em>Acceptance:</em> The demo field is never executed and never reported on; a captured entry point that is an
+address rather than a command is skipped and labelled as such, not attempted and not failed.</p>
+
+<h3>Edge cases</h3>
+<ul>
+  <li>An entry point that is a URL — legitimate per 083, and not executable. Skipped with a reason, never attempted.</li>
+  <li>A command that hangs. Bounded by a timeout, and a timeout is a failure with its own message rather than an indefinite wait.</li>
+  <li>A command that is genuinely slow but correct. The timeout must be configurable, or the check punishes honest builds.</li>
+  <li>A view whose fields are all empty — nothing to run, and that is a pass with a note, not a failure.</li>
+  <li>A view marked as suggested-but-not-run. Its commands were never claimed to work, so executing them would test a claim nobody made.</li>
+</ul>
+</section>
+
+
+<section id="requirements">
+<h2>3 · Requirements</h2>
+
+<p>Conformance keywords (<spec-rule>MUST</spec-rule>, <spec-rule level="should">SHOULD</spec-rule>,
+<spec-rule level="may">MAY</spec-rule>) follow RFC 2119.</p>
+
+<h3>Functional</h3>
+
+<spec-requirement id="FR-001" priority="must">
+<p>The check <spec-rule>MUST NOT</spec-rule> execute anything unless the invoking project has explicitly enabled
+it in its own configuration; absent that opt-in it <spec-rule>MUST</spec-rule> refuse and say so.</p>
+<details><summary>Rationale</summary><p>Executing recorded commands is a capability, not a default. A tool that
+gains it silently on upgrade would be a supply-chain change nobody consented to.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-002" priority="must">
+<p>The check <spec-rule>MUST</spec-rule> refuse any artifact resolving outside the invoking project root, and any
+artifact within a dependency directory, regardless of the opt-in.</p>
+<details><summary>Rationale</summary><p>This is the whole answer to the <a href="../../principles.html#P-11">P-11</a>
+collision. An artifact ships to consumers; a vendored bundle must never be a code-execution vector, and no
+configuration flag may waive that.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-003" priority="must">
+<p>The check <spec-rule>MUST</spec-rule> execute only the typed command fields — the build/start command, the
+exercise entry point, and the test command — and <spec-rule>MUST NOT</spec-rule> execute the demo field.</p>
+<details><summary>Rationale</summary><p>The demo is specified to be prose and is the one field where a click-path
+or a browser check is the honest answer. Executing it would force every author to make it a command, which is the
+opposite of what the format decided.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-004" priority="must">
+<p>An entry point that is an address rather than an executable command <spec-rule>MUST</spec-rule> be skipped and
+reported as skipped, never attempted and never counted as a failure.</p>
+<details><summary>Rationale</summary><p>083 deliberately permits the field to hold a URL where the build step
+already serves the feature. Treating that as a broken command would penalise the case the field was designed
+for.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-005" priority="must">
+<p>A command exceeding a configurable time limit <spec-rule>MUST</spec-rule> be terminated and reported as a
+timeout, distinguishable in the output from a command that ran and failed.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-006" priority="must">
+<p>A failing command's report <spec-rule>MUST</spec-rule> name the spec, the field and the command, and include
+the command's own output, so a failure is diagnosable without re-running it by hand.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-007" priority="must">
+<p>A view whose block is marked as suggested-but-not-run <spec-rule>MUST</spec-rule> be skipped, and a view with
+no populated command fields <spec-rule>MUST</spec-rule> report success with a note rather than a failure.</p>
+<details><summary>Rationale</summary><p>A suggested block never claimed its commands work, so failing it would
+report a promise nobody made as broken. An empty block is the honest state for a spec with nothing to run.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-008" priority="should">
+<p>The check <spec-rule level="should">SHOULD</spec-rule> be runnable across every spec in a project in one
+invocation, reporting per spec and failing if any spec fails.</p>
+</spec-requirement>
+
+<h3>Non-functional</h3>
+
+<spec-requirement id="NFR-001" priority="must">
+<p>The check <spec-rule>MUST</spec-rule> apply its refusals before any process is spawned — 100% of refusal paths
+reached with 0 commands executed — so a rejected artifact cannot run anything even briefly.</p>
+</spec-requirement>
+
+<spec-requirement id="NFR-002" priority="should">
+<p>The default per-command time limit <spec-rule level="should">SHOULD</spec-rule> be no more than 300 s, so a
+hung command fails a build in bounded time rather than occupying a runner indefinitely.</p>
+</spec-requirement>
+
+<h3>Out of scope (deferred to other slices)</h3>
+<spec-out-of-scope>
+  <ul>
+    <li defer-to="TBD-verify-execution-sandbox">Sandboxing execution. The refusals bound <em>whose</em> commands run, not what a command may do once running; confining that needs an isolation mechanism this project does not have.</li>
+    <li defer-to="TBD-verify-execution-ci-gate">Wiring the check into this repository's own CI as a blocking gate. Worth doing once the captured commands have been observed to pass reliably, not before.</li>
+    <li defer-to="TBD-verify-command-normalisation">Rewriting a captured command so it runs from a different working directory. Several existing captures assume a specific cwd, which is a real portability gap and a separate problem.</li>
+  </ul>
+</spec-out-of-scope>
+</section>
+
+
+<section id="data">
+<h2>4 · Data model</h2>
+
+<p>One new concept; the captured run is unchanged.</p>
+
+<h3>Entities</h3>
+<dl>
+  <dt>Execution verdict</dt>
+  <dd>The outcome of attempting one spec's captured commands: per field, one of <em>passed</em>, <em>failed</em>,
+  <em>timed out</em>, <em>skipped</em> or <em>absent</em>, together with the output of anything that ran. Its
+  defining property is that <em>skipped</em> is not <em>passed</em>: a check that quietly counts what it declined
+  to attempt as success would report a green result for an artifact it never examined.</dd>
+  <dt>Execution consent</dt>
+  <dd>The project's explicit statement that it permits this. It is a property of the project doing the invoking,
+  never of the artifact being read — an artifact cannot consent on a reader's behalf, which is the whole content
+  of the <a href="../../principles.html#P-11">P-11</a> constraint.</dd>
+</dl>
+
+<spec-note>
+<p>The invariant: consent and location are checked independently, and both must pass. Consent without a
+first-party path is refused, and a first-party path without consent is refused. Neither can be traded for the
+other, because they guard different failures — one is about what the user agreed to, the other about whose code it
+is.</p>
+</spec-note>
+</section>
+
+
+<section id="success">
+<h2>5 · Success criteria</h2>
+
+<p>Technology-agnostic, measurable outcomes. These are how we know it worked.</p>
+
+<spec-requirement id="SC-001" priority="must">
+<p>A deliberately broken captured command — one calling a script that has been removed — causes the check to fail
+and names the offending field, where every existing structural check on the same artifact still passes.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-002" priority="must">
+<p>Every refusal path is exercised and spawns 0 processes: an artifact in a dependency directory, an artifact
+outside the project root, and a project with no opt-in are each refused with a distinct explanation.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-003" priority="should">
+<p>Run across this repository's own specs with the opt-in enabled, the check reports a per-spec result and its
+skipped entries are all explained — 0 fields reported as passed that were never attempted.</p>
+</spec-requirement>
+</section>
+
+
+<section id="assumptions">
+<h2>6 · Assumptions</h2>
+
+<spec-assumption>
+<p>A project's own committed artifacts are as trustworthy as its own committed test files. This is the assumption
+the whole design rests on, and it is exactly as strong as the equivalent assumption every test runner makes. It is
+also why the refusals are structural rather than configurable: the assumption holds for first-party content and
+collapses entirely for anything vendored.</p>
+</spec-assumption>
+
+<spec-assumption>
+<p>Captured commands are mostly short and hermetic. True across this estate's build and test invocations, and
+untested anywhere else — the survey's own caveat, restated here because the timeout default depends on it.</p>
+</spec-assumption>
+</section>
+
+
+<section id="questions">
+<h2>7 · Open questions</h2>
+<spec-questions>
+<p>None outstanding. The principle collision was surfaced and resolved deliberately — first-party and opt-in, with
+the residual recorded — rather than resolved by the author's judgment alone.</p>
+</spec-questions>
+</section>
+
+
+<section id="conformance">
+<h2>8 · Conformance index</h2>
+<p>Auto-built from every <code>&lt;spec-requirement&gt;</code> in this document.</p>
+<spec-conformance></spec-conformance>
+</section>
+
+
+<section id="changelog">
+<h2>9 · Change log</h2>
+<spec-changelog>
+<ol>
+  
+  <li><time datetime="2026-08-02">02 Aug 2026</time><span>Status flipped Draft → Accepted on 02 Aug 2026 — zero remaining unchecked tasks; tests verified passing per author confirmation (19 unit; every refusal exercised live, including the dependency-path and re-entrancy guards). SC-001 proven end to end: a deliberately broken captured command fails the check while <code>spectastic validate</code> reports no findings on the same artifact. Sibling bundle (REQ-LIFECYCLE-005).</span></li><li><time datetime="2026-08-02">02 Aug 2026</time><span>Initial draft. Drains <code>TBD-verify-command-execution</code> (survey D-003). Authoring surfaced a collision the survey had not: executing commands stored in artifacts contradicts <a href="../../principles.html#P-11">P-11</a>, and would make a vendored spec bundle a remote-code-execution vector. Resolved as first-party-and-opt-in, with the refusals structural rather than configurable, and the residual recorded rather than argued away.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  085-verify-command-execution · Running what was captured · authored 02 Aug 2026
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>
