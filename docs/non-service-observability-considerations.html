@@ -1,0 +1,341 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
+<title>A library has no endpoint — Considerations for Spectastic</title>
+<meta name="description" content="The observables trace asks every project the same question — which service level objective covers this NFR — and a library, a CLI or a batch job has no answer that is not a lie. Seventy-seven gap rows across thirty-seven artifacts, and not one service level objective has ever been authored. A survey of the missing axis: project shape.">
+<link rel="stylesheet" href="../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../assets/favicon.svg">
+<script src="../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Considerations · Observability beyond services</p>
+  <h1>A library has no endpoint</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    The trace asks every project which objective covers this requirement, and scores the silence as a gap. For a command-line tool that will never serve traffic, the silence is the correct answer — and it has been rendered as a failure seventy-seven times.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>     <span><spec-status value="draft">Draft</spec-status></span>
+    <b>Type</b>       <span>Artifact critique &amp; landscape survey</span>
+    <b>Author</b>     <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Created</b>    <span><time datetime="2026-08-02">02 Aug 2026</time></span>
+    <b>Companion</b>  <span><a href="./observability-slo-considerations.html">observability-slo</a> · <a href="./verify-view-actionable-considerations.html">verify-view-actionable</a></span>
+    <b>Sources</b>    <span>8 external, retrieved 02 Aug 2026 · full audit of 61 verify views</span>
+    <b>Read time</b>  <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-tldr>
+    <p>The observables trace is empty, and the reason is not that nobody has got round to filling it. An audit of all 61 verify views
+    finds <strong>37 carry an observables section, every row in all 37 is a gap, 77 gap rows in total</strong>, and
+    <mark>not one <code>&lt;spec-slo&gt;</code> has ever been authored anywhere in the estate</mark> — 24 exist in fixtures, so the
+    feature demonstrably works. The mechanism is doing exactly what it was built to do: a row is a <em>loud</em> gap when the requirement
+    "reads as a measurable target", which is a property of the requirement's <em>prose</em>. Nothing anywhere asks whether the project is
+    the kind of thing that could have a service level objective at all. A command-line tool with "completes in under two seconds" is a
+    quantified requirement, earns a loud gap, and has no objective to link because it serves no traffic, exposes no endpoint and has no
+    steady state to be reliable in. Three separate mechanisms make the same silent assumption — the gap condition, the capture field typed
+    as "the metrics endpoint that was checked, e.g. <code>GET /metrics</code>", and the <code>observability</code> enforcement category
+    that looks for an exporter in the manifest — and the profile system has <strong>six axes and not one of them is project shape</strong>.
+    Every axis ladders <em>rigor</em>; none says what kind of thing this is. On the remedy, the instinct to reach for a metrics gateway is
+    the one to resist: Prometheus's own documentation calls the Pushgateway "explicitly not an aggregator" but "a metrics cache",
+    recommends it <em>only</em> for capturing the outcome of a service-level batch job, and warns that its metrics persist until manually
+    deleted. What a library actually wants already exists and needs no infrastructure — the <strong>in-memory metrics exporter</strong> is
+    a <em>Stable</em> part of the OpenTelemetry specification, whose stated purpose is "useful for e.g. unit tests", and it ships in the
+    JavaScript SDK today as <code>InMemoryMetricExporter</code>. Recommendation: name the shape, let the gap key on it, and make the
+    observable evidence for a non-service project <strong>an assertion in a test</strong> rather than an endpoint nobody will ever
+    curl.</p>
+  </spec-tldr>
+
+  <spec-audience-map>
+    <dl>
+      <dt>Exec / PM</dt><dd>§1 the ask · §7 recommendation</dd>
+      <dt>Reviewer</dt><dd>§2 the evidence · §5 three shapes · §8 caveats</dd>
+      <dt>Implementer</dt><dd>§3 the missing axis · §4 where the assumption is written · §6 the capture</dd>
+    </dl>
+  </spec-audience-map>
+</header>
+
+<!-- ======================================================= -->
+<section id="ask">
+<h2>1 · The ask — a trace with nothing in it</h2>
+
+<p>The <a href="./observability-slo-considerations.html">observability survey</a> made the requirement → objective → indicator →
+instrumentation chain first-class, and its fourth and final move
+(<a href="../specs/048-verify-slo-trace/spec.html">048</a>) gave that chain a rendered trace in the verify view so a reliability
+requirement acquires a proof leg the way a success criterion already had one. Both landed, both are tested, and both work.</p>
+
+<p>What they produce, on this project, is a table of blanks. The complaint that prompted this survey put it plainly: the observables
+trace is barebones for projects that are not services, and an enterprise-tier project ought to have <em>some</em> way to collect metrics —
+"even if it's just in test". The instinct is right. The diagnosis this survey lands on is that the emptiness is not a data-entry problem
+to be solved by collecting metrics, but a category error to be solved by asking a different question.</p>
+</section>
+
+<!-- ======================================================= -->
+<section id="evidence">
+<h2>2 · The evidence — 77 gaps, and not one objective</h2>
+
+<p>All 61 <code>verify.html</code> files were read and their observables sections extracted.</p>
+
+<div style="overflow-x:auto;">
+<table>
+  <thead><tr><th>Measure</th><th>Count</th><th>Reading</th></tr></thead>
+  <tbody>
+    <tr><td>Verify views in the estate</td><td>61</td><td>—</td></tr>
+    <tr><td>Carrying an observables section</td><td>37</td><td>The trace is widely present.</td></tr>
+    <tr><td>Whose observables rows are <em>all</em> gaps</td><td><strong>37</strong></td><td>Every single one. No view anywhere shows a populated row.</td></tr>
+    <tr><td>Gap rows in total</td><td><strong>77</strong></td><td>Each rendering "is quantified but has no linked <code>&lt;spec-slo&gt;</code>".</td></tr>
+    <tr><td>Authored <code>&lt;spec-slo&gt;</code> elements in <code>specs/</code>, <code>examples/</code>, <code>templates/</code></td><td><strong>0</strong></td><td>—</td></tr>
+    <tr><td>Present in fixtures and tests</td><td>24</td><td>The element and the trace both work; they are exercised nowhere but their own tests.</td></tr>
+  </tbody>
+</table>
+</div>
+
+<p>A hundred-per-cent gap rate across 37 artifacts is not a backlog. It is a signal that the question is wrong for the population being
+asked. And the population is not unusual: this project is a set of libraries and a command-line tool, which is what a great many
+downstream projects will also be.</p>
+
+<spec-sidenote>The distinction matters for how the finding is read. If one or two views had gaps, the gaps would be doing their job —
+naming real, fixable omissions. At 37 of 37 with zero counter-examples, the row has stopped carrying information and become
+chrome, in exactly the way the <a href="./verify-view-actionable-considerations.html">companion survey</a> found the always-<code>none</code>
+toggle row had.</spec-sidenote>
+</section>
+
+<!-- ======================================================= -->
+<section id="missing-axis">
+<h2>3 · The missing axis — rigor is laddered, shape is not</h2>
+
+<p>The profile system is the estate's vocabulary for "what kind of project is this". It carries six axes —
+<code>verification</code>, <code>enforcement</code>, <code>toggles</code>, <code>grounding</code>, <code>frameworks</code> and
+<code>contracts</code> — and each of them ladders <em>how rigorous</em> a project intends to be. Not one of them says <em>what the project
+is</em>.</p>
+
+<p>That absence is invisible until a mechanism needs it, and then it is invisible in a specific way: the mechanism does not fail, it
+quietly picks a default. Every observability mechanism in the estate has defaulted to "service", because a service is what the
+observability literature is about and what the survey that motivated the work had in view.</p>
+
+<spec-decision id="D-001" grounding="verified">
+  <p><b>Status</b> Proposed</p>
+  <p><b>Context</b> <code>spectastic-profiles.json</code> defines six axes, all of which express rigor. No field anywhere in the profile
+  marker, the config, or the enforcement policy distinguishes a long-running service from a batch job from a library or command-line
+  tool. The <code>STRUCTURALLY_UNDETECTABLE</code> map in <code>packages/core/src/enforce/policy.ts</code> already establishes the
+  precedent that a category can be inapplicable — but it keys on <em>ecosystem</em> (<code>observability: ['swift','cpp']</code>), which
+  is the wrong axis for this problem.</p>
+  <p><b>Decision</b> Introduce project shape as a first-class, declared property — at minimum distinguishing a long-running service, a
+  short-lived or scheduled job, and a library or command-line tool. Declared, not inferred: the same argument the interface-detection work
+  settled, that dependency presence cannot tell a producer from a consumer, applies here with more force, since a web framework in a
+  manifest may be a test fixture, an example, or a documentation site.</p>
+  <p><b>Consequences</b><br>
+  + Gives three already-shipped mechanisms a correct answer instead of a silent default, without changing what any of them do for services.<br>
+  + Reusable well beyond observability — the enforcement floor, the principles catalogue and the stack interview all currently reason about rigor when some of their questions are really about shape.<br>
+  − A seventh axis is real surface area, and an axis nothing reads is worse than no axis; it must land with at least one consumer.<br>
+  − Shape is not always singular: a repository may hold a service and the client library for it, which is an argument for declaring shape per unit rather than per project and is not resolved here.</p>
+</spec-decision>
+</section>
+
+<!-- ======================================================= -->
+<section id="assumption">
+<h2>4 · Where the assumption is written down</h2>
+
+<p>Three mechanisms encode "this project is a service", none of them deliberately.</p>
+
+<p><strong>The gap condition.</strong> A row is a loud gap when the requirement "reads as a measurable target" — evaluated by a shared
+heuristic against the requirement's own prose or its light annotation. That heuristic was built for a different and correct purpose:
+deciding whether a requirement is quantified. Reused here, it answers "does this look like a reliability target" with a judgment about
+sentence structure, and a command-line tool's latency budget passes it. The quiet case exists — a non-reliability requirement renders
+plainly — but the discriminator is the prose, never the project.</p>
+
+<p><strong>The capture field.</strong> The instrumentation evidence is typed as a metrics endpoint, documented as "the metrics endpoint
+that was checked, e.g. <code>GET /metrics</code>", alongside the golden signals observed there. For a library this field has no honest
+value. The format's own escape hatch — mark the capture unverified and it renders "suggested — not yet run" — is the wrong shape too: the
+endpoint was not <em>unverified</em>, it does not <em>exist</em>.</p>
+
+<p><strong>The enforcement category.</strong> The <code>observability</code> category detects a metrics registry or exporter dependency by
+its deliberate export name, and sits in the verified and enterprise floor. Its recorded ceiling is already that a declared exporter is not
+a live endpoint. For a library the ceiling is worse than recorded: a library that adds a Prometheus exporter to its dependencies to satisfy
+the floor has made itself <em>worse</em>, by forcing an exporter choice on every downstream consumer — the opposite of what the category
+wants.</p>
+
+<spec-decision id="D-002" grounding="verified">
+  <p><b>Status</b> Proposed</p>
+  <p><b>Context</b> The gap keys on <code>isQuantifiedTarget</code>, a prose heuristic; 77 loud gaps have been produced against zero
+  authorable objectives. The format already distinguishes <em>quiet</em> gaps for non-reliability requirements, so a second discriminator
+  is a widening of existing behaviour rather than a new concept.</p>
+  <p><b>Decision</b> Key the loud gap on shape as well as prose. A quantified reliability requirement in a service keeps its loud gap,
+  unchanged. The same requirement in a declared library or command-line tool renders plainly — not as a gap, and not hidden either, since
+  the requirement still appears in the trace with its target.</p>
+  <p><b>Consequences</b><br>
+  + Removes 77 rows of noise without weakening a single check that applies, and restores the gap's meaning as a real omission.<br>
+  + Costs nothing for projects that declare no shape, which can keep today's behaviour as the conservative default.<br>
+  − A project could evade a legitimate gap by mis-declaring its shape; this is a real hole and the honest answer is that a declared shape is checkable by review, not by machine.<br>
+  − If the default for an undeclared project stays "service", every existing project keeps its 77 rows until it declares — which argues for the declaration being part of the profile marker rather than opt-in.</p>
+</spec-decision>
+</section>
+
+<!-- ======================================================= -->
+<section id="three-shapes">
+<h2>5 · Three shapes, three mechanisms — and only one is built</h2>
+
+<p>The observability field does not have one answer to "how do metrics get out"; it has three, chosen by how long the process lives.</p>
+
+<div style="overflow-x:auto;">
+<table>
+  <thead><tr><th>Shape</th><th>How metrics leave</th><th>What the evidence is</th></tr></thead>
+  <tbody>
+    <tr><td>Long-running service</td><td>Scraped from an endpoint the process exposes</td><td>A real request to <code>/metrics</code> showing the expected signals — what the format assumes today.</td></tr>
+    <tr><td>Short-lived or scheduled job</td><td>Pushed on completion, since nothing is alive to scrape</td><td>A push destination and the job's outcome metric. This is the one case a gateway is <em>for</em>.</td></tr>
+    <tr><td>Library or command-line tool</td><td>It does not export at all — it <em>records</em>, and the embedding application exports</td><td>A test asserting the instrument was recorded with the expected value and attributes.</td></tr>
+  </tbody>
+</table>
+</div>
+
+<p>The third row is the one this project and most downstream libraries occupy, and it is the one with no representation in the format. It
+is also, usefully, the row with the least infrastructure: a library's observability obligation is to <em>emit correctly</em>, and whether
+anything is collecting is the application's problem, not the library's. That obligation is verifiable in a unit test, offline, with no
+running backend.</p>
+
+<p>The tooling for exactly this is mature and specified. The OpenTelemetry specification defines an <strong>in-memory metrics
+exporter</strong> — "a Push Metric Exporter which accumulates metrics data in the local memory and allows to inspect it (useful for e.g.
+unit tests)" — and marks it <em>Stable</em>. It ships across the major SDKs, and in this project's own ecosystem it is present today:
+<code>@opentelemetry/sdk-metrics@2.10.0</code> exports <code>InMemoryMetricExporter</code>. Java and Python expose the same capability as a
+reader rather than an exporter, a surface difference that does not change the shape of the answer.</p>
+</section>
+
+<!-- ======================================================= -->
+<section id="not-a-gateway">
+<h2>6 · Not a gateway — what the push path is actually for</h2>
+
+<p>A metrics gateway is the obvious reach for "we have no endpoint to scrape", and it is the wrong tool for two of the three shapes.
+Prometheus's own documentation is unusually direct about this. The Pushgateway is "explicitly not an aggregator or distributed counter but
+rather a metrics cache"; it is not "capable of turning Prometheus into a push-based monitoring system"; and it is recommended only in
+limited cases, "specifically for capturing the outcome of a service-level batch job."</p>
+
+<p>The operational caveats are as pointed. Metrics persist in the gateway after the pushing process is renamed or removed, because the
+cache's lifecycle is decoupled from the process's — stale series must be deleted by hand or by automation somebody writes. And because
+availability is deduced from a scrape succeeding, the gateway has an <code>up</code> metric for itself but not for anything behind it, so
+a job that silently stops running looks exactly like a job that is fine.</p>
+
+<p>None of that disqualifies it for the second row of the table above, which is precisely the case it was built for. It disqualifies it as
+a general answer for "not a service", and it makes an OpenTelemetry Collector — a genuine deployable component with its own configuration,
+lifecycle and failure modes — a heavier answer still for a library whose real obligation is a unit test.</p>
+
+<spec-decision id="D-003" grounding="verified">
+  <p><b>Status</b> Proposed</p>
+  <p><b>Context</b> The ask was for a metrics gateway or collector so that non-service projects have a mode for collecting metrics, at
+  minimum in test. Prometheus restricts the Pushgateway to service-level batch jobs and documents permanent staleness and lost
+  availability signal; OpenTelemetry specifies a stable in-memory exporter whose stated purpose is unit tests.</p>
+  <p><b>Decision</b> For libraries and command-line tools, recommend the in-memory exporter asserted in a test — no gateway, no collector,
+  no running backend. Keep the push path in the vocabulary for the job shape, where it is correct, and carry Prometheus's caveats with it
+  rather than recommending it bare.</p>
+  <p><b>Consequences</b><br>
+  + Delivers the "even if it's just in test" ask with a stable, specified mechanism that already exists in this ecosystem — no new infrastructure and no new dependency for consumers, since the exporter belongs in development dependencies.<br>
+  + A test asserting an instrument was recorded is stronger evidence than the enforcement category's current signal, which is only that an exporter appears in a manifest.<br>
+  − An in-memory assertion proves the library emits, never that anything downstream collects; the honest claim is narrower than "this project has observability".<br>
+  − Three shapes with three mechanisms is more to explain than one rule, and the boundary is genuinely blurred for a long-running command-line process such as a watcher or a daemon.</p>
+</spec-decision>
+
+<spec-matrix target="D-003">
+  <table>
+    <thead><tr><th>Mechanism</th><th>Fits a library / CLI</th><th>Infrastructure</th><th>Evidence quality</th><th>Endorsed for this use</th><th>Score</th></tr></thead>
+    <tbody>
+      <tr data-winner><td><strong>In-memory exporter in a test</strong></td><td>Yes — the natural unit</td><td>None; a dev dependency</td><td>Asserts the instrument and its value</td><td>Yes — the specification names unit tests</td><td>8/10</td></tr>
+      <tr><td>Push on completion (OTLP)</td><td>Only for scheduled jobs</td><td>A receiving endpoint</td><td>Real, end to end</td><td>Yes, for the job shape</td><td>6/10</td></tr>
+      <tr><td>Prometheus Pushgateway</td><td>No</td><td>A service, and a staleness policy</td><td>Real, with a lifecycle mismatch</td><td>Restricted to service-level batch jobs</td><td>4/10</td></tr>
+      <tr><td>OpenTelemetry Collector</td><td>No — heavier than the thing observed</td><td>A deployable component</td><td>Real, end to end</td><td>Not for a library</td><td>3/10</td></tr>
+    </tbody>
+  </table>
+</spec-matrix>
+</section>
+
+<!-- ======================================================= -->
+<section id="recommendation">
+<h2>7 · Recommendation — three slices, in order</h2>
+
+<ol>
+  <li><strong>Name the shape.</strong> A declared project shape distinguishing service, job, and library or command-line tool — written at
+  initialisation, asked in the design interview when detection is ambiguous, and never inferred from a dependency. Land it with its first
+  consumer attached, so it is not an axis nothing reads.</li>
+  <li><strong>Let the gap key on it.</strong> Widen the loud-gap condition so a quantified reliability requirement in a declared library or
+  command-line tool renders plainly rather than as an omission. Seventy-seven rows of noise disappear and the remaining gaps mean something
+  again. Small, and worth doing on its own even if the third slice never lands.</li>
+  <li><strong>Give non-service evidence a home.</strong> Generalise the instrumentation capture so its evidence can be a test that asserts
+  on recorded instruments rather than a request to an endpoint — and reconsider what the enforcement category should require of a library,
+  where an exporter in the manifest is not merely weak evidence but an active harm to consumers.</li>
+</ol>
+
+<spec-warning><strong>Do not close this by authoring objectives.</strong> The obvious way to make 77 gaps disappear is to write service
+level objectives for the requirements that have none. For a library that would mean inventing a steady state, a window and an error budget
+for something with no traffic, no availability and no operator — ceremony that would satisfy the trace and inform nobody, and would make
+the estate's first 77 objectives all fiction. The gap is right that something is missing; it is wrong about what.</spec-warning>
+
+<h3>Suggested next artifacts</h3>
+<spec-out-of-scope>
+  <ul>
+    <li defer-to="TBD-project-shape-axis">A new spec: project shape as a declared property — its vocabulary, where it is written, how the design interview asks for it, and the explicit refusal to infer it from dependencies (D-001).</li>
+    <li defer-to="TBD-observables-gap-by-shape">A <code>/spectastic.propose</code> against <a href="../specs/048-verify-slo-trace/spec.html">048</a>: key the loud gap on shape as well as on the quantified-prose heuristic, with today's behaviour retained for any project that declares nothing (D-002).</li>
+    <li defer-to="TBD-in-memory-metrics-evidence">A new spec: instrumentation evidence that is a test rather than an endpoint — the capture shape, its rendering, and the recorded ceiling that emitting correctly is not the same as being collected (D-003).</li>
+    <li defer-to="TBD-observability-category-by-shape">A <code>/spectastic.propose</code> against <a href="../specs/042-profile-enforcement/spec.html">042</a>: what the <code>observability</code> category should require of a library, where a manifest exporter dependency is a cost imposed on consumers rather than evidence of instrumentation.</li>
+    <li defer-to="TBD-shape-per-unit">A follow-on question, deliberately unresolved here: whether shape belongs to the project or to the unit, since a repository may hold both a service and its client library — which the unit-edge work has now given a vocabulary for.</li>
+  </ul>
+</spec-out-of-scope>
+</section>
+
+<!-- ======================================================= -->
+<section id="caveats">
+<h2>8 · Caveats on the sources and the audit</h2>
+
+<ul>
+  <li><strong>The audit is one estate.</strong> Sixty-one views, one project, and a project that is a CLI and a set of libraries — precisely the shape that produces a 100% gap rate. A service-heavy estate would show the mechanism working, and this survey would not exist. The finding is that the format has no answer for one shape, not that its answer for services is wrong.</li>
+  <li><strong>One earlier note in this session was wrong and is corrected here.</strong> I had recorded that Node lacked a built-in in-memory metrics exporter. It does not: <code>InMemoryMetricExporter</code> is exported from <code>@opentelemetry/sdk-metrics@2.10.0</code>, verified by unpacking the published package and reading its declarations. The recommendation rests on that being present, so it was checked rather than recalled.</li>
+  <li><strong>"Zero authored objectives" is a scoped claim.</strong> It counts <code>&lt;spec-slo target=…&gt;</code> elements under <code>specs/</code>, <code>examples/</code> and <code>templates/</code>. Twenty-four exist in package fixtures and tests, which is why the feature is known to work; a reader re-running the scan across the whole repository will find those.</li>
+  <li><strong>The Prometheus caveats are the project's own documentation, not independent evaluation.</strong> They are strong evidence about intended use and weak evidence about how the Pushgateway performs in practice, where many teams use it well outside the documented recommendation.</li>
+  <li><strong>Shape is proposed, not designed.</strong> Three values are named because three mechanisms need them; whether that is the right granularity, and whether shape is a profile axis or a separate field, are open. The per-unit question in particular is raised and left open rather than answered.</li>
+  <li><strong>No downstream project was consulted.</strong> The claim that many downstream projects will be libraries and command-line tools is an inference from what the tool is for, not a measurement of adoption.</li>
+</ul>
+</section>
+
+<!-- ======================================================= -->
+<section id="sources">
+<h2>9 · Sources</h2>
+
+<p>External sources retrieved 02 Aug 2026, alongside an audit of all 61 <code>verify.html</code> files and the package inspection noted
+in §8. Claims about this project's own behaviour are grounded in the files named inline.</p>
+
+<ol>
+  <li>Metrics Exporter — In-memory — <a href="https://opentelemetry.io/docs/specs/otel/metrics/sdk_exporters/in-memory/">opentelemetry.io — specification</a>: "a Push Metric Exporter which accumulates metrics data in the local memory and allows to inspect it (useful for e.g. unit tests)", marked <em>Stable</em>.</li>
+  <li><code>@opentelemetry/sdk-metrics</code> — <a href="https://github.com/open-telemetry/opentelemetry-js/tree/main/packages/sdk-metrics">github.com/open-telemetry/opentelemetry-js</a>: the JavaScript SDK; version 2.10.0 exports <code>InMemoryMetricExporter</code> alongside <code>PeriodicExportingMetricReader</code>.</li>
+  <li>OpenTelemetry Python SDK metrics export — <a href="https://opentelemetry-python.readthedocs.io/en/latest/sdk/metrics.export.html">opentelemetry-python.readthedocs.io</a>: <code>InMemoryMetricReader</code> returning collected data for assertion.</li>
+  <li><code>OpenTelemetryExtension</code> — <a href="https://github.com/open-telemetry/opentelemetry-java/blob/main/sdk/testing/src/main/java/io/opentelemetry/sdk/testing/junit5/OpenTelemetryExtension.java">github.com/open-telemetry/opentelemetry-java</a>: a JUnit 5 extension registering an in-memory metric reader, the same capability as a test fixture.</li>
+  <li>When to use the Pushgateway — <a href="https://prometheus.io/docs/practices/pushing/">prometheus.io/docs/practices/pushing</a>: "explicitly not an aggregator… but rather a metrics cache"; recommended only for capturing the outcome of a service-level batch job; permanent staleness; no availability signal for subjects behind it.</li>
+  <li>Pushing metrics — <a href="https://prometheus.io/docs/instrumenting/pushing/">prometheus.io/docs/instrumenting/pushing</a>: the push path for jobs that are not alive to be scraped.</li>
+  <li>Pushgateway — <a href="https://github.com/prometheus/pushgateway">github.com/prometheus/pushgateway</a>: "push acceptor for ephemeral and batch jobs", and the pointer to a statsd exporter or an aggregating gateway where distributed counting is genuinely needed.</li>
+  <li>Testing OpenTelemetry instrumentation with in-memory exporters — <a href="https://oneuptime.com/blog/post/2026-02-06-test-opentelemetry-instrumentation-in-memory-exporters/view">oneuptime.com</a>: the practitioner case that a real backend in unit tests is slow, flaky and hard to assert against.</li>
+</ol>
+</section>
+
+<!-- ======================================================= -->
+<section id="changelog">
+<h2>10 · Change log</h2>
+
+<spec-changelog>
+  <ol>
+    <li><time datetime="2026-08-02">02 Aug 2026</time><span>Created. Audits the observables trace across all 61 verify views: 37 carry the section, all 37 are entirely gaps, 77 gap rows, and zero <code>&lt;spec-slo&gt;</code> elements have ever been authored outside fixtures. Locates the cause as a missing project-shape axis — the profile system's six axes all ladder rigor, and three mechanisms silently default to "service". Resists the metrics-gateway framing on Prometheus's own documented restriction, and recommends the specification's stable in-memory metrics exporter, verified present in this ecosystem by unpacking the published package. Lands three decisions and plants five <code>TBD-</code> next artifacts.</span></li>
+  </ol>
+</spec-changelog>
+</section>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  Spectastic · A library has no endpoint · 02 Aug 2026 ·
+  <a href="../index.html">home</a> ·
+  <a href="./observability-slo-considerations.html">observability-slo</a> ·
+  <a href="./verify-view-actionable-considerations.html">verify-view-actionable</a> ·
+  <button data-theme-toggle style="background:none;border:none;color:var(--c-link);cursor:pointer;font:inherit;padding:0;border-bottom:1px solid currentColor;">light/dark</button>
+</footer>
+
+<script src="../assets/spec.js"></script>
+</body>
+</html>
