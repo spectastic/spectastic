@@ -20,6 +20,9 @@ export {
   type SectionName,
 } from './registry.js';
 
+export { generateConfigSchema, schemaUrl, serialiseSchema } from './schema-gen.js';
+export { unknownKeyFindings, type UnknownKeyFinding } from './unknown-keys.js';
+
 export {
   configValue,
   loadConfig,

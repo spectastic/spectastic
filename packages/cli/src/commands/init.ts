@@ -1,7 +1,10 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { readConfigFile } from '@spectastic/schema/config';
-import { basename, join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
+import { createRequire } from 'node:module';
+import { fileURLToPath } from 'node:url';
 import { setIfAbsent } from '@spectastic/core/config/edit';
+import { schemaUrl } from '@spectastic/schema/config';
 import { detectTooling } from '@spectastic/core/enforce/detect';
 import { applyGitignore } from '@spectastic/core/gitignore/apply';
 import { BASE_ENTRIES } from '@spectastic/core/gitignore/entries';
@@ -88,6 +91,34 @@ function readProjectKey(cwd: string): unknown {
   } catch {
     return undefined;
   }
+}
+
+/**
+ * Write the schema reference into `spectastic.json` (spec 087, FR-004).
+ *
+ * Correct by construction rather than by checking: this code path only exists
+ * in versions of the package that contain `dist/config.schema.json`, and the
+ * version is read from the *installed* manifest — so the pinned address can
+ * only ever name a version that carries the file.
+ *
+ * That reasoning is why no network check happens here. Verifying at init would
+ * make project creation depend on a third party being reachable, to confirm
+ * something the packaging already guarantees.
+ */
+function writeSchemaReference(cwd: string): boolean {
+  const here = dirname(fileURLToPath(import.meta.url));
+  let version: string;
+  try {
+    // Resolve the schema package's own manifest, not the CLI's — the address
+    // pins the package that publishes the file.
+    const manifest = createRequire(join(here, 'index.js')).resolve('@spectastic/schema/package.json');
+    version = (JSON.parse(readFileSync(manifest, 'utf8')) as { version: string }).version;
+  } catch {
+    // No manifest, no reference. An absent reference costs a user editor
+    // assistance; a wrong one costs them errors about the schema itself.
+    return false;
+  }
+  return setIfAbsent(cwd, '$schema', schemaUrl(version));
 }
 
 async function writeProjectConfig(cwd: string): Promise<string | null> {
@@ -251,9 +282,16 @@ export function registerInit(program: Command): void {
       // writeCorpusConfig so a project written this same run is visible to
       // resolveCorpusConfig's new project-derived marketplace tier (FR-006).
       const writtenProject = await writeProjectConfig(cwd);
+      // The schema reference (087 FR-004) — editors resolve it for completion
+      // and per-key documentation. Written after the identity so the key order
+      // in a fresh file reads sensibly.
+      const wroteSchemaRef = writeSchemaReference(cwd);
       if (writtenProject) {
         process.stdout.write(`✓ wrote spectastic.json project identity (project=${writtenProject})\n`);
       }
+        if (wroteSchemaRef) {
+          process.stdout.write('✓ wrote spectastic.json schema reference (editor completion + key validation)\n');
+        }
       // 063-corpus-discoverability FR-001: every project gets a corpus config
       // (marketplace name + root dir), unconditional — no flag, matching the
       // gitignore write's own unconditional-unless-opted-out precedent minus
