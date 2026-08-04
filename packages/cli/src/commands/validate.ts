@@ -169,6 +169,36 @@ async function scanCopyLeak(): Promise<Finding[]> {
  * waiver; falls back to structural checks (valid category, reason, owner, expiry)
  * when there's no marker. A no-op when there are no waivers.
  */
+/**
+ * Report a configuration key the tool does not recognise (spec 087, FR-005).
+ *
+ * Folded in beside the other non-HTML scans. Warning severity is deliberate
+ * (087 D-003): a typo and a key belonging to a newer version of the tool are
+ * the same observation here, and failing a build for a colleague on a later
+ * release would be worse than the silence this closes.
+ */
+async function scanUnknownConfigKeys(cwd: string): Promise<Finding[]> {
+  const [{ unknownKeyFindings }, { readConfigFile }] = await Promise.all([
+    import('@spectastic/schema/config'),
+    import('@spectastic/schema/config'),
+  ]);
+  const file = readConfigFile(cwd);
+  if (Object.keys(file).length === 0) return [];
+
+  return unknownKeyFindings(file).map((f) => ({
+    file: 'spectastic.json',
+    line: 1,
+    column: 1,
+    rule: 'config-unknown-key',
+    severity: 'warning' as const,
+    message: f.message,
+    fixHint:
+      f.suggestion !== undefined
+        ? `Rename it to "${f.suggestion}", or remove it if it was not meant to be there.`
+        : 'Remove it, or check the published schema for the key you meant.',
+  }));
+}
+
 async function scanEnforceWaivers(cwd: string): Promise<Finding[]> {
   const [
     { enforceWaiverFindings },
@@ -504,6 +534,12 @@ export function registerValidate(program: Command): void {
       // dead, un-relaxable, or silently-expired waiver in spectastic.json is an
       // error, so the pre-commit gate blocks it. No-op when no waivers declared.
       const enforceWaiverFindings = await scanEnforceWaivers(process.cwd());
+      // The unknown-config-key scan (spec 087, FR-005): a misspelt key in
+      // spectastic.json used to do nothing at all — no warning, no effect —
+      // so a user believed they had overridden a default and had not. Warning
+      // rather than error, because a key from a newer version of the tool is
+      // indistinguishable from a typo here. No-op with no configuration.
+      const unknownConfigKeyFindings = await scanUnknownConfigKeys(process.cwd());
       // The quantified-NFR gate (spec 047, FR-004): at verified/enterprise, an
       // NFR with no measurable target and no linked <spec-slo> is an error, so
       // the pre-commit gate blocks a vague reliability promise. No-op below
@@ -557,6 +593,7 @@ export function registerValidate(program: Command): void {
         ...verbModelPolicyFindings,
         ...copyLeakFindings,
         ...enforceWaiverFindings,
+        ...unknownConfigKeyFindings,
         ...quantifiedNfrScanFindings,
         ...corpusWellFormedScanFindings,
         ...corpusRegistryScanFindings,

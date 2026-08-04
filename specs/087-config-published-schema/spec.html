@@ -1,0 +1,313 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
+<title>The published config schema · Specification</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Specification · 087-config-published-schema</p>
+  <h1>The published config schema</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    The registry knows what the configuration may contain. A schema is that knowledge in a format the user's editor already speaks — and the same file is what finally makes a misspelt key say something.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>      <span><spec-status value="draft">Draft</spec-status></span>
+    <b>Spec ID</b>     <span>087-config-published-schema</span>
+    <b>Owner</b>       <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Reviewers</b>   <span>—</span>
+    <b>Created</b>     <span><time datetime="2026-08-03">03 Aug 2026</time></span>
+    <b>Principles</b><span><a href="../../principles.html">v1.9.0</a></span>
+    <b>Smallest demoable</b><span>A misspelt configuration key produces a finding naming the key it was probably meant to be.</span>
+    <b>Read time</b>   <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-budget words="1500" reqs="20" minutes="12"></spec-budget>
+
+  <spec-tldr>
+    <p>A misspelt configuration key currently does nothing at all: no warning, no error, no effect. The user
+    believes they have overridden a default and has not, and the tool behaves exactly as it would have if the
+    override were refused — which is the point at which "not dogmatic" stops being true whatever the code permits.
+    <a href="../086-config-canonical-reader/spec.html">086</a> made the surface enumerable; this spec turns that
+    enumeration into <strong>a JSON Schema generated from the registry</strong>, published at a version-pinned URL,
+    referenced from configurations the tool writes, and — the half that does not depend on anyone's editor — used
+    to <strong>report an unrecognised key as a validate finding</strong> on the surface the pre-commit gate already
+    watches. Generated, never hand-written: a hand-written schema is the third copy 086 exists to prevent.</p>
+  </spec-tldr>
+
+  <dl class="invest">
+    <dt><span class="letter">I</span> Independent</dt> <dd>Depends on <a href="../086-config-canonical-reader/spec.html">086</a> alone, whose registry it reads. Nothing upstream changes.</dd>
+    <dt><span class="letter">N</span> Negotiable</dt>  <dd>Fixes that the schema is generated, published version-pinned, and that unknown keys are findings; the generator's shape and the finding's wording defer to the design.</dd>
+    <dt><span class="letter">V</span> Valuable</dt>    <dd>Unlocks <a href="#SC-001">SC-001</a> — a typo stops being silent, which is the concrete failure the discoverability survey opened with.</dd>
+    <dt><span class="letter">E</span> Estimable</dt>   <dd>The registry exists, the folded-scan pattern for validate exists, and the hosting question is settled.</dd>
+    <dt><span class="letter">S</span> Small</dt>       <dd>A generator, a build step, a reference at init, and one scan. No new artifact kind.</dd>
+    <dt><span class="letter">T</span> Testable</dt>    <dd>Every requirement observable: the schema matches the registry, the URL resolves, a typo produces a finding, a valid config produces none.</dd>
+  </dl>
+
+  <spec-audience-map>
+    <dl>
+      <dt>Exec / PM</dt>   <dd>§<a href="#context">Context</a>, §<a href="#scenarios">User scenarios</a>, §<a href="#success">Success criteria</a>.</dd>
+      <dt>Reviewer</dt>    <dd>§<a href="#requirements">Requirements</a>, §<a href="#assumptions">Assumptions</a>, §<a href="#questions">Open questions</a>.</dd>
+      <dt>Implementer</dt> <dd>§<a href="#requirements">Requirements</a>, §<a href="#data">Data model</a>, §<a href="#conformance">Conformance index</a>.</dd>
+    </dl>
+  </spec-audience-map>
+</header>
+
+
+<section id="context">
+<h2>1 · Context</h2>
+
+<p>The <a href="../../docs/discoverable-defaults-considerations.html">discoverable-defaults survey</a> opened on a
+specific silence: misspell a configuration key and nothing happens. No warning, no error, no effect. The user
+thinks they changed a default and did not, and cannot tell the difference from the outside.</p>
+
+<p><a href="../086-config-canonical-reader/spec.html">086</a> removed the reason that silence was unavoidable. The
+configuration surface is now declared as data — ten sections, their keys, their types and their defaults, in one
+place any consumer can walk. Two things become possible that were not, and this spec builds both from the same
+artifact.</p>
+
+<p>The first is ordinary: a JSON Schema, which every mainstream editor already knows how to consume, giving
+completion and per-key documentation as a user types. This project already depends on that mechanism daily for
+somebody else's tool — its own linter configuration opens with a schema reference — and offers nothing equivalent
+for itself.</p>
+
+<p><spec-newthought>The second is the one that matters more.</spec-newthought> A schema is a machine-readable
+statement of what the file may contain, so the same artifact that helps an editor also answers <em>is this key
+real?</em> — in a terminal, in CI, with no editor involved and no network. That half is what turns the silence
+into a finding, and it is the half a user without schema support in their editor would otherwise never get.</p>
+
+<p>Users: anyone editing a configuration, who currently has no way to discover what may go in it; and the
+maintainer, for whom a typo in a project's own file is presently indistinguishable from a deliberate omission.</p>
+</section>
+
+
+<section id="scenarios">
+<h2>2 · User scenarios &amp; testing</h2>
+
+<p>Each story <strong>MUST</strong> be independently testable: if you implemented only US1, you would
+still have a viable MVP.</p>
+
+<h3 id="US1">US1 · Be told about a typo <spec-pill>P1</spec-pill></h3>
+<p>As a <strong>user who has just edited a configuration</strong>, I want to <strong>be told when a key is not
+one the tool recognises</strong> so that <strong>I find out now, rather than concluding the tool ignores my
+settings</strong>.</p>
+<p><em>Acceptance:</em> A configuration containing an unrecognised key produces a finding naming it; where the key
+is close to a real one, the finding names the likely intended key. A configuration containing only recognised keys
+produces no finding.</p>
+
+<h3 id="US2">US2 · See what may go in the file <spec-pill>P1</spec-pill></h3>
+<p>As a <strong>user opening a configuration in an editor</strong>, I want to <strong>see the available keys and
+what each one does</strong> so that <strong>I can discover the surface without reading the source</strong>.</p>
+<p><em>Acceptance:</em> A schema describing every declared section, key, type, default and description is
+published; a configuration the tool writes references it; and the reference resolves.</p>
+
+<h3 id="US3">US3 · Trust that the schema is current <spec-pill>P2</spec-pill></h3>
+<p>As a <strong>maintainer</strong>, I want the <strong>schema to be generated from the registry rather than
+maintained beside it</strong> so that <strong>the two cannot describe different tools</strong>.</p>
+<p><em>Acceptance:</em> The schema is produced from the registry by a repeatable step, and a check fails if a
+committed schema no longer matches what the registry would produce.</p>
+
+<h3>Edge cases</h3>
+<ul>
+  <li>A key that is unrecognised but deliberate — a user's own annotation, or a key from a newer version of the tool. The finding must be advisory rather than fatal, since neither is a mistake the tool should refuse to run over.</li>
+  <li>The <code>$schema</code> key itself, which is not part of the configuration surface and must not be reported as unrecognised.</li>
+  <li>An unrecognised key nested inside a recognised section, which is the more likely typo and must be caught as readily as a misspelt section.</li>
+  <li>A configuration written by a future version, whose keys this version has never heard of. Indistinguishable from a typo, and treated the same way — which is why the finding is advisory.</li>
+</ul>
+</section>
+
+
+<section id="requirements">
+<h2>3 · Requirements</h2>
+
+<p>Conformance keywords (<spec-rule>MUST</spec-rule>, <spec-rule level="should">SHOULD</spec-rule>,
+<spec-rule level="may">MAY</spec-rule>) follow RFC 2119.</p>
+
+<h3>Functional</h3>
+
+<spec-requirement id="FR-001" priority="must">
+<p>A JSON Schema describing the configuration <spec-rule>MUST</spec-rule> be generated from the registry, and
+<spec-rule>MUST NOT</spec-rule> be hand-maintained.</p>
+<details><summary>Rationale</summary><p>A hand-written schema is precisely the third source of truth
+<a href="../086-config-canonical-reader/spec.html">086</a> was built to prevent — it would drift from the
+registry, and the drift would be invisible because both look authoritative.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-002" priority="must">
+<p>The generated schema <spec-rule>MUST</spec-rule> carry every declared section, key, type, description and — for
+a key that has one — its default.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-003" priority="must">
+<p>The schema <spec-rule>MUST</spec-rule> be published at a version-pinned address, so a configuration written
+against one version of the tool continues to resolve against the surface it was written for.</p>
+<details><summary>Rationale</summary><p>An unversioned schema validates an old configuration against a newer
+surface, so a key removed in a later release becomes a false error in a file that was correct when written.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-004" priority="must">
+<p>A configuration the tool writes <spec-rule>MUST</spec-rule> carry a reference to the published schema, and that
+reference <spec-rule>MUST</spec-rule> resolve.</p>
+<details><summary>Rationale</summary><p>A dangling reference is worse than none: it produces editor errors about
+the schema rather than about the file, and teaches users to ignore the mechanism.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-005" priority="must">
+<p>An unrecognised key in a configuration <spec-rule>MUST</spec-rule> be reported as a validate finding, without
+requiring an editor, a network connection, or the schema file.</p>
+<details><summary>Rationale</summary><p>This is the half that reaches everyone. The schema helps only inside an
+editor that resolves it; the failure being closed is a silence, and a silence in CI is the same silence.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-006" priority="must">
+<p>The unrecognised-key finding <spec-rule>MUST</spec-rule> be advisory rather than fatal, and
+<spec-rule>MUST NOT</spec-rule> report the schema reference itself as unrecognised.</p>
+<details><summary>Rationale</summary><p>A key from a newer version of the tool is indistinguishable from a typo,
+and refusing to run over a file written by a colleague on a later version would be worse than the silence. The
+schema reference is metadata, not configuration.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-007" priority="should">
+<p>Where an unrecognised key closely resembles a declared one, the finding <spec-rule level="should">SHOULD</spec-rule>
+name the likely intended key.</p>
+<details><summary>Rationale</summary><p>"Unknown key" tells a user they have a problem; naming the key they meant
+tells them the answer. The typo case is the overwhelmingly common one.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-008" priority="should">
+<p>A check <spec-rule level="should">SHOULD</spec-rule> fail when a committed schema no longer matches what the
+registry would generate.</p>
+</spec-requirement>
+
+<h3>Non-functional</h3>
+
+<spec-requirement id="NFR-001" priority="must">
+<p>Generation <spec-rule>MUST</spec-rule> be deterministic: 100% of runs over an unchanged registry produce a
+byte-identical schema, with no dependence on key enumeration order or the clock.</p>
+<details><summary>Rationale</summary><p>Stated as a proportion because a generator that is <em>usually</em>
+reproducible produces spurious diffs, and a spurious diff in a generated artifact trains reviewers to stop reading
+them — which is how a real drift gets waved through.</p></details>
+</spec-requirement>
+
+<spec-requirement id="NFR-002" priority="must">
+<p>The unrecognised-key scan <spec-rule>MUST</spec-rule> perform 0 network requests and
+<spec-rule>MUST</spec-rule> complete in under 50 ms for a configuration of ordinary size.</p>
+</spec-requirement>
+
+<h3>Out of scope (deferred to other slices)</h3>
+<spec-out-of-scope>
+  <ul>
+    <li defer-to="TBD-config-explain-command">The command that prints effective values with provenance. It reads the same registry and is the terminal-side answer to a different question.</li>
+    <li defer-to="TBD-config-jsonc-input">Accepting comments in a user's own configuration.</li>
+    <li defer-to="TBD-config-schemastore">Registering the schema with the community store so editors associate it by filename without a reference in the file.</li>
+    <li defer-to="TBD-config-value-validation">Validating a recognised key's <em>value</em> — a string where a number belongs, an out-of-range threshold. This spec checks that a key is real, not that its value is sensible.</li>
+  </ul>
+</spec-out-of-scope>
+</section>
+
+
+<section id="data">
+<h2>4 · Data model</h2>
+
+<p>No new concept; one existing thing gains a second representation.</p>
+
+<h3>Entities</h3>
+<dl>
+  <dt>Published schema</dt>
+  <dd>The registry expressed in a format editors and validators already understand, addressed at a version-pinned
+  location. Its defining property is that it is <em>derived</em>: it holds no knowledge of its own, so it can never
+  be right about something the registry is wrong about, nor wrong about something the registry has right.</dd>
+  <dt>Unrecognised key</dt>
+  <dd>A key present in a configuration that the registry does not declare. It is a <em>suspicion</em>, not a
+  verdict — a typo and a key from a later version of the tool are the same observation, and nothing available at
+  the time of the check can distinguish them. That is what fixes its severity as advisory.</dd>
+</dl>
+
+<spec-note>
+<p>The invariant: the schema is generated, so anything true of the registry is true of the schema and nothing else
+is. A hand edit to the schema is therefore not a change to the configuration surface — it is a defect, and
+<a href="#FR-008">FR-008</a> is what makes it a visible one.</p>
+</spec-note>
+</section>
+
+
+<section id="success">
+<h2>5 · Success criteria</h2>
+
+<p>Technology-agnostic, measurable outcomes. These are how we know it worked.</p>
+
+<spec-requirement id="SC-001" priority="must">
+<p>A configuration containing a misspelt key produces a finding naming that key, where the same configuration
+today produces none — demonstrated against a real misspelling, not a fixture alone.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-002" priority="must">
+<p>The published schema describes 100% of the registry's declared sections and keys, and the reference written
+into a configuration resolves successfully.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-003" priority="must">
+<p>Regenerating the schema from an unchanged registry produces a byte-identical file, and 0 valid configurations
+in this repository produce an unrecognised-key finding.</p>
+</spec-requirement>
+</section>
+
+
+<section id="assumptions">
+<h2>6 · Assumptions</h2>
+
+<spec-assumption>
+<p>A version-pinned address on the package registry's content delivery network is durable enough to embed in a
+user's file. It is immutable per version and needs no infrastructure, which is why it was chosen — but it is a
+third party in the resolution path, and a user offline or behind a restrictive proxy gets no editor assistance.
+The validate finding is deliberately independent of it for exactly that reason.</p>
+</spec-assumption>
+
+<spec-assumption>
+<p>Users would rather be told about a suspicious key than have the tool refuse to run. Taken as true, and the
+reason the finding is advisory; if it proves wrong the severity can rise without any other change.</p>
+</spec-assumption>
+</section>
+
+
+<section id="questions">
+<h2>7 · Open questions</h2>
+<spec-questions>
+<p>None outstanding. The hosting address and the reporting surface were both anchored in the interview, and the
+generated-not-written constraint follows from what 086 was built to prevent.</p>
+</spec-questions>
+</section>
+
+
+<section id="conformance">
+<h2>8 · Conformance index</h2>
+<p>Auto-built from every <code>&lt;spec-requirement&gt;</code> in this document.</p>
+<spec-conformance></spec-conformance>
+</section>
+
+
+<section id="changelog">
+<h2>9 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-08-03">03 Aug 2026</time><span>Initial draft. Drains <code>TBD-config-json-schema</code>, the second slice of the discoverable-defaults survey and the first that 086 made possible. Interview settled the two open questions the survey flagged: the schema is published version-pinned on the package registry's CDN, which needs no infrastructure and is immutable per version; and an unrecognised key is reported as a validate finding rather than left to the editor, so the check reaches CI and anyone without schema support. Editors will additionally flag it once the reference is present — that comes free with the file rather than being built here.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  087-config-published-schema · The published config schema · authored 03 Aug 2026
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>
