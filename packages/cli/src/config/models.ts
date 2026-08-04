@@ -9,7 +9,7 @@
  * fallbacks apply.
  */
 
-import { readFileSync } from 'node:fs';
+import { readConfigFile } from '@spectastic/schema/config';
 import { join } from 'node:path';
 import { isModelTier, MODEL_TIER_ALIASES, type ModelTier } from '@spectastic/core/model-policy';
 
@@ -36,18 +36,13 @@ const legal = MODEL_TIER_ALIASES.join(' | ');
  * should fail the run, not silently resolve to a surprising model).
  */
 export function loadModelsConfig(cwd: string): ModelsFileConfig {
-  let raw: string;
-  try {
-    raw = readFileSync(join(cwd, 'spectastic.json'), 'utf8');
-  } catch {
-    return {};
-  }
-
+  // Reads through the canonical reader (086 FR-004). `'throw'` keeps this
+  // module's loud-error policy, which the quieter readers depend on.
   let parsed: unknown;
   try {
-    parsed = JSON.parse(raw) as unknown;
+    parsed = readConfigFile(cwd, 'throw');
   } catch (err) {
-    throw new ModelsConfigError(`spectastic.json is not valid JSON — ${(err as Error).message}`);
+    throw new ModelsConfigError((err as Error).message);
   }
 
   const section = (parsed as { models?: unknown }).models;

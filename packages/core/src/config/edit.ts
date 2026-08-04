@@ -18,6 +18,7 @@
  */
 
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { parseConfigText } from '@spectastic/schema/config';
 import { join } from 'node:path';
 
 const CONFIG_FILE = 'spectastic.json';
@@ -54,7 +55,15 @@ function load(cwd: string): LoadedConfig | null {
     return null;
   }
   try {
-    const parsed: unknown = JSON.parse(raw);
+    // Parsed through the canonical module; this is the writer, so it keeps the
+    // original text to preserve a user's formatting on write-back.
+    //
+    // `'throw'` is load-bearing, not stylistic. The writer must REFUSE an
+    // unparseable file rather than treat it as empty — treating it as empty
+    // would overwrite a user's broken-but-recoverable config with a fresh one.
+    // Migrating this to the default policy silently removed that refusal, and
+    // two existing tests caught it (086 FR-005).
+    const parsed: unknown = parseConfigText(raw, 'throw');
     if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return null;
     return { data: parsed as Record<string, unknown>, indent: detectIndent(raw), raw };
   } catch {

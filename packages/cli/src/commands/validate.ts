@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import { parseConfigText } from '@spectastic/schema/config';
 import { join } from 'node:path';
 import type { Finding } from '@spectastic/schema';
 import type { Command } from 'commander';
@@ -215,11 +216,8 @@ function readQuantifiedNfrFloor(cwd: string): number | undefined {
     return undefined;
   }
   let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw) as unknown;
-  } catch {
-    return undefined;
-  }
+  // Parsed through the canonical module (086 FR-004).
+  parsed = parseConfigText(raw);
   if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) return undefined;
   const section = (parsed as Record<string, unknown>).validate;
   if (section === null || typeof section !== 'object' || Array.isArray(section)) return undefined;

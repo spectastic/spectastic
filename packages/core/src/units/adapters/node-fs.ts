@@ -7,6 +7,7 @@
  */
 
 import { readFileSync } from 'node:fs';
+import { readConfigFile } from '@spectastic/schema/config';
 import { dirname, join, resolve as resolvePath } from 'node:path';
 import { parseResourceUri } from '@spectastic/schema/project';
 import type { WorkspacePort } from '../port.js';
@@ -32,7 +33,7 @@ function candidateCheckouts(cwd: string, targetProject: string): string[] {
 /** A project's declared `consumes` entries; `[]` for every failure. */
 function consumesAt(projectDir: string): string[] {
   try {
-    const parsed: unknown = JSON.parse(readFileSync(join(projectDir, 'spectastic.json'), 'utf8'));
+    const parsed: unknown = readConfigFile(projectDir);
     if (typeof parsed !== 'object' || parsed === null) return [];
     const consumes = (parsed as { consumes?: unknown }).consumes;
     if (!Array.isArray(consumes)) return [];

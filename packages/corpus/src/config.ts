@@ -18,9 +18,9 @@
  * is unset — never a second independent value (D-003).
  */
 
-import { readFileSync } from 'node:fs';
-import { basename, join } from 'node:path';
+import { basename } from 'node:path';
 import type { Finding } from '@spectastic/schema';
+import { readConfigFile } from '@spectastic/schema/config';
 import { classifyProjectId } from '@spectastic/schema/project';
 import { loadCorpus } from './knowledge/index.js';
 
@@ -64,18 +64,14 @@ export interface ResolvedCorpusConfig {
  * resolve to a surprising marketplace/root).
  */
 export function loadCorpusConfig(cwd: string): CorpusFileConfig {
-  let raw: string;
-  try {
-    raw = readFileSync(join(cwd, 'spectastic.json'), 'utf8');
-  } catch {
-    return {};
-  }
-
+  // Reads through the canonical reader (086 FR-004) rather than parsing here.
+  // `'throw'` preserves this module's deliberate policy: a typo'd corpus config
+  // should fail the run, not silently resolve to a surprising marketplace.
   let parsed: unknown;
   try {
-    parsed = JSON.parse(raw) as unknown;
+    parsed = readConfigFile(cwd, 'throw');
   } catch (err) {
-    throw new CorpusConfigError(`spectastic.json is not valid JSON — ${(err as Error).message}`);
+    throw new CorpusConfigError((err as Error).message);
   }
 
   const section = (parsed as { corpus?: unknown }).corpus;
@@ -150,18 +146,14 @@ export interface ResolvedProjectConfig {
  * or a non-string value.
  */
 export function loadProjectConfig(cwd: string): ProjectFileConfig {
-  let raw: string;
-  try {
-    raw = readFileSync(join(cwd, 'spectastic.json'), 'utf8');
-  } catch {
-    return {};
-  }
-
+  // Reads through the canonical reader (086 FR-004) rather than parsing here.
+  // `'throw'` preserves this module's deliberate policy: a typo'd corpus config
+  // should fail the run, not silently resolve to a surprising marketplace.
   let parsed: unknown;
   try {
-    parsed = JSON.parse(raw) as unknown;
+    parsed = readConfigFile(cwd, 'throw');
   } catch (err) {
-    throw new CorpusConfigError(`spectastic.json is not valid JSON — ${(err as Error).message}`);
+    throw new CorpusConfigError((err as Error).message);
   }
 
   const project = (parsed as { project?: unknown }).project;

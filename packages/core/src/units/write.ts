@@ -12,7 +12,8 @@
  */
 
 import { existsSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { readConfigFile } from '@spectastic/schema/config';
+import { dirname, join } from 'node:path';
 import { parseResourceUri } from '@spectastic/schema/project';
 import { addToSet } from '../config/edit.js';
 
@@ -66,7 +67,11 @@ function readConsumesStrict(cwd: string): string[] | null {
   const path = join(cwd, 'spectastic.json');
   if (!existsSync(path)) return [];
   try {
-    const parsed: unknown = JSON.parse(readFileSync(path, 'utf8'));
+    // `'throw'` is load-bearing: this path decides whether a WRITE proceeds, so
+    // an unparseable file must refuse rather than read as empty and clobber the
+    // user's file (080 NFR-002). The default policy silently removed that
+    // refusal during the 086 migration; this test caught it.
+    const parsed: unknown = readConfigFile(dirname(path), 'throw');
     if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return null;
     const consumes = (parsed as { consumes?: unknown }).consumes;
     if (consumes === undefined) return [];

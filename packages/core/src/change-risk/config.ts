@@ -11,8 +11,7 @@
  * field is either structurally complete and sane, or absent.
  */
 
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { readConfigFile } from '@spectastic/schema/config';
 import type { ChangeRiskBands, ChangeRiskConfig } from './types.js';
 
 function isFiniteInRange(v: unknown, min: number, max: number): v is number {
@@ -35,18 +34,9 @@ function parseFailAt(raw: unknown): number | undefined {
 
 /** Reads `spectastic.json`'s `changeRisk` section. Absent/malformed → `{}`. */
 export function loadChangeRiskConfig(cwd: string): ChangeRiskConfig {
-  let raw: string;
-  try {
-    raw = readFileSync(join(cwd, 'spectastic.json'), 'utf8');
-  } catch {
-    return {};
-  }
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw) as unknown;
-  } catch {
-    return {};
-  }
+  // Reads through the canonical reader (086 FR-004). Default policy: a
+  // malformed file yields defaults here, because a loud reader owns that error.
+  const parsed: unknown = readConfigFile(cwd);
   if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
   const section = (parsed as Record<string, unknown>).changeRisk;
   if (section === null || typeof section !== 'object' || Array.isArray(section)) return {};
