@@ -2,6 +2,7 @@ import { defineConfig } from 'tsup';
 
 export default defineConfig({
   entry: [
+    'src/config/index.ts',
     'src/index.ts',
     'src/parser.ts',
     'src/slo-shared.ts',
