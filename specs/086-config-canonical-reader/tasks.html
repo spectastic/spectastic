@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
+<title>The canonical config reader · Tasks</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Tasks · 086-config-canonical-reader</p>
+  <h1>The canonical config reader</h1>
+
+  <spec-meta>
+    <b>Status</b>   <span><spec-status value="draft">Draft</spec-status></span>
+    <b>Spec</b>     <span><a href="./spec.html">086-config-canonical-reader</a></span>
+    <b>Design</b>   <span><a href="./design.html">design.html</a></span>
+    <b>Created</b>  <span><time datetime="2026-08-03">03 Aug 2026</time></span>
+    <b>Strategy</b> <span>Incremental — the registry and resolver land first and separately, so the new logic is reviewable before sixteen call sites move onto it.</span>
+    <b>Read time</b><span data-reading-time></span>
+  </spec-meta>
+
+  <spec-tldr>
+    <p>Fifteen tasks. US1 builds the registry and resolver; US2 migrates the readers, dedicated config modules
+    first and inline readers second, because the inline ones are where a disagreement is most likely; US3 adds the
+    completeness guard and proves it against a planted key.</p>
+  </spec-tldr>
+</header>
+
+
+<section id="phase-us1">
+<h2>Phase 1 · US1 — ask the tool what its defaults are</h2>
+
+<p>Tests first, and failing, before any implementation task in this phase starts.</p>
+
+<spec-task id="T-100">
+  <input type="checkbox">
+  <div><strong>Write the registry's tests</strong> — every section enumerable without knowing any key's meaning, and a key with no default distinguishable from one defaulting to a value. <span class="path">packages/schema/test/config.registry.test.ts</span></div>
+</spec-task>
+
+<spec-task id="T-101">
+  <input type="checkbox">
+  <div><strong>Write the resolver's tests</strong> — origin reported per value, and an absent or malformed file yielding defaults rather than throwing, per <a href="./spec.html#NFR-001">NFR-001</a>. <span class="path">packages/schema/test/config.registry.test.ts</span></div>
+</spec-task>
+
+<spec-task id="T-110">
+  <input type="checkbox">
+  <div><strong>Declare the registry</strong> — the ten sections with their keys, types, descriptions and defaults, in the one package all three others depend on. <span class="path">packages/schema/src/config/registry.ts</span></div>
+</spec-task>
+
+<spec-task id="T-111">
+  <input type="checkbox">
+  <div><strong>Build the resolver</strong> — read once, return values with origin, fail safe on anything unreadable. <span class="path">packages/schema/src/config/resolve.ts</span></div>
+</spec-task>
+
+<spec-task id="T-112">
+  <input type="checkbox">
+  <div><strong>Export it and wire the build</strong> — a subpath consumers can import, and the bundler entry alongside it. <span class="path">packages/schema/src/config/index.ts</span></div>
+</spec-task>
+
+<spec-note>Closes <a href="./spec.html#FR-001">FR-001</a>, <a href="./spec.html#FR-002">FR-002</a>, <a href="./spec.html#FR-003">FR-003</a> and <a href="./spec.html#NFR-001">NFR-001</a>; evidences <a href="./spec.html#SC-001">SC-001</a>.</spec-note>
+
+
+<h2 id="phase-us2">Phase 2 · US2 — one answer per key</h2>
+
+<p>Each module keeps its existing tests green as it moves; those tests are the regression guard, not an
+afterthought.</p>
+
+<spec-task id="T-200">
+  <input type="checkbox">
+  <div><strong>Migrate the corpus reader first</strong> — it is the package furthest from the kernel, so it proves the hosting decision before anything depends on it. <span class="path">packages/corpus/src/config.ts</span></div>
+</spec-task>
+
+<spec-task id="T-201">
+  <input type="checkbox">
+  <div><strong>Migrate the dedicated config modules</strong> — git, models and decider become thin typed views over the resolver rather than parsers. <span class="path">packages/cli/src/config/</span></div>
+</spec-task>
+
+<spec-task id="T-202">
+  <input type="checkbox">
+  <div><strong>Migrate the kernel's config modules</strong> — enforce and change-risk, keeping their fail-safe behaviour exactly. <span class="path">packages/core/src/enforce/config.ts</span></div>
+</spec-task>
+
+<spec-task id="T-203">
+  <input type="checkbox">
+  <div><strong>Migrate the inline kernel readers</strong> — units, contracts and the execution guard, whose defaults are security-relevant and must not shift. <span class="path">packages/core/src/units/read.ts</span></div>
+</spec-task>
+
+<spec-task id="T-204">
+  <input type="checkbox">
+  <div><strong>Migrate the inline command readers</strong> — validate, verify-exec, owner, init and the identity reads. <span class="path">packages/cli/src/commands/</span></div>
+</spec-task>
+
+<spec-task id="T-205">
+  <input type="checkbox">
+  <div><strong>Record any disagreement found</strong> — where two readers differed about a key or default, resolve it deliberately and write the resolution into this file's change log, per <a href="./spec.html#FR-005">FR-005</a>. <span class="path">specs/086-config-canonical-reader/tasks.html</span></div>
+</spec-task>
+
+<spec-note>Closes <a href="./spec.html#FR-004">FR-004</a> and <a href="./spec.html#FR-005">FR-005</a>; evidences <a href="./spec.html#SC-002">SC-002</a>.</spec-note>
+
+
+<h2 id="phase-us3">Phase 3 · US3 — notice when the list falls behind</h2>
+
+<spec-task id="T-300">
+  <input type="checkbox">
+  <div><strong>Write the guard's counter-example first</strong> — a planted read of an undeclared key that must fail the check, so the guard is proven rather than asserted (<a href="./spec.html#SC-003">SC-003</a>). <span class="path">packages/schema/test/config.drift.test.ts</span></div>
+</spec-task>
+
+<spec-task id="T-301">
+  <input type="checkbox">
+  <div><strong>Build the completeness guard</strong> — scan the source for configuration access and fail on a key the registry does not declare, naming it and where it was read. <span class="path">packages/schema/test/config.drift.test.ts</span></div>
+</spec-task>
+
+<spec-task id="T-302">
+  <input type="checkbox">
+  <div><strong>File the phantom key for triage</strong> — the advertised key with no reader, surfaced for a decision rather than implemented or removed here. <span class="path">inbox.html</span></div>
+</spec-task>
+
+<spec-task id="T-303">
+  <input type="checkbox">
+  <div><strong>Confirm nothing regressed</strong> — the full suite and a whole-corpus validate, with any failure reconfirmed in isolation before it is called a flake. <span class="path">packages/</span></div>
+</spec-task>
+
+<spec-note>Closes <a href="./spec.html#FR-006">FR-006</a>, <a href="./spec.html#FR-007">FR-007</a> and <a href="./spec.html#FR-008">FR-008</a>; evidences <a href="./spec.html#SC-003">SC-003</a>.</spec-note>
+</section>
+
+
+<section id="changelog">
+<h2>Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-08-03">03 Aug 2026</time><span>Initial breakdown — 15 tasks across three phases. The registry and resolver are separated from the migrations so the new logic is reviewable on its own, and the corpus reader moves first because it is the package the hosting decision was made for.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  086-config-canonical-reader · Tasks · authored 03 Aug 2026
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>

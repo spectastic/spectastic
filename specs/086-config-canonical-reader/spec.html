@@ -1,0 +1,320 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
+<title>The canonical config reader · Specification</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Specification · 086-config-canonical-reader</p>
+  <h1>The canonical config reader</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    Sixteen readers, sixteen private opinions about what the defaults are, and no module in a position to say. Everything the tool wants to tell users about its own configuration waits on one place that knows.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>      <span><spec-status value="draft">Draft</spec-status></span>
+    <b>Spec ID</b>     <span>086-config-canonical-reader</span>
+    <b>Owner</b>       <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Reviewers</b>   <span>—</span>
+    <b>Created</b>     <span><time datetime="2026-08-03">03 Aug 2026</time></span>
+    <b>Principles</b><span><a href="../../principles.html">v1.9.0</a></span>
+    <b>Smallest demoable</b><span>One module that lists every configuration section and its default, with the readers taking their values from it.</span>
+    <b>Read time</b>   <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-budget words="1500" reqs="20" minutes="12"></spec-budget>
+
+  <spec-tldr>
+    <p>The tool's configuration defaults are not written down anywhere. They are sixteen inline fallback
+    expressions, each sitting beside its one consumer, so no module can enumerate them and nothing can tell a user
+    what the tool decided on their behalf. That blocks a published schema, a <code>config</code> command, a
+    documentation page and an annotated starter — all four are derivations of a list that does not exist. This
+    spec builds the list: <strong>one registry declaring every section, every key and every default as data</strong>,
+    living where all three packages can reach it, with every reader taking its values from it. Two findings from
+    surveying the ground are folded in: one advertised key has <strong>no reader at all</strong>, and a section
+    counted in the survey turned out not to be one — so the registry ships with a drift guard, because a list
+    claiming to be complete and quietly not is worse than no list.</p>
+  </spec-tldr>
+
+  <dl class="invest">
+    <dt><span class="letter">I</span> Independent</dt> <dd>Depends on no other spec. It is the prerequisite three others wait on.</dd>
+    <dt><span class="letter">N</span> Negotiable</dt>  <dd>Fixes that one registry exists and that readers use it; the module's API and the migration's ordering defer to the design.</dd>
+    <dt><span class="letter">V</span> Valuable</dt>    <dd>Unlocks <a href="#SC-001">SC-001</a> — the defaults become enumerable, which is what every downstream discoverability surface reads.</dd>
+    <dt><span class="letter">E</span> Estimable</dt>   <dd>The sections are enumerated, the call sites counted, and the package that must host it is settled by the dependency graph.</dd>
+    <dt><span class="letter">S</span> Small</dt>       <dd>Borderline. One module is small; sixteen migrations across three packages is not. Held together because a half-migrated config has two sources of truth, which is the defect being closed.</dd>
+    <dt><span class="letter">T</span> Testable</dt>    <dd>Every requirement observable: the registry enumerates, the readers agree, the guard fails on an undeclared key, behaviour is unchanged.</dd>
+  </dl>
+
+  <spec-audience-map>
+    <dl>
+      <dt>Exec / PM</dt>   <dd>§<a href="#context">Context</a>, §<a href="#scenarios">User scenarios</a>, §<a href="#success">Success criteria</a>.</dd>
+      <dt>Reviewer</dt>    <dd>§<a href="#requirements">Requirements</a>, §<a href="#assumptions">Assumptions</a>, §<a href="#questions">Open questions</a>.</dd>
+      <dt>Implementer</dt> <dd>§<a href="#requirements">Requirements</a>, §<a href="#data">Data model</a>, §<a href="#conformance">Conformance index</a>.</dd>
+    </dl>
+  </spec-audience-map>
+</header>
+
+
+<section id="context">
+<h2>1 · Context</h2>
+
+<p>The <a href="../../docs/discoverable-defaults-considerations.html">discoverable-defaults survey</a> proposed that
+the tool be opinionated, not dogmatic, and always discoverable, and found the third clause failing across the
+board: ten configuration sections against five declared in this project's own file, no shape validation, no mention
+in <code>--help</code>, no <code>config</code> command, no documentation page. A misspelt key does nothing at all,
+silently.</p>
+
+<p>Its first decision is the one this spec builds, and it reordered the obvious work. The tempting first move is to
+write the defaults down — generate an annotated config, or a page, or a schema. None of those is available,
+because <spec-newthought>the defaults are not data anywhere.</spec-newthought> Sixteen call sites read the
+configuration file independently, each reaching for its own key and supplying its own fallback inline. Nothing
+aggregates them. A generator would therefore be a second hand-written copy of knowledge held in sixteen places —
+a third source of truth, drifting from the other two.</p>
+
+<p>Surveying the ground for this spec produced two corrections worth stating up front, because they are what the
+registry is for. One advertised key — documented in the README and honoured by a command's markdown — has
+<strong>no reader in the kernel at all</strong>; its only trace in the packages is a test asserting the markdown
+mentions it. And one section the survey counted turned out not to be a configuration section. Both were invisible
+until something tried to enumerate the whole surface, which is precisely the argument for enumerating it.</p>
+
+<p>Users: every downstream discoverability surface, which cannot be built before this; and the maintainer, for whom
+"what is the default for this?" currently means reading source.</p>
+</section>
+
+
+<section id="scenarios">
+<h2>2 · User scenarios &amp; testing</h2>
+
+<p>Each story <strong>MUST</strong> be independently testable: if you implemented only US1, you would
+still have a viable MVP.</p>
+
+<h3 id="US1">US1 · Ask the tool what its defaults are <spec-pill>P1</spec-pill></h3>
+<p>As a <strong>surface that needs to describe the configuration</strong> — a schema generator, a command, a
+documentation page — I want to <strong>read every section, key and default from one place</strong> so that
+<strong>what I describe cannot disagree with what the tool does</strong>.</p>
+<p><em>Acceptance:</em> A single import yields every configuration section, its keys, each key's default, and
+whether it has one; nothing needs to know which module consumes a given key in order to describe it.</p>
+
+<h3 id="US2">US2 · One answer per key, not sixteen <spec-pill>P1</spec-pill></h3>
+<p>As a <strong>maintainer</strong>, I want <strong>every reader to resolve its values through the registry</strong>
+so that <strong>two parts of the tool cannot disagree about a default, and changing one changes it everywhere</strong>.</p>
+<p><em>Acceptance:</em> No module parses the configuration file for itself; each obtains typed values from the
+registry, and the existing behaviour of every migrated reader is unchanged unless a difference is deliberately
+resolved and recorded.</p>
+
+<h3 id="US3">US3 · Notice when the list falls behind <spec-pill>P2</spec-pill></h3>
+<p>As a <strong>reviewer</strong>, I want <strong>a check that fails when the code reads a key the registry does not
+declare</strong> so that <strong>a list that claims to be complete stays complete</strong>.</p>
+<p><em>Acceptance:</em> Introducing a read of an undeclared configuration key fails the check, naming the key and
+where it was read.</p>
+
+<h3>Edge cases</h3>
+<ul>
+  <li>An advertised key with no reader. Surfaced, not silently adopted: declaring it would make the registry assert a capability that does not exist.</li>
+  <li>A key whose default differs between two current readers. A real possibility with sixteen independent fallbacks; the difference must be resolved deliberately and recorded, never averaged away.</li>
+  <li>A malformed or absent file. Every reader today fails safe to its default; that must survive migration exactly, since several of those defaults are security-relevant.</li>
+  <li>A key with no meaningful default — an identity, a list of waivers. The registry must distinguish "defaults to this" from "has no default", or a generated document will invent values.</li>
+</ul>
+</section>
+
+
+<section id="requirements">
+<h2>3 · Requirements</h2>
+
+<p>Conformance keywords (<spec-rule>MUST</spec-rule>, <spec-rule level="should">SHOULD</spec-rule>,
+<spec-rule level="may">MAY</spec-rule>) follow RFC 2119.</p>
+
+<h3>Functional</h3>
+
+<spec-requirement id="FR-001" priority="must">
+<p>A single registry <spec-rule>MUST</spec-rule> declare every configuration section, its keys, each key's type,
+and each key's default value as <em>data</em> — enumerable by a consumer that knows nothing about which module
+uses a given key.</p>
+<details><summary>Rationale</summary><p>Enumerability is the whole point. A registry expressed as code paths
+rather than data can be read by a human and by nothing else, which leaves every downstream surface hand-written.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-002" priority="must">
+<p>The registry <spec-rule>MUST</spec-rule> distinguish a key that has a default from one that has none, and
+<spec-rule>MUST NOT</spec-rule> represent the absence of a default as a default value.</p>
+<details><summary>Rationale</summary><p>A project identity and a waiver list have no sensible default. Rendering
+them as empty strings or empty arrays in a generated document would advertise a value the tool does not
+actually assume.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-003" priority="must">
+<p>The registry <spec-rule>MUST</spec-rule> live in the package that every other package already depends on, so
+that the corpus, kernel and command-line packages can all read it without creating a new dependency edge.</p>
+<details><summary>Rationale</summary><p>A one-way package boundary is machine-enforced here: the corpus package
+must not import the kernel. A registry the corpus cannot reach would immediately need a second copy, which is the
+defect this spec exists to remove.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-004" priority="must">
+<p>Every module that currently reads the configuration file <spec-rule>MUST</spec-rule> obtain its values through
+the registry, and <spec-rule>MUST NOT</spec-rule> parse the file for itself.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-005" priority="must">
+<p>Migration <spec-rule>MUST NOT</spec-rule> change any reader's observable behaviour; where two readers currently
+disagree about a key or its default, the disagreement <spec-rule>MUST</spec-rule> be resolved deliberately and the
+resolution recorded, never silently averaged.</p>
+<details><summary>Rationale</summary><p>The one thing a refactor of this shape must not do is quietly change what
+the tool does. Several current fallbacks are security-relevant defaults that fail safe.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-006" priority="must">
+<p>A check <spec-rule>MUST</spec-rule> fail when the codebase reads a configuration key the registry does not
+declare, naming the key and its location.</p>
+<details><summary>Rationale</summary><p>The registry's value is entirely in being trusted as complete. Without a
+guard it is complete on the day it ships and decays from the next commit — and a list believed complete but
+quietly stale is worse than no list, because downstream surfaces present it with confidence.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-007" priority="must">
+<p>A configuration key that is advertised to users but has no reader <spec-rule>MUST NOT</spec-rule> be declared as
+though it were implemented; it <spec-rule>MUST</spec-rule> be surfaced for a decision instead.</p>
+<details><summary>Rationale</summary><p>At least one such key exists. Declaring it would make the registry — and
+every document generated from it — assert a capability the tool does not have, which is the discoverability
+failure inverted rather than fixed.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-008" priority="should">
+<p>The registry <spec-rule level="should">SHOULD</spec-rule> record, per key, a one-line description suitable for
+presentation to a user.</p>
+<details><summary>Rationale</summary><p>Every downstream surface needs prose per key. Held with the key rather
+than in each surface, it is written once and cannot diverge between the schema and the command.</p></details>
+</spec-requirement>
+
+<h3>Non-functional</h3>
+
+<spec-requirement id="NFR-001" priority="must">
+<p>Resolution <spec-rule>MUST</spec-rule> be deterministic and side-effect free apart from reading the file: the
+same file and working directory yield identical results across runs, and a malformed or absent file
+<spec-rule>MUST</spec-rule> yield defaults rather than an exception in 100% of cases.</p>
+</spec-requirement>
+
+<spec-requirement id="NFR-002" priority="should">
+<p>Reading and resolving the whole configuration <spec-rule level="should">SHOULD</spec-rule> complete in under
+50 ms, so that a command paying this cost at startup is not measurably slower.</p>
+</spec-requirement>
+
+<h3>Out of scope (deferred to other slices)</h3>
+<spec-out-of-scope>
+  <ul>
+    <li defer-to="TBD-config-json-schema">Generating and publishing a schema from the registry, and writing the reference into new configurations.</li>
+    <li defer-to="TBD-config-explain-command">The command that prints effective values with provenance. It reads this registry; it is not built here.</li>
+    <li defer-to="TBD-config-jsonc-input">Accepting comments in a user's configuration. Cheap once one reader exists, and a separate decision.</li>
+    <li defer-to="TBD-config-phantom-key">What to do about the advertised key with no reader — implement it, or withdraw the advertisement. This spec surfaces it; choosing is a change to a shipped promise.</li>
+  </ul>
+</spec-out-of-scope>
+</section>
+
+
+<section id="data">
+<h2>4 · Data model</h2>
+
+<p>One new concept, and one existing thing given a shape it never had.</p>
+
+<h3>Entities</h3>
+<dl>
+  <dt>Configuration registry</dt>
+  <dd>The complete declared surface: every section, the keys within it, and for each key its type, whether it has a
+  default, and what that default is. It is data, not behaviour — its defining property is that a consumer can walk
+  it without knowing what any key is for. It is authoritative: a key absent from the registry is a key the tool
+  does not have, which is what makes the drift guard meaningful.</dd>
+  <dt>Resolved configuration</dt>
+  <dd>What a reader gets back: for each key, the value in force and whether it came from the file or from the
+  default. Carrying the origin alongside the value is what later lets a user be told where a setting came from;
+  discarding it, as the current inline fallbacks do, makes that question unanswerable after the fact.</dd>
+</dl>
+
+<spec-note>
+<p>The invariant worth stating: the registry describes the tool's configuration surface, and the file describes one
+project's choices within it. Anything in the file that the registry does not know about is unrecognised — not
+merely unused. That distinction is the whole basis for ever reporting a misspelt key, and it is why the registry
+must be complete before anything is built on top of it.</p>
+</spec-note>
+</section>
+
+
+<section id="success">
+<h2>5 · Success criteria</h2>
+
+<p>Technology-agnostic, measurable outcomes. These are how we know it worked.</p>
+
+<spec-requirement id="SC-001" priority="must">
+<p>Every configuration section and key the tool reads is obtainable from one enumeration — 100% of them, with no
+consumer needing to know which module uses which key.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-002" priority="must">
+<p>0 modules parse the configuration file for themselves, and the full test suite passes unchanged apart from
+tests deliberately updated for a recorded behaviour resolution.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-003" priority="must">
+<p>Adding a read of an undeclared configuration key fails the guard, and the failure names the key — demonstrated
+against a deliberately planted example rather than argued.</p>
+</spec-requirement>
+</section>
+
+
+<section id="assumptions">
+<h2>6 · Assumptions</h2>
+
+<spec-assumption>
+<p>The sixteen readers agree about the keys they share. Taken as true and explicitly not verified in advance —
+finding out is part of the migration, and <a href="#FR-005">FR-005</a> exists because the assumption may not
+hold.</p>
+</spec-assumption>
+
+<spec-assumption>
+<p>Reading the whole configuration where a module previously read one section is affordable. The file is small and
+read once; if that proves wrong the registry can resolve lazily without changing its shape.</p>
+</spec-assumption>
+</section>
+
+
+<section id="questions">
+<h2>7 · Open questions</h2>
+<spec-questions>
+<p>None outstanding. The scope — a complete registry with the full migration rather than a partial one — was
+anchored in the interview, and the package that must host it follows from the enforced dependency boundary rather
+than from preference.</p>
+</spec-questions>
+</section>
+
+
+<section id="conformance">
+<h2>8 · Conformance index</h2>
+<p>Auto-built from every <code>&lt;spec-requirement&gt;</code> in this document.</p>
+<spec-conformance></spec-conformance>
+</section>
+
+
+<section id="changelog">
+<h2>9 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-08-03">03 Aug 2026</time><span>Initial draft. Drains <code>TBD-config-canonical-reader</code>, the prerequisite the discoverable-defaults survey identified for its other three slices. Scoped at interview to a complete registry <em>and</em> the full migration of all sixteen readers, on the reasoning that a half-migrated configuration has two sources of truth — the defect being closed. Surveying the ground surfaced an advertised key with no reader and a section that was not one, both folded in as requirements rather than left as notes.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  086-config-canonical-reader · The canonical config reader · authored 03 Aug 2026
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>
