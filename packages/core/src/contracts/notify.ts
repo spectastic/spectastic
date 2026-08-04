@@ -14,6 +14,7 @@
  */
 
 import { contractResourceUri } from '@spectastic/schema/project';
+import { parseConfigText } from '@spectastic/schema/config';
 
 /**
  * How a contract changed. Deliberately a two-value floor rather than an open
@@ -120,7 +121,9 @@ export function readConsumes(cwd: string, readFile: (path: string) => string): r
     return [];
   }
   try {
-    const parsed: unknown = JSON.parse(raw);
+    // Parsed through the canonical module (086 FR-004); the IO stays on the
+    // injected port, which is the seam this module is built on.
+    const parsed: unknown = parseConfigText(raw);
     if (typeof parsed !== 'object' || parsed === null) return [];
     const consumes = (parsed as { consumes?: unknown }).consumes;
     if (!Array.isArray(consumes)) return [];

@@ -1,4 +1,5 @@
 import { existsSync, readFileSync } from 'node:fs';
+import { readConfigFile } from '@spectastic/schema/config';
 import { basename, join } from 'node:path';
 import { setIfAbsent } from '@spectastic/core/config/edit';
 import { detectTooling } from '@spectastic/core/enforce/detect';
@@ -82,7 +83,7 @@ function writeCorpusConfig(cwd: string): string | null {
 /** The `project` key exactly as on disk, for the pre-shell-out guard above. */
 function readProjectKey(cwd: string): unknown {
   try {
-    const parsed: unknown = JSON.parse(readFileSync(join(cwd, 'spectastic.json'), 'utf8'));
+    const parsed: unknown = readConfigFile(cwd);
     return typeof parsed === 'object' && parsed !== null ? (parsed as Record<string, unknown>).project : undefined;
   } catch {
     return undefined;

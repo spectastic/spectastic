@@ -7,12 +7,17 @@
  * from" has been unanswerable. Carrying it now is what makes the deferred
  * `config` command a formatting exercise rather than a re-derivation.
  *
- * Fails safe, always. Absent file, unreadable file, malformed JSON, a section
- * that is not an object — every one of those yields defaults rather than an
- * exception (NFR-001). That is not politeness: several of these defaults are
- * security-relevant and fail *closed* (command execution off, git automation
- * off), so a resolver that threw would break the tool at exactly the moment the
- * safe answer mattered most.
+ * Fails safe by default. An absent file, an unreadable one, or a section that
+ * is not an object yields defaults rather than an exception (NFR-001) — not
+ * politeness: several of these defaults are security-relevant and fail *closed*
+ * (command execution off, git automation off), so a resolver that threw would
+ * break the tool exactly when the safe answer mattered most.
+ *
+ * Malformed JSON is the one case with two answers, because the readers
+ * genuinely disagreed and both were right for their own callers. See
+ * `MalformedPolicy` — surfacing that disagreement in one place, rather than
+ * leaving it implicit across sixteen private opinions, is a large part of what
+ * this module is for.
  */
 
 import { readFileSync } from 'node:fs';
@@ -41,18 +46,75 @@ export interface ResolvedValue<T = unknown> {
   origin: Origin;
 }
 
-/** The raw parsed file, or `{}` when there is nothing usable to read. */
-export function readConfigFile(cwd: string): Record<string, unknown> {
+/**
+ * What to do when the file exists but is not valid JSON.
+ *
+ * Two policies, because the readers had divided this labour between them —
+ * implicitly (086 FR-005). Some raise a loud error on a malformed file (git,
+ * models, decider, corpus); the rest fall back to defaults, and the enforce
+ * reader says why in as many words: *"the git config reader owns the loud error
+ * for that."*
+ *
+ * So they were never in conflict. They were coordinating, on an assumption
+ * nothing recorded and nothing checks — that a loud reader always runs first.
+ * That holds today and would fail silently the moment a command resolved only
+ * enforcement, at which point a typo'd file would take effect as defaults with
+ * no complaint.
+ *
+ * Making the division a named argument does not fix the assumption. It does put
+ * it somewhere a reader can see it, instead of leaving it distributed across
+ * sixteen private opinions where comparing them required reading all sixteen.
+ */
+export type MalformedPolicy = 'default' | 'throw';
+
+/** Thrown only when a caller asked for `throw` and the file is unparseable. */
+export class ConfigParseError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'ConfigParseError';
+  }
+}
+
+/**
+ * Parse configuration text that a caller already has.
+ *
+ * Exists because two legitimate callers cannot use the filesystem reader and
+ * should still not hand-roll the parse (086 FR-004): the contract notifier
+ * takes its IO as an injected port, so reaching for `readFileSync` here would
+ * break the seam it is built on; and the config *writer* does read-modify-write
+ * and needs the original text to preserve a user's formatting.
+ *
+ * Same policy semantics as `readConfigFile`, so the two cannot drift on what a
+ * malformed file means.
+ */
+export function parseConfigText(raw: string, onMalformed: MalformedPolicy = 'default'): Record<string, unknown> {
   try {
-    const parsed: unknown = JSON.parse(readFileSync(join(cwd, 'spectastic.json'), 'utf8'));
+    const parsed: unknown = JSON.parse(raw);
     return typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)
       ? (parsed as Record<string, unknown>)
       : {};
-  } catch {
-    // Absent, unreadable, or malformed. All three mean "the project said
-    // nothing", which is the safe reading (NFR-001).
+  } catch (err) {
+    if (onMalformed === 'throw') {
+      throw new ConfigParseError(`spectastic.json is not valid JSON — ${(err as Error).message}`);
+    }
     return {};
   }
+}
+
+/** The raw parsed file, or `{}` when there is nothing usable to read. */
+export function readConfigFile(cwd: string, onMalformed: MalformedPolicy = 'default'): Record<string, unknown> {
+  let raw: string;
+  try {
+    raw = readFileSync(join(cwd, 'spectastic.json'), 'utf8');
+  } catch {
+    // Absent or unreadable means "the project said nothing" under both
+    // policies — there is no typo to report.
+    return {};
+  }
+
+  // Delegates, so there is exactly one place in the repository that turns
+  // configuration text into an object.
+  return parseConfigText(raw, onMalformed);
 }
 
 function resolveOne(raw: unknown, descriptor: KeyDescriptor): ResolvedValue {

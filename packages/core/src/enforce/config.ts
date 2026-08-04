@@ -13,8 +13,7 @@
  * simply refuses to trust anything it can't fully parse.
  */
 
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { readConfigFile } from '@spectastic/schema/config';
 import type { EnforcementCategory, EnforceWaiver } from './types.js';
 
 /** Max horizon for a waiver's `until` (FR-011): a waiver can't be written to never expire. */
@@ -92,18 +91,9 @@ export interface RawWaiver {
  * broken entries (a missing field) that `loadWaivers` would silently drop.
  */
 export function readRawWaivers(cwd: string): RawWaiver[] {
-  let raw: string;
-  try {
-    raw = readFileSync(join(cwd, 'spectastic.json'), 'utf8');
-  } catch {
-    return [];
-  }
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw) as unknown;
-  } catch {
-    return []; // invalid JSON: the git config reader owns the loud error for that
-  }
+  // Reads through the canonical reader (086 FR-004). Default policy: a
+  // malformed file yields defaults here, because a loud reader owns that error.
+  const parsed: unknown = readConfigFile(cwd);
   if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) return [];
   const enforce = (parsed as Record<string, unknown>).enforce;
   if (enforce === null || typeof enforce !== 'object' || Array.isArray(enforce)) return [];

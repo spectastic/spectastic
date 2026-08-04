@@ -17,7 +17,8 @@
  */
 
 import { existsSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { readConfigFile } from '@spectastic/schema/config';
+import { dirname, join } from 'node:path';
 import type { Finding } from '@spectastic/schema';
 import { parseResourceUri } from '@spectastic/schema/project';
 import { selfUnitCoordinate } from './read.js';
@@ -30,7 +31,7 @@ function readRawConsumes(cwd: string): string[] {
   const path = join(cwd, CONFIG_FILE);
   if (!existsSync(path)) return [];
   try {
-    const parsed: unknown = JSON.parse(readFileSync(path, 'utf8'));
+    const parsed: unknown = readConfigFile(dirname(path));
     if (typeof parsed !== 'object' || parsed === null) return [];
     const consumes = (parsed as { consumes?: unknown }).consumes;
     if (!Array.isArray(consumes)) return [];

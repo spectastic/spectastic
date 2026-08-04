@@ -5,7 +5,7 @@
  * checkpoint-default + the `medium`/`human` fallbacks apply (core resolveDecider).
  */
 
-import { readFileSync } from 'node:fs';
+import { readConfigFile } from '@spectastic/schema/config';
 import { join } from 'node:path';
 import type { DeciderRole, EffortLevel, RequestedEffort } from '@spectastic/core/decider';
 
@@ -33,18 +33,13 @@ const VALID_EFFORTS: readonly RequestedEffort[] = ['low', 'medium', 'high', 'xhi
  * out-of-range value throws loudly.
  */
 export function loadDeciderConfig(cwd: string): DeciderFileConfig {
-  let raw: string;
-  try {
-    raw = readFileSync(join(cwd, 'spectastic.json'), 'utf8');
-  } catch {
-    return {};
-  }
-
+  // Reads through the canonical reader (086 FR-004). `'throw'` keeps this
+  // module's loud-error policy, which the quieter readers depend on.
   let parsed: unknown;
   try {
-    parsed = JSON.parse(raw) as unknown;
+    parsed = readConfigFile(cwd, 'throw');
   } catch (err) {
-    throw new DeciderConfigError(`spectastic.json is not valid JSON — ${(err as Error).message}`);
+    throw new DeciderConfigError((err as Error).message);
   }
 
   const section = (parsed as { decider?: unknown }).decider;

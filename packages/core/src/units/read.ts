@@ -12,6 +12,7 @@
  */
 
 import { readFileSync } from 'node:fs';
+import { parseConfigText, readConfigFile } from '@spectastic/schema/config';
 import { join } from 'node:path';
 import { resourceUri } from '@spectastic/schema/project';
 
@@ -24,7 +25,7 @@ export function readDeclaredEdges(cwd: string): string[] {
     return [];
   }
   try {
-    const parsed: unknown = JSON.parse(raw);
+    const parsed: unknown = parseConfigText(raw);
     if (typeof parsed !== 'object' || parsed === null) return [];
     const consumes = (parsed as { consumes?: unknown }).consumes;
     if (!Array.isArray(consumes)) return [];
@@ -37,7 +38,7 @@ export function readDeclaredEdges(cwd: string): string[] {
 /** The `project` identity exactly as configured; `null` when absent or malformed. */
 function readProject(cwd: string): string | null {
   try {
-    const parsed: unknown = JSON.parse(readFileSync(join(cwd, 'spectastic.json'), 'utf8'));
+    const parsed: unknown = readConfigFile(cwd);
     if (typeof parsed !== 'object' || parsed === null) return null;
     const project = (parsed as { project?: unknown }).project;
     return typeof project === 'string' && project.trim() !== '' ? project.trim() : null;

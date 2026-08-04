@@ -11,7 +11,7 @@
  * sibling owns the writer half.
  */
 
-import { readFileSync } from 'node:fs';
+import { readConfigFile } from '@spectastic/schema/config';
 import { join } from 'node:path';
 import type { GitAuto } from './index.js';
 
@@ -43,18 +43,13 @@ export const DEFAULT_GIT_CONFIG: GitConfig = { auto: 'off', trailers: 'off' };
  * throws loudly (a config typo should fail fast, not silently disable the layer).
  */
 export function loadGitConfig(cwd: string): GitConfig {
-  let raw: string;
-  try {
-    raw = readFileSync(join(cwd, 'spectastic.json'), 'utf8');
-  } catch {
-    return { ...DEFAULT_GIT_CONFIG };
-  }
-
+  // Reads through the canonical reader (086 FR-004). `'throw'` keeps this
+  // module's loud-error policy, which the quieter readers depend on.
   let parsed: unknown;
   try {
-    parsed = JSON.parse(raw) as unknown;
+    parsed = readConfigFile(cwd, 'throw');
   } catch (err) {
-    throw new GitConfigError(`spectastic.json is not valid JSON — ${(err as Error).message}`);
+    throw new GitConfigError((err as Error).message);
   }
 
   if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {

@@ -1,4 +1,5 @@
 import type { Command } from 'commander';
+import { readConfigFile } from '@spectastic/schema/config';
 
 /**
  * Register `verify:exec` (spec 085-verify-command-execution).
@@ -51,7 +52,7 @@ export function registerVerifyExec(program: Command): void {
       const cfgPath = join(path, 'spectastic.json');
       if (existsSync(cfgPath)) {
         try {
-          const cfg: unknown = JSON.parse(readFileSync(cfgPath, 'utf8'));
+          const cfg: unknown = readConfigFile(path);
           consented = (cfg as { verify?: { executeCapturedCommands?: unknown } }).verify?.executeCapturedCommands === true;
         } catch {
           // A malformed config is not consent.
@@ -72,12 +73,20 @@ export function registerVerifyExec(program: Command): void {
           .trim();
         return v === undefined || v === '' ? undefined : v;
       };
-      const captured = {
-        run: field('spec-run'),
-        exercise: field('spec-exercise'),
-        tests: field('spec-tests'),
-        verified: /<spec-runblock[^>]*data-status="suggested"/.test(html) ? false : undefined,
-      };
+      // Built by assignment rather than as a literal: under
+      // `exactOptionalPropertyTypes` an optional property must be *absent*, not
+      // present-and-undefined, and a literal cannot express that.
+      // Structural, and local: CapturedRun is not reachable as a type from this
+      // package (core exports no ./types subpath), and the call site below
+      // checks it against the real one anyway.
+      const captured: { run?: string; exercise?: string; tests?: string; verified?: boolean } = {};
+      const run = field('spec-run');
+      if (run !== undefined) captured.run = run;
+      const exercise = field('spec-exercise');
+      if (exercise !== undefined) captured.exercise = exercise;
+      const tests = field('spec-tests');
+      if (tests !== undefined) captured.tests = tests;
+      if (/<spec-runblock[^>]*data-status="suggested"/.test(html)) captured.verified = false;
 
       const runner = (command: string, o: { cwd: string; timeoutMs: number }): Promise<{ exitCode: number; output: string; timedOut: boolean }> =>
         new Promise((resolveRun) => {

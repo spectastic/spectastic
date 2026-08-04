@@ -23,8 +23,11 @@ export {
 export {
   configValue,
   loadConfig,
+  ConfigParseError,
+  parseConfigText,
   readConfigFile,
   resolveConfig,
+  type MalformedPolicy,
   type Origin,
   type ResolvedSection,
   type ResolvedValue,
