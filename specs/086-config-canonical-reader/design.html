@@ -1,0 +1,271 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
+<title>The canonical config reader · Design</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Design · 086-config-canonical-reader</p>
+  <h1>The canonical config reader</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    The package boundary decides where this lives, the existing readers decide what it must preserve, and a guard decides whether it stays true. Very little of it is a choice.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>      <span><spec-status value="draft">Draft</spec-status></span>
+    <b>Spec</b>        <span><a href="./spec.html">086-config-canonical-reader</a></span>
+    <b>Owner</b>       <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Created</b>     <span><time datetime="2026-08-03">03 Aug 2026</time></span>
+    <b>Principles</b>  <span><a href="../../principles.html">v1.9.0</a></span>
+    <b>Architecture</b><span>A declared registry plus a thin resolver in the shared floor package; every consumer reads through it. No new dependency edge.</span>
+    <b>Coverage</b>    <span>Diff-aware: the registry and resolver covered directly; each migrated reader keeps its existing tests as the regression guard.</span>
+    <b>Read time</b>   <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-tldr>
+    <p>Where this lives is settled by a machine-enforced boundary rather than taste: the corpus package must not
+    import the kernel, so <code>@spectastic/schema</code> — the only package all three already depend on — is the
+    single legal home. The registry is a plain data structure walked by consumers that know nothing about any
+    key's meaning; the resolver returns values <em>with their origin</em>, since discarding provenance is what
+    makes "where did this come from" unanswerable today. Migration keeps each reader's existing tests as its own
+    regression guard, and the drift guard is a test that greps the source for configuration access and fails on
+    anything the registry does not declare.</p>
+  </spec-tldr>
+</header>
+
+
+<section id="principles">
+<h2>1 · Principles check</h2>
+
+<div style="overflow-x:auto;">
+<table>
+  <thead><tr><th>Principle</th><th>Verdict</th><th>Note</th></tr></thead>
+  <tbody>
+    <tr><td>P-8 · Guarantees in kernel or CI</td><td>OK</td><td>The registry is data in the kernel floor and the completeness guard is a test. Neither depends on anyone remembering a convention — which matters, since the phantom key in <a href="./spec.html#FR-007">FR-007</a> is precisely a promise that lived only in markdown.</td></tr>
+    <tr><td>P-14 · Library-first boundaries</td><td>OK</td><td>The textbook case: three packages want the same deterministic logic. The boundary question is not "should this be shared" but "which package may host it", answered in <a href="#D-001">D-001</a>.</td></tr>
+    <tr><td>P-7 · Done means verified</td><td>OK</td><td><a href="./spec.html#SC-003">SC-003</a> requires the guard be demonstrated against a planted undeclared key, not argued from its implementation.</td></tr>
+    <tr><td>P-6 · Draft loose, ratified locked</td><td>OK</td><td>No shipped requirement changes. The phantom key is surfaced for a decision rather than quietly implemented or quietly removed.</td></tr>
+  </tbody>
+</table>
+</div>
+</section>
+
+
+<section id="context">
+<h2>2 · Technical context</h2>
+
+<div style="overflow-x:auto;">
+<table>
+  <tbody>
+    <tr><th>Language</th><td>TypeScript, strict, with <code>noUncheckedIndexedAccess</code> and <code>exactOptionalPropertyTypes</code></td></tr>
+    <tr><th>Packages touched</th><td><code>@spectastic/schema</code> (new module), <code>@spectastic/core</code>, <code>@spectastic/cli</code>, <code>@spectastic/corpus</code></td></tr>
+    <tr><th>Dependency graph</th><td><code>corpus → schema</code>; <code>core → corpus, schema</code>; <code>cli → core, corpus, schema</code></td></tr>
+    <tr><th>Enforced rule</th><td><code>no-corpus-to-core</code>, checked by dependency-cruiser in CI</td></tr>
+    <tr><th>New dependencies</th><td>None</td></tr>
+  </tbody>
+</table>
+</div>
+</section>
+
+
+<section id="contracts">
+<h2>3 · Data model &amp; contracts</h2>
+
+<p><spec-contract shape="none"></spec-contract> Nothing crosses a repository boundary. The registry is an internal
+module; the configuration file's shape is a user-facing surface, but this spec only describes what already exists
+rather than changing it — the published schema that would make it a contract is deferred.</p>
+
+<p>The registry's physical shape is a frozen record of sections, each a record of key descriptors. A descriptor
+carries a type tag, an optional description, and either a default value or an explicit marker that there is none —
+<a href="./spec.html#FR-002">FR-002</a>'s distinction, represented rather than implied, because
+<code>undefined</code> would be ambiguous between "no default" and "defaults to undefined".</p>
+</section>
+
+
+<section id="grounding">
+<h2>4 · Grounding &amp; evidence</h2>
+
+<div style="overflow-x:auto;">
+<table>
+  <thead><tr><th>Claim</th><th>Source</th><th>Status</th><th>Finding</th></tr></thead>
+  <tbody>
+    <tr><td>The registry can live in <code>@spectastic/core</code></td><td><code>package.json</code> of each package; <code>.dependency-cruiser</code> rule <code>no-corpus-to-core</code></td><td>verified</td><td><strong>False.</strong> <code>@spectastic/corpus</code> depends only on <code>@spectastic/schema</code>, and a corpus→core edge is a CI failure by design (064). Since <code>corpus/src/config.ts</code> reads the configuration file, core is not a legal home. Schema is the only package all three already depend on.</td></tr>
+    <tr><td>The survey's section count was right</td><td>Reader-by-reader trace</td><td>verified</td><td>Off by one, downward. <code>run</code> is not a configuration section — <code>commands/run.ts</code> resolves the <em>decider</em> configuration. The real surface is <strong>10 sections</strong>: <code>project</code>, <code>git</code>, <code>models</code>, <code>decider</code>, <code>enforce</code>, <code>validate</code>, <code>verify</code>, <code>corpus</code>, <code>consumes</code>, <code>changeRisk</code>.</td></tr>
+    <tr><td><code>design.stackInterview</code> is a configuration key</td><td><code>grep</code> across <code>packages/</code></td><td>verified</td><td><strong>It has no reader.</strong> Its only appearance in the packages is a test asserting the design command's <em>markdown</em> mentions it. Advertised in the README, honoured by prose, implemented nowhere — <a href="./spec.html#FR-007">FR-007</a> exists for this, and it is a textbook instance of the failure T-009 records.</td></tr>
+    <tr><td>Every reader fails safe on a malformed file</td><td><code>git/config.ts</code>, <code>corpus/config.ts</code>, <code>execcheck/guard.ts</code>, <code>units/read.ts</code></td><td>verified</td><td>Consistently, and deliberately: absent or malformed yields the default, and several of those defaults are security-relevant (execution consent defaults to off, git automation to off). NFR-001 pins this because a resolver that threw would change behaviour at exactly the wrong moment.</td></tr>
+    <tr><td>Defaults are recoverable from the code</td><td>The dedicated config modules</td><td>verified</td><td>Where a module exists they are explicit — <code>DEFAULT_GIT_CONFIG = { auto: 'off', trailers: 'off' }</code>, <code>DEFAULT_CORPUS_ROOT = 'knowledge'</code>. Where none exists they are inline, and the registry is where they stop being invisible.</td></tr>
+  </tbody>
+</table>
+</div>
+</section>
+
+
+<section id="approach">
+<h2>5 · Approach</h2>
+
+<ol>
+  <li><strong>Declare the registry</strong> in the shared floor package: ten sections, their keys, types, descriptions and defaults, with "no default" represented explicitly.</li>
+  <li><strong>Add a resolver</strong> that reads the file once and returns values with their origin, failing safe to defaults on anything unreadable.</li>
+  <li><strong>Migrate the readers</strong>, one module at a time, keeping each module's existing tests green as it moves. Where the file is read for a section that has a dedicated config module, that module becomes a thin typed view over the resolver rather than a parser.</li>
+  <li><strong>Add the drift guard</strong> — a test that scans the source for configuration access and fails on a key the registry does not declare — and prove it against a planted key.</li>
+  <li><strong>Surface the phantom key</strong> as a triage card rather than resolving it here.</li>
+</ol>
+
+<p>Migration order is deliberate: the modules with a dedicated config file first, because they already have the
+shape and the tests, then the inline readers, which are the ones most likely to disagree with each other.</p>
+</section>
+
+
+<section id="alternatives">
+<h2>6 · Alternatives considered</h2>
+
+<spec-matrix target="D-002">
+  <table>
+    <thead><tr><th>How the registry is expressed</th><th>Enumerable</th><th>Types stay strict</th><th>Cost</th><th>Score</th></tr></thead>
+    <tbody>
+      <tr data-winner><td><strong>Plain frozen data, types derived from it</strong></td><td>Yes</td><td>Yes — the type follows the data</td><td>Low</td><td>9/10</td></tr>
+      <tr><td>Types first, defaults declared alongside</td><td>Yes, if kept in step</td><td>Yes</td><td>Medium — two things to keep aligned</td><td>6/10</td></tr>
+      <tr><td>A JSON Schema as the source of truth</td><td>Yes</td><td>Needs generation to reach TypeScript</td><td>High — a build step, now</td><td>4/10</td></tr>
+      <tr><td>Decorators or a class registry</td><td>Yes, at runtime only</td><td>Partly</td><td>Medium, and unlike anything else here</td><td>3/10</td></tr>
+    </tbody>
+  </table>
+</spec-matrix>
+
+<p>The schema-first row is the interesting rejection: a published schema is the <em>next</em> slice, and it is
+tempting to make it the source and derive TypeScript from it. Deferred because it forces a code-generation step
+into the build before anything has proved the registry's shape is right — and the schema can be generated from the
+data just as easily as the reverse.</p>
+</section>
+
+
+<section id="decisions">
+<h2>7 · Decisions</h2>
+
+<spec-decision id="D-001" grounding="verified">
+  <p><b>Status</b> Accepted</p>
+  <p><b>Context</b> The registry must be readable by the corpus, kernel and command-line packages.
+  <code>@spectastic/corpus</code> depends only on <code>@spectastic/schema</code>, and a corpus→core import is
+  failed by dependency-cruiser in CI (064's one-way boundary).</p>
+  <p><b>Decision</b> The registry and resolver live in <code>@spectastic/schema</code>. Not a preference — it is
+  the only package all three already depend on.</p>
+  <p><b>Consequences</b><br>
+  + No new dependency edge, and the enforced boundary stays intact without an exception.<br>
+  + Follows the precedent that put the shared project-identity and finding primitives in the same package.<br>
+  − Schema accumulates responsibility beyond validation, and its name becomes a slightly poorer description of its contents.<br>
+  − Anything the resolver needs must be available in the floor package, so it cannot reach for kernel helpers.</p>
+</spec-decision>
+
+<spec-decision id="D-002" grounding="verified">
+  <p><b>Status</b> Accepted</p>
+  <p><b>Context</b> The registry has to be walkable by a generator that knows nothing about any key, and the
+  project's TypeScript settings are strict.</p>
+  <p><b>Decision</b> Express it as plain frozen data and derive the types from it, rather than declaring types and
+  keeping a parallel table of defaults.</p>
+  <p><b>Consequences</b><br>
+  + One artifact, so the types and the enumeration cannot drift apart — the failure mode the parallel-table option carries by construction.<br>
+  + A schema generator later walks the same structure with no adaptation.<br>
+  − Deriving types from data is less readable than writing an interface, and error messages when it is wrong are worse.</p>
+</spec-decision>
+
+<spec-decision id="D-003" grounding="verified">
+  <p><b>Status</b> Accepted</p>
+  <p><b>Context</b> A resolved value that has lost track of where it came from cannot later be explained, which is
+  what the deferred <code>config</code> command needs. The current inline fallbacks discard this.</p>
+  <p><b>Decision</b> The resolver returns each value with its origin — file or default. Consumers wanting only the
+  value take it from a thin accessor, so the extra structure costs the common case nothing.</p>
+  <p><b>Consequences</b><br>
+  + The next slice becomes a formatting exercise rather than a re-derivation.<br>
+  + Makes it possible to tell "explicitly set to the default value" from "not set", which is a real distinction for a user reasoning about their own file.<br>
+  − Every consumer sees a richer return type than it needs; the accessor keeps that from being a burden, but it is one more concept.</p>
+</spec-decision>
+
+<spec-decision id="D-004" grounding="verified">
+  <p><b>Status</b> Accepted</p>
+  <p><b>Context</b> <a href="./spec.html#FR-006">FR-006</a> needs a check that the registry has not fallen behind.
+  A type-level guarantee would be stronger but cannot see a key read by string indexing, which is how several
+  current readers work.</p>
+  <p><b>Decision</b> A test that scans the source for configuration access and fails on a key the registry does not
+  declare, proven against a planted example.</p>
+  <p><b>Consequences</b><br>
+  + Catches the string-indexed reads a compiler cannot, which is the majority of the current call sites.<br>
+  + Costs nothing at runtime and fails at the boundary where this project puts its guarantees.<br>
+  − A textual scan is a heuristic: it can be evaded by a computed key, and it may need teaching about a legitimate pattern it does not recognise. That is a false <em>failure</em> rather than a false pass, which is the safer direction.</p>
+</spec-decision>
+</section>
+
+
+<section id="structure">
+<h2>8 · Project structure</h2>
+
+<pre><code>packages/schema/src/config/
+  registry.ts    the declared surface — sections, keys, types, defaults (D-002)
+  resolve.ts     read the file once; values with origin; fail safe (D-003)
+  index.ts       the accessor consumers use
+packages/schema/test/
+  config.registry.test.ts   enumeration, no-default representation, determinism
+  config.drift.test.ts      the completeness guard + its planted counter-example
+(migrated) core/src/{enforce,change-risk,units,contracts,execcheck}/…
+(migrated) cli/src/{git,config,commands}/…
+(migrated) corpus/src/config.ts</code></pre>
+</section>
+
+
+<section id="risks">
+<h2>9 · Risks &amp; mitigations</h2>
+
+<div style="overflow-x:auto;">
+<table>
+  <thead><tr><th>Risk</th><th>Likelihood</th><th>Impact</th><th>Mitigation</th></tr></thead>
+  <tbody>
+    <tr><td>Migration silently changes a security-relevant default</td><td>Medium</td><td>Severe</td><td>Each migrated module keeps its existing tests as the regression guard; the defaults that fail safe (execution consent, git automation) get explicit assertions in the registry's own tests</td></tr>
+    <tr><td>Two readers disagree today and the migration picks one</td><td>Medium</td><td>Medium</td><td>FR-005 forbids averaging: a difference is resolved deliberately and recorded in the change log where a reviewer can see it</td></tr>
+    <tr><td>The drift guard's scan misses a read, so the registry rots anyway</td><td>Medium</td><td>Medium</td><td>Accepted and recorded in D-004; the scan is a heuristic that fails loudly rather than passing quietly, and the migration removes most of the patterns it would struggle with</td></tr>
+    <tr><td>The wide diff is hard to review</td><td>High</td><td>Low</td><td>Commit the registry and resolver separately from the migrations, so the new logic can be read on its own</td></tr>
+  </tbody>
+</table>
+</div>
+</section>
+
+
+<section id="complexity">
+<h2>10 · Complexity tracking</h2>
+<p>No principle exceptions. The registry adds a module to the floor package whose only justification is that three
+packages want it — which is the fat-core test met by evidence rather than anticipation, since all three already
+read the same file today.</p>
+</section>
+
+
+<section id="questions">
+<h2>11 · Open questions</h2>
+<spec-questions>
+<p>None outstanding. The hosting package follows from the enforced dependency boundary, the registry's expression
+and the guard's mechanism were settled here, and the phantom key is deliberately surfaced rather than decided.</p>
+</spec-questions>
+</section>
+
+
+<section id="changelog">
+<h2>12 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-08-03">03 Aug 2026</time><span>Initial design. Grounding disproved the obvious home: the registry cannot live in the kernel, because the corpus package reads the configuration and is forbidden from importing core by a CI-enforced boundary — so the shared floor package is the only legal host. Also corrected the section count downward to ten and confirmed that one advertised key has no reader at all.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  086-config-canonical-reader · Design · authored 03 Aug 2026
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>
