@@ -1,0 +1,431 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
+<title>A default you cannot find is a rule — Considerations for Spectastic</title>
+<meta name="description" content="Strong defaults are the point of an opinionated tool. But a default nobody can find is indistinguishable from a rule, and an override nobody knows exists is indistinguishable from dogma. A survey of what spectastic decides on its users' behalf, how much of it is discoverable, and what would close the gap.">
+<link rel="stylesheet" href="../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../assets/favicon.svg">
+<script src="../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Considerations · Defaults &amp; configuration</p>
+  <h1>A default you cannot find is a rule</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    Being opinionated is a service. Being opinionated without saying so is indistinguishable, from where the user is standing, from having no opinion at all — and from refusing to hear theirs.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>     <span><spec-status value="draft">Draft</spec-status></span>
+    <b>Type</b>       <span>Principle proposal &amp; landscape survey</span>
+    <b>Author</b>     <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Created</b>    <span><time datetime="2026-08-03">03 Aug 2026</time></span>
+    <b>Companion</b>  <span><a href="./verify-view-actionable-considerations.html">verify-view-actionable</a> · <a href="./engineering-principles-considerations.html">engineering-principles</a></span>
+    <b>Sources</b>    <span>7 external, retrieved 03 Aug 2026 · codebase audit</span>
+    <b>Read time</b>  <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-tldr>
+    <p>The proposed principle has three clauses — <strong>opinionated</strong>, <strong>not dogmatic</strong>,
+    <strong>always discoverable</strong> — and only the third is failing, comprehensively. The tool has around
+    eleven configuration sections; this repository's own <code>spectastic.json</code> declares <strong>five</strong>,
+    so six are invisible from the file a user actually holds. <mark>Sixteen of twenty readers parse the config
+    themselves</mark>, there is no canonical reader, nothing validates the file's shape, <code>--help</code>
+    mentions it zero times, and there is no <code>config</code> command. The prompting suggestion — ship an
+    annotated <code>spectastic.jsonc</code> — aims at exactly the right gap, and the audit reorders it: <strong>the
+    defaults are not data anywhere</strong>. They are sixteen independent fallback expressions, so nothing in the
+    codebase is in a position to enumerate them, and every downstream idea depends on fixing that first. On the
+    mechanism, the closest peer's record is a caution: TypeScript's own tracker carries a request that
+    <code>tsc --init</code> <em>stop</em> emitting comments, the generated file runs past 500 lines, and it is not
+    valid JSON. Meanwhile <strong>this repository's own <code>biome.jsonc</code> opens with
+    <code>"$schema"</code></strong> — the project already relies on schema-driven discovery every day for its
+    linter and offers nothing equivalent for itself. Recommendation: a canonical reader, then a published schema
+    (which buys autocomplete <em>and</em> catches the typo that is silent today), then a
+    <code>config explain</code> that answers the question users actually have — not "what keys exist" but "what is
+    the effective value here, and where did it come from". And a fourth clause the principle needs: where a
+    default is deliberately <em>not</em> yours to change, that has to be discoverable too.</p>
+  </spec-tldr>
+
+  <spec-audience-map>
+    <dl>
+      <dt>Exec / PM</dt><dd>§1 the ask · §8 the principle · §9 recommendation</dd>
+      <dt>Reviewer</dt><dd>§2 the audit · §4 the peer record · §10 caveats</dd>
+      <dt>Implementer</dt><dd>§3 the prerequisite · §5 schema · §6 provenance · §7 beyond config</dd>
+    </dl>
+  </spec-audience-map>
+</header>
+
+<!-- ======================================================= -->
+<section id="ask">
+<h2>1 · The ask — three clauses, one of them failing</h2>
+
+<p>The candidate principle is short: <em>be opinionated, but not dogmatic, and always discoverable.</em> Taken
+apart, it makes three separate promises, and they are not equally kept.</p>
+
+<div style="overflow-x:auto;">
+<table>
+  <thead><tr><th>Clause</th><th>What it promises</th><th>How spectastic does</th></tr></thead>
+  <tbody>
+    <tr><td><strong>Opinionated</strong></td><td>The tool decides, so the user does not have to</td><td><strong>Kept.</strong> A spec budget of 1,500 words. An amber band at 80%. Profile tiers with enforcement floors. A model tier per verb. The tool has views and acts on them.</td></tr>
+    <tr><td><strong>Not dogmatic</strong></td><td>Those decisions can be overridden</td><td><strong>Mostly.</strong> Config keys exist for a good deal of it. Some defaults are fixed, one of them deliberately — see §7.</td></tr>
+    <tr><td><strong>Always discoverable</strong></td><td>You can find out what was decided, and that you may change it</td><td><strong>Failing.</strong> The rest of this survey.</td></tr>
+  </tbody>
+</table>
+</div>
+
+<p>The third clause is the load-bearing one, because it is what makes the first two honest. An opinion the user
+cannot see is not an opinion they can disagree with; it is just behaviour. And an override nobody knows about
+protects nobody. <spec-newthought>Undiscoverable and dogmatic are the same experience</spec-newthought> from the
+outside — the user hits a decision they did not make, cannot find where it came from, and concludes the tool does
+not bend. Whether an escape hatch exists somewhere in the source is, at that moment, irrelevant.</p>
+</section>
+
+<!-- ======================================================= -->
+<section id="audit">
+<h2>2 · The audit — what a user can actually see</h2>
+
+<p>Every reader of <code>spectastic.json</code> in the repository was traced back to the section it consumes.</p>
+
+<div style="overflow-x:auto;">
+<table>
+  <thead><tr><th>Measure</th><th>Finding</th></tr></thead>
+  <tbody>
+    <tr><td>Configuration sections that exist</td><td>Around <strong>eleven</strong> — <code>project</code>, <code>git</code>, <code>models</code>, <code>decider</code>, <code>enforce</code>, <code>validate</code>, <code>verify</code>, <code>corpus</code>, <code>consumes</code>, <code>design</code>, <code>changeRisk</code></td></tr>
+    <tr><td>Sections this repository's own config declares</td><td><strong>Five.</strong> Six are invisible from the file a user holds and edits</td></tr>
+    <tr><td>Readers that parse the file themselves</td><td><strong>16 of 20.</strong> <code>packages/core/src/config/</code> contains one module, <code>edit.ts</code> — a <em>writer</em></td></tr>
+    <tr><td>Anything validating the file's shape</td><td><strong>None.</strong> No unknown-key check, no type check</td></tr>
+    <tr><td>Mentions of the config in <code>--help</code></td><td><strong>Zero</strong>, and there is no <code>config</code> command</td></tr>
+    <tr><td>Documentation</td><td>Two passing mentions in the README; no page</td></tr>
+  </tbody>
+</table>
+</div>
+
+<p>Read together, these describe a specific failure rather than a general untidiness. A user who wants to change
+something has no path to the knowledge: not from the file, which shows five of eleven sections; not from the
+terminal, which never mentions it; not from the docs, which do not cover it; and not from the editor, which has
+nothing to autocomplete against. The only reliable route is reading the source — which is a route, and is
+precisely the one an opinionated tool exists to save people.</p>
+
+<p>The sharpest edge is the silence around a mistake. Misspell a key and nothing happens: no warning, no error,
+no effect. The user believes they have overridden a default and has not, and the tool's behaviour is identical to
+the behaviour it would have had if the override were refused. That is the point at which "not dogmatic" stops
+being true in practice regardless of what the code permits.</p>
+
+<spec-sidenote>An earlier draft of this survey cited a code comment — "consumers are free to ignore unknown keys" —
+as evidence that the silence is deliberate. It is not evidence: that comment governs the AI provider's chat
+options, not the config file. The silence is real and was confirmed directly; the comment has nothing to do
+with it.</spec-sidenote>
+</section>
+
+<!-- ======================================================= -->
+<section id="prerequisite">
+<h2>3 · The prerequisite — the defaults are not data</h2>
+
+<p>The obvious first move is to write down the defaults: generate a file, or a page, or a schema, listing every
+key and what it is set to when you say nothing. The audit says that move is not currently available, and the
+reason is worth stating plainly.</p>
+
+<p><spec-newthought>There is no single place that knows what the defaults are.</spec-newthought> Sixteen call
+sites read the config independently, each reaching for the key it cares about and supplying its own fallback
+inline. The default for a given key is an expression sitting next to its one consumer. Nothing aggregates them,
+nothing names them collectively, and nothing could enumerate them without a human going and looking. So a
+generator that emits an annotated config has nothing to generate <em>from</em>, and would be a second hand-written
+copy of knowledge that lives in sixteen places — which is to say, a third source of truth, drifting from the other
+two.</p>
+
+<p>This reorders the work rather than blocking it. A canonical reader — one module that declares the shape, holds
+the defaults as data, and hands typed values to callers — is not itself a feature anyone asked for. It is the
+thing that turns every requested feature from "hand-maintain a copy" into "read the map".</p>
+
+<spec-decision id="D-001" grounding="verified">
+  <p><b>Status</b> Proposed</p>
+  <p><b>Context</b> 16 of 20 config readers call <code>JSON.parse</code> themselves and supply inline fallbacks;
+  <code>packages/core/src/config/</code> holds only a writer. No module knows the config's shape.</p>
+  <p><b>Decision</b> A canonical config reader comes first: one module owning the shape, the defaults as data, and
+  the resolution order. Every other move in this survey reads from it rather than restating it.</p>
+  <p><b>Consequences</b><br>
+  + Turns the defaults into something enumerable, which is the precondition for a schema, a command, a doc page, or an annotated starter — all four become derivations rather than copies.<br>
+  + Gives the unknown-key problem somewhere to live: a reader that knows the shape can say what it does not recognise.<br>
+  + Fits the fat-core convention exactly — cross-cutting deterministic logic that a second caller obviously wants.<br>
+  − It touches sixteen call sites, which is a wide diff for a change that adds no user-visible behaviour on its own.<br>
+  − Centralising resolution risks changing behaviour where two readers quietly disagree today; that has to be found and settled rather than assumed away.</p>
+</spec-decision>
+</section>
+
+<!-- ======================================================= -->
+<section id="peer-record">
+<h2>4 · The annotated-config idea has a track record</h2>
+
+<p>Shipping a commented default configuration is a well-established pattern and the prompting suggestion for this
+survey. It is worth looking at how it went for the tool that did it most visibly.</p>
+
+<p><code>tsc --init</code> generates a <code>tsconfig.json</code> with every option present and explained. The
+project's own issue tracker carries a request that it <a href="https://github.com/microsoft/TypeScript/issues/53746">stop
+doing so</a>; the generated file runs past 500 lines; it is described as spammy; and users report that deleting
+the comments is their first action after generating it. A <a href="https://github.com/microsoft/TypeScript/issues/46150">separate
+request</a> asks for a comment-free variant. And a
+<a href="https://github.com/microsoft/TypeScript/issues/20384">third issue</a> records the structural cost: the
+output is not valid JSON, which breaks tools that consume it.</p>
+
+<p>The recurring counter-argument in those threads is the one that matters here: a modern editor already supplies
+each option's description and a link to its documentation, so inline comments duplicate something the user's tools
+would have told them anyway — at the cost of burying the four lines they actually set.</p>
+
+<p>None of that makes the underlying goal wrong. It calibrates the artifact. The instinct — <em>a user should be
+able to see what the tool decided and what else they could set</em> — is correct and unmet. The specific vehicle,
+a long commented file, is the part that has been tried and found wanting, and it fails hardest exactly where
+spectastic would need it most: on a config with eleven sections, most of which any given project will never
+touch.</p>
+
+<spec-decision id="D-002" grounding="verified">
+  <p><b>Status</b> Proposed</p>
+  <p><b>Context</b> The peer implementation of the annotated-config pattern generated sustained requests to
+  disable it, produced invalid JSON, and is routinely stripped by its users. The rebuttal offered in those threads
+  is that editor tooling already carries the descriptions.</p>
+  <p><b>Decision</b> Do not make a long annotated file the primary discovery mechanism. Keep a <em>short</em>
+  annotated starter — the handful of keys most projects touch — as an on-ramp, and put the exhaustive knowledge
+  where it can be queried rather than scrolled.</p>
+  <p><b>Consequences</b><br>
+  + Avoids a documented failure mode rather than rediscovering it, and keeps the file a user edits about what they set.<br>
+  + A short starter still answers the "what does this file even look like" question, which is the first five minutes and genuinely matters.<br>
+  − Someone offline, or in an editor with no schema support, loses the browsable list the long file would have given them.<br>
+  − "Short" is a judgment call with no obvious line, and it will drift upward under pressure unless something holds it.</p>
+</spec-decision>
+</section>
+
+<!-- ======================================================= -->
+<section id="schema">
+<h2>5 · A schema does two jobs at once</h2>
+
+<p>A published JSON Schema, referenced from the config by a <code>$schema</code> key, gives an editor everything
+the comments would have: the list of valid keys, a description per key, the accepted values, and completion as the
+user types. Editors resolve the reference automatically, and a schema registered with the community store is
+picked up for matching filenames with no reference at all.</p>
+
+<p>The second job is the one that makes it more than a documentation choice. A schema is a machine-readable
+statement of what the config may contain, so the same artifact that supplies autocomplete also answers the
+question nothing answers today: <em>is this key real?</em> The typo that currently vanishes without trace becomes a
+finding — in the editor as the user types, and at the command line wherever the project chooses to check.</p>
+
+<p><spec-newthought>The precedent is already in this repository.</spec-newthought> Its own
+<code>biome.jsonc</code> opens with a <code>$schema</code> line pointing at the linter's published schema. The
+project depends on exactly this mechanism, daily, for someone else's configuration — and offers nothing
+equivalent for its own. That is not an argument from fashion; it is the working demonstration sitting in the root
+directory.</p>
+
+<p>That file settles the comments question too, by doing both things at once and keeping them in their places. It
+is <code>.jsonc</code>, and it carries <strong>nine</strong> comment lines — not a generated catalogue of every
+option, but a handful of notes explaining <em>this project's</em> choices to the next person who opens it. The
+schema supplies what the tool knows; the comments supply what the author decided. Neither is doing the other's
+job, and the file is short because the exhaustive half was never copied into it. That is the division this survey
+recommends, already in production here with a different tool's config.</p>
+
+<spec-decision id="D-003" grounding="verified">
+  <p><b>Status</b> Proposed</p>
+  <p><b>Context</b> A schema supplies editor completion and per-key documentation, and simultaneously makes an
+  unknown key detectable. <code>biome.jsonc</code> in this repository already uses the pattern.</p>
+  <p><b>Decision</b> Publish a schema for <code>spectastic.json</code>, generated from the canonical reader, and
+  have <code>init</code> write the <code>$schema</code> reference into new configs. Treat unknown-key detection as
+  part of what the schema is <em>for</em>, not a separate feature.</p>
+  <p><b>Consequences</b><br>
+  + One artifact closes both the discoverability gap and the silent-typo gap, and it is machine-checkable — which is where this project's guarantees are supposed to live.<br>
+  + Derived from the reader, it cannot drift from the code the way a hand-written document would.<br>
+  − It has to be hosted at a stable URL and versioned alongside the tool; the project publishes no such URL today, and a broken reference is worse than none.<br>
+  − It helps only inside an editor that resolves schemas. The terminal-side answer is §6, and neither substitutes for the other.</p>
+</spec-decision>
+
+<spec-matrix target="D-003">
+  <table>
+    <thead><tr><th>Mechanism</th><th>Lists what exists</th><th>Catches a typo</th><th>Shows the effective value</th><th>Works offline</th><th>Score</th></tr></thead>
+    <tbody>
+      <tr data-winner><td><strong>Published schema + <code>$schema</code></strong></td><td>Yes, in the editor</td><td><strong>Yes</strong></td><td>No</td><td>Once cached</td><td>8/10</td></tr>
+      <tr><td><code>config explain</code> command</td><td>Yes, in the terminal</td><td>Yes, if it checks</td><td><strong>Yes, with provenance</strong></td><td>Yes</td><td>8/10</td></tr>
+      <tr><td>Short annotated starter</td><td>Partly — the common keys</td><td>No</td><td>No</td><td>Yes</td><td>5/10</td></tr>
+      <tr><td>Long annotated config</td><td>Yes, by scrolling</td><td>No</td><td>No</td><td>Yes</td><td>3/10</td></tr>
+    </tbody>
+  </table>
+</spec-matrix>
+
+<p>The top two rows tie, and that is the finding rather than an indecision: they answer different questions and
+neither covers the other's column. The scoring is what argues for building both, in that order.</p>
+</section>
+
+<!-- ======================================================= -->
+<section id="provenance">
+<h2>6 · The question users actually ask</h2>
+
+<p>A schema and a commented file both answer "what may I set". Neither answers the question that sends someone
+looking in the first place, which is nearly always some form of: <em>why is it behaving like this?</em></p>
+
+<p>That question needs three things a static document cannot supply — the value in force right now, whether it
+came from a default or from something the user wrote, and if the latter, from where. A tool that can print that
+turns configuration from a thing you edit hopefully into a thing you can interrogate. It also makes the
+principle's second clause visible at the moment it matters: seeing a value labelled <em>default</em> is what tells
+a user, without them having to go looking, that there is something here they are allowed to change.</p>
+
+<spec-decision id="D-004" grounding="verified">
+  <p><b>Status</b> Proposed</p>
+  <p><b>Context</b> Discovery mechanisms enumerate the possible. Users arrive holding an <em>observed behaviour</em>
+  and needing its cause. No current surface connects the two, and no static artifact can.</p>
+  <p><b>Decision</b> A <code>config</code> command that prints the effective configuration with provenance per
+  value — what it is, whether it is a default, and where an override came from. It reads the canonical reader, so
+  it cannot disagree with what the tool actually does.</p>
+  <p><b>Consequences</b><br>
+  + Answers the real question, works offline and in any editor, and needs no hosted URL.<br>
+  + Every value it prints as a default is an override the user has just been told exists, without a document being read.<br>
+  + Gives <code>--help</code> something to point at, which is the gap that leaves the config unmentioned today.<br>
+  − Another command on a surface this project deliberately keeps small; it earns its place only by being the sole thing that can show provenance.<br>
+  − Provenance is only as good as the reader's bookkeeping; a value resolved through several layers has to carry its origin, which the current inline fallbacks discard.</p>
+</spec-decision>
+</section>
+
+<!-- ======================================================= -->
+<section id="beyond-config">
+<h2>7 · Beyond the config file — and where fixed is correct</h2>
+
+<p>Configuration is where this started, and it is not the whole of what the principle governs. The tool's opinions
+arrive in three distinct forms, with three different override stories.</p>
+
+<div style="overflow-x:auto;">
+<table>
+  <thead><tr><th>Kind</th><th>Example</th><th>Can a user change it?</th><th>Can they find out?</th></tr></thead>
+  <tbody>
+    <tr><td>Config key</td><td><code>validate.quantifiedNfrFloor</code></td><td>Yes</td><td>Not from any surface the tool provides</td></tr>
+    <tr><td>Named constant</td><td>Ten <code>DEFAULT_*</code> exports across the packages — timeouts, thresholds, tiers, weights</td><td>Some, through config; some not at all</td><td>Only by reading the source</td></tr>
+    <tr><td>Baked-in literal</td><td>The amber band at 80%; a spec's 1,500-word budget</td><td>The budget, per artifact. The band, no</td><td>The band's rationale is documented; that it is fixed is not stated anywhere a user would look</td></tr>
+  </tbody>
+</table>
+</div>
+
+<p>The amber band deserves the attention, because it looks like a violation and is not. The 80% threshold is a
+literal in the stylesheet's companion script, and it is pinned there deliberately: a schema rule guards it against
+drifting from the requirement that owns it, so the number in the code and the number in the specification cannot
+diverge. That is a considered decision with a mechanism behind it — dogmatism in the strict sense, and
+<em>correct</em>.</p>
+
+<p><spec-newthought>So the principle cannot demand that everything be overridable.</spec-newthought> Some defaults
+are load-bearing, and letting a project quietly move one would break the guarantee it exists to provide. What the
+principle can demand is that the fixity be <em>stated</em>. A user who wants to change the band should be able to
+find out, quickly, that it is fixed and why — rather than searching for a configuration key that was never going
+to exist. Discoverability covers the refusals as well as the choices; an unexplained "no" is the dogmatism the
+principle is trying to name.</p>
+</section>
+
+<!-- ======================================================= -->
+<section id="principle">
+<h2>8 · The principle</h2>
+
+<spec-decision id="D-005" grounding="verified">
+  <p><b>Status</b> Proposed</p>
+  <p><b>Context</b> The candidate wording has three clauses. The audit shows the third failing and the second
+  compromised by it, and §7 shows a fourth case the three clauses do not cover — a default that is fixed on
+  purpose.</p>
+  <p><b>Decision</b> Propose a principle binding <strong>every</strong> default the tool imposes — configuration
+  keys, named constants, budgets, bands, profile tiers, enforcement floors, model policy — to three obligations:
+  the default and its value are findable without reading the source; whether it can be overridden is stated; and
+  where it cannot be, the reason is given. Silence on any of the three is the defect the principle names.</p>
+  <p><b>Consequences</b><br>
+  + Covers the cases outside the config file, which is where the least discoverable defaults currently sit.<br>
+  + The fixity clause makes deliberate rigidity legitimate rather than an embarrassment to be hidden, which is what stops the principle from being unsatisfiable.<br>
+  + Composes with this project's existing honesty rules about recording ceilings rather than concealing them.<br>
+  − Broad enough that a mechanical check cannot cover it end to end; conformance for constants and literals will be review-caught, which the principle should admit outright rather than imply.<br>
+  − It creates ongoing obligation: every future default is now something that must be surfaced, and that cost is real and permanent.</p>
+</spec-decision>
+
+<p>Worth saying plainly: the principle is not "make everything configurable". A tool that surfaced every constant
+as a knob would be neither opinionated nor usable, and the cost of a configuration surface is paid by every reader
+of it forever. The obligation is to be <em>legible</em> — to let a user find the decision, understand its
+standing, and know whether the conversation is open.</p>
+</section>
+
+<!-- ======================================================= -->
+<section id="recommendation">
+<h2>9 · Recommendation — four slices, in dependency order</h2>
+
+<ol>
+  <li><strong>A canonical config reader.</strong> One module holding the shape, the defaults as data, and the resolution order, with the sixteen call sites reading from it. No user-visible change, and nothing else here is honest without it.</li>
+  <li><strong>A published schema, and the <code>$schema</code> reference in new configs.</strong> Generated from the reader. Buys editor completion, per-key documentation, and the unknown-key detection that is missing today.</li>
+  <li><strong>A <code>config</code> command showing effective values with provenance.</strong> The terminal-side answer, and the only one that addresses why rather than what.</li>
+  <li><strong>Accept comments on read; keep any generated starter short.</strong> A user who wants to annotate their own configuration should not be punished for it — the strongest evidence being that this project already does exactly that in <code>biome.jsonc</code>, where nine hand-written lines explain its own choices alongside a schema that supplies everything else. What §4's evidence argues against is the tool <em>generating</em> the long file, which is a different act with a different outcome.</li>
+</ol>
+
+<spec-warning><strong>Do not start with the annotated file.</strong> It is the most visible slice and the most
+tempting, and it is the one that cannot be done well yet: with the defaults living in sixteen inline fallbacks, a
+generated annotation is a hand-maintained third copy that will drift from both the code and the schema. It is also
+the mechanism with the worst track record. Build the reader, and it becomes a derivation instead of a
+liability.</spec-warning>
+
+<h3>Suggested next artifacts</h3>
+<spec-out-of-scope>
+  <ul>
+    <li defer-to="TBD-config-canonical-reader">A new spec: the canonical configuration reader — the declared shape, defaults as data, resolution order, and the migration of the existing readers onto it, including any behaviour differences that migration surfaces (D-001).</li>
+    <li defer-to="TBD-config-json-schema">A new spec: the published schema generated from the reader, the <code>$schema</code> reference written by <code>init</code>, hosting and versioning, and unknown-key reporting (D-003).</li>
+    <li defer-to="TBD-config-explain-command">A new spec: the <code>config</code> command — effective values, default-versus-overridden, and the origin of each override (D-004).</li>
+    <li defer-to="TBD-config-jsonc-input">A smaller slice: accept comments in a user's own configuration on read, without generating them. Blocked on the canonical reader, since sixteen independent parsers would otherwise each need teaching.</li>
+    <li defer-to="TBD-default-fixity-statement">A question this survey opens and does not close: where a deliberately fixed default is recorded, so a user can discover the refusal and its reason as easily as they discover a key. The amber band is the worked example (§7).</li>
+    <li defer-to="TBD-principle-discoverable-defaults">A <code>/spectastic.propose</code> against the principles: the principle itself, in the four-obligation form D-005 lands on.</li>
+  </ul>
+</spec-out-of-scope>
+</section>
+
+<!-- ======================================================= -->
+<section id="caveats">
+<h2>10 · Caveats on the sources and the audit</h2>
+
+<ul>
+  <li><strong>The section count is approximate, and deliberately hedged.</strong> "Around eleven" comes from tracing readers back to the keys they consume; a first pass over-counted by matching method calls that merely looked like config access. The named sections were each confirmed against a reader, but a section read in one obscure place could have been missed, and the number should be treated as a floor.</li>
+  <li><strong>This survey's own first draft made an attribution error.</strong> It cited a comment about the AI provider's options as evidence that unknown config keys are ignored by design. The silence is real and was confirmed directly; the comment was irrelevant. Recorded because a reviewer re-running the search would find that comment and could repeat the mistake.</li>
+  <li><strong>A second correction, caught at verification.</strong> The draft named the linter config <code>biome.json</code>; it is <code>biome.jsonc</code>, and the difference is not cosmetic. The real file carries a schema reference <em>and</em> nine hand-written comments, which is a stronger and more useful precedent than the one first claimed — it demonstrates the split this survey recommends rather than merely the schema half. Found by re-running the grep the verification step asks for, which is the entire reason that step exists.</li>
+  <li><strong>The peer evidence is a public record, not a measurement.</strong> The TypeScript issues show sustained dissatisfaction with a generated commented config; they do not quantify how many users are bothered, and plenty of projects ship annotated configs happily. It is a caution drawn from the nearest large example, weighted accordingly.</li>
+  <li><strong>Nothing here was prototyped.</strong> No reader, no schema, no command. The claim that a schema can be generated from a canonical reader is ordinary but untested in this codebase, and the migration of sixteen call sites is exactly the kind of work that surfaces disagreements nobody knew existed.</li>
+  <li><strong>The schema recommendation carries an unfunded dependency.</strong> It needs a stable, versioned URL the project does not currently publish. A dangling <code>$schema</code> is worse than none, so the hosting question has to be answered before the reference is written into anyone's config.</li>
+  <li><strong>The principle is broader than any check can cover.</strong> Config keys can be verified mechanically once a schema exists; constants and baked-in literals cannot, and conformance there will be review-caught. That is the same honest ceiling this project already records elsewhere rather than a gap discovered late.</li>
+</ul>
+</section>
+
+<!-- ======================================================= -->
+<section id="sources">
+<h2>11 · Sources</h2>
+
+<p>External sources retrieved 03 Aug 2026, alongside an audit of every <code>spectastic.json</code> reader in this
+repository. Claims about the codebase are grounded in the files named inline.</p>
+
+<ol>
+  <li><code>tsc --init</code> should generate <code>tsconfig.json</code> without comments — <a href="https://github.com/microsoft/TypeScript/issues/53746">github.com/microsoft/TypeScript — Issue 53746</a>: the request to stop emitting comments, and the reports of users stripping them immediately.</li>
+  <li><code>tsc --init-basic</code> — <a href="https://github.com/microsoft/TypeScript/issues/46150">Issue 46150</a>: the request for a comment-free variant of the same output.</li>
+  <li><code>tsc --init</code> produces a file which is not 100% valid JSON — <a href="https://github.com/microsoft/TypeScript/issues/20384">Issue 20384</a>: the structural cost of comments for tools consuming the output.</li>
+  <li>JSON Schema Store — <a href="https://www.schemastore.org/">schemastore.org</a>: the registry editors consult, and automatic association by filename without an in-file reference.</li>
+  <li>Editing JSON with Visual Studio Code — <a href="https://code.visualstudio.com/docs/languages/json">code.visualstudio.com</a>: <code>$schema</code> resolution, completion and validation from a referenced schema.</li>
+  <li>Biome configuration schema — <a href="https://biomejs.dev/schemas/2.5.6/schema.json">biomejs.dev/schemas</a>: the schema this repository's own <code>biome.jsonc</code> references on its first line.</li>
+  <li>JSON Schema — <a href="https://json-schema.org/">json-schema.org</a>: the specification underlying both the editor integration and the unknown-key check.</li>
+</ol>
+</section>
+
+<!-- ======================================================= -->
+<section id="changelog">
+<h2>12 · Change log</h2>
+
+<spec-changelog>
+  <ol>
+    <li><time datetime="2026-08-03">03 Aug 2026</time><span>Created. Proposes <em>opinionated, not dogmatic, always discoverable</em> as a principle over every default the tool imposes. The audit reorders the prompting suggestion: an annotated config cannot be generated well because <strong>the defaults are not data</strong> — 16 of 20 readers parse the file themselves and supply inline fallbacks, so a canonical reader is the prerequisite for everything else. Crowns a published schema (which closes the silent-unknown-key gap in the same artifact, and whose precedent is this repository's own <code>biome.jsonc</code>) plus a <code>config</code> command showing effective values with provenance. Adds a fourth obligation the three-clause wording missed: where a default is deliberately fixed — the amber band, machine-guarded against its owning requirement — the fixity and its reason must be discoverable too. Plants six <code>TBD-</code> next artifacts. Two claims were corrected before publication: an attribution about unknown-key handling that pointed at the wrong code comment, and the linter config's filename — it is <code>biome.jsonc</code>, carrying a schema reference <em>and</em> nine hand-written comments, which turns out to demonstrate the recommended split rather than only half of it.</span></li>
+  </ol>
+</spec-changelog>
+</section>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  Spectastic · A default you cannot find is a rule · 03 Aug 2026 ·
+  <a href="../index.html">home</a> ·
+  <a href="./verify-view-actionable-considerations.html">verify-view-actionable</a> ·
+  <a href="./engineering-principles-considerations.html">engineering-principles</a> ·
+  <button data-theme-toggle style="background:none;border:none;color:var(--c-link);cursor:pointer;font:inherit;padding:0;border-bottom:1px solid currentColor;">light/dark</button>
+</footer>
+
+</main>
+<script src="../assets/spec.js"></script>
+</body>
+</html>
