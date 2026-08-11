@@ -19,7 +19,7 @@ export function registerTestTags(program: Command): void {
   program
     .command('tests:for')
     .description(
-      "Show which tests are tagged for a spec, and the citation derived from them. Reports how much of the suite is tagged, so a partial answer cannot read as a complete one. Never runs a test.",
+      'Show which tests are tagged for a spec, and the citation derived from them. Reports how much of the suite is tagged, so a partial answer cannot read as a complete one. Never runs a test.',
     )
     .argument('<spec>', 'the spec to report on, by number or directory name')
     .argument('[path]', 'project root to scan', '.')
@@ -61,9 +61,7 @@ export function registerTestTags(program: Command): void {
             .map((d) => /^(\d{3,})/.exec(d)?.[1])
             .filter((n): n is string => n !== undefined)
         : [];
-      const specDir = existsSync(specsDir)
-        ? readdirSync(specsDir).find((d) => d.startsWith(specNum))
-        : undefined;
+      const specDir = existsSync(specsDir) ? readdirSync(specsDir).find((d) => d.startsWith(specNum)) : undefined;
       const specHtml =
         specDir !== undefined && existsSync(join(specsDir, specDir, 'spec.html'))
           ? readFileSync(join(specsDir, specDir, 'spec.html'), 'utf8')

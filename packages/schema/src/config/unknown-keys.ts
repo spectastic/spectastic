@@ -52,11 +52,7 @@ function distance(a: string, b: string): number {
   for (let i = 1; i <= a.length; i++) {
     for (let j = 1; j <= b.length; j++) {
       const cost = a[i - 1] === b[j - 1] ? 0 : 1;
-      let best = Math.min(
-        (rows[i]?.[j - 1] ?? 0) + 1,
-        (rows[i - 1]?.[j] ?? 0) + 1,
-        (rows[i - 1]?.[j - 1] ?? 0) + cost,
-      );
+      let best = Math.min((rows[i]?.[j - 1] ?? 0) + 1, (rows[i - 1]?.[j] ?? 0) + 1, (rows[i - 1]?.[j - 1] ?? 0) + cost);
       if (i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1]) {
         best = Math.min(best, (rows[i - 2]?.[j - 2] ?? 0) + 1);
       }

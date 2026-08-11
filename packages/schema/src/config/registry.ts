@@ -58,7 +58,8 @@ export const CONFIG_REGISTRY = Object.freeze({
     project: {
       type: 'string',
       default: NO_DEFAULT,
-      description: 'This project\'s owner-qualified identity, e.g. "acme/payments". Used to build federation-unique coordinates.',
+      description:
+        'This project\'s owner-qualified identity, e.g. "acme/payments". Used to build federation-unique coordinates.',
     },
   }),
 
@@ -92,7 +93,7 @@ export const CONFIG_REGISTRY = Object.freeze({
     role: {
       type: 'string',
       default: NO_DEFAULT,
-      description: 'Who answers a generation verb\'s bounded decisions during an unattended run.',
+      description: "Who answers a generation verb's bounded decisions during an unattended run.",
     },
     effort: {
       type: 'string',
@@ -131,7 +132,8 @@ export const CONFIG_REGISTRY = Object.freeze({
     executeCapturedCommands: {
       type: 'boolean',
       default: false,
-      description: 'Whether this project permits running the commands recorded in its own verify views. Off by default; never applies to an artifact from a dependency.',
+      description:
+        'Whether this project permits running the commands recorded in its own verify views. Off by default; never applies to an artifact from a dependency.',
     },
   }),
 
@@ -139,7 +141,8 @@ export const CONFIG_REGISTRY = Object.freeze({
     marketplace: {
       type: 'string',
       default: NO_DEFAULT,
-      description: 'Marketplace name qualifying this project\'s knowledge packs. Derived from the project identity when unset.',
+      description:
+        "Marketplace name qualifying this project's knowledge packs. Derived from the project identity when unset.",
     },
     root: {
       type: 'string',

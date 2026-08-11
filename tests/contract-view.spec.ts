@@ -46,7 +46,9 @@ test.describe('T-010/FR-003/D-003 · spec-contract-view is a bounded, keyboard-r
     page,
   }) => {
     await page.goto(FIXTURE);
-    const content = await page.locator('#view-short spec-contract-view').evaluate((el) => getComputedStyle(el, '::before').content);
+    const content = await page
+      .locator('#view-short spec-contract-view')
+      .evaluate((el) => getComputedStyle(el, '::before').content);
     expect(content).toMatch(/3 lines/);
     expect(content).not.toMatch(/excerpt/i);
   });

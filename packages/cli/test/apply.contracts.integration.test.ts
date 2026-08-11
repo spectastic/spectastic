@@ -77,7 +77,7 @@ describe('contract promotion — end-to-end through `spectastic apply` (071, T-9
     expect(existsSync(join(cwd, 'specs/201-conflict/changes/archive'))).toBe(false);
   });
 
-  it('promotes a project\'s first contract when there is no predecessor (D-005)', async () => {
+  it("promotes a project's first contract when there is no predecessor (D-005)", async () => {
     const cwd = copyFixture('no-predecessor');
 
     const result = await runCLI(['apply', '202-first', '2026-08-01-first-contract'], cwd);
@@ -87,7 +87,7 @@ describe('contract promotion — end-to-end through `spectastic apply` (071, T-9
     expect(readFileSync(join(cwd, 'api/new.proto'), 'utf8')).toContain('proto3');
   });
 
-  it("a change with no proposed contract is unaffected — 0 files, no contract output (FR-006, T-901/SC-004)", async () => {
+  it('a change with no proposed contract is unaffected — 0 files, no contract output (FR-006, T-901/SC-004)', async () => {
     const cwd = copyFixture('no-contract');
 
     const result = await runCLI(['apply', '203-none', '2026-08-01-unrelated-change'], cwd);

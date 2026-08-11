@@ -108,9 +108,7 @@ describe('the registry stays complete @086:FR-006 @086:T-301', () => {
         undeclared.push(`${key}  (${file.replace(`${repoRoot}/`, '')})`);
       }
     }
-    expect(undeclared, `undeclared configuration key(s) read by the source:\n  ${undeclared.join('\n  ')}`).toEqual(
-      [],
-    );
+    expect(undeclared, `undeclared configuration key(s) read by the source:\n  ${undeclared.join('\n  ')}`).toEqual([]);
   });
 
   it('fails on a planted read of a key the registry does not declare @086:T-300 @086:SC-003', () => {

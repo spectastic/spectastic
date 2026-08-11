@@ -34,8 +34,7 @@ export const contractDeclarationShapeRule: PerFileRule = {
   id: 'contract-declaration-shape',
   scope: 'per-file',
   defaultSeverity: 'error',
-  description:
-    '<spec-contract> must carry a recognised shape=, and a shape other than "none" must carry a path=.',
+  description: '<spec-contract> must carry a recognised shape=, and a shape other than "none" must carry a path=.',
   check({ doc }) {
     const findings: Finding[] = [];
     // The common case is a document with no <spec-contract> — return before
@@ -92,7 +91,10 @@ export const contractDeclarationShapeRule: PerFileRule = {
       const compatibility = getAttr(contract, 'compatibility');
       const scope = getAttr(contract, 'compatibility-scope');
 
-      if (compatibility !== undefined && !COMPATIBILITY_DIRECTIONS.includes(compatibility as (typeof COMPATIBILITY_DIRECTIONS)[number])) {
+      if (
+        compatibility !== undefined &&
+        !COMPATIBILITY_DIRECTIONS.includes(compatibility as (typeof COMPATIBILITY_DIRECTIONS)[number])
+      ) {
         flag(
           contract,
           `<spec-contract compatibility="${compatibility}"> is not a recognised compatibility direction`,

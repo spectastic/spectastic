@@ -31,9 +31,7 @@ export function registerRead(program: Command): void {
 
   program
     .command('id')
-    .description(
-      "Print a corpus document's federation-unique spectastic:// resource URI, resolved from a KB id.",
-    )
+    .description("Print a corpus document's federation-unique spectastic:// resource URI, resolved from a KB id.")
     .argument('<id>', 'a KB id, e.g. KB-501 or KB-501@2026-01-01 for an edition-pinned coordinate')
     .action((idArg: string) => {
       const cwd = process.cwd();

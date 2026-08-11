@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { registryEntryUri, renderCitationLabel, resolveCitation, resolveCorpusCoordinate } from '../src/knowledge/resolve.js';
+import {
+  registryEntryUri,
+  renderCitationLabel,
+  resolveCitation,
+  resolveCorpusCoordinate,
+} from '../src/knowledge/resolve.js';
 import type { CorpusDocument, CorpusPack, RegistryEntry, SupersededEdition } from '../src/knowledge/types.js';
 import { DEDUPE_REPOS } from './fixtures/dedupe/index.js';
 
@@ -215,19 +220,21 @@ describe('resolveCorpusCoordinate — the local-resolve half of FR-006 (078 T-21
   if (!repoA) throw new Error('DEDUPE_REPOS fixture is empty');
 
   it('resolves a coordinate this repository recognises', () => {
-    const found = resolveCorpusCoordinate(repoA.entry.marketplace, repoA.entry.plugin, repoA.entry.slug, [
-      repoA.entry,
-    ]);
+    const found = resolveCorpusCoordinate(repoA.entry.marketplace, repoA.entry.plugin, repoA.entry.slug, [repoA.entry]);
     expect(found).toEqual(repoA.entry);
   });
 
   it('reports absence — null, never a throw — for a marketplace this repository has never heard of', () => {
-    expect(() => resolveCorpusCoordinate('a-marketplace-nobody-has', 'some-pack', 'some-doc', [repoA.entry])).not.toThrow();
+    expect(() =>
+      resolveCorpusCoordinate('a-marketplace-nobody-has', 'some-pack', 'some-doc', [repoA.entry]),
+    ).not.toThrow();
     expect(resolveCorpusCoordinate('a-marketplace-nobody-has', 'some-pack', 'some-doc', [repoA.entry])).toBeNull();
   });
 
   it('reports absence for an empty registry, never a throw', () => {
-    expect(() => resolveCorpusCoordinate(repoA.entry.marketplace, repoA.entry.plugin, repoA.entry.slug, [])).not.toThrow();
+    expect(() =>
+      resolveCorpusCoordinate(repoA.entry.marketplace, repoA.entry.plugin, repoA.entry.slug, []),
+    ).not.toThrow();
     expect(resolveCorpusCoordinate(repoA.entry.marketplace, repoA.entry.plugin, repoA.entry.slug, [])).toBeNull();
   });
 

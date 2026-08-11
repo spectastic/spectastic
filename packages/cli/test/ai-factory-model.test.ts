@@ -45,7 +45,9 @@ describe('CLI model resolution (spec 044 Tier D · FR-006/007/008)', () => {
   });
 
   it('throws fail-fast on an illegal override alias', () => {
-    expect(() => resolveProviderModel({ verb: 'design', override: 'gpt-4', cwd: dir })).toThrow(/not a legal tier alias/);
+    expect(() => resolveProviderModel({ verb: 'design', override: 'gpt-4', cwd: dir })).toThrow(
+      /not a legal tier alias/,
+    );
   });
 
   it('the resolved model reaches ClaudeProvider.model (the Assisted-by source)', async () => {

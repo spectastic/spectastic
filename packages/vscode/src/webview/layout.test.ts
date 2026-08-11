@@ -28,7 +28,12 @@ function node(id: string, verb: ArtifactNode['verb'], specId = '099-demo'): Arti
 
 const graph: LifecycleGraph = {
   specId: '099-demo',
-  nodes: [node('design', 'design'), node('spec', 'spec'), node('tasks', 'tasks'), node('slice:099a', 'spec', '099a-child')],
+  nodes: [
+    node('design', 'design'),
+    node('spec', 'spec'),
+    node('tasks', 'tasks'),
+    node('slice:099a', 'spec', '099a-child'),
+  ],
   edges: [
     { from: 'spec', to: 'design', kind: 'flow' },
     { from: 'design', to: 'tasks', kind: 'flow' },
