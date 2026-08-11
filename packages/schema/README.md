@@ -1,5 +1,10 @@
 # @spectastic/schema
 
+[![npm](https://img.shields.io/npm/v/%40spectastic%2Fschema?label=npm&style=flat-square&labelColor=353534&color=5f023e)](https://www.npmjs.com/package/@spectastic/schema)
+[![downloads](https://img.shields.io/npm/dm/%40spectastic%2Fschema?label=downloads%2Fmo&style=flat-square&labelColor=353534&color=5f023e)](https://www.npmjs.com/package/@spectastic/schema)
+[![node](https://img.shields.io/badge/node-%3E%3D20-04a5bb?style=flat-square&labelColor=353534)](https://nodejs.org)
+[![license](https://img.shields.io/npm/l/%40spectastic%2Fschema?style=flat-square&labelColor=353534&color=7558b2)](https://github.com/spectastic/spectastic/blob/main/LICENSE)
+
 The TypeScript module form of the spec-html vocabulary's grammar. A library
 consumers — `@spectastic/cli`, the future VS Code extension, the MCP server,
 the kernel — import to judge spec validity against the same rules.
@@ -38,7 +43,7 @@ for (const rule of rules) {
 | ------------- | ------------- | ------------------------------------------------------------------------- |
 | `validate`    | function      | Validate one HTML string. Runs all per-file rules plus cross-file over `[doc]`. |
 | `validateMany`| function      | Validate many HTML strings together. Cross-file rules see all docs.        |
-| `rules`       | readonly array| The canonical rule registry (per D-001 of the plan).                       |
+| `rules`       | readonly array| The canonical rule registry.                                               |
 | `Finding`     | type          | One violation. Fields: file, line, column, rule, severity, message, fixHint?, relatedLocations?. |
 | `Rule`        | type          | Union of `PerFileRule | CrossFileRule`.                                    |
 | `PerFileRule` | type          | Inspects one document.                                                     |
@@ -48,24 +53,33 @@ for (const rule of rules) {
 | `ValidateOptions` | type      | `{ file? }`.                                                               |
 | `ParsedDocument`  | type      | `{ html, file, ast, status? }`.                                            |
 
-## Rules in v0.1
+## Rules
 
-| Rule                       | Default | Scope        | Flags                                                                |
-| -------------------------- | ------- | ------------ | -------------------------------------------------------------------- |
-| `no-missing-defer-to`      | error   | per-file     | `<spec-out-of-scope> <li>` missing `defer-to=`                       |
-| `no-unresolved-question`   | error\* | per-file     | `<spec-question>` admonition (status-dependent)                       |
-| `delta-op-required`        | error   | per-file     | `<spec-delta>` missing or invalid `op=`                              |
-| `delta-target-required`    | error   | per-file     | `<spec-delta>` missing `target=`                                     |
-| `risk-target-required`     | error   | per-file     | `<spec-risk>` missing `target=`                                      |
-| `risk-status-required`     | error   | per-file     | `<spec-risk>` missing or invalid `status=`                           |
-| `requirement-id-required`  | error   | per-file     | `<spec-requirement>` missing or malformed `id=`                       |
-| `task-id-required`         | error   | per-file     | `<spec-task>` missing or malformed `id=`                              |
-| `invest-row-failed`        | error\* | per-file     | `<dl class="invest">` with failing row (status-dependent)             |
-| `no-duplicate-ids`         | error   | cross-file   | Project-wide stable IDs (`REQ-...-NNN`) repeated across files         |
-| `empty-document`           | error   | per-file     | Empty or body-empty document                                          |
-| `file-too-large`           | warning | per-file     | File exceeds 5,000 lines (NFR-001 boundary)                          |
+Thirty-four rules, grouped by what they protect. `rules` is the canonical registry — enumerate it rather
+than trusting a list in a README to stay current.
 
-\* Severity downgrades for `draft`/`review` status and skips for unset status.
+**Artifact shape** — `requirement-id-required`, `task-id-required`, `task-title-bold-scope`,
+`empty-document`, `date-format`, `id-within-file-unique`, `file-too-large`.
+
+**Change proposals** — `delta-op-required`, `delta-target-required`, `data-delta-shape`,
+`risk-target-required`, `risk-status-required`.
+
+**Scope and sizing** — `no-missing-defer-to`, `no-broken-defer-to`, `invest-row-failed`,
+`rice-well-formed`, `split-well-formed`, `format-band-coupling`, `matrix-winner-integrity`.
+
+**Open questions** — `no-unresolved-question`, `no-placeholder-question`.
+
+**Cross-file integrity** — `no-duplicate-ids`, `spec-id-unique`, `spec-parent-well-formed`,
+`parent-child-reciprocity`, `verify-view-missing`, `verify-view-stale`.
+
+**Contracts and objectives** — `contract-declaration-shape`, `contract-name-unique`,
+`slo-target-required`, `slo-well-formed`.
+
+**Grounding and security** — `corpus-citation-form`, `no-executable-content`,
+`hidden-instruction-pattern`.
+
+Severity for the status-dependent rules downgrades on a `draft` or `review` artifact and skips where
+status is unset — an unfinished document is not a broken one.
 
 ## Provenance
 

@@ -1,14 +1,31 @@
 # @spectastic/core
 
-The verb kernel for spectastic. One TypeScript module the CLI, the future MCP server, the future VS Code extension, and the future web editor all share — so the slash-command procedures live in one place and downstream surfaces don't re-implement them.
+[![npm](https://img.shields.io/npm/v/%40spectastic%2Fcore?label=npm&style=flat-square&labelColor=353534&color=5f023e)](https://www.npmjs.com/package/@spectastic/core)
+[![downloads](https://img.shields.io/npm/dm/%40spectastic%2Fcore?label=downloads%2Fmo&style=flat-square&labelColor=353534&color=5f023e)](https://www.npmjs.com/package/@spectastic/core)
+[![node](https://img.shields.io/badge/node-%3E%3D20-04a5bb?style=flat-square&labelColor=353534)](https://nodejs.org)
+[![license](https://img.shields.io/npm/l/%40spectastic%2Fcore?style=flat-square&labelColor=353534&color=7558b2)](https://github.com/spectastic/spectastic/blob/main/LICENSE)
 
-## What's in v0.1
+The verb kernel for spectastic. One TypeScript module every surface shares — the CLI, an MCP server, an
+editor extension — so a verb's procedure lives in one place and downstream surfaces never re-implement it.
 
-- `validateCommand` at `@spectastic/core/commands/validate` — the validate verb extracted from `@spectastic/cli`, wraps `@spectastic/schema`'s engine.
-- Forward-looking type surface: `KernelContext`, `FileSystem`, `AIProvider` (`chat` + `ask<T>` + `subagent`), `Question`, per-verb input/result shapes.
-- Default `FileSystem` implementation at `@spectastic/core/providers/node-fs` — a thin wrapper over `node:fs/promises`.
+Deterministic logic lives here; a CLI command module is thin, registering the command and delegating.
 
-Seven more verbs ship in sibling slices ([007-core-triage](../../specs/007-core-triage/spec.html) through [014-core-implement](../../specs/014-core-implement/spec.html)).
+## What's in it
+
+Seventeen verbs, each on its own subpath under `@spectastic/core/commands/`:
+
+`apply` · `contract` · `course` · `design` · `explore` · `graduate` · `id` · `implement` · `order` ·
+`principles` · `propose` · `restore-marker` · `spec` · `tasks` · `triage` · `validate` · `verify`
+
+Alongside them, the deterministic modules a second caller would want without the CLI — enforcement
+detection and policy (`./enforce/*`), change-risk scanning and scoring (`./change-risk/*`), gitignore
+merging (`./gitignore/*`), contract promotion and views (`./contracts/*`), unit dependency edges
+(`./units/*`), test-tag resolution (`./testtags/*`), and the execution guard (`./execcheck/*`).
+
+The injected surface is the type entry: `KernelContext`, `FileSystem`, `AIProvider` (`chat` + `ask<T>` +
+`subagent`), `Question`, and per-verb input/result shapes. A default `FileSystem` lives at
+`@spectastic/core/providers/node-fs`, and a scriptable `StubAIProvider` at `@spectastic/core/providers/stub`
+— which is what the integration tests run against, never a real model.
 
 ## Importing a verb
 
@@ -66,7 +83,7 @@ const result = await validateCommand({ files: ['/test/clean.html'] }, {
 
 ## The AIProvider surface
 
-`AIProvider` is the v1 contract for AI access. The interface is **forward-looking**: it declares three methods (`chat`, `ask<T>`, `subagent`) even though `validate` (the v1 verb) needs none of them. This was deliberate — defining the full surface now means the [007-core-triage](../../specs/007-core-triage/spec.html) PR that lands the first Claude implementation, and the [013-core-propose](../../specs/013-core-propose/spec.html) PR that lights up `subagent()`, are both **additive** rather than interface-extending breaking changes.
+`AIProvider` is the contract for AI access, and it was declared whole up front: all three methods (`chat`, `ask<T>`, `subagent`) exist even where a given verb needs none of them. That was deliberate — landing a real provider, and later lighting up `subagent()`, are both **additive** rather than interface-extending breaking changes.
 
 ```ts
 interface AIProvider {
@@ -92,11 +109,11 @@ While the kernel surface is still being shaped (verbs landing in sequence throug
 }
 ```
 
-At `1.0.0` the surface freezes and strict semver applies. The graduation criteria are documented in [006-kernel-extraction](../../specs/006-kernel-extraction/spec.html) FR-012.
+At `1.0.0` the surface freezes and strict semver applies. The graduation criteria are recorded in the [kernel-extraction spec](https://github.com/spectastic/spectastic/blob/main/specs/006-kernel-extraction/spec.html).
 
 ## Extending the kernel — adding a verb
 
-The pattern future extractions follow (see [slicing-gaps.html §1](../../examples/slicing-gaps.html#recipe) for the broader slicing recipe):
+The pattern future extractions follow (the broader slicing recipe is in the [slicing-gaps register](https://github.com/spectastic/spectastic/blob/main/examples/slicing-gaps.html#recipe)):
 
 1. Author the spec at `specs/NNN-core-<verb>/spec.html` with `<spec-parent specid="006-kernel-extraction">`.
 2. Run `/spectastic.design` then `/spectastic.tasks`.
@@ -105,16 +122,15 @@ The pattern future extractions follow (see [slicing-gaps.html §1](../../example
 5. Add the new entry to `packages/core/tsup.config.ts`.
 6. Add a new subpath to `packages/core/package.json`'s `exports` field.
 7. Write `packages/core/test/<verb>.test.ts` with stub `ctx.fs` + stub `ai` as needed.
-8. If the verb has a slash-command counterpart, update `commands/spectastic.<verb>.md` with a note: "For deterministic operations, the LLM MAY invoke `spectastic <verb>` via Bash."
+8. If the verb has a slash-command counterpart, update `commands/spectastic.<verb>.md` with a note: "For deterministic operations, the model MAY invoke `spectastic <verb>` via Bash."
 9. Add a `spectastic <verb>` CLI subcommand at `packages/cli/src/commands/<verb>.ts` that imports from `@spectastic/core/commands/<verb>` and translates the result.
 10. Bench passes; full-project validate passes; commit; tag; ship.
 
 ## Linked artifacts
 
-- [006-kernel-extraction spec](../../specs/006-kernel-extraction/spec.html) — the foundation
-- [006-kernel-extraction plan](../../specs/006-kernel-extraction/design.html) — 8 ADRs
-- [slicing-gaps register](../../examples/slicing-gaps.html) — parent/child recipe + frozen audit
-- Sibling kernel-extraction slices: [007](../../specs/007-core-triage/spec.html), [008](../../specs/008-core-principles/spec.html), [009](../../specs/009-core-tasks/spec.html), [010](../../specs/010-core-apply/spec.html), [011](../../specs/011-core-spec/spec.html), [012](../../specs/012-core-plan/spec.html), [013](../../specs/013-core-propose/spec.html), [014](../../specs/014-core-implement/spec.html)
+- [Kernel-extraction spec](https://github.com/spectastic/spectastic/blob/main/specs/006-kernel-extraction/spec.html) — the foundation, and its design doc's ADRs
+- [Slicing-gaps register](https://github.com/spectastic/spectastic/blob/main/examples/slicing-gaps.html) — the parent/child slicing recipe
+- [Project and full documentation](https://github.com/spectastic/spectastic)
 
 ## License
 
