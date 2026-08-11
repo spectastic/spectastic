@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
+<title>The command surface · Specification</title>
+<link rel="stylesheet" href="../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../assets/favicon.svg">
+<script src="../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Specification · 090-command-surface <spec-parent specid="000-spectastic"><a href="../000-spectastic/spec.html">Spectastic</a></spec-parent></p>
+  <h1>The command surface</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    What spectastic surfaces to an agent host: the verb set, the one-task default, and the invocation metadata a skill carries.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>      <span><spec-status value="accepted">Accepted</spec-status></span>
+    <b>Spec ID</b>     <span>090-command-surface</span>
+    <b>Owner</b>       <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Reviewers</b>   <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Created</b>     <span><time datetime="2026-08-11">11 Aug 2026</time></span>
+    <b>Principles</b><span><a href="../../principles.html">v1.9.0</a></span>
+    <b>Smallest demoable</b><span>A command whose frontmatter carries all three invocation keys and routes correctly from a natural request.</span>
+    <b>Read time</b>   <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-budget words="1500" reqs="20" minutes="12"></spec-budget>
+
+  <spec-tldr>
+    <p>The commands are the product’s front door. This fixes the verb set spectastic ships, the implement verb’s default of one task per invocation, and the structured invocation metadata every command carries so a host can route to it — while recording plainly that a skill description is a trigger nudge and never a guarantee.</p>
+  </spec-tldr>
+
+  <spec-audience-map>
+    <dl>
+      <dt>Exec / PM</dt>   <dd>§<a href="#context">Context</a>.</dd>
+      <dt>Reviewer</dt>    <dd>§<a href="#requirements">Requirements</a>, §<a href="#questions">Open questions</a>.</dd>
+      <dt>Implementer</dt> <dd>§<a href="#requirements">Requirements</a>, §<a href="#conformance">Conformance index</a>.</dd>
+    </dl>
+  </spec-audience-map>
+</header>
+
+
+<section id="context">
+<h2>1 · Context</h2>
+<p>A verb surface is a vocabulary, and vocabularies get worse as they grow. Keeping the set small is a deliberate constraint, not an accident of scope — so what the surface contains, and what metadata each entry carries, is specified rather than left to whoever adds the next command.</p>
+<p>This spec is a slice of <a href="../000-spectastic/spec.html">the spectastic meta-spec</a>. Its
+requirements were authored there and moved here intact, keeping their stable ids: a requirement that was
+<code>REQ-TOOL-001</code> in the parent is <code>REQ-TOOL-001</code> here, so every existing citation still names the
+same contract. The parent keeps the project’s context, architecture, decisions and history; this file
+carries one family of requirements and nothing else.</p>
+</section>
+
+
+<section id="requirements">
+<h2>2 · Requirements</h2>
+<p>Normative keywords follow <a href="https://www.rfc-editor.org/rfc/rfc2119">RFC 2119</a>.</p>
+
+<spec-requirement id="REQ-TOOL-001" priority="must">
+    <p>Spectastic <spec-rule>MUST</spec-rule> ship eight Claude Code slash commands across the lifecycle —
+    <code>/spectastic.principles</code>, <code>/spectastic.spec</code>, <code>/spectastic.design</code>,
+    <code>/spectastic.tasks</code>, <code>/spectastic.implement</code>, <code>/spectastic.propose</code>,
+    <code>/spectastic.apply</code>, <code>/spectastic.triage</code> — that drive the templates without introducing a
+    separate CLI. It <spec-rule level="may">MAY</spec-rule> additionally ship <em>extended</em>, opt-in verbs
+    upstream of or alongside the lifecycle (e.g. <code>/spectastic.explain</code>, <code>/spectastic.explore</code>);
+    extended verbs are not required to ship, but any command spectastic <em>does</em> surface as a skill is bound by
+    <a href="#REQ-TOOL-004">REQ-TOOL-004</a>.</p>
+  </spec-requirement>
+
+<spec-requirement id="REQ-TOOL-003" priority="must">
+<p>The <code>/spectastic.implement</code> command <spec-rule>MUST</spec-rule> default to <em>one task per invocation</em>. It <spec-rule level="may">MAY</spec-rule> accept three opt-in drain modes that the user must type explicitly:</p>
+<ul>
+  <li><code>--all</code> — drain every unchecked task in the resolved scope sequentially, pausing on first failure.</li>
+  <li><code>--phase=&lt;id&gt;</code> — drain every unchecked task inside the named phase section (<code>setup</code>, <code>foundation</code>, <code>us1</code>, <code>us2</code>, <code>us3</code>, <code>polish</code>).</li>
+  <li><code>--parallel</code> — within the resolved scope (default scope = one task; combinable with <code>--all</code> or <code>--phase</code>), spawn one <code>Agent</code> tool call per <code>[P]</code>-marked task; run non-<code>[P]</code> tasks in the main session.</li>
+</ul>
+<p>Drain modes <spec-rule>MUST NOT</spec-rule> silently chain — failure pauses the drain and re-invocation is explicit. Each completed task <spec-rule>MUST</spec-rule> be reported individually (one line per ticked checkbox) so progress is visible mid-drain.</p>
+<details><summary>Rationale</summary><p>One-per-invocation is the right default for contested or cross-spec work where each step is a judgment call. MVP-first solo drains do not match that shape — the user typed <code>/goal</code> as a workaround on 001-cli's 33-task list because the existing discipline rejected the obvious move. Making the drain opt-in preserves the default while removing the workaround.</p></details>
+</spec-requirement>
+
+<spec-requirement id="REQ-TOOL-004" priority="must">
+    <p>Every command spectastic surfaces to an agent host as a skill — the lifecycle commands enumerated in
+    <a href="#REQ-TOOL-001">REQ-TOOL-001</a> and any extended verb it ships (e.g.
+    <code>/spectastic.explain</code>, <code>/spectastic.explore</code>) — <spec-rule>MUST</spec-rule> declare
+    <em>structured invocation metadata</em> in its source frontmatter as the source of truth for how the skill
+    router selects it. The metadata <spec-rule>MUST</spec-rule> comprise three keys:</p>
+    <ul>
+      <li><code>triggers</code> — the intents and phrasings that should invoke the command;</li>
+      <li><code>use-when</code> — a one-line framing of when to reach for it;</li>
+      <li><code>sibling-boundary</code> — what disambiguates it from adjacent verbs (e.g. <code>propose</code> vs <code>plan</code>, <code>spec</code> vs <code>explore</code>).</li>
+    </ul>
+    <p>The metadata <spec-rule level="may">MAY</spec-rule> additionally carry an optional <code>model:</code> key
+    declaring the model tier the command runs on — an alias (never a pinned model ID) drawn from the legal set that
+    <a href="../044-verb-model-policy/spec.html">044-verb-model-policy</a> owns as a single source of truth. It
+    is advisory to the host and is <strong>not</strong> one of the three required keys; a command that omits it is
+    fully conformant. The per-verb tier assignments and their enforcement are owned by 044-verb-model-policy.</p>
+    <p>The harness router reads only the frontmatter <code>description</code>. That <code>description</code>
+    <spec-rule>MUST</spec-rule> be a <em>fixed, committed output tuned against <code>/skill-creator</code>'s eval</em>
+    — the same string the router loads and the eval measures — and <spec-rule>MUST NOT</spec-rule> be generated from
+    the keys at sync time (a generated description makes the evaluated artifact a moving target that never lives in
+    the repo). The structured keys are the machine-checkable contract and the input skill-creator tunes from; the
+    <code>description</code> is the resulting trigger surface. Where a key and the <code>description</code> diverge,
+    the <code>description</code> is authoritative. <code>spectastic validate</code> <spec-rule>MUST</spec-rule> carry
+    a <code>skill-metadata-shape</code> rule that flags a command whose source frontmatter is missing any of the three
+    required keys; the rule ships at <code>warning</code> severity. That rule checks <em>only</em> the three required
+    keys for presence and <spec-rule>MUST NOT</spec-rule> flag a command merely for omitting the optional
+    <code>model:</code> key. The <em>well-formedness</em> of a present <code>model:</code> value — that it is a legal
+    alias — is enforced by the drift-guard rule that <a href="../044-verb-model-policy/spec.html">044-verb-model-policy</a>
+    requires, so a permitted key never ships without a machine-checkable guarantee.</p>
+
+    <p>Command descriptions <spec-rule level="should">SHOULD</spec-rule> be validated with
+    <code>/skill-creator</code>'s eval against a <strong>≥90% trigger-accuracy default target</strong> (the command
+    fires correctly on ≥90% of its intent cases) whenever the metadata changes; a command measured below the target
+    <spec-rule level="should">SHOULD</spec-rule> be re-tuned before it ships. The target is a <code>SHOULD</code>,
+    not a hard gate — the first eval run establishes the baseline it is checked against — until spectastic ships a
+    harness that can run the eval automatically (deferred to <code>init --tools</code>), at which point the check
+    <spec-rule level="may">MAY</spec-rule> be promoted to a gated <code>must</code> by a future change.</p>
+
+    <details><summary>Rationale</summary><p>Commands load as skills but invoke unreliably because their
+    frontmatter is authored for a human reader, and no requirement encodes a triggering bar (triage
+    <a href="../000-spectastic/triage-log.html#T-008">T-008</a>, <code>spec</code> layer, regen <code>fail</code>). Structured
+    keys make the bar machine-checkable; the <code>description</code> stays a fixed, tuned output so the exact string
+    skill-creator evaluates is the one committed and loaded — generating it at sync would break that eval loop. The
+    validate rule gives the <code>must</code> teeth (starting as a <code>warning</code> so the ten existing commands
+    can be brought up to the bar without a red build); the eval <code>should</code> makes "reliable" measurable
+    rather than asserted, baselined on first run so the ≥90% figure is checked against reality before it ever hardens
+    into a gate. The optional <code>model:</code> key is an orthogonal, advisory knob (spec 044): permitting it in the
+    contract keeps a cost-tiering choice from ever reading as a metadata violation, while its well-formedness is
+    guaranteed by 044's drift-guard (a <code>MUST</code>) — so the permission never ships without an enforcement,
+    honouring P-8.</p></details>
+  </spec-requirement>
+</section>
+
+
+<section id="questions">
+<h2>3 · Open questions</h2>
+<spec-questions>
+</spec-questions>
+<p>No open questions. These requirements were ratified in the parent before extraction; the move changed
+their location, not their content.</p>
+</section>
+
+
+<section id="conformance">
+<h2>4 · Conformance index</h2>
+<p>Auto-built from every <code>&lt;spec-requirement&gt;</code> in this document.</p>
+<spec-conformance></spec-conformance>
+</section>
+
+
+<section id="changelog">
+<h2>5 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-08-11">11 Aug 2026</time><span>Extracted from <a href="../000-spectastic/spec.html">000-spectastic</a> as a slice. 3 requirements moved verbatim with their stable ids preserved; no requirement text changed. The parent recorded the corresponding removals in the same change.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+</main>
+<script src="../assets/spec.js"></script>
+</body>
+</html>
