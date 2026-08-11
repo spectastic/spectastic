@@ -19,7 +19,9 @@ import { describe, expect, it } from 'vitest';
 const here = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(here, '..', '..', '..');
 const SPEC_JS = join(REPO_ROOT, 'assets', 'spec.js');
-const META_SPEC = join(REPO_ROOT, 'specs', '000-spectastic', 'spec.html');
+// REQ-FORMAT-004 was extracted from the meta-spec into the artifact-format slice;
+// the id is unchanged, so this guard follows the requirement to its new home.
+const META_SPEC = join(REPO_ROOT, 'specs', '091-artifact-format', 'spec.html');
 
 /** The green upper bound REQ-FORMAT-004 declares ("green ≤ 80%"). */
 function reqFormatThreshold(html: string): number | undefined {
