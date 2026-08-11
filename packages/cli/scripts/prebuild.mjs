@@ -30,6 +30,9 @@ const SOURCES = [
   // Subagent definitions (spec 044-verb-model-policy) — the isolated model-pinned
   // fan-out agents (critic/classifier/impl-task). Same install shape as commands.
   ['agents', '.claude/agents'],
+  // The whole assets/ directory ships into every scaffolded project, so it holds
+  // only the design system. Repository imagery (README screenshots) lives in
+  // docs/images/ — putting it here would install it into downstream projects.
   ['assets', 'assets'],
   ['templates', 'templates'],
   // Verb tier manifest — read by init to keep extended verbs out of the

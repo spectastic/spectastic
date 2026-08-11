@@ -111,7 +111,9 @@ describe("corpusLicenseFindings — missing license is 051's concern, not this r
 
 describe('README redistribution policy (058 T-300, FR-003/FR-004)', () => {
   it('names what may be committed, the by-reference requirement, and the MCP/origin-url escape hatch', () => {
-    const readme = readFileSync(new URL('../../../README.md', import.meta.url), 'utf8');
+    // The policy is documented where the subsystem is documented: this package's own
+    // README, which is what a reader of @spectastic/corpus on npm actually sees.
+    const readme = readFileSync(new URL('../README.md', import.meta.url), 'utf8');
     expect(readme).toContain('corpus-license');
     expect(readme.toLowerCase()).toContain('by-reference');
     expect(readme).toContain('MCP');

@@ -2,6 +2,61 @@
 
 ## Unreleased
 
+_Nothing yet._
+
+## v0.1.0-pre.17 … v0.1.0-pre.23 — 2026-07-08 to 2026-07-28
+
+These seven tags shipped continuously and were not changelogged at the time; the entries below were
+written as one rollup afterwards. Individual tag boundaries are in the git history.
+
+**The guarantee layer (030, 031).** `spectastic init --tools` moves the mandatory steps off command
+markdown, where a model can skip them, and onto the git boundary: a pre-commit gate that runs validate
+and rejects the commit on any error, plus drift-proof `.claude/commands/` adapters generated from source
+with a `commands-drift` check that fails a commit while an installed adapter has diverged. Principles
+apply became kernel-owned, the first verb to use that path.
+
+**Profiles and the enforcement floor (041, 042, 043).** `init --profile lean|standard|verified|enterprise`
+seeds a profile-shaped `principles.html` and a lean `AGENTS.md`, deterministically. `spectastic enforce`
+detects which enforcement categories a toolchain actually covers and exits non-zero on a gap at the
+hard-gate tiers. The category set grew to nine — adding coverage (a *declared* threshold, never a bare
+library), observability (a deliberate exporter, never a transitive tracing lib), and contract-first
+(interface-gated, so a project with no detected interface is exempt rather than warned). Per-category
+waivers landed with justification and expiry in their shape, secure-by-default and never folded into
+covered. `spectastic gitignore --stack` writes ecosystem ignores into a marked, append-only block.
+
+**Artifact security (045, 046).** Artifacts are data, not instructions. A deny-by-default content-security
+policy in all eight templates, a `no-executable-content` rule at error severity, and fencing of artifact
+text in the AI verbs. Backed by an injection red-team fixture and a corpus scan that run as a blocking
+`security-review` CI job — a security finding fails the build rather than being logged.
+
+**Objectives and their trace (047, 048).** A first-class `<spec-slo>` element carrying the full objective
+shape, targeted at a quantified requirement, plus an Observables trace in the verify view that pairs each
+requirement with its objectives — or a quantification-aware gap, so a reliability-shaped requirement with
+no objective is loud while a non-reliability one stays quiet.
+
+**Stack selection (050).** A design-stage stack interview whose recommendations are context-seeded from
+the project, never drawn from a house catalog, and explicitly crownless where no source implies a winner.
+
+**The knowledge corpus family (051–059, 061–063).** A committed, greppable `knowledge/` directory shaped
+as a portable Agent Skill. Documents carry stable ids and provenance; a decision cites one pinned to the
+edition it was read against, with prior editions retained rather than overwritten. Citation integrity is
+gated — a dangling citation errors, a superseded one warns. When a corpus exists it is *injected* into
+every AI-verb prompt rather than merely pointed at, and the adversarial critic gains a domain-contradiction
+angle. An adapter brings an existing markdown folder or `llms.txt` into the convention without ever
+guessing a license, origin, or edition. A two-layer identity migration made coordinates federation-unique,
+and a corpus became discoverable by default.
+
+**Corpus extraction and conversion (064, 065).** The whole subsystem moved out of `@spectastic/core` into
+a standalone `@spectastic/corpus` package with its own `spectastic-corpus` binary, usable with no spec
+lifecycle present, adding a deterministic get/query/grep read path. The one-way boundary — corpus must
+never import core — is enforced in CI. `corpus convert` shells out to a user-installed converter to bring
+PDFs and other formats in as cited documents; none is bundled.
+
+**Course teaching payload (019, 060).** A course objective's reading widens into an optional structured
+payload — analogy, contrasting cases, worked example, illustration — each verified like any other
+reference, with a blind fit check that flags a mis-mapped analogy before the course is written. Course
+verification became keyless and in-host.
+
 **New package: `@spectastic/corpus` (064-corpus-package-extraction).** The whole `knowledge/` subsystem — curation, citation, provenance, licensing, prompt injection — moved out of `@spectastic/core` into a standalone workspace package, with a new **`spectastic-corpus`** binary usable with no `@spectastic/core` or `specs/` present: the existing curation verbs (`adapt`/`import`/`interview`/`source`/`publish`), a new deterministic **get/query/grep** read path (get resolves one document by citation; query is a metadata substring search; grep is full-text over document bodies, ripgrep-backed when present on `PATH`, a pure-Node scan otherwise — both paths verified byte-identical), and corpus-intrinsic `validate`. `@spectastic/core`'s AI verbs and `@spectastic/cli`'s validate scans now depend on `@spectastic/corpus` rather than owning the logic directly; the one-way boundary (corpus must never import core) is a CI-enforced `dependency-cruiser` rule. Slice 1 of the [corpus-extraction survey](docs/corpus-extraction-considerations.html); parity is total (the pre-existing test suite passes unchanged, plus a new golden-snapshot test locking the injected prompt block byte-for-byte).
 
 **Attribution trailers (027-git-trailers).** With `git.trailers = on` (default off; acts only when `git.auto` commits), the git layer derives commit-footer trailers from the artifact's `<spec-meta>` + lifecycle: `Author`, `Reviewed-by`, `Co-authored-by` (author≠committer), `Acked-by` (the risk-pass dispositioner), and `Refs` — **humans only**, each omitted when its source is absent, never faked. The assisting model is acknowledged distinctly as `Assisted-by: <model>` (a tool acknowledgment, not authorship), emitted only on AI-coupled verb commits. This refines the project's AI-attribution stance — CONTRIBUTING now permits `Assisted-by` while keeping authorship human. Carries two meta-spec amendments: REQ-LIFECYCLE-004 records the reviewer on In Review→Accepted, and REQ-CHANGE-004 gains a `by=` recording the risk-pass dispositioner (the `Acked-by` source). The `AIProvider` interface gains `model`; `extractSpecMetadata` gains the header fields.
