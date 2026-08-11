@@ -19,12 +19,7 @@ describe('T-010 · regression: specResourceUri output is unchanged by the refact
   // implementation and prove nothing.
   const PINNED: ReadonlyArray<readonly [string, string, string | undefined, string]> = [
     ['spectastic/spectastic', '042', undefined, 'spectastic://spectastic/spectastic/spec/042'],
-    [
-      'spectastic/spectastic',
-      '042',
-      'REQ-FORMAT-004',
-      'spectastic://spectastic/spectastic/spec/042#REQ-FORMAT-004',
-    ],
+    ['spectastic/spectastic', '042', 'REQ-FORMAT-004', 'spectastic://spectastic/spectastic/spec/042#REQ-FORMAT-004'],
     // A bare project degrades to a single-segment authority with no path prefix.
     ['spectastic', '042', undefined, 'spectastic://spectastic/spec/042'],
     ['spectastic', '042', 'FR-001', 'spectastic://spectastic/spec/042#FR-001'],

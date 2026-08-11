@@ -72,9 +72,7 @@ describe('corpusResourceUri (078 T-110, D-001/D-004)', () => {
 
   it('does NOT lowercase spec or contract authorities — the fold is corpus-only (FR-012)', () => {
     expect(specResourceUri('Acme-Corp/Repo', '042')).toBe('spectastic://Acme-Corp/Repo/spec/042');
-    expect(contractResourceUri('Acme-Corp/Repo', 'orders-api')).toBe(
-      'spectastic://Acme-Corp/Repo/contract/orders-api',
-    );
+    expect(contractResourceUri('Acme-Corp/Repo', 'orders-api')).toBe('spectastic://Acme-Corp/Repo/contract/orders-api');
   });
 });
 
@@ -149,7 +147,13 @@ describe('parseResourceUri — round-trip (078 T-210, FR-008/SC-002)', () => {
       expect(parsed.ok, `${c.label} — expected parse to succeed`).toBe(true);
       if (!parsed.ok) continue;
 
-      const recomposed = resourceUri(parsed.value.project, parsed.value.kind, parsed.value.name, parsed.value.anchor, parsed.value.edition);
+      const recomposed = resourceUri(
+        parsed.value.project,
+        parsed.value.kind,
+        parsed.value.name,
+        parsed.value.anchor,
+        parsed.value.edition,
+      );
       expect(recomposed, `${c.label} — round-trip`).toBe(composed);
     }
   });
@@ -160,9 +164,15 @@ describe('parseResourceUri — round-trip (078 T-210, FR-008/SC-002)', () => {
     expect(parsed.ok).toBe(true);
     if (!parsed.ok) return;
     expect(parsed.value.project).toBe('acme/svc-a/deep-group');
-    expect(resourceUri(parsed.value.project, parsed.value.kind, parsed.value.name, parsed.value.anchor, parsed.value.edition)).toBe(
-      composed,
-    );
+    expect(
+      resourceUri(
+        parsed.value.project,
+        parsed.value.kind,
+        parsed.value.name,
+        parsed.value.anchor,
+        parsed.value.edition,
+      ),
+    ).toBe(composed);
   });
 });
 
@@ -232,9 +242,7 @@ describe('parseResourceUri — kind detection and failure contract (078 T-210, F
  */
 describe('the unit resource kind (079 T-010, FR-001)', () => {
   it('composes a unit coordinate', () => {
-    expect(resourceUri('spectastic/spectastic', 'unit', 'core')).toBe(
-      'spectastic://spectastic/spectastic/unit/core',
-    );
+    expect(resourceUri('spectastic/spectastic', 'unit', 'core')).toBe('spectastic://spectastic/spectastic/unit/core');
   });
 
   it('parses a unit coordinate back — the half a union-only widening would miss', () => {

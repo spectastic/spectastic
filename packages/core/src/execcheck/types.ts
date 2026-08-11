@@ -53,10 +53,11 @@ export interface Refusal {
  * The process runner, injected. Only this crosses into the OS — which is what
  * lets every refusal path be tested with no runner supplied at all (NFR-001).
  */
-export interface CommandRunner {
-  (command: string, opts: { cwd: string; timeoutMs: number }): Promise<{
-    exitCode: number;
-    output: string;
-    timedOut: boolean;
-  }>;
-}
+export type CommandRunner = (
+  command: string,
+  opts: { cwd: string; timeoutMs: number },
+) => Promise<{
+  exitCode: number;
+  output: string;
+  timedOut: boolean;
+}>;

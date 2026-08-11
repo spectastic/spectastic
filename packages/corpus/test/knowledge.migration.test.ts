@@ -54,9 +54,7 @@ describe('062 migration — the root registry (SC-001)', () => {
     // literals above: a future row added with a bare marketplace fails here even
     // if it never touches the assertions.
     for (const row of registry) {
-      expect(row.marketplace, `${row.id} must carry an owner-qualified marketplace`).toMatch(
-        /^[^/]+\/[^/]+$/,
-      );
+      expect(row.marketplace, `${row.id} must carry an owner-qualified marketplace`).toMatch(/^[^/]+\/[^/]+$/);
     }
   });
 });

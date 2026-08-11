@@ -34,10 +34,7 @@ describe('the tag grammar (T-010/T-011)', () => {
   });
 
   it('accepts several tags on one test, since a test may serve two specs', () => {
-    expect(parseTags('shared behaviour @021 @084:FR-002')).toEqual([
-      { spec: '021' },
-      { spec: '084', id: 'FR-002' },
-    ]);
+    expect(parseTags('shared behaviour @021 @084:FR-002')).toEqual([{ spec: '021' }, { spec: '084', id: 'FR-002' }]);
   });
 
   it('round-trips through its written form', () => {
@@ -75,7 +72,9 @@ describe('the reader (T-100/T-110)', () => {
   });
 
   it('reads Playwright structured tags as well as title tokens', () => {
-    const r = readTags([{ file: 'p.spec.ts', content: `test('a browser check', { tag: ['@084:SC-001'] }, async () => {});` }]);
+    const r = readTags([
+      { file: 'p.spec.ts', content: `test('a browser check', { tag: ['@084:SC-001'] }, async () => {});` },
+    ]);
     expect(r.tagged[0]?.tags).toEqual([{ spec: '084', id: 'SC-001' }]);
   });
 
@@ -153,7 +152,10 @@ describe('adopting without a flag day (T-300/T-301)', () => {
     // A citation covering 1 of 3 tests looks as authoritative as one covering
     // all 3. Partiality has to travel with the result.
     const read = readTags([
-      { file: 'a.test.ts', content: `it('tagged @084:FR-001', () => {});\nit('bare one', () => {});\nit('bare two', () => {});` },
+      {
+        file: 'a.test.ts',
+        content: `it('tagged @084:FR-001', () => {});\nit('bare one', () => {});\nit('bare two', () => {});`,
+      },
     ]);
     const d = deriveCitation(read, facts, ['084']);
     expect(d.partial).toBe(true);

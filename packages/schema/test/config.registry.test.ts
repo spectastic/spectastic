@@ -88,7 +88,9 @@ describe('resolution reports where each value came from @086:FR-004 @086:T-101',
   it('distinguishes "explicitly set to the default" from "left alone"', () => {
     // A real distinction for a user reasoning about their own file, and one the
     // old inline fallbacks could not express.
-    expect(resolveConfig({ verify: { executeCapturedCommands: false } }).verify.executeCapturedCommands.origin).toBe('file');
+    expect(resolveConfig({ verify: { executeCapturedCommands: false } }).verify.executeCapturedCommands.origin).toBe(
+      'file',
+    );
     expect(resolveConfig({}).verify.executeCapturedCommands.origin).toBe('default');
   });
 

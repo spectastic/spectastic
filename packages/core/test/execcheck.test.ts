@@ -15,7 +15,7 @@ import type { CommandRunner } from '../src/execcheck/types.js';
 const ROOT = '/repo';
 
 describe('the refusals @085:FR-001 @085:FR-002 @085:NFR-001 @085:T-200', () => {
-  it('refuses without the invoking project\'s consent', () => {
+  it("refuses without the invoking project's consent", () => {
     const r = guard({ artifactPath: 'specs/083/verify.html', projectRoot: ROOT, consented: false });
     expect(r?.kind).toBe('no-consent');
   });
@@ -121,7 +121,11 @@ describe('outcomes @085:FR-005 @085:FR-006 @085:T-100', () => {
       Promise.resolve(result);
 
   it('passes when the command exits zero', async () => {
-    const out = await checkSpec({ ...base, captured: { run: 'true' }, runner: runner({ exitCode: 0, output: '', timedOut: false }) });
+    const out = await checkSpec({
+      ...base,
+      captured: { run: 'true' },
+      runner: runner({ exitCode: 0, output: '', timedOut: false }),
+    });
     expect('verdict' in out && out.verdict.ok).toBe(true);
   });
 
@@ -161,7 +165,11 @@ describe('outcomes @085:FR-005 @085:FR-006 @085:T-100', () => {
   it('a verdict that examined nothing still reports what it did not examine', async () => {
     // Guards against the one bug that would make this check worse than
     // useless: reporting green for an artifact it never looked at.
-    const out = await checkSpec({ ...base, captured: {}, runner: runner({ exitCode: 0, output: '', timedOut: false }) });
+    const out = await checkSpec({
+      ...base,
+      captured: {},
+      runner: runner({ exitCode: 0, output: '', timedOut: false }),
+    });
     expect('verdict' in out && out.verdict.results.every((r) => r.outcome === 'absent')).toBe(true);
   });
 

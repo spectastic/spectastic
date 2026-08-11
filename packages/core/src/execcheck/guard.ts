@@ -68,7 +68,7 @@ export function guard(input: GuardInput): Refusal | null {
     return {
       kind: 'no-consent',
       message:
-        'Running recorded commands is off by default. Enable it in this project\'s spectastic.json before asking for it — a tool that gained this on upgrade would be a change nobody agreed to.',
+        "Running recorded commands is off by default. Enable it in this project's spectastic.json before asking for it — a tool that gained this on upgrade would be a change nobody agreed to.",
     };
   }
 

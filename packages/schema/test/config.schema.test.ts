@@ -49,7 +49,7 @@ describe('the schema describes the registry @087:FR-001 @087:FR-002 @087:T-200',
     expect(schema.properties.$schema?.type).toBe('string');
   });
 
-  it('does not reject unknown keys outright — that judgement is the scan\'s @087:D-003', () => {
+  it("does not reject unknown keys outright — that judgement is the scan's @087:D-003", () => {
     // A config written by a newer version is indistinguishable from a typo, so
     // the schema describes rather than forbids.
     expect((schema as unknown as { additionalProperties: boolean }).additionalProperties).toBe(true);
@@ -80,9 +80,8 @@ describe('the committed artifact matches the registry @087:FR-008 @087:T-300', (
     // This is the check that makes that a failure rather than a silent
     // divergence between what ships and what the tool believes.
     const committed = readFileSync(join(pkgRoot, 'dist', 'config.schema.json'), 'utf8');
-    expect(
-      committed,
-      'dist/config.schema.json is stale — run `node packages/schema/scripts/gen-schema.mjs`',
-    ).toBe(serialiseSchema(VERSION));
+    expect(committed, 'dist/config.schema.json is stale — run `node packages/schema/scripts/gen-schema.mjs`').toBe(
+      serialiseSchema(VERSION),
+    );
   });
 });

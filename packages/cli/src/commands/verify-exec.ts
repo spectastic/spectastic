@@ -21,7 +21,7 @@ export function registerVerifyExec(program: Command): void {
   program
     .command('verify:exec')
     .description(
-      'Run a spec\'s recorded commands and fail if one no longer works. Off unless enabled in this project, and never runs an artifact from a dependency. Prose fields are never executed.',
+      "Run a spec's recorded commands and fail if one no longer works. Off unless enabled in this project, and never runs an artifact from a dependency. Prose fields are never executed.",
     )
     .argument('<spec>', 'the spec whose recorded commands should be run')
     .argument('[path]', 'project root', '.')
@@ -53,7 +53,8 @@ export function registerVerifyExec(program: Command): void {
       if (existsSync(cfgPath)) {
         try {
           const cfg: unknown = readConfigFile(path);
-          consented = (cfg as { verify?: { executeCapturedCommands?: unknown } }).verify?.executeCapturedCommands === true;
+          consented =
+            (cfg as { verify?: { executeCapturedCommands?: unknown } }).verify?.executeCapturedCommands === true;
         } catch {
           // A malformed config is not consent.
         }
@@ -88,18 +89,26 @@ export function registerVerifyExec(program: Command): void {
       if (tests !== undefined) captured.tests = tests;
       if (/<spec-runblock[^>]*data-status="suggested"/.test(html)) captured.verified = false;
 
-      const runner = (command: string, o: { cwd: string; timeoutMs: number }): Promise<{ exitCode: number; output: string; timedOut: boolean }> =>
+      const runner = (
+        command: string,
+        o: { cwd: string; timeoutMs: number },
+      ): Promise<{ exitCode: number; output: string; timedOut: boolean }> =>
         new Promise((resolveRun) => {
           exec(
             command,
-            { cwd: o.cwd, timeout: o.timeoutMs, maxBuffer: 8 * 1024 * 1024, env: { ...process.env, SPECTASTIC_EXEC_ACTIVE: '1' } },
+            {
+              cwd: o.cwd,
+              timeout: o.timeoutMs,
+              maxBuffer: 8 * 1024 * 1024,
+              env: { ...process.env, SPECTASTIC_EXEC_ACTIVE: '1' },
+            },
             (err, stdout, stderr) => {
-            const e = err as (Error & { code?: number; killed?: boolean; signal?: string }) | null;
-            resolveRun({
-              exitCode: e?.code ?? (e === null ? 0 : 1),
-              output: `${stdout}${stderr}`.trim(),
-              timedOut: e?.killed === true || e?.signal === 'SIGTERM',
-            });
+              const e = err as (Error & { code?: number; killed?: boolean; signal?: string }) | null;
+              resolveRun({
+                exitCode: e?.code ?? (e === null ? 0 : 1),
+                output: `${stdout}${stderr}`.trim(),
+                timedOut: e?.killed === true || e?.signal === 'SIGTERM',
+              });
             },
           );
         });

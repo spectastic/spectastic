@@ -63,7 +63,7 @@ describe('templates/design.html — §3 Data model & contracts (US1, FR-001/FR-0
 });
 
 describe('templates/design.html — §3 linking guidance (US2, FR-006)', () => {
-  it('points authors at the spec\'s own conceptual entities rather than a restated field list', () => {
+  it("points authors at the spec's own conceptual entities rather than a restated field list", () => {
     const html = template();
     const section = html.slice(html.indexOf('id="contracts"'), html.indexOf('id="grounding"'));
     expect(section).toMatch(/href="\.\/spec\.html#/);

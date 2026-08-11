@@ -73,10 +73,7 @@ export interface ContractDeclaration {
  * The default is a convenience for the common case, not the mechanism: the
  * mechanism is that the coordinate composer takes a name and never a path.
  */
-export function contractCoordinateName(
-  declared: string | undefined,
-  path: string | undefined,
-): string | undefined {
+export function contractCoordinateName(declared: string | undefined, path: string | undefined): string | undefined {
   if (declared !== undefined && declared.trim() !== '') return declared.trim();
   if (path === undefined) return undefined;
   const basename = path.split('/').pop() ?? path;

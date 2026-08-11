@@ -289,9 +289,9 @@ export function registerInit(program: Command): void {
       if (writtenProject) {
         process.stdout.write(`✓ wrote spectastic.json project identity (project=${writtenProject})\n`);
       }
-        if (wroteSchemaRef) {
-          process.stdout.write('✓ wrote spectastic.json schema reference (editor completion + key validation)\n');
-        }
+      if (wroteSchemaRef) {
+        process.stdout.write('✓ wrote spectastic.json schema reference (editor completion + key validation)\n');
+      }
       // 063-corpus-discoverability FR-001: every project gets a corpus config
       // (marketplace name + root dir), unconditional — no flag, matching the
       // gitignore write's own unconditional-unless-opted-out precedent minus
