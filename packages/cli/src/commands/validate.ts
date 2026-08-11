@@ -178,10 +178,7 @@ async function scanCopyLeak(): Promise<Finding[]> {
  * release would be worse than the silence this closes.
  */
 async function scanUnknownConfigKeys(cwd: string): Promise<Finding[]> {
-  const [{ unknownKeyFindings }, { readConfigFile }] = await Promise.all([
-    import('@spectastic/schema/config'),
-    import('@spectastic/schema/config'),
-  ]);
+  const { unknownKeyFindings, readConfigFile } = await import('@spectastic/schema/config');
   const file = readConfigFile(cwd);
   if (Object.keys(file).length === 0) return [];
 
