@@ -6,6 +6,8 @@ import type { Element } from '@spectastic/schema/parser';
 import { findAll, getAttr, getLocation, parse } from '@spectastic/schema/parser';
 import { isQuantifiedTarget } from '@spectastic/schema/slo';
 import type { VisualDeclaration } from '@spectastic/schema/visual';
+import { conventionalVisualPrefix, isUnderPrefix, owningSpecId } from '../visual/location.js';
+import type { VisualDeclarationState } from '../visual/read.js';
 import { daysBetween, isBoilerplateReason, MAX_WAIVER_DAYS, parseIsoDate, type RawWaiver } from '../enforce/config.js';
 import type { EnforcementCategory } from '../enforce/types.js';
 import { isModelTier, MODEL_TIER_ALIASES, VERB_MODEL_POLICY } from '../model-policy/index.js';
@@ -784,6 +786,13 @@ export async function visualResolveFindings(
 export function visualSectionGatedFindings(html: string, file: string, projectHasSurface: boolean): Finding[] {
   if (projectHasSurface) return [];
 
+  // A template is a scaffold, not an authored design. It carries the section
+  // unconditionally BY DESIGN — `templates/` is copied verbatim and cannot vary
+  // per project — so flagging it would contradict the very decision that put
+  // the section there, and the fix it suggests (delete the section) would be
+  // actively wrong. Caught while draining 094's first task, on this repository.
+  if (/(?:^|\/)templates\//.test(file)) return [];
+
   const doc = parse(html, file);
   const section = findAll(doc.ast, 'section').find((el) => getAttr(el, 'id') === 'visual');
   const declaration = findAll(doc.ast, 'spec-visual')[0];
@@ -801,6 +810,97 @@ export function visualSectionGatedFindings(html: string, file: string, projectHa
       message: `${file} carries a Visual surface section, but this project has no user interface — none detected and none declared`,
       fixHint:
         'Delete the section outright (spec.html FR-002). The template scaffolds it unconditionally because a static file cannot vary per project; an absent section is reported as nothing at all, an empty one is a question nobody can answer. If this project does have an interface the tool cannot see, declare it instead — a declaration outranks detection (FR-004).',
+    },
+  ];
+}
+
+/**
+ * The conventional-location check (spec 094-visual-sidecar-convention,
+ * FR-001/FR-002, design D-001).
+ *
+ * 093 checks that a declared path RESOLVES; a token set under `design/`
+ * resolves perfectly well and is still in the wrong place. This is what turns
+ * a named convention into one a second author cannot get wrong, which is what
+ * SC-003 asks for.
+ *
+ * Pure — 0 filesystem calls. The resolve check already spends the one stat per
+ * declared path that NFR-001 budgets, and this spends nothing on top, so a
+ * second check over the same declarations moves no cost.
+ */
+export function visualLocationFindings(declarations: readonly VisualDeclaration[], file: string): Finding[] {
+  const findings: Finding[] = [];
+  const specId = owningSpecId(file);
+
+  for (const decl of declarations) {
+    const declared: { kind: 'tokens' | 'screens'; value: string }[] = [];
+    if (decl.tokens !== undefined) declared.push({ kind: 'tokens', value: decl.tokens });
+    if (decl.screens !== undefined) declared.push({ kind: 'screens', value: decl.screens });
+
+    for (const { kind, value } of declared) {
+      const prefix = conventionalVisualPrefix(kind, specId);
+      // Only for screens, and only outside specs/: no owning spec means no
+      // conventional location to compare against, so the check stands down
+      // rather than guessing an id.
+      if (prefix === null) continue;
+      if (isUnderPrefix(value, prefix)) continue;
+
+      const scope = kind === 'tokens' ? "the project's" : "this feature's";
+      findings.push({
+        file,
+        line: decl.line,
+        column: decl.column,
+        rule: 'visual-location',
+        severity: 'error',
+        message: `<spec-visual ${kind}="${value}"> in ${file} is not under ${prefix}/, where ${scope} visual material lives`,
+        fixHint: `Move it under ${prefix}/ and declare the new path (spec.html FR-00${kind === 'tokens' ? '1' : '2'}). The same directory name at two scopes is deliberate: the project's token set is at visual/, a feature's screens at specs/<spec-id>/visual/. Subdividing beneath either is fine.`,
+      });
+    }
+  }
+
+  return findings;
+}
+
+/**
+ * One design system, one token set (spec 094-visual-sidecar-convention, FR-004,
+ * design D-002).
+ *
+ * Two designs naming different token paths are two claims about one thing.
+ * Reported rather than resolved: a union is the right answer for N contracts
+ * and a meaningless one here, and precedence would silently pick a winner.
+ *
+ * Computed off the project pass `declaredVisualState` already made, so it adds
+ * no filesystem access — which is what keeps NFR-001 true while adding a check
+ * that is, by nature, about every design at once.
+ */
+export function visualDisagreementFindings(state: VisualDeclarationState | null, file: string): Finding[] {
+  if (state === null) return [];
+
+  // Provenance comes free because the state already carries it, and a reader
+  // told only that paths disagree cannot act on it.
+  const byPath = new Map<string, Set<string>>();
+  for (const p of state.declaredPaths) {
+    if (p.kind !== 'tokens') continue;
+    const specs = byPath.get(p.path) ?? new Set<string>();
+    specs.add(p.specId);
+    byPath.set(p.path, specs);
+  }
+  if (byPath.size <= 1) return [];
+
+  const claims = [...byPath.entries()]
+    .map(([path, specs]) => `${path} (${[...specs].sort().join(', ')})`)
+    .sort()
+    .join(' vs ');
+
+  return [
+    {
+      file,
+      line: 1,
+      column: 1,
+      rule: 'visual-token-set-disagreement',
+      severity: 'error',
+      message: `${byPath.size} different project token-set paths are declared across this project's designs: ${claims}`,
+      fixHint:
+        'There is one design system, so two paths are two claims about one thing. Settle on a single token-set path and correct the designs that disagree (spec.html FR-004) — this is reported rather than resolved, because neither precedence nor a union would be right.',
     },
   ];
 }

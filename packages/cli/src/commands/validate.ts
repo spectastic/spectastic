@@ -315,53 +315,80 @@ async function scanContractResolve(files: readonly string[], cwd: string): Promi
  */
 async function scanVisualResolve(files: readonly string[], cwd: string): Promise<Finding[]> {
   if (files.length === 0) return [];
-  const [{ visualResolveFindings }, { readVisualDeclarations }, { nodeFs }, { readFile }] = await Promise.all([
-    import('@spectastic/core/commands/validate'),
-    import('@spectastic/schema/visual'),
-    import('@spectastic/core/providers/node-fs'),
-    import('node:fs/promises'),
-  ]);
+  const [{ visualResolveFindings, visualLocationFindings }, { readVisualDeclarations }, { nodeFs }, { readFile }] =
+    await Promise.all([
+      import('@spectastic/core/commands/validate'),
+      import('@spectastic/schema/visual'),
+      import('@spectastic/core/providers/node-fs'),
+      import('node:fs/promises'),
+    ]);
 
   const perFile = await Promise.all(
     files.map(async (file) => {
       const html = await readFile(file, 'utf8');
+      // Cheap string prefilter BEFORE the parse. readVisualDeclarations runs a
+      // full parse5 pass, and measured over this repository's 463 artifacts it
+      // spent 857ms discovering zero declarations — the overwhelmingly common
+      // case, and one a substring test settles for nothing.
+      if (!html.includes('<spec-visual')) return [];
       const declarations = readVisualDeclarations(html, file);
       if (declarations.length === 0) return [];
-      return visualResolveFindings(declarations, file, nodeFs, cwd);
+      // 094 FR-001/FR-002 rides along with the same read: resolving proves the
+      // path exists, this proves it is in the right place. Costs no extra I/O.
+      const [resolved, located] = [
+        await visualResolveFindings(declarations, file, nodeFs, cwd),
+        visualLocationFindings(declarations, file),
+      ];
+      return [...resolved, ...located];
     }),
   );
   return perFile.flat();
 }
 
 /**
- * The visual-section gate (spec 093-design-visual-section, FR-002): a design in
- * a project with no user interface must carry no Visual surface section at all.
+ * The project-wide visual checks — the section gate (093 FR-002) and the
+ * token-set disagreement (094 FR-004).
  *
- * The antecedent is computed ONCE for the whole run rather than per file — it
- * is a property of the project, not of the document, and recomputing it per
- * design would re-read every manifest and every sibling design N times.
+ * Both need the same project pass, so they share one. `declaredVisualState`
+ * walks every design once; computing it per file would re-read the whole estate
+ * N times and is what NFR-001's "linear in declarations, not in files" excludes.
  */
-async function scanVisualSectionGated(files: readonly string[], cwd: string): Promise<Finding[]> {
+async function scanVisualProject(files: readonly string[], cwd: string): Promise<Finding[]> {
   if (files.length === 0) return [];
-  const [{ visualSectionGatedFindings }, { projectHasVisualSurface }, { readFile }] = await Promise.all([
+  const [
+    { visualSectionGatedFindings, visualDisagreementFindings },
+    { declaredVisualState },
+    { detectUserInterface },
+    { readFile },
+  ] = await Promise.all([
     import('@spectastic/core/commands/validate'),
     import('@spectastic/core/visual/read'),
+    import('@spectastic/core/enforce/detect'),
     import('node:fs/promises'),
   ]);
 
-  const projectHasSurface = projectHasVisualSurface(cwd);
-  // A project that has one can never produce a finding here, so skip the reads.
-  if (projectHasSurface) return [];
+  const state = declaredVisualState(cwd);
+  const findings: Finding[] = [];
+
+  // FR-004 — one design system, one token set. Attributed to the project's own
+  // config file rather than to an arbitrary design, since no single design is
+  // at fault for a disagreement between two.
+  findings.push(...visualDisagreementFindings(state, 'spectastic.json'));
+
+  // 093 FR-002 — absence, not emptiness. A project that HAS a surface can never
+  // produce a finding here, so skip the reads entirely.
+  const projectHasSurface = detectUserInterface(cwd).detected || (state !== null && !state.declaresNoSurface);
+  if (projectHasSurface) return findings;
 
   const perFile = await Promise.all(
     files.map(async (file) => {
       const html = await readFile(file, 'utf8');
-      // Cheap prefilter: the overwhelming majority of documents mention neither.
+      // Cheap prefilter: most documents mention neither.
       if (!html.includes('id="visual"') && !html.includes('<spec-visual')) return [];
       return visualSectionGatedFindings(html, file, projectHasSurface);
     }),
   );
-  return perFile.flat();
+  return [...findings, ...perFile.flat()];
 }
 
 /**
@@ -647,7 +674,7 @@ export function registerValidate(program: Command): void {
       // The visual-section gate (spec 093): absence, not emptiness. A project
       // with an interface can produce no finding here, so this costs one
       // detection pass and returns.
-      const visualGateScanFindings = await scanVisualSectionGated(files, process.cwd());
+      const visualGateScanFindings = await scanVisualProject(files, process.cwd());
       const findings = [
         ...result.findings,
         ...quarantineFindings,

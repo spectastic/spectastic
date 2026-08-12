@@ -114,3 +114,17 @@ describe('an unfilled scaffold declares nothing', () => {
     expect(projectHasVisualSurface(root)).toBe(true);
   });
 });
+
+describe('a template is not an authored design', () => {
+  it('never flags a scaffold under templates/, whose section is unconditional by design', () => {
+    // 093 D-003: templates/ is copied verbatim and cannot vary per project, so
+    // the section is scaffolded unconditionally. Flagging it would contradict
+    // that decision, and its fix hint — delete the section — would be wrong.
+    expect(visualSectionGatedFindings(SCAFFOLD, 'templates/design.html', false)).toEqual([]);
+    expect(visualSectionGatedFindings(DECLARED, 'some/nested/templates/design.html', false)).toEqual([]);
+  });
+
+  it('still flags a real design whose path merely CONTAINS the word template', () => {
+    expect(visualSectionGatedFindings(SCAFFOLD, 'specs/001-templates-work/design.html', false)).toHaveLength(1);
+  });
+});
