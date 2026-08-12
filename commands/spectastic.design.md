@@ -118,6 +118,7 @@ User input (from `$ARGUMENTS`): a Spec ID such as `001-auth-service`, or empty (
 - Replace every `[PLACEHOLDER]`.
 - Decisions favor brevity. A four-line Decision row is better than a paragraph.
 - Use `<spec-warning>` for risks the user must accept before implementation; use `<spec-assumption>` for things this design takes as true.
+- Use `<spec-sidenote>` for an aside the reader may skip without losing the argument — a caveat, or the thing you nearly did instead. A `<spec-note>` sits in the flow and must not be missed; a sidenote sits beside it. Both templates now scaffold one, commented out.
 
 ## After writing
 

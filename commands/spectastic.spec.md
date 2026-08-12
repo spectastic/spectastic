@@ -90,7 +90,7 @@ User input (from `$ARGUMENTS`): a feature name or one-line description.
 - Replace every `[PLACEHOLDER]`. Never leave one.
 - Keep paragraphs short. Reviewers skim.
 - Use `<details>` for rationale and long examples so the spec reads as a flat sentence at default zoom.
-- Use `<spec-sidenote>` for marginalia that would interrupt flow.
+- Use `<spec-sidenote>` for marginalia that would interrupt flow — an aside the reader may skip without losing the argument. A `<spec-note>` sits *in* the flow and must not be missed; a sidenote sits beside it. The template scaffolds one, commented out.
 
 ## After writing
 

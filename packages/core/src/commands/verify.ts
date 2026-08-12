@@ -377,12 +377,16 @@ export function renderTrace(model: BundleModel): string {
         )}</td><td>${proofCell(r)}</td></tr>`,
     )
     .join('\n');
-  return `<table>
+  // Wrapped so a wide trace scrolls inside its own container rather than the page
+  // (inbox I-057 / 021 T-004) — the containment the authored artifacts already keep.
+  return `<div style="overflow-x:auto;">
+<table>
   <thead><tr><th>Success criterion</th><th>Acceptance</th><th>Proof (tests)</th></tr></thead>
   <tbody>
 ${rows}
   </tbody>
-</table>`;
+</table>
+</div>`;
 }
 
 /** A loud gap in the §Observables trace, reusing TRACE_GAP's visual pattern with an NFR-specific message. */
@@ -446,12 +450,16 @@ export function renderObservables(model: BundleModel, captured: VerifyInput['cap
       row.slos.length > 0 ? row.slos.map((slo) => sloRow(row.nfrId, slo, observedSignals)) : [observablesGapRow(row)],
     )
     .join('\n');
-  return `<table>
+  // Wrapped so a wide trace scrolls inside its own container rather than the page
+  // (inbox I-057 / 021 T-004) — the containment the authored artifacts already keep.
+  return `<div style="overflow-x:auto;">
+<table>
   <thead><tr><th>NFR</th><th>Objective</th><th>SLI</th><th>Signal</th></tr></thead>
   <tbody>
 ${rows}
   </tbody>
-</table>`;
+</table>
+</div>`;
 }
 
 /**
