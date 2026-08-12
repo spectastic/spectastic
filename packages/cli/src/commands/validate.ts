@@ -298,6 +298,12 @@ async function scanContractResolve(files: readonly string[], cwd: string): Promi
   const perFile = await Promise.all(
     files.map(async (file) => {
       const html = await readFile(file, 'utf8');
+      // Cheap string prefilter BEFORE the parse. readContractDeclarations runs
+      // a full parse5 pass; measured over this repository's 463 artifacts it
+      // spent 1445ms to find 21 declarations, and this scan is one of two that
+      // do it, so ~2.6s of a full-project validate went on parsing documents
+      // with no <spec-contract> in them at all.
+      if (!html.includes('<spec-contract')) return [];
       const declarations = readContractDeclarations(html, file);
       if (declarations.length === 0) return [];
       return contractResolveFindings(declarations, file, nodeFs, cwd);
@@ -409,6 +415,12 @@ async function scanContractViewDrift(files: readonly string[], cwd: string): Pro
   const perFile = await Promise.all(
     files.map(async (file) => {
       const html = await readFile(file, 'utf8');
+      // Cheap string prefilter BEFORE the parse. readContractDeclarations runs
+      // a full parse5 pass; measured over this repository's 463 artifacts it
+      // spent 1445ms to find 21 declarations, and this scan is one of two that
+      // do it, so ~2.6s of a full-project validate went on parsing documents
+      // with no <spec-contract> in them at all.
+      if (!html.includes('<spec-contract')) return [];
       const declarations = readContractDeclarations(html, file);
       if (declarations.length === 0) return [];
       return contractViewDriftFindings(declarations, file, nodeFs, cwd);
