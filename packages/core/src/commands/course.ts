@@ -518,11 +518,65 @@ const GATE_SCRIPT = `<script>
 })();
 </script>`;
 
+/**
+ * Deterministically permute a quiz's options (019 FR-004, change
+ * 2026-08-12-answer-position).
+ *
+ * Every drafted quiz put the correct answer at index 0, and the guessability
+ * check could not see it: that check poses one item at a time, and the tell is
+ * a property of the *sequence*. A learner who notices the pattern once scores
+ * full marks without reading another question.
+ *
+ * Seeded from the course slug and the objective's position, so regenerating a
+ * course produces byte-identical output — the determinism the command already
+ * promises, and what the drift check depends on. The seed is derivable by
+ * anyone holding the artifact; that is fine, because the threat is a constant
+ * pattern noticed while answering, not an adversary reconstructing a
+ * permutation.
+ */
+export function shuffleQuizOptions(quiz: CourseQuizItem, seed: string): CourseQuizItem {
+  // xorshift32 over an FNV-1a seed: tiny, dependency-free and stable across
+  // Node versions, which Math.random() is not and could not be here anyway.
+  let h = 0x811c9dc5;
+  for (let i = 0; i < seed.length; i++) {
+    h ^= seed.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  let state = h >>> 0 || 0x9e3779b9;
+  const next = (): number => {
+    state ^= state << 13;
+    state >>>= 0;
+    state ^= state >>> 17;
+    state ^= state << 5;
+    state >>>= 0;
+    return state;
+  };
+
+  const order = quiz.options.map((_, i) => i);
+  for (let i = order.length - 1; i > 0; i--) {
+    const j = next() % (i + 1);
+    const a = order[i] as number;
+    order[i] = order[j] as number;
+    order[j] = a;
+  }
+
+  const options = order.map((from) => quiz.options[from] as string);
+  const correctIndex = order.indexOf(quiz.correctIndex);
+  // feedback is parallel to options, so it permutes with them or it starts
+  // describing the wrong answer.
+  const feedback = quiz.feedback ? order.map((from) => quiz.feedback?.[from] ?? '') : undefined;
+  return { ...quiz, options, correctIndex, ...(feedback ? { feedback } : {}) };
+}
+
 export function assembleCourse(draft: CourseDraft, slug: string): string {
   const title = draft.title?.trim() || `Course · ${draft.target}`;
   const outcome = draft.outcome?.trim() || `work confidently with ${draft.target}`;
   const date = slug.slice(0, 10);
-  const objectives = draft.objectives.map((o, i) => renderObjective(o, i)).join('\n\n');
+  // Shuffle at render time, not in the draft: the guessability pass upstream
+  // reasons about the draft as the model produced it.
+  const objectives = draft.objectives
+    .map((o, i) => renderObjective({ ...o, quiz: shuffleQuizOptions(o.quiz, `${slug}:${i}`) }, i))
+    .join('\n\n');
 
   return `<!doctype html>
 <html lang="en">

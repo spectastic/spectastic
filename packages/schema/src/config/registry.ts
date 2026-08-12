@@ -48,10 +48,12 @@ export type SectionDescriptor = Readonly<Record<string, KeyDescriptor>>;
  * *decider* configuration, not a section of its own — an over-count the
  * discoverable-defaults survey made and this registry corrected.
  *
- * `design.stackInterview` is also deliberately absent. It is advertised in the
- * README and honoured by the design command's markdown, but has no reader in
- * any package (FR-007). Declaring it here would make this list — and every
- * document generated from it — assert a capability that does not exist.
+ * `design.stackInterview` is also deliberately absent — and is now absent from
+ * the tool entirely. It was honoured only by the design command's markdown and
+ * read by no package (FR-007), so 050's change 2026-08-12-withdraw-stack-interview-key
+ * withdrew it rather than implementing it. Declaring it here would have made
+ * this list — and every document generated from it — assert a capability that
+ * did not exist.
  */
 export const CONFIG_REGISTRY = Object.freeze({
   project: Object.freeze({
@@ -60,6 +62,15 @@ export const CONFIG_REGISTRY = Object.freeze({
       default: NO_DEFAULT,
       description:
         'This project\'s owner-qualified identity, e.g. "acme/payments". Used to build federation-unique coordinates.',
+    },
+  }),
+
+  implement: Object.freeze({
+    drain: {
+      type: 'boolean',
+      default: true,
+      description:
+        'Whether `implement <spec-id>` empties the queue or stops after one task. A command-line flag overrides this; the compiled default is to drain.',
     },
   }),
 

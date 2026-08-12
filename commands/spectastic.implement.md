@@ -15,11 +15,11 @@ model: sonnet
 
 # /spectastic.implement
 
-You are implementing **one task** from a project's `tasks.html`. The default behaviour picks the next unchecked task in the most recently modified spec. You can also pass a specific task ID (`T-NNN`) to target one, or a Spec ID to pick the next unchecked task from that spec.
+You are implementing tasks from a project's `tasks.html`. Given a spec, the default is to **drain the queue** — take the next unchecked task, do it, tick it, repeat — stopping on the first failure. Given an explicit `T-NNN`, you do that one task. The default behaviour picks the most recently modified spec. You can also pass a specific task ID (`T-NNN`) to target one, or a Spec ID to pick the next unchecked task from that spec.
 
 ## Why this verb exists
 
-Before this command, implementation was implicit: "Claude Code is the engine, just ask it." That's defensible but unnamed — the lifecycle reads `principles → spec → design → tasks → ?? → propose → apply → triage` with a hole where the actual work happens. `/spectastic.implement` fills the hole. One task per invocation; checkbox ticks when the task is done; loop the command to drain a spec.
+Before this command, implementation was implicit: "Claude Code is the engine, just ask it." That's defensible but unnamed — the lifecycle reads `principles → spec → design → tasks → ?? → propose → apply → triage` with a hole where the actual work happens. `/spectastic.implement` fills the hole. Draining is the default for a spec; a checkbox ticks when each task is done. Stop on the first failure rather than pressing on — the interruption is worth keeping exactly where it earns its keep, which is the trade 090 REQ-TOOL-003 records. `--single` does one task and stops, which is what the old default did.
 
 ## Inputs
 

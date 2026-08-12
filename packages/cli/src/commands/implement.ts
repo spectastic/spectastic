@@ -5,7 +5,8 @@ export function registerImplement(program: Command): void {
     .command('implement')
     .description('Drive one task (T-NNN) or inbox just-do card (I-NNN).')
     .argument('<target>', 'T-NNN, I-NNN, or spec-id')
-    .option('--drain', 'drain all unchecked tasks in <spec-id> via the coding-agent runtime')
+    .option('--drain', 'drain all unchecked tasks in <spec-id> (the default for a spec-id target)')
+    .option('--single', 'stop after one task instead of draining the queue')
     .option('--all', 'drain mode (DEFERRED to TBD-core-implement-drain)')
     .option('--phase <id>', 'phase drain (DEFERRED)')
     .option('--parallel', 'parallel drain (DEFERRED)')
@@ -17,6 +18,7 @@ export function registerImplement(program: Command): void {
         target: string,
         opts: {
           drain?: boolean;
+          single?: boolean;
           all?: boolean;
           phase?: string;
           parallel?: boolean;
@@ -24,7 +26,31 @@ export function registerImplement(program: Command): void {
           commit?: boolean;
         },
       ) => {
-        if (opts.drain) {
+        // A spec-id target names a queue, so it drains by default (090
+        // REQ-TOOL-003). An explicit T-NNN or I-NNN is one task by
+        // construction and is never drained. The shape is matched positively
+        // rather than as "not a task id": an unrecognised target must still
+        // reach the kernel and be reported as unrecognised, not be mistaken
+        // for a spec and fail later with a missing-tasks.html message.
+        const isSpecId = /^\d{3}-[a-z0-9][a-z0-9-]*$/.test(target);
+        if (isSpecId && !opts.all && !opts.phase && !opts.parallel) {
+          const [{ resolveDrainMode }, { readConfigValue }] = await Promise.all([
+            import('@spectastic/core/commands/implement'),
+            import('../config-read.js'),
+          ]);
+          const configured = await readConfigValue('implement', 'drain');
+          const single = opts.single === true;
+          const drain = opts.drain === true;
+          const mode = resolveDrainMode({
+            ...(single ? { single } : {}),
+            ...(drain ? { drain } : {}),
+            ...(configured === undefined ? {} : { config: configured }),
+          });
+          if (mode === 'drain') {
+            await runDrain(target);
+            return;
+          }
+        } else if (opts.drain) {
           await runDrain(target);
           return;
         }

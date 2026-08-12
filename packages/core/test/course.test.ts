@@ -8,6 +8,7 @@ import {
   verifyAnalogyFit,
   verifyExistence,
   verifyGuessability,
+  shuffleQuizOptions,
 } from '../src/commands/course.js';
 import { StubAIProvider } from '../src/providers/stub.js';
 import type { CourseDraft, FileSystem } from '../src/types.js';
@@ -415,5 +416,45 @@ describe('course: blind analogy-fit check (060 T-302, FR-005, SC-002, NFR-002)',
     const ai = new StubAIProvider({ subagent: [] });
     const failures = await verifyAnalogyFit(draft, { cwd: '/tmp', ai });
     expect(failures).toHaveLength(0);
+  });
+});
+
+/**
+ * 019 FR-004, change 2026-08-12-answer-position. Every drafted quiz put the
+ * correct answer first, and the per-item guessability check could not see it
+ * because the tell is a property of the sequence rather than of any item.
+ */
+describe('quiz option order (FR-004)', () => {
+  const quiz = (n: number) => ({
+    question: `q${n}`,
+    options: ['correct', 'wrong-a', 'wrong-b', 'wrong-c'],
+    correctIndex: 0,
+    feedback: ['yes', 'no-a', 'no-b', 'no-c'],
+  });
+
+  it('keeps the correct option paired with its own text and feedback', () => {
+    const out = shuffleQuizOptions(quiz(1), 'slug:0');
+    expect(out.options[out.correctIndex]).toBe('correct');
+    expect(out.feedback?.[out.correctIndex]).toBe('yes');
+    expect([...out.options].sort()).toEqual(['correct', 'wrong-a', 'wrong-b', 'wrong-c']);
+  });
+
+  it('does not leave the correct answer at a constant position across a course', () => {
+    // The defect itself: one seed per objective, and the positions must vary.
+    const positions = new Set(
+      Array.from({ length: 12 }, (_, i) => shuffleQuizOptions(quiz(i), `course-slug:${i}`).correctIndex),
+    );
+    expect(positions.size).toBeGreaterThan(1);
+  });
+
+  it('is deterministic — the same seed gives byte-identical output', () => {
+    const a = shuffleQuizOptions(quiz(1), 'slug:3');
+    const b = shuffleQuizOptions(quiz(1), 'slug:3');
+    expect(a).toEqual(b);
+  });
+
+  it('leaves a quiz with no feedback array without one', () => {
+    const { feedback, ...noFb } = quiz(1);
+    expect(shuffleQuizOptions(noFb, 'slug:0').feedback).toBeUndefined();
   });
 });

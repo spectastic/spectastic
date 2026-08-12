@@ -42,10 +42,14 @@ describe('stack-selection interview — decision-phase instructions (US1)', () =
     expect(md).toMatch(/coordinates with, never duplicates/i);
   });
 
-  it('is gated by design.stackInterview, on by default (FR-005)', () => {
+  // 050 FR-002, change 2026-08-12-withdraw-stack-interview-key. The key was
+  // advertised and read by no package, so setting it changed nothing. This test
+  // used to assert the markdown mentioned it; it now pins the withdrawal, so a
+  // future edit cannot quietly reintroduce a gate the kernel does not honour.
+  it('is unconditional — no configuration key gates it (FR-002)', () => {
     const md = content();
-    expect(md).toMatch(/design\.stackInterview/);
-    expect(md).toMatch(/default on/i);
+    expect(md).not.toMatch(/design\.stackInterview/);
+    expect(md).toMatch(/unconditional/i);
   });
 
   it('seeds recommendations from detection + standing docs + the frameworks axis, never a house catalog (FR-002)', () => {

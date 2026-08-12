@@ -1,5 +1,5 @@
 import type { KernelContext } from '@spectastic/core';
-import { implementCommand } from '@spectastic/core/commands/implement';
+import { implementCommand, resolveDrainMode } from '@spectastic/core/commands/implement';
 import { describe, expect, it } from 'vitest';
 
 // implementCommand is pure w.r.t. IO — it neither reads nor writes files —
@@ -102,5 +102,33 @@ describe('implementCommand (014)', () => {
     await expect(implementCommand({ target: '001-auth', tasksHtml: TASKS_THREE_UNCHECKED }, ctx)).rejects.toThrow(
       /not a recognised T-NNN or I-NNN/,
     );
+  });
+});
+
+/**
+ * 090 REQ-TOOL-003, change 2026-08-12-drain-all-default. The default flipped
+ * from one-task-per-invocation to draining. The precedence lives in the kernel
+ * rather than the CLI because the slash command needs the same answer, and two
+ * places deciding it is how they come to disagree.
+ */
+describe('resolveDrainMode (REQ-TOOL-003)', () => {
+  it('drains when nothing says otherwise', () => {
+    expect(resolveDrainMode({})).toBe('drain');
+  });
+
+  it('lets a flag beat configuration in both directions', () => {
+    expect(resolveDrainMode({ single: true, config: true })).toBe('single');
+    expect(resolveDrainMode({ drain: true, config: false })).toBe('drain');
+  });
+
+  it('lets configuration beat the compiled default', () => {
+    expect(resolveDrainMode({ config: false })).toBe('single');
+    expect(resolveDrainMode({ config: 'single' })).toBe('single');
+    expect(resolveDrainMode({ config: true })).toBe('drain');
+  });
+
+  it('ignores a configuration value it does not recognise rather than guessing', () => {
+    expect(resolveDrainMode({ config: 'maybe' })).toBe('drain');
+    expect(resolveDrainMode({ config: 42 })).toBe('drain');
   });
 });

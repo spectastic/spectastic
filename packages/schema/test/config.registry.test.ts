@@ -21,9 +21,13 @@ describe('the registry enumerates without knowing what any key means @086:FR-001
   it('lists every section, deterministically', () => {
     const names = sectionNames();
     expect(names).toEqual([...names].sort());
-    // Ten sections. `run` is deliberately absent — commands/run.ts resolves the
-    // decider config, not a section of its own.
-    expect(names).toHaveLength(10);
+    // Eleven sections. `run` is deliberately absent — commands/run.ts resolves
+    // the decider config, not a section of its own. `implement` joined in
+    // 090's change 2026-08-12-drain-all-default, once a reader existed: the
+    // registry declares a key only when something reads it, which is why
+    // `design.stackInterview` was withdrawn rather than added.
+    expect(names).toHaveLength(11);
+    expect(names).toContain('implement');
     expect(names).not.toContain('run');
   });
 
