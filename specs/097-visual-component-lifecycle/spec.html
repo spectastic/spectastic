@@ -1,0 +1,315 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
+<title>Visual component lifecycle · Specification</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Specification · 097-visual-component-lifecycle</p>
+  <h1>Visual component lifecycle</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    The one thing that migrates — born inside a feature, promoted when a second reaches for it, and often not written here at all.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>      <span><spec-status value="draft">Draft</spec-status></span>
+    <b>Spec ID</b>     <span>097-visual-component-lifecycle</span>
+    <b>Owner</b>       <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Reviewers</b>   <span>—</span>
+    <b>Created</b>     <span><time datetime="2026-08-12">12 Aug 2026</time></span>
+    <b>Principles</b><span><a href="../../principles.html">v1.9.0</a></span>
+    <b>Smallest demoable</b><span>A component declared local to one feature, promoted by proposal, with its origin and licence intact after the move.</span>
+    <b>Read time</b>   <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-budget words="2000" reqs="20" minutes="13"></spec-budget>
+
+  <spec-tldr>
+    <p>Tokens are project-scoped and screens are feature-scoped. A component is neither for its whole life: it is
+    born inside one feature and may become shared, which makes it the only declared thing that <strong>migrates
+    between scopes</strong>. Promotion is not a file move — it is a change of which clock governs the component,
+    from the feature's change log to the design system's version, and from one consumer to many. It is therefore a
+    proposal, decided by a person, never automatic. Two further properties are orthogonal to that scope: a
+    <strong>maturity</strong>, which reuses the six-value status vocabulary this project already has rather than
+    minting the experimental-beta-stable ladder a seventh time, and an <strong>origin</strong>, because on the
+    dominant model today most components are not authored here at all. A vendored component carries the provenance
+    the knowledge corpus already requires — where it came from, which version, under what licence — and a pin to a
+    version that has moved on is a warning rather than a failure.</p>
+  </spec-tldr>
+
+  <dl class="invest">
+    <dt><span class="letter">I</span> Independent</dt> <dd>Depends on <a href="../094-visual-sidecar-convention/spec.html">094</a> for the two locations and <a href="../095-visual-element-vocabulary/spec.html">095</a> for what a declared thing looks like.</dd>
+    <dt><span class="letter">N</span> Negotiable</dt>  <dd>Contracts the states, the trigger and the provenance set. The promotion's implementation reuses existing machinery and is the design's to wire.</dd>
+    <dt><span class="letter">V</span> Valuable</dt>    <dd>Unlocks <a href="#SC-001">SC-001</a> — a shared component is shared deliberately, with a record of when it stopped belonging to one feature.</dd>
+    <dt><span class="letter">E</span> Estimable</dt>   <dd>Promotion clones an existing plan-then-execute mechanism; provenance clones an existing field set.</dd>
+    <dt><span class="letter">S</span> Small</dt>       <dd>Three states, one trigger, three origins. Measurement and versioning are elsewhere.</dd>
+    <dt><span class="letter">T</span> Testable</dt>    <dd>State, maturity and origin are all countable; promotion is observable as a before and after.</dd>
+  </dl>
+
+  <spec-audience-map>
+    <dl>
+      <dt>Exec / PM</dt>   <dd>§<a href="#context">Context</a>, §<a href="#success">Success criteria</a>.</dd>
+      <dt>Reviewer</dt>    <dd>§<a href="#requirements">Requirements</a>, §<a href="#assumptions">Assumptions</a>, §<a href="#questions">Open questions</a>.</dd>
+      <dt>Implementer</dt> <dd>§<a href="#requirements">Requirements</a>, §<a href="#data">Data model</a>.</dd>
+    </dl>
+  </spec-audience-map>
+</header>
+
+
+<section id="context">
+<h2>1 · Context</h2>
+<p>The scope split that works for tokens and screens has no home for a component, because a component changes scope
+during its life. Promoting one early is the classic design-system failure — the cost of a wrong abstraction exceeds
+the cost of temporary duplication, which is why the long-standing advice is to build directly on the first use,
+tolerate duplication on the second, and abstract on the third.</p>
+<p>And most components are not authored by the project at all. The fastest-growing model copies a component's source
+into the consuming repository, where the consumer owns it from that moment — including, explicitly, responsibility
+for keeping it current. That is a different thing from importing a package, and both are different from authoring.
+A lifecycle that assumes authorship describes a minority of real projects.</p>
+</section>
+
+
+<section id="scenarios">
+<h2>2 · User scenarios &amp; testing</h2>
+
+<p>Each story <strong>MUST</strong> be independently testable: if you implemented only US1, you would
+still have a viable MVP.</p>
+
+<h3 id="US1">US1 · A component becomes shared deliberately <spec-pill>P1</spec-pill></h3>
+<p>As an <strong>author whose feature needs something another feature already built</strong>, I want to
+<strong>promote it into the design system by proposal</strong> so that <strong>the moment it stopped belonging to one
+feature is recorded rather than assumed</strong>.</p>
+<p><em>Acceptance:</em> Promoting a local component writes it to the project location, updates the declarations that
+referenced it, and refuses if the destination changed since the proposal was raised.</p>
+
+<h3 id="US2">US2 · A vendored component remembers where it came from <spec-pill>P1</spec-pill></h3>
+<p>As a <strong>maintainer</strong>, I want <strong>a component copied in from elsewhere to carry its origin,
+version and licence</strong> so that <strong>I can tell what is ours, what is borrowed, and what has moved on
+upstream</strong>.</p>
+<p><em>Acceptance:</em> A vendored component declares its provenance; a pin to a version that has since been
+superseded reports a warning, and a reference to a version that never existed reports an error.</p>
+
+<h3 id="US3">US3 · Maturity is legible without a new vocabulary <spec-pill>P2</spec-pill></h3>
+<p>As a <strong>consumer</strong>, I want to <strong>see how settled a shared component is</strong> so that
+<strong>I can judge whether to build on it</strong>.</p>
+<p><em>Acceptance:</em> A promoted component carries a status from the vocabulary already used across this project's
+artifacts, and a deprecated one names its replacement.</p>
+
+<h3>Edge cases</h3>
+<ul>
+  <li>A component consumed from a package rather than copied in. There is no file to move, so promotion means declaring shared use rather than relocating anything.</li>
+  <li>A local component wrapping an external one — locally owned on the outside, borrowed on the inside.</li>
+  <li>A project that authors nothing, whose project-scoped component set is legitimately empty.</li>
+</ul>
+</section>
+
+
+<section id="requirements">
+<h2>3 · Requirements</h2>
+
+<p>Conformance keywords (<spec-rule>MUST</spec-rule>, <spec-rule level="should">SHOULD</spec-rule>,
+<spec-rule level="may">MAY</spec-rule>) follow RFC 2119.</p>
+
+<h3>Functional</h3>
+
+<spec-requirement id="FR-001" priority="must">
+<p>A component <spec-rule>MUST</spec-rule> be declarable at feature scope, and <spec-rule>MUST</spec-rule> be
+promotable to project scope. Scope, maturity and origin <spec-rule>MUST</spec-rule> be independent properties.</p>
+<details><summary>Rationale</summary><p>A vendored component can be local or shared; an authored one can be either; maturity varies across all of them. Collapsing three properties into one state machine would make most real combinations inexpressible.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-002" priority="must">
+<p>Promotion <spec-rule>MUST</spec-rule> be initiated by a person through a change proposal and
+<spec-rule>MUST NOT</spec-rule> occur automatically on detected reuse.</p>
+<details><summary>Rationale</summary><p>Promoting automatically converts a weak signal — two things that resemble each other — into a strong-looking one, which is the refusal this project has already made about inferred relationships. It also promotes on the second use, which is a use too early.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-003" priority="must">
+<p>Promotion <spec-rule>MUST</spec-rule> be planned before any write, <spec-rule>MUST</spec-rule> abort entirely if
+any part conflicts, and <spec-rule>MUST</spec-rule> refuse when the destination has changed since the proposal
+recorded it.</p>
+<details><summary>Rationale</summary><p>The same three properties the contract promotion already holds, and for the same reason: a conflict discovered on the tenth write must not leave nine applied.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-004" priority="must">
+<p>Promotion <spec-rule>MUST</spec-rule> update every declaration that referenced the component at its former scope,
+so that no declaration is left pointing at a location the component has left.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-005" priority="must">
+<p>A promoted component <spec-rule>MUST</spec-rule> carry a maturity drawn from the status vocabulary already used
+by this project's artifacts, and <spec-rule>MUST NOT</spec-rule> introduce a parallel one.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-006" priority="must">
+<p>A component <spec-rule>MUST</spec-rule> declare its origin as authored, vendored or consumed.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-007" priority="must">
+<p>A vendored component <spec-rule>MUST</spec-rule> carry provenance — where it came from, its address, the version
+taken, and its licence — and that provenance <spec-rule>MUST</spec-rule> survive promotion unchanged.</p>
+<details><summary>Rationale</summary><p>Copying a component into a repository is a licensing event as much as an engineering one, and nothing in design tooling records it. The field set is the one the knowledge corpus already requires of a document taken from elsewhere.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-008" priority="must">
+<p>A reference to an origin version that has been superseded <spec-rule>MUST</spec-rule> report a warning, and a
+reference to one that cannot be resolved at all <spec-rule>MUST</spec-rule> report an error.</p>
+<details><summary>Rationale</summary><p>Being behind upstream should nag; pointing at nothing should fail. The same severity split the corpus makes between a stale pin and a dead reference.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-009" priority="must">
+<p>A consumed component <spec-rule>MUST</spec-rule> be declarable without a file in the project, and its promotion
+<spec-rule>MUST</spec-rule> mean declaring shared use rather than relocating anything.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-010" priority="must">
+<p>An empty project-scoped component set <spec-rule>MUST NOT</spec-rule> be reported as a gap.</p>
+<details><summary>Rationale</summary><p>A project consuming everything from a library legitimately authors none. Reporting that as incomplete would reproduce the failure where a section was seeded into a population that could never fill it.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-011" priority="should">
+<p>A deprecated component <spec-rule level="should">SHOULD</spec-rule> name its replacement, and
+<spec-rule level="should">SHOULD NOT</spec-rule> be removed in the same change that deprecates it.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-012" priority="may">
+<p>A component <spec-rule level="may">MAY</spec-rule> be demoted from project scope back to a single feature, by the
+same proposal route as promotion.</p>
+</spec-requirement>
+
+<h3>Non-functional</h3>
+
+<spec-requirement id="NFR-001" priority="must">
+<p>Promotion <spec-rule>MUST</spec-rule> be atomic: on any conflict, at most 0 files are written and at most 0
+declarations are modified.</p>
+</spec-requirement>
+
+<spec-requirement id="NFR-002" priority="must">
+<p>Provenance <spec-rule>MUST NOT</spec-rule> be fabricated: a field whose value is unknown
+<spec-rule>MUST</spec-rule> be recorded as unknown, with at most 0 invented origins, versions or licences.</p>
+</spec-requirement>
+
+<h3>Out of scope (deferred to other slices)</h3>
+<spec-out-of-scope>
+  <ul>
+    <li defer-to="098-token-set-versioning">The version a promotion bumps, and what binds forward from it.</li>
+    <li defer-to="TBD-fidelity-measurement">Measuring a component's rendered result, and the question of which parts of a screen the project owns.</li>
+    <li defer-to="TBD-design-source-adapters">Importing a component from a design tool, as opposed to from a code library.</li>
+    <li defer-to="095-visual-element-vocabulary">The element a component is declared with, which the vocabulary slice owns.</li>
+  </ul>
+</spec-out-of-scope>
+</section>
+
+
+<section id="data">
+<h2>4 · Data model</h2>
+
+<p>No persisted entity beyond the component's own files. This spec adds properties and a transition between two of
+their values.</p>
+
+<h3>Entities</h3>
+<dl>
+  <dt>Component</dt><dd>A named, reusable part of a surface. Carries a scope, a maturity and an origin, which vary independently. Belongs to one feature or to the project.</dd>
+  <dt>Promotion</dt><dd>A planned, human-initiated transition of one component from feature scope to project scope, together with the updates to every declaration that referenced it. Atomic.</dd>
+  <dt>Provenance</dt><dd>For a component not authored here: its origin, address, version taken and licence. Never fabricated; unknown is a recordable value.</dd>
+</dl>
+
+<spec-note>
+<p>Promotion changes which clock governs the component — from the owning feature's change log to the design system's
+version, and from one consumer to many. The file moving is a consequence, not the point; for a consumed component
+nothing moves at all and the promotion is still real.</p>
+</spec-note>
+</section>
+
+
+<section id="success">
+<h2>5 · Success criteria</h2>
+
+<p>Technology-agnostic, measurable outcomes. These are how we know it worked.</p>
+
+<spec-requirement id="SC-001" priority="must">
+<p>After a promotion, the count of declarations still pointing at the component's former scope is 0, and the count of
+promotions that occurred without a proposal is 0.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-002" priority="must">
+<p>The count of vendored components missing any provenance field is 0, and the count of fabricated provenance values
+is 0.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-003" priority="must">
+<p>A promotion interrupted by a conflict leaves at most 0 files written, verified by attempting one against a
+destination that has changed.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-004" priority="should">
+<p>A project that authors no components reports 0 gaps about its empty component set.</p>
+</spec-requirement>
+</section>
+
+
+<section id="assumptions">
+<h2>6 · Assumptions</h2>
+
+<spec-assumption>
+<p>A person will notice they have built the same thing twice. Because a feature-scoped component is deliberately
+invisible to other features, nothing can detect the second use, so the workflow rests on human attention. That is
+consistent with the advice to tolerate the second duplication rather than abstract on it, and it is still a
+dependency on someone paying attention.</p>
+</spec-assumption>
+
+<spec-assumption>
+<p>Upstream versions are comparable enough to tell superseded from unresolvable. The corpus makes the same
+assumption and compares by equality rather than order, which is the weaker and safer reading.</p>
+</spec-assumption>
+</section>
+
+
+<section id="questions">
+<h2>7 · Open questions</h2>
+<spec-questions>
+<ol>
+  <li>Where a local component wraps an external one, does the external origin, version and licence chain onto the
+  wrapper or stay at the import? Recorded twice, the copies can disagree; recorded once, the wrapper looks locally
+  owned when it is not. Inherited from <a href="../093-design-visual-section/spec.html">093</a>, and decidable here
+  or in the adapter work, but not yet decided.</li>
+  <li>Is there a middle scope for a component two features share but which has not been blessed into the design
+  system? The rule-of-three advice implies a real gap between the second use and the third, and this spec models the
+  scope as binary.</li>
+</ol>
+</spec-questions>
+</section>
+
+
+<section id="conformance">
+<h2>8 · Conformance index</h2>
+<p>Auto-built from every <code>&lt;spec-requirement&gt;</code> in this document.</p>
+<spec-conformance></spec-conformance>
+</section>
+
+
+<section id="changelog">
+<h2>9 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-08-12">12 Aug 2026</time><span>Initial draft. Resolves <code>TBD-component-promotion</code> and absorbs <code>TBD-external-component-provenance</code> — scope, maturity and origin are three orthogonal properties of one thing, and origin only means anything once components are declarable.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  097-visual-component-lifecycle · Visual component lifecycle · authored 12 Aug 2026
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>

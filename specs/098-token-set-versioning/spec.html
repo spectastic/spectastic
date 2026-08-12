@@ -1,0 +1,296 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
+<title>Token set versioning · Specification</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Specification · 098-token-set-versioning</p>
+  <h1>Token set versioning</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    A version that binds forward, so a bump is not a migration project — and a change class that says "claims", never "is".
+  </p>
+
+  <spec-meta>
+    <b>Status</b>      <span><spec-status value="draft">Draft</spec-status></span>
+    <b>Spec ID</b>     <span>098-token-set-versioning</span>
+    <b>Owner</b>       <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Reviewers</b>   <span>—</span>
+    <b>Created</b>     <span><time datetime="2026-08-12">12 Aug 2026</time></span>
+    <b>Principles</b><span><a href="../../principles.html">v1.9.0</a></span>
+    <b>Smallest demoable</b><span>A token set at 2.0.0 with a screen bound to it; a bump to 2.1.0 leaves that screen conformant and says so.</span>
+    <b>Read time</b>   <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-budget words="1900" reqs="20" minutes="13"></spec-budget>
+
+  <spec-tldr>
+    <p>The token set is the one piece of visual material every feature depends on, which makes it the only piece that
+    needs a version. This gives it one, and the whole design is borrowed from the single versioned artifact this
+    project already has: semantic versioning, a stated bump policy written into the file itself, a compare-and-swap
+    guard so two amendments cannot race, and — the clause that matters most — <strong>forward-only binding</strong>.
+    A version binds the work authored after it and does not reopen what was accepted before, which is the answer to
+    the question that stops most design-system bumps: what happens to the forty screens already built. A release also
+    declares a <strong>change class</strong>, and that class is the producer's claim rather than a verified property.
+    Nothing checks it, and nothing can: an API contract has 509 classified breaking-change rules behind it, while the
+    entire tooling for diffing design tokens is one editor plugin. Deprecation uses the token format's own channel
+    rather than a local invention, so a rename ships an alias and a deadline instead of a removal.</p>
+  </spec-tldr>
+
+  <dl class="invest">
+    <dt><span class="letter">I</span> Independent</dt> <dd>Depends on <a href="../094-visual-sidecar-convention/spec.html">094</a> for where the token set lives. Nothing else gates it.</dd>
+    <dt><span class="letter">N</span> Negotiable</dt>  <dd>Contracts the version's semantics and the claim's honesty. Where the number is written and how it renders are the design's.</dd>
+    <dt><span class="letter">V</span> Valuable</dt>    <dd>Unlocks <a href="#SC-001">SC-001</a> — a token change stops silently invalidating every screen built against the old values.</dd>
+    <dt><span class="letter">E</span> Estimable</dt>   <dd>Every mechanism exists: the semver policy, the stale guard, the deprecation channel and the claims posture each have a working precedent.</dd>
+    <dt><span class="letter">S</span> Small</dt>       <dd>One version, one policy, one claim, one deprecation channel.</dd>
+    <dt><span class="letter">T</span> Testable</dt>    <dd>The guard, the binding and the deprecation are all observable; the claim is deliberately not, and says so.</dd>
+  </dl>
+
+  <spec-audience-map>
+    <dl>
+      <dt>Exec / PM</dt>   <dd>§<a href="#context">Context</a>, §<a href="#success">Success criteria</a>.</dd>
+      <dt>Reviewer</dt>    <dd>§<a href="#requirements">Requirements</a>, §<a href="#assumptions">Assumptions</a>.</dd>
+      <dt>Implementer</dt> <dd>§<a href="#requirements">Requirements</a>, §<a href="#data">Data model</a>.</dd>
+    </dl>
+  </spec-audience-map>
+</header>
+
+
+<section id="context">
+<h2>1 · Context</h2>
+<p>A feature's visual spec has a change log and no version, because it changes when the feature changes and affects
+nothing else. The token set is the opposite: it changes on its own schedule and every screen in the project depends
+on it. Those are different rates of change, and one number over both would be wrong in one direction or the other —
+either bumping a design system because a single feature moved, or changing a colour and silently invalidating work
+nobody re-examined.</p>
+<p>The hard part is not the number. It is what the number does to work already accepted. The field's usual answers
+are a deprecation window and a migration project; this project already has a better one in use on its own
+constitution, and has never applied it twice.</p>
+</section>
+
+
+<section id="scenarios">
+<h2>2 · User scenarios &amp; testing</h2>
+
+<p>Each story <strong>MUST</strong> be independently testable: if you implemented only US1, you would
+still have a viable MVP.</p>
+
+<h3 id="US1">US1 · A bump does not reopen finished work <spec-pill>P1</spec-pill></h3>
+<p>As a <strong>design-system owner</strong>, I want <strong>a version to bind the work authored after it</strong> so
+that <strong>changing a token is not a project-wide migration</strong>.</p>
+<p><em>Acceptance:</em> A screen accepted under one version remains conformant to that version after a later one
+lands, and the version it was built against is recoverable.</p>
+
+<h3 id="US2">US2 · Two amendments cannot race <spec-pill>P1</spec-pill></h3>
+<p>As a <strong>reviewer</strong>, I want <strong>an amendment that was written against a superseded version to be
+refused</strong> so that <strong>a stale change cannot land on top of one it never saw</strong>.</p>
+<p><em>Acceptance:</em> An amendment declaring a from-version that no longer matches the live one is refused with
+both values named.</p>
+
+<h3 id="US3">US3 · A rename does not break a consumer overnight <spec-pill>P2</spec-pill></h3>
+<p>As a <strong>consumer of a renamed token</strong>, I want <strong>the old name to keep working while telling me
+what replaced it</strong> so that <strong>I can migrate on my own schedule</strong>.</p>
+<p><em>Acceptance:</em> A renamed token ships alongside a deprecated alias naming its replacement; removal happens in
+a later, larger bump.</p>
+
+<h3>Edge cases</h3>
+<ul>
+  <li>A token set extending an external one, where the base moves on the vendor's schedule and only overrides are local.</li>
+  <li>A change nobody can classify — a darker accent that breaks a contrast ratio without touching a layout.</li>
+  <li>A project with a token set and no screens yet, where forward-only binding has nothing to protect.</li>
+</ul>
+</section>
+
+
+<section id="requirements">
+<h2>3 · Requirements</h2>
+
+<p>Conformance keywords (<spec-rule>MUST</spec-rule>, <spec-rule level="should">SHOULD</spec-rule>,
+<spec-rule level="may">MAY</spec-rule>) follow RFC 2119.</p>
+
+<h3>Functional</h3>
+
+<spec-requirement id="FR-001" priority="must">
+<p>The token set <spec-rule>MUST</spec-rule> carry a semantic version, and its bump policy
+<spec-rule>MUST</spec-rule> be stated in the artifact that carries the version rather than only in documentation.</p>
+<details><summary>Rationale</summary><p>A policy that lives elsewhere is a policy nobody reads at the moment of bumping. The project's own constitution states its policy in its governance section, and that is the precedent.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-002" priority="must">
+<p>A version <spec-rule>MUST</spec-rule> bind forward only: it governs work authored or amended from that version
+onward and <spec-rule>MUST NOT</spec-rule> reopen work already accepted under an earlier one.</p>
+<details><summary>Rationale</summary><p>This is the clause that makes bumping affordable. Without it every change to a shared design system is a migration project, which is why most teams stop making them.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-003" priority="must">
+<p>Work bound to the token set <spec-rule>MUST</spec-rule> record which version it was accepted under, so that
+conformance is recoverable after later bumps.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-004" priority="must">
+<p>An amendment <spec-rule>MUST</spec-rule> declare both the version it was written against and the version it
+produces, and <spec-rule>MUST</spec-rule> be refused when the declared from-version does not equal the live one.</p>
+<details><summary>Rationale</summary><p>A compare-and-swap rather than an ordering check. It needs no notion of which version is later, which is the property every versioning mechanism in this project deliberately lacks.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-005" priority="must">
+<p>A release <spec-rule>MUST</spec-rule> declare a change class drawn from a closed set, and every surface that
+displays it <spec-rule>MUST</spec-rule> present it as the producer's claim rather than as a verified property.</p>
+<details><summary>Rationale</summary><p>Breaking-change detection is mature for API contracts and absent for design tokens — hundreds of classified rules on one side, a single diffing plugin on the other. Presenting the class as verified would assert something no mechanism establishes.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-006" priority="must">
+<p>Nothing <spec-rule>MUST</spec-rule> claim to verify the change class, and any diff that is built
+<spec-rule>MUST</spec-rule> report what changed rather than whether it breaks.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-007" priority="must">
+<p>Deprecation <spec-rule>MUST</spec-rule> use the token format's own deprecation channel, naming the replacement,
+rather than a mechanism invented here.</p>
+<details><summary>Rationale</summary><p>The format already carries a standard deprecation field, so a rename can ship the new token plus a working alias and a reason. Using it keeps the deprecation legible to every other tool that reads the file.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-008" priority="must">
+<p>A token <spec-rule>MUST NOT</spec-rule> be removed in the same release that deprecates it, and removal
+<spec-rule>MUST</spec-rule> be classified at the highest tier of the bump policy.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-009" priority="should">
+<p>A token set that extends an external one <spec-rule level="should">SHOULD</spec-rule> version only what it owns,
+and <spec-rule level="should">SHOULD</spec-rule> record the external base's version separately rather than folding
+it into its own.</p>
+<details><summary>Rationale</summary><p>The base moves on somebody else's schedule. Folding two clocks into one number reproduces exactly the error this spec exists to prevent, one level up.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-010" priority="may">
+<p>A project <spec-rule level="may">MAY</spec-rule> state a deprecation window, and
+<spec-rule level="may">MAY</spec-rule> choose any length — this spec requires that one be stated where a token is
+deprecated, not that it be any particular duration.</p>
+</spec-requirement>
+
+<h3>Non-functional</h3>
+
+<spec-requirement id="NFR-001" priority="must">
+<p>Version comparison <spec-rule>MUST</spec-rule> be equality only, with at most 0 orderings computed, so that no
+format contract is taken on beyond the one the policy states.</p>
+<details><summary>Rationale</summary><p>Every versioning mechanism in this project compares by equality and none orders. That is a property to preserve: equality is decidable without agreeing an ordering, and a mechanism claiming to know which version is later must then enforce that claim forever.</p></details>
+</spec-requirement>
+
+<spec-requirement id="NFR-002" priority="must">
+<p>The guard <spec-rule>MUST</spec-rule> fail closed: on a malformed or absent version it
+<spec-rule>MUST</spec-rule> refuse the amendment, with at most 0 amendments applied on an unreadable version.</p>
+</spec-requirement>
+
+<h3>Out of scope (deferred to other slices)</h3>
+<spec-out-of-scope>
+  <ul>
+    <li defer-to="TBD-fidelity-measurement">Checking a build against the version it claims to be bound to.</li>
+    <li defer-to="097-visual-component-lifecycle">The external base's own version, which this spec keeps separate without describing.</li>
+    <li defer-to="TBD-design-source-adapters">Importing a token set from a design tool, and what its version means on arrival.</li>
+  </ul>
+</spec-out-of-scope>
+</section>
+
+
+<section id="data">
+<h2>4 · Data model</h2>
+
+<p>No persisted entity. This spec adds a version, a policy and a claim to material that already exists.</p>
+
+<h3>Entities</h3>
+<dl>
+  <dt>Token set version</dt><dd>A semantic version on the project's token set, with a stated bump policy and a from-version binding. One per project.</dd>
+  <dt>Release</dt><dd>One transition from one version to the next, carrying a change class that is the producer's claim and is never verified.</dd>
+  <dt>Deprecation</dt><dd>A token marked superseded, naming its replacement, expressed in the token format's own channel. Survives at least one release before removal.</dd>
+</dl>
+
+<spec-note>
+<p>The version answers "which rules was this built under", not "which is newer". Nothing here orders two versions;
+the binding compares for equality against a recorded value, which is all the mechanism needs and all it can honestly
+promise.</p>
+</spec-note>
+</section>
+
+
+<section id="success">
+<h2>5 · Success criteria</h2>
+
+<p>Technology-agnostic, measurable outcomes. These are how we know it worked.</p>
+
+<spec-requirement id="SC-001" priority="must">
+<p>After a bump, the count of previously-accepted screens reported as non-conformant is 0, and the version each was
+accepted under is recoverable for 100% of them.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-002" priority="must">
+<p>An amendment declaring a stale from-version is refused 100% of the time, naming both the declared and the live
+value.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-003" priority="must">
+<p>Across every surface that displays a change class, the count asserting it as verified rather than claimed is 0.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-004" priority="should">
+<p>A renamed token remains resolvable through at least 1 subsequent release, with its replacement named.</p>
+</spec-requirement>
+</section>
+
+
+<section id="assumptions">
+<h2>6 · Assumptions</h2>
+
+<spec-assumption>
+<p>Authors will classify a release honestly. A wrong claim is worse than no claim because it looks like diligence,
+and this spec accepts that weakness knowingly — the alternative is asserting a verification nothing performs.</p>
+</spec-assumption>
+
+<spec-assumption>
+<p>One project has one token set to version. A repository holding two products with two design systems would need
+two, which this spec does not provide.</p>
+</spec-assumption>
+</section>
+
+
+<section id="questions">
+<h2>7 · Open questions</h2>
+<spec-questions>
+<p>None outstanding. The semver policy, the forward-only binding, the compare-and-swap guard and the claims posture
+each transfer from a working precedent in this project, and the refusal to detect breaking changes is settled by the
+survey rather than deferred.</p>
+</spec-questions>
+</section>
+
+
+<section id="conformance">
+<h2>8 · Conformance index</h2>
+<p>Auto-built from every <code>&lt;spec-requirement&gt;</code> in this document.</p>
+<spec-conformance></spec-conformance>
+</section>
+
+
+<section id="changelog">
+<h2>9 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-08-12">12 Aug 2026</time><span>Initial draft. Resolves <code>TBD-token-set-versioning</code> and absorbs <code>TBD-design-change-class</code> — the change class is what a bump declares, so versioning it separately would spec a number with nothing to say about itself. Last of five slice-1 specs draining the visual-spec survey's authoring layer.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  098-token-set-versioning · Token set versioning · authored 12 Aug 2026
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>
