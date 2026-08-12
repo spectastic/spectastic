@@ -1,0 +1,87 @@
+openapi: 3.1.0
+info:
+  title: Rates
+  version: 1.2.0
+  description: >
+    Foreign-exchange reference rates. Every documented error response below is a
+    required screen state in the spec-local visual/converter.screen.json; the mapping
+    from response to state is many-to-one and is recorded there, not inferred.
+servers:
+  - url: https://api.example-co.test
+paths:
+  /v1/rates:
+    get:
+      operationId: getRate
+      summary: The reference rate between two currencies.
+      parameters:
+        - name: base
+          in: query
+          required: true
+          schema: { type: string, pattern: '^[A-Z]{3}$' }
+        - name: quote
+          in: query
+          required: true
+          schema: { type: string, pattern: '^[A-Z]{3}$' }
+      responses:
+        '200':
+          description: The current reference rate.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Rate' }
+        '400':
+          description: A parameter is missing or malformed.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '401':
+          description: The API key is absent, expired or revoked.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '404':
+          description: One of the currency codes is not a currency this service knows.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '422':
+          description: The pair is well-formed but not quoted by this service.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '429':
+          description: Rate limited. Retry-After is always present.
+          headers:
+            Retry-After:
+              required: true
+              schema: { type: integer, minimum: 1 }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '503':
+          description: The upstream rate source is unavailable.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Problem' }
+components:
+  schemas:
+    Rate:
+      type: object
+      required: [base, quote, rate, asOf]
+      properties:
+        base: { type: string, pattern: '^[A-Z]{3}$' }
+        quote: { type: string, pattern: '^[A-Z]{3}$' }
+        rate: { type: number, exclusiveMinimum: 0 }
+        asOf:
+          type: string
+          format: date-time
+          description: >
+            When the rate was observed upstream, not when it was served. The
+            stale-cache screen state keys on this value, which is why it is
+            required rather than optional.
+    Problem:
+      type: object
+      required: [title, status]
+      properties:
+        title: { type: string }
+        status: { type: integer }
+        detail: { type: string }

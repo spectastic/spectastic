@@ -11,7 +11,7 @@ import { expandGlobs } from '../src/glob.js';
  * This proves the complement: no SHIPPED artifact carries executable content —
  * a security regression in a real spec/example is caught, not just a synthetic one.
  *
- * Scanned corpus = the same glob the CI dogfood scans (specs/**, examples/*, and the
+ * Scanned corpus = the same glob the CI dogfood scans (specs/**, examples/**, and the
  * root artifacts). docs/** is deliberately excluded here as it is from the dogfood — a
  * recorded ceiling (046 out-of-scope → TBD-docs-security-scan), not a silent gap. The
  * adversarial fixtures under packages/schema/fixtures are hostile by design and never
@@ -21,8 +21,11 @@ import { expandGlobs } from '../src/glob.js';
 const REPO_ROOT = join(__dirname, '..', '..', '..');
 const RULE = 'no-executable-content';
 
-// Mirrors the ci.yml dogfood glob. Keep in sync if the dogfood corpus changes.
-const CORPUS = ['specs/**/*.html', 'examples/*.html', 'principles.html', 'inbox.html', 'index.html'];
+// Deliberately WIDER than the ci.yml dogfood glob, which stays at examples/*.html.
+// This scan runs one per-file rule and cannot be cross-contaminated, so it sweeps
+// nested example projects; the dogfood runs a full validate, whose cross-file rules
+// assume a single project (see packages/schema/test/integration.test.ts).
+const CORPUS = ['specs/**/*.html', 'examples/**/*.html', 'principles.html', 'inbox.html', 'index.html'];
 
 describe('security corpus: no shipped artifact carries executable content (FR-003)', () => {
   it('every corpus artifact is clean of no-executable-content findings', async () => {

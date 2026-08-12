@@ -48,8 +48,14 @@ const SCENARIOS = [
   {
     id: 'validate-full-project',
     description:
-      '`spectastic validate "specs/**" "examples/**" inbox.html principles.html` — steady-state across the full set',
-    args: [CLI_PATH, 'validate', 'specs/**/*.html', 'examples/**/*.html', 'inbox.html', 'principles.html'],
+      '`spectastic validate "specs/**" "examples/*" inbox.html principles.html` — steady-state across the full set',
+    // Single-star on examples/ for the same reason the integration test uses it:
+    // a nested example project carries its own specs/ tree, and the cross-file
+    // rules assume one project. Sweeping it in here makes validate exit non-zero
+    // (spec-id-unique collides the 001- directories; verify-view-missing resets
+    // this repo's convention floor to the nested spec's number), which the bench
+    // reads as a failed scenario rather than as the rule collision it is.
+    args: [CLI_PATH, 'validate', 'specs/**/*.html', 'examples/*.html', 'inbox.html', 'principles.html'],
   },
 ];
 

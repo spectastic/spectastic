@@ -1,0 +1,273 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
+<title>Currency conversion · Specification</title>
+<link rel="stylesheet" href="../../../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../../../assets/favicon.svg">
+<script src="../../../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Specification · 001-currency-conversion</p>
+  <h1>Currency conversion</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    Enter an amount, pick a pair, read a rate you can tell the age of.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>      <span><spec-status value="accepted">Accepted</spec-status></span>
+    <b>Spec ID</b>     <span>001-currency-conversion</span>
+    <b>Owner</b>       <span>example-co/mobile</span>
+    <b>Reviewers</b>   <span>example-co/design · example-co/platform</span>
+    <b>Created</b>     <span><time datetime="2026-07-28">28 Jul 2026</time></span>
+    <b>Principles</b><span><a href="../../principles.html">v1.2.0</a></span>
+    <b>Smallest demoable</b><span>One hard-coded pair, one rate, one staleness label.</span>
+    <b>Read time</b>   <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-budget words="1500" reqs="20" minutes="12"></spec-budget>
+
+  <spec-tldr>
+    <p>The converter screen: an amount, a currency pair, and the resulting figure with the age of the rate it used.
+    For people who convert a handful of times a trip and care more about knowing a number is four hours old than
+    about it arriving instantly. The outcome that matters is that a stale or missing rate is never mistaken for a
+    current one.</p>
+  </spec-tldr>
+
+  <spec-warning><strong>Illustrative artifact.</strong> A worked exemplar for
+  <a href="../../../../docs/visual-spec-considerations.html">the visual-spec survey</a>. The company, the team and
+  the rates API are fictional. This file uses only vocabulary that ships today; its sibling
+  <a href="./visual.html">visual.html</a> and everything under <code>visual/</code> illustrate a proposed
+  capability governed by <code>TBD-design-visual-section</code> and <code>TBD-visual-spec-vocabulary</code>.</spec-warning>
+
+  <dl class="invest">
+    <dt><span class="letter">I</span> Independent</dt> <dd>Depends on the project principles and on the rates contract. No upstream spec.</dd>
+    <dt><span class="letter">N</span> Negotiable</dt>  <dd>Names outcomes and states, not a UI framework or a caching library.</dd>
+    <dt><span class="letter">V</span> Valuable</dt>    <dd>Unlocks <a href="#SC-001">SC-001</a> — a converted figure whose freshness a user can judge without leaving the screen.</dd>
+    <dt><span class="letter">E</span> Estimable</dt>   <dd>The state list is closed: six responses in the contract plus four authored states.</dd>
+    <dt><span class="letter">S</span> Small</dt>       <dd>One screen, ten states, one endpoint.</dd>
+    <dt><span class="letter">T</span> Testable</dt>    <dd>Every state is reachable in a test by stubbing one response; the freshness window is a number.</dd>
+  </dl>
+
+  <spec-audience-map>
+    <dl>
+      <dt>Exec / PM</dt>   <dd>§<a href="#context">Context</a>, §<a href="#scenarios">User scenarios</a>, §<a href="#success">Success criteria</a>.</dd>
+      <dt>Reviewer</dt>    <dd>§<a href="#requirements">Requirements</a>, §<a href="#assumptions">Assumptions</a>.</dd>
+      <dt>Implementer</dt> <dd>§<a href="#requirements">Requirements</a>, §<a href="#data">Data model</a>, then <a href="./design.html">the design</a>.</dd>
+    </dl>
+  </spec-audience-map>
+</header>
+
+
+<section id="context">
+<h2>1 · Context</h2>
+<p>The app currently shows a single home rate fetched at launch and never refreshed, with no indication of when it
+was fetched. Support tickets that mention a "wrong" rate are almost never wrong rates; they are correct rates from
+several hours earlier, presented as though they were current. That is the defect P-1 exists to prevent, and the
+current screen cannot honour it because it has nowhere to put the age.</p>
+<p>The users are travellers converting a handful of times a day, often on poor connections, and occasionally with no
+connection at all. They are not traders. Latency matters far less to them than knowing what they are looking at.</p>
+</section>
+
+
+<section id="scenarios">
+<h2>2 · User scenarios &amp; testing</h2>
+
+<p>Each story <strong>MUST</strong> be independently testable: if you implemented only US1, you would
+still have a viable MVP.</p>
+
+<h3 id="US1">US1 · Convert an amount <spec-pill>P1</spec-pill></h3>
+<p>As a <strong>traveller</strong>, I want to <strong>enter an amount and see it in another currency</strong> so that
+<strong>I can tell whether a price is reasonable</strong>.</p>
+<p><em>Acceptance:</em> Entering an amount with a valid pair renders the converted figure and the rate's age. The
+figure updates when either currency changes. With no amount entered, the screen shows the empty state rather than a
+zero.</p>
+
+<h3 id="US2">US2 · Judge whether the rate is current <spec-pill>P1</spec-pill></h3>
+<p>As a <strong>traveller</strong>, I want to <strong>see how old the rate is</strong> so that <strong>I can decide
+whether to trust it before I hand over money</strong>.</p>
+<p><em>Acceptance:</em> A rate older than the freshness window renders the staleness treatment, which carries text as
+well as colour. A rate inside the window carries no badge. The age is derived from when the rate was observed
+upstream, not from when the app received it.</p>
+
+<h3 id="US3">US3 · Keep working when the network does not <spec-pill>P2</spec-pill></h3>
+<p>As a <strong>traveller on a bad connection</strong>, I want to <strong>still see the last known rate</strong> so
+that <strong>the screen is useful rather than an error</strong>.</p>
+<p><em>Acceptance:</em> With no connectivity the screen shows the last cached rate with its age and an offline
+indication; it does not show an error dialog and does not clear the figure. With nothing cached it shows the
+cold-start state.</p>
+
+<h3>Edge cases</h3>
+<ul>
+  <li>A pair the service does not quote is indistinguishable to the user from a currency code that does not exist, though the contract distinguishes them.</li>
+  <li>A rate-limited response carries a retry time, so the state can say when rather than whether.</li>
+  <li>An expired API key is unreachable by user action and unfixable by the user; the state still has to render something.</li>
+</ul>
+</section>
+
+
+<section id="requirements">
+<h2>3 · Requirements</h2>
+
+<p>Conformance keywords (<spec-rule>MUST</spec-rule>, <spec-rule level="should">SHOULD</spec-rule>,
+<spec-rule level="may">MAY</spec-rule>) follow RFC 2119.</p>
+
+<h3>Functional</h3>
+
+<spec-requirement id="FR-001" priority="must">
+<p>The screen <spec-rule>MUST</spec-rule> render a converted figure for a valid amount and pair, and
+<spec-rule>MUST</spec-rule> render the age of the rate it used alongside it.</p>
+<details><summary>Rationale</summary><p>The figure without its age is the defect this spec exists to remove; the two are one piece of information, not two.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-002" priority="must">
+<p>A rate whose observation time is older than the freshness window <spec-rule>MUST</spec-rule> render the staleness
+treatment, and that treatment <spec-rule>MUST</spec-rule> be legible without colour.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-003" priority="must">
+<p>Every documented error response of the rates operation <spec-rule>MUST</spec-rule> map to a designed screen
+state, and the mapping <spec-rule>MUST</spec-rule> be recorded where a reviewer can read it. Where several responses
+share one state, the collapse <spec-rule>MUST</spec-rule> be recorded rather than implied.</p>
+<details><summary>Rationale</summary><p>P-4 binds forward from principles v1.2.0 and does not reach this spec, which predates it. The requirement is carried voluntarily because the state list was going to be written anyway and an unrecorded collapse is indistinguishable from an omission.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-004" priority="must">
+<p>States that no response implies — no amount entered, in flight, offline, nothing cached —
+<spec-rule>MUST</spec-rule> be designed explicitly. The contract-derived list is a floor.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-005" priority="should">
+<p>With no connectivity the screen <spec-rule level="should">SHOULD</spec-rule> retain the last known figure and its
+age rather than clearing it.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-006" priority="may">
+<p>The screen <spec-rule level="may">MAY</spec-rule> offer a manual refresh. It
+<spec-rule level="may">MAY</spec-rule> not be the only way to obtain a current rate.</p>
+</spec-requirement>
+
+<h3>Non-functional</h3>
+
+<spec-requirement id="NFR-001" priority="must">
+<p>The converted figure <spec-rule>MUST</spec-rule> render within 100&nbsp;ms of a keystroke using the cached rate,
+independent of any network call in flight.</p>
+</spec-requirement>
+
+<spec-requirement id="NFR-002" priority="must">
+<p>The layout <spec-rule>MUST</spec-rule> hold at the largest Dynamic Type accessibility size without clipping or
+truncating the figure, and every interactive element <spec-rule>MUST</spec-rule> meet the 44&nbsp;pt tap-target
+floor.</p>
+</spec-requirement>
+
+<spec-requirement id="NFR-003" priority="must">
+<p>No analytics event <spec-rule>MUST</spec-rule> be emitted until the consent decision is answered, and no payload
+<spec-rule>MUST</spec-rule> contain an amount or any personal data.</p>
+</spec-requirement>
+
+<h3>Out of scope (deferred to other slices)</h3>
+<spec-out-of-scope>
+  <ul>
+    <li defer-to="TBD-rate-history">A chart of a pair over time. This slice shows one rate at one moment.</li>
+    <li defer-to="TBD-offline-rate-pack">A downloadable rate pack for travel with no connectivity at all, as distinct from intermittent connectivity.</li>
+    <li defer-to="TBD-multi-currency-basket">Converting one amount into several currencies at once.</li>
+  </ul>
+</spec-out-of-scope>
+</section>
+
+
+<section id="data">
+<h2>4 · Data model</h2>
+
+<p>Two entities, both owned by this feature. The wire shape and the persisted shape are the design's business.</p>
+
+<h3>Entities</h3>
+<dl>
+  <dt>Rate</dt><dd>The exchange ratio between an ordered pair of currencies at a stated moment. Strictly positive; never zero and never negative. Carries the moment it was <em>observed upstream</em>, which is not the moment it was received and not the moment it was displayed. A Rate with no observation time is not a Rate.</dd>
+  <dt>Conversion</dt><dd>An amount, a pair, and the Rate applied to it. Exact to the quote currency's minor unit. A Conversion always names the Rate it used, so a figure on screen can always answer how old it is.</dd>
+</dl>
+
+<spec-note>
+<p>The freshness window is a property of the screen, not of a Rate — the same Rate is fresh to a traveller and
+ancient to a trader. It belongs in the design, and it is the one number that decides whether FR-002 fires.</p>
+</spec-note>
+</section>
+
+
+<section id="success">
+<h2>5 · Success criteria</h2>
+
+<p>Technology-agnostic, measurable outcomes. These are how we know it worked.</p>
+
+<spec-requirement id="SC-001" priority="must">
+<p>In usability testing, ≥ 90% of participants shown a deliberately stale rate correctly identify it as not current
+within 5 seconds, without being prompted to look for the age.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-002" priority="must">
+<p>All ten screen states are reachable in the test suite, and the count of states with no test is 0.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-003" priority="should">
+<p>Support tickets attributing a wrong figure to a stale rate fall to ≤ 1 per month, from a baseline of 14.</p>
+</spec-requirement>
+</section>
+
+
+<section id="assumptions">
+<h2>6 · Assumptions</h2>
+
+<spec-assumption>
+<p>The rates service keeps its promise that <code>asOf</code> is the upstream observation time rather than the time
+of serving. Nothing in the app can verify this, and every staleness claim rests on it.</p>
+</spec-assumption>
+
+<spec-assumption>
+<p>Travellers convert tens of times a day, not thousands, so a cache measured in minutes is adequate and the
+rate-limit state is rare rather than routine.</p>
+</spec-assumption>
+</section>
+
+
+<section id="questions">
+<h2>7 · Open questions</h2>
+<spec-questions>
+<p>None outstanding. The freshness window, the many-to-one state collapse and the declined tvOS variant were each
+anchored during the interview and are recorded in <a href="./design.html">the design</a>. Analytics consent is
+tracked as a project-level decision rather than an open question on this spec — the tracking plan is written and
+explicitly unwired, per NFR-003.</p>
+</spec-questions>
+</section>
+
+
+<section id="conformance">
+<h2>8 · Conformance index</h2>
+<p>Auto-built from every <code>&lt;spec-requirement&gt;</code> in this document.</p>
+<spec-conformance></spec-conformance>
+</section>
+
+
+<section id="changelog">
+<h2>9 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-07-28">28 Jul 2026</time><span>Initial draft.</span></li>
+  <li><time datetime="2026-08-04">04 Aug 2026</time><span>Added FR-004 after review observed that the derived state list contained no offline state and could not have.</span></li>
+  <li><time datetime="2026-08-11">11 Aug 2026</time><span>Accepted. FR-003 carried voluntarily ahead of P-4, which binds forward from principles v1.2.0 and does not reach this spec.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  001-currency-conversion · Currency conversion · illustrative example
+</footer>
+
+</main>
+<script src="../../../../assets/spec.js"></script>
+</body>
+</html>

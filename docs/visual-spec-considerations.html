@@ -1,0 +1,871 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
+<title>A screenshot has no tokens — Considerations for Spectastic</title>
+<meta name="description" content="The lifecycle has no notion of a screen, and the design tools it would have to read from are five incompatible products. A survey of what a first-class visual spec would have to be to serve a human and an agent equally, where it belongs, and why fidelity has to be measured rather than compared.">
+<link rel="stylesheet" href="../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../assets/favicon.svg">
+<script src="../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Considerations · Visual specs</p>
+  <h1>A screenshot has no tokens</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    An image carries the result of a design decision and not the decision. You can measure that a gap is twenty-four pixels; you cannot ask a picture whether it meant to be.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>     <span><spec-status value="draft">Draft</spec-status></span>
+    <b>Type</b>       <span>Architecture &amp; landscape survey</span>
+    <b>Author</b>     <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Created</b>    <span><time datetime="2026-08-11">11 Aug 2026</time></span>
+    <b>Companion</b>  <span><a href="./annotation-surface-considerations.html">annotation-surface</a> · <a href="./data-model-contract-considerations.html">data-model-contract</a> · <a href="./non-service-observability-considerations.html">non-service-observability</a></span>
+    <b>Sources</b>    <span>21 external, retrieved 11 Aug 2026 · codebase audit</span>
+    <b>Read time</b>  <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-tldr>
+    <p>The lifecycle has no notion of a screen. Across <strong>93 specs, 32 considerations docs and 8
+    templates</strong> there is no view, page, flow, mockup, component-inventory or design-annotation concept
+    anywhere; the word <em>screen</em> occurs twice in the templates and both times it means a screenful of prose.
+    <mark>Zero <code>&lt;img&gt;</code> elements exist across <code>specs/</code>, <code>docs/</code>,
+    <code>templates/</code> and <code>examples/</code></mark>, two images are tracked in the whole repository and
+    both are marketing, and <code>.gitignore</code> ignores root PNGs outright. So this is greenfield — but the
+    project has answered the question once already without noticing. When it needed a design reference for its own
+    VS Code canvas, it committed a self-contained HTML mockup rather than a screenshot and instructed the reader to
+    <em>"measure spacing, connector curvature, and node layout against the brief rather than guessing."</em> That is
+    both halves of the answer, in the project's own hand, never generalised. The landscape agrees from the other
+    direction: the closest peer format covers tokens and prose and explicitly covers no motion, no accessibility,
+    no platform variants and no screens; the design tools have converged on five mutually incompatible read paths,
+    one of which costs a seat and rations free users to six calls a month; and the field's own 2026 conclusion is
+    that feeding an agent numeric deltas beats feeding it screenshots, because spatial pixel comparison is the
+    thing models are worst at. Recommendation: reuse the chassis this repository already built for contracts —
+    declare in the design, keep the real thing in a sidecar, render a drift-guarded view — make the design tool a
+    <em>source</em> and never the authority, check fidelity by measurement against declared tokens rather than by
+    comparing pixels, and gate the whole vocabulary on a project-shape axis that does not exist yet. On versioning,
+    resist the single number: <strong>a token set, a screen spec and a captured render change at three different
+    rates</strong>, this estate already has a mechanism for each — and there is a fourth clock, the platform, that
+    nobody owns and that restyled every Apple app in one release.
+    <mark>59 of the 71 architecture sketches already in the estate hardcode their colours</mark>, which is what the
+    one pictorial channel the tool already has looks like when nobody owns it.</p>
+  </spec-tldr>
+
+  <spec-audience-map>
+    <dl>
+      <dt>Exec / PM</dt>   <dd>The TL;DR, then §<a href="#recommendation">12</a> — three slices, and what each one buys.</dd>
+      <dt>Reviewer</dt>    <dd>§<a href="#audit">2</a> the audit and §<a href="#peers">3</a> the peer record; then §<a href="#caveats">13</a>, which includes a claim this survey got wrong first time.</dd>
+      <dt>Implementer</dt> <dd>§<a href="#placement">5</a> where it lives · §<a href="#fidelity">7</a> how fidelity is checked · §<a href="#variants">8</a> the variant grid · §<a href="#versioning">9</a> what versions, and how.</dd>
+      <dt>Designer</dt>    <dd>§<a href="#exemplar">4</a> the exemplar held to the bar · §<a href="#annotations">10</a> annotations, and why they should not become a tenth taxonomy.</dd>
+      <dt>In a hurry</dt>  <dd>The picture is evidence; the declared tokens are the contract. Measure, do not compare. §<a href="#recommendation">12</a>.</dd>
+    </dl>
+  </spec-audience-map>
+</header>
+
+<!-- ======================================================= -->
+<section id="ask">
+<h2>1 · The ask — five design sources, one build</h2>
+
+<p><spec-newthought>The requirement is not "support Figma".</spec-newthought> It is that a designer working in Figma
+and someone who prototyped an app in Sketch, Claude Design or Google Stitch should get the same workflow and the same
+design-accurate build. That constraint does most of the design work on its own, because it rules out the obvious
+architecture — reading the design tool — before anything else is decided.</p>
+
+<div style="overflow-x:auto;">
+<table>
+  <thead><tr><th>Source</th><th>Read path</th><th>Machine-readable design decisions</th><th>Cost of the read path</th></tr></thead>
+  <tbody>
+    <tr><td><strong>Figma</strong></td><td>MCP server and REST</td><td>Rich — variables, metadata, code-connect mappings, and keyframe/easing data</td><td>Dev or Full seat; free and View seats get six tool calls per month</td></tr>
+    <tr><td><strong>Penpot</strong></td><td>MCP server, plugin API, native token panel</td><td>Native DTCG tokens, sets and themes</td><td>Open source</td></tr>
+    <tr><td><strong>Sketch</strong></td><td>Document export</td><td>Partial — colour variables to CSS or JSON; text and layer styles to JSON only</td><td>Licence</td></tr>
+    <tr><td><strong>Google Stitch</strong></td><td>MCP export; also exports to Figma</td><td>Emits HTML/CSS — code, not a token file</td><td>Free tier</td></tr>
+    <tr><td><strong>Claude Design</strong></td><td>Hands off to a coding agent</td><td>Emits the artifact, not a token file</td><td>Subscription</td></tr>
+  </tbody>
+</table>
+</div>
+
+<p>Two things survive every column. Every one of them produces <strong>a rendered artifact</strong>, and most can be
+made to produce <strong>a token file</strong>. Nothing else is common: the annotation model, the component model, the
+variant model and the API are different in all five, and two of them have no persistent design document at all — the
+design <em>is</em> the code they emitted.</p>
+
+<p><spec-newthought>"First class" has to mean something checkable</spec-newthought> or it is a mood. Five clauses,
+and the fifth is the one that matters:</p>
+
+<ol>
+  <li>An agent can read it <strong>without vision</strong> — otherwise the two readerships are not equal, they are a
+  text reader and a picture reader who agree by luck.</li>
+  <li>A human can read it <strong>without a design-tool licence</strong>.</li>
+  <li>It <strong>survives the design tool being swapped</strong>, including for a tool that did not exist when it was
+  written.</li>
+  <li>Something can <strong>fail</strong> when the build diverges from it. A document nothing can contradict is a
+  mood board.</li>
+  <li>It records <strong>which decision produced a value</strong>, not only the value.</li>
+</ol>
+
+<p>Clause five is where the screenshot dies, and it is worth being precise about why, because the failure is not
+resolution and it is not the model's eyesight. A picture of a card with 24&nbsp;px of internal padding is a faithful
+record of 24&nbsp;px. It cannot tell you whether that came from <code>space.400</code>, from a designer nudging a
+handle, or from a rounding error in an export — and those three have different fixes with different owners. Improving
+the image does not help. The information was never in it.</p>
+
+<spec-sidenote>This is the same shape as the finding in <a href="./orchestrator-placement-considerations.html">orchestrator-placement</a>: improving retrieval made routing-by-resemblance <em>more confident</em> rather than more correct, because the missing information was never in the corpus. Here, sharpening the render makes the measurement more precise and no more meaningful. When better input does not help, the input is the wrong kind.</spec-sidenote>
+</section>
+
+<!-- ======================================================= -->
+<section id="audit">
+<h2>2 · The audit — greenfield, and one answer already given</h2>
+
+<p><spec-newthought>There is no visual vocabulary of any kind.</spec-newthought> The spec template's nine sections
+are Context, Scenarios, Requirements, Data model, Success criteria, Assumptions, Open questions, Conformance and
+Change log. The design template's twelve are Principles check, Technical context, Data model &amp; contracts,
+Grounding, Approach, Alternatives, Decisions, Project structure, Risks, Complexity, Questions and Change log.
+Neither has a section for interface, presentation or appearance. A grep for <code>spec-screen</code>,
+<code>spec-mockup</code>, <code>spec-token</code> or <code>spec-viewport</code> across <code>specs/</code>,
+<code>templates/</code>, <code>packages/</code> and <code>assets/</code> returns nothing. The word <em>screen</em>
+appears twice in the eight templates and in both cases means a screenful of prose — <em>"if this section outgrows a
+screen"</em>, <em>"fits one screen; reads in under 30 seconds"</em>.</p>
+
+<div style="overflow-x:auto;">
+<table>
+  <thead><tr><th>What was looked for</th><th>What is there</th></tr></thead>
+  <tbody>
+    <tr><td><code>&lt;img&gt;</code> in <code>specs/</code>, <code>docs/</code>, <code>templates/</code>, <code>examples/</code></td><td><strong>Zero.</strong></td></tr>
+    <tr><td>Tracked raster images, whole repository</td><td><strong>Two</strong> — <code>docs/images/screenshot-spec-{light,dark}.png</code>, both README marketing</td></tr>
+    <tr><td>Root-level images</td><td><code>placement-dark.png</code>, 124&nbsp;KB, <strong>untracked</strong> — <code>.gitignore:44</code> is <code>/*.png</code></td></tr>
+    <tr><td>Screenshot or pixel-diff capability in the test suite</td><td><strong>None.</strong> No <code>page.screenshot</code>, no <code>toHaveScreenshot</code>, no <code>toMatchSnapshot</code>, no baselines</td></tr>
+    <tr><td>Multi-viewport or multi-theme test projects</td><td>One Chromium project, one viewport, <code>reducedMotion: 'reduce'</code></td></tr>
+    <tr><td>Static test server MIME table</td><td><code>.html .css .js .mjs .svg .json</code> — a <code>.png</code> would be served as <code>application/octet-stream</code></td></tr>
+    <tr><td>Multimodal path on the AI port</td><td>None. <code>chat(prompt: string): Promise&lt;string&gt;</code></td></tr>
+  </tbody>
+</table>
+</div>
+
+<p><spec-newthought>The intuitive constraint is not the real one.</spec-newthought> The natural assumption is that
+this repository's security posture forbids images. It does not. The artifact CSP permits <code>img-src 'self'</code>
+in all eight templates and in every generated view, so a same-origin file reference has always been allowed. What is
+blocked, at error severity, is a <code>data:</code> URI in <code>src=</code> — the
+<code>no-executable-content</code> rule holds <code>src</code> in its <code>URI_ATTRS</code> set — and remote hosts.
+An inline base64 screenshot is a hard validate failure today; a relative path to a file next to the artifact is not.
+So the obstacle to images has never been the CSP. It is that no directory convention exists, and that the one place
+images did land is explicitly ignored.</p>
+
+<p><spec-newthought>And the project has already answered this question.</spec-newthought> The single
+design-handoff-shaped document in the repository is
+<code>docs/vscode-lifecycle-brief/references/README.md</code>. It opens by inviting exactly what you would expect —
+<em>"Drop inspiration images, Figma exports, and screenshots here"</em> — and no image was ever committed. What
+landed beside it is <code>03-lifecycle-canvas.html</code>, a 1.8&nbsp;MB self-contained interactive mockup, described
+in the README's own words as <em>"the artifact, not a screenshot"</em>, with the instruction to <em>"use it to
+measure spacing, connector curvature, and node layout against the brief rather than guessing"</em> and a pointer to
+<em>"where the live design system lives (for measuring, not guessing)"</em>.</p>
+
+<p>That is both halves of this survey's recommendation, written in July 2026, applied once, and never turned into a
+convention. The artifact rather than the image; measurement rather than the eye. The rest of this document is
+largely an argument that the instinct was right and should be generalised.</p>
+
+<p><spec-newthought>The one pictorial channel that does exist is unowned.</spec-newthought>
+<code>&lt;spec-arch&gt;</code> wraps an inline SVG architecture sketch and the design command makes it effectively
+mandatory for any feature with more than one moving part — 71 of 83 designs carry one. Of those 71,
+<strong>59 hardcode hex fills and strokes inside the SVG</strong> and 7 use theme variables. The stylesheet themes
+the <em>frame</em> (<code>var(--c-surface)</code>, <code>var(--c-border-soft)</code>) and nothing themes the
+contents, so in dark mode the card is dark and the diagram inside it is a light-mode island.
+<code>templates/design.html</code> ships it that way, with five literal hex values in the scaffold's own
+<code>&lt;style&gt;</code> block, which is precisely how it propagated to 59 files. This is not a finding about
+visual specs so much as a preview of them: the moment a picture enters this system without an owner, it stops
+following the design system it is embedded in.</p>
+
+<p><spec-newthought>One distinction is worth drawing before that finding is generalised.</spec-newthought> A
+<em>diagram</em> must follow the reader's theme — an illustration that stays light inside a dark page is the defect
+just described. A <em>render</em> must not, because it is evidence of a particular mode, and restyling it to match
+the reader would destroy the thing it is evidence of. The two cases look identical in a repository of text artifacts
+and want opposite treatment, which is exactly the kind of rule that goes unwritten until something breaks.</p>
+
+<p><spec-newthought>The corpus is the wrong home, by its own contract.</spec-newthought> It is tempting — and it was
+an explicit hypothesis going in — to feed a component library into the knowledge corpus and let the existing
+prompt-injection seam carry it. Two things rule it out. The corpus is markdown-only at four independent layers: the
+loader skips anything not ending <code>.md</code>, the document body is typed <code>string</code>, the prompt block
+returns <code>string</code>, and the provider takes <code>string</code>. Adding an image is a change at every one of
+them, not a configuration. More decisively, the corpus's own grounding directive scopes citations to
+design-bearing <em>domain</em> facts and carves out, by name, <em>"a UX choice"</em>. A design system is the
+canonical UX choice. The corpus would have to contradict its own instruction to hold one.</p>
+</section>
+
+<!-- ======================================================= -->
+<section id="peers">
+<h2>3 · The peer record — where the field actually is</h2>
+
+<p><spec-newthought>The closest peer solved the identity layer and stopped.</spec-newthought> DESIGN.md, an
+Apache-2.0 format from Google Labs, is a single version-controllable file combining machine-readable tokens in YAML
+front matter with human-readable rationale in the markdown body — colours, typography, radii, spacing, and
+per-component token maps, followed by eight required prose sections from Overview to Do's and Don'ts. It is a good
+format and it is deliberately bounded. It covers <strong>no motion, no accessibility beyond contrast checking, no
+platform variants, no responsive breakpoints and no screens</strong>. It answers "what does this brand look like",
+which is the question a coding agent asks once per project. It does not attempt the question asked once per
+feature: <em>what is this particular view, in each of its states, and how do I know when I have built it.</em></p>
+
+<p><spec-newthought>The token standard is stable exactly where it is least needed and draft where it is most.</spec-newthought>
+The DTCG Format Module reached its first stable version, 2025.10, in October 2025, with a recommended media type of
+<code>application/design-tokens+json</code> and the file extensions <code>.tokens</code> and
+<code>.tokens.json</code>. It defines the primitive and composite types — colour with an explicit colour space,
+dimension, duration, cubic-bézier, shadow, typography, transition — and aliasing by curly-brace reference. Reference
+implementations exist in Style Dictionary, Tokens Studio and Terrazzo, and Penpot, Figma, Sketch and Framer all
+support or are implementing it. But <strong>theming and modes are not in the Format Module at all</strong>. They are
+in the Resolver Module, which introduces sets, modifiers and named contexts with a
+<code>resolutionOrder</code> — and which carries the sentence <em>"Do not attempt to implement this version of the
+specification."</em> The mechanism that would express light versus dark, compact versus regular, or iPhone versus
+tvOS is the part that is explicitly not ready.</p>
+
+<spec-sidenote>Worth recording precisely, because two summaries of the 2025.10 release state it the other way round: the <em>Resolver</em> document requires a <code>version</code> at its root and requires it to be <code>2025.10</code>. The <em>Format</em> module requires no version field at the document root at all. A token file and a resolver file are different documents with different rules, and conflating them would put a required field on the wrong one.</spec-sidenote>
+
+<p><spec-newthought>The design tools have converged on MCP and diverged on everything else.</spec-newthought> Figma's
+server is the richest — design context, sparse metadata, screenshots, variable definitions, code-connect mappings,
+and a motion tool returning keyframe tracks, easing and CSS <code>@keyframes</code>. Penpot ships its own MCP in its
+main repository. Stitch ships one that hands designs to a coding agent. The convergence is real and it is not a
+portability answer, because the tools' <em>models</em> did not converge — only the transport did. And Figma's is
+priced: a Dev seat at $12/month or a Full seat at $16, with Starter plans and View or Collab seats limited to
+<strong>six tool calls per month</strong>. A design that treats a live Figma read as the source of truth excludes
+free users, Sketch users, and both AI-native tools outright.</p>
+
+<p><spec-newthought>The annotation vocabulary already exists and is not machine-readable anywhere.</spec-newthought>
+Zeplin categorises pinned annotations as <em>Requirement, Behavior, Animation, API</em> and <em>Tracking</em>, with
+custom types on top. Figma's Dev Mode annotations sit under <em>Development, Interaction, Accessibility</em> and
+<em>Content</em>, are settable through the plugin and REST APIs, and can be generated in bulk. The CVS Health
+accessibility annotation kits — the de facto standard for communicating landmarks, headings, focus order and reading
+order — are CC-BY-4.0 <strong>Figma component libraries with no schema, no JSON and no code output whatsoever</strong>.
+The industry has a shared vocabulary for design intent, and it exists exclusively as coloured stamps inside design
+files. That is the gap, and it is a strange one: everyone agrees what the categories are and nobody has written them
+down in a form a program can read.</p>
+
+<p><spec-newthought>And the field has already retreated from pixel comparison.</spec-newthought> The 2026 write-ups
+converge on the same finding from different directions: an agent asked to eyeball two screenshots is being asked to
+do the thing it is worst at, and the fix is to hand it structured numeric deltas — <em>"heading font size is 28px,
+spec says 24px"</em> — extracted from <code>getComputedStyle()</code> and <code>getBoundingClientRect()</code>, at
+which point it converges in a few iterations. The complementary finding is that vision review is genuinely good at
+what it is good at — colour drift, padding deviation, wrong weight, grid misalignment, duplicated elements — and
+<em>"structurally unable to judge interaction states, motion, or anything below the captured frame."</em> Meanwhile
+Playwright's own answer to brittle assertions is the ARIA snapshot: a YAML rendering of the accessibility tree with
+roles, names and states, asserted with <code>toMatchAriaSnapshot()</code>. On the native side the same instrument
+exists under a different name — <code>swift-snapshot-testing</code> supports recursive view descriptions and text
+dumps alongside images, and XCUITest exposes the accessibility hierarchy.</p>
+
+<p>The portable measuring instrument, in other words, is <strong>the semantic tree, not the DOM</strong>. That
+matters more than it first appears, because it is the only measurement surface that exists on both a web page and a
+tvOS view.</p>
+</section>
+
+<!-- ======================================================= -->
+<section id="exemplar">
+<h2>4 · The exemplar, held to the bar</h2>
+
+<p>The <code>SCR-HOME</code> handoff artifact (v3.0.0) is the strongest input to this survey and the working
+hypothesis for most of it: one self-contained file per page, seven annotation layers over a live embed of the real
+design, a <code>handoff.json</code> sidecar declared normative where the prose disagrees, stable anchors on every
+section, and a revision log that diffs frozen frames. Held to the five clauses in §1, most of it survives. Some of it
+should not.</p>
+
+<div style="overflow-x:auto;">
+<table>
+  <thead><tr><th>Element</th><th>Verdict</th><th>Why</th></tr></thead>
+  <tbody>
+    <tr><td><strong>Sidecar normative, prose advisory</strong></td><td><strong>Keep — it is already the house rule</strong></td><td>Identical to the settled position on contracts: <em>the file is the contract; the artifact is the argument about it</em>. Adopting it here makes the visual spec the second instance of a decided pattern rather than a new one.</td></tr>
+    <tr><td><strong>Seven layers</strong> (structure, behaviour, motion, content, accessibility, data, visual)</td><td><strong>Keep the axis, not the number</strong></td><td>It is a superset of Zeplin's five and Figma's four and it is better than both. But seven fixed layers on every screen is the mistake the observables trace already made once — see §11.</td></tr>
+    <tr><td><strong>Live embed of the real page</strong></td><td><strong>Keep, with a caveat</strong></td><td>This is the repository's own instinct from the VS Code brief, generalised. The caveat is security, not fidelity: the CSP is deny-by-default and an embedded third-party export is untrusted content.</td></tr>
+    <tr><td><strong>Frozen stamped frames for print and diff</strong></td><td><strong>Defer</strong></td><td>Genuinely useful for sign-off, and it is the part that manufactures the largest number of binary files. It should follow the token contract, not precede it.</td></tr>
+    <tr><td><strong>Requirement pills carrying <code>REQ</code> ids</strong></td><td><strong>Rework</strong></td><td>A visual spec should <em>reference</em> requirements that live in the spec, not restate them. The existing trace mechanism aggregates by link and copies no prose; a pill that duplicates a requirement is a second copy to drift.</td></tr>
+    <tr><td><strong>A dedicated emit verb</strong></td><td><strong>Contested — see §5</strong></td><td>The exemplar implies one. The verb surface is deliberately small and the survey should not spend it without scoring the alternatives.</td></tr>
+  </tbody>
+</table>
+</div>
+
+<p><spec-newthought>The one structural objection is the unit.</spec-newthought> The exemplar is organised
+<em>per page</em> — one file per screen, which is exactly right for a marketing site with four routes. It generalises
+badly in two directions at once. Downward, a design system's components are shared across screens, so a per-page
+artifact either repeats each component's states in every file it appears in or references them and stops being
+self-contained. Upward, a product shipping the same feature on iPhone, iPad, macOS and tvOS does not have four pages;
+it has one feature with four presentations, and per-page files would fragment a single decision across four
+documents with no mechanism keeping them honest. The layer taxonomy survives that; the file boundary does not.
+§<a href="#variants">8</a> is the alternative.</p>
+
+<p>Two smaller notes worth keeping. The exemplar's <strong>data layer</strong> — the page's API contracts and its
+tracking plan, specified next to the element they belong to and gated on an unanswered consent question — is the most
+under-represented idea in the whole field, and it is the layer Zeplin gets right and design files omit. And its
+<strong>deviations block</strong>, four lines in the PR rather than silence, is the correct shape for the
+disagreement between a spec and a build. §<a href="#fidelity">7</a> takes it further by typing them.</p>
+</section>
+
+<!-- ======================================================= -->
+<section id="placement">
+<h2>5 · Where a visual spec lives — D-001</h2>
+
+<p>Four options, scored on whether the artifact can hold what §1 requires, whether it survives the verb-surface
+constraint, how much new machinery it needs, and how it resists drifting from the thing it describes.</p>
+
+<spec-matrix target="D-001">
+<div style="overflow-x:auto;">
+<table>
+  <thead>
+    <tr><th>Option</th><th>Expressive fit</th><th>Verb-surface cost</th><th>New machinery</th><th>Drift resistance</th><th>Tool portability</th><th class="score">Total</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>A · Sections in <code>spec.html</code></strong> — screens and states as requirement-adjacent prose</td>
+      <td>2</td><td>5</td><td>5</td><td>2</td><td>3</td><td class="score">17</td>
+    </tr>
+    <tr>
+      <td><strong>B · A ninth verb</strong> — <code>handoff</code> emitting its own artifact per screen</td>
+      <td>5</td><td>1</td><td>2</td><td>3</td><td>4</td><td class="score">15</td>
+    </tr>
+    <tr>
+      <td><strong>C · A derived view only</strong> — generated like <code>verify.html</code>, nothing authored</td>
+      <td>2</td><td>4</td><td>3</td><td>5</td><td>3</td><td class="score">17</td>
+    </tr>
+    <tr data-winner>
+      <td><strong>D · The contract chassis</strong> — declare in <code>design.html</code>, keep the real thing in a sidecar directory, render a drift-guarded view</td>
+      <td>5</td><td>4</td><td>4</td><td>5</td><td>5</td><td class="score">23</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+</spec-matrix>
+
+<p>The result is not close, and the reason is that option D is not a proposal so much as a recognition. Specs
+<a href="../specs/069-design-contract-section/spec.html">069</a>,
+<a href="../specs/070-contract-sidecar-convention/spec.html">070</a> and
+<a href="../specs/072-contract-embedded-view/spec.html">072</a> already built exactly this chassis for API
+contracts: a design section that <em>declares</em> the interface, a sidecar file at a conventional path that
+<em>is</em> the contract, and an embedded view that is materialised rather than transcluded and guarded against
+drift the way <code>verify-view-stale</code> guards the verify view. A design system and a screen inventory have the
+same three-part shape as an OpenAPI document: a declaration, a file, and an argument about it. Option A loses on
+expressiveness and on drift — a state matrix in prose is a list nothing can check — and it also loses on altitude,
+since the companion survey already settled that <code>spec.html</code> holds the conceptual model and the design
+holds the physical shape. A screen's structure is physical. Option C is the right shape for the <em>fidelity report</em>
+and the wrong shape for the <em>intent</em>: something has to be authored, or there is nothing to diverge from.
+Option B scores well on everything except the constraint that actually binds.</p>
+
+<spec-decision id="D-001" grounding="verified">
+  <h4>D-001 · The visual spec is a design declaration, a sidecar, and a generated view — not a new artifact class</h4>
+  <dl>
+    <dt>Status</dt><dd><spec-status value="draft">Proposed</spec-status></dd>
+    <dt>Context</dt><dd>Specs 069, 070 and 072 built a three-part pattern for contracts: <code>design.html</code> §3 declares, <code>specs/&lt;id&gt;/contracts/</code> holds the file, and a materialised, drift-guarded view renders it inside the artifact. The templates' deny-by-default CSP forbids runtime transclusion, so any embed is a copy and therefore a drift problem rather than a rendering one — a question that pattern has already answered. Nothing about a design system, a screen inventory or a state matrix differs structurally from a contract in this respect.</dd>
+    <dt>Decision</dt><dd>Land visual specs on the same chassis. The design artifact gains a section declaring the project's design sources, its token set, and the screens this feature touches. The sidecar splits by <strong>cardinality</strong>: the token set and the axis grid are <strong>project-scoped</strong>, because every feature shares one design system; the screen inventory and its annotations are <strong>feature-scoped</strong>, beside the spec that owns them. A <strong>component</strong> is the third kind and the only one that <em>migrates</em> — born feature-scoped, promoted to project scope when a second feature reaches for it. Promotion is a human act carried by a proposal, never automatic, and it is a change of <em>clock</em> rather than a file move: the component leaves the feature's change log and joins the token set's version. Neither directory is <code>references/</code>, which belongs to the knowledge corpus, nor <code>contracts/</code>, which belongs to 070. Any rendering inside an artifact is materialised at generate time and drift-checked, never transcluded. No ninth verb.</dd>
+    <dt>Consequences</dt><dd>+ Almost no new architecture: the declaration mechanism, the sidecar convention, the materialise-and-drift-check pattern and the validate hook for "a declared path must resolve" all exist and have tests. + The verb surface stays at eight, and a designer's change to a screen inherits <code>propose</code>, the adversarial risk pass and the apply gate for free. − <code>design.html</code> is already twelve sections and this makes it thirteen; the artifact is doing more work than its name suggests and a future split is foreseeable. − It means a visual spec is never self-contained the way the exemplar is: the artifact points at files, and a document that has left the repository has lost half of itself. That is the same trade 070 made, made again. − The two scopes are the part of the chassis that does <em>not</em> transfer from contracts, and getting them wrong is expensive: N designs each naming one shared token set is N declarations of one thing with no rule for disagreement. <code>declaredInterfaceState</code> already carries a fix for the sibling bug — <em>"declarations ACCUMULATE rather than shadow"</em> — and a union, which is right for N contracts, is meaningless for one design system. − Because a local component is deliberately invisible to other features, nothing can <em>detect</em> the second use; promotion depends on a person noticing they have built the same thing twice. That is consistent with the rule of three, which says to tolerate the second duplication rather than abstract on it, and it is still a workflow resting on human attention.</dd>
+  </dl>
+</spec-decision>
+</section>
+
+<!-- ======================================================= -->
+<section id="authority">
+<h2>6 · The design tool is a source, never the authority — D-002</h2>
+
+<p><spec-newthought>Portability is not achieved by supporting five tools.</spec-newthought> It is achieved by
+depending on none of them. If the read path is a live query, then the spec is only as available as someone's seat,
+as stable as someone's API, and as portable as the tool it was written against — and two of the five sources in §1
+have no persistent design document to query at all. The alternative is already settled elsewhere in this codebase:
+<a href="../specs/073-interface-detection-widening/spec.html">073</a> FR-003 establishes declaration over inference
+<em>in both directions</em>, on the reasoning that filesystem inference cannot distinguish a producer from a
+consumer while a declaration can, and <code>declaredInterfaceState</code> already reads designs as standing project
+posture. The same argument transfers without modification: a tool export cannot tell you which values were
+<em>decided</em> and which merely <em>are</em>; a declaration can.</p>
+
+<p>So an adapter's job is not to be queried. It is to <strong>land two artifacts</strong> — a DTCG token file and a
+set of renders — into the sidecar, once, as a commit. After that the design tool can be cancelled, changed or go out
+of business and the spec still validates, still measures and still builds. An adapter becomes a convenience for
+getting good input rather than a dependency for reading it, which is also what makes the Figma seat price an
+acceptable cost for the people who already pay it and a non-issue for everyone else.</p>
+
+<spec-decision id="D-002" grounding="verified">
+  <h4>D-002 · A declared token file outranks anything a design tool can be asked</h4>
+  <dl>
+    <dt>Status</dt><dd><spec-status value="draft">Proposed</spec-status></dd>
+    <dt>Context</dt><dd>Five design sources with five incompatible models and one shared output — a rendered artifact, plus a token file where the tool supports one. Figma's read path is metered and seat-gated; Claude Design and Stitch have no persistent design document to read. 073 FR-003 already settled declaration over inference on directly analogous reasoning, and made inference something that always runs and can never be switched off rather than something a declaration replaces.</dd>
+    <dt>Decision</dt><dd>The authority is a DTCG token file plus declared renders, committed to the sidecar. Design-tool adapters are import-time producers of those two things and are never consulted at validate, measure or build time. Inference from a render remains available as evidence and can be reported, but never outranks a declared value, and a value that was inferred rather than declared is marked as such rather than silently promoted.</dd>
+    <dt>Consequences</dt><dd>+ Portability is structural rather than a matter of writing five adapters well, and a source with no adapter is degraded to manual authoring rather than excluded. + The token file is a real standard with real implementations, so the same file feeds Style Dictionary and the build, not just spectastic. − A committed token file goes stale the moment the design moves, and nothing detects that; the drift check can only prove the artifact matches the file, never that the file matches the designer's intent. − It asks designers whose tool has no token export to produce one, which is real work being pushed onto the person least equipped to see why.</dd>
+  </dl>
+</spec-decision>
+</section>
+
+<!-- ======================================================= -->
+<section id="fidelity">
+<h2>7 · Fidelity is measured, not compared — D-003</h2>
+
+<p><spec-newthought>A percentage of differing pixels is not actionable.</spec-newthought> It does not say what is
+wrong, it does not say where, it cannot distinguish anti-aliasing from a broken layout, and it certainly cannot say
+which of two very different defects it found. The field's 2026 conclusion and this repository's own discipline point
+the same way. CLAUDE.md already carries the rule — <em>"presence is not containment… assert containment and
+on-screen bounds, not just that the element exists"</em> — paid for by nodes and a hover card that passed every "it
+renders" check and were visibly cropped. Every existing visual assertion in <code>tests/</code> is a computed-style
+or bounding-box arithmetic check. The project independently arrived at the right method and has never pointed it at
+a design.</p>
+
+<p>What makes measurement more than a nicer diff is the second half: a measured value can be <strong>snapped to a
+declared token</strong>. If a card measures 24&nbsp;px of padding and the design declares
+<code>space.400 = 24px</code>, the observation is <em>conformant</em>. If it measures 24&nbsp;px and the binding says
+<code>space.300 = 16px</code>, there are a small number of hypotheses, and they are different tickets with
+different owners:</p>
+
+<ul>
+  <li>The <strong>implementation</strong> is bound to the wrong token, or to no token at all.</li>
+  <li>The <strong>design</strong> is off-system — the mockup used a value the token set does not contain.</li>
+  <li>The <strong>platform</strong> restyled underneath both and nothing is wrong with either. §<a href="#versioning">9</a> adds this one, and it is the reason the list is not closed at two.</li>
+</ul>
+
+<p>A pixel diff cannot even express the distinction. A typed deviation must, and — this is the part that matters —
+it must <strong>refuse to choose silently</strong>, in the same way the placement survey's verdict shape refuses to
+route to a plausible-but-wrong owner because "no confident answer" was not on the menu. A deviation class of
+<code>token</code>, <code>structure</code>, <code>state</code>, <code>content</code> or <code>noise</code> is
+directly actionable; a percentage is a prompt to go and look.</p>
+
+<spec-decision id="D-003" grounding="verified">
+  <h4>D-003 · A deviation is typed, token-snapped, and names its hypotheses without picking one</h4>
+  <dl>
+    <dt>Status</dt><dd><spec-status value="draft">Proposed</spec-status></dd>
+    <dt>Context</dt><dd>The repository has no pixel-diff machinery and a stated discipline of computed-style and geometry assertions, arrived at through a real defect that "it renders" checks missed. The field's independent finding is that structured numeric deltas converge where screenshot comparison does not, and that vision review is strong on static measurable properties and structurally blind to states, motion and anything outside the captured frame. Meanwhile the token set is the only thing that makes a measurement interpretable — 24px is a fact, <code>space.400</code> is a decision.</dd>
+    <dt>Decision</dt><dd>Fidelity checking measures both sides and compares numbers, never images. Measurement reads the semantic tree and computed geometry, not pixels. Every deviation carries a class, a measured value, a specified value, and the nearest declared token; where a measured value does not correspond to any declared token the finding names every hypothesis that fits and selects none of them — the implementation is bound to the wrong token, the design is off-system, or, per §<a href="#versioning">9</a> D-008, the platform restyled underneath both. Vision is admissible as an <em>additional</em> reviewer for the relational properties measurement is bad at, and is never the gate. Measurement is scoped to the surface the project <strong>owns</strong>: a component consumed from an external library is measured against that library's contract, not against this project's token set.</dd>
+    <dt>Consequences</dt><dd>+ Findings are actionable without a human opening two images side by side, and they terminate — a token-snapped delta has a correct value to converge on. + It reuses the existing assertion style and the existing Playwright setup, needing no baseline images, no threshold tuning and no new flakiness class. − Measurement only sees what it queries, so a defect nobody thought to measure is invisible, where a pixel diff would at least have flagged it. That is a real loss and the honest answer is that vision review covers it partially and imperfectly. − Snapping requires the token set to be complete and correct; against a thin or wrong token file every measurement reports a deviation and the signal drowns. − Three hypotheses is more honest than two and less decisive: the more ways a finding can decline to attribute itself, the more of the triage stays with a human. − Owned-surface scoping is not optional and it is not free. On a project built from an external library, most of the rendered geometry belongs to somebody else, so an unscoped pass would report noise in proportion to how much of the interface the team did not write — which is most of it on the stacks most people use.</dd>
+  </dl>
+</spec-decision>
+
+<spec-sidenote>A tempting shortcut to name and refuse: asserting the rendered artifact against a stored reference render, with the render as the baseline. That is pixel diffing with extra steps, and it inherits every failure mode — font rendering, anti-aliasing, animation frames, and a baseline that has to be re-approved on every legitimate change. The reference render's job is to be <em>evidence a human can look at</em>, not the thing a machine compares against.</spec-sidenote>
+</section>
+
+<!-- ======================================================= -->
+<section id="variants">
+<h2>8 · Variants are an axis grid, and platform is one axis — D-004</h2>
+
+<p><spec-newthought>The multi-platform case is not a special case.</spec-newthought> An app shipping on iPhone, iPad,
+macOS and tvOS looks like a hard problem until you notice that light-versus-dark, compact-versus-regular and
+default-versus-empty-versus-error-versus-loading are the same problem at different sizes. All of them are
+<em>contexts</em> that select a different resolution of the same declared design. Treating platform as an axis
+alongside mode, viewport and state means one feature has one visual spec with a grid over it, rather than four
+documents that agree by hand.</p>
+
+<div style="overflow-x:auto;">
+<table>
+  <thead><tr><th>Axis</th><th>Contexts (example)</th><th>Selects</th><th>Where it comes from</th></tr></thead>
+  <tbody>
+    <tr><td><strong>Mode</strong></td><td>light · dark · high-contrast</td><td>Token values</td><td>Declared; the project already ships two</td></tr>
+    <tr><td><strong>Platform</strong></td><td>iPhone · iPad · macOS · tvOS · web</td><td>Token values <em>and</em> component set <em>and</em> input model</td><td>Declared per project</td></tr>
+    <tr><td><strong>Viewport</strong></td><td>compact · regular · a named breakpoint</td><td>Layout</td><td>Declared; measurable</td></tr>
+    <tr><td><strong>State</strong></td><td>default · empty · loading · error · denied · overflow</td><td>Content and structure</td><td>Partly derivable — see below</td></tr>
+  </tbody>
+</table>
+</div>
+
+<p>The DTCG Resolver's sets-and-modifiers model is the right shape for the first three, and it is a draft that says
+not to implement it. The resolution is to borrow the <em>shape</em> — named axes, named contexts, an explicit
+resolution order — without depending on the draft file format, and to keep the mapping thin enough that adopting the
+resolver later is a serialisation change rather than a redesign.</p>
+
+<p><spec-newthought>The state axis is the one that can be partly derived</spec-newthought>, and it is where the
+existing estate has a genuine advantage. A project that declares an OpenAPI or AsyncAPI contract has already
+enumerated its error responses; each one is a screen state that must exist. A collection endpoint implies an empty
+state. A field with a maximum length implies an overflow state. Deriving those and requiring the author to either
+design or explicitly dismiss each one turns the most commonly skipped part of UI work — the states nobody drew —
+into a checkable list, using contract data the lifecycle already holds. That is a better argument for visual specs
+in this tool specifically than anything about tokens.</p>
+
+<p>Platform, however, is not a token axis alone, and it would be dishonest to model it as one. A tvOS view has a
+focus engine, no cursor and no touch; focus resolves geometrically and every interactive element needs a visible
+focused state that is unmistakable from an unfocused one. A macOS window has a pointer and a menu bar. These are
+different <em>interaction</em> models, not different values, so the platform axis has to be able to select structure
+and behaviour, not merely colours and spacing — which is exactly why the annotation layers in
+§<a href="#annotations">10</a> have to be per-context rather than per-screen.</p>
+
+<spec-decision id="D-004" grounding="spike">
+  <h4>D-004 · One spec, an axis grid over it — borrowing the resolver's shape, not its file format</h4>
+  <dl>
+    <dt>Status</dt><dd><spec-status value="draft">Proposed</spec-status></dd>
+    <dt>Context</dt><dd>A product may ship the same feature on four Apple platforms plus web, in two modes, at two size classes, in six states. Per-screen or per-platform artifacts fragment one decision across many documents with nothing keeping them consistent. The DTCG Resolver Module models precisely this with sets, modifiers, named contexts and a resolution order — and states that this version must not be implemented. Platform additionally selects interaction model, not only token values.</dd>
+    <dt>Decision</dt><dd>Model variants as named axes with named contexts and an explicit resolution order, adopting the resolver's conceptual shape while keeping the serialisation local until the module stabilises. Platform is an axis peer to mode and viewport, and is permitted to select structure and behaviour rather than values alone. State is an axis whose contexts may be <em>derived</em> from a declared interface contract and must then be either designed or explicitly dismissed, never silently absent.</dd>
+    <dt>Consequences</dt><dd>+ Ziggy-shaped products get one authored spec rather than four, and the grid makes an unaddressed combination visible instead of merely missing. + Deriving states from an existing contract turns the most-skipped part of UI work into a checkable list using data the lifecycle already holds. − The grid is combinatorial and most cells are uninteresting; without a strong default that only material differences are recorded, this manufactures busywork at exactly the rate the observables trace did. − It is a bet on a draft. If the resolver stabilises differently, the mapping is rework — and this decision is marked <em>spike</em> rather than verified for that reason.</dd>
+  </dl>
+</spec-decision>
+</section>
+
+<!-- ======================================================= -->
+<section id="versioning">
+<h2>9 · Versioning — three clocks, and a fourth nobody owns</h2>
+
+<p><spec-newthought>The variant grid is space; versioning is time.</spec-newthought> It is also the question that
+decides whether any of the rest works, because fidelity measured against a <em>declared</em> token set means nothing
+the moment the declaration and the build are at different points in time. The instinct is to put a version number on
+the visual spec. That is the mistake. Four things change here, at four different rates, driven by four different
+people, and only one of them wants a number.</p>
+
+<div style="overflow-x:auto;">
+<table>
+  <thead><tr><th>What changes</th><th>At whose pace</th><th>Mechanism this estate already has</th><th>How it compares</th></tr></thead>
+  <tbody>
+    <tr><td><strong>The token set</strong> — the design system many features depend on</td><td>The design-system owner</td><td><code>principles.html</code>: semver, forward-only binding, a compare-and-swap stale guard</td><td><code>from === live</code>, and it throws</td></tr>
+    <tr><td><strong>A feature's visual spec</strong> — its screens, states and annotations</td><td>The feature</td><td><code>&lt;spec-changelog&gt;</code> + typed <code>&lt;spec-delta&gt;</code> + <code>changes/archive/</code></td><td>Nothing — append-only history</td></tr>
+    <tr><td><strong>Captured renders and measurements</strong></td><td>Every run</td><td>The contract <code>.baseline/</code> capture and its refusal on a moved baseline</td><td>Per consequence: exact bytes, or normalised</td></tr>
+    <tr><td><strong>The platform</strong> — iOS 26, a browser, a WebView</td><td>Somebody else entirely</td><td><strong>Nothing.</strong></td><td>—</td></tr>
+  </tbody>
+</table>
+</div>
+
+<p><spec-newthought>The estate has already solved the hardest of these and applied it once.</spec-newthought>
+<code>principles.html</code> is the only artifact in the whole system carrying a version number —
+<code>&lt;b&gt;Version&lt;/b&gt; &lt;span&gt;1.9.0&lt;/span&gt;</code> — under a policy written into the document
+itself: <em>"Semver. v1.0.0 is the founding ratification"</em>, with MAJOR for a principle removed or redefined,
+MINOR for one added, PATCH for wording. It is machine-guarded, too: <code>apply.ts</code> refuses a proposal whose
+declared <code>from</code> version does not equal the live one, so two amendments cannot silently race.</p>
+
+<p>But the clause that matters most is the one nobody notices. Principles bind <strong>forward only</strong> —
+<em>"binds new and amended specs from v1.4.0; the structured-waiver clause from v1.7.0"</em>, and it <em>"does not
+retroactively re-open specs 001–029."</em> That is the unanswered question of design-system versioning, answered.
+When the token set moves, what happens to the forty screens already built against it? The industry's answer is
+deprecation windows and a migration project; this repository's answer is that a version binds what comes after it,
+and what shipped under v1.4.0 remains conformant to v1.4.0. <code>principles.html</code> is to specs what a token set
+is to screens, and the mechanism transfers whole.</p>
+
+<p>The counterpart is just as clear: <strong>no spec, design, tasks or verify artifact carries a version at all.</strong>
+The change log is the entire history — <code>specs/000-spectastic/spec.html</code> has thirty-nine entries and no
+version anywhere. So both halves of the answer already coexist in this codebase: a number for the thing many things
+depend on, an append-only log for the things that depend on it. Nothing new has to be invented; the two mechanisms
+have to be told apart.</p>
+
+<p><spec-newthought>And there is a property here worth protecting on purpose.</spec-newthought> Six distinct
+versioning mechanisms exist across this estate — corpus editions, contract baselines, materialised-view drift,
+compatibility declarations, the status lifecycle, principles semver — and <mark>not one of them ever orders
+anything</mark>. A corpus edition is compared with string equality and has no format contract at all. A contract
+baseline is an exact byte comparison. Principles is <code>from === live</code>, which is a compare-and-swap and not a
+check that the bump was legal. "Newer" is decided by <em>arrival</em> or by <em>location</em>, never by comparison.
+That reads like an omission and is closer to a discipline: equality is decidable without agreeing a format, and the
+moment something claims to know that one version is later than another it has taken on a format contract it must
+then enforce forever. A visual spec should inherit the property, not fix it.</p>
+
+<spec-decision id="D-007" grounding="verified">
+  <h4>D-007 · Three clocks, three existing mechanisms, and never one number over the whole thing</h4>
+  <dl>
+    <dt>Status</dt><dd><spec-status value="draft">Proposed</spec-status></dd>
+    <dt>Context</dt><dd>A token set, a feature's screens, and a captured render change at different rates and are owned by different people. The estate already versions the first shape (<code>principles.html</code>: semver, forward-only binding, a stale guard that throws) and the second (append-only change log, typed deltas, archive), and already has the third as the contract <code>.baseline/</code> — captured at propose time, compared <em>baseline versus current</em> rather than incoming versus current, with absence recorded as a distinct state. External practice agrees from the design side: documentation versions are held separate from code versions, and token sets are expected to evolve independently of the component library.</dd>
+    <dt>Decision</dt><dd>Version the token set like the principles document — semver, an explicit bump policy, and <strong>forward-only binding</strong> so a bump does not retroactively invalidate every screen already shipped. Version a feature's visual spec like a spec: no number, a change log, typed deltas, an archived proposal. Do not version captured evidence at all — a render is a dated, ratified baseline that is superseded rather than incremented, and re-ratification is a human act. Compare by equality everywhere, and choose strictness per consequence: exact bytes where a false negative would clobber someone's work, normalised where a difference only means stale.</dd>
+    <dt>Consequences</dt><dd>+ Nothing new is invented — three mechanisms already exist, are tested, and have their edge cases recorded. + Forward-only binding gives an honest answer to the question that stops most design-system version bumps, without a migration project attached to every one. − Three mechanisms means three things to explain, and a reader who wants "what version is this screen" gets an answer with three parts. − Forward-only binding means the estate accumulates screens conformant to older token sets, and nothing reports how far behind any of them is; that visibility is a separate problem this decision does not solve.</dd>
+  </dl>
+</spec-decision>
+
+<p><spec-newthought>The fourth clock has no owner and is the one that will bite first.</spec-newthought> Liquid Glass
+is the largest visual redesign Apple has shipped since iOS 7, landing across iOS, iPadOS, macOS and tvOS 26 — and it
+was still moving during the beta, which increased the opacity of toolbars and buttons in response to legibility
+complaints. A visual spec authored against iOS 18 is invalidated by that without anyone touching the app, the design
+file or the token set. The web version of the same problem is slower and no different in kind.</p>
+
+<p>This has a direct consequence for §<a href="#fidelity">7</a>. A measured deviation was framed there as two
+hypotheses — the implementation is bound to the wrong token, or the design is off-system. On a platform that
+restyles underneath both, there is a third: <strong>nothing is wrong with either, and the ground moved.</strong> A
+check that cannot express that will report a defect against whichever of the two it happens to prefer, which is the
+silent wrong-owner failure §<a href="#fidelity">7</a> exists to prevent. The fix is cheap and it is a declaration: a
+visual spec names the platform version it was designed and last verified against, and the measurement pass reports
+the platform it actually ran on.</p>
+
+<spec-decision id="D-008" grounding="verified">
+  <h4>D-008 · Every clock the project does not own declares a baseline, and "the dependency moved" is a third defect hypothesis</h4>
+  <dl>
+    <dt>Status</dt><dd><spec-status value="draft">Proposed</spec-status></dd>
+    <dt>Context</dt><dd>Nothing in the lifecycle records which operating system, browser, runtime or component library a design was drawn against. Liquid Glass demonstrates that a platform can restyle every app on it in one release and keep adjusting through a beta cycle — and a major version of an external component library is the same event at a different altitude. D-003 names two defect hypotheses for a measured deviation, and neither is true when the thing that changed is a dependency nobody on the project controls.</dd>
+    <dt>Decision</dt><dd>A visual spec declares a baseline for every clock it does not own — the platform, per context in the §<a href="#variants">8</a> grid, and any external component library it consumes or vendors — recording both what it was designed against and what it was last verified against. The measurement pass records what it actually ran on. Where the two disagree, the deviation is classed as a <strong>dependency delta</strong> and is <strong>not</strong> attributed to the implementation or to the design. This amends D-003 from two hypotheses to three; the refusal to choose silently between them is unchanged and now covers one more case.</dd>
+    <dt>Consequences</dt><dd>+ Removes a whole class of confidently-wrong findings, which is the failure mode a fidelity check can least afford. + Makes "this design is stale because the OS moved" a reportable fact rather than something a developer discovers by eye eighteen months later. − It is another declaration to keep current, and a stale baseline is exactly as misleading as a stale token file — the mechanism cannot tell a considered baseline from a forgotten one. − It does not say what to <em>do</em> about a dependency delta. Deciding whether to chase a restyle or a library major is a product judgment and the tool has no business having a view. − Generalising past the platform widens what has to be declared from one baseline to one per dependency, which is the kind of list that rots quietly.</dd>
+  </dl>
+</spec-decision>
+
+<p><spec-newthought>Which leaves the question every versioning scheme has to answer: what is breaking?</spec-newthought>
+It is tempting to answer mechanically, and the landscape says plainly that nobody can yet. For an API contract the
+answer is mature: oasdiff classifies <strong>509 distinct changes</strong> across an OpenAPI document, and buf does
+the equivalent for protobuf. For design tokens the entire state of the art is a <strong>Figma plugin</strong> that
+diffs Variables against a <code>tokens.json</code>. There is no rule library, no CI tool, and — more to the point —
+no agreed taxonomy of what breaking even <em>means</em> for a token. A darker accent is invisible to a layout and
+fatal to a contrast ratio. A four-pixel spacing change is nothing until it is the thing that made a label truncate.
+Practitioners describe the disagreement directly: a designer calls a change minor because the component still looks
+familiar while engineering experiences it as breaking because spacing shifted and layouts moved.</p>
+
+<p>The estate already has the honest shape for this, and it is not a heuristic. Spec
+<a href="../specs/077-event-schema-evolution/spec.html">077</a> records a producer's compatibility stance as a closed
+enum, validates its shape at error severity, checks that coupled attributes are coherent — and verifies nothing. The
+words <em>"producer claims"</em> are baked into the stylesheet, and the spec states outright that nothing enforces
+the stance at any tier. A design-change class should be the same artifact: a claim, rendered as a claim, with the
+same refusal to overstate.</p>
+
+<spec-decision id="D-009" grounding="verified">
+  <h4>D-009 · Whether a design change is breaking is a producer's claim, never a verified property</h4>
+  <dl>
+    <dt>Status</dt><dd><spec-status value="draft">Proposed</spec-status></dd>
+    <dt>Context</dt><dd>Breaking-change detection is a solved problem for API contracts — 509 classified rules for OpenAPI, an equivalent for protobuf — and an unsolved one for design. The whole available tooling for token diffing is one design-tool plugin, and no taxonomy exists for what a breaking token change is. The failure is not tooling effort: the impact of a visual change depends on layouts the token set cannot see. Spec 077 already models exactly this situation for event-schema compatibility.</dd>
+    <dt>Decision</dt><dd>A token-set release declares a change class as a producer's claim, on 077's pattern: a closed enum, error-severity shape validation, copy that says <em>claims</em> rather than <em>is</em>, and an explicit statement that nothing enforces it. Deprecation uses the standard's own channel — a DTCG <code>$deprecated</code> value naming the replacement — so a rename ships the new token plus a deprecated alias rather than a removal. Any mechanical diff that is built reports <em>what changed</em>, never <em>whether it breaks</em>.</dd>
+    <dt>Consequences</dt><dd>+ Refuses an overclaim the field has not earned, and reuses a pattern already built, validated and rendered here. + <code>$deprecated</code> is a real standardised channel, so the deprecation half is interoperable rather than local. − A claim can be wrong, and a wrong claim is worse than no claim because it looks like diligence. The 077 precedent carries that same weakness and accepted it. − It leaves the most useful thing unbuilt: an author still has to decide the class by judgment, on exactly the evidence that made the automated version impossible.</dd>
+  </dl>
+</spec-decision>
+
+<spec-sidenote>One asymmetry to hold on to when reading the peer material: a design tool cannot tell you which version of a component a screen was drawn against. Figma versions at the file level through branching and version history, component-level versioning has been a standing feature request rather than a feature, and a library cannot be pinned to a previous version. That is a second, independent reason the declared file has to be the authority — the tool is not able to answer the question even when you are paying it.</spec-sidenote>
+</section>
+
+<!-- ======================================================= -->
+<section id="annotations">
+<h2>10 · Annotations should not become a tenth taxonomy — D-005</h2>
+
+<p><spec-newthought>Four schemes already describe the same thing.</spec-newthought> Zeplin's five types, Figma Dev
+Mode's four categories, the CVS accessibility kits' stamp types, and the exemplar's seven layers all carve up design
+intent, and they mostly agree. Inventing a fifth carve-up because none is a perfect fit would produce a vocabulary
+nobody outside this tool can read — which is the failure mode the tokens decision spends its whole argument
+avoiding.</p>
+
+<div style="overflow-x:auto;">
+<table>
+  <thead><tr><th>Layer</th><th>Zeplin</th><th>Figma Dev Mode</th><th>Already expressible here</th></tr></thead>
+  <tbody>
+    <tr><td>Structure</td><td>—</td><td>Development</td><td>Accessibility tree — roles, names, levels, landmarks</td></tr>
+    <tr><td>Behaviour</td><td>Behavior</td><td>Interaction</td><td>ARIA states: <code>disabled</code>, <code>expanded</code>, <code>pressed</code>, <code>checked</code>, <code>invalid</code>, <code>selected</code></td></tr>
+    <tr><td>Requirement</td><td>Requirement</td><td>—</td><td><code>&lt;spec-requirement&gt;</code> — reference it, never restate it</td></tr>
+    <tr><td>Motion</td><td>Animation</td><td>—</td><td>DTCG <code>duration</code>, <code>cubicBezier</code>, <code>transition</code></td></tr>
+    <tr><td>Data</td><td>API</td><td>—</td><td><code>&lt;spec-contract&gt;</code> and the sidecar contract file</td></tr>
+    <tr><td>Tracking</td><td>Tracking</td><td>—</td><td><strong>Nothing.</strong> The genuine gap</td></tr>
+    <tr><td>Content</td><td>—</td><td>Content</td><td>Nothing structured; prose budgets in the exemplar</td></tr>
+    <tr><td>Accessibility</td><td>—</td><td>Accessibility</td><td>Accessibility tree, plus the CVS stamp categories</td></tr>
+  </tbody>
+</table>
+</div>
+
+<p>Five of the eight rows resolve to something that already exists and is already machine-readable, and three of
+those five resolve to <strong>the accessibility tree</strong>. That is not a coincidence. WAI-ARIA is an ontology of
+roles, states and properties designed to make interface semantics machine-readable — it is the only widely
+implemented type system for "what is this element and what is it currently doing", it is what Playwright's ARIA
+snapshots serialise, and it is what XCUITest exposes on the other side of the platform divide. Using it as the type
+system means the annotation layer is <em>the same artifact</em> as the measurement surface from
+§<a href="#fidelity">7</a>, which is worth more than the taxonomy tidiness: a declared role becomes an assertion for
+free.</p>
+
+<p>The two rows with nothing behind them — <strong>tracking</strong> and <strong>content</strong> — are the honest
+gaps, and tracking is the more interesting one. An analytics plan specified at design time, next to the element that
+emits the event, and gated on an unanswered consent question, is a genuinely good idea that no SDD tool models and
+that the exemplar gets right. It is also plainly a slice of its own.</p>
+
+<spec-decision id="D-005" grounding="verified">
+  <h4>D-005 · Reuse the accessibility tree as the annotation type system</h4>
+  <dl>
+    <dt>Status</dt><dd><spec-status value="draft">Proposed</spec-status></dd>
+    <dt>Context</dt><dd>Four annotation taxonomies exist and broadly agree; none is machine-readable — the CVS accessibility kits, the industry standard for exactly this, are CC-BY-4.0 Figma components with no schema or code output. Mapping the union onto existing vocabulary shows five of eight layers already have a home and three of those five are ARIA roles and states, which are already serialised by Playwright's ARIA snapshots and already exposed by XCUITest.</dd>
+    <dt>Decision</dt><dd>Type annotations with ARIA roles, states and properties rather than a new vocabulary; express the layer taxonomy as a grouping over that type system, mapped explicitly to Zeplin's and Figma Dev Mode's names so an imported annotation lands somewhere. Requirement-class annotations reference an existing <code>&lt;spec-requirement&gt;</code> by id and never restate it. Tracking and content are recorded as genuine gaps and specced separately rather than improvised into the first slice.</dd>
+    <dt>Consequences</dt><dd>+ A declared annotation is directly assertable, on web and on Apple platforms, with no translation layer — the annotation and the test become the same statement. + Imported annotations from Figma or Zeplin have a defined landing place instead of arriving as untyped prose. − ARIA is a web ontology; the mapping to native traits is close but not exact, and pretending otherwise would encode a lie about tvOS focus in particular. − It cannot express the design-intent annotations that have no accessibility analogue — visual emphasis, brand rationale, "this must survive greyscale" — which stay as prose and stay unchecked.</dd>
+  </dl>
+</spec-decision>
+</section>
+
+<!-- ======================================================= -->
+<section id="shape">
+<h2>11 · None of this may seed unconditionally — D-006</h2>
+
+<p><spec-newthought>This project has already run this experiment and lost.</spec-newthought> The observables trace
+shipped a well-built feature into an estate it did not fit: 37 of 61 verify views carry an observables section,
+<strong>every row in all 37 is a gap</strong>, 77 gap rows in total, and no <code>&lt;spec-slo&gt;</code> element has
+ever been authored outside fixtures. A 100% gap rate across 37 artifacts is not a backlog; it is a question being
+asked of a population that cannot answer it. The diagnosis in that survey is directly reusable: the profile system
+has six axes — verification, enforcement, toggles, grounding, frameworks, contracts — and <strong>not one of them
+says what the project is</strong>, so mechanisms silently default to a shape.</p>
+
+<p>Visual specs are the same trap with a bigger blast radius. A CLI, a library, a batch job and a parser have no
+screens. Seeding screen vocabulary, a variant grid and a design-source declaration into every project would put an
+empty visual section into the majority of them, and the majority is exactly where the estate is: this repository
+itself is a CLI and a library, and its one UI surface is the tool rendering itself. There is a further precedent —
+a standard-tier accessibility principle was deliberately <em>not</em> seeded on the grounds that it <em>"reads as
+noise for non-UI standard/CLI/library projects"</em>, and re-deferred rather than dropped.</p>
+
+<p>The gate that is needed already has a name and a planted slug. <code>TBD-project-shape-axis</code> was planted by
+the non-service-observability survey as the seventh profile axis. This survey does not re-plant it — it is the same
+slug for the same reason, and re-planting would double-count a pending item. It does, however, add a second
+independent motivation for it, and that is worth recording: an axis wanted by one feature is a nice-to-have; an axis
+two independent surveys arrive at from opposite directions is a missing primitive.</p>
+
+<spec-decision id="D-006" grounding="verified">
+  <h4>D-006 · The visual vocabulary is shape-gated, and the gate does not exist yet</h4>
+  <dl>
+    <dt>Status</dt><dd><spec-status value="draft">Proposed</spec-status></dd>
+    <dt>Context</dt><dd>The observables trace is the worked failure: 37 sections, 77 gap rows, a 100% gap rate, and zero authored SLOs, because nothing anywhere asks whether a project is the kind of thing that could have one. The six profile axes all ladder rigor and none states project shape. A prior accessibility principle was deliberately withheld from standard tier on the same reasoning. <code>TBD-project-shape-axis</code> is already planted.</dd>
+    <dt>Decision</dt><dd>Every element of the visual vocabulary — the design section, the sidecar, the variant grid, the fidelity check — is gated on declared project shape and is absent, not empty, where the shape does not warrant it. Absent means the section is not scaffolded and no gap is reported; an empty section that reports a gap is the failure being avoided. The shape axis is the mechanism this decision wants, and this survey cites the existing slug rather than planting a duplicate. It is a prerequisite for the <em>gate being declared rather than inferred</em>, not for the gate existing: an interface-style heuristic can hold the line meanwhile, failing safe on the antecedent the way the contract-first category already does, and the axis then demotes that heuristic to a fallback rather than replacing it.</dd>
+    <dt>Consequences</dt><dd>+ Non-UI projects are untouched, so the feature cannot manufacture 77 more gap rows across the estate. + It supplies the second independent motivation for an axis that has been wanted and unbuilt, which is what usually moves a primitive from wanted to built. − It makes slice one depend on work owned by another survey, and the honest reading is that this survey cannot start without it. − Shape is declared, so a project can declare wrongly, and a mis-declared shape fails silently in the direction of absence — the least visible failure mode there is.</dd>
+  </dl>
+</spec-decision>
+
+<spec-sidenote>A question this survey raises and does not close, inherited from the same source: whether shape belongs to the <em>project</em> or to the <em>unit</em>. A repository holding a service and its client library has two shapes; a repository holding an app and its design system has two as well. <code>TBD-shape-per-unit</code> is already planted for exactly this, and the visual case makes it more pressing rather than differently.</spec-sidenote>
+</section>
+
+<!-- ======================================================= -->
+<section id="recommendation">
+<h2>12 · Recommendation — three slices, in dependency order</h2>
+
+<ol>
+  <li><strong>Give the design somewhere to declare its surface.</strong> A <code>design.html</code> section declaring
+  the design sources, the token file and the screens a feature touches; the sidecar directory convention; the element
+  vocabulary with its loud gaps; the variant grid; and the two declarations versioning needs — the token set's version
+  and the platform baseline. Gated on project shape, which means the shape axis lands first. This buys an authored
+  artifact that a human and an agent can both read, and nothing else can be built until something exists to diverge
+  from.</li>
+  <li><strong>Make fidelity measurable.</strong> The measurement pass over the semantic tree and computed geometry,
+  typed deviations that snap to a declared token, the refusal to attribute a deviation to one of its three
+  hypotheses, and the ratified baseline the run compares against. Proven on the web surface, where the instrument
+  already exists and the existing assertion style already does most of this. This buys the design-accurate build —
+  it is the only slice that can fail a divergence.</li>
+  <li><strong>Cross the tool boundary.</strong> Source adapters that land a token file and renders; widening the AI
+  port to carry an image so vision review can be an additional reviewer; the native measurement port over
+  <code>swift-snapshot-testing</code> and the XCUITest accessibility hierarchy. This buys the designer's half of the
+  workflow, and it buys Ziggy.</li>
+</ol>
+
+<spec-warning><strong>Do not start with the adapters.</strong> They are the most visible slice, the most demoable,
+and the one most exposed to other companies' roadmaps and pricing — and they write into a target that does not exist
+yet, so building them first means inventing the target implicitly, in an importer, in whatever shape the first tool
+happened to have. The second temptation to refuse is pixel diffing. It is by far the cheapest thing on this list to
+build, it produces an impressive-looking artifact within a day, and §<a href="#fidelity">7</a> is an argument that it
+does not work. Cheap and demoable are exactly the properties that get a wrong mechanism adopted before anyone
+measures whether it converges.</spec-warning>
+
+<h3>Suggested next artifacts</h3>
+<spec-out-of-scope>
+  <ul>
+    <li defer-to="TBD-design-visual-section">A new spec: the <code>design.html</code> section that declares design sources, the token file and the screens a feature touches — the authoring surface everything else writes into, and the direct analogue of what <a href="../specs/069-design-contract-section/spec.html">069</a> did for contracts (D-001, D-002).</li>
+    <li defer-to="TBD-visual-sidecar-convention">A new spec: the sidecar directories — one project-scoped, one feature-scoped — their name, what may live in them, the tracked-binary policy and its collision with <code>.gitignore</code>'s <code>/*.png</code>, and the check that a declared path resolves. On the name, two candidates are already ruled out on evidence rather than taste: <code>surface/</code> collides with the most-used vocabulary in modern design systems (three surface colour roles and five surface containers in Material Design 3, a <code>Surface</code> composable, and 44 uses of <code>--c-surface</code> in this project's own stylesheet), and <code>views/</code> inverts two meanings at once — in SwiftUI a <em>View</em> is a component and a <em>Screen</em> is a screen, and in spectastic a "view" is a <em>generated</em> artifact. The sibling of <a href="../specs/070-contract-sidecar-convention/spec.html">070</a> (D-001).</li>
+    <li defer-to="TBD-component-promotion">A new spec: the component's three states — local, promoted, retired — the human-initiated promotion that carries it from feature scope to project scope, and its maturity expressed with the existing six-value <code>&lt;spec-status&gt;</code> rather than a seventh vocabulary. Modelled on <a href="../specs/071-contract-promotion/spec.html">071</a>, whose plan-then-execute, write-then-archive and refuse-on-a-moved-destination machinery is the same operation (D-001, D-007).</li>
+    <li defer-to="TBD-external-component-provenance">A new spec: origin as a property orthogonal to scope and maturity — authored, vendored or consumed — with the corpus's provenance field set (<code>origin</code>, <code>origin-url</code>, <code>edition</code>, <code>license</code>, <code>content-hash</code>) as the model for a vendored component, including its severity split: a dead reference is an error, a pin to a superseded edition is only a warning. Also owns the token question a themed project raises, where the base is external and only the overrides are local (D-003, D-008).</li>
+    <li defer-to="TBD-visual-spec-vocabulary">A new spec: the element family — screens, states, compositions and their loud gaps — following the established pattern that a missing attribute renders visibly broken rather than silently absent (D-001, D-004).</li>
+    <li defer-to="TBD-token-set-versioning">A new spec: semver over the declared token set, with the bump policy stated in the file, a compare-and-swap stale guard on the amendment, and <strong>forward-only binding</strong> so a bump does not retroactively invalidate every screen already shipped — the <code>principles.html</code> mechanism, applied a second time (D-007).</li>
+    <li defer-to="TBD-variant-grid-declaration">A new spec: the axis grid D-004 describes — named axes, named contexts, defaults, and a context declined with a reason. Split out of <a href="../specs/093-design-visual-section/spec.html">093</a> after an adversarial pass observed it was the only must-tier work resting on a draft module that says not to implement it (D-004, D-008).</li>
+    <li defer-to="TBD-platform-baseline-declaration">A new spec: the declared platform baseline per platform context, the platform recorded by the measurement pass, and the platform-delta finding class that keeps a restyle from being attributed to the implementation or the design (D-008).</li>
+    <li defer-to="TBD-design-change-class">A new spec: the producer's change-class claim on a token-set release and its DTCG <code>$deprecated</code> deprecation channel, cloning <a href="../specs/077-event-schema-evolution/spec.html">077</a>'s closed enum, shape validation and "claims" copy — including the statement that nothing enforces it (D-009).</li>
+    <li defer-to="TBD-visual-annotation-schema">A new spec: annotations typed by ARIA role and state, with an explicit mapping from Zeplin's five categories and Figma Dev Mode's four, so an imported annotation has somewhere to land (D-005).</li>
+    <li defer-to="TBD-fidelity-measurement">A new spec: the measurement pass — reading the semantic tree and computed geometry, snapping observations to declared tokens, and reporting conformance without ever comparing images (D-003).</li>
+    <li defer-to="TBD-visual-deviation-taxonomy">A new spec: the deviation classes, their statuses, and the refusal to choose between the implementation-wrong, design-off-system and platform-moved hypotheses — the artifact form of that rule, and the thing that makes a fidelity run terminate (D-003, D-008).</li>
+    <li defer-to="TBD-visual-baseline-ratification">A new spec: a captured render as a ratified baseline rather than a version — captured at propose time, compared baseline-versus-current, absence recorded as its own state, re-ratification an explicit human act. The contract <code>.baseline/</code> mechanism pointed at evidence (D-007).</li>
+    <li defer-to="TBD-design-source-adapters">A follow-on survey then spec: import adapters for Figma, Penpot, Sketch, Stitch and Claude Design that land a DTCG token file, renders, <strong>and any annotations the source carries</strong> — named explicitly because <a href="../specs/095-visual-element-vocabulary/spec.html">095</a> defers annotation import here, and a slug scoped to tokens and renders would have silently dropped it. Two of the five sources carry no annotation concept at all, and the de facto accessibility kits are design-tool component libraries rather than data, so the import paths differ per source. Survey-gated because the right question is which of the five justify a first-party adapter at all, given that the declared file is the authority either way (D-002).</li>
+    <li defer-to="TBD-ai-provider-multimodal">A smaller slice: widen <code>AIProvider.chat</code> to carry image content, so vision review can act as an additional reviewer for the relational properties measurement is bad at. The interface's own docstring records the project norm of widening it up front rather than breaking it later (D-003).</li>
+    <li defer-to="TBD-native-surface-measurement">A new spec: the native measurement port over <code>swift-snapshot-testing</code>'s recursive view descriptions and the XCUITest accessibility hierarchy, so the fidelity check is not a web-only capability. This is what makes an iPhone, iPad, macOS and tvOS product a first-class citizen rather than a documented exception (D-003, D-004).</li>
+    <li defer-to="TBD-annotation-authoring">A new spec: how an annotation gets written in the first place — the interview question that asks for one, the scaffold it lands in, and what a screen with none should read as. <a href="../specs/095-visual-element-vocabulary/spec.html">095</a> says what an annotation is and <a href="../specs/093-design-visual-section/spec.html">093</a>'s interview never asks for one, so today the vocabulary has no author. Belongs with the slice-1 authoring layer rather than with the adapters, and may be absorbed if the annotation-surface survey below argues for a tool instead (D-005).</li>
+    <li defer-to="TBD-annotation-surface">A follow-on survey: whether to build a tool-independent annotating surface, and where it runs. <strong>Written</strong> — see <a href="./annotation-surface-considerations.html">annotation-surface</a>, which confirms the premise for design tooling and overturns it for the web: the <a href="https://www.w3.org/TR/annotation-model/">W3C Web Annotation Data Model</a> has been a Recommendation since 2017 and its store-apart-and-re-anchor architecture answers both objections an external annotator faces. It also supersedes <code>TBD-annotation-authoring</code> above, since the authoring question is answered by a surface rather than by an interview prompt (D-002, D-005).</li>
+    <li defer-to="TBD-visual-tracking-plan">A question this survey opens and does not close: whether an analytics and tracking plan, specified next to the element that emits the event and gated on a consent decision, belongs in the visual spec at all or is a separate artifact that merely appears alongside one (D-005).</li>
+  </ul>
+</spec-out-of-scope>
+
+<p>Deliberately <em>not</em> planted: <code>TBD-project-shape-axis</code>, already planted by
+<a href="./non-service-observability-considerations.html">non-service-observability</a> as the seventh profile axis.
+D-006 makes it a hard prerequisite for slice one and supplies a second independent motivation for it; re-planting the
+slug would double-count a pending item. Likewise <code>TBD-shape-per-unit</code>, already planted there.</p>
+
+<p><spec-newthought>One finding here is a triage, not a spec.</spec-newthought> 59 of the 71 architecture sketches in
+the estate hardcode hex fills and strokes, the template ships five literal hex values in its own scaffold, and the
+result is a light-mode diagram inside a dark-mode card. The fix is a template change and a sweep, not a requirement —
+it should go through <code>/spectastic.triage</code>. It is included here because it is the best available evidence
+for what happens to a picture in this system when nobody owns it, which is the thing every slice above is trying to
+prevent.</p>
+</section>
+
+<!-- ======================================================= -->
+<section id="caveats">
+<h2>13 · Caveats on the sources and the audit</h2>
+
+<ul>
+  <li><strong>This survey's own first reading was wrong, and it would have justified a much larger intervention.</strong>
+  The initial assumption was that the artifact CSP forbids images and that a visual spec would therefore need a CSP
+  exemption of the kind courses hold. It does not: <code>img-src 'self'</code> has always permitted a same-origin
+  file reference, and what is blocked is a <code>data:</code> URI and a remote host. The real obstacle is a missing
+  directory convention and a <code>.gitignore</code> line, which is a far smaller thing. A reviewer running their own
+  check should find the same, and the correction is recorded here rather than quietly fixed.</li>
+  <li><strong>Almost nothing was prototyped.</strong> No adapter was written, no measurement pass was run, and no
+  token file was produced from any of the five sources — so the claim that measurement converges where comparison
+  does not remains the field's, corroborated by this repository's assertion style and not demonstrated here. What
+  was built is a worked exemplar, <code>examples/currency-converter/</code>, which exercises the vocabulary and the
+  variant grid by hand. It proves the artifacts can be authored and says nothing about whether they can be
+  generated or checked.</li>
+  <li><strong>The estate contains no real UI project.</strong> Every finding about screens is reasoned rather than
+  dogfooded — there is no visual spec to audit because there is no visual capability, and the only UI surface in the
+  repository is the tool rendering itself. This is the reverse of the position the observables survey was in, where
+  77 real gap rows made the argument. The exemplar narrows the gap and does not close it: it is a fictional project
+  authored by the same person as the survey, so it can demonstrate that the vocabulary is expressible and cannot
+  demonstrate that anyone else would reach for it.</li>
+  <li><strong>Ziggy was not inspected.</strong> The multi-platform reasoning comes from the general Apple platform
+  record — the focus engine, size classes, adaptive semantic colours — and not from that codebase. If its actual
+  variant structure differs from the axis model in §8, §8 is what should move.</li>
+  <li><strong>The variant model bets on a draft that says not to implement it.</strong> D-004 is marked
+  <em>spike</em> for that reason. If the Resolver Module stabilises with a different model of contexts and
+  resolution order, the mapping is rework.</li>
+  <li><strong>The design tools were read, not exercised.</strong> Figma's tool list, its seat pricing and its rate
+  limits come from its published documentation as of this date; Penpot's and Stitch's MCP servers were not run.
+  Pricing and rate limits are the most perishable claims in this document.</li>
+  <li><strong>Vision-model capability claims are secondhand</strong> and stated at a level of generality that will
+  age badly. The specific claim that vision is blind to interaction states and motion is structural and should hold;
+  the claim that it is reliable on colour drift and spacing is empirical and model-dependent.</li>
+  <li><strong>The platform-clock argument rests on one redesign.</strong> Liquid Glass is a vivid example and a
+  single data point; the claim that platform restyles are frequent enough to warrant a declared baseline is an
+  extrapolation from it, not a measured rate. If Apple's cadence is once a decade, D-008 buys less than it appears
+  to — though the cost of the declaration is low enough that the argument survives being wrong about the frequency.</li>
+  <li><strong>The deprecation-window figures are secondhand.</strong> The three-to-eighteen-month range is quoted
+  from a practitioner survey rather than confirmed against those organisations' current policies, and it is used
+  here only to show that a window is normal practice, never to recommend a specific length.</li>
+  <li><strong>The exemplar was evaluated as a document, not as a workflow.</strong> Its seven layers were held
+  against the five clauses in §1, but nobody has authored a second handoff with it, which is where a format's real
+  cost shows up.</li>
+</ul>
+</section>
+
+<!-- ======================================================= -->
+<section id="sources">
+<h2>14 · Sources</h2>
+
+<p>External sources retrieved 11 Aug 2026, alongside an audit of this repository's templates, schema rules, test
+suite, corpus module and artifact CSP. Claims about the codebase are grounded in the files named inline.</p>
+
+<ol>
+  <li>Design Tokens Format Module 2025.10 — <a href="https://www.designtokens.org/tr/drafts/format/">designtokens.org</a>: the type system, aliasing, the recommended media type <code>application/design-tokens+json</code> and the <code>.tokens</code> / <code>.tokens.json</code> extensions — and the absence of any required root version field.</li>
+  <li>Design Tokens Resolver Module 2025.10 — <a href="https://www.designtokens.org/tr/drafts/resolver/">designtokens.org</a>: sets, modifiers, named contexts and <code>resolutionOrder</code>, the required root <code>version</code>, and the warning <em>"Do not attempt to implement this version of the specification."</em></li>
+  <li>Design Tokens specification reaches first stable version — <a href="https://www.w3.org/community/design-tokens/2025/10/28/design-tokens-specification-reaches-first-stable-version/">w3.org</a>: the 28 Oct 2025 stable release, the theming and colour-space claims, and the named reference implementations.</li>
+  <li>DTCG examples — <a href="https://github.com/terrazzoapp/dtcg-examples">github.com/terrazzoapp</a>: real design systems expressed in the format, including Apple HIG, Adobe Spectrum, IBM Carbon, Microsoft Fluent and Shopify Polaris, each with a resolver configuration.</li>
+  <li>DESIGN.md format specification — <a href="https://github.com/google-labs-code/design.md">github.com/google-labs-code</a>: the YAML front-matter schema, the eight required prose sections, and the explicit absence of motion, platform variants, breakpoints and screens.</li>
+  <li>Figma MCP server — tools and prompts — <a href="https://developers.figma.com/docs/figma-mcp-server/tools-and-prompts/">developers.figma.com</a>: <code>get_design_context</code>, <code>get_metadata</code>, <code>get_screenshot</code>, <code>get_variable_defs</code>, <code>get_code_connect_map</code> and <code>get_motion_context</code>, which returns keyframe tracks and easing.</li>
+  <li>Figma MCP server — rate limits and access — <a href="https://developers.figma.com/docs/figma-mcp-server/rate-limits-access/">developers.figma.com</a>: the six-calls-per-month ceiling on Starter plans and View or Collab seats, and the Dev and Full seat requirement.</li>
+  <li>The art and science of annotations in Dev Mode — <a href="https://www.figma.com/blog/annotations-in-dev-mode/">figma.com</a>: the annotation categories and the plugin API for creating and managing them in bulk.</li>
+  <li>Getting started with annotations — <a href="https://support.zeplin.io/en/articles/5917181-getting-started-with-annotations">support.zeplin.io</a>: the Requirement, Behavior, Animation, API and Tracking types, and custom types.</li>
+  <li>Web and iOS accessibility annotation kits — <a href="https://github.com/cvs-health/annotations">github.com/cvs-health</a>: the de facto annotation standard, CC-BY-4.0, distributed as Figma component libraries with no schema or code output.</li>
+  <li>Accessible Rich Internet Applications (WAI-ARIA) — <a href="https://w3c.github.io/aria/">w3c.github.io</a>: the ontology of roles, states and properties proposed here as the annotation type system.</li>
+  <li>ARIA snapshots — <a href="https://playwright.dev/docs/aria-snapshots">playwright.dev</a>: the YAML serialisation of the accessibility tree including roles, names and states, and the <code>toMatchAriaSnapshot()</code> assertion.</li>
+  <li>swift-snapshot-testing — <a href="https://github.com/pointfreeco/swift-snapshot-testing">github.com/pointfreeco</a>: snapshot strategies beyond images, including recursive view descriptions and text dumps — the native analogue of the semantic-tree measurement surface.</li>
+  <li>Pixel-perfect UI with Playwright and Figma MCP — <a href="https://vadim.blog/pixel-perfect-playwright-figma-mcp/">vadim.blog</a>: Playwright used as a measurement instrument rather than a visual-regression tool, with corrections fed to the agent as numeric deltas from <code>getComputedStyle()</code> and <code>getBoundingClientRect()</code>.</li>
+  <li>Screenshot-driven UI development with vision models — <a href="https://www.digitalapplied.com/blog/screenshot-driven-ui-development-vision-models-2026">digitalapplied.com</a>: vision review as strong on static measurable properties and <em>"structurally unable to judge interaction states, motion, or anything below the captured frame."</em></li>
+  <li>Design tokens in Penpot — <a href="https://help.penpot.app/user-guide/design-systems/design-tokens/">help.penpot.app</a>: native DTCG tokens, sets and themes in an open-source tool, and the plugin API over them.</li>
+  <li>Component Story Format — <a href="https://storybook.js.org/docs/api/csf">storybook.js.org</a>: the prior art for treating a component's states as an enumerated, portable, testable specification rather than prose.</li>
+  <li>Versioning Design Systems — <a href="https://medium.com/eightshapes-llc/versioning-design-systems-48cceb5ace4d">medium.com/eightshapes-llc</a>: semver applied to design systems, documentation versions held separate from code versions, tokens evolving independently of the component library, and deprecation windows running from three to eighteen months.</li>
+  <li>OpenAPI breaking changes — the complete list of rules — <a href="https://www.oasdiff.com/docs/breaking-changes">oasdiff.com</a>: 509 classified changes for an API contract, against which the absence of any equivalent taxonomy for design tokens is measured.</li>
+  <li>Branches and baselines — <a href="https://www.chromatic.com/docs/branching-and-baselines/">chromatic.com</a>: a baseline as <em>"the last known 'good' state of the story in a given mode"</em>, explicit acceptance, and unapproved changes skipped in favour of their own baseline.</li>
+  <li>Apple introduces a delightful and elegant new software design — <a href="https://www.apple.com/newsroom/2025/06/apple-introduces-a-delightful-and-elegant-new-software-design/">apple.com</a>: the Liquid Glass redesign shipping across iOS, iPadOS, macOS and tvOS 26 — the worked example of a platform restyling every app on it without any of them changing.</li>
+</ol>
+</section>
+
+<!-- ======================================================= -->
+<section id="changelog">
+<h2>15 · Change log</h2>
+
+<spec-changelog>
+  <ol>
+    <li><time datetime="2026-08-11">11 Aug 2026</time><span>Created. Surveys what a first-class visual spec would have to be to serve a human and an agent equally across five incompatible design sources. Finds the lifecycle has no notion of a screen at all, and that the project answered both halves of the question once — an HTML artifact rather than a screenshot, measurement rather than the eye — in the VS Code brief, and never generalised it. Lands six decisions: the contract chassis rather than a ninth verb, the design tool as a source and never the authority, fidelity by measurement against declared tokens with typed two-hypothesis deviations, an axis grid with platform as a peer of mode and viewport, ARIA as the annotation type system, and a hard shape gate. Plants ten <code>TBD-</code> next artifacts, deliberately re-plants neither <code>TBD-project-shape-axis</code> nor <code>TBD-shape-per-unit</code>, and raises the 59-of-71 hardcoded architecture sketches as a triage rather than a spec. One claim was corrected before publication: the artifact CSP was assumed to forbid images and does not — <code>img-src 'self'</code> permits a same-origin file, and the real obstacle is a missing directory convention. A second was corrected on retrieval: the required <code>version: 2025.10</code> field belongs to the Resolver Module, not the Format Module.</span></li>
+    <li><time datetime="2026-08-11">11 Aug 2026</time><span><strong>Revised.</strong> Adds §9 on versioning, which the first pass omitted entirely — a gap that mattered because fidelity measured against a <em>declared</em> token set is meaningless once the declaration and the build are at different points in time. Three decisions: three clocks reusing three mechanisms this estate already has (D-007), a declared platform baseline (D-008), and a change class that is a producer's claim rather than a verified property (D-009). <strong>D-003 was amended rather than left standing</strong>: it named two defect hypotheses and now names three, because a platform that restyles underneath both implementation and design makes the closed pair wrong — the amendment is recorded here rather than made silently. The load-bearing internal finding is that <code>principles.html</code> is the only versioned artifact in the system and already carries the answer to the hardest question in design-system versioning, <strong>forward-only binding</strong>; the load-bearing external one is that oasdiff classifies 509 breaking changes for an API contract while the whole state of the art for tokens is a single design-tool plugin. Also notes, as a property to preserve rather than a gap, that all six versioning mechanisms in this estate compare by equality and none of them orders anything. Sections 9–14 renumbered to 10–15; four <code>TBD-</code> slugs added, bringing the total to fourteen. A worked exemplar landed alongside at <code>examples/currency-converter/</code>, which forced one thing the prose had deferred — the sidecar directory needed a name, and the exemplar chose <code>surface/</code>.</span></li>
+    <li><time datetime="2026-08-12">12 Aug 2026</time><span><strong>Drained one.</strong> <code>TBD-design-visual-section</code> landed as <a href="../specs/093-design-visual-section/spec.html">093</a>. Two things the survey left open were settled by writing it. It is <strong>interface-gated</strong> rather than blocked on <code>TBD-project-shape-axis</code> — detection keys on a declared UI dependency or project file and fails safe on the antecedent, which is the posture the contract-first category already takes, so D-006's gate can hold before the axis exists and the axis later demotes the heuristic to a fallback rather than replacing it. And the apparent conflict between D-006's <em>absent, not empty</em> and 069's <em>never omit the element</em> resolves by scope rather than by one winning: inside a scaffolded section the declaration is mandatory and an explicit none is a real answer; outside the gate nothing is scaffolded and nothing is reported. 093 also absorbs D-004's variant grid, on the reasoning that a declaration with nowhere to record its own variation would have been half an artifact — which took it to 18 requirements against 069's 12, and to an authored word budget of 2,200 rather than the 2,000 its analogue used.</span></li>
+    <li><time datetime="2026-08-12">12 Aug 2026</time><span><strong>Amended for components, which the two-scope model had no home for.</strong> A component is the one thing that <em>migrates</em>: born feature-scoped, promoted to project scope when a second feature reaches for it. D-001 gains the third kind and the promotion, which is a change of clock rather than a file move — <a href="../specs/071-contract-promotion/spec.html">071</a>'s plan-then-execute, write-then-archive, refuse-on-a-moved-destination machinery is the same operation, and the six-value <code>&lt;spec-status&gt;</code> already covers the maturity ladder the field expresses as experimental/beta/stable/deprecated, so no seventh vocabulary is minted. Promotion is human-initiated because a local component is deliberately invisible to other features, so nothing can detect the second use — consistent with the rule of three, which says to tolerate the second duplication rather than abstract on it, and honestly a workflow resting on human attention. <strong>D-008 was generalised rather than extended</strong>: it named the platform, but a major version of an external component library is the same event at a different altitude — a dependency nobody on the project controls moving and invalidating a design without anyone touching code, design file or tokens. It now covers every clock the project does not own, and the third defect hypothesis is a <em>dependency</em> delta. <strong>D-003 gained a constraint that is not optional</strong>: measurement is scoped to the surface the project owns, because on a stack built from an external library most of the rendered geometry belongs to somebody else and an unscoped pass reports noise in proportion to how much of the interface the team did not write. Two slugs planted, taking the total to 17. The corpus turns out to be the model for a vendored component — its required provenance set (<code>origin</code>, <code>origin-url</code>, <code>edition</code>, <code>license</code>, <code>content-hash</code>) is the field list, and its severity split is the right one: a dead reference errors, a pin to a superseded edition only warns.</span></li>
+    <li><time datetime="2026-08-12">12 Aug 2026</time><span><strong>Slice 1 drained — ten slugs into five specs.</strong> <a href="../specs/094-visual-sidecar-convention/spec.html">094</a> the sidecar convention · <a href="../specs/095-visual-element-vocabulary/spec.html">095</a> the element vocabulary, absorbing the annotation schema, since an annotation is an element attached to a screen element · <a href="../specs/096-visual-variant-grid/spec.html">096</a> the variant grid, absorbing the platform baseline, since a baseline hangs on a platform context and splitting them would spec a grid with no baselines and baselines with no grid · <a href="../specs/097-visual-component-lifecycle/spec.html">097</a> the component lifecycle, absorbing external provenance, since scope, maturity and origin are three orthogonal properties of one thing · <a href="../specs/098-token-set-versioning/spec.html">098</a> the token-set clock, absorbing the change class, since the class is what a bump declares. Slices 2 and 3 are deliberately not drained: they write into artifacts these five define, and this survey's own recommendation is three slices in dependency order with an explicit warning against starting at the tool boundary. One slug is deliberately <em>not</em> a spec — <code>TBD-visual-tracking-plan</code>, which this survey frames as a question it declines to close, so speccing it would answer something left open on purpose. Two lessons carried from 093 into all five: requirement counts held near twelve rather than eighteen, and every non-functional requirement quantified with a digit, since the quantification heuristic reads "at most 1" and not "at most one".</span></li>
+  </ol>
+</spec-changelog>
+</section>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  Spectastic · A screenshot has no tokens · 11 Aug 2026 ·
+  <a href="../index.html">home</a> ·
+  <a href="./data-model-contract-considerations.html">data-model-contract</a> ·
+  <a href="./non-service-observability-considerations.html">non-service-observability</a> ·
+  <a href="./orchestrator-placement-considerations.html">orchestrator-placement</a> ·
+  <button data-theme-toggle style="background:none;border:none;color:var(--c-link);cursor:pointer;font:inherit;padding:0;border-bottom:1px solid currentColor;">light/dark</button>
+</footer>
+
+</main>
+<script src="../assets/spec.js"></script>
+</body>
+</html>

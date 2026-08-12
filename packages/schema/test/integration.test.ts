@@ -21,6 +21,14 @@ const PATTERNS = [
   'design.html',
   'inbox.html',
   'index.html',
+  // Single-star on purpose. A nested example project carries its own specs/
+  // tree, and the cross-file rules assume they are given exactly one project:
+  // spec-id-unique would collide the example's 001- directory with this repo's,
+  // and verify-view-missing derives its convention floor from the LOWEST spec
+  // number carrying a verify.html — so a nested 001-*/verify.html resets this
+  // repo's floor from 021 to 1 and every pre-convention spec reports missing.
+  // Nested projects are validated as their own set below, which is the only
+  // reading of a cross-file rule that is correct for either project.
   'examples/*.html',
   // The meta-spec is a normal spec bundle now (specs/000-spectastic/), so
   // specs/**/*.html sweeps it with every other slice — no per-file entry.
@@ -56,5 +64,32 @@ describe('integration: every real artifact validates clean (SC-001)', () => {
     const errors = findings.filter((f) => f.severity === 'error');
     const report = errors.map((f) => `  ${f.file}:${f.line}:${f.column}  ${f.rule}  ${f.message}`).join('\n');
     expect(errors, `expected zero error findings; got ${errors.length}:\n${report}`).toEqual([]);
+  });
+
+  // A nested example project is a second project, not more of this one. Its
+  // cross-file rules have to run over its own artifacts alone or they answer a
+  // question about the wrong estate.
+  it('produces zero error findings for each nested example project, validated as its own set', async () => {
+    const projects = await glob(['examples/*/spectastic.json'], { cwd: REPO_ROOT, onlyFiles: true });
+    expect(projects.length, 'expected at least one nested example project').toBeGreaterThan(0);
+
+    for (const marker of projects) {
+      const root = dirname(marker);
+      const files = await glob([`${root}/**/*.html`], { cwd: REPO_ROOT, ignore: IGNORE, onlyFiles: true });
+      expect(files.length, `expected artifacts under ${root}`).toBeGreaterThan(0);
+
+      const inputs = await Promise.all(
+        files.sort().map(async (file) => ({
+          html: await readFile(join(REPO_ROOT, file), 'utf8'),
+          // Relative to the nested project, so its own specs/ tree is the one
+          // the path-shaped cross-file rules see.
+          file: file.slice(root.length + 1),
+        })),
+      );
+      const findings = validateMany(inputs);
+      const errors = findings.filter((f) => f.severity === 'error');
+      const report = errors.map((f) => `  ${root}/${f.file}:${f.line}  ${f.rule}  ${f.message}`).join('\n');
+      expect(errors, `expected zero error findings in ${root}; got ${errors.length}:\n${report}`).toEqual([]);
+    }
   });
 });

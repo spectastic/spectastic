@@ -1,0 +1,356 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
+<title>Currency conversion · Design</title>
+<link rel="stylesheet" href="../../../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../../../assets/favicon.svg">
+<script src="../../../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Design · 001-currency-conversion</p>
+  <h1>Currency conversion</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    One screen, ten states, one endpoint, and four platforms of which three are built.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>      <span><spec-status value="accepted">Accepted</spec-status></span>
+    <b>Spec</b>        <span><a href="./spec.html">001-currency-conversion</a></span>
+    <b>Owner</b>       <span>example-co/mobile</span>
+    <b>Created</b>     <span><time datetime="2026-08-01">01 Aug 2026</time></span>
+    <b>Principles</b><span><a href="../../principles.html">v1.2.0</a></span>
+    <b>Read time</b>   <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-warning><strong>Illustrative artifact.</strong> A worked exemplar for
+  <a href="../../../../docs/visual-spec-considerations.html">the visual-spec survey</a>. Sections 1–4 and 6–12 use
+  vocabulary that ships today. <strong>Section 5, <em>Visual surface</em>, does not</strong> — it illustrates the
+  capability the survey proposes, governed by <code>TBD-design-visual-section</code>,
+  <code>TBD-visual-sidecar-convention</code>, <code>TBD-token-set-versioning</code> and
+  <code>TBD-platform-baseline-declaration</code>. The directory name <code>visual/</code> is this exemplar's
+  choice, not a settled convention.</spec-warning>
+</header>
+
+
+<section id="principles-check">
+<h2>1 · Principles check</h2>
+<div style="overflow-x:auto;">
+<table>
+  <thead><tr><th>Principle</th><th>How this design honours it</th></tr></thead>
+  <tbody>
+    <tr><td><a href="../../principles.html#P-1">P-1</a> · Stale rate labelled</td><td>Staleness is a screen state keyed on <code>Rate.asOf</code>, with text and colour. The freshness window is D-002.</td></tr>
+    <tr><td><a href="../../principles.html#P-2">P-2</a> · Network optional</td><td>The cache is the read path; the network updates it. Offline and cold-start are designed states, not error paths.</td></tr>
+    <tr><td><a href="../../principles.html#P-3">P-3</a> · Floors measured</td><td>The 44&nbsp;pt floor is a token (<code>size.tap-target-min</code>) rather than prose, so a measurement can fail against it.</td></tr>
+    <tr><td><a href="../../principles.html#P-4">P-4</a> · Contract sources the states</td><td>Honoured voluntarily — P-4 binds forward from principles v1.2.0 and this spec predates it. See D-003.</td></tr>
+    <tr><td><a href="../../principles.html#P-5">P-5</a> · No telemetry before consent</td><td>The tracking plan is authored in the surface declaration and explicitly gated; nothing is wired.</td></tr>
+  </tbody>
+</table>
+</div>
+</section>
+
+
+<section id="technical-context">
+<h2>2 · Technical context</h2>
+<div style="overflow-x:auto;">
+<table>
+  <thead><tr><th>Dimension</th><th>Choice</th></tr></thead>
+  <tbody>
+    <tr><td>Languages</td><td>Swift 6.1</td></tr>
+    <tr><td>UI</td><td>SwiftUI, targeting iOS 26 / iPadOS 26 / macOS 26</td></tr>
+    <tr><td>Storage</td><td>A single cached <code>Rate</code> per pair in the app container. No database.</td></tr>
+    <tr><td>Test stack</td><td>Swift Testing for logic; <code>swift-snapshot-testing</code> for view descriptions; XCUITest for the accessibility hierarchy.</td></tr>
+    <tr><td>Targets</td><td>Conversion renders within 100&nbsp;ms of a keystroke from cache (NFR-001).</td></tr>
+    <tr><td>Constraints</td><td>One network operation. No third-party analytics SDK before the consent decision.</td></tr>
+  </tbody>
+</table>
+</div>
+</section>
+
+
+<section id="contracts">
+<h2>3 · Data model &amp; contracts</h2>
+
+<p>The conceptual entities in <a href="./spec.html#data">the spec's §4</a> land as two value types and one cache
+entry. <a href="./spec.html#data">Rate</a> is a struct with a <code>Decimal</code> ratio and a non-optional
+<code>Date</code>; the non-optionality is what makes "a Rate with no observation time is not a Rate" true in the
+type system rather than in prose. <a href="./spec.html#data">Conversion</a> is computed, never stored — it holds a
+reference to the Rate it used so a figure on screen can always answer its own age.</p>
+
+<div style="overflow-x:auto;">
+<table>
+  <thead><tr><th>Conceptual entity</th><th>Physical shape</th><th>Notes</th></tr></thead>
+  <tbody>
+    <tr><td><a href="./spec.html#data">Rate</a></td><td><code>struct Rate { base, quote: CurrencyCode; ratio: Decimal; asOf: Date }</code></td><td><code>Decimal</code>, not <code>Double</code> — a binary float cannot hold a minor unit exactly.</td></tr>
+    <tr><td><a href="./spec.html#data">Conversion</a></td><td>Computed value; not persisted</td><td>Rounds to the quote currency's minor unit at the point of display only.</td></tr>
+  </tbody>
+</table>
+</div>
+
+<spec-contract shape="request-response" name="rates" path="examples/currency-converter/contracts/rates.openapi.yaml" format="openapi">
+  <p>One operation, <code>GET /v1/rates</code>. The consumer may rely on <code>asOf</code> being present on every
+  200 and on <code>Retry-After</code> being present on every 429 — both are required in the schema precisely because
+  a screen state depends on each. Six documented error responses; the mapping from those responses to screen states
+  is many-to-one and is recorded in the surface declaration rather than left to the reader, per FR-003.</p>
+  <p><em>Exemplar note:</em> a real project would declare <code>contracts/rates.openapi.yaml</code>. A declared path
+  resolves against the directory <code>validate</code> was invoked in, and this project is nested inside another, so
+  the path is written repo-relative here to keep the check honest rather than suppressed. It is the one place the
+  exemplar cannot be both realistic and validated at once.</p>
+</spec-contract>
+</section>
+
+
+<section id="grounding">
+<h2>4 · Grounding &amp; evidence</h2>
+<dl>
+  <dt><spec-pill>verified</spec-pill> <code>asOf</code> is required</dt>
+  <dd>The declared contract lists it under <code>required</code> on the <code>Rate</code> schema. The staleness state is only expressible because of this.</dd>
+  <dt><spec-pill>verified</spec-pill> The 44&nbsp;pt tap floor</dt>
+  <dd>Apple's interface guidance, expressed as a token so it is checkable.</dd>
+  <dt><spec-pill>spike</spec-pill> Snapshots can assert descriptions</dt>
+  <dd>The Swift snapshot library supports recursive view descriptions and text dumps as strategies alongside images. Confirmed against its documented strategy list; not yet exercised here.</dd>
+  <dt><spec-pill>assumed</spec-pill> <code>asOf</code> is observation time</dt>
+  <dd>Stated in the contract description and unverifiable from the client. Recorded as an assumption on the spec because every staleness claim rests on it.</dd>
+</dl>
+</section>
+
+
+<section id="visual">
+<h2>5 · Visual surface</h2>
+
+<spec-note>
+<p>This section illustrates a proposed capability. Nothing in spectastic reads it today.</p>
+</spec-note>
+
+<p>The declarations here point at files, exactly as §3 does for the API contract: the design declares, the file
+<em>is</em> the thing, and any rendering inside an artifact is a materialised copy that has to be drift-checked.
+They live at <strong>two different scopes</strong>, and the split is the point. The token set and the axis grid are
+<strong>project-scoped</strong> at <code>../../visual/</code> — one design system, shared by every feature, versioned
+on its own clock. The screen inventory is <strong>feature-scoped</strong> at <code>./visual/</code>, beside the spec
+that owns it. A contract has one owning feature and lives beside it; a design system has none and cannot.</p>
+
+<div style="overflow-x:auto;">
+<table>
+  <thead><tr><th>Declaration</th><th>File</th><th>What it holds</th></tr></thead>
+  <tbody>
+    <tr><td>Token set <spec-pill>project</spec-pill></td><td><code>visual/tokens/</code></td><td>DTCG 2025.10. Primitives plus one file per mode context. Version 2.1.0. A directory, not a file — the declaration resolves to the set, not to one member of it.</td></tr>
+    <tr><td>Variant grid <spec-pill>project</spec-pill></td><td><code>visual/variants.json</code></td><td>mode × platform × size class, the resolution order, and the token-set version policy.</td></tr>
+    <tr><td>Screens <spec-pill>feature</spec-pill></td><td><code>specs/001-currency-conversion/visual/</code></td><td>One screen, ten states, eight annotations, the accessibility floor.</td></tr>
+    <tr><td>Rendered view</td><td><a href="./visual.html">visual.html</a></td><td>Generated. Materialised, not transcluded — the artifact CSP forbids a live embed.</td></tr>
+  </tbody>
+</table>
+</div>
+
+<h3>States, and where they came from</h3>
+
+<p>Six of the ten states were derived from the declared contract's error responses; four were not, and could not have
+been. The derivation is a floor, and saying so is the point of recording the source on every state.</p>
+
+<div style="overflow-x:auto;">
+<table>
+  <thead><tr><th>State</th><th>Source</th><th>Note</th></tr></thead>
+  <tbody>
+    <tr><td><code>converted</code></td><td>derived · 200</td><td>—</td></tr>
+    <tr><td><code>invalid-pair</code></td><td>derived · 400, 404, 422</td><td><strong>Three responses, one state.</strong> The collapse is a decision, not a derivation — see D-003.</td></tr>
+    <tr><td><code>unauthorized</code></td><td>derived · 401</td><td>Unreachable by user action and unfixable by the user; designed anyway.</td></tr>
+    <tr><td><code>rate-limited</code></td><td>derived · 429</td><td><code>Retry-After</code> is required, so the state names a time.</td></tr>
+    <tr><td><code>unavailable</code></td><td>derived · 503</td><td>—</td></tr>
+    <tr><td><code>empty</code> · <code>loading</code> · <code>cold-start</code> · <code>offline</code></td><td><strong>authored</strong></td><td>No status code corresponds to a request that was never made.</td></tr>
+    <tr><td><code>stale-cache</code></td><td>authored · from <code>Rate.asOf</code></td><td>Derived from a <em>field</em> rather than a response — which is why the source vocabulary is a string and not a boolean.</td></tr>
+  </tbody>
+</table>
+</div>
+
+<h3>Platform baselines</h3>
+
+<p>Each platform context declares the OS it was designed against and the one it was last verified against, so a
+measured deviation can be attributed to a platform that moved rather than to the implementation or the design.
+macOS records <code>null</code> for last-verified rather than omitting the field: the gap is visible instead of
+absent. tvOS is declined with a reason.</p>
+
+<h3>Versioning</h3>
+
+<p>Three clocks, and they are deliberately not one number. The <strong>token set</strong> carries semver
+(<code>2.1.0</code>) with a stated bump policy and <strong>forward-only binding</strong> from <code>2.0.0</code> —
+screens ratified under 2.0.x stay conformant to 2.0.x, so a bump is not a migration project. This <strong>design and
+its spec</strong> carry no version at all; their history is the change log. The <strong>captured renders</strong>
+carry a ratification date and no version — a baseline is superseded, never incremented, and re-ratifying is a human
+act. The token set's <code>changeClass</code> is the producer's claim and nothing verifies it.</p>
+</section>
+
+
+<section id="approach">
+<h2>6 · Approach</h2>
+
+<p>A cache-first read path. The view renders from the cached <code>Rate</code> synchronously, which is what makes
+NFR-001 reachable without treating the network as fast. A refresh writes the cache and the view follows. The state
+machine is derived from the cache's contents and the last request's outcome, so no state is reachable by two routes.</p>
+
+<spec-arch>
+<figure>
+<svg viewBox="0 0 700 200" role="img" aria-label="Converter view reads from the rate cache; a refresh task writes it from the rates API">
+  <style>
+    .box  { fill: var(--c-surface-raised, #fcfbf7); stroke: var(--c-border, #c4c1bb); stroke-width: 1.2; }
+    .lbl  { font: 700 11px Lato, sans-serif; fill: var(--c-text-soft, #4a4a46); letter-spacing: 0.06em; text-transform: uppercase; }
+    .bdy  { font: 400 12px "Source Serif 4", Georgia, serif; fill: var(--c-text, #353534); }
+    .arr  { stroke: var(--c-muted, #73706d); stroke-width: 1.2; fill: none; }
+    .arrh { fill: var(--c-muted, #73706d); }
+  </style>
+  <rect class="box" x="30"  y="70" width="170" height="60" rx="4"/>
+  <text class="lbl" x="46" y="92">Converter view</text>
+  <text class="bdy" x="46" y="112">renders a state</text>
+  <rect class="box" x="265" y="70" width="170" height="60" rx="4"/>
+  <text class="lbl" x="281" y="92">Rate cache</text>
+  <text class="bdy" x="281" y="112">one Rate per pair</text>
+  <rect class="box" x="500" y="70" width="170" height="60" rx="4"/>
+  <text class="lbl" x="516" y="92">Rates API</text>
+  <text class="bdy" x="516" y="112">GET /v1/rates</text>
+  <path class="arr" d="M200 100 L265 100" marker-end="url(#ah)"/>
+  <path class="arr" d="M435 100 L500 100" marker-end="url(#ah)"/>
+  <text class="bdy" x="207" y="92">reads</text>
+  <text class="bdy" x="442" y="92">refreshes</text>
+  <defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path class="arrh" d="M0,0 L10,5 L0,10 z"/></marker></defs>
+</svg>
+<figcaption>The read path never waits on the write path, which is what makes the 100&nbsp;ms target a property of the
+architecture rather than of the network. The diagram's colours are theme variables with literal fallbacks, so it
+follows the mode rather than staying light inside a dark card.</figcaption>
+</figure>
+</spec-arch>
+</section>
+
+
+<section id="alternatives">
+<h2>7 · Alternatives considered</h2>
+
+<spec-matrix target="D-001">
+<div style="overflow-x:auto;">
+<table>
+  <thead><tr><th>Option</th><th>Meets NFR-001</th><th>Offline behaviour</th><th>State count</th><th>Cost</th><th class="score">Total</th></tr></thead>
+  <tbody>
+    <tr><td><strong>A · Fetch on every keystroke</strong></td><td>0</td><td>1</td><td>3</td><td>2</td><td class="score">6</td></tr>
+    <tr><td><strong>B · Fetch on pair change, convert locally</strong></td><td>4</td><td>3</td><td>4</td><td>4</td><td class="score">15</td></tr>
+    <tr data-winner><td><strong>C · Cache-first read, background refresh</strong></td><td>5</td><td>5</td><td>4</td><td>4</td><td class="score">18</td></tr>
+  </tbody>
+</table>
+</div>
+</spec-matrix>
+
+<p>B and C differ only in whether the view can render before any request completes. That single difference is what
+makes the offline and cold-start states distinguishable, and it is why C wins on a criterion that looks like
+performance and is really about how many honest states the screen has.</p>
+</section>
+
+
+<section id="decisions">
+<h2>8 · Decisions</h2>
+
+<spec-decision id="D-001" grounding="verified">
+  <h4>D-001 · Cache-first read, background refresh</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>NFR-001 puts a 100&nbsp;ms ceiling on a keystroke and P-2 requires every screen to work with no network. Both are unreachable if the view awaits a request.</dd>
+    <dt>Decision</dt>     <dd>The view reads the cache synchronously and never awaits the network. A refresh task writes the cache; the view follows.</dd>
+    <dt>Consequences</dt> <dd>+ NFR-001 becomes an architectural property rather than a latency hope. + Offline and cold-start become distinguishable states rather than one error. − A user can be shown a rate the app already knows is being replaced, for the duration of a refresh. − The cache is now a thing that can be wrong, and nothing invalidates it except time.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-002" grounding="assumed">
+  <h4>D-002 · The freshness window is 60 minutes</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>FR-002 fires on a window the spec deliberately declines to set, because it is a screen property rather than a property of a Rate. Nothing measured tells us where it belongs.</dd>
+    <dt>Decision</dt>     <dd>60 minutes, as a declared token so it is one edit and one test rather than a constant in a view.</dd>
+    <dt>Consequences</dt> <dd>+ Testable and adjustable without touching the state machine. + A single place to point at when someone disagrees. − Chosen by judgment, not evidence; it is marked <em>assumed</em> for that reason and is the most likely thing in this design to be wrong. − Too short manufactures a stale badge on a good rate, and a badge that is usually on is a badge nobody reads.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-003" grounding="verified">
+  <h4>D-003 · Three error responses collapse to one state, and the collapse is recorded</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>The contract distinguishes 400 (malformed), 404 (unknown code) and 422 (pair not quoted). To a person who mistyped a currency these are one situation with one remedy. Deriving three states would manufacture two screens nobody can tell apart.</dd>
+    <dt>Decision</dt>     <dd>Collapse them to <code>invalid-pair</code>, and record the collapse on the state itself. A derivation that discards information records what it discarded.</dd>
+    <dt>Consequences</dt> <dd>+ The screen has ten honest states rather than twelve with two duplicates. + A reviewer can see the collapse and disagree with it, which they cannot do with an omission. − Diagnostic detail is lost at the UI layer and has to be recovered from logs. − If 422 later needs its own remedy, the collapse has to be unpicked and the state list renumbered.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-004" grounding="verified">
+  <h4>D-004 · tvOS is declined, not deferred</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>The product ships on four Apple platforms. A converter is entered a digit at a time and read once, which on a focus-engine remote is worse than the alternative of not existing.</dd>
+    <dt>Decision</dt>     <dd>Record tvOS in the variant grid as declined, with the reason, rather than leaving the cell empty or listing it as a future variant.</dd>
+    <dt>Consequences</dt> <dd>+ The grid records a decision where it would otherwise record an absence, and the two are indistinguishable to a reader. + Nobody re-litigates it in six months without reading why. − It is a judgment about a platform nobody has tested this on. − If the app later gains a browse-shaped feature, the decline has to be revisited per feature rather than per product.</dd>
+  </dl>
+</spec-decision>
+</section>
+
+
+<section id="project-structure">
+<h2>9 · Project structure</h2>
+<pre><code>Sources/Converter/
+  ConverterView.swift        the ten states, one switch
+  RateCache.swift            read path
+  RatesClient.swift          generated from contracts/rates.openapi.yaml
+Tests/ConverterTests/
+  StateCoverageTests.swift   one case per state (SC-002)
+  SnapshotTests.swift        view descriptions, not images</code></pre>
+</section>
+
+
+<section id="risks">
+<h2>10 · Risks &amp; mitigations</h2>
+<div style="overflow-x:auto;">
+<table>
+  <thead><tr><th>Risk</th><th>L</th><th>Mitigation</th></tr></thead>
+  <tbody>
+    <tr><td>The service serves receipt time as <code>asOf</code>, silently invalidating every staleness claim</td><td>L</td><td>Unverifiable from the client. Recorded as an assumption rather than mitigated, so it is at least visible.</td></tr>
+    <tr><td>A platform restyle moves the rendered result without anyone changing the app</td><td>M</td><td>Declared platform baselines, so the deviation is attributable rather than mysterious.</td></tr>
+    <tr><td>The 60-minute window is wrong and the stale badge becomes wallpaper</td><td>M</td><td>A token, not a constant. One edit, one test.</td></tr>
+  </tbody>
+</table>
+</div>
+</section>
+
+
+<section id="complexity">
+<h2>11 · Complexity tracking</h2>
+<p>Ten states for one screen is more than it looks like it needs, and six of them are unreachable in normal use. The
+alternative is the current screen, which has one state and the defect this spec exists to remove. The cost is
+accepted; the count is capped by the contract rather than by taste, which is what keeps it from growing.</p>
+</section>
+
+
+<section id="questions">
+<h2>12 · Open questions</h2>
+<spec-questions>
+<p>None outstanding. The freshness window is decided and marked <em>assumed</em> rather than left open, since an open
+question here would block estimation for a value that can be changed in one place.</p>
+</spec-questions>
+</section>
+
+
+<section id="changelog">
+<h2>13 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-08-01">01 Aug 2026</time><span>Initial design. D-001, D-002.</span></li>
+  <li><time datetime="2026-08-06">06 Aug 2026</time><span>Added D-003 after review asked why the state count was ten and not twelve.</span></li>
+  <li><time datetime="2026-08-11">11 Aug 2026</time><span>Added §5 Visual surface and D-004. Section numbering shifted by one from §6 onward.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  001-currency-conversion · Design · illustrative example
+</footer>
+
+</main>
+<script src="../../../../assets/spec.js"></script>
+</body>
+</html>
