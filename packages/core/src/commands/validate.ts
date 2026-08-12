@@ -5,6 +5,7 @@ import type { ContractDeclaration } from '@spectastic/schema/contract';
 import type { Element } from '@spectastic/schema/parser';
 import { findAll, getAttr, getLocation, parse } from '@spectastic/schema/parser';
 import { isQuantifiedTarget } from '@spectastic/schema/slo';
+import type { VisualDeclaration } from '@spectastic/schema/visual';
 import { daysBetween, isBoilerplateReason, MAX_WAIVER_DAYS, parseIsoDate, type RawWaiver } from '../enforce/config.js';
 import type { EnforcementCategory } from '../enforce/types.js';
 import { isModelTier, MODEL_TIER_ALIASES, VERB_MODEL_POLICY } from '../model-policy/index.js';
@@ -678,6 +679,130 @@ export async function contractResolveFindings(
   }
 
   return findings;
+}
+
+/**
+ * The visual resolve check (spec 093-design-visual-section, FR-010, design
+ * D-005). Cannot be a schema rule for the same reason its contract sibling
+ * cannot — the rule engine is pure-AST with zero filesystem imports — so this
+ * is the folded-scan half `scanVisualResolve` calls.
+ *
+ * The containment sequence is cloned VERBATIM from `contractResolveFindings`:
+ * an absolute path, a `..` segment, or a resolved path outside `cwd` is
+ * rejected and never stat-ed. That is the security-relevant half and it stays
+ * byte-identical to a reviewed implementation on purpose.
+ *
+ * Exactly one branch differs, and the difference is the point (D-005): a path
+ * resolving to a DIRECTORY is an error for a contract, which is one file, and
+ * SILENT here, because a token set split by mode is the normal case (FR-005).
+ * Do not "simplify" these two functions back together.
+ *
+ * `source=` and `tokens-external=` are never resolved. The first is provenance
+ * for a reader (FR-006) and the second names a package, not a path; reaching
+ * for either at check time would make a spec only as valid as somebody's seat.
+ */
+export async function visualResolveFindings(
+  declarations: readonly VisualDeclaration[],
+  file: string,
+  fs: FileSystem,
+  cwd: string,
+): Promise<Finding[]> {
+  const findings: Finding[] = [];
+
+  for (const decl of declarations) {
+    const declaredPaths: { attr: 'tokens' | 'screens'; value: string }[] = [];
+    if (decl.tokens !== undefined) declaredPaths.push({ attr: 'tokens', value: decl.tokens });
+    if (decl.screens !== undefined) declaredPaths.push({ attr: 'screens', value: decl.screens });
+
+    for (const { attr, value } of declaredPaths) {
+      const flag = (message: string, fixHint: string): void => {
+        findings.push({
+          file,
+          line: decl.line,
+          column: decl.column,
+          rule: 'visual-resolve',
+          severity: 'error',
+          message,
+          fixHint,
+        });
+      };
+
+      // 1. Containment — checked on the declared string and the resolved path
+      // both, so neither a leading `/` nor a `..` segment nor a resolution
+      // landing outside cwd is ever stat-ed.
+      if (isAbsolute(value)) {
+        flag(
+          `<spec-visual ${attr}="${value}"> in ${file} is an absolute path, which escapes the project directory`,
+          'Declare a project-relative path (spec.html FR-010) — an absolute path is rejected rather than followed.',
+        );
+        continue;
+      }
+      const resolved = resolvePath(cwd, value);
+      const rel = relative(cwd, resolved);
+      if (rel.startsWith('..') || isAbsolute(rel)) {
+        flag(
+          `<spec-visual ${attr}="${value}"> in ${file} resolves outside the project directory`,
+          'Remove the .. traversal — a declared path must stay inside the project (spec.html FR-010).',
+        );
+        continue;
+      }
+
+      // 2. Resolution. A directory is legal here, unlike a contract path.
+      try {
+        await fs.stat(resolved);
+      } catch {
+        flag(
+          `<spec-visual ${attr}="${value}"> in ${file} — no such file or directory`,
+          'Check for a typo, or that the visual material was committed (spec.html FR-010). This is the likeliest way a declaration goes quietly wrong: the file moved and nothing said so.',
+        );
+      }
+    }
+  }
+
+  return findings;
+}
+
+/**
+ * The gating check (spec 093-design-visual-section, FR-002 / SC-002): absence,
+ * not emptiness.
+ *
+ * A scan rather than a schema rule, and not by preference — the condition is
+ * filesystem state (does this project have a user interface) and the rule
+ * engine has no filesystem access. `verify-view-missing` is the precedent for
+ * conditional presence, but only for its shape: it derives its condition from
+ * the documents it is handed, which this cannot.
+ *
+ * The caller supplies the antecedent via `projectHasVisualSurface`, which keeps
+ * this function pure and makes the interesting case testable without a
+ * fixture project per assertion.
+ *
+ * What it catches is the scaffold nobody deleted. A design that genuinely
+ * declares a surface is never flagged — FR-004's escape hatch for a hand-rolled
+ * interface no signal can see — because that declaration is itself what makes
+ * the antecedent true.
+ */
+export function visualSectionGatedFindings(html: string, file: string, projectHasSurface: boolean): Finding[] {
+  if (projectHasSurface) return [];
+
+  const doc = parse(html, file);
+  const section = findAll(doc.ast, 'section').find((el) => getAttr(el, 'id') === 'visual');
+  const declaration = findAll(doc.ast, 'spec-visual')[0];
+  const carrier = section ?? declaration;
+  if (carrier === undefined) return [];
+
+  const loc = getLocation(carrier);
+  return [
+    {
+      file,
+      line: loc.line,
+      column: loc.column,
+      rule: 'visual-section-gated',
+      severity: 'error',
+      message: `${file} carries a Visual surface section, but this project has no user interface — none detected and none declared`,
+      fixHint:
+        'Delete the section outright (spec.html FR-002). The template scaffolds it unconditionally because a static file cannot vary per project; an absent section is reported as nothing at all, an empty one is a question nobody can answer. If this project does have an interface the tool cannot see, declare it instead — a declaration outranks detection (FR-004).',
+    },
+  ];
 }
 
 /**

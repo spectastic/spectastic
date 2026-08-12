@@ -307,6 +307,64 @@ async function scanContractResolve(files: readonly string[], cwd: string): Promi
 }
 
 /**
+ * The visual-resolve gate (spec 093-design-visual-section, FR-010): a design
+ * declaring a token-set or screens path that resolves to nothing, or one
+ * escaping the project directory, is an error. Shaped exactly like
+ * scanContractResolve above — a declaration-less document (every design in
+ * the estate today) costs one read and returns immediately.
+ */
+async function scanVisualResolve(files: readonly string[], cwd: string): Promise<Finding[]> {
+  if (files.length === 0) return [];
+  const [{ visualResolveFindings }, { readVisualDeclarations }, { nodeFs }, { readFile }] = await Promise.all([
+    import('@spectastic/core/commands/validate'),
+    import('@spectastic/schema/visual'),
+    import('@spectastic/core/providers/node-fs'),
+    import('node:fs/promises'),
+  ]);
+
+  const perFile = await Promise.all(
+    files.map(async (file) => {
+      const html = await readFile(file, 'utf8');
+      const declarations = readVisualDeclarations(html, file);
+      if (declarations.length === 0) return [];
+      return visualResolveFindings(declarations, file, nodeFs, cwd);
+    }),
+  );
+  return perFile.flat();
+}
+
+/**
+ * The visual-section gate (spec 093-design-visual-section, FR-002): a design in
+ * a project with no user interface must carry no Visual surface section at all.
+ *
+ * The antecedent is computed ONCE for the whole run rather than per file — it
+ * is a property of the project, not of the document, and recomputing it per
+ * design would re-read every manifest and every sibling design N times.
+ */
+async function scanVisualSectionGated(files: readonly string[], cwd: string): Promise<Finding[]> {
+  if (files.length === 0) return [];
+  const [{ visualSectionGatedFindings }, { projectHasVisualSurface }, { readFile }] = await Promise.all([
+    import('@spectastic/core/commands/validate'),
+    import('@spectastic/core/visual/read'),
+    import('node:fs/promises'),
+  ]);
+
+  const projectHasSurface = projectHasVisualSurface(cwd);
+  // A project that has one can never produce a finding here, so skip the reads.
+  if (projectHasSurface) return [];
+
+  const perFile = await Promise.all(
+    files.map(async (file) => {
+      const html = await readFile(file, 'utf8');
+      // Cheap prefilter: the overwhelming majority of documents mention neither.
+      if (!html.includes('id="visual"') && !html.includes('<spec-visual')) return [];
+      return visualSectionGatedFindings(html, file, projectHasSurface);
+    }),
+  );
+  return perFile.flat();
+}
+
+/**
  * Fold contractViewDriftFindings() into validate (072-contract-embedded-view,
  * T-211): a materialised <spec-contract-view> that no longer matches the
  * contract file it projects, is an error. Shaped exactly like
@@ -582,6 +640,14 @@ export function registerValidate(program: Command): void {
       // and a declaration without a view is skipped too — every design in
       // the estate today.
       const contractViewDriftScanFindings = await scanContractViewDrift(files, process.cwd());
+      // The visual-resolve gate (spec 093): a declared token-set or screens
+      // path that resolves to nothing is an error. Same shape, same cost
+      // profile — a design carrying no <spec-visual> returns immediately.
+      const visualResolveScanFindings = await scanVisualResolve(files, process.cwd());
+      // The visual-section gate (spec 093): absence, not emptiness. A project
+      // with an interface can produce no finding here, so this costs one
+      // detection pass and returns.
+      const visualGateScanFindings = await scanVisualSectionGated(files, process.cwd());
       const findings = [
         ...result.findings,
         ...quarantineFindings,
@@ -602,6 +668,8 @@ export function registerValidate(program: Command): void {
         ...declaredEdgeScanFindings,
         ...contractResolveScanFindings,
         ...contractViewDriftScanFindings,
+        ...visualResolveScanFindings,
+        ...visualGateScanFindings,
       ];
       const exitCode = findings.some((f) => f.severity === 'error') ? 1 : result.exitCode;
 

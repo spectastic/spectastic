@@ -17,6 +17,7 @@ export default defineConfig({
     'src/decider/index.ts',
     'src/model-policy/index.ts',
     'src/commands/validate.ts',
+    'src/visual/read.ts',
     'src/commands/triage.ts',
     'src/commands/principles.ts',
     'src/commands/tasks.ts',

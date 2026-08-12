@@ -35,7 +35,7 @@ describe('templates/design.html — §3 Data model & contracts (US1, FR-001/FR-0
     expect(template()).toMatch(/<h2>3 · Data model &amp; contracts<\/h2>/);
   });
 
-  it('the new §3 sits immediately after Technical context (§2)', () => {
+  it('the contracts section sits immediately after Technical context', () => {
     const html = template();
     const techContextIdx = html.indexOf('id="technical-context"');
     const contractsIdx = html.indexOf('id="contracts"');
@@ -51,28 +51,33 @@ describe('templates/design.html — §3 Data model & contracts (US1, FR-001/FR-0
     const html = template();
     expect(html).toMatch(/<spec-contract[^>]*shape="\[SHAPE\]"/);
     // A table between the section heading and the placeholder element.
-    const section = html.slice(html.indexOf('id="contracts"'), html.indexOf('id="grounding"'));
+    const section = html.slice(html.indexOf('id="contracts"'), html.indexOf('id="visual"'));
     expect(section).toMatch(/<table>/);
   });
 
-  it('renumbers §4 through §12 in document order, with no gap or repeat (T-101)', () => {
+  it('numbers every section in document order, with no gap or repeat (T-101)', () => {
+    // Originally pinned to [1..12], which made it a tripwire for every later
+    // insertion rather than a guard on the property it cares about. 093 added a
+    // Visual surface section and tripped it. Restated as the invariant: the
+    // headings are 1..N contiguous, whatever N happens to be.
     const html = template();
     const headings = [...html.matchAll(/<h2>(\d+) ·/g)].map((m) => Number(m[1]));
-    expect(headings).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]);
+    expect(headings.length).toBeGreaterThan(0);
+    expect(headings).toEqual(headings.map((_, i) => i + 1));
   });
 });
 
 describe('templates/design.html — §3 linking guidance (US2, FR-006)', () => {
   it("points authors at the spec's own conceptual entities rather than a restated field list", () => {
     const html = template();
-    const section = html.slice(html.indexOf('id="contracts"'), html.indexOf('id="grounding"'));
+    const section = html.slice(html.indexOf('id="contracts"'), html.indexOf('id="visual"'));
     expect(section).toMatch(/href="\.\/spec\.html#/);
     expect(section).toMatch(/conceptual entit/i);
   });
 
   it('asks for boundaries/error-shape/consumer-reliance reasoning, not a schema copy', () => {
     const html = template();
-    const section = html.slice(html.indexOf('id="contracts"'), html.indexOf('id="grounding"'));
+    const section = html.slice(html.indexOf('id="contracts"'), html.indexOf('id="visual"'));
     expect(section).toMatch(/boundar/i);
     expect(section).toMatch(/error/i);
     expect(section).toMatch(/not a (field-by-field )?copy of the schema/i);

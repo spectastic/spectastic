@@ -1,0 +1,484 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
+<title>Design visual section · Design</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Design · 093-design-visual-section</p>
+  <h1>Design visual section</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    How we will build it.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>     <span><spec-status value="accepted">Accepted</spec-status></span>
+    <b>Spec</b>       <span><a href="./spec.html">093-design-visual-section</a></span>
+    <b>Owner</b>      <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Branch</b>     <span><code>spec/093-design-visual-section</code></span>
+    <b>Created</b>    <span><time datetime="2026-08-12">12 Aug 2026</time></span>
+    <b>Read time</b>  <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-tldr>
+    <p>One <code>&lt;spec-visual&gt;</code> element in a new section of the design template, checked by two
+    rules split along the boundary the rule engine already forces — shape is pure-AST and lives in
+    <code>@spectastic/schema</code>, path resolution touches the filesystem and lives in
+    <code>@spectastic/core</code> as a folded scan. Detection gains a user-interface signal list plus one
+    read of the project root, because the marker for a native Apple app is a directory whose name the
+    project chooses. The biggest risk is not technical: this spec and
+    <a href="../094-visual-sidecar-convention/spec.html">094</a> state the same resolve requirement, so the
+    check must land here once and be inherited there rather than built twice.</p>
+  </spec-tldr>
+</header>
+
+
+<section id="principles-check">
+<h2>1 · Principles check</h2>
+<p>Verify this plan respects every principle in
+<a href="../../principles.html">v1.9.0</a>. Any violation requires either a
+principles amendment or a deliberate exception logged below.</p>
+
+<div style="overflow-x:auto;">
+<table>
+  <thead><tr><th>Principle</th><th>Compliance</th><th>Notes</th></tr></thead>
+  <tbody>
+    <tr><td>P-1 · Source order is reading order</td><td><spec-pill>OK</spec-pill></td><td>The section sits where it is read — after the interface declaration, before the evidence that grounds it.</td></tr>
+    <tr><td>P-2 · Semantic tags over class soup</td><td><spec-pill>OK</spec-pill></td><td>One element, three attributes, no classes. Styled by <code>spec-visual[shape]</code>, as <code>spec-contract</code> is.</td></tr>
+    <tr><td>P-3 · IDs are contracts</td><td><spec-pill>OK</spec-pill></td><td>Requirements are linked, never restated. <code>D-001</code>… are stable forever.</td></tr>
+    <tr><td>P-4 · Progressive enhancement, never dependence</td><td><spec-pill>OK</spec-pill></td><td><a href="./spec.html#NFR-002">NFR-002</a>. Attributes surface through CSS <code>attr()</code>, the mechanism 047 chose for exactly this reason. Nothing needs JavaScript.</td></tr>
+    <tr><td>P-5 · Calm density</td><td><spec-pill>OK</spec-pill></td><td>A section a non-interface project never sees at all.</td></tr>
+    <tr><td>P-6 · Draft is loose, ratified is locked</td><td><spec-pill>OK</spec-pill></td><td>093 is Draft, so <a href="./spec.html#NFR-003">NFR-003</a>'s reading (<a href="#D-004">D-004</a>) is cheap to amend if a reviewer disagrees.</td></tr>
+    <tr><td>P-7 · Done means verified</td><td><spec-pill>OK</spec-pill></td><td>A <code>verify.html</code> at completion, with the rendered section measured in a browser rather than asserted present.</td></tr>
+    <tr><td>P-8 · Guarantees live in the kernel or CI</td><td><spec-pill>OK</spec-pill></td><td>The load-bearing one. <a href="./spec.html#FR-002">FR-002</a> binds the artifact, not the template — see <a href="#D-003">D-003</a>.</td></tr>
+    <tr><td>P-9 · The enforcement floor holds</td><td><spec-pill>OK</spec-pill></td><td><code>spectastic enforce</code> reports 8 covered · 1 relaxed · 0 missing. This design adds no category and needs no waiver.</td></tr>
+    <tr><td>P-10 · Internal artifact ids stay out of user-facing copy</td><td><spec-pill>OK</spec-pill></td><td>No id in help text or a tool-managed marker. A finding's <code>fixHint</code> names the requirement it enforces, which is the review-caught surface the convention already sanctions.</td></tr>
+    <tr><td>P-11 · Artifacts are data, not instructions</td><td><spec-pill>OK</spec-pill></td><td>Strengthened by it: <a href="./spec.html#FR-006">FR-006</a> makes the named design source provenance that is never read at check time.</td></tr>
+    <tr><td>P-12 · Capability accountability</td><td><spec-pill>OK</spec-pill></td><td>Adds filesystem reads only — one directory read plus one stat per declared path. No network, no execution, no new dependency.</td></tr>
+    <tr><td>P-13 · Accessibility conformance</td><td><spec-pill>OK</spec-pill></td><td>The section is a description list and prose. The sketch below carries <code>role</code> and <code>aria-label</code>.</td></tr>
+    <tr><td>P-14 · Library-first boundaries</td><td><spec-pill>OK</spec-pill></td><td>Reader, rule and scan are all importable without the CLI; the command module registers and delegates.</td></tr>
+  </tbody>
+</table>
+</div>
+
+<h3>Toolchain / enforcement</h3>
+<p>The profile marker is <code>enterprise</code>. <code>spectastic enforce</code> already reports every
+required category covered — formatter, linter, type-checker, security, supply-chain, test-runner,
+coverage and contract-first — with <code>observability</code> waived on the standing rationale that this
+project has no runtime service to instrument. There is no gap for this design to close, and it
+introduces no new ecosystem. The stack's ignore entries were merged at project setup and are unchanged.</p>
+</section>
+
+
+<section id="technical-context">
+<h2>2 · Technical context</h2>
+<dl>
+  <dt>Language(s)</dt>      <dd>TypeScript 5.7, Node ≥ 20.</dd>
+  <dt>Frameworks</dt>       <dd>None added. Vitest 2.1 for unit and integration, Playwright 1.62 for the rendered section.</dd>
+  <dt>Architecture</dt>     <dd>Layered — the existing fat-core / thin-CLI split, extended rather than reshaped. No new pattern; see <a href="#D-001">D-001</a> for why the work divides across three packages.</dd>
+  <dt>Storage</dt>          <dd>None. The declaration is authored HTML; the check reads the filesystem and writes nothing.</dd>
+  <dt>Testing</dt>          <dd>Tests written failing before implementation, per story — the discipline 047 and 048 both used across their drains.</dd>
+  <dt>Coverage</dt>         <dd>Diff-aware: every changed line in the new reader, rule and scan covered, and no file this change touches ends with lower coverage than it started. No universal project percentage.</dd>
+  <dt>Perf targets</dt>     <dd>Set by <a href="./spec.html#NFR-003">NFR-003</a>: at most 20 enumerated stat paths, none deeper than 4 segments, 0 globs, 0 tree walks, plus the 1 root read <a href="#D-004">D-004</a> adds. Asserted by a test, not trusted.</dd>
+  <dt>Constraints</dt>      <dd>The rule engine is pure-AST with no filesystem imports, which forces the split in <a href="#D-001">D-001</a> rather than inviting it. <code>templates/</code> is copied verbatim, which forces <a href="#D-003">D-003</a>.</dd>
+</dl>
+</section>
+
+
+<section id="contracts">
+<h2>3 · Data model &amp; contracts</h2>
+
+<p>The spec's two conceptual entities land as authored markup and a hand-enumerated table. Neither is
+persisted; both are read at check time and discarded.</p>
+
+<div style="overflow-x:auto;">
+<table>
+  <thead><tr><th>Conceptual entity</th><th>Physical shape</th><th>Notes</th></tr></thead>
+  <tbody>
+    <tr><td><a href="./spec.html#data">Surface declaration</a></td>
+        <td><code>&lt;spec-visual shape tokens screens source&gt;</code> — one element, three optional attributes beside the required <code>shape</code>.</td>
+        <td>Zero or one per design. <code>shape="none"</code> carries no path and is the explicit-empty form <a href="./spec.html#FR-007">FR-007</a> requires.</td></tr>
+    <tr><td><a href="./spec.html#data">Interface signal</a></td>
+        <td><code>readonly FileSignal[]</code> beside the existing <code>INTERFACE_SIGNALS</code>, plus a suffix list matched against one read of the project root.</td>
+        <td>Held separate from the web/RPC signals, exactly as <code>EVENT_INTERFACE_SIGNALS</code> is, because a caller needs to know which kind fired.</td></tr>
+  </tbody>
+</table>
+</div>
+
+<spec-contract shape="none">
+  <p>This feature exposes no interface. It adds an authored section, two checks over it, and a widening
+  of an existing detector — all consumed inside the tool. The <code>&lt;spec-visual&gt;</code> element is a
+  vocabulary for artifacts, not a wire format: nothing serialises it, nothing transmits it, and no
+  consumer outside this repository reads it.</p>
+</spec-contract>
+</section>
+
+
+<section id="grounding">
+<h2>4 · Grounding &amp; evidence</h2>
+<p>Every design-bearing fact this plan rests on, and how it was confirmed — read this before the
+approach: it separates what the plan <em>knows</em> from what it <em>assumes</em> (per
+<code>REQ-LIFECYCLE-006</code>). Status is <code>verified</code> (opened the source
+this turn), <code>spike</code> (decidable only by a time-boxed investigation — run it, record the
+finding), or <code>assumed</code> (taken as true without verification).</p>
+
+<div style="overflow-x:auto;">
+<table class="evidence">
+  <thead>
+    <tr><th>Claim the design rests on</th><th>Source</th><th>Status</th><th>Finding / note</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>The rule engine cannot touch the filesystem, so a path-resolution check cannot be a schema rule.</td>
+        <td><code>packages/schema/src/rules/contract-declaration-shape.ts</code></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td>Its own header says the resolve half lives elsewhere. Every import in the file is from <code>../parser.js</code> or <code>../types.js</code>.</td></tr>
+    <tr><td>The resolve half is a core function folded into validate by a thin CLI scan.</td>
+        <td><code>packages/core/src/commands/validate.ts:597</code>, <code>packages/cli/src/commands/validate.ts:291</code></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td><code>contractResolveFindings(declarations, file, fs, cwd)</code> takes an injected <code>FileSystem</code> port; the CLI supplies <code>nodeFs</code>. Directly clonable.</td></tr>
+    <tr><td>Containment is checked on the declared string and the resolved path both, before any stat.</td>
+        <td><code>packages/core/src/commands/validate.ts:621-640</code></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td>Absolute rejected, then <code>relative(cwd, resolved)</code> starting <code>..</code> rejected. Neither is ever stat-ed. This is the pattern <a href="./spec.html#FR-010">FR-010</a> names.</td></tr>
+    <tr><td>A contract path resolving to a directory is an error, but a token-set path must be allowed to.</td>
+        <td><code>packages/core/src/commands/validate.ts:665-671</code> vs <a href="./spec.html#FR-005">FR-005</a></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td>The clone is not verbatim. A token set is routinely split by mode, so the directory branch inverts from error to silent.</td></tr>
+    <tr><td>A conditional-presence check over a whole project is a cross-file rule with a derived floor.</td>
+        <td><code>packages/schema/src/rules/verify-view-missing.ts</code></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td>The precedent <a href="./spec.html#FR-002">FR-002</a> cites, and the limit of it: its condition is derived from the documents it is given, so it can be a rule. Ours is filesystem state, so it cannot — see <a href="#D-003">D-003</a>.</td></tr>
+    <tr><td>Declarations across designs accumulate rather than shadow.</td>
+        <td><code>packages/core/src/enforce/detect.ts:774-805</code></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td><code>declaredInterfaceState</code> walks every spec dir and pushes; a malformed design degrades to "declares nothing" rather than throwing. The token-set reader follows it.</td></tr>
+    <tr><td>Detection today is fixed-filename only, with an optional substring — no directory reads.</td>
+        <td><code>packages/core/src/enforce/detect.ts:561-621</code></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td><code>FileSignal { file, contains? }</code>. 43 interface signals across six ecosystems, every one a manifest entry.</td></tr>
+    <tr><td>No fixed filename identifies a conventional Xcode application.</td>
+        <td>Spike — enumerate the candidates against the exemplar's own shape</td>
+        <td><spec-status value="review">spike</spec-status></td>
+        <td>Ran it. <code>Package.swift</code> exists only for SwiftPM and names no UI framework; <code>Info.plist</code> and <code>Assets.xcassets</code> are conventionally nested, not root; <code>project.pbxproj</code> sits inside a directory whose name the project chooses. The only root-level marker is the <code>.xcodeproj</code>/<code>.xcworkspace</code> suffix itself.</td></tr>
+    <tr><td>SwiftUI, UIKit and AppKit are not dependencies and cannot appear in any manifest.</td>
+        <td>Apple platform SDK</td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td>They ship with the SDK and are reached by <code>import</code>, never declared. This is <a href="./spec.html#FR-003">FR-003</a>'s whole reason for existing.</td></tr>
+    <tr><td>Inserting a section renumbers every section after it, and 21 numeric references point at them.</td>
+        <td><code>templates/design.html</code> (7), <code>commands/spectastic.design.md</code> (14)</td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td>Counted this turn. Because the new section is conditional, a numeric reference cannot be correct for both populations at once — see <a href="#D-002">D-002</a>.</td></tr>
+    <tr><td>This project has no user interface, so its own designs must not carry the section.</td>
+        <td><code>package.json</code>, <code>.spectastic/profile.json</code></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td>A CLI and three libraries. No UI dependency, no conventional project file. The rule this design writes excludes the design writing it.</td></tr>
+    <tr><td>The enterprise enforcement floor is fully covered, so no toolchain gap needs designing.</td>
+        <td><code>spectastic enforce</code>, run this turn</td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td>8 covered · 1 relaxed · 0 missing.</td></tr>
+    <tr><td>A CSS <code>attr()</code> surface keeps an attribute readable with scripting off.</td>
+        <td><code>assets/spec.css</code>, the <code>spec-contract[compatibility]::after</code> precedent</td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td>047 chose scalars-as-attributes for exactly this reason. <a href="./spec.html#NFR-002">NFR-002</a> is met by construction, not by effort.</td></tr>
+    <tr><td>The suffix list stays short because the Apple toolchain is the only ecosystem naming a project directory after the project.</td>
+        <td>—</td>
+        <td><spec-status value="blocked">assumed</spec-status></td>
+        <td>True of every ecosystem in the signal table today. Verifying it exhaustively costs more than the failure, which is one more hand-enumerated suffix.</td></tr>
+  </tbody>
+</table>
+</div>
+</section>
+
+
+<section id="approach">
+<h2>5 · Approach</h2>
+
+<p>The work divides into four pieces that follow existing seams rather than cutting new ones. A new
+<strong>section in the design template</strong> scaffolds one <code>&lt;spec-visual&gt;</code> element. A
+<strong>reader</strong> in <code>@spectastic/core</code> extracts declarations from a design's HTML by
+attribute, degrading to "declares nothing" on anything malformed, and accumulates across specs the way
+<code>declaredInterfaceState</code> does. A <strong>shape rule</strong> in <code>@spectastic/schema</code>
+fires only on a declaration that is present and malformed. A <strong>pair of scans</strong> in
+<code>@spectastic/core</code>, folded into validate by a thin CLI wrapper, checks that each declared path
+stays inside the project and points at something real, and that no project without an interface is
+carrying a populated section. Detection widens with a user-interface signal
+list and one read of the project root.</p>
+
+<p>Nothing here is novel; all four pieces have a working sibling in the contract chassis, and the value
+of going first is finding out where the clone is not verbatim. Two places it is not: a declared token-set
+path may resolve to a directory, where a contract path may not; and the presence check is conditional on
+a project property rather than on a document's own status, which is what pushes it out of the rule
+engine altogether — it borrows <code>verify-view-missing</code>'s shape but not its home.</p>
+
+<spec-note>
+<p>This design carries no Visual surface section, and that is the requirement working rather than an
+omission. spectastic is a CLI and three libraries: no user-interface dependency, no conventional project
+file, so <a href="./spec.html#FR-002">FR-002</a>'s antecedent does not hold and the section must be
+absent rather than empty. The first artifact to exercise the section is the currency-converter exemplar
+under <code>examples/</code>, which is why that bundle exists.</p>
+</spec-note>
+
+<spec-arch>
+<figure>
+<svg viewBox="0 0 700 300" role="img" aria-label="Where the four pieces sit across the three packages, and what each reads">
+  <style>
+    .box { fill: var(--c-surface-raised, #fcfbf7); stroke: var(--c-border, #c4c1bb); stroke-width:1.2; }
+    .pkg { fill: none; stroke: var(--c-border-soft, #ddd9d2); stroke-width:1; stroke-dasharray:4 3; }
+    .label { font: 700 10px Lato, sans-serif; fill: var(--c-text-soft, #4a4a46); letter-spacing:0.06em; text-transform:uppercase; }
+    .pkgl { font: 700 9px Lato, sans-serif; fill: var(--c-muted, #73706d); letter-spacing:0.08em; text-transform:uppercase; }
+    .body { font: 400 11px "Source Serif 4", Georgia, serif; fill: var(--c-text, #353534); }
+    .arr { stroke: var(--c-muted, #73706d); stroke-width:1.2; fill:none; }
+    .arrh { fill: var(--c-muted, #73706d); }
+  </style>
+  <rect class="pkg" x="16" y="30" width="200" height="240" rx="4"/>
+  <text class="pkgl" x="26" y="46">artifact</text>
+  <rect class="pkg" x="248" y="30" width="200" height="240" rx="4"/>
+  <text class="pkgl" x="258" y="46">core</text>
+  <rect class="pkg" x="480" y="30" width="200" height="240" rx="4"/>
+  <text class="pkgl" x="490" y="46">schema · cli</text>
+
+  <rect class="box" x="32" y="60" width="168" height="52" rx="4"/>
+  <text class="label" x="44" y="80">design.html</text>
+  <text class="body"  x="44" y="98">&#60;spec-visual&#62;</text>
+
+  <rect class="box" x="32" y="150" width="168" height="52" rx="4"/>
+  <text class="label" x="44" y="170">project root</text>
+  <text class="body"  x="44" y="188">manifests · .xcodeproj</text>
+
+  <rect class="box" x="264" y="60" width="168" height="52" rx="4"/>
+  <text class="label" x="276" y="80">reader</text>
+  <text class="body"  x="276" y="98">accumulates, never throws</text>
+
+  <rect class="box" x="264" y="150" width="168" height="52" rx="4"/>
+  <text class="label" x="276" y="170">detector</text>
+  <text class="body"  x="276" y="188">signals + 1 root read</text>
+
+  <rect class="box" x="264" y="218" width="168" height="44" rx="4"/>
+  <text class="label" x="276" y="238">validate scans</text>
+  <text class="body"  x="276" y="254">resolve · gating</text>
+
+  <rect class="box" x="496" y="60" width="168" height="52" rx="4"/>
+  <text class="label" x="508" y="80">shape rule</text>
+  <text class="body"  x="508" y="98">pure AST, no fs</text>
+
+  <rect class="box" x="496" y="218" width="168" height="44" rx="4"/>
+  <text class="label" x="508" y="238">cli fold</text>
+  <text class="body"  x="508" y="254">registers, prints</text>
+
+  <path class="arr" d="M200 86 L264 86" marker-end="url(#a)"/>
+  <path class="arr" d="M200 176 L264 176" marker-end="url(#a)"/>
+  <path class="arr" d="M432 86 L496 86" marker-end="url(#a)"/>
+  <path class="arr" d="M432 240 L496 240" marker-end="url(#a)"/>
+  <path class="arr" d="M348 112 L348 150" marker-end="url(#a)"/>
+  <path class="arr" d="M348 202 L348 218" marker-end="url(#a)"/>
+  <defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path class="arrh" d="M0,0 L10,5 L0,10 z"/></marker></defs>
+</svg>
+<figcaption>The declaration and the project root are the only inputs. Only the markup check is a rule; both filesystem-dependent checks are scans in core, because the rule engine cannot read a disk.</figcaption>
+</figure>
+</spec-arch>
+</section>
+
+
+<section id="alternatives">
+<h2>6 · Alternatives considered</h2>
+
+<p>The question with real alternatives was the markup shape. Scored on how cleanly each expresses the
+split cardinality (<a href="./spec.html#FR-005">FR-005</a>), how many rules must traverse it, and how
+readable the explicit-none form is. 5 is best.</p>
+
+<spec-matrix>
+<div style="overflow-x:auto;">
+<table>
+  <thead>
+    <tr><th>Option</th><th>Expresses split scope</th><th>Rule simplicity</th><th>Explicit none reads well</th><th class="score">Total</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Two elements split by scope</td><td>5</td><td>3</td><td>2</td><td class="score">10</td></tr>
+    <tr><td>One element wrapping nested children</td><td>4</td><td>2</td><td>3</td><td class="score">9</td></tr>
+    <tr data-winner><td>One element, attributes — chosen</td><td>3</td><td>5</td><td>5</td><td class="score">13</td></tr>
+  </tbody>
+</table>
+</div>
+</spec-matrix>
+
+<p>The split-scope option scores highest on the axis that matters most conceptually and still loses,
+because the cardinality problem it solves is real but small — one attribute versus another on the same
+element — while the traversal cost it adds is paid by every rule, forever. The nested form loses on both.</p>
+</section>
+
+
+<section id="decisions">
+<h2>7 · Decisions</h2>
+
+<spec-decision id="D-001" grounding="verified">
+  <h4>D-001 · Shape is a schema rule; resolution is a core scan folded into validate</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>The rule engine is pure-AST with no filesystem imports — <code>contract-declaration-shape.ts</code> states this in its own header and its imports confirm it. <a href="./spec.html#FR-009">FR-009</a> checks markup and <a href="./spec.html#FR-010">FR-010</a> checks the filesystem, so they cannot live in one place.</dd>
+    <dt>Decision</dt>     <dd>Clone the contract chassis exactly: <code>visual-declaration-shape</code> as a per-file schema rule, and <code>visualResolveFindings</code> in core taking an injected <code>FileSystem</code> port, folded in by a thin <code>scanVisualResolve</code> in the CLI.</dd>
+    <dt>Consequences</dt> <dd>+ Two testable units, both importable without a binary. + The split is forced by an existing constraint, so it cannot drift. − Two files and two test suites for what reads like one check, and a reader has to know which half reports a given finding.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-002" grounding="verified">
+  <h4>D-002 · The section goes at slot 4, and the numeric cross-references become named ones</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>Grouping the three physical-shape declarations — data, interface, surface — puts the section at 4. But <a href="./spec.html#FR-002">FR-002</a> makes it <em>conditional</em>, so with it at 4 every later number is right for interface projects and wrong for everything else. 21 numeric references point at those sections: 7 in <code>templates/design.html</code>, 14 in <code>commands/spectastic.design.md</code>. The spec template already carries the fix as an instruction — <em>"referred to by name rather than number so a renumber cannot break the pointer"</em> — and applies it to itself.</dd>
+    <dt>Decision</dt>     <dd>Place the section at slot 4 and convert all 21 numeric references to named links in the same change. A number that cannot be correct for both populations is not a number worth keeping.</dd>
+    <dt>Consequences</dt> <dd>+ The next insertion breaks nothing. + Both populations read a correct document. − Touches two files this spec would otherwise not open, and the diff is larger than the feature. − Section numbers still differ between projects; only the <em>references</em> are immunised, so a human citing "§7" in review is on their own.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-003" grounding="verified">
+  <h4>D-003 · Absence is checked on the artifact, never instructed in the template</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd><code>templates/</code> is copied verbatim, so a template cannot vary per project and a template comment saying "delete this section if you have no interface" is advisory — the exact thing P-8 and triage <code>T-009</code> exclude as a home for a must-tier guarantee. <code>verify-view-missing</code> is the precedent for conditional presence — but only for its shape, not its home: it derives its condition from the documents it is handed, whereas this condition is filesystem state, which the rule engine cannot read.</dd>
+    <dt>Decision</dt>     <dd>The template scaffolds the section unconditionally; a second core scan, folded in beside the resolve one, reports a <em>populated</em> section in a project with no detected and no declared interface, and reports nothing at all when the section is absent. The template comment explains, it does not guarantee.</dd>
+    <dt>Consequences</dt> <dd>+ The guarantee is machine-checked at the git boundary. + A non-interface project deletes one section once and is never nagged. − Both visual checks now live in core rather than one in each package, so <code>@spectastic/schema</code> owns only the markup half. − A freshly scaffolded non-interface design is momentarily non-conformant, which is a worse first impression than a template that had simply omitted it — mitigated by the finding naming the deletion as its fix.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-004" grounding="spike">
+  <h4>D-004 · One read of the project root, matched against hand-enumerated suffixes</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd><a href="./spec.html#FR-003">FR-003</a> exists because SwiftUI, UIKit and AppKit ship in the platform SDK and appear in no manifest. The spike enumerated every fixed-name candidate: <code>Package.swift</code> is SwiftPM-only and names no UI framework, <code>Info.plist</code> and <code>Assets.xcassets</code> are conventionally nested, and <code>project.pbxproj</code> lives inside a directory the project names. The only root-level marker is the <code>.xcodeproj</code> / <code>.xcworkspace</code> suffix.</dd>
+    <dt>Decision</dt>     <dd>Read the project root's own entries once and match them against a hand-enumerated suffix list, alongside the existing fixed-name signals. Depth 1, no glob engine, no tree walk.</dd>
+    <dt>Consequences</dt> <dd>+ The population <a href="./spec.html#FR-003">FR-003</a> was written for is actually seen. + The suffix list is as auditable as the filename list beside it. − <a href="./spec.html#NFR-003">NFR-003</a> says detection reads "from a hand-enumerated list of at most 20 paths", and a directory read is not on that list; this design takes the bound to mean no tree walk and no glob, which the mechanism honours, and states the reading rather than assuming it. − The test must assert a fourth bound — at most 1 directory read — or the loosening is unbounded.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-005" grounding="verified">
+  <h4>D-005 · A declared token-set path may resolve to a directory; a contract path may not</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd><code>contractResolveFindings</code> flags a directory as "names a directory, not a readable file", because a contract is one file. <a href="./spec.html#FR-005">FR-005</a> says the opposite for a token set: it is routinely split by mode, so a directory is the normal case.</dd>
+    <dt>Decision</dt>     <dd>Clone the containment and stat sequence verbatim and invert the directory branch — silent for a visual path, where it is an error for a contract. Keep the absent and unreadable branches identical.</dd>
+    <dt>Consequences</dt> <dd>+ Containment logic, the security-relevant half, stays byte-identical to a reviewed implementation. − Two nearly-identical functions that differ in one branch, which invites a later "refactor" that reintroduces the wrong behaviour; the test names the difference so the invariant is legible.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-006" grounding="verified">
+  <h4>D-006 · The resolve check lands here once, and 094 inherits it</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd><a href="./spec.html#FR-010">FR-010</a> and <a href="../094-visual-sidecar-convention/spec.html">094</a>'s FR-003 state the same requirement in almost the same words. 093 cannot defer it — a declaration nothing checks is prose, which is its own stated rationale — and 094 cannot drop it, because it is the convention document.</dd>
+    <dt>Decision</dt>     <dd>Build it here. 094's implementation adds only what is genuinely its own: the two directory names, the disagreement check across designs, and the image rules. Its changelog records the inheritance so the duplication reads as deliberate.</dd>
+    <dt>Consequences</dt> <dd>+ One implementation, one test suite, no divergence. + 094 gets smaller, which suits a convention slice. − Two specs describe one check, so a reader of 094 alone will look for code that is not there; only the changelog note prevents that.</dd>
+  </dl>
+</spec-decision>
+</section>
+
+
+<section id="project-structure">
+<h2>8 · Project structure</h2>
+
+<p>Only the new or changed paths, grouped by the boundaries the layered kernel/edge split already draws.</p>
+
+<pre><code>templates/
+  design.html                         + Visual surface section at slot 4; 7 numeric refs → named
+
+commands/
+  spectastic.design.md                + interface-shape-first interview step; 14 numeric refs → named
+
+packages/schema/src/
+  visual-shared.ts                    + recognised shapes, shared with core
+  rules/visual-declaration-shape.ts   + per-file, error — a present declaration that is malformed
+
+packages/core/src/
+  enforce/detect.ts                   ~ UI_SIGNALS, UI_DIR_SUFFIXES, one root read
+  visual/read.ts                      + declaration reader, accumulating across designs
+  commands/validate.ts                + visualResolveFindings, visualSectionGatedFindings
+
+packages/cli/src/commands/
+  validate.ts                         ~ scanVisualResolve + scanVisualSectionGated, beside the contract scans
+
+assets/
+  spec.css                            + spec-visual card, attr() surfaced
+
+packages/schema/test/                 + the shape rule, red first
+packages/core/test/                   + reader, resolve, gating, detection bounds
+tests/                                + one Playwright containment check on the rendered section
+</code></pre>
+</section>
+
+
+<section id="risks">
+<h2>9 · Risks &amp; mitigations</h2>
+
+<div style="overflow-x:auto;">
+<table>
+  <thead><tr><th>Risk</th><th>Likelihood</th><th>Impact</th><th>Mitigation</th></tr></thead>
+  <tbody>
+    <tr><td>094 builds the resolve check a second time, and the two drift.</td><td>M</td><td>M</td><td><a href="#D-006">D-006</a>, plus a note in 094's change log at its own design time. The duplication is in the specs and cannot be removed from them; only the code can be kept single.</td></tr>
+    <tr><td>The root read grows into a tree walk one suffix at a time.</td><td>M</td><td>M</td><td>A test asserting at most 1 directory read, alongside the existing path-count and depth assertions. The bound is checked, not documented.</td></tr>
+    <tr><td>The gating rule false-positives on a project whose interface it cannot see, nagging a correct design.</td><td>L</td><td>M</td><td>Detection fails safe on the antecedent, and <a href="./spec.html#FR-004">FR-004</a> lets a declaration override it in both directions. A project seen wrongly declares once and is never asked again.</td></tr>
+    <tr><td>The 21-reference sweep touches command markdown a running slash command reads from a gitignored copy.</td><td>H</td><td>L</td><td>Re-copy <code>commands/*.md</code> to <code>.claude/commands/</code> as the last task, which is the standing convention and the subject of a known triage.</td></tr>
+    <tr><td>The rendered section ships with logic and no styling, invisible to every headless check.</td><td>M</td><td>M</td><td>The scar 048 paid for. A Playwright check that asserts computed style and containment on a real generated artifact, opened on a fresh origin.</td></tr>
+  </tbody>
+</table>
+</div>
+</section>
+
+
+<section id="complexity">
+<h2>10 · Complexity tracking</h2>
+<p>Anywhere this plan introduces complexity not strictly required by the spec, justify it here.</p>
+
+<spec-assumption>
+<p>The 21-reference sweep in <a href="#D-002">D-002</a> is not required by any requirement in the spec.
+It is required by the section's <em>conditionality</em>: placing a conditional section anywhere but last
+makes every later number ambiguous, and the alternative — a slot near the end — was weighed and lost on
+the grouping argument. Doing the sweep in the same change is what keeps the choice honest, since a
+follow-up "we should fix the references" is the kind of task that never gets drained.</p>
+</spec-assumption>
+
+<spec-assumption>
+<p><a href="#D-004">D-004</a> reads <a href="./spec.html#NFR-003">NFR-003</a>'s path bound as prohibiting
+tree walks and globs rather than prohibiting a single read of the project's own root. That reading is
+stated rather than assumed, and the mechanism is bounded by a test. If a reviewer disagrees, the fix is a
+one-line MODIFY to NFR-003 while the spec is still Draft, not a redesign.</p>
+</spec-assumption>
+</section>
+
+
+<section id="questions">
+<h2>11 · Open questions</h2>
+<spec-questions>
+<p>None outstanding. The markup shape, the section slot, the detection mechanism and the test style were
+anchored in the interview; the split across packages, the directory-branch inversion and the ownership of
+the resolve check were settled by reading the code rather than by asking. The spec's own remaining
+question — whether external provenance chains onto a wrapper — belongs to
+<a href="../097-visual-component-lifecycle/spec.html">097</a> and nothing here depends on its answer.</p>
+</spec-questions>
+</section>
+
+
+<section id="changelog">
+<h2>12 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-08-12">12 Aug 2026</time><span>Initial plan. Six decisions. Corrected while deriving the tasks: the gating check was drafted as a cross-file schema rule and cannot be one, because its condition is filesystem state and the rule engine has no filesystem access. It moves to a second core scan beside the resolve one — D-003, the sketch and the project structure all follow. The section slot moved from a plain choice to a choice plus a 21-site reference sweep once the count was measured: the section is conditional, so a numeric cross-reference cannot be correct for both populations at once. The detection spike ran and returned no usable fixed filename for a conventional Xcode application, which is what carries D-004.</span></li>
+  <li><time datetime="2026-08-12">12 Aug 2026</time><span>Status flipped Draft → Accepted on 12 Aug 2026 — zero remaining unchecked tasks; tests verified passing per author confirmation. Sibling bundle flipped together.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  093-design-visual-section · Design · authored 2026-08-12
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>

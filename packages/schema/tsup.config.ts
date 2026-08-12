@@ -10,6 +10,7 @@ export default defineConfig({
     'src/fence.ts',
     'src/project-shared.ts',
     'src/contract-shared.ts',
+    'src/visual-shared.ts',
   ],
   format: ['esm'],
   dts: true,

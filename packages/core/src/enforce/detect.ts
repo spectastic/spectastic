@@ -1111,4 +1111,104 @@ export function detectEcosystems(cwd: string): Set<string> {
   return found;
 }
 
+// --- User-interface detection (spec 093-design-visual-section) --------------
+// The antecedent for the design's Visual surface section: a project with no
+// user interface is never asked about screens, tokens or contexts (FR-002).
+//
+// Two mechanisms, because one is not enough. Manifest signals cover every
+// ecosystem that declares its UI framework as a dependency. One bounded read of
+// the project root covers the one that cannot: SwiftUI, UIKit and AppKit ship
+// in the platform SDK and are reached by `import`, never declared, so a native
+// Apple application's only root-level marker is its project directory's own
+// suffix (FR-003, design D-004).
+//
+// Every signal is attributable to a named platform or framework — nothing is
+// matched heuristically — and the bounds are asserted by a test rather than
+// trusted (NFR-003): at most 20 enumerated paths, none deeper than 4 segments,
+// 0 globs, and at most 1 directory read.
+
+/** UI framework signals, by named platform. Quoted names avoid substring
+ *  false-positives — "reactive-streams" must not read as "react". */
+const UI_SIGNALS: readonly FileSignal[] = [
+  // JS/TS — application frameworks and the meta-frameworks built on them.
+  { file: 'package.json', contains: '"react"' },
+  { file: 'package.json', contains: '"react-native"' },
+  { file: 'package.json', contains: '"vue"' },
+  { file: 'package.json', contains: '"svelte"' },
+  { file: 'package.json', contains: '"@angular/core"' },
+  { file: 'package.json', contains: '"solid-js"' },
+  { file: 'package.json', contains: '"preact"' },
+  { file: 'package.json', contains: '"lit"' },
+  { file: 'package.json', contains: '"next"' },
+  { file: 'package.json', contains: '"nuxt"' },
+  { file: 'package.json', contains: '"astro"' },
+  { file: 'package.json', contains: '"expo"' },
+  { file: 'package.json', contains: '"electron"' },
+  // Python
+  { file: 'pyproject.toml', contains: 'streamlit' },
+  { file: 'pyproject.toml', contains: 'PyQt' },
+  { file: 'pyproject.toml', contains: 'kivy' },
+  { file: 'requirements.txt', contains: 'streamlit' },
+  // Dart
+  { file: 'pubspec.yaml', contains: 'flutter' },
+  // Android / Kotlin
+  { file: 'build.gradle', contains: 'com.android.application' },
+  { file: 'build.gradle', contains: 'androidx.compose' },
+  { file: 'build.gradle.kts', contains: 'com.android.application' },
+  { file: 'build.gradle.kts', contains: 'androidx.compose' },
+  // Apple, where a project file rather than a dependency carries the signal.
+  { file: 'Project.swift' },
+  { file: 'Podfile' },
+];
+
+/**
+ * The distinct paths the detector will stat — the bound NFR-003 names, derived
+ * from the signal table rather than restated beside it, so the two cannot drift.
+ */
+export const UI_SIGNAL_PATHS: readonly string[] = [...new Set(UI_SIGNALS.map((s) => s.file))];
+
+/**
+ * Root-entry suffixes that mark a project the platform SDK's UI frameworks are
+ * reached from. Hand-enumerated, and the only reason a directory read exists
+ * here at all — see design D-004 for the reading of NFR-003 this takes.
+ */
+export const UI_DIR_SUFFIXES: readonly string[] = ['.xcodeproj', '.xcworkspace'];
+
+export interface UserInterfaceDetection {
+  /** True when at least one signal fired. */
+  detected: boolean;
+  /** The signals that fired, so a finding can say why rather than assert. */
+  signals: string[];
+}
+
+/**
+ * Whether this project appears to have a user interface. Inference only — a
+ * design's own declaration outranks it in both directions (FR-004), which
+ * `userInterfaceState` composes. Fails safe on the antecedent: a project it
+ * cannot classify is treated as having no interface, so the gate never fires
+ * on a project it merely failed to understand.
+ */
+export function detectUserInterface(cwd: string): UserInterfaceDetection {
+  const signals: string[] = [];
+
+  for (const sig of UI_SIGNALS) {
+    if (!signalMatches(cwd, sig)) continue;
+    signals.push(sig.contains === undefined ? sig.file : `${sig.file}:${sig.contains}`);
+  }
+
+  // The one directory read (design D-004). Depth 1, no recursion, no glob
+  // engine — the suffix list above is the whole pattern language.
+  try {
+    for (const entry of readdirSync(cwd, { withFileTypes: true })) {
+      if (!entry.isDirectory()) continue;
+      if (UI_DIR_SUFFIXES.some((suffix) => entry.name.endsWith(suffix))) signals.push(entry.name);
+    }
+  } catch {
+    // An unreadable root contributes nothing, exactly as an unreadable
+    // manifest does. Never a throw, never an invented interface.
+  }
+
+  return { detected: signals.length > 0, signals };
+}
+
 export { ALL_CATEGORIES };
