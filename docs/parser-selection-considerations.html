@@ -1,0 +1,325 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
+<title>The parser was the wrong variable — Considerations for Spectastic</title>
+<meta name="description" content="Validate keeps approaching its performance budget, and the obvious lever is the HTML parser. Measuring first relocates the question: the dominant cost was never the parser, and the swap most likely to help would change what the validator sees in exactly the documents it most needs to be right about.">
+<link rel="stylesheet" href="../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../assets/favicon.svg">
+<script src="../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Considerations · Parser selection</p>
+  <h1>The parser was the wrong variable</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    A faster parser makes the wrong work cheaper. Not doing the work is free.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>     <span><spec-status value="draft">Draft</spec-status></span>
+    <b>Type</b>       <span>Dependency evaluation &amp; measurement</span>
+    <b>Author</b>     <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Created</b>    <span><time datetime="2026-08-12">12 Aug 2026</time></span>
+    <b>Companion</b>  <span><a href="../specs/091-artifact-format/triage-log.html">091 triage T-001</a></span>
+    <b>Sources</b>    <span>3 external, retrieved 12 Aug 2026 · measurement over this repository's 514 artifacts</span>
+    <b>Read time</b>  <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-tldr>
+    <p>The question arrived as <em>parse5 or htmlparser2</em>, because <code>validate</code> keeps approaching its
+    performance budget. Measuring first moves it somewhere else. On the same day this was asked, two one-line
+    prefilters — skip the parse when the document does not contain the element the scan is looking for — took
+    <strong>about 3.4 seconds</strong> off a full-project validate. A parser swap, measured carefully, is worth
+    <strong>roughly 0.5 to 0.7 seconds</strong>. The dominant cost was never the parser; it was parsing 463
+    documents to discover that 21 of them carried a contract and none carried a visual declaration.
+    <mark>The cheap win was five times the expensive one</mark>, and it needed no dependency change.
+    On the merits, htmlparser2 is genuinely 3–4× faster on our corpus and agrees with parse5 on
+    <strong>4617 of 4617</strong> counts of this project's own elements. But the two disagree in 4 of 514 files, and
+    every one of those files has <em>already-malformed source</em> — so the divergence is concentrated in exactly
+    the documents a validator most needs to be right about. Two further findings reframe the choice: the largest
+    single parse cost is an <em>option</em> (<code>sourceCodeLocationInfo</code>, +18–47%) rather than a library, and
+    the malformed-nesting defect that prompted this cannot be fixed by swapping — a spec-compliant parser is
+    <em>required</em> to repair, and the faster alternative is more forgiving, not less. Recommendation: keep parse5,
+    make location info the first lever if parse time ever dominates again, and gate any future swap on a
+    differential test over the whole corpus rather than a benchmark.</p>
+  </spec-tldr>
+
+  <spec-audience-map>
+    <dl>
+      <dt>Exec / PM</dt><dd>§<a href="#ask">1 the ask</a> · §<a href="#recommendation">7 recommendation</a></dd>
+      <dt>Reviewer</dt><dd>§<a href="#divergence">4 divergence</a> · §<a href="#repair">5 repair</a> · §<a href="#caveats">8 caveats</a></dd>
+      <dt>Implementer</dt><dd>§<a href="#surface">2 the surface</a> · §<a href="#measurement">3 measurement</a> · §<a href="#locations">6 locations</a></dd>
+    </dl>
+  </spec-audience-map>
+</header>
+
+
+<section id="ask">
+<h2>1 · The ask, and where measuring moved it</h2>
+
+<p>The prompt was a good one: we keep getting near the performance window, and the HTML parser sits under every
+rule, so it is the obvious lever. The premise was right — and the lever turned out to be somewhere else.</p>
+
+<p>On the same day, two one-line changes landed that had nothing to do with which parser we use. Both contract
+scans and, briefly, the new visual scan each ran a full parse over <em>every</em> file before asking whether the
+file contained the element they were looking for. Adding a substring test before the parse cost nothing and
+removed most of the work:</p>
+
+<div style="overflow-x:auto;">
+<table>
+  <thead><tr><th>Change</th><th>Mechanism</th><th>Saved</th></tr></thead>
+  <tbody>
+    <tr><td>Contract scans (×2 per run)</td><td>substring test before the parse</td><td>~2.6&nbsp;s</td></tr>
+    <tr><td>Visual scan</td><td>same</td><td>~0.85&nbsp;s</td></tr>
+    <tr data-winner><td><strong>Total, no dependency change</strong></td><td></td><td><strong>~3.4&nbsp;s</strong></td></tr>
+    <tr><td>Swapping parse5 → htmlparser2</td><td>new dependency under every rule</td><td>~0.5–0.7&nbsp;s</td></tr>
+  </tbody>
+</table>
+</div>
+
+<p>Full-project validate went from roughly 5.9&nbsp;s to 3.7&nbsp;s against an 8&nbsp;s budget. That is the honest
+frame for everything below: <strong>the parser is now a minority of the cost</strong>, and a swap is a smaller
+lever than the one already pulled.</p>
+
+<spec-sidenote>The general lesson is older than this codebase and keeps having to be relearned: profile before
+substituting. The substitution is more interesting to think about, which is exactly why it gets reached for
+first.</spec-sidenote>
+</section>
+
+
+<section id="surface">
+<h2>2 · What we actually use from a parser</h2>
+
+<p>The surface is small enough to list completely. <code>packages/schema/src/parser.ts</code> exposes
+<code>parse</code>, <code>walk</code>, <code>findAll</code>, <code>getAttr</code>, <code>hasAttr</code> and
+<code>getLocation</code>, and one consumer reads raw text out of a node. Everything the tool does with HTML runs
+through those. Concretely, we depend on:</p>
+
+<ul>
+  <li><strong>Element identity</strong> — <code>tagName</code>, matched exactly.</li>
+  <li><strong>Attributes</strong> — name and value, read individually.</li>
+  <li><strong>Tree shape</strong> — <code>childNodes</code>, walked depth-first in source order.</li>
+  <li><strong>Text</strong> — a node's verbatim value, entities already decoded.</li>
+  <li><strong>Position</strong> — start line and column, for findings.</li>
+</ul>
+
+<p>That is the whole contract. Both candidates satisfy all five, which is why this is a real choice rather than a
+constrained one — and also why the choice matters less than it appears: nothing we do reaches for the parts of the
+HTML5 tree model the two parsers disagree about, <em>except</em> where a document is malformed. That exception is
+§4, and it turns out to carry the argument.</p>
+</section>
+
+
+<section id="measurement">
+<h2>3 · The measurement</h2>
+
+<p>Over this repository's 514 artifacts — 10.69&nbsp;MB of hand-authored spec HTML, which is a more honest corpus
+than a synthetic benchmark — with two warmup passes, seven iterations, and the whole thing repeated three times.
+The machine was noisy, so the spread is reported rather than hidden:</p>
+
+<div style="overflow-x:auto;">
+<table>
+  <thead><tr><th>Configuration</th><th>p50 across runs</th><th>Best observed</th></tr></thead>
+  <tbody>
+    <tr><td>parse5 + <code>sourceCodeLocationInfo</code> <em>(what we run)</em></td><td>858 · 944 · 940&nbsp;ms</td><td>699&nbsp;ms</td></tr>
+    <tr><td>parse5, no location info</td><td>584 · 643 · 794&nbsp;ms</td><td>541&nbsp;ms</td></tr>
+    <tr data-winner><td>htmlparser2 + <code>withStartIndices</code></td><td>371 · 225 · 236&nbsp;ms</td><td>189&nbsp;ms</td></tr>
+    <tr><td>htmlparser2, no indices</td><td>226 · 303 · 343&nbsp;ms</td><td>187&nbsp;ms</td></tr>
+  </tbody>
+</table>
+</div>
+
+<p>Comparing best-observed against best-observed, as the least noise-contaminated signal:
+<strong>htmlparser2 is about 3.7× faster, saving roughly 510&nbsp;ms</strong>. Across the three p50s the ratio
+ranged 2.3× to 4.2×. Either way the direction is unambiguous and the magnitude is a few hundred milliseconds.</p>
+
+<spec-note>
+<p>A first, unwarmed single pass reported 4.5× and 925&nbsp;ms, and put the location-info overhead at 214%. Both
+were overstatements produced by cold-start effects, and both were quoted before being re-measured. They are
+recorded here rather than quietly replaced, because the corrected numbers weaken the case for a swap and a reader
+should be able to see that the correction ran in that direction.</p>
+</spec-note>
+
+<p>This matches the published picture. htmlparser2 describes itself, in its own documentation, as
+<em>"the fastest HTML parser"</em> which <em>"takes some shortcuts to get there"</em>, and directs readers who need
+<em>"strict HTML spec compliance"</em> to parse5. That is a stated contract rather than a criticism. The only
+question worth asking is whether we need the part it skips.</p>
+</section>
+
+
+<section id="divergence">
+<h2>4 · Where the two disagree — and why it is the worst possible place</h2>
+
+<p>Every one of the 514 artifacts was parsed with both libraries and their element counts diffed. On this project's
+own vocabulary — <code>spec-requirement</code>, <code>spec-contract</code>, <code>spec-task</code>,
+<code>spec-status</code>, <code>spec-decision</code>, <code>spec-slo</code>, <code>spec-delta</code>,
+<code>spec-triage</code>, <code>spec-visual</code> — the two parsers agreed on <strong>4617 of 4617</strong> counts.
+Not approximately. Identically.</p>
+
+<p>Widening to every tag and attribute in the corpus found divergence in <strong>4 files of 514</strong>:</p>
+
+<div style="overflow-x:auto;">
+<table>
+  <thead><tr><th>File</th><th>Difference</th><th>Cause</th></tr></thead>
+  <tbody>
+    <tr><td><code>…/2026-07-06-task-row-emphasis-scope/proposal.html</code></td><td><code>strong</code>: 15 vs 9</td><td>A literal unescaped <code>&lt;strong&gt;</code> in prose — a real authoring bug, in the archive since July.</td></tr>
+    <tr><td><code>specs/050-stack-selection/design.html</code></td><td><code>code</code>: 95 vs 92</td><td>Improperly nested formatting elements; parse5 <em>clones</em> the element per the adoption-agency algorithm — one source offset yielding four elements.</td></tr>
+    <tr><td><code>specs/013-core-propose/tasks.html</code></td><td><code>code</code>: 46 vs 45</td><td>Same mechanism.</td></tr>
+    <tr><td><code>docs/…/03-lifecycle-canvas.html</code></td><td><code>style</code>, <code>div</code></td><td>A generated 1.8&nbsp;MB artifact, not hand-authored.</td></tr>
+  </tbody>
+</table>
+</div>
+
+<p>Read one way this is reassuring: the parsers agree everywhere the source is correct, and 99.2% of files are
+unaffected. Read the other way it is the argument against swapping. <strong>The divergence is perfectly correlated
+with malformation</strong> — and a validator's whole job is the malformed document. Changing to a parser that
+disagrees with the reference implementation precisely where documents are broken means changing what the tool sees
+in the cases that matter most, in exchange for a few hundred milliseconds.</p>
+
+<p>The mitigating detail is real and worth stating: the repair rules that produced every divergence
+(<em>adoption agency</em>, formatting-element reconstruction) apply to a fixed list of formatting elements —
+<code>code</code>, <code>strong</code>, <code>em</code> and their siblings. <strong>Custom elements are never on
+that list</strong>, so this project's own vocabulary is structurally immune. A rule that only ever asks about
+<code>spec-*</code> elements would not notice the difference. But rules do read prose content, and the copy-leak and
+quantified-NFR scans read text inside exactly those formatting elements.</p>
+</section>
+
+
+<section id="repair">
+<h2>5 · The defect that prompted this cannot be fixed by swapping</h2>
+
+<p>The immediate trigger was a typo: a design authored with <code>&lt;/spike&gt;</code> where
+<code>&lt;/spec-status&gt;</code> was meant, which <code>spectastic validate</code> reported as
+<em>no findings</em>. It is tempting to read that as a parser being too lenient.</p>
+
+<p>It is the opposite. <strong>A conforming HTML5 parser is required to repair rather than reject</strong> — error
+recovery is part of the specification, not a shortcut — so parse5 is behaving exactly as specified, and every
+browser does the same. The faster alternative is <em>more</em> forgiving, not less. Swapping would not have caught
+this and could not.</p>
+
+<p>parse5 does expose an <code>onParseError</code> hook, and it was tested rather than assumed. It reports
+tokenizer-level problems — <code>eof-in-tag</code>, unexpected characters in attribute names, malformed and missing
+doctypes — and reports <strong>nothing</strong> for tree-construction problems. A stray <code>&lt;/div&gt;</code>
+with no open <code>&lt;div&gt;</code> yields zero errors. So the hook does not close this gap either.</p>
+
+<p>What closes it is a check the tool does not currently run: a stack scan over the source that reports a close tag
+matching no open element. It needs no parser change, and it is orthogonal to this entire question — which is why it
+was filed as <a href="../specs/091-artifact-format/triage-log.html">091 triage T-001</a> and should not wait on
+anything here.</p>
+</section>
+
+
+<section id="locations">
+<h2>6 · The largest single cost is an option, not a library</h2>
+
+<p>Of the time parse5 spends, <code>sourceCodeLocationInfo: true</code> accounts for <strong>+18% to +47%</strong>
+(roughly 150–300&nbsp;ms across the corpus). We enable it unconditionally, for every parse, because a finding needs
+a line and column.</p>
+
+<p>But we use it for a vanishingly small fraction of what it computes. parse5 attaches location to every node in
+every document eagerly; a typical validate run reports zero findings and therefore reads zero locations. The
+information is computed 100% of the time and consumed almost never.</p>
+
+<p>htmlparser2's <code>withStartIndices</code> gives a byte offset instead, and converting an offset to a line and
+column needs a newline index — measured at <strong>28&nbsp;ms for the entire corpus</strong>, and computable lazily,
+only for files that actually produce a finding. That is the genuinely interesting architectural difference between
+the two options, and it is available in weaker form without changing library at all: location info could be enabled
+per-scan rather than globally, since the scans that only count elements never need it.</p>
+
+<p>Noted as the first lever to reach for if parse time ever dominates again — ahead of, and cheaper than, a
+swap.</p>
+</section>
+
+
+<section id="recommendation">
+<h2>7 · Recommendation</h2>
+
+<p><strong>Keep parse5.</strong> Not because htmlparser2 is unsuitable — it is fast, it agrees with parse5 on
+everything this project authors, and its own documentation is honest about the trade. Keep parse5 because the
+premise that motivated the question no longer holds: the parser is not where the time was going, the cheap fix
+already banked five times what a swap would, and the remaining headroom is comfortable.</p>
+
+<div style="overflow-x:auto;">
+<table>
+  <thead><tr><th>Option</th><th>Saves</th><th>Risk surface</th><th>Verdict</th></tr></thead>
+  <tbody>
+    <tr data-winner><td>Keep parse5</td><td>—</td><td>none</td><td><strong>Now</strong></td></tr>
+    <tr><td>Make location info conditional</td><td>~150–300&nbsp;ms</td><td>one module</td><td>If budget tightens</td></tr>
+    <tr><td>Swap to htmlparser2</td><td>~500–700&nbsp;ms</td><td>every rule</td><td>Only behind a differential harness</td></tr>
+  </tbody>
+</table>
+</div>
+
+<p>If a swap is ever revisited, the gate should not be a benchmark. It should be a <strong>differential test over
+the whole corpus</strong>: parse every artifact with both libraries and assert the findings are identical, not just
+the element counts. That harness is worth more than the decision it gates, because it is also how you discover that
+four of your documents have been quietly malformed for a year.</p>
+
+<spec-out-of-scope>
+  <ul>
+    <li defer-to="TBD-parser-lazy-locations">Making location info conditional per-scan, or deriving it lazily from offsets.</li>
+    <li defer-to="TBD-parser-differential-harness">The both-parsers differential test that would have to gate any future swap.</li>
+    <li defer-to="TBD-validate-parse-budget">A benchmark scenario that measures parse cost specifically, so this question can be re-asked with evidence rather than intuition.</li>
+    <li defer-to="TBD-corpus-malformed-backfill">Fixing the malformed nesting already in the corpus, once a check exists to find it.</li>
+  </ul>
+</spec-out-of-scope>
+</section>
+
+
+<section id="caveats">
+<h2>8 · Caveats</h2>
+
+<spec-assumption>
+<p>The machine was noisy throughout — the spread between best and worst iteration reached 2× on some
+configurations, and two benchmark processes were accidentally run concurrently at one point, producing a reading
+that was discarded. The ratios are stable across three repeats; the absolute milliseconds are not, and should be
+re-measured on a quiet machine before anyone relies on them.</p>
+</spec-assumption>
+
+<spec-assumption>
+<p>The agreement finding compares <em>element and attribute counts</em>, not full tree shape. Two parsers could
+produce identical counts with different nesting. A differential test over actual findings — the one recommended
+above — is the check that would settle it, and it has not been built.</p>
+</spec-assumption>
+
+<spec-assumption>
+<p>This evaluates the two candidates the question named. No other parser was measured, and no attempt was made to
+determine whether the tool needs a general HTML parser at all — a vocabulary this constrained might be served by
+something narrower, which is a larger question than the one asked.</p>
+</spec-assumption>
+</section>
+
+
+<section id="sources">
+<h2>9 · Sources</h2>
+<ol>
+  <li><a href="https://github.com/fb55/htmlparser2">htmlparser2 — <em>The fast &amp; forgiving HTML and XML parser</em></a>, project documentation. Retrieved 12 Aug 2026. Source of the self-description quoted in §3.</li>
+  <li><a href="https://github.com/inikulin/parse5/issues/89">parse5 issue #89 — <em>details about the pros/cons with htmlparser2</em></a>. Retrieved 12 Aug 2026.</li>
+  <li><a href="https://github.com/cheeriojs/cheerio/issues/1259">cheerio issue #1259 — <em>parse5 is about half the performance of htmlparser2</em></a>. Retrieved 12 Aug 2026. Prior art for a project that ships both and lets the caller choose.</li>
+  <li>Measurement over this repository's 514 artifacts (10.69&nbsp;MB), 12 Aug 2026. Method in §3.</li>
+</ol>
+</section>
+
+
+<section id="changelog">
+<h2>10 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-08-12">12 Aug 2026</time><span>Written after a mismatched closing tag passed validate silently, which raised the parser question. First-pass figures (4.5×, 925&nbsp;ms saved, 214% location overhead) came from an unwarmed single run and were corrected downward on re-measurement to roughly 3.7× and 510&nbsp;ms; the correction is recorded in §3 rather than replaced, since it moved against the swap.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  Considerations · Parser selection · authored 12 Aug 2026
+</footer>
+
+</main>
+<script src="../assets/spec.js"></script>
+</body>
+</html>

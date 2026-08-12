@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
+<title>091-artifact-format · Triage log</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Triage log · 091-artifact-format</p>
+  <h1>091-artifact-format — triage log</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    Defects against the <code>091-artifact-format</code> spec. Cards append-only; IDs stable.
+  </p>
+
+  <spec-meta>
+    <b>Spec</b>      <span><a href="./spec.html">091-artifact-format</a></span>
+    <b>Created</b>   <span><time datetime="2026-08-12">12 Aug 2026</time></span>
+    <b>Read time</b> <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-tldr>
+    <p>One card per debug session. Fits one screen; reads in under 30 seconds. Five required Tier-1 fields
+    (headline · Expected · Actual · Diagnosis · Fix); the deep-dive <code>&lt;details&gt;</code> stays collapsed
+    unless cross-spec, principles, scope, or hotfix-now applies. See <a href="../../examples/triage-log.html">examples/triage-log.html</a>
+    for the canonical look + the protocol (<code>TRIAGE-001</code>..<code>TRIAGE-006</code>).</p>
+  </spec-tldr>
+</header>
+
+
+<section id="cards">
+<h2>Cards</h2>
+<spec-triage-log>
+
+<spec-triage id="T-001" layer="spec">
+  <header>
+    <h4>A mismatched closing tag passes validate silently</h4>
+    <span class="meta">
+      <span class="layer-pill">Spec</span>
+      <span class="regen" data-result="fail">upstream</span>
+    </span>
+  </header>
+
+  <p class="headline">Debugging a design authored with <code>&lt;/spike&gt;</code> where
+  <code>&lt;/spec-status&gt;</code> was meant, root cause was a <strong>missing format requirement</strong> — no
+  spec asks that an artifact's source nesting be well-formed, so no rule checks it and every rule reads a tree the
+  parser has already silently repaired; fixed by stating well-formedness as a floor property of the artifact
+  format; regeneration <strong>fails</strong> — with nothing requiring it, a fresh session rebuilds the same
+  silence.</p>
+
+  <dl>
+    <dt>Expected</dt> <dd>A close tag matching no open element is reported, with a line and column.</dd>
+    <dt>Actual</dt>   <dd><code>spectastic validate</code> prints <em>no findings</em>. The document renders, and the typo is invisible to every check.</dd>
+    <dt>Diagnosis</dt><dd>Not a parser defect — HTML5 parsing is <em>defined</em> to repair rather than reject, so a conforming parser must accept this. parse5's <code>onParseError</code> surfaces tokenizer errors only (<code>eof-in-tag</code>, bad attribute names, doctype problems), and reports nothing for tree-construction errors: verified this session, a stray <code>&lt;/div&gt;</code> with no open <code>&lt;div&gt;</code> yields 0 errors. <a href="../002-validate-cli/spec.html#requirements">002-validate-cli</a> enumerates every rule the schema must carry and none of them is a well-formedness check, so the gap is a missing requirement rather than a missing implementation.</dd>
+    <dt>Fix</dt>      <dd><code>specs/091-artifact-format/spec.html</code> — propose a requirement that an artifact's source nesting be well-formed, with a validate rule at error severity. A stack scan over the source is enough and needs no parser change: the tool's own vocabulary is custom elements, which no tree-construction rule ever repairs or clones.</dd>
+  </dl>
+
+  <details>
+    <summary>Deep dive — scope-deferred, and the evidence it is not hypothetical</summary>
+
+    <p><strong>Four documents in the live corpus already carry malformed nesting</strong>, found by parsing all 513
+    artifacts with two independent parsers and diffing their element counts. The parsers agree everywhere except
+    where the source is already broken:</p>
+
+    <ul>
+      <li><code>specs/000-spectastic/changes/archive/2026-07-06-task-row-emphasis-scope/proposal.html</code> — a
+      <strong>genuine authoring bug</strong>: a literal unescaped <code>&lt;strong&gt;</code> in prose that should
+      have been escaped. It has been in the archive since 6 Jul and validate has never mentioned it.</li>
+      <li><code>specs/050-stack-selection/design.html</code> and <code>specs/013-core-propose/tasks.html</code> —
+      improperly nested formatting elements inside a code listing, which the HTML5 adoption-agency algorithm
+      repairs by <em>cloning</em> the element (one source offset yielding four elements in 050).</li>
+      <li><code>docs/vscode-lifecycle-brief/references/03-lifecycle-canvas.html</code> — a generated 1.8&nbsp;MB
+      artifact, not hand-authored.</li>
+    </ul>
+
+    <p><strong>Why the fix is small.</strong> Across the same 513 files the two parsers agreed on
+    <strong>4617 of 4617</strong> counts of this project's own <code>spec-*</code> elements. Every divergence was
+    in presentational HTML (<code>code</code>, <code>strong</code>, <code>div</code>, <code>style</code>), because
+    the repair rules that clone elements apply to <em>formatting</em> elements, which custom elements are not. So a
+    well-formedness check does not need a stricter parser — it needs a scan the tool does not currently run.</p>
+
+    <p><strong>Deferred, deliberately.</strong> Whether to change parser at all is a separate and larger question
+    (<a href="../../docs/parser-selection-considerations.html">parser-selection considerations</a>): a swap buys
+    roughly 925&nbsp;ms of the ~1192&nbsp;ms currently spent parsing, but puts a non-spec-compliant tree model under
+    every rule. This card does not depend on that answer, and should not wait for it.</p>
+  </details>
+</spec-triage>
+
+</spec-triage-log>
+</section>
+
+
+<section id="changelog">
+<h2>Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-08-12">12 Aug 2026</time><span>Triage log scaffolded, with <code>T-001</code>: a mismatched closing tag passes validate silently. Found while authoring 094's design — the typo was mine, and nothing caught it.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  091-artifact-format triage log · scaffolded 2026-08-12
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>
