@@ -959,6 +959,110 @@ and stays in the inbox as history — strikethrough, faded, with a DONE pill.</p
 </spec-triage>
 
 
+<spec-triage id="I-055" layer="spec">
+  <header>
+    <h4>Nothing requires an artifact to contain its own wide content — 154 of 227 overflow at phone width</h4>
+    <span class="meta">
+      <span class="layer-pill">Spec</span>
+      <span class="regen" data-result="fail">upstream</span>
+    </span>
+  </header>
+  <p class="headline">Debugging horizontal scroll on a considerations doc at 390&nbsp;px, root cause was a spec-layer gap — <a href="./specs/000-spectastic/spec.html">the meta-spec's</a> format requirements govern budgets, bands and copy but say nothing about an artifact staying readable at a narrow viewport, so every author is free to write a bare table and 90 of them have; fixed by a requirement that wide content must scroll inside its own container, with the template and generators following it; regeneration <strong>fails</strong>, because a new artifact authored from the current template reproduces the defect on its first table.</p>
+  <dl>
+    <dt>Expected</dt> <dd>An artifact opened at 390&nbsp;px scrolls vertically only; wide content — tables, code blocks, diagrams — scrolls inside its own container.</dd>
+    <dt>Actual</dt>   <dd>Measured across every doc, spec and design at 390&nbsp;px: <strong>154 of 227 artifacts overflow</strong>, worst at 752&nbsp;px against a 390&nbsp;px viewport. By first offending element: <strong>table 90</strong>, <code>pre</code>/<code>code</code> 21, <code>dl</code> 8, other 35.</dd>
+    <dt>Diagnosis</dt><dd>A convention with no requirement behind it. <code>templates/design.html</code> ships 4 bare tables, so every design copies the pattern; nothing in <a href="./specs/091-artifact-format/spec.html">091</a> or the meta-spec's <code>REQ-FORMAT-*</code> family forbids it. Fixing only the template leaves 154 artifacts wrong and does not stop the next bare table, which is why the ladder stops at <code>spec</code> rather than <code>just-do</code>.</dd>
+    <dt>Fix</dt>      <dd>A <code>/spectastic.propose</code> against <a href="./specs/091-artifact-format/spec.html">091</a> or the meta-spec adding the containment requirement, then the mechanical work in I-056 to I-058 beneath it.</dd>
+  </dl>
+  <details>
+    <summary>Deep dive — how the diagnosis was corrected</summary>
+    <p>An earlier pass measured two files and concluded the cause was the design system's two-column <code>&lt;dl&gt;</code> grid. Measured across the whole estate, <code>dl</code> is <strong>8 of 154</strong> and unwrapped tables are 90 — a per-document authoring defect, not a stylesheet one. The correction matters because it moves the fix from <code>assets/spec.css</code> to a requirement plus a sweep. Recorded rather than quietly replaced.</p>
+    <p><spec-sidenote>Sidenotes were suspected and are innocent. Measured at 390, 700, 900, 1099, 1101, 1200, 1440 and 1920&nbsp;px, <code>&lt;spec-sidenote&gt;</code> never escapes the viewport — it floats into a −14&nbsp;rem gutter above 1100&nbsp;px and collapses to a bordered block below, including at 1101&nbsp;px where the float first engages. The pattern is safe to use more heavily; it is not implicated in this defect.</spec-sidenote></p>
+  </details>
+</spec-triage>
+
+<spec-triage id="I-056" layer="just-do">
+  <header>
+    <h4><code>templates/design.html</code> ships 4 bare tables and 5 hardcoded hex values</h4>
+    <span class="meta">
+      <span class="layer-pill">Just do</span>
+      <span class="regen" data-result="fail">upstream</span>
+    </span>
+  </header>
+  <p class="headline">Debugging why 83 designs share the same two rendering defects, root cause was the template they are all copied from — its tables carry no scroll container and its architecture sketch hardcodes five hex values instead of theme variables; fixed by editing one file; regeneration <strong>fails</strong> until it is, because every new design inherits both.</p>
+  <dl>
+    <dt>Expected</dt> <dd>A design authored from the template scrolls its tables internally and renders its diagram in the reader's mode.</dd>
+    <dt>Actual</dt>   <dd>4 bare <code>&lt;table&gt;</code> elements and an inline <code>&lt;style&gt;</code> block with 5 literal hex values in the <code>&lt;spec-arch&gt;</code> sketch. 59 of the 71 designs carrying a sketch have inherited the hardcoding; 7 use theme variables.</dd>
+    <dt>Diagnosis</dt><dd>Template-level propagation. The frame themes off <code>var(--c-surface)</code> while its contents do not, so a dark-mode reader gets a light island inside a dark card.</dd>
+    <dt>Fix</dt>      <dd><span class="path">templates/design.html</span> — wrap each table in an <code>overflow-x:auto</code> container and replace the sketch's literal hex with theme variables carrying literal fallbacks. One file, no contract change, revert-safe.</dd>
+  </dl>
+  <spec-diff>
+<del>    .box  { fill:#fcfbf7; stroke:#c4c1bb; stroke-width:1.2; }</del>
+<ins>    .box  { fill: var(--c-surface-raised, #fcfbf7); stroke: var(--c-border, #c4c1bb); stroke-width: 1.2; }</ins>
+  </spec-diff>
+</spec-triage>
+
+<spec-triage id="I-057" layer="implementation">
+  <header>
+    <h4><code>verify.ts</code> emits 2 unwrapped tables into every generated view</h4>
+    <span class="meta">
+      <span class="layer-pill">Implementation</span>
+      <span class="regen" data-result="pass">code</span>
+    </span>
+  </header>
+  <p class="headline">Debugging horizontal overflow in a generated verify view, root cause was the generator — <code>renderVerifyHtml</code> writes the trace and observables tables with no scroll container; fixed by wrapping them at the point of emission; regeneration <strong>passes</strong>, because the spec and design describe the trace's content and never its containment, so the drift is purely in code.</p>
+  <dl>
+    <dt>Expected</dt> <dd>A generated <code>verify.html</code> scrolls its trace table internally at a narrow viewport.</dd>
+    <dt>Actual</dt>   <dd>2 bare tables per view, 0 wrappers, in all 70 generated views — confirmed across several including specs 048 and 083.</dd>
+    <dt>Diagnosis</dt><dd>A generator emitting markup that the hand-authored artifacts wrap by convention. Because the views are generated, the fix propagates on the next regeneration rather than needing a sweep of the files themselves.</dd>
+    <dt>Fix</dt>      <dd><span class="path">packages/core/src/commands/verify.ts</span> — emit each table inside an <code>overflow-x:auto</code> container in <code>renderVerifyHtml</code>. Owned by <a href="./specs/021-verify-view/spec.html">021</a>; a copy of this card belongs in its triage log.</dd>
+  </dl>
+</spec-triage>
+
+<spec-triage id="I-058" layer="just-do">
+  <header>
+    <h4>Backfill the estate — 154 overflowing artifacts and 59 hardcoded sketches</h4>
+    <span class="meta">
+      <span class="layer-pill">Just do</span>
+      <span class="regen" data-result="pass">code</span>
+    </span>
+  </header>
+  <p class="headline">Debugging what to do about artifacts already written, root cause was that a template fix is forward-only and leaves the existing estate wrong; fixed by sweeping them, which the owner has chosen over the forward-only precedent; regeneration <strong>passes</strong>, because once I-055 lands nothing reintroduces the defect.</p>
+  <dl>
+    <dt>Expected</dt> <dd>Every artifact in the repository reads at 390&nbsp;px and renders its diagrams in the reader's mode.</dd>
+    <dt>Actual</dt>   <dd>154 of 227 artifacts overflow; 59 of 71 architecture sketches hardcode their colours.</dd>
+    <dt>Diagnosis</dt><dd><a href="./specs/069-design-contract-section/spec.html">069</a>'s D-008 set a forward-only precedent for template changes, on P-6. That case was a <em>missing</em> section; these artifacts are actively wrong at a common viewport and in dark mode, which is already a weaker fit. The decisive reason is forward-looking rather than aesthetic: <strong>the moment I-055's requirement is enforced, 154 pre-existing artifacts become findings</strong>. A gate that fires on the whole estate on the day it is switched on is a gate people turn off — the same reasoning <code>packages/core/src/enforce/detect.ts:557</code> already records, that a false failure trains teams to disable the gate while a missed nudge stays covered by the advisory floor. Backfilling first is what keeps the check credible enough to be worth having.</dd>
+    <dt>Fix</dt>      <dd>Two mechanical sweeps: wrap unwrapped tables and code blocks, and replace hardcoded SVG hex with theme variables. Scripted with a per-file validate afterwards. Sequenced after I-055 so the requirement exists before the estate is made to meet it.</dd>
+  </dl>
+  <details>
+    <summary>Deep dive — why this is a large diff and still just-do</summary>
+    <p>It touches artifacts belonging to accepted specs, which normally argues for a proposal. It stays <code>just-do</code> because it changes no requirement, no contract and no behaviour — it is a rendering correction with a mechanical, reviewable and revertible shape. The <code>other</code> bucket in the scan (35 artifacts) has not been characterised and may not be mechanical; that part should be measured before it is swept.</p>
+  </details>
+</spec-triage>
+
+
+<spec-triage id="I-059" layer="just-do">
+  <header>
+    <h4>No template offers a sidenote, so the one command that recommends them is ignored</h4>
+    <span class="meta">
+      <span class="layer-pill">Just do</span>
+      <span class="regen" data-result="fail">upstream</span>
+    </span>
+  </header>
+  <p class="headline">Debugging why specs carry almost no marginalia while considerations docs are full of it, root cause was that the recommendation lives only in command markdown — <code>spectastic.spec.md</code> tells the author to use one and no template scaffolds it; fixed by a commented exemplar in the spec and design templates; regeneration <strong>fails</strong>, because a spec authored from the current template still offers the author nothing to fill in.</p>
+  <dl>
+    <dt>Expected</dt> <dd>An author writing a spec is offered a sidenote the way they are already offered a <code>&lt;spec-note&gt;</code> and a <code>&lt;spec-assumption&gt;</code>.</dd>
+    <dt>Actual</dt>   <dd><strong>107 sidenotes across 22 files in <code>docs/</code>, 6 across 4 files in <code>specs/</code>, and 0 in any of the 8 templates.</strong> <code>commands/spectastic.spec.md:93</code> says <em>"Use <code>&lt;spec-sidenote&gt;</code> for marginalia that would interrupt flow"</em> — the instruction exists and produces almost nothing.</dd>
+    <dt>Diagnosis</dt><dd>Advisory markdown against a scaffold that stays silent, which is the pattern <a href="./docs/guarantee-layer-considerations.html">T-009</a> and P-8 both record: what ships in the template is what gets written. The element itself is sound — measured at eight widths from 390&nbsp;px to 1920&nbsp;px it never escapes the viewport, floating into a −14&nbsp;rem gutter above 1100&nbsp;px and collapsing to a bordered block below. Not unique to sidenotes: <code>&lt;spec-warning&gt;</code>, <code>&lt;spec-tip&gt;</code> and <code>&lt;spec-example&gt;</code> are also scaffolded 0 times.</dd>
+    <dt>Fix</dt>      <dd><span class="path">templates/spec.html</span> and <span class="path">templates/design.html</span> — add a commented, omittable exemplar following the optional-MADR-rows precedent at <code>templates/design.html:201-213</code>, with one line on when to reach for it: a <code>&lt;spec-note&gt;</code> is in the flow and must not be missed, a <code>&lt;spec-sidenote&gt;</code> is an aside the reader may skip without losing the argument. One change per template, no contract change, revert-safe.</dd>
+  </dl>
+  <details>
+    <summary>Deep dive — scope of the fix</summary>
+    <p>Scaffolding all four unoffered aside elements at once would crowd the templates, which is the opposite failure — a scaffold nobody reads because it is mostly commented-out examples. The sidenote is the one with a standing recommendation behind it and a measured usage gap, so it goes first; the other three are worth a separate look only if the same gap shows up for them.</p>
+    <p><spec-sidenote>This card is itself an example of the shape it describes — an aside that would have interrupted the diagnosis above, carried alongside it instead. Written here partly to check the element renders correctly inside a triage card, which it does.</spec-sidenote></p>
+  </details>
+</spec-triage>
+
 
 </spec-triage-log>
 </section>
@@ -968,6 +1072,8 @@ and stays in the inbox as history — strikethrough, faded, with a DONE pill.</p
 <h2>3 · Change log</h2>
 <spec-changelog>
 <ol>
+  <li><time datetime="2026-08-12">12 Aug 2026</time><span>I-059 added (<code>just-do</code>, regen <code>fail</code>) — no template scaffolds a <code>&lt;spec-sidenote&gt;</code>, so the recommendation in <code>spectastic.spec.md:93</code> produces 6 sidenotes across <code>specs/</code> against 107 across <code>docs/</code>. I-058's diagnosis corrected: the reason for backfilling rather than following 069's forward-only precedent is that enforcing I-055 against an unswept estate would fire on 154 artifacts at once, and a gate that does that is a gate people disable.</span></li>
+  <li><time datetime="2026-08-12">12 Aug 2026</time><span>I-055 to I-058 added from a list intake. I-055 (<code>spec</code>, regen <code>fail</code>) — measured at 390&nbsp;px, <strong>154 of 227 artifacts overflow</strong> and nothing requires containment; the root of the other three. I-056 (<code>just-do</code>) — the design template's 4 bare tables and 5 hardcoded hex values, inherited by 83 designs. I-057 (<code>implementation</code>) — <code>verify.ts</code> emits 2 unwrapped tables into all 70 generated views; belongs to <a href="./specs/021-verify-view/spec.html">021</a>. I-058 (<code>just-do</code>) — the backfill sweep, chosen over 069 D-008's forward-only precedent because these artifacts are actively wrong rather than merely incomplete. An earlier diagnosis blaming the <code>&lt;dl&gt;</code> grid was corrected by the full scan: <code>dl</code> is 8 of 154, unwrapped tables are 90. Sidenotes were suspected and cleared — measured across eight widths, they never escape the viewport.</span></li>
   <li><time datetime="2026-08-03">03 Aug 2026</time><span>I-054 added (<code>spec</code>, regen <code>fail</code>) — <code>design.stackInterview</code> is documented in the README and honoured by the design command's markdown, but read by no package. Surfaced while building the configuration registry, which per 086 FR-007 must not declare a key that nothing implements.</span></li>
   <li><time datetime="2026-08-02">02 Aug 2026</time><span>I-052 and I-053 added (both <code>just-do</code>) — the three genuine Run/Demo gaps the verify-view actionability survey separated from its format argument: 046 materialised a block with all four fields empty, and 047/048 recorded no run command despite both needing <code>@spectastic/schema</code> rebuilt.</span></li>
   <li><time datetime="2026-08-01">01 Aug 2026</time><span>I-050 added (<code>just-do</code>) — <code>CLAUDE.md</code>'s 046 bullet calls <code>docs/**</code> "clean today" when a validate run reports five findings; prose correction. I-051 added (<code>defer</code> → <code>TBD-docs-security-scan</code>) — those five are all false positives of two classes (a bundler output, and a deliberately-illustrative stale citation), so the deferred docs scan cannot be enabled by widening the glob.</span></li>
