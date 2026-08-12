@@ -1,0 +1,450 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
+<title>A stamp in a design file is not data — Considerations for Spectastic</title>
+<meta name="description" content="Design tooling has a shared annotation vocabulary and no schema for it; the de facto standard ships as a component library. A survey of whether to build an annotating surface, what format it should speak, and where it should run given that the person doing the annotating is usually not a developer.">
+<link rel="stylesheet" href="../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../assets/favicon.svg">
+<script src="../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Considerations · Annotation surface</p>
+  <h1>A stamp in a design file is not data</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    Everyone agrees what the categories are. Nobody has written them down in a form a program can read — and the standard that would have solved it has been a Recommendation since 2017.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>     <span><spec-status value="draft">Draft</spec-status></span>
+    <b>Type</b>       <span>Architecture &amp; landscape survey</span>
+    <b>Author</b>     <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Created</b>    <span><time datetime="2026-08-12">12 Aug 2026</time></span>
+    <b>Companion</b>  <span><a href="./visual-spec-considerations.html">visual-spec</a></span>
+    <b>Sources</b>    <span>11 external, retrieved 12 Aug 2026 · codebase audit</span>
+    <b>Read time</b>  <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-tldr>
+    <p>The parent survey established that the industry's annotation vocabulary — behaviour, requirement, animation,
+    API, tracking, accessibility, content — is broadly agreed and exists nowhere as a schema. <mark>The de facto
+    accessibility standard ships as a design-tool component library under a content licence</mark>, which means the
+    most careful annotation work in the field is drawings of data. This survey asks whether to build a surface that
+    produces the real thing, and finds that the hard part is already solved. <strong>The W3C Web Annotation Data
+    Model has been a Recommendation since February 2017</strong>, alongside a Vocabulary and a Protocol, and its
+    architecture is the one this problem needs: annotations live <em>separately</em> from what they annotate and are
+    re-anchored when the target is present. That single property answers the two objections that would otherwise
+    sink an external annotator — a redesign moving every coordinate, and a designer in their own tool being unable
+    to see what a developer wrote. So the question is adoption, not invention, and the build shrinks to an editor
+    plus a mapping. On where that editor runs, the evidence corrects an earlier instinct: annotation is
+    <strong>empirically a designer activity</strong>, so the first surface belongs in the tool the designer already
+    has open, not in a code editor. What the editor must never become is the authority — the annotations are the
+    project's, in the project's repository, which is the same posture the parent survey took on design tools
+    generally.</p>
+  </spec-tldr>
+
+  <spec-audience-map>
+    <dl>
+      <dt>Exec / PM</dt>   <dd>The TL;DR, then §<a href="#recommendation">9</a> — three slices and what each buys.</dd>
+      <dt>Reviewer</dt>    <dd>§<a href="#peers">3</a> the standard nobody adopted, then §<a href="#caveats">10</a>.</dd>
+      <dt>Implementer</dt> <dd>§<a href="#adopt">4</a> the model · §<a href="#anchor">6</a> anchoring · §<a href="#surfaces">7</a> where it runs.</dd>
+      <dt>Designer</dt>    <dd>§<a href="#ask">1</a> who actually annotates · §<a href="#surfaces">7</a> · §<a href="#editor">8</a> the editor question.</dd>
+      <dt>In a hurry</dt>  <dd>Adopt the Recommendation. Store the annotations apart from the design. Put the first editor where the designer already is. §<a href="#recommendation">9</a>.</dd>
+    </dl>
+  </spec-audience-map>
+</header>
+
+<!-- ======================================================= -->
+<section id="ask">
+<h2>1 · The ask — annotate anywhere, and a question about who</h2>
+
+<p><spec-newthought>The parent survey left annotation half-built on purpose.</spec-newthought>
+<a href="../specs/095-visual-element-vocabulary/spec.html">095</a> says what an annotation <em>is</em> — typed by
+accessibility role and state, so a declaration doubles as an assertion. Nothing says how one comes into existence.
+The design interview never asks for one, no scaffold produces one, and the import path was deferred to a slug scoped
+to tokens and renders that would have dropped it silently. The vocabulary has no author.</p>
+
+<p>The ask is a surface that produces annotations against any of the five design sources, because none of them
+agrees with the others and two of them have no annotation concept at all. But the more consequential question is
+underneath it, and it is about people rather than formats: <strong>who does the annotating?</strong></p>
+
+<p><spec-newthought>The evidence says designers do.</spec-newthought> The accessibility annotation kits that are the
+field's de facto standard were built by an inclusive-design team and are consumed by designers placing stamps on
+frames. Zeplin's own documentation puts it plainly — <em>"during handoff, designers will add annotations to help
+document how a design should behave"</em>. Figma's annotations live in Dev Mode, authored by the designer for the
+developer to read. In all three, the author is on the design side and the reader is on the engineering side.</p>
+
+<p>That is not the whole picture, and the boundary is genuinely moving. The <em>data</em> layer — what the screen
+fetches and what happens when it fails — is an engineering concern. The <em>tracking</em> layer is a product one.
+A single-persona tool would be wrong about a third of its own vocabulary. But "sometimes a developer annotates" is
+a much weaker claim than "usually a designer does", and a first surface has to be built for the usual case.</p>
+
+<spec-sidenote>Worth separating two things this survey keeps distinct: the <em>authoring</em> gap, which is that nobody is asked for an annotation, and the <em>import</em> gap, which is that a design tool carrying annotations has no route into the project. The first is cheap and belongs with the authoring layer already specced. The second is what a surface or an adapter solves. They are often discussed as one problem and have different answers.</spec-sidenote>
+</section>
+
+<!-- ======================================================= -->
+<section id="audit">
+<h2>2 · The audit — what the five sources can actually carry</h2>
+
+<p>The parent survey's five sources do not merely disagree about annotation format. Two of them have no concept of
+one, which rules out any design that assumes a canvas to annotate on.</p>
+
+<div style="overflow-x:auto;">
+<table>
+  <thead><tr><th>Source</th><th>Annotation concept</th><th>Programmatic access</th><th>What an annotator could attach to</th></tr></thead>
+  <tbody>
+    <tr><td><strong>Figma</strong></td><td>Yes — Dev Mode annotations, in named categories</td><td>Plugin and REST, read <em>and</em> write, including in bulk</td><td>A node id</td></tr>
+    <tr><td><strong>Penpot</strong></td><td>Yes — distinct from comments, surfaced in the Inspect tab; a free-placement annotation layer is an open community request</td><td>Plugin API with explicit comment read and write permissions</td><td>A node id, or a comment</td></tr>
+    <tr><td><strong>Sketch</strong></td><td>Yes — annotations on the canvas, with browser-based handoff needing no plugin</td><td>Plugin ecosystem</td><td>A layer</td></tr>
+    <tr><td><strong>Google Stitch</strong></td><td><strong>None.</strong> It emits HTML and CSS</td><td>Its output <em>is</em> the artifact</td><td>A DOM node</td></tr>
+    <tr><td><strong>Claude Design</strong></td><td><strong>None.</strong> It emits an artifact for a coding agent</td><td>Its output <em>is</em> the artifact</td><td>A DOM node</td></tr>
+  </tbody>
+</table>
+</div>
+
+<p><spec-newthought>The two AI-native tools are the interesting column.</spec-newthought> They have no annotation
+feature to integrate with, no canvas to place a stamp on, and no file to write back to — and they are the two
+growing fastest. A design premised on plugins would serve three tools and structurally exclude two, which is exactly
+backwards from where the market is moving.</p>
+
+<p>The other half of the audit is what the field's most careful annotation work actually is. The accessibility
+annotation kits — landmarks, headings, focus order, reading order, the whole apparatus — are distributed under a
+content licence as <strong>design-tool component libraries</strong>. There is no JSON, no schema, no code output.
+A team that annotates diligently using them produces a beautifully organised set of <em>drawings of data</em>,
+which a developer reads with their eyes and retypes. That is the gap, and it is not a tooling gap so much as a
+representation one.</p>
+</section>
+
+<!-- ======================================================= -->
+<section id="peers">
+<h2>3 · The peer record — the standard design tooling never adopted</h2>
+
+<p><spec-newthought>There is no cross-tool annotation product.</spec-newthought> Searching for one returns design-tool
+comparisons and screenshot utilities. The premise that nothing exists is correct as far as <em>design</em> tooling
+goes.</p>
+
+<p>It is not correct about the web. <strong>Annotation became a W3C standard on 23 February 2017</strong>, as three
+Recommendations: a Data Model, a Vocabulary and a Protocol. The Data Model is built on exactly the shape this
+problem needs — an annotation has a <em>body</em> and a <em>target</em>, and the target carries one or more
+<em>selectors</em> describing which part of the resource is meant. The selector types map onto the audit above with
+uncomfortable precision:</p>
+
+<div style="overflow-x:auto;">
+<table>
+  <thead><tr><th>Source shape</th><th>Selector</th><th>Robust against redesign?</th></tr></thead>
+  <tbody>
+    <tr><td>An emitted HTML artifact — Stitch, Claude Design, a running app</td><td><code>CssSelector</code>, <code>XPathSelector</code></td><td>Largely, if the selector is semantic</td></tr>
+    <tr><td>A region drawn over a render — the pin-and-lasso pattern the kits already use</td><td><code>SvgSelector</code></td><td>No</td></tr>
+    <tr><td>A rectangle on an image</td><td><code>FragmentSelector</code> (<code>#xywh=</code>)</td><td>No</td></tr>
+    <tr><td>A node in a design tool</td><td>A tool-specific IRI</td><td>Yes, while the node exists</td></tr>
+    <tr><td>A phrase of visible copy</td><td><code>TextQuoteSelector</code></td><td>Surprisingly well</td></tr>
+  </tbody>
+</table>
+</div>
+
+<p>And the model permits <strong>several selectors on one target</strong>, which is the property that makes the
+whole thing work rather than merely fit.</p>
+
+<p><spec-newthought>The architecture matters more than the vocabulary.</spec-newthought> The standard's own framing
+is that <em>"annotations live separately from documents and are reunited and reanchored in real-time whenever the
+relevant document is present"</em>, and that this puts them <em>"under the control and election of the user, rather
+than at the sole discretion of the publisher"</em>. Read that against this problem: the annotations belong to the
+project rather than to whichever design tool the team is paying for this year, and they are re-anchored against
+whatever representation is to hand. That is not a convenient analogy — it is the same problem the standard was built
+for, one domain over.</p>
+
+<p>It is also implemented rather than theoretical. The reference client passed three million annotations in 2018,
+and the client-server pattern it grew from was the most widely adopted early implementation. This is a standard with
+running code, which is a different thing from a standard with a specification.</p>
+
+<spec-sidenote>The parent survey made the same kind of find twice, and it is becoming a pattern worth naming: the corpus turned out to be the model for a vendored component, the contract chassis turned out to be the model for a design system, and now a scholarly-annotation Recommendation turns out to be the model for design annotation. In each case the alternative was inventing a format. The discipline that keeps paying off is looking for the existing answer before designing the new one.</spec-sidenote>
+</section>
+
+<!-- ======================================================= -->
+<section id="adopt">
+<h2>4 · Adopt the Recommendation, do not invent a format — D-001</h2>
+
+<spec-matrix target="D-001">
+<div style="overflow-x:auto;">
+<table>
+  <thead>
+    <tr><th>Option</th><th>Anchoring</th><th>Tool independence</th><th>Cost to build</th><th>Interop</th><th>Rot resistance</th><th class="score">Total</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>A · A local annotation format</strong> — design one to fit the vocabulary</td>
+      <td>2</td><td>4</td><td>2</td><td>0</td><td>2</td><td class="score">10</td>
+    </tr>
+    <tr>
+      <td><strong>B · Adopt one tool's model</strong> — mirror the dominant design tool's annotation shape</td>
+      <td>3</td><td>0</td><td>4</td><td>2</td><td>1</td><td class="score">10</td>
+    </tr>
+    <tr>
+      <td><strong>C · Extend the corpus provenance model</strong> — reuse what is already here</td>
+      <td>0</td><td>4</td><td>4</td><td>1</td><td>3</td><td class="score">12</td>
+    </tr>
+    <tr data-winner>
+      <td><strong>D · Adopt the W3C Web Annotation Data Model</strong> — body, target, selectors</td>
+      <td>5</td><td>5</td><td>3</td><td>5</td><td>5</td><td class="score">23</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+</spec-matrix>
+
+<p>Option C is worth a word because it is the one this project would normally reach for. The corpus's provenance
+model is the right shape for <em>where a thing came from</em> and has nothing at all to say about <em>which part of
+a resource an annotation is about</em>, which is the entire problem here. Reusing it would mean inventing selectors
+anyway and calling the result a corpus extension. Option B fails on the one requirement that started this: it would
+serve three sources and exclude the two with no annotation concept.</p>
+
+<spec-decision id="D-001" grounding="verified">
+  <h4>D-001 · The interchange format is the W3C Web Annotation Data Model</h4>
+  <dl>
+    <dt>Status</dt><dd><spec-status value="draft">Proposed</spec-status></dd>
+    <dt>Context</dt><dd>Design tooling has an agreed annotation vocabulary and no schema; the field's de facto accessibility standard is distributed as component libraries. Meanwhile a W3C Recommendation from February 2017 defines body, target and a family of selectors covering DOM nodes, drawn regions, image fragments, quoted text and arbitrary resource identifiers, permits several selectors per target, and has a reference implementation with millions of annotations behind it.</dd>
+    <dt>Decision</dt><dd>Adopt the Web Annotation Data Model as the interchange format. Express <a href="../specs/095-visual-element-vocabulary/spec.html">095</a>'s accessibility-typed annotation as a body against that model rather than as a parallel schema, and map the design tools' category names onto it at the edges. Invent no selector types and no target model.</dd>
+    <dt>Consequences</dt><dd>+ The hardest part — robust anchoring across resources that are not all the same kind of thing — is specified, implemented and stable rather than something to design. + Annotations become readable by anything that speaks the standard, which is a larger world than design tooling and includes the accessibility and publishing communities the vocabulary came from. − The model is heavier than this problem strictly needs, carrying provenance, motivation and agent concepts that will mostly go unused, and a subset that is really a local format wearing a standard's name would be worse than either. − Nothing in design tooling speaks it today, so interoperability is a claim about the future rather than a benefit on day one.</dd>
+  </dl>
+</spec-decision>
+</section>
+
+<!-- ======================================================= -->
+<section id="store">
+<h2>5 · Annotations live apart from what they annotate — D-002</h2>
+
+<p><spec-newthought>This is the decision that makes an external annotator viable at all.</spec-newthought> The
+obvious objection to annotating anywhere other than inside the design file is that the design file is where the
+stamps stay attached: a frame moves and its annotations move with it. Anything outside loses that, which is why the
+accessibility kits are Figma components and not a data format.</p>
+
+<p>The standard's answer is to invert the relationship. Annotations are their own resource, stored independently,
+and re-anchored against the target whenever the target is available. The consequences for this problem are exact:
+the annotations live in the project's repository under the sidecar convention already specced, they survive the team
+changing design tools, they survive a source that was never a design tool at all, and a design tool that gains the
+ability to display them can be given them — because they were never locked inside a different one.</p>
+
+<spec-decision id="D-002" grounding="verified">
+  <h4>D-002 · The annotation store is the project's, and the design tool is never the authority</h4>
+  <dl>
+    <dt>Status</dt><dd><spec-status value="draft">Proposed</spec-status></dd>
+    <dt>Context</dt><dd>Annotations held inside a design file are attached but captive: unreadable without a seat, lost on a tool migration, and impossible for the two sources that have no file. The standard's architecture stores annotations separately and re-anchors them when the target is present, explicitly so that they answer to the annotator rather than to the publisher.</dd>
+    <dt>Decision</dt><dd>Annotations are stored in the project, under the visual sidecar convention, as the authoritative copy. A design tool may be a <em>source</em> of annotations by import and a <em>destination</em> by export, and is never consulted as the authority at validate or measure time — the same posture the parent survey took on design tools generally, applied to a second kind of content.</dd>
+    <dt>Consequences</dt><dd>+ Annotations outlive the tool, the seat and the vendor, and become reviewable in the same place as everything else the project asserts. + It makes an export path to a design tool a feature rather than a reversal, since the project already holds the canonical copy. − The designer's own tool stops being where the truth lives, which is a real loss of convenience for the person most likely to be writing them. − A stored annotation can be re-anchored wrongly and look right; unlike a Figma stamp, nothing physically drags it along when the design moves.</dd>
+  </dl>
+</spec-decision>
+</section>
+
+<!-- ======================================================= -->
+<section id="anchor">
+<h2>6 · Anchor semantically, with coordinates as the fallback — D-003</h2>
+
+<p>Re-anchoring is only as good as what the annotation points at. A rectangle at <em>(120, 340)</em> means nothing
+after a redesign; <em>the button whose accessible name is "Convert"</em> survives almost anything short of a rename.
+The model permits both on one target, so the choice is not either-or — it is which is preferred and what happens
+when the preferred one is unavailable.</p>
+
+<p>Anchoring quality therefore varies by source, and that variation is a property of the source rather than a
+shortcoming of the design. An emitted HTML artifact supports the strongest anchors. A design tool node id is stable
+while the node exists. A raster render supports only geometry — which is the honest reason the weakest anchoring
+belongs to exactly the workflow that is otherwise most convenient.</p>
+
+<spec-decision id="D-003" grounding="verified">
+  <h4>D-003 · A semantic anchor is preferred, a geometric one is a recorded fallback</h4>
+  <dl>
+    <dt>Status</dt><dd><spec-status value="draft">Proposed</spec-status></dd>
+    <dt>Context</dt><dd>The model allows several selectors per target. 095 already types annotations by accessibility role and state, so a semantic anchor is available wherever an accessibility tree is — which is every emitted artifact and every running surface, but no raster image.</dd>
+    <dt>Decision</dt><dd>An annotation records the strongest anchor its source supports and <spec-rule>MAY</spec-rule> record weaker ones alongside. A geometric-only anchor is valid and is marked as such, so a reader can tell an annotation that will survive a redesign from one that will not. Re-anchoring failure is reported rather than silently resolved to the nearest match.</dd>
+    <dt>Consequences</dt><dd>+ 095's accessibility typing turns out to buy two things rather than one: an assertion, and a durable anchor. + The fragility of an annotation becomes visible in the annotation itself rather than discovered when a redesign lands. − It makes the raster workflow visibly second-class, which is the workflow a designer exporting a PNG will reach for first. − "Reported rather than silently resolved" means a redesign produces a pile of re-anchoring failures for a human to work through, and nothing here makes that pile smaller.</dd>
+  </dl>
+</spec-decision>
+</section>
+
+<!-- ======================================================= -->
+<section id="surfaces">
+<h2>7 · One model, several surfaces — D-004</h2>
+
+<p><spec-newthought>The framing that resolves the plugin question is that this is not one tool.</spec-newthought>
+The standard ships a Data Model, a Vocabulary <em>and</em> a Protocol, and the Protocol exists precisely so that
+different clients can read and write the same store. Once the model is settled, an editor is a client, and clients
+can be justified one at a time by who uses them rather than argued about in the abstract.</p>
+
+<div style="overflow-x:auto;">
+<table>
+  <thead><tr><th>Surface</th><th>Reaches</th><th>Cost</th><th>Anchoring available</th></tr></thead>
+  <tbody>
+    <tr><td>A plugin in the designer's tool</td><td>The usual author, in the file they already have open</td><td>One codebase and one review process <em>per tool</em>, coupled to a vendor API</td><td>Strongest — real node ids, and the stamps move with the frames</td></tr>
+    <tr><td>An overlay on an emitted artifact</td><td>The two AI-native sources, and any running app</td><td>One codebase, no vendor coupling</td><td>Strong — semantic selectors against a live tree</td></tr>
+    <tr><td>An overlay on a render</td><td>Anyone with a screenshot, including tools nobody integrated</td><td>Shared with the above</td><td>Weakest — geometry only</td></tr>
+    <tr><td>The editor extension</td><td>Developers, and the engineering-side categories</td><td>Infrastructure already exists here</td><td>Whatever the artifact supports</td></tr>
+  </tbody>
+</table>
+</div>
+
+<p>Read as a set rather than a contest, the answer is unremarkable: the first surface goes where the usual author
+already is. That is a correction to this survey's own starting instinct, which was to build in the editor extension
+because the infrastructure is there — a reason about convenience for the builder rather than about who the tool is
+for.</p>
+
+<spec-decision id="D-004" grounding="verified">
+  <h4>D-004 · Surfaces are clients of one store, and the first one goes where the designer already works</h4>
+  <dl>
+    <dt>Status</dt><dd><spec-status value="draft">Proposed</spec-status></dd>
+    <dt>Context</dt><dd>Annotation is empirically a designer activity in all three tools that support it. Two of the five sources have no canvas at all, so a plugin-only strategy structurally excludes the fastest-growing pair. The standard's protocol layer is designed for several clients over one store, so surfaces need not be chosen against each other.</dd>
+    <dt>Decision</dt><dd>Settle the model and the store first, then add surfaces independently, each justified by an audience rather than by symmetry. The first is a plugin in a designer's tool. The overlay on an emitted artifact follows, because it is the only route for the sources that have no canvas. The editor extension is a later client aimed at the engineering-side categories, not the first surface.</dd>
+    <dt>Consequences</dt><dd>+ No surface is load-bearing: the store is, and a plugin that a vendor breaks costs one client rather than the capability. + It meets the usual author where they are instead of asking a designer to open a code editor. − It commits to maintaining vendor plugins, which is an ongoing tax paid in someone else's release cadence and review queue. − Several clients over one store invites divergence between what each can express, and the model does not stop a plugin exposing a subset that quietly becomes the real vocabulary.</dd>
+  </dl>
+</spec-decision>
+</section>
+
+<!-- ======================================================= -->
+<section id="editor">
+<h2>8 · The editor question, and the fork</h2>
+
+<p><spec-newthought>The roles really are merging, and that argues against a single-surface answer</spec-newthought>
+rather than for any particular one. A tool that assumes a designer will be wrong about the data and tracking
+layers; a tool that assumes a developer will be wrong about most of the rest. D-004's several-clients-one-store is
+the shape that survives the ambiguity, because it does not need to decide who the user is in order to be built.</p>
+
+<p>The larger idea in the same territory — that this project could one day fork a code editor and take on some of a
+designer tool's identity — deserves an honest answer rather than a deferral. It is a legitimate strategy with
+working examples, and it is also the most expensive route to the audience in question, for a reason worth stating
+plainly: <strong>a fork of a code editor is still a code editor.</strong> A designer who will not open one is not
+objecting to its keybindings. They are working in a canvas, with their team's libraries, their comment threads and
+their file history, and a fork inherits the identity along with the source. It would buy a developer-adjacent
+surface with designer affordances, which is a real thing to want and is not the same as reaching the person who
+currently writes the annotations.</p>
+
+<p>It is also a product-strategy decision rather than an architecture one, and D-004 is deliberately arranged so
+that it stays open: if the store is the authority and surfaces are clients, a forked editor is one more client and
+costs nothing that has already been spent. Nothing in this survey needs it, and nothing in this survey forecloses
+it.</p>
+
+<spec-warning><strong>Do not start with the model as a subset.</strong> The temptation, once the Recommendation is
+adopted, is to implement the fifth of it this problem needs and grow later. That produces a local format wearing a
+standard's name — the worst of both, since it neither interoperates nor is free to be convenient. Either speak the
+model as specified for the parts used, or do not claim it.</spec-warning>
+</section>
+
+<!-- ======================================================= -->
+<section id="recommendation">
+<h2>9 · Recommendation — three slices, in dependency order</h2>
+
+<ol>
+  <li><strong>Settle the model and the store.</strong> Adopt the Data Model, express 095's accessibility-typed
+  annotation as a body against it, define the anchoring preference and where the store lives under the sidecar
+  convention. No editor. This buys a format that everything else is a client of, and it is the only slice with no
+  external dependency.</li>
+  <li><strong>Build the first two clients.</strong> A plugin in a designer's tool, and an overlay on an emitted
+  artifact — in that order, because the first reaches the usual author and the second is the only route for the
+  sources with no canvas. This buys annotations that exist.</li>
+  <li><strong>Round-trip and the engineering side.</strong> Export back to a design tool that can display them, and
+  a client in the editor extension for the data and tracking layers. This buys the designer's own view of what the
+  developer wrote, which is what an external store otherwise costs them.</li>
+</ol>
+
+<spec-warning><strong>Do not start with the plugin.</strong> It is the most visible slice and the most demoable, and
+it writes into a store that does not exist — which means the store's shape gets invented inside a vendor's plugin
+API, in whatever form that API made convenient. The second temptation to refuse is the editor extension, for a
+subtler reason: its infrastructure already exists here, which makes it the cheapest thing to build and the wrong
+first audience.</spec-warning>
+
+<h3>Suggested next artifacts</h3>
+<spec-out-of-scope>
+  <ul>
+    <li defer-to="TBD-annotation-model">A new spec: the Web Annotation Data Model as this project's annotation interchange — the body shape for an accessibility-typed annotation, the selector preference order, the mapping from the design tools' category names, and where the store lives under <a href="../specs/094-visual-sidecar-convention/spec.html">094</a> (D-001, D-002, D-003).</li>
+    <li defer-to="TBD-annotation-plugin-first">A follow-on survey then spec: which design tool gets the first plugin. The open-source one has a published plugin API, no seat cost and an annotation concept distinct from comments, which makes it the cheapest to build and test; the dominant one has the larger audience and a metered API. The choice is about audience against cost and should be made on its own evidence (D-004).</li>
+    <li defer-to="TBD-annotation-artifact-overlay">A new spec: the overlay client for an emitted artifact, which is the only annotation route for a source with no canvas — including whether it can be a spectastic artifact at all, given that an interactive editor collides with the deny-by-default artifact policy (D-004).</li>
+    <li defer-to="TBD-annotation-reanchor-report">A new spec: what happens when a target moves — how a re-anchoring failure is reported, and how a person works through a redesign's worth of them without the tool guessing (D-003).</li>
+    <li defer-to="TBD-annotation-export">A question this survey opens and does not close: whether exporting annotations back into a design tool is worth its cost, given that it is the one thing an external store takes away from the person most likely to be writing them (D-002, D-004).</li>
+  </ul>
+</spec-out-of-scope>
+
+<p>Deliberately <em>not</em> planted: a slug for the editor-extension client. D-004 places it in the third slice and
+nothing about it is uncertain enough to need surveying — it is a client of a store, and it can be specced when the
+store exists. Likewise the fork, which is a product decision this survey deliberately leaves open rather than
+converting into work.</p>
+
+<p><spec-newthought>One slug this supersedes.</spec-newthought> <code>TBD-annotation-authoring</code>, planted hours
+before this survey, asked how an annotation gets written. That question is answered here by a surface rather than by
+an interview prompt, so the slug should be drained into <code>TBD-annotation-model</code> rather than specced
+separately — with the caveat that a project using no annotation surface at all still needs the interview to ask, and
+that much survives.</p>
+</section>
+
+<!-- ======================================================= -->
+<section id="caveats">
+<h2>10 · Caveats on the sources and the audit</h2>
+
+<ul>
+  <li><strong>Nothing was prototyped, and no plugin API was exercised.</strong> Figma's annotation write capability,
+  Penpot's comment permissions and Sketch's annotation surface are all read from documentation. The claim that a
+  plugin can write what this needs is a documented capability, not a demonstrated one.</li>
+  <li><strong>The standard's fit is argued, not tested.</strong> The selector types map onto the source shapes
+  cleanly on paper. Whether re-anchoring against a design render behaves acceptably in practice is exactly the kind
+  of thing that looks fine in a specification and disappoints in a browser.</li>
+  <li><strong>Its adoption is outside this domain.</strong> Three million annotations is real and is scholarly and
+  publishing usage. No design tool speaks the model, so the interoperability benefit is a bet on a future rather
+  than a feature that works on the first day.</li>
+  <li><strong>"Designers annotate" is inferred from three tools' documentation</strong>, not measured. It is a
+  strong inference and it is still an inference; a team where engineers write every annotation would find the first
+  surface aimed at the wrong person.</li>
+  <li><strong>Penpot's annotation feature is not fully characterised.</strong> Annotations are distinct from comments
+  and appear in the Inspect tab, and a free-placement annotation layer is an open community request — which suggests
+  the current feature is narrower than a plugin would need. That is a gap in this audit, not a finding.</li>
+  <li><strong>This survey corrected its own starting position.</strong> It began intending to recommend the editor
+  extension first, on the grounds that the infrastructure exists. That is a reason about the builder's convenience
+  rather than the user's, and the evidence about who annotates reversed it. A reviewer running the same audit should
+  reach the same reversal.</li>
+</ul>
+</section>
+
+<!-- ======================================================= -->
+<section id="sources">
+<h2>11 · Sources</h2>
+
+<p>External sources retrieved 12 Aug 2026, alongside an audit of this project's visual specs and its extension
+surface. Claims about the codebase are grounded in the files named inline.</p>
+
+<ol>
+  <li>Web Annotation Data Model — <a href="https://www.w3.org/TR/annotation-model/">w3.org</a>: body, target and the selector family, including several selectors per target.</li>
+  <li>Web Annotation Protocol — <a href="https://www.w3.org/TR/annotation-protocol/">w3.org</a>: the transport for creating, managing and retrieving annotations — the layer that makes several clients over one store a designed property rather than an improvisation.</li>
+  <li>Selectors and States — <a href="https://w3c.github.io/web-annotation/selector-note/index-respec.html">w3c.github.io</a>: the note on reusing existing selection techniques under one model.</li>
+  <li>Annotation is now a web standard — <a href="https://web.hypothes.is/blog/annotation-is-now-a-web-standard/">web.hypothes.is</a>: the 23 February 2017 standardisation, and the architecture statement that annotations live separately and are re-anchored when the document is present.</li>
+  <li>Web Annotations are now a W3C standard — <a href="https://wptavern.com/web-annotations-are-now-a-w3c-standard-paving-the-way-for-decentralized-annotation-infrastructure">wptavern.com</a>: the decentralised-infrastructure framing and the adoption record behind the reference client.</li>
+  <li>Web and iOS accessibility annotation kits — <a href="https://github.com/cvs-health/annotations">github.com/cvs-health</a>: the field's de facto standard, distributed as design-tool component libraries under a content licence, with no schema or code output.</li>
+  <li>The art and science of annotations in Dev Mode — <a href="https://www.figma.com/blog/annotations-in-dev-mode/">figma.com</a>: the annotation categories, and the plugin and REST APIs that create and edit them in bulk.</li>
+  <li>Getting started with annotations — <a href="https://support.zeplin.io/en/articles/5917181-getting-started-with-annotations">support.zeplin.io</a>: the category set, and that designers add annotations during handoff.</li>
+  <li>Annotations layer — <a href="https://community.penpot.app/t/feature-request-annotations-layer/5149">community.penpot.app</a>: annotations as distinct from comments, surfaced in the Inspect tab, with a free-placement layer still an open request.</li>
+  <li>Penpot plugins — <a href="https://help.penpot.app/plugins/">help.penpot.app</a>: the plugin API and its comment read and write permissions.</li>
+  <li>Developer handoff — <a href="https://www.sketch.com/docs/developer-handoff/">sketch.com</a>: canvas annotations and browser-based inspection needing no plugin.</li>
+</ol>
+</section>
+
+<!-- ======================================================= -->
+<section id="changelog">
+<h2>12 · Change log</h2>
+
+<spec-changelog>
+  <ol>
+    <li><time datetime="2026-08-12">12 Aug 2026</time><span>Created. Drains <code>TBD-annotation-surface</code>, planted the same day by the visual-spec survey. Finds the premise half-right: there is no cross-tool annotation product, and the field's de facto standard ships as component libraries rather than data — but the W3C Web Annotation Data Model has been a Recommendation since February 2017 and its architecture, storing annotations apart from their targets and re-anchoring on demand, is the answer to both objections an external annotator faces. Lands four decisions: adopt the model rather than invent one, keep the store in the project, prefer semantic anchors with geometry as a marked fallback, and treat surfaces as clients justified one audience at a time. <strong>Reverses its own starting position</strong>: it set out to recommend the editor extension first because the infrastructure exists here, and the evidence that annotation is a designer activity moved the first surface into the designer's tool. Plants five <code>TBD-</code> next artifacts and supersedes <code>TBD-annotation-authoring</code>. The editor-extension client and the forked-editor question are deliberately left unplanted — the first is not uncertain enough to survey, the second is a product decision the four decisions here keep open rather than foreclose.</span></li>
+  </ol>
+</spec-changelog>
+</section>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  Spectastic · A stamp in a design file is not data · 12 Aug 2026 ·
+  <a href="../index.html">home</a> ·
+  <a href="./visual-spec-considerations.html">visual-spec</a> ·
+  <button data-theme-toggle style="background:none;border:none;color:var(--c-link);cursor:pointer;font:inherit;padding:0;border-bottom:1px solid currentColor;">light/dark</button>
+</footer>
+
+</main>
+<script src="../assets/spec.js"></script>
+</body>
+</html>
