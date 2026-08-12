@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
+<title>Draining should be the default, not the flag · Change proposal</title>
+<link rel="stylesheet" href="../../../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../../../assets/favicon.svg">
+<script src="../../../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Change proposal · 090-command-surface</p>
+  <h1>Draining should be the default, not the flag</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    The common case is emptying the queue; the rare case is stopping after one.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>     <span><spec-status value="draft">Proposed</spec-status></span>
+    <b>Change ID</b>  <span>2026-08-12-drain-all-default</span>
+    <b>Spec</b>       <span><a href="../../spec.html">090-command-surface</a></span>
+    <b>Author</b>     <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Created</b>    <span><time datetime="2026-08-12">12 Aug 2026</time></span>
+    <b>Targets</b>    <span>1 requirement(s)</span>
+    <b>Read time</b>  <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-tldr>
+    <p><code>REQ-TOOL-003</code> makes one task per invocation the default, on the reasoning that a per-task pause keeps
+    a human in the loop. In practice the pause is spent typing the same command again. This proposes flipping the
+    default to draining, keeping single-step as an explicit flag, and — because the existing rationale is deliberate
+    rather than accidental — <mark>rebutting it rather than deleting it</mark>. A configuration key sets the project's
+    preference, with the flag winning over the config and the config over the compiled default.</p>
+  </spec-tldr>
+</header>
+
+
+<spec-change id="2026-08-12-drain-all-default" status="proposed">
+
+<header>
+  <h3>Draining should be the default, not the flag</h3>
+  <span class="meta"><spec-status value="draft">Proposed</spec-status></span>
+</header>
+
+
+<section id="intent">
+<h2>1 · Intent</h2>
+<p>The single-task default was reasoned, not incidental: a stop between tasks is a chance to notice that the plan is
+wrong. That value is real and it is not free — it is paid on every task, including the many where nothing is wrong,
+and the cost is a re-invocation that carries no judgment at all.</p>
+<p>The judgment worth keeping is available more cheaply. A drain that stops on failure preserves the interruption where
+it matters and removes it where it does not.</p>
+</section>
+
+
+<section id="scope">
+<h2>2 · Scope</h2>
+
+<spec-goals>
+  <h3>In scope</h3>
+  <ul>
+    <li>Flipping the default from one task per invocation to draining the queue.</li>
+    <li>An explicit single-step flag, and a configuration key setting the project default.</li>
+    <li>Precedence: flag over configuration over compiled default.</li>
+  </ul>
+</spec-goals>
+
+<spec-non-goals>
+  <h3>Out of scope</h3>
+  <ul>
+    <li>Parallel task execution, which is a separate capability.</li>
+    <li>What counts as a failure worth stopping on — the existing behaviour is inherited unchanged.</li>
+  </ul>
+</spec-non-goals>
+</section>
+
+
+<section id="approach">
+<h2>3 · Approach</h2>
+<p>Modify the requirement rather than adding a sibling, since the default is the requirement. The old rationale is
+answered in the new one rather than dropped: a reader who wants to know why the default flipped should find the
+argument that was overturned, not its absence.</p>
+</section>
+
+
+<section id="deltas">
+<h2>4 · Deltas</h2>
+<spec-delta op="modified" target="REQ-TOOL-003">
+  <p><strong>What changes:</strong> the default becomes draining; single-step becomes an explicit choice; a configuration key and its precedence are defined.</p>
+  <spec-requirement id="REQ-TOOL-003" priority="must">
+    <p>The implement verb <spec-rule>MUST</spec-rule> drain the queue by default, stopping on the first failure, and
+    <spec-rule>MUST</spec-rule> offer an explicit single-step mode. A project <spec-rule>MAY</spec-rule> set its
+    preferred default in configuration, and precedence <spec-rule>MUST</spec-rule> run command-line flag over
+    configuration over the compiled default.</p>
+    <details><summary>Rationale</summary><p>The former default stopped after one task so a human could notice a wrong plan between them. That interruption is worth keeping and is not worth paying on every task: a drain that halts on the first failure preserves it exactly where it earns its keep, and removes a re-invocation that carried no judgment. Single-step remains available for the case the old default was built for.</p></details>
+  </spec-requirement>
+</spec-delta>
+</section>
+
+
+<section id="risks">
+<h2>5 · Risk register</h2>
+<p>The adversarial pass triggered on a <code>must</code>-tier requirement being modified. Two findings, recorded and answered.</p>
+<spec-risk-log>
+<spec-risk target="REQ-TOOL-003" status="identified">
+  <p class="claim">Draining by default means a wrong plan produces many wrong tasks before anyone looks, and "stop on first failure" only helps when the work fails loudly — a task that succeeds at the wrong thing does not.</p>
+  <p class="citation">"MUST drain the queue by default, stopping on the first failure"</p>
+  <div class="response">The strongest objection to this change and it is not fully answered. A drain trades early detection for throughput, and the trade is only sound where tasks fail visibly. Left <code>identified</code> deliberately: the owner should accept this consciously rather than have it argued away.</div>
+</spec-risk>
+<spec-risk target="REQ-TOOL-003" status="mitigated">
+  <p class="claim">Adding a configuration key repeats the defect that <code>design.stackInterview</code> just had to be withdrawn for — a documented switch nothing reads.</p>
+  <p class="citation">"A project MAY set its preferred default in configuration"</p>
+  <div class="response">Mitigated by ordering: the key is only worth declaring once the kernel reads it, so the task list puts the reader before the documentation, and the configuration registry will not advertise it until then.</div>
+</spec-risk>
+</spec-risk-log>
+</section>
+
+
+<section id="tasks">
+<h2>6 · Tasks</h2>
+<ul style="list-style:none;padding-left:0;">
+  <li><input type="checkbox"> Read the drain preference in the kernel with flag-over-config-over-default precedence <span class="path">packages/core/src/commands/implement.ts</span></li>
+  <li><input type="checkbox"> Add the single-step flag <span class="path">packages/cli/src/commands/implement.ts</span></li>
+  <li><input type="checkbox"> Declare the key in the configuration registry, after the reader exists <span class="path">packages/schema/src/config/</span></li>
+  <li><input type="checkbox"> Update the command instruction and re-sync the harness copies <span class="path">commands/spectastic.implement.md</span></li>
+</ul>
+</section>
+
+
+<section id="questions">
+<h2>7 · Open questions</h2>
+<spec-questions>
+<p>One outstanding, and it is deliberately left for the owner: the first risk above. Draining trades early detection of a wrong plan for throughput, and that trade is only sound where a wrong task fails loudly rather than succeeding at the wrong thing. It should be accepted knowingly rather than reasoned away in the proposal that benefits from it.</p>
+</spec-questions>
+</section>
+
+
+<section id="changelog">
+<h2>8 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-08-12">12 Aug 2026</time><span>Proposed. Drains inbox card <code>I-039</code>.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+</spec-change>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  2026-08-12-drain-all-default · Draining should be the default, not the flag · proposed 12 Aug 2026
+</footer>
+
+</main>
+<script src="../../../../assets/spec.js"></script>
+</body>
+</html>

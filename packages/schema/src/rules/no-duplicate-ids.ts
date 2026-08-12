@@ -1,4 +1,4 @@
-import { getAttr, getLocation, walk } from '../parser.js';
+import { findAll, getAttr, getLocation, walk } from '../parser.js';
 import type { CrossFileRule, Finding, Location } from '../types.js';
 
 /**
@@ -42,7 +42,17 @@ export const noDuplicateIdsRule: CrossFileRule = {
   check({ docs }) {
     const sites = new Map<string, Location[]>();
     for (const doc of docs) {
+      // An ID inside a <spec-delta> is a proposal's POST-STATE — the requirement as it
+      // will read once applied — not a second definition competing with the live one.
+      // Without this, any in-flight proposal modifying a project-wide ID fails validate
+      // until it is applied and archived, which is the one window a proposal exists in.
+      // Archived and withdrawn proposals are excluded upstream at the CLI glob; this is
+      // the same exemption for the live folder, and it is narrower than a path exclusion
+      // because the delta's own shape rules still run.
+      const inDelta = new Set<unknown>();
+      for (const delta of findAll(doc.ast, 'spec-delta')) walk(delta, (el) => inDelta.add(el));
       walk(doc.ast, (el) => {
+        if (inDelta.has(el)) return;
         if (!SCOPED_TAGS.has(el.tagName)) return;
         const id = getAttr(el, 'id');
         if (!id || !PROJECT_WIDE_ID.test(id)) return;

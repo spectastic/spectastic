@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
+<title>The correct answer must not always be first · Change proposal</title>
+<link rel="stylesheet" href="../../../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../../../assets/favicon.svg">
+<script src="../../../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Change proposal · 019-explain-course</p>
+  <h1>The correct answer must not always be first</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    A quiz whose answer is always in position one is guessable without reading the question.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>     <span><spec-status value="draft">Proposed</spec-status></span>
+    <b>Change ID</b>  <span>2026-08-12-answer-position</span>
+    <b>Spec</b>       <span><a href="../../spec.html">019-explain-course</a></span>
+    <b>Author</b>     <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Created</b>    <span><time datetime="2026-08-12">12 Aug 2026</time></span>
+    <b>Targets</b>    <span>1 requirement(s)</span>
+    <b>Read time</b>  <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-tldr>
+    <p><mark>Every generated quiz places the correct option first.</mark> FR-004 already forbids an item that can be
+    answered with the source hidden — but it checks each item alone, and the tell here is not in any item. It is in the
+    <em>sequence</em>: a learner who notices the pattern once can score full marks without reading another question,
+    which defeats the gate rather than evading it. The fix is a deterministic seeded shuffle, so output stays
+    reproducible.</p>
+  </spec-tldr>
+</header>
+
+
+<spec-change id="2026-08-12-answer-position" status="proposed">
+
+<header>
+  <h3>The correct answer must not always be first</h3>
+  <span class="meta"><spec-status value="draft">Proposed</spec-status></span>
+</header>
+
+
+<section id="intent">
+<h2>1 · Intent</h2>
+<p>FR-004 requires each quiz item to be unguessable from its own content, and the guessability check poses one
+item at a time. By construction it cannot see a property that only exists across items — and the correct option is
+always at index zero.</p>
+<p>The requirement is not wrong; it is incomplete. It defends against an item that gives itself away and says nothing
+about a set that does.</p>
+</section>
+
+
+<section id="scope">
+<h2>2 · Scope</h2>
+
+<spec-goals>
+  <h3>In scope</h3>
+  <ul>
+    <li>Extending the guessability rule to cover the position of the correct option across a course.</li>
+    <li>A deterministic shuffle, so the same input still produces byte-identical output.</li>
+  </ul>
+</spec-goals>
+
+<spec-non-goals>
+  <h3>Out of scope</h3>
+  <ul>
+    <li>Distractor quality, which is a different guessability problem and a harder one.</li>
+    <li>Item ordering within a course.</li>
+  </ul>
+</spec-non-goals>
+</section>
+
+
+<section id="approach">
+<h2>3 · Approach</h2>
+<p>Extend FR-004 rather than adding a sibling, because it is the same property measured over a wider window. The
+shuffle is seeded from something already stable in the course — its identifier — so a regenerated course is unchanged
+and the determinism requirement the command already carries is not weakened.</p>
+</section>
+
+
+<section id="deltas">
+<h2>4 · Deltas</h2>
+<spec-delta op="modified" target="FR-004">
+  <p><strong>What changes:</strong> the guessability rule gains a clause about the correct option's position across the course, which a per-item check cannot see.</p>
+  <spec-requirement id="FR-004" priority="must">
+    <p>Each quiz item <spec-rule>MUST</spec-rule> be generated from retrieved real source and <spec-rule>MUST</spec-rule>
+    pass a guessability check before shipping: an item the model can answer correctly with the source hidden
+    <spec-rule>MUST</spec-rule> be rejected and regenerated. An objective whose quiz stays guessable after retries
+    <spec-rule>MUST</spec-rule> be dropped rather than shipped. Across a course, the position of the correct option
+    <spec-rule>MUST NOT</spec-rule> be constant, and <spec-rule>MUST</spec-rule> be determined by a deterministic,
+    seeded shuffle so that regenerating a course produces byte-identical output.</p>
+    <details><summary>Rationale</summary><p>A quiz answerable from generic knowledge tests nothing about the repo — and neither does one whose answer is always first. The per-item check cannot catch it, because the tell is a property of the sequence rather than of any item in it. Seeding the shuffle keeps the determinism the course generator already promises.</p></details>
+  </spec-requirement>
+</spec-delta>
+</section>
+
+
+<section id="risks">
+<h2>5 · Risk register</h2>
+<p>The adversarial pass triggered on a <code>must</code>-tier requirement being modified. One finding, recorded and answered.</p>
+<spec-risk-log>
+<spec-risk target="FR-004" status="mitigated">
+  <p class="claim">A shuffle seeded from the course identifier makes the position predictable to anyone who knows the seed, which is stated in the artifact.</p>
+  <p class="citation">"determined by a deterministic, seeded shuffle"</p>
+  <div class="response">True, and accepted: the threat is a learner noticing a constant pattern while taking a quiz, not one deriving a permutation from a published seed. Determinism is worth more here than unpredictability, because a course that regenerates differently every run breaks the drift check that makes it reviewable.</div>
+</spec-risk>
+</spec-risk-log>
+</section>
+
+
+<section id="tasks">
+<h2>6 · Tasks</h2>
+<ul style="list-style:none;padding-left:0;">
+  <li><input type="checkbox"> Seeded option shuffle in the course assembler <span class="path">packages/core/src/commands/course.ts</span></li>
+  <li><input type="checkbox"> Test: the correct index is not constant across a generated course <span class="path">packages/core/test/course.test.ts</span></li>
+  <li><input type="checkbox"> Test: regenerating the same course is byte-identical <span class="path">packages/core/test/course.test.ts</span></li>
+</ul>
+</section>
+
+
+<section id="questions">
+<h2>7 · Open questions</h2>
+<spec-questions>
+<p>None outstanding. Whether to extend FR-004 or add a sibling was the only structural choice, and §3 argues for extension because it is the same property over a wider window.</p>
+</spec-questions>
+</section>
+
+
+<section id="changelog">
+<h2>8 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-08-12">12 Aug 2026</time><span>Proposed. Drains inbox card <code>I-040</code>.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+</spec-change>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  2026-08-12-answer-position · The correct answer must not always be first · proposed 12 Aug 2026
+</footer>
+
+</main>
+<script src="../../../../assets/spec.js"></script>
+</body>
+</html>
