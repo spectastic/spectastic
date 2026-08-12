@@ -4,6 +4,40 @@
 
 _Nothing yet._
 
+## v0.1.0-pre.24 — 2026-08-12
+
+**`implement <spec-id>` now drains the queue.** The default flipped from one task per invocation to
+emptying the queue, stopping on the first failure; `--single` does what the old default did. The
+reasoning that set the old default — a pause between tasks is a chance to notice the plan is wrong —
+is answered rather than dropped: that interruption is kept exactly where it earns its keep and removed
+where it was a re-invocation carrying no judgment. The trade it accepts is recorded on the change: a
+drain only helps where a wrong task *fails* rather than succeeding at the wrong thing. Precedence is
+flag over the new `implement.drain` config key over the compiled default. An explicit `T-NNN` is one
+task by construction and never drains.
+
+**`design.stackInterview` is withdrawn.** It was documented and honoured by the design command's
+markdown, and read by no package — a switch that changed nothing when set. The interview is now
+stated as unconditional, and its test pins the withdrawal so the gate cannot be quietly reintroduced
+without a kernel-side owner to honour it.
+
+**Course quizzes no longer put the correct answer first.** Every generated quiz placed it at index 0,
+which the guessability check could not see because that check poses one item at a time and the tell is
+a property of the sequence. Options are now permuted by a shuffle seeded from the course slug and the
+objective's position, so regeneration stays byte-identical.
+
+**Artifacts contain their own wide content.** A definition list collapses to one column below 700px
+and long unbreakable tokens wrap, so an artifact read on a phone scrolls vertically only. Measured
+across the estate, horizontal overflow went from 154 of 227 artifacts to 8. The design template's
+tables gained scroll containers and its architecture sketch now uses theme variables, so a diagram
+follows the reader's mode instead of rendering a light island in a dark card; the verify generator
+wraps the two tables it emits. Both authoring templates now scaffold a commented `<spec-sidenote>`,
+which the spec command already recommended and no template offered.
+
+**`no-duplicate-ids` no longer fires on an in-flight change proposal.** A proposal embeds the
+requirement's post-state, which the rule counted as a second definition — so any proposal modifying a
+project-wide `REQ-` id failed validate until it was applied and archived, which is the one window a
+proposal exists in. IDs inside a `<spec-delta>` are now exempt; the delta's own shape rules still run.
+
 ## v0.1.0-pre.17 … v0.1.0-pre.23 — 2026-07-08 to 2026-07-28
 
 These seven tags shipped continuously and were not changelogged at the time; the entries below were
