@@ -1,0 +1,417 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
+<title>Visual element vocabulary · Design</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Design · 095-visual-element-vocabulary</p>
+  <h1>Visual element vocabulary</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    How we will build it.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>     <span><spec-status value="accepted">Accepted</spec-status></span>
+    <b>Spec</b>       <span><a href="./spec.html">095-visual-element-vocabulary</a></span>
+    <b>Owner</b>      <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Branch</b>     <span><code>spec/visual-slice-095-098</code></span>
+    <b>Created</b>    <span><time datetime="2026-08-12">12 Aug 2026</time></span>
+    <b>Read time</b>  <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-tldr>
+    <p>Three elements — <code>&lt;spec-screen&gt;</code>, <code>&lt;spec-state&gt;</code>,
+    <code>&lt;spec-annotation&gt;</code> — authored in an HTML artifact per screen under the feature's
+    <a href="../094-visual-sidecar-convention/spec.html">094</a> directory, because a declaration that must render
+    with scripting off cannot be JSON. A state carries <strong>two</strong> attributes rather than one: what kind of
+    thing it came from, and which thing — so a many-to-one collapse is recorded by <code>from</code> holding more
+    than one value, and needs no third attribute to notice. Annotations are typed by accessibility role and state,
+    which is not a taste call: <code>toMatchAriaSnapshot</code> and <code>getByRole({checked})</code> both ship in
+    the Playwright already installed here, so a declared annotation is an assertion in vocabulary the test framework
+    reads today. Guarded twice, per the project's standing posture — the stylesheet catches a reader's eye, the rule
+    catches a pipeline.</p>
+  </spec-tldr>
+</header>
+
+
+<section id="principles-check">
+<h2>1 · Principles check</h2>
+<p>Verify this plan respects every principle in <a href="../../principles.html">v1.9.0</a>.</p>
+
+<div style="overflow-x:auto;">
+<table>
+  <thead><tr><th>Principle</th><th>Compliance</th><th>Notes</th></tr></thead>
+  <tbody>
+    <tr><td>P-1 · Source order is reading order</td><td><spec-pill>OK</spec-pill></td><td>A screen's states read in the order they are declared; nothing reorders them.</td></tr>
+    <tr><td>P-2 · Semantic tags over class soup</td><td><spec-pill>OK</spec-pill></td><td>Three custom elements, attributes for scalars, no classes.</td></tr>
+    <tr><td>P-3 · IDs are contracts</td><td><spec-pill>OK</spec-pill></td><td><a href="./spec.html#FR-001">FR-001</a> makes a screen's identifier stable by requirement, not convention.</td></tr>
+    <tr><td>P-4 · Progressive enhancement, never dependence</td><td><spec-pill>OK</spec-pill></td><td><a href="./spec.html#NFR-001">NFR-001</a>, and the reason <a href="#D-001">D-001</a> rules out JSON.</td></tr>
+    <tr><td>P-5 · Calm density</td><td><spec-pill>OK</spec-pill></td><td>One artifact per screen rather than one per feature, so a ten-screen feature is ten short files.</td></tr>
+    <tr><td>P-6 · Draft is loose, ratified is locked</td><td><spec-pill>OK</spec-pill></td><td>Draft.</td></tr>
+    <tr><td>P-7 · Done means verified</td><td><spec-pill>OK</spec-pill></td><td>A browser check on a real authored screen, in both themes — the rendering claim is the requirement.</td></tr>
+    <tr><td>P-8 · Guarantees live in the kernel or CI</td><td><spec-pill>OK</spec-pill></td><td><a href="./spec.html#FR-008">FR-008</a> asks for both halves explicitly; <a href="#D-004">D-004</a> builds both.</td></tr>
+    <tr><td>P-9 · The enforcement floor holds</td><td><spec-pill>OK</spec-pill></td><td>No category added.</td></tr>
+    <tr><td>P-10 · Internal artifact ids stay out of user-facing copy</td><td><spec-pill>OK</spec-pill></td><td>No help text touched.</td></tr>
+    <tr><td>P-11 · Artifacts are data, not instructions</td><td><spec-pill>OK</spec-pill></td><td>A screen artifact is read, never executed, and carries no script of its own.</td></tr>
+    <tr><td>P-12 · Capability accountability</td><td><spec-pill>OK</spec-pill></td><td>Adds a per-file AST walk. No filesystem access beyond what validate already does, no network.</td></tr>
+    <tr><td>P-13 · Accessibility conformance</td><td><spec-pill>OK</spec-pill></td><td>Strengthened by it — <a href="#D-003">D-003</a> makes the accessibility tree the annotation type system rather than an afterthought.</td></tr>
+    <tr><td>P-14 · Library-first boundaries</td><td><spec-pill>OK</spec-pill></td><td>Vocabulary and rule in <code>@spectastic/schema</code>; the category map in core; nothing CLI-only.</td></tr>
+  </tbody>
+</table>
+</div>
+
+<h3>Toolchain / enforcement</h3>
+<p>Profile <code>enterprise</code>; <code>spectastic enforce</code> reports every required category covered with
+<code>observability</code> waived on the standing rationale. No gap for this design, no new ecosystem.</p>
+</section>
+
+
+<section id="technical-context">
+<h2>2 · Technical context</h2>
+<dl>
+  <dt>Language(s)</dt>      <dd>TypeScript 5.7, Node ≥ 20.</dd>
+  <dt>Frameworks</dt>       <dd>None added. Vitest 2.1; Playwright 1.62 for the rendering claim.</dd>
+  <dt>Architecture</dt>     <dd>Layered — the existing fat-core / thin-CLI split. The vocabulary is a schema concern; only the category map needs core.</dd>
+  <dt>Storage</dt>          <dd>None. One authored artifact per screen; nothing derived, nothing cached.</dd>
+  <dt>Testing</dt>          <dd>Tests written failing before implementation, per story — carried forward unchanged.</dd>
+  <dt>Coverage</dt>         <dd>Diff-aware: every changed line covered, no file left lower than it started.</dd>
+  <dt>Perf targets</dt>     <dd><a href="./spec.html#NFR-002">NFR-002</a>: the shape check returns before allocating on a document declaring no screens. Satisfied by the <code>findAll</code>-then-return shape every rule here already uses.</dd>
+  <dt>Constraints</dt>      <dd><a href="./spec.html#NFR-001">NFR-001</a> — 100% readable with scripting off — which is what makes the authoring format a decision rather than a preference.</dd>
+</dl>
+</section>
+
+
+<section id="contracts">
+<h2>3 · Data model &amp; contracts</h2>
+
+<p>Three conceptual entities, three elements. None is persisted; all are authored and read.</p>
+
+<div style="overflow-x:auto;">
+<table>
+  <thead><tr><th>Conceptual entity</th><th>Physical shape</th><th>Notes</th></tr></thead>
+  <tbody>
+    <tr><td><a href="./spec.html#data">Screen</a></td>
+        <td><code>&lt;spec-screen id serves&gt;</code> — root of one artifact.</td>
+        <td><code>serves</code> links the scenarios it answers (<a href="./spec.html#FR-009">FR-009</a>), by reference rather than restatement.</td></tr>
+    <tr><td><a href="./spec.html#data">State</a></td>
+        <td><code>&lt;spec-state id source from&gt;</code> — child of a screen.</td>
+        <td>Two attributes, not one: <code>source</code> is the kind, <code>from</code> is what it came from. A collapse is <code>from</code> with more than one value.</td></tr>
+    <tr><td><a href="./spec.html#data">Annotation</a></td>
+        <td><code>&lt;spec-annotation role aria-state cites&gt;</code>.</td>
+        <td><code>cites</code> references a requirement instead of restating it (<a href="./spec.html#FR-007">FR-007</a>). An annotation with no accessibility analogue carries neither role nor state and stays prose.</td></tr>
+  </tbody>
+</table>
+</div>
+
+<spec-contract shape="none">
+  <p>This feature exposes no interface. It adds an authored vocabulary and the checks over it, consumed entirely
+  inside the tool.</p>
+</spec-contract>
+</section>
+
+
+<section id="grounding">
+<h2>4 · Grounding &amp; evidence</h2>
+<p>Every design-bearing fact this plan rests on, and how it was confirmed.</p>
+
+<div style="overflow-x:auto;">
+<table class="evidence">
+  <thead>
+    <tr><th>Claim the design rests on</th><th>Source</th><th>Status</th><th>Finding / note</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>A declared annotation is assertable in the test framework already installed, without translation.</td>
+        <td><code>playwright@1.62.1</code> · <code>types/test.d.ts</code></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td>Unpacked and grepped, not recalled: <code>toMatchAriaSnapshot</code> appears 26 times, and <code>getByRole</code> accepts <code>checked</code>, <code>disabled</code> and <code>expanded</code>. This is what makes <a href="./spec.html#FR-005">FR-005</a> a mechanism rather than a metaphor.</td></tr>
+    <tr><td>The visibly-broken affordance already exists and can be cloned rather than invented.</td>
+        <td><code>assets/spec.css:1795</code></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td><code>spec-delta:not([op])::after { content: "MISSING OP" }</code>, plus the same shape at <code>:974</code> for <code>UNGROUNDED</code>. <a href="./spec.html#FR-008">FR-008</a>'s first half is a copy of this.</td></tr>
+    <tr><td>The rule half has a shape to clone too, and its scope discipline matters more than its code.</td>
+        <td><code>packages/schema/src/rules/visual-declaration-shape.ts</code></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td>Fires only on a present-but-malformed declaration, returns immediately on a document with none. That early return is exactly <a href="./spec.html#NFR-002">NFR-002</a>.</td></tr>
+    <tr><td>The feature's visual directory is the declared home for screens, and a declared path may name a directory.</td>
+        <td><a href="../094-visual-sidecar-convention/spec.html#FR-002">094 FR-002</a>, <a href="../093-design-visual-section/spec.html#FR-005">093 FR-005</a></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td>Both landed this session. <code>specs/&lt;id&gt;/visual/</code>, and the location check now enforces it.</td></tr>
+    <tr><td>The exemplar's screen file is JSON, and predates every spec in this slice.</td>
+        <td><code>examples/currency-converter/specs/001-currency-conversion/visual/converter.screen.json</code></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td>Speculative, written before 093–098 existed. It is the thing this spec converts, not a constraint on it.</td></tr>
+    <tr><td>A rule that re-parses the document it was handed is a real and recent cost, so the vocabulary's rules must read <code>doc</code>.</td>
+        <td><code>8a654ba</code></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td>Fixed today in <code>contract-name-unique</code>, where it cost 379 parses a run. Named here so the three new rules do not reintroduce it.</td></tr>
+    <tr><td>Contract responses are already parsed and available, so the derived-state floor has something to check against.</td>
+        <td><code>@spectastic/schema/contract</code> · <code>readContractDeclarations</code></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td>Carries <code>path</code> and <code>format</code>. It does <em>not</em> parse the contract file's own responses — see the ceiling in <a href="#D-006">D-006</a>.</td></tr>
+    <tr><td>The categories the common design tools use, and which have no accessibility analogue.</td>
+        <td><a href="../../docs/visual-spec-considerations.html">visual-spec survey</a>, D-005</td>
+        <td><spec-status value="blocked">assumed</spec-status></td>
+        <td>Taken from the survey's own audit of Zeplin's five and Figma Dev Mode's four rather than re-derived. It reports 5 of 8 already have a home and names <code>tracking</code> and <code>content</code> as the honest gaps.</td></tr>
+  </tbody>
+</table>
+</div>
+</section>
+
+
+<section id="approach">
+<h2>5 · Approach</h2>
+
+<p>One artifact per screen, authored under the feature's <code>visual/</code> directory, carrying a
+<code>&lt;spec-screen&gt;</code> root with <code>&lt;spec-state&gt;</code> and <code>&lt;spec-annotation&gt;</code>
+children. Three schema rules check the shape; one stylesheet block makes a missing or unrecognised attribute
+visible without any of them running; one hand-enumerated map in core says where each design-tool annotation
+category lands and which have nowhere to go.</p>
+
+<p>Nothing here is a new mechanism. The elements clone <code>spec-contract</code>'s attribute style, the rules
+clone <code>visual-declaration-shape</code>'s scope discipline, and the broken-state affordance clones
+<code>spec-delta</code>'s <code>MISSING OP</code>. What is new is the <em>claim</em>: that a design annotation and a
+test assertion can be the same statement, which is true only because the accessibility tree is a type system both
+sides already speak.</p>
+
+<spec-note>
+<p>The derived-state floor has a ceiling worth stating before the design rests on it. Nothing in this slice parses a
+contract file's own responses — <code>readContractDeclarations</code> reads the <em>declaration</em>, not the
+OpenAPI document behind it. So <a href="./spec.html#FR-004">FR-004</a>'s "derived is a floor" is enforced as a
+property of how a state is <em>recorded</em>, not by cross-checking the contract. US1's acceptance is met by the
+author accounting for each response; the tool checks that each state says where it came from, and cannot yet check
+that none was forgotten. Recorded in <a href="#D-006">D-006</a> rather than left for a reader to discover.</p>
+</spec-note>
+
+<spec-arch>
+<figure>
+<svg viewBox="0 0 700 220" role="img" aria-label="Where the vocabulary is authored and what checks it">
+  <style>
+    .box { fill: var(--c-surface-raised, #fcfbf7); stroke: var(--c-border, #c4c1bb); stroke-width:1.2; }
+    .label { font: 700 10px Lato, sans-serif; fill: var(--c-text-soft, #4a4a46); letter-spacing:0.06em; text-transform:uppercase; }
+    .body { font: 400 11px "Source Serif 4", Georgia, serif; fill: var(--c-text, #353534); }
+    .arr { stroke: var(--c-muted, #73706d); stroke-width:1.2; fill:none; }
+    .arrh { fill: var(--c-muted, #73706d); }
+  </style>
+  <rect class="box" x="20" y="28" width="190" height="58" rx="4"/>
+  <text class="label" x="34" y="48">screen artifact</text>
+  <text class="body"  x="34" y="68">specs/&lt;id&gt;/visual/*.html</text>
+
+  <rect class="box" x="20" y="132" width="190" height="58" rx="4"/>
+  <text class="label" x="34" y="152">category map</text>
+  <text class="body"  x="34" y="172">core, hand-enumerated</text>
+
+  <rect class="box" x="266" y="28" width="176" height="58" rx="4"/>
+  <text class="label" x="280" y="48">three rules</text>
+  <text class="body"  x="280" y="68">screen · state · annotation</text>
+
+  <rect class="box" x="266" y="132" width="176" height="58" rx="4"/>
+  <text class="label" x="280" y="152">stylesheet</text>
+  <text class="body"  x="280" y="172">broken without JS</text>
+
+  <rect class="box" x="498" y="80" width="182" height="58" rx="4"/>
+  <text class="label" x="512" y="100">two audiences</text>
+  <text class="body"  x="512" y="120">a reader · a pipeline</text>
+
+  <path class="arr" d="M210 57 L266 57" marker-end="url(#a)"/>
+  <path class="arr" d="M210 161 L266 161" marker-end="url(#a)"/>
+  <path class="arr" d="M442 57 L498 100" marker-end="url(#a)"/>
+  <path class="arr" d="M442 161 L498 120" marker-end="url(#a)"/>
+  <defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path class="arrh" d="M0,0 L10,5 L0,10 z"/></marker></defs>
+</svg>
+<figcaption>The same gap reaches a reader through the stylesheet and a pipeline through the rules. Neither is a fallback for the other.</figcaption>
+</figure>
+</spec-arch>
+</section>
+
+
+<section id="alternatives">
+<h2>6 · Alternatives considered</h2>
+
+<p>The load-bearing choice was the authoring format. Scored on whether it satisfies
+<a href="./spec.html#NFR-001">NFR-001</a> directly, whether it reuses tooling that exists, and how much new
+machinery it needs. 5 is best.</p>
+
+<spec-matrix>
+<div style="overflow-x:auto;">
+<table>
+  <thead>
+    <tr><th>Option</th><th>Renders with JS off</th><th>Reuses existing tooling</th><th>New machinery</th><th class="score">Total</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>JSON sidecar + generated view</td><td>1</td><td>2</td><td>1</td><td class="score">4</td></tr>
+    <tr><td>Inline in <code>design.html</code></td><td>5</td><td>4</td><td>4</td><td class="score">13</td></tr>
+    <tr data-winner><td>An HTML artifact per screen — chosen</td><td>5</td><td>5</td><td>5</td><td class="score">15</td></tr>
+  </tbody>
+</table>
+</div>
+</spec-matrix>
+
+<p>The JSON option loses on the requirement rather than on taste: the authored form would not render at all, and
+NFR-001 would be satisfied only by a derived copy — which means a generator, a drift check, and a second thing to
+keep true. Inlining scores well and still loses, because 093 declares a <em>path</em> and a feature with ten
+screens would swamp the design it lives in. That is the argument that moved contracts out to sidecar files, and it
+applies here unchanged.</p>
+</section>
+
+
+<section id="decisions">
+<h2>7 · Decisions</h2>
+
+<spec-decision id="D-001" grounding="verified">
+  <h4>D-001 · One HTML artifact per screen, under the feature's visual directory</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd><a href="./spec.html#NFR-001">NFR-001</a> requires 100% of a declaration readable with scripting off, which JSON cannot satisfy without a generated copy. <a href="../094-visual-sidecar-convention/spec.html#FR-002">094</a> already fixes the directory, and <a href="../093-design-visual-section/spec.html#FR-005">093</a> already permits a declared path to name one.</dd>
+    <dt>Decision</dt>     <dd><code>specs/&lt;spec-id&gt;/visual/&lt;name&gt;.screen.html</code>, one <code>&lt;spec-screen&gt;</code> per file. The exemplar's speculative <code>.json</code> is converted rather than kept.</dd>
+    <dt>Consequences</dt> <dd>+ Renders, validates, diffs and reviews with the tooling that already exists — no generator, no drift check. + A ten-screen feature is ten short files rather than one long one. − A new artifact kind to learn, and one more thing the sidecar directory can contain. − Nothing yet <em>generates</em> these from a design tool, so the first ones are hand-authored.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-002" grounding="verified">
+  <h4>D-002 · A state carries its kind and its origin as two attributes, and a collapse needs no third</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd><a href="./spec.html#FR-002">FR-002</a> wants the source recorded, <a href="./spec.html#FR-003">FR-003</a> wants a many-to-one collapse recorded rather than implied. The spec's own data model insists source is a string and not a flag, because a state derived from a <em>field</em> is neither derived-from-response nor authored.</dd>
+    <dt>Decision</dt>     <dd><code>source=</code> names the kind (<code>derived</code>, <code>field</code>, <code>authored</code>); <code>from=</code> names what it came from, space-separated. A collapse is <code>from</code> holding more than one value, and is therefore recorded by construction rather than by an author remembering a third attribute.</dd>
+    <dt>Consequences</dt> <dd>+ The collapse cannot be forgotten separately from the origin — they are the same field. + A missing <code>from</code> on a derived state is a missing <em>attribute</em>, which both guards already catch. − <code>from</code> is a space-separated list, so a value containing a space cannot be expressed; acceptable for status codes and dotted field paths, and stated rather than discovered.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-003" grounding="verified">
+  <h4>D-003 · Annotations are typed by the accessibility tree, because that is what makes them assertions</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd><a href="./spec.html#FR-005">FR-005</a> forbids inventing a vocabulary here. The reason it can is verified rather than assumed: the Playwright installed in this repository ships <code>toMatchAriaSnapshot</code> and a <code>getByRole</code> that takes state options, so a declared role and state is already a sentence the test framework reads.</dd>
+    <dt>Decision</dt>     <dd><code>role=</code> and <code>aria-state=</code> on <code>&lt;spec-annotation&gt;</code>. An annotation with no accessibility analogue carries neither and stays prose — visibly unchecked rather than pretended-checked.</dd>
+    <dt>Consequences</dt> <dd>+ The design's intent and the test are one statement, on web and on native. + No tenth taxonomy to maintain. − Ties the vocabulary to a standard this project does not control. − Roles are not validated against the ARIA set in this slice, so a typo in <code>role=</code> is caught only by a human or by the test failing later.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-004" grounding="verified">
+  <h4>D-004 · Two guards for one gap, and neither is a fallback for the other</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd><a href="./spec.html#FR-008">FR-008</a> asks for both halves explicitly, and the spec's own rationale gives the reason: the stylesheet catches a reader's eye, the rule catches a pipeline. They fail at different moments for different people.</dd>
+    <dt>Decision</dt>     <dd>A stylesheet block cloning <code>spec-delta</code>'s <code>MISSING OP</code>, plus three per-file schema rules. The stylesheet is authoritative for nothing and advisory for everything; the rule is the P-8 guarantee.</dd>
+    <dt>Consequences</dt> <dd>+ A malformed screen is obvious in a browser before any tool runs. + The gate still holds in CI where nobody is looking. − The same vocabulary is expressed twice, in CSS selectors and in rule code, and they can drift; a test asserts the recognised-value lists agree.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-005" grounding="verified">
+  <h4>D-005 · The category map is kernel data, so an unmapped category is named rather than dropped</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd><a href="./spec.html#FR-006">FR-006</a> asks for two things: where each design-tool category lands, and which have no home. A table in a document answers the first and cannot answer the second, because nothing reads a table.</dd>
+    <dt>Decision</dt>     <dd>A hand-enumerated map in <code>@spectastic/core</code>, with the unmapped categories present as explicit entries rather than absent. An imported annotation of an unmapped category is reported by name.</dd>
+    <dt>Consequences</dt> <dd>+ "Has no home" becomes a value the tool can say out loud, which is what stops it being a silent drop. + Greppable and testable. − The map is a judgment about other people's products and will age; it is data precisely so ageing is a one-line change.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-006" grounding="verified">
+  <h4>D-006 · The derived-state floor is checked as a recording discipline, not against the contract file</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd><a href="./spec.html#FR-004">FR-004</a> says derived states are a floor and not a ceiling, and US1's acceptance talks about six documented error responses. But nothing in this codebase parses a contract file's responses — <code>readContractDeclarations</code> reads the <em>declaration</em>, and stops at the path.</dd>
+    <dt>Decision</dt>     <dd>Check what can be checked: that every state says where it came from, that a derived one names its origin, and that the vocabulary can express a state no response implies. Do <strong>not</strong> claim to verify that no response was forgotten.</dd>
+    <dt>Consequences</dt> <dd>+ The tool never asserts completeness it cannot establish, which is the failure the whole visual survey was written to avoid. − US1's acceptance is therefore met by the author, with the tool checking form rather than coverage; a reader could mistake a clean validate for a complete state set, so the spec's own wording and the finding copy both avoid the word "complete". − A real cross-check needs a contract-response reader, deferred rather than faked.</dd>
+  </dl>
+</spec-decision>
+</section>
+
+
+<section id="project-structure">
+<h2>8 · Project structure</h2>
+
+<pre><code>packages/schema/src/
+  visual-vocabulary.ts                + recognised sources, roles-with-state, element names
+  rules/screen-shape.ts               + a screen with no id, or a state outside a screen
+  rules/state-source-required.ts      + missing/unrecognised source=, derived with no from=
+  rules/annotation-typed.ts           + untyped where a role applies, or restating a requirement
+
+packages/core/src/visual/
+  annotation-categories.ts            + the design-tool category map, unmapped entries explicit
+
+assets/spec.css                       + screen/state/annotation cards, and the broken affordance
+
+templates/                            + a screen artifact template
+examples/currency-converter/          ~ the speculative .json converted to the real form
+
+packages/schema/test/                 + the three rules, red first
+tests/                                + one browser check on a real authored screen
+</code></pre>
+</section>
+
+
+<section id="risks">
+<h2>9 · Risks &amp; mitigations</h2>
+
+<div style="overflow-x:auto;">
+<table>
+  <thead><tr><th>Risk</th><th>Likelihood</th><th>Impact</th><th>Mitigation</th></tr></thead>
+  <tbody>
+    <tr><td>A clean validate reads as "every state is accounted for", which the tool cannot establish.</td><td>M</td><td>H</td><td><a href="#D-006">D-006</a>, and finding copy that never says complete. The honest ceiling is stated in the spec, the design and the change log.</td></tr>
+    <tr><td>The CSS vocabulary and the rule vocabulary drift, so a value is broken-looking but legal, or the reverse.</td><td>M</td><td>M</td><td>A test asserting the stylesheet's recognised values and the shared constant agree — the drift-guard shape <code>format-band-coupling</code> already uses.</td></tr>
+    <tr><td>A typo in <code>role=</code> passes every check and fails much later as a test.</td><td>M</td><td>L</td><td>Accepted and stated in <a href="#D-003">D-003</a>. Validating against the full ARIA role set is a larger piece of data than this slice should carry.</td></tr>
+    <tr><td>The new rules re-parse the document they are handed, as <code>contract-name-unique</code> did.</td><td>L</td><td>M</td><td>Named in the grounding table for exactly this reason; all three read <code>doc</code> and none takes an html string.</td></tr>
+  </tbody>
+</table>
+</div>
+</section>
+
+
+<section id="complexity">
+<h2>10 · Complexity tracking</h2>
+<p>Anywhere this plan introduces complexity not strictly required by the spec, justify it here.</p>
+
+<spec-assumption>
+<p>Converting the exemplar's <code>.json</code> is not required by any requirement. It is done because the exemplar
+is the only project in this repository with an interface, and therefore the only place the vocabulary can be
+exercised end to end — leaving it in a format this spec rejects would mean shipping a demonstration of the thing
+the spec decided against.</p>
+</spec-assumption>
+
+<spec-assumption>
+<p>Three rules rather than one. A single "screen well-formed" rule would be cheaper to write and worse to read: a
+finding that says which of the three obligations was missed is actionable, and one that says "malformed screen" is
+not. It follows <code>slo-well-formed</code>'s precedent of reporting granularly.</p>
+</spec-assumption>
+</section>
+
+
+<section id="questions">
+<h2>11 · Open questions</h2>
+<spec-questions>
+<p>None outstanding. The authoring format, the state-source shape and the category map's home were anchored in the
+interview; the assertability claim was settled by unpacking the installed Playwright rather than by recalling it,
+and the derived-state ceiling was settled by reading what the contract reader actually returns.</p>
+</spec-questions>
+</section>
+
+
+<section id="changelog">
+<h2>12 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-08-12">12 Aug 2026</time><span>Initial plan. Six decisions. The authoring format was decided on a requirement rather than a preference — NFR-001 rules JSON out, since an authored form that does not render satisfies it only through a generated copy. D-006 records the honest ceiling found while grounding: nothing here parses a contract file's responses, so the derived-state floor is enforced as a recording discipline and the tool never claims a state set is complete.</span></li>
+  <li><time datetime="2026-08-12">12 Aug 2026</time><span>Status flipped Draft → Accepted on 12 Aug 2026 — zero remaining unchecked tasks; tests verified passing per author confirmation. Sibling bundle flipped together.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  095-visual-element-vocabulary · Design · authored 2026-08-12
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>

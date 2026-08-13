@@ -11,6 +11,7 @@ export default defineConfig({
     'src/project-shared.ts',
     'src/contract-shared.ts',
     'src/visual-shared.ts',
+    'src/visual-vocabulary.ts',
   ],
   format: ['esm'],
   dts: true,

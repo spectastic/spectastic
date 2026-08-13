@@ -29,8 +29,7 @@ function check(docs: ReadonlyArray<{ file: string; html: string }>): Finding[] {
 }
 
 const live = (id: string) => `<spec-requirement id="${id}" priority="must"><p>Live.</p></spec-requirement>`;
-const proposed = (id: string) =>
-  `<spec-delta op="modified" target="${id}">${live(id)}</spec-delta>`;
+const proposed = (id: string) => `<spec-delta op="modified" target="${id}">${live(id)}</spec-delta>`;
 
 describe('no-duplicate-ids', () => {
   it('flags the same project-wide id defined in two specs', () => {
