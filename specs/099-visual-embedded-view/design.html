@@ -1,0 +1,394 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
+<title>The visual view, inside the design · Design</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Design · 099-visual-embedded-view</p>
+  <h1>The visual view, inside the design</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    How we will build it.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>     <span><spec-status value="draft">Draft</spec-status></span>
+    <b>Spec</b>       <span><a href="./spec.html">099-visual-embedded-view</a></span>
+    <b>Owner</b>      <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Branch</b>     <span><code>spec/visual-slice-095-098</code></span>
+    <b>Created</b>    <span><time datetime="2026-08-13">13 Aug 2026</time></span>
+    <b>Read time</b>  <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-tldr>
+    <p>Clone the contract view's placement and drift mechanism, and the verify view's derivation style —
+    then diverge in the two places the contract view's own triage card says a clone would go wrong. One
+    deterministic entry point both authoring paths reach, so a third inherits it for free; an absent view
+    reported rather than permitted. The biggest risk is that the derived projection is the wrong shape for a
+    reader, and nobody has yet read a visual view of either kind.</p>
+  </spec-tldr>
+</header>
+
+
+<section id="principles-check">
+<h2>1 · Principles check</h2>
+<p>Verified against <a href="../../principles.html">v1.9.0</a>.</p>
+
+<div style="overflow-x:auto;">
+<table>
+  <thead><tr><th>Principle</th><th>Compliance</th><th>Notes</th></tr></thead>
+  <tbody>
+    <tr><td>P-1 · Source order is reading order</td><td><spec-pill>OK</spec-pill></td><td>The view is emitted in declaration order and sorts nothing.</td></tr>
+    <tr><td>P-2 · Semantic tags over class soup</td><td><spec-pill>OK</spec-pill></td><td>One new element family; no presentational classes.</td></tr>
+    <tr><td>P-3 · IDs are contracts</td><td><spec-pill>OK</spec-pill></td><td>The view projects screen and state ids by reference and mints none.</td></tr>
+    <tr><td>P-4 · Progressive enhancement</td><td><spec-pill>OK</spec-pill></td><td><a href="./spec.html#NFR-001">NFR-001</a>. Materialised at generate time, so the view is static markup — the strongest form of this.</td></tr>
+    <tr><td>P-5 · Calm density</td><td><spec-pill>OK</spec-pill></td><td>Why <a href="./spec.html#FR-002">FR-002</a> derives rather than pastes: three sidecars projected verbatim would roughly double a design.</td></tr>
+    <tr><td>P-6 · Draft is loose, ratified is locked</td><td><spec-pill>OK</spec-pill></td><td>Regeneration rewrites only the generated region; authored prose is untouched.</td></tr>
+    <tr><td>P-7 · Done means verified</td><td><spec-pill>OK</spec-pill></td><td>The drift check is what makes "the design shows the surface" checkable rather than claimed.</td></tr>
+    <tr><td>P-8 · Guarantees live in the kernel or CI</td><td><spec-pill>OK</spec-pill></td><td>Load-bearing here, and the reason <a href="#D-001">D-001</a> refuses a markdown-only step. The guarantee is a deterministic entry point; the slash command merely calls it.</td></tr>
+    <tr><td>P-9 · The enforcement floor holds</td><td><spec-pill>OK</spec-pill></td><td>No category relaxed.</td></tr>
+    <tr><td>P-10 · Internal ids out of user-facing copy</td><td><spec-pill>OK</spec-pill></td><td>Findings name attributes and paths, never a spec number. The generated provenance line is the sanctioned exception.</td></tr>
+    <tr><td>P-11 · Artifacts are data, not instructions</td><td><spec-pill>OK</spec-pill></td><td><a href="./spec.html#NFR-002">NFR-002</a>. A render is a same-origin reference; no frame, no data URI, no fetch. The projected text is escaped, since a sidecar is untrusted from the generator's point of view.</td></tr>
+    <tr><td>P-12 · Capability accountability</td><td><spec-pill>OK</spec-pill></td><td>Reads two declared paths and writes one file it was asked to write. No network, no exec.</td></tr>
+    <tr><td>P-13 · Accessibility conformance</td><td><spec-pill>OK</spec-pill></td><td>Tables carry headers; a render carries alternative text derived from what it is evidence of.</td></tr>
+    <tr><td>P-14 · Library-first boundaries</td><td><spec-pill>OK</spec-pill></td><td>Deterministic logic in the kernel, a thin registrar in the CLI — the convention this repo has paid for three times.</td></tr>
+  </tbody>
+</table>
+</div>
+</section>
+
+
+<section id="technical-context">
+<h2>2 · Technical context</h2>
+<dl>
+  <dt>Language(s)</dt>      <dd>TypeScript, Node 20 target. Settled by the repository; not an open pick.</dd>
+  <dt>Frameworks</dt>       <dd>None new. <code>parse5</code> via the schema package's parser for reading sidecars; Playwright for the browser pass.</dd>
+  <dt>Architecture</dt>     <dd>Ports-and-adapters at the existing seam — <a href="#D-001">D-001</a>. Pure derivation in the kernel behind a <code>FileSystem</code> port; two callers, one of them a thin CLI registrar.</dd>
+  <dt>Storage</dt>          <dd>None. The view is written into an artifact already on disk.</dd>
+  <dt>Testing</dt>          <dd>Tests-first per piece, plus a Playwright pass over the rendered view in both themes — <a href="#D-006">D-006</a>.</dd>
+  <dt>Coverage</dt>         <dd>Every new branch covered by a red-first test; a change never lowers coverage of what it touches. No universal project percentage.</dd>
+  <dt>Perf targets</dt>     <dd><a href="./spec.html#NFR-003">NFR-003</a> — under 100 ms added to a design generation for a feature declaring up to 20 screens.</dd>
+  <dt>Constraints</dt>      <dd>The artifact content policy is deny-by-default: no frame, no data URI, no runtime fetch. Core returns HTML and never writes; the caller writes.</dd>
+</dl>
+</section>
+
+
+<section id="contracts">
+<h2>3 · Data model &amp; contracts</h2>
+<spec-contract shape="none">
+  <p>No interface. This feature is a deterministic transform over files already in the project, invoked by
+  a command; it exposes no endpoint, publishes no event, and its only consumers are the two callers named
+  in <a href="#D-001">D-001</a>.</p>
+</spec-contract>
+</section>
+<section id="grounding">
+<h2>5 · Grounding &amp; evidence</h2>
+<p>Every design-bearing fact this plan rests on, and how it was confirmed.</p>
+
+<div style="overflow-x:auto;">
+<table class="evidence">
+  <thead><tr><th>Claim the design rests on</th><th>Source</th><th>Status</th><th>Finding / note</th></tr></thead>
+  <tbody>
+    <tr><td>The contract view is injected into <code>design.html</code> and not written beside it</td>
+        <td><code>packages/core/src/contracts/materialise-view.ts:46</code></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td><code>materialiseContractViews(html, fs, cwd)</code> returns HTML with a nested <code>&lt;spec-contract-view&gt;</code> injected per declaration. Idempotent by an explicit replace of any existing view.</td></tr>
+    <tr><td>It has exactly one caller, inside the kernel verb</td>
+        <td><code>packages/core/src/commands/design.ts:102</code></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td>Called after render, before return. Its own comment says it is a deliberate no-op today because <code>renderDesignHtml</code> emits no contract declaration.</td></tr>
+    <tr><td>The canonical authoring path never reaches that caller</td>
+        <td><code>commands/spectastic.design.md</code> step 4</td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td>Copies <code>templates/design.html</code> and drives the rest by interview. Its own CLI-dispatch note calls the kernel path "an alternate code path", citing <a href="../006-kernel-extraction/spec.html#FR-009">006 FR-009</a>.</td></tr>
+    <tr><td>The drift check fires on staleness and never on absence</td>
+        <td><code>packages/core/src/commands/validate.ts:955</code></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td><code>if (decl.path === undefined || decl.viewText === undefined) continue</code>. Correct rather than a bug — 072 FR-008 makes rendering a view a MAY — and precisely why the gap stayed invisible.</td></tr>
+    <tr><td>A same-origin image reference is permitted by the artifact content policy</td>
+        <td>the <code>Content-Security-Policy</code> meta in every spec-family template</td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td><code>img-src 'self'</code>. A <code>data:</code> URI in <code>src=</code> and an inline frame are error-severity violations of <code>no-executable-content</code>; a file reference is not.</td></tr>
+    <tr><td>The axis-and-context grammar is reusable without its resolution</td>
+        <td><code>packages/schema/src/variant-grid.ts</code> <code>parseAxisContextPairs</code></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td>Exported this week for exactly this reason. <code>variantSameResolvesRule</code> is <code>scope: 'per-file'</code> and returns on a document with no grid element, which a design never has — so the grammar transfers and the resolution does not.</td></tr>
+    <tr><td>Projecting the sidecars verbatim would roughly double a design</td>
+        <td><code>examples/currency-converter/</code> file sizes</td>
+        <td><spec-status value="review">spike</spec-status></td>
+        <td>Measured: screen 6.0 KB + grid 4.1 KB + token set 3.7 KB against a 23 KB design. Confirms <a href="./spec.html#FR-002">FR-002</a>'s derive-don't-copy rule rather than assuming it.</td></tr>
+    <tr><td>A derived table is what a reader wants</td>
+        <td>—</td>
+        <td><spec-status value="blocked">assumed</spec-status></td>
+        <td>Nobody has read a visual view of either kind. Carried as an accepted risk rather than verified — see <a href="#risks">Risks</a>.</td></tr>
+  </tbody>
+</table>
+</div>
+</section>
+
+
+<section id="approach">
+<h2>6 · Approach</h2>
+
+<p>A pure kernel function derives a model from the declared sidecars and renders it, and injects the result
+into the design's own <code>&lt;spec-visual&gt;</code> declaration — the placement the contract view already
+uses, with none of its verbatim projection. Reading a sidecar goes through the existing
+<code>FileSystem</code> port, so the interesting cases are testable without a fixture project per assertion;
+the function returns HTML and writes nothing, because core returns and the caller writes.</p>
+
+<p>The part that is not a clone is the <strong>entry point</strong>. Both authoring paths call one
+deterministic command, so the guarantee is the command and not a step somebody may skip. Two checks sit
+beside the existing visual scans: one reports a view that no longer matches the files it projects, the other
+reports a declaration carrying no view at all — and the second is the divergence that makes this feature
+observable rather than quietly absent.</p>
+
+<spec-sidenote>The thing nearly done instead was a materialise-on-validate autofix, which closes the gap
+everywhere at once and makes a read-only verb write to the working tree. Anyone running <code>validate</code>
+in continuous integration would find their checkout modified by a check.</spec-sidenote>
+
+<spec-arch>
+<figure>
+<svg viewBox="0 0 700 260" role="img" aria-label="Two authoring paths reach one materialise command, which reads the declared sidecars and injects a derived view into the design; two checks read the result">
+  <style>
+    .box { fill: var(--c-surface-raised, #fcfbf7); stroke: var(--c-border, #c4c1bb); stroke-width:1.2; }
+    .label { font: 700 11px Lato, sans-serif; fill: var(--c-text-soft, #4a4a46); letter-spacing:0.06em; text-transform:uppercase; }
+    .body { font: 400 12px "Source Serif 4", Georgia, serif; fill: var(--c-text, #353534); }
+    .arr { stroke: var(--c-muted, #73706d); stroke-width:1.2; fill:none; }
+    .arrh { fill: var(--c-muted, #73706d); }
+  </style>
+  <rect class="box" x="20"  y="20" width="150" height="52" rx="4"/>
+  <text class="label" x="34" y="42">Kernel verb</text>
+  <text class="body"  x="34" y="60">designCommand</text>
+
+  <rect class="box" x="20"  y="150" width="150" height="52" rx="4"/>
+  <text class="label" x="34" y="172">Slash command</text>
+  <text class="body"  x="34" y="190">template + interview</text>
+
+  <rect class="box" x="255" y="85" width="170" height="60" rx="4"/>
+  <text class="label" x="269" y="107">Materialise</text>
+  <text class="body"  x="269" y="127">one entry point</text>
+
+  <rect class="box" x="510" y="20" width="165" height="52" rx="4"/>
+  <text class="label" x="524" y="42">design.html</text>
+  <text class="body"  x="524" y="60">view injected</text>
+
+  <rect class="box" x="510" y="150" width="165" height="52" rx="4"/>
+  <text class="label" x="524" y="172">Two checks</text>
+  <text class="body"  x="524" y="190">stale · absent</text>
+
+  <path class="arr" d="M170 46 L255 100" marker-end="url(#a)"/>
+  <path class="arr" d="M170 176 L255 130" marker-end="url(#a)"/>
+  <path class="arr" d="M425 105 L510 55" marker-end="url(#a)"/>
+  <path class="arr" d="M675 46 Q700 110 675 165" marker-end="url(#a)"/>
+  <defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path class="arrh" d="M0,0 L10,5 L0,10 z"/></marker></defs>
+</svg>
+<figcaption>Both authoring paths converge on one command, so a third inherits it. The checks read the written
+artifact rather than the command, which is what makes an absent view observable.</figcaption>
+</figure>
+</spec-arch>
+</section>
+
+
+<section id="alternatives">
+<h2>7 · Alternatives considered</h2>
+
+<p>How materialisation reaches both authoring paths — the only decision here with genuinely competing
+answers. Scored 1–5 on whether the obligation is enforceable, whether a future third path inherits it, how
+much new surface it adds, and whether it surprises anyone.</p>
+
+<spec-matrix>
+<div style="overflow-x:auto;">
+<table>
+  <thead>
+    <tr><th>Option</th><th>Enforceable</th><th>Inherited by a third path</th><th>New surface</th><th>No surprises</th><th class="score">Total</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>A step in the command markdown</td><td>1</td><td>1</td><td>5</td><td>4</td><td class="score">11</td></tr>
+    <tr><td>Materialise inside <code>validate</code></td><td>5</td><td>5</td><td>4</td><td>1</td><td class="score">15</td></tr>
+    <tr data-winner><td>One command both paths call — chosen</td><td>5</td><td>5</td><td>3</td><td>5</td><td class="score">18</td></tr>
+  </tbody>
+</table>
+</div>
+</spec-matrix>
+
+<p>The markdown step loses on the two criteria that matter most, and loses to the requirement rather than to
+taste: <a href="./spec.html#FR-003">FR-003</a> is must-tier, and P-8 excludes command markdown as a place a
+guarantee may live. Materialising inside <code>validate</code> scores well until the last column — a
+read-only check that writes to the working tree would modify a continuous-integration checkout, which is a
+worse defect than the one it fixes.</p>
+</section>
+
+
+<section id="decisions">
+<h2>8 · Decisions</h2>
+
+<spec-decision id="D-001" grounding="verified">
+<h3>D-001 · One deterministic entry point, called by both authoring paths</h3>
+<dl>
+  <dt>Status</dt><dd><spec-status value="accepted">Accepted</spec-status></dd>
+  <dt>Context</dt><dd><code>materialiseContractViews</code> has exactly one caller, <code>packages/core/src/commands/design.ts:102</code>, inside the kernel verb. The canonical authoring path copies <code>templates/design.html</code> and interviews (<code>commands/spectastic.design.md</code> step 4), and <a href="../006-kernel-extraction/spec.html#FR-009">006 FR-009</a> makes that path canonical and the kernel path an alternate. So a design declaring a contract has never received a view.</dd>
+  <dt>Decision</dt><dd>A pure kernel function, exposed through one deterministic command. The kernel verb calls the function; the slash command calls the command as a step. Not a ninth verb — <code>verify</code>, <code>contract</code> and <code>enforce</code> are all command-only.</dd>
+  <dt>Consequences</dt><dd>+ The obligation is enforceable, which is what <a href="./spec.html#FR-003">FR-003</a> requires and what P-8 demands of a must-tier side effect. + A third authoring path inherits it by calling one thing. + The same entry point retro-covers the contract view's gap, so <a href="../072-contract-embedded-view/triage-log.html#T-001">072/T-001</a> closes without a second one-off. − One more command in the surface, on a project that guards its verb count. − The slash command still has to call it, so the markdown is a step in the chain even though it is not where the guarantee lives.</dd>
+</dl>
+</spec-decision>
+
+<spec-decision id="D-002" grounding="spike">
+<h3>D-002 · Derive a projection; never paste the sidecars</h3>
+<dl>
+  <dt>Status</dt><dd><spec-status value="accepted">Accepted</spec-status></dd>
+  <dt>Context</dt><dd>The contract view projects an escaped, line-capped excerpt because a contract file is opaque text and an excerpt is the only projection available. The visual sidecars are this tool's own vocabulary and can be read. Measured on the worked example: screen 6.0 KB, grid 4.1 KB, token set 3.7 KB, against a 23 KB design.</dd>
+  <dt>Decision</dt><dd>Read the sidecars through the schema package's parser and render derived tables — screens and states, annotations, addressed contexts, token-set version. Escape every projected string, since a sidecar is untrusted from the generator's point of view.</dd>
+  <dt>Consequences</dt><dd>+ A reader gets an answer rather than three files' markup pasted into a fourth. + The artifact stays a readable size, which is P-5. − The projection has a shape somebody chose, and choosing wrongly is invisible until a reader complains. − It couples to the sidecar vocabularies, so a vocabulary change is a change here too — which is exactly what <a href="./spec.html#FR-012">FR-012</a>'s seam exists to absorb.</dd>
+</dl>
+</spec-decision>
+
+<spec-decision id="D-003" grounding="verified">
+<h3>D-003 · Report an absent view, unlike the contract view</h3>
+<dl>
+  <dt>Status</dt><dd><spec-status value="accepted">Accepted</spec-status></dd>
+  <dt>Context</dt><dd><code>contractViewDriftFindings</code> skips any declaration whose view is undefined (<code>packages/core/src/commands/validate.ts:955</code>), which is correct given 072 FR-008 makes rendering a MAY — and is why nobody noticed for months that the view never rendered.</dd>
+  <dt>Decision</dt><dd>A core scan beside the existing section gate: a declaration with no view is a finding, conditional on the declaration existing. A separate check from drift, because the reader's next action differs — generate for the first time, versus regenerate.</dd>
+  <dt>Consequences</dt><dd>+ The capability cannot be silently absent, which is the whole difference between this and its sibling. + Conditional on a declaration, so a project with no surface reports nothing. − One more scan on the project pass. − It will fire on every existing design the moment a declaration is added and the command has not been run, which is correct and will still read as noise the first time.</dd>
+</dl>
+</spec-decision>
+
+<spec-decision id="D-004" grounding="verified">
+<h3>D-004 · A render is an attribute-bound reference in the grid's own grammar</h3>
+<dl>
+  <dt>Status</dt><dd><spec-status value="accepted">Accepted</spec-status></dd>
+  <dt>Context</dt><dd><code>parseAxisContextPairs</code> is exported from <code>packages/schema/src/variant-grid.ts</code> and already serves two callers. The content policy permits <code>img-src 'self'</code>; a <code>data:</code> URI in <code>src=</code> and an inline frame are error-severity violations.</dd>
+  <dt>Decision</dt><dd><code>&lt;spec-render src= contexts=&gt;</code> nested in the state it depicts, with contexts in the <code>axis=context</code> grammar. Named, never embedded. Position carries the state and the attribute carries the cell.</dd>
+  <dt>Consequences</dt><dd>+ A reader meets one grammar rather than two. + No bytes copied, no drift surface, no size cost — the divergence from the text half, and the reason it is legitimate. − A render depicting two states has to be declared twice. − Nothing verifies that the image actually shows what it claims, and nothing can.</dd>
+</dl>
+</spec-decision>
+
+<spec-decision id="D-005" grounding="verified">
+<h3>D-005 · Compare live, store no digest</h3>
+<dl>
+  <dt>Status</dt><dd><spec-status value="accepted">Accepted</spec-status></dd>
+  <dt>Context</dt><dd><code>verify-view-stale</code> re-derives expected identifiers from the sibling bundle and compares live, deliberately with no stored fingerprint. <code>contractViewDriftFindings</code> does the same, normalising line endings first.</dd>
+  <dt>Decision</dt><dd>Re-derive the projection and compare it to what the artifact carries. No digest anywhere.</dd>
+  <dt>Consequences</dt><dd>+ A fingerprint is a third thing to keep true and goes stale silently. + The comparison is exactly the generator's own output, so a green check means regeneration would be a no-op. − Every check re-reads the sidecars, which <a href="./spec.html#NFR-003">NFR-003</a> bounds rather than avoids.</dd>
+</dl>
+</spec-decision>
+
+<spec-decision id="D-006" grounding="n-a">
+<h3>D-006 · Tests first, and a browser pass on anything rendered</h3>
+<dl>
+  <dt>Status</dt><dd><spec-status value="accepted">Accepted</spec-status></dd>
+  <dt>Context</dt><dd>Judgment, not a fact about the code. The evidence behind it is local: two stylesheet changes this week both carried cascade collisions that every structural assertion passed through, and both were caught only by reading computed style in a browser.</dd>
+  <dt>Decision</dt><dd>A red unit test before each piece, and a Playwright pass over the rendered view in both themes asserting computed content rather than presence.</dd>
+  <dt>Consequences</dt><dd>+ Catches the failure mode this area actually has. − Slower per piece, and the browser pass needs a served fixture.</dd>
+</dl>
+</spec-decision>
+</section>
+
+
+<section id="project-structure">
+<h2>9 · Project structure</h2>
+<p>New and changed paths only. Deterministic logic in the kernel, a thin registrar in the command layer —
+the convention this repository has paid for three times.</p>
+<pre><code>packages/core/src/visual/
+  materialise-view.ts        NEW  derive a model from the declared sidecars, render it,
+                                  inject or replace it in the design. Pure; takes the
+                                  FileSystem port. Returns HTML, writes nothing.
+  render.ts                  NEW  read &lt;spec-render&gt; declarations out of a screen sidecar
+
+packages/schema/src/
+  visual-vocabulary.ts       EDIT the render element name and its attributes
+  rules/render-shape.ts      NEW  a render must name a source and resolve its contexts grammar
+
+packages/core/src/commands/
+  design.ts                  EDIT call the materialiser beside the contract one
+  validate.ts                EDIT visualViewDriftFindings, visualViewMissingFindings
+
+packages/cli/src/commands/
+  visual.ts                  NEW  registrar only: parse args, call core, write, exit
+  validate.ts                EDIT fold the two new scans into the project pass
+
+templates/screen.html        EDIT scaffold a render beside a state
+commands/spectastic.design.md EDIT call the command as a step; re-sync .claude/commands/
+</code></pre>
+</section>
+
+
+<section id="risks">
+<h2>10 · Risks &amp; mitigations</h2>
+
+<div style="overflow-x:auto;">
+<table>
+  <thead><tr><th>Risk</th><th>Likelihood</th><th>Impact</th><th>Mitigation</th></tr></thead>
+  <tbody>
+    <tr><td>The derived projection is the wrong shape for a reader — the one assumed fact this design rests on</td><td>M</td><td>M</td><td>Accepted rather than mitigated; see the risk below. The seam in <a href="./spec.html#FR-012">FR-012</a> means changing the shape does not reopen this spec.</td></tr>
+    <tr><td>The absent-view check fires across the estate the first time a declaration lands without the command having run</td><td>H</td><td>L</td><td>Correct behaviour rather than a defect, but it will read as noise. The finding names the command that fixes it, so the first encounter ends in one action.</td></tr>
+    <tr><td>The slash command's step is skipped, exactly as 072's was</td><td>M</td><td>M</td><td>What <a href="#D-003">D-003</a> is for: the guarantee is not the step but the check that fires when the step did not happen.</td></tr>
+    <tr><td>Re-reading sidecars on every check costs more than the budget allows</td><td>L</td><td>M</td><td><a href="./spec.html#NFR-003">NFR-003</a> bounds it at 20 screens; the project pass already reads each design once and can share the read.</td></tr>
+    <tr><td>Escaping a projected sidecar is forgotten somewhere, and a sidecar becomes an injection surface</td><td>L</td><td>H</td><td>P-11 and <a href="./spec.html#NFR-002">NFR-002</a>. The red-team fixture and the corpus security scan both already run in continuous integration and would catch it.</td></tr>
+  </tbody>
+</table>
+</div>
+
+<spec-risk target="D-002" status="accepted" by="Brian Corbin · @briancorbinxyz">
+  <p class="claim">D-002 chooses a derived projection over a verbatim one on an <code>assumed</code> fact — that a reader prefers a table to the sidecars' own markup. Nobody has read a visual view of either kind, so the shape is a guess.</p>
+  <p class="citation">Grounding row: "A derived table is what a reader wants" — status <code>assumed</code>, source "—".</p>
+  <div class="response">Accepted rather than verified or spiked. Verifying means building both and showing them to someone, which costs more than changing the shape later would; and <a href="./spec.html#FR-012">FR-012</a>'s seam is what makes changing it cheap. Recorded here because a must-tier decision resting on an assumed fact may not pass the grounding gate silently.</div>
+</spec-risk>
+</section>
+
+
+<section id="complexity">
+<h2>11 · Complexity tracking</h2>
+<p>Two places this design is more complex than the spec strictly requires.</p>
+
+<spec-assumption>
+<p><strong>A command where a function would do.</strong> The materialiser could have been a function the
+kernel verb calls, and the slash command told to run the verb. That is simpler and it fails the requirement:
+the slash command deliberately does not run the verb, and <a href="../006-kernel-extraction/spec.html#FR-009">006
+FR-009</a> says that is canonical rather than a workaround. The extra surface buys an obligation that holds
+without anyone remembering it.</p>
+</spec-assumption>
+
+<spec-assumption>
+<p><strong>Two checks where one would do.</strong> Drift and absence could share a rule. They are separated
+because the reader's next action differs — regenerate, versus generate for the first time — and because
+merging them is how the sibling ended up unable to report absence at all.</p>
+</spec-assumption>
+</section>
+
+
+<section id="questions">
+<h2>12 · Open questions</h2>
+<spec-questions>
+<p>None outstanding. Four decisions were anchored in the interview — the entry point, what reports an absent
+view, the render's shape, and the test posture — and the one fact this design takes on faith is carried as an
+accepted risk rather than left in the grounding table unremarked.</p>
+</spec-questions>
+</section>
+
+
+<section id="changelog">
+<h2>13 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-08-13">13 Aug 2026</time><span>Initial design. Clones the contract view's placement and drift mechanism and diverges in the two places that view's own triage card shows a clone would go wrong: one entry point both authoring paths reach, and an absent view reported rather than permitted. The Visual surface section was written as an explicit <code>shape="none"</code> and then <strong>deleted outright</strong> — the gate was right and the author was wrong: an explicit none belongs to a feature inside a project that has an interface, and this project has none, so the rule is absence rather than emptiness.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  Design for 099-visual-embedded-view · The visual view, inside the design · authored 2026-08-13
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>
