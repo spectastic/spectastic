@@ -271,8 +271,8 @@ describe('token candidates are derived and never committed (FR-010, FR-005)', ()
 
   it('orders by how often a value appears, and stably', () => {
     const derived = deriveTokenCandidates([
-      { name: 'a', body: '#aaaaaa #bbbbbb #bbbbbb' },
-      { name: 'b', body: '#bbbbbb' },
+      { name: 'a', body: '#aaaaaa #bbbbbb #bbbbbb', landed: true },
+      { name: 'b', body: '#bbbbbb', landed: true },
     ]);
     expect(derived[0]?.value).toBe('#bbbbbb');
     expect(derived[0]?.occurrences).toBe(3);
@@ -346,5 +346,69 @@ describe('deriving from what was read, not from what was landed', () => {
     const ledger = await imp(m);
     expect(ledger.refused).toHaveLength(1);
     expect(ledger.tokenCandidates).toEqual([]);
+  });
+});
+
+describe('what the risk pass changed (FR-004 widened, FR-015 mitigated)', () => {
+  it('records provenance for a file it read and did not land', async () => {
+    const m = only({ 'screens.dc.html': '<div style="color:#abcdef"><script>x</script></div>' });
+    const ledger = await imp(m, { origin: 'a design tool' });
+    expect(ledger.unhandled).toEqual(['screens.dc.html']);
+    // Recorded against the SOURCE name, because there is no destination — and
+    // that absence is itself what a reader needs to know.
+    expect(ledger.files).toHaveLength(1);
+    expect(ledger.files[0]?.path).toBe('screens.dc.html');
+    expect(ledger.files[0]?.provenance.origin).toBe('a design tool');
+  });
+
+  it('marks a candidate whose evidence was never landed', async () => {
+    const m = only({ 'screens.dc.html': '<div style="color:#abcdef"><script>x</script></div>' });
+    const ledger = await imp(m);
+    expect(ledger.tokenCandidates[0]?.fromUnlanded).toBe(true);
+  });
+
+  it('does not mark one whose evidence is all in the project', async () => {
+    const m = only({ 'palette.css': ':root{--a:#abcdef}' });
+    const ledger = await imp(m);
+    expect(ledger.tokenCandidates[0]?.fromUnlanded).toBe(false);
+  });
+
+  it('says so in the manifest, beside the source a reader would go looking for', async () => {
+    const m = only({ 'screens.dc.html': '<div style="color:#abcdef"><script>x</script></div>' });
+    const { store } = m;
+    await imp(m);
+    expect(store[`${INTO}/${MANIFEST_NAME}`]).toContain('not landed — see the export');
+  });
+
+  it('still records nothing at all for material a licence forbids', async () => {
+    // The one case that excludes material from both reading and landing.
+    const m = only({ 'a.html': '<p style="color:#abcdef">licence: cc-by-nd</p>' });
+    const ledger = await imp(m);
+    expect(ledger.files).toEqual([]);
+    expect(ledger.tokenCandidates).toEqual([]);
+  });
+});
+
+describe('prose about executable content is not executable content', () => {
+  it('lands a README that merely mentions a script', async () => {
+    // Found by running a real import over a zip: the export's own README
+    // explained that it "carries a <script>", and was refused for saying so —
+    // costing the reader the one file most likely to explain the export.
+    const m = only({ 'README.md': 'The export carries a `<script>` to compute its values.' });
+    const ledger = await imp(m);
+    expect(ledger.unhandled).toEqual([]);
+    expect(ledger.written).toEqual(['README.md']);
+  });
+
+  it('still refuses an SVG that really can carry one', async () => {
+    const m = only({ 'icon.svg': '<svg><script>x</script></svg>' });
+    const ledger = await imp(m);
+    expect(ledger.unhandled).toEqual(['icon.svg']);
+  });
+
+  it('still refuses the HTML case it was written for', async () => {
+    const m = only({ 'screens.dc.html': '<div><script>x</script></div>' });
+    const ledger = await imp(m);
+    expect(ledger.unhandled).toEqual(['screens.dc.html']);
   });
 });

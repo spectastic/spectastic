@@ -78,7 +78,7 @@ export function registerVisual(program: Command): void {
     .description(
       'Import a design export already on disk — lands its token file, renders and annotations into the visual sidecar, once, and never reads it again. No network, no account, no design-tool licence.',
     )
-    .requiredOption('--from <dir>', 'the exported folder, inside this project')
+    .requiredOption('--from <path>', 'the export, inside this project — a folder, or a .zip which is expanded for you')
     .requiredOption('--into <dir>', 'where landed material goes — the visual sidecar')
     .requiredOption('--identity <id>', 'the stable anchor a later re-import keys on')
     .option('--previous-identity <id>', 'the identity a previous import landed under, if any')
@@ -93,12 +93,24 @@ export function registerVisual(program: Command): void {
         origin?: string;
         originUrl?: string;
       }) => {
-      const [{ importDesignSource, ImportIdentityError }, { localSourceFetcher, SourceNotFoundError, SourceOutsideProjectError }, { nodeFs }] =
-        await Promise.all([
-          import('@spectastic/core/visual/import'),
-          import('@spectastic/core/providers/local-source-fetcher'),
-          import('@spectastic/core/providers/node-fs'),
-        ]);
+      const [
+        { importDesignSource, ImportIdentityError },
+        { localSourceFetcher, SourceNotFoundError, SourceOutsideProjectError },
+        { archiveSourceFetcher, looksLikeArchive, ArchiveUnreadableError, ArchiveEntryOutsideError },
+        { nodeFs },
+      ] = await Promise.all([
+        import('@spectastic/core/visual/import'),
+        import('@spectastic/core/providers/local-source-fetcher'),
+        import('@spectastic/core/providers/archive-source-fetcher'),
+        import('@spectastic/core/providers/node-fs'),
+      ]);
+
+      // An archive and a folder are the same thing to everything downstream —
+      // the fetcher seam returns a directory either way, which is what lets one
+      // adapter serve every source instead of one per tool.
+      const fetcher = looksLikeArchive(opts.from)
+        ? archiveSourceFetcher(process.cwd())
+        : localSourceFetcher(nodeFs, process.cwd());
 
       try {
         const ledger = await importDesignSource(
@@ -110,7 +122,7 @@ export function registerVisual(program: Command): void {
             origin: opts.origin,
             originUrl: opts.originUrl,
           },
-          localSourceFetcher(nodeFs, process.cwd()),
+          fetcher,
           nodeFs,
         );
         // A four-bucket ledger rather than a log — the corpus prints the same
@@ -144,7 +156,9 @@ export function registerVisual(program: Command): void {
         if (
           err instanceof ImportIdentityError ||
           err instanceof SourceNotFoundError ||
-          err instanceof SourceOutsideProjectError
+          err instanceof SourceOutsideProjectError ||
+          err instanceof ArchiveUnreadableError ||
+          err instanceof ArchiveEntryOutsideError
         ) {
           process.stderr.write(`${err.message}\n`);
           process.exit(1);

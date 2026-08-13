@@ -22,6 +22,7 @@ export default defineConfig({
     'src/visual/render.ts',
     'src/visual/import.ts',
     'src/visual/source-fetcher.ts',
+    'src/providers/archive-source-fetcher.ts',
     'src/providers/local-source-fetcher.ts',
     'src/visual/materialise-view.ts',
     'src/commands/triage.ts',

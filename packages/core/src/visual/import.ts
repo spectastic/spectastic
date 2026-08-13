@@ -7,7 +7,14 @@
  * problem is a destination somebody else may have moved. Conflating the two
  * would add a planning phase that protects against nothing here.
  *
- * Four properties are transferred from that importer rather than invented:
+ * FR-014 and FR-015 were added after a real handoff was run (applied change
+ * 2026-08-13-read-more-land-less): material that cannot be landed safely is
+ * reported rather than dropped, and reading a file is a different permission
+ * from copying one. FR-004 was widened in the same change — provenance is owed
+ * for every file READ, since the file contributing most of the derived colour
+ * is precisely the one that is never copied.
+ *
+ * Four properties are transferred from the corpus importer rather than invented:
  *
  *  - Never destructive. Material the new export no longer carries is reported
  *    as orphaned, never deleted — an element missing from an export is as
@@ -107,6 +114,12 @@ export interface TokenCandidate {
    *  landed, so a reviewer following this up should expect to look at the
    *  export rather than only at the project. */
   sources: string[];
+  /** True when some or all of the evidence came from material that was READ
+   *  but never LANDED (FR-015). Marked because FR-003 encourages deleting the
+   *  export once an import is done, so a source named here may not be in the
+   *  project and may not be anywhere — and "go and look" must never be silent
+   *  advice about a file that is gone. Raised by this spec's own risk pass. */
+  fromUnlanded: boolean;
   /** FR-005 — derived, never declared, and never outranking a declared value. */
   inferred: true;
   /** Presented for confirmation. Nothing here is in the token set. */
@@ -166,7 +179,20 @@ export async function importDesignSource(
   // colour. Refusing to land it and then ignoring it would throw away the best
   // input FR-010 has. A LICENCE refusal is excluded, because that one really is
   // a permission to use the material at all.
-  const readable: { name: string; body: string }[] = [];
+  const readable: { name: string; body: string; landed: boolean }[] = [];
+
+  // FR-004 (widened by 2026-08-13-read-more-land-less) — provenance is owed for
+  // every file the import READS, not only for the ones it lands. The file
+  // contributing most of the derived colour is precisely the one that is read
+  // and never copied, so the narrower scope left the material with the most
+  // influence over the output as the material with no record at all.
+  const provenanceOf = (body: string): Provenance => ({
+    origin: input.origin ?? UNKNOWN,
+    originUrl: input.originUrl ?? UNKNOWN,
+    edition: declaredEdition(body) ?? UNKNOWN,
+    license: declaredLicence(body) ?? UNKNOWN,
+    contentHash: contentHash(body),
+  });
 
   for (const name of entries) {
     const source = `${dir}/${name}`;
@@ -188,29 +214,21 @@ export async function importDesignSource(
     // exists to hold. So executable content is REPORTED rather than landed.
     // Reporting is the posture FR-011 already establishes for material the
     // vocabulary has no home for; this is the same statement about a file.
-    if (carriesExecutableContent(body)) {
+    if (landingWouldViolate(name, body)) {
       ledger.unhandled.push(name);
-      readable.push({ name, body });
+      readable.push({ name, body, landed: false });
+      // Read, so its provenance is owed too. Recorded against the SOURCE name
+      // rather than a destination, because there is no destination — which is
+      // itself the fact a reader needs.
+      ledger.files.push({ path: name, provenance: provenanceOf(body), inferred: false, reviewed: false });
       continue;
     }
 
-    readable.push({ name, body });
-
-    // FR-004 — provenance on every landed file, with an unknown field recorded
-    // as unknown rather than guessed. `origin` and `originUrl` come from the
-    // caller because only the caller knows where it fetched from; `edition` and
-    // `license` are read out of the material when it declares them.
-    const provenance: Provenance = {
-      origin: input.origin ?? UNKNOWN,
-      originUrl: input.originUrl ?? UNKNOWN,
-      edition: declaredEdition(body) ?? UNKNOWN,
-      license: declaredLicence(body) ?? UNKNOWN,
-      contentHash: contentHash(body),
-    };
+    readable.push({ name, body, landed: true });
 
     // FR-006 — everything lands not-yet-reviewed. Not a default a caller can
     // pass around: the type fixes it at `false`.
-    ledger.files.push({ path: destination, provenance, inferred: false, reviewed: false });
+    ledger.files.push({ path: destination, provenance: provenanceOf(body), inferred: false, reviewed: false });
 
     let existing: string | undefined;
     try {
@@ -303,6 +321,13 @@ export function declaredEdition(body: string): string | undefined {
 /**
  * Whether landing this verbatim would break the project's own artifact rules.
  *
+ * FR-014 owns this. It shipped before the requirement did, which is the wrong
+ * order and the reason the requirement now exists: the behaviour generalises
+ * FR-011's reporting posture from an annotation category the vocabulary cannot
+ * place to a whole file the project cannot hold, and a generalisation made
+ * quietly in code leaves a later reader a distinction with no argument behind
+ * it and no reason not to simplify it away.
+ *
  * Mirrors `no-executable-content`'s categories rather than importing it: that
  * rule is a per-file schema rule over a parsed document, and this runs over raw
  * text before anything is written. Kept deliberately BROADER than the rule —
@@ -310,6 +335,31 @@ export function declaredEdition(body: string): string | undefined {
  * reported file a human can look at, while a false negative costs a project
  * that no longer validates.
  */
+/**
+ * Extensions the project validates as artifacts. Only these can violate the
+ * artifact rules, so only these are worth checking.
+ */
+const HTML_SUFFIXES = ['.html', '.htm', '.xhtml', '.svg'];
+
+/**
+ * Whether landing this file would risk the project's own artifact rules.
+ *
+ * The extension check is not an optimisation. Found by running a real import
+ * over a zip: a `README.md` explaining that the export "carries a `<script>`"
+ * was refused, because prose ABOUT executable content matches every pattern
+ * executable content does. Markdown and stylesheets are never parsed as
+ * artifacts, so they cannot trip the rule this guards — and refusing them costs
+ * a reader the one file most likely to explain the export.
+ *
+ * SVG is included deliberately: it is the one image format that really can
+ * carry a script, and it is a plausible thing for a design tool to emit.
+ */
+export function landingWouldViolate(name: string, body: string): boolean {
+  const lower = name.toLowerCase();
+  if (!HTML_SUFFIXES.some((suffix) => lower.endsWith(suffix))) return false;
+  return carriesExecutableContent(body);
+}
+
 export function carriesExecutableContent(body: string): boolean {
   return (
     /<script[\s>]/i.test(body) ||
@@ -348,14 +398,17 @@ const COLOUR_RE = /#[0-9a-fA-F]{3,8}\b/g;
  * is stable across runs — a manifest that reorders itself on every import is a
  * diff nobody can read.
  */
-export function deriveTokenCandidates(files: readonly { name: string; body: string }[]): TokenCandidate[] {
-  const seen = new Map<string, { occurrences: number; sources: Set<string> }>();
-  for (const { name, body } of files) {
+export function deriveTokenCandidates(
+  files: readonly { name: string; body: string; landed: boolean }[],
+): TokenCandidate[] {
+  const seen = new Map<string, { occurrences: number; sources: Set<string>; fromUnlanded: boolean }>();
+  for (const { name, body, landed } of files) {
     for (const raw of body.match(COLOUR_RE) ?? []) {
       const value = raw.toLowerCase();
-      const entry = seen.get(value) ?? { occurrences: 0, sources: new Set<string>() };
+      const entry = seen.get(value) ?? { occurrences: 0, sources: new Set<string>(), fromUnlanded: false };
       entry.occurrences += 1;
       entry.sources.add(name);
+      if (!landed) entry.fromUnlanded = true;
       seen.set(value, entry);
     }
   }
@@ -364,6 +417,7 @@ export function deriveTokenCandidates(files: readonly { name: string; body: stri
       value,
       occurrences: e.occurrences,
       sources: [...e.sources].sort(),
+      fromUnlanded: e.fromUnlanded,
       inferred: true as const,
       confirmed: false as const,
     }))
@@ -395,7 +449,8 @@ export function renderManifest(identity: string, ledger: ImportLedger): string {
 
   const candidate = (c: TokenCandidate): string =>
     `<tr><td><code>${escapeHtml(c.value)}</code></td><td>${c.occurrences}</td>` +
-    `<td>${escapeHtml(c.sources.join(', '))}</td><td><strong>INFERRED — UNCONFIRMED</strong></td></tr>`;
+    `<td>${escapeHtml(c.sources.join(', '))}${c.fromUnlanded ? ' <strong>(not landed — see the export)</strong>' : ''}</td>` +
+    '<td><strong>INFERRED — UNCONFIRMED</strong></td></tr>';
 
   const note = (heading: string, body: string, items: readonly string[]): string =>
     items.length === 0 ? '' : `<h2>${heading}</h2><p>${body}</p><ul>${items.map((i) => `<li>${escapeHtml(i)}</li>`).join('')}</ul>`;
@@ -418,7 +473,7 @@ export function renderManifest(identity: string, ledger: ImportLedger): string {
 </table>
 
 <h2>Token candidates</h2>
-<p>Values observed in the landed material, offered for confirmation. <strong>None of these is in the token set</strong> and none carries a name — naming a token is a decision about meaning, and a wrong name is worse than no name because it looks decided. A confirmed candidate is authored into the token set by hand; a declared value always outranks anything here.</p>
+<p>Values observed in the material this import read, offered for confirmation. A source marked <strong>not landed</strong> was read but deliberately not copied into the project — so it is in the export and not here, and the export may since have been deleted. <strong>None of these is in the token set</strong> and none carries a name — naming a token is a decision about meaning, and a wrong name is worse than no name because it looks decided. A confirmed candidate is authored into the token set by hand; a declared value always outranks anything here.</p>
 <table>
 <thead><tr><th>Value</th><th>Occurrences</th><th>Seen in</th><th>Status</th></tr></thead>
 <tbody>${ledger.tokenCandidates.map(candidate).join('')}</tbody>
