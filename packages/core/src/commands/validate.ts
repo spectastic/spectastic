@@ -952,6 +952,87 @@ export function visualDisagreementFindings(state: VisualDeclarationState | null,
 }
 
 /**
+ * The visual view's two checks (spec 099-visual-embedded-view, FR-004/FR-005).
+ *
+ * Deliberately TWO functions where the contract view has one, because the
+ * reader's next action differs: a stale view is regenerated, an absent one is
+ * generated for the first time. Merging them is also how the sibling ended up
+ * unable to report absence at all — `contractViewDriftFindings` skips any
+ * declaration whose view is undefined, which is correct there (072 FR-008
+ * makes rendering a MAY) and is exactly why nobody noticed for months that it
+ * never rendered.
+ *
+ * Both re-derive and compare live, with no stored digest — `verify-view-stale`
+ * and the contract check both do the same, on the reasoning that a fingerprint
+ * is a third thing to keep true and goes stale silently.
+ */
+export async function visualViewDriftFindings(
+  html: string,
+  file: string,
+  fs: FileSystem,
+  cwd: string,
+): Promise<Finding[]> {
+  const findings: Finding[] = [];
+  if (!html.includes('<spec-visual')) return findings;
+
+  const { materialiseVisualViews } = await import('../visual/materialise-view.js');
+  const regenerated = await materialiseVisualViews(html, fs, cwd);
+  // Compare the whole artifact rather than diffing views: the materialiser is
+  // the only thing that writes them, so equality means regeneration would be a
+  // no-op — which is a stronger and simpler statement than "the views match".
+  if (norm(regenerated) === norm(html)) return findings;
+
+  findings.push({
+    file,
+    line: 1,
+    column: 1,
+    rule: 'visual-view-drift',
+    severity: 'error',
+    message: `The visual view in ${file} no longer matches the screens it projects`,
+    fixHint:
+      'Regenerate the view so it shows what the declared screens now contain (spec.html FR-004). The view is a copy made at generate time, so a change to a screen leaves it stale until it is remade.',
+  });
+  return findings;
+}
+
+/**
+ * A declaration carrying no view at all (FR-005) — the divergence from the
+ * contract view, and the thing that makes this feature observable rather than
+ * quietly absent. Conditional on a declaration existing, so a project with no
+ * visual surface reports nothing.
+ */
+export function visualViewMissingFindings(html: string, file: string): Finding[] {
+  const findings: Finding[] = [];
+  if (!html.includes('<spec-visual')) return findings;
+
+  for (const match of html.matchAll(/<spec-visual([^>]*)>([\s\S]*?)<\/spec-visual>/g)) {
+    const [, attrs = '', inner = ''] = match;
+    // Only a declaration that names screens can have a view; shape="none" and a
+    // malformed declaration are somebody else's finding.
+    if (!/\bscreens=["'][^"']+["']/i.test(attrs)) continue;
+    if (inner.includes('<spec-visual-view')) continue;
+    findings.push({
+      file,
+      line: 1,
+      column: 1,
+      rule: 'visual-view-missing',
+      severity: 'error',
+      message: `${file} declares a visual surface but carries no view of it`,
+      fixHint:
+        'Materialise the view so the design shows the screens it declares (spec.html FR-005). Unlike an embedded contract, an absent visual view is reported rather than permitted — a capability whose absence is legal and unreported is indistinguishable from one that does not work.',
+    });
+  }
+  return findings;
+}
+
+/** Normalise line endings and trailing newlines before comparing, exactly as
+ *  the contract drift check does: a checkout that rewrote line endings has not
+ *  made anything stale. */
+function norm(s: string): string {
+  return s.replace(/\r\n/g, '\n').replace(/\n+$/, '\n');
+}
+
+/**
  * Flag a materialised `<spec-contract-view>` (072-contract-embedded-view,
  * FR-004) that no longer matches the contract file it projects. Live
  * re-read and compare, no stored digest (design D-005) — matches

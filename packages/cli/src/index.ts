@@ -27,6 +27,7 @@ import { registerTasks } from './commands/tasks.js';
 import { registerTriage } from './commands/triage.js';
 import { registerValidate } from './commands/validate.js';
 import { registerVerify } from './commands/verify.js';
+import { registerVisual } from './commands/visual.js';
 
 /**
  * @spectastic/cli entry point.
@@ -77,6 +78,7 @@ registerDesign(program);
 registerPropose(program);
 registerImplement(program);
 registerVerify(program);
+registerVisual(program);
 registerId(program);
 registerContract(program);
 registerEnforce(program);

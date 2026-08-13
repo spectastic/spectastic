@@ -116,6 +116,23 @@ export const SCREEN_ELEMENT = 'spec-screen';
 export const STATE_ELEMENT = 'spec-state';
 export const ANNOTATION_ELEMENT = 'spec-annotation';
 
+/**
+ * A captured image, bound to the cell of the grid it is evidence of
+ * (099-visual-embedded-view, FR-008).
+ *
+ * Named rather than embedded: the artifact content policy permits
+ * `img-src 'self'`, so a same-origin file reference costs no bytes, has no
+ * drift surface and adds nothing to the artifact's size — while a `data:` URI
+ * in `src=` is an error-severity violation. That is the one place the visual
+ * view legitimately diverges from the contract view it otherwise clones, where
+ * opaque text leaves no choice but to copy.
+ *
+ * Position carries the state (a render nested in a state is evidence of that
+ * state) and `contexts=` carries the rest of the cell, in the same
+ * `axis=context` grammar `<spec-same>` and `<spec-visual contexts=>` use.
+ */
+export const RENDER_ELEMENT = 'spec-render';
+
 // --- the variant grid (spec 096-visual-variant-grid) -------------------------
 
 /** The four elements the grid introduces. */

@@ -19,6 +19,8 @@ export default defineConfig({
     'src/commands/validate.ts',
     'src/visual/read.ts',
     'src/visual/coverage.ts',
+    'src/visual/render.ts',
+    'src/visual/materialise-view.ts',
     'src/commands/triage.ts',
     'src/commands/principles.ts',
     'src/commands/tasks.ts',

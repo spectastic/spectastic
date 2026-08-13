@@ -111,6 +111,10 @@ User input (from `$ARGUMENTS`): a Spec ID such as `001-auth-service`, or empty (
    - **Delete the Visual surface section outright** in a project with no user interface — detected or declared. The template scaffolds it unconditionally because a static file cannot vary per project; a populated section where none belongs is an error, and an absent one is reported as nothing at all. Absence, not emptiness.
    - Do not duplicate the spec. Link to its requirement IDs (`<a href="./spec.html#FR-001">FR-001</a>`) rather than restating them.
 
+8b. **Materialise the design's embedded views** (099-visual-embedded-view, FR-003). Run `spectastic materialise <spec-id>`. It derives the declared contract and the declared screens into the design that declares them, and is idempotent — running it again after changing either remakes the view and changes nothing otherwise.
+
+   This step exists because the kernel verb's own materialisation never reaches this path: `/spectastic.design` copies a template and interviews, and 006 FR-009 makes *this* the canonical path. Skipping it is caught rather than tolerated — an absent visual view is reported (099 FR-005), which is the deliberate divergence from the contract view whose permissive `MAY` let the same gap go unnoticed for months.
+
 9. **Validate**. Re-walk the Principles check — does any decision now violate a principle you marked OK earlier? If yes, fix the decision or escalate. Then re-walk the **grounding gate** (`REQ-LIFECYCLE-006`, the binding clause): the design is **not ready for `/spectastic.tasks`** while any `must`-tier decision is `grounding="assumed"` or an unresolved `grounding="spike"`. For each, have the user choose — the choice is theirs to commit, not yours — via `AskUserQuestion`:
    - **Verify** — read the source now; flip the **Grounding & evidence** row and the decision to `verified` with a citation.
    - **Spike** — run the time-boxed investigation now (record the finding), or schedule it as the first `/spectastic.tasks` item.

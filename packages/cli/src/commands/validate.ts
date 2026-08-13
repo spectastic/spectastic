@@ -402,12 +402,20 @@ async function scanVisualResolve(docs: ReadonlyMap<string, CachedDoc>, cwd: stri
           line: d.line,
           column: d.column,
         }));
-      const [resolved, located, coverage] = [
+      // 099 FR-004/FR-005 ride the same read: the view is in this document and
+      // the screens it projects are one stat away, which the resolve scan has
+      // already paid for.
+      const [{ visualViewDriftFindings, visualViewMissingFindings }] = await Promise.all([
+        import('@spectastic/core/commands/validate'),
+      ]);
+      const [resolved, located, coverage, drift, missing] = [
         await visualResolveFindings(declarations, file, nodeFs, cwd),
         visualLocationFindings(declarations, file),
         claims.length === 0 ? [] : await visualCoverageFindings(claims, file, nodeFs, cwd),
+        await visualViewDriftFindings(html, file, nodeFs, cwd),
+        visualViewMissingFindings(html, file),
       ];
-      return [...resolved, ...located, ...coverage];
+      return [...resolved, ...located, ...coverage, ...drift, ...missing];
     }),
   );
   return perFile.flat();
