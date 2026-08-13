@@ -1,0 +1,352 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
+<title>Take the design in · Specification</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Specification · 105-design-source-import </p>
+  <h1>Take the design in</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    Five design tools, five incompatible read paths, and one thing they all do: put files on a disk. Read those, once, and let the tool go out of business.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>      <span><spec-status value="draft">Draft</spec-status></span>
+    <b>Spec ID</b>     <span>105-design-source-import</span>
+    <b>Owner</b>       <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Reviewers</b>   <span>—</span>
+    <b>Created</b>     <span><time datetime="2026-08-13">13 Aug 2026</time></span>
+    <b>Principles</b><span><a href="../principles.html">v1.9.0</a></span>
+    <b>Smallest demoable</b><span>Running an import against an exported folder lands a token file and its renders in the sidecar, marked not yet reviewed, and the design still validates after the folder is deleted.</span>
+    <b>Read time</b>   <span data-reading-time></span>
+  </spec-meta>
+
+  <!-- Live size gauge — green at <80%, amber 80-100%, red over. Words row counts authored prose (excludes the conformance index) per REQ-FORMAT-004. -->
+  <spec-budget words="1800" reqs="20" minutes="12"></spec-budget>
+
+  <spec-tldr>
+<p>The design stage declares where a design came from and can do nothing with it — <code>source=</code> is
+provenance, never resolved, and that is enforced in code. This adds the other half: an import that reads an
+export already on disk, lands a token file, its renders and any annotations it carries into the sidecar, and
+then <strong>disappears</strong>. No live read path, no seat, no API. For the two sources that emit an
+artifact rather than design data, token candidates are derived from the emitted stylesheet and land marked as
+inferred, never silently promoted.</p>
+</spec-tldr>
+
+  <dl class="invest">
+    <dt><span class="letter">I</span> Independent</dt><dd>Depends on the sidecar convention (<a href="../094-visual-sidecar-convention/spec.html">094</a>) and the declaration (<a href="../093-design-visual-section/spec.html">093</a>). Consumes the vocabularies; changes none of them.</dd>
+    <dt><span class="letter">N</span> Negotiable</dt><dd>Contracts that import is a one-time write from local files, that inference is marked, and that provenance is never fabricated. The command surface is the design's.</dd>
+    <dt><span class="letter">V</span> Valuable</dt><dd>Unlocks <a href="#SC-001">SC-001</a> — a designer's export becomes committed material without anyone retyping it.</dd>
+    <dt><span class="letter">E</span> Estimable</dt><dd>The corpus importer is a worked precedent for every part: the fetcher seam, the never-destructive re-import, the never-guess provenance, the trust downgrade.</dd>
+    <dt><span class="letter">S</span> Small</dt><dd>Twelve requirements. No live protocol, no vision model, no new artifact class.</dd>
+    <dt><span class="letter">T</span> Testable</dt><dd>Landed files are countable, inferred values are marked or not, and the source folder can be deleted and the project still validate.</dd>
+  </dl>
+
+  <spec-audience-map>
+    <dl>
+      <dt>Exec / PM</dt>   <dd>§<a href="#context">Context</a>, §<a href="#scenarios">User scenarios</a>, §<a href="#success">Success criteria</a>.</dd>
+      <dt>Reviewer</dt>    <dd>§<a href="#requirements">Requirements</a>, §<a href="#assumptions">Assumptions</a>, §<a href="#questions">Open questions</a>.</dd>
+      <dt>Implementer</dt> <dd>§<a href="#requirements">Requirements</a>, §<a href="#data">Data model</a>, §<a href="#conformance">Conformance index</a>.</dd>
+    </dl>
+  </spec-audience-map>
+</header>
+
+
+<section id="context">
+<h2>1 · Context</h2>
+<p>Everything on the receiving side is built. A design declares its token set, its grid and its screens; a
+convention says where they live; checks resolve the paths and report disagreement. Nothing on the producing
+side exists: no importer, no code anywhere that reads or writes a token file, no render capture. The one
+precedent in the repository is a designer's export committed by hand and its values transcribed into a table
+by a person reading it.</p>
+
+<p>The constraint that shapes this is settled and worth restating, because it rules out the obvious
+architecture first. <code>source=</code> is provenance and is never resolved — a project whose design tool is
+gone stays valid. A live read path would make a spec only as available as somebody's seat and as portable as
+the tool it was written against, and two of the five sources have nothing persistent to query.</p>
+
+<p>So an adapter's job is not to be queried. It lands files, once, as a commit, and is never consulted again —
+which is also what lets one code path serve five tools whose models agree about nothing except that they can
+put a folder on a disk.</p>
+</section>
+
+
+<section id="scenarios">
+<h2>2 · User scenarios &amp; testing</h2>
+
+<p>Each story <strong>MUST</strong> be independently testable: if you implemented only US1, you would
+still have a viable MVP.</p>
+
+<h3 id="US1">US1 · An export becomes committed material <spec-pill>P1</spec-pill></h3>
+<p>As a <strong>developer</strong>, I want to <strong>point the tool at a folder a designer exported</strong>
+so that <strong>its tokens and renders land in the sidecar without anyone retyping them</strong>.</p>
+<p><em>Acceptance:</em> Running an import against a local export writes a token file and any renders into the
+conventional location; the design that declares them resolves; deleting the export folder afterwards changes
+nothing.</p>
+
+<h3 id="US2">US2 · Re-importing does not destroy work <spec-pill>P1</spec-pill></h3>
+<p>As a <strong>developer</strong>, I want to <strong>re-run an import when the designer sends a new
+export</strong> so that <strong>I get the update without losing what was edited by hand</strong>.</p>
+<p><em>Acceptance:</em> A second import over the same source is idempotent where nothing changed, reports what
+it replaced where something did, and removes nothing that the new export no longer contains.</p>
+
+<h3 id="US3">US3 · An inferred value never passes for a declared one <spec-pill>P1</spec-pill></h3>
+<p>As a <strong>reviewer</strong>, I want to <strong>tell a token the designer stated from one the tool
+guessed from a stylesheet</strong> so that <strong>a guess never quietly becomes the contract</strong>.</p>
+<p><em>Acceptance:</em> Values derived rather than read are marked as inferred and as not yet reviewed; a
+declared value always outranks an inferred one; nothing promotes itself.</p>
+
+<h3>Edge cases</h3>
+<ul>
+  <li>An export carrying annotations in a category this vocabulary has no home for.</li>
+  <li>A source that emits an artifact rather than design data, so there is no token file to read at all.</li>
+  <li>An export whose licence forbids committing its contents.</li>
+  <li>An import interrupted halfway.</li>
+  <li>A re-import that would land under a different identity than the first, silently forking the material.</li>
+</ul>
+</section></section>
+
+
+<section id="requirements">
+<h2>3 · Requirements</h2>
+
+<p>Conformance keywords (<spec-rule>MUST</spec-rule>, <spec-rule level="should">SHOULD</spec-rule>,
+<spec-rule level="may">MAY</spec-rule>) follow RFC 2119.</p>
+
+<h3>Functional</h3>
+
+<spec-requirement id="FR-001" priority="must">
+<p>An import <spec-rule>MUST</spec-rule> read from a location already on the local filesystem, and
+<spec-rule>MUST NOT</spec-rule> require a network, an account or a credential.</p>
+<details><summary>Rationale</summary><p>What makes one code path serve five tools whose models agree about nothing else. It also removes the seat, the rate limit and the API version from the dependency graph of a spec — a spec that needs somebody's login to validate is not portable.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-002" priority="must">
+<p>An import <spec-rule>MUST</spec-rule> be a discrete operation, and nothing in the ordinary lifecycle
+<spec-rule>MUST</spec-rule> invoke it.</p>
+<details><summary>Rationale</summary><p>An adapter is an import-time producer and is never consulted at validate, measure or build time. Folding it into design generation would make every generation depend on an export folder somebody may have deleted.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-003" priority="must">
+<p>After an import, the project <spec-rule>MUST</spec-rule> remain valid with the source location deleted.</p>
+<details><summary>Rationale</summary><p>The property that proves FR-002 rather than asserting it. If deleting the export breaks validation, something is reading it at check time.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-004" priority="must">
+<p>Every landed file <spec-rule>MUST</spec-rule> carry provenance — where it came from, what identified it
+there, and under what licence — and an unknown field <spec-rule>MUST</spec-rule> be recorded as unknown rather
+than guessed.</p>
+<details><summary>Rationale</summary><p>The corpus importer's rule, transferred: a fabricated provenance field is worse than a missing one, because it looks like diligence. This project already forbids inventing an origin for a vendored component.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-005" priority="must">
+<p>A value the import <strong>derived</strong> rather than read <spec-rule>MUST</spec-rule> be marked as
+inferred, and <spec-rule>MUST NOT</spec-rule> outrank a declared value.</p>
+<details><summary>Rationale</summary><p>Declaration over inference, in both directions — already settled elsewhere on the same reasoning. Inference stays available as evidence and never silently becomes the contract.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-006" priority="must">
+<p>Newly landed material <spec-rule>MUST</spec-rule> be marked as not yet reviewed, and that mark
+<spec-rule>MUST</spec-rule> be visible to a reader.</p>
+<details><summary>Rationale</summary><p>The corpus does exactly this and says so at the command line. An import is a bulk arrival of somebody else's decisions, and the moment it looks identical to authored material is the moment nobody reviews it.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-007" priority="must">
+<p>Re-importing <spec-rule>MUST</spec-rule> be non-destructive: material the new source no longer contains
+<spec-rule>MUST</spec-rule> be reported rather than deleted.</p>
+<details><summary>Rationale</summary><p>An export is somebody's working state, and an element missing from it is as likely to be an export setting as a deletion. Reporting is recoverable; deleting is not.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-008" priority="must">
+<p>Re-importing <spec-rule>MUST</spec-rule> land under the same identity as the first import, and a re-import
+that would land under a different one <spec-rule>MUST</spec-rule> be refused.</p>
+<details><summary>Rationale</summary><p>The corpus has already paid for this: a changed configuration silently re-keyed material and minted a second identity for one thing. A fork that happens quietly is worse than a refusal that happens loudly.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-009" priority="must">
+<p>A hand edit to landed material <spec-rule>MUST</spec-rule> survive a re-import, except where the field has
+a source of truth in the export.</p>
+<details><summary>Rationale</summary><p>Both halves are load-bearing and the second was learned the hard way: protecting a field that <em>does</em> have a source of truth silently desynchronised the copy from the thing it copied.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-010" priority="must">
+<p>Where a source emits an artifact rather than design data, the import
+<spec-rule>MUST</spec-rule> be able to derive token candidates from it, and those candidates
+<spec-rule>MUST</spec-rule> be presented for confirmation rather than committed as read.</p>
+<details><summary>Rationale</summary><p>Two of the five sources emit code, not a token file — the design <em>is</em> what they emitted. Deriving is the only way to serve them, and confirmation is what keeps FR-005 true in practice rather than only in the file.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-011" priority="should">
+<p>An imported annotation whose category has no home in the vocabulary
+<spec-rule level="should">SHOULD</spec-rule> be reported as unhandled rather than dropped.</p>
+<details><summary>Rationale</summary><p>The category map exists precisely to name the categories with nowhere to go. Dropping one silently would waste the mechanism, and "we looked and there is no home" is a different statement from "we have never heard of this" — the map already distinguishes them.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-012" priority="should">
+<p>An import <spec-rule level="should">SHOULD</spec-rule> refuse to land material whose licence forbids it,
+and <spec-rule level="should">SHOULD</spec-rule> say which licence and why.</p>
+</spec-requirement>
+
+<h3>Non-functional</h3>
+
+<spec-requirement id="NFR-001" priority="must">
+<p>An interrupted import <spec-rule>MUST</spec-rule> leave the project in a state that still validates: at
+most 0 partially written files remain.</p>
+</spec-requirement>
+
+<spec-requirement id="NFR-002" priority="must">
+<p>The import <spec-rule>MUST</spec-rule> be exercisable with no live model and no network in continuous
+integration: at least 1 test covers the derivation path against a stubbed provider, and 0 tests in that tier
+require a credential.</p>
+<details><summary>Rationale</summary><p>The project's standing rule for anything model-coupled. A real model belongs in the local-only tier, and a check that cannot run without a key is a check that stops running.</p></details>
+</spec-requirement>
+
+<h3>Out of scope (deferred to other slices)</h3>
+<spec-out-of-scope>
+  <ul>
+    <li defer-to="TBD-design-source-live-read">Querying a design tool over a protocol. Ruled out here rather than deferred reluctantly: it makes a spec as available as a seat, and two of five sources have nothing to query.</li>
+    <li defer-to="TBD-ai-provider-multimodal">Deriving anything from an image. This slice reads an emitted stylesheet, which is text, so it needs no vision.</li>
+    <li defer-to="TBD-render-capture">Producing renders by driving a build, as opposed to landing ones a designer exported.</li>
+    <li defer-to="TBD-fidelity-measurement">Comparing anything landed against a running build.</li>
+  </ul>
+</spec-out-of-scope>
+</section>
+
+
+<section id="data">
+<h2>4 · Data model</h2>
+
+<!-- This section holds the CONCEPTUAL model: the entities this feature owns, the
+     relationships between them, the invariants that must always hold, and the
+     state transitions they undergo — independent of storage and of wire format.
+     Name what a thing *is* and what must be true of it, not how it is persisted
+     or serialised.
+
+     The PHYSICAL model (field types, storage shape, wire representation) and the
+     consumer-facing contract belong downstream, in the design's "Data model & contracts"
+     section — referred to by name rather than number so a renumber cannot break the
+     pointer.
+
+     Precision IS permitted where an invariant genuinely requires it: a range, a
+     uniqueness rule, or a precision that changes what is correct is part of the concept,
+     not an implementation detail (e.g. "a settlement amount is exact to 2 decimal places
+     and is never negative" — a real invariant, and it belongs here). "No fields" does not
+     mean "no numbers".
+
+     If this section outgrows a screen, that usually signals the extra detail belongs
+     downstream in the design rather than that the spec should split. -->
+
+<p>An import lands files and records where they came from. It owns no long-lived entity of its own.</p>
+
+<h3>Entities</h3>
+<dl>
+  <dt>Source location</dt><dd>A folder already on disk. Read once, never again, and deletable afterwards without consequence.</dd>
+  <dt>Landed material</dt><dd>A token file, renders, and any annotations the export carried, written to the conventional sidecar. Each carries provenance, and an unknown field is recorded as unknown.</dd>
+  <dt>Inferred value</dt><dd>A value derived from an emitted artifact rather than read from design data. Marked, never promoted, and presented for confirmation before it lands.</dd>
+  <dt>Import identity</dt><dd>What ties a re-import to the material it updates. Stable across runs; a re-import that would change it is refused rather than allowed to fork.</dd>
+</dl>
+
+<spec-note>
+<p>The invariant the whole slice rests on: after an import completes, nothing in the project refers to the
+source location. That is what makes the design tool replaceable, and it is testable by deleting the folder.</p>
+</spec-note>
+</section>
+
+
+<section id="success">
+<h2>5 · Success criteria</h2>
+
+<p>Technology-agnostic, measurable outcomes. These are how we know it worked.</p>
+
+<spec-requirement id="SC-001" priority="must">
+<p>After importing a local export, the declared paths resolve and the project validates with 0 findings — and
+still does with the source folder deleted.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-002" priority="must">
+<p>Re-importing an unchanged source writes 0 changed bytes. Re-importing a changed one removes 0 files and
+reports each item the new source no longer contains.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-003" priority="must">
+<p>Inferred values that are indistinguishable from declared ones number 0. Landed provenance fields carrying a
+fabricated value number 0.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-004" priority="must">
+<p>A re-import that would land under a different identity is refused 100% of the time, naming both
+identities.</p>
+</spec-requirement>
+
+<spec-requirement id="SC-005" priority="should">
+<p>Imported annotation categories that are silently dropped number 0 — each is landed or reported
+unhandled.</p>
+</spec-requirement>
+</section></section>
+
+
+<section id="assumptions">
+<h2>6 · Assumptions</h2>
+<spec-assumption>
+<p>Designers can export a folder from all five tools. True today for each of them, and the assumption the
+whole slice rests on — if a tool removes export, this approach loses that tool entirely rather than
+degrading.</p>
+</spec-assumption>
+
+<spec-assumption>
+<p>Token candidates derived from an emitted stylesheet are useful enough to confirm rather than rewrite. Not
+tested. If confirmation turns out to be slower than authoring by hand, FR-010 is the requirement that was
+wrong, and the fallback — landing the artifact and letting a person transcribe it — is what happens today.</p>
+</spec-assumption>
+</section>
+
+
+<section id="questions">
+<h2>7 · Open questions</h2>
+<spec-questions>
+<p>None outstanding. The two decisions worth recording are refusals: no live protocol, because it
+makes a spec as available as somebody's seat and two of five sources have nothing to query; and no vision,
+because the sources that emit an artifact emit a stylesheet, which is text.</p>
+</spec-questions>
+</section>
+
+
+<section id="conformance">
+<h2>8 · Conformance index</h2>
+<p>Auto-built from every <code>&lt;spec-requirement&gt;</code> in this document.</p>
+<spec-conformance></spec-conformance>
+</section>
+
+
+<section id="changelog">
+<h2>9 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-08-13">13 Aug 2026</time><span>Drafted, last of the slice and deliberately so — the survey's own warning is that adapters
+write into a target that does not exist yet, so building them first means inventing that target implicitly in
+an importer, in whatever shape the first tool happened to have. With the vocabularies landed the warning is
+spent. Four rules are transferred from the corpus importer rather than invented: never-destructive re-import,
+never-guess provenance, hand edits survive except where the source owns the field, and everything lands marked
+not yet reviewed. The last of those was learned twice over there — protecting a field that did have a source
+of truth silently desynchronised the copy from the thing it copied.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  105-design-source-import · Take the design in · authored 2026-08-13
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>
