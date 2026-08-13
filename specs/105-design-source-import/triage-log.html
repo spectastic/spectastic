@@ -140,6 +140,128 @@
 </spec-triage>
 
 
+
+<spec-triage id="T-006" layer="implementation">
+  <header>
+    <h4>Four must-tier requirements have a type and no runtime, and every task is checked</h4>
+    <span class="meta">
+      <span class="layer-pill">Implementation</span>
+      <span class="regen" data-result="pass">code</span>
+    </span>
+  </header>
+
+  <p class="headline">Debugging why a real import landed no provenance, root cause was that six of twelve requirements — four of them must-tier — exist only as exported type declarations that nothing constructs; fixed by building them; regeneration <strong>passes</strong>, because the requirements say plainly what to build and the drain simply did not.</p>
+
+  <dl>
+    <dt>Expected</dt> <dd>18 of 18 tasks checked means the twelve requirements are built.</dd>
+    <dt>Actual</dt>   <dd><code>importDesignSource</code> reads a directory, copies each file byte-for-byte, and returns a ledger. That is <a href="./spec.html#FR-001">FR-001</a>, <a href="./spec.html#FR-002">FR-002</a>, <a href="./spec.html#FR-007">FR-007</a>, <a href="./spec.html#FR-008">FR-008</a> and <a href="./spec.html#FR-009">FR-009</a>. Nothing else runs. <strong>No provenance is written</strong> (<a href="./spec.html#FR-004">FR-004</a>, must), <strong>nothing is marked inferred</strong> (<a href="./spec.html#FR-005">FR-005</a>, must), <strong>nothing is marked unreviewed</strong> (<a href="./spec.html#FR-006">FR-006</a>, must), <strong>no token candidates are derived</strong> (<a href="./spec.html#FR-010">FR-010</a>, must), no annotation category is reported unhandled (<a href="./spec.html#FR-011">FR-011</a>), no licence is checked (<a href="./spec.html#FR-012">FR-012</a>).</dd>
+    <dt>Diagnosis</dt><dd>The vocabulary was built and mistaken for the behaviour. <code>Provenance</code>, <code>ImportedFile</code>, <code>EXPORT_OWNED_FIELDS</code> and <code>UNKNOWN</code> are all exported and all consumed by nothing outside their own module — a repo-wide search finds importers only in the generated <code>.d.ts</code>. <code>ImportLedger.unhandled</code> is initialised on one line and never pushed to on any other, so it is structurally always empty. Every one of these reads as done: the type is there, the name is right, the doc comment explains the rationale at length, and the unit tests exercise the copier that <em>was</em> built. This is the project's own "presence is not containment" discipline one level up — a declared type passes every structural check a built feature would.</dd>
+    <dt>Fix</dt>      <dd><span class="path">packages/core/src/visual/import.ts</span> — construct an <code>ImportedFile</code> per landed file and write its provenance, inferred and reviewed marks somewhere a reader sees them; push to <code>unhandled</code>; build the token derivation. Then re-open the six tasks. Until then the checkboxes are wrong and should be un-checked rather than left claiming coverage.</dd>
+  </dl>
+
+  <details>
+    <summary>Deep dive — why this is implementation and not spec</summary>
+    <p>The requirements are unusually specific and would regenerate correctly: FR-004 names the three provenance fields and says an unknown one is recorded as unknown; FR-006 says the mark must be <em>visible to a reader</em>. An implementer reading them would build the behaviour. So the ladder stops at implementation.</p>
+    <p>What it says about the drain is the more useful finding, and it is not this spec's to fix: nothing checks that a requirement has a runtime, only that a task is ticked. Worth raising separately rather than folding in here.</p>
+  </details>
+</spec-triage>
+
+<spec-triage id="T-007" layer="spec">
+  <header>
+    <h4>Importing a real export makes the project invalid, which FR-003 forbids</h4>
+    <span class="meta">
+      <span class="layer-pill">Spec</span>
+      <span class="regen" data-result="fail">upstream</span>
+    </span>
+  </header>
+
+  <p class="headline">Debugging a validate failure straight after an import, root cause was that the importer copies verbatim while a real design export carries a <code>&lt;script&gt;</code> the artifact rules reject at error severity; fixed by deciding what an import does with executable content; regeneration <strong>fails</strong>, because nothing in the spec says the landed bytes must satisfy the project's own rules.</p>
+
+  <dl>
+    <dt>Expected</dt> <dd><a href="./spec.html#FR-003">FR-003</a>: <em>"After an import, the project MUST remain valid with the source location deleted."</em></dd>
+    <dt>Actual</dt>   <dd>A Claude Design export is a <code>.dc.html</code> carrying <code>&lt;script type="text/x-dc" data-dc-script&gt;</code>. Landing it produces <code>error no-executable-content — &lt;script&gt; (inline) in a spec — a spec carries no executable content (P-11)</code>. Reproduced against a real export from a real project, reduced to a three-line probe to confirm the rule is categorical.</dd>
+    <dt>Diagnosis</dt><dd>FR-003 was written about <em>reference</em> — that nothing points at the source once the import is done — and reads naturally as being about links. It is silent on whether the landed material itself must be valid, and the copier makes that the load-bearing question: the two most likely export formats in the field are HTML, and one of them is a runtime that needs its script to mean anything. So the requirement most likely to fail is the one the slice named as its central property. Note the collision is with <strong>P-11</strong>, which is a principle rather than a rule that can be relaxed for this case.</dd>
+    <dt>Fix</dt>      <dd><span class="path">specs/105-design-source-import/spec.html</span> — a propose. FR-003 needs a second clause about the landed bytes, and the slice needs a decision on executable content: strip it, refuse the file, or land it somewhere the artifact rules do not reach. The third is not obviously available, since the sidecar convention puts it inside the project.</dd>
+  </dl>
+
+  <details>
+    <summary>Deep dive — cross-spec and principles</summary>
+    <p>Touches <a href="../045-artifact-security/spec.html">045</a>'s <code>no-executable-content</code> and P-11 directly. Worth noting that stripping the script from a <code>.dc.html</code> does not degrade it gracefully — see <a href="#T-008">T-008</a>, where the script is what produces the values. So "strip it" and "land something useful" may be in tension, which is the decision the propose has to make rather than assume.</p>
+  </details>
+</spec-triage>
+
+<spec-triage id="T-008" layer="spec">
+  <header>
+    <h4>The export is a template, not a rendering — the values are not in the file</h4>
+    <span class="meta">
+      <span class="layer-pill">Spec</span>
+      <span class="regen" data-result="fail">upstream</span>
+    </span>
+  </header>
+
+  <p class="headline">Debugging what FR-010 would derive token candidates from, root cause was that the export interpolates every value at runtime rather than emitting it; fixed by stating what an import may assume about a source artifact; regeneration <strong>fails</strong>, because the spec's stated premise about these artifacts is wrong.</p>
+
+  <dl>
+    <dt>Expected</dt> <dd><a href="./spec.html#FR-010">FR-010</a>: derive token candidates from an emitted artifact. The refusal to use vision rests on the reasoning that an artifact-emitting source emits a stylesheet, which is text.</dd>
+    <dt>Actual</dt>   <dd>Neither half holds for the real export. There is <strong>no stylesheet</strong> — every value is an inline <code>style=</code> attribute. And the markup is a <strong>template</strong>: <code>&lt;sc-for list="{{ states }}"&gt;</code> repeated over data, with <code>{{ s.figure }}</code>, <code>{{ s.rateLine }}</code> and <code>{{ s.id }}</code> throughout. The eleven states are produced by a <code>renderVals()</code> method in the trailing script. A reader parsing the file statically sees <code>{{ s.figure }}</code>, never a figure. The per-screen identity is interpolated too — <code>data-screen-label="{{ s.id }} · light"</code>.</dd>
+    <dt>Diagnosis</dt><dd>Two different claims fail together. Colour and spacing <em>are</em> statically present, so token derivation is still possible — from inline attributes rather than a stylesheet, which is a mechanism change. But screen and state identity are not present at all, which is a capability change: the material the vocabulary most wants is exactly the material the export computes. Recorded honestly, this weakens the vision refusal's justification without overturning it — the file is still text, and the script is still readable text describing the data.</dd>
+    <dt>Fix</dt>      <dd><span class="path">specs/105-design-source-import/spec.html</span> — fold into <a href="#T-007">T-007</a>'s propose. State what a source artifact may be assumed to contain, and correct the alternatives rationale that names a stylesheet. Whether an importer may read the data out of a template's own script is the real open question, and it should be asked rather than assumed either way.</dd>
+  </dl>
+
+  <details>
+    <summary>Deep dive — supersedes an earlier finding</summary>
+    <p>This refines <a href="#T-003">T-003</a>, which recorded the stylesheet claim as unverified. It is now verified and false. T-003 stays as the record of the doubt; this card carries the answer.</p>
+  </details>
+</spec-triage>
+
+<spec-triage id="T-009" layer="spec">
+  <header>
+    <h4>A design project attaches no design system by default, so there is nothing to inherit</h4>
+    <span class="meta">
+      <span class="layer-pill">Spec</span>
+      <span class="regen" data-result="fail">upstream</span>
+    </span>
+  </header>
+
+  <p class="headline">Debugging why the imported design carried no tokens, root cause was the assumption that a design project has a design system attached; fixed by correcting the assumption; regeneration <strong>fails</strong>, because it is recorded as a finding rather than a guess.</p>
+
+  <dl>
+    <dt>Expected</dt> <dd>Per <a href="#T-004">T-004</a>: design projects attach a design system, so the token file already exists and needs no inferring.</dd>
+    <dt>Actual</dt>   <dd>The real project attached none. The export carries <strong>zero</strong> token references and roughly forty distinct raw hex literals, hand-duplicated across a light and a dark copy of the same markup — <code>#F7F5F1</code>/<code>#161310</code>, <code>#1C1914</code>/<code>#F1EDE3</code>, and so on down the file. The two copies are structurally identical and differ only in those literals.</dd>
+    <dt>Diagnosis</dt><dd>T-004 generalised from the presence of the feature to its use. Attaching a design system is available and optional, and a designer asked to produce screens from a spec has no reason to reach for it first. So FR-010's derivation is <em>more</em> load-bearing than T-004 suggested, not less — and the light/dark duplication is a strong signal for it, since a literal appearing in exactly two positions across two otherwise-identical subtrees is a mode pair rather than a coincidence.</dd>
+    <dt>Fix</dt>      <dd><span class="path">specs/105-design-source-import/spec.html</span> — supersede T-004's note in the same propose. FR-010 stays in scope for this source and its derivation has a usable signal.</dd>
+  </dl>
+
+  <details>
+    <summary>Deep dive — none required</summary>
+    <p>No cross-spec contract, no invariant. It corrects an earlier card of this log and widens FR-010's applicability rather than narrowing it.</p>
+  </details>
+</spec-triage>
+
+<spec-triage id="T-010" layer="spec">
+  <header>
+    <h4>There is no way to get an export onto the filesystem that FR-001 requires it to already be on</h4>
+    <span class="meta">
+      <span class="layer-pill">Spec</span>
+      <span class="regen" data-result="fail">upstream</span>
+    </span>
+  </header>
+
+  <p class="headline">Debugging how to hand the importer a directory, root cause was that the only read path returns file contents into a model's context with no way to write them to disk; fixed by naming who is responsible for landing the export; regeneration <strong>fails</strong>, because the spec assumes a step it never assigns.</p>
+
+  <dl>
+    <dt>Expected</dt> <dd><a href="./spec.html#FR-001">FR-001</a>: <em>"An import MUST read from a location already on the local filesystem."</em> Something has to put it there.</dd>
+    <dt>Actual</dt>   <dd>For this source there are two routes and neither is specified. A human exports a <code>.zip</code> by hand and unzips it — noted as <a href="#T-002">T-002</a> and still unassigned. Or the design tool is read programmatically, which returns each file's <em>content</em> and offers no write-to-disk: every byte must pass through the model's context and be re-emitted to land, so a bundle is read twice and a large one cannot be landed at all. Confirmed against the real project.</dd>
+    <dt>Diagnosis</dt><dd>FR-001's <em>"already on the local filesystem"</em> is what makes one code path serve five tools, and it is right. But the slice treats getting it there as somebody else's problem without ever saying whose, so in practice the verb cannot be reached without a manual step nothing documents. Related and worth recording beside it: a project of the screen-carrying type resolves fine when its id is known but does not appear in a project listing, which filters to the design-system type — so the read path works and is undiscoverable, and an id must come from a human.</dd>
+    <dt>Fix</dt>      <dd><span class="path">specs/105-design-source-import/spec.html</span> — fold into the same propose. Either name the manual export-and-unzip as the supported path and document it, or add a requirement for a fetch step that writes to disk. Do not leave it implied.</dd>
+  </dl>
+
+  <details>
+    <summary>Deep dive — bears on the whole slice's premise</summary>
+    <p>Taken with <a href="#T-005">T-005</a>, the ecosystem's own handoff bypasses this verb entirely — so the honest question the propose should ask is not only <em>how</em> material lands but <em>whether</em> the import verb is the path anyone takes. That is a scope question and it should be asked, not settled here.</p>
+  </details>
+</spec-triage>
+
 </spec-triage-log>
 </section>
 
