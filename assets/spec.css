@@ -1305,7 +1305,21 @@ spec-annotation {
   border-left: 2px dotted var(--c-border-soft);
   font-size: 0.94rem;
 }
-spec-annotation[role]::before {
+/* Four things now want to render and the element has two content slots
+   (095 FR-011/FR-012, applied change 2026-08-13-annotate-the-element). The
+   subject — what the annotation is ABOUT — leads the ::before line; the type
+   follows it; the citation and the broken label share ::after.
+
+   Every combination gets its own rule, wrapped in :where() so they all weigh
+   the same and source order alone decides. Two reasons, and the first is not
+   style: `attr()` on an absent attribute yields an EMPTY STRING, not nothing,
+   so a shared separator would render a dangling " · " on any annotation
+   missing the attribute after it. The second is that without :where() a
+   two-attribute selector would outrank a one-attribute one and the ordering
+   below would stop meaning what it reads as. This block has already paid for a
+   bug of exactly this kind once — see the note further down, which records that
+   it was caught by screenshotting a fixture and not by any test. */
+spec-annotation:where([role])::before {
   content: attr(role);
   display: inline-block;
   margin-right: var(--s-2);
@@ -1314,10 +1328,29 @@ spec-annotation[role]::before {
   font-weight: var(--fw-bold);
   color: var(--c-purple, var(--c-accent-deep));
 }
-spec-annotation[role][aria-state]::before {
+spec-annotation:where([role][aria-state])::before {
   content: attr(role) " · " attr(aria-state);
 }
-spec-annotation[cites]::after {
+/* The subject leads, because "which control" is the question a reader arrives
+   with and the type is the answer's qualifier rather than its head. */
+spec-annotation:where([target])::before {
+  content: attr(target);
+  display: inline-block;
+  margin-right: var(--s-2);
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  font-weight: var(--fw-bold);
+  color: var(--c-purple, var(--c-accent-deep));
+}
+spec-annotation:where([target][role])::before {
+  content: attr(target) " · " attr(role);
+}
+spec-annotation:where([target][role][aria-state])::before {
+  content: attr(target) " · " attr(role) " · " attr(aria-state);
+}
+/* The layer is a grouping rather than a type, so it reads as a quiet tag on the
+   trailing line rather than competing with the subject for the leading one. */
+spec-annotation:where([cites], [layer])::after {
   content: "see " attr(cites);
   display: inline-block;
   margin-left: var(--s-2);
@@ -1325,8 +1358,27 @@ spec-annotation[cites]::after {
   font-size: 0.68rem;
   color: var(--c-muted);
 }
+spec-annotation:where([layer])::after {
+  content: attr(layer);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 0.6rem;
+  font-weight: var(--fw-bold);
+}
+spec-annotation:where([layer][cites])::after {
+  content: attr(layer) " · see " attr(cites);
+}
 
 /* ---- visibly broken, without a rule running (FR-008) ---- */
+/* A layer outside the vocabulary is visibly broken without a rule running
+   (FR-008/FR-012). Deliberately NOT the disagreement case: whether a declared
+   layer contradicts the annotation's typing depends on which of several
+   implied layers apply, which is a set computation CSS cannot do — that one is
+   the rule's alone, and the stylesheet does not pretend otherwise. Shares
+   ::after with [cites] and [layer] above and sits later, so it wins by order. */
+spec-annotation:where([layer]:not([layer="structure"]):not([layer="behaviour"]):not([layer="requirement"]):not([layer="motion"]):not([layer="data"]):not([layer="accessibility"]):not([layer="tracking"]):not([layer="content"]):not([layer="emphasis"]))::after {
+  content: "UNKNOWN LAYER";
+}
 spec-screen:not([id])::before { content: "MISSING ID"; }
 spec-state:not([id])::before { content: "MISSING ID"; }
 spec-state:not([source])::after,

@@ -64,6 +64,53 @@ export const RECOGNISED_ARIA_STATES: readonly string[] = [
   'readonly',
 ];
 
+/**
+ * The layers an annotation may belong to (095 FR-012, applied change
+ * 2026-08-13-annotate-the-element).
+ *
+ * The survey held the exemplar's seven layers up and kept *the axis, not the
+ * number*, expressing it as a grouping over the accessibility type system
+ * rather than as a tenth taxonomy. This is that list. It lives here rather than
+ * beside the design-tool category map in `@spectastic/core` for a dependency
+ * reason and not a taste one: core imports schema and never the reverse, so a
+ * single shared list can only live on this side. The map imports it, which is
+ * what keeps the authored vocabulary and the import landing-place one list.
+ */
+export const RECOGNISED_LAYERS: readonly string[] = [
+  'structure',
+  'behaviour',
+  'requirement',
+  'motion',
+  'data',
+  'accessibility',
+  'tracking',
+  'content',
+  'emphasis',
+];
+
+/**
+ * The layers an annotation's own typing implies — a SET, not a single value.
+ *
+ * A set because an annotation may be typed more than one way at once: a control
+ * with a role that also cites a requirement is legitimately structural *and*
+ * requirement-class, and collapsing that to one answer by precedence would
+ * manufacture a disagreement out of an annotation that is simply both. The
+ * check that consumes this asks whether a declared layer is IN the set, so an
+ * empty set (nothing implies a layer) permits any declaration — which is the
+ * case for the categories with no accessibility analogue at all.
+ */
+export function impliedLayers(a: {
+  role?: string | undefined;
+  ariaState?: string | undefined;
+  cites?: string | undefined;
+}): Set<string> {
+  const out = new Set<string>();
+  if (a.ariaState !== undefined && a.ariaState !== '') out.add('behaviour');
+  if (a.role !== undefined && a.role !== '') out.add('structure');
+  if (a.cites !== undefined && a.cites !== '') out.add('requirement');
+  return out;
+}
+
 /** The three element names this vocabulary introduces. */
 export const SCREEN_ELEMENT = 'spec-screen';
 export const STATE_ELEMENT = 'spec-state';

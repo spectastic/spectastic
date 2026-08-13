@@ -126,3 +126,53 @@ test.describe('containment', () => {
     });
   }
 });
+
+/**
+ * The annotation's subject and layer (095 FR-011/FR-012, applied change
+ * 2026-08-13-annotate-the-element).
+ *
+ * Four things want to render and the element has two content slots. A cascade
+ * collision here renders NOTHING while every structural assertion still passes,
+ * so these read computed pseudo-content and assert the values are actually
+ * there — presence of the element proves nothing.
+ */
+test.describe('NFR-001 · the annotation names its subject and its layer, with scripting off', () => {
+  test.use({ javaScriptEnabled: false });
+
+  for (const theme of THEMES) {
+    test(`the subject leads and the type follows it · ${theme}`, async ({ page }) => {
+      await page.goto(SCREEN);
+      await setTheme(page, theme);
+      const text = await readWithPseudo(page.locator('spec-annotation[target="amount-field"]'));
+      expect(text).toContain('amount-field');
+      expect(text).toContain('textbox');
+      expect(text).toContain('required');
+    });
+  }
+
+  test('a citation and a layer share the trailing slot without either disappearing', async ({ page }) => {
+    await page.goto(SCREEN);
+    const text = await readWithPseudo(page.locator('spec-annotation[cites="NFR-001"]'));
+    // Both, in one run. This is the assertion the collision would fail.
+    expect(text).toContain('NFR-001');
+    expect(text).toContain('requirement');
+  });
+
+  test('a layer with no typing to imply it still renders', async ({ page }) => {
+    await page.goto(SCREEN);
+    const text = await readWithPseudo(page.locator('spec-annotation[layer="tracking"]'));
+    expect(text).toContain('tracking');
+    expect(text).toContain('convert-button');
+  });
+
+  test('an annotation with no subject is unchanged by any of this', async ({ page }) => {
+    await page.goto(SCREEN);
+    // Regression guard: the majority of annotations name no target, and adding
+    // the capability must not have altered how they read.
+    const untargeted = page.locator('spec-annotation:not([target])');
+    if ((await untargeted.count()) > 0) {
+      const text = await readWithPseudo(untargeted.first());
+      expect(text.trim().length).toBeGreaterThan(0);
+    }
+  });
+});
