@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
+<title>067-spec-project-identity · Triage log</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Triage log · 067-spec-project-identity</p>
+  <h1>067-spec-project-identity — triage log</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    Defects against the <code>067-spec-project-identity</code> spec. Cards append-only; IDs stable.
+  </p>
+
+  <spec-meta>
+    <b>Spec</b>      <span><a href="./spec.html">067-spec-project-identity</a></span>
+    <b>Created</b>   <span><time datetime="2026-08-13">13 Aug 2026</time></span>
+    <b>Read time</b> <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-tldr>
+    <p>One card per debug session. Fits one screen; reads in under 30 seconds. Five required Tier-1 fields
+    (headline · Expected · Actual · Diagnosis · Fix); the deep-dive <code>&lt;details&gt;</code> stays collapsed
+    unless cross-spec, principles, scope, or hotfix-now applies. See <a href="../../examples/triage-log.html">examples/triage-log.html</a>
+    for the canonical look + the protocol (<code>TRIAGE-001</code>..<code>TRIAGE-006</code>).</p>
+  </spec-tldr>
+</header>
+
+
+<section id="cards">
+<h2>Cards</h2>
+<spec-triage-log>
+
+<spec-triage id="T-001" layer="implementation">
+  <header>
+    <h4>FR-002's identity firm-up is specified and unreachable</h4>
+    <span class="meta">
+      <span class="layer-pill">Implementation</span>
+      <span class="regen" data-result="pass">code</span>
+    </span>
+  </header>
+
+  <p class="headline">Debugging why a project stayed unidentified after its remote was added, root cause was that <code>init</code> refuses to run on a populated directory without a TTY, so the firm-up path <a href="./spec.html#FR-002">FR-002</a> requires can never be taken; fixed in the command's re-run guard, not in the requirement; regeneration <strong>passes</strong>, because the requirement already says plainly what should happen.</p>
+
+  <dl>
+    <dt>Expected</dt> <dd><a href="./spec.html#FR-002">FR-002</a>: <em>"Re-running <code>init</code> after a remote becomes available <strong>MUST</strong> firm up the identity — deriving and persisting it."</em></dd>
+    <dt>Actual</dt>   <dd>Re-running it prints <code>init: 30 existing file(s) in destination but no TTY for prompts; pass --force to overwrite or remove the files first.</code> and exits without writing. <code>--force</code> is not a fix — it overwrites the scaffold. No other command writes the value: <code>spectastic owner</code> answers a different question and <code>spectastic id</code> only reads. The user must hand-edit <code>spectastic.json</code>.</dd>
+    <dt>Diagnosis</dt><dd>The re-run guard exists to protect a scaffold from being clobbered and cannot distinguish "re-scaffold everything" from "firm up one config value". The requirement is right; the only path to it is gated behind a prompt that a scripted or non-interactive run never gets. Observed end-to-end while scaffolding a real downstream project: <code>git init</code> → <code>spectastic init</code> → remote added → firm-up impossible, which is the exact sequence <a href="./spec.html#FR-002">FR-002</a>'s own rationale calls "the common fresh-repo flow".</dd>
+    <dt>Fix</dt>      <dd><span class="path">packages/cli/src/commands/init.ts</span> — let the identity firm-up run without the full scaffold, or give it a path of its own that is not gated on the overwrite prompt. The never-overwrite guard on the value itself already exists and is unaffected.</dd>
+  </dl>
+
+  <details>
+    <summary>Deep dive — why this is implementation and not spec</summary>
+    <p>The ladder stops here. Changing only the requirement would not help — it already mandates the behaviour. Changing only the resolver would not help — it reads correctly. The gap is that the one writer is unreachable in the flow the requirement was written for, which is a code fix that passes the regeneration test: an implementer reading FR-002 today would build the firm-up, and would then have to notice the guard swallows it.</p>
+  </details>
+</spec-triage>
+
+<spec-triage id="T-002" layer="design">
+  <header>
+    <h4>A bare marketplace is persisted on the very path FR-002 avoids persisting a bare project</h4>
+    <span class="meta">
+      <span class="layer-pill">Design</span>
+      <span class="regen" data-result="fail">upstream</span>
+    </span>
+  </header>
+
+  <p class="headline">Debugging why a freshly scaffolded project fails its own first validate, root cause was that <code>writeCorpusConfig</code> falls back to the bare directory name when no <code>project</code> exists — persisting exactly the federation-fragile value <a href="./spec.html#FR-002">FR-002</a> refuses to persist, one function later; fixed by leaving the marketplace absent when the identity is absent; regeneration <strong>fails</strong>, because the two writers' interaction is not described anywhere.</p>
+
+  <dl>
+    <dt>Expected</dt> <dd>A freshly scaffolded project validates clean, and a later identity firm-up takes effect.</dd>
+    <dt>Actual</dt>   <dd><code>spectastic init</code> on a repo with no remote leaves <code>project</code> absent, correctly — and then writes <code>corpus.marketplace: "&lt;dir-name&gt;"</code>. The first <code>validate</code> reports <em>"The resolved corpus marketplace has no owner segment — a bare, collision-prone default"</em>. Reproduced on a real scaffold; the warning is the new project's first output.</dd>
+    <dt>Diagnosis</dt><dd><a href="./spec.html#FR-002">FR-002</a>'s rationale says persisting a bare name <em>"would lock in a federation-fragile value and fire the collision warning on nearly every new repo"</em> — and that is precisely what happens, through the other writer. Worse, <code>writeCorpusConfig</code>'s own docstring records that an explicit <code>corpus.marketplace</code> <em>"ALWAYS wins in <code>resolveCorpusConfig</code>'s precedence chain"</em>, so the bare value <strong>permanently shadows</strong> any identity a later firm-up would set. That docstring names this exact bug — it was found and fixed for the has-a-remote case, and the no-remote path still does it.</dd>
+    <dt>Fix</dt>      <dd><span class="path">packages/cli/src/commands/init.ts</span> — when <code>resolveProjectConfig</code> yields no project, omit <code>marketplace</code> and let <code>resolveCorpusConfig</code>'s derivation supply it later, rather than freezing a directory name into the file. Pairs with <a href="#T-001">T-001</a>: firm-up is worthless while a bare marketplace outranks it.</dd>
+  </dl>
+
+  <details>
+    <summary>Deep dive — cross-spec</summary>
+    <p>Two specs' writers disagree about the same identity. 067 owns <code>project</code> and refuses a bare value; the corpus config owns <code>marketplace</code> and supplies one. Unifying them was 067's stated purpose, so this belongs to 067's design rather than to the corpus slice — the unification is incomplete in exactly the case 067 called common.</p>
+  </details>
+</spec-triage>
+
+
+</spec-triage-log>
+</section>
+
+
+<section id="changelog">
+<h2>Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-08-13">13 Aug 2026</time><span>T-001 and T-002 added — both found scaffolding a real downstream project rather than by reading the code. FR-002's identity firm-up is required and unreachable, and the corpus writer persists a bare marketplace on the same path FR-002 refuses to persist a bare project, which then permanently outranks any firm-up. The two are one bug seen from two ends.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  067-spec-project-identity triage log · scaffolded 2026-08-13
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>
