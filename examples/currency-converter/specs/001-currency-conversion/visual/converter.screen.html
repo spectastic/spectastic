@@ -24,7 +24,9 @@
     shape of every element here is checked, and a state that failed to say where it came from would be reported.
     Converted from a speculative JSON sketch that predated the vocabulary. Every annotation names the control it
     is about — a capability the vocabulary gained after the migration here dropped four such names and nothing
-    noticed.</p>
+    noticed. This file now exercises every element the visual vocabulary defines, which is how the transition
+    attribute's collision with the executable-content rule was found: the fixtures used the same attribute and
+    passed, because they never run the security scan.</p>
   </spec-note>
 </header>
 
@@ -57,6 +59,7 @@
 
   <spec-state id="converted" source="derived" from="200">
     <p>A rate, its pair, and when it was fetched.</p>
+    <spec-render src="renders/converted-ios-light.svg" contexts="platform=ios mode=light size-class=compact"></spec-render>
     <spec-annotation target="rate-line" layer="structure" role="status">
       <p>The rate line is a live region so a refreshed value is spoken without moving focus.</p>
     </spec-annotation>
@@ -100,8 +103,119 @@
 </spec-screen>
 </section>
 
+<section id="consent">
+<h2>2 · What this screen reports, and what gates it</h2>
+
+<p>The plan is authored now so that answering the consent question is a switch rather than a retrofit.
+Nothing ships until it is answered, and nothing here causes an event to be emitted — a declaration is a
+design decision and never evidence that a build does anything.</p>
+
+<spec-consent-gate question="Q-01" answer=""></spec-consent-gate>
+</section>
+
+
+<section id="flow">
+<h2>3 · The route through it</h2>
+
+<p>A converter is two screens and a return. The branch is the half usually left unwritten: dismissing the
+picker without choosing is the common case, and it is not an error.</p>
+
+<spec-screen id="pairs" serves="US1">
+  <p>The currency picker. A sheet rather than an inline control, because the list is long enough to need
+  search.</p>
+  <spec-state id="browsing" source="authored">
+    <p>The full list, with the current pair pre-selected.</p>
+  </spec-state>
+</spec-screen>
+
+<spec-flow id="convert-a-figure">
+  <spec-step screen="convert" state="empty"></spec-step>
+  <spec-step screen="pairs" state="browsing">
+    <spec-branch to="convert">The sheet is dismissed without a choice. The amount stands, the pair is
+    unchanged, and no request is made — a return rather than a failure.</spec-branch>
+  </spec-step>
+  <spec-step screen="convert" state="converted">
+    <spec-branch to="offline">No request left the device. The last known figure stays on screen, marked
+    stale rather than cleared.</spec-branch>
+  </spec-step>
+  <!-- The journey returns to a screen it has already visited, which is ordinary
+       for a converter and is reported by nothing. -->
+  <spec-step screen="convert" state="empty"></spec-step>
+  <spec-step outward>Leaves for the system share sheet, which this feature does not own.</spec-step>
+</spec-flow>
+</section>
+
+
+<section id="components">
+<h2>4 · The controls, and what they do</h2>
+
+<p>A component's states are driven by interaction — there is no status code for hover — which is why they
+live here rather than on each screen that uses the control.</p>
+
+<spec-component name="convert-button" scope="feature" maturity="accepted" origin="authored">
+  <spec-cstate name="resting">The default: filled, with the accent token.</spec-cstate>
+  <spec-cstate name="hover">Not reachable by touch; present for the pointer platforms.</spec-cstate>
+  <spec-cstate name="focus-visible">A two-point ring outside the fill, so it survives against the accent.</spec-cstate>
+  <spec-cstate name="pressed">Fill darkens; no scale change, which reads as lag on a slow device.</spec-cstate>
+  <spec-cstate name="disabled">Uses <code>aria-disabled</code> rather than <code>disabled</code>, so it
+  stays focusable and can explain why it is unavailable.</spec-cstate>
+  <spec-cstate name="loading">Label replaced by a spinner after 150&nbsp;ms, not immediately — a flash on a
+  fast response is worse than nothing.</spec-cstate>
+  <spec-cstate name="success" declined>The result appears in the figure above; a success state on the button
+  would be a second announcement of one event.</spec-cstate>
+  <spec-cstate name="error" declined>Errors belong to the rate line, which is where a reader is already
+  looking.</spec-cstate>
+  <spec-cstate name="empty" declined>A button has no content of its own to be empty of.</spec-cstate>
+
+  <spec-transition from="resting" to="pressed" trigger="pointer or touch down"></spec-transition>
+  <spec-transition from="pressed" to="loading" trigger="the request is sent and 150 ms elapse"></spec-transition>
+  <spec-transition from="loading" to="resting" trigger="a response arrives, whatever it says"></spec-transition>
+</spec-component>
+</section>
+
+
+<section id="motion">
+<h2>5 · What moves, and when</h2>
+
+<p>One element changing is a token. This is a sequence, and no token expresses an order.</p>
+
+<spec-choreography id="rate-refresh" origin="the rate response arriving">
+  <spec-reduced-motion>Skipped entirely. The figure and the rate line change to their new values on the next
+  frame, with no cross-fade and no movement. Nothing is lost — the transition carries no information the
+  values do not.</spec-reduced-motion>
+  <spec-cue element="rate-figure" at="0ms" duration="{motion.rate-refresh}" easing="{motion.rate-refresh}"></spec-cue>
+  <!-- Same offset, deliberately: the pair label and the timestamp change together
+       with the figure rather than trailing it, because they describe it. -->
+  <spec-cue element="rate-line" at="0ms" duration="220ms"></spec-cue>
+  <spec-cue element="staleness-badge" at="120ms" duration="180ms" easing="ease-out"></spec-cue>
+</spec-choreography>
+</section>
+
+
+<section id="copy">
+<h2>6 · What may be written, and what may not</h2>
+
+<p>The layout is designed against copy of a particular length, and the copy usually arrives later from
+somebody who never saw the layout. None of this is checked against real strings — they live in a
+localisation system this vocabulary cannot see, and a partial check would report clean while the rest
+overflowed.</p>
+
+<spec-copy-budget element="screen title" max="18" unit="characters" lang="en"></spec-copy-budget>
+<spec-copy-budget element="rate line" max="46" unit="characters" lang="en"></spec-copy-budget>
+<spec-copy-budget element="staleness badge" max="22" unit="characters" lang="en"></spec-copy-budget>
+<spec-copy-budget element="button label" max="2" unit="words"></spec-copy-budget>
+
+<spec-message-shape name="rate-error" parts="what failed, what the figure on screen still means, what to try"></spec-message-shape>
+
+<spec-refusal text="Something went wrong">It names no cause and offers no action, and on this screen there
+is always something to say — the figure shown is either current or stale, and which one it is matters.</spec-refusal>
+<spec-refusal text="Error" context="anything a user reads">Fine in a log line and useless on screen. Scoped
+rather than blanket, because the word is not the problem — the placement is.</spec-refusal>
+</section>
+
+
 <section id="unmapped">
-<h2>2 · Annotations with no accessibility analogue</h2>
+<h2>7 · Annotations with no accessibility analogue</h2>
 
 <p>These stay prose and stay unchecked. The vocabulary names the gap rather than pretending to cover it — an
 analytics event is not a property of the interface a user perceives, so the accessibility tree has nothing to
@@ -113,9 +227,20 @@ say about it.</p>
     <p>Specified now so that answering the analytics-consent question is a switch rather than a retrofit. No
     event ships until it is answered, and no payload carries anything identifying.</p>
     <spec-annotation target="convert-button" layer="tracking">
-      <p>A <code>rate_converted</code> event on the convert button, carrying the pair only. The layer is
-      declared because nothing about this annotation implies one — an analytics event is not a property of
-      the interface a user perceives, so the accessibility tree has nothing to say about it.</p>
+      <p>The layer is declared because nothing about this annotation implies one — an analytics event is not
+      a property of the interface a user perceives, so the accessibility tree has nothing to say about it.
+      What it reports is declared below, beside the control that emits it.</p>
+      <spec-event name="rate_converted">
+        <spec-field name="pair" type="string"></spec-field>
+        <spec-field name="from_cache" type="boolean"></spec-field>
+      </spec-event>
+    </spec-annotation>
+
+    <spec-annotation target="amount-field" layer="tracking">
+      <p>Deliberately <em>not</em> reported. The amount is the one thing on this screen a person typed, and
+      an event carrying it would put a user's financial figures in an analytics pipeline for no product
+      reason. Recorded as a decision rather than left as an absence.</p>
+      <spec-event name="amount_entered"></spec-event>
     </spec-annotation>
   </spec-state>
 </spec-screen>

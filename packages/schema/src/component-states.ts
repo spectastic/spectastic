@@ -52,8 +52,14 @@ export interface ComponentState {
 export interface ComponentTransition {
   from: string | undefined;
   to: string | undefined;
-  /** What carries the component between the two. Free text. */
-  on: string | undefined;
+  /** What carries the component between the two. Free text.
+   *
+   *  Named `trigger` and NOT `on`: the security rule that forbids executable
+   *  content flags every attribute whose name starts with `on`, and it is right
+   *  to — it cannot safely distinguish a vocabulary attribute from `onclick`,
+   *  and a broad prefix match is the correct posture for that check. The first
+   *  draft used `on=` and the exemplar would not validate. */
+  trigger: string | undefined;
   line: number;
   column: number;
 }
@@ -106,7 +112,7 @@ export function readComponentBehaviour(doc: ParsedDocument | Document): Componen
     transitions: findAll(el, TRANSITION_ELEMENT).map((t) => ({
       from: getAttr(t, 'from'),
       to: getAttr(t, 'to'),
-      on: getAttr(t, 'on'),
+      trigger: getAttr(t, 'trigger'),
       ...locOf(t),
     })),
     ...locOf(el),

@@ -109,7 +109,7 @@ describe('declines', () => {
 
 describe('transitions', () => {
   it('is silent between two declared states', () => {
-    expect(findingsFor(complete('<spec-transition from="resting" to="hover" on="pointer enters"></spec-transition>'))).toEqual([]);
+    expect(findingsFor(complete('<spec-transition from="resting" to="hover" trigger="pointer enters"></spec-transition>'))).toEqual([]);
   });
 
   it('reports a transition naming a state the component does not declare', () => {
