@@ -68,3 +68,26 @@ export const RECOGNISED_ARIA_STATES: readonly string[] = [
 export const SCREEN_ELEMENT = 'spec-screen';
 export const STATE_ELEMENT = 'spec-state';
 export const ANNOTATION_ELEMENT = 'spec-annotation';
+
+// --- the variant grid (spec 096-visual-variant-grid) -------------------------
+
+/** The four elements the grid introduces. */
+export const GRID_ELEMENT = 'spec-variant-grid';
+export const AXIS_ELEMENT = 'spec-axis';
+export const CONTEXT_ELEMENT = 'spec-context';
+export const BASELINE_ELEMENT = 'spec-baseline';
+/** A combination examined and found not to differ (096, FR-006). */
+export const SAME_ELEMENT = 'spec-same';
+
+/**
+ * What an axis may select (096, FR-002).
+ *
+ * `values` alone would let an axis describe the colours of a television
+ * interface and nothing about how it is operated — a focus-driven remote and a
+ * pointer are different interaction models, not different palettes.
+ */
+export const RECOGNISED_AXIS_SELECTS = ['values', 'structure', 'interaction'] as const;
+export type AxisSelects = (typeof RECOGNISED_AXIS_SELECTS)[number];
+
+/** The value a baseline uses to say it has never been verified (096, FR-005). */
+export const NEVER_VERIFIED = 'none';

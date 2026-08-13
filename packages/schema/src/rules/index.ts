@@ -4,6 +4,8 @@ import { visualDeclarationShapeRule } from './visual-declaration-shape.js';
 import { screenShapeRule } from './screen-shape.js';
 import { stateSourceRequiredRule } from './state-source-required.js';
 import { annotationTypedRule } from './annotation-typed.js';
+import { variantGridShapeRule } from './variant-grid-shape.js';
+import { variantSameResolvesRule } from './variant-same-resolves.js';
 import { contractNameUniqueRule } from './contract-name-unique.js';
 import { corpusCitationFormRule } from './corpus-citation-form.js';
 import { dataDeltaShapeRule } from './data-delta-shape.js';
@@ -95,6 +97,8 @@ export const rules: readonly Rule[] = [
   screenShapeRule,
   stateSourceRequiredRule,
   annotationTypedRule,
+  variantGridShapeRule,
+  variantSameResolvesRule,
   contractNameUniqueRule,
 
   // Cross-file rules.
