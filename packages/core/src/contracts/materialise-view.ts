@@ -13,6 +13,7 @@
  */
 
 import type { FileSystem } from '../types.js';
+import { maskHtmlComments } from '../mask-comments.js';
 
 /** Default excerpt cap (D-006): generous enough for real review, bounded enough
  * that a 5000-line contract doesn't bloat the artifact past NFR-003's budget. */
@@ -49,7 +50,20 @@ export async function materialiseContractViews(
   cwd: string,
   lineBudget = DEFAULT_LINE_BUDGET,
 ): Promise<string> {
-  const matches = [...html.matchAll(CONTRACT_RE)];
+  // Matched against a comment-masked copy, then sliced out of the original.
+  // The mask preserves every offset, so `full`/`attrs`/`inner` below are the
+  // real bytes — see mask-comments.ts for why this is not paranoia.
+  const masked = maskHtmlComments(html);
+  const matches = [...masked.matchAll(CONTRACT_RE)].map((m) => {
+    const start = m.index ?? 0;
+    const real = html.slice(start, start + m[0].length);
+    const openEnd = real.indexOf('>');
+    return [real, real.slice('<spec-contract'.length, openEnd), real.slice(openEnd + 1, real.lastIndexOf('</spec-contract>'))] as [
+      string,
+      string,
+      string,
+    ];
+  });
   if (matches.length === 0) return html;
 
   let result = html;
@@ -96,7 +110,14 @@ export async function materialiseContractViews(
 
     const innerWithoutView = inner.replace(EXISTING_VIEW_RE, '');
     const replacement = `<spec-contract${attrs}>${innerWithoutView}\n${viewEl}\n</spec-contract>`;
-    result = result.replace(full, replacement);
+    // A REPLACER FUNCTION, not a replacement string. `String.replace` treats
+    // `$&`, `$'`, `` $` `` and `$1` in a replacement STRING as substitution
+    // patterns — and `$'` splices in everything after the match. A contract is
+    // exactly where those sequences occur naturally: an OpenAPI schema carries
+    // regex patterns like `'^[A-Z]{3}$'`, whose `$'` swallowed the entire rest
+    // of the document. Found the first time a real contract was ever projected,
+    // because the view had never materialised on the authoring path before.
+    result = result.replace(full, () => replacement);
   }
 
   return result;

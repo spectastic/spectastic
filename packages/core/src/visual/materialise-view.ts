@@ -22,6 +22,7 @@
  */
 
 import { findAll, getAttr, parse } from '@spectastic/schema/parser';
+import { maskHtmlComments } from '../mask-comments.js';
 import { readVisualDeclarations } from '@spectastic/schema/visual';
 import type { FileSystem } from '../types.js';
 import { type DeclaredRender, readRenders, renderAltText } from './render.js';
@@ -156,7 +157,16 @@ export async function materialiseVisualViews(
   if (declarations.length === 0) return html;
 
   let result = html;
-  for (const match of [...html.matchAll(VISUAL_RE)]) {
+  // Same comment-masking as the contract materialiser. This one has never
+  // misfired, only because the template does not spell the element out inside
+  // its own explanatory comment — which is a property of the prose, not of the
+  // code, and therefore not something to rely on.
+  const masked = maskHtmlComments(html);
+  for (const m of [...masked.matchAll(VISUAL_RE)]) {
+    const start = m.index ?? 0;
+    const real = html.slice(start, start + m[0].length);
+    const openEnd = real.indexOf('>');
+    const match = [real, real.slice('<spec-visual'.length, openEnd), real.slice(openEnd + 1, real.lastIndexOf('</spec-visual>'))] as unknown as RegExpMatchArray;
     const [full, attrs = '', inner = ''] = match;
     const screensPath = /\bscreens=["']([^"']+)["']/i.exec(attrs)?.[1];
     if (screensPath === undefined) continue; // shape="none" or malformed
@@ -186,7 +196,14 @@ export async function materialiseVisualViews(
 
     const view = model === null ? '' : renderView(model);
     const replacement = `<spec-visual${attrs}>${withoutView}\n${view === '' ? '' : `${view}\n`}</spec-visual>`;
-    result = result.replace(full, replacement);
+    // A REPLACER FUNCTION, not a replacement string. `String.replace` treats
+    // `$&`, `$'`, `` $` `` and `$1` in a replacement STRING as substitution
+    // patterns — and `$'` splices in everything after the match. A contract is
+    // exactly where those sequences occur naturally: an OpenAPI schema carries
+    // regex patterns like `'^[A-Z]{3}$'`, whose `$'` swallowed the entire rest
+    // of the document. Found the first time a real contract was ever projected,
+    // because the view had never materialised on the authoring path before.
+    result = result.replace(full, () => replacement);
   }
   return result;
 }
