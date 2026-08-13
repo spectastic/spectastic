@@ -1,5 +1,4 @@
-import { findAll, getLocation } from '../parser.js';
-import type { Element } from '../parser.js';
+import { findAll } from '../parser.js';
 import type { Finding, PerFileRule } from '../types.js';
 import { readVariantGrid } from '../variant-grid.js';
 import { GRID_ELEMENT, NEVER_VERIFIED, RECOGNISED_AXIS_SELECTS } from '../visual-vocabulary.js';
