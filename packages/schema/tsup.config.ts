@@ -16,6 +16,7 @@ export default defineConfig({
     'src/screen-flow.ts',
     'src/component-states.ts',
     'src/choreography.ts',
+    'src/content-budget.ts',
   ],
   format: ['esm'],
   dts: true,

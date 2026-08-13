@@ -181,6 +181,21 @@ export const CHOREOGRAPHY_ELEMENT = 'spec-choreography';
 export const CHOREO_STEP_ELEMENT = 'spec-cue';
 export const REDUCED_MOTION_ELEMENT = 'spec-reduced-motion';
 
+/**
+ * Copy as a design constraint (103-content-budgets).
+ *
+ * The annotation vocabulary already names `content` as a category with no
+ * accessibility analogue — "a content budget constrains what may be written,
+ * not what the element is or is doing". This gives that named gap a home.
+ *
+ * Nothing here is ever checked against running text (FR-003). The copy lives
+ * in a localisation system or somebody's draft, and a check that read only
+ * what it could reach would report clean while the rest overflowed.
+ */
+export const BUDGET_ELEMENT = 'spec-copy-budget';
+export const REFUSAL_ELEMENT = 'spec-refusal';
+export const MESSAGE_SHAPE_ELEMENT = 'spec-message-shape';
+
 // --- the variant grid (spec 096-visual-variant-grid) -------------------------
 
 /** The four elements the grid introduces. */
