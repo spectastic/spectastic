@@ -165,6 +165,22 @@ export const BRANCH_ELEMENT = 'spec-branch';
 export const COMPONENT_STATE_ELEMENT = 'spec-cstate';
 export const TRANSITION_ELEMENT = 'spec-transition';
 
+/**
+ * Motion as a sequence rather than a value (102-motion-choreography).
+ *
+ * The annotation layer homes motion on the token format's duration and easing
+ * types, which is right for one element changing and cannot express an ORDER.
+ * An entrance is several elements moving at declared offsets from a shared
+ * origin, and the interesting content is entirely in the ordering.
+ *
+ * Offsets are from the ORIGIN, never from the previous step: relative-to-
+ * previous makes every step depend on its predecessor, so inserting one
+ * silently moves everything after it — the late edit nobody re-reviews.
+ */
+export const CHOREOGRAPHY_ELEMENT = 'spec-choreography';
+export const CHOREO_STEP_ELEMENT = 'spec-cue';
+export const REDUCED_MOTION_ELEMENT = 'spec-reduced-motion';
+
 // --- the variant grid (spec 096-visual-variant-grid) -------------------------
 
 /** The four elements the grid introduces. */

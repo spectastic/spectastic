@@ -15,6 +15,7 @@ export default defineConfig({
     'src/variant-grid.ts',
     'src/screen-flow.ts',
     'src/component-states.ts',
+    'src/choreography.ts',
   ],
   format: ['esm'],
   dts: true,

@@ -3,6 +3,7 @@ import { contractDeclarationShapeRule } from './contract-declaration-shape.js';
 import { visualDeclarationShapeRule } from './visual-declaration-shape.js';
 import { screenShapeRule } from './screen-shape.js';
 import { stateSourceRequiredRule } from './state-source-required.js';
+import { choreographyShapeRule } from './choreography.js';
 import { componentStatesRule } from './component-states.js';
 import { flowResolvesRule } from './flow-resolves.js';
 import { renderShapeRule } from './render-shape.js';
@@ -107,6 +108,7 @@ export const rules: readonly Rule[] = [
   renderShapeRule,
   flowResolvesRule,
   componentStatesRule,
+  choreographyShapeRule,
   variantGridShapeRule,
   variantSameResolvesRule,
   componentShapeRule,
