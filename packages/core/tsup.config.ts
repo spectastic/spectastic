@@ -18,6 +18,7 @@ export default defineConfig({
     'src/model-policy/index.ts',
     'src/commands/validate.ts',
     'src/visual/read.ts',
+    'src/visual/coverage.ts',
     'src/commands/triage.ts',
     'src/commands/principles.ts',
     'src/commands/tasks.ts',

@@ -25,7 +25,10 @@ export interface DeclaredVisualPath {
   /** Project-relative, exactly as authored — never normalised here. */
   path: string;
   /** Which attribute it came from, so a finding can say what is missing. */
-  kind: 'tokens' | 'screens';
+  /** Which declaration the path came from. `variants` is the project's axis
+   *  grid (093 FR-005); unlike `tokens` it may not resolve to a directory
+   *  (FR-010), which the resolve scan enforces rather than this reader. */
+  kind: 'tokens' | 'screens' | 'variants';
   specId: string;
   /** False for a Draft or unreadable-status design, mirroring the contract
    *  reader: declaring the surface a spec is about to create is advisory. */
@@ -99,13 +102,16 @@ function readDesignVisuals(
     const shape = authored(/\bshape=["']([^"']*)["']/i.exec(attrs)?.[1])?.toLowerCase();
     const tokens = authored(/\btokens=["']([^"']+)["']/i.exec(attrs)?.[1]);
     const screens = authored(/\bscreens=["']([^"']+)["']/i.exec(attrs)?.[1]);
+    const variants = authored(/\bvariants=["']([^"']+)["']/i.exec(attrs)?.[1]);
     const source = authored(/\bsource=["']([^"']+)["']/i.exec(attrs)?.[1]);
-    if (shape !== undefined || tokens !== undefined || screens !== undefined) authoredAny = true;
+    if (shape !== undefined || tokens !== undefined || screens !== undefined || variants !== undefined)
+      authoredAny = true;
     // An unrecognised token counts as a surface: validating the vocabulary is
     // the shape rule's job, and treating an unknown value as "no surface"
     // would let a typo silently disclaim one.
     if (shape !== undefined && shape !== 'none') sawSurface = true;
     if (tokens !== undefined) paths.push({ path: tokens, kind: 'tokens', specId, ratified });
+    if (variants !== undefined) paths.push({ path: variants, kind: 'variants', specId, ratified });
     if (screens !== undefined) paths.push({ path: screens, kind: 'screens', specId, ratified });
     if (source !== undefined) sources.push(source);
   }

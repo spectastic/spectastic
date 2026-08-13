@@ -37,8 +37,20 @@ export interface VisualDeclaration {
   /** The external base a local token set extends, when it holds only
    *  overrides (FR-005). Names a package, never a path — nothing resolves it. */
   tokensExternal: string | undefined;
+  /** Project-relative path of the project's variant grid (FR-005). Unlike the
+   *  token set this MUST resolve to a file, not a directory (FR-010): a grid is
+   *  one declaration of axes in an explicit resolution order, and 096 took that
+   *  order from source position, which a directory does not have. */
+  variants: string | undefined;
   /** Project-relative path of the screens this feature touches. */
   screens: string | undefined;
+  /** Which of the project's declared contexts this feature addresses (FR-012),
+   *  in the grid's own `axis=context` grammar, or the whole-grid claim. Read
+   *  verbatim and never split here — an absent value means NOT RECORDED, which
+   *  is a third value distinct from "all" and from "none", so the reader must
+   *  not collapse it into either. Whether a named context exists is FR-013's
+   *  question and needs the grid file, which this pure reader cannot open. */
+  contexts: string | undefined;
   /** Where the design came from (FR-006). Provenance for a reader, never an
    *  authority: nothing reads it at validate time, and a project whose source
    *  is gone stays valid. */
@@ -62,7 +74,9 @@ export function readVisualDeclarations(htmlOrDoc: string | ParsedDocument, file 
       shape: getAttr(el, 'shape'),
       tokens: getAttr(el, 'tokens'),
       tokensExternal: getAttr(el, 'tokens-external'),
+      variants: getAttr(el, 'variants'),
       screens: getAttr(el, 'screens'),
+      contexts: getAttr(el, 'contexts'),
       source: getAttr(el, 'source'),
       line: loc.line,
       column: loc.column,

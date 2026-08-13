@@ -59,6 +59,8 @@ export const visualDeclarationShapeRule: PerFileRule = {
       const tokensExternal = getAttr(visual, 'tokens-external');
       const screens = getAttr(visual, 'screens');
       const source = getAttr(visual, 'source');
+      const variants = getAttr(visual, 'variants');
+      const contexts = getAttr(visual, 'contexts');
 
       if (shape === undefined || shape === '') {
         flag(
@@ -81,11 +83,17 @@ export const visualDeclarationShapeRule: PerFileRule = {
       if (shape === 'none') {
         // A declaration that says there is no surface and then points at one is
         // two claims that cannot both be true; report it once, not per attribute.
-        if (tokens !== undefined || screens !== undefined || tokensExternal !== undefined) {
+        if (
+          tokens !== undefined ||
+          screens !== undefined ||
+          tokensExternal !== undefined ||
+          variants !== undefined ||
+          contexts !== undefined
+        ) {
           flag(
             visual,
             '<spec-visual shape="none"> declares no surface but names a path',
-            'Drop tokens=/screens=/tokens-external=, or change shape= to screens (spec.html FR-007) — an explicit none carries no paths.',
+            'Drop tokens=/screens=/tokens-external=/variants=/contexts=, or change shape= to screens (spec.html FR-007) — an explicit none carries no paths and addresses no contexts.',
           );
         }
         continue;
@@ -96,6 +104,20 @@ export const visualDeclarationShapeRule: PerFileRule = {
           visual,
           '<spec-visual shape="screens"> declares a surface with no tokens=',
           "Add tokens= naming the project-relative location of the project's token set (spec.html FR-005). It may name a directory as well as a file.",
+        );
+      }
+
+      // A coverage claim needs something to be a claim ABOUT. Deliberately NOT
+      // symmetric with an absent variants=, which is silence: nothing obliges a
+      // project to have a grid (093 FR-005 makes naming one a capability, not
+      // an obligation), but naming contexts on a grid nobody declared is a
+      // claim about nothing — the same incoherence tokens-external= without
+      // tokens= carries, and reported the same way.
+      if (contexts !== undefined && variants === undefined) {
+        flag(
+          visual,
+          '<spec-visual> claims contexts= with no variants= to claim them against',
+          "Add variants= naming the project's variant grid, or drop contexts= (spec.html FR-012). A coverage claim only means something against a declared grid.",
         );
       }
 

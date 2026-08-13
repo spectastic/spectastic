@@ -113,3 +113,47 @@ describe('several declarations in one document', () => {
     expect(findingsFor(`${WELL_FORMED}<spec-visual shape="mockups"><p>r</p></spec-visual>`)).toHaveLength(1);
   });
 });
+
+/**
+ * The grid and coverage attributes (093 FR-005/FR-012, applied change
+ * 2026-08-13-declare-the-variant-grid). The asymmetry is the point: an absent
+ * grid is silence, because nothing obliges a project to have one, while a
+ * coverage claim about an unnamed grid is a claim about nothing.
+ */
+describe('the variant grid and the contexts a feature addresses', () => {
+  const FULL = 'shape="screens" tokens="visual/tokens" screens="specs/001-a/visual" source="figma"';
+  const vis = (attrs: string) => `<spec-visual ${attrs}><p>r</p></spec-visual>`;
+
+  it('is silent when a declared surface names no variant grid', () => {
+    // Nothing obliges a project to HAVE a grid — 096 FR-008 governs its scope,
+    // not its existence — so a single-axis project must not be pushed into
+    // authoring a fictional one to clear an error.
+    expect(findingsFor(vis(FULL))).toEqual([]);
+  });
+
+  it('is silent when it names one', () => {
+    expect(findingsFor(vis(`${FULL} variants="visual/variants.html"`))).toEqual([]);
+  });
+
+  it('reports a coverage claim with no grid to make it against', () => {
+    const f = findingsFor(vis(`${FULL} contexts="platform=ios"`));
+    expect(f).toHaveLength(1);
+    expect(f[0]?.message).toContain('contexts=');
+  });
+
+  it('is silent for coverage alongside a grid', () => {
+    expect(findingsFor(vis(`${FULL} variants="visual/variants.html" contexts="platform=ios mode=dark"`))).toEqual([]);
+  });
+
+  it('is silent for an explicit whole-grid claim', () => {
+    expect(findingsFor(vis(`${FULL} variants="visual/variants.html" contexts="all"`))).toEqual([]);
+  });
+
+  it('reports an explicit none that nonetheless names a grid', () => {
+    expect(findingsFor(vis('shape="none" variants="visual/variants.html"'))).toHaveLength(1);
+  });
+
+  it('reports an explicit none that nonetheless claims coverage', () => {
+    expect(findingsFor(vis('shape="none" contexts="all"'))).toHaveLength(1);
+  });
+});

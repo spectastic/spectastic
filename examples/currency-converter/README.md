@@ -18,7 +18,7 @@ slugs it plants: `TBD-design-visual-section`, `TBD-visual-sidecar-convention`,
    responses in `contracts/rates.openapi.yaml` become required states. Five more (`empty`,
    `loading`, `offline`, `stale-cache`, `cold-start`) have no HTTP status and must be authored.
    The mapping from response to state is many-to-one and is itself a decision.
-2. **Variants are an axis grid, not four documents.** `visual/variants.json` crosses mode ×
+2. **Variants are an axis grid, not four documents.** `visual/variants.html` crosses mode ×
    platform × size class. tvOS is declined *with a reason* rather than left missing.
 3. **Three clocks.** The token set carries a semver version with forward-only binding; the
    spec carries a change log and no version; the captured renders carry a ratification date and
@@ -64,11 +64,11 @@ visual/                             PROJECT-scoped — one design system, shared
   tokens/base.tokens.json           DTCG primitives
   tokens/light.tokens.json          mode context
   tokens/dark.tokens.json           mode context
-  variants.json                     the axis grid, and the token-set version
+  variants.html                     the axis grid, and the token-set version
 specs/001-currency-conversion/
   spec.html design.html tasks.html verify.html
   contracts/rates.openapi.yaml      the PROPOSED contract
-  visual/converter.screen.json      FEATURE-scoped — screens, states, annotations
+  visual/converter.screen.html      FEATURE-scoped — screens, states, annotations
   visual.html                       the generated visual view
 ```
 

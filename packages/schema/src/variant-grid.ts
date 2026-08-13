@@ -80,8 +80,21 @@ function locOf(el: Element): { line: number; column: number } {
   return loc ? { line: loc.startLine, column: loc.startCol } : { line: 1, column: 1 };
 }
 
-/** Parse a `<spec-same axes="platform=tv mode=dark">` list into a map. */
-function parseSameAxes(raw: string): Record<string, string> {
+/**
+ * Parse a space-separated `axis=context` list into a map — the grammar
+ * `<spec-same axes="platform=tv mode=dark">` uses, and now also the grammar a
+ * design's `<spec-visual contexts=…>` coverage claim uses (093 FR-012, applied
+ * change 2026-08-13-declare-the-variant-grid).
+ *
+ * Exported so the coverage check can borrow the GRAMMAR without borrowing
+ * `variantSameResolvesRule`'s resolution, which it cannot: that rule is
+ * per-file and returns immediately on a document carrying no grid element, and
+ * a design never carries one. Reading the grid a design points at is
+ * cross-file work and lives in the kernel.
+ *
+ * Never throws on a malformed pair — the caller reports it; the reader does not.
+ */
+export function parseAxisContextPairs(raw: string): Record<string, string> {
   const out: Record<string, string> = {};
   for (const pair of raw.trim().split(/\s+/)) {
     if (pair === '') continue;
@@ -128,7 +141,7 @@ export function readVariantGrid(doc: ParsedDocument | Document): VariantGrid {
 
   const same: SameCombination[] = findAll(scope, SAME_ELEMENT).map((el) => {
     const raw = getAttr(el, 'axes') ?? '';
-    return { axes: parseSameAxes(raw), raw, ...locOf(el) };
+    return { axes: parseAxisContextPairs(raw), raw, ...locOf(el) };
   });
 
   return { axes, same };

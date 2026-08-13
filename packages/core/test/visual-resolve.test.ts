@@ -114,3 +114,67 @@ describe('a declaration with nothing to resolve', () => {
     expect(await resolveFor(root, html)).toEqual([]);
   });
 });
+
+/**
+ * The variant grid path (093 FR-010, applied change
+ * 2026-08-13-declare-the-variant-grid). It sits on the CONTRACT's side of the
+ * directory divergence, not the token set's — which makes this file the place
+ * where all three positions are asserted together, so a future re-unification
+ * of these functions cannot quietly pick one.
+ */
+describe('the variant grid path', () => {
+  it('is silent for a file, like any other declared path', async () => {
+    const root = project({
+      'visual/tokens.json': '{}',
+      'visual/variants.html': '<main></main>',
+      'specs/001-a/visual/s.json': '{}',
+    });
+    const findings = await resolveFor(
+      root,
+      decl('tokens="visual/tokens.json" variants="visual/variants.html" screens="specs/001-a/visual/s.json"'),
+    );
+    expect(findings).toEqual([]);
+  });
+
+  it('errors when it resolves to a directory, where a token set would not', async () => {
+    const root = project({ 'specs/001-a/visual/s.json': '{}' }, ['visual/tokens', 'visual/variants']);
+    const findings = await resolveFor(
+      root,
+      decl('tokens="visual/tokens" variants="visual/variants" screens="specs/001-a/visual/s.json"'),
+    );
+    // Exactly one finding: the grid. The token set directory stays silent in
+    // the same run, which is the assertion that matters.
+    expect(findings).toHaveLength(1);
+    expect(findings[0]?.message).toContain('variants=');
+    expect(findings[0]?.message).toContain('must be one file');
+  });
+
+  it('says why rather than reporting only a type mismatch', async () => {
+    const root = project({ 'visual/tokens.json': '{}', 'specs/001-a/visual/s.json': '{}' }, ['visual/variants']);
+    const [f] = await resolveFor(
+      root,
+      decl('tokens="visual/tokens.json" variants="visual/variants" screens="specs/001-a/visual/s.json"'),
+    );
+    expect(f?.fixHint).toMatch(/resolution order/);
+  });
+
+  it('errors when it does not resolve at all', async () => {
+    const root = project({ 'visual/tokens.json': '{}', 'specs/001-a/visual/s.json': '{}' });
+    const findings = await resolveFor(
+      root,
+      decl('tokens="visual/tokens.json" variants="visual/gone.html" screens="specs/001-a/visual/s.json"'),
+    );
+    expect(findings).toHaveLength(1);
+    expect(findings[0]?.message).toContain('no such file or directory');
+  });
+
+  it('is rejected without being stat-ed when it escapes the project', async () => {
+    const root = project({ 'visual/tokens.json': '{}', 'specs/001-a/visual/s.json': '{}' });
+    const findings = await resolveFor(
+      root,
+      decl('tokens="visual/tokens.json" variants="../elsewhere/variants.html" screens="specs/001-a/visual/s.json"'),
+    );
+    expect(findings).toHaveLength(1);
+    expect(findings[0]?.message).toContain('outside the project directory');
+  });
+});

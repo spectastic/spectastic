@@ -369,13 +369,17 @@ async function scanContractResolve(docs: ReadonlyMap<string, CachedDoc>, cwd: st
  */
 async function scanVisualResolve(docs: ReadonlyMap<string, CachedDoc>, cwd: string): Promise<Finding[]> {
   if (docs.size === 0) return [];
-  const [{ visualResolveFindings, visualLocationFindings }, { readVisualDeclarations }, { nodeFs }] = await Promise.all(
-    [
-      import('@spectastic/core/commands/validate'),
-      import('@spectastic/schema/visual'),
-      import('@spectastic/core/providers/node-fs'),
-    ],
-  );
+  const [
+    { visualResolveFindings, visualLocationFindings },
+    { visualCoverageFindings },
+    { readVisualDeclarations },
+    { nodeFs },
+  ] = await Promise.all([
+    import('@spectastic/core/commands/validate'),
+    import('@spectastic/core/visual/coverage'),
+    import('@spectastic/schema/visual'),
+    import('@spectastic/core/providers/node-fs'),
+  ]);
 
   const perFile = await Promise.all(
     [...docs.values()].map(async ({ file, html, parsed }) => {
@@ -386,11 +390,24 @@ async function scanVisualResolve(docs: ReadonlyMap<string, CachedDoc>, cwd: stri
       if (declarations.length === 0) return [];
       // 094 FR-001/FR-002 rides along with the same read: resolving proves the
       // path exists, this proves it is in the right place. Costs no extra I/O.
-      const [resolved, located] = [
+      // 093 FR-013 rides along too: a coverage claim needs the grid it names,
+      // which is a second file — so it cannot be a schema rule and lands here
+      // beside the other two cross-file checks. Claims are rare, so the work is
+      // gated on one being present rather than paid per declaration.
+      const claims = declarations
+        .filter((d) => d.contexts !== undefined && d.variants !== undefined)
+        .map((d) => ({
+          contexts: d.contexts as string,
+          variants: d.variants as string,
+          line: d.line,
+          column: d.column,
+        }));
+      const [resolved, located, coverage] = [
         await visualResolveFindings(declarations, file, nodeFs, cwd),
         visualLocationFindings(declarations, file),
+        claims.length === 0 ? [] : await visualCoverageFindings(claims, file, nodeFs, cwd),
       ];
-      return [...resolved, ...located];
+      return [...resolved, ...located, ...coverage];
     }),
   );
   return perFile.flat();

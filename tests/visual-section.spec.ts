@@ -120,3 +120,68 @@ test.describe('accessibility', () => {
     expect(results.violations).toEqual([]);
   });
 });
+
+/**
+ * The variant grid and the contexts a feature addresses
+ * (093 FR-005/FR-012, applied change 2026-08-13-declare-the-variant-grid).
+ *
+ * These assert COMPUTED PSEUDO-CONTENT, not presence. The element has exactly
+ * two content slots and both were already spoken for, so every new attribute
+ * competes for one of them — a cascade collision here renders nothing at all
+ * while every structural check still passes. That is the failure mode this
+ * block's own comment records having paid for once.
+ */
+for (const theme of ['light', 'dark'] as const) {
+  test(`a declared grid and its coverage both render from attr() · ${theme}`, async ({ page }) => {
+    await page.goto(FIXTURE);
+    await page.emulateMedia({ colorScheme: theme });
+    const read = async (id: string, which: string) =>
+      page.locator(id).evaluate((el, w) => getComputedStyle(el, w).content ?? '', which);
+
+    const before = await read('#v-grid', '::before');
+    expect(before).toContain('visual/variants.html');
+    expect(before).toContain('visual/tokens');
+    expect(before).toContain('specs/001-converter/visual');
+
+    const after = await read('#v-grid', '::after');
+    expect(after).toContain('platform=ios mode=dark');
+    expect(after).toMatch(/Figma/);
+  });
+}
+
+test('an external token base and a grid compose in one header line', async ({ page }) => {
+  await page.goto(FIXTURE);
+  const before = await page
+    .locator('#v-grid-external')
+    .evaluate((el) => getComputedStyle(el, '::before').content ?? '');
+  expect(before).toContain('@acme/design-tokens');
+  expect(before).toContain('visual/variants.html');
+  expect(before).toContain('extending');
+});
+
+test('an explicit whole-grid claim reads differently from saying nothing', async ({ page }) => {
+  await page.goto(FIXTURE);
+  const claimed = await page
+    .locator('#v-contexts-all')
+    .evaluate((el) => getComputedStyle(el, '::after').content ?? '');
+  const silent = await page.locator('#v-screens').evaluate((el) => getComputedStyle(el, '::after').content ?? '');
+  expect(claimed).toContain('all');
+  // Silence must not be drawn as a claim — FR-012's third value.
+  expect(silent).not.toContain('addresses');
+});
+
+test('an explicit none still wins the header line, even carrying a grid', async ({ page }) => {
+  await page.goto(FIXTURE);
+  // The specificity trap: without :where(), a two-attribute path rule would
+  // outrank the one-attribute none rule despite sitting later in the file.
+  await page.locator('#v-none').evaluate((el) => {
+    // All three, so a path rule genuinely MATCHES and the two rules actually
+    // compete. Setting only variants= would leave no path rule matching at all
+    // and the assertion would pass for the wrong reason.
+    el.setAttribute('tokens', 'visual/tokens');
+    el.setAttribute('screens', 'specs/001-converter/visual');
+    el.setAttribute('variants', 'visual/variants.html');
+  });
+  const label = await page.locator('#v-none').evaluate((el) => getComputedStyle(el, '::before').content ?? '');
+  expect(label).toMatch(/no visual surface/i);
+});

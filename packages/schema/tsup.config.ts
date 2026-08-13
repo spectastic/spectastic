@@ -12,6 +12,7 @@ export default defineConfig({
     'src/contract-shared.ts',
     'src/visual-shared.ts',
     'src/visual-vocabulary.ts',
+    'src/variant-grid.ts',
   ],
   format: ['esm'],
   dts: true,

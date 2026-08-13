@@ -710,6 +710,16 @@ export async function contractResolveFindings(
  * SILENT here, because a token set split by mode is the normal case (FR-005).
  * Do not "simplify" these two functions back together.
  *
+ * `variants=` is the exception inside the exception, and it sits on the
+ * contract's side (FR-010, applied change 2026-08-13-declare-the-variant-grid).
+ * A token set split one file per mode is normal; a variant grid is ONE
+ * declaration of axes in an explicit resolution order, and 096 deliberately
+ * took that order from source position rather than an attribute so a number
+ * could never disagree with the markup. A grid spread across a directory has no
+ * source position, so the ambiguity that decision avoided comes straight back.
+ * The finding says so, because "expected a file" does not tell an author what
+ * they have actually broken.
+ *
  * `source=` and `tokens-external=` are never resolved. The first is provenance
  * for a reader (FR-006) and the second names a package, not a path; reaching
  * for either at check time would make a spec only as valid as somebody's seat.
@@ -723,8 +733,9 @@ export async function visualResolveFindings(
   const findings: Finding[] = [];
 
   for (const decl of declarations) {
-    const declaredPaths: { attr: 'tokens' | 'screens'; value: string }[] = [];
+    const declaredPaths: { attr: 'tokens' | 'screens' | 'variants'; value: string }[] = [];
     if (decl.tokens !== undefined) declaredPaths.push({ attr: 'tokens', value: decl.tokens });
+    if (decl.variants !== undefined) declaredPaths.push({ attr: 'variants', value: decl.variants });
     if (decl.screens !== undefined) declaredPaths.push({ attr: 'screens', value: decl.screens });
 
     for (const { attr, value } of declaredPaths) {
@@ -760,9 +771,16 @@ export async function visualResolveFindings(
         continue;
       }
 
-      // 2. Resolution. A directory is legal here, unlike a contract path.
+      // 2. Resolution. A directory is legal for a token set or a screen
+      // directory, unlike a contract path — and unlike a variant grid.
       try {
-        await fs.stat(resolved);
+        const stat = await fs.stat(resolved);
+        if (attr === 'variants' && stat.isDirectory) {
+          flag(
+            `<spec-visual variants="${value}"> in ${file} resolves to a directory, and a variant grid must be one file`,
+            'Point variants= at the single file declaring the grid (spec.html FR-010). A grid declares its axes in an explicit resolution order taken from their source position, so splitting it across a directory would leave the order undefined — which is why this differs from tokens=, where a set split one file per mode is the normal case.',
+          );
+        }
       } catch {
         flag(
           `<spec-visual ${attr}="${value}"> in ${file} — no such file or directory`,
@@ -890,34 +908,47 @@ export function visualLocationFindings(declarations: readonly VisualDeclaration[
 export function visualDisagreementFindings(state: VisualDeclarationState | null, file: string): Finding[] {
   if (state === null) return [];
 
-  // Provenance comes free because the state already carries it, and a reader
-  // told only that paths disagree cannot act on it.
-  const byPath = new Map<string, Set<string>>();
-  for (const p of state.declaredPaths) {
-    if (p.kind !== 'tokens') continue;
-    const specs = byPath.get(p.path) ?? new Set<string>();
-    specs.add(p.specId);
-    byPath.set(p.path, specs);
-  }
-  if (byPath.size <= 1) return [];
+  // Both project-scoped declarations get the same treatment, and `screens`
+  // deliberately gets none: it is FEATURE-scoped, so N designs naming N screen
+  // directories is the normal case rather than a disagreement (FR-004). The
+  // grid joined this check with the applied change
+  // 2026-08-13-declare-the-variant-grid — it is the third project-scoped
+  // artifact, and was the only one outside it.
+  const SCOPED = [
+    { kind: 'tokens' as const, rule: 'visual-token-set-disagreement', noun: 'project token-set paths', one: 'token-set path' },
+    { kind: 'variants' as const, rule: 'visual-variant-grid-disagreement', noun: 'project variant-grid paths', one: 'variant-grid path' },
+  ];
 
-  const claims = [...byPath.entries()]
-    .map(([path, specs]) => `${path} (${[...specs].sort().join(', ')})`)
-    .sort()
-    .join(' vs ');
+  const findings: Finding[] = [];
+  for (const { kind, rule, noun, one } of SCOPED) {
+    // Provenance comes free because the state already carries it, and a reader
+    // told only that paths disagree cannot act on it.
+    const byPath = new Map<string, Set<string>>();
+    for (const p of state.declaredPaths) {
+      if (p.kind !== kind) continue;
+      const specs = byPath.get(p.path) ?? new Set<string>();
+      specs.add(p.specId);
+      byPath.set(p.path, specs);
+    }
+    if (byPath.size <= 1) continue;
 
-  return [
-    {
+    const claims = [...byPath.entries()]
+      .map(([path, specs]) => `${path} (${[...specs].sort().join(', ')})`)
+      .sort()
+      .join(' vs ');
+
+    findings.push({
       file,
       line: 1,
       column: 1,
-      rule: 'visual-token-set-disagreement',
+      rule,
       severity: 'error',
-      message: `${byPath.size} different project token-set paths are declared across this project's designs: ${claims}`,
-      fixHint:
-        'There is one design system, so two paths are two claims about one thing. Settle on a single token-set path and correct the designs that disagree (spec.html FR-004) — this is reported rather than resolved, because neither precedence nor a union would be right.',
-    },
-  ];
+      message: `${byPath.size} different ${noun} are declared across this project's designs: ${claims}`,
+      fixHint: `There is one design system, so two paths are two claims about one thing. Settle on a single ${one} and correct the designs that disagree (spec.html FR-004) — this is reported rather than resolved, because neither precedence nor a union would be right.`,
+    });
+  }
+
+  return findings;
 }
 
 /**

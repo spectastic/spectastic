@@ -1152,27 +1152,51 @@ spec-visual::before {
   margin-bottom: var(--s-3);
   overflow-wrap: anywhere;
 }
-/* A declared surface composes both paths into the header line. The token set is
+/* A declared surface composes its paths into the header line. The token set is
    the project's and the screens are this feature's, so the label says which is
-   which — the two are read by different people at different times. */
-spec-visual[tokens]::before {
+   which — the two are read by different people at different times.
+
+   Every composition below is wrapped in :where(), which zeroes the attribute
+   selectors' specificity so that ALL of these rules weigh the same and pure
+   source order decides which wins. That was already this block's intent — the
+   original [tokens-external] rule relied on it — but it only held while every
+   selector carried exactly one attribute. The variant grid
+   (2026-08-13-declare-the-variant-grid) added a second, and a two-attribute
+   selector outranks a one-attribute one: without :where(), a malformed
+   shape="none" that also named a grid would have rendered its path instead of
+   its claim, because the "none" rule would have lost on specificity despite
+   sitting last. Ordering is legible; a specificity ladder four rules deep is
+   not. `attr()` on an absent attribute yields an empty string, so each
+   combination needs its own rule rather than a shared separator. */
+spec-visual:where([tokens])::before {
   content: "tokens " attr(tokens) " · screens " attr(screens);
 }
-/* Same specificity as [tokens] above, so source order decides — deliberate, and
-   the reason this rule sits second. A local set that only overrides a package
-   must not read as though it owns the whole scale. */
-spec-visual[tokens-external]::before {
+spec-visual:where([tokens][variants])::before {
+  content: "tokens " attr(tokens) " · grid " attr(variants) " · screens " attr(screens);
+}
+/* A local set that only overrides a package must not read as though it owns the
+   whole scale — so these sit after the plain-token rules and win by order. */
+spec-visual:where([tokens-external])::before {
   content: "tokens " attr(tokens) " extending " attr(tokens-external) " · screens " attr(screens);
 }
+spec-visual:where([tokens-external][variants])::before {
+  content: "tokens " attr(tokens) " extending " attr(tokens-external) " · grid " attr(variants) " · screens " attr(screens);
+}
 /* An explicit none is a recorded decision, not an empty card. Last, so it wins
-   over the path rules if a malformed declaration carries both — the shape rule
+   over every path rule if a malformed declaration carries both — the shape rule
    errors on that separately, and a reader should still see the claim. */
-spec-visual[shape="none"]::before {
+spec-visual:where([shape="none"])::before {
   content: "no visual surface";
 }
 /* Provenance, never authority (FR-006): where the design came from, said plainly
-   as a source rather than as a link. Nothing resolves it, so it is not one. */
-spec-visual[source]::after {
+   as a source rather than as a link. Nothing resolves it, so it is not one.
+
+   The coverage claim (FR-012) shares this slot, because the element has exactly
+   two and the header line is already spending the other. Same :where() and
+   same source-order rule as above: the combined rule sits last and wins. A
+   feature that records nothing renders nothing here, which is the point — an
+   absent claim is NOT RECORDED, and must not be drawn as though it said "all". */
+spec-visual:where([source], [contexts])::after {
   content: "from " attr(source);
   display: inline-block;
   margin-top: var(--s-3);
@@ -1187,6 +1211,12 @@ spec-visual[source]::after {
   border-radius: var(--r-sm);
   overflow-wrap: anywhere;
   max-width: 100%;
+}
+spec-visual:where([contexts])::after {
+  content: "addresses " attr(contexts);
+}
+spec-visual:where([source][contexts])::after {
+  content: "from " attr(source) " · addresses " attr(contexts);
 }
 
 /* ---------- spec-screen / spec-state / spec-annotation — the screen vocabulary
