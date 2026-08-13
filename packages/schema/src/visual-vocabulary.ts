@@ -196,6 +196,23 @@ export const BUDGET_ELEMENT = 'spec-copy-budget';
 export const REFUSAL_ELEMENT = 'spec-refusal';
 export const MESSAGE_SHAPE_ELEMENT = 'spec-message-shape';
 
+/**
+ * What the interface reports (104-tracking-plan).
+ *
+ * Declared beside the element that emits it, for the same reason a state sits
+ * beside its screen: a separate plan drifts from the interface it describes,
+ * which is why every analytics plan in the field is out of date.
+ *
+ * TWO READINGS INVERT THIS FAMILY'S USUAL RULE, deliberately. An event
+ * declaring no fields carries NONE — an empty payload is the safest kind and
+ * the shape must not push an author into inventing a field to look complete.
+ * And nothing may read a declaration as evidence that an event ships, because
+ * that would let a spec claim a privacy posture the build does not have.
+ */
+export const EVENT_ELEMENT = 'spec-event';
+export const FIELD_ELEMENT = 'spec-field';
+export const CONSENT_GATE_ELEMENT = 'spec-consent-gate';
+
 // --- the variant grid (spec 096-visual-variant-grid) -------------------------
 
 /** The four elements the grid introduces. */
