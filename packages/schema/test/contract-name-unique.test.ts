@@ -12,12 +12,18 @@ import type { Finding, ParsedDocument } from '../src/types.js';
  * discarded before the key is formed. Two versioned contracts then collide.
  */
 
-// No cast: the context is built to the real ParsedDocument shape, so a wrong
-// field name fails to compile rather than passing here and crashing the engine.
-// The first draft used `text` and an `as` cast — the tests went green and
-// `spectastic validate` threw on the very first real file.
+// Build the document with the real parser rather than hand-assembling one.
+//
+// The previous version wrote `ast: parse(html)` — but `parse` returns a whole
+// ParsedDocument, not an AST, so `doc.ast` was a nested ParsedDocument and the
+// fixture was malformed. It passed anyway because the rule ignored `doc.ast`
+// and re-parsed `doc.html`; the moment the rule started trusting the document
+// it was handed, this went red. tsconfig excludes `test/`, so nothing typechecks
+// these files and the wrong shape compiled silently — which is also why the
+// comment that used to sit here, claiming a wrong field would fail to compile,
+// was not true.
 function check(html: string): Finding[] {
-  const doc: ParsedDocument = { file: 'specs/001-x/design.html', html, ast: parse(html) };
+  const doc: ParsedDocument = parse(html, 'specs/001-x/design.html');
   return contractNameUniqueRule.check({ doc });
 }
 

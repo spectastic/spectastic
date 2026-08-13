@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { parseConfigText } from '@spectastic/schema/config';
 import { join } from 'node:path';
-import type { Finding } from '@spectastic/schema';
+import type { Finding, ParsedDocument } from '@spectastic/schema';
 import type { Command } from 'commander';
 
 interface ValidateOptions {
@@ -263,8 +263,8 @@ function readQuantifiedNfrFloor(cwd: string): number | undefined {
  * validate, so the double-read cost lands only where the gate is actually active
  * (the perf floor the `validate-full-project` bench guards).
  */
-async function scanQuantifiedNfr(files: readonly string[], cwd: string): Promise<Finding[]> {
-  if (files.length === 0) return [];
+async function scanQuantifiedNfr(docs: ReadonlyMap<string, CachedDoc>, cwd: string): Promise<Finding[]> {
+  if (docs.size === 0) return [];
   const [{ quantifiedNfrFindings, isQuantifiedNfrGatedTier }, { readMarker }] = await Promise.all([
     import('@spectastic/core/commands/validate'),
     import('./init/marker.js'),
@@ -272,10 +272,63 @@ async function scanQuantifiedNfr(files: readonly string[], cwd: string): Promise
   const marker = readMarker(cwd);
   if (!isQuantifiedNfrGatedTier(marker?.profile)) return [];
 
-  const { readFile } = await import('node:fs/promises');
-  const docs = await Promise.all(files.map(async (file) => ({ html: await readFile(file, 'utf8'), file })));
   const floor = readQuantifiedNfrFloor(cwd);
-  return quantifiedNfrFindings(docs, { tier: marker?.profile, ...(floor !== undefined ? { floor } : {}) });
+  return quantifiedNfrFindings([...docs.values()], {
+    tier: marker?.profile,
+    ...(floor !== undefined ? { floor } : {}),
+  });
+}
+
+/**
+ * One read and one parse per file, for the whole validate run.
+ *
+ * A validate run is not one pass over the corpus — it is the rule engine plus a
+ * dozen filesystem-facing scans, and each of them used to read and parse the
+ * same files independently. Instrumented on this repository that came to
+ * **1489 parse() calls for 379 files**: 24.1MB of parsing over a 10.7MB corpus,
+ * most files parsed four times and every contract-bearing design six.
+ *
+ * Sharing a parsed document between them is safe because nothing mutates one —
+ * every rule and scan reads `tagName`, `attrs`, `childNodes` and location, and
+ * accumulates into its own arrays. Peak memory is unchanged: `validateMany`
+ * already held every document at once, so this holds the same set rather than
+ * an additional one.
+ *
+ * The parse function is injected so a test can count calls without reaching for
+ * global state.
+ */
+export interface CachedDoc {
+  file: string;
+  html: string;
+  parsed: ParsedDocument;
+}
+
+export async function buildDocCache(
+  files: readonly string[],
+  deps?: { readFile?: (f: string) => Promise<string>; parse?: (html: string, file: string) => ParsedDocument },
+): Promise<Map<string, CachedDoc>> {
+  const [{ parse: defaultParse }, { readFile: defaultRead }] = await Promise.all([
+    import('@spectastic/schema/parser'),
+    import('node:fs/promises'),
+  ]);
+  const read = deps?.readFile ?? ((f: string) => defaultRead(f, 'utf8') as Promise<string>);
+  const parseFn = deps?.parse ?? defaultParse;
+
+  const cache = new Map<string, CachedDoc>();
+  await Promise.all(
+    files.map(async (file) => {
+      // A file that cannot be read is simply absent from the cache; the scans
+      // already skip what they cannot open, and validateCommand reports the
+      // read failure itself with a usage exit code.
+      try {
+        const html = await read(file);
+        cache.set(file, { file, html, parsed: parseFn(html, file) });
+      } catch {
+        /* left out of the cache */
+      }
+    }),
+  );
+  return cache;
 }
 
 /**
@@ -283,28 +336,23 @@ async function scanQuantifiedNfr(files: readonly string[], cwd: string): Promise
  * a design declaring a contract path that resolves to no readable file, or
  * one escaping the project directory, or one resolving inside specs/ (never
  * an effective declaration), is an error. Shaped like `scanQuantifiedNfr` —
- * re-reads the files already being validated, since the check needs the
+ * reads from the run's document cache, since the check needs the
  * filesystem the schema engine's pure-AST rules cannot touch.
  */
-async function scanContractResolve(files: readonly string[], cwd: string): Promise<Finding[]> {
-  if (files.length === 0) return [];
-  const [{ contractResolveFindings }, { readContractDeclarations }, { nodeFs }, { readFile }] = await Promise.all([
+async function scanContractResolve(docs: ReadonlyMap<string, CachedDoc>, cwd: string): Promise<Finding[]> {
+  if (docs.size === 0) return [];
+  const [{ contractResolveFindings }, { readContractDeclarations }, { nodeFs }] = await Promise.all([
     import('@spectastic/core/commands/validate'),
     import('@spectastic/schema/contract'),
     import('@spectastic/core/providers/node-fs'),
-    import('node:fs/promises'),
   ]);
 
   const perFile = await Promise.all(
-    files.map(async (file) => {
-      const html = await readFile(file, 'utf8');
-      // Cheap string prefilter BEFORE the parse. readContractDeclarations runs
-      // a full parse5 pass; measured over this repository's 463 artifacts it
-      // spent 1445ms to find 21 declarations, and this scan is one of two that
-      // do it, so ~2.6s of a full-project validate went on parsing documents
-      // with no <spec-contract> in them at all.
+    [...docs.values()].map(async ({ file, html, parsed }) => {
+      // The substring prefilter still earns its keep: it skips the findAll walk
+      // as well as the parse, and most documents carry no declaration at all.
       if (!html.includes('<spec-contract')) return [];
-      const declarations = readContractDeclarations(html, file);
+      const declarations = readContractDeclarations(parsed, file);
       if (declarations.length === 0) return [];
       return contractResolveFindings(declarations, file, nodeFs, cwd);
     }),
@@ -319,25 +367,22 @@ async function scanContractResolve(files: readonly string[], cwd: string): Promi
  * scanContractResolve above — a declaration-less document (every design in
  * the estate today) costs one read and returns immediately.
  */
-async function scanVisualResolve(files: readonly string[], cwd: string): Promise<Finding[]> {
-  if (files.length === 0) return [];
-  const [{ visualResolveFindings, visualLocationFindings }, { readVisualDeclarations }, { nodeFs }, { readFile }] =
-    await Promise.all([
+async function scanVisualResolve(docs: ReadonlyMap<string, CachedDoc>, cwd: string): Promise<Finding[]> {
+  if (docs.size === 0) return [];
+  const [{ visualResolveFindings, visualLocationFindings }, { readVisualDeclarations }, { nodeFs }] = await Promise.all(
+    [
       import('@spectastic/core/commands/validate'),
       import('@spectastic/schema/visual'),
       import('@spectastic/core/providers/node-fs'),
-      import('node:fs/promises'),
-    ]);
+    ],
+  );
 
   const perFile = await Promise.all(
-    files.map(async (file) => {
-      const html = await readFile(file, 'utf8');
-      // Cheap string prefilter BEFORE the parse. readVisualDeclarations runs a
-      // full parse5 pass, and measured over this repository's 463 artifacts it
-      // spent 857ms discovering zero declarations — the overwhelmingly common
-      // case, and one a substring test settles for nothing.
+    [...docs.values()].map(async ({ file, html, parsed }) => {
+      // The substring prefilter still earns its keep: it skips the findAll walk
+      // as well, and the overwhelming majority of documents carry no declaration.
       if (!html.includes('<spec-visual')) return [];
-      const declarations = readVisualDeclarations(html, file);
+      const declarations = readVisualDeclarations(parsed, file);
       if (declarations.length === 0) return [];
       // 094 FR-001/FR-002 rides along with the same read: resolving proves the
       // path exists, this proves it is in the right place. Costs no extra I/O.
@@ -359,19 +404,14 @@ async function scanVisualResolve(files: readonly string[], cwd: string): Promise
  * walks every design once; computing it per file would re-read the whole estate
  * N times and is what NFR-001's "linear in declarations, not in files" excludes.
  */
-async function scanVisualProject(files: readonly string[], cwd: string): Promise<Finding[]> {
-  if (files.length === 0) return [];
-  const [
-    { visualSectionGatedFindings, visualDisagreementFindings },
-    { declaredVisualState },
-    { detectUserInterface },
-    { readFile },
-  ] = await Promise.all([
-    import('@spectastic/core/commands/validate'),
-    import('@spectastic/core/visual/read'),
-    import('@spectastic/core/enforce/detect'),
-    import('node:fs/promises'),
-  ]);
+async function scanVisualProject(docs: ReadonlyMap<string, CachedDoc>, cwd: string): Promise<Finding[]> {
+  if (docs.size === 0) return [];
+  const [{ visualSectionGatedFindings, visualDisagreementFindings }, { declaredVisualState }, { detectUserInterface }] =
+    await Promise.all([
+      import('@spectastic/core/commands/validate'),
+      import('@spectastic/core/visual/read'),
+      import('@spectastic/core/enforce/detect'),
+    ]);
 
   const state = declaredVisualState(cwd);
   const findings: Finding[] = [];
@@ -386,14 +426,11 @@ async function scanVisualProject(files: readonly string[], cwd: string): Promise
   const projectHasSurface = detectUserInterface(cwd).detected || (state !== null && !state.declaresNoSurface);
   if (projectHasSurface) return findings;
 
-  const perFile = await Promise.all(
-    files.map(async (file) => {
-      const html = await readFile(file, 'utf8');
-      // Cheap prefilter: most documents mention neither.
-      if (!html.includes('id="visual"') && !html.includes('<spec-visual')) return [];
-      return visualSectionGatedFindings(html, file, projectHasSurface);
-    }),
-  );
+  const perFile = [...docs.values()].map(({ file, html, parsed }) => {
+    // Cheap prefilter: most documents mention neither.
+    if (!html.includes('id="visual"') && !html.includes('<spec-visual')) return [];
+    return visualSectionGatedFindings(parsed, file, projectHasSurface);
+  });
   return [...findings, ...perFile.flat()];
 }
 
@@ -403,25 +440,18 @@ async function scanVisualProject(files: readonly string[], cwd: string): Promise
  * contract file it projects, is an error. Shaped exactly like
  * scanContractResolve above — re-reads the files already being validated.
  */
-async function scanContractViewDrift(files: readonly string[], cwd: string): Promise<Finding[]> {
-  if (files.length === 0) return [];
-  const [{ contractViewDriftFindings }, { readContractDeclarations }, { nodeFs }, { readFile }] = await Promise.all([
+async function scanContractViewDrift(docs: ReadonlyMap<string, CachedDoc>, cwd: string): Promise<Finding[]> {
+  if (docs.size === 0) return [];
+  const [{ contractViewDriftFindings }, { readContractDeclarations }, { nodeFs }] = await Promise.all([
     import('@spectastic/core/commands/validate'),
     import('@spectastic/schema/contract'),
     import('@spectastic/core/providers/node-fs'),
-    import('node:fs/promises'),
   ]);
 
   const perFile = await Promise.all(
-    files.map(async (file) => {
-      const html = await readFile(file, 'utf8');
-      // Cheap string prefilter BEFORE the parse. readContractDeclarations runs
-      // a full parse5 pass; measured over this repository's 463 artifacts it
-      // spent 1445ms to find 21 declarations, and this scan is one of two that
-      // do it, so ~2.6s of a full-project validate went on parsing documents
-      // with no <spec-contract> in them at all.
+    [...docs.values()].map(async ({ file, html, parsed }) => {
       if (!html.includes('<spec-contract')) return [];
-      const declarations = readContractDeclarations(html, file);
+      const declarations = readContractDeclarations(parsed, file);
       if (declarations.length === 0) return [];
       return contractViewDriftFindings(declarations, file, nodeFs, cwd);
     }),
@@ -529,16 +559,14 @@ async function scanDeclaredEdges(cwd: string): Promise<Finding[]> {
  * doesn't exist, which is indistinguishable from "no registry" to the gate
  * (empty array), so a pre-migration project sees no behaviour change.
  */
-async function scanCorpusGrounding(files: readonly string[], cwd: string): Promise<Finding[]> {
-  if (files.length === 0) return [];
+async function scanCorpusGrounding(docs: ReadonlyMap<string, CachedDoc>, cwd: string): Promise<Finding[]> {
+  if (docs.size === 0) return [];
   const { loadCorpus, loadRegistry, corpusGroundingFindings } = await import('@spectastic/corpus');
   const packs = loadCorpus(cwd);
   if (packs.length === 0) return [];
   const registry = loadRegistry(cwd);
 
-  const { readFile } = await import('node:fs/promises');
-  const docs = await Promise.all(files.map(async (file) => ({ html: await readFile(file, 'utf8'), file })));
-  return corpusGroundingFindings(docs, packs, registry);
+  return corpusGroundingFindings([...docs.values()], packs, registry);
 }
 
 /**
@@ -598,7 +626,10 @@ export function registerValidate(program: Command): void {
         process.exit(2);
       }
 
-      const result = await validateCommand({ files }, { cwd: process.cwd() });
+      // One read and one parse for the whole run. Every scan below reads from
+      // this rather than opening the files again — see buildDocCache.
+      const docCache = await buildDocCache(files);
+      const result = await validateCommand({ files, docs: docCache }, { cwd: process.cwd() });
 
       if (result.exitCode === 2) {
         process.stderr.write(`${result.errorMessage ?? 'usage error'}\n`);
@@ -638,7 +669,7 @@ export function registerValidate(program: Command): void {
       // NFR with no measurable target and no linked <spec-slo> is an error, so
       // the pre-commit gate blocks a vague reliability promise. No-op below
       // verified and with no profile marker.
-      const quantifiedNfrScanFindings = await scanQuantifiedNfr(files, process.cwd());
+      const quantifiedNfrScanFindings = await scanQuantifiedNfr(docCache, process.cwd());
       // The corpus-well-formed gate (spec 051): a dangling index row, an
       // orphan document, a missing provenance field, or a duplicate KB-NNN
       // id is an error. No-op with no knowledge/ directory in the project.
@@ -649,7 +680,7 @@ export function registerValidate(program: Command): void {
       // The corpus grounding gates (spec 053): a <spec-decision> citation
       // resolving to no committed document errors; one resolving to a
       // superseded edition warns. Tier-independent; no-op with no corpus.
-      const corpusGroundingScanFindings = await scanCorpusGrounding(files, process.cwd());
+      const corpusGroundingScanFindings = await scanCorpusGrounding(docCache, process.cwd());
       // The corpus-license gate (spec 058): a restrictive, unrecognised, or
       // placeholder declared license warns. No-op with no knowledge/ directory.
       const corpusLicenseScanFindings = await scanCorpusLicense(process.cwd());
@@ -672,21 +703,21 @@ export function registerValidate(program: Command): void {
       // resolves to no readable file, escapes the project, or resolves inside
       // specs/, is an error. No-op-cheap: returns [] on any file with no
       // <spec-contract> declarations, which is every design in the estate today.
-      const contractResolveScanFindings = await scanContractResolve(files, process.cwd());
+      const contractResolveScanFindings = await scanContractResolve(docCache, process.cwd());
       // The contract-view-drift gate (spec 072): a materialised
       // <spec-contract-view> that no longer matches the file it projects is
       // an error. No-op-cheap: [] on any file with no declarations at all,
       // and a declaration without a view is skipped too — every design in
       // the estate today.
-      const contractViewDriftScanFindings = await scanContractViewDrift(files, process.cwd());
+      const contractViewDriftScanFindings = await scanContractViewDrift(docCache, process.cwd());
       // The visual-resolve gate (spec 093): a declared token-set or screens
       // path that resolves to nothing is an error. Same shape, same cost
       // profile — a design carrying no <spec-visual> returns immediately.
-      const visualResolveScanFindings = await scanVisualResolve(files, process.cwd());
+      const visualResolveScanFindings = await scanVisualResolve(docCache, process.cwd());
       // The visual-section gate (spec 093): absence, not emptiness. A project
       // with an interface can produce no finding here, so this costs one
       // detection pass and returns.
-      const visualGateScanFindings = await scanVisualProject(files, process.cwd());
+      const visualGateScanFindings = await scanVisualProject(docCache, process.cwd());
       const findings = [
         ...result.findings,
         ...quarantineFindings,

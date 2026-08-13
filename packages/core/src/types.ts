@@ -12,7 +12,7 @@
  * of truth for the validator's wire format.
  */
 
-import type { Finding } from '@spectastic/schema';
+import type { Finding, ParsedDocument } from '@spectastic/schema';
 
 export type { Finding };
 
@@ -144,6 +144,18 @@ export interface KernelContext {
 export interface ValidateInput {
   /** Already-resolved file paths to validate. */
   files: ReadonlyArray<string>;
+  /**
+   * Documents the caller has already read and parsed, keyed by file path.
+   *
+   * Optional: absent, every file is read and parsed here as before. Supplied,
+   * the parse is reused rather than repeated — which matters because a CLI
+   * validate run also executes a dozen scans over the same files, and each
+   * parsing independently came to 1489 parses for 379 files.
+   *
+   * A file absent from the map is still read normally, so a partial cache is
+   * safe rather than silently skipping work.
+   */
+  docs?: ReadonlyMap<string, { html: string; parsed: ParsedDocument }>;
 }
 
 /**

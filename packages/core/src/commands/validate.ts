@@ -1,6 +1,6 @@
 import { isAbsolute, relative, resolve as resolvePath } from 'node:path';
-import type { Finding } from '@spectastic/schema';
-import { validateMany } from '@spectastic/schema';
+import type { Finding, ParsedDocument } from '@spectastic/schema';
+import { validateDocs } from '@spectastic/schema';
 import type { ContractDeclaration } from '@spectastic/schema/contract';
 import type { Element } from '@spectastic/schema/parser';
 import { findAll, getAttr, getLocation, parse } from '@spectastic/schema/parser';
@@ -486,18 +486,21 @@ function specNumFromFile(file: string): number | null {
  * is checked.
  */
 export function quantifiedNfrFindings(
-  docs: readonly { html: string; file: string }[],
+  docs: readonly { html: string; file: string; parsed?: ParsedDocument }[],
   ctx: { tier: string | undefined; floor?: number },
 ): Finding[] {
   if (!isQuantifiedNfrGatedTier(ctx.tier)) return [];
 
   const findings: Finding[] = [];
-  for (const { html, file } of docs) {
+  for (const entry of docs) {
+    const { html, file } = entry;
     if (ctx.floor !== undefined) {
       const num = specNumFromFile(file);
       if (num !== null && num < ctx.floor) continue;
     }
-    const doc = parse(html, file);
+    // Reuse the caller's parse when it has one — a validate run holds every
+    // document already, and this scan used to re-parse each of them.
+    const doc = entry.parsed ?? parse(html, file);
     const nfrs = findAll(doc.ast, 'spec-requirement').filter((el) => (getAttr(el, 'id') ?? '').startsWith('NFR-'));
     if (nfrs.length === 0) continue;
 
@@ -548,13 +551,21 @@ export function quantifiedNfrFindings(
 export async function validateCommand(input: ValidateInput, ctx: KernelContext): Promise<ValidateResult> {
   const fs = ctx.fs ?? (await import('../providers/node-fs.js')).nodeFs;
 
-  const inputs: Array<{ html: string; file: string }> = [];
+  const docs: ParsedDocument[] = [];
   const filesValidated: string[] = [];
 
   for (const file of input.files) {
+    // Reuse the caller's document when it has one. A file missing from the
+    // cache is read normally, so a partial cache is safe.
+    const cached = input.docs?.get(file);
+    if (cached !== undefined) {
+      docs.push(cached.parsed);
+      filesValidated.push(file);
+      continue;
+    }
     try {
       const html = await fs.readFile(file, 'utf8');
-      inputs.push({ html, file });
+      docs.push(parse(html, file));
       filesValidated.push(file);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -567,7 +578,7 @@ export async function validateCommand(input: ValidateInput, ctx: KernelContext):
     }
   }
 
-  const findings = validateMany(inputs);
+  const findings = validateDocs(docs);
   const hasError = findings.some((f) => f.severity === 'error');
 
   return {
@@ -783,7 +794,11 @@ export async function visualResolveFindings(
  * interface no signal can see — because that declaration is itself what makes
  * the antecedent true.
  */
-export function visualSectionGatedFindings(html: string, file: string, projectHasSurface: boolean): Finding[] {
+export function visualSectionGatedFindings(
+  htmlOrDoc: string | ParsedDocument,
+  file: string,
+  projectHasSurface: boolean,
+): Finding[] {
   if (projectHasSurface) return [];
 
   // A template is a scaffold, not an authored design. It carries the section
@@ -793,7 +808,7 @@ export function visualSectionGatedFindings(html: string, file: string, projectHa
   // actively wrong. Caught while draining 094's first task, on this repository.
   if (/(?:^|\/)templates\//.test(file)) return [];
 
-  const doc = parse(html, file);
+  const doc = typeof htmlOrDoc === 'string' ? parse(htmlOrDoc, file) : htmlOrDoc;
   const section = findAll(doc.ast, 'section').find((el) => getAttr(el, 'id') === 'visual');
   const declaration = findAll(doc.ast, 'spec-visual')[0];
   const carrier = section ?? declaration;

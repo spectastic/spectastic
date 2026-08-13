@@ -10,7 +10,7 @@
  * and the rule registry. Nothing else.
  */
 
-export { validate, validateMany } from './engine.js';
+export { validate, validateMany, validateDocs } from './engine.js';
 export type {
   ArtifactHealth,
   BudgetBand,

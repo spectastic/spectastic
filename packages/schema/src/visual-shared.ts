@@ -11,6 +11,7 @@
  */
 
 import { findAll, getAttr, getLocation, parse } from './parser.js';
+import type { ParsedDocument } from './types.js';
 
 /**
  * The two recognised `shape=` tokens (093, FR-007).
@@ -51,8 +52,10 @@ export interface VisualDeclaration {
  * Pure — no fs, no clock, no environment: identical input, identical output.
  * Returns `[]` for a document with no declarations.
  */
-export function readVisualDeclarations(html: string, file = 'design.html'): VisualDeclaration[] {
-  const doc = parse(html, file);
+export function readVisualDeclarations(htmlOrDoc: string | ParsedDocument, file = 'design.html'): VisualDeclaration[] {
+  // Accepts an already-parsed document so a caller holding one does not parse
+  // it again — the same overload `extractSpecStatus` has used since 011.
+  const doc = typeof htmlOrDoc === 'string' ? parse(htmlOrDoc, file) : htmlOrDoc;
   return findAll(doc.ast, 'spec-visual').map((el) => {
     const loc = getLocation(el);
     return {

@@ -18,6 +18,7 @@
 
 import type { Element } from './parser.js';
 import { findAll, getAttr, getLocation, parse } from './parser.js';
+import type { ParsedDocument } from './types.js';
 
 /** The five recognised `shape=` tokens (069-design-contract-section, FR-004). */
 export const RECOGNISED_SHAPES = ['request-response', 'rpc', 'graphql', 'event-driven', 'none'] as const;
@@ -101,8 +102,13 @@ function verbatimTextOf(el: Element): string {
  * Pure — no fs, no clock, no environment (NFR-001): identical input,
  * identical output. Returns `[]` for a document with no declarations.
  */
-export function readContractDeclarations(html: string, file = 'design.html'): ContractDeclaration[] {
-  const doc = parse(html, file);
+export function readContractDeclarations(
+  htmlOrDoc: string | ParsedDocument,
+  file = 'design.html',
+): ContractDeclaration[] {
+  // Accepts an already-parsed document so a caller holding one does not parse
+  // it again — the same overload `extractSpecStatus` has used since 011.
+  const doc = typeof htmlOrDoc === 'string' ? parse(htmlOrDoc, file) : htmlOrDoc;
   return findAll(doc.ast, 'spec-contract').map((el) => {
     const loc = getLocation(el);
     // Scoped to this element's own subtree — findAll accepts an Element root,

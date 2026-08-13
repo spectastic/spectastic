@@ -25,7 +25,9 @@ export const contractNameUniqueRule: PerFileRule = {
   description: 'Two <spec-contract> declarations in one design must not resolve to the same coordinate name.',
   check({ doc }) {
     const findings: Finding[] = [];
-    const declarations = readContractDeclarations(doc.html, doc.file);
+    // Pass the parsed document, not its source: this rule already holds one,
+    // and handing over the string made it re-parse every document in the run.
+    const declarations = readContractDeclarations(doc, doc.file);
     // The common case is a design with fewer than two declarations — return
     // before any grouping work, matching the sibling rule's early exit.
     if (declarations.length < 2) return findings;

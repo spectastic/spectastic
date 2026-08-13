@@ -29,7 +29,7 @@
  * apply (the same back-compat window T-1000 established).
  */
 
-import type { Finding } from '@spectastic/schema';
+import type { Finding, ParsedDocument } from '@spectastic/schema';
 import { findCitationTokens, parseCorpusCitation } from '@spectastic/schema/citation';
 import type { Element } from '@spectastic/schema/parser';
 import { findAll, getLocation, parse } from '@spectastic/schema/parser';
@@ -113,14 +113,17 @@ function findCurrentEdition(packs: readonly CorpusPack[], id: string): string {
 }
 
 export function corpusGroundingFindings(
-  docs: readonly { html: string; file: string }[],
+  docs: readonly { html: string; file: string; parsed?: ParsedDocument }[],
   packs: readonly CorpusPack[],
   registry?: readonly RegistryEntry[],
 ): Finding[] {
   if (packs.length === 0) return [];
   const findings: Finding[] = [];
-  for (const { html, file } of docs) {
-    const doc = parse(html, file);
+  for (const entry of docs) {
+    const { html, file } = entry;
+    // Reuse the caller's parse when it has one — a validate run holds every
+    // document already, and this gate used to re-parse each of them.
+    const doc = entry.parsed ?? parse(html, file);
     for (const decision of findAll(doc.ast, 'spec-decision')) {
       findings.push(...decisionFindings(file, decision, packs, registry));
     }

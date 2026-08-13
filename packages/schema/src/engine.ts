@@ -25,7 +25,23 @@ export function validate(html: string, options: ValidateOptions = {}): Finding[]
  * `no-duplicate-ids` cross-file check.
  */
 export function validateMany(inputs: readonly { html: string; file: string }[]): Finding[] {
-  const docs: ParsedDocument[] = inputs.map((i) => parse(i.html, i.file));
+  return validateDocs(inputs.map((i) => parse(i.html, i.file)));
+}
+
+/**
+ * Validate documents that have already been parsed.
+ *
+ * The same work as `validateMany` without the parse, for a caller that holds
+ * the documents already. That caller is the CLI: a validate run also executes
+ * a dozen filesystem-facing scans over the same files, and before this existed
+ * each of them re-parsed independently — 1489 parses for 379 files, 24.1MB of
+ * parsing over a 10.7MB corpus.
+ *
+ * Safe to share a document between callers because nothing here writes to one:
+ * every rule reads `tagName`, `attrs`, `childNodes` and location, and
+ * accumulates into its own arrays.
+ */
+export function validateDocs(docs: readonly ParsedDocument[]): Finding[] {
   const findings: Finding[] = [];
   for (const doc of docs) {
     for (const rule of rules) {
