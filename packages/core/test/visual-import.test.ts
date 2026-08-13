@@ -155,3 +155,196 @@ describe('the property the whole slice rests on', () => {
     expect(m.store[`${INTO}/converted.png`]).toBe('PNGDATA');
   });
 });
+
+/**
+ * The six requirements that had a type and no runtime (triage T-006).
+ *
+ * Written after the fact, which is the wrong order and worth saying plainly:
+ * the original 18 tasks were all ticked while four must-tier requirements were
+ * unbuilt, because what existed was the vocabulary — exported interfaces that
+ * nothing constructed and an array nothing pushed to. Every test below asserts
+ * BEHAVIOUR reachable from `importDesignSource`, never the presence of a type,
+ * because a type is exactly what passed last time.
+ */
+
+import {
+  MANIFEST_NAME,
+  carriesExecutableContent,
+  contentHash,
+  deriveTokenCandidates,
+  forbiddingLicence,
+} from '../src/visual/import.js';
+
+/** A clean export directory — `setup()` seeds two files of its own, which
+ *  would show up in every `written` assertion below. */
+const only = (files: Record<string, string>) =>
+  memFs(
+    Object.fromEntries(Object.entries(files).map(([k, v]) => [`${CWD}/${FROM}/${k}`, v])),
+    [`${CWD}/${FROM}`, INTO],
+  );
+
+const imp = (m: ReturnType<typeof memFs>, extra: Record<string, unknown> = {}) =>
+  importDesignSource(
+    { from: FROM, into: INTO, identity: 'design-1', ...extra },
+    localSourceFetcher(m.fs, CWD),
+    m.fs,
+  );
+
+describe('provenance on every landed file (FR-004)', () => {
+  it('records what the caller knows and marks the rest unknown rather than guessing', async () => {
+    const m = only({ 'screen.html': '<p>a</p>' });
+    const ledger = await imp(m, { origin: 'a design tool', originUrl: 'https://example.invalid/p/1' });
+    expect(ledger.files).toHaveLength(1);
+    const p = ledger.files[0]?.provenance;
+    expect(p?.origin).toBe('a design tool');
+    expect(p?.originUrl).toBe('https://example.invalid/p/1');
+    // Nothing in the file declares these, so neither is invented.
+    expect(p?.edition).toBe(UNKNOWN);
+    expect(p?.license).toBe(UNKNOWN);
+    expect(p?.contentHash).toMatch(/^[0-9a-f]{8}$/);
+  });
+
+  it('reads an edition and a licence the material declares', async () => {
+    const m = only({ 's.html': '<meta name="edition" content="x"><p>edition: 2026-08 licence: cc-by-4.0</p>' });
+    const ledger = await imp(m);
+    expect(ledger.files[0]?.provenance.edition).toBe('2026-08');
+    expect(ledger.files[0]?.provenance.license).toBe('cc-by-4.0');
+  });
+
+  it('hashes deterministically, so a re-import can tell same from changed', () => {
+    expect(contentHash('a')).toBe(contentHash('a'));
+    expect(contentHash('a')).not.toBe(contentHash('b'));
+  });
+});
+
+describe('nothing arrives looking reviewed (FR-006)', () => {
+  it('marks every landed file not-yet-reviewed', async () => {
+    const m = only({ 'a.html': '<p>a</p>', 'b.html': '<p>b</p>' });
+    const ledger = await imp(m);
+    expect(ledger.files.map((f) => f.reviewed)).toEqual([false, false]);
+  });
+
+  it('writes a manifest that says so where a reader will see it', async () => {
+    const m = only({ 'a.html': '<p>a</p>' });
+    const { store } = m;
+    await imp(m);
+    const manifest = store[`${INTO}/${MANIFEST_NAME}`] as string;
+    expect(manifest).toContain('NOT REVIEWED');
+    expect(manifest).toContain('none of it has been reviewed');
+    // The requirement is about a reader, so a ledger nobody renders is not enough.
+    expect(manifest).toContain('<title>');
+  });
+
+  it('writes a manifest carrying no executable content of its own', async () => {
+    const m = only({ 'a.html': '<p style="color:#abc">a</p>' });
+    const { store } = m;
+    await imp(m);
+    expect(carriesExecutableContent(store[`${INTO}/${MANIFEST_NAME}`] as string)).toBe(false);
+  });
+});
+
+describe('token candidates are derived and never committed (FR-010, FR-005)', () => {
+  it('derives colour literals from the landed material', async () => {
+    const m = only({ 'a.html': '<p style="background:#F7F5F1;color:#1C1914">a</p>' });
+    const ledger = await imp(m);
+    expect(ledger.tokenCandidates.map((c) => c.value)).toContain('#f7f5f1');
+  });
+
+  it('marks every candidate inferred and unconfirmed', async () => {
+    const m = only({ 'a.html': '<p style="color:#abc">a</p>' });
+    const ledger = await imp(m);
+    expect(ledger.tokenCandidates.every((c) => c.inferred && !c.confirmed)).toBe(true);
+  });
+
+  it('offers no name, because naming a token is the decision a human makes', async () => {
+    const m = only({ 'a.html': '<p style="color:#abc">a</p>' });
+    const ledger = await imp(m);
+    expect(Object.keys(ledger.tokenCandidates[0] ?? {})).not.toContain('name');
+  });
+
+  it('writes nothing into a token set', async () => {
+    const m = only({ 'a.html': '<p style="color:#abc">a</p>' });
+    const { store } = m;
+    await imp(m);
+    expect(Object.keys(store).filter((k) => /token/i.test(k))).toEqual([]);
+  });
+
+  it('orders by how often a value appears, and stably', () => {
+    const derived = deriveTokenCandidates([
+      { name: 'a', body: '#aaaaaa #bbbbbb #bbbbbb' },
+      { name: 'b', body: '#bbbbbb' },
+    ]);
+    expect(derived[0]?.value).toBe('#bbbbbb');
+    expect(derived[0]?.occurrences).toBe(3);
+    expect(derived[0]?.sources).toEqual(['a', 'b']);
+  });
+});
+
+describe('material that cannot be landed is reported, not dropped (FR-011, triage T-007)', () => {
+  it('does not land a file carrying a runtime', async () => {
+    const m = only({ 'screens.dc.html': '<div>{{ x }}</div><script>var a = 1</script>' });
+    const { store } = m;
+    const ledger = await imp(m);
+    expect(ledger.unhandled).toEqual(['screens.dc.html']);
+    expect(ledger.written).toEqual([]);
+    expect(store[`${INTO}/screens.dc.html`]).toBeUndefined();
+  });
+
+  it('names the categories a real export uses', () => {
+    expect(carriesExecutableContent('<script type="text/x-dc">x</script>')).toBe(true);
+    expect(carriesExecutableContent('<iframe src="x">')).toBe(true);
+    expect(carriesExecutableContent('<a onclick="x()">')).toBe(true);
+    expect(carriesExecutableContent('<a href="javascript:x">')).toBe(true);
+    expect(carriesExecutableContent('<img src="data:image/png;base64,x">')).toBe(true);
+    expect(carriesExecutableContent('<div style="color:#fff">plain</div>')).toBe(false);
+  });
+
+  it('still lands the rest of the export', async () => {
+    const m = only({ 'a.html': '<p>a</p>', 'b.html': '<script>x</script>' });
+    const { store } = m;
+    const ledger = await imp(m);
+    expect(ledger.written).toEqual(['a.html']);
+    expect(ledger.unhandled).toEqual(['b.html']);
+    expect(store[`${INTO}/a.html`]).toBe('<p>a</p>');
+  });
+});
+
+describe('a licence that forbids landing (FR-012)', () => {
+  it('refuses, and says which licence and why', async () => {
+    const m = only({ 'a.html': '<p>licence: cc-by-nc-nd</p>' });
+    const { store } = m;
+    const ledger = await imp(m);
+    expect(ledger.refused).toEqual([{ name: 'a.html', reason: 'licence forbids landing: cc-by-nc-nd' }]);
+    expect(store[`${INTO}/a.html`]).toBeUndefined();
+  });
+
+  it('lets a permissive licence through', async () => {
+    const m = only({ 'a.html': '<p>license: cc-by-4.0</p>' });
+    const ledger = await imp(m);
+    expect(ledger.refused).toEqual([]);
+    expect(ledger.written).toEqual(['a.html']);
+  });
+
+  it('says nothing about material that declares no licence, rather than assuming the worst', () => {
+    expect(forbiddingLicence('<p>no licence here</p>')).toBeUndefined();
+  });
+});
+
+describe('deriving from what was read, not from what was landed', () => {
+  it('still derives colour from a file that could not be landed', async () => {
+    // The real shape of the problem: in a genuine export the file carrying the
+    // runtime is also the one carrying most of the colour. Refusing to land it
+    // is right; ignoring it would throw away FR-010's best input.
+    const m = only({ 'screens.dc.html': '<div style="background:#f7f5f1"><script>x</script></div>' });
+    const ledger = await imp(m);
+    expect(ledger.unhandled).toEqual(['screens.dc.html']);
+    expect(ledger.tokenCandidates.map((c) => c.value)).toEqual(['#f7f5f1']);
+  });
+
+  it('derives nothing from material a licence forbids, because that is a permission question', async () => {
+    const m = only({ 'a.html': '<p style="color:#abcdef">licence: cc-by-nd</p>' });
+    const ledger = await imp(m);
+    expect(ledger.refused).toHaveLength(1);
+    expect(ledger.tokenCandidates).toEqual([]);
+  });
+});

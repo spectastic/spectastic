@@ -82,7 +82,17 @@ export function registerVisual(program: Command): void {
     .requiredOption('--into <dir>', 'where landed material goes — the visual sidecar')
     .requiredOption('--identity <id>', 'the stable anchor a later re-import keys on')
     .option('--previous-identity <id>', 'the identity a previous import landed under, if any')
-    .action(async (opts: { from: string; into: string; identity: string; previousIdentity?: string }) => {
+    .option('--origin <name>', 'which tool the export came from — recorded as provenance, never guessed')
+    .option('--origin-url <url>', 'where it came from, for a reader to follow — recorded, never fetched')
+    .action(
+      async (opts: {
+        from: string;
+        into: string;
+        identity: string;
+        previousIdentity?: string;
+        origin?: string;
+        originUrl?: string;
+      }) => {
       const [{ importDesignSource, ImportIdentityError }, { localSourceFetcher, SourceNotFoundError, SourceOutsideProjectError }, { nodeFs }] =
         await Promise.all([
           import('@spectastic/core/visual/import'),
@@ -92,7 +102,14 @@ export function registerVisual(program: Command): void {
 
       try {
         const ledger = await importDesignSource(
-          { from: opts.from, into: opts.into, identity: opts.identity, previousIdentity: opts.previousIdentity },
+          {
+            from: opts.from,
+            into: opts.into,
+            identity: opts.identity,
+            previousIdentity: opts.previousIdentity,
+            origin: opts.origin,
+            originUrl: opts.originUrl,
+          },
           localSourceFetcher(nodeFs, process.cwd()),
           nodeFs,
         );
@@ -103,6 +120,21 @@ export function registerVisual(program: Command): void {
         );
         for (const name of ledger.orphaned) {
           process.stdout.write(`  orphaned: ${name} — present here, absent from the export. Not removed.\n`);
+        }
+        // Reported at the command line rather than only in the manifest. A file
+        // that did not land is the one thing a caller must not discover later.
+        for (const name of ledger.unhandled) {
+          process.stdout.write(
+            `  not landed: ${name} — it carries a runtime, and landing it would leave this project failing its own artifact rules.\n`,
+          );
+        }
+        for (const { name, reason } of ledger.refused) {
+          process.stdout.write(`  refused: ${name} — ${reason}\n`);
+        }
+        if (ledger.tokenCandidates.length > 0) {
+          process.stdout.write(
+            `${ledger.tokenCandidates.length} token candidate(s) derived and left unconfirmed — none is in the token set.\n`,
+          );
         }
         if (ledger.written.length > 0 || ledger.replaced.length > 0) {
           process.stdout.write('Newly landed material is not yet reviewed — read it before relying on it.\n');
@@ -119,5 +151,6 @@ export function registerVisual(program: Command): void {
         }
         throw err;
       }
-    });
+      },
+    );
 }
