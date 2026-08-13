@@ -126,3 +126,29 @@ export type ComponentMaturity = (typeof COMPONENT_MATURITIES)[number];
 
 /** Provenance a vendored component must record (097, FR-008) — the corpus's field set. */
 export const VENDORED_PROVENANCE_ATTRS = ['origin-url', 'edition', 'license'] as const;
+
+// --- token set versioning (spec 098-token-set-versioning) --------------------
+
+export const TOKEN_SET_ELEMENT = 'spec-token-set';
+export const RELEASE_ELEMENT = 'spec-release';
+
+/**
+ * The closed change-class set (098, FR-005) — the three bump tiers themselves.
+ *
+ * Not a second vocabulary mapped onto the tiers: FR-009 already speaks in
+ * tiers ("classified at the highest tier of the bump policy"), and the policy
+ * prose in the artifact already says what each one means. A parallel set of
+ * impact words would describe a release better and would need keeping
+ * consistent with these forever.
+ *
+ * Every surface renders it as the PRODUCER'S CLAIM. Breaking-change detection
+ * is mature for API contracts and effectively absent for design tokens —
+ * hundreds of classified rules on one side, a single diffing plugin on the
+ * other — so presenting the class as verified would assert something no
+ * mechanism establishes.
+ */
+export const CHANGE_CLASSES = ['major', 'minor', 'patch'] as const;
+export type ChangeClass = (typeof CHANGE_CLASSES)[number];
+
+/** The tier a removal must be classified at (098, FR-009). */
+export const HIGHEST_TIER: ChangeClass = 'major';

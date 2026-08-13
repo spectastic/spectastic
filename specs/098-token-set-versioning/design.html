@@ -1,0 +1,395 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
+<title>Token set versioning · Design</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Design · 098-token-set-versioning</p>
+  <h1>Token set versioning</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    How we will build it.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>     <span><spec-status value="accepted">Accepted</spec-status></span>
+    <b>Spec</b>       <span><a href="./spec.html">098-token-set-versioning</a></span>
+    <b>Owner</b>      <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Branch</b>     <span><code>spec/visual-slice-095-098</code></span>
+    <b>Created</b>    <span><time datetime="2026-08-12">12 Aug 2026</time></span>
+    <b>Read time</b>  <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-tldr>
+    <p>An HTML artifact beside the token set carrying its version, its bump policy <em>as prose in the same file</em>,
+    and the forward-only binding — which is precisely how <code>principles.html</code> already works, and the reason
+    a bump here is affordable rather than a migration project. The amendment guard is a
+    <strong>compare-and-swap</strong> cloned from the principles apply: refuse when the declared from-version does
+    not equal the live one, naming both. That needs no notion of which version is <em>later</em>, which matters
+    because <a href="./spec.html#NFR-001">NFR-001</a> forbids computing an ordering — every versioning mechanism in
+    this project compares by equality and none orders, and that is a property to preserve rather than a gap. The
+    change class is the three bump tiers themselves rather than a second vocabulary, and every surface says
+    <em>producer claims</em>, because breaking-change detection for tokens does not exist: hundreds of classified
+    rules for an API contract, one diffing plugin for a design system.</p>
+  </spec-tldr>
+</header>
+
+
+<section id="principles-check">
+<h2>1 · Principles check</h2>
+<p>Verify this plan respects every principle in <a href="../../principles.html">v1.9.0</a>.</p>
+
+<div style="overflow-x:auto;">
+<table>
+  <thead><tr><th>Principle</th><th>Compliance</th><th>Notes</th></tr></thead>
+  <tbody>
+    <tr><td>P-1 · Source order is reading order</td><td><spec-pill>OK</spec-pill></td><td>Releases read newest-last, in the order they happened.</td></tr>
+    <tr><td>P-2 · Semantic tags over class soup</td><td><spec-pill>OK</spec-pill></td><td>Two elements, attributes for scalars.</td></tr>
+    <tr><td>P-3 · IDs are contracts</td><td><spec-pill>OK</spec-pill></td><td>A version string is referenced by every screen bound to it, so it is one.</td></tr>
+    <tr><td>P-4 · Progressive enhancement, never dependence</td><td><spec-pill>OK</spec-pill></td><td>The policy is prose and the version is <code>attr()</code>-surfaced; both read with scripting off.</td></tr>
+    <tr><td>P-5 · Calm density</td><td><spec-pill>OK</spec-pill></td><td>One short artifact per project.</td></tr>
+    <tr><td>P-6 · Draft is loose, ratified is locked</td><td><spec-pill>OK</spec-pill></td><td>Directly analogous: the forward-only binding is the same idea one level down.</td></tr>
+    <tr><td>P-7 · Done means verified</td><td><spec-pill>OK</spec-pill></td><td>The guard verified by attempting a stale amendment and asserting nothing was written.</td></tr>
+    <tr><td>P-8 · Guarantees live in the kernel or CI</td><td><spec-pill>OK</spec-pill></td><td>The guard is kernel code; the shape and deprecation checks are rules.</td></tr>
+    <tr><td>P-9 · The enforcement floor holds</td><td><spec-pill>OK</spec-pill></td><td>No category added.</td></tr>
+    <tr><td>P-10 · Internal artifact ids stay out of user-facing copy</td><td><spec-pill>OK</spec-pill></td><td>No help text touched.</td></tr>
+    <tr><td>P-11 · Artifacts are data, not instructions</td><td><spec-pill>OK</spec-pill></td><td>The policy is prose a human applies; nothing executes it.</td></tr>
+    <tr><td>P-12 · Capability accountability</td><td><spec-pill>OK</spec-pill></td><td>The guard reads one file and refuses; it never writes on failure, which is <a href="./spec.html#NFR-002">NFR-002</a>.</td></tr>
+    <tr><td>P-13 · Accessibility conformance</td><td><spec-pill>OK</spec-pill></td><td>Prose and a description list.</td></tr>
+    <tr><td>P-14 · Library-first boundaries</td><td><spec-pill>OK</spec-pill></td><td>Guard in core, vocabulary and rules in schema.</td></tr>
+  </tbody>
+</table>
+</div>
+
+<h3>Toolchain / enforcement</h3>
+<p>Profile <code>enterprise</code>, every required category covered, <code>observability</code> waived on the
+standing rationale. No gap for this design.</p>
+</section>
+
+
+<section id="technical-context">
+<h2>2 · Technical context</h2>
+<dl>
+  <dt>Language(s)</dt>      <dd>TypeScript 5.7, Node ≥ 20.</dd>
+  <dt>Frameworks</dt>       <dd>None added. Vitest 2.1.</dd>
+  <dt>Architecture</dt>     <dd>Layered — the guard is kernel code taking an injected <code>FileSystem</code>, as the principles apply's own guard does.</dd>
+  <dt>Storage</dt>          <dd>None. One authored artifact per project.</dd>
+  <dt>Testing</dt>          <dd>Tests written failing before implementation, per story.</dd>
+  <dt>Coverage</dt>         <dd>Diff-aware: every changed line covered, no file left lower than it started.</dd>
+  <dt>Perf targets</dt>     <dd><a href="./spec.html#NFR-001">NFR-001</a>: equality only, 0 orderings computed — asserted over the module rather than assumed.</dd>
+  <dt>Constraints</dt>      <dd><a href="./spec.html#NFR-002">NFR-002</a>: fail closed. A malformed or absent version refuses the amendment, with 0 applied.</dd>
+</dl>
+</section>
+
+
+<section id="contracts">
+<h2>3 · Data model &amp; contracts</h2>
+
+<p>Three conceptual entities, two elements and one attribute. Nothing is persisted; the version is authored and
+read.</p>
+
+<div style="overflow-x:auto;">
+<table>
+  <thead><tr><th>Conceptual entity</th><th>Physical shape</th><th>Notes</th></tr></thead>
+  <tbody>
+    <tr><td><a href="./spec.html#data">Token set version</a></td>
+        <td><code>&lt;spec-token-set version binds-from external-base&gt;</code>, in <code>visual/tokens.html</code>.</td>
+        <td>The bump policy is the element's own prose, in the same file — a policy that lives elsewhere is one nobody reads at the moment of bumping.</td></tr>
+    <tr><td><a href="./spec.html#data">Release</a></td>
+        <td><code>&lt;spec-release from to class&gt;</code></td>
+        <td><code>class</code> is one of the three bump tiers, and every surface renders it as a claim.</td></tr>
+    <tr><td><a href="./spec.html#data">Deprecation</a></td>
+        <td>The token format's own <code>$deprecated</code> channel, in the JSON.</td>
+        <td>Not re-expressed here. <a href="./spec.html#FR-007">FR-007</a> is explicit that the format's channel is used rather than a mechanism invented in this project.</td></tr>
+    <tr><td>Binding stamp</td>
+        <td><code>tokens-version</code> on <code>&lt;spec-screen&gt;</code>.</td>
+        <td>The screen is the work that gets accepted, so the stamp travels with the thing whose conformance is in question.</td></tr>
+  </tbody>
+</table>
+</div>
+
+<spec-contract shape="none">
+  <p>This feature exposes no interface. It adds a version, a policy and a claim to material that already exists.</p>
+</spec-contract>
+</section>
+
+
+<section id="grounding">
+<h2>4 · Grounding &amp; evidence</h2>
+<p>Every design-bearing fact this plan rests on, and how it was confirmed.</p>
+
+<div style="overflow-x:auto;">
+<table class="evidence">
+  <thead>
+    <tr><th>Claim the design rests on</th><th>Source</th><th>Status</th><th>Finding / note</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>The compare-and-swap guard exists, and already names both values when it refuses.</td>
+        <td><code>packages/core/src/commands/apply.ts:479-486</code></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td>Reads the live version out of the artifact, compares to the proposal's declared from-version, throws naming both. <a href="./spec.html#FR-004">FR-004</a> asks for exactly this, and the error message shape transfers unchanged.</td></tr>
+    <tr><td>The precedent for a policy stated inside the artifact that carries the version is in this repository.</td>
+        <td><code>principles.html</code></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td>It carries its own version, its own MAJOR/MINOR/PATCH policy, and a forward-only binding clause — and it is the only versioned artifact in the system. This spec is that pattern applied one level down.</td></tr>
+    <tr><td>Nothing in this project orders two versions, and that is deliberate.</td>
+        <td>corpus <code>edition</code>, contract baselines, principles <code>from</code></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td>All three compare by equality. "Newer" is decided by arrival or by location, never by comparison. <a href="./spec.html#NFR-001">NFR-001</a> makes preserving that a requirement, and a test asserts the module computes no ordering.</td></tr>
+    <tr><td>The token format carries its own deprecation channel, so none needs inventing.</td>
+        <td><a href="../../docs/visual-spec-considerations.html">visual-spec survey</a>, §9</td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td>DTCG's <code>$deprecated</code> takes <code>true</code> or a replacement message. Using it keeps a rename legible to every other tool that reads the file.</td></tr>
+    <tr><td>The format defines no version field, so the version cannot live in the token JSON without inventing one.</td>
+        <td><a href="../../docs/visual-spec-considerations.html">visual-spec survey</a> (corrected on retrieval)</td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td>The survey records its own correction: <code>version: 2025.10</code> belongs to the <em>Resolver</em> module, not the Format module, and that draft says not to implement it. This is why <a href="#D-001">D-001</a> puts the version beside the tokens rather than inside them.</td></tr>
+    <tr><td>Breaking-change detection is mature for contracts and effectively absent for tokens.</td>
+        <td><a href="../../docs/visual-spec-considerations.html">visual-spec survey</a>, D-009</td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td>oasdiff classifies 509 changes for an API contract; the state of the art for tokens is one Figma plugin. That asymmetry is the whole reason the class is a claim — see <a href="#D-003">D-003</a>.</td></tr>
+    <tr><td>The producer-claims posture already exists in this project, including its rendering.</td>
+        <td><code>assets/spec.css</code> · <code>spec-contract[compatibility]::after</code></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td>Renders "producer claims …". 077 asserts 0 verified properties and states that nothing enforces the stance at any tier. Cloned here rather than re-argued.</td></tr>
+    <tr><td>The exemplar already sketches a token-set version, set aside during the previous slice.</td>
+        <td><code>examples/currency-converter/visual/variants.json</code> (removed)</td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td>Version 2.1.0, a bump policy, a forward-only binding from 2.0.0, a change class, and a deprecation of <code>legacy.accent</code>. Preserved when 096 converted the grid, and converted here.</td></tr>
+  </tbody>
+</table>
+</div>
+</section>
+
+
+<section id="approach">
+<h2>5 · Approach</h2>
+
+<p>One artifact at <code>visual/tokens.html</code> carrying <code>&lt;spec-token-set&gt;</code> with the version,
+the binding, and the bump policy as its own prose; plus a <code>&lt;spec-release&gt;</code> per transition. A schema
+rule checks the shape and the closed class set; a second checks that a release never removes a token it deprecates
+in the same breath. A kernel guard refuses an amendment whose declared from-version does not equal the live one.</p>
+
+<p>The design is almost entirely inherited. The guard is the principles apply's, the producer-claims rendering is
+077's, the policy-in-the-artifact is <code>principles.html</code>'s, and the deprecation channel is the token
+format's own. What this spec adds is the observation that they compose: a version that binds forward only, checked
+by equality, with a change class nobody pretends to verify, is a versioning scheme that costs a team almost nothing
+to adopt — which is the property that makes it get used.</p>
+
+<spec-note>
+<p>The temptation this design refuses is ordering. Once a tool can say which of two versions is later it can offer
+"you are three releases behind", and that is genuinely useful — but it requires committing to a comparison
+contract forever, and every existing mechanism here has declined to. <a href="./spec.html#NFR-001">NFR-001</a>
+makes the refusal a requirement, and the test asserts the module contains no comparison at all rather than merely
+not calling one.</p>
+</spec-note>
+
+<spec-arch>
+<figure>
+<svg viewBox="0 0 700 190" role="img" aria-label="Equality, not ordering">
+  <style>
+    .box { fill: var(--c-surface-raised, #fcfbf7); stroke: var(--c-border, #c4c1bb); stroke-width:1.2; }
+    .label { font: 700 10px Lato, sans-serif; fill: var(--c-text-soft, #4a4a46); letter-spacing:0.06em; text-transform:uppercase; }
+    .body { font: 400 11px "Source Serif 4", Georgia, serif; fill: var(--c-text, #353534); }
+    .arr { stroke: var(--c-muted, #73706d); stroke-width:1.2; fill:none; }
+    .arrh { fill: var(--c-muted, #73706d); }
+  </style>
+  <rect class="box" x="20" y="66" width="180" height="56" rx="4"/>
+  <text class="label" x="34" y="86">an amendment</text>
+  <text class="body"  x="34" y="105">declares from → to</text>
+
+  <rect class="box" x="256" y="66" width="180" height="56" rx="4"/>
+  <text class="label" x="270" y="86">the guard</text>
+  <text class="body"  x="270" y="105">from === live ?</text>
+
+  <rect class="box" x="492" y="16" width="188" height="52" rx="4"/>
+  <text class="label" x="506" y="36">refuse</text>
+  <text class="body"  x="506" y="55">naming both values</text>
+
+  <rect class="box" x="492" y="120" width="188" height="52" rx="4"/>
+  <text class="label" x="506" y="140">apply</text>
+  <text class="body"  x="506" y="159">and bind forward only</text>
+
+  <path class="arr" d="M200 94 L256 94" marker-end="url(#a)"/>
+  <path class="arr" d="M436 82 L492 50" marker-end="url(#a)"/>
+  <path class="arr" d="M436 106 L492 140" marker-end="url(#a)"/>
+  <defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path class="arrh" d="M0,0 L10,5 L0,10 z"/></marker></defs>
+</svg>
+<figcaption>One comparison, and it is equality. Nothing here knows which version is later, and nothing needs to.</figcaption>
+</figure>
+</spec-arch>
+</section>
+
+
+<section id="alternatives">
+<h2>6 · Alternatives considered</h2>
+
+<p>The choice with real alternatives was the change-class vocabulary. Scored on whether it needs a second
+vocabulary kept consistent with the tiers, how well it tells a consumer what happened, and whether two fields can
+contradict each other. 5 is best.</p>
+
+<spec-matrix>
+<div style="overflow-x:auto;">
+<table>
+  <thead>
+    <tr><th>Option</th><th>One vocabulary</th><th>Tells a consumer what happened</th><th>Cannot self-contradict</th><th class="score">Total</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>breaking / additive / corrective</td><td>2</td><td>5</td><td>5</td><td class="score">12</td></tr>
+    <tr><td>Tier plus an impact word</td><td>1</td><td>5</td><td>1</td><td class="score">7</td></tr>
+    <tr data-winner><td>The three bump tiers — chosen</td><td>5</td><td>3</td><td>5</td><td class="score">13</td></tr>
+  </tbody>
+</table>
+</div>
+</spec-matrix>
+
+<p>The impact words genuinely describe a release better, and lose because <a href="./spec.html#FR-009">FR-009</a>
+already speaks in tiers — "classified at the highest tier of the bump policy" — so a second vocabulary would need
+mapping onto the first, and the policy prose already says what each tier means. The two-field option is worst: two
+values that can contradict each other, with nothing able to adjudicate.</p>
+</section>
+
+
+<section id="decisions">
+<h2>7 · Decisions</h2>
+
+<spec-decision id="D-001" grounding="verified">
+  <h4>D-001 · The version lives beside the token set, with its policy in the same file</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd><a href="./spec.html#FR-001">FR-001</a> requires the bump policy in the artifact carrying the version, because a policy living elsewhere is one nobody reads at the moment of bumping. The token format defines no version field — the survey corrected itself on this — so putting it in the JSON means inventing one, from a draft that says not to implement it.</dd>
+    <dt>Decision</dt>     <dd><code>visual/tokens.html</code>, carrying <code>&lt;spec-token-set&gt;</code> and the policy as its prose. The JSON stays pure DTCG.</dd>
+    <dt>Consequences</dt> <dd>+ The token files stay portable to every other tool that reads the format. + The policy sits where somebody about to bump will see it, exactly as <code>principles.html</code> does. − The version is one file away from the tokens it describes, so a build reading only the JSON cannot see it — acceptable, because checking a build against its claimed version is explicitly another slice.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-002" grounding="verified">
+  <h4>D-002 · Compare-and-swap on equality, and no ordering anywhere</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd><a href="./spec.html#FR-004">FR-004</a> wants a stale amendment refused; <a href="./spec.html#NFR-001">NFR-001</a> forbids computing an ordering. Both are satisfied by the same mechanism, and the principles apply already implements it — reading the live value, comparing for equality, throwing with both values named.</dd>
+    <dt>Decision</dt>     <dd>Clone it. The guard compares strings for equality and contains no comparison operator over versions at all; a test asserts the absence rather than the behaviour.</dd>
+    <dt>Consequences</dt> <dd>+ No format contract is taken on beyond what the policy states. + A stale amendment cannot land on top of one it never saw. − The tool can never say "you are three releases behind", which is genuinely useful and genuinely requires a commitment nothing here has made. − Two amendments produced from the same live version race, and the second is refused rather than merged; refusal is the honest outcome.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-003" grounding="verified">
+  <h4>D-003 · The change class is a claim, and the tiers are the vocabulary</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>oasdiff classifies 509 distinct changes for an API contract; for design tokens the state of the art is one diffing plugin. Nobody has classified what "breaking" even means for a token, so a tool asserting it would be inventing the taxonomy and presenting the invention as a finding.</dd>
+    <dt>Decision</dt>     <dd>A closed set of the three bump tiers, rendered everywhere as "producer claims …", cloning 077's wording and its stylesheet treatment. Nothing verifies it, and <a href="./spec.html#FR-006">FR-006</a> forbids any future diff from reporting whether a change breaks — only what changed.</dd>
+    <dt>Consequences</dt> <dd>+ One vocabulary, already defined by the policy prose. + The tool never asserts something no mechanism establishes. − A consumer reading "minor" learns how far the number moved, not what happened to them; the release's prose carries that, and prose is not checkable. − A producer can claim wrongly and nothing notices, which is stated rather than mitigated.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-004" grounding="verified">
+  <h4>D-004 · The binding stamp goes on the screen, because the screen is what gets accepted</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd><a href="./spec.html#FR-003">FR-003</a> wants the version recoverable after later bumps, so the stamp must travel with whatever's conformance is in question. A feature-level stamp loses the ordinary case where two screens in one feature were accepted months apart.</dd>
+    <dt>Decision</dt>     <dd><code>tokens-version</code> on <code>&lt;spec-screen&gt;</code>, the element 095 already defines.</dd>
+    <dt>Consequences</dt> <dd>+ Per-screen granularity matches how work is actually accepted. + Reuses an element rather than adding one. − A ten-screen feature carries ten stamps that mostly agree, which is repetition a feature-level stamp would have avoided; accepted because the disagreeing case is the one that matters.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-005" grounding="verified">
+  <h4>D-005 · Deprecation uses the token format's own channel, not one invented here</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd><a href="./spec.html#FR-007">FR-007</a> is explicit, and the format already carries a standard deprecation field taking a replacement message. Re-expressing it in this project's vocabulary would make a rename legible to this tool and invisible to every other one that reads the file.</dd>
+    <dt>Decision</dt>     <dd>Deprecation lives in the JSON, in the format's channel. This spec adds only the release-level rule that a token is not removed in the release that deprecates it, and that removal is classified at the highest tier.</dd>
+    <dt>Consequences</dt> <dd>+ A rename ships the new token, a working alias and a reason, all readable by other tooling. − The deprecation and the release that describes it live in different files, so nothing cross-checks that a release claiming a deprecation actually made one; a real gap, and smaller than the interoperability it buys.</dd>
+  </dl>
+</spec-decision>
+</section>
+
+
+<section id="project-structure">
+<h2>8 · Project structure</h2>
+
+<pre><code>packages/schema/src/
+  visual-vocabulary.ts                ~ token-set and release elements, the three tiers
+  rules/token-set-shape.ts            + version, binding, policy prose, closed class set
+  rules/release-deprecation.ts        + no removal in the release that deprecates
+
+packages/core/src/visual/
+  token-set-guard.ts                  + compare-and-swap, cloned from the principles apply
+
+assets/spec.css                       + token-set and release cards; "producer claims" wording
+
+templates/tokens.html                 + a project token-set template
+examples/currency-converter/visual/   + the preserved token-set block, converted
+
+packages/schema/test/                 + both rules, red first
+packages/core/test/                   + the guard, including its fail-closed behaviour
+</code></pre>
+</section>
+
+
+<section id="risks">
+<h2>9 · Risks &amp; mitigations</h2>
+
+<div style="overflow-x:auto;">
+<table>
+  <thead><tr><th>Risk</th><th>Likelihood</th><th>Impact</th><th>Mitigation</th></tr></thead>
+  <tbody>
+    <tr><td>Somebody adds version ordering later, because "three releases behind" is useful.</td><td>M</td><td>M</td><td><a href="#D-002">D-002</a> states the refusal, <a href="./spec.html#NFR-001">NFR-001</a> makes it a requirement, and the test asserts the module contains no comparison rather than merely not calling one.</td></tr>
+    <tr><td>A producer claims a tier wrongly and nothing notices.</td><td>H</td><td>L</td><td>Accepted and stated. Verifying it needs a taxonomy that does not exist for tokens; asserting one would be inventing it.</td></tr>
+    <tr><td>A release claims a deprecation the JSON never made.</td><td>M</td><td>L</td><td>Named in <a href="#D-005">D-005</a> as a real gap. Cross-checking would mean parsing the token files, which this slice deliberately does not do.</td></tr>
+    <tr><td>The guard is bypassed by amending the artifact by hand.</td><td>M</td><td>M</td><td>Inherent — the same is true of principles.html. The guard protects the tool's path; a hand edit is a review problem.</td></tr>
+  </tbody>
+</table>
+</div>
+</section>
+
+
+<section id="complexity">
+<h2>10 · Complexity tracking</h2>
+<p>Anywhere this plan introduces complexity not strictly required by the spec, justify it here.</p>
+
+<spec-assumption>
+<p>A test asserting the <em>absence</em> of a version comparison is more than <a href="./spec.html#NFR-001">NFR-001</a>
+literally asks for — it asks that at most 0 orderings be computed, which a behavioural test could establish for the
+cases it covers. The source-level assertion is here because the requirement is about what the module must never
+learn to do, and that is a property of the code rather than of any particular call.</p>
+</spec-assumption>
+</section>
+
+
+<section id="questions">
+<h2>11 · Open questions</h2>
+<spec-questions>
+<p>None outstanding. The version's home, the change-class vocabulary and the binding stamp's location were anchored
+in the interview; the guard, the producer-claims rendering and the deprecation channel were all settled by reading
+what already exists rather than by asking.</p>
+</spec-questions>
+</section>
+
+
+<section id="changelog">
+<h2>12 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-08-12">12 Aug 2026</time><span>Initial plan. Five decisions, almost all inherited: the guard from the principles apply, the producer-claims rendering from 077, the policy-in-the-artifact from principles.html, and the deprecation channel from the token format itself. What this design adds is the observation that they compose into a scheme cheap enough to actually adopt. The refusal to order versions is the one deliberate absence, and the test asserts the module contains no comparison rather than merely not calling one.</span></li>
+  <li><time datetime="2026-08-12">12 Aug 2026</time><span>Status flipped Draft → Accepted on 12 Aug 2026 — zero remaining unchecked tasks; tests verified passing per author confirmation. Sibling bundle flipped together.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  098-token-set-versioning · Design · authored 2026-08-12
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>

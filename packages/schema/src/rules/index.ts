@@ -8,6 +8,8 @@ import { variantGridShapeRule } from './variant-grid-shape.js';
 import { variantSameResolvesRule } from './variant-same-resolves.js';
 import { componentShapeRule } from './component-shape.js';
 import { componentProvenanceRule } from './component-provenance.js';
+import { tokenSetShapeRule } from './token-set-shape.js';
+import { releaseDeprecationRule } from './release-deprecation.js';
 import { contractNameUniqueRule } from './contract-name-unique.js';
 import { corpusCitationFormRule } from './corpus-citation-form.js';
 import { dataDeltaShapeRule } from './data-delta-shape.js';
@@ -103,6 +105,8 @@ export const rules: readonly Rule[] = [
   variantSameResolvesRule,
   componentShapeRule,
   componentProvenanceRule,
+  tokenSetShapeRule,
+  releaseDeprecationRule,
   contractNameUniqueRule,
 
   // Cross-file rules.
