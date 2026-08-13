@@ -133,6 +133,21 @@ export const ANNOTATION_ELEMENT = 'spec-annotation';
  */
 export const RENDER_ELEMENT = 'spec-render';
 
+/**
+ * A route through the screens a feature declares (100-screen-flows).
+ *
+ * Order is SOURCE ORDER and there is no ordering attribute — the same decision
+ * the variant grid made, for the same reason: a number is a second ordering
+ * able to disagree with the markup, and then a reader has to know which wins.
+ *
+ * A branch belongs to the step it hangs from, by position rather than by a
+ * reference, so it cannot disagree with where it sits. An absent branch means
+ * NOT RECORDED — never that no failure is possible.
+ */
+export const FLOW_ELEMENT = 'spec-flow';
+export const STEP_ELEMENT = 'spec-step';
+export const BRANCH_ELEMENT = 'spec-branch';
+
 // --- the variant grid (spec 096-visual-variant-grid) -------------------------
 
 /** The four elements the grid introduces. */

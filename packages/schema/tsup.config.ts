@@ -13,6 +13,7 @@ export default defineConfig({
     'src/visual-shared.ts',
     'src/visual-vocabulary.ts',
     'src/variant-grid.ts',
+    'src/screen-flow.ts',
   ],
   format: ['esm'],
   dts: true,

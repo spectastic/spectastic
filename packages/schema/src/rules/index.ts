@@ -3,6 +3,7 @@ import { contractDeclarationShapeRule } from './contract-declaration-shape.js';
 import { visualDeclarationShapeRule } from './visual-declaration-shape.js';
 import { screenShapeRule } from './screen-shape.js';
 import { stateSourceRequiredRule } from './state-source-required.js';
+import { flowResolvesRule } from './flow-resolves.js';
 import { renderShapeRule } from './render-shape.js';
 import { annotationTypedRule } from './annotation-typed.js';
 import { variantGridShapeRule } from './variant-grid-shape.js';
@@ -103,6 +104,7 @@ export const rules: readonly Rule[] = [
   stateSourceRequiredRule,
   annotationTypedRule,
   renderShapeRule,
+  flowResolvesRule,
   variantGridShapeRule,
   variantSameResolvesRule,
   componentShapeRule,
