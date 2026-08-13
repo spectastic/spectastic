@@ -72,4 +72,52 @@ export function registerVisual(program: Command): void {
       process.stdout.write(`materialised the visual view into specs/${specId}/design.html\n`);
       process.exit(0);
     });
+
+  program
+    .command('visual:import')
+    .description(
+      'Import a design export already on disk — lands its token file, renders and annotations into the visual sidecar, once, and never reads it again. No network, no account, no design-tool licence.',
+    )
+    .requiredOption('--from <dir>', 'the exported folder, inside this project')
+    .requiredOption('--into <dir>', 'where landed material goes — the visual sidecar')
+    .requiredOption('--identity <id>', 'the stable anchor a later re-import keys on')
+    .option('--previous-identity <id>', 'the identity a previous import landed under, if any')
+    .action(async (opts: { from: string; into: string; identity: string; previousIdentity?: string }) => {
+      const [{ importDesignSource, ImportIdentityError }, { localSourceFetcher, SourceNotFoundError, SourceOutsideProjectError }, { nodeFs }] =
+        await Promise.all([
+          import('@spectastic/core/visual/import'),
+          import('@spectastic/core/providers/local-source-fetcher'),
+          import('@spectastic/core/providers/node-fs'),
+        ]);
+
+      try {
+        const ledger = await importDesignSource(
+          { from: opts.from, into: opts.into, identity: opts.identity, previousIdentity: opts.previousIdentity },
+          localSourceFetcher(nodeFs, process.cwd()),
+          nodeFs,
+        );
+        // A four-bucket ledger rather than a log — the corpus prints the same
+        // shape, and it is what makes a re-import reviewable at a glance.
+        process.stdout.write(
+          `written ${ledger.written.length} · skipped ${ledger.skipped.length} · replaced ${ledger.replaced.length} · orphaned ${ledger.orphaned.length}\n`,
+        );
+        for (const name of ledger.orphaned) {
+          process.stdout.write(`  orphaned: ${name} — present here, absent from the export. Not removed.\n`);
+        }
+        if (ledger.written.length > 0 || ledger.replaced.length > 0) {
+          process.stdout.write('Newly landed material is not yet reviewed — read it before relying on it.\n');
+        }
+        process.exit(0);
+      } catch (err) {
+        if (
+          err instanceof ImportIdentityError ||
+          err instanceof SourceNotFoundError ||
+          err instanceof SourceOutsideProjectError
+        ) {
+          process.stderr.write(`${err.message}\n`);
+          process.exit(1);
+        }
+        throw err;
+      }
+    });
 }
