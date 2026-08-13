@@ -14,6 +14,7 @@ export default defineConfig({
     'src/visual-vocabulary.ts',
     'src/variant-grid.ts',
     'src/screen-flow.ts',
+    'src/component-states.ts',
   ],
   format: ['esm'],
   dts: true,

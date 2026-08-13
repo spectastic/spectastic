@@ -148,6 +148,23 @@ export const FLOW_ELEMENT = 'spec-flow';
 export const STEP_ELEMENT = 'spec-step';
 export const BRANCH_ELEMENT = 'spec-branch';
 
+/**
+ * A component's own interaction states and the transitions between them
+ * (101-component-interaction-states).
+ *
+ * Distinct from `spec-state`, which is a SCREEN's situation and is often
+ * derived from a contract response. A component's states are driven by
+ * interaction — there is no status code for hover — and they belong to the
+ * component so that a control used by ten screens has one focus ring rather
+ * than ten.
+ *
+ * A decline carries its reason as CONTENT rather than an attribute, so an
+ * empty string cannot satisfy a presence check. The variant grid closed the
+ * same hole the same way.
+ */
+export const COMPONENT_STATE_ELEMENT = 'spec-cstate';
+export const TRANSITION_ELEMENT = 'spec-transition';
+
 // --- the variant grid (spec 096-visual-variant-grid) -------------------------
 
 /** The four elements the grid introduces. */
