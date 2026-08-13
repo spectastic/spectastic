@@ -91,3 +91,38 @@ export type AxisSelects = (typeof RECOGNISED_AXIS_SELECTS)[number];
 
 /** The value a baseline uses to say it has never been verified (096, FR-005). */
 export const NEVER_VERIFIED = 'none';
+
+// --- components (spec 097-visual-component-lifecycle) ------------------------
+
+export const COMPONENT_ELEMENT = 'spec-component';
+
+/**
+ * Scope is BINARY (097, FR-001, design D-002).
+ *
+ * A third value naming "two features share it" was considered and refused:
+ * nothing could decide when that scope becomes project, so the tool would have
+ * added a state it cannot transition. The second use is recorded as evidence
+ * on `used-by` instead, which makes the rule of three visible to a person
+ * without the tool acting on it.
+ */
+export const COMPONENT_SCOPES = ['feature', 'project'] as const;
+export type ComponentScope = (typeof COMPONENT_SCOPES)[number];
+
+/** Where a component came from (097, FR-006). */
+export const COMPONENT_ORIGINS = ['authored', 'vendored', 'consumed'] as const;
+export type ComponentOrigin = (typeof COMPONENT_ORIGINS)[number];
+
+/**
+ * Maturity is the project's EXISTING status vocabulary (097, FR-005).
+ *
+ * Not a mapping onto it and not a synonym for it. The field's usual ladder —
+ * experimental, beta, stable, deprecated — lands on draft, review, accepted,
+ * deprecated, and every one of these six is already styled by the stylesheet.
+ * A seventh value here would be the parallel vocabulary the requirement
+ * forbids, so a test asserts this list and the styled set stay identical.
+ */
+export const COMPONENT_MATURITIES = ['draft', 'review', 'accepted', 'superseded', 'deprecated', 'blocked'] as const;
+export type ComponentMaturity = (typeof COMPONENT_MATURITIES)[number];
+
+/** Provenance a vendored component must record (097, FR-008) — the corpus's field set. */
+export const VENDORED_PROVENANCE_ATTRS = ['origin-url', 'edition', 'license'] as const;

@@ -1,0 +1,405 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
+<title>Visual component lifecycle · Design</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Design · 097-visual-component-lifecycle</p>
+  <h1>Visual component lifecycle</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    How we will build it.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>     <span><spec-status value="accepted">Accepted</spec-status></span>
+    <b>Spec</b>       <span><a href="./spec.html">097-visual-component-lifecycle</a></span>
+    <b>Owner</b>      <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Branch</b>     <span><code>spec/visual-slice-095-098</code></span>
+    <b>Created</b>    <span><time datetime="2026-08-12">12 Aug 2026</time></span>
+    <b>Read time</b>  <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-tldr>
+    <p>One element with three <em>independent</em> properties — scope, maturity, origin — because collapsing them
+    into a state machine makes most real combinations inexpressible: a vendored component can be local or shared,
+    an authored one either, and maturity varies across all of them. Promotion reuses
+    <a href="../071-contract-promotion/spec.html">071</a>'s machinery rather than a second implementation: plan
+    then execute, abort entirely on any conflict, refuse when the destination moved since the proposal recorded
+    it. Maturity draws on the <strong>six status values this project already has</strong> — draft, review,
+    accepted, superseded, deprecated, blocked — so there is no seventh vocabulary. Provenance is the corpus's
+    field set with the corpus's severity split: a superseded version nags, an unresolvable one fails. And the two
+    questions carried from drafting are settled — a wrapper <em>references</em> what it wraps rather than copying
+    its provenance, and scope stays binary with the second use recorded as evidence a person reads.</p>
+  </spec-tldr>
+</header>
+
+
+<section id="principles-check">
+<h2>1 · Principles check</h2>
+<p>Verify this plan respects every principle in <a href="../../principles.html">v1.9.0</a>.</p>
+
+<div style="overflow-x:auto;">
+<table>
+  <thead><tr><th>Principle</th><th>Compliance</th><th>Notes</th></tr></thead>
+  <tbody>
+    <tr><td>P-1 · Source order is reading order</td><td><spec-pill>OK</spec-pill></td><td>Components read in declaration order; nothing reorders by scope or maturity.</td></tr>
+    <tr><td>P-2 · Semantic tags over class soup</td><td><spec-pill>OK</spec-pill></td><td>One element, attributes for the three properties.</td></tr>
+    <tr><td>P-3 · IDs are contracts</td><td><spec-pill>OK</spec-pill></td><td>Load-bearing: <code>wraps=</code> and <code>used-by=</code> are references, and <a href="./spec.html#FR-004">FR-004</a> requires promotion to update every one.</td></tr>
+    <tr><td>P-4 · Progressive enhancement, never dependence</td><td><spec-pill>OK</spec-pill></td><td><a href="./spec.html#NFR-001">NFR-001</a>; scalars <code>attr()</code>-surfaced as 095 and 096 do.</td></tr>
+    <tr><td>P-5 · Calm density</td><td><spec-pill>OK</spec-pill></td><td>Three attributes, not a state diagram.</td></tr>
+    <tr><td>P-6 · Draft is loose, ratified is locked</td><td><spec-pill>OK</spec-pill></td><td>Exercised: the spec's two open questions were closed in place while Draft, and the change log records it.</td></tr>
+    <tr><td>P-7 · Done means verified</td><td><spec-pill>OK</spec-pill></td><td>Promotion verified by executing a real one against a fixture project, not by asserting the plan.</td></tr>
+    <tr><td>P-8 · Guarantees live in the kernel or CI</td><td><spec-pill>OK</spec-pill></td><td>Promotion is kernel code; the shape and provenance checks are rules.</td></tr>
+    <tr><td>P-9 · The enforcement floor holds</td><td><spec-pill>OK</spec-pill></td><td>No category added.</td></tr>
+    <tr><td>P-10 · Internal artifact ids stay out of user-facing copy</td><td><spec-pill>OK</spec-pill></td><td>No help text touched.</td></tr>
+    <tr><td>P-11 · Artifacts are data, not instructions</td><td><spec-pill>OK</spec-pill></td><td><code>origin-url</code> is provenance a human reads; nothing fetches it — see <a href="#D-005">D-005</a>.</td></tr>
+    <tr><td>P-12 · Capability accountability</td><td><spec-pill>OK</spec-pill></td><td>Promotion writes files, which is the one capability added; it is planned before it writes and aborts as a whole.</td></tr>
+    <tr><td>P-13 · Accessibility conformance</td><td><spec-pill>OK</spec-pill></td><td>Rendered as a description list.</td></tr>
+    <tr><td>P-14 · Library-first boundaries</td><td><spec-pill>OK</spec-pill></td><td>Promotion in core, vocabulary and rules in schema, CLI thin.</td></tr>
+  </tbody>
+</table>
+</div>
+
+<h3>Toolchain / enforcement</h3>
+<p>Profile <code>enterprise</code>, every required category covered, <code>observability</code> waived on the
+standing rationale. No gap for this design.</p>
+</section>
+
+
+<section id="technical-context">
+<h2>2 · Technical context</h2>
+<dl>
+  <dt>Language(s)</dt>      <dd>TypeScript 5.7, Node ≥ 20.</dd>
+  <dt>Frameworks</dt>       <dd>None added. Vitest 2.1.</dd>
+  <dt>Architecture</dt>     <dd>Layered — promotion is kernel code taking an injected <code>FileSystem</code>, exactly as 071's does; the vocabulary and rules are schema.</dd>
+  <dt>Storage</dt>          <dd>None beyond the artifacts promotion moves.</dd>
+  <dt>Testing</dt>          <dd>Tests written failing before implementation, per story. Promotion tested by executing against a fixture project rather than by asserting a plan.</dd>
+  <dt>Coverage</dt>         <dd>Diff-aware: every changed line covered, no file left lower than it started.</dd>
+  <dt>Perf targets</dt>     <dd>Bounded by <a href="./spec.html#NFR-002">NFR-002</a>. Promotion reads every declaration once before writing anything, which is the cost of atomicity and is stated rather than hidden.</dd>
+  <dt>Constraints</dt>      <dd><a href="./spec.html#FR-005">FR-005</a> forbids a parallel maturity vocabulary, and this project already has six status values — so the constraint is satisfied by using them, not by inventing a mapping.</dd>
+</dl>
+</section>
+
+
+<section id="contracts">
+<h2>3 · Data model &amp; contracts</h2>
+
+<p>One element carrying three independent properties, plus two references. The independence is the design: a
+vendored component can be local or shared, an authored one either, and maturity varies across all of them.</p>
+
+<div style="overflow-x:auto;">
+<table>
+  <thead><tr><th>Conceptual entity</th><th>Physical shape</th><th>Notes</th></tr></thead>
+  <tbody>
+    <tr><td><a href="./spec.html#data">Component</a></td>
+        <td><code>&lt;spec-component name scope maturity origin&gt;</code></td>
+        <td>Three orthogonal attributes. <code>scope</code> is binary; <code>maturity</code> is one of the project's six status values; <code>origin</code> is authored, vendored or consumed.</td></tr>
+    <tr><td>Provenance</td>
+        <td><code>origin-url edition license</code> on a vendored component.</td>
+        <td>The corpus's field set, because copying a component in is the same act as taking a document in, and the corpus already decided what must be recorded.</td></tr>
+    <tr><td>Wrapping</td>
+        <td><code>wraps="&lt;name&gt;"</code></td>
+        <td>A reference, not a copy. One record of origin exists and the wrapper reads through it — see <a href="#D-001">D-001</a>.</td></tr>
+    <tr><td>Use</td>
+        <td><code>used-by="&lt;spec-id&gt; …"</code></td>
+        <td>Evidence a person reads, not a trigger. Two entries make the rule of three visible without the tool acting on it.</td></tr>
+  </tbody>
+</table>
+</div>
+
+<spec-contract shape="none">
+  <p>This feature exposes no interface. It adds a declaration, checks over it, and a promotion operation, all
+  consumed inside the tool.</p>
+</spec-contract>
+</section>
+
+
+<section id="grounding">
+<h2>4 · Grounding &amp; evidence</h2>
+<p>Every design-bearing fact this plan rests on, and how it was confirmed.</p>
+
+<div style="overflow-x:auto;">
+<table class="evidence">
+  <thead>
+    <tr><th>Claim the design rests on</th><th>Source</th><th>Status</th><th>Finding / note</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>This project already has six status values, so no seventh vocabulary is needed.</td>
+        <td><code>assets/spec.css:797-802</code></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td>draft, review, accepted, superseded, deprecated, blocked — each already styled. <a href="./spec.html#FR-005">FR-005</a> is satisfied by using them rather than by mapping onto them.</td></tr>
+    <tr><td>Promotion's three properties are already implemented, and can be reused rather than rebuilt.</td>
+        <td><code>packages/core/src/contracts/promote.ts</code></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td><code>planPromotion()</code> reads and never writes; <code>executePromotion()</code> applies an already-conflict-free plan. Its header states the atomicity property in the same words <a href="./spec.html#FR-003">FR-003</a> uses.</td></tr>
+    <tr><td>The comparison that matters is baseline-versus-current, not incoming-versus-current.</td>
+        <td><code>packages/core/src/contracts/promote.ts:9-15</code></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td>Recorded there as the design's headline risk. It transfers unchanged: the incoming component is <em>expected</em> to differ — that is the point of promoting — and what must not have moved is the destination since the proposal recorded it.</td></tr>
+    <tr><td>The provenance field set is the corpus's, and so is the severity split.</td>
+        <td><code>packages/corpus/src/knowledge/adapt.ts:37-49</code></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td><code>origin-url</code>, <code>edition</code>, <code>content-hash</code>, licence. A stale pin warns and a dead reference errors, which is exactly the split <a href="./spec.html#FR-009">FR-009</a> asks for.</td></tr>
+    <tr><td>An empty set reported as a gap is a failure this repository has measured.</td>
+        <td><a href="../../docs/non-service-observability-considerations.html">non-service-observability survey</a></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td>77 gap rows across 37 views, zero ever answerable. <a href="./spec.html#FR-010">FR-010</a> exists so a project consuming everything from a library is not told it is incomplete.</td></tr>
+    <tr><td>Promoting on detected reuse is the inference this project has already refused.</td>
+        <td><a href="../../docs/orchestrator-placement-considerations.html">orchestrator-placement survey</a></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td>Its central finding: improving retrieval makes a resemblance-based answer <em>more confident, not more correct</em>. <a href="./spec.html#FR-002">FR-002</a> applies it here, and <a href="#D-002">D-002</a> keeps the signal as evidence rather than a trigger.</td></tr>
+    <tr><td>The rule of three says the second duplication is tolerated and the third is abstracted.</td>
+        <td>—</td>
+        <td><spec-status value="blocked">assumed</spec-status></td>
+        <td>Taken as received practice rather than re-established. It shapes <a href="#D-002">D-002</a>'s refusal to act on the second use, and nothing depends on the exact number being right.</td></tr>
+  </tbody>
+</table>
+</div>
+</section>
+
+
+<section id="approach">
+<h2>5 · Approach</h2>
+
+<p>One element, three independent attributes, two references. A shape rule checks the attributes; a provenance
+rule checks that a vendored component records where it came from and that its reference resolves; a promotion
+operation in core plans every write before making any, and refuses when the destination has moved.</p>
+
+<p>The two questions this spec carried from drafting are answered the same way, and it is worth naming the shared
+reasoning: <strong>reference rather than copy</strong>. A wrapper points at the component it wraps instead of
+repeating its provenance, so one record exists and the copies cannot disagree. A component records the features
+that use it instead of the tool inferring shared use, so the evidence is visible and the judgment stays human.
+Both are the same refusal the corpus makes when it cites a document rather than duplicating it.</p>
+
+<spec-note>
+<p>Promotion is <em>not</em> a file move for every origin. A <code>consumed</code> component has no file in the
+project at all, so promoting it means declaring shared use and relocating nothing —
+<a href="./spec.html#FR-010">FR-010</a> says so explicitly, and it is the case most likely to be missed by an
+implementation that assumes promotion means copying bytes. The plan therefore describes <em>declaration</em>
+updates and, only where a file exists, a move.</p>
+</spec-note>
+
+<spec-arch>
+<figure>
+<svg viewBox="0 0 700 210" role="img" aria-label="Promotion plans before it writes, and refuses on a moved destination">
+  <style>
+    .box { fill: var(--c-surface-raised, #fcfbf7); stroke: var(--c-border, #c4c1bb); stroke-width:1.2; }
+    .label { font: 700 10px Lato, sans-serif; fill: var(--c-text-soft, #4a4a46); letter-spacing:0.06em; text-transform:uppercase; }
+    .body { font: 400 11px "Source Serif 4", Georgia, serif; fill: var(--c-text, #353534); }
+    .arr { stroke: var(--c-muted, #73706d); stroke-width:1.2; fill:none; }
+    .arrh { fill: var(--c-muted, #73706d); }
+  </style>
+  <rect class="box" x="20" y="76" width="164" height="54" rx="4"/>
+  <text class="label" x="34" y="96">a proposal</text>
+  <text class="body"  x="34" y="115">human-initiated</text>
+
+  <rect class="box" x="238" y="76" width="164" height="54" rx="4"/>
+  <text class="label" x="252" y="96">plan</text>
+  <text class="body"  x="252" y="115">reads, never writes</text>
+
+  <rect class="box" x="456" y="20" width="222" height="54" rx="4"/>
+  <text class="label" x="470" y="40">conflict</text>
+  <text class="body"  x="470" y="59">abort whole, write nothing</text>
+
+  <rect class="box" x="456" y="132" width="222" height="54" rx="4"/>
+  <text class="label" x="470" y="152">execute</text>
+  <text class="body"  x="470" y="171">move, and update refs</text>
+
+  <path class="arr" d="M184 103 L238 103" marker-end="url(#a)"/>
+  <path class="arr" d="M402 92 L456 55" marker-end="url(#a)"/>
+  <path class="arr" d="M402 114 L456 152" marker-end="url(#a)"/>
+  <defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path class="arrh" d="M0,0 L10,5 L0,10 z"/></marker></defs>
+</svg>
+<figcaption>The same shape 071 already uses. A conflict on the tenth declaration must not leave nine applied.</figcaption>
+</figure>
+</spec-arch>
+</section>
+
+
+<section id="alternatives">
+<h2>6 · Alternatives considered</h2>
+
+<p>The choice with real alternatives was how a wrapper records what it wraps. Scored on whether the two records
+can disagree, whether a wrapper is visibly not locally owned, and whether it can be read without following a
+reference. 5 is best.</p>
+
+<spec-matrix>
+<div style="overflow-x:auto;">
+<table>
+  <thead>
+    <tr><th>Option</th><th>Cannot disagree</th><th>Wrapper is visibly not local</th><th>Readable standalone</th><th class="score">Total</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Provenance stays at the import only</td><td>5</td><td>1</td><td>3</td><td class="score">9</td></tr>
+    <tr><td>Provenance chains onto the wrapper</td><td>1</td><td>5</td><td>5</td><td class="score">11</td></tr>
+    <tr data-winner><td><code>wraps=</code> reference — chosen</td><td>5</td><td>5</td><td>3</td><td class="score">13</td></tr>
+  </tbody>
+</table>
+</div>
+</spec-matrix>
+
+<p>Chaining scores perfectly on the two criteria a reader notices and worst on the one that bites later: two copies
+of a licence and a version will diverge, and a diverged licence record is worse than none because it looks
+authoritative. The reference loses only on standalone readability, which a rendered view can recover and a
+divergence cannot.</p>
+</section>
+
+
+<section id="decisions">
+<h2>7 · Decisions</h2>
+
+<spec-decision id="D-001" grounding="verified">
+  <h4>D-001 · A wrapper references what it wraps; provenance is recorded once</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>The spec's first open question: recorded twice the copies can disagree, recorded once the wrapper looks locally owned. Both halves are real, and the corpus already resolved the same tension for documents by citing rather than duplicating.</dd>
+    <dt>Decision</dt>     <dd><code>wraps="&lt;name&gt;"</code> on the wrapper. Origin, version and licence live once, on the component being wrapped. A wrapper declaring <code>origin="authored"</code> with a <code>wraps=</code> is visibly resting on somebody else's work, and the reference must resolve or it is an error.</dd>
+    <dt>Consequences</dt> <dd>+ One record, so a licence and a version cannot diverge. + The wrapper never reads as locally owned. − Reading a wrapper's licensing position means following one reference; a rendered view can compose it, but the raw artifact does not. − A wrapping chain deeper than one is unaddressed here — resolvable, and not something this slice needs.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-002" grounding="verified">
+  <h4>D-002 · Scope stays binary, and the second use is evidence rather than a trigger</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>The spec's second open question. The rule of three implies a real gap between the second use and the third, and a third scope value would name it — but nothing could decide when that scope becomes project, so the tool would have added a state it cannot transition. Meanwhile <a href="./spec.html#FR-002">FR-002</a> already forbids acting on detected reuse.</dd>
+    <dt>Decision</dt>     <dd>Two scopes. <code>used-by=</code> records the features that use a component, so a second entry is visible to a person deciding whether to propose promotion. The tool never proposes it.</dd>
+    <dt>Consequences</dt> <dd>+ The rule of three becomes legible without the tool inventing a rung. + Consistent with the refusal already made about inferred relationships. − <code>used-by</code> is hand-maintained and will go stale; it is evidence a human weighs, not a fact anything depends on, and the design says so rather than pretending it is authoritative. − A component genuinely shared by two features sits at feature scope, which reads as understating it.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-003" grounding="verified">
+  <h4>D-003 · Promotion reuses 071's machinery rather than a second implementation</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd><a href="./spec.html#FR-003">FR-003</a> asks for three properties — planned before any write, aborts entirely on conflict, refuses on a moved destination — and states they are "the same three the contract promotion already holds". Reading <code>promote.ts</code> confirms it, including the baseline-versus-current insight recorded there as its headline risk.</dd>
+    <dt>Decision</dt>     <dd>Clone the plan/execute split and the conflict shape. A component promotion plans declaration updates and, where a file exists, a move; a <code>consumed</code> component's promotion relocates nothing.</dd>
+    <dt>Consequences</dt> <dd>+ Atomicity and the refusal come from a reviewed implementation rather than a fresh one. + The two promotions stay legible as the same operation. − Two similar modules that could drift; the shared property is stated in both headers rather than extracted, because a premature abstraction over two callers is its own cost.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-004" grounding="verified">
+  <h4>D-004 · Maturity is the project's existing status vocabulary, unmapped</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd><a href="./spec.html#FR-005">FR-005</a> forbids a parallel vocabulary. The field's usual ladder — experimental, beta, stable, deprecated — maps onto draft, review, accepted, deprecated, and this project already styles all six values.</dd>
+    <dt>Decision</dt>     <dd>Use the six directly. No mapping table, no aliases, no seventh value.</dd>
+    <dt>Consequences</dt> <dd>+ A reader who knows what Draft means on a spec knows what it means on a component. + The stylesheet already renders every value. − "Accepted" is a slightly odd word for a stable component, and an author arriving from a design-system background will look for "stable"; accepted deliberately, because a synonym is the parallel vocabulary the requirement forbids.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-005" grounding="verified">
+  <h4>D-005 · Provenance is recorded, never resolved</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd><a href="./spec.html#FR-009">FR-009</a> wants a superseded version to warn and an unresolvable one to error — which sounds like fetching. It is not: the corpus makes the same split without a network call, by resolving a reference against what the project has committed.</dd>
+    <dt>Decision</dt>     <dd><code>origin-url</code> is provenance a human reads and nothing fetches. "Unresolvable" means the referenced component is not declared in this project; "superseded" means the declaration says so. No network access, consistent with P-11.</dd>
+    <dt>Consequences</dt> <dd>+ Deterministic, offline, and no supply-chain surface. + A dead <code>wraps=</code> fails loudly. − The tool cannot tell you that upstream has moved on, only that your own records disagree; that is a real ceiling and is stated rather than implied.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-006" grounding="verified">
+  <h4>D-006 · An empty component set is never a gap</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd><a href="./spec.html#FR-010">FR-010</a>, and the evidence behind it: a project consuming everything from a library legitimately authors no components. This repository has already shipped the opposite — a section seeded into a population that could never fill it, producing 77 unanswerable gap rows.</dd>
+    <dt>Decision</dt>     <dd>No check reports the absence of components. The rules fire only on a component that is present and malformed, which is the same scope discipline every rule in this slice holds.</dd>
+    <dt>Consequences</dt> <dd>+ A consuming project is not told it is incomplete for being what it is. − No coverage signal exists, so nothing notices a project that <em>should</em> have declared a component and did not; that is deliberate, and the same trade 096 made.</dd>
+  </dl>
+</spec-decision>
+</section>
+
+
+<section id="project-structure">
+<h2>8 · Project structure</h2>
+
+<pre><code>packages/schema/src/
+  visual-vocabulary.ts                ~ component element, scopes, origins, maturity re-export
+  rules/component-shape.ts            + scope/maturity/origin present and recognised
+  rules/component-provenance.ts       + vendored provenance, wraps= resolves, superseded warns
+
+packages/core/src/visual/
+  promote-component.ts                + plan/execute, cloned from contracts/promote.ts
+
+assets/spec.css                       + component card; the three properties surfaced separately
+
+packages/schema/test/                 + both rules, red first
+packages/core/test/                   + promotion executed against a fixture project
+</code></pre>
+</section>
+
+
+<section id="risks">
+<h2>9 · Risks &amp; mitigations</h2>
+
+<div style="overflow-x:auto;">
+<table>
+  <thead><tr><th>Risk</th><th>Likelihood</th><th>Impact</th><th>Mitigation</th></tr></thead>
+  <tbody>
+    <tr><td>An implementation assumes promotion moves a file, and breaks for a consumed component.</td><td>M</td><td>M</td><td>Called out in §5 and given its own test. It is the case most easily missed, because every other origin does involve a file.</td></tr>
+    <tr><td><code>used-by</code> goes stale and somebody treats it as authoritative.</td><td>H</td><td>L</td><td>Stated in <a href="#D-002">D-002</a> as evidence rather than fact. Nothing computes from it, so a stale entry misleads a reader and breaks no check.</td></tr>
+    <tr><td>The two promotion modules drift.</td><td>M</td><td>M</td><td>Accepted in <a href="#D-003">D-003</a>. Both headers state the shared property; extracting a common abstraction over two callers is the larger risk.</td></tr>
+    <tr><td>A partial promotion leaves declarations pointing at a location the component has left.</td><td>L</td><td>H</td><td>The whole reason for plan-then-execute. Tested by forcing a conflict mid-plan and asserting nothing was written.</td></tr>
+  </tbody>
+</table>
+</div>
+</section>
+
+
+<section id="complexity">
+<h2>10 · Complexity tracking</h2>
+<p>Anywhere this plan introduces complexity not strictly required by the spec, justify it here.</p>
+
+<spec-assumption>
+<p>Two rules rather than one. Shape and provenance are separable obligations with different audiences — an author
+gets the first wrong while writing, a reviewer cares about the second at licence-audit time — and a finding that
+names which was missed is actionable where "malformed component" is not. It follows the same reasoning 095 used
+for splitting three.</p>
+</spec-assumption>
+
+<spec-assumption>
+<p>No exemplar component is authored in this slice. The currency-converter is a single-feature project, so every
+component in it would sit at feature scope and promotion could not be demonstrated — a fixture project in the
+tests exercises it honestly, and inventing a second exemplar feature to show promotion would be building a
+demonstration rather than a demonstration of something.</p>
+</spec-assumption>
+</section>
+
+
+<section id="questions">
+<h2>11 · Open questions</h2>
+<spec-questions>
+<p>None outstanding. The spec's two carried questions were the substance of this design's first two decisions, and
+both resolve the same way — reference rather than copy. The promotion machinery, the maturity vocabulary and the
+provenance severity split were all settled by reading code that already exists rather than by asking.</p>
+</spec-questions>
+</section>
+
+
+<section id="changelog">
+<h2>12 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-08-12">12 Aug 2026</time><span>Initial plan. Six decisions. The two questions the spec carried from drafting are resolved by one shared move — reference rather than copy — which is the same refusal the corpus makes when it cites a document instead of duplicating it. Promotion reuses 071's plan/execute machinery rather than a second implementation, including its baseline-versus-current insight, which transfers unchanged. The consumed-component case is flagged in the approach because it is the one an implementation is most likely to break: every other origin involves a file, and that one does not.</span></li>
+  <li><time datetime="2026-08-12">12 Aug 2026</time><span>Status flipped Draft → Accepted on 12 Aug 2026 — zero remaining unchecked tasks; tests verified passing per author confirmation. Sibling bundle flipped together.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  097-visual-component-lifecycle · Design · authored 2026-08-12
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>
