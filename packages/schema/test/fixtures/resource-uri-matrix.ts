@@ -131,4 +131,32 @@ export const RESOURCE_URI_MATRIX: readonly ResourceUriFixture[] = [
     expected:
       'spectastic://spectastic/corpus/spectastic-concepts/001-foundations?edition=2026-07-26#settlement-windows',
   },
+  // unit — added when the kind had already shipped for a while without
+  // reaching this matrix. FR-008's guarantee is stated "for every kind", and
+  // `unit` was widened into `ResourceKind`/`KNOWN_KINDS` (079) without a
+  // fixture here, so the round-trip property was asserted for three of the
+  // four kinds that existed and claimed for all of them. Found while
+  // grounding a fifth kind; the gap is the reason that grounding happened.
+  {
+    label: 'unit, bare',
+    project: 'spectastic',
+    kind: 'unit',
+    name: 'core',
+    expected: 'spectastic://spectastic/unit/core',
+  },
+  {
+    label: 'unit, owner-qualified',
+    project: 'spectastic/spectastic',
+    kind: 'unit',
+    name: 'core',
+    expected: 'spectastic://spectastic/spectastic/unit/core',
+  },
+  {
+    label: 'unit, anchor',
+    project: 'spectastic/spectastic',
+    kind: 'unit',
+    name: 'core',
+    anchor: 'exports',
+    expected: 'spectastic://spectastic/spectastic/unit/core#exports',
+  },
 ];
