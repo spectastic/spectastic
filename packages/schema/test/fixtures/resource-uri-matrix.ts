@@ -159,4 +159,27 @@ export const RESOURCE_URI_MATRIX: readonly ResourceUriFixture[] = [
     anchor: 'exports',
     expected: 'spectastic://spectastic/spectastic/unit/core#exports',
   },
+  // The two edition cases, added after the first pass covered `unit` for the
+  // bare and anchor combinations only. FR-008 requires the round-trip "for
+  // every kind AND every combination of edition pin and anchor" — a
+  // cross-product — so covering a kind is not the same as covering it, and
+  // `unit` was the one kind counted present while two of its four cells were
+  // empty.
+  {
+    label: 'unit, edition',
+    project: 'spectastic/spectastic',
+    kind: 'unit',
+    name: 'core',
+    edition: '2026-07-26',
+    expected: 'spectastic://spectastic/spectastic/unit/core?edition=2026-07-26',
+  },
+  {
+    label: 'unit, edition + anchor',
+    project: 'spectastic/spectastic',
+    kind: 'unit',
+    name: 'core',
+    edition: '2026-07-26',
+    anchor: 'exports',
+    expected: 'spectastic://spectastic/spectastic/unit/core?edition=2026-07-26#exports',
+  },
 ];
