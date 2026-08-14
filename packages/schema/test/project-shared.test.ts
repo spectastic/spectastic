@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  RESOURCE_KINDS,
   classifyProjectId,
   contractResourceUri,
   corpusResourceUri,
@@ -7,7 +8,7 @@ import {
   resourceUri,
   specResourceUri,
 } from '../src/project-shared.js';
-import { RESOURCE_URI_MATRIX } from './fixtures/resource-uri-matrix.js';
+import { RESOURCE_URI_MATRIX, missingCoverage, uncoveredPairs } from './fixtures/resource-uri-matrix.js';
 
 /**
  * 067-spec-project-identity T-010: red-first tests for the shared project-id
@@ -177,6 +178,52 @@ describe('parseResourceUri — round-trip (078 T-210, FR-008/SC-002)', () => {
 });
 
 /**
+ * 078-federated-resource-uri T-1003: the round-trip coverage is derived from
+ * the kind declaration (FR-013/FR-014), not counted by hand.
+ *
+ * The first two tests are the guard proper. The third and fourth are the
+ * "prove it before trusting it" step 105's triage T-014 named as a discipline
+ * the removed arithmetic tests never got: a check that only ever runs against
+ * data written to satisfy it is evidence of nothing. Both hand a WIDENED kind
+ * list or a matrix with a case removed to `missingCoverage` directly — never
+ * `RESOURCE_KINDS`/`RESOURCE_URI_MATRIX` — so the assertion is shown catching
+ * a gap rather than merely returning `[]` because nothing is missing today.
+ */
+describe('round-trip coverage is derived from the kind declaration (078 FR-013/FR-014, T-1003)', () => {
+  it('the real matrix covers every recognised kind against every combination', () => {
+    expect(uncoveredPairs()).toEqual([]);
+  });
+
+  it('a kind absent from the matrix is unrecognised, so a stray fixture cannot fake coverage', () => {
+    expect(RESOURCE_KINDS).not.toContain('screen');
+  });
+
+  it('catches a widened declaration with no matching fixtures — the failure a set-derived guard would miss', () => {
+    // A kind added to the declaration and never given a fixture. This is 079's
+    // failure exactly: `unit` widened one declaration and nothing here noticed
+    // for two specs' worth of time.
+    const widened = [...RESOURCE_KINDS, 'screen'];
+    expect(missingCoverage(widened, RESOURCE_URI_MATRIX)).toEqual([
+      'screen:bare',
+      'screen:anchor',
+      'screen:edition',
+      'screen:edition+anchor',
+    ]);
+  });
+
+  it('catches one missing combination on an otherwise-covered kind — the exact shape unit shipped in', () => {
+    // unit had bare and anchor fixtures and neither edition case (triage
+    // T-014's finding on the sibling FR-014). Removing just its edition+anchor
+    // fixture reproduces that shape and must flag only that one cell — proof
+    // the guard measures the pair, not merely whether a kind appears at all.
+    const withoutOneCombination = RESOURCE_URI_MATRIX.filter(
+      (f) => !(f.kind === 'unit' && f.edition !== undefined && f.anchor !== undefined),
+    );
+    expect(missingCoverage(RESOURCE_KINDS, withoutOneCombination)).toEqual(['unit:edition+anchor']);
+  });
+});
+
+/**
  * 078-federated-resource-uri T-201: red-first tests for kind detection
  * (FR-005) and the never-throws/no-partial-result contract on malformed and
  * unknown-kind input (FR-007).
@@ -229,11 +276,14 @@ describe('parseResourceUri — kind detection and failure contract (078 T-210, F
 /**
  * 079-unit-dependency-edge T-010: the `unit` resource kind, red before T-011.
  *
- * The failure this guards is named in the design's grounding table and again in
- * D-004: `ResourceKind` and `KNOWN_KINDS` are two separate declarations of the
- * same set, so widening one without the other yields a kind that composes
- * happily and then fails to parse — a coordinate that looks minted and is not.
- * Both directions are asserted here for that reason.
+ * The failure this originally guarded against is named in the design's
+ * grounding table and again in D-004: `ResourceKind` and `KNOWN_KINDS` were
+ * two separate declarations of the same set, so widening one without the
+ * other yielded a kind that composed happily and then failed to parse — a
+ * coordinate that looked minted and was not. That is a stale description of
+ * the code now (078 FR-013 collapsed the two declarations into one — see
+ * `project-shared.ts`), kept here as the historical reason `unit` gets both
+ * a compose test and a parse test rather than only one.
  *
  * The scoped-name case is the one the spike settled (design §4): a package name
  * like `@spectastic/core` carries a slash, so it occupies two path segments.
@@ -245,7 +295,7 @@ describe('the unit resource kind (079 T-010, FR-001)', () => {
     expect(resourceUri('spectastic/spectastic', 'unit', 'core')).toBe('spectastic://spectastic/spectastic/unit/core');
   });
 
-  it('parses a unit coordinate back — the half a union-only widening would miss', () => {
+  it('parses a unit coordinate back — the half a union-only widening used to miss', () => {
     const result = parseResourceUri('spectastic://spectastic/spectastic/unit/core');
     expect(result.ok).toBe(true);
     expect(result.ok && result.value.kind).toBe('unit');

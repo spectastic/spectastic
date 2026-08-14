@@ -1,4 +1,4 @@
-import type { ResourceKind } from '../../src/project-shared.js';
+import { RESOURCE_KINDS, type ResourceKind } from '../../src/project-shared.js';
 
 /**
  * The coordinate fixture matrix (078-federated-resource-uri, T-001): every
@@ -183,3 +183,54 @@ export const RESOURCE_URI_MATRIX: readonly ResourceUriFixture[] = [
     expected: 'spectastic://spectastic/spectastic/unit/core?edition=2026-07-26#exports',
   },
 ];
+
+/**
+ * The four combinations FR-008 states — edition pin present or absent,
+ * crossed with anchor present or absent. Kept as a literal count rather than
+ * derived: this set is closed by this spec's own grammar (078 SC-002), not
+ * by a sibling spec the way `RESOURCE_KINDS` is, so there is nothing else
+ * for it to drift out of sync with.
+ */
+export const COMBINATIONS = ['bare', 'anchor', 'edition', 'edition+anchor'] as const;
+export type Combination = (typeof COMBINATIONS)[number];
+
+function combinationOf(f: ResourceUriFixture): Combination {
+  if (f.edition !== undefined && f.anchor !== undefined) return 'edition+anchor';
+  if (f.edition !== undefined) return 'edition';
+  if (f.anchor !== undefined) return 'anchor';
+  return 'bare';
+}
+
+/**
+ * Every `kind:combination` pair `fixtures` does NOT cover, for each of
+ * `kinds`. Pure and parameterised — never reads `RESOURCE_KINDS` or
+ * `RESOURCE_URI_MATRIX` directly — so a test can hand it a WIDENED kind list
+ * against the real fixtures and watch a gap appear, which is the only way to
+ * confirm the check catches anything rather than merely running (T-1003).
+ */
+export function missingCoverage(kinds: readonly string[], fixtures: readonly ResourceUriFixture[]): string[] {
+  const covered = new Set(fixtures.map((f) => `${f.kind}:${combinationOf(f)}`));
+  const missing: string[] = [];
+  for (const kind of kinds) {
+    for (const combination of COMBINATIONS) {
+      const pair = `${kind}:${combination}`;
+      if (!covered.has(pair)) missing.push(pair);
+    }
+  }
+  return missing;
+}
+
+/**
+ * Every `kind:combination` pair the real matrix does NOT cover, derived from
+ * {@link RESOURCE_KINDS} rather than a hand-maintained count (078
+ * FR-013/FR-014). Empty means every recognised kind is exercised against
+ * every combination FR-008 requires.
+ *
+ * This is the mechanism, not the fixtures: widening `RESOURCE_KINDS` without
+ * adding matching entries above makes this return a non-empty list rather
+ * than nothing noticing, which is what let `unit` sit uncovered from 079
+ * until it was found by hand. `project-shared.test.ts` asserts this is empty.
+ */
+export function uncoveredPairs(): string[] {
+  return missingCoverage(RESOURCE_KINDS, RESOURCE_URI_MATRIX);
+}

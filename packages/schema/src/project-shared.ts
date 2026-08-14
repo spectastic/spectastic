@@ -51,11 +51,19 @@ export function classifyProjectId(value: string): ProjectIdShape {
  * (D-004), naming a module or a whole project so a dependency edge can address
  * both ends the same way.
  *
- * This union and `KNOWN_KINDS` below are two declarations of one set. Widening
- * either alone yields a kind that composes and then fails to parse — a
- * coordinate that looks minted and is not — so they move together.
+ * ONE declaration (078 FR-013). Until this collapse the static type and the
+ * runtime set below were two separate enumerations of the same members,
+ * documented as "moving together" with nothing that made them: 079 widened
+ * this list and the runtime set that gates the parser silently kept the old
+ * one, which is exactly the failure the docstring warned about and did
+ * nothing to prevent. `ResourceKind` and `KNOWN_KINDS` are now both derived
+ * from this array, so there is one place to widen and one way to get it
+ * wrong at compile or test time rather than none.
  */
-export type ResourceKind = 'spec' | 'contract' | 'corpus' | 'unit';
+export const RESOURCE_KINDS = ['spec', 'contract', 'corpus', 'unit'] as const;
+
+/** Derived from {@link RESOURCE_KINDS} — never restated as a literal union. */
+export type ResourceKind = (typeof RESOURCE_KINDS)[number];
 
 /**
  * Compose the canonical, federation-unique resource URI for a project resource
@@ -156,9 +164,10 @@ export function corpusResourceUri(
   return resourceUri(marketplace.toLowerCase(), 'corpus', `${plugin}/${slug}`, anchor, edition);
 }
 
-/** The closed set of kinds `parseResourceUri` recognises — kept in sync with
- * `ResourceKind` by construction rather than duplicated as a literal union. */
-const KNOWN_KINDS = new Set<ResourceKind>(['spec', 'contract', 'corpus', 'unit']);
+/** The closed set of kinds `parseResourceUri` recognises. Built from
+ * {@link RESOURCE_KINDS} rather than a second literal — the whole point of
+ * the collapse is that there is nowhere left to enumerate the members twice. */
+const KNOWN_KINDS: ReadonlySet<ResourceKind> = new Set(RESOURCE_KINDS);
 
 /** A `spectastic://` URI parsed back into the coordinate it names
  * (078-federated-resource-uri, D-002). `project` is the reconstructed
