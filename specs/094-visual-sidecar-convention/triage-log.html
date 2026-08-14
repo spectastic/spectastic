@@ -121,6 +121,32 @@
     <dt>Fix</dt><dd>Decide whether absence can be view content at all, given the drift check compares the whole artifact. It probably cannot.</dd></dl>
 </spec-triage>
 
+
+<spec-triage id="T-005" layer="implementation">
+  <header>
+    <h4>NFR-001's zero-directory-walks budget is spent by shipped code, and was still being spent as a reason</h4>
+    <span class="meta">
+      <span class="layer-pill">Implementation</span>
+      <span class="regen" data-result="pass">code</span>
+    </span>
+  </header>
+
+  <p class="headline">Debugging whether 093 could enumerate screens without breaking this spec's budget, root cause was that the budget is already broken — the same validate pass walks the declared screens directory unconditionally; regeneration <strong>passes</strong>, because <a href="./spec.html#NFR-001">NFR-001</a> states the bound plainly and the materialiser simply does not honour it.</p>
+
+  <dl>
+    <dt>Expected</dt> <dd><a href="./spec.html#NFR-001">NFR-001</a>: path resolution <em>"MUST stat only the declared paths: at most 1 filesystem call per declaration, and at most 0 directory walks, so that a project with many specs pays a cost linear in declarations rather than in files."</em></dd>
+    <dt>Actual</dt>   <dd><code>materialiseVisualViews</code> (<span class="path">packages/core/src/visual/materialise-view.ts</span>, lines 190–196) stats the declared screens path, and where it is a directory calls <code>fs.readdir</code> and then <code>fs.readFile</code> on <em>every</em> <code>.html</code> file it finds. That is one walk plus <em>n</em> reads per declaration — cost linear in files, which is the shape the budget exists to forbid. It runs unconditionally from <code>validate.ts:979</code> and again from <code>design.ts:108</code>, so an ordinary validate pays it.</dd>
+    <dt>Diagnosis</dt><dd>A budget stated in a requirement and never given a check. Nothing counts filesystem calls, so the violation is invisible until someone reads both files together — which happened only because 093's correction <em>cited this budget as its justification</em> for giving up an enumerating check. So the capability was traded away to protect a bound that had already been exceeded, and the trade is now recorded in a live spec as a deliberate refusal. Independent of <a href="#T-004">T-004</a> and of how 093 is resolved: the violation is there either way.</dd>
+    <dt>Fix</dt>      <dd>Decide which is wrong — the bound or the materialiser — and make them agree. If the walk is legitimate (a view has to project what the screens contain, and a directory-valued path is explicitly permitted by <a href="./spec.html#FR-005">093 FR-005</a>), NFR-001 needs amending to state the real bound and say why. If the bound is right, the materialiser needs the declared file list rather than a directory read. Either way it is a propose against this spec, not a patch, and it should land before anything else cites this budget again.</dd>
+  </dl>
+
+  <details>
+    <summary>Deep dive — cross-spec, and why no check caught it</summary>
+    <p><strong>Cross-spec.</strong> The bound is 094's, the violating code serves 093's declaration and 099's view, and the requirement that permits a directory-valued screens path is <a href="../093-design-visual-section/spec.html#FR-005">093 FR-005</a>. Any fix has to name which spec owns the cost, which is a question none of the three currently answers.</p>
+    <p><strong>Why nothing caught it.</strong> Performance budgets in this estate are prose in an NFR; <code>validate</code> reads artifacts and cannot count another module's syscalls. That is the same P-8 ceiling recorded elsewhere — a guarantee living in prose — and it is worth noting the estate has <em>two</em> instances now, this one and the fold's path handling (<a href="../000-spectastic/triage-log.html#T-025">meta-spec T-025</a>). Not promoted here; named so a third has somewhere to point.</p>
+  </details>
+</spec-triage>
+
 </spec-triage-log>
 </section>
 
@@ -130,6 +156,7 @@
 <spec-changelog>
 <ol>
   <li><time datetime="2026-08-13">13 Aug 2026</time><span>T-001 to T-003 added from an independent adversarial pass on the applied <code>2026-08-13-a-place-for-a-render</code>. The headline is that FR-009 contradicts FR-005 outright and both are must-tier — my own pass mitigated the wrong clause of a two-clause sentence.</span></li>
+  <li><time datetime="2026-08-14">14 Aug 2026</time><span>T-005 added — <a href="./spec.html#NFR-001">NFR-001</a>'s "at most 0 directory walks" is violated by <code>materialiseVisualViews</code>, which readdirs the declared screens path and reads every file in it, unconditionally, from an ordinary validate. <code>implementation</code>, regen <code>pass</code>. Found while grounding 093/T-002, whose correction cited this exact budget as its reason for giving up an enumerating check — so the capability was traded to protect a bound already exceeded. Independent of T-004 and of how 093 resolves. Needs a propose deciding whether the bound or the materialiser is wrong.</span></li>
 </ol>
 </spec-changelog>
 </section>
