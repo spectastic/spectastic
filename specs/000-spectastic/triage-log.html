@@ -931,6 +931,33 @@
   </details>
 </spec-triage>
 
+
+<spec-triage id="T-025" layer="implementation" data-status="done">
+  <header>
+    <h4>The fold deepens the archived proposal's links and folds its §6 tasks at the old depth</h4>
+    <span class="meta">
+      <span class="layer-pill">Implementation</span>
+      <span class="regen" data-result="pass">code</span>
+    </span>
+  </header>
+
+  <p class="headline">Debugging why a just-folded task's link 404s, root cause was that the apply kernel rewrites relative paths for the proposal it archives and not for the §6 tasks it copies into <code>tasks.html</code> — which move the opposite way, three levels shallower; fixed by rewriting the two links in place; regeneration <strong>passes</strong>, because <a href="../088-change-management/spec.html#REQ-CHANGE-006">REQ-CHANGE-006</a> already requires the fold and the path handling is an implementation detail it does not need to describe.</p>
+
+  <dl>
+    <dt>Expected</dt> <dd>A link in a §6 task resolves after the fold, the way every link in the archived proposal does.</dd>
+    <dt>Actual</dt>   <dd>A task citing <code>href="../../../078-federated-resource-uri/spec.html"</code> — correct from <code>changes/&lt;slug&gt;/</code> where it was authored — was copied verbatim into <code>specs/095-visual-element-vocabulary/tasks.html</code>, where it points outside the repository. The same apply run deepened the archived proposal's copies to <code>../../../../</code> correctly, so the two halves of one operation disagree.</dd>
+    <dt>Diagnosis</dt><dd>The kernel has one path-rewriting step and it serves the archive move, which goes <em>deeper</em>. The fold goes <em>shallower</em> — from <code>specs/&lt;id&gt;/changes/&lt;slug&gt;/</code> to <code>specs/&lt;id&gt;/</code> — and gets none. Latent since the fold shipped rather than newly broken: a repo-wide scan found these two links are the <strong>only</strong> instance across every folded phase in the estate, because no §6 task had ever carried a cross-spec link before. Nothing catches it — <code>validate</code> reports no findings on the file, since no rule resolves hrefs.</dd>
+    <dt>Fix</dt>      <dd>Rewrite the two links in <code>specs/095-visual-element-vocabulary/tasks.html</code> now. Durably, the fold should apply the inverse of the archive rewrite; that is a change to <code>packages/core/src/commands/apply.ts</code> and belongs in its own propose against <a href="../088-change-management/spec.html">088</a> rather than riding along here.</dd>
+    <dt>Fixed</dt>    <dd>The two links corrected to <code>../078-federated-resource-uri/…</code> and both confirmed to resolve. The kernel is untouched — one instance, found the day it was created, does not yet justify amending the fold contract, and the durable fix is named above so a second instance has somewhere to point. Worth noting the asymmetry that hid it: the archive rewrite exists because a proposal <em>moves</em>, while the fold <em>copies</em>, and copying across depths was simply never the case anyone had.</dd>
+  </dl>
+
+  <details>
+    <summary>Deep dive — why this surfaced now, and the cheap mitigation not taken</summary>
+    <p><strong>Self-inflicted, and worth saying so.</strong> The links existed because the §6 tasks were deliberately re-grounded before apply — one task was rewritten to say the 078 sibling had already landed, <em>with a link to its archive</em>. Re-grounding the task list was right (it avoided the <a href="#T-024">T-024</a> defect of folding three dead tasks), and it is what exposed this. A proposal that had left its §6 stale would not have hit it.</p>
+    <p><strong>The cheap mitigation is worse.</strong> "Do not put relative links in §6 tasks" would work and is the wrong rule: a task explaining <em>why</em> it is already done is more useful with the link than without, and a convention nothing enforces is the guarantee-in-prose posture <a href="../../principles.html#P-8">P-8</a> rejects. Better to leave the links and fix the fold when a second case earns it.</p>
+  </details>
+</spec-triage>
+
 </spec-triage-log>
 </section>
 
@@ -939,6 +966,7 @@
 <h2>Change log</h2>
 <spec-changelog>
 <ol>
+    <li><time datetime="2026-08-14">14 Aug 2026</time><span>T-025 added and closed — the apply kernel deepens the archived proposal's relative paths and folds its §6 tasks into <code>tasks.html</code> at the authoring depth, so a task carrying a cross-spec link points outside the repo. <code>implementation</code>, regen <code>pass</code>. Latent since the fold shipped: a repo-wide scan found the two links in 095's new phase are the only instance in the estate, because no §6 task had ever carried one. Links corrected; the kernel fix is named for a second instance rather than taken now. Surfaced by re-grounding a §6 task list before apply — the practice that avoids <a href="#T-024">T-024</a> is what exposed it.</span></li>
     <li><time datetime="2026-08-14">14 Aug 2026</time><span>T-024 added — <a href="../088-change-management/spec.html#REQ-CHANGE-006">REQ-CHANGE-006</a>'s fold has no supersession story, so when a later applied change corrects the requirement an earlier folded phase was written against, the earlier phase's tasks stay unchecked and unmarked — a queue where an unchecked box no longer means work is owed. <code>spec</code> layer, regen <code>fail</code> — nothing in a proposal declares what it supersedes, so no implementation could infer it. Found when a <code>/spectastic.implement --all</code> drain on <a href="../105-design-source-import/tasks.html">105</a> reached <code>T-1100</code>–<code>T-1103</code>, whose <code>T-1101</code> instructs writing through a mechanism the very next day's proposal established does not exist. Fix: a propose against 088 letting a proposal name what it supersedes, with the fold marking it; the 105 unblock is separate and smaller.</span></li>
     <li><time datetime="2026-08-01">01 Aug 2026</time><span>T-023 closed — <span class="path">templates/design.html</span>'s three self-label sites corrected; <a href="../078-federated-resource-uri/design.html">078</a>'s matching sites fixed; the footer sweep found a third, uncounted stale shape (<code>&lt;spec-id&gt; · plan · authored …</code>, 3 files) alongside the anticipated 61 — 62 + 9 + 3 = 74 is the true accounting. A before/after full-corpus <code>validate</code> shows the identical 10 pre-existing findings.</span></li>
     <li><time datetime="2026-08-01">01 Aug 2026</time><span>T-022 closed — <span class="path">templates/tasks.html</span> and <span class="path">templates/inbox.html</span> corrected, the live <span class="path">inbox.html</span> matched, and all 74 <code>specs/*/tasks.html</code> swept. Full-corpus <code>validate</code> unchanged from baseline (10 pre-existing, unrelated findings).</span></li>
