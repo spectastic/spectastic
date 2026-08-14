@@ -33,8 +33,11 @@
  * folder and revalidating, which is how it is tested rather than asserted.
  */
 
+import { CHANGE_CLASSES, type ChangeClass } from '@spectastic/schema/visual-vocabulary';
+
 import type { FileSystem } from '../types.js';
 import type { DesignSourceFetcher } from './source-fetcher.js';
+import { assertTokenSetVersion } from './token-set-guard.js';
 
 /** Fields the export owns, which are re-derived on every import. Everything
  *  else is hand-edit-protected (design D-002). */
@@ -105,7 +108,8 @@ export interface ImportLedger {
  * structural comparison rather than counting, so it is named here rather than
  * half-done.
  */
-export interface TokenCandidate {
+/** Fields every candidate carries, confirmed or not. */
+interface TokenCandidateBase {
   value: string;
   /** How many times it appears across the landed material. A value used once
    *  is far more likely to be incidental than one used thirty times. */
@@ -120,11 +124,55 @@ export interface TokenCandidate {
    *  project and may not be anywhere — and "go and look" must never be silent
    *  advice about a file that is gone. Raised by this spec's own risk pass. */
   fromUnlanded: boolean;
-  /** FR-005 — derived, never declared, and never outranking a declared value. */
+  /** FR-005 — derived, never declared, and never outranking a declared value
+   *  while unconfirmed. Fixed `true` in BOTH branches of the union below: the
+   *  last clause of FR-005 requires the record that a value was derived to
+   *  remain even after confirmation, so this flag never reverts to false — the
+   *  branch on `confirmed` is what actually changes what the candidate may do. */
   inferred: true;
-  /** Presented for confirmation. Nothing here is in the token set. */
+}
+
+/** Presented for confirmation. Nothing here is in the token set yet. */
+export interface UnconfirmedTokenCandidate extends TokenCandidateBase {
   confirmed: false;
 }
+
+/**
+ * A confirmed candidate, per FR-016: the write it authorises MUST carry a name
+ * and a change class the confirmer supplies, and the tool MUST NOT supply
+ * either — so both are required fields here rather than optional ones a caller
+ * could omit.
+ */
+export interface ConfirmedTokenCandidate extends TokenCandidateBase {
+  confirmed: true;
+  /** Supplied by the confirmer. Never invented — see the docstring above on
+   *  why a candidate is deliberately unnamed until this point. */
+  name: string;
+  /** Also the confirmer's, not the tool's (own-the-write correction, 098 FR-005):
+   *  a release's change class is the producer's claim, and a tool that picked
+   *  one would be asserting something its producer never said. */
+  changeClass: string;
+}
+
+/**
+ * A value read out of an emitted artifact rather than out of design data.
+ *
+ * Deliberately UNNAMED while unconfirmed. Naming it `color.surface` would be
+ * the tool inventing the one thing the human is uniquely able to supply — a
+ * token name is a decision about meaning, and a wrong one is worse than none
+ * because it looks decided. So a candidate carries what was observed and
+ * where, and the naming happens at confirmation — which is also the moment
+ * `TokenCandidate` stops being only the unconfirmed shape.
+ *
+ * Recorded ceiling: a stronger signal exists and is not used yet. A literal
+ * appearing at the same structural position in a light subtree and a dark one
+ * is a MODE PAIR rather than two unrelated colours, which is exactly what a
+ * real export looks like — see triage T-009, where forty-odd literals were
+ * hand-duplicated across two otherwise-identical copies. Pairing them needs
+ * structural comparison rather than counting, so it is named here rather than
+ * half-done.
+ */
+export type TokenCandidate = UnconfirmedTokenCandidate | ConfirmedTokenCandidate;
 
 export class ImportIdentityError extends Error {}
 
@@ -400,7 +448,7 @@ const COLOUR_RE = /#[0-9a-fA-F]{3,8}\b/g;
  */
 export function deriveTokenCandidates(
   files: readonly { name: string; body: string; landed: boolean }[],
-): TokenCandidate[] {
+): UnconfirmedTokenCandidate[] {
   const seen = new Map<string, { occurrences: number; sources: Set<string>; fromUnlanded: boolean }>();
   for (const { name, body, landed } of files) {
     for (const raw of body.match(COLOUR_RE) ?? []) {
@@ -453,7 +501,9 @@ export function renderManifest(identity: string, ledger: ImportLedger): string {
     '<td><strong>INFERRED — UNCONFIRMED</strong></td></tr>';
 
   const note = (heading: string, body: string, items: readonly string[]): string =>
-    items.length === 0 ? '' : `<h2>${heading}</h2><p>${body}</p><ul>${items.map((i) => `<li>${escapeHtml(i)}</li>`).join('')}</ul>`;
+    items.length === 0
+      ? ''
+      : `<h2>${heading}</h2><p>${body}</p><ul>${items.map((i) => `<li>${escapeHtml(i)}</li>`).join('')}</ul>`;
 
   return `<!doctype html>
 <html lang="en">
@@ -473,15 +523,277 @@ export function renderManifest(identity: string, ledger: ImportLedger): string {
 </table>
 
 <h2>Token candidates</h2>
-<p>Values observed in the material this import read, offered for confirmation. A source marked <strong>not landed</strong> was read but deliberately not copied into the project — so it is in the export and not here, and the export may since have been deleted. <strong>None of these is in the token set</strong> and none carries a name — naming a token is a decision about meaning, and a wrong name is worse than no name because it looks decided. A confirmed candidate is authored into the token set by hand; a declared value always outranks anything here.</p>
+<p>Values observed in the material this import read, offered for confirmation. A source marked <strong>not landed</strong> was read but deliberately not copied into the project — so it is in the export and not here, and the export may since have been deleted. <strong>None of these is in the token set</strong> and none carries a name — naming a token is a decision about meaning, and a wrong name is worse than no name because it looks decided. Confirming a candidate writes it into the token set under a name and a change class the confirmer supplies — never the tool — and moves the set's version under its own bump policy; a candidate that has not been confirmed never outranks a declared value.</p>
 <table>
 <thead><tr><th>Value</th><th>Occurrences</th><th>Seen in</th><th>Status</th></tr></thead>
 <tbody>${ledger.tokenCandidates.map(candidate).join('')}</tbody>
 </table>
 ${note('Not landed', 'These carry a runtime. Landing them verbatim would break the project&#39;s own artifact rules, so they are reported here instead.', ledger.unhandled)}
-${note('Refused', 'A licence forbids landing a copy.', ledger.refused.map((r) => `${r.name} — ${r.reason}`))}
+${note(
+  'Refused',
+  'A licence forbids landing a copy.',
+  ledger.refused.map((r) => `${r.name} — ${r.reason}`),
+)}
 ${note('No longer in the export', 'Present here, absent from the latest export. Reported, never deleted — an element missing from an export is as likely to be an export setting as a deletion.', ledger.orphaned)}
 </body>
 </html>
 `;
+}
+
+// --- confirming a candidate, per FR-016 (applied change 2026-08-14-own-the-write) ---
+//
+// 098 ships a reader and a compare-and-swap guard, never a writer — and its
+// own out-of-scope defers "importing a token set from a design tool, and what
+// its version means on arrival" here in writing. So this spec owns the write,
+// reusing 098's guard rather than reimplementing it, and stating the
+// properties the write must satisfy (version moves under the bump policy,
+// a stale set is refused, the record survives) rather than naming a mechanism
+// that does not exist. `name`, `changeClass` and `toVersion` are all input
+// parameters the caller supplies from the confirmer — the tool invents none.
+//
+// THE PRODUCED VERSION IS AN INPUT, NOT A COMPUTATION (triage T-014).
+//
+// The first implementation derived it: `bumpVersion(from, tier)`, standard
+// semver arithmetic. That was drift, and the requirement was clear enough to
+// have caught it — FR-016 says the version moves "under the versioning
+// policy", and 098 FR-001 deliberately keeps that policy as the token set
+// element's OWN PROSE, precisely so a human reads it at the moment of
+// bumping. Prose cannot be discharged mechanically, so arithmetic was a
+// different policy wearing the same name, and a project whose stated policy
+// diverges would have got a number its producer never declared.
+//
+// Refusing to author one is the conservative half of the open question in
+// triage T-013 (who supplies the produced version). It is also reversible: if
+// that card later decides a policy can be read mechanically, deriving becomes
+// additive, whereas an invented version already written into a token set is
+// not recoverable from.
+
+/** Locates the `<spec-token-set …>` opening tag, whose `version=` attribute a
+ *  bump must update and inside which a new `<spec-release>` lands. */
+const TOKEN_SET_OPEN_TAG = /<spec-token-set\b[^>]*>/i;
+
+/**
+ * Bump the live `visual/tokens.html` text: move `version=` to `to`, and
+ * record the transition as a `<spec-release>` (098's own element, read by
+ * `readTokenSet` and checked by `token-set-shape` — nothing new is invented).
+ *
+ * `binds-from=` is left untouched. It anchors which version work already
+ * accepted stays conformant to (098 FR-002), and nothing about confirming one
+ * token argues for moving that anchor — least of all silently, inside a write
+ * whose job is a single value.
+ */
+export function applyTokenSetRelease(
+  liveHtml: string,
+  from: string,
+  to: string,
+  tier: ChangeClass,
+  name: string,
+): string {
+  const match = TOKEN_SET_OPEN_TAG.exec(liveHtml);
+  if (match === null) {
+    throw new Error('token-set write: no <spec-token-set> element found to bump.');
+  }
+  const openTag = match[0];
+  const boundOpenTag = openTag.replace(/\bversion=(["'])[^"']*\1/i, `version="${to}"`);
+  const release =
+    `\n  <spec-release from="${from}" to="${to}" class="${tier}">\n` +
+    `    <p>Confirmed <code>${escapeHtml(name)}</code> from an import.</p>\n` +
+    '  </spec-release>';
+  const start = match.index;
+  return liveHtml.slice(0, start) + boundOpenTag + release + liveHtml.slice(start + openTag.length);
+}
+
+/** A hex colour as DTCG's structured colour `$value` (the shape this
+ *  project's own token files already use — see `visual/tokens/base.tokens.json`
+ *  in the currency-converter example). */
+function dtcgColorValue(hex: string): {
+  colorSpace: 'srgb';
+  components: [number, number, number];
+  alpha: number;
+  hex: string;
+} {
+  const digits = hex.replace('#', '');
+  const full =
+    digits.length === 3
+      ? digits
+          .split('')
+          .map((c) => c + c)
+          .join('')
+      : digits.slice(0, 6);
+  const channel = (offset: number): number =>
+    Math.round((Number.parseInt(full.slice(offset, offset + 2), 16) / 255) * 10000) / 10000;
+  return { colorSpace: 'srgb', components: [channel(0), channel(2), channel(4)], alpha: 1, hex: `#${full}` };
+}
+
+/**
+ * Set a DTCG token at a dotted path (`color.accent` → `{color:{accent:{…}}}`),
+ * creating intermediate groups as needed. Mutates and returns `root`.
+ *
+ * `$extensions` carries the fact FR-016 requires survive confirmation: this
+ * value arrived derived, and is now confirmed rather than authored. DTCG's
+ * own extension mechanism is reused rather than a bespoke field, so another
+ * tool reading this file is not confused by vocabulary only this one knows.
+ */
+function setTokenAtPath(root: Record<string, unknown>, dottedName: string, hex: string): Record<string, unknown> {
+  const parts = dottedName.split('.');
+  let node = root;
+  for (const key of parts.slice(0, -1)) {
+    const next = node[key];
+    if (typeof next !== 'object' || next === null) node[key] = {};
+    node = node[key] as Record<string, unknown>;
+  }
+  const leaf = parts.at(-1) as string;
+  node[leaf] = {
+    $type: 'color',
+    $value: dtcgColorValue(hex),
+    $extensions: { 'dev.spectastic.import': { derived: true, confirmed: true } },
+  };
+  return root;
+}
+
+export interface ConfirmWriteInput {
+  /** Where the versioned wrapper lives — 098's `<spec-token-set>` artifact. */
+  tokenSetPath: string;
+  /** Where the DTCG token file this candidate's value is written into lives. */
+  tokensJsonPath: string;
+  /** The dotted token name. Supplied by the confirmer; the tool never invents
+   *  one (see `TokenCandidate`'s docstring on why a candidate ships unnamed). */
+  name: string;
+  /** Also the confirmer's claim, never the tool's (098 FR-005). */
+  changeClass: ChangeClass;
+  /** The version this confirmation was prepared against. Compare-and-swap
+   *  against the live value at write time (FR-016's "refuse a set that has
+   *  changed since it was read") — reusing 098's guard rather than a second
+   *  one, so there is exactly one place that decides what "stale" means. */
+  declaredFrom: string;
+  /** The version this release produces. ALSO the confirmer's (triage T-014):
+   *  the governing bump policy is prose by design, so the tool cannot derive
+   *  this without substituting a policy of its own. */
+  toVersion: string;
+  candidate: UnconfirmedTokenCandidate;
+}
+
+/**
+ * Confirming a derived candidate writes it into the project's token set
+ * (FR-016). Moves the version to the one the confirmer declared, refuses a
+ * stale set via 098's own guard, and records on the written token that it
+ * arrived derived and is now confirmed rather than authored.
+ */
+export async function writeConfirmedToken(input: ConfirmWriteInput, fs: FileSystem): Promise<ConfirmedTokenCandidate> {
+  let liveHtml: string;
+  try {
+    liveHtml = await fs.readFile(input.tokenSetPath);
+  } catch {
+    throw new Error(`token-set write: no token set found at "${input.tokenSetPath}" to confirm into.`);
+  }
+
+  // Fails closed on a stale or unreadable live version (098 NFR-002) — the one
+  // guard, reused rather than reimplemented.
+  assertTokenSetVersion(liveHtml, input.declaredFrom);
+
+  const updatedHtml = applyTokenSetRelease(
+    liveHtml,
+    input.declaredFrom,
+    input.toVersion,
+    input.changeClass,
+    input.name,
+  );
+  await fs.writeFile(input.tokenSetPath, updatedHtml);
+
+  let tokens: Record<string, unknown>;
+  try {
+    tokens = JSON.parse(await fs.readFile(input.tokensJsonPath)) as Record<string, unknown>;
+  } catch {
+    tokens = {};
+  }
+  setTokenAtPath(tokens, input.name, input.candidate.value);
+  await fs.writeFile(input.tokensJsonPath, `${JSON.stringify(tokens, null, 2)}\n`);
+
+  return {
+    ...input.candidate,
+    confirmed: true,
+    name: input.name,
+    changeClass: input.changeClass,
+  };
+}
+
+export class TokenConfirmationError extends Error {}
+
+/** Same shape as {@link ConfirmWriteInput}, except the three confirmer-supplied
+ *  fields arrive UNVALIDATED — raw input, which is exactly what this function's
+ *  job is to check before anything is written. */
+export interface ConfirmCandidateInput {
+  tokenSetPath: string;
+  tokensJsonPath: string;
+  declaredFrom: string;
+  /** Supplied by the confirmer, or omitted. Never filled in by the tool. */
+  name: string | undefined;
+  /** Also the confirmer's. Validated against the closed set of three bump
+   *  tiers and nothing else — the tier itself is never verified (098 FR-005). */
+  changeClass: string | undefined;
+  /** Also the confirmer's (triage T-014). Validated only for PRESENCE and
+   *  readable shape — never computed, and never checked for agreement with the
+   *  declared tier, because the policy deciding what a tier produces is prose
+   *  this code does not read. Checking would be the same substitution one step
+   *  removed. */
+  toVersion: string | undefined;
+  candidate: UnconfirmedTokenCandidate;
+}
+
+/** A version the guard and the release attribute can both carry. Deliberately
+ *  a SHAPE check and not a policy check — see `toVersion` above. */
+const READABLE_VERSION = /^\d+\.\d+\.\d+$/;
+
+/**
+ * Take a name, a change class and the produced version from the confirmer,
+ * refuse a candidate missing any of the three, and suggest none (FR-016).
+ *
+ * The refusal is deliberately blunt — no fallback, no default class, no name
+ * derived from the value, no version derived from the tier. FR-010's own
+ * docstring on `TokenCandidate` already argues why for the name: naming a
+ * token is a decision about meaning, and a wrong guess is worse than none
+ * because it looks decided. The same argument carries to the class, which 098
+ * FR-005 requires be presented as the producer's claim, and to the version,
+ * whose governing policy 098 FR-001 keeps as prose precisely so a human reads
+ * it at the moment of bumping (triage T-014).
+ */
+export async function confirmTokenCandidate(
+  input: ConfirmCandidateInput,
+  fs: FileSystem,
+): Promise<ConfirmedTokenCandidate> {
+  const name = input.name?.trim();
+  if (name === undefined || name === '') {
+    throw new TokenConfirmationError(
+      'token confirmation: no name supplied. Naming a token is a decision only the confirmer can make — nothing here suggests one.',
+    );
+  }
+
+  const changeClass = input.changeClass?.trim();
+  if (changeClass === undefined || changeClass === '' || !CHANGE_CLASSES.includes(changeClass as ChangeClass)) {
+    throw new TokenConfirmationError(
+      `token confirmation: no valid change class supplied (must be one of ${CHANGE_CLASSES.join(', ')}). ` +
+        "The tier is the confirmer's claim, never the tool's — nothing here picks one.",
+    );
+  }
+
+  const toVersion = input.toVersion?.trim();
+  if (toVersion === undefined || toVersion === '' || !READABLE_VERSION.test(toVersion)) {
+    throw new TokenConfirmationError(
+      'token confirmation: no produced version supplied. The bump policy governing it lives as prose in the token set, ' +
+        'so it cannot be derived here — read the policy and state the version this release produces.',
+    );
+  }
+
+  return writeConfirmedToken(
+    {
+      tokenSetPath: input.tokenSetPath,
+      tokensJsonPath: input.tokensJsonPath,
+      declaredFrom: input.declaredFrom,
+      name,
+      changeClass: changeClass as ChangeClass,
+      toVersion,
+      candidate: input.candidate,
+    },
+    fs,
+  );
 }

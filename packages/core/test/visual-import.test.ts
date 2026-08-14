@@ -1,6 +1,17 @@
 import { describe, expect, it } from 'vitest';
-import { ImportIdentityError, UNKNOWN, importDesignSource } from '../src/visual/import.js';
-import { localSourceFetcher, SourceNotFoundError, SourceOutsideProjectError } from '../src/providers/local-source-fetcher.js';
+import {
+  type ConfirmCandidateInput,
+  confirmTokenCandidate,
+  ImportIdentityError,
+  TokenConfirmationError,
+  UNKNOWN,
+  importDesignSource,
+} from '../src/visual/import.js';
+import {
+  localSourceFetcher,
+  SourceNotFoundError,
+  SourceOutsideProjectError,
+} from '../src/providers/local-source-fetcher.js';
 import type { FileSystem } from '../src/types.js';
 
 /**
@@ -178,17 +189,13 @@ import {
 /** A clean export directory — `setup()` seeds two files of its own, which
  *  would show up in every `written` assertion below. */
 const only = (files: Record<string, string>) =>
-  memFs(
-    Object.fromEntries(Object.entries(files).map(([k, v]) => [`${CWD}/${FROM}/${k}`, v])),
-    [`${CWD}/${FROM}`, INTO],
-  );
+  memFs(Object.fromEntries(Object.entries(files).map(([k, v]) => [`${CWD}/${FROM}/${k}`, v])), [
+    `${CWD}/${FROM}`,
+    INTO,
+  ]);
 
 const imp = (m: ReturnType<typeof memFs>, extra: Record<string, unknown> = {}) =>
-  importDesignSource(
-    { from: FROM, into: INTO, identity: 'design-1', ...extra },
-    localSourceFetcher(m.fs, CWD),
-    m.fs,
-  );
+  importDesignSource({ from: FROM, into: INTO, identity: 'design-1', ...extra }, localSourceFetcher(m.fs, CWD), m.fs);
 
 describe('provenance on every landed file (FR-004)', () => {
   it('records what the caller knows and marks the rest unknown rather than guessing', async () => {
@@ -410,5 +417,119 @@ describe('prose about executable content is not executable content', () => {
     const m = only({ 'screens.dc.html': '<div><script>x</script></div>' });
     const ledger = await imp(m);
     expect(ledger.unhandled).toEqual(['screens.dc.html']);
+  });
+});
+
+describe('confirming a candidate writes it into the token set (FR-016, T-1204)', () => {
+  const TOKEN_SET_PATH = '/repo/visual/tokens.html';
+  const TOKENS_JSON_PATH = '/repo/visual/tokens/base.tokens.json';
+
+  const tokenSetHtml = (version: string): string =>
+    `<spec-token-set version="${version}" binds-from="2.0.0">\n` +
+    '  <p>MAJOR when a token is removed or redefined; MINOR when added or deprecated; PATCH otherwise.</p>\n' +
+    '</spec-token-set>';
+
+  const candidate = {
+    value: '#f7f5f1',
+    occurrences: 3,
+    sources: ['a.html'],
+    fromUnlanded: false,
+    inferred: true as const,
+    confirmed: false as const,
+  };
+
+  const confirmFs = (version = '2.1.0', json = '{}') =>
+    memFs({ [TOKEN_SET_PATH]: tokenSetHtml(version), [TOKENS_JSON_PATH]: json }, [
+      '/repo/visual',
+      '/repo/visual/tokens',
+    ]);
+
+  /** The three confirmer-supplied fields default to a valid set, so each test
+   *  overrides only the one it is about. */
+  const confirm = (
+    fs: FileSystem,
+    over: Partial<Pick<ConfirmCandidateInput, 'name' | 'changeClass' | 'toVersion' | 'declaredFrom'>> = {},
+  ) =>
+    confirmTokenCandidate(
+      {
+        tokenSetPath: TOKEN_SET_PATH,
+        tokensJsonPath: TOKENS_JSON_PATH,
+        declaredFrom: '2.1.0',
+        name: 'color.accent',
+        changeClass: 'minor',
+        toVersion: '2.2.0',
+        candidate,
+        ...over,
+      },
+      fs,
+    );
+
+  it('lands a named-and-classified candidate with provenance', async () => {
+    const { fs, store } = confirmFs();
+    const confirmed = await confirm(fs);
+    expect(confirmed.name).toBe('color.accent');
+    expect(confirmed.changeClass).toBe('minor');
+    expect(confirmed.confirmed).toBe(true);
+
+    const json = JSON.parse(store[TOKENS_JSON_PATH] as string);
+    expect(json.color.accent.$value.hex).toBe('#f7f5f1');
+    expect(json.color.accent.$extensions['dev.spectastic.import']).toEqual({ derived: true, confirmed: true });
+  });
+
+  it('refuses a candidate missing a name', async () => {
+    const { fs } = confirmFs();
+    await expect(confirm(fs, { name: undefined })).rejects.toBeInstanceOf(TokenConfirmationError);
+  });
+
+  it('refuses a candidate missing a change class', async () => {
+    const { fs } = confirmFs();
+    await expect(confirm(fs, { changeClass: undefined })).rejects.toBeInstanceOf(TokenConfirmationError);
+  });
+
+  it('refuses a candidate missing the produced version', async () => {
+    // T-014. The bump policy is prose in the token set by design, so the tool
+    // cannot derive this without substituting a policy of its own.
+    const { fs } = confirmFs();
+    await expect(confirm(fs, { toVersion: undefined })).rejects.toBeInstanceOf(TokenConfirmationError);
+  });
+
+  it('suggests nothing — not a name, not a class, not a version', async () => {
+    const { fs } = confirmFs();
+    let message = '';
+    try {
+      await confirm(fs, { name: undefined, changeClass: undefined, toVersion: undefined });
+    } catch (e) {
+      message = (e as Error).message;
+    }
+    expect(message).not.toMatch(/color\.|major|minor|patch|\d+\.\d+\.\d+/i);
+  });
+
+  it('writes the version the confirmer declared, never one it derived', async () => {
+    // The defect T-014 records: the first implementation computed this by
+    // semver arithmetic, which would have produced 2.2.0 here. A version that
+    // standard arithmetic would NEVER produce from 2.1.0 + minor is the only
+    // assertion that can tell the two apart.
+    const { fs, store } = confirmFs();
+    await confirm(fs, { toVersion: '3.5.7' });
+    const html = store[TOKEN_SET_PATH] as string;
+    expect(html).toContain('version="3.5.7"');
+    expect(html).toContain('<spec-release from="2.1.0" to="3.5.7" class="minor">');
+  });
+
+  it('refuses a set that changed since it was read, rather than clobbering it', async () => {
+    const { fs, store } = confirmFs('2.2.0'); // live is 2.2.0; confirmation was prepared against 2.1.0
+    const before = { ...store };
+    await expect(confirm(fs)).rejects.toThrow(/stale/);
+    // Nothing written — a refusal, not a partial clobber.
+    expect(store).toEqual(before);
+  });
+
+  it('keeps the derived record after confirmation', async () => {
+    const { fs } = confirmFs();
+    const confirmed = await confirm(fs);
+    // FR-005's last clause: the record that this was DERIVED survives
+    // confirmation — a reader should still be able to tell a token that
+    // arrived from a design tool from one somebody decided on.
+    expect(confirmed.inferred).toBe(true);
   });
 });

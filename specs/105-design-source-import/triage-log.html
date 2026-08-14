@@ -328,6 +328,64 @@
     <dt>Fix</dt><dd>Decide who supplies the produced version before writing any obligation to move it.</dd></dl>
 </spec-triage>
 
+
+<spec-triage id="T-014" layer="implementation" data-status="done">
+  <header>
+    <h4>The write shipped anyway, and invented the bump policy it claimed to follow</h4>
+    <span class="meta">
+      <span class="layer-pill">Implementation</span>
+      <span class="regen" data-result="pass">code</span>
+    </span>
+  </header>
+
+  <p class="headline">Debugging what <code>T-1201</code> actually landed, root cause was that
+  <code>bumpVersion</code> hardcodes standard semantic-version increments while
+  <a href="./spec.html#FR-016">FR-016</a> requires the move happen <em>under the versioning policy</em> — a policy
+  <a href="../098-token-set-versioning/spec.html#FR-001">098 FR-001</a> deliberately keeps as the element's own
+  prose, which this code never reads; fixed by refusing to author a version rather than assuming one;
+  regeneration <strong>passes</strong>, because the requirement said "under the versioning policy" and the
+  implementation substituted a different policy without checking they agreed.</p>
+
+  <dl>
+    <dt>Expected</dt> <dd>A version moves under the policy the project stated, or the write refuses.</dd>
+    <dt>Actual</dt>   <dd><code>bumpVersion('2.1.0', 'minor')</code> returns <code>2.2.0</code> by arithmetic alone. It never opens the <code>&lt;spec-token-set&gt;</code> prose that governs it, so a project whose stated policy differs — and the currency-converter exemplar's does say something specific: <em>"MAJOR when a token is removed or its meaning is redefined; MINOR when a token is added or deprecated; PATCH for a value change that alters no binding"</em> — gets a number the tool chose and the producer never declared. The tests I wrote pin the arithmetic, so they confirm the assumption rather than catch it.</dd>
+    <dt>Diagnosis</dt><dd>Implementation drift against a requirement that was clear enough. <a href="#T-013">T-013</a> had already named this exact hazard the day before and said <em>"decide who supplies the produced version before writing any obligation to move it"</em>; the obligation was implemented while the card sat open. Two halves are worth separating: the <em>ownership</em> question (who authors <code>to=</code>) is T-013's and is still undecided, while <em>silently substituting a policy for the one the artifact states</em> is drift no spec decision excuses. Only the second half is this card's.</dd>
+    <dt>Fix</dt>      <dd><span class="path">packages/core/src/visual/import.ts</span> — stop deriving <code>to=</code>. Either take it from the confirmer alongside the name and the class (the shape FR-016 already uses for both other human inputs), or refuse the write when the declared policy cannot be discharged mechanically. Which of the two is right is <a href="#T-013">T-013</a>'s to settle; until it does, the honest interim is to refuse rather than assume. The three tests asserting the arithmetic go with it — they encode the defect.</dd>
+    <dt>Fixed</dt>    <dd>Both, as it turned out, and they were the same change. <code>bumpVersion</code> is deleted; the produced version is now a required confirmer input alongside the name and the class, validated for <em>presence and readable shape only</em> — never for agreement with the declared tier, since checking that would be the same substitution one step removed. A missing or malformed version is refused with a message naming the reason (the policy is prose; read it and state the version). The refusal <em>is</em> the interim: nothing can be written without a human having read the policy, and if <a href="#T-013">T-013</a> later finds a policy that can be discharged mechanically, deriving becomes additive rather than a correction. The arithmetic tests are gone, and the one that replaced them asserts a version standard arithmetic could never produce (<code>2.1.0</code> + <code>minor</code> → <code>3.5.7</code>) — <strong>verified to fail against the old implementation before being trusted</strong>, which is the check the deep dive says the originals never got.</dd>
+  </dl>
+
+  <spec-diff>
+<del>  const major = Number(m[1]);</del>
+<del>  switch (tier) {</del>
+<del>    case 'major':  return `${major + 1}.0.0`;</del>
+<del>    case 'minor':  return `${major}.${minor + 1}.0`;</del>
+<del>    case 'patch':  return `${major}.${minor}.${patch + 1}`;</del>
+<del>  }</del>
+<ins>  // The policy is prose by design (098 FR-001), so it cannot be</ins>
+<ins>  // discharged mechanically. The produced version is an input.</ins>
+<ins>  throw new Error('token-set write: the produced version must be supplied…');</ins>
+  </spec-diff>
+
+  <details>
+    <summary>Deep dive — hotfix-before-amendment, and what the tests were worth</summary>
+    <p><strong>Sequence.</strong> This is the hotfix half of an amendment that has not happened. T-013 owns the
+    requirement question and is open; this card owns the code that ran ahead of it. Landing the refusal first is
+    safe in the direction that matters — nothing currently calls <code>writeConfirmedToken</code> outside its own
+    tests, so no caller loses a working path, and a refusal cannot write a wrong version into a token set.</p>
+    <p><strong>The tests confirmed the assumption rather than catching it.</strong> Worth recording plainly, because
+    the suite went green and that greenness was evidence of nothing. <code>moves the version under the declared
+    tier</code> asserts <code>2.1.0 + minor === 2.2.0</code> — which is true of standard semver and true of the
+    exemplar's stated policy, so the one case that would have exposed the gap (a project whose policy diverges) was
+    never written. A test written from the implementation agrees with the implementation. The
+    <em>guard</em> tests are unaffected and still earn their keep: the stale-set refusal is real, and
+    <code>declaredFrom</code> is a caller input, so the read-then-pass-own-read failure T-013 also warned about was
+    avoided.</p>
+    <p><strong>Not promoted.</strong> Whether a validate rule could catch "code claims to follow a prose policy it
+    never reads" is not a question this card answers — it is close to undecidable in general, and naming it here is
+    only so the next reader sees it was considered.</p>
+  </details>
+</spec-triage>
+
 </spec-triage-log>
 </section>
 
@@ -337,6 +395,8 @@
 <spec-changelog>
 <ol>
   <li><time datetime="2026-08-13">13 Aug 2026</time><span>T-001 to T-005 added — five findings from researching the Claude Design connector before running the import for real. One is a false premise in an upstream survey claim (T-001); three are unverified or unstated assumptions (T-002 to T-004); one is an omission (T-005). Deliberately recorded rather than amended: the experiment that prompted the research will likely surface more, and this spec should be amended once with everything rather than five times.</span></li>
+  <li><time datetime="2026-08-14">14 Aug 2026</time><span>T-014 added — <code>bumpVersion</code> hardcodes standard semantic-version increments while <a href="./spec.html#FR-016">FR-016</a> requires the move happen under <em>the versioning policy</em>, which <a href="../098-token-set-versioning/spec.html#FR-001">098 FR-001</a> keeps as the token set's own prose and this code never reads. <code>implementation</code> layer, regen <code>pass</code> — the requirement was clear enough and the implementation substituted a different policy without checking they agreed. Shipped while <a href="#T-013">T-013</a>, which named this exact hazard and said to decide the ownership question first, sat open. The ownership half stays T-013's; this card owns the silent substitution, and the three tests pinning the arithmetic go with the fix, since they encode the defect rather than catch it.</span></li>
+  <li><time datetime="2026-08-14">14 Aug 2026</time><span>T-014 closed — <code>bumpVersion</code> deleted; the produced version is now a required confirmer input beside the name and the class, checked for presence and readable shape only. Agreement with the declared tier is deliberately <em>not</em> checked, because that would reintroduce the substitution one step removed. The replacement test asserts a version standard arithmetic could never produce and was confirmed to fail against the old implementation before being trusted — the check the removed tests never got. 55 tests green. <a href="#T-013">T-013</a> stays open: this closes the silent substitution, not the ownership question.</span></li>
 </ol>
 </spec-changelog>
 </section>
