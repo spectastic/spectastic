@@ -96,3 +96,39 @@ describe('a contract containing replacement-pattern sequences', () => {
     expect(out).toContain('replacement: $1');
   });
 });
+
+/**
+ * Inbox I-072 — a generated column of bare numbers.
+ */
+describe('the generated state table names its origin', () => {
+  it('says a response is a response rather than printing a bare number', async () => {
+    const { materialiseVisualViews } = await import('../src/visual/materialise-view.js');
+    const fs = {
+      stat: async () => ({ isFile: true, isDirectory: false }),
+      readFile: async () =>
+        '<spec-screen id="converter"><spec-state id="converted" source="derived" from="200"><p>x</p></spec-state></spec-screen>',
+      readdir: async () => ['screens.html'],
+    } as unknown as FileSystem;
+    const design =
+      '<spec-visual shape="screens" tokens="visual" screens="s/visual" source="x"><p>r</p></spec-visual>';
+    const out = await materialiseVisualViews(design, fs, '/repo');
+    expect(out).toContain('response <code>200</code>');
+    expect(out).not.toContain('<th>From</th>');
+  });
+
+  it('says a field is a field, since from= serves both', async () => {
+    const { materialiseVisualViews } = await import('../src/visual/materialise-view.js');
+    const fs = {
+      stat: async () => ({ isFile: true, isDirectory: false }),
+      readFile: async () =>
+        '<spec-screen id="s"><spec-state id="a" source="field" from="email"><p>x</p></spec-state></spec-screen>',
+      readdir: async () => ['screens.html'],
+    } as unknown as FileSystem;
+    const out = await materialiseVisualViews(
+      '<spec-visual shape="screens" tokens="visual" screens="s/visual" source="x"><p>r</p></spec-visual>',
+      fs,
+      '/repo',
+    );
+    expect(out).toContain('field <code>email</code>');
+  });
+});

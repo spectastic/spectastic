@@ -94,16 +94,24 @@ export function renderView(model: ViewModel): string {
   for (const s of model.screens) {
     parts.push(`<h4>${escapeText(s.id)}</h4>`);
     if (s.states.length > 0) {
+      // The origin is named, not left bare. A column of 200 and 503 reads as an
+      // HTTP status only to someone who already knows the vocabulary — it could
+      // as easily be a line number or a price. And a single header cannot say
+      // "status", because `from=` serves BOTH derived (a contract response) and
+      // field (a contract field), so the kind belongs in the cell where the
+      // source is known. Inbox I-072.
+      const originOf = (source: string, from: string): string =>
+        source === 'field' ? `field <code>${escapeText(from)}</code>` : `response <code>${escapeText(from)}</code>`;
       const rows = s.states
         .map(
           (st) =>
             `<tr><td><code>${escapeText(st.id)}</code></td><td>${escapeText(st.source)}</td><td>${
-              st.from === undefined ? '—' : `<code>${escapeText(st.from)}</code>`
+              st.from === undefined ? '—' : originOf(st.source, st.from)
             }</td></tr>`,
         )
         .join('');
       parts.push(
-        `<div style="overflow-x:auto;"><table><thead><tr><th>State</th><th>Source</th><th>From</th></tr></thead><tbody>${rows}</tbody></table></div>`,
+        `<div style="overflow-x:auto;"><table><thead><tr><th>State</th><th>Source</th><th>Derived from</th></tr></thead><tbody>${rows}</tbody></table></div>`,
       );
     }
     const annotated = s.annotations.filter((a) => a.target !== undefined || a.layer !== undefined);

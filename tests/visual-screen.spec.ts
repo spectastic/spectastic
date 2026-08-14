@@ -53,6 +53,17 @@ test.describe('NFR-001 · the declaration reads with scripting off', () => {
       const field = await readWithPseudo(page.locator('spec-state#stale-cache'));
       expect(field).toContain('field');
       expect(field).toContain('Rate.asOf');
+
+      // Inbox I-067 — a state must say it is one. The screen above renders
+      // "screen <id>" and the annotation below renders "<target> · <role>", so
+      // an unlabelled token between them was legible only to a reader who
+      // already knew the vocabulary. Asserted on the ::before content itself
+      // rather than on the stylesheet text, because only the browser resolves it.
+      const label = await page
+        .locator('spec-state#offline')
+        .evaluate((el) => getComputedStyle(el, '::before').content);
+      expect(label).toContain('state ');
+      expect(label).toContain('offline');
     });
   }
 
@@ -143,7 +154,13 @@ test.describe('NFR-001 · the annotation names its subject and its layer, with s
     test(`the subject leads and the type follows it · ${theme}`, async ({ page }) => {
       await page.goto(SCREEN);
       await setTheme(page, theme);
-      const text = await readWithPseudo(page.locator('spec-annotation[target="amount-field"]'));
+      // Narrowed by role. The fixture carries TWO annotations on this subject —
+      // a behaviour one and a tracking one — which is the point of the target
+      // capability (one control, several layers) and made the bare selector
+      // ambiguous under Playwright's strict mode. The assertion is unchanged.
+      const text = await readWithPseudo(
+        page.locator('spec-annotation[target="amount-field"][role="textbox"]'),
+      );
       expect(text).toContain('amount-field');
       expect(text).toContain('textbox');
       expect(text).toContain('required');
@@ -160,7 +177,11 @@ test.describe('NFR-001 · the annotation names its subject and its layer, with s
 
   test('a layer with no typing to imply it still renders', async ({ page }) => {
     await page.goto(SCREEN);
-    const text = await readWithPseudo(page.locator('spec-annotation[layer="tracking"]'));
+    // Same ambiguity from the other side: two annotations carry this layer.
+    // Named by the subject the assertion is actually about.
+    const text = await readWithPseudo(
+      page.locator('spec-annotation[layer="tracking"][target="convert-button"]'),
+    );
     expect(text).toContain('tracking');
     expect(text).toContain('convert-button');
   });
