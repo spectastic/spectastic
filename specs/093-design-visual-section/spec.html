@@ -208,12 +208,53 @@ what a build may rely on — rather than a copy of the token values.</p>
     <details><summary>Rationale</summary><p>Recording coverage is optional; recording it wrongly is not. Split from <a href="#FR-012">FR-012</a> rather than embedded in it, because a should-tier requirement whose body carries absolute obligations is unreadable to anyone — human or tool — filtering by conformance level, and every should-tier requirement across this family uses the should form throughout. The declined case is the one worth stating separately: an unknown context is a typo, while claiming a context the project has deliberately refused is a disagreement, and both should stop the build for the same reason the grid records a decline with a reason at all. This check cannot be a schema rule — it must read the grid, which is a different file at project scope — so it lands in the kernel beside the resolve and disagreement checks.</p></details>
   </spec-requirement>
 <spec-requirement id="FR-014" priority="must">
-<p>A design declaring a visual surface <spec-rule>MUST</spec-rule> introduce each screen it declares that surface addresses, referring to the screen rather than only to the file that declares it, and an introduced screen that does not resolve <spec-rule>MUST</spec-rule> be reported as an error.</p>
-<details><summary>Rationale</summary><p>A declared path tells a reader that screens exist. What each one is, and which story it serves, is what a reader came for — the adjacent contract declaration already requires authored reasoning beside its path and says it is not a copy of the schema.</p>
-<p>The obligation reads the <strong>declaration</strong>, never the directory. <a href="094-visual-sidecar-convention/spec.html">094</a> §4 establishes that neither sidecar directory is a registry and that the declaration rather than the filesystem is the authority; the first version of this requirement enumerated the path instead, which reversed that silently and broke 094 NFR-001's zero-directory-walks budget. Turning the check around keeps the obligation identical for the case that motivated it — a design naming a path and describing nothing still fails — while the authority stays where the convention put it.</p>
-<p>It also removes a hazard the enumerating version carried: the generated view materialises screen identifiers inside the declaring element, so a text scan would have needed an exclusion zone around content the tool writes into what it is scanning — the shape that produced a false positive in <code>verify-view-stale</code> once already.</p>
-<p>Error severity, stated. Both siblings state one; this said only "reported", which left a pre-commit gate's behaviour to whoever wrote the rule.</p></details>
+  <p>A design whose visual declaration carries <code>shape="screens"</code> <spec-rule>MUST</spec-rule> name every
+  screen the declared material holds, and every named screen <spec-rule>MUST</spec-rule> resolve to a screen in
+  that material. A screen present in the material and not named, and a name that resolves to nothing,
+  <spec-rule>MUST</spec-rule> each be reported as an error, naming the screen and the design. The named set is the
+  authority for what the feature <em>claims</em>; the material is read only to check that claim, never to derive
+  it.</p>
+  <details><summary>Rationale</summary><p>A declared path tells a reader that screens exist. Which ones this
+  feature addresses is what a reader came for, and the adjacent contract declaration already requires authored
+  reasoning beside its path rather than a bare pointer.</p>
+  <p>Four things changed and each was a defect. The obligation ranges over <em>named screens</em>
+  (<a href="#FR-015">FR-015</a>) rather than "each screen it declares", which had no referent and was therefore
+  satisfiable by naming nothing — the previous wording's only observable effect. It obliges the list to be
+  <strong>complete</strong> rather than merely non-empty: an earlier draft of this change said "at least 1", which
+  would have let the exemplar name <code>convert</code> alone and leave the one-versus-three discrepancy that
+  started all three rounds still unreported. The antecedent is stated as <code>shape="screens"</code> rather than
+  left as "declaring a visual surface", because an explicit <code>shape="none"</code> is itself a design declaring
+  its visual surface — <a href="spec.html#FR-007">FR-007</a> requires that record — and a completeness floor
+  read loosely would turn an honest no-surface declaration into an error. <a href="triage-log.html#T-001">T-001</a>
+  flagged that ambiguity a round ago and nobody chose; this chooses. And the check is required explicitly,
+  following <a href="spec.html#FR-002">FR-002</a>'s precedent of naming the enforcement surface in the
+  requirement, because this obligation has run through two proposal rounds with <strong>no implementation at
+  all</strong>, so the wording was never what was wrong with it.</p>
+  <p>The last sentence is the one that keeps 094 §4 intact while letting the check work. Deriving the addressed
+  set from whatever is on disk is what the first round did and what the convention forbids: an undeclared file
+  would become part of the feature by existing. Reading that material to test a claim the author already made is a
+  different act, and the read costs nothing new — <code>materialiseVisualViews</code> already walks the declared
+  path on every document carrying a declaration, in the same pass.</p></details>
   </spec-requirement>
+<spec-requirement id="FR-015" priority="must">
+  <p>A visual declaration <spec-rule>MUST</spec-rule> be able to name the screens the feature addresses, by the
+  identifier each screen declares for itself, and naming one <spec-rule>MUST NOT</spec-rule> require restating
+  anything <em>else</em> that screen's own declaration holds.</p>
+  <details><summary>Rationale</summary><p>Without this there is nothing for
+  <a href="spec.html#FR-014">FR-014</a> to quantify over. The declaration carries a path; the screens live
+  behind it; and the only per-screen structure that has ever appeared inside a design is the generated view, which
+  is the tool's output and cannot serve as evidence of what an author declared.</p>
+  <p>By the screen's own identifier, so the design and the sidecar agree by construction rather than by an author
+  keeping two spellings in step. The second clause is the guard against this becoming duplication, and says
+  <em>else</em> deliberately — the identifier is itself something the screen declares, so a blanket prohibition on
+  restating what the screen holds would forbid the very reference this requirement creates. Everything beyond the
+  name — states, annotations, renders, contexts — stays in the sidecar,
+  which is where <a href="spec.html#FR-005">FR-005</a> points and what
+  <a href="../094-visual-sidecar-convention/spec.html">094</a> establishes as the material's home.</p>
+  <p>Able to name, not obliged to — the obligation belongs in FR-014, where the condition that triggers it already
+  lives. Splitting them keeps this requirement about the vocabulary and that one about when it must be used.</p></details>
+  </spec-requirement>
+
 
 
 
@@ -361,6 +402,7 @@ declared shape outranks these signals and the signals keep running, per <a href=
   <li><time datetime="2026-08-13">13 Aug 2026</time><span>Applied <a href="./changes/archive/2026-08-13-declare-the-variant-grid/proposal.html">2026-08-13-declare-the-variant-grid</a>: The surface declaration gains the project's variant grid and the contexts a feature addresses on it — the two halves of 096 FR-008, neither of which had a mechanism. Naming a grid is a capability rather than an obligation, since nothing obliges a project to have one; an absent coverage record means not recorded, never full coverage, so silence keeps one meaning; and the check that a recorded context exists and was not declined is must-tier FR-013, split out so a should-tier requirement stops carrying absolute clauses in its body. Adversarial pass found four defects, all four mitigated before landing.</span></li>
   <li><time datetime="2026-08-14">14 Aug 2026</time><span>Applied <a href="./changes/archive/2026-08-13-introduce-each-screen/proposal.html">2026-08-13-introduce-each-screen</a>: From reading the first real downstream design against its screens.</span></li>
   <li><time datetime="2026-08-14">14 Aug 2026</time><span>Applied <a href="./changes/archive/2026-08-14-declaration-is-the-authority/proposal.html">2026-08-14-declaration-is-the-authority</a>: Correction from an independent adversarial pass on the change applied the day before.</span></li>
+  <li><time datetime="2026-08-14">14 Aug 2026</time><span>Applied <a href="./changes/archive/2026-08-14-a-screen-has-a-name/proposal.html">2026-08-14-a-screen-has-a-name</a>: FR-014 gets a referent and a check. FR-015 lets a declaration name the screens a feature addresses by each screen's own identifier; FR-014 obliges that list to be complete against the declared material, gates on shape="screens" so an explicit no-surface record stays legal, and requires the check to exist — it never had one, in either previous wording. Reading the material verifies the claim; the declaration remains the authority for what is claimed.</span></li>
 </ol>
 </spec-changelog>
 </section>
