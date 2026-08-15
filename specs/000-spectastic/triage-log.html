@@ -958,6 +958,31 @@
   </details>
 </spec-triage>
 
+<spec-triage id="T-026" layer="implementation">
+  <header>
+    <h4>The bundle ships the subagent definitions and <code>init</code> never installs them</h4>
+    <span class="meta">
+      <span class="layer-pill">Implementation</span>
+      <span class="regen" data-result="pass">code</span>
+    </span>
+  </header>
+
+  <p class="headline">Debugging why a re-inited downstream project has no <code>spectastic-critic</code>, root cause was that <code>inventoryAt</code> lists <code>.claude/commands</code>, <code>assets</code> and <code>templates</code> and not <code>.claude/agents</code>, which the prebuild populates; regeneration <strong>passes</strong>, because the bundling half is built and correct and only the copy step omits a directory.</p>
+
+  <dl>
+    <dt>Expected</dt> <dd>A scaffolded project gets the three subagents alongside the commands. <code>prebuild.mjs</code> bundles them for exactly that — <span class="path">packages/cli/_bundled/.claude/agents/</span> contains <code>spectastic-critic.md</code>, <code>spectastic-classifier.md</code> and <code>spectastic-impl-task.md</code>.</dd>
+    <dt>Actual</dt>   <dd><code>init --force</code> on an existing project overwrote 27 files and created no <code>.claude/agents/</code> at all. <code>inventoryAt</code> (<span class="path">packages/cli/src/commands/init/bundle.ts:71–75</span>) builds its file list from three directories and <code>.claude/agents</code> is not one of them. The <code>agents</code> identifiers elsewhere under <code>init/</code> are a different thing entirely — profile-manifest content for <code>AGENTS.md</code> — which is likely why the omission reads as covered.</dd>
+    <dt>Diagnosis</dt><dd>Half a feature. Spec <a href="../044-verb-model-policy/spec.html">044</a> introduced the subagents and the bundling step that ships them; the install step was never widened to match. Nothing catches it: no test asserts a scaffolded project has an agents directory, and the downstream symptom is silent — a missing subagent does not error, the verb just runs without it.</dd>
+    <dt>Fix</dt>      <dd><span class="path">packages/cli/src/commands/init/bundle.ts</span> — add <code>.claude/agents</code> to <code>inventoryAt</code>, and to the dev-workspace walk beside it so a source checkout behaves the same. A test asserting a scaffolded project carries all three definitions is the part that keeps it fixed.</dd>
+  </dl>
+
+  <details>
+    <summary>Deep dive — why this one is worth more than its size</summary>
+    <p><strong>What is missing is the adversarial pass.</strong> <code>/spectastic.propose</code>'s risk pass spawns <code>spectastic-critic</code>, and today that agent killed three proposals in this repo before apply and found real defects in two others. A downstream project has been running the propose verb with that step silently absent since 044 shipped — the verb does not fail, it just never gets reviewed. Given <a href="../../inbox.html#I-074">I-074</a>'s diagnosis is that the adversarial pass ran too late or not at all, shipping every downstream project without the reviewer is the same failure one level out.</p>
+    <p><strong>Found by re-initing rather than by reading.</strong> The commands, templates and assets were all byte-identical to source, so a drift check would have reported the project healthy. Only listing the source directory against the destination showed a whole directory that never arrives.</p>
+  </details>
+</spec-triage>
+
 </spec-triage-log>
 </section>
 
@@ -966,6 +991,7 @@
 <h2>Change log</h2>
 <spec-changelog>
 <ol>
+    <li><time datetime="2026-08-15">15 Aug 2026</time><span>T-026 added — <code>init</code> never installs the three subagent definitions the prebuild bundles: <code>inventoryAt</code> lists <code>.claude/commands</code>, <code>assets</code> and <code>templates</code> and omits <code>.claude/agents</code>. <code>implementation</code>, regen <code>pass</code>. Every downstream project scaffolded since 044 has run <code>/spectastic.propose</code> with no <code>spectastic-critic</code> — the adversarial pass silently absent, which is I-074's own diagnosis one level out. Found by re-initing a downstream repo; a drift check reported it healthy because every file that does arrive is byte-identical.</span></li>
     <li><time datetime="2026-08-14">14 Aug 2026</time><span>T-025 added and closed — the apply kernel deepens the archived proposal's relative paths and folds its §6 tasks into <code>tasks.html</code> at the authoring depth, so a task carrying a cross-spec link points outside the repo. <code>implementation</code>, regen <code>pass</code>. Latent since the fold shipped: a repo-wide scan found the two links in 095's new phase are the only instance in the estate, because no §6 task had ever carried one. Links corrected; the kernel fix is named for a second instance rather than taken now. Surfaced by re-grounding a §6 task list before apply — the practice that avoids <a href="#T-024">T-024</a> is what exposed it.</span></li>
     <li><time datetime="2026-08-14">14 Aug 2026</time><span>T-024 added — <a href="../088-change-management/spec.html#REQ-CHANGE-006">REQ-CHANGE-006</a>'s fold has no supersession story, so when a later applied change corrects the requirement an earlier folded phase was written against, the earlier phase's tasks stay unchecked and unmarked — a queue where an unchecked box no longer means work is owed. <code>spec</code> layer, regen <code>fail</code> — nothing in a proposal declares what it supersedes, so no implementation could infer it. Found when a <code>/spectastic.implement --all</code> drain on <a href="../105-design-source-import/tasks.html">105</a> reached <code>T-1100</code>–<code>T-1103</code>, whose <code>T-1101</code> instructs writing through a mechanism the very next day's proposal established does not exist. Fix: a propose against 088 letting a proposal name what it supersedes, with the fold marking it; the 105 unblock is separate and smaller.</span></li>
     <li><time datetime="2026-08-01">01 Aug 2026</time><span>T-023 closed — <span class="path">templates/design.html</span>'s three self-label sites corrected; <a href="../078-federated-resource-uri/design.html">078</a>'s matching sites fixed; the footer sweep found a third, uncounted stale shape (<code>&lt;spec-id&gt; · plan · authored …</code>, 3 files) alongside the anticipated 61 — 62 + 9 + 3 = 74 is the true accounting. A before/after full-corpus <code>validate</code> shows the identical 10 pre-existing findings.</span></li>
