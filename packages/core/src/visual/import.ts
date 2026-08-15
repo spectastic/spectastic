@@ -471,6 +471,19 @@ const HTML_SUFFIXES = ['.html', '.htm', '.xhtml', '.svg'];
  *
  * SVG is included deliberately: it is the one image format that really can
  * carry a script, and it is a plausible thing for a design tool to emit.
+ *
+ * WHAT THIS LIST DOES NOT DO, stated because it was an accident until it was a
+ * decision (triage T-018, and now FR-014's second sentence). A file that IS a
+ * script — a bare `.js` — is not inspected and lands. That is deliberate: this
+ * check protects FR-003, the project staying valid after an import, and a loose
+ * script breaks no artifact rule. No rule parses it, and the security scan's
+ * globs do not reach it. Refusing it would mean deciding what BELONGS in a
+ * project rather than what is SAFE to copy — a judgement with no crisp test.
+ *
+ * So a real import lands a design tool's runtime, and that is the intended
+ * outcome rather than an oversight. What the import asserts about it is its
+ * provenance and that nobody has reviewed it; a project that does not want the
+ * file removes it, which is a project's decision and not a copier's.
  */
 export function landingWouldViolate(name: string, body: string): boolean {
   const lower = name.toLowerCase();

@@ -585,6 +585,41 @@ describe('an interrupted import leaves nothing behind (NFR-001, T-017)', () => {
   });
 });
 
+describe('a bare script lands, deliberately (FR-014 second sentence, T-018)', () => {
+  it('lands a .js carrying executable content rather than withholding it', async () => {
+    // The real import landed a design tool's 68 KB runtime. FR-014 now says
+    // that is correct: being executable is not on its own a ground to withhold,
+    // because a loose script breaks no artifact rule. Asserted rather than
+    // assumed, since the behaviour was an accident of an extension list until
+    // it was a decision.
+    const m = only({ 'support.js': 'var a=1;function b(){return 2}' });
+    const ledger = await imp(m);
+    expect(ledger.written).toEqual(['support.js']);
+    expect(ledger.unhandled).toEqual([]);
+    expect(m.store[`${INTO}/support.js`]).toBe('var a=1;function b(){return 2}');
+  });
+
+  it('still refuses the HTML that carries the same content', async () => {
+    // The distinction the requirement rests on: identical bytes, different
+    // consequence for the project. One would break the artifact rules; one
+    // cannot, because nothing parses it as an artifact.
+    const m = only({ 'screens.html': '<div><script>var a=1</script></div>' });
+    const ledger = await imp(m);
+    expect(ledger.unhandled).toEqual(['screens.html']);
+    expect(ledger.written).toEqual([]);
+  });
+
+  it('still withholds on a ground other than executability', async () => {
+    // "withholding on other grounds this spec establishes is unaffected" —
+    // FR-012's licence refusal is the one an unbounded obligation would have
+    // made non-conformant, and it is checked before executability in code.
+    const m = only({ 'brand.js': '/* licence: cc-by-nc-nd */ var a=1' });
+    const ledger = await imp(m);
+    expect(ledger.refused.map((r) => r.name)).toEqual(['brand.js']);
+    expect(ledger.written).toEqual([]);
+  });
+});
+
 describe('confirming a candidate writes it into the token set (FR-016, T-1204)', () => {
   const TOKEN_SET_PATH = '/repo/visual/tokens.html';
   const TOKENS_JSON_PATH = '/repo/visual/tokens/base.tokens.json';
