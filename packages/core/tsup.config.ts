@@ -19,6 +19,7 @@ export default defineConfig({
     'src/commands/validate.ts',
     'src/visual/read.ts',
     'src/visual/coverage.ts',
+    'src/visual/screen-naming.ts',
     'src/visual/render.ts',
     'src/visual/import.ts',
     'src/visual/source-fetcher.ts',

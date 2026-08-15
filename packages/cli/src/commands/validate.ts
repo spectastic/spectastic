@@ -372,11 +372,13 @@ async function scanVisualResolve(docs: ReadonlyMap<string, CachedDoc>, cwd: stri
   const [
     { visualResolveFindings, visualLocationFindings },
     { visualCoverageFindings },
+    { visualScreenNamingFindings },
     { readVisualDeclarations },
     { nodeFs },
   ] = await Promise.all([
     import('@spectastic/core/commands/validate'),
     import('@spectastic/core/visual/coverage'),
+    import('@spectastic/core/visual/screen-naming'),
     import('@spectastic/schema/visual'),
     import('@spectastic/core/providers/node-fs'),
   ]);
@@ -405,17 +407,30 @@ async function scanVisualResolve(docs: ReadonlyMap<string, CachedDoc>, cwd: stri
       // 099 FR-004/FR-005 ride the same read: the view is in this document and
       // the screens it projects are one stat away, which the resolve scan has
       // already paid for.
+      // 093 FR-014 rides the same read too: the claim is in this document and
+      // the material is the path the resolve above has already stat-ed. Gated on
+      // shape="screens" — an explicit shape="none" is a legal FR-007 record and
+      // must never fire, which is a test, not just this sentence.
+      const naming = declarations
+        .filter((d) => d.shape === 'screens' && d.screens !== undefined)
+        .map((d) => ({
+          screens: d.screens as string,
+          addresses: d.addresses,
+          line: d.line,
+          column: d.column,
+        }));
       const [{ visualViewDriftFindings, visualViewMissingFindings }] = await Promise.all([
         import('@spectastic/core/commands/validate'),
       ]);
-      const [resolved, located, coverage, drift, missing] = [
+      const [resolved, located, coverage, naming_, drift, missing] = [
         await visualResolveFindings(declarations, file, nodeFs, cwd),
         visualLocationFindings(declarations, file),
         claims.length === 0 ? [] : await visualCoverageFindings(claims, file, nodeFs, cwd),
+        naming.length === 0 ? [] : await visualScreenNamingFindings(naming, file, nodeFs, cwd),
         await visualViewDriftFindings(html, file, nodeFs, cwd),
         visualViewMissingFindings(html, file),
       ];
-      return [...resolved, ...located, ...coverage, ...drift, ...missing];
+      return [...resolved, ...located, ...coverage, ...naming_, ...drift, ...missing];
     }),
   );
   return perFile.flat();

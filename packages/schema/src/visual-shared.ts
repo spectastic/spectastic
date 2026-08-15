@@ -44,6 +44,14 @@ export interface VisualDeclaration {
   variants: string | undefined;
   /** Project-relative path of the screens this feature touches. */
   screens: string | undefined;
+  /** The screens this feature addresses, by the id each screen declares for
+   *  itself (093 FR-015). Space-separated, read verbatim and never split here —
+   *  splitting is the checking caller's job, and an absent value is distinct
+   *  from an empty one: absent means the design names no screens at all, which
+   *  FR-014 reports for a `shape="screens"` declaration whose material holds
+   *  any. The path says screens exist; this says which ones are claimed, and
+   *  the claim is the authority — the material is read only to test it. */
+  addresses: string | undefined;
   /** Which of the project's declared contexts this feature addresses (FR-012),
    *  in the grid's own `axis=context` grammar, or the whole-grid claim. Read
    *  verbatim and never split here — an absent value means NOT RECORDED, which
@@ -76,6 +84,7 @@ export function readVisualDeclarations(htmlOrDoc: string | ParsedDocument, file 
       tokensExternal: getAttr(el, 'tokens-external'),
       variants: getAttr(el, 'variants'),
       screens: getAttr(el, 'screens'),
+      addresses: getAttr(el, 'addresses'),
       contexts: getAttr(el, 'contexts'),
       source: getAttr(el, 'source'),
       line: loc.line,
