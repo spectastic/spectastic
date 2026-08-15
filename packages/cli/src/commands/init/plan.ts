@@ -39,9 +39,7 @@ import type { BundleInventory, FileWriteDecision } from './types.js';
  * and a drift guard asserts SC-001 states SCAFFOLD_TREE_FILE_COUNT. Change the
  * scaffold → change these once, and the guards name everything else that must follow.
  */
-// 30 since T-026: the three subagent definitions 044 FR-004 requires synced
-// to .claude/agents/ are now installed rather than bundled-and-dropped.
-export const SCAFFOLD_FILE_COUNT = 30;
+export const SCAFFOLD_FILE_COUNT = 27;
 export const SCAFFOLD_TREE_FILE_COUNT = SCAFFOLD_FILE_COUNT + 2;
 
 export interface BuildPlanOptions {

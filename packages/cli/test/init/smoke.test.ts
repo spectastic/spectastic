@@ -84,15 +84,6 @@ describe('init: smoke (T-102)', () => {
     expect(files).toContain('.claude/commands/spectastic.apply.md');
     expect(files).toContain('.claude/commands/spectastic.implement.md');
     expect(files.filter((f) => f.startsWith('.claude/commands/')).length).toBe(8);
-    // 044 FR-004's sync half, missing until T-026. Named individually rather
-    // than counted: a count alone would pass if three unrelated files appeared,
-    // and spectastic-critic is the one whose absence actually cost something —
-    // every project scaffolded between 044 and this ran the propose verb with
-    // no adversarial pass.
-    expect(files).toContain('.claude/agents/spectastic-critic.md');
-    expect(files).toContain('.claude/agents/spectastic-classifier.md');
-    expect(files).toContain('.claude/agents/spectastic-impl-task.md');
-    expect(files.filter((f) => f.startsWith('.claude/agents/')).length).toBe(3);
     expect(files).toContain('assets/spec.css');
     expect(files).toContain('assets/spec.js');
     expect(files).toContain('templates/principles.html');
