@@ -987,6 +987,78 @@
   </details>
 </spec-triage>
 
+
+<spec-triage id="T-027" layer="spec">
+  <header>
+    <h4>An artifact may ship with unreplaced template placeholders and nothing says otherwise</h4>
+    <span class="meta">
+      <span class="layer-pill">Spec</span>
+      <span class="regen" data-result="fail">upstream</span>
+    </span>
+  </header>
+
+  <p class="headline">Debugging why two proposals shipped with <code>[CHANGE_TITLE]</code> in their
+  <code>&lt;title&gt;</code>, root cause was that the obligation to replace placeholders lives only in command
+  markdown — which <a href="#T-009">T-009</a> and <a href="../../principles.html#P-8">P-8</a> both exclude as a
+  place a guarantee may live; fixed by a meta-spec requirement plus a validate rule; regeneration fails, because
+  nothing a later session reads would stop it happening again.</p>
+
+  <dl>
+    <dt>Expected</dt>
+    <dd>An authored artifact ships with every <code>[PLACEHOLDER]</code> token replaced.
+    <code>commands/spectastic.propose.md</code> says so directly — <em>"Replace every
+    <code>[PLACEHOLDER]</code>. Never leave one in the final file."</em></dd>
+
+    <dt>Actual</dt>
+    <dd>Both <code>2026-08-15-init-installs-the-bundle</code> and <code>2026-08-15-the-published-tree</code>
+    shipped with <code>[CHANGE_TITLE]</code>, <code>[CHANGE_ID]</code> and <code>[CREATED_DATE]</code> intact.
+    <code>spectastic validate</code> reported no findings on both; the pre-commit gate passed; the apply kernel
+    then folded <code>[CHANGE_TITLE]</code> into two <code>tasks.html</code> phase headings, where it rendered as
+    the section title of real work. Found by eye while ticking a checkbox, not by any check.</dd>
+
+    <dt>Diagnosis</dt>
+    <dd>The property is <em>asserted once and checked never</em>. <a href="../011-core-spec/spec.html#SC-003">011
+    SC-003</a> is a must-tier criterion that the <code>spec</code> verb's output carries <em>"no
+    <code>[PLACEHOLDER]</code> tokens remaining"</em> — but it is scoped to one verb and discharged by a one-off
+    integration test, not a rule, so it says nothing about <code>propose</code>, <code>design</code>,
+    <code>tasks</code> or <code>triage</code>. The nearest-named rule,
+    <code>no-placeholder-question</code>, is about a <em>"None"</em> <code>&lt;li&gt;</code> in a questions
+    register — a false open question, an unrelated defect. So the estate has a must-tier statement of the property
+    for one verb, no statement for the other seven, and no rule for any.</dd>
+
+    <dt>Fix</dt>
+    <dd>A meta-spec requirement that an authored artifact carries no unreplaced placeholder, and a
+    <code>no-unreplaced-placeholder</code> per-file rule in <span class="path">packages/schema/src/rules/</span>
+    to enforce it. Two details the investigation settled. <strong>Scope comes free:</strong> the pre-commit gate
+    validates <code>specs/**/*.html</code>, <code>*.html</code> and <code>examples/*.html</code> but
+    <em>not</em> <code>templates/</code>, so a rule cannot false-positive on the templates whose whole job is to
+    carry placeholders. <strong>Quotation must not fire:</strong> of twelve estate files matching a naive
+    <code>[UPPER_SNAKE]</code> scan, every one checked was a spec legitimately quoting a template's own
+    placeholder inside <code>&lt;code&gt;</code> — so the rule keys on placeholders outside <code>&lt;code&gt;</code>,
+    or it will be noise on its first run. Severity should follow
+    <code>no-placeholder-question</code>'s status ladder, firing while the artifact is still authorable and
+    skipping frozen <code>applied</code>/<code>withdrawn</code> archives.</dd>
+  </dl>
+
+  <details>
+    <summary>Deep dive — a guarantee living in markdown, for the second time on the same day</summary>
+    <p><strong>The principle is already written and this is a fresh instance of it.</strong>
+    <a href="#T-009">T-009</a> records that command descriptions are a UX nudge and not a guarantee, and that
+    guarantees for mandatory steps belong in the kernel or CI. The propose command's placeholder instruction is
+    exactly the excluded form: an imperative in markdown, addressed to a model, with nothing downstream checking
+    the result. It failed the first time it was tested by an author who was not looking for it.</p>
+    <p><strong>The fold is the reason this is worth more than its size.</strong> An unreplaced placeholder in a
+    proposal is cosmetic and lives in one file. The apply kernel copies §6 verbatim into the target's
+    <code>tasks.html</code>, so the placeholder became the heading of a live work phase in two specs — propagated
+    by a deterministic kernel into artifacts a reader trusts, which is the shape of defect the kernel exists to
+    prevent rather than spread. Whether <code>apply</code> should <em>refuse</em> a proposal carrying placeholders,
+    as it already refuses one carrying an identified risk, is the design question the requirement should settle.</p>
+    <p><strong>Not cross-spec.</strong> 011 SC-003 and the propose command do not disagree; one covers a verb and
+    the other is unenforceable. An absence, not a contradiction — so the fix is a new requirement on the meta-spec
+    rather than a reconciliation between two.</p>
+  </details>
+</spec-triage>
+
 </spec-triage-log>
 </section>
 
@@ -995,6 +1067,8 @@
 <h2>Change log</h2>
 <spec-changelog>
 <ol>
+    <li><time datetime="2026-08-15">15 Aug 2026</time><span>T-027 added — an artifact may ship with unreplaced template placeholders and nothing checks; the obligation lives only in command markdown, and the apply fold propagated one into two live task phases.</span></li>
+    <li><time datetime="2026-08-15">15 Aug 2026</time><span>T-026 closed — <code>init</code> now installs the three subagent definitions; landed via the third proposal, the one that asked whether the install was wanted instead of arguing it was already required. Verified downstream by deleting the hand-copies and reinstalling with a real <code>init</code>.</span></li>
     <li><time datetime="2026-08-15">15 Aug 2026</time><span>T-026 re-grounded — the fix is a propose, not the one-line widening first written and since reverted. Nothing requires <code>init</code> to install the agents: 044 FR-004 obliges the definitions to exist, not to ship. 003 FR-002 owns what init writes and 004 SC-001 pins the file count behind a drift guard that reads the spec, so the change cascades into two requirements. Reverted rather than committed, because adding unrequired behaviour is the defect shape this estate keeps finding.</span></li>
     <li><time datetime="2026-08-15">15 Aug 2026</time><span>T-026 added — <code>init</code> never installs the three subagent definitions the prebuild bundles: <code>inventoryAt</code> lists <code>.claude/commands</code>, <code>assets</code> and <code>templates</code> and omits <code>.claude/agents</code>. <code>implementation</code>, regen <code>pass</code>. Every downstream project scaffolded since 044 has run <code>/spectastic.propose</code> with no <code>spectastic-critic</code> — the adversarial pass silently absent, which is I-074's own diagnosis one level out. Found by re-initing a downstream repo; a drift check reported it healthy because every file that does arrive is byte-identical.</span></li>
     <li><time datetime="2026-08-14">14 Aug 2026</time><span>T-025 added and closed — the apply kernel deepens the archived proposal's relative paths and folds its §6 tasks into <code>tasks.html</code> at the authoring depth, so a task carrying a cross-spec link points outside the repo. <code>implementation</code>, regen <code>pass</code>. Latent since the fold shipped: a repo-wide scan found the two links in 095's new phase are the only instance in the estate, because no §6 task had ever carried one. Links corrected; the kernel fix is named for a second instance rather than taken now. Surfaced by re-grounding a §6 task list before apply — the practice that avoids <a href="#T-024">T-024</a> is what exposed it.</span></li>
