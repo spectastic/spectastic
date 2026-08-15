@@ -70,6 +70,15 @@ function devBundleRoot(): string | null {
 function inventoryAt(root: string, origin: 'production' | 'dev-fallback'): BundleInventory {
   const files = [
     ...listFiles(root, '.claude/commands'),
+    // 044 FR-004: "Agent-definition sources MUST be tracked and synced to
+    // .claude/agents/, mirroring the commands/ → .claude/commands/ convention."
+    // Missing here from 044 until triage T-026 — prebuild has always bundled
+    // them and this walk never copied them, so every project scaffolded in
+    // between ran /spectastic.propose with no spectastic-critic: the
+    // adversarial pass silently absent rather than failing. Note how it hid —
+    // every file that DID arrive was byte-identical, so a drift check reported
+    // those projects healthy.
+    ...listFiles(root, '.claude/agents'),
     ...listFiles(root, 'assets'),
     ...remapKnowledgeScaffold(listFiles(root, 'templates')),
   ];
@@ -86,6 +95,11 @@ function inventoryAtDev(root: string): BundleInventory {
     ...listFiles(root, 'commands').map((f) => ({
       source: f.source,
       relativeDestination: f.relativeDestination.replace(/^commands\//, '.claude/commands/'),
+    })),
+    // The mirrored translation 044 FR-004 names explicitly (T-026).
+    ...listFiles(root, 'agents').map((f) => ({
+      source: f.source,
+      relativeDestination: f.relativeDestination.replace(/^agents\//, '.claude/agents/'),
     })),
     ...listFiles(root, 'assets'),
     ...remapKnowledgeScaffold(listFiles(root, 'templates')),
