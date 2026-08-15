@@ -192,6 +192,28 @@ export interface ImportInput {
   originUrl?: string | undefined;
 }
 
+/**
+ * Every file under `dir`, at its path relative to `dir`, depth-first and in a
+ * stable order (triage T-016).
+ *
+ * Dot-entries are skipped at every level, not just the root — a design tool's
+ * `.thumbnail` is not design material, and neither is anything inside a dot
+ * directory it might ship.
+ *
+ * Returns paths, never contents: the caller decides what to read, which keeps
+ * the read/land permission split (FR-015) in one place.
+ */
+export async function collectExportFiles(fs: FileSystem, dir: string, prefix = ''): Promise<string[]> {
+  const out: string[] = [];
+  for (const name of (await fs.readdir(dir)).filter((f) => !f.startsWith('.')).sort()) {
+    const rel = prefix === '' ? name : `${prefix}/${name}`;
+    const stat = await fs.stat(`${dir}/${name}`);
+    if (stat.isDirectory) out.push(...(await collectExportFiles(fs, `${dir}/${name}`, rel)));
+    else out.push(rel);
+  }
+  return out;
+}
+
 export async function importDesignSource(
   input: ImportInput,
   fetcher: DesignSourceFetcher,
@@ -209,6 +231,20 @@ export async function importDesignSource(
   }
 
   const dir = await fetcher.fetch(input.from);
+
+  // The destination sidecar may not exist yet — a project's FIRST import is the
+  // ordinary case (US1), not an edge one. Without this every first run ends in
+  // ENOENT on the first write, which is triage T-015: the same defect the apply
+  // kernel had at its own first archive (meta-spec T-007), and the reason
+  // `FileSystem.mkdir` is on the port at all. The corpus importer this spec
+  // transfers its four properties from has always done this; only the import
+  // did not adopt it.
+  //
+  // Before the write loop rather than lazily per file, so a refusal that lands
+  // nothing still leaves the directory it would have used — and idempotent, so
+  // a re-import over an existing sidecar is unaffected.
+  await fs.mkdir(input.into);
+
   const ledger: ImportLedger = {
     written: [],
     skipped: [],
@@ -220,7 +256,21 @@ export async function importDesignSource(
     tokenCandidates: [],
   };
 
-  const entries = (await fs.readdir(dir)).filter((f) => !f.startsWith('.'));
+  // Every file in the export, at its path RELATIVE to the export root, walked
+  // depth-first (triage T-016).
+  //
+  // This used to be a flat `readdir`, and every entry was handed straight to
+  // `readFile` — so the first subdirectory in a real export threw EISDIR and
+  // the import died before writing its manifest. Every fixture in this suite
+  // was flat, and the previous in-memory stub could not represent a directory
+  // at all, so nothing could catch it. A real Claude Design export has
+  // `uploads/` beside its files, which is how it surfaced.
+  //
+  // Relative paths are preserved rather than flattened: 094 FR-008 permits a
+  // project to subdivide a sidecar, and flattening would collide two files that
+  // differ only by directory while silently changing what the export said.
+  const entries = await collectExportFiles(fs, dir);
+
   // Read, not landed. Deriving tokens is a different permission from copying:
   // a file may be unsafe to LAND and still be perfectly readable, and in a real
   // export the file carrying the runtime is also the one carrying most of the
@@ -242,14 +292,28 @@ export async function importDesignSource(
     contentHash: contentHash(body),
   });
 
+  // TWO PHASES, and the split is NFR-001 (triage T-017): read and decide
+  // everything first, write only once nothing can still fail. The pass used to
+  // interleave them, so a read that threw partway left earlier files on disk
+  // with no manifest beside them — material claiming nothing about its own
+  // provenance or review state, which is the state NFR-001 forbids. The real
+  // run that found this left a 68 KB runtime exactly that way.
+  //
+  // Recorded ceiling, because "atomic" would overclaim: a failure during the
+  // WRITE phase below can still leave a partial sidecar. Closing that needs a
+  // staging directory and a rename, which the port supports and which is not
+  // taken on here — the failure this fixes is the one that actually happens,
+  // since reading somebody else's export is where the surprises live.
+  const planned: { name: string; destination: string; body: string; kind: 'written' | 'replaced' }[] = [];
+
   for (const name of entries) {
     const source = `${dir}/${name}`;
     const destination = `${input.into}/${name}`;
     const body = await fs.readFile(source);
 
     // FR-012 — a licence that forbids landing stops the file, and says which
-    // and why. Checked BEFORE anything is written, so a refusal leaves no
-    // partial material behind.
+    // and why. Decided before any write, so a refusal leaves no partial
+    // material behind.
     const forbidding = forbiddingLicence(body);
     if (forbidding !== undefined) {
       ledger.refused.push({ name, reason: `licence forbids landing: ${forbidding}` });
@@ -285,17 +349,23 @@ export async function importDesignSource(
       existing = undefined;
     }
 
-    if (existing === undefined) {
-      await fs.writeFile(destination, body);
-      ledger.written.push(name);
-      continue;
-    }
     if (existing === body) {
       ledger.skipped.push(name);
       continue;
     }
-    await fs.writeFile(destination, body);
-    ledger.replaced.push(name);
+    planned.push({ name, destination, body, kind: existing === undefined ? 'written' : 'replaced' });
+  }
+
+  // --- write phase: nothing above this line has touched the destination ---
+  for (const w of planned) {
+    // A nested export path needs its parent inside the sidecar (T-016). Cheap
+    // and idempotent, so it runs per file rather than being tracked — the cost
+    // is a syscall on a directory that already exists, and the alternative is
+    // a set that has to stay correct.
+    const parent = w.destination.slice(0, w.destination.lastIndexOf('/'));
+    if (parent !== '' && parent !== input.into) await fs.mkdir(parent);
+    await fs.writeFile(w.destination, w.body);
+    ledger[w.kind].push(w.name);
   }
 
   // FR-010 — token candidates derived from the artifact rather than read from

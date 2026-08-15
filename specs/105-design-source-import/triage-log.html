@@ -386,6 +386,75 @@
   </details>
 </spec-triage>
 
+<spec-triage id="T-015" layer="implementation">
+  <header>
+    <h4>A first import always fails: the destination sidecar is never created</h4>
+    <span class="meta">
+      <span class="layer-pill">Implementation</span>
+      <span class="regen" data-result="pass">code</span>
+    </span>
+  </header>
+
+  <p class="headline">Debugging <code>ENOENT: no such file or directory, open 'visual/support.js'</code> on a real import, root cause was that <code>importDesignSource</code> writes three times and never creates <code>--into</code>; regeneration <strong>passes</strong>, because the corpus importer this spec transfers its properties from does <code>mkdirSync</code> before writing and the <code>FileSystem</code> port already carries <code>mkdir</code>.</p>
+
+  <dl>
+    <dt>Expected</dt> <dd>Importing into a sidecar that does not exist yet creates it. That is the ordinary case — a project's <em>first</em> import, which is the one <a href="./spec.html#US1">US1</a> describes.</dd>
+    <dt>Actual</dt>   <dd>Exit code 2, nothing written, no <code>visual/</code>. <code>importDesignSource</code> (<span class="path">packages/core/src/visual/import.ts</span>) calls <code>fs.writeFile</code> at three sites — the landed file, the replaced file, and the manifest — and never <code>fs.mkdir</code>. The CLI registrar does not create it either.</dd>
+    <dt>Diagnosis</dt><dd>An omission, not a design choice. <code>FileSystem.mkdir</code> exists on the port and is documented as <em>"recursive, idempotent directory create"</em>, added for exactly this class of failure when the apply kernel hit it (<a href="../000-spectastic/triage-log.html#T-007">meta-spec T-007</a> — the archive move ENOENTing on a spec's first archive). The same bug, in a different verb, two months later.<br><br>It survived because every previous run of this import wrote into a <code>visual/</code> that already existed. The failure needs a genuinely fresh project to surface, and the only downstream project had been imported into before. Rolling that repo back to its handoff tag reproduced a real first-run and it failed immediately.</dd>
+    <dt>Fix</dt>      <dd><span class="path">packages/core/src/visual/import.ts</span> — <code>await fs.mkdir(input.into)</code> before the write loop. Mirrors the corpus importer's <code>mkdirSync(referencesDir, {recursive:true})</code> and the apply kernel's mkdir-before-rename. A test importing into a non-existent directory is what keeps it fixed; every existing test seeds the destination.</dd>
+  </dl>
+
+  <details>
+    <summary>Deep dive — what it says about the test suite, and about the exemplar</summary>
+    <p><strong>The suite cannot see this.</strong> Its in-memory <code>FileSystem</code> stub implements <code>writeFile</code> as <code>store[p] = body</code>, which happily writes to any path — directories do not exist in it as a concept. So every one of the 46 import tests passes against a filesystem model where this bug is unrepresentable. That is worth more attention than the one-line fix: a stub simpler than the real port cannot fail the way the port does, and NFR-001's atomicity claim rests on the same stub.</p>
+    <p><strong>And the exemplar never exercised it.</strong> The downstream project's two earlier imports read a hand-made <code>design-export/</code> folder — a 4-line stub standing in for the real 29 KB design file, plus a 3-line palette. So the verb had never once been run against a real design export until now, which is also how a first-run failure stayed hidden.</p>
+  </details>
+</spec-triage>
+
+<spec-triage id="T-016" layer="implementation" data-status="done">
+  <header>
+    <h4>The read loop assumes a flat export and dies on the first subdirectory</h4>
+    <span class="meta"><span class="layer-pill">Implementation</span><span class="regen" data-result="pass">code</span></span>
+  </header>
+  <p class="headline">Debugging <code>EISDIR: illegal operation on a directory, read</code> on a real export, root cause was <code>readdir</code> handing every entry straight to <code>readFile</code> with no directory check; fixed by walking the export depth-first and preserving relative paths; regeneration <strong>passes</strong>, because nothing in the spec says an export is flat and a real one is not.</p>
+  <dl>
+    <dt>Expected</dt> <dd>An export with a subdirectory imports. A real Claude Design export has <code>uploads/</code> beside its files.</dd>
+    <dt>Actual</dt>   <dd>Exit code 2 on the first directory entry. The loop was <code>readdir(dir)</code> then <code>readFile(`${dir}/${name}`)</code> per entry — a directory is an entry.</dd>
+    <dt>Diagnosis</dt><dd>Every fixture in the suite was flat, and the in-memory stub had no notion of a directory at all, so the shape could not be expressed let alone tested. The two earlier runs of this verb read a hand-made flat folder, so the verb had never met a real export.</dd>
+    <dt>Fix</dt>      <dd><code>collectExportFiles</code> in <span class="path">packages/core/src/visual/import.ts</span> — depth-first, dot-entries skipped at every level, relative paths preserved rather than flattened (094 FR-008 permits a subdivided sidecar, and flattening would collide two files differing only by directory).</dd>
+    <dt>Fixed</dt>    <dd>Landed with three red-first tests over a nested fixture, plus a destination <code>mkdir</code> so a nested path lands at its relative location. The stub was rewritten first so the failure is representable: it now throws EISDIR on a directory read and ENOENT on a write under a missing parent.</dd>
+  </dl>
+</spec-triage>
+
+<spec-triage id="T-017" layer="implementation" data-status="done">
+  <header>
+    <h4>An interrupted import leaves material with no manifest — NFR-001 says it must leave nothing</h4>
+    <span class="meta"><span class="layer-pill">Implementation</span><span class="regen" data-result="pass">code</span></span>
+  </header>
+  <p class="headline">Debugging what the crashed import left behind, root cause was a pass that interleaved reading and writing so a mid-read failure stranded earlier files; fixed by deciding everything before writing anything; regeneration <strong>passes</strong>, because <a href="./spec.html#NFR-001">NFR-001</a> states the property plainly and the pass simply did not hold it.</p>
+  <dl>
+    <dt>Expected</dt> <dd><a href="./spec.html#NFR-001">NFR-001</a>: <em>"An interrupted import MUST leave the project in a state that still validates: at most 0 partially written files remain."</em></dd>
+    <dt>Actual</dt>   <dd>The <a href="#T-016">T-016</a> crash left <code>visual/support.js</code> — 68 KB — written, with no <code>import-manifest.html</code>. Material on disk claiming nothing about its provenance or review state, which is the opposite of what FR-004 and FR-006 exist to guarantee.</dd>
+    <dt>Diagnosis</dt><dd>The pass wrote as it went. That is a deliberate property inherited from the corpus importer — but the corpus writes into a staging area it controls, and this writes straight into the project. The requirement was written and never implemented, and no test could catch it because the stub's <code>writeFile</code> could not fail.</dd>
+    <dt>Fix</dt>      <dd>Two phases in <span class="path">packages/core/src/visual/import.ts</span>: read and decide into a <code>planned</code> list, then write. Nothing touches the destination until nothing can still fail.</dd>
+    <dt>Fixed</dt>    <dd>Two phases, red-first, with a test that fails the second source read and asserts 0 files landed. <strong>A ceiling is recorded rather than overclaimed:</strong> a failure during the <em>write</em> phase can still leave a partial sidecar. Closing that needs staging plus rename, which the port supports and which is deliberately not taken on — the failure this fixes is the one that actually happens, since reading somebody else's export is where the surprises are.</dd>
+  </dl>
+</spec-triage>
+
+<spec-triage id="T-018" layer="spec">
+  <header>
+    <h4>A design tool's runtime lands unexamined, because the safety check only looks at HTML</h4>
+    <span class="meta"><span class="layer-pill">Spec</span><span class="regen" data-result="fail">upstream</span></span>
+  </header>
+  <p class="headline">Debugging why 68 KB of minified JavaScript arrived in the sidecar, root cause was that <code>landingWouldViolate</code> inspects only <code>.html/.htm/.xhtml/.svg</code>, so a bare <code>.js</code> file is never examined at all; regeneration <strong>fails</strong>, because <a href="./spec.html#FR-014">FR-014</a> is scoped to the project's artifact rules and a standalone script breaks none of them.</p>
+  <dl>
+    <dt>Expected</dt> <dd>A decision about whether a design tool's runtime belongs in the project, taken deliberately.</dd>
+    <dt>Actual</dt>   <dd><code>support.js</code> landed verbatim, unexamined. The extension filter exists for a good reason — a <code>README.md</code> <em>describing</em> a <code>&lt;script&gt;</code> was being refused — but it means executable content in a file that is not an artifact is invisible to the check.</dd>
+    <dt>Diagnosis</dt><dd>Defensible by the letter of FR-014, which forbids landing material that would leave the project <em>failing its own artifact rules</em>; a loose <code>.js</code> fails none. But the requirement's reach is narrower than its intent, and nobody chose this — it fell out of an extension list added for a different reason.</dd>
+    <dt>Fix</dt>      <dd>A propose deciding it. Options worth weighing rather than guessing between: report a runtime as unhandled regardless of extension; land it but record that it is a tool runtime rather than design data; or say plainly that non-artifact files are out of scope and let it land. Not patched here — changing what lands is a requirement decision, not an implementation one.</dd>
+  </dl>
+</spec-triage>
+
 </spec-triage-log>
 </section>
 
@@ -397,6 +466,8 @@
   <li><time datetime="2026-08-13">13 Aug 2026</time><span>T-001 to T-005 added — five findings from researching the Claude Design connector before running the import for real. One is a false premise in an upstream survey claim (T-001); three are unverified or unstated assumptions (T-002 to T-004); one is an omission (T-005). Deliberately recorded rather than amended: the experiment that prompted the research will likely surface more, and this spec should be amended once with everything rather than five times.</span></li>
   <li><time datetime="2026-08-14">14 Aug 2026</time><span>T-014 added — <code>bumpVersion</code> hardcodes standard semantic-version increments while <a href="./spec.html#FR-016">FR-016</a> requires the move happen under <em>the versioning policy</em>, which <a href="../098-token-set-versioning/spec.html#FR-001">098 FR-001</a> keeps as the token set's own prose and this code never reads. <code>implementation</code> layer, regen <code>pass</code> — the requirement was clear enough and the implementation substituted a different policy without checking they agreed. Shipped while <a href="#T-013">T-013</a>, which named this exact hazard and said to decide the ownership question first, sat open. The ownership half stays T-013's; this card owns the silent substitution, and the three tests pinning the arithmetic go with the fix, since they encode the defect rather than catch it.</span></li>
   <li><time datetime="2026-08-14">14 Aug 2026</time><span>T-014 closed — <code>bumpVersion</code> deleted; the produced version is now a required confirmer input beside the name and the class, checked for presence and readable shape only. Agreement with the declared tier is deliberately <em>not</em> checked, because that would reintroduce the substitution one step removed. The replacement test asserts a version standard arithmetic could never produce and was confirmed to fail against the old implementation before being trusted — the check the removed tests never got. 55 tests green. <a href="#T-013">T-013</a> stays open: this closes the silent substitution, not the ownership question.</span></li>
+  <li><time datetime="2026-08-15">15 Aug 2026</time><span>T-015 added — a first import fails with ENOENT because <code>importDesignSource</code> never creates <code>--into</code>. <code>implementation</code>, regen <code>pass</code>: the corpus importer this spec transfers from does mkdir before writing, and <code>FileSystem.mkdir</code> exists for exactly this failure (meta-spec T-007, same bug in the apply kernel). Hidden because every test seeds its destination and the in-memory stub has no notion of directories, and because the only downstream project had always imported into an existing <code>visual/</code>. Surfaced by rolling that repo back to its handoff tag and running a genuine first import.</span></li>
+  <li><time datetime="2026-08-15">15 Aug 2026</time><span>T-016 and T-017 added and fixed; T-018 added and left open. All three surfaced from one real import — the first this verb has ever run against a genuine design export, both earlier runs having read a hand-made 24-line folder. The stub was rewritten first so the failures are representable: it now models directories, throws EISDIR on a directory read and ENOENT on a write under a missing parent. T-018 is a requirement decision about whether a tool runtime belongs in the project and is deliberately not patched.</span></li>
 </ol>
 </spec-changelog>
 </section>

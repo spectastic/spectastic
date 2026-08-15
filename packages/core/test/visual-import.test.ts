@@ -23,30 +23,77 @@ import type { FileSystem } from '../src/types.js';
  * actually disappeared rather than merely intending to.
  */
 
+/**
+ * An in-memory FileSystem that models DIRECTORIES.
+ *
+ * The previous version did not, and that is why three real defects shipped
+ * (triage T-015, T-016, T-017): `writeFile` was `store[p] = body`, so writing
+ * into a directory that does not exist was impossible to fail, and `readFile`
+ * returned a string for any key, so reading a directory was impossible to fail
+ * either. A stub simpler than the port it stands for cannot fail the way the
+ * port fails, and every one of those defects was unrepresentable here while
+ * passing 46 green tests.
+ *
+ * So this one refuses what the real filesystem refuses:
+ *  - `readFile` on a directory throws EISDIR
+ *  - `writeFile` under a missing parent throws ENOENT
+ *  - `readdir` lists immediate children only, directories included
+ */
 function memFs(files: Record<string, string>, dirs: string[] = []) {
   const store = { ...files };
+  const madeDirs = new Set<string>(dirs);
+  // Every ancestor of a seeded file is a directory, as on a real filesystem.
+  for (const f of Object.keys(files)) {
+    const parts = f.split('/');
+    for (let i = 1; i < parts.length; i++) madeDirs.add(parts.slice(0, i).join('/'));
+  }
+  for (const d of dirs) {
+    const parts = d.split('/');
+    for (let i = 1; i < parts.length; i++) madeDirs.add(parts.slice(0, i).join('/'));
+  }
+
+  const isDir = (p: string): boolean => madeDirs.has(p);
+
   const fs = {
     readFile: async (p: string) => {
+      if (isDir(p)) {
+        const e = new Error('EISDIR: illegal operation on a directory, read');
+        (e as NodeJS.ErrnoException).code = 'EISDIR';
+        throw e;
+      }
       if (!(p in store)) throw new Error(`ENOENT ${p}`);
       return store[p] as string;
     },
     writeFile: async (p: string, body: string) => {
+      const parent = p.slice(0, p.lastIndexOf('/'));
+      if (parent && !isDir(parent)) {
+        const e = new Error(`ENOENT: no such file or directory, open '${p}'`);
+        (e as NodeJS.ErrnoException).code = 'ENOENT';
+        throw e;
+      }
       store[p] = body;
     },
     stat: async (p: string) => {
-      if (dirs.includes(p)) return { isFile: false, isDirectory: true };
+      if (isDir(p)) return { isFile: false, isDirectory: true };
       if (p in store) return { isFile: true, isDirectory: false };
       throw new Error(`ENOENT ${p}`);
     },
-    readdir: async (p: string) =>
-      Object.keys(store)
-        .filter((k) => k.startsWith(`${p}/`))
-        .map((k) => k.slice(p.length + 1))
-        .filter((k) => !k.includes('/')),
+    readdir: async (p: string) => {
+      const kids = new Set<string>();
+      for (const k of [...Object.keys(store), ...madeDirs]) {
+        if (!k.startsWith(`${p}/`)) continue;
+        const rest = k.slice(p.length + 1);
+        if (rest.length > 0) kids.add(rest.split('/')[0] as string);
+      }
+      return [...kids].sort();
+    },
     rename: async () => {},
-    mkdir: async () => {},
+    mkdir: async (p: string) => {
+      const parts = p.split('/');
+      for (let i = 1; i <= parts.length; i++) madeDirs.add(parts.slice(0, i).join('/'));
+    },
   } as unknown as FileSystem;
-  return { fs, store };
+  return { fs, store, madeDirs };
 }
 
 const CWD = '/repo';
@@ -417,6 +464,124 @@ describe('prose about executable content is not executable content', () => {
     const m = only({ 'screens.dc.html': '<div><script>x</script></div>' });
     const ledger = await imp(m);
     expect(ledger.unhandled).toEqual(['screens.dc.html']);
+  });
+});
+
+describe('a first import creates the sidecar (T-015)', () => {
+  it('creates the destination directory rather than ENOENTing on the first write', async () => {
+    // The real defect: every other test in this file seeds INTO into the memFs
+    // `dirs` list, and the stub's writeFile happily writes to any path — so a
+    // filesystem where directories must exist is unrepresentable here. This
+    // asserts the mkdir call itself, which is the part the stub can observe.
+    const created: string[] = [];
+    const m = only({ 'a.html': '<p style="color:#abc">a</p>' });
+    const fs = {
+      ...m.fs,
+      mkdir: async (p: string) => {
+        created.push(p);
+      },
+    } as unknown as FileSystem;
+    await importDesignSource({ from: FROM, into: INTO, identity: 'design-1' }, localSourceFetcher(m.fs, CWD), fs);
+    expect(created).toContain(INTO);
+  });
+
+  it('creates it before writing, so a run that lands nothing still prepared the destination', async () => {
+    const order: string[] = [];
+    const m = only({ 'a.html': '<p>licence: cc-by-nc-nd</p>' });
+    const fs = {
+      ...m.fs,
+      mkdir: async (p: string) => {
+        order.push(`mkdir:${p}`);
+      },
+      writeFile: async (p: string, b: string) => {
+        order.push(`write:${p}`);
+        await m.fs.writeFile(p, b);
+      },
+    } as unknown as FileSystem;
+    const ledger = await importDesignSource(
+      { from: FROM, into: INTO, identity: 'design-1' },
+      localSourceFetcher(m.fs, CWD),
+      fs,
+    );
+    expect(ledger.refused).toHaveLength(1);
+    expect(order[0]).toBe(`mkdir:${INTO}`);
+  });
+});
+
+describe('a real export has nested directories (T-016)', () => {
+  /** The shape a real Claude Design export actually has: files at the root and
+   *  an `uploads/` directory beside them. Every fixture before this one was
+   *  flat, which is why the read loop's readFile-per-entry survived. */
+  const nested = () =>
+    memFs(
+      {
+        [`${CWD}/${FROM}/screens.dc.html`]: '<div style="color:#f7f5f1">a</div>',
+        [`${CWD}/${FROM}/uploads/spec.html`]: '<p style="color:#1c1914">b</p>',
+      },
+      [`${CWD}/${FROM}`, `${CWD}/${FROM}/uploads`, INTO],
+    );
+
+  it('does not die reading a directory as if it were a file', async () => {
+    const m = nested();
+    await expect(imp(m)).resolves.toBeDefined();
+  });
+
+  it('lands a nested file at its relative path rather than flattening or skipping it', async () => {
+    const m = nested();
+    const ledger = await imp(m);
+    expect(ledger.written).toContain('uploads/spec.html');
+    expect(m.store[`${INTO}/uploads/spec.html`]).toBe('<p style="color:#1c1914">b</p>');
+  });
+
+  it('derives candidates from nested material too', async () => {
+    const m = nested();
+    const ledger = await imp(m);
+    expect(ledger.tokenCandidates.map((c) => c.value)).toContain('#1c1914');
+  });
+});
+
+describe('an interrupted import leaves nothing behind (NFR-001, T-017)', () => {
+  /** NFR-001: "An interrupted import MUST leave the project in a state that
+   *  still validates: at most 0 partially written files remain." The real run
+   *  that found this crashed mid-read and left a 68 KB runtime in the sidecar
+   *  with no manifest — the ledger describing what happened is the one file
+   *  that never got written. */
+  it('writes 0 files when a read fails partway through', async () => {
+    const m = memFs(
+      {
+        [`${CWD}/${FROM}/a.html`]: '<p style="color:#abc">a</p>',
+        [`${CWD}/${FROM}/b.html`]: '<p>b</p>',
+      },
+      [`${CWD}/${FROM}`, INTO],
+    );
+    // Fail on the second source read, after the first has been read and would
+    // — under a write-as-you-go pass — already be on disk.
+    let reads = 0;
+    const fs = {
+      ...m.fs,
+      readFile: async (p: string) => {
+        if (p.startsWith(`${CWD}/${FROM}/`)) {
+          reads += 1;
+          if (reads === 2) throw new Error('EIO: simulated read failure');
+        }
+        return m.fs.readFile(p);
+      },
+    } as unknown as FileSystem;
+
+    await expect(imp({ ...m, fs })).rejects.toThrow(/simulated read failure/);
+    const landed = Object.keys(m.store).filter((k) => k.startsWith(`${INTO}/`));
+    expect(landed).toEqual([]);
+  });
+
+  it('writes the manifest whenever it writes anything at all', async () => {
+    // The ledger is the record of what arrived and that none of it is
+    // reviewed (FR-004, FR-006). Material on disk with no manifest beside it
+    // is the state NFR-001 forbids, and is what the real run produced.
+    const m = only({ 'a.html': '<p style="color:#abc">a</p>' });
+    await imp(m);
+    const landed = Object.keys(m.store).filter((k) => k.startsWith(`${INTO}/`));
+    expect(landed.length).toBeGreaterThan(0);
+    expect(m.store[`${INTO}/${MANIFEST_NAME}`]).toBeDefined();
   });
 });
 
