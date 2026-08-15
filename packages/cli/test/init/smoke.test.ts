@@ -84,6 +84,15 @@ describe('init: smoke (T-102)', () => {
     expect(files).toContain('.claude/commands/spectastic.apply.md');
     expect(files).toContain('.claude/commands/spectastic.implement.md');
     expect(files.filter((f) => f.startsWith('.claude/commands/')).length).toBe(8);
+    // 003 FR-002: the three subagent definitions, asserted BY NAME. A count
+    // would pass if three unrelated files landed in .claude/agents/, and the
+    // point of installing them is that these three specific pins are present
+    // — `implement --model opus` (044 FR-003) is unsatisfiable without
+    // spectastic-impl-task in particular.
+    expect(files).toContain('.claude/agents/spectastic-classifier.md');
+    expect(files).toContain('.claude/agents/spectastic-critic.md');
+    expect(files).toContain('.claude/agents/spectastic-impl-task.md');
+    expect(files.filter((f) => f.startsWith('.claude/agents/')).length).toBe(3);
     expect(files).toContain('assets/spec.css');
     expect(files).toContain('assets/spec.js');
     expect(files).toContain('templates/principles.html');

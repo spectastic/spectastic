@@ -64,12 +64,14 @@ function devBundleRoot(): string | null {
 }
 
 /**
- * Walk a production bundle root (with `.claude/commands/`, `assets/`,
- * `templates/` already in the destination layout) and build the inventory.
+ * Walk a production bundle root (with `.claude/commands/`, `.claude/agents/`,
+ * `assets/`, `templates/` already in the destination layout) and build the
+ * inventory.
  */
 function inventoryAt(root: string, origin: 'production' | 'dev-fallback'): BundleInventory {
   const files = [
     ...listFiles(root, '.claude/commands'),
+    ...listFiles(root, '.claude/agents'),
     ...listFiles(root, 'assets'),
     ...remapKnowledgeScaffold(listFiles(root, 'templates')),
   ];
@@ -77,8 +79,9 @@ function inventoryAt(root: string, origin: 'production' | 'dev-fallback'): Bundl
 }
 
 /**
- * Walk a dev workspace root (with `commands/`, `assets/`, `templates/`)
- * and translate to the destination layout (commands/ → .claude/commands/).
+ * Walk a dev workspace root (with `commands/`, `agents/`, `assets/`,
+ * `templates/`) and translate to the destination layout (commands/ →
+ * .claude/commands/, agents/ → .claude/agents/).
  */
 function inventoryAtDev(root: string): BundleInventory {
   const files = [
@@ -86,6 +89,11 @@ function inventoryAtDev(root: string): BundleInventory {
     ...listFiles(root, 'commands').map((f) => ({
       source: f.source,
       relativeDestination: f.relativeDestination.replace(/^commands\//, '.claude/commands/'),
+    })),
+    // Same remap for the subagent definitions.
+    ...listFiles(root, 'agents').map((f) => ({
+      source: f.source,
+      relativeDestination: f.relativeDestination.replace(/^agents\//, '.claude/agents/'),
     })),
     ...listFiles(root, 'assets'),
     ...remapKnowledgeScaffold(listFiles(root, 'templates')),

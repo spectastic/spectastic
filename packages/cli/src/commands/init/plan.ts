@@ -39,7 +39,7 @@ import type { BundleInventory, FileWriteDecision } from './types.js';
  * and a drift guard asserts SC-001 states SCAFFOLD_TREE_FILE_COUNT. Change the
  * scaffold → change these once, and the guards name everything else that must follow.
  */
-export const SCAFFOLD_FILE_COUNT = 27;
+export const SCAFFOLD_FILE_COUNT = 30;
 export const SCAFFOLD_TREE_FILE_COUNT = SCAFFOLD_FILE_COUNT + 2;
 
 export interface BuildPlanOptions {
