@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
+<title>003-init-node-port · Triage log</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Triage log · 003-init-node-port</p>
+  <h1>003-init-node-port — triage log</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    Defects against the <code>003-init-node-port</code> spec. Cards append-only; IDs stable.
+  </p>
+
+  <spec-meta>
+    <b>Spec</b>      <span><a href="./spec.html">003-init-node-port</a></span>
+    <b>Created</b>   <span><time datetime="2026-08-15">15 Aug 2026</time></span>
+    <b>Read time</b> <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-tldr>
+    <p>One card per debug session. Fits one screen; reads in under 30 seconds. Five required Tier-1 fields
+    (headline · Expected · Actual · Diagnosis · Fix); the deep-dive <code>&lt;details&gt;</code> stays collapsed
+    unless cross-spec, principles, scope, or hotfix-now applies. See <a href="../../examples/triage-log.html">examples/triage-log.html</a>
+    for the canonical look + the protocol (<code>TRIAGE-001</code>..<code>TRIAGE-006</code>).</p>
+  </spec-tldr>
+</header>
+
+
+<section id="cards">
+<h2>Cards</h2>
+<spec-triage-log>
+
+<spec-triage id="T-001" layer="implementation">
+  <header>
+    <h4>Six files are written after the atomic two-pass, and after the summary that counts them</h4>
+    <span class="meta">
+      <span class="layer-pill">Implementation</span>
+      <span class="regen" data-result="pass">code</span>
+    </span>
+  </header>
+
+  <p class="headline">Debugging <a href="./spec.html#SC-001">SC-001</a>'s definition of the scaffold tree, root
+  cause was implementation drift: <code>registerInit</code> performs six writes after <code>executeWrites</code>
+  and after <code>printSummary</code>, so they skip the conflict scan <a href="./spec.html#FR-008">FR-008</a>
+  requires and are absent from the count the summary prints; fixed by moving them into the plan or by scoping
+  FR-008 to exclude them; regeneration passes — the spec is right and the code drifted.</p>
+
+  <dl>
+    <dt>Expected</dt>
+    <dd>Every destination is scanned for conflicts and prompted for in a first pass; only then does any write
+    happen (<a href="./spec.html#FR-008">FR-008</a>), and a pre-existing file at any destination prompts
+    (<a href="./spec.html#FR-003">FR-003</a>). The summary reports what was written.</dd>
+
+    <dt>Actual</dt>
+    <dd><code>packages/cli/src/commands/init.ts:267-304</code> calls <code>executeWrites(plan)</code> then
+    <code>printSummary(summary)</code>, and then writes six more times — <code>writeMarker</code>,
+    <code>applyGitignore</code>, <code>writeProjectConfig</code>, <code>writeSchemaReference</code>,
+    <code>writeCorpusConfig</code>, and the <code>--tools</code> path. None is in the plan, so none is scanned or
+    prompted: <code>applyGitignore</code> appends to an existing <code>.gitignore</code> and
+    <code>setIfAbsent</code> merges into an existing <code>spectastic.json</code>, both silently. The summary is
+    printed before all six, so it undercounts its own run.</dd>
+
+    <dt>Diagnosis</dt>
+    <dd>The plan/execute split was built for bundle files and every later feature that needed to write something
+    — 043's gitignore, 063's corpus config, 067's project identity, 087's schema reference — appended after it
+    rather than joining it, each individually reasonable and cumulatively a second unguarded write path. It is
+    not a spec gap: <a href="./spec.html#FR-008">FR-008</a> already says what should happen, in the words that
+    describe what does not.</dd>
+
+    <dt>Fix</dt>
+    <dd><code>packages/cli/src/commands/init.ts</code> — either fold the six into the plan so one pass governs
+    every destination, or amend <a href="./spec.html#FR-008">FR-008</a> to scope "the file set" to installed
+    files and say generated config is merged rather than written. The first preserves the guarantee; the second
+    records that it was never claimed for these. <strong>Not decidable from the code</strong> — it turns on
+    whether prompting to overwrite a <code>.gitignore</code> the tool only appends to is a feature or a nuisance,
+    which is an author's call. Move <code>printSummary</code> after the writes either way; that half has no
+    argument on the other side.</dd>
+  </dl>
+
+  <details>
+    <summary>Deep dive — scope-deferred functionality exposed</summary>
+    <p>Surfaced while drafting <code>2026-08-15-init-installs-the-bundle</code>, whose first draft named
+    <code>.gitignore</code> and <code>spectastic.json</code> in SC-001's definition of the output tree. The
+    adversarial pass observed that doing so makes them part of "the file set" and breaches FR-008 by
+    construction. That draft was rewritten to stop enumerating the tree, which removed the contradiction from the
+    proposal without touching the behaviour underneath — so the defect is filed here rather than absorbed into a
+    proposal about something else.</p>
+    <p>No cross-spec contract and no invariant. Worth noting that both candidate fixes are cheap and the choice
+    between them is the whole cost.</p>
+  </details>
+</spec-triage>
+
+</spec-triage-log>
+</section>
+
+
+<section id="changelog">
+<h2>Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-08-15">15 Aug 2026</time><span>Triage log scaffolded.</span></li>
+  <li><time datetime="2026-08-15">15 Aug 2026</time><span>T-001 added — six writes bypass the atomic two-pass and the summary that counts them; surfaced by the adversarial pass on <code>2026-08-15-init-installs-the-bundle</code>.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  003-init-node-port triage log · scaffolded 2026-08-15
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>
