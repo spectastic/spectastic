@@ -79,3 +79,31 @@ describe('absence', () => {
     expect(visualViewMissingFindings(DESIGN, 'design.html')[0]?.fixHint).toMatch(/Materialise the view/);
   });
 });
+
+/**
+ * 099 T-001 — the two checks must not both fire for one defect.
+ *
+ * A design that declares a surface and carries no view has never been
+ * materialised. `visual-view-missing` says exactly that. Drift also fired,
+ * because regeneration differs from a document with no view — and its message,
+ * "no longer matches the screens it projects", is false about a view that never
+ * existed. Two findings for one defect, one of them untrue.
+ */
+describe('drift stands down when the view has never existed (T-001)', () => {
+  it('reports missing only, not drift, for a never-materialised design', async () => {
+    const drift = await visualViewDriftFindings(DESIGN, 'design.html', fsWith(SCREEN(TWO)), '/p');
+    const missing = visualViewMissingFindings(DESIGN, 'design.html');
+    expect(drift).toEqual([]);
+    expect(missing).toHaveLength(1);
+  });
+
+  it('still reports drift once a view exists and has gone stale', async () => {
+    // Materialise against two states, then let the screen grow a third.
+    const { materialiseVisualViews } = await import('../src/visual/materialise-view.js');
+    const withView = await materialiseVisualViews(DESIGN, fsWith(SCREEN(TWO)), '/p');
+    expect(withView).toContain('<spec-visual-view');
+    const drift = await visualViewDriftFindings(withView, 'design.html', fsWith(SCREEN(THREE)), '/p');
+    expect(drift).toHaveLength(1);
+    expect(visualViewMissingFindings(withView, 'design.html')).toEqual([]);
+  });
+});

@@ -975,6 +975,18 @@ export async function visualViewDriftFindings(
   const findings: Finding[] = [];
   if (!html.includes('<spec-visual')) return findings;
 
+  // 099 T-001: stand down when `visual-view-missing` owns the case. A design
+  // that declares a surface and carries NO view has never been materialised —
+  // regeneration would differ, so drift fires too, and its message ("no longer
+  // matches the screens it projects") is false about a view that never existed.
+  // Two findings, one of them untrue, for one defect.
+  //
+  // Scoped to a document with no view AT ALL rather than to any declaration
+  // missing one: where some views exist and one does not, the present ones can
+  // genuinely be stale, and both findings are then true.
+  const declaresSurface = /<spec-visual[^>]*\bscreens=["'][^"']+["'][^>]*>/i.test(html);
+  if (declaresSurface && !html.includes('<spec-visual-view')) return findings;
+
   const { materialiseVisualViews } = await import('../visual/materialise-view.js');
   const regenerated = await materialiseVisualViews(html, fs, cwd);
   // Compare the whole artifact rather than diffing views: the materialiser is
