@@ -468,8 +468,14 @@ export function markSupersededPhase(
   const updated = section[0].replace(
     /<spec-task id="([^"]+)"([^>]*)>([\s\S]*?)<\/spec-task>/g,
     (whole, id: string, attrs: string, body: string) => {
-      // A checked task is left exactly as it stands.
-      if (/<input type="checkbox"\s+checked>/.test(body)) return whole;
+      // A checked task is left exactly as it stands. Matched on the ATTRIBUTE,
+      // never on an attribute ORDER: the estate carries both
+      // `<input type="checkbox" checked>` (2189) and `<input checked
+      // type="checkbox">` (106), and an order-sensitive guard would read the
+      // second as unchecked and retire finished work. It did not, because the
+      // phases retired first happened to use the other form — which is luck,
+      // not a property, and this is the fix that makes it a property.
+      if (/<input\b[^>]*\bchecked\b[^>]*>/.test(body)) return whole;
       if (/data-status=/.test(attrs)) return whole; // already annotated — idempotent
       marked += 1;
       return `<spec-task id="${id}"${attrs} data-status="superseded">${body}${note}\n</spec-task>`;

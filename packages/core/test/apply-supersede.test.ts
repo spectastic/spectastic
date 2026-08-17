@@ -95,4 +95,14 @@ describe('markSupersededPhase (REQ-CHANGE-010)', () => {
     expect(second?.marked).toBe(0);
     expect(second?.out).toBe(first?.out);
   });
+
+  // The guard must key on the attribute, not its position. Both orderings are
+  // real: the estate carries 2189 of the first and 106 of the second.
+  it('leaves a task checked in EITHER attribute order', () => {
+    const t = TRACKER.replace('<input type="checkbox" checked>', '<input checked type="checkbox">');
+    const r = markSupersededPhase(t, '2026-08-13-address-a-screen', 'x', 'y');
+    expect(r?.marked).toBe(2);
+    expect(r?.out).toContain('<spec-task id="T-1101">');
+    expect(r?.out).not.toContain('<spec-task id="T-1101" data-status');
+  });
 });
