@@ -88,7 +88,19 @@ User input (from `$ARGUMENTS`): a change name or one-line description ("add OAut
    - Status pill defaults to `proposed`. The user updates it to `under-review` when sharing,
      `approved` when accepted, `applied` after archive, `withdrawn` if abandoned.
 
-8. **Adversarial risk pass.** Before the splitting nudge runs, decide whether the proposal needs an adversarial risk pass per `REQ-CHANGE-004` of the meta-spec.
+8. **Declaring supersession (`REQ-CHANGE-010`).** If this proposal *corrects* an earlier one rather than extending it — reverses its decision, or moves the work elsewhere — declare that on the wrapper:
+
+   ```html
+   <spec-change id="<date>-<slug>" status="proposed" supersedes="<earlier-date>-<earlier-slug>">
+   ```
+
+   On apply, the fold marks the named change's phase's **unchecked** tasks `data-status="superseded"`, annotated with this change and its title. A **checked** task is left as it stands — a ticked box records work that happened, and retiring it would rewrite history to tidy a count.
+
+   Apply **refuses** if the named change has no archived proposal on the target. It does *not* refuse when the change resolves but its phase is gone — a phase legitimately vanishes when `/spectastic.tasks` regenerates the tracker — and instead reports that it marked nothing.
+
+   **When to reach for it:** author a proposal that contradicts a still-undrained phase and you have created a false backlog. A drain reads an unticked box as work owed, because that is what the format promises. Three rounds on one obligation across three specs left 16 tasks describing work that must never be done.
+
+9. **Adversarial risk pass.** Before the splitting nudge runs, decide whether the proposal needs an adversarial risk pass per `REQ-CHANGE-004` of the meta-spec.
 
    **Heuristic — run the pass if any of:**
    - The proposal touches a `priority="must"` requirement (target ID resolves to `must` in the live spec, OR an ADD/MODIFY post-state declares `priority="must"`).
@@ -116,11 +128,11 @@ User input (from `$ARGUMENTS`): a change name or one-line description ("add OAut
 
    **Record the dispositioner (`by=`, per `REQ-CHANGE-004`).** When a `<spec-risk>` status leaves `identified` for `accepted | mitigated | rejected`, the disposition MUST record `by=` on that `<spec-risk>` — the human who dispositioned the finding (`name · handle`, the recording shape the author's choice), never an automated agent. It stays empty while `identified`. This is the source the `Acked-by` trailer reads (spec 027). The propose-session LLM MUST NOT fill `by=` with itself: like the status field, `by=` is the user's commitment. If the user commits a transition in the same session (e.g. via the decision interview), record `by=` naming them; otherwise leave it empty for the user to fill when they disposition.
 
-9. **Budget-aware splitting nudge.** Before finalising the proposal, count the deltas. If the proposal contains **more than ~5 deltas**, or touches deltas across **more than 2 topic prefixes** (e.g. `REQ-AUTH-*` and `REQ-RENDER-*`), stop and ask the user: *"Would these read better as two or three smaller proposals?"* The cost of a small proposal is one extra archive call; the cost of an oversize proposal is review fatigue and merge ambiguity. The default answer is "yes, split" unless the deltas truly share a single intent.
+10. **Budget-aware splitting nudge.** Before finalising the proposal, count the deltas. If the proposal contains **more than ~5 deltas**, or touches deltas across **more than 2 topic prefixes** (e.g. `REQ-AUTH-*` and `REQ-RENDER-*`), stop and ask the user: *"Would these read better as two or three smaller proposals?"* The cost of a small proposal is one extra archive call; the cost of an oversize proposal is review fatigue and merge ambiguity. The default answer is "yes, split" unless the deltas truly share a single intent.
 
-10. **Check for sibling proposals.** Before emitting, scan `specs/<spec-id>/changes/` for other proposal folders whose deltas target any of the same IDs as this one. If found, report them and ask the user how to sequence — concurrent proposals on the same target are the most common archive-time conflict.
+11. **Check for sibling proposals.** Before emitting, scan `specs/<spec-id>/changes/` for other proposal folders whose deltas target any of the same IDs as this one. If found, report them and ask the user how to sequence — concurrent proposals on the same target are the most common archive-time conflict.
 
-11. **Update the proposal's changelog** with today's date and one-line summary of the change
+12. **Update the proposal's changelog** with today's date and one-line summary of the change
    intent.
 
 ## Output style

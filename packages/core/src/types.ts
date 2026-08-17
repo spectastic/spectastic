@@ -375,6 +375,11 @@ export interface ApplyResult {
     taskIds: string[];
     /** True when the tracker did not exist and was created from the template. */
     created: boolean;
+    /** What the declared `supersedes=` did, when one was declared (REQ-CHANGE-010).
+     *  Present and explicit even when it marked nothing — a phase legitimately
+     *  vanishes, and reporting the no-op is what keeps best-effort from being
+     *  silent. Absent when the proposal declared no supersession. */
+    superseded?: string;
   } | null;
   /**
    * Count of contracts promoted from their spec-local proposed location to

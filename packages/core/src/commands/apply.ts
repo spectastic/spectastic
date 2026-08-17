@@ -292,6 +292,7 @@ async function foldProposalTasks(
     .join('\n');
 
   const title = changeTitle(proposalHtml) ?? input.slug;
+  let supersededNote: string | undefined;
   const phaseId = `phase-${input.slug}`;
   const phaseRe = new RegExp(String.raw`<section id="${phaseId}"[\s\S]*?</section>\s*`, 'i');
   const phaseExisted = phaseRe.test(tracker);
@@ -321,6 +322,35 @@ async function foldProposalTasks(
     out = `${out.slice(0, idx)}${phase}${out.slice(idx)}`;
   }
 
+  // REQ-CHANGE-010: retire the phase this change declares it supersedes. Runs
+  // after the new phase is composed and before the write, so one write carries
+  // both — a partial state where the new phase landed and the retirement did
+  // not is not reachable.
+  const supersedes = declaredSupersedes(proposalHtml);
+  if (supersedes !== undefined) {
+    // The refusal resolves the ARCHIVED PROPOSAL, never the folded phase. A
+    // phase legitimately vanishes (REQ-CHANGE-003 regenerates the tracker;
+    // REQ-CHANGE-007 skips an empty §6), so refusing on a missing phase would
+    // be unsatisfiable after any large change.
+    const archived = `${ctx.cwd}/specs/${input.specId}/changes/archive/${supersedes}/proposal.html`;
+    try {
+      await fs.readFile(archived, 'utf8');
+    } catch {
+      throw new Error(
+        `apply: supersedes="${supersedes}" names no archived proposal on ${input.specId}. ` +
+          `Expected specs/${input.specId}/changes/archive/${supersedes}/proposal.html. ` +
+          `Check the change id — a supersession that silently no-ops leaves the backlog it was authored to clear.`,
+      );
+    }
+    const result = markSupersededPhase(out, supersedes, input.slug, title);
+    if (result === null) {
+      supersededNote = `superseded ${supersedes}: no folded phase present — marked nothing`;
+    } else {
+      out = result.out;
+      supersededNote = `superseded ${supersedes}: marked ${result.marked} unchecked task(s)`;
+    }
+  }
+
   await fs.writeFile(trackerPath, out);
 
   // Fidelity post-condition (REQ-CHANGE-007): re-read and confirm the phase
@@ -332,7 +362,16 @@ async function foldProposalTasks(
   if (problems.length > 0) {
     throw new Error(`applyCommand: §6 fold for ${phaseId} is not faithful — ${problems.join('; ')}.`);
   }
-  return { trackerPath, phaseId, taskIds, created };
+  // Spread rather than assign: `exactOptionalPropertyTypes` distinguishes an
+  // absent key from one set to undefined, and the distinction is the right one
+  // here — "declared no supersession" is not "superseded nothing".
+  return {
+    trackerPath,
+    phaseId,
+    taskIds,
+    created,
+    ...(supersededNote !== undefined && { superseded: supersededNote }),
+  };
 }
 
 interface SixTask {
@@ -384,6 +423,59 @@ function maxTaskId(tracker: string): number {
     max = Math.max(max, Number(m[1]));
   }
   return max;
+}
+
+/** The change this proposal retires, from `<spec-change supersedes>` (088
+ *  REQ-CHANGE-010). Absent for the overwhelming majority of proposals. */
+export function declaredSupersedes(proposalHtml: string): string | undefined {
+  const m = /<spec-change\b[^>]*?\ssupersedes=["']([^"']+)["']/i.exec(proposalHtml);
+  return m?.[1];
+}
+
+/**
+ * Mark a superseded phase's UNCHECKED tasks, annotated with the change that
+ * retired them (REQ-CHANGE-010).
+ *
+ * Unchecked only, and the distinction is load-bearing rather than tidy: a ticked
+ * box records work that happened, and 095's phase 9 carries one that a
+ * whole-phase sweep would have silently unticked. Nothing is deleted, renumbered
+ * or ticked — the same annotate-never-delete posture REQ-CHANGE-009 settled for
+ * triage cards, and for the same reason: a retired phase is evidence of a
+ * decision that changed, and deleting it leaves the next author to rediscover
+ * why.
+ *
+ * Returns null when the phase is absent, which is NOT an error. REQ-CHANGE-003
+ * regenerates the whole tracker on a large change — in its own words, it
+ * "supersedes the folded phase" — so a phase legitimately vanishes, and
+ * REQ-CHANGE-007 skips one for an empty §6. The caller reports that it marked
+ * nothing rather than refusing, which is what keeps best-effort from being
+ * silent.
+ */
+export function markSupersededPhase(
+  tracker: string,
+  supersededSlug: string,
+  retiringSlug: string,
+  reason: string,
+): { out: string; marked: number } | null {
+  const phaseRe = new RegExp(String.raw`<section id="phase-${supersededSlug}"[\s\S]*?</section>`, 'i');
+  const section = phaseRe.exec(tracker);
+  if (section === null) return null;
+
+  let marked = 0;
+  const note =
+    `\n  <p class="retired">Retired by <a href="./changes/archive/${retiringSlug}/proposal.html">` +
+    `${retiringSlug}</a> — ${reason}</p>`;
+  const updated = section[0].replace(
+    /<spec-task id="([^"]+)"([^>]*)>([\s\S]*?)<\/spec-task>/g,
+    (whole, id: string, attrs: string, body: string) => {
+      // A checked task is left exactly as it stands.
+      if (/<input type="checkbox"\s+checked>/.test(body)) return whole;
+      if (/data-status=/.test(attrs)) return whole; // already annotated — idempotent
+      marked += 1;
+      return `<spec-task id="${id}"${attrs} data-status="superseded">${body}${note}\n</spec-task>`;
+    },
+  );
+  return { out: tracker.replace(phaseRe, updated), marked };
 }
 
 /** The change's title, from the `<spec-change>` `<h3>` (markup stripped). */
