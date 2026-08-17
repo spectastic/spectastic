@@ -14,17 +14,32 @@ export function registerId(program: Command): void {
   program
     .command('id')
     .description(
-      "Print a spec's canonical resource URI, qualified by this project's identity — for addressing it unambiguously across repos.",
+      "Print a resource's canonical URI, qualified by this project's identity — for addressing it unambiguously across repos.",
     )
-    .argument('<spec-id>', 'the spec to resolve (e.g. 001-auth-service)')
-    .option('--anchor <id>', 'append an id from the spec (a requirement, task, or section anchor) as a URI fragment')
-    .action(async (specId: string, opts: { anchor?: string }) => {
+    .argument('<name>', 'what to resolve — a spec id by default (e.g. 001-auth-service)')
+    .option(
+      '--kind <kind>',
+      'what the name denotes: spec (default), screen (<spec-id>/<name>), contract, corpus (<plugin>/<slug>), or unit',
+      'spec',
+    )
+    .option('--anchor <id>', 'append an id from the resource (a requirement, task, or section anchor) as a URI fragment')
+    .action(async (specId: string, opts: { anchor?: string; kind?: string }) => {
       const { idCommand, UnknownSpecError } = await import('@spectastic/core/commands/id');
+      const { RESOURCE_KINDS } = await import('@spectastic/schema/project');
+
+      // Validated against the grammar's own declaration rather than a literal
+      // list, so a kind added there can never be unreachable here.
+      const kind = opts.kind ?? 'spec';
+      if (!(RESOURCE_KINDS as readonly string[]).includes(kind)) {
+        process.stderr.write(`Unknown kind "${kind}". Expected one of: ${RESOURCE_KINDS.join(', ')}.\n`);
+        process.exit(1);
+      }
 
       try {
         const result = idCommand(
           {
             specId,
+            kind: kind as 'spec' | 'screen' | 'contract' | 'corpus' | 'unit',
             ...(opts.anchor !== undefined ? { anchor: opts.anchor } : {}),
           },
           process.cwd(),

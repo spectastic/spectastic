@@ -72,3 +72,43 @@ describe('idCommand — degrades to the provisional bare-dir coordinate when pro
     expect(uri).toMatch(/^spectastic:\/\/[^/]+\/spec\/042-example$/);
   });
 });
+
+/**
+ * `--kind` (095 T-1304). Every kind in `RESOURCE_KINDS` is addressable, and the
+ * refusal FR-005 requires is preserved for each: a coordinate that resolves to
+ * nothing is worse than no coordinate, because it is quotable.
+ *
+ * `unit` is the interesting one. It is in the grammar because 079 widened it,
+ * but 079 is unbuilt — nothing declares a unit — so there is nothing to check
+ * a name against. It refuses rather than composing a coordinate the tool
+ * cannot confirm denotes anything.
+ */
+describe('idCommand --kind (095 T-1304)', () => {
+  it('defaults to spec, so every existing invocation is unchanged', () => {
+    // The helper scaffolds `042-example` by default.
+    const cwd = project();
+    expect(idCommand({ specId: '042-example' }, cwd).uri).toBe(
+      idCommand({ specId: '042-example', kind: 'spec' }, cwd).uri,
+    );
+  });
+
+  it('refuses a unit rather than composing an unconfirmable coordinate', () => {
+    expect(() => idCommand({ specId: 'core', kind: 'unit' }, project())).toThrow(/no resolver yet/);
+  });
+
+  it('refuses a screen name carrying no spec segment', () => {
+    expect(() => idCommand({ specId: 'convert', kind: 'screen' }, project())).toThrow(/names no spec/);
+  });
+
+  it('refuses a screen in a spec that does not exist', () => {
+    expect(() => idCommand({ specId: '404-nope/convert', kind: 'screen' }, project())).toThrow(/No spec found/);
+  });
+
+  it('refuses a contract no design declares', () => {
+    expect(() => idCommand({ specId: 'nothing', kind: 'contract' }, project())).toThrow(/No contract addressed/);
+  });
+
+  it('refuses a corpus document absent from the registry', () => {
+    expect(() => idCommand({ specId: 'no/such', kind: 'corpus' }, project())).toThrow(/registry/);
+  });
+});
