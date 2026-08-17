@@ -16,7 +16,7 @@ const FILE = '/repo/specs/001-a/visual/converter.screen.html';
 const doc = (body: string) => `<!doctype html><html><head><title>x</title></head><body>${body}</body></html>`;
 const findingsFor = (body: string) => validate(doc(body), FILE).filter((f) => f.rule === RULE);
 
-const WELL_FORMED = `<spec-screen id="converter" serves="US1">
+const WELL_FORMED = `<spec-screen id="converter" name="converter" serves="US1">
   <spec-state id="converted" source="derived" from="200"><p>r</p></spec-state>
 </spec-screen>`;
 
@@ -32,11 +32,11 @@ describe('a well-formed screen', () => {
   });
 
   it('is silent for a screen with no states yet', () => {
-    expect(findingsFor('<spec-screen id="empty"><p>not drawn yet</p></spec-screen>')).toEqual([]);
+    expect(findingsFor('<spec-screen id="empty" name="empty"><p>not drawn yet</p></spec-screen>')).toEqual([]);
   });
 
   it('is silent for several screens in one feature, per FR-010', () => {
-    expect(findingsFor(`${WELL_FORMED}<spec-screen id="history"><p>r</p></spec-screen>`)).toEqual([]);
+    expect(findingsFor(`${WELL_FORMED}<spec-screen id="history" name="history"><p>r</p></spec-screen>`)).toEqual([]);
   });
 });
 
@@ -49,7 +49,7 @@ describe('a malformed screen', () => {
   });
 
   it('flags two screens sharing an id in one artifact', () => {
-    const f = findingsFor('<spec-screen id="a"><p>r</p></spec-screen><spec-screen id="a"><p>r</p></spec-screen>');
+    const f = findingsFor('<spec-screen id="a" name="a"><p>r</p></spec-screen><spec-screen id="a" name="a"><p>r</p></spec-screen>');
     expect(f).toHaveLength(1);
     expect(f[0]?.message).toMatch(/\ba\b/);
   });
@@ -63,7 +63,7 @@ describe('a state outside a screen', () => {
   });
 
   it('flags a state with no id', () => {
-    const f = findingsFor('<spec-screen id="s"><spec-state source="authored"><p>r</p></spec-state></spec-screen>');
+    const f = findingsFor('<spec-screen id="s" name="s"><spec-state source="authored"><p>r</p></spec-state></spec-screen>');
     expect(f.map((x) => x.message).join('\n')).toMatch(/id=/);
   });
 });

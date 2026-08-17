@@ -131,6 +131,25 @@ export function contractResourceUri(project: string, name: string, anchor?: stri
 }
 
 /**
+ * Compose a screen's resource URI:
+ * `spectastic://<owner>/<repo…>/screen/<spec-id>/<name>#<anchor>` (095 FR-013).
+ *
+ * The name spans TWO segments — the owning spec and the screen — which is the
+ * shape `corpus` already ships as `plugin/slug`, and it is what makes a screen
+ * addressable at all: a screen's name is unique within its spec and nowhere
+ * else, so a single-segment coordinate would collide the moment two features
+ * each declared a `convert`.
+ *
+ * `name` is the screen's declared `name=`, never its `id=`. The two are
+ * deliberately separate: the id is what annotations, traces and reviews point
+ * at, so if it doubled as the coordinate a name collision could only be
+ * resolved by the rename `screen-shape` warns against.
+ */
+export function screenResourceUri(project: string, specId: string, name: string, anchor?: string): string {
+  return resourceUri(project, 'screen', `${specId}/${name}`, anchor);
+}
+
+/**
  * Compose a corpus document's resource URI:
  * `spectastic://<marketplace>/corpus/<plugin>/<slug>?edition=<edition>#<anchor>`.
  *

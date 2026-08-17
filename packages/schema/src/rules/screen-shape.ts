@@ -21,7 +21,8 @@ export const screenShapeRule: PerFileRule = {
   id: 'screen-shape',
   scope: 'per-file',
   defaultSeverity: 'error',
-  description: 'A <spec-screen> must carry a unique id=, and a <spec-state> must sit inside one.',
+  description:
+    'A <spec-screen> must carry a unique id= and the name= it is addressed by, and a <spec-state> must sit inside one.',
   check({ doc }) {
     const findings: Finding[] = [];
     const screens = findAll(doc.ast, SCREEN_ELEMENT);
@@ -51,6 +52,21 @@ export const screenShapeRule: PerFileRule = {
           'Give the screen a stable identifier (spec.html FR-001). It is a contract: annotations, traces and reviews all reference it, so renaming it later breaks them.',
         );
         continue;
+      }
+      // 095 FR-013: the name the screen is ADDRESSED by, distinct from the id.
+      // Two identities rather than one, deliberately: the id is what
+      // annotations, traces and reviews reference, so making it double as the
+      // coordinate would mean a name collision could only be fixed by the
+      // rename this rule warns against three lines up. Required with no
+      // fallback — 076 made its equivalent should-tier with a basename
+      // fallback and every contract in the estate ended up keyed by filename.
+      const name = getAttr(screen, 'name');
+      if (name === undefined || name === '') {
+        flag(
+          screen,
+          `<spec-screen id="${id}"> is missing required name=`,
+          'Declare the name this screen is addressed by (spec.html FR-013). It is the second segment of the screen coordinate, and it is separate from id= so a collision can be resolved without renaming the identifier annotations already point at.',
+        );
       }
       const previous = seen.get(id);
       if (previous !== undefined) {
