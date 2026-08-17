@@ -18,6 +18,7 @@ export default defineConfig({
     'src/model-policy/index.ts',
     'src/commands/validate.ts',
     'src/visual/read.ts',
+    'src/change/must-drop.ts',
     'src/visual/coverage.ts',
     'src/visual/screen-naming.ts',
     'src/visual/render.ts',

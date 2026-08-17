@@ -339,6 +339,43 @@ export async function buildDocCache(
  * reads from the run's document cache, since the check needs the
  * filesystem the schema engine's pure-AST rules cannot touch.
  */
+/**
+ * The dropped-conformance scan (003 T-1005). A MODIFY delta's post-state is
+ * retyped rather than edited, so an obligation not consciously carried is
+ * silently gone — three proposals shipped that way in one session.
+ *
+ * Cross-file by necessity: it compares a proposal against the live spec it
+ * targets, and the schema engine hands a rule one file. Cheap by construction —
+ * only unarchived proposals are read, and only those carrying a MODIFY.
+ */
+async function scanDroppedConformance(cwd: string): Promise<Finding[]> {
+  const [{ mustDropFindings }, { readFile }, { expandGlobs }] = await Promise.all([
+    import('@spectastic/core/change/must-drop'),
+    import('node:fs/promises'),
+    import('../glob.js'),
+  ]);
+  // Live proposals only. An archived one records a decision already taken, and
+  // re-litigating it would report findings nobody can act on.
+  const proposals = await expandGlobs(['specs/*/changes/*/proposal.html']);
+  const out: Finding[] = [];
+  for (const abs of proposals) {
+    const rel = abs.startsWith(`${cwd}/`) ? abs.slice(cwd.length + 1) : abs;
+    const specId = rel.split('/')[1];
+    if (specId === undefined) continue;
+    let proposalHtml: string;
+    let specHtml: string;
+    try {
+      proposalHtml = await readFile(abs, 'utf8');
+      if (!proposalHtml.includes('op="modified"')) continue;
+      specHtml = await readFile(`${cwd}/specs/${specId}/spec.html`, 'utf8');
+    } catch {
+      continue; // a principles proposal or an unreadable pair — not this scan's business
+    }
+    out.push(...mustDropFindings({ proposalHtml, proposalFile: rel, specHtml }));
+  }
+  return out;
+}
+
 async function scanContractResolve(docs: ReadonlyMap<string, CachedDoc>, cwd: string): Promise<Finding[]> {
   if (docs.size === 0) return [];
   const [{ contractResolveFindings }, { readContractDeclarations }, { nodeFs }] = await Promise.all([
@@ -744,6 +781,7 @@ export function registerValidate(program: Command): void {
       // specs/, is an error. No-op-cheap: returns [] on any file with no
       // <spec-contract> declarations, which is every design in the estate today.
       const contractResolveScanFindings = await scanContractResolve(docCache, process.cwd());
+      const droppedConformanceFindings = await scanDroppedConformance(process.cwd());
       // The contract-view-drift gate (spec 072): a materialised
       // <spec-contract-view> that no longer matches the file it projects is
       // an error. No-op-cheap: [] on any file with no declarations at all,
@@ -777,6 +815,7 @@ export function registerValidate(program: Command): void {
         ...marketplaceIdentityScanFindings,
         ...declaredEdgeScanFindings,
         ...contractResolveScanFindings,
+        ...droppedConformanceFindings,
         ...contractViewDriftScanFindings,
         ...visualResolveScanFindings,
         ...visualGateScanFindings,
