@@ -251,11 +251,27 @@ export function registerInit(program: Command): void {
         throw err;
       }
 
+      // 067 FR-002 / 067 T-001: firm up the project identity BEFORE the
+      // conflict guard, not after the writes. The firm-up is a `setIfAbsent`
+      // against spectastic.json — it cannot clobber anything and has no
+      // conflict of its own — but it used to run after `executeWrites`, so a
+      // re-run on a populated directory exited at the guard and never reached
+      // it. FR-002 says re-running init once a remote becomes available MUST
+      // firm up the identity; on the path a user actually takes (init first,
+      // add the remote later, re-run) that was unreachable.
+      const firmedUpEarly = await writeProjectConfig(cwd);
+
       const conflicts = findConflicts(plan);
 
       try {
         await resolveConflicts(conflicts, { force: options.force ?? false });
       } catch (err) {
+        // The identity firm-up already happened and is worth reporting even
+        // as the run refuses: it is the whole reason a user re-runs init on a
+        // populated directory, and silence here reads as nothing having done.
+        if (firmedUpEarly) {
+          process.stdout.write(`✓ wrote spectastic.json project identity (project=${firmedUpEarly})\n`);
+        }
         if (err instanceof NonTTYConflictError) {
           process.stderr.write(`${err.message}\n`);
           process.exit(2);
@@ -284,7 +300,9 @@ export function registerInit(program: Command): void {
       // identity when the git remote confidently resolves one. Runs BEFORE
       // writeCorpusConfig so a project written this same run is visible to
       // resolveCorpusConfig's new project-derived marketplace tier (FR-006).
-      const writtenProject = await writeProjectConfig(cwd);
+      // Already attempted above; `setIfAbsent` makes the second call a no-op
+      // when the first wrote, so this only reports.
+      const writtenProject = firmedUpEarly ?? (await writeProjectConfig(cwd));
       // The schema reference (087 FR-004) — editors resolve it for completion
       // and per-key documentation. Written after the identity so the key order
       // in a fresh file reads sensibly.
