@@ -182,6 +182,51 @@ export const RESOURCE_URI_MATRIX: readonly ResourceUriFixture[] = [
     anchor: 'exports',
     expected: 'spectastic://spectastic/spectastic/unit/core?edition=2026-07-26#exports',
   },
+  // screen — 095 FR-013. The name spans TWO segments, the owning spec and the
+  // screen, which is the shape `corpus` already ships as `plugin/slug`. That is
+  // what makes a screen addressable at all: a screen id is unique within its
+  // spec and nowhere else, so a single-segment name would collide the moment
+  // two features each declared a `convert`.
+  {
+    label: 'screen, bare',
+    project: 'spectastic',
+    kind: 'screen',
+    name: '001-currency-conversion/convert',
+    expected: 'spectastic://spectastic/screen/001-currency-conversion/convert',
+  },
+  {
+    label: 'screen, owner-qualified',
+    project: 'spectastic/spectastic',
+    kind: 'screen',
+    name: '001-currency-conversion/convert',
+    expected: 'spectastic://spectastic/spectastic/screen/001-currency-conversion/convert',
+  },
+  {
+    label: 'screen, anchor',
+    project: 'spectastic/spectastic',
+    kind: 'screen',
+    name: '001-currency-conversion/convert',
+    anchor: 'empty',
+    expected: 'spectastic://spectastic/spectastic/screen/001-currency-conversion/convert#empty',
+  },
+  {
+    label: 'screen, edition',
+    project: 'spectastic/spectastic',
+    kind: 'screen',
+    name: '001-currency-conversion/convert',
+    edition: '2026-08-14',
+    expected: 'spectastic://spectastic/spectastic/screen/001-currency-conversion/convert?edition=2026-08-14',
+  },
+  {
+    label: 'screen, edition and anchor',
+    project: 'spectastic/spectastic',
+    kind: 'screen',
+    name: '001-currency-conversion/convert',
+    anchor: 'empty',
+    edition: '2026-08-14',
+    expected:
+      'spectastic://spectastic/spectastic/screen/001-currency-conversion/convert?edition=2026-08-14#empty',
+  },
 ];
 
 /**

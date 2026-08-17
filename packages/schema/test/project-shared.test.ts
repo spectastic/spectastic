@@ -189,25 +189,34 @@ describe('parseResourceUri — round-trip (078 T-210, FR-008/SC-002)', () => {
  * `RESOURCE_KINDS`/`RESOURCE_URI_MATRIX` — so the assertion is shown catching
  * a gap rather than merely returning `[]` because nothing is missing today.
  */
+/** A kind the vocabulary will never hold, so the control cannot expire the way
+ *  `screen` did. Deliberately not a plausible future kind name. */
+const FICTIONAL_KIND = 'not-a-kind';
+
 describe('round-trip coverage is derived from the kind declaration (078 FR-013/FR-014, T-1003)', () => {
   it('the real matrix covers every recognised kind against every combination', () => {
     expect(uncoveredPairs()).toEqual([]);
   });
 
   it('a kind absent from the matrix is unrecognised, so a stray fixture cannot fake coverage', () => {
-    expect(RESOURCE_KINDS).not.toContain('screen');
+    // The control must name a kind that genuinely does not exist. It was
+    // `screen` until 095 FR-013 made a screen a real kind, at which point this
+    // assertion failed — correctly, and for a reason worth keeping: a negative
+    // control drawn from the vocabulary it is testing has a shelf life, and
+    // this one expired the moment the thing it assumed impossible shipped.
+    expect(RESOURCE_KINDS).not.toContain(FICTIONAL_KIND);
   });
 
   it('catches a widened declaration with no matching fixtures — the failure a set-derived guard would miss', () => {
     // A kind added to the declaration and never given a fixture. This is 079's
     // failure exactly: `unit` widened one declaration and nothing here noticed
     // for two specs' worth of time.
-    const widened = [...RESOURCE_KINDS, 'screen'];
+    const widened = [...RESOURCE_KINDS, FICTIONAL_KIND];
     expect(missingCoverage(widened, RESOURCE_URI_MATRIX)).toEqual([
-      'screen:bare',
-      'screen:anchor',
-      'screen:edition',
-      'screen:edition+anchor',
+      `${FICTIONAL_KIND}:bare`,
+      `${FICTIONAL_KIND}:anchor`,
+      `${FICTIONAL_KIND}:edition`,
+      `${FICTIONAL_KIND}:edition+anchor`,
     ]);
   });
 
