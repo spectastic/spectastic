@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
+<title>070-contract-sidecar-convention · Triage log</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Triage log · 070-contract-sidecar-convention</p>
+  <h1>070-contract-sidecar-convention — triage log</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    Defects against the <code>070-contract-sidecar-convention</code> spec. Cards append-only; IDs stable.
+  </p>
+
+  <spec-meta>
+    <b>Spec</b>      <span><a href="./spec.html">070-contract-sidecar-convention</a></span>
+    <b>Created</b>   <span><time datetime="2026-08-17">17 Aug 2026</time></span>
+    <b>Read time</b> <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-tldr>
+    <p>One card per debug session. Fits one screen; reads in under 30 seconds. Five required Tier-1 fields
+    (headline · Expected · Actual · Diagnosis · Fix); the deep-dive <code>&lt;details&gt;</code> stays collapsed
+    unless cross-spec, principles, scope, or hotfix-now applies. See <a href="../../examples/triage-log.html">examples/triage-log.html</a>
+    for the canonical look + the protocol (<code>TRIAGE-001</code>..<code>TRIAGE-006</code>).</p>
+  </spec-tldr>
+</header>
+
+
+<section id="cards">
+<h2>Cards</h2>
+<spec-triage-log>
+
+<spec-triage id="T-001" layer="cross-spec">
+  <header>
+    <h4>An in-flight design cannot validate: both contract paths it could declare are errors</h4>
+    <span class="meta">
+      <span class="layer-pill">Cross-spec</span>
+      <span class="regen" data-result="fail">upstream</span>
+    </span>
+  </header>
+
+  <p class="headline">Debugging why a real design run had to write its contract into two places at once, root
+  cause was that <a href="./spec.html#FR-002">FR-002</a> forbids an effective path inside <code>specs/</code>
+  while <code>contract-resolve</code> requires the declared path to exist — and before
+  <a href="../071-contract-promotion/spec.html">promotion</a> runs, no path satisfies both; fixed by
+  describing the in-flight state, which no requirement currently does; regeneration fails, because a fresh
+  session reaches the same dead end and invents the same workaround.</p>
+
+  <dl>
+    <dt>Expected</dt>
+    <dd>A design authored per <code>commands/spectastic.design.md</code> validates while it is still in
+    flight. The command instructs: author the contract at <code>specs/&lt;spec-id&gt;/contracts/</code>, and
+    promotion later copies it to the effective location.</dd>
+
+    <dt>Actual</dt>
+    <dd>Both available declarations are errors, reproduced directly:
+    <spec-diff>
+<del>path="specs/001-x/contracts/api.openapi.yaml"  → error: resolves inside specs/, so it can never be an effective declaration</del>
+<del>path="contracts/api.openapi.yaml"              → error: no such file (promotion has not run)</del>
+    </spec-diff>
+    A real design run resolved it by writing the contract to <code>contracts/</code> <em>as well as</em> the
+    sidecar — which is the post-promotion state, reached by hand. As its author put it: <em>"If you have a
+    real promotion step, it will find its work already done."</em></dd>
+
+    <dt>Diagnosis</dt>
+    <dd>Each requirement is right on its own. <a href="./spec.html#FR-002">FR-002</a> keeps the effective
+    contract out of <code>specs/</code> so a consumer reaches it without knowing which spec last changed it.
+    <a href="./spec.html#FR-003">FR-003</a> stops a proposed contract satisfying an effective declaration,
+    which is what keeps exactly one copy authoritative. The resolve check enforces both.
+    <strong>Nothing describes the interval between them</strong> — the period where the design exists, the
+    proposed contract exists, and the effective one legitimately does not. <code>path=</code> is one
+    attribute and the command's own wording concedes the problem: it says <code>path=</code> "names the
+    contract's <em>two locations</em> across its lifecycle", which one attribute cannot do.</dd>
+
+    <dt>Fix</dt>
+    <dd>A propose against <a href="./spec.html">070</a> describing the in-flight state, with two shapes worth
+    weighing. Either the resolve check learns that a declared-but-unpromoted path is <em>pending</em> rather
+    than broken — recognisable because the proposed sidecar holds a file of that name — or the declaration
+    carries the proposed location explicitly and <code>path=</code> means only the effective one, which is
+    what FR-002 and FR-003 already assume. <strong>The second is likely right</strong>: it makes the two
+    locations two attributes instead of one attribute meaning two things, and it gives promotion an
+    unambiguous source. Either way the design command's wording needs correcting, since it currently
+    describes a workflow the validator rejects.</dd>
+  </dl>
+
+  <details>
+    <summary>Deep dive — cross-spec, and the workaround is the tell</summary>
+    <p><strong>Why cross-spec rather than a defect in one place.</strong> 070 owns the two locations, 071 owns
+    the promotion between them, and the resolve check enforces a property neither of them scoped to a
+    lifecycle stage. No single spec is wrong; the seam between them is undescribed, which is precisely what
+    the layer means.</p>
+    <p><strong>The workaround is the diagnostic.</strong> Writing the file to both places does not merely
+    satisfy the checker — it performs promotion ahead of the verb that owns it, leaving 071 with nothing to
+    do and no way to tell a promoted contract from one that was pre-copied to silence an error. A tool whose
+    documented path can only be walked by pre-empting one of its own verbs has a gap in the specification
+    rather than in the user's understanding.</p>
+    <p><strong>Surfaced by dogfooding, not review.</strong> Found running <code>/spectastic.design</code>
+    against a real design source in <code>example-currency-converter</code> — the first time the contract
+    convention met a project that was actually mid-flight rather than already promoted.</p>
+  </details>
+</spec-triage>
+
+</spec-triage-log>
+</section>
+
+
+<section id="changelog">
+<h2>Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-08-17">17 Aug 2026</time><span>Triage log scaffolded.</span></li>
+  <li><time datetime="2026-08-17">17 Aug 2026</time><span>T-001 added — an in-flight design cannot validate; both contract paths it could declare are errors. Found dogfooding <code>/spectastic.design</code> against a real design source.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  070-contract-sidecar-convention triage log · scaffolded 2026-08-17
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>

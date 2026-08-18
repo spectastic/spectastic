@@ -1,0 +1,282 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="description" content="Why design renders never landed from a Claude Design export: no export contains them, spectastic cannot render, and the FileSystem land path is text-only. What to change, in order, and the one asymmetry that looks like a bug and is not.">
+<title>Visual render handover — why no images landed · spectastic</title>
+<link rel="stylesheet" href="../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../assets/favicon.svg">
+<script src="../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Handover · visual renders</p>
+  <h1>Why no images landed</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    A design import that reports two files refused "because they carry a runtime" looks like a refusal rule
+    dropped the renders. It didn't. The refusal rule is sound, and the real blocker is one nobody can see
+    fail.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>     <span><spec-status value="draft">Draft</spec-status></span>
+    <b>Type</b>       <span>Handover — findings from a real import, ready to take to <code>/spectastic.spec</code></span>
+    <b>Author</b>     <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Created</b>    <span><time datetime="2026-08-17">17 Aug 2026</time></span>
+    <b>Surfaced in</b><span><code>example-currency-converter</code> · <code>001-currency-conversion</code></span>
+    <b>Feeds</b>      <span>a binary-<code>FileSystem</code> change and a new <code>visual:render</code> verb</span>
+    <b>Read time</b>  <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-tldr>
+    <p>A Claude Design project with eleven screen states in light and dark was imported with
+    <code>visual:import</code>. No images landed. Four causes, none of them the refusal rule: <strong>no
+    Claude Design export contains renders of its own artboards</strong> (they exist only once a browser
+    executes the runtime); <strong>spectastic has no render capability at all</strong>; the
+    <code>FileSystem</code> land path is <strong>text-only</strong>, so a binary would have been corrupted
+    even if one had been present; and <code>.thumbnail</code> — the sole tool-made image — is filtered as a
+    dotfile before it is ever read. Fix the FS first, then add a separate verb. Do <em>not</em> touch
+    <code>landingWouldViolate()</code>.</p>
+  </spec-tldr>
+</header>
+
+
+<section id="question">
+<h2>1 · The question this answers</h2>
+
+<p>A Claude Design project — <em>iPhone Currency Converter Screens</em> — was imported into a spectastic
+project via <code>spectastic visual:import</code>. The design draws eleven screen states, each in light and
+dark. None of them landed as images.</p>
+
+<p>The generated import manifest reports two files under <strong>Not landed</strong>, with the reason
+"These carry a runtime", which reads as though a safety rule discarded the renders. That reading is wrong in
+a way worth writing down, because it points the fix at the wrong file.</p>
+</section>
+
+
+<section id="finding-1">
+<h2>2 · No renders existed to land</h2>
+
+<p>This is the decisive one. <strong>No Claude Design export contains rendered images of its own
+artboards.</strong> Verified across three exports on disk:</p>
+
+<div style="overflow-x:auto;">
+<table>
+  <thead><tr><th>Export</th><th>Images it contains</th></tr></thead>
+  <tbody>
+    <tr><td><code>iPhone Currency Converter Screens.zip</code></td><td><code>.thumbnail</code> only</td></tr>
+    <tr><td><code>Wazocal initial screen designs.zip</code></td><td><code>.thumbnail</code>, plus <code>uploads/*.jpg</code> — user-supplied inputs, not renders</td></tr>
+    <tr><td><code>Spectastic Website Prototype/</code>, <code>Spectastic.io (2)/</code></td><td><code>favicon.svg</code>, <code>uploads/draw-*.png</code>, <code>screenshots/*.png</code> — all uploads or hand-curated handoff assets</td></tr>
+  </tbody>
+</table>
+</div>
+
+<p>The only image the tool emits itself is <code>.thumbnail</code>: one WebP preview of the whole canvas,
+not per-artboard renders.</p>
+
+<p>An artboard exists only as <code>.dc.html</code> source plus a runtime. It becomes an image
+<em>only when a browser executes it</em> — <code>support.js</code> fetches React 18.3.1, ReactDOM and
+Babel from unpkg at load time and renders client-side. There is no point in the export pipeline at which a
+picture is written to a file.</p>
+
+<spec-assumption>
+<p>Only Claude Design exports were examined. Whether exports from other design tools carry renders is
+unverified, and a render verb's design should not assume either way.</p>
+</spec-assumption>
+</section>
+
+
+<section id="finding-2">
+<h2>3 · spectastic has no render capability</h2>
+
+<pre><code>rg -l "puppeteer|playwright|screenshot|renderTo|toPng" packages/*/src
+# → no matches
+</code></pre>
+
+<p>No verb turns a design export into images. This is the actual gap, and everything in
+§<a href="#order">7</a> exists to close it.</p>
+</section>
+
+
+<section id="finding-3">
+<h2>4 · The land path is text-only — fix this first</h2>
+
+<p><code>packages/core/src/types.ts:27</code></p>
+
+<pre><code>readFile(path: string, encoding?: 'utf8'): Promise&lt;string&gt;;
+</code></pre>
+
+<p>There is no binary read or write path on the <code>FileSystem</code> interface.
+<code>visual:import</code> reads every export file as a UTF-8 string
+(<code>packages/core/src/visual/import.ts:312</code>), hashes that string with FNV-1a over
+<code>charCodeAt</code>, and writes the string back out.</p>
+
+<spec-warning>
+<p>A PNG or WebP through this path is <strong>corrupted, not landed</strong> — and nothing errors. No
+exception, no refusal, no manifest entry: the bytes simply arrive mangled. This is why
+<code>.thumbnail</code> would have been destroyed even had it not been filtered, and why "land the renders"
+is not a policy change to the importer but a prerequisite change to the FS abstraction.</p>
+</spec-warning>
+
+<p>Two things to decide when changing it: what the content hash does for binary input, since the current
+FNV-1a implementation is text-shaped by construction; and whether landing binaries trips anything
+downstream — the security scan's globs, or the artifact content policy.</p>
+
+<spec-assumption>
+<p>Not checked: whether any <code>FileSystem</code> provider other than
+<code>providers/node-fs.ts</code> already handles binary.</p>
+</spec-assumption>
+</section>
+
+
+<section id="finding-4">
+<h2>5 · <code>.thumbnail</code> is filtered as a dotfile, deliberately</h2>
+
+<p><code>packages/core/src/visual/import.ts:208</code></p>
+
+<pre><code>for (const name of (await fs.readdir(dir)).filter((f) =&gt; !f.startsWith('.')).sort()) {
+</code></pre>
+
+<p>The doc comment immediately above names the file explicitly: <em>"<code>.thumbnail</code> is not design
+material, and neither is anything inside a dot directory it might ship."</em> That judgement is defensible —
+a canvas preview chip is not per-state evidence — so this is the lowest-value of the four fixes.</p>
+
+<p>One wrinkle worth recording. The filter runs <strong>before any read</strong>, so <code>.thumbnail</code>
+is the single file that is neither landed nor reported. Every other read-but-not-copied file appears in the
+manifest's <strong>Not landed</strong> list; this one is invisible rather than refused, which is a different
+thing from the reader's side.</p>
+</section>
+
+
+<section id="not-a-bug">
+<h2>6 · Not a bug — leave this alone</h2>
+
+<p><code>support.js</code> (68 KB) <strong>landed</strong>, while <code>Converter States.dc.html</code> was
+<strong>refused</strong> for carrying a runtime. The runtime landed; the file referencing it did not. It
+reads as an inconsistency and it is not one.</p>
+
+<p><code>landingWouldViolate()</code> only inspects HTML suffixes:</p>
+
+<pre><code>export function landingWouldViolate(name: string, body: string): boolean {
+  const lower = name.toLowerCase();
+  if (!HTML_SUFFIXES.some((suffix) =&gt; lower.endsWith(suffix))) return false;
+  return carriesExecutableContent(body);
+}
+</code></pre>
+
+<spec-note>
+<p>The comment block above it already anticipates exactly this objection, citing triage <strong>T-018</strong>
+and <strong>FR-014</strong>'s second sentence: a bare <code>.js</code> lands on purpose, because the check
+protects <em>"the project staying valid after an import"</em> and artifact rules parse HTML, not JS. Refusing
+it <em>"would mean deciding what BELONGS in a project rather than what is SAFE to copy — a judgement with no
+crisp test."</em> The call is sound; re-opening it would relitigate a decision that has already been made
+twice.</p>
+</spec-note>
+</section>
+
+
+<section id="order">
+<h2>7 · Recommended order of work</h2>
+
+<ol>
+  <li><strong>Binary-capable <code>FileSystem</code></strong> — <code>packages/core/src/types.ts:27</code>
+  plus <code>providers/node-fs.ts</code>. Everything else is blocked on it, and it is the one that fails
+  silently today.</li>
+
+  <li><strong>A separate <code>visual:render</code> verb — <em>not</em> a flag on
+  <code>visual:import</code>.</strong> This distinction is the load-bearing recommendation in this document.
+  <code>visual:import</code> advertises <em>"No network, no account, no design-tool licence"</em> and executes
+  nothing. Rendering requires a headless browser and network egress to unpkg. Folding it into
+  <code>import</code> would silently void a property that verb promises today, so it needs its own verb and
+  its own permission story.</li>
+
+  <li><strong><code>&lt;spec-render&gt;</code> wiring — nothing new required.</strong> The screen vocabulary
+  already carries it and <code>spectastic validate</code> accepts it:
+  <pre><code>&lt;spec-render src="renders/stale-loud-light.png" contexts="mode=light scale=two-decimal"&gt;&lt;/spec-render&gt;</code></pre>
+  Once files land this is one attribute per state. A render is evidence and never a dependency, so its
+  absence is not a gap and nothing checks for one — which means step 3 can lag steps 1 and 2 safely.</li>
+
+  <li><strong>Optionally, stop dropping <code>.thumbnail</code> silently</strong> — or at minimum report it,
+  so it is refused rather than invisible.</li>
+</ol>
+</section>
+
+
+<section id="cheap">
+<h2>8 · What makes the render verb cheaper than it looks</h2>
+
+<p>The artboards carry their own identity in the DOM. From <code>Converter States.dc.html</code>:</p>
+
+<pre><code>&lt;div data-screen-label="{{ s.id }} · light"&gt;      &lt;!-- and "… · dark" --&gt;
+&lt;div data-screen-label="picker {{ p.id }} · light"&gt;
+</code></pre>
+
+<p>A render pass can name every capture from that label and derive the grid context directly, so
+<code>contexts="mode=light"</code> falls out of the renderer rather than being hand-authored twenty-two
+times.</p>
+
+<p>The state inventory and props sit in the <code>data-props</code> / <code>DCLogic</code> script at the end
+of the same file: eight converter states (<code>no-rate</code>, <code>empty</code>, <code>converted</code>,
+<code>fetching</code>, <code>stale-marked</code>, <code>stale-loud</code>, <code>unavailable</code>,
+<code>same-currency</code>), three picker states (<code>browsing</code>, <code>searching</code>,
+<code>no-results</code>), and a <code>pair</code> enum of three values (EUR→USD, USD→JPY, USD→BHD) that maps
+cleanly onto a decimal-scale axis of 2, 0 and 3 places.</p>
+</section>
+
+
+<section id="repro">
+<h2>9 · Reproducing the render</h2>
+
+<p>This worked first try, with no modification to the export.</p>
+
+<pre><code>unzip -q "~/Downloads/iPhone Currency Converter Screens.zip" -d /tmp/dx
+cd /tmp/dx &amp;&amp; python3 -m http.server 8899
+# then drive a headless browser to:
+#   http://localhost:8899/Converter%20States.dc.html
+# viewport 1600x1200; the runtime self-bootstraps React from unpkg
+</code></pre>
+
+<p>It renders the full state gallery correctly — light section, then dark. Three gotchas for whoever builds
+the verb:</p>
+
+<ul>
+  <li><strong>Network is required.</strong> <code>support.js</code> pulls
+  <code>react@18.3.1</code>, <code>react-dom@18.3.1</code> and <code>@babel/standalone@7.29.0</code> from
+  unpkg. Offline it throws <code>dc-runtime: window.React is not available yet</code>. A render verb either
+  needs egress or must vendor those three.</li>
+  <li><strong>The page logged one console error</strong>, uninvestigated. It did not visibly affect
+  rendering, but a render verb should surface console errors rather than swallow them — a silently
+  half-rendered artboard is worse evidence than none.</li>
+  <li><strong>The Playwright MCP server writes into the current working directory</strong> —
+  <code>probe.png</code> and a <code>.playwright-mcp/</code> directory land in whatever repo you are standing
+  in. Run it from a scratch dir, or clean up after.</li>
+</ul>
+</section>
+
+
+<section id="side-note">
+<h2>10 · Evidence that renders are worth landing</h2>
+
+<p>Rendering the export immediately caught a genuine authoring error in the consuming project's screen file
+(<code>specs/001-currency-conversion/visual/converter.html</code> in
+<code>example-currency-converter</code>). A <code>&lt;spec-refusal text="—" context="figure slot"&gt;</code>
+forbade a dash in the result slot, citing FR-004 — but the design legitimately draws a dash in the
+<code>empty</code> state, where a rate <em>is</em> held, its age is on screen, and the slot is empty only for
+want of a typed amount. The refusal would have told an implementer the design violated a requirement it did
+not.</p>
+
+<p>Already fixed there by rescoping the refusal to "result slot when no rate is held". Recorded here because
+of how it was found: invisible when reading the export's source, obvious in the picture.</p>
+</section>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  Visual render handover · spectastic · authored 2026-08-17
+</footer>
+
+</main>
+<script src="../assets/spec.js"></script>
+</body>
+</html>

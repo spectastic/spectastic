@@ -457,6 +457,64 @@
 </dl>
 </spec-triage>
 
+<spec-triage id="T-019" layer="spec">
+  <header>
+    <h4>A declared token file lands as an ordinary file, and the importer derives candidates anyway</h4>
+    <span class="meta">
+      <span class="layer-pill">Spec</span>
+      <span class="regen" data-result="fail">upstream</span>
+    </span>
+  </header>
+
+  <p class="headline">Debugging why a real import left 45 colour candidates unconfirmed and the token set
+  empty, root cause was that <a href="./spec.html#FR-010">FR-010</a> only <em>derives</em> candidates from the
+  artifact and no requirement reads a token file the export <em>declares</em>; fixed by giving a declared
+  token set a path in; regeneration fails, because the requirement that would read one does not exist.</p>
+
+  <dl>
+    <dt>Expected</dt>
+    <dd><code>visual:import --help</code> says it <em>"lands its token file, renders and annotations into the
+    visual sidecar"</em>. An export carrying a DTCG token file should populate the token set, leaving nothing
+    to confirm.</dd>
+
+    <dt>Actual</dt>
+    <dd>The file lands — as an <em>ordinary</em> file. Reproduced with a two-token DTCG export:
+    <code>design.tokens.json</code> arrives in the sidecar with provenance and a content hash, and the
+    importer <em>still</em> derives its own candidates from the stylesheet and reports them
+    <strong>INFERRED — UNCONFIRMED</strong>. Nothing recognises the landed file as the token set, nothing
+    wires it to <code>&lt;spec-visual tokens=&gt;</code>, and the derived candidates are not reconciled
+    against it. On a real Claude Design export this produced 45 unconfirmed candidates beside a token set that
+    stayed empty.</dd>
+
+    <dt>Diagnosis</dt>
+    <dd><a href="./spec.html#FR-010">FR-010</a> is written entirely in terms of derivation — candidates
+    inferred from an emitted stylesheet, <em>"presented, never committed"</em> — which is right, and is the
+    property <a href="./spec.html">US3</a> exists to protect: an inferred value must never pass for a declared
+    one. The gap is the mirror image nobody wrote: a <em>declared</em> value has no path in either. The
+    importer has one mode where two are needed, so the safer mode runs for material that did not need it.</dd>
+
+    <dt>Fix</dt>
+    <dd>A propose against <a href="./spec.html">105</a>: recognise a DTCG token file in an export as the
+    declared token set — landed confirmed, not inferred — and suppress derivation for anything it already
+    covers, so a project that supplies real tokens is not asked to confirm guesses about them. Two things to
+    settle in the interview: what identifies a token file (extension, shape, or an explicit flag), and what
+    happens when a declared token and a derived candidate disagree, since silently preferring either would
+    undo US3's guarantee in one direction or the other. The <code>--help</code> copy needs correcting whatever
+    is decided, since it promises this today.</dd>
+  </dl>
+
+  <details>
+    <summary>Deep dive — scope-deferred functionality exposed</summary>
+    <p>Raised by a question during a real design run — <em>"is there a way to simply ask Claude Design to
+    create one?"</em> The answer is yes on the design tool's side, and that is what makes this worth filing:
+    the tool can be asked to emit a token file, and spectastic will carry it into the project without
+    understanding it. The material arrives; the meaning does not.</p>
+    <p>Deliberately not widened here. Whether spectastic should ever <em>ask</em> a design tool for anything
+    is the live-read-path question 105 refused on purpose — its import is a local export read once and then
+    forgotten, and nothing in this card reopens that. Reading a file the export already contains is inside
+    that boundary.</p>
+  </details>
+</spec-triage>
 </spec-triage-log>
 </section>
 
@@ -465,6 +523,7 @@
 <h2>Change log</h2>
 <spec-changelog>
 <ol>
+  <li><time datetime="2026-08-17">17 Aug 2026</time><span>T-019 added — a declared token file lands as an ordinary file while the importer derives candidates anyway; found during a real design run.</span></li>
   <li><time datetime="2026-08-13">13 Aug 2026</time><span>T-001 to T-005 added — five findings from researching the Claude Design connector before running the import for real. One is a false premise in an upstream survey claim (T-001); three are unverified or unstated assumptions (T-002 to T-004); one is an omission (T-005). Deliberately recorded rather than amended: the experiment that prompted the research will likely surface more, and this spec should be amended once with everything rather than five times.</span></li>
   <li><time datetime="2026-08-14">14 Aug 2026</time><span>T-014 added — <code>bumpVersion</code> hardcodes standard semantic-version increments while <a href="./spec.html#FR-016">FR-016</a> requires the move happen under <em>the versioning policy</em>, which <a href="../098-token-set-versioning/spec.html#FR-001">098 FR-001</a> keeps as the token set's own prose and this code never reads. <code>implementation</code> layer, regen <code>pass</code> — the requirement was clear enough and the implementation substituted a different policy without checking they agreed. Shipped while <a href="#T-013">T-013</a>, which named this exact hazard and said to decide the ownership question first, sat open. The ownership half stays T-013's; this card owns the silent substitution, and the three tests pinning the arithmetic go with the fix, since they encode the defect rather than catch it.</span></li>
   <li><time datetime="2026-08-14">14 Aug 2026</time><span>T-014 closed — <code>bumpVersion</code> deleted; the produced version is now a required confirmer input beside the name and the class, checked for presence and readable shape only. Agreement with the declared tier is deliberately <em>not</em> checked, because that would reintroduce the substitution one step removed. The replacement test asserts a version standard arithmetic could never produce and was confirmed to fail against the old implementation before being trusted — the check the removed tests never got. 55 tests green. <a href="#T-013">T-013</a> stays open: this closes the silent substitution, not the ownership question.</span></li>
