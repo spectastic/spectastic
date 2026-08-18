@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
+<title>A view of the authoritative copy · Change proposal</title>
+<link rel="stylesheet" href="../../../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../../../assets/favicon.svg">
+<script src="../../../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<spec-change id="2026-08-17-a-view-of-the-authoritative-copy" status="proposed">
+
+<header>
+  <p class="small-caps">Change proposal · 072-contract-embedded-view</p>
+  <h1>A view of the authoritative copy</h1>
+  <h3>A view of the authoritative copy</h3>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    The view reads one location. A contract now lives in two, one at a time.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>     <span><spec-status value="proposed">Proposed</spec-status></span>
+    <b>Change ID</b>  <span>2026-08-17-a-view-of-the-authoritative-copy</span>
+    <b>Spec</b>       <span><a href="../../spec.html">072-contract-embedded-view</a></span>
+    <b>Author</b>     <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Created</b>    <span><time datetime="2026-08-17">17 Aug 2026</time></span>
+    <b>Source</b>     <span><a href="../../triage-log.html#T-002">072/T-002</a></span>
+    <b>Targets</b>    <span>2 requirements — 1 added, 1 modified</span>
+    <b>Read time</b>  <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-tldr>
+    <p><a href="../../../070-contract-sidecar-convention/spec.html#FR-008">070 FR-008</a> made an empty effective
+    path a legal state a few hours ago. The view check reads that path and reports
+    <em>"the file could not be read"</em> — so bringing a project <em>into</em> conformance with 070 makes it
+    fail 072.</p>
+    <p>The view should project whichever copy is authoritative: the proposed contract while pending, the
+    effective one once promoted. And it should say which, because the rendered bytes look identical either way.</p>
+  </spec-tldr>
+</header>
+
+<section id="intent">
+<h2>1 · Intent</h2>
+<p>Reproduced by doing exactly what 070's drain prescribes. Removing a pre-copied effective contract cleared the
+pre-copy error and produced this one instead, so the project could not reach zero findings by either route.</p>
+
+<p>The two checks are each right about their own concern, and the ambiguity is in one phrase. <em>"The file could
+not be read"</em> meant <em>the declaration is broken</em>; since FR-008 it also means <em>promotion has not run
+yet</em>, and only the first is a defect. That is the same shape as
+<a href="../../../099-visual-embedded-view/triage-log.html#T-001">099/T-001</a>, where drift fired for a view
+that had never existed — a check asking "does this still match" without first asking "is this supposed to exist
+yet".</p>
+
+<p>Standing the check down while pending was the smaller fix and is not taken. It leaves a materialised view on
+screen projecting a file that is not at the declared path, with nothing telling a reader it is provisional —
+which trades a false error for a quiet inaccuracy, and the artifact's whole claim is that what you read is what
+is there.</p>
+</section>
+
+<section id="scope">
+<h2>2 · Scope</h2>
+<h3>In scope</h3>
+<ul>
+  <li>Which copy the view projects while a contract is pending promotion.</li>
+  <li>Saying so in the view, since the rendered content is identical either way.</li>
+</ul>
+<h3>Out of scope</h3>
+<ul>
+  <li>Re-materialising the view automatically when promotion runs. The view is generated and its staleness is
+  already checked, so the existing mechanism reports it. <code>defer-to=071-contract-promotion</code>.</li>
+  <li>The nested-project path limitation, which is why this repo's own exemplar reaches neither check.
+  <code>defer-to=TBD-nested-project-paths</code>.</li>
+</ul>
+</section>
+
+<section id="approach">
+<h2>3 · Approach</h2>
+<p>The view follows the contract rather than the path.</p>
+
+<table>
+<thead><tr><th>Claim</th><th>Source</th><th>Grounding</th><th>Finding</th></tr></thead>
+<tbody>
+<tr><td>The check reads the effective path only</td><td><code>validate.ts</code> (the view-stale scan)</td><td><spec-pill>verified</spec-pill></td><td>It resolves <code>cwd/decl.path</code> and reports when the read throws — the branch that now fires for a legitimately pending contract.</td></tr>
+<tr><td>FR-001 does not say "effective"</td><td><a href="../../spec.html#FR-001">FR-001</a></td><td><spec-pill>verified</spec-pill></td><td>It requires rendering <em>"the content of a declared contract"</em>. Projecting the proposed copy while pending is inside that wording, not an exception to it.</td></tr>
+<tr><td>070 FR-003 is not violated</td><td><a href="../../../070-contract-sidecar-convention/spec.html#FR-003">070 FR-003</a></td><td><spec-pill>verified</spec-pill></td><td>It forbids a proposed contract doing two named things — satisfying a design's effective declaration, and marking an enforcement category covered. Rendering it in a view is neither, and the pending marker makes the distinction visible rather than blurring it.</td></tr>
+<tr><td>Reproduced end to end</td><td><span class="path">~/Code/example-currency-converter</span></td><td><spec-pill>verified</spec-pill></td><td>Removing the pre-copy cleared <code>contract-resolve</code> and produced <code>contract-view-stale</code> in the same run.</td></tr>
+</tbody>
+</table>
+</section>
+
+<section id="deltas">
+<h2>4 · Deltas</h2>
+
+<spec-delta op="modified" target="FR-004">
+<p class="what-changes"><b>What changes</b> — the finding is keyed to the copy the view actually projects rather
+than to the effective path. <strong>Nothing else</strong>: the obligation to report a view that no longer
+matches is carried word for word, and the live rationale is carried verbatim below with the addition marked.</p>
+
+<spec-requirement id="FR-004" priority="must">
+<p><code>spectastic validate</code> <spec-rule>MUST</spec-rule> emit a finding when a rendered view no longer
+matches the contract file it projects — the proposed contract while the contract is pending promotion, and the
+effective contract otherwise.</p>
+<details><summary>Rationale</summary>
+<p>A materialised copy that nothing polices is a second source of truth with extra steps. This
+clones the guard the verify view already carries.</p>
+<p><strong>Added by this change.</strong> The clause names which file "it projects" resolves to, because since
+<a href="../../../070-contract-sidecar-convention/spec.html#FR-008">070 FR-008</a> that is two files at two
+points in a contract's life. Without it the check reads an effective path that is legitimately empty and reports
+a view as stale for the one reason that is not the view's fault.</p>
+</details>
+</spec-requirement>
+</spec-delta>
+
+<spec-delta op="added" target="FR-009">
+<p class="what-changes"><b>What changes</b> — a view of a pending contract projects the proposed copy and says
+so. New requirement.</p>
+
+<spec-requirement id="FR-009" priority="must">
+<p>While a contract is pending promotion, its view <spec-rule>MUST</spec-rule> project the proposed contract,
+and <spec-rule>MUST</spec-rule> record that the copy it shows is provisional.</p>
+<details><summary>Rationale</summary>
+<p>The alternative considered and rejected was to suppress the staleness check while pending. It is smaller and
+it mirrors <a href="../../../099-visual-embedded-view/triage-log.html#T-001">099/T-001</a>'s fix exactly, but it
+leaves a view rendering a file that is not at the declared path with nothing saying so — trading a false error
+for a quiet inaccuracy, in an artifact whose entire claim is that what you read is what is there.</p>
+<p>The second clause is not decoration. The rendered bytes are identical whichever copy they came from, so
+without a marker a provisional view and a promoted one are indistinguishable at a glance — the same reasoning
+that puts "suggested — not yet run" on a captured run block rather than trusting a reader to check.</p>
+<p>It also keeps <a href="../../../070-contract-sidecar-convention/spec.html#FR-003">070 FR-003</a> honest in
+substance rather than on a technicality. Rendering a proposed contract is not treating it as effective, and the
+marker is what makes that visible instead of asking the reader to take it on trust.</p>
+</details>
+</spec-requirement>
+</spec-delta>
+</section>
+
+<section id="risks">
+<h2>5 · Risk register</h2>
+<spec-risk-log>
+</spec-risk-log>
+</section>
+
+<section id="tasks">
+<h2>6 · Tasks</h2>
+<ul class="tasks">
+  <li><input type="checkbox"> Amend <code>specs/072-contract-embedded-view/spec.html</code> with the two deltas (kernel apply).</li>
+  <li><input type="checkbox"> Materialise a pending contract's view from the proposed copy in <code>packages/core/src/contracts/materialise-view.ts</code>, deriving the sidecar path the way <code>promote.ts</code> does.</li>
+  <li><input type="checkbox"> Compare against the projected copy in the view-stale scan, so a pending view is checked against the sidecar rather than the absent effective path.</li>
+  <li><input type="checkbox"> Mark a provisional view in the rendered output and style it in <code>assets/spec.css</code> — distinct from a promoted view at a glance.</li>
+  <li><input type="checkbox"> Tests: a pending contract's view is materialised, matches, and is marked; editing the sidecar makes it stale; a promoted contract behaves exactly as today; a contract with neither copy still errors.</li>
+  <li><input type="checkbox"> Re-check <span class="path">~/Code/example-currency-converter</span> reaches zero findings, which is what closes <a href="../../../070-contract-sidecar-convention/tasks.html">070 T-1005</a>.</li>
+  <li><input type="checkbox"> Close <a href="../../triage-log.html#T-002">072/T-002</a>.</li>
+</ul>
+</section>
+
+<section id="questions">
+<h2>7 · Open questions</h2>
+<spec-questions>
+<p>None outstanding. Which copy the view projects, and whether a reader can tell, were both settled in the
+decision phase.</p>
+</spec-questions>
+</section>
+
+<spec-changelog>
+<ul>
+  <li><time datetime="2026-08-17">17 Aug 2026</time><span>Authored from <a href="../../triage-log.html#T-002">072/T-002</a>, raised the same day <a href="../../../070-contract-sidecar-convention/spec.html#FR-008">070 FR-008</a> created the pending state — bringing a project into conformance with one spec made it fail another.</span></li>
+</ul>
+</spec-changelog>
+
+</spec-change>
+
+</main>
+<script src="../../../../assets/spec.js"></script>
+</body>
+</html>
