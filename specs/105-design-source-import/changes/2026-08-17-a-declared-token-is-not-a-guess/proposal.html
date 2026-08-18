@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
+<title>A declared token is not a guess · Change proposal</title>
+<link rel="stylesheet" href="../../../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../../../assets/favicon.svg">
+<script src="../../../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<spec-change id="2026-08-17-a-declared-token-is-not-a-guess" status="proposed">
+
+<header>
+  <p class="small-caps">Change proposal · 105-design-source-import</p>
+  <h1>A declared token is not a guess</h1>
+  <h3>A declared token is not a guess</h3>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    The import protects a declaration from being overwritten by an inference. It has no way to recognise one.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>     <span><spec-status value="proposed">Proposed</spec-status></span>
+    <b>Change ID</b>  <span>2026-08-17-a-declared-token-is-not-a-guess</span>
+    <b>Spec</b>       <span><a href="../../spec.html">105-design-source-import</a></span>
+    <b>Author</b>     <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Created</b>    <span><time datetime="2026-08-17">17 Aug 2026</time></span>
+    <b>Source</b>     <span><a href="../../triage-log.html#T-019">105/T-019</a></span>
+    <b>Targets</b>    <span>3 requirements — 2 added, 1 modified</span>
+    <b>Read time</b>  <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-tldr>
+    <p>A real import left <strong>45 colour candidates unconfirmed beside an empty token set</strong>.
+    <a href="../../spec.html#FR-010">FR-010</a> is written entirely in terms of derivation — candidates
+    inferred from an artifact, presented never committed — which is right, and is what
+    <a href="../../spec.html">US3</a> protects. The gap is its mirror: a <em>declared</em> value has no path in
+    either.</p>
+    <p>Sharper than the card recorded. The importer mines the declared token file <em>itself</em>: a named,
+    typed DTCG token comes back <strong>INFERRED — UNCONFIRMED</strong>, asking a human to confirm a value that
+    was already declared. That is US3 inverted — not an inference passing for a declaration, but a declaration
+    presented as an inference.</p>
+  </spec-tldr>
+</header>
+
+<section id="intent">
+<h2>1 · Intent</h2>
+<p>The importer has one mode where it needs two. Derivation is the careful path for a source that emits an
+artifact and nothing else, and every guarantee around it is sound. But a source that emits real design data
+gets the careful path too, so its declarations arrive as guesses.</p>
+
+<p>Reproduced with a two-token export: <code>design.tokens.json</code> lands in the sidecar with provenance and
+a content hash — the verb's own <code>--help</code> promises it <em>"lands its token file"</em> — and nothing
+recognises it as the token set. It is not wired to <code>&lt;spec-visual tokens=&gt;</code>, its values are not
+reconciled against the derived ones, and its own colours are re-derived <em>from it</em> and reported
+unconfirmed.</p>
+
+<p>What makes this worth a requirement rather than a patch: the fix has to say what happens when a declared
+token and a stylesheet value disagree, and neither silent answer is available. Preferring the token hides a
+design that drifted from its own system — the off-system case the measurement work exists to catch. Preferring
+the stylesheet lets an inference overwrite a declaration, which US3 forbids outright.</p>
+</section>
+
+<section id="scope">
+<h2>2 · Scope</h2>
+<h3>In scope</h3>
+<ul>
+  <li>Recognising a DTCG token file in an export as the declared token set.</li>
+  <li>Narrowing derivation so it never mines a declaration, and never re-offers what one already covers.</li>
+  <li>What a disagreement between the two means.</li>
+</ul>
+<h3>Out of scope</h3>
+<ul>
+  <li>Asking a design tool for anything. 105's import is a local export read once and then forgotten, and
+  reading a file the export already contains stays inside that boundary. <code>defer-to=never</code>.</li>
+  <li>Token kinds beyond colour for the disagreement check. Colour is what derivation produces today; a
+  dimension or duration candidate has no derivation path to disagree with.
+  <code>defer-to=TBD-token-kind-derivation</code>.</li>
+  <li>Correcting the <code>--help</code> copy, which promises this today. A §6 task, not a requirement.</li>
+</ul>
+</section>
+
+<section id="approach">
+<h2>3 · Approach</h2>
+<p>Recognition by <em>shape</em> rather than filename: a JSON file whose entries carry <code>$type</code> and
+<code>$value</code> is a DTCG token file by construction, whatever the exporting tool named it.</p>
+
+<table>
+<thead><tr><th>Claim</th><th>Source</th><th>Grounding</th><th>Finding</th></tr></thead>
+<tbody>
+<tr><td>A declared token is reported as an inference</td><td><code>spectastic visual:import</code></td><td><spec-pill>verified</spec-pill></td><td>Reproduced with distinct values: a DTCG file declaring <code>#aa1122</code> and a stylesheet using <code>#bb3344</code> produced <em>both</em> as candidates. The declared one was mined from the declaration itself.</td></tr>
+<tr><td>Derivation is a regex over file bodies</td><td><code>packages/core/src/visual/import.ts:532</code></td><td><spec-pill>verified</spec-pill></td><td><code>deriveTokenCandidates</code> matches a colour pattern across every readable file, with no notion of what a file <em>is</em> — which is why a token file is indistinguishable from a stylesheet to it.</td></tr>
+<tr><td>The DTCG shape is real, not invented for this</td><td><code>examples/currency-converter/visual/tokens/base.tokens.json</code></td><td><spec-pill>verified</spec-pill></td><td>The project's own token set uses <code>$type</code>/<code>$value</code> throughout, so the recognition test is checked against committed material rather than a guess about the format.</td></tr>
+<tr><td>Other tools' exports carry token files</td><td>—</td><td><spec-pill>assumed</spec-pill></td><td>Only Claude Design exports were examined, and none carried one — the file in the reproduction was authored by hand. Recognition is shape-based precisely so this assumption does not need to hold for the requirement to be correct.</td></tr>
+</tbody>
+</table>
+</section>
+
+<section id="deltas">
+<h2>4 · Deltas</h2>
+
+<spec-delta op="added" target="FR-017">
+<p class="what-changes"><b>What changes</b> — a declared token set is recognised and landed as declared. New
+requirement; nothing existing is narrowed.</p>
+
+<spec-requirement id="FR-017" priority="must">
+<p>Where an export carries a token file in a recognised token format, the import <spec-rule>MUST</spec-rule>
+land it as the project's <em>declared</em> token set, and <spec-rule>MUST NOT</spec-rule> mark its values
+inferred or present them for confirmation.</p>
+<details><summary>Rationale</summary>
+<p>Recognition is by shape, not by name: a token file is identifiable from its own contents, and depending on
+what a tool chose to call it would make the behaviour a lottery across sources. The project's own token set
+already uses that shape, so the test is verified against committed material.</p>
+<p>The second clause is the point. Asking a human to confirm a named, typed token is not caution — it is the
+tool failing to read what it was given, and it produced forty-five such requests in a single real import.</p>
+<p>Deliberately silent on what happens if an export carries more than one token file, because no observed
+export carries even one; the requirement says what to do with a token file rather than how to arbitrate a set
+of them, and a second slice can answer that when something produces the case.</p>
+</details>
+</spec-requirement>
+</spec-delta>
+
+<spec-delta op="modified" target="FR-010">
+<p class="what-changes"><b>What changes</b> — derivation gains a boundary: it never mines a declaration, and
+never re-offers a value one already carries. <strong>Nothing else</strong> — the ability to derive from an
+artifact, and the present-never-commit rule, are carried through word for word.</p>
+
+<spec-requirement id="FR-010" priority="must">
+<p>Where a source emits an artifact rather than design data, the import <spec-rule>MUST</spec-rule> be able to
+derive token candidates from any text that artifact carries, and those candidates <spec-rule>MUST</spec-rule>
+be presented for confirmation rather than committed as read. Derivation <spec-rule>MUST NOT</spec-rule> read a
+recognised token file as an artifact to mine, and <spec-rule>MUST NOT</spec-rule> present a candidate whose
+value the declared token set already carries.</p>
+<details><summary>Rationale</summary>
+<p>The original two clauses are unchanged and remain the whole of the derivation contract for a source that
+emits nothing else. What is added is where derivation stops.</p>
+<p>The first addition fixes an inversion rather than a nuisance: a token file is text, so the pattern matched
+its declared values and returned them as guesses about themselves. The second is what the complaint was
+actually about — a project that supplies real tokens should be asked to confirm nothing about them, and
+suppressing only the token file while still offering every stylesheet colour that matches a declared token
+would leave the list nearly as long.</p>
+</details>
+</spec-requirement>
+</spec-delta>
+
+<spec-delta op="added" target="FR-018">
+<p class="what-changes"><b>What changes</b> — a disagreement between a declared token and a derived value is
+reported and left unresolved. New requirement.</p>
+
+<spec-requirement id="FR-018" priority="must">
+<p>Where a value derived from an artifact differs from a value the declared token set carries for the same
+role, the import <spec-rule>MUST</spec-rule> report the disagreement naming both values, and
+<spec-rule>MUST NOT</spec-rule> resolve it in either direction.</p>
+<details><summary>Rationale</summary>
+<p>Neither silent answer is available, which is what makes this a requirement rather than an implementation
+detail. Preferring the declared value hides an artifact that drifted from its own system — precisely the
+off-system case that measuring fidelity exists to surface. Preferring the derived value lets an inference
+overwrite a declaration, which <a href="../../spec.html">US3</a> forbids in as many words.</p>
+<p>So the tool reports and stops. That is the same posture the corpus takes toward a superseded edition and the
+placement work takes toward a low-confidence verdict: where the evidence genuinely does not decide, saying so
+is the answer, and choosing anyway would manufacture a confidence nothing earned.</p>
+</details>
+</spec-requirement>
+</spec-delta>
+</section>
+
+<section id="risks">
+<h2>5 · Risk register</h2>
+<spec-risk-log>
+</spec-risk-log>
+</section>
+
+<section id="tasks">
+<h2>6 · Tasks</h2>
+<ul class="tasks">
+  <li><input type="checkbox"> Amend <code>specs/105-design-source-import/spec.html</code> with the three deltas (kernel apply).</li>
+  <li><input type="checkbox"> Recognise a DTCG token file by shape in <code>packages/core/src/visual/import.ts</code> — JSON whose entries carry <code>$type</code>/<code>$value</code>. Land it as the declared set, not as an ordinary file.</li>
+  <li><input type="checkbox"> Narrow <code>deriveTokenCandidates</code>: skip a recognised token file entirely, and drop any candidate whose value the declared set carries.</li>
+  <li><input type="checkbox"> Report a declared/derived disagreement in the manifest, naming both values and resolving neither.</li>
+  <li><input type="checkbox"> Tests: a declared token is never reported as a candidate; a token file is not mined for its own values; a stylesheet colour matching a declared token is suppressed; one that differs is reported as a disagreement; an export with no token file behaves exactly as today.</li>
+  <li><input type="checkbox"> Correct <code>visual:import --help</code>, which already promises it "lands its token file".</li>
+  <li><input type="checkbox"> Close <a href="../../triage-log.html#T-019">105/T-019</a>.</li>
+</ul>
+</section>
+
+<section id="questions">
+<h2>7 · Open questions</h2>
+<spec-questions>
+<p>None outstanding. Recognition, derivation's boundary, and the disagreement rule were each settled in the
+decision phase; the multi-token-file case is deliberately left to a slice with a real instance rather than
+guessed at now.</p>
+</spec-questions>
+</section>
+
+<spec-changelog>
+<ul>
+  <li><time datetime="2026-08-17">17 Aug 2026</time><span>Authored from <a href="../../triage-log.html#T-019">105/T-019</a>, raised by a question during a real design run — whether a design tool could simply be asked to produce a token set. It can; the importer could not read one.</span></li>
+</ul>
+</spec-changelog>
+
+</spec-change>
+
+</main>
+<script src="../../../../assets/spec.js"></script>
+</body>
+</html>
