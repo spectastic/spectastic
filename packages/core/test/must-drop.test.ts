@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { countConformance, mustDropFindings, requirementById } from '../src/change/must-drop.js';
+import {
+  countConformance,
+  mustDropFindings,
+  rationaleDropFindings,
+  requirementById,
+} from '../src/change/must-drop.js';
 
 /**
  * `conformance-dropped` (003 T-1005).
@@ -94,5 +99,83 @@ describe('mustDropFindings', () => {
 describe('requirementById', () => {
   it('returns null for an id the spec does not carry', () => {
     expect(requirementById(spec(TWO), 'FR-404')).toBeNull();
+  });
+});
+
+
+/**
+ * `rationale-dropped` — the second loss, and the one the conformance count
+ * cannot see by construction, since rationale carries no <spec-rule>.
+ *
+ * The comparison is by SENTENCE rather than by paragraph, and that is the whole
+ * design: an apply replaces the entire <spec-requirement> element including
+ * <details>, and a legitimate rewrite reflows paragraph boundaries while keeping
+ * the argument. Matching paragraphs exactly reported every reflow as a loss and
+ * was useless.
+ */
+const RAT = (body: string) =>
+  `<p>A thing <spec-rule>MUST</spec-rule> happen.</p><details><summary>Rationale</summary>${body}</details>`;
+const ARG =
+  '<p>The first argument is long enough to count as an argument rather than a fragment.</p>' +
+  '<p>The second argument is also long enough to count, and says something different.</p>';
+
+const runRat = (live: string, post: string) =>
+  rationaleDropFindings({
+    proposalHtml: `<spec-delta op="modified" target="FR-001">${post}</spec-delta>`,
+    proposalFile: 'p.html',
+    specHtml: `<main><spec-requirement id="FR-001" priority="must">${live}</spec-requirement></main>`,
+  });
+
+describe('rationaleDropFindings', () => {
+  it('reports rationale the post-state does not carry', () => {
+    const f = runRat(RAT(ARG), RAT('<p>Something entirely different and quite long enough to count.</p>'));
+    expect(f).toHaveLength(1);
+    expect(f[0]?.rule).toBe('rationale-dropped');
+    expect(f[0]?.message).toContain('2 rationale sentence(s)');
+  });
+
+  it('is silent when the rationale is carried verbatim', () => {
+    expect(runRat(RAT(ARG), RAT(ARG))).toEqual([]);
+  });
+
+  it('is silent when rationale is carried and added to — the correct shape for an amendment', () => {
+    expect(runRat(RAT(ARG), RAT(`${ARG}<p>A third argument, added by this change and long enough to count.</p>`))).toEqual(
+      [],
+    );
+  });
+
+  // Paragraph boundaries move in an ordinary rewrite; the argument does not.
+  it('is silent when carried sentences are merged into one paragraph', () => {
+    const merged =
+      '<p>The first argument is long enough to count as an argument rather than a fragment. ' +
+      'The second argument is also long enough to count, and says something different.</p>';
+    expect(runRat(RAT(ARG), RAT(merged))).toEqual([]);
+  });
+
+  it('tolerates an edit inside a carried sentence, since a typo fix is not a loss', () => {
+    const edited = ARG.replace('says something different', 'says something rather different');
+    expect(runRat(RAT(ARG), RAT(edited))).toEqual([]);
+  });
+
+  it('is silent when the live requirement carries no rationale at all', () => {
+    expect(runRat('<p>Bare.</p>', RAT(ARG))).toEqual([]);
+  });
+
+  it('reports at warning severity — retiring a stale argument is legitimate', () => {
+    expect(runRat(RAT(ARG), RAT('<p>Replaced wholesale with something else long enough.</p>'))[0]?.severity).toBe(
+      'warning',
+    );
+  });
+
+  it('ignores ADD and REMOVE deltas', () => {
+    for (const op of ['added', 'removed']) {
+      expect(
+        rationaleDropFindings({
+          proposalHtml: `<spec-delta op="${op}" target="FR-001">${RAT('')}</spec-delta>`,
+          proposalFile: 'p.html',
+          specHtml: `<main><spec-requirement id="FR-001" priority="must">${RAT(ARG)}</spec-requirement></main>`,
+        }),
+      ).toEqual([]);
+    }
   });
 });

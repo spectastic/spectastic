@@ -40,6 +40,17 @@
  * A folded CLI scan rather than a schema rule, for the reason that decides
  * every one of these: it needs the live spec *and* the proposal, and the
  * schema engine hands a rule one file.
+ *
+ * **A second loss, found the same way and reported separately.** `applyChange`
+ * replaces the *whole* `<spec-requirement>` element, `<details>` included — so
+ * a MODIFY that retypes only the normative sentence deletes the rationale with
+ * it, and no conformance keyword moves. That is invisible to the count above by
+ * construction, since rationale carries no `<spec-rule>`. It nearly shipped on a
+ * 105 delta that would have dropped three paragraphs two real imports had paid
+ * for. `rationaleDropFindings` compares surviving *sentences* rather than
+ * paragraphs, because a legitimate rewrite reflows paragraph boundaries while
+ * keeping the argument — matching paragraphs exactly reported every reflow and
+ * was useless.
  */
 
 import type { Finding } from '@spectastic/schema';
@@ -113,6 +124,63 @@ export function mustDropFindings(input: MustDropInput): Finding[] {
       message: `the post-state for ${target ?? ''} carries fewer conformance keywords than the live requirement (${detail})`,
       fixHint:
         'Carry the clause through, or say in the What-changes line that it is being removed and why. A post-state is retyped rather than edited, so an obligation not consciously carried is silently gone — and "nothing else changes" beside a deleted MUST has shipped three times.',
+    });
+  }
+  return findings;
+}
+
+
+/** Rationale text of a requirement — the `<details>` body, markup stripped. */
+function rationaleOf(html: string): string {
+  const m = /<details>\s*<summary>\s*Rationale\s*<\/summary>([\s\S]*?)<\/details>/i.exec(html);
+  if (m === null) return '';
+  return (m[1] ?? '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+/** Sentences long enough to be an argument rather than a fragment. */
+function sentencesOf(text: string): string[] {
+  return text
+    .split(/(?<=[.;])\s+/)
+    .map((x) => x.trim())
+    .filter((x) => x.length > 40);
+}
+
+/**
+ * Report a MODIFY whose post-state drops rationale the live requirement carries.
+ *
+ * Warning, for the same reason the conformance check is: retiring an argument
+ * that no longer holds is a legitimate thing for a MODIFY to do, and the tool
+ * cannot tell that from an omission. What it can do is make the omission
+ * visible, which is the whole gap — the apply is a whole-element replacement,
+ * so nothing else ever shows it.
+ */
+export function rationaleDropFindings(input: MustDropInput): Finding[] {
+  const findings: Finding[] = [];
+  for (const m of input.proposalHtml.matchAll(DELTA_RE)) {
+    const [, op, target, body] = m;
+    if ((op ?? '').toLowerCase() !== 'modified') continue;
+    const live = requirementById(input.specHtml, target ?? '');
+    if (live === null) continue;
+
+    const before = sentencesOf(rationaleOf(live));
+    if (before.length === 0) continue;
+    const after = rationaleOf(body ?? '');
+    // A prefix rather than the whole sentence: an author may legitimately fix a
+    // typo or a link inside a carried paragraph, and demanding byte equality
+    // would report that as a loss.
+    const dropped = before.filter((sentence) => !after.includes(sentence.slice(0, 55)));
+    if (dropped.length === 0) continue;
+
+    const line = input.proposalHtml.slice(0, m.index).split('\n').length;
+    findings.push({
+      file: input.proposalFile,
+      line,
+      column: 1,
+      rule: 'rationale-dropped',
+      severity: 'warning',
+      message: `the post-state for ${target ?? ''} drops ${dropped.length} rationale sentence(s) the live requirement carries — first: "${(dropped[0] ?? '').slice(0, 70)}…"`,
+      fixHint:
+        'Carry the rationale through, or say in the What-changes line which arguments are being retired and why. An apply replaces the whole <spec-requirement> element including <details>, so rationale not consciously carried is deleted with nothing showing it.',
     });
   }
   return findings;

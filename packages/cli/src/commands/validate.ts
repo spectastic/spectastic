@@ -349,7 +349,7 @@ export async function buildDocCache(
  * only unarchived proposals are read, and only those carrying a MODIFY.
  */
 async function scanDroppedConformance(cwd: string): Promise<Finding[]> {
-  const [{ mustDropFindings }, { readFile }, { expandGlobs }] = await Promise.all([
+  const [{ mustDropFindings, rationaleDropFindings }, { readFile }, { expandGlobs }] = await Promise.all([
     import('@spectastic/core/change/must-drop'),
     import('node:fs/promises'),
     import('../glob.js'),
@@ -371,7 +371,12 @@ async function scanDroppedConformance(cwd: string): Promise<Finding[]> {
     } catch {
       continue; // a principles proposal or an unreadable pair — not this scan's business
     }
-    out.push(...mustDropFindings({ proposalHtml, proposalFile: rel, specHtml }));
+    const args = { proposalHtml, proposalFile: rel, specHtml };
+    // Two losses, reported separately: a dropped obligation, and a dropped
+    // argument. The second is invisible to the first by construction — an apply
+    // replaces the whole element including <details>, and rationale carries no
+    // conformance keyword to count.
+    out.push(...mustDropFindings(args), ...rationaleDropFindings(args));
   }
   return out;
 }
