@@ -1059,6 +1059,65 @@
   </details>
 </spec-triage>
 
+
+<spec-triage id="T-028" layer="spec">
+  <header>
+    <h4>An ADD can reverse an existing requirement, and nothing compares the two</h4>
+    <span class="meta">
+      <span class="layer-pill">Spec</span>
+      <span class="regen" data-result="fail">upstream</span>
+    </span>
+  </header>
+
+  <p class="headline">Debugging why two proposals in one day shipped a must-tier requirement contradicting a
+  requirement they never touched, root cause was that both drop-guards compare a MODIFY's post-state against
+  the requirement it targets and an ADD targets nothing; fixed by checking a new requirement against its
+  siblings, which needs reading meaning rather than comparing content; regeneration fails, because no
+  requirement asks for the comparison.</p>
+
+  <dl>
+    <dt>Expected</dt>
+    <dd>A proposal cannot land a requirement that contradicts one already in the same spec without something
+    saying so.</dd>
+
+    <dt>Actual</dt>
+    <dd>It happened twice on 17 Aug. On <a href="../070-contract-sidecar-convention/spec.html">070</a>, an added
+    FR-008 said a pending contract <em>"MUST NOT be reported as a finding"</em>, negating must-tier FR-004 from
+    elsewhere in the same spec and leaving SC-001 unsatisfiable. On
+    <a href="../072-contract-embedded-view/spec.html">072</a>, an added must-tier FR-009 obliged a view exactly
+    where should-tier FR-007 obliges omission — <code>materialise-view.ts</code> implements FR-007 literally,
+    with the comment naming it. Both were caught by an adversarial pass, which is advisory and may not run.</dd>
+
+    <dt>Diagnosis</dt>
+    <dd>Three ways a proposal can quietly narrow a spec were found in one session, and only two are guarded.
+    <code>conformance-dropped</code> catches a MODIFY post-state that loses an obligation;
+    <code>rationale-dropped</code> catches one that loses an argument. Both work by comparing a post-state
+    against <em>the requirement it targets</em>. An ADD targets a requirement that does not exist yet, so there
+    is nothing to compare it to — and the contradiction lives between the new text and a <em>sibling</em>, which
+    neither guard reads.</dd>
+
+    <dt>Fix</dt>
+    <dd>Unclear, and that is the finding rather than an omission. Detecting that two requirements contradict
+    needs reading meaning, not comparing content — there is no cheap version, and a heuristic that flags
+    overlapping subject matter would fire on every amendment. The two candidates worth weighing are a
+    <em>prompt</em> in <code>/spectastic.propose</code> to check an ADD against every sibling (advisory, which
+    <a href="#T-009">T-009</a> and P-8 both exclude as a guarantee), and keeping the adversarial pass as the
+    control while recording that it is one — which is what happens today, undeclared.</dd>
+  </dl>
+
+  <details>
+    <summary>Deep dive — the guard's shape is the constraint</summary>
+    <p><strong>Both existing guards work because a MODIFY names its target.</strong> That is what makes the
+    comparison mechanical: the live requirement is fetched by id and diffed. The property has no analogue for an
+    ADD, and the difference is not effort — it is that the relationship being checked changes from
+    <em>before versus after</em> to <em>this versus everything else</em>.</p>
+    <p><strong>Worth recording plainly:</strong> the second occurrence was mine, hours after I wrote the
+    rationale on 070 FR-004 that names this exact failure — <em>"stating the carve-out in the requirement it
+    carves out of is the difference between an amendment and a collision"</em> — following a critic catching me
+    doing it. Knowing the failure was not enough to avoid it. That is the argument for a mechanism and also the
+    evidence that the mechanism is hard: the person best placed to catch it had just written it down.</p>
+  </details>
+</spec-triage>
 </spec-triage-log>
 </section>
 
@@ -1067,6 +1126,7 @@
 <h2>Change log</h2>
 <spec-changelog>
 <ol>
+  <li><time datetime="2026-08-17">17 Aug 2026</time><span>T-028 added — an ADD can reverse a requirement it never targets, and both drop-guards compare against a target an ADD does not have.</span></li>
     <li><time datetime="2026-08-16">16 Aug 2026</time><span>T-024 closed — a proposal can now declare what it retires, and the fold marks that phase's unchecked tasks. The refusal had to be re-anchored during the adversarial pass: keyed on a surviving folded phase it would have been unsatisfiable after any REQ-CHANGE-003 regeneration.</span></li>
     <li><time datetime="2026-08-15">15 Aug 2026</time><span>T-027 added — an artifact may ship with unreplaced template placeholders and nothing checks; the obligation lives only in command markdown, and the apply fold propagated one into two live task phases.</span></li>
     <li><time datetime="2026-08-15">15 Aug 2026</time><span>T-026 closed — <code>init</code> now installs the three subagent definitions; landed via the third proposal, the one that asked whether the install was wanted instead of arguing it was already required. Verified downstream by deleting the hand-copies and reinstalling with a real <code>init</code>.</span></li>
