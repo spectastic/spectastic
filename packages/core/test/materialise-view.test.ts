@@ -190,3 +190,51 @@ describe('materialiseContractViews (072)', () => {
     expect(result).toContain('content-b');
   });
 });
+
+
+/**
+ * 072 T-003 — declining to write a view must also remove one already there.
+ *
+ * Five paths decline: no declared path, an absent file, a directory, an
+ * unreadable file, and binary content. All five used to `continue` without
+ * stripping, so a design whose contract moved kept a view projecting a file
+ * that was gone — which `contract-view-stale` reported and which regenerating
+ * could not clear, because the strip lived only in the success branch. The fix
+ * hint has always read "refresh or remove"; only refresh existed.
+ */
+describe('a declined view removes an existing one (072 T-003)', () => {
+  const WITH_VIEW =
+    '<main><spec-contract shape="request-response" path="contracts/api.yaml" format="openapi"><p>The API.</p>' +
+    '<spec-contract-view lines="1" tabindex="0" aria-label="Projection of contracts/api.yaml">openapi: 3.1.0</spec-contract-view>' +
+    '</spec-contract></main>';
+
+  it('removes the view when the contract is absent', async () => {
+    const out = await materialiseContractViews(WITH_VIEW, stubFs({}), '/p');
+    expect(out).not.toContain('<spec-contract-view');
+    // The declaration itself survives — FR-007 leaves it visible on its own.
+    expect(out).toContain('<spec-contract shape="request-response"');
+    expect(out).toContain('<p>The API.</p>');
+  });
+
+  it('removes the view when the contract is binary', async () => {
+    const out = await materialiseContractViews(WITH_VIEW, stubFs({ '/p/contracts/api.yaml': 'a\u0000b' }), '/p');
+    expect(out).not.toContain('<spec-contract-view');
+  });
+
+  it('is idempotent — a second run over an absent contract changes nothing', async () => {
+    const once = await materialiseContractViews(WITH_VIEW, stubFs({}), '/p');
+    const twice = await materialiseContractViews(once, stubFs({}), '/p');
+    expect(twice).toBe(once);
+  });
+
+  it('leaves a declaration that never had a view untouched', async () => {
+    const bare = '<main><spec-contract shape="none"><p>No interface.</p></spec-contract></main>';
+    expect(await materialiseContractViews(bare, stubFs({}), '/p')).toBe(bare);
+  });
+
+  it('still writes a view when the contract IS readable', async () => {
+    const out = await materialiseContractViews(WITH_VIEW, stubFs({ '/p/contracts/api.yaml': 'openapi: 3.1.0' }), '/p');
+    expect(out).toContain('<spec-contract-view');
+    expect(out).toContain('openapi: 3.1.0');
+  });
+});

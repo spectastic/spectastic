@@ -69,8 +69,26 @@ export async function materialiseContractViews(
   let result = html;
   for (const match of matches) {
     const [full, attrs = '', inner = ''] = match;
+    // 072 T-003: every path below that declines to WRITE a view must also
+    // REMOVE one already there. `omit()` is that, and it exists because five
+    // `continue`s used to leave an orphan — a view projecting a file that is
+    // gone, which `contract-view-stale` then reports and which regenerating
+    // could not clear, because the strip lived only in the success branch. The
+    // fix hint has always said "refresh or remove"; only refresh was built.
+    const omit = (): void => {
+      const stripped = inner.replace(EXISTING_VIEW_RE, '');
+      if (stripped === inner) return; // nothing there — nothing to remove
+      // Replacer FUNCTION for the same reason the write path uses one: a
+      // contract's own text carries `$'` and `$&`, which a replacement STRING
+      // would treat as substitution patterns.
+      result = result.replace(full, () => `<spec-contract${attrs}>${stripped}\n</spec-contract>`);
+    };
+
     const pathMatch = PATH_ATTR_RE.exec(attrs);
-    if (!pathMatch) continue; // no declared path — shape="none" or malformed
+    if (!pathMatch) {
+      omit(); // no declared path — a view here projects nothing
+      continue;
+    }
 
     const resolvedPath = `${cwd}/${pathMatch[1]}`;
 
@@ -78,17 +96,25 @@ export async function materialiseContractViews(
     try {
       stat = await fs.stat(resolvedPath);
     } catch {
-      continue; // absent — omit the view (FR-007)
+      omit(); // absent — omit the view (FR-007)
+      continue;
     }
-    if (!stat.isFile) continue; // a directory — omit
+    if (!stat.isFile) {
+      omit(); // a directory — omit
+      continue;
+    }
 
     let content: string;
     try {
       content = await fs.readFile(resolvedPath, 'utf8');
     } catch {
-      continue; // unreadable — omit (FR-007)
+      omit(); // unreadable — omit (FR-007)
+      continue;
     }
-    if (content.includes('\0')) continue; // not text — omit (FR-007)
+    if (content.includes('\0')) {
+      omit(); // not text — omit (FR-007)
+      continue;
+    }
 
     // A file conventionally ends with exactly one trailing newline; splitting
     // on '\n' without stripping it first produces a trailing empty element
