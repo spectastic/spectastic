@@ -124,6 +124,57 @@
     than marked done against a project that still reports an error.</p>
   </details>
 </spec-triage>
+<spec-triage id="T-003" layer="implementation">
+  <header>
+    <h4>A view is never removed when its source disappears, and the fix hint tells you to do it anyway</h4>
+    <span class="meta">
+      <span class="layer-pill">Implementation</span>
+      <span class="regen" data-result="pass">code</span>
+    </span>
+  </header>
+
+  <p class="headline">Debugging why a design could not clear <code>contract-view-stale</code> by regenerating,
+  root cause was that <code>materialiseContractViews</code> strips an existing view only inside its success
+  branch, so an unreadable source takes the <code>continue</code> and leaves the orphan untouched; fixed by
+  stripping before the read rather than after it; regeneration passes — FR-007 already says a view should be
+  omitted when the contract cannot be read, and the code omits <em>writing</em> one without removing what is
+  there.</p>
+
+  <dl>
+    <dt>Expected</dt>
+    <dd>The fix hint on <code>contract-view-stale</code> reads <em>"Regenerate the design to refresh or remove
+    the stale projection."</em> Regenerating a design whose contract has gone should therefore leave no view.</dd>
+
+    <dt>Actual</dt>
+    <dd>The view stays. <span class="path">packages/core/src/contracts/materialise-view.ts</span> does
+    <code>catch { continue; } // absent — omit the view (FR-007)</code> before ever reaching the strip, which
+    lives further down beside the write. So "omit" means <em>do not write a new one</em>, never <em>remove the
+    old one</em>, and the remove half of the hint is unimplemented — the tool asks for something it cannot do.</dd>
+
+    <dt>Diagnosis</dt>
+    <dd>Not a specification gap: <a href="./spec.html#FR-007">FR-007</a> says plainly that a view should be
+    omitted where the contract cannot be read, and an orphaned view is not an omitted one. The code satisfies
+    the requirement for a design being materialised the first time and misses it for one that already carries a
+    view — the case that only arises once a contract moves, which is exactly what
+    <a href="../070-contract-sidecar-convention/spec.html#FR-008">070 FR-008</a> has just made routine.</dd>
+
+    <dt>Fix</dt>
+    <dd><span class="path">packages/core/src/contracts/materialise-view.ts</span> — strip an existing view
+    before deciding whether a new one can be written, so an unreadable source leaves the declaration bare
+    rather than carrying a projection of a file that is gone. Worth a test that regenerating twice over a
+    vanished contract is idempotent, since the strip and the write would then be on separate paths.</dd>
+  </dl>
+
+  <details>
+    <summary>Deep dive — found by an adversarial pass on a different question</summary>
+    <p>Surfaced while reviewing <a href="./changes/2026-08-17-a-view-of-the-authoritative-copy/proposal.html">the
+    pending-view proposal</a>, and independent of it: this bites whatever that proposal decides, because it is
+    about removing a view rather than about which copy a view shows. Filed separately rather than folded in, so
+    a decision about projection is not entangled with a defect about deletion.</p>
+    <p>It also explains something the 070 drain could not: the exemplar could not clear its finding by
+    regenerating. The advice was sound and the mechanism behind it was missing.</p>
+  </details>
+</spec-triage>
 </spec-triage-log>
 </section>
 
@@ -132,6 +183,7 @@
 <h2>Change log</h2>
 <spec-changelog>
 <ol>
+  <li><time datetime="2026-08-17">17 Aug 2026</time><span>T-003 added — a view is never removed when its source disappears; the fix hint promises a remove path the code does not implement.</span></li>
   <li><time datetime="2026-08-17">17 Aug 2026</time><span>T-002 added — a contract view reports stale for a contract that is correctly pending; surfaced by 070\'s drain the same day 070 FR-008 created the state.</span></li>
   <li><time datetime="2026-08-13">13 Aug 2026</time><span>T-001 added (design) — the embedded view never materialises on the canonical <code>/spectastic.design</code> authoring path, only on the kernel verb. Found while planning the sibling visual view.</span></li>
 </ol>
