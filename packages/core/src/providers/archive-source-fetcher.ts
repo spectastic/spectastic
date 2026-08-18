@@ -31,6 +31,20 @@ import type { DesignSourceFetcher } from '../visual/source-fetcher.js';
 
 export class ArchiveUnreadableError extends Error {}
 export class ArchiveEntryOutsideError extends Error {}
+/** An entry the expansion refuses on safety grounds rather than corruption. */
+export class ArchiveEntryRefusedError extends Error {}
+
+/**
+ * Bounds on what an expansion may produce (T-020).
+ *
+ * Traversal was guarded from the start; these two were not, and an expansion
+ * of somebody else's archive needs all three. A symlink entry can point
+ * anywhere this process can write, so honouring one hands the archive a
+ * capability the import never had. A decompression bomb is small on disk and
+ * unbounded in memory, and the reader inflates every entry eagerly.
+ */
+const MAX_RATIO = 100;
+const MAX_ENTRY_BYTES = 256 * 1024 * 1024;
 
 /** Extensions treated as an archive rather than a directory. */
 const ARCHIVE_SUFFIXES = ['.zip'];
@@ -73,14 +87,35 @@ function readZip(buf: Buffer, label: string): Entry[] {
     }
     const method = buf.readUInt16LE(p + 10);
     const compressedSize = buf.readUInt32LE(p + 20);
+    const uncompressedSize = buf.readUInt32LE(p + 24);
     const nameLen = buf.readUInt16LE(p + 28);
     const extraLen = buf.readUInt16LE(p + 30);
     const commentLen = buf.readUInt16LE(p + 32);
+    // Unix mode lives in the high 16 bits of the external attributes.
+    const unixMode = (buf.readUInt32LE(p + 38) >>> 16) & 0xffff;
     const localOffset = buf.readUInt32LE(p + 42);
     const name = buf.toString('utf8', p + 46, p + 46 + nameLen);
     p += 46 + nameLen + extraLen + commentLen;
 
     if (name.endsWith('/')) continue; // a directory record carries no content
+
+    // S_IFLNK. Refused rather than followed: the target is chosen by whoever
+    // built the archive, not by the project expanding it.
+    if ((unixMode & 0xf000) === 0xa000) {
+      throw new ArchiveEntryRefusedError(
+        `${label} contains a symbolic link ("${name}"), which could point anywhere this process can write. Refusing to expand it.`,
+      );
+    }
+    if (uncompressedSize > MAX_ENTRY_BYTES) {
+      throw new ArchiveEntryRefusedError(
+        `${label} contains an entry ("${name}") expanding to ${uncompressedSize} bytes, past the ${MAX_ENTRY_BYTES}-byte limit for one file.`,
+      );
+    }
+    if (compressedSize > 0 && uncompressedSize / compressedSize > MAX_RATIO) {
+      throw new ArchiveEntryRefusedError(
+        `${label} contains an entry ("${name}") expanding ${Math.round(uncompressedSize / compressedSize)}× its stored size, past the ${MAX_RATIO}× limit.`,
+      );
+    }
 
     // The local header's own name/extra lengths are authoritative for where the
     // data starts; the central directory's are not the same fields.
