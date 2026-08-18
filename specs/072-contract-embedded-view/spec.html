@@ -135,10 +135,16 @@ mechanism available — and naming it as such is what makes the drift guarantee 
 </spec-requirement>
 
 <spec-requirement id="FR-002" priority="must">
-<p>The view <strong>MUST</strong> be visibly labelled as a projection of a named file, and <strong>MUST NOT</strong> read as the
-contract itself.</p>
-<details><summary>Rationale</summary><p>An unlabelled copy invites editing. The label is what keeps the file authoritative in the
-reader's mind as well as in the tool's.</p></details>
+<p>The view <spec-rule>MUST</spec-rule> be visibly labelled as a projection of a named file — the file whose
+content it shows — and <spec-rule>MUST NOT</spec-rule> read as the contract itself.</p>
+<details><summary>Rationale</summary>
+<p>An unlabelled copy invites editing. The label is what keeps the file authoritative in the
+reader's mind as well as in the tool's.</p>
+<p><strong>Added by this change.</strong> "A named file" was unambiguous while one file could be projected. Once
+a view can show the proposed copy, the label must follow the content — today it renders
+<code>Projection of ${declaredPath}</code>, the effective path, so a view of the sidecar would be labelled with
+a path whose bytes it does not hold.</p>
+</details>
 </spec-requirement>
 
 <spec-requirement id="FR-003" priority="must">
@@ -149,10 +155,19 @@ one would break the calm-density property every other artifact depends on.</p></
 </spec-requirement>
 
 <spec-requirement id="FR-004" priority="must">
-<p><code>spectastic validate</code> <strong>MUST</strong> emit a finding when a rendered view no longer matches the contract file
-it projects.</p>
-<details><summary>Rationale</summary><p>A materialised copy that nothing polices is a second source of truth with extra steps. This
-clones the guard the verify view already carries.</p></details>
+<p><code>spectastic validate</code> <spec-rule>MUST</spec-rule> emit a finding when a rendered view no longer
+matches the contract file it projects, and <spec-rule>MUST</spec-rule> emit one when a view marked provisional
+no longer has a proposed contract behind it.</p>
+<details><summary>Rationale</summary>
+<p>A materialised copy that nothing polices is a second source of truth with extra steps. This
+clones the guard the verify view already carries.</p>
+<p><strong>Added by this change.</strong> The second clause exists because the first cannot see the case.
+Promotion copies the proposed bytes verbatim to the effective path, so after it runs the view's text matches its
+new source exactly and the drift check is silent — while the marker still says provisional, in a design whose
+contract is now in force. An earlier draft deferred re-materialisation on the grounds that "staleness is already
+checked"; it is not, for this, and a marker nothing can falsify is the quiet inaccuracy this proposal refuses
+elsewhere.</p>
+</details>
 </spec-requirement>
 
 <spec-requirement id="FR-005" priority="must">
@@ -166,14 +181,47 @@ clones the guard the verify view already carries.</p></details>
 </spec-requirement>
 
 <spec-requirement id="FR-007" priority="should">
-<p>Where the declared contract cannot be read — absent, unreadable, or not text — the view <strong>SHOULD</strong> be omitted
-rather than rendered empty, leaving the declaration visible on its own.</p>
+<p>Where the declared contract cannot be read at <em>either</em> its effective or its proposed location —
+absent, unreadable, or not text — the view <spec-rule level="should">SHOULD</spec-rule> be omitted rather than
+rendered empty, leaving the declaration visible on its own. A design <spec-rule level="may">MAY</spec-rule>
+render a view per declaration rather than for every contract it declares.</p>
+<details><summary>Rationale</summary>
+<p>Scoped rather than reversed. A pending contract <em>is</em> the "absent" case as this requirement was
+written, and the implementation reads it that way — <code>catch { continue; } // absent — omit the view</code> —
+so <a href="#FR-009">FR-009</a> would have obliged a view exactly where this obliges omission, leaving a
+must-tier and a should-tier requirement giving opposite instructions with nothing recording which won.</p>
+<p>That is the collision <a href="../070-contract-sidecar-convention/spec.html#FR-004">070 FR-004</a>'s own
+rationale names in writing — <em>"stating the carve-out in the requirement it carves out of is the difference
+between an amendment and a collision"</em> — and an earlier draft of this proposal reproduced it one spec over,
+hours later, by amending only FR-004. Caught by the adversarial pass.</p>
+</details>
 </spec-requirement>
 
 <spec-requirement id="FR-008" priority="may">
 <p>A design <strong>MAY</strong> render a view per declared contract, and <strong>MAY</strong> omit the view entirely while still
 declaring the contract.</p>
 </spec-requirement>
+<spec-requirement id="FR-009" priority="must">
+<p>Where a proposed contract exists for a declaration, its view <spec-rule>MUST</spec-rule> project the proposed
+copy, and <spec-rule>MUST</spec-rule> record that the copy it shows is provisional.</p>
+<details><summary>Rationale</summary>
+<p>The antecedent is "a proposed contract exists", not "the contract is pending promotion", and an earlier draft
+had the narrower one. <a href="../070-contract-sidecar-convention/spec.html#FR-008">070 FR-008</a> defines
+pending as the effective path <em>not resolving</em> — so an amendment, where both copies are readable and a
+baseline is captured, is not pending. Under the narrow wording a reviewer reading a design that proposes a
+change to an existing interface would see the <strong>old</strong> contract, unmarked and indistinguishable from
+a settled one, while the shape actually under discussion sat unrendered in the sidecar. The view would have
+shown the new shape only when there was no prior contract to compare it against — the case where seeing it
+matters least.</p>
+<p>The marker is not decoration. The rendered bytes are identical whichever copy they came from, so without it a
+provisional view and a promoted one cannot be told apart — the reasoning that puts "suggested — not yet run" on
+a captured run block rather than trusting a reader to check. <a href="#FR-004">FR-004</a>'s second clause is what
+stops the marker outliving the state it describes.</p>
+<p>Rendering a proposed contract is not treating it as effective. It satisfies no enforcement category and no
+effective declaration; what it does is show a reviewer the thing they are being asked to approve.</p>
+</details>
+</spec-requirement>
+
 
 <h3>Non-functional</h3>
 
@@ -293,6 +341,7 @@ produced this slice.</p>
 <ol>
   <li><time datetime="2026-07-31">31 Jul 2026</time><span>Initial draft. Resolves <code>TBD-contract-embedded-view</code>, the second slice of the data-model and contract survey. Plants four follow-ons — diff rendering, syntax awareness, contract validation, and a print stylesheet — each deliberately outside a slice whose whole job is to show the shape without becoming it.</span></li>
   <li><time datetime="2026-08-01">01 Aug 2026</time><span>Status flipped Draft → Accepted on 01 Aug 2026 — zero remaining unchecked tasks; tests verified passing per author confirmation. Sibling bundle (REQ-LIFECYCLE-005).</span></li>
+  <li><time datetime="2026-08-18">18 Aug 2026</time><span>Applied <a href="./changes/archive/2026-08-17-a-view-of-the-authoritative-copy/proposal.html">2026-08-17-a-view-of-the-authoritative-copy</a>: The view projects the copy under discussion. 070 FR-008 made an empty effective path legal, so a project brought into conformance with 070 failed 072's view check. Keyed on a proposed contract existing rather than on 'pending' — a term 070 defines to decide what validate reports, not what a view shows, and which excludes every amendment after the first. FR-007 is scoped rather than reversed and FR-002's label follows the content, both of which an earlier draft would have collided with; a provisional marker outliving promotion is now itself a finding, which the drift check could never see.</span></li>
 </ol>
 </spec-changelog>
 </section>
