@@ -1,0 +1,260 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
+<title>Floor properties of an artifact · Change proposal</title>
+<link rel="stylesheet" href="../../../../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../../../../assets/favicon.svg">
+<script src="../../../../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Change proposal · 091-artifact-format</p>
+  <h1>Floor properties of an artifact</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    Two things every artifact is assumed to be, that nothing checks and one parser silently repairs.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>     <span><spec-status value="applied">Applied</spec-status></span>
+    <b>Change ID</b>  <span>2026-08-18-floor-properties-of-an-artifact</span>
+    <b>Spec</b>       <span><a href="../../../spec.html">091-artifact-format</a></span>
+    <b>Author</b>     <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Created</b>    <span><time datetime="2026-08-18">18 Aug 2026</time></span>
+    <b>Targets</b>    <span>2 added</span>
+    <b>Read time</b>  <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-tldr>
+    <p>An artifact is assumed to be well-formed and to carry no leftover template placeholders. Neither is
+    stated, so neither is checked — and the first is worse than unchecked, because every rule in the engine
+    reads a tree the parser has already silently repaired. Two added requirements, both checkable, both
+    error severity.</p>
+  </spec-tldr>
+</header>
+
+
+<spec-change id="2026-08-18-floor-properties-of-an-artifact" status="applied">
+
+<header>
+  <h3>Floor properties of an artifact</h3>
+  <span class="meta"><spec-status value="applied">Applied</spec-status></span>
+</header>
+
+
+<section id="intent">
+<h2>1 · Intent</h2>
+<p>Two triage cards, filed months apart against different specs, turn out to be the same defect: a property
+every artifact is assumed to have, which nothing states and therefore nothing checks.</p>
+
+<p><a href="../../../../091-artifact-format/triage-log.html#T-001">091/T-001</a> was found when a design was
+authored with <code>&lt;/spike&gt;</code> where <code>&lt;/spec-status&gt;</code> was meant, and validate
+said nothing. <a href="../../../../000-spectastic/triage-log.html#T-027">000/T-027</a> is the same shape one
+level up: the authoring commands all say <em>&ldquo;replace every placeholder, never leave one&rdquo;</em>,
+which is guidance in markdown and therefore not a guarantee.</p>
+
+<p>The well-formedness one is the more serious, because it is not merely unchecked. Every rule in the engine
+reads a parsed tree, and the parser repairs a mismatched tag before any rule sees it — so the artifact a rule
+validates is not the artifact on disk, and a whole class of authoring error is invisible by construction.</p>
+</section>
+
+
+<section id="scope">
+<h2>2 · Scope</h2>
+
+<spec-goals>
+  <h3>In scope</h3>
+  <ul>
+    <li>Stating source well-formedness as a floor property, with a rule that reads the source rather than the tree.</li>
+    <li>Stating that an artifact carries no unreplaced template placeholder outside quoted context.</li>
+  </ul>
+</spec-goals>
+
+<spec-out-of-scope>
+  <ul>
+    <li defer-to="089-lifecycle-contract">A spec that is complete and still reads Draft. The same family &mdash;
+    a property expressed as a moment rather than as something checkable &mdash; but it belongs to the spec that
+    owns the lifecycle, not the one that owns the format.</li>
+    <li defer-to="TBD-invariant-criterion-coupling">Requiring every §4 invariant to be reachable from a success
+    criterion. Filed as <a href="../../../../000-spectastic/triage-log.html#T-030">000/T-030</a> and deliberately
+    not brought here: an invariant is prose, so the coupling is reviewable rather than checkable, and putting
+    an uncheckable obligation beside two checkable ones would blur what this proposal is for.</li>
+    <li defer-to="never">Validating the nesting of ordinary HTML. The boundary is the <em>element set</em>,
+    not the file set: <code>&lt;spec-*&gt;</code> elements always carry explicit closing tags, which is what
+    makes a source scan tractable, while the void elements and self-closing SVG in the same file do not and
+    are outside the requirement by construction.</li>
+  </ul>
+</spec-out-of-scope>
+</section>
+
+
+<section id="approach">
+<h2>3 · Approach</h2>
+<p>Both rules read the <strong>source</strong>, not the parsed tree, which is the whole point: a rule that
+reads the tree cannot see either defect, because the parser has already repaired the first and the second is
+ordinary text once parsed.</p>
+
+<p>Well-formedness needs no parser change. A stack scan over the source is enough, because the vocabulary is
+custom elements that always carry explicit closing tags &mdash; the void-element and optional-closing-tag
+cases that make general HTML hard do not arise for <code>&lt;spec-*&gt;</code>.</p>
+
+<p><strong>The placeholder census was wrong the first time and is restated here.</strong> The draft reported
+nineteen occurrences, all quotation, from a scan that stripped <code>&lt;code&gt;</code> and
+<code>&lt;pre&gt;</code> and looked no further. The audit finds <strong>43 occurrences, 11 outside
+quotation, 9 of them genuine unreplaced placeholders</strong> in artifacts already committed. Those nine are
+fixed as part of this change; the remaining two are quotation inside a <code>&lt;spec-diff&gt;</code>, which
+is why the exemption names diffs as well as code.</p>
+
+<p>The correction matters beyond the number. A rule justified by <em>&ldquo;this reports nothing today&rdquo;</em>
+is a different rule from one justified by <em>&ldquo;this catches nine live defects&rdquo;</em>, and only the
+second tells you what severity it needs.</p>
+</section>
+
+
+<section id="deltas">
+<h2>4 · Deltas</h2>
+<p>One <code>&lt;spec-delta&gt;</code> per requirement touched.</p>
+
+<spec-delta op="added" target="REQ-FORMAT-008">
+  <spec-requirement id="REQ-FORMAT-008" priority="must">
+  <p>Every <code>&lt;spec-*&gt;</code> element in an artifact's source <spec-rule>MUST</spec-rule> close,
+  matched and in order, and a mismatched or unclosed one <spec-rule>MUST</spec-rule> be reported rather than
+  repaired silently.</p>
+  <details><summary>Rationale</summary>
+  <p>This is the floor the rest of the format rests on, and it is the one property no rule can currently
+  observe. Validation parses before it checks, and the parser repairs a mismatched tag on the way in &mdash;
+  so every rule reads a document that differs from the file, and the difference is exactly where the defect
+  is. A design authored with <code>&lt;/spike&gt;</code> closing a <code>&lt;spec-status&gt;</code> validated
+  clean.</p>
+  <p>Scoped to <code>&lt;spec-*&gt;</code> rather than to every element, because that is the set a source scan
+  can actually decide. An artifact is mostly ordinary HTML — <code>&lt;meta&gt;</code>,
+  <code>&lt;link&gt;</code> and <code>&lt;input&gt;</code> never close, and
+  <a href="../../../spec.html#REQ-FORMAT-001">REQ-FORMAT-001</a> mandates inlined SVG whose
+  <code>&lt;path/&gt;</code> is self-closing — so a requirement over <em>every</em> element would declare the
+  entire estate defective on day one. The first draft did exactly that, and disclaimed the problem on the
+  vocabulary while the rule read the file.</p>
+  <p>The scan must also skip raw-text elements: a <code>&lt;style&gt;</code> selector and an inlined script's
+  <code>a &lt; b</code> both look like tags to a naive stack.</p>
+  <p>Error severity, and this half earns it on its own grounds: a repaired tree makes every other finding
+  suspect, so a rule reporting clean may have been reading a document nobody wrote. This is engine integrity
+  rather than authoring hygiene, which is why it does not share the other requirement's severity
+  argument.</p>
+  </details>
+  </spec-requirement>
+</spec-delta>
+
+<spec-delta op="added" target="REQ-FORMAT-009">
+  <spec-requirement id="REQ-FORMAT-009" priority="must">
+  <p>An artifact that has reached <code>accepted</code> <spec-rule>MUST NOT</spec-rule> carry an unreplaced
+  template placeholder, and a placeholder inside quoted context &mdash; a code block, a preformatted block, or
+  a diff &mdash; <spec-rule>MUST NOT</spec-rule> be reported, since quoting a template is how templates are
+  documented.</p>
+  <details><summary>Rationale</summary>
+  <p>Every authoring command already says to replace them all. That instruction lives in command markdown,
+  which triage T-009 and P-8 both exclude as a place a guarantee may live &mdash; it is a nudge, and an
+  artifact that ships with <code>[FEATURE_NAME]</code> in its title is broken in a way a reader sees before
+  anyone else does.</p>
+  <p>The exemption and the severity are both drawn from an audit that had to be run twice. The first census
+  reported nineteen occurrences, all quotation. The real figures are <strong>43 occurrences, 11 outside
+  quotation, and 9 genuine unreplaced placeholders</strong> — including three in a proposal applied the same
+  day this was drafted. The rule catches real defects, which is a better argument than the one first made for
+  it.</p>
+  <p>Every one of the nine sat in the <code>&lt;title&gt;</code>, the <code>&lt;spec-change&gt;</code> wrapper
+  or the footer — the chrome outside the sections an author writes. Nobody misses a scope item, because
+  writing scope is the task; everybody misses the title. That is the pattern this requirement exists to
+  catch.</p>
+  <p>Severity is status-dependent rather than flat, cloning <code>no-placeholder-question.ts</code>: error
+  once accepted, warning while draft or review, skipped otherwise. That is what keeps an archived or
+  withdrawn proposal — which <a href="../../../../088-change-management/spec.html">088</a> calls a stable fact —
+  from failing a gate it can never be edited to satisfy. <a href="../../../spec.html#REQ-FORMAT-005">REQ-FORMAT-005</a>
+  set the same precedent when it shipped date-format at warning as a migration-scoped choice.</p>
+  <p>The diff exemption was found, not guessed: the last two unexplained hits were <code>&lt;del&gt;</code>
+  lines inside a <code>&lt;spec-diff&gt;</code> quoting template markup. Chasing why the count disagreed is
+  what produced it.</p>
+  </details>
+  </spec-requirement>
+</spec-delta>
+</section>
+
+
+<section id="risks">
+<h2>5 · Risk register</h2>
+<p>Populated by the adversarial risk pass. This proposal adds two <code>must</code>-tier requirements.</p>
+
+<spec-risk-log>
+
+<spec-risk target="REQ-FORMAT-009" status="mitigated" by="Brian Corbin · @briancorbinxyz">
+  <p class="claim">The corpus census the exemption was designed from is wrong, and the error severity it justifies would block the next commit on artifacts that are supposed to be frozen.</p>
+  <p class="citation">§3 claims <em>&ldquo;All nineteen placeholder-shaped strings in the estate today are quotation&rdquo;</em>. An independent scan finds <strong>43 occurrences, 11 outside quotation</strong> — including three in <a href="../../../../105-design-source-import/changes/archive/2026-08-18-what-the-design-tool-is/proposal.html">the proposal applied earlier today</a> and six in a withdrawn one.</p>
+  <div class="response"><p>Verified and upheld; the count was re-run independently and the classification is false. Two consequences. The corpus is <em>not</em> clean when the rule lands, so the pre-commit hook and the CI dogfood both block on archived artifacts <a href="../../../../088-change-management/spec.html">088</a> calls stable facts — leaving a choice between editing an archive and blinding the gate permanently. And the honest finding is a <strong>better</strong> argument than the false one: the rule catches eleven live defects on day one. Recommend cloning the status-dependent ladder <code>no-placeholder-question.ts</code> already ships — error once accepted, warning while draft or review, skipped otherwise — so frozen archives never fire, and restating §3 with the real numbers.</p></div>
+</spec-risk>
+
+<spec-risk target="REQ-FORMAT-001" status="mitigated" by="Brian Corbin · @briancorbinxyz">
+  <p class="claim">REQ-FORMAT-008 is false of every artifact REQ-FORMAT-001 mandates: a must-tier requirement nothing in the corpus satisfies.</p>
+  <p class="citation">Proposed: <em>&ldquo;every element that opens MUST close, in order&rdquo;</em>. Against a single spec carrying three <code>&lt;meta&gt;</code> and two <code>&lt;link&gt;</code>, and 79 artifacts carrying inline SVG with self-closing <code>&lt;path/&gt;</code> — which REQ-FORMAT-001 requires by mandating inlined SVG.</p>
+  <div class="response"><p>Upheld. §3 disclaims the void-element case as not arising <em>&ldquo;for <code>&lt;spec-*&gt;</code>&rdquo;</em>, which is true of that vocabulary and irrelevant to a rule that scans the file. A scan must also special-case raw-text elements, since a <code>&lt;style&gt;</code> selector and an inlined script's <code>a &lt; b</code> both look like tags to a naive stack. Recommend scoping the requirement to <code>&lt;spec-*&gt;</code> elements so the requirement and the rule describe one property, and rewording <em>&ldquo;published artifact&rdquo;</em> in REQ-FORMAT-009, which collides with REQ-FORMAT-001's established sense of <em>the published build</em>.</p></div>
+</spec-risk>
+
+<spec-risk target="§2 — out-of-scope, defer-to=&quot;never&quot;" status="mitigated" by="Brian Corbin · @briancorbinxyz">
+  <p class="claim">The scope boundary is drawn on the wrong axis, and it is the axis the approach rests on.</p>
+  <p class="citation">The item locates tractability in <em>which files</em> are scanned — <em>&ldquo;anything but spectastic's own artifacts&rdquo;</em> — when it lives in <em>which elements inside a file</em> are scanned. Restricting the file set buys nothing; spectastic's own artifacts are full of ordinary HTML.</p>
+  <div class="response"><p>Upheld. Secondary and also right: the two deltas are one origin story but two topic groups. REQ-FORMAT-008 is engine integrity, where a repaired tree makes every other finding suspect; REQ-FORMAT-009 is authoring hygiene with a migration cost and a live precedent for warn — <a href="../../../spec.html#REQ-FORMAT-005">REQ-FORMAT-005</a> ships <code>date-format</code> at warning explicitly as a migration-scoped choice. One severity argument was made to cover both. Recommend restating the boundary as the element set, and giving the placeholder delta its own severity argument.</p></div>
+</spec-risk>
+
+<spec-risk target="REQ-FORMAT-009" status="mitigated" by="Brian Corbin · @briancorbinxyz">
+  <p class="claim">Two must-tier requirements rest on facts presented as verified that are false, with an empty risk log — the state <code>KB-0001@2026-07-25</code> forbids.</p>
+  <p class="citation">KB-0001: a must-tier decision may not rest on an <code>assumed</code> fact without an explicit accepted risk, where <code>verified</code> means the source was opened this turn. §3 says <em>&ldquo;derived from the corpus, not assumed&rdquo;</em> of a census that is wrong, and <em>&ldquo;a stack scan over the source is enough&rdquo;</em> with no spike run.</p>
+  <div class="response"><p>Upheld, and it is the finding that explains the other three: the census was run with a regex that stripped <code>code</code> and <code>pre</code> and nothing else, and its output was reported as though it were an audit. KB-0001's second half applies too — it defines a MUST as one whose absence is a defect, and REQ-FORMAT-008 as drafted declares the entire estate defective, which means its scope was never written down. Recommend re-grounding both claims rather than accepting the gap: the numbers are cheap to get right and the spike is one afternoon.</p></div>
+</spec-risk>
+
+</spec-risk-log>
+</section>
+
+
+<section id="tasks">
+<h2>6 · Tasks</h2>
+<ul>
+  <li><input type="checkbox"> Add a <code>spec-*</code> nesting rule at error severity, scanning the source with a tag stack rather than the parsed tree, and skipping raw-text elements. <span class="path">packages/schema/src/rules/</span></li>
+  <li><input type="checkbox"> Add an unreplaced-placeholder rule with status-dependent severity, exempting content inside <code>code</code>, <code>pre</code> and <code>spec-diff</code>. <span class="path">packages/schema/src/rules/</span></li>
+  <li><input type="checkbox"> Prove both rules against a planted defect before trusting them — a mismatched closing tag and a bare placeholder, each asserted to be reported and each asserted absent from a clean artifact. <span class="path">packages/schema/test/</span></li>
+  <li><input type="checkbox" checked> Replace the nine committed placeholders in an applied and a withdrawn proposal — all of them in a title, a change wrapper, or a footer. Done at propose time, since they were live defects rather than work this change creates. <span class="path">specs/105-design-source-import/changes/archive/, specs/003-init-node-port/changes/withdrawn/</span></li>
+  <li><input type="checkbox"> Prove the severity ladder: an accepted artifact reports error, a draft reports warning, an applied or withdrawn archive reports nothing. <span class="path">packages/schema/test/</span></li>
+  <li><input type="checkbox"> Close <a href="../../../triage-log.html#T-001">091/T-001</a> and <a href="../../../../000-spectastic/triage-log.html#T-027">000/T-027</a>, each recording what shipped. <span class="path">specs/</span></li>
+</ul>
+</section>
+
+
+<section id="questions">
+<h2>7 · Open questions</h2>
+<spec-questions>
+<p>None outstanding. The adjacent question — whether a §4 invariant can be mechanically coupled to a success
+criterion — is answered in §2 as out of scope, because it cannot. The two questions this proposal got wrong
+first time, its census and its scope, are settled in §5 rather than left open.</p>
+</spec-questions>
+</section>
+
+
+<section id="changelog">
+<h2>8 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-08-18">18 Aug 2026</time><span>Proposal authored.</span></li>
+  <li><time datetime="2026-08-18">18 Aug 2026</time><span>Applied on 18 Aug 2026 — Stated two floor properties every artifact was assumed to have and neither of which was checked: spec-* source nesting must be well-formed, because the parser silently repairs a mismatched tag and every rule therefore reads a document that differs from the file; and an accepted artifact carries no unreplaced template placeholder, at status-dependent severity so a frozen archive never fails a gate it cannot be edited to satisfy. The adversarial pass corrected both — the nesting requirement had been scoped to every element while its argument only held for spec-*, and the placeholder census was wrong by more than double.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+</spec-change>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  2026-08-18-floor-properties-of-an-artifact · Floor properties of an artifact · authored 2026-08-18
+</footer>
+
+</main>
+<script src="../../../../../assets/spec.js"></script>
+</body>
+</html>
