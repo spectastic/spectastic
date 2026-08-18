@@ -52,6 +52,13 @@ export interface ContractDeclaration {
   viewLines: number | undefined;
   /** Whether the nested view is a truncated excerpt (`excerpt="true"`). */
   viewExcerpt: boolean;
+  /** Whether the view projects a proposed contract rather than the effective
+   *  one (`provisional="true"`, 072 FR-009). Independent of `viewText`: the
+   *  bytes are identical whichever copy they came from, so this is the only
+   *  thing that distinguishes a provisional view from a promoted one — and the
+   *  only thing that can catch a marker outliving promotion, since after
+   *  promotion the text matches its new source exactly. */
+  viewProvisional: boolean;
   /** The view's decoded text content, whitespace preserved exactly — the raw
    *  projected bytes, for the drift check to compare against the real file.
    *  `undefined` when there is no view. */
@@ -126,6 +133,7 @@ export function readContractDeclarations(
       column: loc.column,
       viewLines: view ? Number(getAttr(view, 'lines')) : undefined,
       viewExcerpt: view ? getAttr(view, 'excerpt') === 'true' : false,
+      viewProvisional: view ? getAttr(view, 'provisional') === 'true' : false,
       viewText: view ? verbatimTextOf(view) : undefined,
       coordinateName: contractCoordinateName(getAttr(el, 'name'), getAttr(el, 'path')),
     };

@@ -99,7 +99,7 @@ export async function designCommand(input: DesignInput, ctx: KernelContext): Pro
   // Runs over whatever html the draft produced so a future contract-bearing
   // design is materialised without this call site needing to change.
   const fs = ctx.fs ?? (await import('../providers/node-fs.js')).nodeFs;
-  const withContracts = await materialiseContractViews(rawHtml, fs, ctx.cwd);
+  const withContracts = await materialiseContractViews(rawHtml, fs, ctx.cwd, undefined, input.specId);
   // The visual view rides the same seam (099-visual-embedded-view, FR-003).
   // Also a no-op for a design declaring no surface — but unlike the contract
   // view, an absent one is REPORTED rather than permitted, so this call site

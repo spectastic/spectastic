@@ -238,3 +238,53 @@ describe('a declined view removes an existing one (072 T-003)', () => {
     expect(out).toContain('openapi: 3.1.0');
   });
 });
+
+
+/**
+ * 072 FR-009 — the view shows the copy under discussion.
+ *
+ * Keyed on "a proposed contract exists", NOT on 070's "pending promotion".
+ * Pending means the effective path does not resolve, which excludes every
+ * amendment after the first — so under that predicate a reviewer reading a
+ * design that proposes changing an existing interface would see the OLD
+ * contract, unmarked, while the shape under discussion sat unrendered. The
+ * amendment case below is the one that distinction exists for.
+ */
+describe('a view projects the proposed copy when one exists (072 FR-009)', () => {
+  const DECL =
+    '<main><spec-contract shape="request-response" path="contracts/api.yaml" format="openapi"><p>The API.</p></spec-contract></main>';
+  const EFFECTIVE = '/p/contracts/api.yaml';
+  const PROPOSED = '/p/specs/001-x/contracts/api.yaml';
+
+  it('projects the proposed copy and marks it provisional', async () => {
+    const out = await materialiseContractViews(DECL, stubFs({ [PROPOSED]: 'proposed: yes' }), '/p', undefined, '001-x');
+    expect(out).toContain('provisional="true"');
+    expect(out).toContain('proposed: yes');
+    expect(out).toContain('Projection of specs/001-x/contracts/api.yaml');
+  });
+
+  // The case the narrow "pending" predicate would have missed entirely.
+  it('projects the PROPOSED copy during an amendment, when both are readable', async () => {
+    const fs = stubFs({ [EFFECTIVE]: 'the old shape', [PROPOSED]: 'the new shape' });
+    const out = await materialiseContractViews(DECL, fs, '/p', undefined, '001-x');
+    expect(out).toContain('the new shape');
+    expect(out).not.toContain('the old shape');
+    expect(out).toContain('provisional="true"');
+  });
+
+  it('projects the effective copy, unmarked, once the proposal is archived', async () => {
+    const out = await materialiseContractViews(DECL, stubFs({ [EFFECTIVE]: 'promoted' }), '/p', undefined, '001-x');
+    expect(out).toContain('promoted');
+    expect(out).not.toContain('provisional');
+    expect(out).toContain('Projection of contracts/api.yaml');
+  });
+
+  // Without a spec id the materialiser cannot know which sidecar to look in,
+  // and must behave exactly as it did before FR-009.
+  it('reads the effective path only when the caller supplies no spec id', async () => {
+    const fs = stubFs({ [EFFECTIVE]: 'effective', [PROPOSED]: 'proposed' });
+    const out = await materialiseContractViews(DECL, fs, '/p');
+    expect(out).toContain('effective');
+    expect(out).not.toContain('provisional');
+  });
+});

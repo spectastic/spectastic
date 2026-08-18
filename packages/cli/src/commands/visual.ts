@@ -63,7 +63,11 @@ export function registerVisual(program: Command): void {
       // specific to the visual one — the contract view has the identical hole
       // (072/T-001) and closing it here is what makes the entry point shared
       // rather than a second one-off beside the first.
-      const out = await materialiseVisualViews(await materialiseContractViews(html, nodeFs, cwd), nodeFs, cwd);
+      const out = await materialiseVisualViews(
+        await materialiseContractViews(html, nodeFs, cwd, undefined, specId),
+        nodeFs,
+        cwd,
+      );
       if (out === html) {
         process.stdout.write('view is current — nothing written\n');
         process.exit(0);

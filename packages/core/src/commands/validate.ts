@@ -622,11 +622,19 @@ export async function validateCommand(input: ValidateInput, ctx: KernelContext):
  * Recorded rather than worked around — the fix is an authored proposed location,
  * deferred as `TBD-contract-proposed-attribute`.
  */
-/** Does a path exist? The scan's FileSystem has no `exists`. */
+/**
+ * Is there a readable FILE here? The scan's FileSystem has no `exists`.
+ *
+ * Returns `st.isFile` rather than "stat did not throw", and the difference is
+ * not pedantry: a directory at the path would otherwise count as a contract,
+ * and a FileSystem may signal absence by returning `isFile: false` instead of
+ * throwing — the in-memory one used by the drift tests does exactly that, which
+ * is how the weaker version was caught.
+ */
 async function exists(fs: FileSystem, path: string): Promise<boolean> {
   try {
-    await fs.stat(path);
-    return true;
+    const st = await fs.stat(path);
+    return st.isFile;
   } catch {
     return false;
   }
@@ -1136,7 +1144,39 @@ export async function contractViewDriftFindings(
   for (const decl of declarations) {
     if (decl.path === undefined || decl.viewText === undefined) continue; // no view — nothing to check
 
-    const resolved = `${cwd}/${decl.path}`;
+    // 072 FR-004: compare against the copy the view actually PROJECTS. Since
+    // FR-009 a provisional view shows the proposed contract, so checking it
+    // against the effective path reports a mismatch that is the view being
+    // right rather than wrong.
+    const parts = file.split('/');
+    const owningSpec = parts[0] === 'specs' ? parts[1] : undefined;
+    const proposedPath =
+      owningSpec === undefined
+        ? undefined
+        : `${cwd}/specs/${owningSpec}/contracts/${decl.path.split('/').pop() ?? decl.path}`;
+    const proposedExists = proposedPath !== undefined && (await exists(fs, proposedPath));
+
+    // FR-004's second clause: a marker that outlived promotion. Promotion
+    // copies the proposed bytes verbatim, so afterwards the view's TEXT matches
+    // its new source and the comparison below is silent — while the marker
+    // still says provisional in a design whose contract is now in force. The
+    // marker and the sidecar's existence are independent facts, which is what
+    // makes this checkable where the text comparison is not.
+    if (decl.viewProvisional === true && !proposedExists) {
+      findings.push({
+        file,
+        line: decl.line,
+        column: decl.column,
+        rule: 'contract-view-stale',
+        severity: 'error',
+        message: `the view of "${decl.path}" in ${file} is marked provisional, but no proposed contract exists behind it`,
+        fixHint:
+          'Regenerate the design. The contract was promoted, so the view now shows the effective copy and should no longer be marked provisional (spec.html FR-004).',
+      });
+      continue;
+    }
+
+    const resolved = proposedExists && proposedPath !== undefined ? proposedPath : `${cwd}/${decl.path}`;
     let current: string;
     try {
       current = await fs.readFile(resolved, 'utf8');

@@ -21,6 +21,17 @@ const DEFAULT_LINE_BUDGET = 500;
 
 const CONTRACT_RE = /<spec-contract([^>]*)>([\s\S]*?)<\/spec-contract>/g;
 const PATH_ATTR_RE = /\bpath=["']([^"']+)["']/;
+/** Is there a readable file here? Used to decide whether a proposed contract
+ *  exists (072 FR-009) — existence, not content, is the whole question. */
+async function readable(fs: FileSystem, path: string): Promise<boolean> {
+  try {
+    const st = await fs.stat(path);
+    return st.isFile;
+  } catch {
+    return false;
+  }
+}
+
 const EXISTING_VIEW_RE = /\s*<spec-contract-view[^>]*>[\s\S]*?<\/spec-contract-view>\s*/g;
 
 export function escapeContractText(s: string): string {
@@ -49,6 +60,13 @@ export async function materialiseContractViews(
   fs: FileSystem,
   cwd: string,
   lineBudget = DEFAULT_LINE_BUDGET,
+  /** The spec that owns this design, when the caller knows it. Enables 072
+   *  FR-009: where a proposed contract exists, the view projects THAT copy and
+   *  is marked provisional. Optional and trailing so no existing call site
+   *  changes — without it the materialiser behaves exactly as before, reading
+   *  the effective path only, which is correct for a caller that cannot know
+   *  which spec it is standing in. */
+  specId?: string,
 ): Promise<string> {
   // Matched against a comment-masked copy, then sliced out of the original.
   // The mask preserves every offset, so `full`/`attrs`/`inner` below are the
@@ -90,7 +108,20 @@ export async function materialiseContractViews(
       continue;
     }
 
-    const resolvedPath = `${cwd}/${pathMatch[1]}`;
+    // 072 FR-009: the view shows the copy under discussion. Where a proposed
+    // contract exists it is that one — including during an amendment, where
+    // BOTH copies are readable and the effective one is the shape being
+    // replaced. Keying on "a proposed contract exists" rather than on 070's
+    // "pending promotion" is deliberate: pending means the effective path does
+    // not resolve, which excludes every amendment after the first and would
+    // show a reviewer the old contract during exactly the review that matters.
+    const declaredPathValue = pathMatch[1] ?? '';
+    const proposedPath =
+      specId === undefined
+        ? undefined
+        : `${cwd}/specs/${specId}/contracts/${declaredPathValue.split('/').pop() ?? declaredPathValue}`;
+    const provisional = proposedPath !== undefined && (await readable(fs, proposedPath));
+    const resolvedPath = provisional ? (proposedPath as string) : `${cwd}/${pathMatch[1]}`;
 
     let stat: { isFile: boolean; isDirectory: boolean };
     try {
@@ -131,8 +162,14 @@ export async function materialiseContractViews(
     // reach or identify fails accessibility; the label names the projected
     // file, since the region's own visible ::before label omits it (spec.css
     // attr() can only read this element's own attributes, not its parent's).
-    const ariaLabel = escapeContractText(`Projection of ${declaredPath}`);
-    const viewEl = `<spec-contract-view lines="${totalLines}"${isExcerpt ? ' excerpt="true"' : ''} tabindex="0" aria-label="${ariaLabel}">${escapeContractText(shown)}</spec-contract-view>`;
+    // FR-002: the label names the file whose bytes are shown, not the
+    // declaration's path — they differ while a view is provisional, and a
+    // label pointing at a file it does not hold is worse than none.
+    const projectedName = provisional ? `specs/${specId}/contracts/${declaredPath.split('/').pop()}` : declaredPath;
+    const ariaLabel = escapeContractText(
+      provisional ? `Projection of ${projectedName} (provisional — not yet promoted)` : `Projection of ${projectedName}`,
+    );
+    const viewEl = `<spec-contract-view lines="${totalLines}"${isExcerpt ? ' excerpt="true"' : ''}${provisional ? ' provisional="true"' : ''} tabindex="0" aria-label="${ariaLabel}">${escapeContractText(shown)}</spec-contract-view>`;
 
     const innerWithoutView = inner.replace(EXISTING_VIEW_RE, '');
     const replacement = `<spec-contract${attrs}>${innerWithoutView}\n${viewEl}\n</spec-contract>`;
