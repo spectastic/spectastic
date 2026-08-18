@@ -2,7 +2,10 @@ import { describe, expect, it } from 'vitest';
 import {
   type ConfirmCandidateInput,
   confirmTokenCandidate,
+  declaredColourValues,
+  deriveTokenCandidates,
   ImportIdentityError,
+  isTokenFile,
   TokenConfirmationError,
   UNKNOWN,
   importDesignSource,
@@ -731,5 +734,59 @@ describe('confirming a candidate writes it into the token set (FR-016, T-1204)',
     // confirmation — a reader should still be able to tell a token that
     // arrived from a design tool from one somebody decided on.
     expect(confirmed.inferred).toBe(true);
+  });
+});
+
+
+/**
+ * 105 FR-017 / FR-010's boundary — a declared token is not a guess.
+ *
+ * A real import left 45 colour candidates unconfirmed beside an empty token
+ * set, and the importer mined the declared token file ITSELF, so a named typed
+ * DTCG token came back INFERRED — UNCONFIRMED. That is US3 inverted: not an
+ * inference passing for a declaration, but a declaration presented as an
+ * inference.
+ */
+describe('a declared token set is read, not mined (105 FR-017)', () => {
+  const TOKENS = JSON.stringify({ color: { brand: { $type: 'color', $value: '#aa1122' } } });
+  const SHEET = '<div style="color:#aa1122;background:#bb3344">c</div>';
+
+  it('recognises a token file by shape, not by name', () => {
+    expect(isTokenFile('anything.json', TOKENS)).toBe(true);
+    expect(isTokenFile('design.tokens.json', '{"a":1}')).toBe(false);
+    expect(isTokenFile('notes.md', TOKENS)).toBe(false);
+  });
+
+  // The project's own set puts $type on the GROUP and $value on the leaf.
+  it('recognises a set whose $type is inherited from a group', () => {
+    const grouped = JSON.stringify({ space: { $type: 'dimension', '100': { $value: { value: 4, unit: 'px' } } } });
+    expect(isTokenFile('base.tokens.json', grouped)).toBe(true);
+  });
+
+  it('cannot be fooled by prose mentioning $value', () => {
+    expect(isTokenFile('readme.json', JSON.stringify({ note: 'the $value key means something' }))).toBe(false);
+  });
+
+  it('never offers a declared token as a candidate', () => {
+    const out = deriveTokenCandidates([
+      { name: 'tokens.json', body: TOKENS, landed: true },
+      { name: 'screen.html', body: SHEET, landed: true },
+    ]);
+    expect(out.map((c) => c.value)).toEqual(['#bb3344']);
+  });
+
+  it('does not mine the token file for its own values', () => {
+    const out = deriveTokenCandidates([{ name: 'tokens.json', body: TOKENS, landed: true }]);
+    expect(out).toEqual([]);
+  });
+
+  it('behaves exactly as before for an export with no token file', () => {
+    const out = deriveTokenCandidates([{ name: 'screen.html', body: SHEET, landed: true }]);
+    expect(out.map((c) => c.value).sort()).toEqual(['#aa1122', '#bb3344']);
+  });
+
+  it('reads every colour a declared set carries, at any depth', () => {
+    const nested = JSON.stringify({ a: { b: { c: { $type: 'color', $value: '#ABCDEF' } } } });
+    expect([...declaredColourValues(nested)]).toEqual(['#abcdef']);
   });
 });

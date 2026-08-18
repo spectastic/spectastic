@@ -62,6 +62,12 @@ export interface ImportedFile {
   /** True when the value was derived rather than read — marked, and never
    *  outranking a declared value (FR-005). */
   inferred: boolean;
+  /** True when this file is a token set the export DECLARES, recognised by its
+   *  own shape (FR-017). Landed as a declared source and never mined: its
+   *  values are read, not guessed, so presenting them for confirmation would be
+   *  the tool failing to read what it was given. Distinct from `inferred`,
+   *  which is about a value; this is about what a file IS. */
+  declaredTokens?: boolean;
   /** Every newly landed item arrives unreviewed. */
   reviewed: false;
 }
@@ -340,7 +346,15 @@ export async function importDesignSource(
 
     // FR-006 — everything lands not-yet-reviewed. Not a default a caller can
     // pass around: the type fixes it at `false`.
-    ledger.files.push({ path: destination, provenance: provenanceOf(body), inferred: false, reviewed: false });
+    ledger.files.push({
+      path: destination,
+      provenance: provenanceOf(body),
+      inferred: false,
+      reviewed: false,
+      // FR-017: recognised by shape, so a reader can tell a declaration from an
+      // ordinary file that happens to have landed beside it.
+      ...(isTokenFile(name, body) ? { declaredTokens: true } : {}),
+    });
 
     let existing: string | undefined;
     try {
@@ -529,13 +543,84 @@ const COLOUR_RE = /#[0-9a-fA-F]{3,8}\b/g;
  * is stable across runs — a manifest that reorders itself on every import is a
  * diff nobody can read.
  */
+/**
+ * Is this a token file in a recognised format? (105 FR-017)
+ *
+ * By SHAPE, never by filename: a DTCG file is identifiable from its own
+ * contents, and depending on what a tool chose to call it would make the
+ * behaviour a lottery across sources. Claude Design names nothing
+ * `*.tokens.json`, and the project's own token set uses this shape throughout —
+ * so the test is verified against committed material rather than a guess about
+ * the format.
+ *
+ * A token is a leaf carrying `$value`; `$type` may sit on the leaf or be
+ * inherited from a group above it, which is how the project's own set is
+ * written. So the test is "any leaf with `$value`" rather than "every leaf with
+ * both", and a JSON file that happens to contain the string `$value` in prose
+ * cannot pass, because the check walks parsed structure rather than text.
+ */
+export function isTokenFile(name: string, body: string): boolean {
+  if (!name.toLowerCase().endsWith('.json')) return false;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(body);
+  } catch {
+    return false;
+  }
+  const hasValue = (node: unknown): boolean => {
+    if (typeof node !== 'object' || node === null || Array.isArray(node)) return false;
+    const rec = node as Record<string, unknown>;
+    if ('$value' in rec) return true;
+    return Object.entries(rec).some(([k, v]) => !k.startsWith('$') && hasValue(v));
+  };
+  return hasValue(parsed);
+}
+
+/**
+ * Every colour value a declared token set carries, lower-cased.
+ *
+ * Used to suppress a derived candidate the declaration already covers (FR-010's
+ * added clause) — a project that supplies real tokens should be asked to
+ * confirm nothing about them.
+ */
+export function declaredColourValues(body: string): Set<string> {
+  const out = new Set<string>();
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(body);
+  } catch {
+    return out;
+  }
+  const walk = (node: unknown): void => {
+    if (typeof node !== 'object' || node === null) return;
+    if (Array.isArray(node)) return;
+    const rec = node as Record<string, unknown>;
+    const v = rec.$value;
+    if (typeof v === 'string' && /^#[0-9a-fA-F]{3,8}$/.test(v)) out.add(v.toLowerCase());
+    for (const [k, child] of Object.entries(rec)) if (!k.startsWith('$')) walk(child);
+  };
+  walk(parsed);
+  return out;
+}
+
 export function deriveTokenCandidates(
   files: readonly { name: string; body: string; landed: boolean }[],
 ): UnconfirmedTokenCandidate[] {
+  // FR-010's added clause: derivation never reads a declaration as an artifact
+  // to mine, and never offers a value one already carries. Without the first,
+  // a named typed token comes back INFERRED — UNCONFIRMED, asking a human to
+  // confirm a value that was already declared; without the second, a project
+  // supplying real tokens still confirms every stylesheet colour matching them.
+  const declared = new Set<string>();
+  for (const f of files) {
+    if (isTokenFile(f.name, f.body)) for (const v of declaredColourValues(f.body)) declared.add(v);
+  }
   const seen = new Map<string, { occurrences: number; sources: Set<string>; fromUnlanded: boolean }>();
   for (const { name, body, landed } of files) {
+    if (isTokenFile(name, body)) continue; // a declaration, not evidence to mine
     for (const raw of body.match(COLOUR_RE) ?? []) {
       const value = raw.toLowerCase();
+      if (declared.has(value)) continue; // the declared set already carries it
       const entry = seen.get(value) ?? { occurrences: 0, sources: new Set<string>(), fromUnlanded: false };
       entry.occurrences += 1;
       entry.sources.add(name);
@@ -573,7 +658,9 @@ function escapeHtml(s: string): string {
  */
 export function renderManifest(identity: string, ledger: ImportLedger): string {
   const row = (f: ImportedFile): string =>
-    `<tr><td><code>${escapeHtml(f.path)}</code></td><td>${escapeHtml(f.provenance.origin)}</td>` +
+    `<tr><td><code>${escapeHtml(f.path)}</code>${
+      f.declaredTokens === true ? ' <strong>DECLARED TOKEN SET</strong>' : ''
+    }</td><td>${escapeHtml(f.provenance.origin)}</td>` +
     `<td>${escapeHtml(f.provenance.originUrl)}</td><td>${escapeHtml(f.provenance.edition)}</td>` +
     `<td>${escapeHtml(f.provenance.license)}</td><td><code>${escapeHtml(f.provenance.contentHash)}</code></td>` +
     '<td><strong>NOT REVIEWED</strong></td></tr>';
@@ -606,7 +693,7 @@ export function renderManifest(identity: string, ledger: ImportLedger): string {
 </table>
 
 <h2>Token candidates</h2>
-<p>Values observed in the material this import read, offered for confirmation. A source marked <strong>not landed</strong> was read but deliberately not copied into the project — so it is in the export and not here, and the export may since have been deleted. <strong>None of these is in the token set</strong> and none carries a name — naming a token is a decision about meaning, and a wrong name is worse than no name because it looks decided. Confirming a candidate writes it into the token set under a name and a change class the confirmer supplies — never the tool — and moves the set's version under its own bump policy; a candidate that has not been confirmed never outranks a declared value.</p>
+<p>Values observed in the material this import read, offered for confirmation. Values a declared token set already carries are <strong>not</strong> listed here, and a declared token set is never itself mined — a named, typed token is read, not guessed, so asking for confirmation of one would be the tool failing to read what it was given (FR-010, FR-017). A source marked <strong>not landed</strong> was read but deliberately not copied into the project — so it is in the export and not here, and the export may since have been deleted. <strong>None of these is in the token set</strong> and none carries a name — naming a token is a decision about meaning, and a wrong name is worse than no name because it looks decided. Confirming a candidate writes it into the token set under a name and a change class the confirmer supplies — never the tool — and moves the set's version under its own bump policy; a candidate that has not been confirmed never outranks a declared value.</p>
 <table>
 <thead><tr><th>Value</th><th>Occurrences</th><th>Seen in</th><th>Status</th></tr></thead>
 <tbody>${ledger.tokenCandidates.map(candidate).join('')}</tbody>

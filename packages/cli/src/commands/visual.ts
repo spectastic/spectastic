@@ -80,7 +80,7 @@ export function registerVisual(program: Command): void {
   program
     .command('visual:import')
     .description(
-      'Import a design export already on disk — lands its token file, renders and annotations into the visual sidecar, once, and never reads it again. No network, no account, no design-tool licence.',
+      'Import a design export already on disk — lands its material into the visual sidecar, once, and never reads it again. A token set the export declares lands as a declared source and is never presented for confirmation; values it does not cover are offered as candidates. Nothing is written to the project\'s own token set. No network, no account, no design-tool licence.',
     )
     .requiredOption('--from <path>', 'the export, inside this project — a folder, or a .zip which is expanded for you')
     .requiredOption('--into <dir>', 'where landed material goes — the visual sidecar')
