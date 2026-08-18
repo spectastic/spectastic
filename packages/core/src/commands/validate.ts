@@ -608,6 +608,41 @@ export async function validateCommand(input: ValidateInput, ctx: KernelContext):
  * A declaration with no `path=` (shape="none", or a still-malformed one the
  * shape rule will separately flag) is skipped — nothing to resolve.
  */
+/**
+ * The proposed and baseline locations for a declared contract (070 FR-008/FR-009).
+ *
+ * Derived exactly as `promote.ts` derives them — `basename(decl.path)` under the
+ * owning spec's `contracts/` — rather than restated here, so the check and the
+ * verb it describes cannot drift apart. The spec id comes from the design's own
+ * path, which is the only place it exists at validate time.
+ *
+ * The derivation inherits `basename`'s known fragility: `api/v1/openapi.yaml`
+ * and `api/v2/openapi.yaml` collide on one proposed path, which
+ * `contract-name-unique` already documents as "the ordinary case, not a corner".
+ * Recorded rather than worked around — the fix is an authored proposed location,
+ * deferred as `TBD-contract-proposed-attribute`.
+ */
+/** Does a path exist? The scan's FileSystem has no `exists`. */
+async function exists(fs: FileSystem, path: string): Promise<boolean> {
+  try {
+    await fs.stat(path);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function sidecarPathsFor(file: string, declPath: string, cwd: string): { proposed: string; baseline: string } | null {
+  const parts = file.split('/');
+  if (parts[0] !== 'specs' || parts[1] === undefined) return null;
+  const specId = parts[1];
+  const name = declPath.split('/').pop() ?? declPath;
+  return {
+    proposed: `${cwd}/specs/${specId}/contracts/${name}`,
+    baseline: `${cwd}/specs/${specId}/contracts/.baseline/${name}`,
+  };
+}
+
 export async function contractResolveFindings(
   declarations: readonly ContractDeclaration[],
   file: string,
@@ -668,11 +703,34 @@ export async function contractResolveFindings(
     try {
       stat = await fs.stat(resolved);
     } catch {
+      // 070 FR-008: pending promotion — the effective contract does not exist
+      // yet and the proposed one does. The normal state of every design between
+      // authoring and promotion, and erroring on it made an in-flight design
+      // unvalidatable by any legal declaration (070 T-001). Silent, never
+      // counted: FR-008's second clause keeps a pending contract from
+      // satisfying anything that requires an effective one.
+      const sidecar = sidecarPathsFor(file, decl.path, cwd);
+      if (sidecar !== null && (await exists(fs, sidecar.proposed))) continue;
       flag(
         `<spec-contract path="${decl.path}"> in ${file} — no such file`,
         `Check for a typo, or that the contract was committed (spec.html FR-004).`,
       );
       continue;
+    }
+
+    // 070 FR-009: a readable contract in BOTH locations with no captured
+    // baseline is a pre-copy — someone performed promotion's write by hand, so
+    // two copies can now drift and 071 cannot tell a promoted contract from a
+    // pre-copied one. A baseline PRESENT means an ordinary in-flight amendment
+    // (propose.ts captures it so promotion can refuse on a moved baseline), and
+    // must stay silent — without that distinction this fires on every contract
+    // change after the first.
+    const sidecar = sidecarPathsFor(file, decl.path, cwd);
+    if (sidecar !== null && (await exists(fs, sidecar.proposed)) && !(await exists(fs, sidecar.baseline))) {
+      flag(
+        `<spec-contract path="${decl.path}"> in ${file} is readable at both the effective and proposed locations (${decl.path} and specs/${file.split('/')[1]}/contracts/${decl.path.split('/').pop()}), with no captured baseline`,
+        'Promotion archives the proposal so exactly one copy stays authoritative (spec.html FR-009). Two readable copies with no baseline means the effective file was written by hand — remove it and let promotion do the write.',
+      );
     }
     if (stat.isDirectory) {
       flag(
