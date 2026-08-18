@@ -34,6 +34,8 @@ import { noDuplicateIdsRule } from './no-duplicate-ids.js';
 import { noExecutableContentRule } from './no-executable-content.js';
 import { noMissingDeferToRule } from './no-missing-defer-to.js';
 import { noPlaceholderQuestionRule } from './no-placeholder-question.js';
+import { noUnreplacedPlaceholderRule } from './no-unreplaced-placeholder.js';
+import { specElementNestingRule } from './spec-element-nesting.js';
 import { noUnresolvedQuestionRule } from './no-unresolved-question.js';
 import { parentChildReciprocityRule } from './parent-child-reciprocity.js';
 import { requirementIdRequiredRule } from './requirement-id-required.js';
@@ -81,6 +83,8 @@ export const rules: readonly Rule[] = [
   // Status-dependent rules (per-file).
   noUnresolvedQuestionRule,
   noPlaceholderQuestionRule,
+  noUnreplacedPlaceholderRule,
+  specElementNestingRule,
   investRowFailedRule,
 
   // Edge-case rules (per-file).

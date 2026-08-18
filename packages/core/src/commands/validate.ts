@@ -1217,3 +1217,79 @@ export async function contractViewDriftFindings(
 
   return findings;
 }
+
+/**
+ * The lifecycle status disagreement check (spec 089-lifecycle-contract,
+ * REQ-LIFECYCLE-009).
+ *
+ * REQ-LIFECYCLE-004 defines the Draft-to-Accepted transition as a *moment* —
+ * triggered at the last tick, with the obligation on `/spectastic.implement`
+ * to prompt. A slice that reaches completion any other way stays Draft with
+ * nothing able to notice, because nothing describes what the status should
+ * *be*. Ten specs were found advertising themselves as Draft while finished.
+ *
+ * Two disagreements are decidable, and the requirement is written as a scope
+ * limit rather than a set of prohibitions — `MUST NOT` cannot be distinguished
+ * from `MUST` in the conformance markup, so an exemption phrased as a negation
+ * reads as an obligation to a consumer taking the level off the element.
+ *
+ * Deliberately asymmetric. An *accepted* spec carrying unchecked tasks is
+ * normal, not a defect: every apply folds its proposal's tasks into the
+ * target's tracker as a fresh phase, so a completed spec routinely holds open
+ * work. Reading this symmetrically would report every spec that has ever
+ * received a proposal.
+ *
+ * Reads only the three filenames REQ-LIFECYCLE-005 names. A slice directory
+ * also holds archived proposals carrying `applied` — not one of the six
+ * lifecycle values — and a triage log that can carry a status element inside a
+ * sentence; naming the three puts both out of scope by construction rather
+ * than by an exemption list that has to anticipate them.
+ */
+export interface SliceStatus {
+  /** Slice directory name, e.g. `047-slo-nfr-artifact`. */
+  slice: string;
+  /** Header status of each artifact present and carrying one. */
+  statuses: { spec?: string; design?: string; tasks?: string };
+  /** Total checkboxes in tasks.html, and how many are unchecked. */
+  tasks?: { total: number; unchecked: number };
+}
+
+export function statusDisagreementFindings(slices: SliceStatus[]): Finding[] {
+  const findings: Finding[] = [];
+  for (const s of slices) {
+    const file = `specs/${s.slice}/spec.html`;
+
+    // (1) A finished slice still reading draft — bookkeeping, so warning.
+    if (s.statuses.spec === 'draft' && s.tasks && s.tasks.total > 0 && s.tasks.unchecked === 0) {
+      findings.push({
+        file,
+        line: 1,
+        column: 1,
+        rule: 'status-disagreement',
+        severity: 'warning',
+        message: `${s.slice} reads draft while all ${s.tasks.total} of its tasks are complete.`,
+        fixHint:
+          'Flip the slice to accepted with a changelog entry on each of spec.html, design.html and tasks.html (REQ-LIFECYCLE-005), or reopen the work if it is not really done.',
+      });
+    }
+
+    // (2) A split bundle — REQ-LIFECYCLE-005 forbids it, so error.
+    const present = Object.entries(s.statuses).filter(([, v]) => v !== undefined) as Array<[string, string]>;
+    if (present.length > 1) {
+      const distinct = [...new Set(present.map(([, v]) => v))];
+      if (distinct.length > 1) {
+        findings.push({
+          file,
+          line: 1,
+          column: 1,
+          rule: 'status-disagreement',
+          severity: 'error',
+          message: `${s.slice} has a split bundle: ${present.map(([k, v]) => `${k}=${v}`).join(', ')}.`,
+          fixHint:
+            'REQ-LIFECYCLE-005 requires spec.html, design.html and tasks.html to share one status and transition in a single gesture. Flip the laggards, with a matching changelog entry on each.',
+        });
+      }
+    }
+  }
+  return findings;
+}

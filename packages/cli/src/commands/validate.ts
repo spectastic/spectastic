@@ -196,6 +196,61 @@ async function scanUnknownConfigKeys(cwd: string): Promise<Finding[]> {
   }));
 }
 
+/**
+ * The lifecycle status disagreement scan (spec 089, REQ-LIFECYCLE-009).
+ * Folded in beside the other cross-file scans — a schema rule sees one
+ * document and this compares three, plus a tracker's checkbox state.
+ */
+async function scanStatusDisagreement(cwd: string): Promise<Finding[]> {
+  const [{ statusDisagreementFindings }, { readdir, readFile }] = await Promise.all([
+    import('@spectastic/core/commands/validate'),
+    import('node:fs/promises'),
+  ]);
+
+  const statusOf = (html: string): string | undefined =>
+    /<spec-status\s+value="([a-z-]+)"/.exec(html)?.[1];
+
+  let entries: string[];
+  try {
+    entries = await readdir(`${cwd}/specs`);
+  } catch {
+    return []; // no specs/ — nothing to compare
+  }
+
+  const slices = [];
+  for (const slice of entries.sort()) {
+    const read = async (name: string): Promise<string | undefined> => {
+      try {
+        return await readFile(`${cwd}/specs/${slice}/${name}.html`, 'utf8');
+      } catch {
+        return undefined;
+      }
+    };
+    const [spec, design, tasks] = await Promise.all([read('spec'), read('design'), read('tasks')]);
+    if (!spec) continue;
+    // A slice with no tracker is outside the check by construction.
+    if (tasks === undefined) continue;
+
+    const boxes = tasks.match(/<input[^>]*type="checkbox"[^>]*>/g) ?? [];
+    // Only artifacts that are present AND carry a header status take part —
+    // the meta-spec's execution-only tracker has none, and must not read as a
+    // disagreement with the spec beside it.
+    const statuses: { spec?: string; design?: string; tasks?: string } = {};
+    const specStatus = statusOf(spec);
+    if (specStatus) statuses.spec = specStatus;
+    const designStatus = design === undefined ? undefined : statusOf(design);
+    if (designStatus) statuses.design = designStatus;
+    const tasksStatus = statusOf(tasks);
+    if (tasksStatus) statuses.tasks = tasksStatus;
+    slices.push({
+      slice,
+      statuses,
+      tasks: { total: boxes.length, unchecked: boxes.filter((b) => !b.includes('checked')).length },
+    });
+  }
+  return statusDisagreementFindings(slices);
+}
+
 async function scanEnforceWaivers(cwd: string): Promise<Finding[]> {
   const [
     { enforceWaiverFindings },
@@ -747,6 +802,11 @@ export function registerValidate(program: Command): void {
       // rather than error, because a key from a newer version of the tool is
       // indistinguishable from a typo here. No-op with no configuration.
       const unknownConfigKeyFindings = await scanUnknownConfigKeys(process.cwd());
+      // The status-disagreement gate (spec 089, REQ-LIFECYCLE-009): a finished
+      // slice still reading draft warns; a split bundle errors, because
+      // REQ-LIFECYCLE-005 already forbids one. Deliberately asymmetric — an
+      // accepted spec with unchecked tasks is what an apply's fold produces.
+      const statusDisagreementScanFindings = await scanStatusDisagreement(process.cwd());
       // The quantified-NFR gate (spec 047, FR-004): at verified/enterprise, an
       // NFR with no measurable target and no linked <spec-slo> is an error, so
       // the pre-commit gate blocks a vague reliability promise. No-op below
@@ -810,6 +870,7 @@ export function registerValidate(program: Command): void {
         ...copyLeakFindings,
         ...enforceWaiverFindings,
         ...unknownConfigKeyFindings,
+        ...statusDisagreementScanFindings,
         ...quantifiedNfrScanFindings,
         ...corpusWellFormedScanFindings,
         ...corpusRegistryScanFindings,
