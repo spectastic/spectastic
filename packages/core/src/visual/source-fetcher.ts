@@ -8,9 +8,12 @@
  * it makes a future source with a different resolution story a new
  * implementation rather than a change to the importer.
  *
- * There is deliberately no live protocol implementation. Three of the five
- * design sources expose one and two have nothing persistent to query; using a
- * live path would make a spec only as available as somebody's seat.
+ * There is deliberately no live protocol implementation — on portability, not
+ * on availability. The earlier claim here, that two of five design sources have
+ * nothing persistent to query, was asserted and is false: at least one exposes
+ * project, file-listing and file-reading calls, and the editor ships a client
+ * for them. The reason that survives is that a live path would make a spec only
+ * as available as somebody's seat.
  */
 
 export interface DesignSourceFetcher {

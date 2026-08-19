@@ -684,6 +684,25 @@ describe('confirming a candidate writes it into the token set (FR-016, T-1204)',
     await expect(confirm(fs, { name: undefined })).rejects.toBeInstanceOf(TokenConfirmationError);
   });
 
+  it('refuses a produced version equal to the one the set already carries (FR-016)', async () => {
+    // The one refusal FR-016 adds: a release moves the version. Absent and
+    // unreadable belong to 098 NFR-002 and are checked separately; whether the
+    // version *agrees* with the class is deliberately unowned, because deciding
+    // that is an ordering 098 NFR-001 forbids.
+    const { fs } = confirmFs('2.1.0');
+    await expect(confirm(fs, { toVersion: '2.1.0' })).rejects.toBeInstanceOf(TokenConfirmationError);
+    await expect(confirm(fs, { toVersion: '2.1.0' })).rejects.toThrow(/already carries/);
+  });
+
+  it('accepts a version that moves in either direction, because only equality is decided', async () => {
+    // Not an ordering: a version that looks earlier is still a move, and this
+    // check has no opinion about which way is correct. A fresh store per call —
+    // a confirmation writes, so reusing one makes the second call's declared
+    // from-version genuinely stale and the compare-and-swap fires instead.
+    await expect(confirm(confirmFs('2.1.0').fs, { toVersion: '2.2.0' })).resolves.toBeDefined();
+    await expect(confirm(confirmFs('2.1.0').fs, { toVersion: '2.0.9' })).resolves.toBeDefined();
+  });
+
   it('refuses a candidate missing a change class', async () => {
     const { fs } = confirmFs();
     await expect(confirm(fs, { changeClass: undefined })).rejects.toBeInstanceOf(TokenConfirmationError);

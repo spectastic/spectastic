@@ -954,6 +954,18 @@ export async function confirmTokenCandidate(
     );
   }
 
+  // The one refusal 105 FR-016 adds: a release must actually move. Absent and
+  // unreadable are 098 NFR-002's and are checked above; agreement between the
+  // version and the declared class is deliberately unowned, because deciding it
+  // would mean ordering two versions and 098 NFR-001 forbids that at must tier
+  // ("equality only, with at most 0 orderings computed"). This is that equality.
+  if (toVersion === input.declaredFrom.trim()) {
+    throw new TokenConfirmationError(
+      `token confirmation: the produced version (${toVersion}) is the version the set already carries. ` +
+        'A release moves the version — state the one this confirmation produces, not the one it starts from.',
+    );
+  }
+
   return writeConfirmedToken(
     {
       tokenSetPath: input.tokenSetPath,
