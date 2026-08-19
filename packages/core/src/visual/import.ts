@@ -295,7 +295,7 @@ export async function importDesignSource(
     originUrl: input.originUrl ?? UNKNOWN,
     edition: declaredEdition(body) ?? UNKNOWN,
     license: declaredLicence(body) ?? UNKNOWN,
-    contentHash: contentHash(body),
+    contentHash: contentHash(new TextEncoder().encode(body)),
   });
 
   // TWO PHASES, and the split is NFR-001 (triage T-017): read and decide
@@ -523,10 +523,10 @@ export function carriesExecutableContent(body: string): boolean {
  * from the platform so the module stays free of a runtime dependency and a
  * test can assert a literal value.
  */
-export function contentHash(body: string): string {
+export function contentHash(bytes: Uint8Array): string {
   let h = 0x811c9dc5;
-  for (let i = 0; i < body.length; i++) {
-    h ^= body.charCodeAt(i);
+  for (let i = 0; i < bytes.length; i++) {
+    h ^= bytes[i]!;
     h = Math.imul(h, 0x01000193) >>> 0;
   }
   return h.toString(16).padStart(8, '0');

@@ -269,8 +269,50 @@ describe('provenance on every landed file (FR-004)', () => {
   });
 
   it('hashes deterministically, so a re-import can tell same from changed', () => {
-    expect(contentHash('a')).toBe(contentHash('a'));
-    expect(contentHash('a')).not.toBe(contentHash('b'));
+    const enc = new TextEncoder();
+    expect(contentHash(enc.encode('a'))).toBe(contentHash(enc.encode('a')));
+    expect(contentHash(enc.encode('a'))).not.toBe(contentHash(enc.encode('b')));
+  });
+});
+
+/**
+ * A byte survives the port (106-visual-render, US2, FR-002, T-201).
+ *
+ * `contentHash` currently hashes `body.charCodeAt(i)` over a JS string, which
+ * matches bytes only in the ASCII range — a `String` is UTF-16 code units,
+ * not the bytes an import actually reads. The target contract (built by the
+ * sibling task T-211, not this one) is `contentHash(bytes: Uint8Array)`: the
+ * signature itself changes, so this test is written to fail to compile right
+ * now rather than merely to fail at runtime.
+ */
+describe('the content hash is computed over bytes, not UTF-16 code units (FR-002, T-201)', () => {
+  it('hashes two byte sequences differing only outside the text-representable range differently', () => {
+    // Identical ASCII prefix, differing only in a trailing byte that has no
+    // single-code-unit JS string representation on its own (0x80 vs 0xFF) —
+    // exactly the case a UTF-16-based hash cannot distinguish.
+    const a = Uint8Array.from([0x61, 0x62, 0x63, 0x80]);
+    const b = Uint8Array.from([0x61, 0x62, 0x63, 0xff]);
+    expect(contentHash(a)).not.toBe(contentHash(b));
+  });
+
+  it('keeps today\'s value for a pure-ASCII byte sequence', () => {
+    const bytes = new TextEncoder().encode('hello world');
+    // Grounded, not guessed: 'd58b3fa7' is the REAL output of the current
+    // (string-based) contentHash('hello world') today, captured with:
+    //   node -e "
+    //     function contentHash(body) {
+    //       let h = 0x811c9dc5;
+    //       for (let i = 0; i < body.length; i++) {
+    //         h ^= body.charCodeAt(i);
+    //         h = Math.imul(h, 0x01000193) >>> 0;
+    //       }
+    //       return h.toString(16).padStart(8, '0');
+    //     }
+    //     console.log(contentHash('hello world'));
+    //   "
+    // A byte-based hash MUST reproduce this exact value for ASCII input — a
+    // regression guard against a silent hash change for the common case.
+    expect(contentHash(bytes)).toBe('d58b3fa7');
   });
 });
 

@@ -44,6 +44,61 @@ export interface FileSystem {
    * directory (triage T-007).
    */
   mkdir(path: string): Promise<void>;
+  /**
+   * Byte-faithful read (106-visual-render, FR-001). readFile's transcode
+   * through a string is exactly what corrupts a binary — the two paths are
+   * deliberately separate methods rather than an overload, since readFile's
+   * `encoding` parameter is optional and every existing caller omits it: an
+   * overload would silently flip them all from string to bytes.
+   */
+  readBinary(path: string): Promise<Uint8Array>;
+  /** Byte-faithful write, the write half of readBinary. */
+  writeBinary(path: string, content: Uint8Array): Promise<void>;
+}
+
+// --- Render --------------------------------------------------------------
+
+/**
+ * One artboard captured from a design source (106-visual-render, FR-006/FR-009).
+ * `bytes` is the image at the artboard's own bounds, never the whole page.
+ * `consoleErrors` is whatever the page logged while this artboard rendered —
+ * recorded, never discarded (FR-009); an empty array means a clean render.
+ */
+export interface RenderCapture {
+  /** The artboard's own declared label, unmodified — naming/slugging is the
+   * caller's job (render-naming.ts), not the port's. */
+  label: string;
+  bytes: Uint8Array;
+  consoleErrors: string[];
+}
+
+/** The full result of one `Renderer.render()` call: every artboard found,
+ * whatever its label. */
+export interface RenderRunResult {
+  captures: RenderCapture[];
+}
+
+/**
+ * The browser-driving port (106-visual-render, FR-003/FR-004/FR-005/NFR-001).
+ *
+ * Declared here, implemented nowhere in this package — @spectastic/core MUST
+ * NOT depend on any particular browser (FR-003), enforced by the
+ * no-core-to-render dependency-cruiser rule. `packages/render` supplies the
+ * one Playwright-backed implementation.
+ */
+export interface Renderer {
+  /**
+   * True if the runtime's own dependencies (its CDN) are reachable. Checked
+   * BEFORE any artboard is executed (FR-005) — a blocked CDN yields
+   * unexpanded template labels rather than a clean failure, so the verb must
+   * ask first rather than infer it from what comes back.
+   */
+  checkEgress(): Promise<boolean>;
+  /**
+   * Load `location` once and capture every labelled artboard found in that
+   * one session (NFR-001: at most one browser process per run).
+   */
+  render(location: string): Promise<RenderRunResult>;
 }
 
 // --- AI ----------------------------------------------------------------
@@ -133,6 +188,15 @@ export interface KernelContext {
   fs?: FileSystem;
   /** AI provider; undefined for deterministic verbs like validate. */
   ai?: AIProvider;
+  /**
+   * Browser-driven capture; undefined for every verb but render (105/T-020's
+   * sibling requirement — 106 FR-003/NFR-002). The kernel declares this port
+   * and implements nothing behind it: no browser dependency belongs in
+   * @spectastic/core, which is what makes a Playwright adapter live in its
+   * own package (packages/render) rather than here. Optional and undefined
+   * for every deterministic verb, exactly like `ai`.
+   */
+  render?: Renderer;
 }
 
 // --- Per-verb shapes ---------------------------------------------------

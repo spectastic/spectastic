@@ -13,15 +13,22 @@
  * this module internally as the default — see each command file.
  */
 
-import { mkdir, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
+import { mkdir, readFile as readFileRaw, readdir, rename, rm, stat, writeFile as writeFileRaw } from 'node:fs/promises';
 import type { FileSystem } from '../types.js';
 
 export const nodeFs: FileSystem = {
   async readFile(path, encoding = 'utf8') {
-    return readFile(path, encoding);
+    return readFileRaw(path, encoding);
   },
   async writeFile(path, content) {
-    return writeFile(path, content, 'utf8');
+    return writeFileRaw(path, content, 'utf8');
+  },
+  async readBinary(path) {
+    const buf = await readFileRaw(path);
+    return new Uint8Array(buf);
+  },
+  async writeBinary(path, content) {
+    await writeFileRaw(path, content);
   },
   async readdir(path) {
     return readdir(path);

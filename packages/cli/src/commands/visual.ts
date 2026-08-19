@@ -1,3 +1,4 @@
+import { resolve } from 'node:path';
 import type { Command } from 'commander';
 
 /**
@@ -171,4 +172,58 @@ export function registerVisual(program: Command): void {
       }
       },
     );
+
+  program
+    .command('visual:render')
+    .description(
+      'Render a design export\'s own artboards into the owning spec\'s visual/renders — one browser session, one capture per labelled artboard, its own bounds rather than the page. Refuses outright (nothing written) if the runtime\'s CDN is unreachable; refuses per-artboard (the rest of the run still lands) if a label still carries unexpanded template syntax or collides with one already written this run. Never compares a capture against anything.',
+    )
+    .argument('<spec-id>', 'the spec whose visual/renders receives the captures, e.g. 001-auth-service')
+    .requiredOption('--from <location>', 'the design export to render — a local file path or a URL')
+    .action(async (specId: string, opts: { from: string }) => {
+      // @spectastic/render is constructed HERE and nowhere else (FR-004,
+      // NFR-002) — it is the one place in the CLI that reaches the browser
+      // port; every other command stays deterministic.
+      const [{ renderDesign }, { conventionalVisualPrefix }, { nodeFs }, { playwrightRenderer }] = await Promise.all([
+        import('@spectastic/core/visual/render-capture'),
+        import('@spectastic/core/visual/location'),
+        import('@spectastic/core/providers/node-fs'),
+        import('@spectastic/render'),
+      ]);
+
+      const cwd = process.cwd();
+      const prefix = conventionalVisualPrefix('screens', specId);
+      if (prefix === null) {
+        process.stderr.write(`"${specId}" is not a conventional spec id — expected specs/${specId}/visual to resolve.\n`);
+        process.exit(1);
+        return;
+      }
+      const destDir = `${prefix}/renders`;
+      // A bare filesystem path (the common case — an export already landed
+      // via visual:import, or a fixture checked into the project) needs a
+      // scheme before a browser will navigate to it; a URL is passed through
+      // unchanged.
+      const location = /^[a-z][a-z0-9+.-]*:\/\//i.test(opts.from) ? opts.from : `file://${resolve(cwd, opts.from)}`;
+
+      try {
+        const result = await renderDesign(
+          { location, destDir },
+          { cwd, fs: nodeFs, render: playwrightRenderer() },
+        );
+        for (const w of result.written) {
+          process.stdout.write(`captured ${w.label} → ${w.path}\n`);
+          for (const err of w.consoleErrors) {
+            process.stdout.write(`  console error: ${err}\n`);
+          }
+        }
+        for (const r of result.refused) {
+          process.stdout.write(`refused: ${r.label} — ${r.reason}\n`);
+        }
+        process.stdout.write(`${result.written.length} written, ${result.refused.length} refused\n`);
+        process.exit(0);
+      } catch (err) {
+        process.stderr.write(`${(err as Error).message}\n`);
+        process.exit(1);
+      }
+    });
 }
