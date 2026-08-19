@@ -171,7 +171,7 @@ function renderDesignHtml(specId: string, p: ParsedDesign, isReentry: boolean): 
 
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'">
 <title>${esc(specId)} · Design</title>
 <link rel="stylesheet" href="../../assets/spec.css"></head><body><main>
 <header><p class="small-caps">Design · ${esc(specId)}</p><h1>${esc(specId)} — design</h1>

@@ -60,7 +60,7 @@ describe('rewriteForWebview', () => {
   // webview CSP. (Cross-spec regression: 020 webview × 045 artifact CSP.)
   it("strips the artifact's own CSP meta so it can't block webview-origin assets", () => {
     const withArtifactCsp = `<!doctype html><head>
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'">
 <link rel="stylesheet" href="../../assets/spec.css">
 <script src="../../assets/spec.js"></script></head><body></body></html>`;
     const rewritten = rewriteForWebview(withArtifactCsp, webview, '/repo/specs/099-demo');

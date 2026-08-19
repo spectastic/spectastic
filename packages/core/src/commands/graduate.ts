@@ -251,7 +251,7 @@ function renderSpec(specId: string, s: ExtractedSpec): string {
   const scs = (s.scs ?? []).map(req).join('\n');
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'">
 <title>${esc(specId)} · Specification</title>
 <link rel="stylesheet" href="../../assets/spec.css"><script src="../../assets/theme-boot.js"></script></head>
 <body><main>
@@ -286,7 +286,7 @@ function renderPlan(specId: string, run: CapturedRun): string {
     : '<p>The build never ran — no <code>verified</code> facts to seed; the plan interview grounds the rest.</p>';
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'">
 <title>${esc(specId)} · Plan</title>
 <link rel="stylesheet" href="../../assets/spec.css"><script src="../../assets/theme-boot.js"></script></head>
 <body><main>
