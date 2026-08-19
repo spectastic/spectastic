@@ -87,10 +87,69 @@
 </section>
 
 
+<spec-triage id="T-003" layer="implementation">
+  <header>
+    <h4>A repeated axis in one <code>contexts=</code> claim silently loses every value but the last</h4>
+    <span class="meta">
+      <span class="layer-pill">Implementation</span>
+      <span class="regen" data-result="pass">code</span>
+    </span>
+  </header>
+
+  <p class="headline">Debugging why a design addressing the same axis at two contexts (e.g. <code>mode=light
+  mode=dark</code>) has half its claim silently skipped by the coverage check, root cause was
+  <code>parseAxisContextPairs</code> returning <code>Record&lt;axis, context&gt;</code> — one slot per axis
+  key — being reused on a whole <code>contexts=</code> string that can legitimately repeat an axis; fixed by
+  not reusing it for that shape (107's <code>brief-read.ts</code> reads the raw tokens instead); regeneration
+  passes — nothing in 093's spec or design needs to change, only the implementation.</p>
+
+  <dl>
+    <dt>Expected</dt> <dd>Every space-separated <code>axis=context</code> pair in a <code>contexts=</code>
+    claim is resolved against the grid (<a href="./spec.html#FR-013">FR-013</a>).</dd>
+    <dt>Actual</dt>   <dd>Only the <em>last</em> pair per axis name survives — <code>Object.entries()</code>
+    of a <code>Record&lt;string,string&gt;</code> can hold one value per key, and
+    <code>contexts="mode=light mode=dark platform=ios"</code> parses to
+    <code>{mode: 'dark', platform: 'ios'}</code>. <code>mode=light</code> is never checked: not resolved, not
+    flagged if the grid has no such context.</dd>
+    <dt>Diagnosis</dt><dd><code>packages/core/src/visual/coverage.ts:116</code> calls
+    <code>parseAxisContextPairs(claim.contexts)</code> on the whole claim string. That function
+    (<code>packages/schema/src/variant-grid.ts:97</code>) was built for <code>&lt;spec-same axes=…&gt;</code>,
+    which never repeats an axis by construction — reusing it here inherited a collision its own contract
+    never ruled out.</dd>
+    <dt>Fix</dt>      <dd>Stop calling <code>parseAxisContextPairs</code> on a claim string that can repeat an
+    axis. Split on whitespace and resolve each raw token's <code>axis=context</code> pair independently,
+    without collapsing into a <code>Record</code> keyed by axis.
+    <span class="path">packages/core/src/visual/coverage.ts</span></dd>
+  </dl>
+
+  <spec-diff>
+<del>    const pairs = Object.entries(parseAxisContextPairs(claim.contexts));</del>
+<ins>    const pairs = claim.contexts.trim().split(/\s+/).filter(Boolean)
+      .map((tok) => { const eq = tok.indexOf('='); return eq &gt; 0 ? [tok.slice(0, eq), tok.slice(eq + 1)] : null; })
+      .filter((p): p is [string, string] =&gt; p !== null);</ins>
+  </spec-diff>
+
+  <details>
+    <summary>Deep dive — no cross-spec contract, no invariant, no hotfix</summary>
+    <p>Found while grounding <a href="../107-visual-design-brief/design.html">107's</a> reader, not while
+    working on 093/096 directly — 107 deliberately does not reuse
+    <code>parseAxisContextPairs</code> for exactly this reason, recorded in
+    <code>packages/core/src/visual/brief-read.ts</code>'s own module doc rather than a design decision, since
+    it's a note about a dependency to avoid rather than a choice 107 itself made. Real-world exposure exists
+    today: the currency-converter exemplar's own
+    <code>contexts="mode=light mode=dark platform=ios platform=ipados platform=macos …"</code> repeats both
+    <code>mode</code> and <code>platform</code>, so today's coverage check silently validates only
+    <code>mode=dark</code> and <code>platform=macos</code> for that file — no visible failure only because
+    every value happens to be a real context on its axis. A genuine typo on a non-last repeated value (e.g.
+    <code>mode=ligt mode=dark</code>) would pass silently.</p>
+  </details>
+</spec-triage>
+
 <section id="changelog">
 <h2>Change log</h2>
 <spec-changelog>
 <ol>
+  <li><time datetime="2026-08-19">19 Aug 2026</time><span>T-003 added — a repeated axis in a <code>contexts=</code> claim silently drops every value but the last, found grounding 107's brief reader. Regen passes at implementation; not fixed here (out of scope for 107's task list), fix proposed in the card.</span></li>
   <li><time datetime="2026-08-13">13 Aug 2026</time><span>T-001 added from an independent adversarial pass on the applied <code>2026-08-13-introduce-each-screen</code>. FR-014 makes the filesystem authoritative over the declaration, which 094 §4 exists to deny, and breaks 094 NFR-001's zero-directory-walks budget doing it.</span></li>
   <li><time datetime="2026-08-14">14 Aug 2026</time><span>T-002 re-grounded before writing anything against it. Its concrete charge is verified — the exemplar names zero screens in authored content while its prose says one and the view projects three — and two of its subsidiary claims are wrong (the NFR budget, and the FR-005 objection to per-screen declarations). The finding it missed is larger than the ones it made: <a href="./spec.html#FR-014">FR-014</a> has no implementation in any form and never has, so both proposal rounds argued over the wording of an unenforced requirement. The referent question stands and is a build question.</span></li>
 </ol>

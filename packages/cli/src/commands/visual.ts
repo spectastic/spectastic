@@ -1,5 +1,6 @@
 import { resolve } from 'node:path';
 import type { Command } from 'commander';
+import type { BriefScreen } from '@spectastic/core/visual/brief-read';
 
 /**
  * Register the `visual` subcommand (spec 099-visual-embedded-view, FR-003).
@@ -220,6 +221,63 @@ export function registerVisual(program: Command): void {
           process.stdout.write(`refused: ${r.label} — ${r.reason}\n`);
         }
         process.stdout.write(`${result.written.length} written, ${result.refused.length} refused\n`);
+
+        // Reconciliation (107 FR-004, design D-006): compared against WRITTEN
+        // labels only, not refused ones — a template-refused label is noise
+        // (106's own spike is why), and folding in collision-refused labels
+        // would need distinguishing refusal reasons by string-matching for a
+        // rare double-edge case. Orchestrated here rather than inside
+        // renderDesign, per P-14's split (pure functions in core, the CLI
+        // composes) — reuses the same reader the brief itself is built from,
+        // so there is one notion of "declared", not two.
+        const { readBriefModel } = await import('@spectastic/core/visual/brief-read');
+        const { undeclaredStates } = await import('@spectastic/core/visual/state-reconcile');
+        try {
+          const designHtml = await nodeFs.readFile(`${cwd}/specs/${specId}/design.html`);
+          const model = await readBriefModel(designHtml, nodeFs, cwd);
+          const declaredIds = model.screens.flatMap((s: BriefScreen) => s.states.map((st) => st.id));
+          const undeclared = undeclaredStates(declaredIds, result.written.map((w) => w.label));
+          for (const label of undeclared) {
+            process.stdout.write(`undeclared: ${label} — not in ${specId}'s declared states; attributed to the design, not adopted\n`);
+          }
+        } catch {
+          // No design at that spec id, or it declares no screens — nothing to
+          // reconcile against. Not a render failure.
+        }
+
+        process.exit(0);
+      } catch (err) {
+        process.stderr.write(`${(err as Error).message}\n`);
+        process.exit(1);
+      }
+    });
+
+  program
+    .command('visual:brief')
+    .description(
+      'Generate a design brief from what a feature already declares — its states, refusals, annotations and addressed contexts, in the specification\'s own words. States the exact label each artboard must carry, and the convention for labelling a state your design finds that the feature does not declare. Written once to a dated file and never rewritten; a same-day re-run is refused. No network, no design-tool account.',
+    )
+    .argument('<spec-id>', 'the spec whose declarations the brief is generated from, e.g. 001-auth-service')
+    .action(async (specId: string) => {
+      const [{ readBriefModel }, { renderBrief }, { writeBrief }, { nodeFs }] = await Promise.all([
+        import('@spectastic/core/visual/brief-read'),
+        import('@spectastic/core/visual/brief-render'),
+        import('@spectastic/core/visual/brief-write'),
+        import('@spectastic/core/providers/node-fs'),
+      ]);
+
+      const cwd = process.cwd();
+      // The only clock in this pipeline (D-003) — read-render-write below is
+      // pure once the date is fixed, which is what makes two runs on the
+      // same day byte-identical apart from this one value.
+      const date = new Date().toISOString().slice(0, 10);
+
+      try {
+        const designHtml = await nodeFs.readFile(`${cwd}/specs/${specId}/design.html`);
+        const model = await readBriefModel(designHtml, nodeFs, cwd);
+        const content = renderBrief(model, date);
+        const result = await writeBrief({ specId, date, content }, nodeFs, cwd);
+        process.stdout.write(`wrote ${result.path}\n`);
         process.exit(0);
       } catch (err) {
         process.stderr.write(`${(err as Error).message}\n`);
