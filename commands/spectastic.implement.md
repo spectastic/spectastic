@@ -75,6 +75,8 @@ Flags can appear in any order in `$ARGUMENTS`. A non-flag token (`T-NNN`, `I-NNN
 
 5. **Verify the task is well-scoped.** A spectastic task should name a concrete file or directory (per `commands/spectastic.tasks.md`). If the task is vague ("polish the UI"), report that as the blocker — vague tasks aren't ready for implementation.
 
+5b. **Establish the work isn't already done** (`REQ-LIFECYCLE-012`). Before writing anything, search for the *capability* the task asks for — across the project, not only in the files the task names. A task that names the wrong file produces a clean search and a confident wrong conclusion, and a clean search reads like proof. Record what you searched in your report whether or not you find anything; the search that finds nothing is the one that precedes a duplicate. This happened: a complete duplicate archive reader was written because three readers each searched the directory a card named, and the code was one directory over. Skipping this step needs a reason, written down.
+
 6. **Do the work.** Implement the task using your normal Claude Code capabilities. Write tests first if the task is in a "Tests" phase. Stay scoped — do not drift into adjacent tasks, do not refactor surrounding code unless the task explicitly asks for it.
 
 7. **Mark complete.**
@@ -86,6 +88,7 @@ Flags can appear in any order in `$ARGUMENTS`. A non-flag token (`T-NNN`, `I-NNN
    - The prompt **MUST** remind the author to verify the integration tests covering the spec's Success Criteria pass before confirming. This is the test-pass discipline, absorbed into the confirmation gesture: the author's "yes" attests that tests are green.
    - The command **MUST NOT** auto-flip status. No confirmation, no flip.
    - On confirmation, edit the `<spec-status value="…">` pill in **all three** sibling artifacts (`spec.html`, `design.html`, `tasks.html`) from `draft` to `accepted`, AND append a matching one-line `<spec-changelog>` entry to **each** naming the old state, new state, date, and triggering condition. Example entry: `Status flipped Draft → Accepted on 16 Jun 2026 — zero remaining unchecked tasks; tests verified passing per author confirmation. Sibling bundle (REQ-LIFECYCLE-005).` All three writes are part of the single confirmation gesture — partial bundle flips are forbidden.
+   - **When the count is not zero, say what is outstanding** (`REQ-LIFECYCLE-011`). Never fall silent: name the remaining tasks, and flag any that are waiting on a person rather than on work. A slice whose only remaining task needs a human gesture looks identical to one that is half-built, and the status flip and the verify view both stall on it with nothing explaining why.
    - If the user declines (or interrupts the prompt), leave all three statuses as-is and report. The flip can be performed manually later; the requirement is on the prompt, not on the outcome.
    - This step is also **skipped** when the artifact has no tasks.html (principles, meta-spec, triage log, inbox — handled by the tasks-less-artifact clause of REQ-LIFECYCLE-004; author affirms separately, no bundle).
 

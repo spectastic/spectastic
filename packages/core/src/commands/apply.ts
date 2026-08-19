@@ -287,7 +287,7 @@ async function foldProposalTasks(
   const taskEls = tasks
     .map(
       (t, i) =>
-        `<spec-task id="${taskIds[i]}"${t.parallel ? ' parallel' : ''}>\n  <input type="checkbox">\n  <div>${t.content}</div>\n</spec-task>`,
+        `<spec-task id="${taskIds[i]}"${t.parallel ? ' parallel' : ''}>\n  <input type="checkbox"${t.done ? ' checked' : ''}>\n  <div>${t.content}</div>\n</spec-task>`,
     )
     .join('\n');
 
@@ -378,18 +378,33 @@ interface SixTask {
   content: string;
   parallel: boolean;
   path: string | null;
+  /**
+   * Whether the proposal author already did this one. A §6 task can legitimately
+   * ship complete — work done at propose time because it was a live defect
+   * rather than something the change creates. Folding it in unchecked turns a
+   * finished job back into owed work, which is a false backlog the estate has
+   * now produced four different ways.
+   */
+  done: boolean;
 }
 
-/** Each §6 `<li>` (those carrying a checkbox), stripped of the checkbox; `[P]` → parallel; path captured. */
+/**
+ * Each §6 `<li>` (those carrying a checkbox), stripped of the checkbox; `[P]` →
+ * parallel; path captured; a pre-checked box carried through as `done`.
+ */
 function extractSixTasks(proposalHtml: string): SixTask[] {
   const section = /<section id=["']tasks["']>([\s\S]*?)<\/section>/i.exec(proposalHtml)?.[1] ?? '';
   const out: SixTask[] = [];
   for (const li of section.matchAll(/<li\b[^>]*>([\s\S]*?)<\/li>/gi)) {
     let inner = li[1] ?? '';
-    if (!/<input[^>]*type=["']checkbox["']/i.test(inner)) continue;
+    const box = /<input[^>]*type=["']checkbox["'][^>]*>/i.exec(inner);
+    if (!box) continue;
+    // `checked` may sit before or after `type=`; matching the attribute
+    // anywhere in the tag is what a positional pattern gets wrong.
+    const done = /\bchecked\b/i.test(box[0]);
     inner = inner.replace(/<input[^>]*type=["']checkbox["'][^>]*>/i, '').trim();
     const path = /<span class=["']path["']>([\s\S]*?)<\/span>/i.exec(inner)?.[1]?.trim() ?? null;
-    out.push({ content: inner, parallel: /\[P\]/.test(inner), path });
+    out.push({ content: inner, parallel: /\[P\]/.test(inner), path, done });
   }
   return out;
 }

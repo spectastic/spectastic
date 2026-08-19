@@ -91,6 +91,42 @@ describe('applyCommand §6 fold (REQ-CHANGE-007)', () => {
     expect(out).toContain(`<a href="./changes/archive/${SLUG}/proposal.html">`); // provenance
   });
 
+  it('carries a pre-checked §6 task through as done, rather than reopening it', async () => {
+    // A §6 task can legitimately ship complete — work done at propose time
+    // because it was a live defect rather than something the change creates.
+    // The fold used to hardcode an unchecked box, turning a finished job back
+    // into owed work: a false backlog, and the fourth way the estate has
+    // produced one.
+    const { fs, files } = stubFs({
+      '/specs/000/spec.html': SPEC,
+      '/specs/000/tasks.html': tracker(phase('T-007')),
+      [`/specs/000/changes/${SLUG}/proposal.html`]: proposal(
+        '<li><input type="checkbox" checked> Already done <span class="path">a.ts</span></li>' +
+          '<li><input type="checkbox"> Still owed <span class="path">b.ts</span></li>',
+      ),
+    });
+    await applyCommand(APPLY, { cwd: '', fs });
+
+    const out = files.get('/specs/000/tasks.html')!;
+    expect(out).toMatch(/<spec-task id="T-100">\s*<input type="checkbox" checked>/);
+    expect(out).toMatch(/<spec-task id="T-101">\s*<input type="checkbox">/);
+    expect(out).not.toMatch(/<spec-task id="T-101">\s*<input type="checkbox" checked>/);
+  });
+
+  it('reads checked wherever it sits in the tag, not by position', async () => {
+    // The attribute-order blind spot that has now produced two false backlog
+    // counts in this project, both reporting owed work that was already done.
+    const { fs, files } = stubFs({
+      '/specs/000/spec.html': SPEC,
+      '/specs/000/tasks.html': tracker(phase('T-007')),
+      [`/specs/000/changes/${SLUG}/proposal.html`]: proposal(
+        '<li><input checked type="checkbox"> Done, attributes reversed <span class="path">a.ts</span></li>',
+      ),
+    });
+    await applyCommand(APPLY, { cwd: '', fs });
+    expect(files.get('/specs/000/tasks.html')!).toMatch(/<input type="checkbox" checked>/);
+  });
+
   it('creates the tracker from the template when absent', async () => {
     const { fs, files } = stubFs({
       '/specs/000/spec.html': SPEC,

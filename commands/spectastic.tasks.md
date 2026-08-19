@@ -35,6 +35,7 @@ User input (from `$ARGUMENTS`): a Spec ID such as `001-auth-service`, or empty (
    - **Phase 3 — User stories** (`T-1NN` for US1, `T-2NN` for US2, `T-3NN` for US3):
      - Each story opens with **test tasks** (`T-100`, `T-101`, …) that must be written and **failing** before any implementation task starts.
      - Then implementation tasks (`T-110`, `T-111`, …).
+     - **Where the project has something that can be assembled and run, each story closes with a task that exercises it along that story's path** (`REQ-LIFECYCLE-010`). Inside the story, never in Polish — anything integration-flavoured drifts to Polish otherwise, and Polish is what gets cut. A downstream project reached 90% unit coverage and would not start because no task ever assembled it. The task names an **entry point**, not a file, so the trailing-path convention does not apply: a command for a library or CLI, an address where a server already serves the feature. A slice with nothing to assemble — a schema change, a config-only change — owes no such task.
      - Each story closes a specific subset of requirements. Add a `<spec-note>` at the end of the story listing closed `FR-NNN` and `SC-NNN` with anchor links.
    - **Phase 4 — Polish** (`T-900`+): docs, perf, observability, cleanup. Often `[P]`.
 
