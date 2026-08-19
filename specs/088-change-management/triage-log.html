@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
+<title>088-change-management · Triage log</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Triage log · 088-change-management</p>
+  <h1>088-change-management — triage log</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    Defects against the <code>088-change-management</code> spec. Cards append-only; IDs stable.
+  </p>
+
+  <spec-meta>
+    <b>Spec</b>      <span><a href="./spec.html">088-change-management</a></span>
+    <b>Created</b>   <span><time datetime="2026-08-18">18 Aug 2026</time></span>
+    <b>Read time</b> <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-tldr>
+    <p>One card per debug session. Fits one screen; reads in under 30 seconds. Five required Tier-1 fields
+    (headline · Expected · Actual · Diagnosis · Fix); the deep-dive <code>&lt;details&gt;</code> stays collapsed
+    unless cross-spec, principles, scope, or hotfix-now applies. See <a href="../../examples/triage-log.html">examples/triage-log.html</a>
+    for the canonical look + the protocol (<code>TRIAGE-001</code>..<code>TRIAGE-006</code>).</p>
+  </spec-tldr>
+</header>
+
+
+<section id="cards">
+<h2>Cards</h2>
+
+<spec-triage-log>
+
+<spec-triage id="T-001" layer="cross-spec">
+  <header>
+    <h4>A tick means both &ldquo;closed&rdquo; and &ldquo;done&rdquo;, so a closed-but-not-done task reads as owed forever</h4>
+    <span class="meta">
+      <span class="layer-pill">Cross-spec</span>
+      <span class="regen" data-result="fail">upstream</span>
+    </span>
+  </header>
+
+  <p class="headline">Debugging a session that repeatedly re-opened work already finished, deferred or retired,
+  root cause was that <a href="./spec.html#REQ-CHANGE-010">REQ-CHANGE-010</a> forbids ticking a superseded
+  task, so an unticked box means either <em>open</em> or <em>closed-but-not-done</em> and every consumer must
+  carry an exclusion to tell them apart; fixed by making the tick mean closed and a status say why it closed;
+  regeneration fails, because the requirement states the prohibition outright.</p>
+
+  <dl>
+    <dt>Expected</dt>
+    <dd>One question — is this task open? — with one answer any consumer can read without special cases.</dd>
+
+    <dt>Actual</dt>
+    <dd>Three consumers compute &ldquo;what is left&rdquo; three ways. The implement verb excludes superseded
+    tasks from both the drain and the flip count. The
+    <a href="../089-lifecycle-contract/spec.html#REQ-LIFECYCLE-009">REQ-LIFECYCLE-009</a> validate scan,
+    written today, counts raw checkboxes and does not. An ad-hoc count during this session reported
+    <strong>25 owed tasks when 9 were</strong> — 16 of them retired and correctly marked. Two specs holding
+    only superseded work show 8 unchecked boxes each and are complete.</dd>
+
+    <dt>Diagnosis</dt>
+    <dd><a href="./spec.html#REQ-CHANGE-010">REQ-CHANGE-010</a>: <em>&ldquo;A superseded task MUST NOT be
+    deleted, renumbered, or ticked.&rdquo;</em> The prohibition is well-motivated — the implement verb states
+    it plainly, <em>&ldquo;ticking it would claim a result nobody produced&rdquo;</em> — because a tick has
+    historically meant <em>the work was done</em>. But a tick is also the only signal for <em>this is not
+    owed</em>, and those are different facts. Forbidding the tick keeps the first honest by making the second
+    unreadable, and pushes the distinction into an attribute every consumer must remember to check.</dd>
+
+    <dt>Fix</dt>
+    <dd><a href="./spec.html#REQ-CHANGE-010">REQ-CHANGE-010</a> and
+    <a href="../089-lifecycle-contract/spec.html#REQ-LIFECYCLE-003">REQ-LIFECYCLE-003</a>: separate the two
+    facts. The checkbox becomes <strong>open or closed</strong>, and <code>data-status</code> says <em>how</em>
+    it closed — done, superseded, cancelled, declined. A closed task is ticked whatever closed it, so
+    <em>unchecked</em> means exactly <em>open</em> and no consumer needs an exclusion. A ticked superseded task
+    claims no result, because the status beside it says the work was retired rather than performed. This is
+    the convention the triage card already uses (<code>data-status="done"</code> /
+    <code>"rejected"</code>) and it solved the same problem there.</dd>
+  </dl>
+
+  <details>
+    <summary>Deep dive — cross-spec contract touched</summary>
+    <p><strong>The shared contract is &ldquo;what an unchecked box means&rdquo;</strong>, and it is stated in
+    one spec and constrained by another.
+    <a href="../089-lifecycle-contract/spec.html#REQ-LIFECYCLE-003">REQ-LIFECYCLE-003</a> owns the
+    <code>&lt;spec-task&gt;</code> element and what it carries;
+    <a href="./spec.html#REQ-CHANGE-010">REQ-CHANGE-010</a> owns the prohibition that makes the box ambiguous.
+    Neither can be fixed alone: amending only the prohibition leaves the element with no status vocabulary,
+    and amending only the element leaves the prohibition forbidding the tick that would use it.</p>
+    <p><strong>This was predicted and not acted on.</strong> An adversarial pass on the proposal that added
+    REQ-LIFECYCLE-009 said the scan <em>&ldquo;reports a raw checkbox count &hellip; the flip predicate and
+    this validate rule read the same file by two different rules, and the two will disagree&rdquo;</em>,
+    calling it <em>&ldquo;a third consumer of the condition T-031 said was stated once and consumed
+    twice&rdquo;</em>. The finding was recorded as a note rather than a risk, and the disagreement shipped the
+    same day.</p>
+    <p><strong>Migration is the part to get right.</strong> Ticking every existing superseded task changes
+    what those artifacts assert, so it belongs in the same change as the requirement — not left for whoever
+    notices. The estate holds 16 such tasks across two specs today, which is a small enough population to
+    convert in one pass and large enough that leaving them would keep the ambiguity alive in exactly the
+    files that motivated the fix.</p>
+    <p><strong>Naming, deliberately left open.</strong> Whether the closed states are <em>done / superseded /
+    cancelled / declined</em> or some other set is a decision for the propose, not this card. What the card
+    settles is that there is a set, and that the box is not part of it.</p>
+  </details>
+</spec-triage>
+
+</spec-triage-log>
+</section>
+
+
+<section id="changelog">
+<h2>Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-08-18">18 Aug 2026</time><span>T-001 added — a tick means both &ldquo;closed&rdquo; and &ldquo;done&rdquo;, so retired work reads as owed and three consumers disagree about what is left.</span></li>
+  <li><time datetime="2026-08-18">18 Aug 2026</time><span>Triage log scaffolded. Append one <code>&lt;spec-triage&gt;</code> card per debug session.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  088-change-management triage log · scaffolded 2026-08-18
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>

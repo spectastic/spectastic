@@ -69,3 +69,17 @@ describe('stays silent where the estate is legitimately uneven', () => {
     expect(f).toEqual([]);
   });
 });
+
+describe('the superseded exclusion (088/T-001)', () => {
+  it('treats a slice whose only open tasks are superseded as finished', () => {
+    // The CLI scan subtracts superseded-open boxes before calling this, matching
+    // the implement verb's drain and flip count. Counting them would make a spec
+    // carrying a retired phase permanently unable to reach zero — and would make
+    // the scan disagree with the verb about the same file.
+    const f = statusDisagreementFindings([
+      slice({ statuses: { spec: 'draft', tasks: 'draft' }, tasks: { total: 20, unchecked: 0 } }),
+    ]);
+    expect(f).toHaveLength(1);
+    expect(f[0]?.severity).toBe('warning');
+  });
+});

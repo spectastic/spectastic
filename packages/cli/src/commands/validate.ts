@@ -231,6 +231,15 @@ async function scanStatusDisagreement(cwd: string): Promise<Finding[]> {
     // A slice with no tracker is outside the check by construction.
     if (tasks === undefined) continue;
 
+    // Superseded tasks are excluded, matching what the implement verb's drain
+    // and flip count already do (REQ-CHANGE-010). Counting them would make a
+    // spec carrying a retired phase permanently unable to reach zero, and would
+    // make this scan disagree with the verb about the same file — a third
+    // reading of "what is left", which is the defect 088/T-001 records.
+    const supersededBlocks = tasks.match(/<spec-task[^>]*data-status="superseded"[^>]*>[\s\S]*?<\/spec-task>/g) ?? [];
+    const supersededOpen = supersededBlocks.flatMap(
+      (b) => (b.match(/<input[^>]*type="checkbox"[^>]*>/g) ?? []).filter((x) => !x.includes('checked')),
+    ).length;
     const boxes = tasks.match(/<input[^>]*type="checkbox"[^>]*>/g) ?? [];
     // Only artifacts that are present AND carry a header status take part —
     // the meta-spec's execution-only tracker has none, and must not read as a
@@ -245,7 +254,10 @@ async function scanStatusDisagreement(cwd: string): Promise<Finding[]> {
     slices.push({
       slice,
       statuses,
-      tasks: { total: boxes.length, unchecked: boxes.filter((b) => !b.includes('checked')).length },
+      tasks: {
+        total: boxes.length,
+        unchecked: boxes.filter((b) => !b.includes('checked')).length - supersededOpen,
+      },
     });
   }
   return statusDisagreementFindings(slices);
