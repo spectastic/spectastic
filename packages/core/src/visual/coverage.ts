@@ -11,10 +11,14 @@
  * `variantSameResolvesRule`, which already resolves exactly this grammar — is
  * impossible. That rule is `scope: 'per-file'` and returns at its first line on
  * a document carrying no `<spec-variant-grid>`, and a design never carries one;
- * the grid is a separate file at project scope. So the grammar is borrowed
- * (`parseAxisContextPairs`) and the resolution is not. An adversarial review of
- * the proposal caught the original claim that both could be reused, which is
- * why the distinction is written down here.
+ * the grid is a separate file at project scope. So the resolution is written
+ * here. An adversarial review of the proposal caught the original claim that
+ * the rule could be reused, which is why the distinction is written down here.
+ *
+ * The GRAMMAR was borrowed too, via `parseAxisContextPairs` — and that turned
+ * out to be a defect (093/T-003), because a coverage claim may repeat an axis
+ * where `<spec-same>` may not. See `claimPairs` below: neither the rule nor
+ * the parser is reused now, only the shape of the syntax.
  *
  * Two failure modes, deliberately reported differently in wording though not in
  * severity:
@@ -30,12 +34,37 @@
  * on the day this landed.
  */
 
-import { parseAxisContextPairs } from '@spectastic/schema/variant-grid';
 import type { Finding, FileSystem } from '../types.js';
 
 /** The whole-grid claim. A literal, so it can never collide with an axis name:
  *  a pair always contains `=`, and this never does. */
 export const WHOLE_GRID = 'all';
+
+/**
+ * Split a claim into its `axis=context` pairs, preserving REPEATS.
+ *
+ * Deliberately not `parseAxisContextPairs` (093/T-003). That function returns
+ * `Record<axis, context>` — one slot per axis name — which is correct for
+ * `<spec-same axes=…>`, where an axis cannot legitimately repeat. A coverage
+ * claim is the opposite case: addressing several contexts on one axis is the
+ * normal shape (the real exemplar declares `mode=light mode=dark platform=ios
+ * platform=ipados …`). Collapsing that into a record kept only the LAST value
+ * per axis, so every earlier one went unchecked — not resolved, and not
+ * reported when wrong. A typo in any position but the last passed silently.
+ *
+ * Malformed tokens are dropped here exactly as the record parser drops them:
+ * the caller reports an empty result, the splitter does not throw.
+ */
+function claimPairs(contexts: string): [string, string][] {
+  const pairs: [string, string][] = [];
+  for (const token of contexts.trim().split(/\s+/)) {
+    if (token === '') continue;
+    const eq = token.indexOf('=');
+    if (eq <= 0) continue;
+    pairs.push([token.slice(0, eq), token.slice(eq + 1)]);
+  }
+  return pairs;
+}
 
 export interface CoverageClaim {
   /** Raw `contexts=` value, as authored. */
@@ -113,7 +142,7 @@ export async function visualCoverageFindings(
     }
     if (grid === null) continue;
 
-    const pairs = Object.entries(parseAxisContextPairs(claim.contexts));
+    const pairs = claimPairs(claim.contexts);
     if (pairs.length === 0) {
       flag(
         `<spec-visual contexts="${claim.contexts}"> names no combination, so it records having addressed nothing`,

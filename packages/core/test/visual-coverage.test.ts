@@ -95,6 +95,33 @@ describe('a declined context', () => {
   });
 });
 
+describe('a repeated axis (093/T-003)', () => {
+  // The defect: `parseAxisContextPairs` returns Record<axis, context> — one
+  // slot per axis name — so a claim addressing the same axis at more than one
+  // context kept only the LAST. Every earlier value went unchecked: not
+  // resolved, and not reported when wrong. Real exposure: the
+  // currency-converter exemplar's own declaration repeats both `mode` and
+  // `platform`, so it was being validated against a fraction of what it
+  // claimed, invisibly, only because each surviving value happened to be real.
+  it('checks every context on a repeated axis, not only the last', async () => {
+    // `ligt` is a typo in the FIRST of two `mode=` pairs. Before the fix the
+    // trailing `mode=dark` overwrote it and this reported nothing at all.
+    const f = await run(project(), 'mode=ligt mode=dark');
+    expect(f).toHaveLength(1);
+    expect(f[0]?.message).toContain('"ligt"');
+  });
+
+  it('stays silent when every context on a repeated axis is real', async () => {
+    expect(await run(project(), 'mode=light mode=dark platform=ios platform=macos')).toEqual([]);
+  });
+
+  it('reports a declined context even when it is not the last value for its axis', async () => {
+    const f = await run(project(), 'platform=tvos platform=ios');
+    expect(f).toHaveLength(1);
+    expect(f[0]?.message).toContain('declines');
+  });
+});
+
 describe('an unreadable grid', () => {
   it('stays silent here, because the resolve scan already reports it', async () => {
     const root = project();
