@@ -93,6 +93,66 @@
   </details>
 </spec-triage>
 
+<spec-triage id="T-002" layer="implementation">
+  <header>
+    <h4>The nesting rule skips <code>&lt;pre&gt;</code>, where an unescaped element is still a phantom</h4>
+    <span class="meta">
+      <span class="layer-pill">Implementation</span>
+      <span class="regen" data-result="pass">code</span>
+    </span>
+  </header>
+
+  <p class="headline">Debugging why an unescaped <code>&lt;spec-id&gt;</code> in a shipped design silently
+  deleted a command argument from the rendered page, root cause was
+  <code>spec-element-nesting</code> suppressing <code>&lt;pre&gt;</code>/<code>&lt;code&gt;</code> content on
+  the reasoning that a tag shown there is being named rather than opened &mdash; which the browser does not
+  agree with; fixed by escaping the one occurrence, with the suppression itself left open; regeneration
+  passes, since <a href="./spec.html#REQ-FORMAT-008">REQ-FORMAT-008</a> already requires well-formed
+  nesting and only the rule's scope is wrong.</p>
+
+  <dl>
+    <dt>Expected</dt> <dd>An unescaped <code>spec-*</code> tag anywhere in an artifact is reported, because
+    the browser will open an element for it wherever it appears.</dd>
+    <dt>Actual</dt>   <dd>Inside <code>&lt;pre&gt;</code> or <code>&lt;code&gt;</code> it is not reported.
+    <span class="path">specs/037-hands-off-pipeline/design.html</span> carried
+    <code>spectastic run &lt;spec-id&gt;</code> unescaped in a project-structure block; the browser created a
+    phantom <code>SPEC-ID</code> element which swallowed <strong>251 characters</strong> &mdash; the whole
+    remainder of the block &mdash; and rendered the line as
+    <code>spectastic run&nbsp;&nbsp;&mdash; wires seams</code>, with the argument the block exists to
+    document simply gone.</dd>
+    <dt>Diagnosis</dt><dd>The suppression is deliberate and its stated reason is wrong.
+    <span class="path">packages/schema/src/rules/spec-element-nesting.ts</span>&rsquo;s own docstring names
+    this case: &ldquo;a <code>&lt;pre&gt;</code> block showing <code>spectastic run &lt;spec-id&gt;</code> is
+    naming the element rather than opening one.&rdquo; Authorial intent is not what the HTML parser reads;
+    <code>&lt;pre&gt;</code> and <code>&lt;code&gt;</code> are not raw-text elements, so a tag inside them is
+    parsed exactly as it would be anywhere else. <a href="#T-001">T-001</a>&rsquo;s Fixed row records this
+    same occurrence being classified as &ldquo;one false positive inside a <code>&lt;pre&gt;</code> (fixed in
+    the rule)&rdquo; &mdash; so the true positive was suppressed at the moment the rule was taught, and the
+    defect it was reporting shipped.</dd>
+    <dt>Fix</dt>      <dd>Narrow the suppression: keep skipping <code>&lt;style&gt;</code> and
+    <code>&lt;script&gt;</code>, which genuinely are raw-text, and stop skipping
+    <code>&lt;pre&gt;</code>/<code>&lt;code&gt;</code> for <code>spec-*</code> tags. Escaping is already the
+    estate&rsquo;s convention &mdash; the meta-spec&rsquo;s own example block escapes
+    <code>&amp;lt;spec-requirement&amp;gt;</code> &mdash; so the corrected rule should report 0 findings on
+    the corpus today. <span class="path">packages/schema/src/rules/spec-element-nesting.ts</span></dd>
+    <dt>Fixed</dt>    <dd>Partially, 19 Aug 2026: the one live occurrence is escaped and the page now renders
+    the argument, verified in a browser (0 phantom elements, line restored). A corpus scan confirms it was
+    the only one. <strong>The suppression itself is unchanged</strong>, so a future unescaped element in a
+    code block is still invisible &mdash; which is why this card stays open rather than closing on the
+    symptom.</dd>
+  </dl>
+
+  <details>
+    <summary>Deep dive &mdash; why this is not scope-deferred to a vocabulary allowlist</summary>
+    <p>A neighbouring gap was found in the same pass and is genuinely separate: nothing validates the
+    <code>spec-</code> vocabulary at all, so an unknown or misspelled element name passes silently
+    (deferred from <a href="../108-success-criteria/spec.html">108</a> as
+    <code>TBD-criterion-element-allowlist</code>). That would catch a <em>typo</em>; it would not catch this,
+    because <code>spec-id</code> is not a typo &mdash; it is a placeholder the author never intended to be an
+    element. The two checks answer different questions and neither substitutes for the other.</p>
+  </details>
+</spec-triage>
+
 </spec-triage-log>
 </section>
 
@@ -101,6 +161,7 @@
 <h2>Change log</h2>
 <spec-changelog>
 <ol>
+  <li><time datetime="2026-08-19">19 Aug 2026</time><span>T-002 added &mdash; the nesting rule skips <code>&lt;pre&gt;</code>/<code>&lt;code&gt;</code>, where an unescaped element still becomes a phantom and swallows content. Found by measuring the vocabulary against the stylesheet while authoring 108; the one live occurrence is escaped and verified, the suppression is not, so the card stays open.</span></li>
   <li><time datetime="2026-08-12">12 Aug 2026</time><span>Triage log scaffolded, with <code>T-001</code>: a mismatched closing tag passes validate silently. Found while authoring 094's design — the typo was mine, and nothing caught it.</span></li>
 </ol>
 </spec-changelog>
