@@ -122,6 +122,14 @@ User input (from `$ARGUMENTS`): a Spec ID such as `001-auth-service`, or empty (
 
    This gate is a design→tasks *readiness* affirmation, not a Draft content-lock (P-6) — it mirrors the estimability gate in step 2. Should/may-tier and `n-a` decisions warn but do not block.
 
+## Spikes state their claim before they run
+
+A spike that succeeds is rarely re-read to ask what it demonstrated, and the gap between the question asked and the question needed is invisible once the answer is green (`000/T-033`).
+
+So: **write down what the spike will establish before running it**, and have the decision it feeds cite that claim rather than the spike. A design once grounded its hardest choices rigorously and still shipped an unrunnable artifact, because its spike proved the target *built* — and produced a bare executable with no application metadata. Building is not running, and the weaker result was recorded as if it were the stronger one.
+
+The neighbouring discipline already exists for artifacts — a structural check does not prove behaviour — and this is the same failure one stage earlier, where a decision is grounded rather than where an artifact is verified.
+
 ## Output style
 
 - Replace every `[PLACEHOLDER]`.
