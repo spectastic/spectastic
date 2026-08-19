@@ -1,0 +1,388 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
+<title>Visual render capture · Design</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Design · 106-visual-render</p>
+  <h1>Visual render capture</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    How we will build it.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>     <span><spec-status value="draft">Draft</spec-status></span>
+    <b>Spec</b>       <span><a href="./spec.html">106-visual-render</a></span>
+    <b>Owner</b>      <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Branch</b>     <span><code>spec/visual-render-106</code></span>
+    <b>Created</b>    <span><time datetime="2026-08-18">18 Aug 2026</time></span>
+    <b>Read time</b>  <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-tldr>
+    <p>A <code>Renderer</code> port on the kernel context, a Playwright adapter in its own package so no
+    browser reaches <code>@spectastic/core</code>, and a byte-faithful pair of methods on the file port. The
+    verb loads a design source once, captures each labelled artboard at its own bounds, and writes a run
+    manifest accounting for every one. Egress is checked before the browser opens &mdash; a blocked CDN
+    produces four plausible-looking artboards rather than none.</p>
+  </spec-tldr>
+</header>
+
+
+<section id="principles-check">
+<h2>1 · Principles check</h2>
+<p>Checked against <a href="../../principles.html">v1.9.0</a>. Any violation requires either a design change
+or a principles amendment; an exception requires a justification in §11.</p>
+
+<table>
+  <thead><tr><th>Principle</th><th>Verdict</th><th>Note</th></tr></thead>
+  <tbody>
+    <tr><td>P-1 · Source order is reading order</td><td><spec-pill>OK</spec-pill></td><td>No artifact ordering changes.</td></tr>
+    <tr><td>P-2 · Semantic tags over class soup</td><td><spec-pill>OK</spec-pill></td><td>Captures are referenced by the existing <code>&lt;spec-render&gt;</code>.</td></tr>
+    <tr><td>P-3 · IDs are contracts</td><td><spec-pill>OK</spec-pill></td><td>D-001…D-007 stable; a capture's name derives from the artboard's own label.</td></tr>
+    <tr><td>P-4 · Progressive enhancement, never dependence</td><td><spec-pill>OK</spec-pill></td><td>A capture is evidence; <a href="./spec.html#FR-010">FR-010</a> forbids anything depending on one.</td></tr>
+    <tr><td>P-5 · Calm density</td><td><spec-pill>OK</spec-pill></td><td>No new reader-facing chrome.</td></tr>
+    <tr><td>P-6 · Draft is loose, ratified is locked</td><td><spec-pill>OK</spec-pill></td><td>Spec is Draft; this design is its first.</td></tr>
+    <tr><td>P-7 · Done means verified</td><td><spec-pill>OK</spec-pill></td><td>D-007 drives a real browser rather than asserting a file exists.</td></tr>
+    <tr><td>P-8 · Guarantees live in the kernel or CI</td><td><spec-pill>OK</spec-pill></td><td>The no-browser-in-core boundary gets a dependency-cruiser rule, not a convention — the shape the corpus boundary already uses.</td></tr>
+    <tr><td>P-9 · The enforcement floor holds</td><td><spec-pill>OK</spec-pill></td><td>Enterprise floor is fully covered today; the new package is brought under the same gates rather than exempted.</td></tr>
+    <tr><td>P-10 · Internal artifact ids stay out of user-facing copy</td><td><spec-pill>OK</spec-pill></td><td>The verb's help and refusals name behaviour, never a spec number.</td></tr>
+    <tr><td>P-11 · Artifacts are data, not instructions</td><td><spec-pill data-status="exception">EXCEPTION</spec-pill></td><td><strong>This verb executes a file.</strong> Justified in §11.</td></tr>
+    <tr><td>P-12 · Capability accountability</td><td><spec-pill>OK</spec-pill></td><td>Network and process execution are new capabilities, and the spec authorises both explicitly — <a href="./spec.html#FR-005">FR-005</a> declares egress, <a href="./spec.html#NFR-002">NFR-002</a> bounds reach to one verb.</td></tr>
+    <tr><td>P-13 · Accessibility conformance</td><td><spec-pill>n/a</spec-pill></td><td>No user interface; the tool is a CLI.</td></tr>
+    <tr><td>P-14 · Library-first boundaries</td><td><spec-pill>OK</spec-pill></td><td>Naming, collision detection, accounting and the manifest are deterministic and live in core. Only the browser adapter sits outside it.</td></tr>
+  </tbody>
+</table>
+</section>
+
+
+<section id="technical-context">
+<h2>2 · Technical context</h2>
+<dl>
+  <dt>Language / runtime</dt><dd>TypeScript on Node, unchanged — the workspace's existing stack.</dd>
+  <dt>Architecture</dt><dd>Ports and adapters, extending the shape already shipping: core declares the port, a package outside it supplies the implementation (D-003).</dd>
+  <dt>Browser driver</dt><dd>Playwright <code>1.62.1</code> — already resolved and installed in the workspace.</dd>
+  <dt>Test framework</dt><dd>Vitest for the deterministic half; a real Chromium for the capture path (D-007).</dd>
+  <dt>Coverage</dt><dd>Patch target: every new line in the deterministic core covered, and a change never lowers coverage of what it touches. The adapter's browser-driving lines are exercised by the real-browser test rather than counted.</dd>
+  <dt>Persistence</dt><dd>Files only — captures and one manifest, under the owning spec's <code>visual/renders/</code>.</dd>
+  <dt>Perf</dt><dd><a href="./spec.html#NFR-001">NFR-001</a>: at most 1 browser process per run, every artboard in that session. Measured on the real export at 22 artboards.</dd>
+</dl>
+
+<h3>Toolchain / enforcement</h3>
+<p>The enterprise floor is already fully covered — 8 categories covered, <code>observability</code> relaxed
+under a waiver with an owner and expiry, 0 missing. This design adds no gap and resolves none.</p>
+<p>What it does add is a <strong>package</strong>, and a new workspace member is outside every gate until it
+is brought under one. So the work is wiring, not selection: the formatter, linter and type-checker configs
+extend to it, its tests join the run, and a <code>dependency-cruiser</code> rule forbids
+<code>@spectastic/core</code> importing it — the same rule shape that already guards the corpus boundary, and
+which was proven there against a planted edge before being trusted.</p>
+</section>
+
+
+<section id="contracts">
+<h2>3 · Data model &amp; contracts</h2>
+<spec-contract shape="none"></spec-contract>
+<p>No consumer-facing interface. The verb is invoked from a terminal and writes files; nothing calls it over
+a wire, and nothing outside the project depends on its output shape. The one thing that <em>is</em> a contract
+— what a capture is called — is settled by D-004 and read by the existing
+<code>&lt;spec-render src=&gt;</code> attribute rather than by anything new.</p>
+</section>
+
+
+<section id="grounding">
+<h2>5 · Grounding &amp; evidence</h2>
+<p>What this design knows, and how. Every row was resolved before the interview.</p>
+
+<table>
+  <thead><tr><th>Claim</th><th>Source</th><th>Status</th><th>Finding</th></tr></thead>
+  <tbody>
+    <tr>
+      <td>Playwright is available at a usable version</td>
+      <td><code>pnpm-lock.yaml</code>; <code>@playwright/test/package.json</code></td>
+      <td><spec-pill>verified</spec-pill></td>
+      <td>Specifier <code>^1.62.1</code> resolves to <code>1.62.1</code>, installed.</td>
+    </tr>
+    <tr>
+      <td>An artboard can be captured at its own bounds, not the page's</td>
+      <td>Spike against <code>iPhone Currency Converter Screens.zip</code></td>
+      <td><spec-pill>spike</spec-pill></td>
+      <td><strong>Yes.</strong> Element capture <code>360×831</code>; the same page full-height is <code>1600×7349</code>. Both valid PNGs; the artboard opened and shows a complete screen.</td>
+    </tr>
+    <tr>
+      <td>Artboards exist only after the runtime executes</td>
+      <td>Same spike</td>
+      <td><spec-pill>spike</spec-pill></td>
+      <td>The source carries <strong>4</strong> labels, all templates (<code>{{ s.id }} · light</code>); after execution there are <strong>22</strong>, e.g. <code>no-rate · light</code>.</td>
+    </tr>
+    <tr>
+      <td>A blocked CDN fails detectably</td>
+      <td>Same spike, with <code>unpkg.com</code> aborted</td>
+      <td><spec-pill>spike</spec-pill></td>
+      <td><strong>No — and this changed the design.</strong> The page yields <strong>4 unexpanded template labels rather than zero</strong>, plus 3 console errors. A naive verb would capture four broken images and report success.</td>
+    </tr>
+    <tr>
+      <td>A healthy run is console-clean</td>
+      <td>Same spike, egress allowed</td>
+      <td><spec-pill>spike</spec-pill></td>
+      <td>0 console errors across 22 artboards. The handover reported one; it did not reproduce.</td>
+    </tr>
+    <tr>
+      <td>The kernel context is the place a port belongs</td>
+      <td><code>packages/core/src/types.ts:129</code></td>
+      <td><spec-pill>verified</spec-pill></td>
+      <td><code>KernelContext</code> is <code>{ cwd, fs?, ai? }</code> — two optional ports already, supplied per verb.</td>
+    </tr>
+    <tr>
+      <td>The file port cannot carry bytes today</td>
+      <td><code>packages/core/src/types.ts:27</code></td>
+      <td><spec-pill>verified</spec-pill></td>
+      <td><code>readFile(path, encoding?: 'utf8'): Promise&lt;string&gt;</code> — and the encoding is <em>optional</em>, which is what makes an overload dangerous (D-002).</td>
+    </tr>
+    <tr>
+      <td>The content hash is text-shaped</td>
+      <td><code>packages/core/src/visual/import.ts:526</code></td>
+      <td><spec-pill>verified</spec-pill></td>
+      <td>FNV-1a over <code>charCodeAt</code>. Matches bytes for ASCII, diverges for multibyte UTF-8.</td>
+    </tr>
+    <tr>
+      <td>The capture location convention already exists</td>
+      <td><code>examples/currency-converter/specs/001-currency-conversion/visual/renders/</code></td>
+      <td><spec-pill>verified</spec-pill></td>
+      <td>A committed <code>converted-ios-light.svg</code>, referenced as <code>src="renders/…"</code> — the slug form D-004 adopts.</td>
+    </tr>
+    <tr>
+      <td>The enforcement floor has no gap to fill</td>
+      <td><code>spectastic enforce</code></td>
+      <td><spec-pill>verified</spec-pill></td>
+      <td>8 covered, 1 relaxed under a waiver with owner and expiry, 0 missing.</td>
+    </tr>
+  </tbody>
+</table>
+</section>
+
+
+<section id="approach">
+<h2>6 · Approach</h2>
+<p>Three pieces, each answering one requirement group. A <strong>byte path</strong> on the file port so an
+image survives being written (<a href="./spec.html#FR-001">FR-001</a>). A <strong>render port</strong> the
+kernel declares and does not implement (<a href="./spec.html#FR-003">FR-003</a>). And a <strong>verb</strong>
+that composes them: preflight, load once, capture each artboard, account for all of them.</p>
+
+<p>The deterministic half — slugging a label, detecting a collision, accounting for every artboard, writing
+the manifest — lives in core and is testable with a stub renderer. The browser is behind the port, so the
+only thing that needs a real Chromium is the adapter.</p>
+
+<spec-arch>
+<svg viewBox="0 0 720 250" role="img" aria-label="The render verb calls a Renderer port and a binary file port; the Playwright adapter lives outside core.">
+  <g fill="none" stroke="currentColor" stroke-width="1.5">
+    <rect x="18" y="96" width="150" height="52" rx="4"/>
+    <rect x="238" y="26" width="160" height="52" rx="4"/>
+    <rect x="238" y="166" width="160" height="52" rx="4"/>
+    <rect x="480" y="26" width="210" height="52" rx="4" stroke-dasharray="4 3"/>
+    <rect x="480" y="166" width="210" height="52" rx="4"/>
+    <path d="M168 116 L238 60"/><path d="M168 128 L238 190"/>
+    <path d="M398 52 L480 52"/><path d="M398 192 L480 192"/>
+  </g>
+  <g font-family="var(--font-sans)" font-size="12" fill="currentColor">
+    <text x="34" y="118">visual:render</text>
+    <text x="34" y="136" opacity="0.7">(core)</text>
+    <text x="254" y="48">Renderer port</text>
+    <text x="254" y="66" opacity="0.7">declared, not built</text>
+    <text x="254" y="188">FileSystem</text>
+    <text x="254" y="206" opacity="0.7">readBinary / writeBinary</text>
+    <text x="496" y="48">@spectastic/render</text>
+    <text x="496" y="66" opacity="0.7">Playwright adapter</text>
+    <text x="496" y="188">visual/renders/</text>
+    <text x="496" y="206" opacity="0.7">captures + manifest</text>
+  </g>
+</svg>
+</spec-arch>
+<p>The dashed box is the only thing that knows what a browser is, and nothing in core may import it.</p>
+</section>
+
+
+<section id="alternatives">
+<h2>7 · Alternatives considered</h2>
+<p>Scored 1–5, higher better. The winner is the row actually chosen.</p>
+<table>
+  <thead><tr><th>Option</th><th>Isolation</th><th>Cost</th><th>Reuse</th><th>Total</th></tr></thead>
+  <tbody>
+    <tr data-winner><td><strong>Adapter in its own package</strong></td><td>5</td><td>3</td><td>5</td><td><strong>13</strong></td></tr>
+    <tr><td>Adapter in the CLI package</td><td>4</td><td>5</td><td>2</td><td>11</td></tr>
+    <tr><td>Playwright in core, imported lazily</td><td>1</td><td>5</td><td>3</td><td>9</td></tr>
+    <tr><td>Shell out to a headless browser binary</td><td>3</td><td>2</td><td>2</td><td>7</td></tr>
+  </tbody>
+</table>
+<p>The package boundary won on <em>reuse</em> rather than isolation: a second consumer — an editor extension,
+an MCP server — can depend on the adapter without taking the CLI, which the CLI-local option forecloses. It
+costs a fourth workspace package for one implementation with no second consumer today, and that cost was
+accepted deliberately.</p>
+</section>
+
+
+<section id="decisions">
+<h2>8 · Decisions</h2>
+
+<spec-decision id="D-001" grounding="spike">
+  <h3>Check egress before the browser opens, and guard against unexpanded templates</h3>
+  <dl>
+    <dt>Status</dt><dd>Accepted</dd>
+    <dt>Context</dt><dd>The spike aborted <code>unpkg.com</code> and reloaded the real export: the page yielded <strong>4 unexpanded template labels</strong> (<code>{{ s.id }} · light</code>) rather than zero, with 3 console errors. The offline failure is not a crash — it is four plausible-looking artboards.</dd>
+    <dt>Decision</dt><dd>Reach the runtime's CDN before launching the browser; refuse with a stated reason if unreachable. Then, after load, refuse any label still carrying template syntax.</dd>
+    <dt>Consequences</dt><dd>+ Satisfies <a href="./spec.html#FR-005">FR-005</a> literally — nothing is executed before the refusal — and makes <a href="./spec.html#SC-003">SC-003</a>'s "writes 0 capture files" achievable rather than aspirational.<br>+ The template guard catches what a preflight cannot: a CDN that answers but serves something broken.<br>− Two checks to maintain, and the preflight hard-codes knowledge of which host the runtime needs, which is the design tool's business and could change.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-002" grounding="verified">
+  <h3>Add <code>readBinary</code> and <code>writeBinary</code> rather than overloading <code>readFile</code></h3>
+  <dl>
+    <dt>Status</dt><dd>Accepted</dd>
+    <dt>Context</dt><dd><code>packages/core/src/types.ts:27</code> — <code>readFile(path, encoding?: 'utf8'): Promise&lt;string&gt;</code>. The encoding parameter is <strong>optional</strong>, and every existing caller omits it.</dd>
+    <dt>Decision</dt><dd>Two new methods beside the text pair. No existing signature changes.</dd>
+    <dt>Consequences</dt><dd>+ Every existing call site compiles untouched.<br>+ The corruption this spec exists to fix becomes unrepresentable: <code>readBinary</code> cannot return a string.<br>− Four methods where <code>node:fs</code> has two, and every test stub grows two more.<br>− The node-shaped overload would have been familiar — and would have silently flipped every existing caller from string to bytes, which is the same silent corruption arriving through the fix.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-003" grounding="n-a">
+  <h3>The Playwright adapter lives in a new <code>@spectastic/render</code> package</h3>
+  <dl>
+    <dt>Status</dt><dd>Accepted</dd>
+    <dt>Context</dt><dd><a href="./spec.html#FR-003">FR-003</a> forbids the kernel depending on any particular browser. Core already declares ports others implement, and the CLI already supplies <code>nodeFs</code>.</dd>
+    <dt>Decision</dt><dd>A fourth workspace package, depended on by the CLI. Author's call, against a recommendation of putting it in the CLI.</dd>
+    <dt>Consequences</dt><dd>+ A browser dependency isolated behind a package boundary rather than a directory one, and machine-enforced by the same dependency-cruiser shape the corpus boundary uses.<br>+ A second consumer — an extension, an MCP server — can take the adapter without the CLI.<br>− A fourth package for one implementation with no second consumer today: a build config, an exports map, and a place for the boundary to be got wrong.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-004" grounding="verified">
+  <h3>A capture is named by slugging the whole label</h3>
+  <dl>
+    <dt>Status</dt><dd>Accepted</dd>
+    <dt>Context</dt><dd>Real labels are <code>no-rate · light</code>, <code>picker browsing · dark</code>. The exemplar's committed capture is already <code>renders/converted-ios-light.svg</code> — the slug form.</dd>
+    <dt>Decision</dt><dd>Lowercase, collapse separators and spaces to <code>-</code>, drop what a filesystem forbids. One rule for every label.</dd>
+    <dt>Consequences</dt><dd>+ Works for any source's convention, not just one tool's <code>·</code>.<br>+ A collision is loud, per <a href="./spec.html#FR-007">FR-007</a>, rather than a silent overwrite.<br>− Slugging is lossy: two labels differing only by punctuation collide, and the reader sees a report rather than both captures.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-005" grounding="verified">
+  <h3>One content hash, computed over bytes</h3>
+  <dl>
+    <dt>Status</dt><dd>Accepted</dd>
+    <dt>Context</dt><dd><code>import.ts:526</code> hashes <code>charCodeAt</code>, which matches bytes for ASCII and diverges for multibyte UTF-8. <a href="./spec.html#FR-002">FR-002</a> requires a byte hash.</dd>
+    <dt>Decision</dt><dd>Change the existing function to hash bytes, and use it for both paths.</dd>
+    <dt>Consequences</dt><dd>+ A file has one identity regardless of who opened it.<br>− Any hash already recorded for a file containing non-ASCII text changes once, on the next import. A one-time, visible churn rather than a silent one.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-006" grounding="n-a">
+  <h3>The render run writes its own manifest</h3>
+  <dl>
+    <dt>Status</dt><dd>Accepted</dd>
+    <dt>Context</dt><dd><a href="./spec.html#FR-004">FR-004</a> makes render and import separate verbs with separate permission stories. <a href="./spec.html#FR-011">FR-011</a> requires every artboard accounted for.</dd>
+    <dt>Decision</dt><dd>A manifest beside the captures, recording each artboard as captured or not-captured-with-a-reason, and any console error against its capture.</dd>
+    <dt>Consequences</dt><dd>+ A render can happen with no import ever having run, which a shared manifest would make awkward.<br>− Two manifests in one <code>visual/</code> tree, and a reader must know which verb wrote which.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-007" grounding="n-a">
+  <h3>Tests drive a real browser throughout</h3>
+  <dl>
+    <dt>Status</dt><dd>Accepted</dd>
+    <dt>Context</dt><dd>The feature's whole value is that a real browser produces a real image. Author's call, against a recommendation of stub-plus-one-real-test.</dd>
+    <dt>Decision</dt><dd>Drive Chromium for the capture path, against a miniature export committed as a fixture. One browser is launched for the suite and shared, which honours the choice while bounding its cost.</dd>
+    <dt>Consequences</dt><dd>+ Highest fidelity: the suite cannot pass while nothing renders, which is the failure this project has recorded twice.<br>− Slower, and the estate already carries one documented perf flake under parallel load. A shared browser bounds this but does not remove it.<br>− CI must install a browser binary, which the workspace already does for its Playwright suite.</dd>
+  </dl>
+</spec-decision>
+</section>
+
+
+<section id="structure">
+<h2>9 · Project structure</h2>
+<pre><code>packages/core/src/
+  types.ts                      readBinary/writeBinary on FileSystem; Renderer on KernelContext
+  visual/render.ts              the verb: preflight, capture, account, manifest
+  visual/render-naming.ts       label → slug, collision detection
+  providers/node-fs.ts          the two new methods
+
+packages/render/                NEW — the only thing that knows what a browser is
+  src/index.ts                  playwrightRenderer(): Renderer
+
+packages/cli/src/commands/
+  visual.ts                     wires the adapter into the render verb only
+
+specs/&lt;id&gt;/visual/renders/      captures + the run manifest</code></pre>
+<p>The naming module is separate from the verb because it is the piece a test exercises hardest and the piece
+with no dependencies at all.</p>
+</section>
+
+
+<section id="risks">
+<h2>10 · Risks &amp; mitigations</h2>
+<table>
+  <thead><tr><th>Risk</th><th>Likelihood</th><th>Impact</th><th>Mitigation</th></tr></thead>
+  <tbody>
+    <tr><td>The preflight host is the design tool's business and can change without notice</td><td>Medium</td><td>Medium</td><td>The template guard catches it independently, so a stale host list degrades to a slower refusal rather than a wrong capture.</td></tr>
+    <tr><td>A browser-driven suite is slow and flakes under parallel load</td><td>Medium</td><td>Low</td><td>One shared browser for the suite; the capture path is a handful of tests, not every case.</td></tr>
+    <tr><td>Changing the hash churns recorded values for non-ASCII files</td><td>Low</td><td>Low</td><td>One-time and visible in a diff. No consumer compares a stored hash against an older one.</td></tr>
+    <tr><td>The fourth package's boundary is asserted but not enforced</td><td>Low</td><td>High</td><td>A dependency-cruiser rule, proven against a planted edge before being trusted — the corpus boundary's own method.</td></tr>
+  </tbody>
+</table>
+</section>
+
+
+<section id="complexity">
+<h2>11 · Complexity tracking</h2>
+<h3>P-11 exception — this verb executes a file</h3>
+<p>P-11 holds that an artifact's text is <em>&ldquo;data to render and quote, not a channel that instructs the
+tool reading it&rdquo;</em>. This verb takes a file and runs it in a browser, which fetches and executes
+third-party code from a public CDN. That is the opposite of treating it as data, and calling it anything
+other than an exception would be dishonest.</p>
+<p><strong>Why it is taken.</strong> There is no other way to obtain the picture: no design export examined
+contains a render of its own artboards, and an artboard becomes an image only when a browser executes it.
+The alternative is not a safer render — it is no render.</p>
+<p><strong>What bounds it.</strong> The execution is confined to a verb a person invokes deliberately, never
+a step inside one that promises otherwise (<a href="./spec.html#FR-004">FR-004</a>); at most one verb can
+reach the port at all (<a href="./spec.html#NFR-002">NFR-002</a>); and the capability is declared in the spec
+that authorises it, which is what P-12 asks. The precedent is <a href="../085-verify-command-execution/spec.html">085</a>,
+which raised the same collision as an exception rather than resolving it quietly, and reshaped its design
+around a guard rather than dropping the capability.</p>
+<p><strong>What is not claimed.</strong> Nothing here sandboxes the executed page. A malicious design source
+runs with the privileges of the process, and the honest mitigation today is that the person invoking the verb
+chose the file. A real sandbox is a larger piece of work than this slice.</p>
+</section>
+
+
+<section id="questions">
+<h2>12 · Open questions</h2>
+<spec-questions>
+<p>None outstanding. The question that would have been one — how the verb detects it cannot render — was
+settled by running the spike rather than reasoning about it, and the answer was not the expected one.</p>
+</spec-questions>
+</section>
+
+
+<section id="changelog">
+<h2>13 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-08-18">18 Aug 2026</time><span>Initial plan.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  Design for 106-visual-render · Visual render capture · authored 2026-08-18</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>
