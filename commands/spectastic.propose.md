@@ -100,6 +100,10 @@ User input (from `$ARGUMENTS`): a change name or one-line description ("add OAut
 
    **When to reach for it:** author a proposal that contradicts a still-undrained phase and you have created a false backlog. A drain reads an unticked box as work owed, because that is what the format promises. Three rounds on one obligation across three specs left 16 tasks describing work that must never be done.
 
+8b. **Fill the subtraction register** (`REQ-CHANGE-011`). Before the risk pass, ask what this change *takes away* — a clause dropped from a requirement you retyped, an obligation a sibling requirement loses, a behaviour or affordance no requirement records. One `<li>` per item inside `<spec-subtraction>`; **leave it empty if the answer is nothing**, which is a real answer and needs no prose. Where a delta removes something itself, its own reason and migration stay authoritative — this register is for what no delta can express.
+
+   Ask it here rather than after the deltas are written, because the question is cheap while it can still change the draft. Three changes in one day would each have removed something silently: an ADD restated a live requirement minus its no-network clause; a MODIFY dropped a MUST and four rationale sentences; a change to tick semantics would have removed the only visual signal a retired task has. The adversarial pass catches these — as the last and most expensive line, not the first.
+
 9. **Adversarial risk pass.** Before the splitting nudge runs, decide whether the proposal needs an adversarial risk pass per `REQ-CHANGE-004` of the meta-spec.
 
    **Heuristic — run the pass if any of:**
