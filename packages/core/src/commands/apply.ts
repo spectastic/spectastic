@@ -493,7 +493,16 @@ export function markSupersededPhase(
       if (/<input\b[^>]*\bchecked\b[^>]*>/.test(body)) return whole;
       if (/data-status=/.test(attrs)) return whole; // already annotated — idempotent
       marked += 1;
-      return `<spec-task id="${id}"${attrs} data-status="superseded">${body}${note}\n</spec-task>`;
+      // Close the box as well as marking it (REQ-CHANGE-010, amended). A closed
+      // box records that the task is not owed; the mark records that the work
+      // was retired rather than performed. Leaving it open is what made an
+      // unchecked box mean either "open" or "retired", which every consumer
+      // then had to special-case and one shipped without.
+      const closed = body.replace(
+        /<input\b((?:(?!>)[\s\S])*)>/,
+        (tag: string, attrsIn: string) => (/\bchecked\b/.test(attrsIn) ? tag : `<input${attrsIn} checked>`),
+      );
+      return `<spec-task id="${id}"${attrs} data-status="superseded">${closed}${note}\n</spec-task>`;
     },
   );
   return { out: tracker.replace(phaseRe, updated), marked };

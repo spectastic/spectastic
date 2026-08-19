@@ -37,6 +37,7 @@ import { noPlaceholderQuestionRule } from './no-placeholder-question.js';
 import { noUnreplacedPlaceholderRule } from './no-unreplaced-placeholder.js';
 import { specElementNestingRule } from './spec-element-nesting.js';
 import { subtractionRegisterRequiredRule } from './subtraction-register-required.js';
+import { supersededTaskClosedRule } from './superseded-task-closed.js';
 import { noUnresolvedQuestionRule } from './no-unresolved-question.js';
 import { parentChildReciprocityRule } from './parent-child-reciprocity.js';
 import { requirementIdRequiredRule } from './requirement-id-required.js';
@@ -87,6 +88,7 @@ export const rules: readonly Rule[] = [
   noUnreplacedPlaceholderRule,
   specElementNestingRule,
   subtractionRegisterRequiredRule,
+  supersededTaskClosedRule,
   investRowFailedRule,
 
   // Edge-case rules (per-file).

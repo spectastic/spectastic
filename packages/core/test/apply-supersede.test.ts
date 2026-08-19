@@ -106,3 +106,32 @@ describe('markSupersededPhase (REQ-CHANGE-010)', () => {
     expect(r?.out).not.toContain('<spec-task id="T-1101" data-status');
   });
 });
+
+describe('a superseded task is closed as well as marked (REQ-CHANGE-010, amended)', () => {
+  it('closes the box, so an unchecked box means exactly "open"', () => {
+    const r = mark();
+    expect(r?.out).toMatch(/<spec-task id="T-1100"[^>]*data-status="superseded"[^>]*>\s*<input type="checkbox" checked>/);
+    expect(r?.out).toMatch(/<spec-task id="T-1102"[^>]*data-status="superseded"[^>]*>\s*<input type="checkbox" checked>/);
+  });
+
+  it('leaves an already-closed task exactly as it stands', () => {
+    // The clause that protects a real result: a task genuinely done keeps its
+    // status, and supersession never rewrites work that happened.
+    const r = mark();
+    expect(r?.out).toMatch(/<spec-task id="T-1101">\s*<input type="checkbox" checked>/);
+    expect(r?.out).not.toMatch(/<spec-task id="T-1101"[^>]*data-status/);
+  });
+
+  it('closes a box whose attributes are in the other order', () => {
+    // The estate carries both forms; an order-sensitive rewrite would leave
+    // this one open and reintroduce the ambiguity this change removes.
+    const t = TRACKER.replace('<input type="checkbox">\n  <div>Add the screen kind', '<input class="x" type="checkbox">\n  <div>Add the screen kind');
+    const r = mark(t);
+    expect(r?.out).toMatch(/<input class="x" type="checkbox" checked>/);
+  });
+
+  it('leaves an unrelated phase untouched', () => {
+    const r = mark();
+    expect(r?.out).toMatch(/<spec-task id="T-1200">\s*<input type="checkbox">/);
+  });
+});

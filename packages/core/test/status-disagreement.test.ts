@@ -70,12 +70,12 @@ describe('stays silent where the estate is legitimately uneven', () => {
   });
 });
 
-describe('the superseded exclusion (088/T-001)', () => {
-  it('treats a slice whose only open tasks are superseded as finished', () => {
-    // The CLI scan subtracts superseded-open boxes before calling this, matching
-    // the implement verb's drain and flip count. Counting them would make a spec
-    // carrying a retired phase permanently unable to reach zero — and would make
-    // the scan disagree with the verb about the same file.
+describe('no exclusion is needed any more (088/T-001, resolved)', () => {
+  it('sees a slice whose retired tasks are closed as finished, with no special case', () => {
+    // A retired task is CLOSED (REQ-CHANGE-010, amended), so it arrives here
+    // already counted as settled. The scan carries no exclusion, which is the
+    // point: one question, one answer, nothing for a consumer to forget. The
+    // superseded-task-closed rule keeps the premise true.
     const f = statusDisagreementFindings([
       slice({ statuses: { spec: 'draft', tasks: 'draft' }, tasks: { total: 20, unchecked: 0 } }),
     ]);
