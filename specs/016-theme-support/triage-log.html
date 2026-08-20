@@ -362,6 +362,70 @@
   </details>
 </spec-triage>
 
+
+<spec-triage id="T-011" layer="implementation">
+  <header>
+    <h4>The rule above every section heading has never rendered — <code>h2:first-of-type</code> matches every <code>h2</code>, so the exception cancels the rule everywhere</h4>
+    <span class="meta">
+      <span class="layer-pill">Implementation</span>
+      <span class="regen" data-result="pass">code</span>
+    </span>
+  </header>
+  <p class="headline">Debugging what separates one section from the next while building
+  <a href="../109-prose-theme/spec.html">109-prose-theme</a>, root cause was an implementation slip present since the
+  initial public release: <code>h2:first-of-type</code> was written as &ldquo;the first heading in the document&rdquo;,
+  but it means &ldquo;the first <code>h2</code> among its siblings&rdquo; &mdash; and every <code>h2</code> sits alone
+  inside its own <code>&lt;section&gt;</code>, so all of them match and the exception nullifies both the
+  <code>border-top</code> and the <code>padding-top</code> it was meant to suppress on one heading only; fixed by
+  scoping the exception to the first <em>section</em> rather than the first heading; regeneration passes &mdash; no
+  requirement in this spec or any other asks for a separator above a section heading, so nothing upstream would lead a
+  fresh session back into it.</p>
+  <dl>
+    <dt>Expected</dt> <dd>A hairline (<code>--rule-w</code> / <code>--c-border-soft</code>) and <code>--s-5</code> of
+    padding above every section heading except the document&rsquo;s first &mdash; which is what the two rules, read
+    together, plainly intend.</dd>
+    <dt>Actual</dt>   <dd>No hairline anywhere, and no padding anywhere. Measured across 5 artifacts &times; 3 themes:
+    <strong>40 <code>h2</code> elements, 0 with a border</strong>, every one matching <code>:first-of-type</code>,
+    every parent a <code>&lt;section&gt;</code>. The <code>padding-top: var(--s-5)</code> half is cancelled just as
+    universally, which makes this a spacing defect as well as a border one.</dd>
+    <dt>Diagnosis</dt><dd><code>:first-of-type</code> is scoped to an element&rsquo;s <em>siblings</em>, not to the
+    document. The templates have wrapped each heading in its own <code>&lt;section&gt;</code> since the first public
+    release, so the selector has been universally true from the day it was written &mdash; this never worked and was
+    never a regression. It is invisible precisely because the failure mode is <em>absence</em>: nothing renders wrong,
+    something simply never appears, and no test asserted it.</dd>
+    <dt>Fix</dt>      <dd><span class="path">assets/spec.css</span> &mdash; scope the exception to the first section
+    (<code>main &gt; section:first-of-type h2</code>) instead of the first heading. <strong>Two things make this more
+    than a one-line change.</strong> The original rule outranks a plain <code>h2</code> selector (0,1,1 against 0,0,1),
+    so the fix must <em>edit</em> the existing declaration rather than add one beside it &mdash; verified by injecting a
+    naive correction and watching the old rule still win. And restoring it now doubles every separator in Prose:
+    measured, the corrected selector borders <strong>8 of 9</strong> sections, landing on the <strong>same 8
+    boundaries</strong> that already carry <a href="../109-prose-theme/spec.html#FR-009">FR-009</a>&rsquo;s dot
+    dividers, so the Prose block must suppress the hairline in the same change.</dd>
+  </dl>
+  <spec-diff>
+<del>h2:first-of-type { border-top: none; padding-top: 0; }</del>
+<ins>main &gt; section:first-of-type h2 { border-top: none; padding-top: 0; }</ins>
+  </spec-diff>
+  <details>
+    <summary>Deep dive — cross-spec (109) and a P-5 judgment call</summary>
+    <p><strong>Cross-spec.</strong> The fix cannot land alone. <a href="../109-prose-theme/spec.html#NFR-003">109
+    NFR-003</a> requires Prose to change calm and vivid in at most 0 respects, and this is the mirror of that
+    obligation: changing the shared base rule changes Prose too. Landing the corrected selector without a matching
+    <code>border-top: 0</code> in the Prose block would put a hairline and a dot divider on all 8 boundaries of a
+    9-section artifact. Both edits belong in one change.</p>
+    <p><strong>Whether to restore it at all is a real question, not a formality.</strong> The estate has shipped without
+    these rules for its entire life and nobody noticed, which is evidence that the separation already reads. <a
+    href="../../principles.html#P-5">P-5</a> forbids &ldquo;visual chrome that doesn&rsquo;t carry meaning&rdquo;, and a
+    hairline above a heading that is already large, spaced and numbered may be exactly that. So there are two defensible
+    fixes &mdash; restore the intent, or delete the dead declaration &mdash; and the one thing that is <em>not</em>
+    defensible is leaving a rule in the stylesheet that states an intent it does not deliver. It misleads a reader:
+    while building 109 it led directly to a false premise in that design, which was corrected only because the value
+    was measured rather than read.</p>
+    <p><strong>Not a spec gap.</strong> The ladder stops at <code>implementation</code>. Nothing in 016 or any sibling
+    spec requires a separator above a section heading, so promoting this to a requirement would be spec inflation for a
+    hairline. Recorded here rather than escalated.</p>
+  </details>
+</spec-triage>
 </spec-triage-log>
 </section>
 
@@ -411,6 +475,7 @@ if a decision is owed to the human before the fix lands.</p>
 <h2>Change log</h2>
 <spec-changelog>
 <ol>
+    <li><time datetime="2026-08-20">20 Aug 2026</time><span>T-011 added &mdash; the hairline above every section heading has never rendered: <code>h2:first-of-type</code> means &ldquo;first among siblings&rdquo;, and each <code>h2</code> is alone in its <code>&lt;section&gt;</code>, so the exception cancels the rule (and its padding) everywhere. <code>implementation</code>, regen <code>pass</code> &mdash; no requirement asks for a section separator. Measured 40 headings across 5 artifacts &times; 3 themes, 0 bordered. Surfaced while building <a href="../109-prose-theme/spec.html">109-prose-theme</a>, where it produced a false premise that was caught only by measuring. Fix must edit the existing declaration (specificity) and suppress the hairline in Prose, which would otherwise double 8 of 9 boundaries against FR-009&rsquo;s dot dividers.</span></li>
     <li><time datetime="2026-08-01">01 Aug 2026</time><span>Closure backfill under <a href="../088-change-management/spec.html#REQ-CHANGE-009">REQ-CHANGE-009</a> — every card in this log was verified against the current code and the resolved ones marked <code>data-status="done"</code> with a <code>&lt;dt&gt;Fixed&lt;/dt&gt;</code> row recording what actually shipped. Cards left unmarked are genuinely still owed work; an unmarked card now means open, per the new contract.</span></li>
 <li><time datetime="2026-07-24">24 Jul 2026</time><span>T-010 added — the I-043 vivid wayfinding pass recoloured every section <code>h2</code> (and the TL;DR label) per section; differently-coloured titles/subtitles was a non-goal. <code>implementation</code>, regen <code>pass</code> — heading colour is outside 016's contract (<a href="./spec.html#SC-006">SC-006</a> structural parity, <a href="./spec.html#FR-002">FR-002</a> colour mode-owned). Fix drops the two text-colour rules in <span class="path">assets/spec.css</span>, keeps the accent rails/chips.</span></li>
   <li><time datetime="2026-06-19">19 Jun 2026</time><span>T-008 added — requirement <code>&lt;details&gt;</code> rationale overlapped the body (both themes); implementation slip (regen pass) — <code>grid-row:2</code> on <code>spec-requirement &gt; *</code> collapsed all children into one row; fixed + verified.</span></li>
