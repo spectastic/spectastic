@@ -17,10 +17,20 @@ import type { Finding, PerFileRule } from '../types.js';
  * element would report the entire estate. The tool's own vocabulary always
  * carries explicit closing tags, which is what makes a stack scan decidable.
  *
- * Raw-text and quoting elements are skipped before scanning: a `<style>`
- * selector and an inlined script's `a < b` both look like tags to a naive
- * stack, and a `<pre>` block showing `spectastic run <spec-id>` is naming the
- * element rather than opening one.
+ * Raw-text elements are skipped before scanning: a `<style>` selector and an
+ * inlined script's `a < b` both look like tags to a naive stack, and neither
+ * is markup the parser will act on.
+ *
+ * `<pre>` and `<code>` are NOT skipped, and the reason they once were is worth
+ * keeping (091/T-002). The original note read: "a `<pre>` block showing
+ * `spectastic run <spec-id>` is naming the element rather than opening one."
+ * That is authorial intent, and the HTML parser does not share it — `<pre>`
+ * and `<code>` are ordinary element content, so an unescaped `<spec-id>` opens
+ * a real element and swallows what follows. `037-hands-off-pipeline`'s design
+ * lost 251 characters of a documented command exactly that way, invisibly,
+ * because this rule declined to look. Escaping is already the estate's
+ * convention — verified across 500 artifacts, the narrowed scan reports no new
+ * findings — so the suppression bought nothing and hid a live defect class.
  */
 
 /**
@@ -39,7 +49,7 @@ function rawTextSpans(html: string): Array<[number, number]> {
     spans.push([c.index, end === -1 ? html.length : end + 3]);
     comment.lastIndex = end === -1 ? html.length : end + 3;
   }
-  const re = /<(style|script|code|pre|spec-diff)\b[^>]*>/gi;
+  const re = /<(style|script|spec-diff)\b[^>]*>/gi;
   let m: RegExpExecArray | null;
   while ((m = re.exec(html))) {
     const tag = (m[1] ?? '').toLowerCase();

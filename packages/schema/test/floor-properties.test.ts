@@ -62,6 +62,36 @@ describe('spec-element-nesting (REQ-FORMAT-008)', () => {
     });
     expect(f).toEqual([]);
   });
+
+  // 091/T-002. The suppression for <pre>/<code> was deliberate and its stated
+  // reason was wrong: "a <pre> block showing `spectastic run <spec-id>` is
+  // naming the element rather than opening one." The HTML parser does not
+  // share that intent — it opens a SPEC-ID element and swallows everything
+  // after it. 037's design.html lost 251 characters of a documented command
+  // that way, invisibly, because the rule declined to look.
+  it('reports an unescaped spec-* tag inside <pre> — the parser opens it regardless of intent', () => {
+    const f = specElementNestingRule.check({ doc: doc('<pre><code>spectastic run <spec-id></code></pre>') });
+    expect(f.map((x) => x.message)).toContain('<spec-id> is never closed.');
+  });
+
+  it('reports an unescaped spec-* tag inside a bare <code> span', () => {
+    const f = specElementNestingRule.check({ doc: doc('<p>run <code><spec-note></code></p>') });
+    expect(f.map((x) => x.message)).toContain('<spec-note> is never closed.');
+  });
+
+  it('is silent when the same example is escaped, which is the estate convention', () => {
+    const f = specElementNestingRule.check({
+      doc: doc('<pre><code>spectastic run &lt;spec-id&gt;</code></pre>'),
+    });
+    expect(f).toEqual([]);
+  });
+
+  it('still skips <spec-diff> content, whose del/ins bodies are literal source', () => {
+    const f = specElementNestingRule.check({
+      doc: doc('<spec-diff><del><spec-note>old</del><ins>new</ins></spec-diff>'),
+    });
+    expect(f).toEqual([]);
+  });
 });
 
 describe('no-unreplaced-placeholder (REQ-FORMAT-009)', () => {
