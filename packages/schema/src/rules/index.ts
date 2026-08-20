@@ -41,6 +41,12 @@ import { supersededTaskClosedRule } from './superseded-task-closed.js';
 import { noUnresolvedQuestionRule } from './no-unresolved-question.js';
 import { parentChildReciprocityRule } from './parent-child-reciprocity.js';
 import { requirementIdRequiredRule } from './requirement-id-required.js';
+import { criterionActorRule } from './criterion-actor.js';
+import { criterionObservableRule } from './criterion-observable.js';
+import { criterionSingleRule } from './criterion-single.js';
+import { criterionIndicativeRule } from './criterion-indicative.js';
+import { criterionValidatesRule } from './criterion-validates.js';
+import { criterionThresholdJustifiedRule } from './criterion-threshold-justified.js';
 import { riceWellFormedRule } from './rice-well-formed.js';
 import { riskStatusRequiredRule } from './risk-status-required.js';
 import { riskTargetRequiredRule } from './risk-target-required.js';
@@ -74,6 +80,12 @@ export const rules: readonly Rule[] = [
   riskTargetRequiredRule,
   riskStatusRequiredRule,
   requirementIdRequiredRule,
+  criterionActorRule,
+  criterionObservableRule,
+  criterionSingleRule,
+  criterionIndicativeRule,
+  criterionValidatesRule,
+  criterionThresholdJustifiedRule,
   taskIdRequiredRule,
   taskTitleBoldScopeRule,
   dateFormatRule,

@@ -18,6 +18,7 @@ export default defineConfig({
     'src/choreography.ts',
     'src/content-budget.ts',
     'src/tracking-plan.ts',
+    'src/conformance.ts',
   ],
   format: ['esm'],
   dts: true,

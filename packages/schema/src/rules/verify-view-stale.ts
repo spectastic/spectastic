@@ -1,5 +1,6 @@
 import type { Element } from '../parser.js';
 import { findAll, getAttr, getLocation, walk } from '../parser.js';
+import { isConformanceElement } from '../conformance.js';
 import type { CrossFileRule, Finding, ParsedDocument } from '../types.js';
 
 /**
@@ -78,13 +79,17 @@ function textOf(el: Element): string {
   return out.replace(/\s+/g, ' ').trim();
 }
 
-/** The SC ids the spec declares, sorted. */
+/** The SC ids the spec declares, sorted — read off any conformance-bearing
+ *  element (108-success-criteria FR-012), not only `<spec-requirement>`, so
+ *  an SC authored as `<spec-criterion>` still joins this rule's completeness
+ *  and drift checks. */
 function specScIds(spec: ParsedDocument): string[] {
   const ids = new Set<string>();
-  for (const req of findAll(spec.ast, 'spec-requirement')) {
-    const id = getAttr(req, 'id');
+  walk(spec.ast, (el) => {
+    if (!isConformanceElement(el.tagName)) return;
+    const id = getAttr(el, 'id');
     if (id && SC_ID.test(id)) ids.add(id);
-  }
+  });
   return [...ids].sort((a, b) => a.localeCompare(b));
 }
 

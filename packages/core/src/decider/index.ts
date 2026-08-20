@@ -13,11 +13,15 @@ export type { EffortDepth } from './effort.js';
 export { DEFAULT_EFFORT, effortToDepth, VOTER_CAP } from './effort.js';
 export {
   arbitrateCategorical,
+  CRITERION_LENSES,
+  gradeCriteria,
+  gradeCriterion,
   LENSES,
   median,
   parseFindings,
   runCritic,
 } from './panel.js';
+export type { CriterionLens } from './panel.js';
 export { answerDecisions, DECISION_TAXONOMY } from './taxonomy.js';
 export type {
   DeciderConfig,

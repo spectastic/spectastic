@@ -13,6 +13,7 @@
 import { join } from 'node:path';
 import type { Document, Element } from '@spectastic/schema/parser';
 import { findAll, getAttr, parse, walk } from '@spectastic/schema/parser';
+import { isConformanceElement } from '@spectastic/schema/conformance';
 import { isQuantifiedTarget } from '@spectastic/schema/slo';
 import { renderRunBlock } from '../runblock.js';
 import type { CapturedRun, FileSystem, KernelContext, VerifyInput, VerifyResult } from '../types.js';
@@ -133,13 +134,19 @@ function readTitle(ast: Document, fallback: string): string {
   return h1 ? textOf(h1) : fallback;
 }
 
-/** Every `SC-NNN` requirement id in the spec, in document order. */
+/** Every `SC-NNN` id in the spec, in document order — read off any
+ *  conformance-bearing element (108-success-criteria FR-012), not only
+ *  `<spec-requirement>`, so an SC authored as `<spec-criterion>` still
+ *  reaches the trace. `walk` rather than a per-tag `findAll` because the
+ *  two element types can interleave; two findAll passes would silently
+ *  reorder them. */
 function extractScIds(ast: Document): string[] {
   const ids: string[] = [];
-  for (const req of findAll(ast, 'spec-requirement')) {
-    const id = getAttr(req, 'id');
+  walk(ast, (el) => {
+    if (!isConformanceElement(el.tagName)) return;
+    const id = getAttr(el, 'id');
     if (id && SC_ID.test(id)) ids.push(id);
-  }
+  });
   return ids;
 }
 

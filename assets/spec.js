@@ -47,12 +47,17 @@
   };
 
   /* ---- 3. Auto-build conformance index ----------------------------- */
+  // Conformance-bearing elements (108-success-criteria, D-005/D-006). Kept
+  // in sync with packages/schema/src/conformance.ts's CONFORMANCE_ELEMENTS
+  // by test/conformance-parity.test.ts — this file has no module system to
+  // import that list from, so it carries its own copy.
+  const CONFORMANCE_ELEMENTS = ['spec-requirement', 'spec-criterion'];
+
   const conf = document.querySelector('spec-conformance');
   if (conf) {
-    const reqs = [...document.querySelectorAll('spec-requirement[id]')];
-    if (reqs.length) {
+    const buildOl = els => {
       const ol = document.createElement('ol');
-      reqs.forEach(r => {
+      els.forEach(r => {
         const li = document.createElement('li');
         const id = document.createElement('code');
         id.textContent = r.id;
@@ -65,7 +70,19 @@
         li.append(id, pri, text);
         ol.appendChild(li);
       });
-      conf.appendChild(ol);
+      return ol;
+    };
+
+    // Criteria list in their own group (D-006) — a criterion is a measured
+    // observation, not an obligation, and the index says so rather than
+    // merging the two into one undifferentiated list.
+    const reqs = [...document.querySelectorAll('spec-requirement[id]')];
+    const criteria = [...document.querySelectorAll('spec-criterion[id]')];
+    if (reqs.length) conf.appendChild(buildOl(reqs));
+    if (criteria.length) {
+      const h = document.createElement('h4');
+      h.textContent = 'Criteria';
+      conf.append(h, buildOl(criteria));
     }
   }
 
@@ -94,7 +111,10 @@
     const wordBudget   = +el.getAttribute('words')   || 1500;
     const reqBudget    = +el.getAttribute('reqs')    || 20;
     const minBudget    = +el.getAttribute('minutes') || 12;
-    const reqCount     = document.querySelectorAll('spec-requirement').length;
+    // Criteria count toward the budget too (108-success-criteria D-006): a
+    // criterion is authored content with a real size cost, and excluding it
+    // would let a spec hide bulk in criteria while the gauge reports green.
+    const reqCount     = CONFORMANCE_ELEMENTS.reduce((n, tag) => n + document.querySelectorAll(tag).length, 0);
     /* authored-words: exclude the auto-built <spec-conformance> index — it is
        generated, not written, so it must not count against the budget (REQ-FORMAT-004).
        read-time (above) deliberately keeps the whole-document count. */

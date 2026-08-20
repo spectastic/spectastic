@@ -68,7 +68,7 @@ User input (from `$ARGUMENTS`): a feature name or one-line description.
    - Functional requirements with stable IDs `FR-001`, `FR-002`, … and a `priority` of `must | should | may`
    - Non-functional requirements `NFR-001`, … (perf, security, privacy, accessibility — quantified per the decision phase)
    - Out-of-scope items in `<spec-out-of-scope>` with `defer-to="<sibling-spec-id>"` or `defer-to="TBD"`
-   - Success criteria `SC-001`, … — **technology-agnostic and measurable**
+   - Success criteria `SC-001`, … as `<spec-criterion>` elements — **a claim about the world, not a restatement of the build**. Each carries `actor=` (a person or organisation, never an artifact — `actor="the verb"` is refused), `validates=` (the requirement ids it measures), two thresholds in its `<p>` (the failing level and the target, e.g. "≥ 90% (target 98%)"), a baseline ("from 60% today", or "from no established baseline"), a `<details><summary>Meter</summary>` for a human-sampled observation or `<summary>Observed at</summary>` for a mechanical one, and a `<summary>Falsified by</summary>` naming the observation that would prove it failed. No RFC 2119 keyword — indicative mood ("reviewers confirm…"), not obligation ("…MUST allow reviewers to confirm…"). Six schema rules gate this at commit; see `108-success-criteria/spec.html` for the full contract.
    - **INVEST self-check**: fill the six `<dl class="invest">` rows. `V` must link to a success-criterion ID; `T` must link to an acceptance scenario or requirement. If any row is honestly `✗`, the spec is not ready to estimate — flag it.
    - Only the truly-unresolved questions go into `<spec-questions>`. If anything answerable made it here, loop back to step 6.
    - **Zero open questions has one form (`REQ-AUTHOR-005`).** When none remain, the `<spec-questions>` register MUST carry no `<li>` — each `<li>` counts as one open question to every consumer (health extraction, the lifecycle needs-attention signal, validators). Put any "resolved because…" rationale in a `<p>` (e.g. `<p>None outstanding — every decision was anchored in the interview.</p>`), never a placeholder or "None" `<li>`.
@@ -77,7 +77,7 @@ User input (from `$ARGUMENTS`): a feature name or one-line description.
    - Every requirement must use an RFC 2119 keyword wrapped in `<spec-rule>` (or `<spec-rule level="should">` / `<spec-rule level="may">`).
    - Stable IDs survive forever. If a requirement is dropped, status becomes "Withdrawn" but the ID is never reused.
    - If you would write `[NEEDS CLARIFICATION: …]`, do — leave it in place as a `<spec-question>` admonition; do not invent answers.
-   - Success criteria are outcomes, not implementations. "Users complete sign-up in under 90 seconds at the 80th percentile" — not "we use a faster auth library".
+   - Success criteria are outcomes, not implementations. "Users complete sign-up in under 90 seconds at the 80th percentile" — not "we use a faster auth library". This is necessary but not sufficient: a criterion whose subject is the tool ("the verb exits with a stated reason") restates the requirement beside it, so the test closing the requirement closes the criterion too and it can never fail. Name who is better off.
 
 9. **Validate** against the principles at `./principles.html` (if present — principles are optional). If any principle would reject this spec, flag it in a `<spec-warning>` and either revise or ask the user to amend the principles.
 
