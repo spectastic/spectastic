@@ -1419,6 +1419,80 @@
   </details>
 </spec-triage>
 
+
+<spec-triage id="T-035" layer="spec">
+  <header>
+    <h4>A triage card is contractually owed work that no verb can dispatch, under an id that already means something else</h4>
+    <span class="meta">
+      <span class="layer-pill">Spec</span>
+      <span class="regen" data-result="fail">upstream</span>
+    </span>
+  </header>
+
+  <p class="headline">Trying to drain a per-spec triage card with <code>/spectastic.implement 016</code>, root cause is an
+  upstream gap between two contracts that each hold on their own: <a href="../088-change-management/spec.html#REQ-CHANGE-009">REQ-CHANGE-009</a>
+  makes a diagnostic card a record of &ldquo;whether it is still owed work&rdquo;, and
+  <a href="../090-command-surface/spec.html#REQ-TOOL-003">REQ-TOOL-003</a> makes <code>implement</code> drain a queue &mdash;
+  but nothing connects the two, so the log is a backlog no verb reads, addressed by a <code>T-NNN</code> that
+  <code>tasks.html</code> has already claimed in 35 of 36 specs; fix is a requirement governing how work is dispatched
+  from a card and how its identifier resolves; regeneration <strong>fails</strong> &mdash; no requirement mentions
+  dispatch or the collision, so a fresh build reproduces both.</p>
+
+  <dl>
+    <dt>Expected</dt> <dd>An open card&rsquo;s owed work is reachable: either a verb dispatches it, or the lifecycle says
+    plainly that it does not and names the path that does &mdash; and an identifier an author copies from a card
+    resolves to that card, or is refused as ambiguous.</dd>
+    <dt>Actual</dt>   <dd>Per-spec triage cards sit outside every drain path. <code>implement</code> accepts a
+    <code>tasks.html</code> task id, an inbox <code>I-NNN</code>, or a spec id resolving to the next unchecked
+    <em>task</em>; a <code>triage-log.html</code> card is none of these. Measured: <strong>36 logs, 142 cards, 13
+    open</strong> &mdash; and <code>/spectastic.implement 016</code> reported nothing to do while
+    <a href="../016-theme-support/triage-log.html#T-006">016/T-006</a> sat open, because 016&rsquo;s
+    <code>tasks.html</code> is 52/52 complete. Separately, <strong>35 of 36 specs carry at least one
+    <code>T-NNN</code> that names both a task and a card</strong> (000 has 18).</dd>
+    <dt>Diagnosis</dt><dd>Two independent decisions compose into a gap neither made. <a href="../088-change-management/spec.html#REQ-CHANGE-009">REQ-CHANGE-009</a>
+    defines the log as a backlog (&ldquo;a card carrying no <code>data-status</code> MUST be read as still open&rdquo;)
+    without giving it a consumer. And <a href="../025-id-uniqueness/spec.html">025-id-uniqueness</a> scoped
+    <code>T-NNN</code> uniqueness to <em>within a file</em> &mdash; <code>no-duplicate-ids</code> states these ids are
+    &ldquo;stable within their own file but expected to repeat across files&rdquo; &mdash; on the reasoning that
+    spec-local means per-spec. But a spec is a <em>bundle</em>, and two files inside one bundle mint from the same
+    <code>T-NNN</code> sequence, so the ambiguity is legal by construction and permanently unlinted.</dd>
+    <dt>Fix</dt>      <dd><span class="path">specs/090-command-surface/spec.html</span> &mdash; a
+    <code>/spectastic.propose</code> adding a requirement that settles <em>both halves</em>: how an open triage card
+    reaches the work queue (dispatch it, or state that it never does and name the routing by layer), and how a
+    <code>T-NNN</code> an author copies from a card resolves &mdash; qualified (<code>triage:T-006</code>), refused as
+    ambiguous, or reported when the id also names a card. The second half may also want a widening of
+    <span class="path">specs/025-id-uniqueness/spec.html</span>, since per-file scoping is what permits the collision.
+    Cascades to <span class="path">commands/spectastic.implement.md</span> (its Inputs list) and
+    <span class="path">commands/spectastic.triage.md</span>.</dd>
+  </dl>
+
+  <details>
+    <summary>Deep dive — two contracts, and what the numbers say about urgency</summary>
+    <p><strong>Cross-spec, but not a disagreement.</strong> 088 and 090 do not contradict each other; each is right
+    alone. The defect is the absent join, which is why it classifies at <code>spec</code> rather than
+    <code>cross-spec</code>: one new requirement in 090 closes it, and the ladder stops at the lowest rung whose fix
+    passes.</p>
+    <p><strong>The backlog this hides is small but real.</strong> Of the 13 open cards, only <strong>3</strong> are
+    <code>implementation</code>/regen-<code>pass</code> and fixable directly &mdash;
+    <a href="../003-init-node-port/triage-log.html#T-001">003/T-001</a>,
+    <a href="../070-contract-sidecar-convention/triage-log.html#T-002">070/T-002</a>,
+    <a href="../091-artifact-format/triage-log.html#T-002">091/T-002</a>. The other 10 are <code>spec</code>,
+    <code>cross-spec</code> or <code>design</code> at regen-<code>fail</code>, so they were never <code>implement</code>&rsquo;s
+    to drain and route through propose or a new spec regardless. So the dispatch gap costs three cards today, not
+    thirteen &mdash; worth fixing for the trap rather than the volume.</p>
+    <p><strong>The trap is the sharper half.</strong> The unreachable-card case is loud: a drain reports nothing and a
+    human notices, which is exactly how this was found. The collision is silent. Where a task shares the number,
+    <code>implement</code>&rsquo;s own Inputs precedence resolves a bare <code>T-NNN</code> against
+    <code>tasks.html</code> first, so an author who copies an id off a card gets a different unit of work with no
+    warning. That path is reasoned from the command contract, <em>not</em> observed &mdash; demonstrating it would mean
+    letting a drain build the wrong thing. <a href="#T-006">Only the unreachable case is evidenced here.</a></p>
+    <p><strong>Not urgent for 016/T-006 specifically.</strong> That card is <code>spec</code>-layer and 016 already
+    routed it to its own vocabulary spec (<code>defer-to="TBD-spec-scenario"</code>), so it was never drainable and
+    needs no dispatch mechanism &mdash; it needs a <code>/spectastic.spec</code>. Its own deep dive still poses
+    &ldquo;016 or its own spec?&rdquo; as open, which 016&rsquo;s June 2026 re-entry already answered; that staleness is
+    a separate one-line correction, not part of this card.</p>
+  </details>
+</spec-triage>
 </spec-triage-log>
 </section>
 
@@ -1427,6 +1501,7 @@
 <h2>Change log</h2>
 <spec-changelog>
 <ol>
+  <li><time datetime="2026-08-20">20 Aug 2026</time><span>T-035 added &mdash; a per-spec triage card is contractually owed work (<a href="../088-change-management/spec.html#REQ-CHANGE-009">REQ-CHANGE-009</a>) that no verb dispatches, under a <code>T-NNN</code> that <code>tasks.html</code> already claims in 35 of 36 specs (000 has 18). <code>spec</code>, regen <code>fail</code>. Found when <code>/spectastic.implement 016</code> reported nothing while 016/T-006 sat open. 36 logs, 142 cards, 13 open &mdash; only 3 of those were ever <code>implement</code>&rsquo;s to drain, so the cost is the silent-collision trap rather than the volume.</span></li>
   <li><time datetime="2026-08-18">18 Aug 2026</time><span>T-034 added &mdash; a generated task list never exercises the assembled artifact, which is how a downstream project reached 90% unit coverage and would not start.</span></li>
   <li><time datetime="2026-08-18">18 Aug 2026</time><span>T-032 rejected &mdash; the general form already ships as a seeded downstream principle at verified and enterprise, and exists here as two sharper disciplines. Reclassified from <code>principles</code> to <code>spec</code>; the residue is a join criterion in two specs, not a rule.</span></li>
   <li><time datetime="2026-08-18">18 Aug 2026</time><span>T-029 through T-033 added &mdash; five lessons from a downstream exemplar retrospective, triaged against the specs currently in flight.</span></li>
