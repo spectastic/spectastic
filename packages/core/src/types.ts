@@ -718,17 +718,33 @@ export interface ImplementInput {
   tasksHtml?: string;
   /** Source inbox.html content (for just-do cards). */
   inboxHtml?: string;
+  /**
+   * Source triage-log.html content (090 REQ-TOOL-005/006). Used both to
+   * resolve a bare `T-NNN` against open cards, and to dispatch/close a
+   * `triage:T-NNN` target — absent, a bare target resolves exactly as it did
+   * before triage dispatch existed.
+   */
+  triageHtml?: string;
 }
 
 export interface ImplementResult {
   /** What got ticked (single in v0.1; `ticks` field reserved for drain modes). */
-  ticked: { kind: 'task' | 'just-do'; id: string; file: string };
+  ticked: { kind: 'task' | 'just-do' | 'triage'; id: string; file: string };
   /** Reserved for the carved-out drain modes. */
-  ticks?: ReadonlyArray<{ kind: 'task' | 'just-do'; id: string; file: string }>;
+  ticks?: ReadonlyArray<{ kind: 'task' | 'just-do' | 'triage'; id: string; file: string }>;
   /** Number of unchecked checkboxes remaining in the target tasks.html. */
   remainingUnchecked: number;
   /** True if the bundled flip prompt was surfaced (last-tick + Draft). */
   flipPromptFired: boolean;
+  /**
+   * Present only when `ticked.kind === 'triage'`: the patched triage-log.html
+   * with the dispatched card's `data-status="done"` set, mechanical closure
+   * only (090 REQ-TOOL-005). No consumer writes this to disk automatically —
+   * task/just-do ticking has no CLI-edge counterpart for cards yet, so the
+   * caller (today, the slash-command session) applies it and authors the
+   * `<dt>Fixed</dt>` row by hand, same as every other card closed so far.
+   */
+  closedTriageHtml?: string;
 }
 
 // --- verify (verb 021, derived per-spec verify.html view) --------------

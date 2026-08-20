@@ -24,12 +24,58 @@ Before this command, implementation was implicit: "Claude Code is the engine, ju
 ## Inputs
 
 User input (from `$ARGUMENTS`), in order of precedence:
-1. A bare task ID matching `T-\d+` — implement that specific task from a `tasks.html`.
+1. A task or triage-card id — see **Target resolution** below for the qualified forms and the
+   ambiguous-id refusal (090 REQ-TOOL-006).
 2. A bare inbox card ID matching `I-\d+` — implement that specific `<spec-triage layer="just-do">` card from `inbox.html`.
-3. A Spec ID (e.g. `001-auth`) — implement the next unchecked task in `specs/<id>/tasks.html`.
+3. A Spec ID (e.g. `001-auth`) — implement the next unchecked task in `specs/<id>/tasks.html`; once that
+   queue is empty, a dispatchable open triage card in that spec's `triage-log.html` is next — see
+   **Triage card dispatch** below (090 REQ-TOOL-005).
 4. Empty — drain order:
    a. Project-root `inbox.html`: pick the oldest `<spec-triage layer="just-do">` card *without* `data-status="done"`.
    b. If no `just-do` cards remain, fall back to the most recently modified `tasks.html` with unchecked work and pick the first unchecked task. **Discovery covers every `tasks.html` tracker.** `specs/**/tasks.html` now sweeps the meta-spec's own execution-only tracker (`specs/000-spectastic/tasks.html`) along with every other slice; the only tracker outside that glob is the root-level `principles-tasks.html` folded by `/spectastic.apply` (per `REQ-CHANGE-006`).
+
+### Target resolution — qualified forms and the ambiguous-id refusal
+
+Per `REQ-TOOL-006` of the meta-spec, a `T-NNN` can name a task in `tasks.html`, an open card in
+`triage-log.html`, or — in 35 of 36 specs at least once, 18 in the meta-spec alone — both. Resolve it
+before acting:
+
+- `task:T-NNN` and `triage:T-NNN` always resolve to the named kind and are **never refused for
+  ambiguity** — the qualifier is the disambiguation.
+- A bare `T-NNN` resolves to whichever of a task or a card is actionable (an *unchecked* task; an
+  *open* card) when only one is. A closed task and an open card sharing an id resolve cleanly to the
+  card — a ticked task is not a live candidate.
+- A bare `T-NNN` naming **both** an unchecked task and an open card is **refused**, naming both
+  candidates, and reported as a failure to do the requested work — never a successful no-op (so a
+  scripted or CI invocation cannot silently do nothing and call it done). Retry with the qualified form.
+
+This applies to per-spec `triage-log.html` only — `inbox.html`'s `just-do` cards are a distinct,
+already-dispatchable surface and are never part of this ambiguity.
+
+### Triage card dispatch (opt-in surface, 090 REQ-TOOL-005)
+
+A triage card is dispatchable when it carries **both** `layer="implementation"` and a passing
+regeneration result; an absent or unrecognised regeneration result is never treated as passing (fail
+safe). Four rules govern when and how:
+
+- **Scope-only, never a sweep.** Cards are considered only within a scope this invocation resolved —
+  never across every spec's log.
+- **Task priority, with an explicit-naming exception.** The *automatic* fallback (a spec id whose
+  `tasks.html` is fully drained) picks up a dispatchable card only once no unchecked task remains. A
+  card named explicitly (`triage:T-NNN`, or a bare id that resolves to one) is reachable regardless of
+  the task queue's state, so one blocked task can't strand it — and single-step mode dispatches at most
+  one card, same as it does one task.
+- **Never bypassed by naming, never fanned out.** Naming a non-dispatchable card explicitly still
+  refuses it and reports the routing its layer implies (`spec`/`cross-spec`/`design` → propose or a new
+  spec) rather than building work the root-cause ladder says regenerates away. No card carries a `[P]`
+  marker, so `--parallel` never fans one out.
+- **Closing is the whole record.** Landing a dispatched card's fix sets `data-status="done"` plus a
+  `<dt>Fixed</dt>` row recording what shipped (same discipline as step 9b below) — no task is written
+  into `tasks.html` for it. A partial fix leaves the card open and reports what remains, mirroring
+  tick-once for tasks.
+
+Where a resolved scope has no unchecked task **and** no dispatchable card, report the open cards found
+and their routing — never report that there is nothing to do.
 
 ### Drain modes (opt-in)
 

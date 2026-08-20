@@ -24,6 +24,19 @@ const INBOX_TICK_RE = /(<spec-triage\s+id=["']{TARGET}["'])(?![^>]*\bdata-status
 const UNCHECKED_RE = /<input\s+type=["']checkbox["'](?!\s+checked)/g;
 const DRAFT_STATUS_RE = /<spec-status\s+value=["']draft["']/i;
 
+/**
+ * Where a `T-NNN` resolved to (090 REQ-TOOL-006). `ambiguous` is the one
+ * genuinely dangerous case: the id names both an unchecked task and an open
+ * triage card, and picking either silently would be the wrong one half the
+ * time.
+ */
+export type ResolvedTarget =
+  | { kind: 'task'; id: string }
+  | { kind: 'triage'; id: string }
+  | { kind: 'just-do'; id: string }
+  | { kind: 'spec' }
+  | { kind: 'ambiguous'; id: string };
+
 /** How `implement` treats a spec-id target: empty the queue, or do one task. */
 export type DrainMode = 'drain' | 'single';
 
@@ -47,36 +60,50 @@ export function resolveDrainMode(opts: { single?: boolean; drain?: boolean; conf
 }
 
 export async function implementCommand(input: ImplementInput, _ctx: KernelContext): Promise<ImplementResult> {
-  const targetKind = classifyTarget(input.target);
+  const resolved = resolveTarget(input.target, {
+    ...(input.tasksHtml !== undefined ? { tasksHtml: input.tasksHtml } : {}),
+    ...(input.triageHtml !== undefined ? { triageHtml: input.triageHtml } : {}),
+  });
 
-  if (targetKind === 'task') {
+  if (resolved.kind === 'ambiguous') {
+    throw new Error(
+      `implementCommand: "${resolved.id}" is ambiguous — it names both an unchecked task and an open ` +
+        `triage card. Use "task:${resolved.id}" or "triage:${resolved.id}" to disambiguate.`,
+    );
+  }
+
+  if (resolved.kind === 'task') {
     if (!input.tasksHtml) throw new Error('implementCommand: target is a task ID but tasksHtml is undefined');
-    const re = new RegExp(TASK_TICK_RE.source.replace('{TARGET}', escapeRegex(input.target)));
+    const re = new RegExp(TASK_TICK_RE.source.replace('{TARGET}', escapeRegex(resolved.id)));
     if (!re.test(input.tasksHtml)) {
-      throw new Error(`implementCommand: task ${input.target} not found (or already ticked) in tasksHtml`);
+      throw new Error(`implementCommand: task ${resolved.id} not found (or already ticked) in tasksHtml`);
     }
     const ticked = input.tasksHtml.replace(re, '$1 checked');
     const remainingUnchecked = (ticked.match(UNCHECKED_RE) ?? []).length;
     const flipPromptFired = remainingUnchecked === 0 && !!input.specHtml && DRAFT_STATUS_RE.test(input.specHtml);
     return {
-      ticked: { kind: 'task', id: input.target, file: 'tasks.html' },
+      ticked: { kind: 'task', id: resolved.id, file: 'tasks.html' },
       remainingUnchecked,
       flipPromptFired,
     };
   }
 
-  if (targetKind === 'just-do') {
+  if (resolved.kind === 'just-do') {
     if (!input.inboxHtml) throw new Error('implementCommand: target is an inbox ID but inboxHtml is undefined');
-    const re = new RegExp(INBOX_TICK_RE.source.replace('{TARGET}', escapeRegex(input.target)));
+    const re = new RegExp(INBOX_TICK_RE.source.replace('{TARGET}', escapeRegex(resolved.id)));
     if (!re.test(input.inboxHtml)) {
-      throw new Error(`implementCommand: inbox card ${input.target} not found in inboxHtml`);
+      throw new Error(`implementCommand: inbox card ${resolved.id} not found in inboxHtml`);
     }
     // Inbox cards don't drive bundle flips (per REQ-LIFECYCLE-005).
     return {
-      ticked: { kind: 'just-do', id: input.target, file: 'inbox.html' },
+      ticked: { kind: 'just-do', id: resolved.id, file: 'inbox.html' },
       remainingUnchecked: 0,
       flipPromptFired: false,
     };
+  }
+
+  if (resolved.kind === 'triage') {
+    return dispatchTriageCard(resolved.id, input.triageHtml);
   }
 
   throw new Error(
@@ -84,10 +111,116 @@ export async function implementCommand(input: ImplementInput, _ctx: KernelContex
   );
 }
 
-function classifyTarget(target: string): 'task' | 'just-do' | 'spec' {
-  if (/^T-\d+$/.test(target)) return 'task';
-  if (/^I-\d+$/.test(target)) return 'just-do';
-  return 'spec';
+/**
+ * Validate and close a dispatched triage card (090 REQ-TOOL-005, T-203/T-204).
+ * Extracted from `implementCommand` to keep its own branching flat; this is
+ * the one branch with a real gate (dispatchable) and a real refusal message,
+ * not just a tick.
+ *
+ * Closing here is the mechanical half only — `data-status="done"` flipped in
+ * the returned `closedTriageHtml`. The `<dt>Fixed</dt>` row recording what
+ * shipped is free-text the calling session authors, the same split every
+ * other card-closing in this project already uses; a pure function cannot
+ * synthesize prose about what a fix actually did.
+ */
+function dispatchTriageCard(id: string, triageHtml: string | undefined): ImplementResult {
+  if (!triageHtml) throw new Error('implementCommand: target is a triage card but triageHtml is undefined');
+  const card = readOpenTriageCards(triageHtml).find((c) => c.id === id);
+  if (!card) throw new Error(`implementCommand: triage card ${id} not found (or already closed) in triageHtml`);
+  if (!card.dispatchable) {
+    const regen = card.regenResult ?? 'absent';
+    throw new Error(
+      `implementCommand: "${id}" is not dispatchable — layer="${card.layer}", regen=${regen}. ` +
+        `090 REQ-TOOL-005 only dispatches layer="implementation" with a passing regeneration result; route this ` +
+        `card through /spectastic.propose or a new spec instead.`,
+    );
+  }
+  const re = new RegExp(INBOX_TICK_RE.source.replace('{TARGET}', escapeRegex(id)));
+  if (!re.test(triageHtml)) {
+    // readOpenTriageCards found it but the attribute-anchored tick regex
+    // didn't — a malformed card (attrs split across a line the parser
+    // tolerates but the tick regex doesn't). Fail loudly rather than
+    // silently skip the close.
+    throw new Error(`implementCommand: triage card ${id} found but could not be closed (malformed tag)`);
+  }
+  return {
+    ticked: { kind: 'triage', id, file: 'triage-log.html' },
+    closedTriageHtml: triageHtml.replace(re, '$1 data-status="done"'),
+    // Cards don't drive bundle flips (per REQ-LIFECYCLE-005) — same as just-do.
+    remainingUnchecked: 0,
+    flipPromptFired: false,
+  };
+}
+
+/**
+ * Classify a target string against the tasks/triage content it can be read
+ * against (090 REQ-TOOL-006, T-201). Supersedes the old shape-only
+ * `classifyTarget` — that function mapped every `T-NNN` unconditionally to
+ * `'task'`, which is exactly the silent-misresolution risk this closes.
+ *
+ * `task:T-NNN` / `triage:T-NNN` always resolve to the named kind, never
+ * refused for ambiguity — the qualifier IS the disambiguation. A bare
+ * `T-NNN` is `'ambiguous'` only when it names both an UNCHECKED task and an
+ * OPEN triage card at once; every other combination (one candidate, no
+ * candidate, a closed/ticked one) resolves exactly as `classifyTarget` did.
+ */
+export function resolveTarget(target: string, ctx: { tasksHtml?: string; triageHtml?: string } = {}): ResolvedTarget {
+  const qualified = /^(task|triage):(.+)$/.exec(target);
+  if (qualified) {
+    const [, kind, id] = qualified;
+    return kind === 'task' ? { kind: 'task', id: id! } : { kind: 'triage', id: id! };
+  }
+
+  if (/^I-\d+$/.test(target)) return { kind: 'just-do', id: target };
+  if (!/^T-\d+$/.test(target)) return { kind: 'spec' };
+
+  const hasUncheckedTask = ctx.tasksHtml
+    ? new RegExp(TASK_TICK_RE.source.replace('{TARGET}', escapeRegex(target))).test(ctx.tasksHtml)
+    : false;
+  const hasOpenCard = ctx.triageHtml
+    ? new RegExp(INBOX_TICK_RE.source.replace('{TARGET}', escapeRegex(target))).test(ctx.triageHtml)
+    : false;
+
+  if (hasUncheckedTask && hasOpenCard) return { kind: 'ambiguous', id: target };
+  if (hasOpenCard) return { kind: 'triage', id: target };
+  return { kind: 'task', id: target };
+}
+
+/** One open `<spec-triage>` card, as read from a spec's triage-log.html. */
+export interface OpenTriageCard {
+  id: string;
+  layer: string;
+  /** The card's `data-result` value, or `undefined` if absent/unparseable. */
+  regenResult: string | undefined;
+  /** `layer === 'implementation' && regenResult === 'pass'` — 090 REQ-TOOL-005. */
+  dispatchable: boolean;
+}
+
+const TRIAGE_CARD_RE = /<spec-triage\s+([^>]*)>([\s\S]*?)<\/spec-triage>/g;
+const REGEN_RESULT_RE = /<span\s+class=["']regen["'][^>]*\bdata-result=["']([^"']+)["']/;
+
+/**
+ * Read every OPEN `<spec-triage>` card from a triage-log.html (090
+ * REQ-TOOL-005, T-202). Pure and read-only — same IO-free shape as
+ * `implementCommand` — so the caller (CLI edge or the slash-command markdown)
+ * owns finding and loading `specs/<id>/triage-log.html`.
+ *
+ * `dispatchable` fails safe by construction: it is only ever true when
+ * `layer` reads `"implementation"` AND `regenResult` reads exactly `"pass"`.
+ * An absent or unrecognised regen result computes `false`, never a guess.
+ */
+export function readOpenTriageCards(triageHtml: string): OpenTriageCard[] {
+  const cards: OpenTriageCard[] = [];
+  for (const m of triageHtml.matchAll(TRIAGE_CARD_RE)) {
+    const [, attrs, body] = m;
+    if (/\bdata-status=/.test(attrs!)) continue; // closed — not open work
+    const id = /\bid=["']([^"']+)["']/.exec(attrs!)?.[1];
+    const layer = /\blayer=["']([^"']+)["']/.exec(attrs!)?.[1];
+    if (!id || !layer) continue; // malformed card — never a candidate
+    const regenResult = REGEN_RESULT_RE.exec(body!)?.[1];
+    cards.push({ id, layer, regenResult, dispatchable: layer === 'implementation' && regenResult === 'pass' });
+  }
+  return cards;
 }
 
 function escapeRegex(s: string): string {
