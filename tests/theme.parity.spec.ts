@@ -144,9 +144,16 @@ test.describe('SC-006 · vivid parity — Slice 2 (layout)', () => {
 // carries theme markup. (Node-side: reads the shipped files.)
 test('NFR-005 — theme styling is attribute-scoped, no document markup', () => {
   const css = readFileSync('assets/spec.css', 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
-  const allowed = ['[data-theme="spectastic-vivid"]', '[data-theme="spectastic-calm"]'];
+  // Derived from the registry rather than hardcoded, so a newly-registered theme
+  // does not fail this guard for existing. What it actually protects is that no
+  // stylesheet selector names a theme the registry has never heard of — which is
+  // the real NFR-005 risk, and which a frozen pair could not express once 016 was
+  // amended to permit a third theme.
+  const boot = readFileSync('assets/theme-boot.js', 'utf8');
+  const registered = [...boot.matchAll(/id:\s*'([^']+)'/g)].map((m) => `[data-theme="${m[1]}"]`);
+  expect(registered.length, 'registry parsed').toBeGreaterThanOrEqual(2);
   for (const sel of css.match(/\[data-theme="[^"]*"\]/g) || []) {
-    expect(allowed, `unexpected theme selector ${sel}`).toContain(sel);
+    expect(registered, `unexpected theme selector ${sel}`).toContain(sel);
   }
   // a document carries the theme only on <html> — never in its body
   const fixture = readFileSync('tests/fixtures/all-components.html', 'utf8');

@@ -1,0 +1,465 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'">
+<title>Prose theme · Design</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Design · 109-prose-theme</p>
+  <h1>Prose theme</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    How we will build it.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>     <span><spec-status value="accepted">Accepted</spec-status></span>
+    <b>Spec</b>       <span><a href="./spec.html">109-prose-theme</a></span>
+    <b>Owner</b>      <span>Brian Corbin · @briancorbin</span>
+    <b>Branch</b>     <span><code>spec/visual-slice-095-098</code></span>
+    <b>Created</b>    <span><time datetime="2026-08-19">19 Aug 2026</time></span>
+    <b>Read time</b>  <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-tldr>
+    <p>A token block beside vivid's, a registry entry, and a theme-scoped enhancement in the shared
+    switcher script — extending seams <a href="../016-theme-support/spec.html">016</a> already built
+    rather than inventing any. The single biggest risk is the one a design-time spike already
+    surfaced: the reveal cannot be pure CSS, so this design spends a second amendment against its
+    parent to buy behaviour CSS cannot express.</p>
+  </spec-tldr>
+</header>
+
+
+<section id="principles-check">
+<h2>1 · Principles check</h2>
+<p>Verify this plan respects every principle in
+<a href="../../principles.html">v1.9.0</a>. Any violation requires either a
+principles amendment or a deliberate exception logged below.</p>
+
+<div style="overflow-x:auto;">
+<table>
+  <thead><tr><th>Principle</th><th>Compliance</th><th>Notes</th></tr></thead>
+  <tbody>
+    <tr><td>P-1 · Single self-contained file</td><td><spec-pill>OK</spec-pill></td><td>No new asset, no build step, no network request. The theme is a block in the existing stylesheet and a branch in the existing script.</td></tr>
+    <tr><td>P-4 · Progressive enhancement, never dependence</td><td><spec-pill>OK</spec-pill></td><td>Load-bearing here, and the reason for <a href="#D-003">D-003</a>: the resting state is <em>visible</em>, so a reader with JavaScript off sees every block. The reveal is added by script, never removed by it.</td></tr>
+    <tr><td>P-5 · Calm density</td><td><spec-pill>OK</spec-pill></td><td>Prose spends its budget on whitespace rather than chrome. The receding header is the P-5 argument taken one step further, not against it.</td></tr>
+    <tr><td>P-8 · The guarantee is the kernel</td><td><spec-pill>OK</spec-pill></td><td>No guarantee rests on markdown. The contrast floor, the one-way latch and the reduced-motion suppression are each asserted by a browser test (<a href="#D-007">D-007</a>).</td></tr>
+    <tr><td>P-11 · Artifacts are data, not instructions</td><td><spec-pill>OK</spec-pill></td><td>The enhancement ships in <code>assets/spec.js</code>, already sanctioned by the templates' <code>script-src 'self'</code> policy. No inline script, no new origin, and nothing in an artifact's text reaches the script.</td></tr>
+  </tbody>
+</table>
+</div>
+</section>
+
+
+<section id="technical-context">
+<h2>2 · Technical context</h2>
+<dl>
+  <dt>Language(s)</dt>      <dd>CSS and browser JavaScript (ES5-compatible, matching <code>theme-boot.js</code>'s existing register).</dd>
+  <dt>Frameworks</dt>       <dd>None. The design system is hand-authored CSS over semantic elements.</dd>
+  <dt>Architecture</dt>     <dd>n/a — single module. Two files change along seams that already exist (<a href="#D-002">D-002</a>); there is no boundary to draw.</dd>
+  <dt>Storage</dt>          <dd><code>localStorage</code> only, through the existing <code>spectastic-theme</code> key. No new key.</dd>
+  <dt>Testing</dt>          <dd>Playwright <code>1.62.1</code> under <code>tests/</code>, browser-first and written failing (<a href="#D-007">D-007</a>), alongside the existing <code>theme.spec.ts</code>.</dd>
+  <dt>Coverage</dt>         <dd>Diff-aware: every changed line of the reveal module is exercised by a browser assertion, and a change never lowers coverage of what it touches. No universal project percentage.</dd>
+  <dt>Perf targets</dt>     <dd>0 added network requests, 0 added typeface downloads, 0 build steps (<a href="./spec.html#NFR-003">NFR-003</a>, <a href="./spec.html#NFR-004">NFR-004</a>).</dd>
+  <dt>Constraints</dt>      <dd>Body text at or above 4.5:1 in both modes, which measurement pins to an opacity floor (<a href="#D-004">D-004</a>); calm and vivid rendering unchanged in every respect.</dd>
+</dl>
+
+<h3>Toolchain / enforcement</h3>
+<p><code>spectastic enforce</code> reports the enterprise profile with <strong>7 categories covered,
+1 relaxed, 0 missing</strong>, so this design adds no gate. The relaxed category is
+<code>observability</code>, waived project-wide because the toolchain exposes no runtime surface;
+that waiver is unrelated to this slice and is not extended by it.</p>
+</section>
+
+
+<section id="contracts">
+<h2>3 · Data model &amp; contracts</h2>
+
+<p>The spec's data model adds no entity — it extends the theme registry and constrains the reveal's
+one-way transition. Nothing here is persisted beyond the existing <code>localStorage</code> key, and
+no consumer outside the browser reads any of it.</p>
+
+<spec-contract shape="none">
+  <p>This feature exposes no interface. A theme is read by a stylesheet and a script inside the same
+  document; there is no request/response surface, no RPC, and no published event. The registry entry
+  is internal to <code>theme-boot.js</code> and is not addressable from outside the page.</p>
+</spec-contract>
+</section>
+
+
+<section id="grounding">
+<h2>5 · Grounding &amp; evidence</h2>
+<p>Every design-bearing fact this plan rests on, and how it was confirmed — read this before the
+approach: it separates what the plan <em>knows</em> from what it <em>assumes</em> (per
+<code>REQ-LIFECYCLE-006</code>). Status is <code>verified</code> (opened the source
+this turn), <code>spike</code> (decidable only by a time-boxed investigation — run it, record the
+finding), or <code>assumed</code> (taken as true without verification). A <code>must</code>-tier decision
+may not rest on an <code>assumed</code>/unresolved-<code>spike</code> fact unless accepted as a
+<code>&lt;spec-risk&gt;</code> (see <a href="#risks">Risks &amp; mitigations</a>).</p>
+
+<div style="overflow-x:auto;">
+<table class="evidence">
+  <thead>
+    <tr><th>Claim the design rests on</th><th>Source</th><th>Status</th><th>Finding / note</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Adding a theme touches only the registry, not the switcher markup</td>
+        <td><code>assets/theme-boot.js:8–12</code>, <code>assets/spec.js:236</code></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td>The <code>THEMES</code> array is the single registry; the select is built from it, and its own comment states adding a theme touches the registry alone.</td></tr>
+    <tr><td>A theme may already override the reading measure</td>
+        <td><code>assets/spec.css:171–173</code></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td>Vivid sets <code>--measure</code> and <code>--measure-wide</code> to <code>42rem</code>, unifying them into one column. Prose's measure change is precedent, not novelty.</td></tr>
+    <tr><td>Folding sidenotes inline is an existing treatment, not a new one</td>
+        <td><code>assets/spec.css:2311–2322</code></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td>The <code>max-width: 1100px</code> block already turns a sidenote into a bordered block aside. <a href="./spec.html#FR-004">FR-004</a> is that declaration set, applied by theme rather than by width.</td></tr>
+    <tr><td><strong>Scroll-driven CSS can hold a block revealed once it has been seen</strong></td>
+        <td>Spike: <code>animation-timeline: view()</code> over a scrolled fixture, opacity sampled at three scroll positions</td>
+        <td><spec-status value="review">spike</spec-status></td>
+        <td><strong>Falsified.</strong> Supported (Chrome 151, <code>CSS.supports</code> true) but <em>scrubbed by scroll position</em>: opacity read <code>0</code> at rest, <code>1</code> scrolled past, <code>0</code> again scrolled back. Reveal-once is not expressible. Drives <a href="#D-002">D-002</a>.</td></tr>
+    <tr><td>A scroll-up trigger is expressible in CSS</td>
+        <td>Same spike; <code>:hover</code> / <code>:focus-within</code> reviewed against the three triggers in <a href="./spec.html#FR-008">FR-008</a></td>
+        <td><spec-status value="review">spike</spec-status></td>
+        <td><strong>Falsified for one of three.</strong> Pointer is <code>:hover</code> and keyboard is <code>:focus-within</code>; scroll direction requires comparing this frame to the last. Both it and reveal-once are <em>history</em>, which CSS holds none of.</td></tr>
+    <tr><td>Reduced motion can suppress the reveal, leaving every block visible</td>
+        <td>Spike: Playwright with <code>reducedMotion</code> emulated, both settings</td>
+        <td><spec-status value="review">spike</spec-status></td>
+        <td><strong>Confirmed.</strong> Under <code>reduce</code> the block computes <code>opacity: 1</code>; under <code>no-preference</code> it starts at <code>0</code>. Makes <a href="./spec.html#NFR-002">NFR-002</a> reachable.</td></tr>
+    <tr><td>Recessed body text still clears 4.5:1 in both modes</td>
+        <td>WCAG 2.1 relative-luminance computation over the real tokens: <code>#353534</code> on <code>#f6f5f1</code>, <code>#c2bfba</code> on <code>#1c1b18</code></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td>Light mode binds, not dark. α=0.80 → 6.21:1 · α=0.75 → 5.35:1 · α=0.70 → <strong>4.62:1</strong> · α=0.65 → 4.04:1 (fails). Drives <a href="#D-004">D-004</a>.</td></tr>
+    <tr><td>The project's enforcement floor has no gap this design must close</td>
+        <td><code>spectastic enforce</code>, enterprise profile</td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td>7 covered · 1 relaxed · 0 missing. No new gate to design.</td></tr>
+    <tr><td>The browser test tier can drive a real artifact over http</td>
+        <td><code>playwright.config.ts</code>, <code>@playwright/test@1.62.1</code></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td>A static server on the repo root already backs <code>tests/</code>, and the config emulates reduced motion globally — which the reveal tests must override per case.</td></tr>
+    <tr><td>A divider between numbered sections is derivable with no added markup</td>
+        <td>Spike: <code>main &gt; section + section::before</code> injected into a real artifact; section count, divider count and the alt-text form all sampled</td>
+        <td><spec-status value="review">spike</spec-status></td>
+        <td><strong>Confirmed.</strong> Sections are flat siblings (nesting depth 1); 8 dividers render across 9 sections with none before the first. <code>content: "•••" / ""</code> is supported, so the glyphs carry empty alt text. Drives <a href="#D-008">D-008</a>.</td></tr>
+    <tr><td>Calm already draws a rule between sections that Prose would need to replace</td>
+        <td><code>assets/spec.css:497–502</code>, plus computed <code>borderTopWidth</code> on every <code>h2</code></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td><strong>Falsified.</strong> Every <code>h2</code> computes <code>border-top: 0px</code>: <code>h2:first-of-type</code> matches every one of them, since each section holds exactly one <code>h2</code>. The rule has never rendered. Prose's divider is purely additive; the dead rule is left alone (see <a href="#complexity">Complexity tracking</a>).</td></tr>
+    <tr><td>The four loaded families suffice for a reading theme</td>
+        <td>—</td>
+        <td><spec-status value="blocked">assumed</spec-status></td>
+        <td>Source Serif 4 is already the body face and is a text face by design. Verifying by trialling alternatives costs more than it is worth, and no requirement rests on it beyond <a href="./spec.html#NFR-003">NFR-003</a>'s zero-download rule, which holds either way.</td></tr>
+  </tbody>
+</table>
+</div>
+</section>
+
+
+<section id="approach">
+<h2>6 · Approach</h2>
+
+<p>Prose is added the way 016 designed a theme to be added: a <code>[data-theme]</code> block in
+<code>assets/spec.css</code> overriding theme-owned tokens, and one entry in the
+<code>THEMES</code> registry in <code>assets/theme-boot.js</code>. Most of the reading shell is
+tokens — measure, body size, leading, rhythm — and vivid already proves a theme may move the measure.
+Two pieces need rules rather than tokens: sidenotes fold using the declaration set the narrow-viewport
+media block already contains, and structured components lose their chrome while keeping their grid.</p>
+
+<p>The reveal cannot be tokens or rules, and the spike above is why. It becomes a small theme-scoped
+module in <code>assets/spec.js</code> that observes top-level blocks, adds a revealed marker exactly
+once, and never removes it — with the CSS resting state authored <em>visible</em> so that the
+unrevealed state exists only while the script runs. The same module owns the header's scroll-up
+trigger; the pointer and focus triggers stay in CSS, where they belong.</p>
+
+<spec-sidenote>The order of work is not free: <a href="./spec.html#FR-001">FR-001</a> holds every
+other requirement behind two amendments to the parent. That is the first task, not a footnote.</spec-sidenote>
+
+<spec-arch>
+<figure>
+<svg viewBox="0 0 700 250" role="img" aria-label="How the Prose theme is applied and enhanced">
+  <style>
+    .box { fill: var(--c-surface, #fcfbf7); stroke: var(--c-border, #c4c1bb); stroke-width:1.2; }
+    .label { font: 700 11px Lato, sans-serif; fill: var(--c-text-soft, #4a4a46); letter-spacing:0.06em; text-transform:uppercase; }
+    .body { font: 400 12px "Source Serif 4", Georgia, serif; fill: var(--c-text, #353534); }
+    .arr { stroke: var(--c-muted, #73706d); stroke-width:1.2; fill:none; }
+    .arrh { fill: var(--c-muted, #73706d); }
+  </style>
+  <rect class="box" x="20"  y="30" width="170" height="58" rx="4"/>
+  <text class="label" x="34" y="52">theme-boot.js</text>
+  <text class="body"  x="34" y="72">registry + saved choice</text>
+
+  <rect class="box" x="265" y="30" width="170" height="58" rx="4"/>
+  <text class="label" x="279" y="52">html[data-theme]</text>
+  <text class="body"  x="279" y="72">set before first paint</text>
+
+  <rect class="box" x="510" y="30" width="170" height="58" rx="4"/>
+  <text class="label" x="524" y="52">spec.css</text>
+  <text class="body"  x="524" y="72">tokens + fold + quiet</text>
+
+  <rect class="box" x="265" y="150" width="170" height="58" rx="4"/>
+  <text class="label" x="279" y="172">spec.js reveal</text>
+  <text class="body"  x="279" y="192">latches once, never off</text>
+
+  <rect class="box" x="510" y="150" width="170" height="58" rx="4"/>
+  <text class="label" x="524" y="172">resting state</text>
+  <text class="body"  x="524" y="192">visible with JS off</text>
+
+  <path class="arr" d="M190 59 L265 59" marker-end="url(#a)"/>
+  <path class="arr" d="M435 59 L510 59" marker-end="url(#a)"/>
+  <path class="arr" d="M350 88 L350 150" marker-end="url(#a)"/>
+  <path class="arr" d="M435 179 L510 179" marker-end="url(#a)"/>
+  <defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path class="arrh" d="M0,0 L10,5 L0,10 z"/></marker></defs>
+</svg>
+<figcaption>The theme travels the existing path (registry → root attribute → stylesheet). Only the
+reveal is new, and it hangs off the attribute rather than the document — so it is inert in calm and
+vivid, and its absence leaves the resting state visible.</figcaption>
+</figure>
+</spec-arch>
+</section>
+
+
+<section id="alternatives">
+<h2>7 · Alternatives considered</h2>
+
+<p>Scored 1–5, higher is better. The criteria are the ones the spec made binding: whether the reader
+gets reveal-once, what it costs in parent amendments, and whether an artifact still reads with
+JavaScript off.</p>
+
+<spec-matrix>
+<div style="overflow-x:auto;">
+<table>
+  <thead>
+    <tr><th>Option</th><th>Reveal-once</th><th>Parent cost</th><th>JS-off safety</th><th class="score">Total</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Scroll-driven CSS (the spec's first draft)</td><td>1</td><td>5</td><td>5</td><td class="score">11</td></tr>
+    <tr><td>Drop the reveal, ship the reading shell only</td><td>1</td><td>5</td><td>5</td><td class="score">11</td></tr>
+    <tr data-winner><td>Theme-scoped enhancement in <code>spec.js</code> — chosen</td><td>5</td><td>2</td><td>5</td><td class="score">12</td></tr>
+  </tbody>
+</table>
+</div>
+</spec-matrix>
+
+<spec-note>
+<p>The margin is one point, and the table is honest about that. The first option scores as it does
+because it was <em>measured</em>, not predicted: it cannot deliver the behaviour the spec asks for at
+any price. The second is a real option that was declined deliberately — it keeps the parent contract
+intact and delivers two of three stories.</p>
+</spec-note>
+</section>
+
+
+<section id="decisions">
+<h2>8 · Decisions</h2>
+
+<spec-decision id="D-001" grounding="verified">
+  <h4>D-001 · Both parent amendments land before any Prose work</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>Prose collides with two must-tier requirements of <a href="../016-theme-support/spec.html">016</a>: FR-002 forbids a theme touching colour, NFR-005 requires a theme be pure CSS and additive. Both texts were read this turn. A third edit surfaced from <code>spectastic validate</code>: 016 defers &ldquo;a third theme beyond calm and vivid&rdquo; to <code>TBD</code>, and the <code>parent-child-reciprocity</code> rule reports the missing back-pointer now that this spec claims 016 as parent.</dd>
+    <dt>Decision</dt>     <dd>Author <strong>one</strong> proposal against 016 carrying all three edits — amend FR-002, amend NFR-005, and repoint that <code>defer-to</code> from <code>TBD</code> to <code>109-prose-theme</code> — apply it, and only then build. <a href="./spec.html#FR-001">FR-001</a> makes this the first task. 016 is <em>accepted</em>, so none of the three is an inline edit.</dd>
+    <dt>Consequences</dt> <dd>+ Parent and theme never disagree, and the reasoning is recorded where a later reader will look. + One proposal, not three, since all three edits serve one slice. − The slice cannot start until a proposal cycle completes. − <code>validate</code> reports the reciprocity error over the whole corpus until it applies; that is the estate agreeing with FR-001 rather than a separate defect, and it clears on apply.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-002" grounding="spike">
+  <h4>D-002 · The reveal is a theme-scoped enhancement in the shared script</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>The spike in <a href="#grounding">Grounding &amp; evidence</a> established that <code>animation-timeline: view()</code> is scrubbed by scroll position — opacity <code>0 → 1 → 0</code> across scroll down and back. Reveal-once and a scroll-up trigger are both remembered state.</dd>
+    <dt>Decision drivers</dt> <dd>Reveal-once for the reader · cost in parent amendments · behaviour with JavaScript off</dd>
+    <dt>Considered options</dt>
+    <dd>
+      <ul class="considered-options">
+        <li><strong>Scroll-driven CSS</strong> — + no amendment, pure CSS. − cannot express reveal-once; measured to fade back out.</li>
+        <li><strong>Drop the reveal</strong> — + no amendment; ships the shell. − abandons a story the spec commits to.</li>
+        <li><strong>Enhancement in <code>spec.js</code> — chosen</strong> — + latches one-way; also supplies the scroll-up trigger. − costs the NFR-005 amendment.</li>
+      </ul>
+    </dd>
+    <dt>Decision</dt>     <dd>A module in <code>assets/spec.js</code> that runs only while <code>data-theme</code> is Prose, observes top-level blocks, and sets a revealed marker exactly once per block.</dd>
+    <dt>Consequences</dt> <dd>+ The reader gets the behaviour the spec asked for. + Calm and vivid never execute it. − Prose is no longer a pure-CSS theme, which is the property NFR-005 protected; the amendment records that trade rather than hiding it.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-003" grounding="verified">
+  <h4>D-003 · The resting state is visible; the script adds the hidden state</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd><a href="./spec.html#NFR-002">NFR-002</a> requires a fully readable artifact with JavaScript off, and P-4 makes that a principle rather than a preference.</dd>
+    <dt>Decision</dt>     <dd>The stylesheet never hides a block. The script marks the document as reveal-capable when it runs, and only then does the unrevealed state exist. Reduced motion suppresses the effect through the media query the repo already uses.</dd>
+    <dt>Consequences</dt> <dd>+ The failure mode is a page with no animation, never a page with no text. + A script that throws early degrades to plain visible content. − A reader with JavaScript on sees an unstyled first frame before the marker lands; mitigated by setting it in the same pass that applies the theme.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-004" grounding="verified">
+  <h4>D-004 · Emphasis opacity floors at 0.75, never below 0.70</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>Computed over the real tokens: light mode binds, giving 5.35:1 at α=0.75, 4.62:1 at α=0.70, and 4.04:1 at α=0.65 — below the floor <a href="./spec.html#NFR-001">NFR-001</a> sets.</dd>
+    <dt>Decision</dt>     <dd>Recessed body text sits at α=0.75, keeping real headroom over 4.5:1; 0.70 is the absolute floor for any text, and nothing text-bearing goes below it.</dd>
+    <dt>Consequences</dt> <dd>+ The depth layers are measured rather than eyeballed. + A future token retune is checked by the same computation. − The source convention's most recessed layer is not reproducible here at all; it would compute 3.53:1. Prose gets a shallower ladder than the guide describes, on purpose.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-005" grounding="verified">
+  <h4>D-005 · Sidenotes fold using the declarations that already exist</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd><code>assets/spec.css:2311–2322</code> already turns a sidenote into a bordered block aside below 1100px.</dd>
+    <dt>Decision</dt>     <dd>Prose applies that same declaration set at every width, keyed on the theme instead of the viewport. The float and the negative gutter margin are unset rather than reinvented.</dd>
+    <dt>Consequences</dt> <dd>+ One treatment to maintain, already proven at narrow widths. + No new visual language for an aside. − The two triggers must stay in agreement; a change to the narrow-viewport block silently changes Prose, which a test pins.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-006" grounding="verified">
+  <h4>D-006 · One column: measure and wide-measure unify, as vivid already does</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd><code>assets/spec.css:171–173</code> — vivid sets both <code>--measure</code> and <code>--measure-wide</code> to one value so every top-level block aligns. Calm keeps the dual-width split.</dd>
+    <dt>Decision</dt>     <dd>Prose does the same at its own reading width, sized so body type at ~20px yields 65–75 characters per <a href="./spec.html#FR-003">FR-003</a>.</dd>
+    <dt>Consequences</dt> <dd>+ Tables, code and prose share one left edge, which is what makes a long document feel like one column. − Genuinely wide content has less room than in calm; it scrolls within its own container, as it already does.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-007" grounding="n-a">
+  <h4>D-007 · Browser tests, written failing first</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>Pure judgment, and the repo's own scar: a structural check cannot prove a rendered behaviour, and a present-but-broken enhancement passes every one.</dd>
+    <dt>Decision</dt>     <dd>Every requirement is closed by a Playwright assertion over a real artifact — computed measure and leading, the one-way latch across a scroll-down-and-back, contrast on each surface, keyboard reach of every header control, and the reduced-motion and JavaScript-off fallbacks. Each is written red before the code.</dd>
+    <dt>Consequences</dt> <dd>+ The claims in §5 stay true as the stylesheet moves. + The latch is asserted in the direction the spike showed CSS fails. − Slower than structural checks, and the suite's global reduced-motion setting must be overridden per test, which is easy to forget.</dd>
+  </dl>
+</spec-decision>
+<spec-decision id="D-008" grounding="spike">
+  <h4>D-008 &middot; The section divider is generated content, not vocabulary</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>The divider was initially deferred with the narrative vocabulary. The spike in <a href="#grounding">Grounding &amp; evidence</a> shows the boundary it marks is already in the document &mdash; sections are flat siblings &mdash; so unlike a scene divider it needs no element an author must write.</dd>
+    <dt>Decision</dt>     <dd>Render it from <code>main &gt; section + section::before</code>, using the CSS alt-text form so assistive technology receives nothing. Space the glyphs with <code>letter-spacing</code> rather than literal spaces in the <code>content</code> string.</dd>
+    <dt>Consequences</dt> <dd>+ Satisfies the additive-theme rule outright: no markup, no new element, inert in calm and vivid. + Never appears before the first section, which falls out of the selector rather than needing a guard. &minus; It marks only the boundaries the document already has; an author wanting a break mid-section still cannot have one, which is what stays deferred. &minus; The <code>letter-spacing</code> detail is load-bearing and easy to lose &mdash; a hex escape followed by a space silently eats the space, a bug this repository has already paid for once.</dd>
+  </dl>
+</spec-decision>
+</section>
+
+
+<section id="project-structure">
+<h2>9 · Project structure</h2>
+
+<p>Only the new or changed paths. There is no module boundary to draw — every change extends a file
+that already exists, which is what makes this a low-risk slice.</p>
+
+<pre><code>assets/
+  spec.css          CHANGED — [data-theme="spectastic-prose"] token block (D-006),
+                    sidenote fold (D-005), quieted components, reveal resting state (D-003),
+                    section divider (D-008)
+  theme-boot.js     CHANGED — one THEMES registry entry
+  spec.js           CHANGED — theme-scoped reveal + header scroll-up trigger (D-002)
+tests/
+  prose.theme.spec.ts       NEW — measure, type, leading, folded sidenotes, quieted chrome
+  prose.reveal.spec.ts      NEW — one-way latch, reduced motion, JS-off resting state
+  prose.a11y.spec.ts        NEW — contrast per surface per mode, keyboard reach of the header
+specs/109-prose-theme/
+  changes/                  NEW — the proposal amending 016 FR-002 and NFR-005 (D-001)
+</code></pre>
+</section>
+
+
+<section id="risks">
+<h2>10 · Risks &amp; mitigations</h2>
+
+<div style="overflow-x:auto;">
+<table>
+  <thead><tr><th>Risk</th><th>Likelihood</th><th>Impact</th><th>Mitigation</th></tr></thead>
+  <tbody>
+    <tr><td>The 016 amendments are rejected or reshaped in review, invalidating <a href="#D-002">D-002</a>.</td><td>M</td><td>H</td><td>The declined alternative is live: ship the reading shell and defer the reveal. <a href="#D-001">D-001</a> puts the proposal first precisely so this is discovered before any code is written.</td></tr>
+    <tr><td>Quieting component chrome goes too far and a reference document stops being scannable.</td><td>M</td><td>M</td><td><a href="./spec.html#FR-005">FR-005</a> draws the line at structure; a test asserts tables keep rows, gauges keep bars and ids stay legible.</td></tr>
+    <tr><td>The reveal's first frame flashes unstyled before the script marks the document.</td><td>M</td><td>L</td><td>Set the marker in the same pass that applies the theme, before first paint, as <code>theme-boot.js</code> already does for the theme itself.</td></tr>
+    <tr><td>A future token retune drops recessed text below 4.5:1 silently.</td><td>L</td><td>H</td><td>The contrast assertion computes from live tokens rather than hardcoded values, so a retune fails the test rather than the reader.</td></tr>
+    <tr><td>A change to the narrow-viewport sidenote block silently changes Prose (<a href="#D-005">D-005</a>).</td><td>L</td><td>L</td><td>A test asserts the folded treatment at wide width under Prose, so the coupling is visible when it breaks.</td></tr>
+    <tr><td>The standing <code>parent-child-reciprocity</code> error is mistaken for a defect in this slice and &ldquo;fixed&rdquo; by editing accepted 016 in place.</td><td>M</td><td>M</td><td><a href="#D-001">D-001</a> names the repoint as one of the proposal's three edits, so the intended path is written down rather than inferred.</td></tr>
+  </tbody>
+</table>
+</div>
+</section>
+
+
+<section id="complexity">
+<h2>11 · Complexity tracking</h2>
+<p>Anywhere this plan introduces complexity not strictly required by the spec, justify it here.
+A reviewer should be able to point at any non-trivial choice and find its rationale in this section.</p>
+
+<spec-assumption>
+<p>The one real addition is a script module for a theme that was specified as pure CSS. It is not
+complexity the spec asked for — it is complexity a measurement forced, and the alternative was
+serving the reader worse. It is bounded in three ways: it runs only while Prose is active, it only
+ever adds a marker, and the page is fully readable without it. That is the smallest shape the
+behaviour can take, and <a href="#D-002">D-002</a> records what it cost.</p>
+</spec-assumption>
+
+<spec-assumption>
+<p>Grounding the divider turned up a defect in calm rather than in this slice: the
+<code>h2</code> section rule at <code>assets/spec.css:497&ndash;502</code> has never rendered, because
+its <code>:first-of-type</code> exception matches every <code>h2</code> when each section holds
+exactly one. It is deliberately <em>not</em> fixed here. <a href="./spec.html#NFR-003">NFR-003</a>
+forbids this slice from changing how calm renders, and a drive-by fix would change eight rules on
+every existing artifact under the cover of a theme addition. It is recorded so the next reader finds
+it on purpose rather than by accident.</p>
+</spec-assumption>
+
+<spec-assumption>
+<p>The reading shell would have been shippable on its own with no amendment at all. Taking the
+reveal as well is a deliberate widening, chosen with the trade stated, not a scope creep that
+happened.</p>
+</spec-assumption>
+</section>
+
+
+<section id="questions">
+<h2>12 · Open questions</h2>
+<spec-questions>
+<p>None outstanding. The one question that could have blocked estimation — whether the reveal was
+buildable as specified — was answered by running it rather than by leaving it open, and the answer
+changed the spec.</p>
+</spec-questions>
+</section>
+
+
+<section id="changelog">
+<h2>13 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-08-19">19 Aug 2026</time><span>Initial plan. The grounding pass did real
+  work here: a spike falsified the spec's own reveal mechanism before any code was written, which
+  moved <a href="#D-002">D-002</a> from CSS to a script module and added a second parent amendment to
+  <a href="#D-001">D-001</a>. A second measurement — WCAG contrast over the live tokens — pinned an
+  opacity floor at 0.75 and established that the source convention's most recessed layer cannot be
+  reproduced here at all. Both findings are recorded in §5 with their numbers, so a reviewer can
+  re-run them rather than take them on trust.</span></li>
+  <li><time datetime="2026-08-19">19 Aug 2026</time><span>Added <a href="#D-008">D-008</a> after the
+  spec took the section divider back into scope. Spiking it first paid twice: it confirmed the
+  divider needs no markup, and it falsified a claim this design would otherwise have made &mdash;
+  that calm has an existing section rule to replace. It has none, and why it has none is now written
+  down in <a href="#complexity">Complexity tracking</a> rather than fixed in passing.</span></li>
+  <li><time datetime="2026-08-19">19 Aug 2026</time><span>Status flipped Draft &rarr; Accepted &mdash; zero remaining unchecked tasks (22/22, all completed); tests verified passing per author confirmation. Sibling bundle with <a href="./spec.html">spec.html</a> and <a href="./tasks.html">tasks.html</a> (REQ-LIFECYCLE-005).</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  Design for 109-prose-theme · Prose theme · authored 2026-08-19
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>

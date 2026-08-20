@@ -5,12 +5,15 @@ import { expect, test } from '@playwright/test';
 const FIXTURE = '/tests/fixtures/all-components.html';
 
 test.describe('US1 · theme switch (FR-001, SC-001)', () => {
-  test('the switcher lists calm + heavy', async ({ page }) => {
+  // The registry is no longer a closed pair. 016 SC-004 always anticipated "adding a
+  // third theme", and the 2026-08-19 amendment (FR-002 + NFR-005) permitted one, so
+  // 109-prose-theme registers `spectastic-prose`. Order is the registry's own order.
+  test('the switcher lists every registered theme, in registry order', async ({ page }) => {
     await page.goto(FIXTURE);
     const select = page.locator('select.theme-select:visible');
     await expect(select).toBeVisible();
     const values = await select.locator('option').evaluateAll((os) => os.map((o) => (o as HTMLOptionElement).value));
-    expect(values).toEqual(['spectastic-calm', 'spectastic-vivid']);
+    expect(values).toEqual(['spectastic-calm', 'spectastic-vivid', 'spectastic-prose']);
   });
 
   test('choosing heavy sets data-theme and persists across reload', async ({ page }) => {

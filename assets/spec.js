@@ -320,3 +320,133 @@
     reflect();
   }
 })();
+
+/* ---------- §8 · Prose reveal (109-prose-theme, FR-006/FR-007) -------------
+   Blocks arrive as the reader reaches them, and never leave again.
+
+   This is a script and not CSS for a measured reason: `animation-timeline: view()`
+   is scrubbed by scroll position, so a revealed block fades back OUT on scroll-up
+   (design D-002). "Has been revealed" is remembered state, which CSS holds none of.
+   016 NFR-005 was amended to permit exactly this — theme-scoped, no markup asked of
+   any document, and the JS-off fallback untouched.
+
+   D-003 is the safety property: the stylesheet's resting state is VISIBLE. This
+   module marks the document reveal-capable, which is what brings the hidden state
+   into existence at all — so a reader with JavaScript off, or an early throw here,
+   sees every block rather than none. */
+(function () {
+  'use strict';
+
+  var THEME = 'spectastic-prose';
+  var root = document.documentElement;
+  if (!root) return;
+
+  function prose() { return root.getAttribute('data-theme') === THEME; }
+  function reduced() {
+    try { return window.matchMedia('(prefers-reduced-motion: reduce)').matches; }
+    catch (e) { return false; }
+  }
+
+  /* One-way: a block gains `data-revealed` and never loses it. The observer
+     unobserves on first intersection, so nothing can take it back. */
+  var observer = null;
+  function reveal(el) {
+    el.setAttribute('data-revealed', '');
+    if (observer) observer.unobserve(el);
+  }
+
+  function blocks() {
+    return document.querySelectorAll('main > section, main > header');
+  }
+
+  function start() {
+    /* Reduced motion, or a browser without IntersectionObserver, gets the
+       resting state: everything visible, nothing marked. Never a blank page. */
+    if (reduced() || typeof IntersectionObserver === 'undefined') return;
+    if (root.hasAttribute('data-prose-reveal')) return;
+
+    observer = new IntersectionObserver(function (entries) {
+      for (var i = 0; i < entries.length; i++) {
+        if (entries[i].isIntersecting) reveal(entries[i].target);
+      }
+      /* threshold 0, deliberately. The convention this borrows from reveals
+         PARAGRAPHS, where a 15% threshold is fine; the unit here is a whole
+         <section>, and a section taller than about 6.7 viewports can never be
+         15% visible at once — so it would never reveal, and the reader would
+         scroll into blank space. Firing on first contact past the bottom
+         margin is height-independent, which is what a block-sized unit needs. */
+    }, { threshold: 0, rootMargin: '0px 0px -80px 0px' });
+
+    /* Marking the root is what activates the hidden resting state in CSS —
+       set only now, once we know we can also un-hide. */
+    root.setAttribute('data-prose-reveal', '');
+    var els = blocks();
+    for (var i = 0; i < els.length; i++) {
+      /* Anything already on screen is revealed immediately rather than waiting
+         for a scroll that may never come on a short document. */
+      var r = els[i].getBoundingClientRect();
+      if (r.top < window.innerHeight) reveal(els[i]);
+      else observer.observe(els[i]);
+    }
+  }
+
+  function stop() {
+    if (observer) { observer.disconnect(); observer = null; }
+    root.removeAttribute('data-prose-reveal');
+    var els = blocks();
+    for (var i = 0; i < els.length; i++) els[i].removeAttribute('data-revealed');
+  }
+
+  /* ---- The header's scroll-up trigger (FR-008, T-311) --------------------
+     The other two triggers — pointer and keyboard focus — are :hover and
+     :focus-within in CSS, where they belong. Direction is not: it needs this
+     frame's scroll position compared with the last one, which is exactly the
+     remembered state CSS cannot hold, and the second reason 016 NFR-005 was
+     amended. Reading down recedes the bar; reversing brings it back. */
+  var lastY = 0;
+  var scrollBound = false;
+  var RECEDE_AFTER = 240;   /* px — never recede while the header is still in view */
+
+  function bar() { return document.querySelector('header.spec-bar'); }
+
+  function onScroll() {
+    var el = bar();
+    if (!el) return;
+    var y = window.pageYOffset || document.documentElement.scrollTop || 0;
+    var down = y > lastY;
+    /* Near the top there is nothing to recede from, and receding there would
+       fight the reader on every small upward correction. */
+    if (y <= RECEDE_AFTER) el.removeAttribute('data-receded');
+    else if (down) el.setAttribute('data-receded', '');
+    else el.removeAttribute('data-receded');
+    lastY = y;
+  }
+
+  function bindScroll() {
+    if (scrollBound) return;
+    lastY = window.pageYOffset || 0;
+    window.addEventListener('scroll', onScroll, { passive: true });
+    scrollBound = true;
+  }
+
+  function unbindScroll() {
+    if (!scrollBound) return;
+    window.removeEventListener('scroll', onScroll);
+    scrollBound = false;
+    var el = bar();
+    if (el) el.removeAttribute('data-receded');
+  }
+
+  function sync() {
+    if (prose()) { start(); bindScroll(); }
+    else { stop(); unbindScroll(); }
+  }
+
+  /* React to the theme changing under us — the switcher sets the attribute. */
+  try {
+    new MutationObserver(sync).observe(root, { attributes: true, attributeFilter: ['data-theme'] });
+  } catch (e) { /* no MutationObserver: the initial sync below still applies */ }
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', sync);
+  else sync();
+})();

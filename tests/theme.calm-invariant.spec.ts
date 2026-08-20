@@ -78,3 +78,66 @@ test.describe('calm invariance (R-6)', () => {
     expect(Math.abs(r.leftMargin - r.rightMargin), 'main is centred (equal margins)').toBeLessThanOrEqual(2);
   });
 });
+
+/**
+ * NFR-003 (109-prose-theme, T-900) — adding Prose changes calm and vivid in at
+ * most 0 respects.
+ *
+ * The hardcoded baselines above already catch a Prose rule that leaks into calm
+ * by forgetting its attribute scope. What they cannot catch is the other leak:
+ * the reveal module writing state — data-prose-reveal, data-revealed,
+ * data-receded — and leaving it behind when the reader switches away. That would
+ * make an artifact render differently in calm depending on where it had been,
+ * which is exactly the "no change to other themes" clause 016 NFR-005 protects.
+ */
+test.describe('NFR-003 — Prose leaves the other themes untouched', () => {
+  const SNAPSHOT = async (page, theme: string) => {
+    await page.evaluate((t) => {
+      document.documentElement.setAttribute('data-theme', t);
+      document.documentElement.setAttribute('data-mode', 'light');
+    }, theme);
+    // Settle the .35s theme cross-fade before reading. Reduced motion would also
+    // settle it, but the reveal module deliberately stands down under reduce — and
+    // this test needs the module RUNNING, since what it checks is the state it
+    // leaves behind. So it waits the transition out rather than switching it off.
+    await page.waitForTimeout(600);
+    return page.evaluate(() =>
+      [...document.querySelectorAll('spec-requirement, spec-decision, spec-status, spec-pill, table')].map((el) => {
+        const cs = getComputedStyle(el);
+        return [cs.borderTopWidth, cs.opacity, cs.transform, cs.boxShadow, cs.maxWidth].join('|');
+      }),
+    );
+  };
+
+  for (const theme of ['spectastic-calm', 'spectastic-vivid']) {
+    test(`${theme} renders identically before and after a visit to Prose`, async ({ page }) => {
+      await page.emulateMedia({ reducedMotion: 'no-preference' });
+      await page.goto(FIXTURE);
+
+      const before = await SNAPSHOT(page, theme);
+      // Go to Prose, scroll enough for the module to write its state, come back.
+      await SNAPSHOT(page, 'spectastic-prose');
+      await page.evaluate(() => window.scrollTo(0, 1200));
+      await page.waitForTimeout(400);
+      const after = await SNAPSHOT(page, theme);
+
+      expect(after, 'computed styles must be identical').toEqual(before);
+    });
+
+    test(`${theme} carries none of the reveal module's state`, async ({ page }) => {
+      await page.emulateMedia({ reducedMotion: 'no-preference' });
+      await page.goto(FIXTURE);
+      await SNAPSHOT(page, 'spectastic-prose');
+      await page.evaluate(() => window.scrollTo(0, 1200));
+      await page.waitForTimeout(400);
+      await SNAPSHOT(page, theme);
+
+      const leftovers = await page.evaluate(() => ({
+        root: document.documentElement.hasAttribute('data-prose-reveal'),
+        revealed: document.querySelectorAll('[data-revealed]').length,
+        receded: document.querySelectorAll('[data-receded]').length,
+      }));
+      expect(leftovers).toEqual({ root: false, revealed: 0, receded: 0 });
+    });
+  }
+});
