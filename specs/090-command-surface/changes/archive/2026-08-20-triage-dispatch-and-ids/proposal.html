@@ -1,0 +1,426 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'">
+<title>Dispatch a triage card, and disambiguate its id · Change proposal</title>
+<link rel="stylesheet" href="../../../../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../../../../assets/favicon.svg">
+<script src="../../../../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Change proposal · 090-command-surface</p>
+  <h1>Dispatch a triage card, and disambiguate its id</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    Give the triage log the consumer its own contract implies, and stop a copied identifier from
+    silently naming something else.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>     <span><spec-status value="applied">Applied</spec-status></span>
+    <b>Change ID</b>  <span>2026-08-20-triage-dispatch-and-ids</span>
+    <b>Spec</b>       <span><a href="../../../spec.html">090-command-surface</a></span>
+    <b>Source</b>     <span><a href="../../../../000-spectastic/triage-log.html#T-035">000 · T-035</a></span>
+    <b>Author</b>     <span>Brian Corbin · @briancorbin</span>
+    <b>Created</b>    <span><time datetime="2026-08-20">20 Aug 2026</time></span>
+    <b>Targets</b>    <span>2 requirements (2 added)</span>
+    <b>Read time</b>  <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-tldr>
+    <p><a href="../../../../088-change-management/spec.html#REQ-CHANGE-009">REQ-CHANGE-009</a> makes a
+    diagnostic triage card a record of whether it is still owed work, and states that an unmarked card
+    <em>must</em> be read as still open. Nothing then reads that backlog. This change adds the missing
+    consumer &mdash; <strong>REQ-TOOL-005</strong>, under which <code>implement</code> dispatches a card
+    that is safe to fix in code, once the scope's tasks are drained, and closes it when the fix lands
+    &mdash; and forecloses a latent trap beside it: <strong>REQ-TOOL-006</strong>, under which a
+    <code>T-NNN</code> that names <em>both</em> an unchecked task and an open card is refused rather
+    than silently resolved. That condition holds <strong>zero</strong> times today, and the requirement
+    is preventive on purpose; the adversarial pass is what narrowed it from a far broader refusal that
+    would have fired on 81 harmless collisions.</p>
+  </spec-tldr>
+</header>
+
+
+<spec-change id="2026-08-20-triage-dispatch-and-ids" status="applied">
+
+<header>
+  <h3>Dispatch a triage card, and disambiguate its id</h3>
+  <span class="meta"><spec-status value="applied">Applied</spec-status></span>
+</header>
+
+
+<section id="intent">
+<h2>1 · Intent</h2>
+<p>Two contracts compose into a gap neither made. <a href="../../../../088-change-management/spec.html#REQ-CHANGE-009">REQ-CHANGE-009</a>
+defines a per-spec triage log as a backlog: a card records &ldquo;whether it is still owed work&rdquo;,
+and one carrying no <code>data-status</code> <em>must</em> be read as still open.
+<a href="../../../spec.html#REQ-TOOL-003">REQ-TOOL-003</a> defines <code>implement</code> as draining a
+queue. Neither says the owed work reaches the queue, so it does not: <code>implement</code> accepts a
+<code>tasks.html</code> task id, an inbox <code>I-NNN</code>, or a spec id resolving to the next
+unchecked <em>task</em>, and a triage card is none of those. Running
+<code>/spectastic.implement 016</code> reported nothing to do while
+<a href="../../../../016-theme-support/triage-log.html#T-006">016/T-006</a> sat open, because that spec's
+tasks are 52/52 complete.</p>
+<p>The identifier makes the quiet failure a loud one waiting to happen.
+<a href="../../../../025-id-uniqueness/spec.html">025-id-uniqueness</a> scoped <code>T-NNN</code> to
+within a file &mdash; correct for a spec-local id, but a spec is a <em>bundle</em>, and
+<code>tasks.html</code> and <code>triage-log.html</code> mint from the same sequence.
+<strong>81 ids across the estate name both a task and a card</strong>, and the kernel's
+<code>classifyTarget</code> maps any <code>T-NNN</code> to <code>'task'</code> unconditionally.</p>
+<p>How dangerous that is was overstated in this proposal's first draft, and the correction is worth
+keeping. The kernel already throws when a bare <code>T-NNN</code> is not an <em>unchecked</em> task
+(<code>task &hellip; not found (or already ticked)</code>), so a stale collision fails loudly rather
+than misrouting. Silent misresolution needs the number to name an unchecked task <em>and</em> a card at
+once &mdash; which, measured across the estate, is true of <strong>0</strong> ids today. The trap is
+real but <em>latent</em>: it opens the first time a spec carries unchecked tasks and an open card
+together, which is an ordinary mid-drain state.</p>
+</section>
+
+
+<section id="scope">
+<h2>2 · Scope</h2>
+
+<spec-goals>
+  <h3>In scope</h3>
+  <ul>
+    <li>ADD <strong>REQ-TOOL-005</strong>: an open card carrying <code>layer="implementation"</code>
+    <em>and</em> a passing regeneration result is dispatchable work, picked up once the resolved scope
+    has no unchecked tasks left; landing its fix closes the card.</li>
+    <li>ADD <strong>REQ-TOOL-006</strong>: a bare <code>T-NNN</code> naming both an <em>unchecked</em>
+    task and an <em>open</em> card is refused with both candidates named; <code>task:T-NNN</code> and
+    <code>triage:T-NNN</code> resolve unambiguously.</li>
+    <li>A card that is <em>not</em> dispatchable is reported with the routing its layer implies, rather
+    than the scope reporting no work at all.</li>
+  </ul>
+</spec-goals>
+
+<spec-non-goals>
+  <h3>Out of scope</h3>
+  <ul>
+    <li><spec-out-of-scope defer-to="TBD-bundle-scoped-task-ids">Widening
+    <a href="../../../../025-id-uniqueness/spec.html">025-id-uniqueness</a> so <code>T-NNN</code> is unique
+    across a spec's <em>bundle</em> rather than within a file. Deferred, not refused: 025 FR-002 names
+    &ldquo;<code>T-NNN</code> on <code>&lt;spec-task&gt;</code>&rdquo; as its own subject, so the
+    identifier space is that spec's topic group, and this change binds only the implement verb &mdash; a
+    human reading a log, or <code>apply</code>, <code>verify</code> and <code>propose</code>, still treat
+    a colliding id as unambiguous. Renumbering would churn stable anchors, which
+    <a href="../../../../../principles.html#P-3">P-3</a> treats as forever contracts, so it needs its own
+    change rather than riding along here.</spec-out-of-scope></li>
+    <li><spec-out-of-scope defer-to="never">Dispatching upstream-layer cards. Ten of the thirteen open
+    cards are <code>spec</code>, <code>cross-spec</code> or <code>design</code> at regen-<code>fail</code>;
+    they route through propose or a new spec by design, and machinery that mostly declines is machinery
+    nobody trusts.</spec-out-of-scope></li>
+    <li><spec-out-of-scope defer-to="TBD-triage-drain-verb">A dedicated verb that drains a triage log
+    the way <code>implement</code> drains a task list. Worth considering only if the dispatch path
+    proves too narrow in practice; the verb count is deliberately eight.</spec-out-of-scope></li>
+  </ul>
+</spec-non-goals>
+</section>
+
+
+<section id="approach">
+<h2>3 · Approach</h2>
+<p>Two requirements rather than one, because these are two obligations that fail independently: a
+correct queue with an ambiguous identifier is still a trap, and an unambiguous identifier pointing at
+work no verb dispatches is still a dead end. Splitting them also keeps each independently testable,
+which a single requirement carrying two bare MUSTs would not be.</p>
+<p>Neither <em>modifies</em> <a href="../../../spec.html#REQ-TOOL-003">REQ-TOOL-003</a> &mdash; its
+subject is drain <em>mode</em>, not what the queue contains or how a target resolves, and folding
+dispatch into it would give one requirement two unrelated jobs. But they do <em>interact</em> with it,
+which an earlier draft of this section wrongly denied. REQ-TOOL-003 halts a drain on first failure, so
+gating card pickup purely on &ldquo;no unchecked task remaining&rdquo; would strand a spec's cards
+behind one blocked task forever. REQ-TOOL-005 therefore makes the task-exhaustion gate govern only the
+<em>automatic</em> sweep: a card named explicitly is always reachable, and single-step dispatches at
+most one card, matching the mode's own contract.</p>
+<spec-note>
+<p>The dispatch condition names <strong>both</strong> axes deliberately. A survey of all 142 cards found
+<code>layer</code> and <code>regen</code> are independent: two <code>implementation</code> cards carry
+regen <code>fail</code> (<a href="../../../../019-explain-course/triage-log.html#T-001">019/T-001</a> and
+<code>T-002</code>), and three <code>spec</code> cards carry regen <code>pass</code>. A regen-<code>fail</code>
+implementation card records that the defect would return from spec and design, so landing a code fix
+there ships work that regenerates away &mdash; the outcome the root-cause ladder exists to prevent.</p>
+</spec-note>
+</section>
+
+
+<section id="deltas">
+<h2>4 · Deltas</h2>
+<p>Two <code>&lt;spec-delta&gt;</code>, both <code>op="added"</code>. <code>REQ-TOOL-002</code> is
+retired and its number is never reused, so the next free ids are 005 and 006. The post-state is
+rendered inline as it will appear when archived.</p>
+
+<spec-delta op="added" target="REQ-TOOL-005">
+  <spec-requirement id="REQ-TOOL-005" priority="must">
+    <p>The implement verb <spec-rule>MUST</spec-rule> treat an open <code>&lt;spec-triage&gt;</code>
+    card in a spec's <code>triage-log.html</code> as dispatchable work when it carries <em>both</em>
+    <code>layer="implementation"</code> and a passing regeneration result; a card whose regeneration
+    result is absent or unrecognised <spec-rule>MUST NOT</spec-rule> be treated as passing. A card that
+    does not meet both conditions <spec-rule>MUST NOT</spec-rule> be dispatched <em>however it is
+    named</em> &mdash; naming one explicitly reaches it, and the verb then <spec-rule>MUST</spec-rule>
+    refuse it and report the routing its layer implies.</p>
+    <p>Cards <spec-rule>MUST</spec-rule> be considered only within a scope the invocation resolved, never
+    swept across the project. When selecting automatically the verb <spec-rule>MUST</spec-rule> pick a
+    card up only once that scope has no unchecked task remaining; a card named explicitly
+    <spec-rule>MUST</spec-rule> remain reachable whatever the state of the task queue, so a blocked task
+    cannot strand it. Single-step mode <spec-rule>MUST</spec-rule> dispatch at most one card, and a
+    dispatched card <spec-rule>MUST NOT</spec-rule> be fanned out to a parallel agent, no card having
+    declared independence.</p>
+    <p>When it lands a dispatched card's fix the verb <spec-rule>MUST</spec-rule> close that card,
+    recording what actually shipped; where the fix is only partly landed it <spec-rule>MUST</spec-rule>
+    leave the card open and report what remains. Closing the card <spec-rule>MUST</spec-rule> be the whole
+    record &mdash; no task is written into <code>tasks.html</code> for dispatched work. Where a scope
+    yields no work, the verb <spec-rule>MUST</spec-rule> report any open cards it found and their routing,
+    rather than reporting that there is nothing to do.</p>
+    <details><summary>Rationale</summary><p><a href="../../../../088-change-management/spec.html#REQ-CHANGE-009">REQ-CHANGE-009</a>
+    made a triage log a backlog &mdash; an unmarked card &ldquo;MUST be read as still open&rdquo; &mdash;
+    without giving it a consumer, so owed work accumulated where no verb looked.
+    <code>/spectastic.implement 016</code> reported nothing to do while a card sat open.</p>
+    <p>Both conditions are named because they are independent axes, not one signal twice: across 142
+    cards, two <code>implementation</code> cards carry regen <code>fail</code> and three
+    <code>spec</code> cards carry regen <code>pass</code>. A regen-<code>fail</code> card records that
+    the defect would return from spec and design, so a code fix there is work that regenerates away.
+    Tasks keep priority so no existing drain changes behaviour until its queue empties &mdash; but only
+    for the <em>automatic</em> sweep, because <a href="../../../spec.html#REQ-TOOL-003">REQ-TOOL-003</a>
+    halts on first failure and a gate that waited for an empty queue would strand every card behind one
+    blocked task. The closure obligation is stated at must on this path &mdash; stronger than
+    <a href="../../../../088-change-management/spec.html#REQ-CHANGE-009">REQ-CHANGE-009</a>'s authoring
+    should &mdash; because a verb that dispatched the card knows it landed the fix, and leaving it open
+    is a false backlog the verb created itself.</p>
+    <p>Four boundaries are drawn deliberately. <strong>Location</strong>: per-spec logs only, because
+    <code>inbox.html</code> uses the same element for routing exits with different semantics and already
+    dispatches its own <code>just-do</code> cards &mdash; widening here would silently change a file this
+    change never analysed. <strong>Fail-safe</strong>: an absent regeneration result is not a passing one,
+    matching how a malformed enforce waiver fails closed rather than open. <strong>No bypass</strong>:
+    explicit naming reaches a card but never overrides the gate, or the verb could be talked into building
+    upstream work the ladder says regenerates away. <strong>Partial fixes</strong> mirror the tick-once
+    discipline exactly &mdash; an open card means work is owed, so closing a half-fixed one puts a false
+    &ldquo;done&rdquo; into the record the card exists to keep honest.</p></details>
+  </spec-requirement>
+</spec-delta>
+
+<spec-delta op="added" target="REQ-TOOL-006">
+  <spec-requirement id="REQ-TOOL-006" priority="must">
+    <p>Where a bare <code>T-NNN</code> target names <em>both</em> an unchecked task and an open triage
+    card within the resolved scope, the implement verb <spec-rule>MUST</spec-rule> refuse it and name
+    both candidates, rather than resolving to either; and it <spec-rule>MUST</spec-rule> accept the
+    qualified forms <code>task:T-NNN</code> and <code>triage:T-NNN</code>, which resolve unambiguously
+    and are never refused on this ground. Where only one of the two is actionable, the target
+    <spec-rule>MUST</spec-rule> resolve to it as it does today. A refusal
+    <spec-rule>MUST</spec-rule> be reported as a failure to do the requested work, never as a successful
+    no-op.</p>
+    <details><summary>Rationale</summary><p><a href="../../../../025-id-uniqueness/spec.html">025-id-uniqueness</a>
+    scoped <code>T-NNN</code> uniqueness to within a file, on the reasoning that a spec-local id numbers
+    per spec. But a spec is a bundle, and two files inside it mint from the same sequence:
+    <strong>35 of 36 specs</strong> carry at least one <code>T-NNN</code> naming both a task and a card,
+    and the meta-spec has 18. Today the kernel's <code>classifyTarget</code> maps any
+    <code>T-NNN</code> to a task unconditionally, so an author copying an id off a card gets different
+    work with no warning.</p>
+    <p>Refusal rather than a precedence rule, because any precedence is silently wrong half the time and
+    the author cannot tell which half they are in. Refusing makes the ambiguity visible at the moment it
+    matters and costs one retyped prefix; it also leaves which ids are <em>legal</em> untouched, so no
+    stable anchor moves.</p>
+    <p><strong>Both conditions are narrow deliberately, and the narrowing was earned.</strong> An earlier
+    draft refused on any id naming a task and a card at all &mdash; 81 ids, of which the kernel already
+    handles every stale one by throwing (<code>task &hellip; not found (or already ticked)</code>), so
+    that refusal would have been friction on 81 cases to prevent 0. Scoped to an unchecked task and an
+    open card, it fires exactly when both candidates are live work. That is true of <strong>0</strong>
+    ids in the estate today: this requirement is <em>preventive</em>, guarding an ordinary mid-drain
+    state rather than remedying an observed failure, and it is stated at must because a safety property
+    that costs nothing while nothing is ambiguous is cheap to hold and expensive to retrofit.</p>
+    <p>The failure clause exists so automation cannot swallow it: a refusal that exited successfully would
+    let a scripted or CI invocation report success having done nothing &mdash; the same silent-skip class
+    this change exists to close.</p></details>
+  </spec-requirement>
+</spec-delta>
+</section>
+
+
+<section id="subtraction">
+<h2>4b · What this change removes</h2>
+<p>Each entry names one thing this change takes away &mdash; a clause dropped from a requirement it
+retypes, an obligation a sibling loses, a behaviour or affordance no requirement records.</p>
+
+<spec-subtraction>
+  <p>Authors lose the ability to resolve a bare <code>T-NNN</code> in the one case where an unchecked
+  task and an open card share it. The work stays reachable as <code>task:T-NNN</code>, and the loss is
+  <strong>0 ids today</strong> &mdash; it costs nothing until a spec next carries unchecked tasks and an
+  open card at once. The first draft of this register claimed a far larger loss (&ldquo;at least one id
+  in 35 of 36 specs&rdquo;); that was measured against the wrong condition and is corrected here rather
+  than quietly dropped, because the register is meant to state what a change costs, and overstating it
+  is its own kind of wrong.</p>
+</spec-subtraction>
+</section>
+
+
+<section id="risks">
+<h2>5 · Risk register</h2>
+<p>Adversarial pass triggered: both ADDs declare <code>priority="must"</code>. Statuses stay
+<code>identified</code> until the author commits them &mdash; apply refuses while any remain identified.</p>
+
+<spec-risk-log>
+<spec-risk target="REQ-TOOL-006" status="mitigated" by="Brian Corbin · @briancorbin">
+  <p class="claim">The refusal triggered on any <code>T-NNN</code> naming both a task and a card, with
+  no requirement that either be <em>open</em> &mdash; and since cards are append-only and never
+  renumbered, every closed card would permanently poison its task number, so the refusal set could only
+  grow. Meanwhile the misroute it prevents is narrower than the proposal claimed: the kernel already
+  refuses a bare <code>T-NNN</code> that is not an unchecked task, rather than silently doing the wrong
+  work.</p>
+  <p class="citation">The delta as first drafted: &ldquo;the implement verb MUST refuse it and name both
+  candidates&rdquo;, against
+  <code>packages/core/src/commands/implement.ts</code>: <code>task ${input.target} not found (or
+  already ticked)</code>. The &ldquo;35 of 36 specs&rdquo; figure counted collisions, not the dangerous
+  subset.</p>
+  <div class="response">correct on both halves, and verified before accepting:
+  the kernel does throw, and measuring the estate gives <strong>81</strong> ids naming a task and a
+  card, <strong>0</strong> naming an unchecked task and an open card. The requirement is narrowed to
+  that condition, so it fires only when both candidates are live work and never grows with closed cards;
+  the intent, TL;DR and subtraction register are corrected from the overstated framing. The requirement
+  stays &mdash; the trap is latent rather than absent, opening in an ordinary mid-drain state &mdash; but
+  it is now stated as preventive rather than remedial.</div>
+</spec-risk>
+
+<spec-risk target="REQ-TOOL-003" status="mitigated" by="Brian Corbin · @briancorbin">
+  <p class="claim">§3 asserts &ldquo;Neither touches REQ-TOOL-003&rdquo;, but REQ-TOOL-005 gates card
+  pickup on the scope having no unchecked task while REQ-TOOL-003 mandates a drain that halts on first
+  failure &mdash; so a spec with one failing or permanently blocked task can never reach its
+  dispatchable cards, and neither requirement says whether single-step dispatches a card at all.</p>
+  <p class="citation">REQ-TOOL-003: &ldquo;MUST drain the queue by default, stopping on the first
+  failure, and MUST offer an explicit single-step mode&rdquo;, against REQ-TOOL-005 as first drafted:
+  &ldquo;MUST pick such a card up only once the resolved scope has no unchecked task remaining&rdquo;.</p>
+  <div class="response">a real defect, not a difference of view. The
+  task-exhaustion gate now governs only the <em>automatic</em> sweep; a card named explicitly stays
+  reachable whatever the queue's state, so one blocked task cannot strand a spec's cards. Single-step is
+  given an explicit clause: at most one card, matching that mode's own contract. §3's claim is withdrawn
+  and replaced with the interaction stated plainly.</div>
+</spec-risk>
+
+<spec-risk target="§2" status="accepted" by="Brian Corbin · @briancorbin">
+  <p class="claim">Too narrow and permanently foreclosed: the ambiguity is a property of the bundle's
+  identifier space, but the fix binds only the implement verb &mdash; a human reading a log, or
+  <code>apply</code>, <code>verify</code> and <code>propose</code>, still treat a colliding
+  <code>T-NNN</code> as unambiguous &mdash; and <code>defer-to="never"</code> closes a remedy the
+  originating card explicitly flagged as possibly wanted.</p>
+  <p class="citation">The scope item as first drafted: &ldquo;Widening 025-id-uniqueness &hellip;
+  defer-to=<code>never</code>&rdquo;, against <code>000/T-035</code>: &ldquo;The second half may also
+  want a widening of <code>specs/025-id-uniqueness/spec.html</code>&rdquo;. 025 FR-002 already names
+  &ldquo;<code>T-NNN</code> on <code>&lt;spec-task&gt;</code>&rdquo; as its subject.</p>
+  <div class="response">the foreclosure is wrong and is withdrawn; verified that
+  025 FR-002 does name <code>T-NNN</code> on <code>&lt;spec-task&gt;</code> as its own subject, so the
+  identifier space belongs to that topic group rather than this one. Now
+  <code>defer-to="TBD-bundle-scoped-task-ids"</code> with the reasoning recorded: it needs its own change
+  because renumbering moves stable anchors under P-3, and it is genuinely 025's to make. The remaining
+  narrowness &mdash; that only <code>implement</code> is bound &mdash; is accepted for this change and is
+  exactly what that TBD would resolve &mdash; <strong>accepted</strong>, not mitigated: this change genuinely leaves every other reader of a colliding id unprotected, and saying otherwise would overstate what it does.</div>
+</spec-risk>
+
+<spec-risk target="REQ-TOOL-006" status="accepted" by="Brian Corbin · @briancorbin">
+  <p class="claim">The corpus records that a must-tier item may not rest on an unverified fact without an
+  explicit accepted-risk record, yet REQ-TOOL-006 ships at <code>priority="must"</code> on a failure mode
+  its own source card states was never observed, with an empty risk register.</p>
+  <p class="citation">KB-0001@2026-07-25 (<code>spectastic/spectastic · spectastic-concepts ·
+  001-foundations</code>), §The grounding discipline. Against <code>000/T-035</code>: &ldquo;That path is
+  reasoned from the command contract, <em>not</em> observed.&rdquo; The critic notes the corpus states
+  this rule for design decisions under REQ-LIFECYCLE-006, so applying it to a proposal delta extends the
+  documented fact rather than breaching it literally &mdash; the evidential gap itself is literal.</p>
+  <div class="response">the evidential gap is real and is now stated inside the
+  requirement rather than left implicit: its rationale says outright that the condition holds 0 times
+  today and that it is preventive. Must-tier is kept deliberately, and the register now records why: the
+  narrowed condition costs nothing while nothing is ambiguous, so this is a safety property that is cheap
+  to hold and expensive to retrofit &mdash; not an unverified claim about the world. This risk entry is
+  the accepted-risk record the discipline asks for &mdash; <strong>accepted</strong>, not mitigated: the requirement still rests on a failure mode nobody has observed, and that is a position taken deliberately rather than a gap closed.</div>
+</spec-risk>
+</spec-risk-log>
+</section>
+
+
+<section id="tasks">
+<h2>6 · Tasks</h2>
+<p>Scoped to this change only. On <code>/spectastic.apply</code> these fold into 090's
+<a href="../../../tasks.html">tasks.html</a> as a new provenance-linked phase (per
+<a href="../../../../088-change-management/spec.html#REQ-CHANGE-006">REQ-CHANGE-006</a>) that
+<code>/spectastic.implement</code> drains; this list is then the frozen intent record.</p>
+
+<ul style="list-style:none;padding-left:0;">
+  <li><input type="checkbox"> Write the resolution tests red first &mdash; a bare <code>T-NNN</code>
+  naming both is refused and names both candidates; <code>task:</code> and <code>triage:</code> resolve;
+  an unambiguous bare id still resolves as it does today &mdash; <span class="path">packages/core/test/implement.target.test.ts</span>.</li>
+  <li><input type="checkbox"> Extend <code>classifyTarget</code> and the target resolver to return a
+  qualified kind and to refuse an ambiguous bare <code>T-NNN</code>, replacing the unconditional
+  <code>/^T-\d+$/ &rarr; 'task'</code> mapping &mdash; <span class="path">packages/core/src/commands/implement.ts</span>.</li>
+  <li><input type="checkbox"> Add a triage-log reader that returns a spec's open cards with their
+  <code>layer</code> and regeneration result &mdash; <span class="path">packages/core/src/commands/implement.ts</span>.</li>
+  <li><input type="checkbox"> Dispatch a card meeting both conditions once the scope's tasks are
+  drained, and report open non-dispatchable cards with their routing where none qualifies &mdash;
+  <span class="path">packages/core/src/commands/implement.ts</span>.</li>
+  <li><input type="checkbox"> Close a dispatched card on landing &mdash; <code>data-status="done"</code>
+  plus a row recording what shipped &mdash; <span class="path">packages/core/src/commands/implement.ts</span>.</li>
+  <li><input type="checkbox"> Update the Inputs precedence list and drain-order description to name the
+  triage source and the qualified forms &mdash; <span class="path">commands/spectastic.implement.md</span>,
+  then re-copy to <span class="path">.claude/commands/</span>.</li>
+</ul>
+</section>
+
+
+<section id="questions">
+<h2>7 · Open questions</h2>
+<spec-questions>
+<p>None outstanding &mdash; the dispatch condition, the pickup point, the closure strength, the
+identifier treatment and the 025 boundary were all anchored in the interview, each against the
+142-card survey rather than assumption.</p>
+</spec-questions>
+</section>
+
+
+<section id="changelog">
+<h2>8 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-08-20">20 Aug 2026</time><span>Proposal authored from
+  <a href="../../../../000-spectastic/triage-log.html#T-035">000 T-035</a>; ADD REQ-TOOL-005 (dispatch an
+  implementation-layer, regen-passing card once tasks are drained, and close it on landing) and ADD
+  REQ-TOOL-006 (refuse an ambiguous bare <code>T-NNN</code>, accept qualified forms). Widening 025 was
+  considered and declined &mdash; refusal makes the collision harmless without moving a stable
+  anchor.</span></li>
+  <li><time datetime="2026-08-20">20 Aug 2026</time><span>Revised after the adversarial pass, which
+  found the proposal <em>overstated its own case</em>. Verified against the kernel: a bare
+  <code>T-NNN</code> that is not an unchecked task already throws, so silent misresolution needs an
+  unchecked task and a card simultaneously &mdash; measured at <strong>0</strong> ids, not the 81
+  collisions cited. REQ-TOOL-006 is narrowed to that condition and re-framed as preventive;
+  REQ-TOOL-005 gains an explicit-reach clause and a single-step clause, because gating on an empty task
+  queue would have stranded cards behind a blocked task under
+  <a href="../../../spec.html#REQ-TOOL-003">REQ-TOOL-003</a>; §3's claim that neither requirement touches
+  REQ-TOOL-003 is withdrawn as an overclaim; the 025 widening moves from
+  <code>defer-to="never"</code> to a TBD, since 025 FR-002 owns <code>T-NNN</code> on
+  <code>&lt;spec-task&gt;</code> and the originating card flagged it as possibly wanted; and the
+  subtraction register is corrected from an overstated loss to the real one.</span></li>
+  <li><time datetime="2026-08-20">20 Aug 2026</time><span>Author interview, ten decisions, each folded
+  into the deltas. REQ-TOOL-005 gains: <strong>location</strong> (per-spec logs only &mdash;
+  <code>inbox.html</code> uses the same element and was never analysed here), a <strong>fail-safe</strong>
+  on an absent regeneration result, <strong>no bypass</strong> by explicit naming (which closed a hole in
+  the draft's own &ldquo;dispatched automatically&rdquo; wording), <strong>partial fixes</strong> leaving
+  the card open per the tick-once discipline, <strong>scope-only</strong> consideration rather than a
+  project-wide sweep, <strong>no parallel fan-out</strong>, and the closed card as the <strong>whole
+  record</strong> with no task written. REQ-TOOL-006 gains a non-zero-exit clause so automation cannot
+  swallow a refusal. Findings 1 and 2 dispositioned <code>mitigated</code>, 3 and 4
+  <code>accepted</code> &mdash; the residue in each is real and kept deliberately. Status flipped to
+  Approved.</span></li>
+  <li><time datetime="2026-08-20">20 Aug 2026</time><span>Applied on 20 Aug 2026 — Adds REQ-TOOL-005 (dispatch a triage card once a scope's tasks are drained, gated on layer=implementation AND a passing regeneration result, never bypassed by naming, never fanned to a parallel agent, closed card as the whole record) and REQ-TOOL-006 (refuse a bare T-NNN naming both an unchecked task and an open card, exit non-zero, accept task:/triage: qualified forms) — closing 000/T-035, the gap where REQ-CHANGE-009 made a triage log a backlog no verb reads. Adversarial pass measured the real collision at 0 ids today (not the 81 first assumed) and narrowed both requirements to that condition.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+</spec-change>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  2026-08-20-triage-dispatch-and-ids · Dispatch a triage card, and disambiguate its id · authored 2026-08-20
+</footer>
+
+</main>
+<script src="../../../../../assets/spec.js"></script>
+</body>
+</html>
