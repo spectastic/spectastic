@@ -30,7 +30,9 @@ describe('a document with no render', () => {
 describe('a well-formed render', () => {
   it('is silent', () => {
     expect(
-      findingsFor(screen('<spec-render src="renders/converted-ios-light.png" contexts="platform=ios mode=light"></spec-render>')),
+      findingsFor(
+        screen('<spec-render src="renders/converted-ios-light.png" contexts="platform=ios mode=light"></spec-render>'),
+      ),
     ).toEqual([]);
   });
 

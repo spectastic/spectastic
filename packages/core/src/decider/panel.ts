@@ -143,10 +143,7 @@ export async function gradeCriterion(
  * surfaces the returned findings to the spec's author; nothing here gates a
  * commit or an apply.
  */
-export async function gradeCriteria(
-  ai: AIProvider,
-  criteria: Array<{ id: string; text: string }>,
-): Promise<Finding[]> {
+export async function gradeCriteria(ai: AIProvider, criteria: Array<{ id: string; text: string }>): Promise<Finding[]> {
   const perCriterion = await Promise.all(
     criteria.map(async (c) => {
       const perLens = await Promise.all(CRITERION_LENSES.map((lens) => gradeCriterion(ai, c, lens)));

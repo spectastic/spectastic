@@ -3,7 +3,11 @@ import { mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync } from
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { ArchiveEntryRefusedError, archiveSourceFetcher, looksLikeArchive } from '../src/providers/archive-source-fetcher.js';
+import {
+  ArchiveEntryRefusedError,
+  archiveSourceFetcher,
+  looksLikeArchive,
+} from '../src/providers/archive-source-fetcher.js';
 
 /**
  * The expansion bounds (105-design-source-import, T-020).
@@ -49,10 +53,13 @@ describe('a real export still expands', () => {
 
 describe('the bounds T-020 added', () => {
   it('refuses a symlink entry rather than following it', async () => {
-    const { root, rel } = zipOf((d) => {
-      writeFileSync(join(d, 'real.txt'), 'x');
-      symlinkSync('/etc/passwd', join(d, 'escape'));
-    }, ['--symlinks']);
+    const { root, rel } = zipOf(
+      (d) => {
+        writeFileSync(join(d, 'real.txt'), 'x');
+        symlinkSync('/etc/passwd', join(d, 'escape'));
+      },
+      ['--symlinks'],
+    );
     await expect(archiveSourceFetcher(root).fetch(rel)).rejects.toThrow(ArchiveEntryRefusedError);
   });
 

@@ -52,7 +52,8 @@ export const criterionSingleRule: PerFileRule = {
         column: loc.column,
         rule: 'criterion-single',
         severity: 'error',
-        message: 'conjunction in the criterion\'s outcome clause — a criterion joining two outcomes cannot be passed or failed',
+        message:
+          "conjunction in the criterion's outcome clause — a criterion joining two outcomes cannot be passed or failed",
         fixHint: 'Split into two criteria, one outcome each.',
       });
     }

@@ -38,6 +38,8 @@ describe('subtraction-register-required', () => {
   it('is silent on an artifact that is not a change proposal', () => {
     // Only a proposal carries <spec-change>; a spec, a tasks file and a triage
     // log owe nothing here.
-    expect(subtractionRegisterRequiredRule.check({ doc: doc('<spec-requirement id="FR-001"></spec-requirement>') })).toEqual([]);
+    expect(
+      subtractionRegisterRequiredRule.check({ doc: doc('<spec-requirement id="FR-001"></spec-requirement>') }),
+    ).toEqual([]);
   });
 });

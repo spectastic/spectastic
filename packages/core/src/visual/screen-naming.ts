@@ -51,7 +51,10 @@ export interface ScreenNamingClaim {
  *  the same claim, and neither is worth distinguishing in a finding. */
 function namedScreens(addresses: string | undefined): string[] {
   if (addresses === undefined) return [];
-  return addresses.trim().split(/\s+/).filter((s) => s.length > 0);
+  return addresses
+    .trim()
+    .split(/\s+/)
+    .filter((s) => s.length > 0);
 }
 
 interface MaterialScreen {

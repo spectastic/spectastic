@@ -122,7 +122,9 @@ describe('an archive carries attacker-controlled paths', () => {
 
   it('applies the same containment to the archive itself as a folder source does', async () => {
     const { cwd } = inProject({ 'a.css': 'x' });
-    await expect(archiveSourceFetcher(cwd).fetch('/tmp/elsewhere.zip')).rejects.toBeInstanceOf(ArchiveEntryOutsideError);
+    await expect(archiveSourceFetcher(cwd).fetch('/tmp/elsewhere.zip')).rejects.toBeInstanceOf(
+      ArchiveEntryOutsideError,
+    );
     await expect(archiveSourceFetcher(cwd).fetch('../elsewhere.zip')).rejects.toBeInstanceOf(ArchiveEntryOutsideError);
   });
 });

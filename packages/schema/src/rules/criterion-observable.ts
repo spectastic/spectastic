@@ -55,7 +55,8 @@ export const criterionObservableRule: PerFileRule = {
         rule: 'criterion-observable',
         severity: 'error',
         message: '<spec-criterion> carries no observation mechanism — no Meter and no Observed-at block',
-        fixHint: 'Add <details><summary>Meter</summary>…</details> for a human-sampled observation, or <summary>Observed at</summary> for a mechanical one.',
+        fixHint:
+          'Add <details><summary>Meter</summary>…</details> for a human-sampled observation, or <summary>Observed at</summary> for a mechanical one.',
       });
     }
     return findings;

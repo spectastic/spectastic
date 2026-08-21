@@ -76,11 +76,11 @@ export async function materialiseContractViews(
     const start = m.index ?? 0;
     const real = html.slice(start, start + m[0].length);
     const openEnd = real.indexOf('>');
-    return [real, real.slice('<spec-contract'.length, openEnd), real.slice(openEnd + 1, real.lastIndexOf('</spec-contract>'))] as [
-      string,
-      string,
-      string,
-    ];
+    return [
+      real,
+      real.slice('<spec-contract'.length, openEnd),
+      real.slice(openEnd + 1, real.lastIndexOf('</spec-contract>')),
+    ] as [string, string, string];
   });
   if (matches.length === 0) return html;
 
@@ -167,7 +167,9 @@ export async function materialiseContractViews(
     // label pointing at a file it does not hold is worse than none.
     const projectedName = provisional ? `specs/${specId}/contracts/${declaredPath.split('/').pop()}` : declaredPath;
     const ariaLabel = escapeContractText(
-      provisional ? `Projection of ${projectedName} (provisional — not yet promoted)` : `Projection of ${projectedName}`,
+      provisional
+        ? `Projection of ${projectedName} (provisional — not yet promoted)`
+        : `Projection of ${projectedName}`,
     );
     const viewEl = `<spec-contract-view lines="${totalLines}"${isExcerpt ? ' excerpt="true"' : ''}${provisional ? ' provisional="true"' : ''} tabindex="0" aria-label="${ariaLabel}">${escapeContractText(shown)}</spec-contract-view>`;
 

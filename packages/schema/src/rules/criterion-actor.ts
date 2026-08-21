@@ -85,7 +85,8 @@ export const criterionActorRule: PerFileRule = {
           rule: 'criterion-actor',
           severity: 'error',
           message: `<spec-criterion id="${getAttr(el, 'id') ?? '?'}"> is missing actor=`,
-          fixHint: 'Name the person or organisation who is better off — actor="reviewer", not an artifact of the system.',
+          fixHint:
+            'Name the person or organisation who is better off — actor="reviewer", not an artifact of the system.',
         });
         continue;
       }

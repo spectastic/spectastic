@@ -1,10 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-  countConformance,
-  mustDropFindings,
-  rationaleDropFindings,
-  requirementById,
-} from '../src/change/must-drop.js';
+import { countConformance, mustDropFindings, rationaleDropFindings, requirementById } from '../src/change/must-drop.js';
 
 /**
  * `conformance-dropped` (003 T-1005).
@@ -102,7 +97,6 @@ describe('requirementById', () => {
   });
 });
 
-
 /**
  * `rationale-dropped` — the second loss, and the one the conformance count
  * cannot see by construction, since rationale carries no <spec-rule>.
@@ -139,9 +133,9 @@ describe('rationaleDropFindings', () => {
   });
 
   it('is silent when rationale is carried and added to — the correct shape for an amendment', () => {
-    expect(runRat(RAT(ARG), RAT(`${ARG}<p>A third argument, added by this change and long enough to count.</p>`))).toEqual(
-      [],
-    );
+    expect(
+      runRat(RAT(ARG), RAT(`${ARG}<p>A third argument, added by this change and long enough to count.</p>`)),
+    ).toEqual([]);
   });
 
   // Paragraph boundaries move in an ordinary rewrite; the argument does not.

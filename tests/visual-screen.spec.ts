@@ -59,9 +59,7 @@ test.describe('NFR-001 · the declaration reads with scripting off', () => {
       // an unlabelled token between them was legible only to a reader who
       // already knew the vocabulary. Asserted on the ::before content itself
       // rather than on the stylesheet text, because only the browser resolves it.
-      const label = await page
-        .locator('spec-state#offline')
-        .evaluate((el) => getComputedStyle(el, '::before').content);
+      const label = await page.locator('spec-state#offline').evaluate((el) => getComputedStyle(el, '::before').content);
       expect(label).toContain('state ');
       expect(label).toContain('offline');
     });
@@ -158,9 +156,7 @@ test.describe('NFR-001 · the annotation names its subject and its layer, with s
       // a behaviour one and a tracking one — which is the point of the target
       // capability (one control, several layers) and made the bare selector
       // ambiguous under Playwright's strict mode. The assertion is unchanged.
-      const text = await readWithPseudo(
-        page.locator('spec-annotation[target="amount-field"][role="textbox"]'),
-      );
+      const text = await readWithPseudo(page.locator('spec-annotation[target="amount-field"][role="textbox"]'));
       expect(text).toContain('amount-field');
       expect(text).toContain('textbox');
       expect(text).toContain('required');
@@ -179,9 +175,7 @@ test.describe('NFR-001 · the annotation names its subject and its layer, with s
     await page.goto(SCREEN);
     // Same ambiguity from the other side: two annotations carry this layer.
     // Named by the subject the assertion is actually about.
-    const text = await readWithPseudo(
-      page.locator('spec-annotation[layer="tracking"][target="convert-button"]'),
-    );
+    const text = await readWithPseudo(page.locator('spec-annotation[layer="tracking"][target="convert-button"]'));
     expect(text).toContain('tracking');
     expect(text).toContain('convert-button');
   });

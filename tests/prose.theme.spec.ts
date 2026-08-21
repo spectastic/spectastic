@@ -30,27 +30,33 @@ const BODY_PROSE = '#context p';
 test.describe('FR-003 · the reading measure and type', () => {
   test('body type is at least 20px with leading of at least 1.6', async ({ page }) => {
     await useProse(page, ARTIFACT);
-    const m = await page.locator(BODY_PROSE).first().evaluate((el) => {
-      const cs = getComputedStyle(el);
-      return { size: parseFloat(cs.fontSize), leading: parseFloat(cs.lineHeight) / parseFloat(cs.fontSize) };
-    });
+    const m = await page
+      .locator(BODY_PROSE)
+      .first()
+      .evaluate((el) => {
+        const cs = getComputedStyle(el);
+        return { size: parseFloat(cs.fontSize), leading: parseFloat(cs.lineHeight) / parseFloat(cs.fontSize) };
+      });
     expect(m.size, 'body font-size').toBeGreaterThanOrEqual(20);
     expect(m.leading, 'line-height ratio').toBeGreaterThanOrEqual(1.6);
   });
 
   test('a line of body text runs 65–75 characters', async ({ page }) => {
     await useProse(page, ARTIFACT);
-    const ch = await page.locator(BODY_PROSE).first().evaluate((el) => {
-      const cs = getComputedStyle(el);
-      // Width of one "0" at this element's exact font — the ch unit.
-      const probe = document.createElement('span');
-      probe.textContent = '0';
-      probe.style.cssText = `position:absolute;visibility:hidden;font:${cs.font}`;
-      el.appendChild(probe);
-      const one = probe.getBoundingClientRect().width;
-      probe.remove();
-      return parseFloat(cs.maxWidth) / one;
-    });
+    const ch = await page
+      .locator(BODY_PROSE)
+      .first()
+      .evaluate((el) => {
+        const cs = getComputedStyle(el);
+        // Width of one "0" at this element's exact font — the ch unit.
+        const probe = document.createElement('span');
+        probe.textContent = '0';
+        probe.style.cssText = `position:absolute;visibility:hidden;font:${cs.font}`;
+        el.appendChild(probe);
+        const one = probe.getBoundingClientRect().width;
+        probe.remove();
+        return parseFloat(cs.maxWidth) / one;
+      });
     expect(ch).toBeGreaterThanOrEqual(65);
     expect(ch).toBeLessThanOrEqual(75);
   });
@@ -72,10 +78,13 @@ test.describe('FR-004 · sidenotes fold into the column', () => {
   test('a sidenote does not float at full width', async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 900 });
     await useProse(page, ARTIFACT);
-    const s = await page.locator('spec-sidenote').first().evaluate((el) => {
-      const cs = getComputedStyle(el);
-      return { float: cs.float, display: cs.display, marginRight: cs.marginRight };
-    });
+    const s = await page
+      .locator('spec-sidenote')
+      .first()
+      .evaluate((el) => {
+        const cs = getComputedStyle(el);
+        return { float: cs.float, display: cs.display, marginRight: cs.marginRight };
+      });
     expect(s.float, 'sidenote must not float into a gutter').toBe('none');
     expect(s.display).toBe('block');
     // Calm pulls it into the margin with a negative margin; Prose must not.
@@ -99,7 +108,10 @@ test.describe('FR-005 · component chrome is quieted, structure is not', () => {
     await useProse(page, FIXTURE);
     const rows = await page.locator('table tr').count();
     expect(rows).toBeGreaterThan(1);
-    const display = await page.locator('table').first().evaluate((el) => getComputedStyle(el).display);
+    const display = await page
+      .locator('table')
+      .first()
+      .evaluate((el) => getComputedStyle(el).display);
     expect(display).toMatch(/table/);
   });
 });

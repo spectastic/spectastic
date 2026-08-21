@@ -39,6 +39,7 @@ function quotedSpans(html: string): Array<[number, number]> {
   const spans: Array<[number, number]> = [];
   const comment = /<!--/g;
   let c: RegExpExecArray | null;
+  // biome-ignore lint/suspicious/noAssignInExpressions: the standard regex-iteration idiom. Hoisting the exec out of the condition would need a re-exec before every `continue` in the body, and a missed one is an infinite loop in a validate rule.
   while ((c = comment.exec(html))) {
     const end = html.indexOf('-->', c.index);
     spans.push([c.index, end === -1 ? html.length : end + 3]);
@@ -47,6 +48,7 @@ function quotedSpans(html: string): Array<[number, number]> {
   for (const tag of QUOTING) {
     const open = new RegExp(`<${tag}\\b[^>]*>`, 'gi');
     let m: RegExpExecArray | null;
+    // biome-ignore lint/suspicious/noAssignInExpressions: the standard regex-iteration idiom. Hoisting the exec out of the condition would need a re-exec before every `continue` in the body, and a missed one is an infinite loop in a validate rule.
     while ((m = open.exec(html))) {
       const close = html.toLowerCase().indexOf(`</${tag}`, open.lastIndex);
       const end = close === -1 ? html.length : close;
@@ -97,6 +99,7 @@ export const noUnreplacedPlaceholderRule: PerFileRule = {
     const findings: Finding[] = [];
     let m: RegExpExecArray | null;
     PLACEHOLDER_RE.lastIndex = 0;
+    // biome-ignore lint/suspicious/noAssignInExpressions: the standard regex-iteration idiom. Hoisting the exec out of the condition would need a re-exec before every `continue` in the body, and a missed one is an infinite loop in a validate rule.
     while ((m = PLACEHOLDER_RE.exec(html))) {
       if (isQuoted(m.index)) continue;
       const at = positionAt(html, m.index);

@@ -19,7 +19,8 @@ function check(html: string): Finding[] {
 }
 
 const wrap = (body: string): string => `<!doctype html><html><body>${body}</body></html>`;
-const criterion = (attrs: string, body = '<p>x</p>') => wrap(`<spec-criterion id="SC-001" ${attrs}>${body}</spec-criterion>`);
+const criterion = (attrs: string, body = '<p>x</p>') =>
+  wrap(`<spec-criterion id="SC-001" ${attrs}>${body}</spec-criterion>`);
 
 describe('a declared actor', () => {
   it('is silent for a person', () => {
@@ -38,7 +39,7 @@ describe('a missing or artifact actor', () => {
     expect(f[0]?.message).toContain('actor=');
   });
 
-  it('is reported when actor= names the tool\'s own vocabulary', () => {
+  it("is reported when actor= names the tool's own vocabulary", () => {
     const f = check(criterion('actor="the verb" validates="FR-001"'));
     expect(f).toHaveLength(1);
     expect(f[0]?.message).toContain('"the verb"');

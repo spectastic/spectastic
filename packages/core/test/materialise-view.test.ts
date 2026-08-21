@@ -191,7 +191,6 @@ describe('materialiseContractViews (072)', () => {
   });
 });
 
-
 /**
  * 072 T-003 — declining to write a view must also remove one already there.
  *
@@ -238,7 +237,6 @@ describe('a declined view removes an existing one (072 T-003)', () => {
     expect(out).toContain('openapi: 3.1.0');
   });
 });
-
 
 /**
  * 072 FR-009 — the view shows the copy under discussion.

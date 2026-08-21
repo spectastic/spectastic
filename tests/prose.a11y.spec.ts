@@ -59,7 +59,7 @@ const ratioOf = (selector: string) => `(() => {
 
 for (const mode of ['light', 'dark'] as const) {
   test.describe(`NFR-001 · body text clears AA in ${mode} mode`, () => {
-    test('running prose meets 4.5:1 with the theme\'s emphasis applied', async ({ page }) => {
+    test("running prose meets 4.5:1 with the theme's emphasis applied", async ({ page }) => {
       await prose(page, mode);
       const r = await page.evaluate(ratioOf('#context p'));
       expect(r.ratio, `body contrast in ${mode}`).toBeGreaterThanOrEqual(AA_BODY);
@@ -69,8 +69,11 @@ for (const mode of ['light', 'dark'] as const) {
       await prose(page, mode);
       const worst = await page.evaluate(() => {
         let min = 1;
-        for (const el of document.querySelectorAll('main section p, main section li, main section dd, main section td')) {
-          let a = 1, p: Element | null = el;
+        for (const el of document.querySelectorAll(
+          'main section p, main section li, main section dd, main section td',
+        )) {
+          let a = 1,
+            p: Element | null = el;
           while (p && p !== document.documentElement) {
             a *= parseFloat(getComputedStyle(p).opacity);
             p = p.parentElement;
@@ -93,8 +96,12 @@ test.describe('NFR-001 · the theme actually recesses something', () => {
         document.documentElement.setAttribute('data-theme', t);
         document.documentElement.setAttribute('data-mode', 'light');
         const el = document.querySelector('#context p')!;
-        let a = 1, p: Element | null = el;
-        while (p && p !== document.documentElement) { a *= parseFloat(getComputedStyle(p).opacity); p = p.parentElement; }
+        let a = 1,
+          p: Element | null = el;
+        while (p && p !== document.documentElement) {
+          a *= parseFloat(getComputedStyle(p).opacity);
+          p = p.parentElement;
+        }
         return a;
       }, theme);
     const calm = await read('spectastic-calm');
@@ -142,7 +149,9 @@ for (const mode of ['light', 'dark'] as const) {
       await page.evaluate(() => window.scrollTo(0, 1600));
       await page.waitForTimeout(400);
       await page.evaluate(() => {
-        const c = document.querySelector<HTMLElement>('header.spec-bar a, header.spec-bar button, header.spec-bar select');
+        const c = document.querySelector<HTMLElement>(
+          'header.spec-bar a, header.spec-bar button, header.spec-bar select',
+        );
         c?.focus();
       });
       await page.waitForTimeout(300);

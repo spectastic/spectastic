@@ -63,7 +63,10 @@ export const renderShapeRule: PerFileRule = {
 
       const contexts = getAttr(render, 'contexts');
       if (contexts !== undefined) {
-        const tokens = contexts.trim().split(/\s+/).filter((t) => t !== '');
+        const tokens = contexts
+          .trim()
+          .split(/\s+/)
+          .filter((t) => t !== '');
         const bad = tokens.filter((t) => !isPair(t));
         if (tokens.length === 0 || bad.length > 0) {
           flag(

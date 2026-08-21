@@ -74,8 +74,12 @@ test.describe('NFR-002 · nothing is ever hidden from a reader who cannot see th
     const worst = await page.evaluate(() => {
       let min = 1;
       document.querySelectorAll('main > section').forEach((el) => {
-        let a = 1, p: Element | null = el;
-        while (p && p !== document.documentElement) { a *= parseFloat(getComputedStyle(p).opacity); p = p.parentElement; }
+        let a = 1,
+          p: Element | null = el;
+        while (p && p !== document.documentElement) {
+          a *= parseFloat(getComputedStyle(p).opacity);
+          p = p.parentElement;
+        }
         min = Math.min(min, a);
       });
       return min;

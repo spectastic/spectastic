@@ -47,7 +47,7 @@ describe('brief generation — never read back as a source of declarations (107 
     }
   });
 
-  it("the two directory scanners still filter to .html only — a widened filter is exactly how a brief would start being read as a screen", () => {
+  it('the two directory scanners still filter to .html only — a widened filter is exactly how a brief would start being read as a screen', () => {
     const materialiseView = readFileSync(READER_SOURCES[0]!, 'utf8');
     const screenNaming = readFileSync(READER_SOURCES[1]!, 'utf8');
     expect(materialiseView).toMatch(/endsWith\(['"]\.html['"]\)/);

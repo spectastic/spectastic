@@ -25,7 +25,7 @@ export function registerVisual(program: Command): void {
   program
     .command('materialise')
     .description(
-      'Materialise a design\'s embedded views — the declared contract and the declared screens, derived and written into the design that declares them. Idempotent; run it again after changing either.',
+      "Materialise a design's embedded views — the declared contract and the declared screens, derived and written into the design that declares them. Idempotent; run it again after changing either.",
     )
     .argument('<spec-id>', 'the spec whose design should be materialised, e.g. 001-auth-service')
     .option('--check', 'report whether the view is stale instead of writing it')
@@ -82,7 +82,7 @@ export function registerVisual(program: Command): void {
   program
     .command('visual:import')
     .description(
-      'Import a design export already on disk — lands its material into the visual sidecar, once, and never reads it again. A token set the export declares lands as a declared source and is never presented for confirmation; values it does not cover are offered as candidates. Nothing is written to the project\'s own token set. No network, no account, no design-tool licence.',
+      "Import a design export already on disk — lands its material into the visual sidecar, once, and never reads it again. A token set the export declares lands as a declared source and is never presented for confirmation; values it does not cover are offered as candidates. Nothing is written to the project's own token set. No network, no account, no design-tool licence.",
     )
     .requiredOption('--from <path>', 'the export, inside this project — a folder, or a .zip which is expanded for you')
     .requiredOption('--into <dir>', 'where landed material goes — the visual sidecar')
@@ -99,85 +99,85 @@ export function registerVisual(program: Command): void {
         origin?: string;
         originUrl?: string;
       }) => {
-      const [
-        { importDesignSource, ImportIdentityError },
-        { localSourceFetcher, SourceNotFoundError, SourceOutsideProjectError },
-        { archiveSourceFetcher, looksLikeArchive, ArchiveUnreadableError, ArchiveEntryOutsideError },
-        { nodeFs },
-      ] = await Promise.all([
-        import('@spectastic/core/visual/import'),
-        import('@spectastic/core/providers/local-source-fetcher'),
-        import('@spectastic/core/providers/archive-source-fetcher'),
-        import('@spectastic/core/providers/node-fs'),
-      ]);
+        const [
+          { importDesignSource, ImportIdentityError },
+          { localSourceFetcher, SourceNotFoundError, SourceOutsideProjectError },
+          { archiveSourceFetcher, looksLikeArchive, ArchiveUnreadableError, ArchiveEntryOutsideError },
+          { nodeFs },
+        ] = await Promise.all([
+          import('@spectastic/core/visual/import'),
+          import('@spectastic/core/providers/local-source-fetcher'),
+          import('@spectastic/core/providers/archive-source-fetcher'),
+          import('@spectastic/core/providers/node-fs'),
+        ]);
 
-      // An archive and a folder are the same thing to everything downstream —
-      // the fetcher seam returns a directory either way, which is what lets one
-      // adapter serve every source instead of one per tool.
-      const fetcher = looksLikeArchive(opts.from)
-        ? archiveSourceFetcher(process.cwd())
-        : localSourceFetcher(nodeFs, process.cwd());
+        // An archive and a folder are the same thing to everything downstream —
+        // the fetcher seam returns a directory either way, which is what lets one
+        // adapter serve every source instead of one per tool.
+        const fetcher = looksLikeArchive(opts.from)
+          ? archiveSourceFetcher(process.cwd())
+          : localSourceFetcher(nodeFs, process.cwd());
 
-      try {
-        const ledger = await importDesignSource(
-          {
-            from: opts.from,
-            into: opts.into,
-            identity: opts.identity,
-            previousIdentity: opts.previousIdentity,
-            origin: opts.origin,
-            originUrl: opts.originUrl,
-          },
-          fetcher,
-          nodeFs,
-        );
-        // A four-bucket ledger rather than a log — the corpus prints the same
-        // shape, and it is what makes a re-import reviewable at a glance.
-        process.stdout.write(
-          `written ${ledger.written.length} · skipped ${ledger.skipped.length} · replaced ${ledger.replaced.length} · orphaned ${ledger.orphaned.length}\n`,
-        );
-        for (const name of ledger.orphaned) {
-          process.stdout.write(`  orphaned: ${name} — present here, absent from the export. Not removed.\n`);
-        }
-        // Reported at the command line rather than only in the manifest. A file
-        // that did not land is the one thing a caller must not discover later.
-        for (const name of ledger.unhandled) {
-          process.stdout.write(
-            `  not landed: ${name} — it carries a runtime, and landing it would leave this project failing its own artifact rules.\n`,
+        try {
+          const ledger = await importDesignSource(
+            {
+              from: opts.from,
+              into: opts.into,
+              identity: opts.identity,
+              previousIdentity: opts.previousIdentity,
+              origin: opts.origin,
+              originUrl: opts.originUrl,
+            },
+            fetcher,
+            nodeFs,
           );
-        }
-        for (const { name, reason } of ledger.refused) {
-          process.stdout.write(`  refused: ${name} — ${reason}\n`);
-        }
-        if (ledger.tokenCandidates.length > 0) {
+          // A four-bucket ledger rather than a log — the corpus prints the same
+          // shape, and it is what makes a re-import reviewable at a glance.
           process.stdout.write(
-            `${ledger.tokenCandidates.length} token candidate(s) derived and left unconfirmed — none is in the token set.\n`,
+            `written ${ledger.written.length} · skipped ${ledger.skipped.length} · replaced ${ledger.replaced.length} · orphaned ${ledger.orphaned.length}\n`,
           );
+          for (const name of ledger.orphaned) {
+            process.stdout.write(`  orphaned: ${name} — present here, absent from the export. Not removed.\n`);
+          }
+          // Reported at the command line rather than only in the manifest. A file
+          // that did not land is the one thing a caller must not discover later.
+          for (const name of ledger.unhandled) {
+            process.stdout.write(
+              `  not landed: ${name} — it carries a runtime, and landing it would leave this project failing its own artifact rules.\n`,
+            );
+          }
+          for (const { name, reason } of ledger.refused) {
+            process.stdout.write(`  refused: ${name} — ${reason}\n`);
+          }
+          if (ledger.tokenCandidates.length > 0) {
+            process.stdout.write(
+              `${ledger.tokenCandidates.length} token candidate(s) derived and left unconfirmed — none is in the token set.\n`,
+            );
+          }
+          if (ledger.written.length > 0 || ledger.replaced.length > 0) {
+            process.stdout.write('Newly landed material is not yet reviewed — read it before relying on it.\n');
+          }
+          process.exit(0);
+        } catch (err) {
+          if (
+            err instanceof ImportIdentityError ||
+            err instanceof SourceNotFoundError ||
+            err instanceof SourceOutsideProjectError ||
+            err instanceof ArchiveUnreadableError ||
+            err instanceof ArchiveEntryOutsideError
+          ) {
+            process.stderr.write(`${err.message}\n`);
+            process.exit(1);
+          }
+          throw err;
         }
-        if (ledger.written.length > 0 || ledger.replaced.length > 0) {
-          process.stdout.write('Newly landed material is not yet reviewed — read it before relying on it.\n');
-        }
-        process.exit(0);
-      } catch (err) {
-        if (
-          err instanceof ImportIdentityError ||
-          err instanceof SourceNotFoundError ||
-          err instanceof SourceOutsideProjectError ||
-          err instanceof ArchiveUnreadableError ||
-          err instanceof ArchiveEntryOutsideError
-        ) {
-          process.stderr.write(`${err.message}\n`);
-          process.exit(1);
-        }
-        throw err;
-      }
       },
     );
 
   program
     .command('visual:render')
     .description(
-      'Render a design export\'s own artboards into the owning spec\'s visual/renders — one browser session, one capture per labelled artboard, its own bounds rather than the page. Refuses outright (nothing written) if the runtime\'s CDN is unreachable; refuses per-artboard (the rest of the run still lands) if a label still carries unexpanded template syntax or collides with one already written this run. Never compares a capture against anything.',
+      "Render a design export's own artboards into the owning spec's visual/renders — one browser session, one capture per labelled artboard, its own bounds rather than the page. Refuses outright (nothing written) if the runtime's CDN is unreachable; refuses per-artboard (the rest of the run still lands) if a label still carries unexpanded template syntax or collides with one already written this run. Never compares a capture against anything.",
     )
     .argument('<spec-id>', 'the spec whose visual/renders receives the captures, e.g. 001-auth-service')
     .requiredOption('--from <location>', 'the design export to render — a local file path or a URL')
@@ -195,7 +195,9 @@ export function registerVisual(program: Command): void {
       const cwd = process.cwd();
       const prefix = conventionalVisualPrefix('screens', specId);
       if (prefix === null) {
-        process.stderr.write(`"${specId}" is not a conventional spec id — expected specs/${specId}/visual to resolve.\n`);
+        process.stderr.write(
+          `"${specId}" is not a conventional spec id — expected specs/${specId}/visual to resolve.\n`,
+        );
         process.exit(1);
         return;
       }
@@ -207,10 +209,7 @@ export function registerVisual(program: Command): void {
       const location = /^[a-z][a-z0-9+.-]*:\/\//i.test(opts.from) ? opts.from : `file://${resolve(cwd, opts.from)}`;
 
       try {
-        const result = await renderDesign(
-          { location, destDir },
-          { cwd, fs: nodeFs, render: playwrightRenderer() },
-        );
+        const result = await renderDesign({ location, destDir }, { cwd, fs: nodeFs, render: playwrightRenderer() });
         for (const w of result.written) {
           process.stdout.write(`captured ${w.label} → ${w.path}\n`);
           for (const err of w.consoleErrors) {
@@ -236,9 +235,14 @@ export function registerVisual(program: Command): void {
           const designHtml = await nodeFs.readFile(`${cwd}/specs/${specId}/design.html`);
           const model = await readBriefModel(designHtml, nodeFs, cwd);
           const declaredIds = model.screens.flatMap((s: BriefScreen) => s.states.map((st) => st.id));
-          const undeclared = undeclaredStates(declaredIds, result.written.map((w) => w.label));
+          const undeclared = undeclaredStates(
+            declaredIds,
+            result.written.map((w) => w.label),
+          );
           for (const label of undeclared) {
-            process.stdout.write(`undeclared: ${label} — not in ${specId}'s declared states; attributed to the design, not adopted\n`);
+            process.stdout.write(
+              `undeclared: ${label} — not in ${specId}'s declared states; attributed to the design, not adopted\n`,
+            );
           }
         } catch {
           // No design at that spec id, or it declares no screens — nothing to
@@ -255,7 +259,7 @@ export function registerVisual(program: Command): void {
   program
     .command('visual:brief')
     .description(
-      'Generate a design brief from what a feature already declares — its states, refusals, annotations and addressed contexts, in the specification\'s own words. States the exact label each artboard must carry, and the convention for labelling a state your design finds that the feature does not declare. Written once to a dated file and never rewritten; a same-day re-run is refused. No network, no design-tool account.',
+      "Generate a design brief from what a feature already declares — its states, refusals, annotations and addressed contexts, in the specification's own words. States the exact label each artboard must carry, and the convention for labelling a state your design finds that the feature does not declare. Written once to a dated file and never rewritten; a same-day re-run is refused. No network, no design-tool account.",
     )
     .argument('<spec-id>', 'the spec whose declarations the brief is generated from, e.g. 001-auth-service')
     .action(async (specId: string) => {

@@ -44,13 +44,25 @@ export const contentBudgetShapeRule: PerFileRule = {
     if (present === 0) return findings;
 
     const flag = (at: { line: number; column: number }, message: string, fixHint: string): void => {
-      findings.push({ file: doc.file, line: at.line, column: at.column, rule: 'content-budget-shape', severity: 'error', message, fixHint });
+      findings.push({
+        file: doc.file,
+        line: at.line,
+        column: at.column,
+        rule: 'content-budget-shape',
+        severity: 'error',
+        message,
+        fixHint,
+      });
     };
 
     for (const b of readCopyBudgets(doc)) {
       const label = b.element === undefined ? '<spec-copy-budget>' : `<spec-copy-budget element="${b.element}">`;
       if (b.element === undefined || b.element.trim() === '') {
-        flag(b, '<spec-copy-budget> names no element class', 'Add element= naming the class this constrains — "card title", not one particular card title (spec.html FR-001).');
+        flag(
+          b,
+          '<spec-copy-budget> names no element class',
+          'Add element= naming the class this constrains — "card title", not one particular card title (spec.html FR-001).',
+        );
       }
       if (b.max === undefined || !/^\d+$/.test(b.max.trim())) {
         flag(
@@ -70,24 +82,36 @@ export const contentBudgetShapeRule: PerFileRule = {
 
     for (const r of readRefusals(doc)) {
       if (r.text === undefined || r.text.trim() === '') {
-        flag(r, '<spec-refusal> names no string', 'Add text= naming what the product will not ship (spec.html FR-005).');
+        flag(
+          r,
+          '<spec-refusal> names no string',
+          'Add text= naming what the product will not ship (spec.html FR-005).',
+        );
       }
       if (r.reason === '') {
         flag(
           r,
           `<spec-refusal text="${r.text ?? ''}"> gives no reason`,
-          'Give the refusal a reason as the element\'s content (spec.html FR-005). A list without reasons is one somebody deletes the first time it is inconvenient; the reason is what survives a change of team.',
+          "Give the refusal a reason as the element's content (spec.html FR-005). A list without reasons is one somebody deletes the first time it is inconvenient; the reason is what survives a change of team.",
         );
       }
     }
 
-    const shapes = new Set(readMessageShapes(doc).map((s) => s.name).filter((n): n is string => n !== undefined));
+    const shapes = new Set(
+      readMessageShapes(doc)
+        .map((s) => s.name)
+        .filter((n): n is string => n !== undefined),
+    );
     for (const s of readMessageShapes(doc)) {
       if (s.name === undefined || s.name.trim() === '') {
         flag(s, '<spec-message-shape> has no name to be referenced by', 'Add name= (spec.html FR-007).');
       }
       if (s.parts === undefined || s.parts.trim() === '') {
-        flag(s, `<spec-message-shape name="${s.name ?? ''}"> declares no parts`, 'Add parts= naming what a message of this shape carries (spec.html FR-007).');
+        flag(
+          s,
+          `<spec-message-shape name="${s.name ?? ''}"> declares no parts`,
+          'Add parts= naming what a message of this shape carries (spec.html FR-007).',
+        );
       }
     }
     // A state referencing a shape that is not declared here.

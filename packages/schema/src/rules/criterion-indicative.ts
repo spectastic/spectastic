@@ -48,7 +48,8 @@ export const criterionIndicativeRule: PerFileRule = {
         rule: 'criterion-indicative',
         severity: 'error',
         message: `<spec-criterion> uses the RFC 2119 keyword "${match[1]}" — a criterion is an observation, not an obligation`,
-        fixHint: 'Rewrite in the indicative: "reviewers confirm…", not "…MUST allow reviewers to confirm…". An author reaching for MUST has written a requirement.',
+        fixHint:
+          'Rewrite in the indicative: "reviewers confirm…", not "…MUST allow reviewers to confirm…". An author reaching for MUST has written a requirement.',
       });
     }
     return findings;

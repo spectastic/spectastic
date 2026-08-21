@@ -49,7 +49,9 @@ describe('a malformed screen', () => {
   });
 
   it('flags two screens sharing an id in one artifact', () => {
-    const f = findingsFor('<spec-screen id="a" name="a"><p>r</p></spec-screen><spec-screen id="a" name="a"><p>r</p></spec-screen>');
+    const f = findingsFor(
+      '<spec-screen id="a" name="a"><p>r</p></spec-screen><spec-screen id="a" name="a"><p>r</p></spec-screen>',
+    );
     expect(f).toHaveLength(1);
     expect(f[0]?.message).toMatch(/\ba\b/);
   });
@@ -63,7 +65,9 @@ describe('a state outside a screen', () => {
   });
 
   it('flags a state with no id', () => {
-    const f = findingsFor('<spec-screen id="s" name="s"><spec-state source="authored"><p>r</p></spec-state></spec-screen>');
+    const f = findingsFor(
+      '<spec-screen id="s" name="s"><spec-state source="authored"><p>r</p></spec-state></spec-screen>',
+    );
     expect(f.map((x) => x.message).join('\n')).toMatch(/id=/);
   });
 });

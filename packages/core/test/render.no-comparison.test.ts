@@ -34,12 +34,10 @@ describe('render.ts — nothing to compare against (FR-010)', () => {
     // than a guessed function name, so this keeps working however T-110 names
     // it. Until T-110 lands, no such export exists, which is the red state
     // this test starts in.
-    const entryPoint = source.match(
-      /export\s+(?:async\s+)?function\s+\w+\s*\(([^)]*)\)[^{]*\{[\s\S]*?checkEgress/
-    );
+    const entryPoint = source.match(/export\s+(?:async\s+)?function\s+\w+\s*\(([^)]*)\)[^{]*\{[\s\S]*?checkEgress/);
     expect(
       entryPoint,
-      'the render verb entry point (the export that calls checkEgress) is not implemented yet — T-110'
+      'the render verb entry point (the export that calls checkEgress) is not implemented yet — T-110',
     ).not.toBeNull();
     const params = entryPoint?.[1] ?? '';
     expect(params).not.toMatch(/baseline|compareTo|previousCapture/i);

@@ -35,14 +35,26 @@ export const trackingPlanShapeRule: PerFileRule = {
     if (events.length === 0 && findAll(doc.ast, CONSENT_GATE_ELEMENT).length === 0) return findings;
 
     const flag = (at: { line: number; column: number }, message: string, fixHint: string): void => {
-      findings.push({ file: doc.file, line: at.line, column: at.column, rule: 'tracking-plan-shape', severity: 'error', message, fixHint });
+      findings.push({
+        file: doc.file,
+        line: at.line,
+        column: at.column,
+        rule: 'tracking-plan-shape',
+        severity: 'error',
+        message,
+        fixHint,
+      });
     };
 
     const declared = readTrackingEvents(doc);
     for (const e of declared) {
       const label = e.name === undefined ? '<spec-event>' : `<spec-event name="${e.name}">`;
       if (e.name === undefined || e.name.trim() === '') {
-        flag(e, '<spec-event> has no name', 'Add name= — a stable name is what a plan and a build agree on (spec.html FR-001).');
+        flag(
+          e,
+          '<spec-event> has no name',
+          'Add name= — a stable name is what a plan and a build agree on (spec.html FR-001).',
+        );
       }
       // NOTE: e.fields.length === 0 is deliberately NOT a finding. See the rule
       // docstring: an empty payload is the safest event there is.
@@ -70,7 +82,11 @@ export const trackingPlanShapeRule: PerFileRule = {
     }
     for (const g of gates) {
       if (g.question === undefined || g.question.trim() === '') {
-        flag(g, '<spec-consent-gate> names no question', 'Add question= referencing the open question this plan waits on (spec.html FR-004).');
+        flag(
+          g,
+          '<spec-consent-gate> names no question',
+          'Add question= referencing the open question this plan waits on (spec.html FR-004).',
+        );
       }
     }
 

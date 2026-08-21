@@ -15,7 +15,9 @@ describe('readVisualDeclarations — variants and contexts', () => {
 
   it('reads the declared variant grid path', () => {
     const [d] = readVisualDeclarations(
-      wrap('shape="screens" tokens="visual/tokens" variants="visual/variants.html" screens="specs/001/visual" source="Figma"'),
+      wrap(
+        'shape="screens" tokens="visual/tokens" variants="visual/variants.html" screens="specs/001/visual" source="Figma"',
+      ),
     );
     expect(d?.variants).toBe('visual/variants.html');
   });

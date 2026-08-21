@@ -112,7 +112,8 @@ describe('injection', () => {
   });
 
   it('leaves a declaration naming no screens untouched', async () => {
-    const none = '<!doctype html><html><body><main><spec-visual shape="none"><p>r</p></spec-visual></main></body></html>';
+    const none =
+      '<!doctype html><html><body><main><spec-visual shape="none"><p>r</p></spec-visual></main></body></html>';
     expect(await materialiseVisualViews(none, fsWith({}), '/repo')).toBe(none);
   });
 

@@ -23,7 +23,9 @@ const doc = (body: string) => parse(`<!doctype html><html><body><main>${body}</m
 
 describe('reading', () => {
   it('keeps the number and the unit separate, since one without the other is ambiguous', () => {
-    const [b] = readCopyBudgets(doc('<spec-copy-budget element="card title" max="28" unit="characters"></spec-copy-budget>'));
+    const [b] = readCopyBudgets(
+      doc('<spec-copy-budget element="card title" max="28" unit="characters"></spec-copy-budget>'),
+    );
     expect(b).toMatchObject({ element: 'card title', max: '28', unit: 'characters' });
   });
 
@@ -55,7 +57,9 @@ describe('budgets', () => {
   });
 
   it('is silent for a language-scoped budget', () => {
-    expect(findingsFor('<spec-copy-budget element="h2" max="40" unit="characters" lang="en"></spec-copy-budget>')).toEqual([]);
+    expect(
+      findingsFor('<spec-copy-budget element="h2" max="40" unit="characters" lang="en"></spec-copy-budget>'),
+    ).toEqual([]);
   });
 
   it('reports a budget with no number', () => {
@@ -75,12 +79,18 @@ describe('budgets', () => {
 
 describe('refusals', () => {
   it('is silent for a refusal with a reason', () => {
-    expect(findingsFor('<spec-refusal text="oops">It tells a user nothing and sounds flippant about their problem.</spec-refusal>')).toEqual([]);
+    expect(
+      findingsFor(
+        '<spec-refusal text="oops">It tells a user nothing and sounds flippant about their problem.</spec-refusal>',
+      ),
+    ).toEqual([]);
   });
 
   it('is silent for a context-scoped refusal, since a string can be fine elsewhere', () => {
     expect(
-      findingsFor('<spec-refusal text="Error" context="anything a user reads">Fine in a log line, useless on screen.</spec-refusal>'),
+      findingsFor(
+        '<spec-refusal text="Error" context="anything a user reads">Fine in a log line, useless on screen.</spec-refusal>',
+      ),
     ).toEqual([]);
   });
 
@@ -100,7 +110,8 @@ describe('message shapes', () => {
   });
 
   it('reports a reference to a shape nothing declares', () => {
-    const body = '<spec-screen id="s"><spec-state id="a" source="authored" message-shape="ghost"></spec-state></spec-screen>';
+    const body =
+      '<spec-screen id="s"><spec-state id="a" source="authored" message-shape="ghost"></spec-state></spec-screen>';
     const f = findingsFor(body);
     expect(f).toHaveLength(1);
     expect(f[0]?.message).toContain('ghost');

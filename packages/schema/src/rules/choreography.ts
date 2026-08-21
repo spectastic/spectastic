@@ -44,7 +44,15 @@ export const choreographyShapeRule: PerFileRule = {
     }
 
     const flag = (at: { line: number; column: number }, message: string, fixHint: string): void => {
-      findings.push({ file: doc.file, line: at.line, column: at.column, rule: 'choreography-shape', severity: 'error', message, fixHint });
+      findings.push({
+        file: doc.file,
+        line: at.line,
+        column: at.column,
+        rule: 'choreography-shape',
+        severity: 'error',
+        message,
+        fixHint,
+      });
     };
 
     for (const c of readChoreographies(doc)) {
@@ -74,7 +82,7 @@ export const choreographyShapeRule: PerFileRule = {
           flag(
             cue,
             `${label} has a cue with no offset from the origin`,
-            'Add at= — the offset from the choreography\'s origin, with its unit (spec.html FR-003). Offsets are from the origin and never from the previous cue, so inserting a cue never moves the ones after it.',
+            "Add at= — the offset from the choreography's origin, with its unit (spec.html FR-003). Offsets are from the origin and never from the previous cue, so inserting a cue never moves the ones after it.",
           );
         }
       }

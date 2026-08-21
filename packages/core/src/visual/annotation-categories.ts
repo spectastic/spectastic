@@ -80,15 +80,18 @@ export const ANNOTATION_CATEGORY_MAP: Readonly<Record<string, CategoryEntry>> = 
   // survey placed both, and the type could not hold either.
   motion: {
     kind: 'elsewhere',
-    where: "the token format's own duration, easing and transition types — a declared motion value belongs in the token file, not in a second place able to disagree with it.",
+    where:
+      "the token format's own duration, easing and transition types — a declared motion value belongs in the token file, not in a second place able to disagree with it.",
   },
   data: {
     kind: 'elsewhere',
-    where: 'the contract declaration and the contract file it names — the interface a screen calls is already declared, and an annotation should reference it rather than restate it.',
+    where:
+      'the contract declaration and the contract file it names — the interface a screen calls is already declared, and an annotation should reference it rather than restate it.',
   },
   requirement: {
     kind: 'elsewhere',
-    where: 'the requirement it cites, by identifier. FR-007 forbids restating one, so an imported requirement-class annotation becomes a citation.',
+    where:
+      'the requirement it cites, by identifier. FR-007 forbids restating one, so an imported requirement-class annotation becomes a citation.',
   },
 
   // No accessibility analogue. Named, with the reason, so an import that

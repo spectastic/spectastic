@@ -161,9 +161,7 @@ test('an external token base and a grid compose in one header line', async ({ pa
 
 test('an explicit whole-grid claim reads differently from saying nothing', async ({ page }) => {
   await page.goto(FIXTURE);
-  const claimed = await page
-    .locator('#v-contexts-all')
-    .evaluate((el) => getComputedStyle(el, '::after').content ?? '');
+  const claimed = await page.locator('#v-contexts-all').evaluate((el) => getComputedStyle(el, '::after').content ?? '');
   const silent = await page.locator('#v-screens').evaluate((el) => getComputedStyle(el, '::after').content ?? '');
   expect(claimed).toContain('all');
   // Silence must not be drawn as a claim — FR-012's third value.

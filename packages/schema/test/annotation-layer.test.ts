@@ -58,7 +58,9 @@ describe('a declared layer', () => {
     // Typed twice, so both answers are right. This is the case a precedence
     // ladder would have got wrong.
     expect(
-      findingsFor(screen('<spec-annotation role="button" cites="NFR-001" layer="requirement"><p>x</p></spec-annotation>')),
+      findingsFor(
+        screen('<spec-annotation role="button" cites="NFR-001" layer="requirement"><p>x</p></spec-annotation>'),
+      ),
     ).toEqual([]);
   });
 

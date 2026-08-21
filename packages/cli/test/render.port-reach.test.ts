@@ -41,7 +41,7 @@ describe('only the render subcommand reaches @spectastic/render', () => {
     expect(matches.length).toBe(1);
   });
 
-  it('that module is visual.ts, the render subcommand\'s home', () => {
+  it("that module is visual.ts, the render subcommand's home", () => {
     const matches = filesImportingRender();
     expect(matches).toEqual(['visual.ts']);
   });

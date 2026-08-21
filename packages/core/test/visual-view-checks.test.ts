@@ -13,10 +13,12 @@ import type { FileSystem } from '../src/types.js';
 
 const SCREEN = (states: string) =>
   `<!doctype html><html><body><main><spec-screen id="convert">${states}</spec-screen></main></body></html>`;
-const TWO = '<spec-state id="a" source="authored"></spec-state><spec-state id="b" source="derived" from="200"></spec-state>';
+const TWO =
+  '<spec-state id="a" source="authored"></spec-state><spec-state id="b" source="derived" from="200"></spec-state>';
 const THREE = `${TWO}<spec-state id="c" source="authored"></spec-state>`;
 
-const DESIGN = '<!doctype html><html><body><main><spec-visual shape="screens" tokens="t" screens="s/x.screen.html" source="figma"><p>r</p></spec-visual></main></body></html>';
+const DESIGN =
+  '<!doctype html><html><body><main><spec-visual shape="screens" tokens="t" screens="s/x.screen.html" source="figma"><p>r</p></spec-visual></main></body></html>';
 
 const fsWith = (screen: string): FileSystem =>
   ({
@@ -67,7 +69,8 @@ describe('absence', () => {
   });
 
   it('is silent for an explicit no-surface declaration', () => {
-    const none = '<!doctype html><html><body><main><spec-visual shape="none"><p>r</p></spec-visual></main></body></html>';
+    const none =
+      '<!doctype html><html><body><main><spec-visual shape="none"><p>r</p></spec-visual></main></body></html>';
     expect(visualViewMissingFindings(none, 'design.html')).toEqual([]);
   });
 

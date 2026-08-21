@@ -29,12 +29,18 @@ describe('reading', () => {
       '<spec-state id="a" source="authored"><spec-event name="state_entered"></spec-event>' +
       '<spec-annotation target="convert-button"><spec-event name="rate_converted"></spec-event></spec-annotation>' +
       '</spec-state></spec-screen>';
-    expect(readTrackingEvents(doc(body)).map((e) => e.name)).toEqual(['screen_seen', 'state_entered', 'rate_converted']);
+    expect(readTrackingEvents(doc(body)).map((e) => e.name)).toEqual([
+      'screen_seen',
+      'state_entered',
+      'rate_converted',
+    ]);
   });
 
   it('marks a field derived from user input, which is what a privacy review turns on', () => {
     const [e] = readTrackingEvents(
-      doc('<spec-event name="x"><spec-field name="pair" type="string"></spec-field><spec-field name="amount" type="number" from-user-input></spec-field></spec-event>'),
+      doc(
+        '<spec-event name="x"><spec-field name="pair" type="string"></spec-field><spec-field name="amount" type="number" from-user-input></spec-field></spec-event>',
+      ),
     );
     expect(e?.fields[0]?.fromUserInput).toBe(false);
     expect(e?.fields[1]?.fromUserInput).toBe(true);
@@ -55,7 +61,11 @@ describe('the two deliberate inversions', () => {
   });
 
   it('treats an answer of none as an answer rather than an absence', () => {
-    expect(findingsFor('<spec-consent-gate question="Q-04" answer="none"></spec-consent-gate><spec-event name="x"></spec-event>')).toEqual([]);
+    expect(
+      findingsFor(
+        '<spec-consent-gate question="Q-04" answer="none"></spec-consent-gate><spec-event name="x"></spec-event>',
+      ),
+    ).toEqual([]);
   });
 });
 
@@ -65,7 +75,10 @@ describe('the forbidden behaviour', () => {
     // treat a declared event as evidence of an emission — that would let a spec
     // claim a privacy posture the build does not have.
     const body = `${GATE}<spec-event name="rate_converted"><spec-field name="pair" type="string"></spec-field></spec-event>`;
-    const all = validate(`<!doctype html><html><head><title>x</title></head><body><main>${body}</main></body></html>`, FILE);
+    const all = validate(
+      `<!doctype html><html><head><title>x</title></head><body><main>${body}</main></body></html>`,
+      FILE,
+    );
     expect(all.filter((f) => /ship|emit|fired|sent/i.test(f.message))).toEqual([]);
   });
 });

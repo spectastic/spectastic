@@ -174,7 +174,11 @@ export async function materialiseVisualViews(
     const start = m.index ?? 0;
     const real = html.slice(start, start + m[0].length);
     const openEnd = real.indexOf('>');
-    const match = [real, real.slice('<spec-visual'.length, openEnd), real.slice(openEnd + 1, real.lastIndexOf('</spec-visual>'))] as unknown as RegExpMatchArray;
+    const match = [
+      real,
+      real.slice('<spec-visual'.length, openEnd),
+      real.slice(openEnd + 1, real.lastIndexOf('</spec-visual>')),
+    ] as unknown as RegExpMatchArray;
     const [full, attrs = '', inner = ''] = match;
     const screensPath = /\bscreens=["']([^"']+)["']/i.exec(attrs)?.[1];
     if (screensPath === undefined) continue; // shape="none" or malformed
@@ -189,7 +193,9 @@ export async function materialiseVisualViews(
     try {
       const stat = await fs.stat(`${cwd}/${screensPath}`);
       const files: string[] = stat.isDirectory
-        ? (await fs.readdir(`${cwd}/${screensPath}`)).filter((f) => f.endsWith('.html')).map((f) => `${screensPath}/${f}`)
+        ? (await fs.readdir(`${cwd}/${screensPath}`))
+            .filter((f) => f.endsWith('.html'))
+            .map((f) => `${screensPath}/${f}`)
         : [screensPath];
       const merged: ViewModel = { screens: [], truncated: false };
       for (const f of files) {

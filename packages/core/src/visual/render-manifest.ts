@@ -56,7 +56,12 @@ export function buildManifest(
 ): RenderManifest {
   const entries: ManifestEntry[] = [
     ...written.map(
-      (w): ManifestCapturedEntry => ({ label: w.label, status: 'captured', path: w.path, consoleErrors: w.consoleErrors }),
+      (w): ManifestCapturedEntry => ({
+        label: w.label,
+        status: 'captured',
+        path: w.path,
+        consoleErrors: w.consoleErrors,
+      }),
     ),
     ...refused.map((r): ManifestNotCapturedEntry => ({ label: r.label, status: 'not-captured', reason: r.reason })),
   ];

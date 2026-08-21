@@ -99,9 +99,7 @@ export async function renderDesign(input: RenderDesignInput, ctx: KernelContext)
   // would land under — unsafe for one artboard means unsafe for all of
   // them, so this is a whole-run throw, not a per-artboard refusal.
   if (hasDotSegment(destDir)) {
-    throw new Error(
-      `refusing to write under "${destDir}" — a path segment begins with a dot`,
-    );
+    throw new Error(`refusing to write under "${destDir}" — a path segment begins with a dot`);
   }
 
   // FR-005, checked before executing any artboard: a blocked CDN was

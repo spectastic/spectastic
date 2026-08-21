@@ -38,7 +38,12 @@ const TRACKER = `<!doctype html><html><body><main>
 </main></body></html>`;
 
 const mark = (t = TRACKER) =>
-  markSupersededPhase(t, '2026-08-13-address-a-screen', '2026-08-14-use-the-anchor', 'Use the anchor that already exists');
+  markSupersededPhase(
+    t,
+    '2026-08-13-address-a-screen',
+    '2026-08-14-use-the-anchor',
+    'Use the anchor that already exists',
+  );
 
 describe('declaredSupersedes', () => {
   it('reads the attribute off the wrapper', () => {
@@ -110,8 +115,12 @@ describe('markSupersededPhase (REQ-CHANGE-010)', () => {
 describe('a superseded task is closed as well as marked (REQ-CHANGE-010, amended)', () => {
   it('closes the box, so an unchecked box means exactly "open"', () => {
     const r = mark();
-    expect(r?.out).toMatch(/<spec-task id="T-1100"[^>]*data-status="superseded"[^>]*>\s*<input type="checkbox" checked>/);
-    expect(r?.out).toMatch(/<spec-task id="T-1102"[^>]*data-status="superseded"[^>]*>\s*<input type="checkbox" checked>/);
+    expect(r?.out).toMatch(
+      /<spec-task id="T-1100"[^>]*data-status="superseded"[^>]*>\s*<input type="checkbox" checked>/,
+    );
+    expect(r?.out).toMatch(
+      /<spec-task id="T-1102"[^>]*data-status="superseded"[^>]*>\s*<input type="checkbox" checked>/,
+    );
   });
 
   it('leaves an already-closed task exactly as it stands', () => {
@@ -125,7 +134,10 @@ describe('a superseded task is closed as well as marked (REQ-CHANGE-010, amended
   it('closes a box whose attributes are in the other order', () => {
     // The estate carries both forms; an order-sensitive rewrite would leave
     // this one open and reintroduce the ambiguity this change removes.
-    const t = TRACKER.replace('<input type="checkbox">\n  <div>Add the screen kind', '<input class="x" type="checkbox">\n  <div>Add the screen kind');
+    const t = TRACKER.replace(
+      '<input type="checkbox">\n  <div>Add the screen kind',
+      '<input class="x" type="checkbox">\n  <div>Add the screen kind',
+    );
     const r = mark(t);
     expect(r?.out).toMatch(/<input class="x" type="checkbox" checked>/);
   });

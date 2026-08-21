@@ -39,7 +39,9 @@ describe('reading', () => {
   });
 
   it('treats an empty reduced-motion record as no record at all', () => {
-    const [c] = readChoreographies(doc(CHOREO('<spec-cue element="a" at="0ms"></spec-cue>', '<spec-reduced-motion>   </spec-reduced-motion>')));
+    const [c] = readChoreographies(
+      doc(CHOREO('<spec-cue element="a" at="0ms"></spec-cue>', '<spec-reduced-motion>   </spec-reduced-motion>')),
+    );
     expect(c?.reducedMotion).toBeUndefined();
   });
 });
@@ -59,12 +61,18 @@ describe('what must stay silent', () => {
 
   it('never resolves a token reference', () => {
     expect(
-      findingsFor(CHOREO('<spec-cue element="a" at="0ms" duration="{motion.nonexistent}" easing="{motion.also-not-there}"></spec-cue>')),
+      findingsFor(
+        CHOREO(
+          '<spec-cue element="a" at="0ms" duration="{motion.nonexistent}" easing="{motion.also-not-there}"></spec-cue>',
+        ),
+      ),
     ).toEqual([]);
   });
 
   it('accepts a raw value, since most projects have no motion scale yet', () => {
-    expect(findingsFor(CHOREO('<spec-cue element="a" at="0ms" duration="220ms" easing="ease-out"></spec-cue>'))).toEqual([]);
+    expect(
+      findingsFor(CHOREO('<spec-cue element="a" at="0ms" duration="220ms" easing="ease-out"></spec-cue>')),
+    ).toEqual([]);
   });
 
   it('is silent on a document declaring no choreography', () => {
@@ -73,7 +81,7 @@ describe('what must stay silent', () => {
 });
 
 describe('what must report', () => {
-  it('reports a missing reduced-motion record — the family\'s one required record', () => {
+  it("reports a missing reduced-motion record — the family's one required record", () => {
     const f = findingsFor(CHOREO('<spec-cue element="a" at="0ms"></spec-cue>', ''));
     expect(f).toHaveLength(1);
     expect(f[0]?.message).toContain('reduced motion');
@@ -85,11 +93,15 @@ describe('what must report', () => {
   });
 
   it('reports an empty reduced-motion record, which an attribute could not catch', () => {
-    expect(findingsFor(CHOREO('<spec-cue element="a" at="0ms"></spec-cue>', '<spec-reduced-motion></spec-reduced-motion>'))).toHaveLength(1);
+    expect(
+      findingsFor(CHOREO('<spec-cue element="a" at="0ms"></spec-cue>', '<spec-reduced-motion></spec-reduced-motion>')),
+    ).toHaveLength(1);
   });
 
   it('reports a choreography with no origin, since an offset without one is a number', () => {
-    const f = findingsFor('<spec-choreography id="e">' + RM + '<spec-cue element="a" at="0ms"></spec-cue></spec-choreography>');
+    const f = findingsFor(
+      '<spec-choreography id="e">' + RM + '<spec-cue element="a" at="0ms"></spec-cue></spec-choreography>',
+    );
     expect(f).toHaveLength(1);
     expect(f[0]?.message).toContain('no origin');
   });

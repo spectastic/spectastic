@@ -25,15 +25,17 @@ const FORBIDDEN_CHARS = /[/\\:*?"<>|]/g;
 
 /** Reduce a declared label to a filesystem-safe slug. */
 export function slugLabel(label: string): string {
-  return label
-    .toLowerCase()
-    .replace(FORBIDDEN_CHARS, '')
-    // The `·` separator, with any surrounding whitespace, collapses to one
-    // hyphen before the generic whitespace pass runs — otherwise the spaces
-    // either side of it would each collapse to their own hyphen first.
-    .replace(/\s*·\s*/g, '-')
-    .replace(/\s+/g, '-')
-    .replace(/-+/g, '-');
+  return (
+    label
+      .toLowerCase()
+      .replace(FORBIDDEN_CHARS, '')
+      // The `·` separator, with any surrounding whitespace, collapses to one
+      // hyphen before the generic whitespace pass runs — otherwise the spaces
+      // either side of it would each collapse to their own hyphen first.
+      .replace(/\s*·\s*/g, '-')
+      .replace(/\s+/g, '-')
+      .replace(/-+/g, '-')
+  );
 }
 
 /**

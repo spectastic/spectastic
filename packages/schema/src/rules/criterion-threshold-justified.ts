@@ -25,6 +25,7 @@ const THRESHOLD_TARGET_PAIR = /(\d+(?:\.\d+)?)\s*%?\s*\(target\s+(\d+(?:\.\d+)?)
 function needsJustification(text: string): boolean {
   let match: RegExpExecArray | null;
   THRESHOLD_TARGET_PAIR.lastIndex = 0;
+  // biome-ignore lint/suspicious/noAssignInExpressions: the standard regex-iteration idiom. Hoisting the exec out of the condition would need a re-exec before every `continue` in the body, and a missed one is an infinite loop in a validate rule.
   while ((match = THRESHOLD_TARGET_PAIR.exec(text))) {
     const must = Number(match[1]);
     const plan = Number(match[2]);

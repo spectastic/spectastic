@@ -228,13 +228,7 @@ describe('the property the whole slice rests on', () => {
  * because a type is exactly what passed last time.
  */
 
-import {
-  MANIFEST_NAME,
-  carriesExecutableContent,
-  contentHash,
-  deriveTokenCandidates,
-  forbiddingLicence,
-} from '../src/visual/import.js';
+import { MANIFEST_NAME, carriesExecutableContent, contentHash, forbiddingLicence } from '../src/visual/import.js';
 
 /** A clean export directory — `setup()` seeds two files of its own, which
  *  would show up in every `written` assertion below. */
@@ -295,7 +289,7 @@ describe('the content hash is computed over bytes, not UTF-16 code units (FR-002
     expect(contentHash(a)).not.toBe(contentHash(b));
   });
 
-  it('keeps today\'s value for a pure-ASCII byte sequence', () => {
+  it("keeps today's value for a pure-ASCII byte sequence", () => {
     const bytes = new TextEncoder().encode('hello world');
     // Grounded, not guessed: 'd58b3fa7' is the REAL output of the current
     // (string-based) contentHash('hello world') today, captured with:
@@ -797,7 +791,6 @@ describe('confirming a candidate writes it into the token set (FR-016, T-1204)',
     expect(confirmed.inferred).toBe(true);
   });
 });
-
 
 /**
  * 105 FR-017 / FR-010's boundary — a declared token is not a guess.

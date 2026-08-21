@@ -109,8 +109,7 @@ describe('the generated state table names its origin', () => {
         '<spec-screen id="converter"><spec-state id="converted" source="derived" from="200"><p>x</p></spec-state></spec-screen>',
       readdir: async () => ['screens.html'],
     } as unknown as FileSystem;
-    const design =
-      '<spec-visual shape="screens" tokens="visual" screens="s/visual" source="x"><p>r</p></spec-visual>';
+    const design = '<spec-visual shape="screens" tokens="visual" screens="s/visual" source="x"><p>r</p></spec-visual>';
     const out = await materialiseVisualViews(design, fs, '/repo');
     expect(out).toContain('response <code>200</code>');
     expect(out).not.toContain('<th>From</th>');

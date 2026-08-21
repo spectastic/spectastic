@@ -29,7 +29,9 @@ describe('a document with no journey', () => {
 describe('a journey that resolves', () => {
   it('is silent', () => {
     expect(
-      findingsFor(`${SCREENS}<spec-flow id="f"><spec-step screen="convert"></spec-step><spec-step screen="pairs"></spec-step></spec-flow>`),
+      findingsFor(
+        `${SCREENS}<spec-flow id="f"><spec-step screen="convert"></spec-step><spec-step screen="pairs"></spec-step></spec-flow>`,
+      ),
     ).toEqual([]);
   });
 
@@ -50,7 +52,9 @@ describe('a journey that resolves', () => {
 
   it('is silent for a declared outward step', () => {
     expect(
-      findingsFor(`${SCREENS}<spec-flow id="f"><spec-step screen="convert"></spec-step><spec-step outward>the receipt</spec-step></spec-flow>`),
+      findingsFor(
+        `${SCREENS}<spec-flow id="f"><spec-step screen="convert"></spec-step><spec-step outward>the receipt</spec-step></spec-flow>`,
+      ),
     ).toEqual([]);
   });
 });

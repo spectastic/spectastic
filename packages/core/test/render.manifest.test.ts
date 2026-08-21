@@ -68,7 +68,10 @@ describe('the run manifest — console errors recorded (106 FR-009)', () => {
     const fs = stubFs();
     const ctx: KernelContext = { cwd: '/project', fs, render: renderer };
 
-    await renderDesign({ location: '/project/design-export/index.html', destDir: 'specs/106-visual-render/visual/renders' }, ctx);
+    await renderDesign(
+      { location: '/project/design-export/index.html', destDir: 'specs/106-visual-render/visual/renders' },
+      ctx,
+    );
 
     // Written to disk, never held only in memory — a reader of the manifest
     // file must see it too (FR-009's "MUST NOT be discarded").
@@ -119,7 +122,7 @@ describe('the run manifest — every artboard accounted for (106 FR-011, SC-002)
 });
 
 describe('the run manifest — paths are portable (106 FR-011)', () => {
-  it('records a project-relative path, never an absolute one carrying the author\'s filesystem', async () => {
+  it("records a project-relative path, never an absolute one carrying the author's filesystem", async () => {
     const renderer: Renderer = {
       checkEgress: async () => true,
       render: async () => ({

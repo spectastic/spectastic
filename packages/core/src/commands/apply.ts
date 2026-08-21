@@ -498,9 +498,8 @@ export function markSupersededPhase(
       // was retired rather than performed. Leaving it open is what made an
       // unchecked box mean either "open" or "retired", which every consumer
       // then had to special-case and one shipped without.
-      const closed = body.replace(
-        /<input\b((?:(?!>)[\s\S])*)>/,
-        (tag: string, attrsIn: string) => (/\bchecked\b/.test(attrsIn) ? tag : `<input${attrsIn} checked>`),
+      const closed = body.replace(/<input\b((?:(?!>)[\s\S])*)>/, (tag: string, attrsIn: string) =>
+        /\bchecked\b/.test(attrsIn) ? tag : `<input${attrsIn} checked>`,
       );
       return `<spec-task id="${id}"${attrs} data-status="superseded">${closed}${note}\n</spec-task>`;
     },

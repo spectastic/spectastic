@@ -107,9 +107,7 @@ describe('the write location (106 FR-008)', () => {
     // is deliberately left unpinned: RenderCapture (types.ts) carries no
     // format field, so what a capture is ENCODED as isn't this requirement's
     // contract — FR-008 governs only WHERE it lands.
-    expect(String(writtenPath)).toMatch(
-      /^\/repo\/specs\/001-example\/visual\/renders\/converted-light\.[a-z0-9]+$/,
-    );
+    expect(String(writtenPath)).toMatch(/^\/repo\/specs\/001-example\/visual\/renders\/converted-light\.[a-z0-9]+$/);
     expect(Array.from(writtenBytes as Uint8Array)).toEqual([9, 8, 7, 6]);
   });
 });

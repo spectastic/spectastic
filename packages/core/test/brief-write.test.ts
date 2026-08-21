@@ -44,13 +44,14 @@ function stubFs(overrides: Partial<FileSystem> = {}): FileSystem & {
 describe('writeBrief (107 FR-009)', () => {
   it('writes the content to the dated path under the owning spec', async () => {
     const fs = stubFs();
-    const result = await writeBrief({ specId: '001-example', date: '2026-08-19', content: '# brief\n' }, fs, '/project');
+    const result = await writeBrief(
+      { specId: '001-example', date: '2026-08-19', content: '# brief\n' },
+      fs,
+      '/project',
+    );
 
     expect(result.path).toBe('specs/001-example/visual/briefs/2026-08-19.md');
-    expect(fs.writeFile).toHaveBeenCalledWith(
-      '/project/specs/001-example/visual/briefs/2026-08-19.md',
-      '# brief\n',
-    );
+    expect(fs.writeFile).toHaveBeenCalledWith('/project/specs/001-example/visual/briefs/2026-08-19.md', '# brief\n');
   });
 
   it('a later run with a different date leaves the earlier file untouched — different paths, no overwrite possible', async () => {

@@ -24,20 +24,26 @@ const wrap = (body: string): string => `<!doctype html><html><body>${body}</body
 
 describe('a criterion with no validates=', () => {
   it('is reported when validates= is absent', () => {
-    const html = wrap('<spec-requirement id="FR-001"><p>x</p></spec-requirement><spec-criterion id="SC-001" actor="reviewer"><p>x</p></spec-criterion>');
+    const html = wrap(
+      '<spec-requirement id="FR-001"><p>x</p></spec-requirement><spec-criterion id="SC-001" actor="reviewer"><p>x</p></spec-criterion>',
+    );
     const f = check(html);
     expect(f.some((x) => x.message.includes('validates='))).toBe(true);
   });
 
   it('is reported when validates= is empty or whitespace', () => {
-    const html = wrap('<spec-requirement id="FR-001"><p>x</p></spec-requirement><spec-criterion id="SC-001" actor="reviewer" validates="  "><p>x</p></spec-criterion>');
+    const html = wrap(
+      '<spec-requirement id="FR-001"><p>x</p></spec-requirement><spec-criterion id="SC-001" actor="reviewer" validates="  "><p>x</p></spec-criterion>',
+    );
     expect(check(html).some((x) => x.message.includes('validates='))).toBe(true);
   });
 });
 
 describe('a document with zero criteria', () => {
   it('reports nothing at all — absence is never a finding', () => {
-    const html = wrap('<spec-requirement id="FR-001"><p>x</p></spec-requirement><spec-requirement id="FR-002"><p>x</p></spec-requirement>');
+    const html = wrap(
+      '<spec-requirement id="FR-001"><p>x</p></spec-requirement><spec-requirement id="FR-002"><p>x</p></spec-requirement>',
+    );
     expect(check(html)).toEqual([]);
   });
 });

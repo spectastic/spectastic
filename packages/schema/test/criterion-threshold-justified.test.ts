@@ -45,7 +45,9 @@ describe('a zero, hundred-percent or equal threshold', () => {
   });
 
   it('is silent once a justification= is present', () => {
-    const f = check(criterion('Regressions 0 (target 0), from 3 last quarter.', 'justification="one corrupted byte is a defect"'));
+    const f = check(
+      criterion('Regressions 0 (target 0), from 3 last quarter.', 'justification="one corrupted byte is a defect"'),
+    );
     expect(f).toEqual([]);
   });
 });

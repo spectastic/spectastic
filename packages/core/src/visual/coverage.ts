@@ -95,7 +95,10 @@ export async function visualCoverageFindings(
   // One read per distinct grid, not per claim: a project has one grid and a
   // design carries few declarations, but re-reading it per pair would make the
   // cost quadratic in a file that is already being read for other scans.
-  const gridCache = new Map<string, { contexts: Map<string, Set<string>>; declined: Map<string, Set<string>> } | null>();
+  const gridCache = new Map<
+    string,
+    { contexts: Map<string, Set<string>>; declined: Map<string, Set<string>> } | null
+  >();
 
   for (const claim of claims) {
     const flag = (message: string, fixHint: string): void => {
@@ -156,7 +159,7 @@ export async function visualCoverageFindings(
       if (known === undefined) {
         flag(
           `<spec-visual contexts=…> names axis "${axisName}", which ${claim.variants} does not declare`,
-          'A coverage claim must refer to axes the project\'s grid declares (spec.html FR-013). A claim against nothing reads as coverage and records none.',
+          "A coverage claim must refer to axes the project's grid declares (spec.html FR-013). A claim against nothing reads as coverage and records none.",
         );
         continue;
       }

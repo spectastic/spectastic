@@ -29,7 +29,9 @@ const complete = (extra = '', attrs = 'name="convert-button" origin="authored"')
 describe('reading', () => {
   it('reads states, declines and their reasons', () => {
     const [c] = readComponentBehaviour(
-      doc('<spec-component name="b"><spec-cstate name="hover"></spec-cstate><spec-cstate name="loading" declined>It resolves locally and never waits.</spec-cstate></spec-component>'),
+      doc(
+        '<spec-component name="b"><spec-cstate name="hover"></spec-cstate><spec-cstate name="loading" declined>It resolves locally and never waits.</spec-cstate></spec-component>',
+      ),
     );
     expect(c?.states[0]).toMatchObject({ name: 'hover', declined: false });
     expect(c?.states[1]?.declined).toBe(true);
@@ -43,7 +45,9 @@ describe('reading', () => {
 
   it('counts an expected state as accounted for whether declared or declined', () => {
     const [c] = readComponentBehaviour(
-      doc('<spec-component name="b"><spec-cstate name="hover"></spec-cstate><spec-cstate name="loading" declined>x</spec-cstate></spec-component>'),
+      doc(
+        '<spec-component name="b"><spec-cstate name="hover"></spec-cstate><spec-cstate name="loading" declined>x</spec-cstate></spec-component>',
+      ),
     );
     const missing = unaccountedStates(c!);
     expect(missing).not.toContain('hover');
@@ -57,7 +61,9 @@ describe('completeness', () => {
   });
 
   it('reports one finding per unaccounted state, so they can be answered one at a time', () => {
-    const f = findingsFor('<spec-component name="b" origin="authored"><spec-cstate name="resting"></spec-cstate></spec-component>');
+    const f = findingsFor(
+      '<spec-component name="b" origin="authored"><spec-cstate name="resting"></spec-cstate></spec-component>',
+    );
     expect(f).toHaveLength(EXPECTED_INTERACTION_STATES.length - 1);
   });
 
@@ -67,7 +73,9 @@ describe('completeness', () => {
   });
 
   it('is silent for a non-interactive component rather than expecting nine declines', () => {
-    expect(findingsFor('<spec-component name="divider" origin="authored" non-interactive></spec-component>')).toEqual([]);
+    expect(findingsFor('<spec-component name="divider" origin="authored" non-interactive></spec-component>')).toEqual(
+      [],
+    );
   });
 
   it('is silent for a consumed component, whose states belong to whoever wrote it', () => {
@@ -109,7 +117,9 @@ describe('declines', () => {
 
 describe('transitions', () => {
   it('is silent between two declared states', () => {
-    expect(findingsFor(complete('<spec-transition from="resting" to="hover" trigger="pointer enters"></spec-transition>'))).toEqual([]);
+    expect(
+      findingsFor(complete('<spec-transition from="resting" to="hover" trigger="pointer enters"></spec-transition>')),
+    ).toEqual([]);
   });
 
   it('reports a transition naming a state the component does not declare', () => {

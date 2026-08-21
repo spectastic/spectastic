@@ -34,9 +34,7 @@ function project(body = MATERIAL, name = 'converter.screen.html'): string {
   return root;
 }
 
-const claim = (addresses: string | undefined, screens = 'visual') => [
-  { screens, addresses, line: 1, column: 1 },
-];
+const claim = (addresses: string | undefined, screens = 'visual') => [{ screens, addresses, line: 1, column: 1 }];
 
 describe('visual-screen-naming (093 FR-014/FR-015)', () => {
   it('is silent when every screen in the material is named', async () => {
@@ -67,7 +65,12 @@ describe('visual-screen-naming (093 FR-014/FR-015)', () => {
 
   it('reports a named screen that resolves to nothing', async () => {
     const root = project();
-    const found = await visualScreenNamingFindings(claim('convert pairs convert-unmapped settings'), FILE, nodeFs, root);
+    const found = await visualScreenNamingFindings(
+      claim('convert pairs convert-unmapped settings'),
+      FILE,
+      nodeFs,
+      root,
+    );
     expect(found).toHaveLength(1);
     expect(found[0]?.message).toContain('names screen "settings"');
   });

@@ -207,8 +207,7 @@ async function scanStatusDisagreement(cwd: string): Promise<Finding[]> {
     import('node:fs/promises'),
   ]);
 
-  const statusOf = (html: string): string | undefined =>
-    /<spec-status\s+value="([a-z-]+)"/.exec(html)?.[1];
+  const statusOf = (html: string): string | undefined => /<spec-status\s+value="([a-z-]+)"/.exec(html)?.[1];
 
   let entries: string[];
   try {

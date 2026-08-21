@@ -33,7 +33,7 @@ export const componentStatesRule: PerFileRule = {
   scope: 'per-file',
   defaultSeverity: 'error',
   description:
-    "Every interaction state a component is expected to account for must be declared or declined with a reason, and a transition must name states it declares.",
+    'Every interaction state a component is expected to account for must be declared or declined with a reason, and a transition must name states it declares.',
   check({ doc }) {
     const findings: Finding[] = [];
     if (findAll(doc.ast, COMPONENT_ELEMENT).length === 0) return findings;
@@ -61,7 +61,7 @@ export const componentStatesRule: PerFileRule = {
           flag(
             s,
             `${label} declines the ${s.name ?? 'unnamed'} state without saying why`,
-            'Give the decline a reason as the element\'s content (spec.html FR-004). A decline without one is indistinguishable from not having thought about it, and the whole value of recording it is that somebody did.',
+            "Give the decline a reason as the element's content (spec.html FR-004). A decline without one is indistinguishable from not having thought about it, and the whole value of recording it is that somebody did.",
           );
         }
         if (s.name === undefined) {
@@ -78,7 +78,11 @@ export const componentStatesRule: PerFileRule = {
           ['to', t.to],
         ] as const) {
           if (value === undefined) {
-            flag(t, `${label} declares a transition with no ${side}=`, 'A transition names both ends (spec.html FR-006).');
+            flag(
+              t,
+              `${label} declares a transition with no ${side}=`,
+              'A transition names both ends (spec.html FR-006).',
+            );
             continue;
           }
           if (!declared.has(value)) {

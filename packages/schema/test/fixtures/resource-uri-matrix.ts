@@ -224,8 +224,7 @@ export const RESOURCE_URI_MATRIX: readonly ResourceUriFixture[] = [
     name: '001-currency-conversion/convert',
     anchor: 'empty',
     edition: '2026-08-14',
-    expected:
-      'spectastic://spectastic/spectastic/screen/001-currency-conversion/convert?edition=2026-08-14#empty',
+    expected: 'spectastic://spectastic/spectastic/screen/001-currency-conversion/convert?edition=2026-08-14#empty',
   },
 ];
 

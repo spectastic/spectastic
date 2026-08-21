@@ -129,12 +129,14 @@ export function mustDropFindings(input: MustDropInput): Finding[] {
   return findings;
 }
 
-
 /** Rationale text of a requirement — the `<details>` body, markup stripped. */
 function rationaleOf(html: string): string {
   const m = /<details>\s*<summary>\s*Rationale\s*<\/summary>([\s\S]*?)<\/details>/i.exec(html);
   if (m === null) return '';
-  return (m[1] ?? '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+  return (m[1] ?? '')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 /** Sentences long enough to be an argument rather than a fragment. */

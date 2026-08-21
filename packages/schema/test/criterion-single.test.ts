@@ -37,7 +37,9 @@ describe('a conjoined outcome', () => {
   });
 
   it('catches the determinism-plus-immutability shape design.html names', () => {
-    const f = check(criterion('The system is deterministic and immutable — regressions ≤ 0 (target 0), from 3 last quarter.'));
+    const f = check(
+      criterion('The system is deterministic and immutable — regressions ≤ 0 (target 0), from 3 last quarter.'),
+    );
     expect(f).toHaveLength(1);
   });
 });

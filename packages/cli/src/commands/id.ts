@@ -22,7 +22,10 @@ export function registerId(program: Command): void {
       'what the name denotes: spec (default), screen (<spec-id>/<name>), contract, corpus (<plugin>/<slug>), or unit',
       'spec',
     )
-    .option('--anchor <id>', 'append an id from the resource (a requirement, task, or section anchor) as a URI fragment')
+    .option(
+      '--anchor <id>',
+      'append an id from the resource (a requirement, task, or section anchor) as a URI fragment',
+    )
     .action(async (specId: string, opts: { anchor?: string; kind?: string }) => {
       const { idCommand, UnknownSpecError } = await import('@spectastic/core/commands/id');
       const { RESOURCE_KINDS } = await import('@spectastic/schema/project');

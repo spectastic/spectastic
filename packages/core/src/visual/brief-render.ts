@@ -40,9 +40,12 @@ function renderAnnotations(screens: BriefModel['screens']): string {
   const all = screens.flatMap((s) => s.annotations);
   if (all.length === 0) return '';
   const lines = all.map((a) => {
-    const parts = [a.layer, a.role, a.ariaState ? `aria-${a.ariaState}` : undefined, a.cites ? `cites ${a.cites}` : undefined].filter(
-      (p): p is string => p !== undefined,
-    );
+    const parts = [
+      a.layer,
+      a.role,
+      a.ariaState ? `aria-${a.ariaState}` : undefined,
+      a.cites ? `cites ${a.cites}` : undefined,
+    ].filter((p): p is string => p !== undefined);
     return `- \`${a.target ?? ''}\` — ${parts.join(', ')}`;
   });
   return `\n## Accessibility & behaviour\n\n${lines.join('\n')}\n`;
@@ -61,14 +64,24 @@ function renderContexts(model: BriefModel): string {
  *  same date always produce the same string (NFR-002). */
 export function renderBrief(model: BriefModel, date: string): string {
   const header = `# Design brief — ${date}`;
-  const labels = `\n## Artboard labels (exact)\n\nEvery artboard MUST carry the exact label shown below. A label with no ` +
+  const labels =
+    `\n## Artboard labels (exact)\n\nEvery artboard MUST carry the exact label shown below. A label with no ` +
     `match here is not a request.\n\n${model.screens.map(renderScreen).join('\n\n')}\n`;
   const undeclared =
     `\n## Undeclared states\n\nA state your design includes that is not listed under "Artboard labels" above has ` +
     `no declaration. It will be reported as undeclared and attributed to this design when the render is reviewed — ` +
     `never adopted automatically. Label its artboard clearly, e.g. \`undeclared-<name>\`, so it is identifiable.\n`;
 
-  return [header, labels, renderRefusals(model.refusals), renderAnnotations(model.screens), renderContexts(model), undeclared]
-    .join('')
-    .trim() + '\n';
+  return (
+    [
+      header,
+      labels,
+      renderRefusals(model.refusals),
+      renderAnnotations(model.screens),
+      renderContexts(model),
+      undeclared,
+    ]
+      .join('')
+      .trim() + '\n'
+  );
 }

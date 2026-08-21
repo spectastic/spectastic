@@ -981,8 +981,18 @@ export function visualDisagreementFindings(state: VisualDeclarationState | null,
   // 2026-08-13-declare-the-variant-grid — it is the third project-scoped
   // artifact, and was the only one outside it.
   const SCOPED = [
-    { kind: 'tokens' as const, rule: 'visual-token-set-disagreement', noun: 'project token-set paths', one: 'token-set path' },
-    { kind: 'variants' as const, rule: 'visual-variant-grid-disagreement', noun: 'project variant-grid paths', one: 'variant-grid path' },
+    {
+      kind: 'tokens' as const,
+      rule: 'visual-token-set-disagreement',
+      noun: 'project token-set paths',
+      one: 'token-set path',
+    },
+    {
+      kind: 'variants' as const,
+      rule: 'visual-variant-grid-disagreement',
+      noun: 'project variant-grid paths',
+      one: 'variant-grid path',
+    },
   ];
 
   const findings: Finding[] = [];
