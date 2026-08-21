@@ -18,6 +18,14 @@ async function prose(page, opts: { reduced?: boolean } = {}) {
   await page.emulateMedia({ reducedMotion: opts.reduced ? 'reduce' : 'no-preference' });
   await page.goto(ARTIFACT);
   await page.evaluate(() => document.documentElement.setAttribute('data-theme', 'spectastic-prose'));
+  // Park the pointer in the page, not the corner. Playwright's virtual mouse
+  // starts at (0,0) — which is exactly on the header's reach strip, so :hover
+  // holds the bar open and it can never be observed receding. That is the
+  // header behaving correctly (a pointer on the strip SHOULD bring it back);
+  // it is the test that was standing in the wrong place. It cost a red CI run
+  // to see, because a local worker inherits the previous test's mouse position
+  // and a fresh CI worker does not.
+  await page.mouse.move(640, 500);
 }
 
 /** Effective opacity of a block, compositing every ancestor. */
