@@ -12,7 +12,6 @@
  */
 
 import { readConfigFile } from '@spectastic/schema/config';
-import { join } from 'node:path';
 import type { GitAuto } from './index.js';
 
 export class GitConfigError extends Error {

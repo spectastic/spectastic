@@ -35,7 +35,14 @@ function artifacts(): string[] {
   return out;
 }
 
+// One test that opens EVERY artifact in the estate — ~500 files, each a real
+// navigation plus a layout read. It outgrew Playwright's 30s default as the
+// estate grew (it takes ~36s alone, more under full-suite parallelism), and was
+// timing out rather than failing an assertion. The budget is explicit so the
+// distinction stays visible: a red here should mean an artifact overflows, never
+// that the scan ran out of clock.
 test('no artifact scrolls horizontally at 390px (REQ-FORMAT-007)', async ({ browser }) => {
+  test.setTimeout(180_000);
   const page = await browser.newPage({ viewport: NARROW });
   const overflowing: { file: string; by: number }[] = [];
   for (const file of artifacts()) {

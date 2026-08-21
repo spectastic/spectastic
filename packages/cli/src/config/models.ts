@@ -10,7 +10,6 @@
  */
 
 import { readConfigFile } from '@spectastic/schema/config';
-import { join } from 'node:path';
 import { isModelTier, MODEL_TIER_ALIASES, type ModelTier } from '@spectastic/core/model-policy';
 
 export class ModelsConfigError extends Error {

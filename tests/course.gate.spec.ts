@@ -53,49 +53,62 @@ test.beforeAll(() => {
   writeFileSync(FIXTURE_FILE, assembleCourse(draft, '2026-01-01-gate-fixture'));
 });
 
-/** Select an option in an objective's quiz and fire the gate's change handler. */
-async function answer(page: import('@playwright/test').Page, objId: string, value: number) {
+/**
+ * Select an option by its VISIBLE LABEL and fire the gate's change handler.
+ *
+ * Never by authored index: `assembleCourse` seed-shuffles each quiz's options
+ * (`shuffleQuizOptions`), so a rendered `value="2"` is not the third option the
+ * draft declared. These tests hardcoded the authored indices and went red when
+ * shuffling landed — asserting against a position the learner never sees. The
+ * label is what a learner actually picks, and it survives the shuffle.
+ */
+async function answer(page: import('@playwright/test').Page, objId: string, label: string) {
   await page.evaluate(
-    ({ objId, value }) => {
-      const r = document.querySelector(`input[name="quiz-${objId}"][value="${value}"]`) as HTMLInputElement | null;
-      if (!r) throw new Error(`radio quiz-${objId} value ${value} not found`);
+    ({ objId, label }) => {
+      const radios = [...document.querySelectorAll(`input[name="quiz-${objId}"]`)] as HTMLInputElement[];
+      const r = radios.find((radio) => radio.closest('label')?.textContent?.trim() === label);
+      if (!r) throw new Error(`radio quiz-${objId} labelled "${label}" not found`);
       r.checked = true;
       r.dispatchEvent(new Event('change', { bubbles: true }));
     },
-    { objId, value },
+    { objId, label },
   );
 }
 
 test('a correct answer marks THIS objective — not the last (closure fix, T-001)', async ({ page }) => {
   await page.goto(FIXTURE_URL);
-  await answer(page, 'T-001', 2); // objective 1's correct option
+  await answer(page, 'T-001', 'c'); // objective 1's correct option (authored correctIndex 2)
   await expect(page.locator('#T-001 input[type=checkbox]')).toBeChecked();
   await expect(page.locator('#T-002 input[type=checkbox]')).not.toBeChecked();
 });
 
 test('the last objective marks independently too', async ({ page }) => {
   await page.goto(FIXTURE_URL);
-  await answer(page, 'T-002', 0); // objective 2's correct option
+  await answer(page, 'T-002', 'x'); // objective 2's correct option (authored correctIndex 0)
   await expect(page.locator('#T-002 input[type=checkbox]')).toBeChecked();
   await expect(page.locator('#T-001 input[type=checkbox]')).not.toBeChecked();
 });
 
 test('a wrong answer does not mark the objective', async ({ page }) => {
   await page.goto(FIXTURE_URL);
-  await answer(page, 'T-001', 0); // wrong (correct is 2)
+  await answer(page, 'T-001', 'a'); // wrong (the correct option is 'c')
   await expect(page.locator('#T-001 input[type=checkbox]')).not.toBeChecked();
 });
 
 // The real user path: open the Quiz tab (spec.js hides inactive tabs), then click an
 // option — so the verdict is genuinely visible, not just present in the DOM.
-async function openQuizAndPick(page: import('@playwright/test').Page, value: number) {
+async function openQuizAndPick(page: import('@playwright/test').Page, label: string) {
   await page.locator('spec-tabs').first().getByRole('tab', { name: 'Quiz' }).click();
-  await page.locator(`input[name="quiz-T-001"][value="${value}"]`).check();
+  // By label, for the same reason as `answer` above — the options are shuffled.
+  await page
+    .locator('label', { hasText: new RegExp(`^\\s*${label}\\s*$`) })
+    .locator('input[type=radio]')
+    .check();
 }
 
 test('a wrong answer reads as incorrect, with the CHOSEN option feedback (T-003)', async ({ page }) => {
   await page.goto(FIXTURE_URL);
-  await openQuizAndPick(page, 0); // chose option a (wrong; correct is c)
+  await openQuizAndPick(page, 'a'); // chose option a (wrong; correct is c)
   const verdict = page.locator('[data-obj="T-001"] .quiz-verdict');
   await expect(verdict).toBeVisible();
   await expect(verdict).toContainText('Not quite');
@@ -106,7 +119,7 @@ test('a wrong answer reads as incorrect, with the CHOSEN option feedback (T-003)
 
 test('a correct answer reads as correct, with that option feedback (T-003)', async ({ page }) => {
   await page.goto(FIXTURE_URL);
-  await openQuizAndPick(page, 2); // chose option c (correct)
+  await openQuizAndPick(page, 'c'); // chose option c (correct)
   const verdict = page.locator('[data-obj="T-001"] .quiz-verdict');
   await expect(verdict).toBeVisible();
   await expect(verdict).toContainText('Correct');

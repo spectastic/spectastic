@@ -6,7 +6,6 @@
  */
 
 import { readConfigFile } from '@spectastic/schema/config';
-import { join } from 'node:path';
 import type { DeciderRole, EffortLevel, RequestedEffort } from '@spectastic/core/decider';
 
 export class DeciderConfigError extends Error {
