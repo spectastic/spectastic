@@ -134,40 +134,42 @@ test.describe('FR-008 · the header recedes and returns', () => {
                offScreen: r.bottom <= 0, receded: bar.hasAttribute('data-receded') };
     })()`;
 
+  /** Poll a field of `recededness()` until it settles — the transform runs over
+   *  .35s, so any assertion on rendered position must wait for it, never sleep. */
+  const settles = (page, field: 'receded' | 'offScreen', message: string) =>
+    expect.poll(async () => (await page.evaluate(recededness()))[field], { message });
+
   test('it recedes while reading forward', async ({ page }) => {
     await prose(page);
     expect((await page.evaluate(recededness())).receded, 'not receded at rest').toBe(false);
     await page.evaluate(() => window.scrollTo(0, 1600));
-    await page.waitForTimeout(600);
-    const r = await page.evaluate(recededness());
-    expect(r.receded, 'receded after reading down').toBe(true);
-    expect(r.offScreen, 'and is no longer over the text').toBe(true);
+    // Poll rather than sleep. The attribute lands synchronously on the scroll
+    // event, but the bar leaves the viewport over a .35s transform transition,
+    // so a fixed wait races a slow machine — it passed locally and failed on
+    // CI, where `receded` was already true and the transform had not settled.
+    await settles(page, 'receded', 'receded after reading down').toBe(true);
+    await settles(page, 'offScreen', 'and is no longer over the text').toBe(true);
   });
 
   test('it returns on scrolling up', async ({ page }) => {
     await prose(page);
     await page.evaluate(() => window.scrollTo(0, 1600));
-    await page.waitForTimeout(400);
-    expect((await page.evaluate(recededness())).receded).toBe(true);
+    await settles(page, 'receded', 'receded first').toBe(true);
 
     await page.evaluate(() => window.scrollTo(0, 900));
-    await page.waitForTimeout(400);
-    expect((await page.evaluate(recededness())).receded, 'returns on reversing direction').toBe(false);
+    await settles(page, 'receded', 'returns on reversing direction').toBe(false);
   });
 
   test('it returns on pointer', async ({ page }) => {
     await prose(page);
     await page.evaluate(() => window.scrollTo(0, 1600));
-    await page.waitForTimeout(400);
-    expect((await page.evaluate(recededness())).receded).toBe(true);
+    await settles(page, 'receded', 'receded first').toBe(true);
 
     // A real pointer at the top edge, not locator.hover(): once receded the bar's
     // own box is entirely above the viewport, so hovering *it* is not what a reader
     // does — they move toward the top of the screen, onto the reach strip.
     await page.mouse.move(640, 4);
-    await page.waitForTimeout(500);
-    const r = await page.evaluate(recededness());
-    expect(r.offScreen, 'pointer at the top edge brings the header back').toBe(false);
+    await settles(page, 'offScreen', 'pointer at the top edge brings the header back').toBe(false);
   });
 
   test('calm and vivid never recede the header', async ({ page }) => {
