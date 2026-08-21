@@ -4,6 +4,38 @@
 
 _Nothing yet._
 
+## v0.1.0-pre.25 — 2026-08-21
+
+**The visual slice, and two contracts that hold the estate honest.** Seventeen specs landed
+(`093`–`109`), most of them one arc: the lifecycle had no notion of a screen, and now it has a
+declaration, a sidecar convention, an element vocabulary, a variant grid, component lifecycle, token
+versioning, and a generated embedded view — on the chassis contracts already used, so no ninth verb.
+
+**Success criteria became checkable (`108`).** A `<spec-criterion>` names an actor who is better off,
+the requirements it validates, two thresholds and a falsifier. Six deterministic schema rules gate it
+at commit — an actor that names the tool is refused, so is a criterion joining two outcomes, an RFC
+2119 keyword, an unjustified 0%/100% threshold, and a requirement no criterion measures. Bound
+forward-only from spec 108, so the existing estate is untouched.
+
+**A triage log stopped being a backlog nothing reads (`090`).** `REQ-CHANGE-009` made an unmarked card
+mean "work is owed" without giving it a consumer. `implement` now dispatches an open card that is safe
+to fix in code — `layer="implementation"` and a passing regeneration result, both required, absent
+treated as failing — once a scope's tasks are drained, and closes it on landing. A bare `T-NNN` naming
+both an unchecked task and an open card is refused rather than silently resolved, with `task:` and
+`triage:` to disambiguate.
+
+**A third theme, Prose (`109`).** A reading shell for working through an artifact end to end rather
+than scanning it: one wide-set column, larger type, folded sidenotes, quieted card chrome, dividers
+between numbered sections, and blocks that arrive as you reach them and never leave again. A
+design-time spike is why it ships as a script rather than pure CSS — `animation-timeline: view()` is
+scrubbed by scroll position, so a revealed block fades back out, which is the behaviour the theme
+exists to avoid.
+
+**Also:** git automation (`092`), a design-source importer that reads an export once and never again
+(`105`), visual render capture (`106`), the design brief (`107`), and the section hairline that had
+never rendered since the first public release — `h2:first-of-type` matches every `h2` when each sits
+alone in its own `<section>`.
+
 ## v0.1.0-pre.24 — 2026-08-12
 
 **`implement <spec-id>` now drains the queue.** The default flipped from one task per invocation to
