@@ -1,0 +1,448 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'">
+<title>Land the visuals in one step · Specification</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Specification · 110-visual-one-step <!-- Optional: <spec-parent specid="[PARENT_SPEC_ID]"><a href="../[PARENT_SPEC_ID]/spec.html">[PARENT_FEATURE_NAME]</a></spec-parent> --></p>
+  <h1>Land the visuals in one step</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    Three verbs a person has to remember, run in the right order, become one flag on the verb they were already running.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>      <span><spec-status value="draft">Draft</spec-status></span>
+    <b>Spec ID</b>     <span>110-visual-one-step</span>
+    <b>Owner</b>       <span>Brian Corbin · @briancorbin</span>
+    <b>Reviewers</b>   <span>—</span>
+    <b>Created</b>     <span><time datetime="2026-08-22">22 Aug 2026</time></span>
+    <b>Principles</b><span><a href="../../principles.html">v1.9.0</a></span>
+    <b>Smallest demoable</b><span><code>spectastic design 001-x --visuals ./export.html</code> writes the design and lands its imported material, captures and embedded view in one run.</span>
+    <b>Read time</b>   <span data-reading-time></span>
+  </spec-meta>
+
+  <!-- Live size gauge — green at <80%, amber 80-100%, red over. Words row counts authored prose (excludes the conformance index) per REQ-FORMAT-004. -->
+  <spec-budget words="2200" reqs="17" minutes="12"></spec-budget>
+
+  <spec-tldr>
+    <p>Landing a design export today takes three commands in a fixed order &mdash;
+    <code>visual:import</code>, <code>visual:render</code>, <code>materialise</code> &mdash; and getting the
+    order wrong produces a design that looks finished and is not. This adds a single
+    <code>--visuals&nbsp;&lt;export&gt;</code> flag to the verb an author is already running, which performs all
+    three by <em>delegation</em>. The render port stays reachable from exactly one module, so
+    <a href="../106-visual-render/spec.html#NFR-002">106&rsquo;s NFR-002</a> keeps the guarantee it has today;
+    what changes is who may call the verb, never what may reach the browser.</p>
+  </spec-tldr>
+
+  <dl class="invest">
+    <dt><span class="letter">I</span> Independent</dt> <dd>Depends on <a href="../105-design-source-import/spec.html">105</a> (import) and <a href="../106-visual-render/spec.html">106</a> (render), both Accepted and drained. Orchestrates them; adds no behaviour of its own to either.</dd>
+    <dt><span class="letter">N</span> Negotiable</dt>  <dd>States that one invocation performs the three steps and how it refuses. Names no module, no process model, and no delegation mechanism &mdash; the design picks those.</dd>
+    <dt><span class="letter">V</span> Valuable</dt>    <dd>Unlocks <a href="#SC-001">SC-001</a> — an author lands a design export without knowing the pipeline exists.</dd>
+    <dt><span class="letter">E</span> Estimable</dt>   <dd>Every decidable question was anchored before writing: refusal point, partial-chain behaviour, the render opt-out, and the shape of the 106 carve-out. No open questions remain.</dd>
+    <dt><span class="letter">S</span> Small</dt>       <dd>Eleven requirements, no new artifact, no new file format. The whole change is one flag and its refusals.</dd>
+    <dt><span class="letter">T</span> Testable</dt>    <dd>Each requirement is observable from one invocation and its exit state; every criterion names its meter and what would falsify it.</dd>
+  </dl>
+
+  <spec-audience-map>
+    <dl>
+      <dt>Exec / PM</dt>   <dd>§<a href="#context">Context</a>, §<a href="#scenarios">User scenarios</a>, §<a href="#success">Success criteria</a>.</dd>
+      <dt>Reviewer</dt>    <dd>§<a href="#requirements">Requirements</a>, §<a href="#assumptions">Assumptions</a>, §<a href="#questions">Open questions</a>.</dd>
+      <dt>Implementer</dt> <dd>§<a href="#requirements">Requirements</a>, §<a href="#data">Data model</a>, §<a href="#conformance">Conformance index</a>.</dd>
+    </dl>
+  </spec-audience-map>
+</header>
+
+
+<section id="context">
+<h2>1 · Context</h2>
+<p>Landing a design export is four commands, and only three of them are mechanical.
+<a href="../107-visual-design-brief/spec.html">107</a>&rsquo;s <code>visual:brief</code> emits a document
+<em>for a designer</em>, so the export does not exist until a person has made one &mdash; that step cannot be
+folded into anything. The remaining three all operate on an export already on disk:
+<a href="../105-design-source-import/spec.html">105</a>&rsquo;s <code>visual:import</code> lands its material,
+<a href="../106-visual-render/spec.html">106</a>&rsquo;s <code>visual:render</code> captures its artboards, and
+<a href="../099-visual-embedded-view/spec.html">099</a>&rsquo;s <code>materialise</code> writes the embedded
+view into <code>design.html</code>.</p>
+
+<p>The failure is quiet rather than loud: skip <code>materialise</code> and the design carries a stub where a
+view should be. <a href="../099-visual-embedded-view/spec.html">099</a> exists because that had already
+happened &mdash; the contract view it clones had <em>never once</em> materialised on the canonical authoring
+path, unnoticed because an absent view was legal there. A pipeline whose last step is easy to forget, and whose
+omission looks like completion, is that defect one level up. Authors running <code>design</code> anyway should
+not need to know the pipeline exists to get its result.</p>
+
+<!-- Optional aside (inbox I-059) — additive; delete if unused. A <spec-note> sits in
+     the flow and must not be missed; a <spec-sidenote> is an aside the reader may skip
+     without losing the argument. It floats into the margin on a wide screen and
+     collapses to a block on a narrow one, so it costs nothing at phone width. -->
+<!--
+<spec-sidenote>[AN_ASIDE — context, a caveat, or a thing you nearly did instead. Marginalia
+that would interrupt the paragraph it sits beside.]</spec-sidenote>
+-->
+</section>
+
+
+<section id="scenarios">
+<h2>2 · User scenarios &amp; testing</h2>
+
+<p>Each story <strong>MUST</strong> be independently testable: if you implemented only US1, you would
+still have a viable MVP.</p>
+
+<h3 id="US1">US1 · One command lands the export <spec-pill>P1</spec-pill></h3>
+<p>As an <strong>author with a design export on disk</strong>, I want to <strong>land its material, its
+captures and its embedded view in the run I was already doing</strong> so that <strong>I never have to
+remember a pipeline or the order of its steps</strong>.</p>
+<p><em>Acceptance:</em> a single invocation naming the export produces the same imported material, the same
+captures and the same embedded view as running the three verbs by hand in the correct order; running the three
+verbs by hand afterwards changes nothing.</p>
+
+<h3 id="US2">US2 · It refuses before it costs anything <spec-pill>P2</spec-pill></h3>
+<p>As an <strong>author</strong>, I want <strong>a run that cannot succeed to say so before it spends
+tokens or writes files</strong> so that <strong>a typo in a path costs a second rather than a design
+generation</strong>.</p>
+<p><em>Acceptance:</em> with a non-existent export path, the run refuses naming the path, no model call is
+made, and no file is created or modified.</p>
+
+<h3 id="US3">US3 · A missing browser does not cost the rest <spec-pill>P3</spec-pill></h3>
+<p>As an <strong>author on a machine with no browser installed, or in a container without egress</strong>, I
+want <strong>the steps that can still run to run</strong> so that <strong>I get the design and its embedded
+view, and a stated gap where the captures would be</strong>.</p>
+<p><em>Acceptance:</em> with rendering unavailable, the import and the embedded view still land, the run
+reports which step did not complete and why, and the run does not fail.</p>
+
+<h3>Edge cases</h3>
+<ul>
+  <li>The export resolves but declares no artboards — rendering completes having captured nothing, which is a
+  legitimate outcome and not a refusal; the run says so rather than reporting a silent success.</li>
+  <li>The flag is passed for a spec whose design declares no visual surface at all — nothing is imported and
+  nothing is embedded, and the run says which, rather than writing a visual section the gate would then flag.</li>
+  <li>The flag is passed twice in a row over an unchanged export — the second run changes no bytes.</li>
+  <li>Rendering refuses <em>some</em> artboards (a label collision) while capturing others — the run carries
+  106&rsquo;s own per-artboard refusals through rather than flattening them into one outcome.</li>
+</ul>
+</section>
+
+
+<section id="requirements">
+<h2>3 · Requirements</h2>
+
+<p>Conformance keywords (<spec-rule>MUST</spec-rule>, <spec-rule level="should">SHOULD</spec-rule>,
+<spec-rule level="may">MAY</spec-rule>) follow RFC 2119.</p>
+
+<h3>Functional</h3>
+
+<spec-requirement id="FR-001" priority="must">
+<p>A single invocation of the design verb, given one design export, <spec-rule>MUST</spec-rule> perform the
+import, the render and the view materialisation, and <spec-rule>MUST NOT</spec-rule> require the author to
+name or order those steps.</p>
+<details><summary>Rationale</summary><p>The whole point. Three commands in a fixed order is a sequence to
+remember, and the step easiest to forget is the last one, whose omission leaves an artifact that looks
+finished.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-002" priority="must">
+<p>The result of that invocation <spec-rule>MUST</spec-rule> be indistinguishable from running the same three
+verbs by hand in order, and running them by hand afterwards <spec-rule>MUST</spec-rule> change no bytes.</p>
+<details><summary>Rationale</summary><p>Keeps the flag a caller rather than a second implementation. Were the
+two paths able to diverge, every downstream check would need to know which produced the artifact.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-003" priority="must">
+<p>Before making any model call and before writing any file, the invocation <spec-rule>MUST</spec-rule> refuse
+when the named export cannot be read, and <spec-rule>MUST</spec-rule> state which path it could not read.</p>
+<details><summary>Rationale</summary><p>The design verb is the expensive step and the path check is the cheap
+one, so a run that cannot succeed should fail at the cheap end. This is
+<a href="../106-visual-render/spec.html#FR-005">106 FR-005</a>&rsquo;s posture — refuse "before executing any
+artboard" — moved one stage earlier for the same reason.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-004" priority="must">
+<p>Where a step other than the design generation itself does not complete, the invocation
+<spec-rule>MUST</spec-rule> perform the steps that can still complete, <spec-rule>MUST</spec-rule> report which
+did not and why, and <spec-rule>MUST NOT</spec-rule> fail on that ground alone.</p>
+<details><summary>Rationale</summary><p>Settled by an existing requirement rather than decided here:
+<a href="../094-visual-sidecar-convention/spec.html#FR-005">094 FR-005</a> makes a render evidence, not
+load-bearing — its absence may not fail a gate. Aborting the chain when rendering is unavailable would make
+captures load-bearing by the back door, on the path most likely to run in a container.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-005" priority="must">
+<p>The invocation <spec-rule>MUST</spec-rule> reach the render capability only by invoking the verb that owns
+it, and <spec-rule>MUST NOT</spec-rule> acquire that capability itself.</p>
+<details><summary>Rationale</summary><p>The load-bearing constraint.
+<a href="../106-visual-render/spec.html#NFR-002">106 NFR-002</a> confines the render capability to one verb so
+no network access or code execution occurs as a side effect of a verb promising neither, and enforces it
+mechanically. Delegation leaves that untouched: this spec adds a caller, never a second holder.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-006" priority="must">
+<p>The invocation <spec-rule>MUST</spec-rule> offer a way to perform the import and the materialisation while
+skipping the render, and that way <spec-rule>MUST</spec-rule> require no browser and no network egress.</p>
+<details><summary>Rationale</summary><p>Rendering is the only step needing either. Without an opt-out the flag
+is unusable in CI or offline, and an author in that position is pushed straight back to running the verbs by
+hand — which is the problem this spec exists to remove.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-007" priority="must">
+<p>Where a delegated step refuses part of its own work while completing the rest, the invocation
+<spec-rule>MUST</spec-rule> carry those individual refusals through to its own report rather than reducing them
+to a single outcome.</p>
+<details><summary>Rationale</summary><p>106 distinguishes a whole-run refusal from a per-artboard one; a label
+collision reported as &ldquo;rendering failed&rdquo; loses the only detail that makes it fixable. An
+orchestrator that flattens its delegates&rsquo; reporting is worse than the verbs it replaces.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-008" priority="must">
+<p>Where the spec&rsquo;s design declares no visual surface, the invocation <spec-rule>MUST</spec-rule> import
+nothing and materialise nothing, and <spec-rule>MUST</spec-rule> report that it did so.</p>
+<details><summary>Rationale</summary><p>Landing visual material into a project with no interface creates
+exactly the artifact <a href="../093-design-visual-section/spec.html">093</a>&rsquo;s gate reports as a defect.
+A no-op nobody was told about is indistinguishable from a step that ran.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-009" priority="should">
+<p>Re-running the invocation over an unchanged export <spec-rule level="should">SHOULD</spec-rule> change no
+bytes in any artifact it writes.</p>
+<details><summary>Rationale</summary><p>Every step it delegates already claims this, so the orchestration
+should not be the thing that breaks it. Written as a SHOULD rather than a MUST because it inherits whatever its
+delegates actually do, and one of them is known not to hold it today — see
+<a href="#assumptions">Assumptions</a>.</p></details>
+</spec-requirement>
+
+<h3>Non-functional</h3>
+
+<spec-requirement id="NFR-001" priority="must">
+<p>A run that refuses under <a href="#FR-003">FR-003</a> <spec-rule>MUST</spec-rule> make 0 model calls and
+write 0 files.</p>
+<details><summary>Rationale</summary><p>The quantities are the requirement. "Refuses early" is a description;
+0 and 0 are checkable, and they are the two costs an author actually notices.</p></details>
+</spec-requirement>
+
+<spec-requirement id="NFR-002" priority="must">
+<p>At most 1 command module <spec-rule>MUST</spec-rule> be able to acquire the render capability, unchanged by
+this spec.</p>
+<details><summary>Rationale</summary><p>Restated here as a number so this spec cannot be read as relaxing it.
+The existing mechanical check is the guarantee; this requirement exists so that a reader of <em>this</em> spec
+finds the constraint rather than having to know 106 to spot that it applies.</p></details>
+</spec-requirement>
+
+<h3>Out of scope (deferred to other slices)</h3>
+<spec-out-of-scope>
+  <ul>
+    <li defer-to="107-visual-design-brief">Generating the design brief. It emits a document for a person, and
+    the export does not exist until that person has produced one &mdash; so it cannot be a step in a chain that
+    consumes the export. This is the reason the flag covers three steps and not four.</li>
+    <li defer-to="TBD-visual-one-step-run">Making the same one-step flow available from the unattended
+    orchestrator, which drives a whole spec lifecycle rather than acting on an export somebody already has.
+    A different trigger and a different failure surface; worth doing, not worth conflating.</li>
+    <li defer-to="TBD-visual-export-declaration">Reading the export&rsquo;s location from the design&rsquo;s own
+    declaration instead of the flag, so the path need not be repeated. The declaration records provenance today,
+    not a resolvable path, and turning it into one is a change to that vocabulary rather than to this flow.</li>
+  </ul>
+</spec-out-of-scope>
+</section>
+
+
+<section id="data">
+<h2>4 · Data model</h2>
+
+<!-- This section holds the CONCEPTUAL model: the entities this feature owns, the
+     relationships between them, the invariants that must always hold, and the
+     state transitions they undergo — independent of storage and of wire format.
+     Name what a thing *is* and what must be true of it, not how it is persisted
+     or serialised.
+
+     The PHYSICAL model (field types, storage shape, wire representation) and the
+     consumer-facing contract belong downstream, in the design's "Data model & contracts"
+     section — referred to by name rather than number so a renumber cannot break the
+     pointer.
+
+     Precision IS permitted where an invariant genuinely requires it: a range, a
+     uniqueness rule, or a precision that changes what is correct is part of the concept,
+     not an implementation detail (e.g. "a settlement amount is exact to 2 decimal places
+     and is never negative" — a real invariant, and it belongs here). "No fields" does not
+     mean "no numbers".
+
+     If this section outgrows a screen, that usually signals the extra detail belongs
+     downstream in the design rather than that the spec should split. -->
+
+<p>This feature owns no persisted entity. It introduces one conceptual thing &mdash; the record of what a
+single invocation did &mdash; because <a href="#FR-004">FR-004</a> and <a href="#FR-007">FR-007</a> both turn on
+a reader being able to tell one step&rsquo;s outcome from another&rsquo;s.</p>
+
+<h3>Entities</h3>
+<dl>
+  <dt>Run report</dt><dd>What one invocation did, as one entry per delegated step. Every step attempted is
+  present exactly once; a step not attempted is present with the reason it was skipped, never absent. Absence
+  and "did not run" must not be the same reading &mdash; that conflation is the defect this whole family keeps
+  paying for.</dd>
+  <dt>Step outcome</dt><dd>One of: completed, completed with individual refusals carried from the delegate, or
+  not attempted with a stated reason. The middle case exists because a delegate may legitimately refuse part of
+  its work while completing the rest.</dd>
+</dl>
+
+<spec-note>
+<p>One invariant carries the section: <strong>a design generation that succeeded is never undone by a later
+step failing.</strong> The steps run in dependency order &mdash; the view can only be embedded into a design
+that exists &mdash; so a failure late in the chain leaves earlier work standing. That is deliberate under
+<a href="#FR-004">FR-004</a>, and it is why the run reports rather than rolls back.</p>
+</spec-note>
+</section>
+
+
+<section id="success">
+<h2>5 · Success criteria</h2>
+
+<p>A criterion names who is better off, and what would prove it was not &mdash; see
+<a href="../108-success-criteria/spec.html">108-success-criteria</a> for the full contract.</p>
+
+<spec-criterion id="SC-001" priority="must" actor="author"
+                validates="FR-001,FR-002" method="mechanical">
+<p>Authors landing a design export do so in one command rather than three &mdash; invocations needed to land an
+export = 1, down from 3, with the artifacts produced byte-identical to the hand-run sequence.</p>
+<details><summary>Observed at</summary>
+<p>A test that runs the flag over a fixture export, runs the three verbs by hand over the same export into a
+separate tree, and compares the two trees byte for byte.</p></details>
+<details><summary>Falsified by</summary>
+<p>The two trees differing in any byte &mdash; which would mean the flag is a second implementation of the
+pipeline rather than a caller of it, and every downstream check would then have to know which path produced the
+artifact.</p></details>
+</spec-criterion>
+
+<spec-criterion id="SC-002" priority="must" actor="author"
+                validates="FR-003,NFR-001" method="mechanical">
+<p>Authors who mistype an export path lose nothing &mdash; model calls made = 0 and files written = 0 on a run
+naming an unreadable export, from a design generation&rsquo;s full cost today.</p>
+<details><summary>Observed at</summary>
+<p>A test invoking the flag with a non-existent path against a recording provider, asserting the provider was
+never called and the working tree is unchanged.</p></details>
+<details><summary>Falsified by</summary>
+<p>Any model call, or any file created or modified, before the path is checked.</p></details>
+</spec-criterion>
+
+<spec-criterion id="SC-003" priority="must" actor="author"
+                validates="FR-004,FR-006" method="mechanical">
+<p>Authors without a browser still get everything that does not need one &mdash; steps completed = 2 of 3 with
+rendering unavailable, and the run does not fail, from 0 of 3 today when the chain is run as written.</p>
+<details><summary>Observed at</summary>
+<p>A test running the flag with rendering made unavailable, asserting the imported material and the embedded
+view are both present, the report names the render step as not attempted with its reason, and the exit state is
+success.</p></details>
+<details><summary>Falsified by</summary>
+<p>The run failing, or the embedded view being absent, when only the render step could not run &mdash; either
+would make a capture load-bearing, which
+<a href="../094-visual-sidecar-convention/spec.html#FR-005">094 FR-005</a> forbids.</p></details>
+</spec-criterion>
+
+<spec-criterion id="SC-004" priority="must" actor="operator"
+                validates="FR-005,NFR-002" method="mechanical">
+<p>Operators running any verb other than the render verb incur no network egress from it &mdash; command
+modules able to acquire the render capability = 1, unchanged, after this flag ships.</p>
+<details><summary>Observed at</summary>
+<p>The existing source scan over the closed set of command modules, run unchanged: it asserts exactly one
+module acquires the render capability and names which. This spec adds a caller and must not move that
+number.</p></details>
+<details><summary>Falsified by</summary>
+<p>The count reaching 2, or the scan being relaxed to an allowlist to accommodate this flag &mdash; either
+converts a one-module guarantee into a list that grows, which is how the convention it replaced got
+there.</p></details>
+</spec-criterion>
+
+<spec-criterion id="SC-005" priority="must" actor="author"
+                validates="FR-007,FR-008,FR-009" method="mechanical">
+<p>Authors reading a run report can tell what happened to every step &mdash; steps unaccounted for = 0, and
+individual refusals lost to summarising = 0, across a run that skips a step, a run whose delegate partly
+refuses, and a repeat run over unchanged input.</p>
+<details><summary>Observed at</summary>
+<p>Three tests over one fixture: a spec declaring no visual surface (asserting the report says nothing was
+imported or materialised, rather than staying silent); an export with two artboards whose labels collide
+(asserting the individual refusal reaches the report by label); and the same invocation run twice (asserting
+the byte difference is confined to the delegate named in Assumptions).</p></details>
+<details><summary>Falsified by</summary>
+<p>A step absent from the report rather than present with a reason &mdash; the conflation between &ldquo;did not
+happen&rdquo; and &ldquo;not recorded&rdquo; this family has paid for repeatedly &mdash; or a delegate&rsquo;s
+per-item refusal arriving as a single flattened outcome.</p></details>
+</spec-criterion>
+</section>
+
+
+<section id="assumptions">
+<h2>6 · Assumptions</h2>
+
+<spec-assumption>
+<p>The three delegated verbs are correct as they stand. This spec orchestrates them and changes none of their
+behaviour, so a defect in any one surfaces through the flag unchanged rather than being masked or fixed by
+it.</p>
+</spec-assumption>
+
+<spec-assumption>
+<p><strong>One delegate is known not to be idempotent today</strong>, which is why
+<a href="#FR-009">FR-009</a> is a SHOULD. Materialising twice over unchanged input changes one byte on the
+second run &mdash; a blank line inserted by the first pass and consumed by the second, then stable. It
+converges rather than diverges, so it does not threaten this flow, but the flag inherits it until fixed at
+source. Recorded rather than fixed in passing: the fix belongs to the verb that owns it, not its first
+caller.</p>
+</spec-assumption>
+
+<spec-assumption>
+<p>An author passing the flag is understood to be accepting network egress for that run. The design verb needs
+none by itself, and rendering needs it always; making the flag the place that declares it keeps the plain verb
+as network-free as it is today.</p>
+</spec-assumption>
+</section>
+
+
+<section id="questions">
+<h2>7 · Open questions</h2>
+<spec-questions>
+<p>None outstanding. Four decisions were anchored before writing: where the flow lives, when it refuses, what
+it does when one step cannot run, and whether the render step is separately skippable. A fifth &mdash; how the
+render verb&rsquo;s own separation requirement should read once a caller exists &mdash; is settled as a MODIFY
+on <a href="../106-visual-render/spec.html">106</a> that permits delegation while confining the capability,
+authored alongside this spec rather than left implied by it.</p>
+</spec-questions>
+</section>
+
+
+<section id="conformance">
+<h2>8 · Conformance index</h2>
+<p>Auto-built from every <code>&lt;spec-requirement&gt;</code> in this document.</p>
+<spec-conformance></spec-conformance>
+</section>
+
+
+<section id="changelog">
+<h2>9 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-08-22">22 Aug 2026</time><span>Initial draft. Motivated by a plain observation while demonstrating the visual pipeline &mdash; three
+commands in a fixed order is a sequence to remember, and the step easiest to forget is the one whose omission
+looks like completion. Scoped to three steps rather than four because the brief emits a document for a
+designer, so the export does not exist until a person has made one. Placed on the design verb and framed as
+delegation, which keeps 106&rsquo;s mechanically-enforced port confinement exactly as it is. The size gauge
+read red at 2,147 authored words on the first draft; ~50 words of prose were cut from the rationales and the
+context before the budget was authored at 2,200/17/12 &mdash; measured in a browser, since counting the source
+over-reports and <code>innerText</code> excludes collapsed rationales. It lands amber rather than green
+deliberately: eleven requirements and five criteria is what this needs, and a spec at its ceiling should say
+so.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  110-visual-one-step · Land the visuals in one step · authored 2026-08-22
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>
