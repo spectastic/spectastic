@@ -114,9 +114,17 @@ export interface ImportLedger {
  * structural comparison rather than counting, so it is named here rather than
  * half-done.
  */
+/** Which value grammar a candidate belongs to (FR-010, added by
+ *  2026-08-22-what-a-candidate-is-made-of). Two consumers need it and neither
+ *  can recover it from the value alone: the manifest, which must present a
+ *  colour and a length differently, and the write (FR-016), which must choose
+ *  a DTCG type before it can emit anything at all. */
+export type TokenCandidateKind = 'colour' | 'spacing';
+
 /** Fields every candidate carries, confirmed or not. */
 interface TokenCandidateBase {
   value: string;
+  kind: TokenCandidateKind;
   /** How many times it appears across the landed material. A value used once
    *  is far more likely to be incidental than one used thirty times. */
   occurrences: number;
@@ -622,13 +630,16 @@ export function deriveTokenCandidates(
   for (const f of files) {
     if (isTokenFile(f.name, f.body)) for (const v of declaredColourValues(f.body)) declared.add(v);
   }
-  const seen = new Map<string, { occurrences: number; sources: Set<string>; fromUnlanded: boolean }>();
+  const seen = new Map<
+    string,
+    { kind: TokenCandidateKind; occurrences: number; sources: Set<string>; fromUnlanded: boolean }
+  >();
   for (const { name, body, landed } of files) {
     if (isTokenFile(name, body)) continue; // a declaration, not evidence to mine
     for (const raw of body.match(COLOUR_RE) ?? []) {
       const value = raw.toLowerCase();
       if (declared.has(value)) continue; // the declared set already carries it
-      const entry = seen.get(value) ?? { occurrences: 0, sources: new Set<string>(), fromUnlanded: false };
+      const entry = seen.get(value) ?? { kind: 'colour' as const, occurrences: 0, sources: new Set<string>(), fromUnlanded: false };
       entry.occurrences += 1;
       entry.sources.add(name);
       if (!landed) entry.fromUnlanded = true;
@@ -638,6 +649,7 @@ export function deriveTokenCandidates(
   return [...seen.entries()]
     .map(([value, e]) => ({
       value,
+      kind: e.kind,
       occurrences: e.occurrences,
       sources: [...e.sources].sort(),
       fromUnlanded: e.fromUnlanded,
@@ -673,7 +685,7 @@ export function renderManifest(identity: string, ledger: ImportLedger): string {
     '<td><strong>NOT REVIEWED</strong></td></tr>';
 
   const candidate = (c: TokenCandidate): string =>
-    `<tr><td><code>${escapeHtml(c.value)}</code></td><td>${c.occurrences}</td>` +
+    `<tr><td>${escapeHtml(c.kind)}</td><td><code>${escapeHtml(c.value)}</code></td><td>${c.occurrences}</td>` +
     `<td>${escapeHtml(c.sources.join(', '))}${c.fromUnlanded ? ' <strong>(not landed — see the export)</strong>' : ''}</td>` +
     '<td><strong>INFERRED — UNCONFIRMED</strong></td></tr>';
 
@@ -702,7 +714,7 @@ export function renderManifest(identity: string, ledger: ImportLedger): string {
 <h2>Token candidates</h2>
 <p>Values observed in the material this import read, offered for confirmation. Values a declared token set already carries are <strong>not</strong> listed here, and a declared token set is never itself mined — a named, typed token is read, not guessed, so asking for confirmation of one would be the tool failing to read what it was given (FR-010, FR-017). A source marked <strong>not landed</strong> was read but deliberately not copied into the project — so it is in the export and not here, and the export may since have been deleted. <strong>None of these is in the token set</strong> and none carries a name — naming a token is a decision about meaning, and a wrong name is worse than no name because it looks decided. Confirming a candidate writes it into the token set under a name and a change class the confirmer supplies — never the tool — and moves the set's version under its own bump policy; a candidate that has not been confirmed never outranks a declared value.</p>
 <table>
-<thead><tr><th>Value</th><th>Occurrences</th><th>Seen in</th><th>Status</th></tr></thead>
+<thead><tr><th>Kind</th><th>Value</th><th>Occurrences</th><th>Seen in</th><th>Status</th></tr></thead>
 <tbody>${ledger.tokenCandidates.map(candidate).join('')}</tbody>
 </table>
 ${note('Not landed', 'These carry a runtime. Landing them verbatim would break the project&#39;s own artifact rules, so they are reported here instead.', ledger.unhandled)}

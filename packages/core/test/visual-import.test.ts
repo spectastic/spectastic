@@ -406,6 +406,19 @@ describe('colour derivation recognises every notation FR-010 names (FR-010, T-17
   });
 });
 
+// T-1701: the kind travels with the candidate all the way to the manifest a
+// reviewer actually reads, not just through deriveTokenCandidates' return type.
+describe('a candidate carries its kind through to the manifest (FR-010, T-1701)', () => {
+  it('shows the Kind column and a colour candidate\'s kind', async () => {
+    const m = only({ 'a.html': '<p style="color:oklch(0.21 0.034 264.665)">a</p>' });
+    const { store } = m;
+    await imp(m);
+    const manifest = store[`${INTO}/${MANIFEST_NAME}`] as string;
+    expect(manifest).toContain('<th>Kind</th>');
+    expect(manifest).toMatch(/<td>colour<\/td><td><code>oklch\(0\.21 0\.034 264\.665\)<\/code><\/td>/);
+  });
+});
+
 describe('material that cannot be landed is reported, not dropped (FR-011, triage T-007)', () => {
   it('does not land a file carrying a runtime', async () => {
     const m = only({ 'screens.dc.html': '<div>{{ x }}</div><script>var a = 1</script>' });
@@ -703,6 +716,7 @@ describe('confirming a candidate writes it into the token set (FR-016, T-1204)',
 
   const candidate = {
     value: '#f7f5f1',
+    kind: 'colour' as const,
     occurrences: 3,
     sources: ['a.html'],
     fromUnlanded: false,
