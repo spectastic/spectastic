@@ -419,6 +419,49 @@ describe('a candidate carries its kind through to the manifest (FR-010, T-1701)'
   });
 });
 
+// T-1702: spacing derivation, bounded to the property that declares it. A
+// bare length pattern would match width/font-size/border-radius too, which
+// is the flood FR-010's spacing clause exists to avoid.
+describe('spacing derivation is bounded to a declaring spacing property (FR-010, T-1702)', () => {
+  it('derives a length declared against padding, margin, gap and inset', () => {
+    const body =
+      '<div style="padding:8px;margin-top:1rem;gap:12px;inset:0;border-radius:4px;font-size:14px;width:200px">a</div>';
+    const derived = deriveTokenCandidates([{ name: 'a.html', body, landed: true }]);
+    expect(derived.map((c) => c.value).sort()).toEqual(['0', '12px', '1rem', '8px']);
+    expect(derived.every((c) => c.kind === 'spacing')).toBe(true);
+  });
+
+  it('does not offer a length declared against width or font-size', () => {
+    const body = '<div style="width:16px;font-size:16px;border-radius:16px">a</div>';
+    const derived = deriveTokenCandidates([{ name: 'a.html', body, landed: true }]);
+    expect(derived).toEqual([]);
+  });
+
+  it('derives a spacing longhand, physical and logical', () => {
+    const body = '<div style="padding-inline-start:1.5rem;margin-block-end:2rem;row-gap:4px">a</div>';
+    const derived = deriveTokenCandidates([{ name: 'a.html', body, landed: true }]);
+    expect(derived.map((c) => c.value).sort()).toEqual(['1.5rem', '2rem', '4px']);
+  });
+
+  it('derives a length in em, which is derivable and separately refused at write time', () => {
+    const derived = deriveTokenCandidates([{ name: 'a.html', body: '<div style="margin:1.25em">a</div>', landed: true }]);
+    expect(derived.map((c) => c.value)).toEqual(['1.25em']);
+  });
+
+  it('derives from a <style> block rule, not only an inline style attribute', () => {
+    const body = '<style>.card{ padding: 24px; }</style>';
+    const derived = deriveTokenCandidates([{ name: 'a.html', body, landed: true }]);
+    expect(derived.map((c) => c.value)).toEqual(['24px']);
+  });
+
+  it('merges the same length seen via two different spacing properties', () => {
+    const body = '<div style="padding:8px"></div><div style="margin:8px"></div>';
+    const derived = deriveTokenCandidates([{ name: 'a.html', body, landed: true }]);
+    expect(derived).toHaveLength(1);
+    expect(derived[0]?.occurrences).toBe(2);
+  });
+});
+
 describe('material that cannot be landed is reported, not dropped (FR-011, triage T-007)', () => {
   it('does not land a file carrying a runtime', async () => {
     const m = only({ 'screens.dc.html': '<div>{{ x }}</div><script>var a = 1</script>' });

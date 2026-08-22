@@ -552,6 +552,81 @@ export function contentHash(bytes: Uint8Array): string {
 const COLOUR_RE = /#[0-9a-fA-F]{3,8}\b|\b(?:rgba?|hsla?|hwb|lab|lch|oklab|oklch|color)\([^()]*\)/gi;
 
 /**
+ * Spacing properties FR-010 names, plus their longhands (physical and
+ * logical). A length counts as a candidate only when it declares one of
+ * these — a bare length elsewhere (`width`, `font-size`, `border-radius`) is
+ * not spacing, and offering it would flood the confirmation list; one real
+ * import produced 45 colour candidates from an unbounded pattern alone.
+ */
+const SPACING_PROPERTIES = new Set([
+  'padding',
+  'padding-top',
+  'padding-right',
+  'padding-bottom',
+  'padding-left',
+  'padding-block',
+  'padding-block-start',
+  'padding-block-end',
+  'padding-inline',
+  'padding-inline-start',
+  'padding-inline-end',
+  'margin',
+  'margin-top',
+  'margin-right',
+  'margin-bottom',
+  'margin-left',
+  'margin-block',
+  'margin-block-start',
+  'margin-block-end',
+  'margin-inline',
+  'margin-inline-start',
+  'margin-inline-end',
+  'gap',
+  'row-gap',
+  'column-gap',
+  'inset',
+  'inset-block',
+  'inset-block-start',
+  'inset-block-end',
+  'inset-inline',
+  'inset-inline-start',
+  'inset-inline-end',
+  // inset's own physical longhands (per FR-010: "inset, and their longhands").
+  'top',
+  'right',
+  'bottom',
+  'left',
+]);
+
+/**
+ * A CSS length literal, any unit. Derivation is bounded by WHERE a value
+ * sits, never by whether it can later be represented — FR-016 owns
+ * representability, and a length in `em` is deliberately derivable and then
+ * refused at write time (proposal §3, T-1707). Also matches unitless `0`,
+ * CSS's one length that never carries a unit.
+ */
+const LENGTH_RE = /-?\d+(?:\.\d+)?(?:px|rem|em|%|vh|vw|vmin|vmax|ch|ex|cm|mm|in|pt|pc|q)\b|(?<![.\d])0(?![.\d%a-z])/gi;
+
+/**
+ * One CSS declaration — `property: value` up to a `;`, a closing quote, or a
+ * closing brace. Matches both an inline `style=` attribute and a rule inside
+ * a `<style>` block without parsing either as real CSS, which is enough to
+ * tell what property a length was declared against.
+ */
+const DECLARATION_RE = /([a-zA-Z-]+)\s*:\s*([^;"'}]+)/g;
+
+/** Spacing lengths declared against a spacing property, per FR-010. */
+function spacingLengths(body: string): string[] {
+  const out: string[] = [];
+  for (const decl of body.matchAll(DECLARATION_RE)) {
+    const property = decl[1]!.trim().toLowerCase();
+    if (!SPACING_PROPERTIES.has(property)) continue;
+    for (const raw of decl[2]!.match(LENGTH_RE) ?? []) out.push(raw.toLowerCase());
+  }
+  return out;
+}
+
+/**
  * Derive token candidates from landed material (FR-010).
  *
  * Ordered by how often a value appears, then by the value itself so the output
@@ -640,6 +715,13 @@ export function deriveTokenCandidates(
       const value = raw.toLowerCase();
       if (declared.has(value)) continue; // the declared set already carries it
       const entry = seen.get(value) ?? { kind: 'colour' as const, occurrences: 0, sources: new Set<string>(), fromUnlanded: false };
+      entry.occurrences += 1;
+      entry.sources.add(name);
+      if (!landed) entry.fromUnlanded = true;
+      seen.set(value, entry);
+    }
+    for (const value of spacingLengths(body)) {
+      const entry = seen.get(value) ?? { kind: 'spacing' as const, occurrences: 0, sources: new Set<string>(), fromUnlanded: false };
       entry.occurrences += 1;
       entry.sources.add(name);
       if (!landed) entry.fromUnlanded = true;
