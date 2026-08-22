@@ -1338,3 +1338,46 @@ describe('confirming many candidates under one release is all-or-nothing (FR-016
     ).rejects.toBeInstanceOf(TokenConfirmationError);
   });
 });
+
+// T-1707 — the round trip proposal §3 names by example: a candidate DERIVED
+// from real material (deriveTokenCandidates, not a hand-built object) is then
+// refused at confirmation, for the two cases this change deliberately makes
+// derivable and not representable.
+describe('the two derivable-but-unrepresentable cases named in §3, end to end (T-1707)', () => {
+  const tokenSetPath = '/repo/visual/tokens.html';
+  const tokensJsonPath = '/repo/visual/tokens/base.tokens.json';
+  const tokenSetHtml =
+    '<spec-token-set version="1.0.0" binds-from="1.0.0">\n' +
+    '  <p>MAJOR when a token is removed or redefined; MINOR when added or deprecated; PATCH otherwise.</p>\n' +
+    '</spec-token-set>';
+
+  it('a color(--brand …) custom profile derives, then refuses at confirmation', async () => {
+    const [derived] = deriveTokenCandidates([
+      { name: 'screen.html', body: '<div style="color:color(--brand 0.5 0.2 0.1)">a</div>', landed: true },
+    ]);
+    expect(derived?.value).toBe('color(--brand 0.5 0.2 0.1)'); // derivation offers it (FR-010 recognises color())
+    expect(derived?.kind).toBe('colour');
+
+    const { fs } = memFs({ [tokenSetPath]: tokenSetHtml, [tokensJsonPath]: '{}' }, ['/repo/visual']);
+    await expect(
+      confirmTokenCandidate(
+        { tokenSetPath, tokensJsonPath, declaredFrom: '1.0.0', name: 'colour.brand', changeClass: 'minor', toVersion: '1.1.0', candidate: derived! },
+        fs,
+      ),
+    ).rejects.toThrow(/color\(--brand/); // refuses at the write (FR-016 — no DTCG colour space has a custom profile)
+  });
+
+  it('a spacing length in em derives, then refuses at confirmation', async () => {
+    const [derived] = deriveTokenCandidates([{ name: 'screen.html', body: '<div style="margin:1.25em">a</div>', landed: true }]);
+    expect(derived?.value).toBe('1.25em'); // derivation offers it — margin is a spacing property, unit is unbounded (FR-010)
+    expect(derived?.kind).toBe('spacing');
+
+    const { fs } = memFs({ [tokenSetPath]: tokenSetHtml, [tokensJsonPath]: '{}' }, ['/repo/visual']);
+    await expect(
+      confirmTokenCandidate(
+        { tokenSetPath, tokensJsonPath, declaredFrom: '1.0.0', name: 'space.gap', changeClass: 'minor', toVersion: '1.1.0', candidate: derived! },
+        fs,
+      ),
+    ).rejects.toThrow(/1\.25em/); // refuses at the write (FR-016 — DTCG's dimension type permits only px and rem)
+  });
+});
