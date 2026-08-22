@@ -6,11 +6,13 @@ import {
   deriveTokenCandidates,
   ImportIdentityError,
   colourFingerprint,
+  confirmTokenCandidates,
   isTokenFile,
   representColour,
   representSpacing,
   representToken,
   TokenConfirmationError,
+  type UnconfirmedTokenCandidate,
   UNKNOWN,
   importDesignSource,
 } from '../src/visual/import.js';
@@ -1204,5 +1206,135 @@ describe('suppression sees every form the declared set records, never across col
       { name: 'screen.html', body: '<p style="color:color(--brand 0.5 0.2 0.1)">a</p>', landed: true },
     ]);
     expect(out.map((c) => c.value)).toEqual(['color(--brand 0.5 0.2 0.1)']);
+  });
+});
+
+// T-1706 — a batch, all-or-nothing. Not the same thing T-1703/T-1704 already
+// cover: those are one candidate per confirmTokenCandidate call. This is one
+// release covering MANY candidates (FR-016's own phrase), and the guarantee
+// is that a single unrepresentable value among several good ones refuses
+// every one of them — none half-written, no release for a token that was
+// never confirmed into it.
+describe('confirming many candidates under one release is all-or-nothing (FR-016, T-1706)', () => {
+  const tokenSetPath = '/repo/visual/tokens.html';
+  const tokensJsonPath = '/repo/visual/tokens/base.tokens.json';
+  const tokenSetHtml =
+    '<spec-token-set version="1.0.0" binds-from="1.0.0">\n' +
+    '  <p>MAJOR when a token is removed or redefined; MINOR when added or deprecated; PATCH otherwise.</p>\n' +
+    '</spec-token-set>';
+
+  const cand = (value: string, kind: 'colour' | 'spacing'): UnconfirmedTokenCandidate => ({
+    value,
+    kind,
+    occurrences: 1,
+    sources: ['screen.html'],
+    fromUnlanded: false,
+    inferred: true,
+    confirmed: false,
+  });
+
+  it('writes every candidate and moves the version once, when all are representable', async () => {
+    const { fs, store } = memFs({ [tokenSetPath]: tokenSetHtml, [tokensJsonPath]: '{}' }, ['/repo/visual']);
+    const confirmed = await confirmTokenCandidates(
+      {
+        tokenSetPath,
+        tokensJsonPath,
+        declaredFrom: '1.0.0',
+        changeClass: 'minor',
+        toVersion: '1.1.0',
+        candidates: [
+          { name: 'color.accent', candidate: cand('#0f172a', 'colour') },
+          { name: 'space.gap', candidate: cand('16px', 'spacing') },
+        ],
+      },
+      fs,
+    );
+    expect(confirmed).toHaveLength(2);
+    expect(confirmed.every((c) => c.confirmed)).toBe(true);
+    const json = JSON.parse(store[tokensJsonPath] as string);
+    expect(json.color.accent.$value.hex).toBe('#0f172a');
+    expect(json.space.gap.$value).toEqual({ value: 16, unit: 'px' });
+    expect(store[tokenSetPath]).toContain('version="1.1.0"');
+    expect(store[tokenSetPath]).toContain('color.accent, space.gap'); // one release names both
+  });
+
+  it('refuses the whole batch — and writes NOTHING — when one candidate is unrepresentable', async () => {
+    const { fs, store } = memFs({ [tokenSetPath]: tokenSetHtml, [tokensJsonPath]: '{}' }, ['/repo/visual']);
+    const before = { ...store };
+    await expect(
+      confirmTokenCandidates(
+        {
+          tokenSetPath,
+          tokensJsonPath,
+          declaredFrom: '1.0.0',
+          changeClass: 'minor',
+          toVersion: '1.1.0',
+          candidates: [
+            { name: 'color.accent', candidate: cand('#0f172a', 'colour') }, // representable
+            { name: 'space.gap', candidate: cand('1.25em', 'spacing') }, // NOT representable
+          ],
+        },
+        fs,
+      ),
+    ).rejects.toBeInstanceOf(TokenConfirmationError);
+    // Neither candidate was written — the good one included.
+    expect(store).toEqual(before);
+  });
+
+  it('names every offender, not only the first', async () => {
+    const { fs } = memFs({ [tokenSetPath]: tokenSetHtml, [tokensJsonPath]: '{}' }, ['/repo/visual']);
+    let message = '';
+    try {
+      await confirmTokenCandidates(
+        {
+          tokenSetPath,
+          tokensJsonPath,
+          declaredFrom: '1.0.0',
+          changeClass: 'minor',
+          toVersion: '1.1.0',
+          candidates: [
+            { name: 'a', candidate: cand('1.25em', 'spacing') },
+            { name: 'b', candidate: cand('color(--brand 0.5 0.2 0.1)', 'colour') },
+          ],
+        },
+        fs,
+      );
+    } catch (e) {
+      message = (e as Error).message;
+    }
+    expect(message).toContain('1.25em');
+    expect(message).toContain('color(--brand');
+  });
+
+  it('refuses a batch where any candidate lacks a name, before touching either file', async () => {
+    const { fs, store } = memFs({ [tokenSetPath]: tokenSetHtml, [tokensJsonPath]: '{}' }, ['/repo/visual']);
+    const before = { ...store };
+    await expect(
+      confirmTokenCandidates(
+        {
+          tokenSetPath,
+          tokensJsonPath,
+          declaredFrom: '1.0.0',
+          changeClass: 'minor',
+          toVersion: '1.1.0',
+          candidates: [
+            { name: 'color.accent', candidate: cand('#0f172a', 'colour') },
+            { name: undefined, candidate: cand('16px', 'spacing') },
+          ],
+        },
+        fs,
+      ),
+    ).rejects.toBeInstanceOf(TokenConfirmationError);
+    expect(store).toEqual(before);
+  });
+
+  it('refuses an empty batch', async () => {
+    const { fs } = memFs({ [tokenSetPath]: tokenSetHtml, [tokensJsonPath]: '{}' }, ['/repo/visual']);
+    await expect(
+      confirmTokenCandidates(
+        { tokenSetPath, tokensJsonPath, declaredFrom: '1.0.0', changeClass: 'minor', toVersion: '1.1.0', candidates: [] },
+        fs,
+      ),
+    ).rejects.toBeInstanceOf(TokenConfirmationError);
   });
 });

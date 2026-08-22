@@ -1228,6 +1228,130 @@ export async function writeConfirmedToken(input: ConfirmWriteInput, fs: FileSyst
 
 export class TokenConfirmationError extends Error {}
 
+/**
+ * One confirmation covering many candidates (FR-016's "which MAY cover many
+ * candidates"). Each still needs its own name, arriving unvalidated the same
+ * way {@link ConfirmCandidateInput}'s does — the tool invents none.
+ */
+export interface ConfirmCandidatesInput {
+  tokenSetPath: string;
+  tokensJsonPath: string;
+  declaredFrom: string;
+  changeClass: string | undefined;
+  toVersion: string | undefined;
+  candidates: { name: string | undefined; candidate: UnconfirmedTokenCandidate }[];
+}
+
+/**
+ * Confirm many candidates under ONE release (FR-016, T-1706).
+ *
+ * Representability for EVERY candidate is decided before anything is written:
+ * one unrepresentable value refuses the WHOLE confirmation, naming it, and
+ * nothing is written for ANY candidate in the batch — no token, no version
+ * move, no release. This is what makes a batch honest under FR-016's shared
+ * version: if only some candidates wrote and the release still moved, the
+ * release would claim a version for a token that was never confirmed into it.
+ */
+export async function confirmTokenCandidates(
+  input: ConfirmCandidatesInput,
+  fs: FileSystem,
+): Promise<ConfirmedTokenCandidate[]> {
+  if (input.candidates.length === 0) {
+    throw new TokenConfirmationError('token confirmation: an empty batch confirms nothing — nothing to name a release for.');
+  }
+
+  const changeClass = input.changeClass?.trim();
+  if (changeClass === undefined || changeClass === '' || !CHANGE_CLASSES.includes(changeClass as ChangeClass)) {
+    throw new TokenConfirmationError(
+      `token confirmation: no valid change class supplied (must be one of ${CHANGE_CLASSES.join(', ')}). ` +
+        "The tier is the confirmer's claim, never the tool's — nothing here picks one.",
+    );
+  }
+
+  const toVersion = input.toVersion?.trim();
+  if (toVersion === undefined || toVersion === '' || !READABLE_VERSION.test(toVersion)) {
+    throw new TokenConfirmationError(
+      'token confirmation: no produced version supplied. The bump policy governing it lives as prose in the token set, ' +
+        'so it cannot be derived here — read the policy and state the version this release produces.',
+    );
+  }
+
+  if (toVersion === input.declaredFrom.trim()) {
+    throw new TokenConfirmationError(
+      `token confirmation: the produced version (${toVersion}) is the version the set already carries. ` +
+        'A release moves the version — state the one this confirmation produces, not the one it starts from.',
+    );
+  }
+
+  // Every name, before anything is written — the same "no fallback" rule the
+  // single-candidate path applies, extended to a candidate at any position.
+  const names: string[] = [];
+  for (const { name } of input.candidates) {
+    const trimmed = name?.trim();
+    if (trimmed === undefined || trimmed === '') {
+      throw new TokenConfirmationError(
+        'token confirmation: a candidate in this batch has no name. Naming a token is a decision only the ' +
+          'confirmer can make — nothing here suggests one, for any candidate.',
+      );
+    }
+    names.push(trimmed);
+  }
+
+  // Representability for EVERY candidate, before anything is written. All
+  // offenders are named, not only the first — a real import can offer many
+  // unrepresentable values in one batch (proposal §3), and understating the
+  // list would cost a second refused attempt to find the next one.
+  const represented: { $type: 'color' | 'dimension'; $value: unknown }[] = [];
+  const unrepresentable: string[] = [];
+  for (const { candidate } of input.candidates) {
+    try {
+      represented.push(representToken(candidate));
+    } catch {
+      unrepresentable.push(candidate.value);
+    }
+  }
+  if (unrepresentable.length > 0) {
+    throw new TokenConfirmationError(
+      `token confirmation: batch refused — cannot represent ${unrepresentable.map((v) => `"${v}"`).join(', ')}. ` +
+        'A batch is all-or-nothing; nothing in this confirmation is written.',
+    );
+  }
+
+  let liveHtml: string;
+  try {
+    liveHtml = await fs.readFile(input.tokenSetPath);
+  } catch {
+    throw new Error(`token-set write: no token set found at "${input.tokenSetPath}" to confirm into.`);
+  }
+  assertTokenSetVersion(liveHtml, input.declaredFrom);
+
+  const updatedHtml = applyTokenSetRelease(
+    liveHtml,
+    input.declaredFrom,
+    toVersion,
+    changeClass as ChangeClass,
+    names.join(', '),
+  );
+  await fs.writeFile(input.tokenSetPath, updatedHtml);
+
+  let tokens: Record<string, unknown>;
+  try {
+    tokens = JSON.parse(await fs.readFile(input.tokensJsonPath)) as Record<string, unknown>;
+  } catch {
+    tokens = {};
+  }
+  input.candidates.forEach((_item, i) => setTokenAtPath(tokens, names[i]!, represented[i]!));
+  await fs.writeFile(input.tokensJsonPath, `${JSON.stringify(tokens, null, 2)}
+`);
+
+  return input.candidates.map(({ candidate }, i) => ({
+    ...candidate,
+    confirmed: true as const,
+    name: names[i]!,
+    changeClass: changeClass as ChangeClass,
+  }));
+}
+
 /** Same shape as {@link ConfirmWriteInput}, except the three confirmer-supplied
  *  fields arrive UNVALIDATED — raw input, which is exactly what this function's
  *  job is to check before anything is written. */
