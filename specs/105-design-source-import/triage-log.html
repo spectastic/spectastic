@@ -575,6 +575,72 @@
   </details>
 </spec-triage>
 
+<spec-triage id="T-021" layer="spec">
+  <header>
+    <h4>A modern export derives no token candidates, because a candidate&#39;s value grammar is nowhere specified</h4>
+    <span class="meta">
+      <span class="layer-pill">Spec</span>
+      <span class="regen" data-result="fail">upstream</span>
+    </span>
+  </header>
+
+  <p class="headline">Debugging &ldquo;the import did not land the source HTML, so it derived no tokens&rdquo;, root
+  cause was <strong>two unrelated facts read as one</strong>: not landing is <a href="./spec.html#FR-014">FR-014</a>
+  working as designed and has no bearing on derivation, which reads unlanded material deliberately; the empty
+  candidate list is <a href="./spec.html#FR-010">FR-010</a> never saying what a token
+  candidate is <em>made of</em>, so the code chose hex-only and no spacing at all. Regeneration <strong>fails</strong>
+  &mdash; neither spec nor design names any value grammar, so a fresh session re-invents one arbitrarily.</p>
+
+  <dl>
+    <dt>Expected</dt>
+    <dd>Importing a real design-tool export yields colour (and, per FR-010&#39;s own stated bound, spacing)
+    candidates for confirmation, whether or not the file carrying them was landed.</dd>
+
+    <dt>Actual</dt>
+    <dd>Zero candidates. Reproduced against the built kernel: an export carrying a runtime plus
+    <code>oklch()</code>/<code>rgb()</code>/<code>hsl()</code> values returns <code>candidates=0</code>; the byte-identical
+    file with those two values rewritten as hex returns <code>candidates=2</code>. <code>landingWouldViolate</code>
+    is <code>true</code> in both runs, which is what shows the two facts are independent.</dd>
+
+    <dt>Diagnosis</dt>
+    <dd><a href="./spec.html#FR-010">FR-010</a> constrains derivation&#39;s <em>input</em>
+    (&ldquo;any text that artifact carries&rdquo;, widened by <code>2026-08-13-read-more-land-less</code> so unlanded
+    material is still mined) but never its <em>output vocabulary</em>. Two gaps fell out of that one silence:
+    <code>COLOUR_RE</code> is <code>#[0-9a-fA-F]{3,8}</code>, missing every CSS colour function
+    (<code>rgb()</code>, <code>hsl()</code>, <code>oklch()</code>, <code>lab()</code>, <code>lch()</code>,
+    <code>hwb()</code>, <code>color()</code>); and <strong>no spacing derivation exists</strong>, though FR-010&#39;s
+    rationale states as its bound that &ldquo;colour and spacing are recoverable&rdquo;. The requirement therefore
+    claims something the build does not do.</dd>
+
+    <dt>Fix</dt>
+    <dd><code>/spectastic.propose 105-design-source-import</code> &mdash; a MODIFY on
+    <a href="./spec.html#FR-010">FR-010</a> naming what a candidate is made of, and
+    reconciling the rationale&#39;s spacing claim in one of the two honest directions: deliver spacing derivation,
+    or retract the bound. Widening <code>COLOUR_RE</code> in
+    <span class="path">packages/core/src/visual/import.ts</span> is then a task under that change, not the fix
+    itself &mdash; patched alone it records the grammar nowhere and the next regeneration re-invents it.</dd>
+  </dl>
+
+  <details>
+    <summary>Deep dive &mdash; scope-deferred functionality exposed</summary>
+    <p>The code comment above <code>COLOUR_RE</code> reads &ldquo;Hex only: a named colour is ambiguous and a
+    computed one is not text.&rdquo; Both halves are sound and neither covers the miss: <code>red</code> is indeed
+    ambiguous and <code>color-mix()</code> is indeed computed, but <code>oklch(0.21 0.034 264.665)</code> is a
+    literal and is text. The comment is the whole record of a decision that turns out to exclude the majority of
+    modern export output &mdash; Tailwind v4&#39;s default palette is entirely <code>oklch()</code> &mdash; which is
+    the argument for the grammar living in the requirement rather than in a regex.</p>
+    <p>Spacing is deliberately carried on this card rather than split off, because it is the same silence and
+    would otherwise be reconciled twice. Note it needs more than a second regex: <code>TokenCandidateBase</code>
+    has no <code>kind</code> field, so colour and spacing candidates are today indistinguishable in the manifest
+    and in <code>confirmCandidate</code>&#39;s write. That is a real design consequence for whoever takes the propose,
+    and is named here rather than discovered mid-drain.</p>
+    <p>No cross-spec contract and no principles invariant. One reporting-copy question is worth raising with the
+    propose but is not this card: the manifest&#39;s &ldquo;Not landed&rdquo; note sits directly above an empty Token
+    candidates table, which is what invited the causal reading that a runtime-carrying file contributes nothing.
+    The note is accurate; its neighbourhood is misleading.</p>
+  </details>
+</spec-triage>
+
 </spec-triage-log>
 </section>
 
@@ -592,6 +658,7 @@
   <li><time datetime="2026-08-15">15 Aug 2026</time><span>T-016 and T-017 added and fixed; T-018 added and left open. All three surfaced from one real import — the first this verb has ever run against a genuine design export, both earlier runs having read a hand-made 24-line folder. The stub was rewritten first so the failures are representable: it now models directories, throws EISDIR on a directory read and ENOENT on a write under a missing parent. T-018 is a requirement decision about whether a tool runtime belongs in the project and is deliberately not patched.</span></li>
   <li><time datetime="2026-08-15">15 Aug 2026</time><span>T-018 closed — settled as a decision rather than a bug. The behaviour stands and FR-014 now says so deliberately, bounded to the one ground it is about. Three tests pin what was previously accidental; they were green from the start, which is the honest shape for a change that moves no behaviour.</span></li>
 </ol>
+  <li><time datetime="2026-08-21">21 Aug 2026</time><span>T-021 added &mdash; a real export derives zero token candidates. <code>spec</code>, regen <code>fail</code>: the reported symptom (&ldquo;it did not land the source HTML, so it derived no tokens&rdquo;) is two independent facts, and reproduction against the built kernel separates them &mdash; an unlanded file <em>is</em> mined, and the empty list is <code>COLOUR_RE</code> matching hex only. Neither spec nor design names any value grammar, so the fix is a MODIFY on FR-010 rather than a wider regex. Carries the spacing half too: FR-010&#39;s rationale bounds derivation with &ldquo;colour and spacing are recoverable&rdquo; and no spacing derivation has ever existed.</span></li>
 </spec-changelog>
 </section>
 

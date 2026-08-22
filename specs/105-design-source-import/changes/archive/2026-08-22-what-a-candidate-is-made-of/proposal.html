@@ -1,0 +1,472 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'">
+<title>What a candidate is made of · Change proposal</title>
+<link rel="stylesheet" href="../../../../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../../../../assets/favicon.svg">
+<script src="../../../../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Change proposal · 105-design-source-import</p>
+  <h1>What a candidate is made of</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    A requirement that says what its input is and never what its output is made of, and two silent failures that grew in the gap.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>     <span><spec-status value="applied">Applied</spec-status></span>
+    <b>Change ID</b>  <span>2026-08-22-what-a-candidate-is-made-of</span>
+    <b>Spec</b>       <span><a href="../../../spec.html">105-design-source-import</a></span>
+    <b>Author</b>     <span>Brian Corbin · @briancorbin</span>
+    <b>Created</b>    <span><time datetime="2026-08-22">22 Aug 2026</time></span>
+    <b>Targets</b>    <span>3 requirements</span>
+    <b>Read time</b>  <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-tldr>
+    <p>Derivation has always been specified by its <em>input</em> &mdash; &ldquo;any text that artifact
+    carries&rdquo; &mdash; and never by its <em>output</em>. Nothing says what a token candidate is made of, so
+    the code chose: hex colours only, and no spacing at all. A real export using <code>oklch()</code> therefore
+    derives nothing, and the empty result is indistinguishable from an export that genuinely has no colours.
+    This change names the value kinds and their notations in <a href="../../../spec.html#FR-010">FR-010</a>, makes
+    the write in <a href="../../../spec.html#FR-016">FR-016</a> emit a token matching the kind rather than assuming
+    an sRGB hex, and adds <strong>FR-018</strong> so a derivation that finds nothing says which kind of nothing
+    it found.</p>
+  </spec-tldr>
+</header>
+
+
+<spec-change id="2026-08-22-what-a-candidate-is-made-of" status="applied">
+
+<header>
+  <h3>What a candidate is made of</h3>
+  <span class="meta"><spec-status value="applied">Applied</spec-status></span>
+</header>
+
+
+<section id="intent">
+<h2>1 · Intent</h2>
+<p>The reported symptom was one sentence with two unrelated causes in it: <em>&ldquo;it didn&rsquo;t land the
+source HTML, which means it didn&rsquo;t derive any tokens.&rdquo;</em> Not landing is
+<a href="../../../spec.html#FR-014">FR-014</a> working exactly as designed, and it has no bearing on derivation
+&mdash; <code>2026-08-13-read-more-land-less</code> deliberately made the import mine material it refuses to
+copy, and it does. The empty candidate list has its own cause, and the two have been read as one twice now.</p>
+
+<p>That cause is a silence in this requirement. <a href="../../../spec.html#FR-010">FR-010</a> bounds derivation&rsquo;s
+input and says nothing about its output, so two answers were invented in code and recorded nowhere: the colour
+pattern is <code>#[0-9a-fA-F]{3,8}</code>, and spacing derivation has never existed. Both were reproduced against
+the built kernel &mdash; an export carrying <code>oklch()</code> and <code>rgb()</code> values returns zero
+candidates, while the byte-identical file with those two values rewritten as hex returns two.</p>
+
+<p>The second cause is worse and was found while confirming the first. The write assumes an sRGB hex
+unconditionally: <code>setTokenAtPath</code> hardcodes <code>$type: 'color'</code> and parses the value as hex
+digits. Confirming a non-hex candidate today writes a <em>corrupt</em> DTCG token &mdash;
+<code>"hex": "#oklch("</code> with <code>components: [null, null, null]</code> &mdash; raises no error, and bumps
+the token set&rsquo;s version so the set records a release for it. So widening the grammar without fixing the write
+converts a silent no-op into a silent corruption, and the two halves must land together.</p>
+
+<p>The third thing this change fixes is the one that made the same defect cost two investigations: an empty
+candidate table looks identical whether the export had no colours, or had colours the tool could not read. This
+estate has a name for that failure and a settled posture on it &mdash; recording nothing is a third value, and
+silence must not be readable as a claim nobody made.</p>
+</section>
+
+
+<section id="scope">
+<h2>2 · Scope</h2>
+
+<spec-goals>
+  <h3>In scope</h3>
+  <ul>
+    <li>Naming, normatively, which colour notations derivation recognises &mdash; hex plus the CSS colour
+    functions a real export actually emits.</li>
+    <li>Spacing derivation, bounded to lengths declared in a spacing property.</li>
+    <li>A candidate carrying <em>which kind of value it is</em>, so the manifest and the write can tell colour
+    from spacing.</li>
+    <li>A write that emits the DTCG type matching the candidate&rsquo;s kind, records a colour in the colour
+    space the candidate declares, and refuses rather than writes a value it cannot represent.</li>
+    <li>A derivation that found nothing saying which kind of nothing it found.</li>
+    <li>Bumping this spec&rsquo;s <code>&lt;spec-budget&gt;</code>, which has read red across seven applied
+    changes without anyone touching it.</li>
+  </ul>
+</spec-goals>
+
+<spec-non-goals>
+  <h3>Out of scope</h3>
+  <ul>
+    <li defer-to="TBD-derived-value-kinds">Every other DTCG value kind a real export carries &mdash; typography,
+    radii, shadows, borders, durations. Colour and spacing are what this change can deliver alongside the write
+    path it also has to fix; the rest is a list rather than a design problem, and is better taken once.</li>
+    <li defer-to="never">Converting a derived colour between colour spaces. The value written is the value the
+    designer chose; converting it would need colour science this project has no other use for, would lose
+    out-of-gamut values, and sits badly beside <a href="../../../spec.html#FR-005">FR-005</a>&rsquo;s record that the
+    value arrived derived rather than authored.</li>
+    <li defer-to="TBD-derived-value-kinds">Reading a length that reaches a spacing property through a custom
+    property. A static reader sees <code>padding: var(--gap-2)</code> and cannot resolve it without evaluating the
+    cascade, which is a different capability from reading text.</li>
+  </ul>
+</spec-non-goals>
+</section>
+
+
+<section id="approach">
+<h2>3 · Approach</h2>
+<p><strong>The grammar goes in the requirement, not the regex.</strong> The interview considered stating a
+property instead (&ldquo;must not be limited to a single notation&rdquo;) and chose an explicit list, accepting that
+CSS Color 5/6 will eventually need an amendment. The trade is deliberate: an enumerated list is checkable against
+the implementation by reading both, and the failure mode of the property form &mdash; everyone agrees the code is
+compliant and it still misses <code>oklch()</code> &mdash; is the failure this change exists to end.</p>
+
+<p><strong>Spacing is bounded by the declaring property, not by the length.</strong> A bare length pattern matches
+every width, font-size, border-radius and icon dimension in a document; one real import already produced 45 colour
+candidates alone, and a flood is not a list a human confirms. So a length counts only where it declares
+<code>padding</code>, <code>margin</code>, <code>gap</code>, <code>inset</code> or a longhand. That costs a
+property-aware read rather than a flat scan, and it misses a value reaching the property through a custom
+property &mdash; recorded above as out of scope rather than discovered later.</p>
+
+<p><strong>The write is in scope because the grammar cannot land without it.</strong>
+<code>setTokenAtPath</code> hardcodes <code>$type: 'color'</code> and parses the value as hex digits, so a
+non-hex candidate is written malformed with no error raised. Storing a colour as authored needs no conversion,
+because the token format carries an explicit colour space of its own; spacing takes its dimension type. A value
+the writer cannot represent is refused, which is the same posture <a href="../../../spec.html#FR-016">FR-016</a>
+already takes towards a stale set and a version that does not move.</p>
+
+<p><strong>Two values are derivable and not representable, and that is deliberate rather than overlooked.</strong>
+The token format permits fourteen named colour spaces and <em>no</em> author-defined ones, so CSS
+<code>color(--brand &hellip;)</code> with a custom profile has no equivalent &mdash; it is a real notation an
+export can carry, so the grammar recognises it, and the write refuses it. The same holds for spacing: the
+dimension type permits only <code>px</code> and <code>rem</code>, so a length in <code>em</code> derives and then
+refuses. Naming both here is the point of the refusal clause; discovering them during a drain is what this
+proposal is trying to stop.</p>
+
+<spec-note><p><strong>Grounding.</strong> The colour-space enumeration, the absence of custom spaces, and the
+optional 6-digit <code>hex</code> fallback are <em>verified</em> against the Design Tokens
+<a href="https://www.designtokens.org/TR/drafts/color/">Color module</a>; the <code>px</code>/<code>rem</code>
+restriction against the <a href="https://www.designtokens.org/TR/drafts/format/">Format module</a>. An earlier
+draft of this section asserted all of it from memory, which the risk pass caught as an <code>assumed</code> fact
+carrying a <code>must</code>-tier decision &mdash; see <a href="#risks">&sect;5</a>.</p></spec-note>
+
+<spec-note><p>One authoring note for whoever drains this. Both MODIFY deltas carry their live rationale
+<em>verbatim</em>, including the paragraphs an earlier change marked <q>Added by this change</q> &mdash; those
+sentences are history and refer to <code>2026-08-17-a-declared-token-is-not-a-guess</code>, not to this one. The
+paragraphs this change adds name their own change id instead, which is the better precedent: a MODIFY replaces
+the whole element, and an unqualified <q>this change</q> stops being true the moment a second one lands.</p></spec-note>
+</section>
+
+
+<section id="deltas">
+<h2>4 · Deltas</h2>
+<p>One <code>&lt;spec-delta&gt;</code> per requirement touched. <code>target=</code> links to
+the live spec. <code>op=</code> is one of <code>added | modified | removed | renamed</code>;
+a missing or invalid op renders visibly broken.</p>
+
+<spec-delta op="modified" target="FR-010">
+  <p><strong>What changes:</strong> the requirement gains an output vocabulary &mdash; a candidate carries its
+  kind, the recognised colour notations are named, and spacing derivation is defined and bounded to the property
+  that declares it. The four rationale paragraphs are carried verbatim; three are appended.</p>
+  <spec-requirement id="FR-010" priority="must">
+<p>Where a source emits an artifact rather than design data, the import <spec-rule>MUST</spec-rule> be able to
+derive token candidates from any text that artifact carries, and those candidates <spec-rule>MUST</spec-rule>
+be presented for confirmation rather than committed as read. Derivation <spec-rule>MUST NOT</spec-rule> read a
+recognised token file as an artifact to mine, and <spec-rule>MUST NOT</spec-rule> present a candidate whose
+value the declared token set already carries.</p>
+<p>A candidate <spec-rule>MUST</spec-rule> carry which kind of value it is. Colour derivation
+<spec-rule>MUST</spec-rule> recognise hexadecimal notation and the functional notations
+<code>rgb()</code>, <code>rgba()</code>, <code>hsl()</code>, <code>hsla()</code>, <code>hwb()</code>,
+<code>lab()</code>, <code>lch()</code>, <code>oklab()</code>, <code>oklch()</code> and <code>color()</code>.
+Spacing derivation <spec-rule>MUST</spec-rule> recognise a length that declares a spacing property &mdash;
+<code>padding</code>, <code>margin</code>, <code>gap</code>, <code>inset</code>, and their longhands &mdash; and
+<spec-rule>MUST NOT</spec-rule> present a length declared anywhere else.</p>
+<p>Suppression of an already-declared value <spec-rule>MUST</spec-rule> compare against the values the declared
+token set records, in every form that set may carry them, and <spec-rule>MUST NOT</spec-rule> attempt equality
+between values in different colour spaces.</p>
+<details><summary>Rationale</summary><p>Several of the sources emit code, not a token file — the design <em>is</em> what they emitted. Deriving is the only way to serve them, and confirmation is what keeps FR-005 true in practice rather than only in the file.</p>
+<p>The original wording reasoned from a stylesheet, and a real export has none: every value is an inline <code>style=</code> attribute. Worse, the markup is a <em>template</em> — screens are produced by iterating over data, with the values computed in the document's own trailing script — so a static reader sees a placeholder where a figure should be. Reading that script as text is reading data, not executing it, and it is where the values are.</p>
+<p>What follows is a bound worth stating rather than discovering: colour and spacing are recoverable, and <strong>screen and state identity may not be present at all</strong>. So this requirement is about values, and never about reconstructing the structure a designer drew. Turning a template's data into declarations is a separate question about who authors a screen.</p>
+<p><strong>Added by this change.</strong> The two clauses above bound where derivation stops. The first fixes an
+inversion rather than a nuisance: a token file is text, so the pattern matched its declared values and returned
+them as guesses about themselves. The second is what the complaint was actually about — a project that supplies
+real tokens should be asked to confirm nothing about them, and suppressing only the token file while still
+offering every stylesheet colour that matches a declared token would leave the list nearly as long.</p>
+<p>The three paragraphs above this one are carried <em>verbatim</em> from the live requirement, and saying so
+matters: a MODIFY replaces the whole <code>&lt;spec-requirement&gt;</code> element, rationale included, so an
+author who retypes only the normative sentence deletes everything else without the diff showing it. An earlier
+draft of this delta did exactly that and would have dropped the bound <a href="../../../triage-log.html#T-008">T-008</a>
+cost two real imports to establish.</p>
+<p><strong>Added by <code>2026-08-22-what-a-candidate-is-made-of</code>.</strong> The three clauses above bound
+derivation&rsquo;s <em>input</em>; nothing here has ever bounded its <em>output</em>, and two answers were invented in
+code as a result. The colour pattern was hex only, so an export using <code>oklch()</code> derived nothing at all
+&mdash; and the paragraph above claiming spacing is recoverable was true about the material and false about the
+tool, because no spacing derivation had ever existed. Stating the notations as a list rather than as a property
+is a deliberate trade: the list will need amending when CSS gains a colour function, and the property form&rsquo;s
+failure mode is that everyone agrees the code complies while it still misses the notation a real export uses.</p>
+<p>Spacing is bounded by the declaring property rather than by the length, because a bare length pattern matches
+every width, font size and radius in a document. One real import produced forty-five colour candidates on its own;
+a list nobody can read is not a list presented for confirmation. The cost is recorded rather than hidden: a length
+that reaches a spacing property through a custom property is not resolvable by reading text, and is out of scope.</p>
+<p>The suppression clause is bounded rather than left to inference, because widening the grammar without
+bounding it would make an existing clause unsatisfiable: deciding that <code>#f7f5f1</code> and an
+<code>oklch()</code> value are the same colour needs conversion this change deliberately refuses. Comparing every
+recorded form is achievable; comparing across spaces is not, and an unsuppressed duplicate is a longer list where
+a wrong match silently withholds a value the confirmer never saw.</p>
+<p>The kind is on the candidate rather than inferred at the point of use, because two consumers need it and
+neither can recover it from the value. A manifest that cannot tell a colour from a length cannot present either
+honestly, and the write in <a href="../../../spec.html#FR-016">FR-016</a> must choose a DTCG type before it can emit
+anything at all.</p></details>
+  </spec-requirement>
+</spec-delta>
+
+<spec-delta op="modified" target="FR-016">
+  <p><strong>What changes:</strong> the write stops assuming its input. It must emit the DTCG type matching the
+  candidate&rsquo;s kind, record a colour in the colour space the candidate declares without converting it, and
+  refuse a value it cannot represent rather than writing a malformed token. Six rationale paragraphs carried
+  verbatim; two appended.</p>
+  <spec-requirement id="FR-016" priority="must">
+  <p>Confirming a derived candidate <spec-rule>MUST</spec-rule> write it into the project's token set under a
+  name and a change class the confirmer supplies, and at a resulting version the confirmer supplies once per
+  confirmation, which <spec-rule level="may">MAY</spec-rule> cover many candidates. The tool
+  <spec-rule>MUST NOT</spec-rule> supply any of the three. The write <spec-rule>MUST</spec-rule> refuse a
+  version equal to the one being moved from, <spec-rule>MUST</spec-rule> refuse a set that has changed since
+  it was read, and a token written this way <spec-rule>MUST</spec-rule> record that it was derived and
+  confirmed rather than authored. An absent or unreadable version is already refused by
+  <a href="../../../../098-token-set-versioning/spec.html#NFR-002">098's NFR-002</a> and is not restated
+  here.</p>
+  <p>The write <spec-rule>MUST</spec-rule> emit a token whose type matches the kind the candidate carries, and
+  <spec-rule>MUST</spec-rule> record a colour in the colour space that candidate declares rather than converting
+  it. Where the value cannot be represented in the token format, the write <spec-rule>MUST</spec-rule> refuse it
+  and <spec-rule>MUST NOT</spec-rule> write a token, move the version, or record a release. Where one
+  confirmation covers many candidates, representability <spec-rule>MUST</spec-rule> be decided for all of them
+  before any is written, and one unrepresentable value <spec-rule>MUST</spec-rule> refuse the whole
+  confirmation, naming it.</p>
+  <details><summary>Rationale</summary><p>FR-010 presents candidates for confirmation and nothing consumed a confirmation, so a project could declare a token path, validate clean, and hold no tokens.</p>
+<p>This spec owns the write because <a href="../../../../098-token-set-versioning/spec.html">098</a> deferred <em>"importing a token set from a design tool, and what its version means on arrival"</em> here in writing, and because 098 ships a reader and a refusal rather than a writer. The first version named 098's mechanism as though it existed; stating the <em>properties</em> the write must satisfy is what an owner does, and leaves 098 free to grow a writer later without this requirement changing.</p>
+<p>The change class is the confirmer's, not the tool's. 098 requires every surface to present a release's class as the producer's claim, and its own assumption is that authors classify honestly — so a tool that picks one asserts something its producer never said. That corrects "everything after the name is clerical", which was false: the clerical part is the file, the guard and the bookkeeping.</p>
+<p>The version is the confirmer's for the same reason, and the first version of this requirement missed it. A release declares a <code>from</code> and a <code>to</code>; naming the name and the class as human inputs while leaving the version to be moved <em>under the versioning policy</em> left the tool authoring half the claim it had just been forbidden from making.</p>
+<p>The one refusal this requirement adds is an equality: the version must move. Checking that it moved <em>correctly</em> for the declared class would mean ordering two versions, which <a href="../../../../098-token-set-versioning/spec.html#NFR-001">098's NFR-001</a> forbids at must tier, and would reintroduce the substitution this correction exists to remove. Absent and unreadable are deliberately <em>not</em> restated — <a href="../../../../098-token-set-versioning/spec.html#NFR-002">098's NFR-002</a> already refuses both, and the first draft of this correction copied them into a second spec, where they could drift and where "malformed" would have quietly ratified a version format narrower than semver that no requirement states.</p>
+<p>One version per confirmation rather than per candidate, decided rather than left implicit. A release is a claim about a set, and one real import produced forty-five candidates — forty-five releases would describe nothing a producer would recognise.</p>
+<p><strong>Added by <code>2026-08-22-what-a-candidate-is-made-of</code>.</strong> The write assumed its input:
+it emitted <code>$type: "color"</code> unconditionally and parsed every value as hex digits. That was invisible
+while <a href="../../../spec.html#FR-010">FR-010</a> derived nothing but hex, and becomes a corruption the moment it
+derives anything else &mdash; confirming an <code>oklch()</code> candidate produced a token reading
+<code>"hex": "#oklch("</code> with null components, raised no error, and moved the set&rsquo;s version so the release
+recorded it. A silent no-op became a silent corruption, which is why the grammar and the write are one change and
+not two.</p>
+<p>A colour is recorded in the colour space the candidate declares, without conversion. DTCG&rsquo;s colour type
+carries an explicit colour space already, so storing the authored value needs no colour science and loses no
+out-of-gamut value &mdash; and rewriting a designer&rsquo;s chosen value would sit badly beside
+<a href="../../../spec.html#FR-005">FR-005</a>&rsquo;s record that it arrived derived rather than authored. Refusing a
+value the writer cannot represent is the posture this requirement already takes towards a stale set and a version
+that does not move; the new part is only that a third thing can now be unrepresentable.</p></details>
+  </spec-requirement>
+</spec-delta>
+
+<spec-delta op="added" target="FR-018">
+  <spec-requirement id="FR-018" priority="must">
+    <p>Where derivation read material and produced no candidates, the import <spec-rule>MUST</spec-rule> report
+    that outcome rather than presenting an empty list, and <spec-rule>MUST</spec-rule> distinguish material
+    carrying no values of a kind it derives from material carrying values in a notation it does not recognise.</p>
+    <details><summary>Rationale</summary>
+    <p>An empty candidate table is the same table whether the export had no colours or had colours the tool could
+    not read, and the two call for opposite responses &mdash; accept the result, or report a gap in the grammar.
+    The same defect was investigated twice because the artifact could not tell them apart, and the second
+    investigation began from a reasonable but wrong inference drawn from an adjacent note about a file that was
+    read and not landed.</p>
+    <p>This is the estate&rsquo;s settled posture rather than a new one: recording nothing is a third value, and
+    silence must not be readable as a claim nobody made. It is also why the second clause matters more than the
+    first &mdash; reporting &ldquo;no candidates&rdquo; is easy and nearly useless; reporting which kind of nothing
+    was found is what ends the investigation.</p>
+    <p>Deliberately not stated: <em>how</em> an unrecognised notation is detected. A tool that could reliably
+    identify every value it does not understand would understand it. The obligation is that a notation the
+    grammar names but cannot parse, and material whose text carries no derivable value at all, are reported
+    differently &mdash; not that every unknown token in a document is classified.</p>
+    </details>
+  </spec-requirement>
+</spec-delta>
+</section>
+
+
+<section id="subtraction">
+<h2>4b · What this change removes</h2>
+<p>Each entry names one thing this change takes away &mdash; a clause dropped from a requirement it retypes,
+an obligation a sibling loses, a behaviour or affordance no requirement records. <strong>An empty register is
+the answer &ldquo;this removes nothing&rdquo;</strong>, so the common case needs no editing.</p>
+<p>Where a delta removes something itself, its own reason and migration stay authoritative &mdash; this
+register is for what no delta can express.</p>
+
+<spec-subtraction>
+<ul>
+  <li><strong>FR-010 loses its open-endedness on value notation.</strong> The live requirement never said what a
+  candidate is made of, which read as unbounded in principle even though the code was hex-only in fact. Naming the
+  notations makes the bound real and explicit: a notation not on the list is now out by decision rather than by
+  accident. That is the point of the change, but it is a genuine subtraction and a reader deserves to see it
+  registered rather than inferred.</li>
+  <li><strong>A confirmation can now fail where it previously always &ldquo;succeeded&rdquo;.</strong> Today every
+  candidate writes something and moves the version. After this change a value the writer cannot represent is
+  refused outright. Nothing of value is lost &mdash; what it wrote was malformed &mdash; but any caller assuming
+  confirmation is total loses that assumption, and no requirement records it today.</li>
+</ul>
+</spec-subtraction>
+</section>
+
+
+<section id="risks">
+<h2>5 · Risk register</h2>
+<p>Populated by the adversarial risk pass when the proposal triggers the heuristic (touches a <code>must</code>-tier requirement, contains an <code>op="removed"</code> delta, or spans ≥2 topic prefixes). One <code>&lt;spec-risk&gt;</code> per finding. <code>target=</code> is required (missing renders broken). <code>status=</code> defaults to <code>identified</code>; apply refuses until each transitions to <code>accepted</code>, <code>mitigated</code>, or <code>rejected</code>.</p>
+
+<spec-risk-log>
+
+<spec-risk target="FR-016" status="mitigated" by="Brian Corbin · @briancorbin">
+  <p class="claim">The new refusal is written per-value but sits in a requirement whose version is supplied once
+  per confirmation covering many candidates, so it never says whether one unrepresentable value refuses the whole
+  batch or is skipped while the batch&rsquo;s version moves anyway &mdash; and the first 45-candidate confirmation
+  containing a single <code>color(--brand &hellip;)</code> forces an implementer to invent the answer.</p>
+  <p class="citation">&sect;4 delta <code>op="modified" target="FR-016"</code>: <q>Where the value cannot be
+  represented in the token format, the write MUST refuse it and MUST NOT write a token, move the version, or
+  record a release</q> &mdash; read against the carried-verbatim <q>at a resulting version the confirmer supplies
+  once per confirmation, which MAY cover many candidates</q>.</p>
+  <div class="response">Accepted as a real gap, and the codebase already settles it. NFR-001&rsquo;s two-phase
+  discipline &mdash; decide everything first, write only once nothing can still fail &mdash; is the same shape,
+  and was introduced because a partial write left material with no manifest beside it. The batch is therefore
+  all-or-nothing: every candidate is checked for representability before anything is written, and one
+  unrepresentable value refuses the confirmation with that value named. Now stated in the delta as a
+  sentence on the new paragraph, rather than left as a fourth requirement.</div>
+</spec-risk>
+
+<spec-risk target="FR-010" status="mitigated" by="Brian Corbin · @briancorbin">
+  <p class="claim">Widening derivation to ten notations while FR-016 forbids conversion makes FR-010&rsquo;s own
+  carried-forward duplicate-suppression clause unsatisfiable: equality would have to be decided across colour
+  spaces, and the only shipped mechanism is a string compare &mdash; so a token written as <code>oklch()</code> is
+  invisible to the suppressor and the next import re-presents the colour the confirmer just declared.</p>
+  <p class="citation">Live FR-010, carried verbatim: <q>MUST NOT present a candidate whose value the declared
+  token set already carries</q>, against the FR-016 delta&rsquo;s <q>MUST record a colour in the colour space that
+  candidate declares rather than converting it</q>. <code>declaredColourValues</code> collects only
+  <code>$value</code> strings matching <code>/^#[0-9a-fA-F]{3,8}$/</code>.</p>
+  <div class="response">Confirmed, and worse than the finding states. Run against the structured object
+  <code>setTokenAtPath</code> itself writes, <code>declaredColourValues</code> returns the empty set &mdash; so
+  suppression is already blind to <em>every</em> token this tool has ever confirmed, hex included, independent of
+  this change. That half is a pre-existing defect and belongs in a triage card rather than here. The half this
+  change owns is the cross-space one, and the answer is to state the bound rather than attempt colour equality:
+  suppression compares recorded values, including the structured form, and does not attempt equality across
+  colour spaces. An unsuppressed duplicate is a longer list; a wrong match silently withholds a real
+  value. Now stated in the FR-010 delta as a third normative paragraph.</div>
+</spec-risk>
+
+<spec-risk target="§2" status="mitigated" by="Brian Corbin · @briancorbin">
+  <p class="claim">The scope register&rsquo;s boundary half is unwritten &mdash; both out-of-scope entries are still
+  template placeholders &mdash; while two deferrals the proposal treats as settled are asserted in prose to have
+  been recorded there, so the change would apply with its stated bound existing nowhere.</p>
+  <p class="citation">&sect;2 <code>&lt;spec-non-goals&gt;</code>: <q>[OUT_OF_SCOPE_ITEM_1]</q>,
+  <q>[OUT_OF_SCOPE_ITEM_2]</q> &mdash; against &sect;3&rsquo;s <q>recorded above as out of scope rather than
+  discovered later</q> and &sect;7&rsquo;s <q>the deferral target for the remaining DTCG types</q>.</p>
+  <div class="response">Correct, and already corrected. The authoring pass wrote the register against the wrong
+  element name and the substitution silently matched nothing &mdash; the failure mode this proposal is itself
+  about, one level up. &sect;2 now carries three entries with <code>defer-to=</code>. Worth noting separately:
+  the estimability gate refuses on a <code>&lt;spec-out-of-scope&gt;</code> item missing <code>defer-to=</code>,
+  but the proposal template&rsquo;s register is <code>&lt;spec-non-goals&gt;</code>, which nothing checked here.</div>
+</spec-risk>
+
+<spec-risk target="FR-016" status="mitigated" by="Brian Corbin · @briancorbin">
+  <p class="claim">The must-tier obligation to store a colour in its authored colour space rested on an ungrounded
+  claim about the token format &mdash; nothing named the specification whose <code>colorSpace</code> enumeration
+  was being relied on &mdash; and FR-010 mandates deriving <code>color()</code>, which admits custom profiles no
+  closed enumeration carries, so the grammar is required to produce candidates the write is required to refuse.</p>
+  <p class="citation"><code>KB-0001@2026-07-25</code>: <q>A <code>must</code>-tier decision may not rest on an
+  <code>assumed</code> or unresolved-<code>spike</code> fact without an explicit
+  <code>&lt;spec-risk status="accepted"&gt;</code> recording who accepted the gap and why.</q> Contradicted by an
+  earlier &sect;3 asserting the format&rsquo;s colour-space behaviour from memory.</p>
+  <div class="response">Both halves correct. The fact has since been verified against the Design Tokens Color
+  module &mdash; fourteen named colour spaces, no author-defined ones, <code>hex</code> optional and 6-digit
+  &mdash; and the Format module, whose dimension type permits only <code>px</code> and <code>rem</code>. So it is
+  no longer an <code>assumed</code> fact, and &sect;3 now cites both. Both modules are <em>drafts</em> and can
+  still move; that is recorded here rather than treated as closing the question, and is the reason the
+  enumeration lives in a requirement a propose can amend rather than in a comment. The second half stands and is now stated
+  deliberately: <code>color(--brand &hellip;)</code> and a length in <code>em</code> are both derivable and not
+  representable, which is precisely what the refusal clause is for. Verification also found a third instance the
+  proposal had not considered, which is the argument for having run it.</div>
+</spec-risk>
+
+</spec-risk-log>
+</section>
+
+
+<section id="tasks">
+<h2>6 · Tasks</h2>
+<p>Scoped to this change only. On <code>/spectastic.apply</code> these fold into the target's
+<code>tasks.html</code> as a new provenance-linked phase (per <code>REQ-CHANGE-006</code>) that
+<code>/spectastic.implement</code> drains — this list is then the frozen intent record.</p>
+
+<ul style="list-style:none;padding-left:0;">
+  <li><input type="checkbox"> Widen colour derivation to the notations FR-010 names, replacing the hex-only
+  pattern. <span class="path">packages/core/src/visual/import.ts</span></li>
+  <li><input type="checkbox"> Add <code>kind</code> to <code>TokenCandidateBase</code> and carry it through the
+  manifest&rsquo;s candidate table. <span class="path">packages/core/src/visual/import.ts</span></li>
+  <li><input type="checkbox"> Add spacing derivation bounded to a declaring spacing property, with a test pinning
+  that a length in <code>width</code> or <code>font-size</code> is <em>not</em> offered.
+  <span class="path">packages/core/src/visual/import.ts</span></li>
+  <li><input type="checkbox"> Emit the DTCG type matching the candidate&rsquo;s kind &mdash; colour in its declared
+  colour space, spacing as a dimension &mdash; and refuse a value that cannot be represented, writing no token and
+  moving no version. <span class="path">packages/core/src/visual/import.ts</span></li>
+  <li><input type="checkbox"> Regression test for the corrupt write: confirming an <code>oklch()</code> candidate
+  must not produce <code>hex: "#oklch("</code>, and must leave the token set&rsquo;s version untouched on refusal.
+  <span class="path">packages/core/test/visual.import.test.ts</span></li>
+  <li><input type="checkbox"> Bound suppression per FR-010: compare against every form the declared set records
+  &mdash; including the structured <code>$value</code> object the writer emits &mdash; and never across colour
+  spaces. <span class="path">packages/core/src/visual/import.ts</span></li>
+  <li><input type="checkbox"> Decide representability for every candidate in a confirmation before writing any,
+  and refuse the whole confirmation naming the offending value.
+  <span class="path">packages/core/src/visual/import.ts</span></li>
+  <li><input type="checkbox"> Tests pinning the two derivable-but-unrepresentable cases named in &sect;3 &mdash; a
+  <code>color(--brand &hellip;)</code> custom profile and a spacing length in <code>em</code> &mdash; refuse rather
+  than write. <span class="path">packages/core/test/visual.import.test.ts</span></li>
+  <li><input type="checkbox"> File a triage card for the pre-existing suppression blindness found by the risk
+  pass: <code>declaredColourValues</code> returns the empty set for the structured form the tool itself writes, so
+  suppression has never seen a confirmed token. <span class="path">specs/105-design-source-import/triage-log.html</span></li>
+  <li><input type="checkbox"> Report the FR-018 outcome in the manifest, distinguishing no-values-present from
+  notation-not-recognised. <span class="path">packages/core/src/visual/import.ts</span></li>
+  <li><input type="checkbox"> Bump <code>&lt;spec-budget&gt;</code> to the honest post-change counts and record
+  the reason in the spec changelog &mdash; measure the word count <em>in a browser</em>, since
+  <code>innerText</code> excludes collapsed <code>&lt;details&gt;</code> and counting the source over-reports.
+  <span class="path">specs/105-design-source-import/spec.html</span></li>
+</ul>
+</section>
+
+
+<section id="questions">
+<h2>7 · Open questions</h2>
+<spec-questions>
+<p>None outstanding. Every decision was anchored in the interview: the value kinds and their notations, the
+spacing bound, the colour-space posture, the deferral target for the remaining DTCG types, and what to do about a
+size gauge that has read red across seven applied changes.</p>
+</spec-questions>
+</section>
+
+
+<section id="changelog">
+<h2>8 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-08-22">22 Aug 2026</time><span>Proposed &mdash; FR-010 gains an output vocabulary, FR-016 stops assuming its input, and FR-018 makes an
+empty derivation say which kind of nothing it found. Authored from <a href="../../../triage-log.html#T-021">T-021</a>,
+whose reproduction separated two causes that had been read as one, and which found the silent corrupt write while
+confirming the first.</span></li>
+  <li><time datetime="2026-08-22">22 Aug 2026</time><span>Applied on 22 Aug 2026 — Derivation gains an output vocabulary. FR-010 had always bounded its input and never said what a candidate is made of, so the code chose hex-only colour and no spacing at all — a real export using oklch() derived nothing, and the empty result was indistinguishable from an export with no colours. FR-010 now names the recognised notations, defines spacing bounded to the property that declares it, puts the kind on the candidate, and bounds suppression to recorded forms without attempting equality across colour spaces. FR-016 stops assuming its input: the write emits the type matching the kind, records a colour as authored, and refuses what it cannot represent — all-or-nothing across a batch — which the risk pass proved necessary by showing a confirmed oklch() candidate wrote a corrupt token reading hex "#oklch(" with null components, raised no error, and moved the set's version. New FR-018 makes a derivation that found nothing say which kind of nothing it found. Authored from T-021.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+</spec-change>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  2026-08-22-what-a-candidate-is-made-of · What a candidate is made of · authored 2026-08-22
+</footer>
+
+</main>
+<script src="../../../../../assets/spec.js"></script>
+</body>
+</html>
