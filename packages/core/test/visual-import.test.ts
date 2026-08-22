@@ -1032,6 +1032,65 @@ describe('an unrepresentable candidate refuses the whole write, before anything 
   });
 });
 
+// T-1704 — the regression this whole change exists to close, run through the
+// REAL write path (not the pure representColour function T-1703 tests
+// directly). Before this change, confirming this exact oklch() value wrote
+// `hex: "#oklch("` with `components: [null, null, null]`, raised no error,
+// and moved the token set's version — verified by hand against the built
+// kernel while triaging T-021.
+describe('the corrupt write this change exists to close (FR-016, T-1704)', () => {
+  const tokenSetPath = '/repo/visual/tokens.html';
+  const tokensJsonPath = '/repo/visual/tokens/base.tokens.json';
+  const tokenSetHtml =
+    '<spec-token-set version="1.0.0" binds-from="1.0.0">\n' +
+    '  <p>MAJOR when a token is removed or redefined; MINOR when added or deprecated; PATCH otherwise.</p>\n' +
+    '</spec-token-set>';
+  const oklchCandidate = {
+    value: 'oklch(0.21 0.034 264.665)',
+    kind: 'colour' as const,
+    occurrences: 3,
+    sources: ['screen.html'],
+    fromUnlanded: true,
+    inferred: true as const,
+    confirmed: false as const,
+  };
+
+  it('confirming oklch() writes a correct oklch token, never the old hex garbage', async () => {
+    const { fs, store } = memFs({ [tokenSetPath]: tokenSetHtml, [tokensJsonPath]: '{}' }, ['/repo/visual']);
+    await confirmTokenCandidate(
+      { tokenSetPath, tokensJsonPath, declaredFrom: '1.0.0', name: 'colour.accent', changeClass: 'minor', toVersion: '1.1.0', candidate: oklchCandidate },
+      fs,
+    );
+    const json = JSON.parse(store[tokensJsonPath] as string);
+    const written = json.colour.accent.$value;
+    expect(written).not.toHaveProperty('hex', '#oklch(');
+    expect(written.components).not.toEqual([null, null, null]);
+    expect(written).toEqual({ colorSpace: 'oklch', components: [0.21, 0.034, 264.665], alpha: 1 });
+    expect(store[tokenSetPath]).toContain('version="1.1.0"'); // a representable value DOES move the version
+  });
+
+  it('a refused confirmation leaves the token set version exactly as it was', async () => {
+    const { fs, store } = memFs({ [tokenSetPath]: tokenSetHtml, [tokensJsonPath]: '{}' }, ['/repo/visual']);
+    const emCandidate = {
+      value: '1.25em',
+      kind: 'spacing' as const,
+      occurrences: 1,
+      sources: ['screen.html'],
+      fromUnlanded: false,
+      inferred: true as const,
+      confirmed: false as const,
+    };
+    await expect(
+      confirmTokenCandidate(
+        { tokenSetPath, tokensJsonPath, declaredFrom: '1.0.0', name: 'space.gap', changeClass: 'minor', toVersion: '1.1.0', candidate: emCandidate },
+        fs,
+      ),
+    ).rejects.toBeInstanceOf(TokenConfirmationError);
+    expect(store[tokenSetPath]).toBe(tokenSetHtml); // byte-for-byte — no release, no version bump
+    expect(store[tokensJsonPath]).toBe('{}'); // no token written either
+  });
+});
+
 /**
  * 105 FR-017 / FR-010's boundary — a declared token is not a guess.
  *
