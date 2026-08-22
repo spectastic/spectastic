@@ -6,6 +6,9 @@ import {
   deriveTokenCandidates,
   ImportIdentityError,
   isTokenFile,
+  representColour,
+  representSpacing,
+  representToken,
   TokenConfirmationError,
   UNKNOWN,
   importDesignSource,
@@ -879,6 +882,153 @@ describe('confirming a candidate writes it into the token set (FR-016, T-1204)',
     // confirmation — a reader should still be able to tell a token that
     // arrived from a design tool from one somebody decided on.
     expect(confirmed.inferred).toBe(true);
+  });
+});
+
+// T-1703: the write emits the DTCG type matching a candidate's kind, records
+// a colour in its own declared colour space, and refuses what it cannot
+// represent — never assuming sRGB hex the way the pre-widening write did.
+describe('a candidate is represented as the DTCG type its kind names, or refused (FR-016, T-1703)', () => {
+  it('represents hex exactly as before — unchanged by this task', () => {
+    expect(representColour('#0f172a')).toEqual({
+      colorSpace: 'srgb',
+      components: [0.0588, 0.0902, 0.1647],
+      alpha: 1,
+      hex: '#0f172a',
+    });
+  });
+
+  it('represents oklch() in its own colour space, without converting to srgb', () => {
+    const c = representColour('oklch(0.21 0.034 264.665)');
+    expect(c).toEqual({ colorSpace: 'oklch', components: [0.21, 0.034, 264.665], alpha: 1 });
+    expect(c).not.toHaveProperty('hex'); // no sRGB fallback for a space that isn't sRGB
+  });
+
+  it('represents rgb() as srgb, normalising the 0–255 scale to the 0–1 one hex already uses', () => {
+    expect(representColour('rgb(248 250 252)')).toEqual({
+      colorSpace: 'srgb',
+      components: [248 / 255, 250 / 255, 252 / 255],
+      alpha: 1,
+      hex: '#f8fafc',
+    });
+  });
+
+  it('represents rgb() given as percentages without dividing by 255', () => {
+    expect(representColour('rgb(100% 50% 0%)')).toEqual({
+      colorSpace: 'srgb',
+      components: [1, 0.5, 0],
+      alpha: 1,
+      hex: '#ff8000',
+    });
+  });
+
+  it('reads a legacy comma-syntax alpha as the fourth argument', () => {
+    const c = representColour('rgba(0, 0, 0, 0.5)');
+    expect(c?.alpha).toBe(0.5);
+  });
+
+  it('reads a modern slash-syntax alpha', () => {
+    const c = representColour('hsl(217 91% 60% / 50%)');
+    expect(c?.alpha).toBe(0.5);
+  });
+
+  it('represents every other named notation in its own space, as authored', () => {
+    expect(representColour('hsl(217 91% 60%)')).toEqual({ colorSpace: 'hsl', components: [217, 91, 60], alpha: 1 });
+    expect(representColour('hwb(120 30% 40%)')).toEqual({ colorSpace: 'hwb', components: [120, 30, 40], alpha: 1 });
+    expect(representColour('lab(29.2345% 39.3825 20.0664)')?.colorSpace).toBe('lab');
+    expect(representColour('lch(52.2% 72.2 50)')?.colorSpace).toBe('lch');
+    expect(representColour('oklab(59.69% 0.1007 0.1191)')?.colorSpace).toBe('oklab');
+  });
+
+  it('represents color() in the predefined space it names', () => {
+    expect(representColour('color(display-p3 1 0.5 0)')).toEqual({
+      colorSpace: 'display-p3',
+      components: [1, 0.5, 0],
+      alpha: 1,
+    });
+  });
+
+  it('refuses color() naming a custom profile — no DTCG colour space has one', () => {
+    expect(representColour('color(--brand 0.5 0.2 0.1)')).toBeUndefined();
+  });
+
+  it('refuses color() naming a space DTCG does not list', () => {
+    expect(representColour('color(xyz 0.1 0.2 0.3)')).toBeUndefined(); // DTCG has xyz-d65/xyz-d50, not bare "xyz"
+  });
+
+  it('refuses a value that is not a colour notation at all', () => {
+    expect(representColour('16px')).toBeUndefined();
+  });
+
+  it('represents px and rem, DTCG dimension\'s only permitted units', () => {
+    expect(representSpacing('16px')).toEqual({ value: 16, unit: 'px' });
+    expect(representSpacing('1.5rem')).toEqual({ value: 1.5, unit: 'rem' });
+  });
+
+  it('refuses em — derivable (T-1702), and deliberately not representable', () => {
+    expect(representSpacing('1.25em')).toBeUndefined();
+  });
+
+  it('refuses a bare unitless zero rather than guessing a unit', () => {
+    // DTCG requires a unit even at zero and names no default; assigning one
+    // (px, say) would be exactly the invented fact this write declines to add.
+    expect(representSpacing('0')).toBeUndefined();
+  });
+
+  it('representToken dispatches on kind and throws TokenConfirmationError naming the value', () => {
+    expect(representToken({ kind: 'colour', value: '#0f172a' })).toEqual({
+      $type: 'color',
+      $value: representColour('#0f172a'),
+    });
+    expect(representToken({ kind: 'spacing', value: '16px' })).toEqual({
+      $type: 'dimension',
+      $value: { value: 16, unit: 'px' },
+    });
+    expect(() => representToken({ kind: 'colour', value: 'color(--brand 0.5 0.2 0.1)' })).toThrow(TokenConfirmationError);
+    expect(() => representToken({ kind: 'colour', value: 'color(--brand 0.5 0.2 0.1)' })).toThrow(/color\(--brand/);
+    expect(() => representToken({ kind: 'spacing', value: '1.25em' })).toThrow(TokenConfirmationError);
+  });
+});
+
+// T-1703's other half: confirming an unrepresentable candidate through the
+// real write path writes NOTHING — no token, no version move, no release.
+// (The corrupt-write regression itself — what the OLD write produced for
+// oklch() before this task — is T-1704's.)
+describe('an unrepresentable candidate refuses the whole write, before anything is touched (FR-016, T-1703)', () => {
+  it('leaves both files byte-for-byte unchanged on refusal', async () => {
+    const tokenSetPath = '/repo/visual/tokens.html';
+    const tokensJsonPath = '/repo/visual/tokens/base.tokens.json';
+    const tokenSetHtml =
+      '<spec-token-set version="1.0.0" binds-from="1.0.0">\n' +
+      '  <p>MAJOR when a token is removed or redefined; MINOR when added or deprecated; PATCH otherwise.</p>\n' +
+      '</spec-token-set>';
+    const { fs, store } = memFs({ [tokenSetPath]: tokenSetHtml, [tokensJsonPath]: '{}' }, ['/repo/visual']);
+    const before = { ...store };
+
+    await expect(
+      confirmTokenCandidate(
+        {
+          tokenSetPath,
+          tokensJsonPath,
+          declaredFrom: '1.0.0',
+          name: 'colour.brand',
+          changeClass: 'minor',
+          toVersion: '1.1.0',
+          candidate: {
+            value: 'color(--brand 0.5 0.2 0.1)',
+            kind: 'colour',
+            occurrences: 1,
+            sources: ['screen.html'],
+            fromUnlanded: false,
+            inferred: true,
+            confirmed: false,
+          },
+        },
+        fs,
+      ),
+    ).rejects.toBeInstanceOf(TokenConfirmationError);
+
+    expect(store).toEqual(before); // no token, no version move, no release
   });
 });
 

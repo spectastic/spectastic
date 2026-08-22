@@ -897,6 +897,187 @@ function dtcgColorValue(hex: string): {
 }
 
 /**
+ * The colour spaces the Design Tokens Color module actually permits on
+ * `colorSpace` — VERIFIED against https://www.designtokens.org/TR/drafts/color/
+ * (2026-08-22), not assumed (the risk pass on
+ * 2026-08-22-what-a-candidate-is-made-of caught the first draft doing exactly
+ * that, per KB-0001's must-tier grounding rule). No author-defined space is
+ * among them, which is why `color(--brand …)` is representable as a grammar
+ * match and refused here — the write, not the grammar, is where that bound
+ * has to live.
+ */
+const DTCG_COLOR_SPACES = new Set([
+  'srgb',
+  'srgb-linear',
+  'hsl',
+  'hwb',
+  'lab',
+  'lch',
+  'oklab',
+  'oklch',
+  'display-p3',
+  'a98-rgb',
+  'prophoto-rgb',
+  'rec2020',
+  'xyz-d65',
+  'xyz-d50',
+]);
+
+/** The DTCG colour `$value` shape, minus the discriminant — shared by every
+ *  notation this file can represent. */
+interface DtcgColour {
+  colorSpace: string;
+  components: [number, number, number];
+  alpha: number;
+  hex?: string;
+}
+
+/** One component of a functional colour notation, mapped to its native
+ *  0–1 fraction: a percentage divides by 100, a bare number is used as-is.
+ *  Used for alpha (always 0–1 native) and for `color()`'s channels, whose
+ *  predefined RGB-ish spaces are 0–1 native in CSS regardless of notation. */
+function parseComponent(token: string): number | undefined {
+  const t = token.trim();
+  const pct = /^(-?\d+(?:\.\d+)?)%$/.exec(t);
+  if (pct) return Number.parseFloat(pct[1]!) / 100;
+  const plain = /^-?\d+(?:\.\d+)?$/.exec(t);
+  return plain ? Number.parseFloat(t) : undefined;
+}
+
+/** One component of hsl()/hwb()/lab()/lch()/oklab()/oklch() — stored AS
+ *  AUTHORED (proposal §3, "the value written is the value the designer
+ *  chose"): a `%` or `deg` suffix is stripped but the magnitude is kept
+ *  exactly, never divided into a 0–1 fraction. This codebase has no
+ *  DTCG-documented convention for these spaces' native component ranges, and
+ *  normalising one would be exactly the conversion FR-016 forbids. */
+function parseComponentRaw(token: string): number | undefined {
+  const t = token.trim();
+  const pct = /^(-?\d+(?:\.\d+)?)%$/.exec(t);
+  if (pct) return Number.parseFloat(pct[1]!);
+  const deg = /^(-?\d+(?:\.\d+)?)deg$/i.exec(t);
+  if (deg) return Number.parseFloat(deg[1]!);
+  const plain = /^-?\d+(?:\.\d+)?$/.exec(t);
+  return plain ? Number.parseFloat(t) : undefined;
+}
+
+/** Split a functional notation's parenthesised body into its colour
+ *  components and an optional alpha — modern space-with-slash syntax
+ *  (`rgb(0 0 0 / 50%)`) and legacy comma syntax with a trailing alpha
+ *  (`rgba(0, 0, 0, 0.5)`) both derive from `COLOUR_RE`, so both must parse. */
+function splitColourArgs(inner: string): { parts: string[]; alpha: string | undefined } {
+  const [main, slashAlpha] = inner.split('/').map((s) => s.trim());
+  const usesComma = (main ?? '').includes(',');
+  const parts = (usesComma ? main!.split(',') : main!.split(/\s+/)).map((s) => s.trim()).filter(Boolean);
+  if (slashAlpha !== undefined) return { parts, alpha: slashAlpha };
+  if (usesComma && parts.length === 4) return { parts: parts.slice(0, 3), alpha: parts[3] };
+  return { parts, alpha: undefined };
+}
+
+/**
+ * Represent a colour candidate as DTCG's structured `$value` (FR-016) — in
+ * the colour space the candidate declares, never converted into another one
+ * (proposal §3: "the value written is the value the designer chose"). Returns
+ * `undefined` where the notation cannot be parsed, has the wrong arity, or —
+ * the deliberate case (proposal §3) — names a colour space DTCG has no
+ * equivalent for, such as `color(--brand …)`'s custom profile.
+ */
+export function representColour(value: string): DtcgColour | undefined {
+  if (/^#[0-9a-fA-F]{3,8}$/.test(value)) return dtcgColorValue(value);
+
+  const fn = /^(rgba?|hsla?|hwb|lab|lch|oklab|oklch|color)\(([^()]*)\)$/i.exec(value);
+  if (!fn) return undefined;
+  const name = fn[1]!.toLowerCase();
+  const inner = fn[2]!;
+  const { parts, alpha } = splitColourArgs(inner);
+  const alphaNum = alpha === undefined ? 1 : parseComponent(alpha);
+  if (alphaNum === undefined) return undefined;
+
+  if (name === 'color') {
+    const [space, ...rest] = parts;
+    if (space === undefined || !DTCG_COLOR_SPACES.has(space) || rest.length !== 3) return undefined;
+    const nums = rest.map(parseComponent);
+    if (nums.some((n) => n === undefined)) return undefined;
+    return { colorSpace: space, components: nums as [number, number, number], alpha: alphaNum };
+  }
+
+  const SPACE_BY_NAME: Record<string, string> = {
+    rgb: 'srgb',
+    rgba: 'srgb',
+    hsl: 'hsl',
+    hsla: 'hsl',
+    hwb: 'hwb',
+    lab: 'lab',
+    lch: 'lch',
+    oklab: 'oklab',
+    oklch: 'oklch',
+  };
+  const colorSpace = SPACE_BY_NAME[name];
+  if (colorSpace === undefined || parts.length !== 3) return undefined;
+
+  if (colorSpace === 'srgb') {
+    // rgb()/rgba() are the one notation whose plain-number scale (0–255) is
+    // NOT this codebase's own 0–1 sRGB convention (dtcgColorValue's hex path
+    // already normalises to 0–1) — dividing keeps every srgb-space token
+    // internally consistent regardless of which notation produced it. This is
+    // encoding, not colour-space conversion: the value stays in sRGB.
+    const nums = parts.map((p) => {
+      const pct = /%$/.test(p.trim());
+      const n = parseComponent(p);
+      return n === undefined ? undefined : pct ? n : n / 255;
+    });
+    if (nums.some((n) => n === undefined)) return undefined;
+    const [r, g, b] = nums as [number, number, number];
+    const toHexByte = (c: number) => Math.round(Math.min(1, Math.max(0, c)) * 255).toString(16).padStart(2, '0');
+    return { colorSpace, components: [r, g, b], alpha: alphaNum, hex: `#${toHexByte(r)}${toHexByte(g)}${toHexByte(b)}` };
+  }
+
+  // Every other notation (hsl/hwb/lab/lch/oklab/oklch): stored as authored.
+  const nums = parts.map(parseComponentRaw);
+  if (nums.some((n) => n === undefined)) return undefined;
+  return { colorSpace, components: nums as [number, number, number], alpha: alphaNum };
+}
+
+/**
+ * Represent a spacing candidate as DTCG's `dimension` `$value` (FR-016).
+ * VERIFIED against https://www.designtokens.org/TR/drafts/format/
+ * (2026-08-22): the format permits only `px` and `rem`. Returns `undefined`
+ * for every other unit — `em` included, which is derivable (T-1702) and
+ * deliberately not representable (proposal §3) — and for a bare unitless `0`:
+ * DTCG requires a unit even at zero and states no default, so assigning one
+ * would be a guess this function declines to make.
+ */
+export function representSpacing(value: string): { value: number; unit: 'px' | 'rem' } | undefined {
+  const m = /^(-?\d+(?:\.\d+)?)(px|rem)$/i.exec(value.trim());
+  if (!m) return undefined;
+  return { value: Number.parseFloat(m[1]!), unit: m[2]!.toLowerCase() as 'px' | 'rem' };
+}
+
+/** The DTCG `$type`/`$value` pair a candidate's kind and value represent as,
+ *  or a refusal naming what could not be represented (FR-016). Shared by the
+ *  single-candidate write below and, per the same requirement's batch clause,
+ *  by whatever decides representability across a whole confirmation. */
+export function representToken(candidate: Pick<TokenCandidate, 'kind' | 'value'>): { $type: 'color' | 'dimension'; $value: unknown } {
+  if (candidate.kind === 'colour') {
+    const colour = representColour(candidate.value);
+    if (colour === undefined) {
+      throw new TokenConfirmationError(
+        `token confirmation: "${candidate.value}" cannot be represented as a token — ` +
+          'the notation is not one this writer recognises, or the colour space it names has no DTCG equivalent.',
+      );
+    }
+    return { $type: 'color', $value: colour };
+  }
+  const dimension = representSpacing(candidate.value);
+  if (dimension === undefined) {
+    throw new TokenConfirmationError(
+      `token confirmation: "${candidate.value}" cannot be represented as a token — ` +
+        "DTCG's dimension type permits only px and rem.",
+    );
+  }
+  return { $type: 'dimension', $value: dimension };
+}
+
+/**
  * Set a DTCG token at a dotted path (`color.accent` → `{color:{accent:{…}}}`),
  * creating intermediate groups as needed. Mutates and returns `root`.
  *
@@ -905,7 +1086,11 @@ function dtcgColorValue(hex: string): {
  * own extension mechanism is reused rather than a bespoke field, so another
  * tool reading this file is not confused by vocabulary only this one knows.
  */
-function setTokenAtPath(root: Record<string, unknown>, dottedName: string, hex: string): Record<string, unknown> {
+function setTokenAtPath(
+  root: Record<string, unknown>,
+  dottedName: string,
+  represented: { $type: 'color' | 'dimension'; $value: unknown },
+): Record<string, unknown> {
   const parts = dottedName.split('.');
   let node = root;
   for (const key of parts.slice(0, -1)) {
@@ -915,8 +1100,8 @@ function setTokenAtPath(root: Record<string, unknown>, dottedName: string, hex: 
   }
   const leaf = parts.at(-1) as string;
   node[leaf] = {
-    $type: 'color',
-    $value: dtcgColorValue(hex),
+    $type: represented.$type,
+    $value: represented.$value,
     $extensions: { 'dev.spectastic.import': { derived: true, confirmed: true } },
   };
   return root;
@@ -962,6 +1147,11 @@ export async function writeConfirmedToken(input: ConfirmWriteInput, fs: FileSyst
   // guard, reused rather than reimplemented.
   assertTokenSetVersion(liveHtml, input.declaredFrom);
 
+  // Representability decided BEFORE any write (FR-016, T-1703): a value the
+  // writer cannot represent refuses the whole confirmation, and nothing is
+  // written — no token, no version move, no release.
+  const represented = representToken(input.candidate);
+
   const updatedHtml = applyTokenSetRelease(
     liveHtml,
     input.declaredFrom,
@@ -977,7 +1167,7 @@ export async function writeConfirmedToken(input: ConfirmWriteInput, fs: FileSyst
   } catch {
     tokens = {};
   }
-  setTokenAtPath(tokens, input.name, input.candidate.value);
+  setTokenAtPath(tokens, input.name, represented);
   await fs.writeFile(input.tokensJsonPath, `${JSON.stringify(tokens, null, 2)}\n`);
 
   return {
