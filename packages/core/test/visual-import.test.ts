@@ -373,6 +373,39 @@ describe('token candidates are derived and never committed (FR-010, FR-005)', ()
   });
 });
 
+// Widened by 2026-08-22-what-a-candidate-is-made-of (FR-010, triage T-021): a
+// real export whose colours are entirely oklch() derived nothing under the
+// hex-only pattern this replaces. One case per notation FR-010 names.
+describe('colour derivation recognises every notation FR-010 names (FR-010, T-1700)', () => {
+  it.each([
+    ['rgb()', 'rgb(248 250 252)'],
+    ['rgba()', 'rgba(0, 0, 0, 0.5)'],
+    ['hsl()', 'hsl(217 91% 60%)'],
+    ['hsla()', 'hsla(217, 91%, 60%, 0.5)'],
+    ['hwb()', 'hwb(120 30% 40%)'],
+    ['lab()', 'lab(29.2345% 39.3825 20.0664)'],
+    ['lch()', 'lch(52.2% 72.2 50)'],
+    ['oklab()', 'oklab(59.69% 0.1007 0.1191)'],
+    ['oklch()', 'oklch(0.21 0.034 264.665)'],
+    ['color()', 'color(display-p3 1 0.5 0)'],
+  ])('derives a %s value', (_label, value) => {
+    const derived = deriveTokenCandidates([{ name: 'a.html', body: `<div style="color:${value}">a</div>`, landed: true }]);
+    expect(derived.map((c) => c.value)).toContain(value.toLowerCase());
+  });
+
+  it('still derives hex alongside a functional notation in the same file', () => {
+    const body = '<div style="background:#0f172a;color:oklch(0.97 0 0)">a</div>';
+    const derived = deriveTokenCandidates([{ name: 'a.html', body, landed: true }]);
+    expect(derived.map((c) => c.value).sort()).toEqual(['#0f172a', 'oklch(0.97 0 0)']);
+  });
+
+  it('does not match a bare length or an unrelated identifier', () => {
+    const body = '<div style="width:16px;font-family:color-sans">a</div>';
+    const derived = deriveTokenCandidates([{ name: 'a.html', body, landed: true }]);
+    expect(derived).toEqual([]);
+  });
+});
+
 describe('material that cannot be landed is reported, not dropped (FR-011, triage T-007)', () => {
   it('does not land a file carrying a runtime', async () => {
     const m = only({ 'screens.dc.html': '<div>{{ x }}</div><script>var a = 1</script>' });

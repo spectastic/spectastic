@@ -533,8 +533,15 @@ export function contentHash(bytes: Uint8Array): string {
 }
 
 /** Colour literals, which are the values an emitted artifact actually carries.
- *  Hex only: a named colour is ambiguous and a computed one is not text. */
-const COLOUR_RE = /#[0-9a-fA-F]{3,8}\b/g;
+ *  A named colour is ambiguous and a computed one is not text, so the grammar
+ *  is exactly what FR-010 names: hex, and the ten functional notations. Widened
+ *  from hex-only by 2026-08-22-what-a-candidate-is-made-of (triage T-021) — the
+ *  narrower pattern derived nothing at all from an export whose colours are
+ *  entirely oklch(), which most modern design-tool output is.
+ *
+ *  A one-level `[^()]*` body is enough for every notation FR-010 lists,
+ *  including color(), which has no nested parens of its own. */
+const COLOUR_RE = /#[0-9a-fA-F]{3,8}\b|\b(?:rgba?|hsla?|hwb|lab|lch|oklab|oklch|color)\([^()]*\)/gi;
 
 /**
  * Derive token candidates from landed material (FR-010).
