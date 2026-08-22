@@ -686,11 +686,52 @@ export function declaredColourValues(body: string): Set<string> {
     if (Array.isArray(node)) return;
     const rec = node as Record<string, unknown>;
     const v = rec.$value;
-    if (typeof v === 'string' && /^#[0-9a-fA-F]{3,8}$/.test(v)) out.add(v.toLowerCase());
+    if (typeof v === 'string' && /^#[0-9a-fA-F]{3,8}$/.test(v)) {
+      out.add(v.toLowerCase());
+    } else if (typeof v === 'object' && v !== null) {
+      // The STRUCTURED form this writer itself emits (105 FR-016) — missed
+      // until 2026-08-22-what-a-candidate-is-made-of's risk pass found that
+      // suppression had never once seen a token this tool had confirmed,
+      // hex included, because only the flat-string form was ever read.
+      const obj = v as Record<string, unknown>;
+      const components = obj.components;
+      if (
+        typeof obj.colorSpace === 'string' &&
+        Array.isArray(components) &&
+        components.length === 3 &&
+        components.every((n) => typeof n === 'number')
+      ) {
+        const alpha = typeof obj.alpha === 'number' ? obj.alpha : 1;
+        const fingerprintInput: { colorSpace: string; components: number[]; alpha: number; hex?: string } = {
+          colorSpace: obj.colorSpace,
+          components: components as number[],
+          alpha,
+        };
+        if (typeof obj.hex === 'string') fingerprintInput.hex = obj.hex;
+        for (const key of colourFingerprint(fingerprintInput)) out.add(key);
+      }
+    }
     for (const [k, child] of Object.entries(rec)) if (!k.startsWith('$')) walk(child);
   };
   walk(parsed);
   return out;
+}
+
+/**
+ * A comparable fingerprint for a colour value (FR-010's suppression clause,
+ * bounded by 2026-08-22-what-a-candidate-is-made-of, T-1705). Used ONLY to
+ * decide whether two colours are the SAME recorded value in the SAME form —
+ * never to convert between colour spaces. A structured srgb value and its hex
+ * string both fingerprint to include the hex form, because they are two
+ * encodings of the identical sRGB colour; a value in a different colour space
+ * never shares a fingerprint with either, because nothing here computes
+ * cross-space equality (FR-010: "MUST NOT attempt equality between values in
+ * different colour spaces").
+ */
+export function colourFingerprint(colour: { colorSpace: string; components: readonly number[]; alpha: number; hex?: string }): string[] {
+  const keys = [`${colour.colorSpace}:${colour.components.map((n) => n.toFixed(4)).join(',')}:${colour.alpha.toFixed(4)}`];
+  if (colour.hex !== undefined) keys.push(colour.hex.toLowerCase());
+  return keys;
 }
 
 export function deriveTokenCandidates(
@@ -713,7 +754,14 @@ export function deriveTokenCandidates(
     if (isTokenFile(name, body)) continue; // a declaration, not evidence to mine
     for (const raw of body.match(COLOUR_RE) ?? []) {
       const value = raw.toLowerCase();
-      if (declared.has(value)) continue; // the declared set already carries it
+      // Suppression checks every form the declared set may carry the SAME
+      // colour in (T-1705) — the flat string this candidate's own text is,
+      // and the structured form the writer emits — never a cross-space guess:
+      // an unrepresentable-but-derivable value (e.g. color(--brand …)) has no
+      // fingerprint, so it falls back to matching only its own literal text.
+      const represented = representColour(value);
+      const candidateKeys = represented ? colourFingerprint(represented) : [value];
+      if (candidateKeys.some((k) => declared.has(k))) continue; // the declared set already carries it
       const entry = seen.get(value) ?? { kind: 'colour' as const, occurrences: 0, sources: new Set<string>(), fromUnlanded: false };
       entry.occurrences += 1;
       entry.sources.add(name);

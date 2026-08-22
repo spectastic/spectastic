@@ -5,6 +5,7 @@ import {
   declaredColourValues,
   deriveTokenCandidates,
   ImportIdentityError,
+  colourFingerprint,
   isTokenFile,
   representColour,
   representSpacing,
@@ -1141,5 +1142,67 @@ describe('a declared token set is read, not mined (105 FR-017)', () => {
   it('reads every colour a declared set carries, at any depth', () => {
     const nested = JSON.stringify({ a: { b: { c: { $type: 'color', $value: '#ABCDEF' } } } });
     expect([...declaredColourValues(nested)]).toEqual(['#abcdef']);
+  });
+});
+
+// T-1705 — the pre-existing blindness the risk pass found: suppression only
+// ever read the flat-string $value form, so it had never once seen a token
+// THIS TOOL ITSELF had confirmed, hex included, because setTokenAtPath always
+// writes the structured form. Filed separately as a triage card (T-1708)
+// because it predates this change; fixed here because the widened colour
+// grammar makes it worse — an oklch() confirmation would otherwise be
+// re-derived as a candidate on every subsequent import, forever.
+describe('suppression sees every form the declared set records, never across colour spaces (FR-010, T-1705)', () => {
+  it('suppresses a hex candidate against a STRUCTURED srgb declaration — not just a flat string', () => {
+    const declaredSrgb = JSON.stringify({
+      color: { accent: { $type: 'color', $value: { colorSpace: 'srgb', components: [0.0588, 0.0902, 0.1647], alpha: 1, hex: '#0f172a' } } },
+    });
+    const out = deriveTokenCandidates([
+      { name: 'tokens.json', body: declaredSrgb, landed: true },
+      { name: 'screen.html', body: '<p style="color:#0f172a">a</p>', landed: true },
+    ]);
+    expect(out).toEqual([]);
+  });
+
+  it('suppresses an oklch() candidate against its own structured declaration', () => {
+    const declaredOklch = JSON.stringify({
+      color: { accent: { $type: 'color', $value: { colorSpace: 'oklch', components: [0.21, 0.034, 264.665], alpha: 1 } } },
+    });
+    const out = deriveTokenCandidates([
+      { name: 'tokens.json', body: declaredOklch, landed: true },
+      { name: 'screen.html', body: '<p style="color:oklch(0.21 0.034 264.665)">a</p>', landed: true },
+    ]);
+    expect(out).toEqual([]);
+  });
+
+  it('never suppresses across colour spaces, even for the visually identical colour', () => {
+    // The residual the risk pass named and the disposition accepted as the
+    // deliberate bound: hex #f7f5f1 and its oklch equivalent are the SAME
+    // colour, and this suppression intentionally does not know that.
+    const declaredHex = JSON.stringify({ color: { bg: { $type: 'color', $value: '#f7f5f1' } } });
+    const out = deriveTokenCandidates([
+      { name: 'tokens.json', body: declaredHex, landed: true },
+      { name: 'screen.html', body: '<p style="background:oklch(0.97 0.002 106.4)">a</p>', landed: true },
+    ]);
+    expect(out.map((c) => c.value)).toEqual(['oklch(0.97 0.002 106.4)']); // NOT suppressed
+  });
+
+  it('colourFingerprint only shares a key between a structured srgb value and its own hex', () => {
+    const srgb = representColour('#0f172a')!;
+    const oklch = representColour('oklch(0.21 0.034 264.665)')!;
+    expect(colourFingerprint(srgb)).toContain('#0f172a');
+    expect(colourFingerprint(oklch)).not.toContain('#0f172a');
+    expect(new Set(colourFingerprint(srgb))).not.toEqual(new Set(colourFingerprint(oklch)));
+  });
+
+  it('a candidate with no representation (a custom colour profile) falls back to matching only its own text', () => {
+    const declaredCustom = JSON.stringify({ color: { brand: { $type: 'color', $value: 'color(--brand 0.5 0.2 0.1)' } } });
+    // declaredColourValues only recognises hex-string and structured forms —
+    // an arbitrary custom-profile string is neither, so nothing is suppressed.
+    const out = deriveTokenCandidates([
+      { name: 'tokens.json', body: declaredCustom, landed: true },
+      { name: 'screen.html', body: '<p style="color:color(--brand 0.5 0.2 0.1)">a</p>', landed: true },
+    ]);
+    expect(out.map((c) => c.value)).toEqual(['color(--brand 0.5 0.2 0.1)']);
   });
 });
