@@ -95,7 +95,16 @@ export interface ImportLedger {
   /** Values derived from the artifact, presented for confirmation and never
    *  written into the token set (FR-010, FR-005). */
   tokenCandidates: TokenCandidate[];
+  /** Set only when `tokenCandidates` is empty (FR-018) — distinguishes
+   *  material genuinely carrying no derivable values from material carrying a
+   *  value in a notation this import does not recognise. Absent when
+   *  candidates exist, because the ambiguity FR-018 exists to resolve does
+   *  not arise. */
+  derivationOutcome?: DerivationOutcome;
 }
+
+/** FR-018's two outcomes for an empty candidate list. */
+export type DerivationOutcome = 'no-values-present' | 'notation-not-recognised';
 
 /**
  * A value read out of an emitted artifact rather than out of design data.
@@ -395,6 +404,10 @@ export async function importDesignSource(
   // written into the token set: they land in the manifest as candidates a human
   // confirms. Presented, never committed.
   ledger.tokenCandidates = deriveTokenCandidates(readable);
+  // FR-018: the ambiguity only exists when the list is empty — with real
+  // candidates there is nothing to distinguish "no values" from "unrecognised
+  // notation" about.
+  if (ledger.tokenCandidates.length === 0) ledger.derivationOutcome = assessDerivationOutcome(readable);
 
   // Anything in the destination the export no longer carries. Reported, never
   // removed — the property that makes a re-import safe to run. The manifest is
@@ -626,6 +639,56 @@ function spacingLengths(body: string): string[] {
   return out;
 }
 
+/** CSS properties whose value is expected to be a colour (FR-018, T-1709) —
+ *  bounded the same way `SPACING_PROPERTIES` is, to the ones that
+ *  unambiguously mean "a colour goes here". */
+const COLOUR_PROPERTIES = new Set([
+  'color',
+  'background',
+  'background-color',
+  'border-color',
+  'border-top-color',
+  'border-right-color',
+  'border-bottom-color',
+  'border-left-color',
+  'outline-color',
+  'fill',
+  'stroke',
+  'text-decoration-color',
+  'caret-color',
+  'column-rule-color',
+]);
+
+/**
+ * Distinguish "material carrying no values of a kind it derives" from
+ * "material carrying values in a notation it does not recognise" (FR-018).
+ * Only meaningful — and only ever called — when derivation produced zero
+ * candidates.
+ *
+ * Deliberately bounded, per FR-018's own rationale ("a tool that could
+ * reliably identify every value it does not understand would understand
+ * it"): a signal is a declaration against a colour or spacing property whose
+ * value contains no text the corresponding grammar matches — a named colour
+ * keyword, an unlisted colour function, `var(--x)`, `auto` — not a general
+ * classifier for every unrecognised token in a document.
+ */
+export function assessDerivationOutcome(files: readonly { name: string; body: string }[]): DerivationOutcome {
+  for (const { name, body } of files) {
+    if (isTokenFile(name, body)) continue;
+    for (const decl of body.matchAll(DECLARATION_RE)) {
+      const property = decl[1]!.trim().toLowerCase();
+      const value = decl[2]!;
+      if (COLOUR_PROPERTIES.has(property) && (value.match(COLOUR_RE) ?? []).length === 0) {
+        return 'notation-not-recognised';
+      }
+      if (SPACING_PROPERTIES.has(property) && (value.match(LENGTH_RE) ?? []).length === 0) {
+        return 'notation-not-recognised';
+      }
+    }
+  }
+  return 'no-values-present';
+}
+
 /**
  * Derive token candidates from landed material (FR-010).
  *
@@ -843,10 +906,16 @@ export function renderManifest(identity: string, ledger: ImportLedger): string {
 
 <h2>Token candidates</h2>
 <p>Values observed in the material this import read, offered for confirmation. Values a declared token set already carries are <strong>not</strong> listed here, and a declared token set is never itself mined — a named, typed token is read, not guessed, so asking for confirmation of one would be the tool failing to read what it was given (FR-010, FR-017). A source marked <strong>not landed</strong> was read but deliberately not copied into the project — so it is in the export and not here, and the export may since have been deleted. <strong>None of these is in the token set</strong> and none carries a name — naming a token is a decision about meaning, and a wrong name is worse than no name because it looks decided. Confirming a candidate writes it into the token set under a name and a change class the confirmer supplies — never the tool — and moves the set's version under its own bump policy; a candidate that has not been confirmed never outranks a declared value.</p>
-<table>
+${
+  ledger.tokenCandidates.length > 0
+    ? `<table>
 <thead><tr><th>Kind</th><th>Value</th><th>Occurrences</th><th>Seen in</th><th>Status</th></tr></thead>
 <tbody>${ledger.tokenCandidates.map(candidate).join('')}</tbody>
-</table>
+</table>`
+    : ledger.derivationOutcome === 'notation-not-recognised'
+      ? '<p><strong>NOTATION NOT RECOGNISED</strong> — this material declares a colour or spacing property whose value is not one this import derives (a named colour keyword, an unlisted colour function, a custom property, or a keyword like <code>auto</code>). Nothing was offered for confirmation, and that is a gap in the grammar, not an empty export (FR-018).</p>'
+      : '<p><strong>NO VALUES PRESENT</strong> — the material this import read carries no colour or spacing value in a notation this import derives. This is the honest empty case, not a gap (FR-018).</p>'
+}
 ${note('Not landed', 'These carry a runtime. Landing them verbatim would break the project&#39;s own artifact rules, so they are reported here instead.', ledger.unhandled)}
 ${note(
   'Refused',

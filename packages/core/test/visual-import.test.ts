@@ -5,6 +5,7 @@ import {
   declaredColourValues,
   deriveTokenCandidates,
   ImportIdentityError,
+  assessDerivationOutcome,
   colourFingerprint,
   confirmTokenCandidates,
   isTokenFile,
@@ -1379,5 +1380,74 @@ describe('the two derivable-but-unrepresentable cases named in §3, end to end (
         fs,
       ),
     ).rejects.toThrow(/1\.25em/); // refuses at the write (FR-016 — DTCG's dimension type permits only px and rem)
+  });
+});
+
+// T-1709 — an empty candidate list must say WHICH kind of empty it is
+// (FR-018). This is exactly the ambiguity that cost two investigations of the
+// same defect (triage T-021): the manifest's "Not landed" note sat directly
+// above an empty Token candidates table, inviting the wrong causal reading.
+describe('an empty derivation reports which kind of nothing it found (FR-018, T-1709)', () => {
+  it('assessDerivationOutcome reports no-values-present for material with nothing colour- or spacing-shaped', () => {
+    const files = [{ name: 'a.html', body: '<p>Hello, world.</p>' }];
+    expect(assessDerivationOutcome(files)).toBe('no-values-present');
+  });
+
+  it('reports notation-not-recognised for a colour property holding a named colour keyword', () => {
+    const files = [{ name: 'a.html', body: '<p style="color:salmon">a</p>' }];
+    expect(assessDerivationOutcome(files)).toBe('notation-not-recognised');
+  });
+
+  it('reports notation-not-recognised for a colour property holding a custom property', () => {
+    const files = [{ name: 'a.html', body: '<p style="background:var(--brand)">a</p>' }];
+    expect(assessDerivationOutcome(files)).toBe('notation-not-recognised');
+  });
+
+  it('reports notation-not-recognised for a spacing property holding a custom property', () => {
+    const files = [{ name: 'a.html', body: '<div style="padding:var(--gap-2)">a</div>' }];
+    expect(assessDerivationOutcome(files)).toBe('notation-not-recognised');
+  });
+
+  it('reports notation-not-recognised for a spacing property holding a keyword like auto', () => {
+    const files = [{ name: 'a.html', body: '<div style="margin:auto">a</div>' }];
+    expect(assessDerivationOutcome(files)).toBe('notation-not-recognised');
+  });
+
+  it('does not flag a colour or spacing property whose value IS recognised', () => {
+    const files = [{ name: 'a.html', body: '<div style="color:#0f172a;padding:8px">a</div>' }];
+    expect(assessDerivationOutcome(files)).toBe('no-values-present'); // recognised values would have been candidates, not this path
+  });
+
+  it('skips a declared token file — it is a declaration, not evidence of an unrecognised notation', () => {
+    const files = [{ name: 'tokens.json', body: JSON.stringify({ color: { brand: { $type: 'color', $value: '#aa1122' } } }) }];
+    expect(assessDerivationOutcome(files)).toBe('no-values-present');
+  });
+
+  it('a real import writes NO VALUES PRESENT to the manifest when nothing colour- or spacing-shaped exists', async () => {
+    const m = only({ 'a.html': '<p>Hello, world.</p>' });
+    const { store } = m;
+    await imp(m);
+    const manifest = store[`${INTO}/${MANIFEST_NAME}`] as string;
+    expect(manifest).toContain('NO VALUES PRESENT');
+    expect(manifest).not.toContain('NOTATION NOT RECOGNISED');
+  });
+
+  it('a real import writes NOTATION NOT RECOGNISED when a colour property holds an unrecognised value', async () => {
+    const m = only({ 'a.html': '<p style="color:salmon">a</p>' });
+    const { store } = m;
+    await imp(m);
+    const manifest = store[`${INTO}/${MANIFEST_NAME}`] as string;
+    expect(manifest).toContain('NOTATION NOT RECOGNISED');
+    expect(manifest).not.toContain('NO VALUES PRESENT');
+  });
+
+  it('a real import with real candidates reports neither outcome — the ambiguity does not arise', async () => {
+    const m = only({ 'a.html': '<p style="color:#0f172a">a</p>' });
+    const { store } = m;
+    await imp(m);
+    const manifest = store[`${INTO}/${MANIFEST_NAME}`] as string;
+    expect(manifest).not.toContain('NOTATION NOT RECOGNISED');
+    expect(manifest).not.toContain('NO VALUES PRESENT');
+    expect(manifest).toContain('#0f172a');
   });
 });
