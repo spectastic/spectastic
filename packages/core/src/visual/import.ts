@@ -791,8 +791,15 @@ export function declaredColourValues(body: string): Set<string> {
  * cross-space equality (FR-010: "MUST NOT attempt equality between values in
  * different colour spaces").
  */
-export function colourFingerprint(colour: { colorSpace: string; components: readonly number[]; alpha: number; hex?: string }): string[] {
-  const keys = [`${colour.colorSpace}:${colour.components.map((n) => n.toFixed(4)).join(',')}:${colour.alpha.toFixed(4)}`];
+export function colourFingerprint(colour: {
+  colorSpace: string;
+  components: readonly number[];
+  alpha: number;
+  hex?: string;
+}): string[] {
+  const keys = [
+    `${colour.colorSpace}:${colour.components.map((n) => n.toFixed(4)).join(',')}:${colour.alpha.toFixed(4)}`,
+  ];
   if (colour.hex !== undefined) keys.push(colour.hex.toLowerCase());
   return keys;
 }
@@ -825,14 +832,24 @@ export function deriveTokenCandidates(
       const represented = representColour(value);
       const candidateKeys = represented ? colourFingerprint(represented) : [value];
       if (candidateKeys.some((k) => declared.has(k))) continue; // the declared set already carries it
-      const entry = seen.get(value) ?? { kind: 'colour' as const, occurrences: 0, sources: new Set<string>(), fromUnlanded: false };
+      const entry = seen.get(value) ?? {
+        kind: 'colour' as const,
+        occurrences: 0,
+        sources: new Set<string>(),
+        fromUnlanded: false,
+      };
       entry.occurrences += 1;
       entry.sources.add(name);
       if (!landed) entry.fromUnlanded = true;
       seen.set(value, entry);
     }
     for (const value of spacingLengths(body)) {
-      const entry = seen.get(value) ?? { kind: 'spacing' as const, occurrences: 0, sources: new Set<string>(), fromUnlanded: false };
+      const entry = seen.get(value) ?? {
+        kind: 'spacing' as const,
+        occurrences: 0,
+        sources: new Set<string>(),
+        fromUnlanded: false,
+      };
       entry.occurrences += 1;
       entry.sources.add(name);
       if (!landed) entry.fromUnlanded = true;
@@ -1144,8 +1161,16 @@ export function representColour(value: string): DtcgColour | undefined {
     });
     if (nums.some((n) => n === undefined)) return undefined;
     const [r, g, b] = nums as [number, number, number];
-    const toHexByte = (c: number) => Math.round(Math.min(1, Math.max(0, c)) * 255).toString(16).padStart(2, '0');
-    return { colorSpace, components: [r, g, b], alpha: alphaNum, hex: `#${toHexByte(r)}${toHexByte(g)}${toHexByte(b)}` };
+    const toHexByte = (c: number) =>
+      Math.round(Math.min(1, Math.max(0, c)) * 255)
+        .toString(16)
+        .padStart(2, '0');
+    return {
+      colorSpace,
+      components: [r, g, b],
+      alpha: alphaNum,
+      hex: `#${toHexByte(r)}${toHexByte(g)}${toHexByte(b)}`,
+    };
   }
 
   // Every other notation (hsl/hwb/lab/lch/oklab/oklch): stored as authored.
@@ -1173,7 +1198,10 @@ export function representSpacing(value: string): { value: number; unit: 'px' | '
  *  or a refusal naming what could not be represented (FR-016). Shared by the
  *  single-candidate write below and, per the same requirement's batch clause,
  *  by whatever decides representability across a whole confirmation. */
-export function representToken(candidate: Pick<TokenCandidate, 'kind' | 'value'>): { $type: 'color' | 'dimension'; $value: unknown } {
+export function representToken(candidate: Pick<TokenCandidate, 'kind' | 'value'>): {
+  $type: 'color' | 'dimension';
+  $value: unknown;
+} {
   if (candidate.kind === 'colour') {
     const colour = representColour(candidate.value);
     if (colour === undefined) {
@@ -1326,7 +1354,9 @@ export async function confirmTokenCandidates(
   fs: FileSystem,
 ): Promise<ConfirmedTokenCandidate[]> {
   if (input.candidates.length === 0) {
-    throw new TokenConfirmationError('token confirmation: an empty batch confirms nothing — nothing to name a release for.');
+    throw new TokenConfirmationError(
+      'token confirmation: an empty batch confirms nothing — nothing to name a release for.',
+    );
   }
 
   const changeClass = input.changeClass?.trim();
@@ -1409,9 +1439,14 @@ export async function confirmTokenCandidates(
   } catch {
     tokens = {};
   }
-  input.candidates.forEach((_item, i) => setTokenAtPath(tokens, names[i]!, represented[i]!));
-  await fs.writeFile(input.tokensJsonPath, `${JSON.stringify(tokens, null, 2)}
-`);
+  input.candidates.forEach((_item, i) => {
+    setTokenAtPath(tokens, names[i]!, represented[i]!);
+  });
+  await fs.writeFile(
+    input.tokensJsonPath,
+    `${JSON.stringify(tokens, null, 2)}
+`,
+  );
 
   return input.candidates.map(({ candidate }, i) => ({
     ...candidate,

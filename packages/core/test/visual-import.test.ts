@@ -396,7 +396,9 @@ describe('colour derivation recognises every notation FR-010 names (FR-010, T-17
     ['oklch()', 'oklch(0.21 0.034 264.665)'],
     ['color()', 'color(display-p3 1 0.5 0)'],
   ])('derives a %s value', (_label, value) => {
-    const derived = deriveTokenCandidates([{ name: 'a.html', body: `<div style="color:${value}">a</div>`, landed: true }]);
+    const derived = deriveTokenCandidates([
+      { name: 'a.html', body: `<div style="color:${value}">a</div>`, landed: true },
+    ]);
     expect(derived.map((c) => c.value)).toContain(value.toLowerCase());
   });
 
@@ -416,7 +418,7 @@ describe('colour derivation recognises every notation FR-010 names (FR-010, T-17
 // T-1701: the kind travels with the candidate all the way to the manifest a
 // reviewer actually reads, not just through deriveTokenCandidates' return type.
 describe('a candidate carries its kind through to the manifest (FR-010, T-1701)', () => {
-  it('shows the Kind column and a colour candidate\'s kind', async () => {
+  it("shows the Kind column and a colour candidate's kind", async () => {
     const m = only({ 'a.html': '<p style="color:oklch(0.21 0.034 264.665)">a</p>' });
     const { store } = m;
     await imp(m);
@@ -451,7 +453,9 @@ describe('spacing derivation is bounded to a declaring spacing property (FR-010,
   });
 
   it('derives a length in em, which is derivable and separately refused at write time', () => {
-    const derived = deriveTokenCandidates([{ name: 'a.html', body: '<div style="margin:1.25em">a</div>', landed: true }]);
+    const derived = deriveTokenCandidates([
+      { name: 'a.html', body: '<div style="margin:1.25em">a</div>', landed: true },
+    ]);
     expect(derived.map((c) => c.value)).toEqual(['1.25em']);
   });
 
@@ -964,7 +968,7 @@ describe('a candidate is represented as the DTCG type its kind names, or refused
     expect(representColour('16px')).toBeUndefined();
   });
 
-  it('represents px and rem, DTCG dimension\'s only permitted units', () => {
+  it("represents px and rem, DTCG dimension's only permitted units", () => {
     expect(representSpacing('16px')).toEqual({ value: 16, unit: 'px' });
     expect(representSpacing('1.5rem')).toEqual({ value: 1.5, unit: 'rem' });
   });
@@ -988,7 +992,9 @@ describe('a candidate is represented as the DTCG type its kind names, or refused
       $type: 'dimension',
       $value: { value: 16, unit: 'px' },
     });
-    expect(() => representToken({ kind: 'colour', value: 'color(--brand 0.5 0.2 0.1)' })).toThrow(TokenConfirmationError);
+    expect(() => representToken({ kind: 'colour', value: 'color(--brand 0.5 0.2 0.1)' })).toThrow(
+      TokenConfirmationError,
+    );
     expect(() => representToken({ kind: 'colour', value: 'color(--brand 0.5 0.2 0.1)' })).toThrow(/color\(--brand/);
     expect(() => representToken({ kind: 'spacing', value: '1.25em' })).toThrow(TokenConfirmationError);
   });
@@ -1062,7 +1068,15 @@ describe('the corrupt write this change exists to close (FR-016, T-1704)', () =>
   it('confirming oklch() writes a correct oklch token, never the old hex garbage', async () => {
     const { fs, store } = memFs({ [tokenSetPath]: tokenSetHtml, [tokensJsonPath]: '{}' }, ['/repo/visual']);
     await confirmTokenCandidate(
-      { tokenSetPath, tokensJsonPath, declaredFrom: '1.0.0', name: 'colour.accent', changeClass: 'minor', toVersion: '1.1.0', candidate: oklchCandidate },
+      {
+        tokenSetPath,
+        tokensJsonPath,
+        declaredFrom: '1.0.0',
+        name: 'colour.accent',
+        changeClass: 'minor',
+        toVersion: '1.1.0',
+        candidate: oklchCandidate,
+      },
       fs,
     );
     const json = JSON.parse(store[tokensJsonPath] as string);
@@ -1086,7 +1100,15 @@ describe('the corrupt write this change exists to close (FR-016, T-1704)', () =>
     };
     await expect(
       confirmTokenCandidate(
-        { tokenSetPath, tokensJsonPath, declaredFrom: '1.0.0', name: 'space.gap', changeClass: 'minor', toVersion: '1.1.0', candidate: emCandidate },
+        {
+          tokenSetPath,
+          tokensJsonPath,
+          declaredFrom: '1.0.0',
+          name: 'space.gap',
+          changeClass: 'minor',
+          toVersion: '1.1.0',
+          candidate: emCandidate,
+        },
         fs,
       ),
     ).rejects.toBeInstanceOf(TokenConfirmationError);
@@ -1158,7 +1180,12 @@ describe('a declared token set is read, not mined (105 FR-017)', () => {
 describe('suppression sees every form the declared set records, never across colour spaces (FR-010, T-1705)', () => {
   it('suppresses a hex candidate against a STRUCTURED srgb declaration — not just a flat string', () => {
     const declaredSrgb = JSON.stringify({
-      color: { accent: { $type: 'color', $value: { colorSpace: 'srgb', components: [0.0588, 0.0902, 0.1647], alpha: 1, hex: '#0f172a' } } },
+      color: {
+        accent: {
+          $type: 'color',
+          $value: { colorSpace: 'srgb', components: [0.0588, 0.0902, 0.1647], alpha: 1, hex: '#0f172a' },
+        },
+      },
     });
     const out = deriveTokenCandidates([
       { name: 'tokens.json', body: declaredSrgb, landed: true },
@@ -1169,7 +1196,9 @@ describe('suppression sees every form the declared set records, never across col
 
   it('suppresses an oklch() candidate against its own structured declaration', () => {
     const declaredOklch = JSON.stringify({
-      color: { accent: { $type: 'color', $value: { colorSpace: 'oklch', components: [0.21, 0.034, 264.665], alpha: 1 } } },
+      color: {
+        accent: { $type: 'color', $value: { colorSpace: 'oklch', components: [0.21, 0.034, 264.665], alpha: 1 } },
+      },
     });
     const out = deriveTokenCandidates([
       { name: 'tokens.json', body: declaredOklch, landed: true },
@@ -1199,7 +1228,9 @@ describe('suppression sees every form the declared set records, never across col
   });
 
   it('a candidate with no representation (a custom colour profile) falls back to matching only its own text', () => {
-    const declaredCustom = JSON.stringify({ color: { brand: { $type: 'color', $value: 'color(--brand 0.5 0.2 0.1)' } } });
+    const declaredCustom = JSON.stringify({
+      color: { brand: { $type: 'color', $value: 'color(--brand 0.5 0.2 0.1)' } },
+    });
     // declaredColourValues only recognises hex-string and structured forms —
     // an arbitrary custom-profile string is neither, so nothing is suppressed.
     const out = deriveTokenCandidates([
@@ -1333,7 +1364,14 @@ describe('confirming many candidates under one release is all-or-nothing (FR-016
     const { fs } = memFs({ [tokenSetPath]: tokenSetHtml, [tokensJsonPath]: '{}' }, ['/repo/visual']);
     await expect(
       confirmTokenCandidates(
-        { tokenSetPath, tokensJsonPath, declaredFrom: '1.0.0', changeClass: 'minor', toVersion: '1.1.0', candidates: [] },
+        {
+          tokenSetPath,
+          tokensJsonPath,
+          declaredFrom: '1.0.0',
+          changeClass: 'minor',
+          toVersion: '1.1.0',
+          candidates: [],
+        },
         fs,
       ),
     ).rejects.toBeInstanceOf(TokenConfirmationError);
@@ -1362,21 +1400,39 @@ describe('the two derivable-but-unrepresentable cases named in §3, end to end (
     const { fs } = memFs({ [tokenSetPath]: tokenSetHtml, [tokensJsonPath]: '{}' }, ['/repo/visual']);
     await expect(
       confirmTokenCandidate(
-        { tokenSetPath, tokensJsonPath, declaredFrom: '1.0.0', name: 'colour.brand', changeClass: 'minor', toVersion: '1.1.0', candidate: derived! },
+        {
+          tokenSetPath,
+          tokensJsonPath,
+          declaredFrom: '1.0.0',
+          name: 'colour.brand',
+          changeClass: 'minor',
+          toVersion: '1.1.0',
+          candidate: derived!,
+        },
         fs,
       ),
     ).rejects.toThrow(/color\(--brand/); // refuses at the write (FR-016 — no DTCG colour space has a custom profile)
   });
 
   it('a spacing length in em derives, then refuses at confirmation', async () => {
-    const [derived] = deriveTokenCandidates([{ name: 'screen.html', body: '<div style="margin:1.25em">a</div>', landed: true }]);
+    const [derived] = deriveTokenCandidates([
+      { name: 'screen.html', body: '<div style="margin:1.25em">a</div>', landed: true },
+    ]);
     expect(derived?.value).toBe('1.25em'); // derivation offers it — margin is a spacing property, unit is unbounded (FR-010)
     expect(derived?.kind).toBe('spacing');
 
     const { fs } = memFs({ [tokenSetPath]: tokenSetHtml, [tokensJsonPath]: '{}' }, ['/repo/visual']);
     await expect(
       confirmTokenCandidate(
-        { tokenSetPath, tokensJsonPath, declaredFrom: '1.0.0', name: 'space.gap', changeClass: 'minor', toVersion: '1.1.0', candidate: derived! },
+        {
+          tokenSetPath,
+          tokensJsonPath,
+          declaredFrom: '1.0.0',
+          name: 'space.gap',
+          changeClass: 'minor',
+          toVersion: '1.1.0',
+          candidate: derived!,
+        },
         fs,
       ),
     ).rejects.toThrow(/1\.25em/); // refuses at the write (FR-016 — DTCG's dimension type permits only px and rem)
@@ -1419,7 +1475,9 @@ describe('an empty derivation reports which kind of nothing it found (FR-018, T-
   });
 
   it('skips a declared token file — it is a declaration, not evidence of an unrecognised notation', () => {
-    const files = [{ name: 'tokens.json', body: JSON.stringify({ color: { brand: { $type: 'color', $value: '#aa1122' } } }) }];
+    const files = [
+      { name: 'tokens.json', body: JSON.stringify({ color: { brand: { $type: 'color', $value: '#aa1122' } } }) },
+    ];
     expect(assessDerivationOutcome(files)).toBe('no-values-present');
   });
 
