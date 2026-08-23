@@ -12,9 +12,13 @@ export function registerDesign(program: Command): void {
     .description('Generate design.html for a spec; auto-re-enter Draft designs in place, refuse past-Draft.')
     .argument('<spec-id>')
     .option('--force', 'bypass the past-Draft refuse with a warning')
+    .option(
+      '--visuals <export>',
+      'land a design export in this same run — import, render and materialise its embedded view, all three by delegation',
+    )
     .option('--commit', 'force a git commit for this run (overrides git.auto)')
     .option('--no-commit', 'skip the git commit for this run (overrides git.auto)')
-    .action(async (specId: string, opts: { force?: boolean; commit?: boolean }) => {
+    .action(async (specId: string, opts: { force?: boolean; visuals?: string; commit?: boolean }) => {
       const [
         { designCommand },
         { createAIProvider },
@@ -98,6 +102,26 @@ export function registerDesign(program: Command): void {
       const { showCorpusHintOnce } = await import('../knowledge/corpus-hint-marker.js');
       await showCorpusHintOnce(process.cwd(), result.corpusHint);
 
+      // --visuals (110-visual-one-step, T-112): AFTER the design generation
+      // has already succeeded — US1's happy-path ordering. FR-003's
+      // refuse-before-the-model-call promise is US2's, which reorders this
+      // (T-210); landing it here first is the spec's own MVP-first sequence.
+      const commitPaths = [designPath];
+      if (opts.visuals !== undefined) {
+        const { runOneStepVisuals } = await import('./visual.js');
+        const report = await runOneStepVisuals({ specId, from: opts.visuals }, { cwd: process.cwd(), fs: nodeFs });
+        for (const { step, outcome } of report) {
+          process.stdout.write(
+            outcome.kind === 'completed' ? `${step}: completed\n` : `${step}: not attempted — ${outcome.reason}\n`,
+          );
+        }
+        // The whole sidecar, not an enumeration of every file import/render
+        // may have written — `git add` stages a directory recursively (D-001
+        // consequence: "the paths array is also where the visual artifacts
+        // must be added, or they land uncommitted").
+        commitPaths.push(path.resolve(process.cwd(), 'specs', specId, 'visual'));
+      }
+
       // Opt-in git layer (spec 026): commit on the current branch (design does not branch).
       const { commitVerbAndExit, slugOf } = await import('../git/index.js');
       await commitVerbAndExit({
@@ -105,7 +129,7 @@ export function registerDesign(program: Command): void {
         model: ai.model, // Assisted-by (spec 027 FR-005)
         cwd: process.cwd(),
         specId,
-        paths: [designPath],
+        paths: commitPaths,
         subject: slugOf(specId),
         ...(opts.commit === undefined ? {} : { commit: opts.commit }),
       });
