@@ -1,0 +1,510 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'">
+<title>A skipped step is not a divergence · Change proposal</title>
+<link rel="stylesheet" href="../../../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../../../assets/favicon.svg">
+<script src="../../../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Change proposal · 110-visual-one-step</p>
+  <h1>A skipped step is not a divergence</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    Two must-tier requirements promise the one-step flow does everything the hand-run does; a third
+    requires it to do nothing at all in one case. Scope the first two so the third is their exception,
+    and widen the third so it covers the step the code already skips.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>     <span><spec-status value="approved">Approved</spec-status></span>
+    <b>Change ID</b>  <span>2026-08-23-a-skipped-step-is-not-a-divergence</span>
+    <b>Spec</b>       <span><a href="../../spec.html">110-visual-one-step</a></span>
+    <b>Author</b>     <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Created</b>    <span><time datetime="2026-08-23">23 Aug 2026</time></span>
+    <b>Targets</b>    <span>3 requirements</span>
+    <b>Read time</b>  <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-tldr>
+    <p>Implementing <a href="../../spec.html#FR-008">FR-008</a> made a must-tier test fail, and the test
+    was right. <a href="../../spec.html#FR-002">FR-002</a> requires the flag&rsquo;s output be
+    <em>indistinguishable</em> from running the three verbs by hand; FR-008 requires the flag to import and
+    materialise <em>nothing</em> where the design declares no visual surface. The delegated verbs carry no
+    such gate, so in that case the two paths cannot agree &mdash; and must not, because FR-008 exists to stop
+    material landing where <a href="../../../093-design-visual-section/spec.html">093</a>&rsquo;s own gate
+    would report it as a defect. <a href="../../spec.html#FR-001">FR-001</a> is contradicted on the same axis.
+    Both are scoped to name FR-008&rsquo;s case as their exception. The adversarial pass then found a third
+    contradiction the first draft missed: FR-008 names only import and materialise, while the shipped code
+    also skips the <em>render</em>, resting on a requirement that does not cover it. FR-008 is widened to
+    cover all three. Three MODIFY deltas; after them the implementation and the spec agree, which they did
+    not before.</p>
+  </spec-tldr>
+</header>
+
+
+<spec-change id="2026-08-23-a-skipped-step-is-not-a-divergence" status="approved">
+
+<header>
+  <h3>A skipped step is not a divergence</h3>
+  <span class="meta"><spec-status value="approved">Approved</spec-status></span>
+</header>
+
+
+<section id="intent">
+<h2>1 · Intent</h2>
+
+<p>This began as a failing test and turned out to be a contradiction between must-tier requirements. While
+draining <a href="../../tasks.html">110&rsquo;s</a> T-311 &mdash; the task that implements FR-008 &mdash; the
+<a href="../../spec.html#SC-001">SC-001</a> byte-equality test went red. The obvious reading was that the new
+code was wrong. It was not: the test is asserting something the spec elsewhere forbids.</p>
+
+<p>The two statements cannot both hold. FR-002 says the invocation&rsquo;s result <em>must be indistinguishable
+from running the same three verbs by hand</em>. FR-008 says that where the design declares no visual surface,
+the invocation <em>must import nothing and materialise nothing</em>. The hand-run verbs
+(<code>visual:import</code>, <code>visual:render</code>, <code>materialise</code>) have no such gate &mdash;
+they are general-purpose verbs, and refusing to import because some design does not declare a surface would be
+the orchestrator&rsquo;s policy leaking into a tool used directly. So the hand-run lands material and the
+one-step lands none. Demonstrated, not reasoned: the failing test&rsquo;s two trees differed by exactly
+<code>visual/a.html</code>, <code>visual/import-manifest.html</code> and
+<code>visual/renders/manifest.json</code> &mdash; the hand-run&rsquo;s output, against the flag&rsquo;s
+correct nothing.</p>
+
+<p>FR-001 is contradicted on the same axis, though more arguably: it says a single invocation <em>must perform
+the import, the render and the view materialisation</em>, which FR-008 forbids in the same case. Its own
+rationale reads as a claim about <em>who orchestrates</em> rather than about unconditional execution, so a
+generous reader resolves it. A must-tier requirement should not need a generous reader. Both are scoped here.</p>
+
+<p><strong>The adversarial pass found a third contradiction, and it is the one that mattered most.</strong> The
+first draft claimed the implementation already matched the corrected requirements. It did not. FR-008 governs
+only <em>import</em> and <em>materialise</em> &mdash; the render is not mentioned, and SC-005&rsquo;s own
+methodology confirms the scope (&ldquo;nothing was imported or materialised&rdquo;). But the shipped
+orchestrator also reports the render as not-attempted in the no-surface case, citing FR-008 for a step FR-008
+never covered. Worse, the first draft cited <a href="../../spec.html#FR-004">FR-004</a> as a second source of
+that permission; FR-004 says the opposite &mdash; where a step does not complete, the invocation
+<spec-rule>MUST</spec-rule> perform <em>the steps that can still complete</em>. It is an obligation to do more,
+triggered by incapacity, never a licence to skip. So the render skip rested on nothing, and one of the two
+requirements cited to excuse it in fact forbade it.</p>
+
+<p>Skipping the render is nevertheless the right behaviour: a capture written under
+<code>specs/&lt;id&gt;/visual/renders/</code> is visual material by exactly the argument FR-008&rsquo;s own
+rationale makes. So FR-008 is widened rather than the code changed &mdash; the requirement&rsquo;s text was too
+narrow, and the test already shipped for it (T-301 asserts all three steps report not-attempted), which is
+independent evidence of where the intent always was.</p>
+</section>
+
+
+<section id="scope">
+<h2>2 · Scope</h2>
+
+<spec-goals>
+  <h3>In scope</h3>
+  <ul>
+    <li>Scoping <a href="../../spec.html#FR-001">FR-001</a>&rsquo;s three-step obligation so FR-008&rsquo;s
+    no-surface case and FR-004&rsquo;s could-not-complete case are stated exceptions rather than
+    contradictions &mdash; distinguishing the two, since one is a required skip and the other an incapacity.</li>
+    <li>Scoping <a href="../../spec.html#FR-002">FR-002</a>&rsquo;s indistinguishability claim the same way,
+    covering both of its clauses &mdash; the comparison and the no-bytes-change-afterwards guarantee.</li>
+    <li>Widening <a href="../../spec.html#FR-008">FR-008</a> to govern the render alongside import and
+    materialise, so the step the code already skips rests on a requirement that covers it.</li>
+    <li>Revising <a href="../../spec.html#SC-001">SC-001</a>&rsquo;s and
+    <a href="../../spec.html#SC-005">SC-005</a>&rsquo;s <em>Observed at</em> methodologies to match (&sect;6
+    tasks, since the apply kernel cannot target a <code>&lt;spec-criterion&gt;</code>).</li>
+    <li>Recording, in the design&rsquo;s grounding table as a <strong>verified</strong> fact with its citation,
+    that a design generated through <code>spectastic design</code> never declares a visual surface.</li>
+  </ul>
+</spec-goals>
+
+<spec-non-goals>
+  <h3>Out of scope</h3>
+  <ul>
+    <li>Pushing the visual-surface gate down into the delegated verbs so the hand-run agrees with the
+    one-step. That would change <a href="../../../105-design-source-import/spec.html">105</a> and
+    <a href="../../../106-visual-render/spec.html">106</a>, and would make a general-purpose verb refuse work
+    on the strength of a declaration in a document it has no business reading
+    <span defer-to="never">&mdash; declined on the merits, not deferred</span>.</li>
+    <li>The <a href="../../../105-design-source-import/spec.html">105</a>/<a href="../../../106-visual-render/spec.html">106</a>
+    orphan-scan collision that keeps FR-002&rsquo;s second clause uncovered even in the surface-declaring case:
+    106&rsquo;s render destination nests inside the directory 105&rsquo;s import treats as its own managed
+    landing zone, so a redundant re-import reports render&rsquo;s output as &ldquo;no longer in the
+    export&rdquo; and rewrites <code>import-manifest.html</code>. Reproducible with no involvement of
+    110&rsquo;s code <span defer-to="TBD-visual-sidecar-orphan-scope">&mdash; two conventions disagreeing
+    about who owns orphan-detection scope, which is neither verb&rsquo;s defect alone</span>.</li>
+    <li>Teaching <code>designCommand</code>&rsquo;s kernel to author or preserve the decision-phase sections
+    (Visual surface, Data model &amp; contracts) that today exist only in the interactive slash-command&rsquo;s
+    own interview <span defer-to="TBD-design-kernel-decision-sections">&mdash; a materially larger change,
+    deserving its own spec</span>.</li>
+  </ul>
+</spec-non-goals>
+</section>
+
+
+<section id="approach">
+<h2>3 · Approach</h2>
+
+<p>The two scoping deltas take the same shape: the requirement keeps its obligation and gains an antecedent
+naming the case in which another requirement governs instead. This is the pattern
+<a href="../../../070-contract-sidecar-convention/spec.html">070</a> already set &mdash; when its FR-004 gained
+a pending-promotion exception, the affected siblings were amended to match rather than left to be reconciled by
+whoever read them next. The alternative considered and rejected was declaring precedence on FR-008 alone; that
+is fewer edits, but the exception is then invisible to anyone who reads FR-001 or FR-002 first, which is
+everyone.</p>
+
+<p>The exception clauses name FR-008 and FR-004 <em>separately and differently</em>, because they are not the
+same kind of thing. FR-008 requires a step <em>not be performed</em>. FR-004 governs a step that
+<em>could not complete</em> — an incapacity the invocation must work around by doing more, not less. The first
+draft collapsed both into &ldquo;declines to perform&rdquo;, which misread FR-004 as granting a permission it
+withholds; the adversarial pass caught it.</p>
+
+<spec-note>
+<p>Three edits this change needs cannot be expressed as deltas. Every path in the apply kernel anchors on
+<code>&lt;spec-requirement id=&hellip;&gt;</code>, and 110 uses
+<a href="../../../108-success-criteria/spec.html">108</a>&rsquo;s newer
+<code>&lt;spec-criterion&gt;</code> element for its success criteria &mdash; so a delta targeting
+<code>SC-001</code> or <code>SC-005</code> would come back <code>gate-blocked</code> / &ldquo;target not
+found&rdquo;. No spec using <code>&lt;spec-criterion&gt;</code> has ever had an <code>SC-</code> delta applied,
+so this would have been the first, and it would have failed silently against the wrong anchor. Those two
+revisions and the grounding-table row are carried as &sect;6 tasks, applied by hand during the drain &mdash; the
+same route a data/content delta already takes. The kernel gap itself is a defect in shared lifecycle tooling
+affecting every spec authored on 108&rsquo;s element, so it is filed as a triage card against the meta-spec
+rather than absorbed here.</p>
+</spec-note>
+
+<p>SC-001&rsquo;s <em>claim</em> survives the scoped FR-002 untouched &mdash; artifacts produced by the flag
+are still byte-identical to the hand-run wherever the steps run. Only its <em>Observed at</em> methodology
+changes, because that methodology reaches the comparison through <code>spectastic design</code>, and a design
+generated that way never declares a surface, so both trees fall into precisely the case the criterion cannot
+measure. The replacement compares <code>runVisualOneStep</code> against the three <em>verb entry points</em> the
+CLI subcommands themselves call &mdash; <code>importVisualExport</code>, <code>renderVisualExport</code> and
+<code>materialiseVisualDesign</code> in <code>packages/cli/src/commands/visual.ts</code> &mdash; not against the
+raw core kernels the orchestrator calls internally. That distinction is the whole value of the test: comparing
+the orchestrator against the same three functions it invokes would be near-tautological, and would stop
+exercising exactly the layer where divergence actually lives &mdash; the <code>into</code>/<code>destDir</code>
+prefix derivation, the <code>file://</code> location rule the orchestrator re-implements with a comment saying
+it matches the render verb&rsquo;s wrapper, and the contract-view materialisation the orchestrator performs and
+a three-kernel hand-run would omit. Caught by the adversarial pass, which is the second thing it found that
+would have shipped as a weaker gate wearing a green tick.</p>
+</section>
+
+
+<section id="deltas">
+<h2>4 · Deltas</h2>
+<p>One <code>&lt;spec-delta&gt;</code> per requirement touched. <code>target=</code> links to
+the live spec. <code>op=</code> is one of <code>added | modified | removed | renamed</code>;
+a missing or invalid op renders visibly broken.</p>
+
+<spec-delta op="modified" target="FR-001">
+  <p><strong>What changes:</strong> the three-step obligation gains an antecedent naming FR-008&rsquo;s
+  required skip and FR-004&rsquo;s could-not-complete case as distinct exceptions. <strong>Nothing else</strong>
+  &mdash; the MUST NOT clause is unchanged and both live rationale sentences carry through verbatim, with one
+  appended stating the exception.</p>
+  <spec-requirement id="FR-001" priority="must">
+    <p>A single invocation of the design verb, given one design export, <spec-rule>MUST</spec-rule> perform the
+    import, the render and the view materialisation &mdash; except where <a href="#FR-008">FR-008</a> requires
+    that a step not be performed, or <a href="#FR-004">FR-004</a> governs a step that could not complete
+    &mdash; and <spec-rule>MUST NOT</spec-rule> require the author to name or order those steps.</p>
+    <details><summary>Rationale</summary><p>The whole point. Three commands in a fixed order is a sequence to
+    remember, and the step easiest to forget is the last one, whose omission leaves an artifact that looks
+    finished. The two exceptions are stated rather than left to a generous reading, and stated separately
+    because they differ in kind: FR-008 requires a step <em>not</em> happen, while FR-004 governs one that was
+    attempted and could not finish &mdash; conflating them would read FR-004 as licensing a skip, which it
+    explicitly does not.</p></details>
+  </spec-requirement>
+</spec-delta>
+
+<spec-delta op="modified" target="FR-002">
+  <p><strong>What changes:</strong> both clauses &mdash; the comparison and the no-bytes-change guarantee
+  &mdash; are scoped to the steps the invocation actually performs. <strong>Nothing else</strong>: both live
+  rationale sentences carry through verbatim, and two are appended explaining why the scoping is not a
+  weakening. The &ldquo;caller, not a second implementation&rdquo; intent is what the scoping preserves.</p>
+  <spec-requirement id="FR-002" priority="must">
+    <p>For each step the invocation performs, the result <spec-rule>MUST</spec-rule> be indistinguishable from
+    running that same verb by hand in the same order, and running the performed steps by hand afterwards
+    <spec-rule>MUST</spec-rule> change no bytes. A step that <a href="#FR-008">FR-008</a> requires not be
+    performed, or that <a href="#FR-004">FR-004</a> governs because it could not complete, carries no such
+    obligation.</p>
+    <details><summary>Rationale</summary><p>Keeps the flag a caller rather than a second implementation. Were
+    the two paths able to diverge, every downstream check would need to know which produced the artifact
+    &mdash; which is why the guarantee is kept in full wherever both paths do the same work, and narrowed only
+    where one of them is required not to. The scoping is not a weakening: the delegated verbs are
+    general-purpose and deliberately carry no visual-surface gate, so requiring the hand-run to agree in a case
+    where the invocation is required to do nothing would make the two requirements unsatisfiable together.
+    Discovered by SC-001&rsquo;s own test going red against a correct FR-008 implementation.</p></details>
+  </spec-requirement>
+</spec-delta>
+
+<spec-delta op="modified" target="FR-008">
+  <p><strong>What changes:</strong> the requirement gains the render alongside import and materialise.
+  <strong>Nothing else</strong> &mdash; the reporting clause is unchanged and both live rationale sentences
+  carry through verbatim, with two appended recording why the render was missing and what its absence rested
+  on.</p>
+  <spec-requirement id="FR-008" priority="must">
+    <p>Where the spec&rsquo;s design declares no visual surface, the invocation <spec-rule>MUST</spec-rule>
+    import nothing, render nothing and materialise nothing, and <spec-rule>MUST</spec-rule> report that it did
+    so.</p>
+    <details><summary>Rationale</summary><p>Landing visual material into a project with no interface creates
+    exactly the artifact <a href="../../../093-design-visual-section/spec.html">093</a>&rsquo;s gate reports as
+    a defect. A no-op nobody was told about is indistinguishable from a step that ran. The render is named
+    because a capture written under <code>specs/&lt;id&gt;/visual/renders/</code> is visual material by the
+    same argument as the other two; the original text covered only import and materialise, which left the
+    shipped skip of the render step resting on no requirement at all. The implementation and its test both
+    already skip all three, so this widening records where the intent always was rather than changing
+    behaviour.</p></details>
+  </spec-requirement>
+</spec-delta>
+</section>
+
+
+<section id="subtraction">
+<h2>4b · What this change removes</h2>
+<p>Each entry names one thing this change takes away &mdash; a clause dropped from a requirement it retypes,
+an obligation a sibling loses, a behaviour or affordance no requirement records. <strong>An empty register is
+the answer &ldquo;this removes nothing&rdquo;</strong>, so the common case needs no editing.</p>
+<p>Where a delta removes something itself, its own reason and migration stay authoritative &mdash; this
+register is for what no delta can express.</p>
+
+<spec-subtraction>
+<ul>
+  <li><strong>The unconditional indistinguishability guarantee.</strong> Before this change FR-002 promised
+  the flag and the hand-run agree, full stop; afterwards it promises that only for steps the invocation
+  performs. Nothing now requires the two paths to agree in the no-surface case &mdash; deliberately, because
+  they must not, but the guarantee is genuinely narrower than it read.</li>
+  <li><strong>FR-001&rsquo;s unconditional three-step obligation.</strong> A reader could previously cite
+  FR-001 alone as requiring all three steps on every invocation. That reading is now closed off, which is the
+  point, but it does remove a (contradictory) guarantee somebody might have been relying on.</li>
+  <li><strong>End-to-end coverage of the flag itself for byte-equality.</strong> SC-001&rsquo;s revised
+  methodology calls the CLI verb kernels directly rather than spawning <code>spectastic design --visuals</code>,
+  so after this change nothing exercises the real binary end-to-end for the byte-equality claim. It remains a
+  genuine two-path comparison, which is what makes it worth keeping &mdash; but the process boundary, argument
+  parsing and commit-path wiring fall out of its reach, and that is a real subtraction, not a wash. It is
+  recoverable only when <code>TBD-design-kernel-decision-sections</code> is drained.</li>
+  <li><strong>Any coverage at all for FR-002&rsquo;s second clause.</strong> The no-bytes-change-afterwards
+  guarantee is re-affirmed as a must, and its test stays skipped &mdash; blocked not by anything this change
+  touches but by the 105/106 orphan-scan collision now named in &sect;2. The clause is honest; it is simply
+  unobserved, and this change does not fix that.</li>
+</ul>
+</spec-subtraction>
+</section>
+
+
+<section id="risks">
+<h2>5 · Risk register</h2>
+<p>Populated by the adversarial risk pass when the proposal triggers the heuristic (touches a <code>must</code>-tier requirement, contains an <code>op="removed"</code> delta, or spans ≥2 topic prefixes). One <code>&lt;spec-risk&gt;</code> per finding. <code>target=</code> is required (missing renders broken). <code>status=</code> defaults to <code>identified</code>; apply refuses until each transitions to <code>accepted</code>, <code>mitigated</code>, or <code>rejected</code>.</p>
+
+<spec-risk-log>
+
+<spec-risk target="SC-001" status="identified">
+  <h4>The replacement methodology can no longer catch the defect the criterion exists for</h4>
+  <p class="claim">SC-001&rsquo;s revised <em>Observed at</em> compares <code>runVisualOneStep</code> against a
+  direct hand-run of <code>importDesignSource</code> / <code>renderDesign</code> /
+  <code>materialiseVisualViews</code> &mdash; but <code>one-step.ts</code> <em>calls those three kernels
+  itself</em>, so the test compares a function against its own inlined body and is near-tautological. Every
+  divergence FR-002 actually guards against lives in the layer the new methodology stops exercising: the CLI
+  wiring in <code>design.ts</code>, the <code>into</code>/<code>destDir</code> prefix derivation, and the
+  <code>file://</code> location rule <code>one-step.ts</code> re-implements with the comment &ldquo;the same
+  rule <code>visual:render</code>&rsquo;s own wrapper applies&rdquo; &mdash; a second implementation of a
+  delegate&rsquo;s rule, invisible to a kernel-level comparison. The task&rsquo;s own recipe already
+  demonstrates the drift: it names three kernels, while the orchestrator and the real
+  <code>materialise</code> verb both run <code>materialiseContractViews</code> <em>then</em>
+  <code>materialiseVisualViews</code>. A test written to the letter of the task compares a hand-run missing a
+  step against an orchestrator that performs it.</p>
+  <p class="citation">&sect;2 Scope: &ldquo;Revising SC-001&rsquo;s <em>Observed at</em> methodology to one that
+  can actually be written&rdquo;; &sect;6 task 1; the test it replaces calls itself &ldquo;the one real
+  end-to-end test D-004 names, because only a real comparison can prove two trees are byte-identical&rdquo;
+  (<code>packages/cli/test/design-visuals.test.ts:9-12</code>).</p>
+  <div class="response"><p><strong>Draft response (author to disposition).</strong> Accepted and the proposal
+  reshaped. The methodology now compares <code>runVisualOneStep</code> against the three <em>CLI verb entry
+  points</em> (<code>importVisualExport</code>, <code>renderVisualExport</code>,
+  <code>materialiseVisualDesign</code>) rather than the raw kernels the orchestrator calls internally &mdash;
+  genuinely two code paths, so the prefix derivation, the <code>file://</code> rule and the contract-view step
+  all stay in reach. The contract-view omission in the first draft&rsquo;s task recipe was real and is
+  corrected. The residual loss &mdash; the process boundary and argument parsing fall out of scope until
+  <code>TBD-design-kernel-decision-sections</code> is drained &mdash; is recorded in &sect;4b rather than left
+  implied. On the P-9 citation: P-9&rsquo;s subject is enforcement gates and tool configuration, so it reads
+  here as analogy rather than binding text; the finding stands on its own reasoning without it.</p></div>
+</spec-risk>
+
+<spec-risk target="FR-004" status="identified">
+  <h4>FR-004 is cited as granting an exception it does not grant, and the render step still has no cover</h4>
+  <p class="claim">Both deltas name FR-004 as a requirement under which the invocation may <em>decline</em> a
+  step. FR-004 says the opposite: where a step &ldquo;does not complete&rdquo;, the invocation
+  &ldquo;<spec-rule>MUST</spec-rule> perform the steps that can still complete&rdquo;. It is an obligation to do
+  <em>more</em>, triggered by incapacity &mdash; never a licence to skip. This is load-bearing, not pedantic,
+  because it leaves the shipped behaviour uncovered: FR-008 governs only <em>import</em> and
+  <em>materialise</em> (render is not mentioned, and SC-005&rsquo;s own <em>Observed at</em> confirms the
+  scope), yet the orchestrator pushes <code>render: not-attempted</code> citing <code>(FR-008)</code>. In the
+  no-surface case render <em>can</em> still complete, so FR-004 today <em>requires</em> it and the code skips
+  it. After this change FR-001 reads &ldquo;except where FR-008 or FR-004 governs a step&rdquo; &mdash; neither
+  governs the render skip &mdash; so the contradiction the proposal exists to remove survives in the third
+  step, while the TL;DR asserts &ldquo;no behaviour change&rdquo;.</p>
+  <p class="citation">Live FR-004: &ldquo;MUST perform the steps that can still complete&rdquo;; first-draft
+  FR-002 delta: &ldquo;A step the invocation declines to perform under FR-008 or FR-004 carries no such
+  obligation&rdquo;; <code>packages/core/src/visual/one-step.ts:108-111</code>.</p>
+  <div class="response"><p><strong>Draft response (author to disposition).</strong> Accepted in full; the most
+  valuable finding of the pass. Verified against the live text before acting: FR-004 is indeed an obligation to
+  perform more, not a permission to perform less. Three corrections followed. The exception clauses now name
+  FR-008 and FR-004 <em>separately and differently</em> &mdash; a required skip versus an incapacity &mdash;
+  rather than collapsing both into &ldquo;declines to perform&rdquo;. A third delta widens FR-008 to cover the
+  render, so the step the code already skips rests on a requirement that covers it. And the TL;DR&rsquo;s
+  &ldquo;no behaviour change&rdquo; claim is withdrawn and replaced with the accurate one: after these deltas
+  the implementation and the spec agree, which they did not before. Skipping the render remains the right
+  behaviour &mdash; a capture under <code>renders/</code> is visual material by FR-008&rsquo;s own argument
+  &mdash; and T-301&rsquo;s shipped test already asserts all three steps skip, which is independent evidence of
+  the original intent.</p></div>
+</spec-risk>
+
+<spec-risk target="§2" status="identified">
+  <h4>The scope claims both FR-002 clauses and carries work for only one</h4>
+  <p class="claim">The in-scope bullet promises to cover &ldquo;both of its clauses &mdash; the comparison and
+  the no-bytes-change-afterwards guarantee&rdquo;, and the delta duly re-states clause 2 as a must. But clause 2
+  has a <em>second</em> skipped test, and it was skipped for an entirely different, live cross-spec defect:
+  106&rsquo;s render destination nests inside the directory 105&rsquo;s import owns, so import&rsquo;s
+  orphan-scan reports render&rsquo;s own output as &ldquo;no longer in the export&rdquo; and
+  <code>import-manifest.html</code>&rsquo;s bytes change on a redundant hand re-run &mdash; in exactly the
+  surface-declaring case where the steps <em>are</em> performed, which the scoping does not rescue. The
+  proposal never mentions it: not in &sect;1, not in &sect;6, not in &sect;2&rsquo;s out-of-scope list, and not
+  in &sect;4b. So a must-tier clause with a documented counterexample is re-affirmed with zero coverage and no
+  assumption, risk, or deferral recording it &mdash; while &sect;7 declares &ldquo;None outstanding.&rdquo;</p>
+  <p class="citation">&sect;2 Scope: &ldquo;covering both of its clauses &mdash; the comparison and the
+  no-bytes-change-afterwards guarantee&rdquo;;
+  <code>packages/cli/test/design-visuals.test.ts:121-134</code> &mdash;
+  <code>it.skip('running the three verbs by hand afterwards changes nothing (FR-002)')</code>.</p>
+  <div class="response"><p><strong>Draft response (author to disposition).</strong> Accepted. The omission was
+  real: the first draft re-affirmed a must-tier clause whose only test is skipped for a live defect, and said
+  nothing about it anywhere. Now named in three places &mdash; &sect;2&rsquo;s out-of-scope list with the
+  mechanism spelled out and a <code>defer-to</code> slug, &sect;4b as a distinct subtraction (the clause is
+  honest but unobserved), and &sect;7, which no longer claims nothing is outstanding on this axis. The defect
+  itself stays out of scope on the merits rather than by omission: it is two conventions disagreeing about who
+  owns orphan-detection scope, reproducible with no involvement of 110&rsquo;s code, and belongs to neither
+  verb alone.</p></div>
+</spec-risk>
+
+<spec-risk target="§6" status="identified">
+  <h4>A verified fact is filed as an assumption, and two must-tier deltas rest on it</h4>
+  <p class="claim">&sect;6&rsquo;s second task records &ldquo;a design generated through
+  <code>spectastic design</code> &hellip; never declares a visual surface&rdquo; as a
+  <code>&lt;spec-assumption&gt;</code>, and &sect;3 makes it the sole justification for rewriting SC-001
+  (<code>priority="must"</code>) and for scoping two must-tier requirements. KB-0001@2026-07-25 rules that
+  &ldquo;a <code>must</code>-tier decision may not rest on an <code>assumed</code> or unresolved-<code>spike</code>
+  fact without an explicit <code>&lt;spec-risk status="accepted"&gt;</code>&rdquo;; the register was empty. The
+  fact is in truth <em>verified</em> &mdash; T-001 names the source and two experiments &mdash; so filing it as
+  an assumption understates evidence the project already paid for, and inverts the ledger&rsquo;s stated
+  purpose: &ldquo;a reader can tell at a glance which decisions rest on something real and which rest on &hellip;
+  best guess.&rdquo;</p>
+  <p class="citation">KB-0001@2026-07-25
+  (<code>knowledge/spectastic-concepts/references/001-foundations.md</code>, &ldquo;The grounding
+  discipline&rdquo;); first-draft &sect;2 Scope: &ldquo;Recording, as a <code>&lt;spec-assumption&gt;</code>,
+  that a design generated through <code>spectastic design</code> never declares a visual surface&rdquo;.</p>
+  <div class="response"><p><strong>Draft response (author to disposition).</strong> Accepted; the citation was
+  checked against the registry and the pack before acting (<code>KB-0001</code> resolves to
+  <code>spectastic/spectastic · spectastic-concepts · 001-foundations</code> at edition
+  <code>2026-07-25</code>, and the quoted rule is present). The fact is verified, not assumed: its source is
+  <code>renderDesignHtml</code>&rsquo;s fixed template with no preservation on re-entry, and two experiments
+  recorded on T-001. It now lands as a <strong>verified</strong> row in the design&rsquo;s grounding table with
+  that citation, rather than as a <code>&lt;spec-assumption&gt;</code> in the spec &mdash; which is where a
+  verified fact belongs and removes the KB-0001 conflict at source rather than papering it with an accepted
+  risk.</p></div>
+</spec-risk>
+
+</spec-risk-log>
+</section>
+
+
+<section id="tasks">
+<h2>6 · Tasks</h2>
+<p>Scoped to this change only. On <code>/spectastic.apply</code> these fold into the target's
+<code>tasks.html</code> as a new provenance-linked phase (per <code>REQ-CHANGE-006</code>) that
+<code>/spectastic.implement</code> drains — this list is then the frozen intent record.</p>
+
+<ul style="list-style:none;padding-left:0;">
+  <li><input type="checkbox"> Revise <code>SC-001</code>&rsquo;s <em>Observed at</em> block by hand — replace
+  the two-tree comparison reached through <code>spectastic design</code> with one comparing
+  <code>runVisualOneStep</code> against the three CLI verb entry points (<code>importVisualExport</code>,
+  <code>renderVisualExport</code>, <code>materialiseVisualDesign</code>) over a hand-authored design declaring a
+  real surface. Not the raw core kernels — the orchestrator calls those itself, and the comparison would be
+  tautological. The criterion's claim and <em>Falsified by</em> block are unchanged.
+  <span class="path">specs/110-visual-one-step/spec.html</span></li>
+
+  <li><input type="checkbox"> Revise <code>SC-005</code>&rsquo;s <em>Observed at</em> block by hand so the
+  no-surface assertion reads &ldquo;nothing was imported, rendered or materialised&rdquo;, matching the widened
+  FR-008. The shipped T-301 test already asserts all three.
+  <span class="path">specs/110-visual-one-step/spec.html</span></li>
+
+  <li><input type="checkbox"> Add a <strong>verified</strong> row to the design's Grounding &amp; evidence
+  table recording that a design generated through <code>spectastic design</code> — stub or real provider —
+  never declares a visual surface, citing <code>renderDesignHtml</code> in
+  <code>packages/core/src/commands/design.ts</code> and the two experiments on T-001. Not an assumption: the
+  fact is verified, and a must-tier decision resting on an <code>assumed</code> fact would conflict with
+  <code>KB-0001@2026-07-25</code>.
+  <span class="path">specs/110-visual-one-step/design.html</span></li>
+
+  <li><input type="checkbox"> Rewrite the SC-001 test against the revised methodology and un-skip it — the
+  currently-skipped <code>it.skip('the flag and the hand-run sequence are byte-identical')</code> moves out of
+  the spawned-binary file and becomes a verb-kernel comparison over a hand-authored design.
+  <span class="path">packages/core/test/visual-one-step.test.ts</span></li>
+
+  <li><input type="checkbox"> Update the second skipped test's citation to point at the
+  <code>TBD-visual-sidecar-orphan-scope</code> slug now that the 105/106 orphan-scan collision is named in the
+  spec's out-of-scope block, so the skip traces to a recorded deferral rather than only to a code comment.
+  <span class="path">packages/cli/test/design-visuals.test.ts</span></li>
+
+  <li><input type="checkbox"> Correct <code>T-001</code>'s <em>Diagnosis</em> row to name the FR-002/FR-008
+  contradiction as the root cause rather than SC-001's methodology alone, then close the card with
+  <code>data-status="done"</code> and a <code>&lt;dt&gt;Fixed&lt;/dt&gt;</code> row citing this change.
+  <span class="path">specs/110-visual-one-step/triage-log.html</span></li>
+</ul>
+</section>
+
+
+<section id="questions">
+<h2>7 · Open questions</h2>
+<spec-questions>
+<p>None outstanding on this change. Six decisions were anchored: how to resolve the contradiction (scope both
+requirements rather than declare precedence on FR-008), how to treat FR-004 once the pass showed it grants no
+exception (name it separately, as an incapacity rather than a decline), whether to widen FR-008 or change the
+code (widen — skipping the render is correct, the text was narrow), how to carry the three edits the apply
+kernel cannot make (§6 tasks), what SC-001's replacement methodology should compare against (the CLI verb
+entry points, not the raw kernels), and where the <code>&lt;spec-criterion&gt;</code> kernel gap is recorded (a
+meta-spec triage card, filed separately — it is not 110's defect to own). Two known gaps are deferred rather
+than open: FR-002's second clause has no passing test until the 105/106 orphan-scan collision is resolved, and
+SC-001 loses end-to-end coverage until the design kernel can emit a visual-surface declaration. Both are named
+in §2 with <code>defer-to</code> targets and recorded in §4b.</p>
+</spec-questions>
+</section>
+
+
+<section id="changelog">
+<h2>8 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-08-23">23 Aug 2026</time><span>Proposal authored — scope FR-001 and FR-002 so
+  FR-008's no-surface case reads as their exception rather than a contradiction, found by SC-001's own test
+  going red against a correct FR-008 implementation.</span></li>
+  <li><time datetime="2026-08-23">23 Aug 2026</time><span>Reshaped by the adversarial pass, which found four
+  risks and changed the proposal three times. FR-004 was cited as granting an exception it withholds — it
+  obliges the run to perform more, not less — which exposed that the shipped render skip rested on no
+  requirement at all; a third delta now widens FR-008 to cover it, and the "no behaviour change" claim was
+  withdrawn. SC-001's replacement methodology was near-tautological and now compares against the CLI verb
+  entry points rather than the kernels the orchestrator calls itself. The 105/106 orphan-scan collision
+  blocking FR-002's second clause was unrecorded and is now named in §2, §4b and §7. The design-kernel fact
+  moves from a <code>&lt;spec-assumption&gt;</code> to a verified grounding row, per
+  <code>KB-0001@2026-07-25</code>.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+</spec-change>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  2026-08-23-a-skipped-step-is-not-a-divergence · A skipped step is not a divergence · authored 2026-08-23
+</footer>
+
+</main>
+<script src="../../../../assets/spec.js"></script>
+</body>
+</html>
