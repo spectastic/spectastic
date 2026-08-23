@@ -1,8 +1,9 @@
 import { resolve } from 'node:path';
 import type { Command } from 'commander';
-import type { FileSystem } from '@spectastic/core';
+import type { FileSystem, KernelContext } from '@spectastic/core';
 import type { BriefScreen } from '@spectastic/core/visual/brief-read';
 import type { ImportLedger } from '@spectastic/core/visual/import';
+import type { RefusedCapture, WrittenCapture } from '@spectastic/core/visual/render-capture';
 
 /** Input shared by the `visual:import` subcommand and any other caller of the
  *  kernel below — the one-step orchestrator (110-visual-one-step) being the
@@ -54,6 +55,87 @@ export async function importVisualExport(
     fetcher,
     ctx.fs,
   );
+}
+
+/** A spec id that does not resolve to a conventional `specs/<id>/visual`
+ *  path — thrown rather than checked separately from every other failure, so
+ *  one catch block in the wrapper (and in any future caller) formats it the
+ *  same way it formats a render failure. */
+export class InvalidSpecIdError extends Error {}
+
+export interface RenderVisualExportInput {
+  specId: string;
+  from: string;
+}
+
+export interface RenderVisualExportResult {
+  written: WrittenCapture[];
+  refused: RefusedCapture[];
+  /** Captured labels the design does not declare a state for (107 FR-004) —
+   *  attributed to the design, never silently adopted. */
+  undeclared: string[];
+}
+
+/**
+ * `visual:render`'s action body, extracted (110-visual-one-step T-011) so it
+ * is callable without commander or `process.exit`. The renderer is now an
+ * explicit parameter rather than constructed inline — `ctx.render` — which
+ * is what lets a caller supply a fake one in a test, or the real
+ * `playwrightRenderer()` the wrapper below still builds. This module remains
+ * the only one that imports `@spectastic/render` (106 FR-004, NFR-002); the
+ * kernel itself imports nothing from that package.
+ *
+ * Includes the reconciliation pass (undeclared states) the original action
+ * ran inline — that is part of what rendering an export DOES, not CLI
+ * formatting, so a future caller gets it for free rather than having to
+ * reimplement it.
+ */
+export async function renderVisualExport(
+  input: RenderVisualExportInput,
+  ctx: { cwd: string; fs: FileSystem; render: NonNullable<KernelContext['render']> },
+): Promise<RenderVisualExportResult> {
+  const [{ renderDesign }, { conventionalVisualPrefix }] = await Promise.all([
+    import('@spectastic/core/visual/render-capture'),
+    import('@spectastic/core/visual/location'),
+  ]);
+
+  const prefix = conventionalVisualPrefix('screens', input.specId);
+  if (prefix === null) {
+    throw new InvalidSpecIdError(
+      `"${input.specId}" is not a conventional spec id — expected specs/${input.specId}/visual to resolve.`,
+    );
+  }
+  const destDir = `${prefix}/renders`;
+  // A bare filesystem path (the common case — an export already landed via
+  // visual:import, or a fixture checked into the project) needs a scheme
+  // before a browser will navigate to it; a URL is passed through unchanged.
+  const location = /^[a-z][a-z0-9+.-]*:\/\//i.test(input.from) ? input.from : `file://${resolve(ctx.cwd, input.from)}`;
+
+  const result = await renderDesign({ location, destDir }, { cwd: ctx.cwd, fs: ctx.fs, render: ctx.render });
+
+  // Reconciliation (107 FR-004, design D-006): compared against WRITTEN
+  // labels only, not refused ones — a template-refused label is noise (106's
+  // own spike is why), and folding in collision-refused labels would need
+  // distinguishing refusal reasons by string-matching for a rare double-edge
+  // case. Reuses the same reader the brief itself is built from, so there is
+  // one notion of "declared", not two.
+  const { readBriefModel } = await import('@spectastic/core/visual/brief-read');
+  const { undeclaredStates } = await import('@spectastic/core/visual/state-reconcile');
+  let undeclared: string[] = [];
+  try {
+    const designHtml = await ctx.fs.readFile(`${ctx.cwd}/specs/${input.specId}/design.html`);
+    const model = await readBriefModel(designHtml, ctx.fs, ctx.cwd);
+    const declaredIds = model.screens.flatMap((s: BriefScreen) => s.states.map((st) => st.id));
+    undeclared = undeclaredStates(
+      declaredIds,
+      result.written.map((w) => w.label),
+    );
+  } catch {
+    // No design at that spec id, or it declares no screens — nothing to
+    // reconcile against. Not a render failure.
+  }
+
+  return { written: result.written, refused: result.refused, undeclared };
 }
 
 /**
@@ -221,31 +303,16 @@ export function registerVisual(program: Command): void {
       // @spectastic/render is constructed HERE and nowhere else (FR-004,
       // NFR-002) — it is the one place in the CLI that reaches the browser
       // port; every other command stays deterministic.
-      const [{ renderDesign }, { conventionalVisualPrefix }, { nodeFs }, { playwrightRenderer }] = await Promise.all([
-        import('@spectastic/core/visual/render-capture'),
-        import('@spectastic/core/visual/location'),
+      const [{ nodeFs }, { playwrightRenderer }] = await Promise.all([
         import('@spectastic/core/providers/node-fs'),
         import('@spectastic/render'),
       ]);
 
-      const cwd = process.cwd();
-      const prefix = conventionalVisualPrefix('screens', specId);
-      if (prefix === null) {
-        process.stderr.write(
-          `"${specId}" is not a conventional spec id — expected specs/${specId}/visual to resolve.\n`,
-        );
-        process.exit(1);
-        return;
-      }
-      const destDir = `${prefix}/renders`;
-      // A bare filesystem path (the common case — an export already landed
-      // via visual:import, or a fixture checked into the project) needs a
-      // scheme before a browser will navigate to it; a URL is passed through
-      // unchanged.
-      const location = /^[a-z][a-z0-9+.-]*:\/\//i.test(opts.from) ? opts.from : `file://${resolve(cwd, opts.from)}`;
-
       try {
-        const result = await renderDesign({ location, destDir }, { cwd, fs: nodeFs, render: playwrightRenderer() });
+        const result = await renderVisualExport(
+          { specId, from: opts.from },
+          { cwd: process.cwd(), fs: nodeFs, render: playwrightRenderer() },
+        );
         for (const w of result.written) {
           process.stdout.write(`captured ${w.label} → ${w.path}\n`);
           for (const err of w.consoleErrors) {
@@ -256,35 +323,11 @@ export function registerVisual(program: Command): void {
           process.stdout.write(`refused: ${r.label} — ${r.reason}\n`);
         }
         process.stdout.write(`${result.written.length} written, ${result.refused.length} refused\n`);
-
-        // Reconciliation (107 FR-004, design D-006): compared against WRITTEN
-        // labels only, not refused ones — a template-refused label is noise
-        // (106's own spike is why), and folding in collision-refused labels
-        // would need distinguishing refusal reasons by string-matching for a
-        // rare double-edge case. Orchestrated here rather than inside
-        // renderDesign, per P-14's split (pure functions in core, the CLI
-        // composes) — reuses the same reader the brief itself is built from,
-        // so there is one notion of "declared", not two.
-        const { readBriefModel } = await import('@spectastic/core/visual/brief-read');
-        const { undeclaredStates } = await import('@spectastic/core/visual/state-reconcile');
-        try {
-          const designHtml = await nodeFs.readFile(`${cwd}/specs/${specId}/design.html`);
-          const model = await readBriefModel(designHtml, nodeFs, cwd);
-          const declaredIds = model.screens.flatMap((s: BriefScreen) => s.states.map((st) => st.id));
-          const undeclared = undeclaredStates(
-            declaredIds,
-            result.written.map((w) => w.label),
+        for (const label of result.undeclared) {
+          process.stdout.write(
+            `undeclared: ${label} — not in ${specId}'s declared states; attributed to the design, not adopted\n`,
           );
-          for (const label of undeclared) {
-            process.stdout.write(
-              `undeclared: ${label} — not in ${specId}'s declared states; attributed to the design, not adopted\n`,
-            );
-          }
-        } catch {
-          // No design at that spec id, or it declares no screens — nothing to
-          // reconcile against. Not a render failure.
         }
-
         process.exit(0);
       } catch (err) {
         process.stderr.write(`${(err as Error).message}\n`);
