@@ -131,9 +131,14 @@ export function registerDesign(program: Command): void {
           { noRender: opts.render === false },
         );
         for (const { step, outcome } of report) {
-          process.stdout.write(
-            outcome.kind === 'completed' ? `${step}: completed\n` : `${step}: not attempted — ${outcome.reason}\n`,
-          );
+          if (outcome.kind === 'completed') {
+            process.stdout.write(`${step}: completed\n`);
+          } else if (outcome.kind === 'completed-with-refusals') {
+            const labels = outcome.refusals.map((r) => r.label).join(', ');
+            process.stdout.write(`${step}: completed with refusals — ${labels}\n`);
+          } else {
+            process.stdout.write(`${step}: not attempted — ${outcome.reason}\n`);
+          }
         }
         // The whole sidecar, not an enumeration of every file import/render
         // may have written — `git add` stages a directory recursively (D-001

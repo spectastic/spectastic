@@ -21,6 +21,23 @@ const SPEC_DESIGN = /(?:^|\/)specs\/([^/]+)\/[^/]+\.html$/;
 export const VISUAL_DIR = 'visual';
 
 /**
+ * The reserved subdirectory 106 (render) always writes its captures under,
+ * inside the SAME `specs/<id>/visual/` directory 105 (import) treats as its
+ * own landing zone (spec 106-visual-render, render-capture.ts's own
+ * `destDir` computation; spec 110-visual-one-step derives the identical
+ * path for its orchestrator). Named here, not left as a bare string
+ * literal repeated at each call site, because 105's orphan-scan (105
+ * import.ts) must recognise and exclude it: an export never contains a
+ * `renders/` entry, so without this exclusion a second import sees
+ * render's own prior output sitting in the directory it scans and reports
+ * it as "no longer in the export" — rewriting the import manifest on every
+ * redundant re-import. Triaged as 110/T-001 and the same defect the
+ * 2026-08-23 propose deferred as `TBD-visual-sidecar-orphan-scope` before
+ * this constant existed to fix it at the source.
+ */
+export const RENDERS_SUBDIR = 'renders';
+
+/**
  * The spec that owns a declaring design, from its own path. `null` for a
  * document outside `specs/` — a template, a brief, a fixture.
  *

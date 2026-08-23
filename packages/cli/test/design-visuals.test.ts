@@ -3,7 +3,9 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, statSync
 import { tmpdir } from 'node:os';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { nodeFs } from '@spectastic/core/providers/node-fs';
 import { describe, expect, it } from 'vitest';
+import { runOneStepVisuals } from '../src/commands/visual.js';
 
 /**
  * 110-visual-one-step CLI integration tests. US1 (T-101): the SC-001
@@ -40,6 +42,25 @@ function freshProject(): string {
   writeFileSync(
     join(dir, 'specs', '001-x', 'spec.html'),
     '<!doctype html><html><body><main><spec-meta></spec-meta></main></body></html>',
+  );
+  mkdirSync(join(dir, 'export'), { recursive: true });
+  writeFileSync(join(dir, 'export', 'a.html'), readFileSync(FIXTURE_ARTBOARDS, 'utf8'));
+  return dir;
+}
+
+/** T-900's own fixture: a design.html declaring a REAL visual surface,
+ *  hand-authored rather than reached through `spectastic design`. Per the
+ *  T-001 triage / the 2026-08-23 propose: designCommand's kernel never
+ *  emits <spec-visual> regardless of stub or real AI, so the only way to
+ *  exercise the delegated pipeline's own idempotence (FR-009) — as opposed
+ *  to FR-008's no-op case, which is idempotent for the trivial reason that
+ *  nothing is ever written — is to declare the surface directly. */
+function freshSurfaceProject(): string {
+  const dir = mkdtempSync(join(tmpdir(), 'spectastic-visuals-idempotence-'));
+  mkdirSync(join(dir, 'specs', '001-x'), { recursive: true });
+  writeFileSync(
+    join(dir, 'specs', '001-x', 'design.html'),
+    '<!doctype html><html><body><main><spec-visual shape="screens"></spec-visual></main></body></html>',
   );
   mkdirSync(join(dir, 'export'), { recursive: true });
   writeFileSync(join(dir, 'export', 'a.html'), readFileSync(FIXTURE_ARTBOARDS, 'utf8'));
@@ -118,19 +139,22 @@ describe('SC-001 — one command produces the same tree as running the three ver
     }
   }, 30_000);
 
-  // Skipped, not fixed here or weakened: a real, pre-existing cross-spec
-  // defect between 105 and 106, discovered by this test and reproduced with
-  // NO involvement of 110's own code — a plain hand-typed
-  // `visual:import` -> `visual:render` -> `visual:import` sequence,
-  // following 094's own documented `specs/<id>/visual` convention, hits it
-  // identically. 106's render destination (`<prefix>/renders`) nests INSIDE
-  // the same directory 105's import treats as its own managed landing zone;
-  // import's orphan-scan (working exactly as its own spec says) then reports
-  // render's own output directory as "no longer in the export" on any
-  // redundant re-import, changing import-manifest.html's bytes. Recommend
-  // /spectastic.triage to classify and route the fix — most likely
-  // cross-spec, since it is 105's and 106's conventions disagreeing about
-  // who owns orphan-detection scope, not a defect in either verb alone.
+  // Skipped, not fixed here or weakened — but the ORIGINAL citation on this
+  // line was stale and has been corrected. The orphan-scan defect it named
+  // (106's `renders/` nesting inside 105's own managed directory, reported
+  // as "no longer in the export" on a redundant re-import) is FIXED —
+  // RENDERS_SUBDIR is now excluded from 105's orphan-scan (location.ts,
+  // T-900's own discovery via `runOneStepVisuals` called twice). Verified
+  // empirically that this specific test does NOT exercise that path at all:
+  // `flagCwd`'s design.html — generated via `spectastic design --visuals`,
+  // same as SC-001's neighbour above — never declares a visual surface (the
+  // same design-kernel gap T-001/the 2026-08-23 propose already diagnosed),
+  // so `before` reflects FR-008's correct no-op and `after` reflects the
+  // hand-run's unconditional material. The two trees diverge on KEY SET
+  // (spec.html+design.html vs +3 more files), never reaching a byte
+  // comparison at all — confirmed by temporarily un-skipping and reading the
+  // actual assertion failure. Stays skipped for the SAME reason SC-001's
+  // neighbour does, folded as T-1003.
   it.skip('running the three verbs by hand afterwards changes nothing (FR-002)', async () => {
     const flagCwd = freshProject();
     const flagResult = await runCLI(['design', '001-x', '--visuals', 'export'], flagCwd, STUB_ENV);
@@ -210,5 +234,65 @@ describe('SC-003 — --no-render does not fail the run (US3, T-302)', () => {
 
     expect(r.code, `stdout: ${r.stdout}\nstderr: ${r.stderr}`).toBe(0);
     expect(r.stdout).toContain('render: not attempted');
+  }, 30_000);
+});
+
+// T-900 (FR-009, SC-005's remaining leg). Not reached through
+// `spectastic design --visuals` — a design generated that way never
+// declares a surface (T-001 / the 2026-08-23 propose), so a run through the
+// flag would trivially satisfy "changes no bytes" by writing nothing on
+// EITHER invocation, proving nothing about the delegated pipeline's real
+// idempotence. Calls `runOneStepVisuals` in-process instead — the same
+// function `design.ts` calls, with the same real playwrightRenderer (not a
+// fake; the task's own wording is "the captures", which only a real render
+// pass can genuinely test for byte-stability) — twice over a
+// surface-declaring, hand-authored design.
+//
+// A real, adjacent gap this test tripped over while being written, worth
+// recording: `importDesignSource` uses `into` VERBATIM (no cwd-join — see
+// T-100's own comment), and `nodeFs` passes every path straight to
+// `node:fs/promises`, which resolves a relative path against the REAL
+// `process.cwd()` — not `ctx.cwd`. A spawned CLI invocation never notices,
+// because its child process's cwd genuinely IS the project directory; an
+// in-process caller does notice, and the first version of this test
+// silently wrote `specs/001-x/visual/**` into this actual repo rather than
+// the temp fixture. `process.chdir` for the duration of the calls is the
+// fix here, mirroring what a spawned subprocess provides for free — not a
+// change to the implementation, which behaves correctly for every real
+// caller (every one of them is the CLI itself).
+describe('FR-009 — a second identical invocation is bounded, not silent (T-900)', () => {
+  it('changes 0 bytes in the imported material and the captures, and at most 1 in design.html', async () => {
+    const cwd = freshSurfaceProject();
+    const ctx = { cwd, fs: nodeFs };
+    const originalCwd = process.cwd();
+
+    let afterFirst: Map<string, Buffer>;
+    let afterSecond: Map<string, Buffer>;
+    try {
+      process.chdir(cwd);
+      await runOneStepVisuals({ specId: '001-x', from: 'export' }, ctx);
+      afterFirst = readTree(join(cwd, 'specs', '001-x'));
+
+      await runOneStepVisuals({ specId: '001-x', from: 'export' }, ctx);
+      afterSecond = readTree(join(cwd, 'specs', '001-x'));
+    } finally {
+      process.chdir(originalCwd);
+    }
+
+    expect([...afterSecond.keys()].sort()).toEqual([...afterFirst.keys()].sort());
+
+    let designByteDelta = 0;
+    for (const [path, bytesAfterSecond] of afterSecond) {
+      const bytesAfterFirst = afterFirst.get(path) as Buffer;
+      if (bytesAfterSecond.equals(bytesAfterFirst)) continue;
+      // The one place a byte difference is permitted at all: design.html,
+      // where the inherited materialise defect lives (design.html
+      // Assumptions — 29,123 -> 29,122, stable after). Everything imported
+      // or captured (visual/**) must be byte-identical between the two
+      // runs; a diff there is a real regression, not the known one.
+      expect(path, `unexpected byte diff outside design.html: ${path}`).toBe('design.html');
+      designByteDelta = Math.abs(bytesAfterSecond.length - bytesAfterFirst.length);
+    }
+    expect(designByteDelta, 'design.html byte delta between run 1 and run 2').toBeLessThanOrEqual(1);
   }, 30_000);
 });

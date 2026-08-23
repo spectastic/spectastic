@@ -95,7 +95,7 @@ export async function renderVisualExport(
   input: RenderVisualExportInput,
   ctx: { cwd: string; fs: FileSystem; render: NonNullable<KernelContext['render']> },
 ): Promise<RenderVisualExportResult> {
-  const [{ renderDesign }, { conventionalVisualPrefix }] = await Promise.all([
+  const [{ renderDesign }, { conventionalVisualPrefix, RENDERS_SUBDIR }] = await Promise.all([
     import('@spectastic/core/visual/render-capture'),
     import('@spectastic/core/visual/location'),
   ]);
@@ -106,7 +106,7 @@ export async function renderVisualExport(
       `"${input.specId}" is not a conventional spec id — expected specs/${input.specId}/visual to resolve.`,
     );
   }
-  const destDir = `${prefix}/renders`;
+  const destDir = `${prefix}/${RENDERS_SUBDIR}`;
   // A bare filesystem path (the common case — an export already landed via
   // visual:import, or a fixture checked into the project) needs a scheme
   // before a browser will navigate to it; a URL is passed through unchanged.

@@ -170,6 +170,29 @@ describe('re-importing', () => {
     expect(m.store[`${INTO}/converted.png`]).toBe('PNGDATA');
   });
 
+  // 110/T-001, T-900: 106's render step always writes its captures to
+  // `<INTO>/renders/`, inside the SAME directory this scan walks — never
+  // part of any export, so treating it as import's own orphaned material
+  // reported a sibling verb's prior output as "no longer in the export" on
+  // every redundant re-import. Reproduced with no involvement of 110's own
+  // code: a plain `visual:import` -> `visual:render` -> `visual:import`
+  // sequence, following 094's own `specs/<id>/visual` convention, hits it
+  // identically.
+  it('never orphans the reserved renders/ subdirectory 106 writes into the same directory', async () => {
+    const m = setup();
+    await run(m);
+    // Model what 106's renderDesign already left behind — a nested
+    // directory with its own manifest, exactly as render-capture.ts writes.
+    m.store[`${INTO}/renders/manifest.json`] = '{"written":[],"refused":[]}';
+    m.madeDirs.add(`${INTO}/renders`);
+
+    const ledger = await run(m);
+
+    expect(ledger.orphaned).not.toContain('renders');
+    // Still there — the fix excludes it from the scan, not from the tree.
+    expect(m.store[`${INTO}/renders/manifest.json`]).toBe('{"written":[],"refused":[]}');
+  });
+
   it('refuses loudly when the identity would change, rather than forking quietly', async () => {
     const m = setup();
     await expect(run(m, 'penpot/converter')).rejects.toBeInstanceOf(ImportIdentityError);

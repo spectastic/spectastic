@@ -25,7 +25,7 @@ import { localSourceFetcher } from '../providers/local-source-fetcher.js';
 import type { FileSystem, Renderer } from '../types.js';
 import { materialiseContractViews } from '../contracts/materialise-view.js';
 import { importDesignSource } from './import.js';
-import { conventionalVisualPrefix } from './location.js';
+import { conventionalVisualPrefix, RENDERS_SUBDIR } from './location.js';
 import { materialiseVisualViews } from './materialise-view.js';
 import { type RefusedCapture, renderDesign } from './render-capture.js';
 
@@ -124,7 +124,7 @@ export async function runVisualOneStep(input: OneStepInput, ctx: OneStepContext)
     report.push({ step: 'render', outcome: { kind: 'not-attempted', reason: 'no render port supplied' } });
   } else {
     const prefix = conventionalVisualPrefix('screens', input.specId) ?? into;
-    const destDir = `${prefix}/renders`;
+    const destDir = `${prefix}/${RENDERS_SUBDIR}`;
     // A bare filesystem path needs a scheme before a browser will navigate to
     // it; a URL is passed through unchanged — the same rule visual:render's
     // own wrapper applies.

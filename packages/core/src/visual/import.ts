@@ -36,6 +36,7 @@
 import { CHANGE_CLASSES, type ChangeClass } from '@spectastic/schema/visual-vocabulary';
 
 import type { FileSystem } from '../types.js';
+import { RENDERS_SUBDIR } from './location.js';
 import type { DesignSourceFetcher } from './source-fetcher.js';
 import { assertTokenSetVersion } from './token-set-guard.js';
 
@@ -412,6 +413,11 @@ export async function importDesignSource(
   // Anything in the destination the export no longer carries. Reported, never
   // removed — the property that makes a re-import safe to run. The manifest is
   // excluded because this pass writes it, so it can never be orphaned by it.
+  // RENDERS_SUBDIR is excluded for the same reason at one remove: it is 106's
+  // reserved landing zone for captures inside this same directory, never part
+  // of any export, so scanning it as import's own material reported a
+  // sibling verb's prior output as "no longer in the export" on every
+  // redundant re-import (110/T-001).
   let landed: string[] = [];
   try {
     landed = await fs.readdir(input.into);
@@ -419,7 +425,7 @@ export async function importDesignSource(
     landed = [];
   }
   for (const name of landed) {
-    if (name !== MANIFEST_NAME && !entries.includes(name)) ledger.orphaned.push(name);
+    if (name !== MANIFEST_NAME && name !== RENDERS_SUBDIR && !entries.includes(name)) ledger.orphaned.push(name);
   }
 
   // FR-004 and FR-006 both require a reader can SEE this, so the provenance and
