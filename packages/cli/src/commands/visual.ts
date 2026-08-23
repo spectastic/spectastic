@@ -1,6 +1,60 @@
 import { resolve } from 'node:path';
 import type { Command } from 'commander';
+import type { FileSystem } from '@spectastic/core';
 import type { BriefScreen } from '@spectastic/core/visual/brief-read';
+import type { ImportLedger } from '@spectastic/core/visual/import';
+
+/** Input shared by the `visual:import` subcommand and any other caller of the
+ *  kernel below — the one-step orchestrator (110-visual-one-step) being the
+ *  first, per 106 FR-004: a caller MAY invoke this, never acquire a port of
+ *  its own to do the equivalent work. */
+export interface ImportVisualExportInput {
+  from: string;
+  into: string;
+  identity: string;
+  previousIdentity?: string | undefined;
+  origin?: string | undefined;
+  originUrl?: string | undefined;
+}
+
+/**
+ * `visual:import`'s action body, extracted (110-visual-one-step T-010) so it
+ * is callable without going through commander or `process.exit`. No
+ * behaviour change from what the action did inline — same fetcher-choice
+ * logic, same `importDesignSource` call, same thrown error types
+ * (`ImportIdentityError`, `SourceNotFoundError`, …). The subcommand below
+ * calls this and formats/exits; a future caller (the orchestrator) calls
+ * this and inspects the ledger or catches the same errors itself.
+ */
+export async function importVisualExport(
+  input: ImportVisualExportInput,
+  ctx: { cwd: string; fs: FileSystem },
+): Promise<ImportLedger> {
+  const [{ importDesignSource }, { localSourceFetcher }, { archiveSourceFetcher, looksLikeArchive }] =
+    await Promise.all([
+      import('@spectastic/core/visual/import'),
+      import('@spectastic/core/providers/local-source-fetcher'),
+      import('@spectastic/core/providers/archive-source-fetcher'),
+    ]);
+
+  // An archive and a folder are the same thing to everything downstream —
+  // the fetcher seam returns a directory either way, which is what lets one
+  // adapter serve every source instead of one per tool.
+  const fetcher = looksLikeArchive(input.from) ? archiveSourceFetcher(ctx.cwd) : localSourceFetcher(ctx.fs, ctx.cwd);
+
+  return importDesignSource(
+    {
+      from: input.from,
+      into: input.into,
+      identity: input.identity,
+      previousIdentity: input.previousIdentity,
+      origin: input.origin,
+      originUrl: input.originUrl,
+    },
+    fetcher,
+    ctx.fs,
+  );
+}
 
 /**
  * Register the `visual` subcommand (spec 099-visual-embedded-view, FR-003).
@@ -100,9 +154,9 @@ export function registerVisual(program: Command): void {
         originUrl?: string;
       }) => {
         const [
-          { importDesignSource, ImportIdentityError },
-          { localSourceFetcher, SourceNotFoundError, SourceOutsideProjectError },
-          { archiveSourceFetcher, looksLikeArchive, ArchiveUnreadableError, ArchiveEntryOutsideError },
+          { ImportIdentityError },
+          { SourceNotFoundError, SourceOutsideProjectError },
+          { ArchiveUnreadableError, ArchiveEntryOutsideError },
           { nodeFs },
         ] = await Promise.all([
           import('@spectastic/core/visual/import'),
@@ -111,26 +165,8 @@ export function registerVisual(program: Command): void {
           import('@spectastic/core/providers/node-fs'),
         ]);
 
-        // An archive and a folder are the same thing to everything downstream —
-        // the fetcher seam returns a directory either way, which is what lets one
-        // adapter serve every source instead of one per tool.
-        const fetcher = looksLikeArchive(opts.from)
-          ? archiveSourceFetcher(process.cwd())
-          : localSourceFetcher(nodeFs, process.cwd());
-
         try {
-          const ledger = await importDesignSource(
-            {
-              from: opts.from,
-              into: opts.into,
-              identity: opts.identity,
-              previousIdentity: opts.previousIdentity,
-              origin: opts.origin,
-              originUrl: opts.originUrl,
-            },
-            fetcher,
-            nodeFs,
-          );
+          const ledger = await importVisualExport(opts, { cwd: process.cwd(), fs: nodeFs });
           // A four-bucket ledger rather than a log — the corpus prints the same
           // shape, and it is what makes a re-import reviewable at a glance.
           process.stdout.write(
