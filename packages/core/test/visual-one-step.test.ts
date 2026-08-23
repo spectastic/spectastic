@@ -160,3 +160,46 @@ describe('runVisualOneStep refuses before any step completes, on an unreadable e
     expect(store).toEqual({ '/repo/specs/001-x/design.html': '<!doctype html><html><body></body></html>' });
   });
 });
+
+/** A renderer whose egress is unreachable — 106's own render-capture.ts
+ *  calls `checkEgress()` first and THROWS a whole-run refusal when it
+ *  returns false (render-capture.ts:109-111), never reaching `.render()` at
+ *  all. That is exactly what a caller of THIS orchestrator must not see
+ *  propagate as a rejection — FR-004 requires import and materialise still
+ *  complete. `.render()` itself should never be called given egress fails
+ *  first; it throws if it somehow were, so a regression here fails loudly
+ *  rather than silently passing for the wrong reason. */
+function unreachableRenderer(): Renderer {
+  return {
+    checkEgress: async () => false,
+    render: async () => {
+      throw new Error('render() called despite unreachable egress — checkEgress() should have refused first');
+    },
+  };
+}
+
+// T-300 (US3, FR-004). render-capture.ts's own whole-run refusal on
+// unreachable egress currently propagates straight out of
+// runVisualOneStep as an unhandled rejection — this is expected to fail
+// until T-310/T-311 catch it and convert it to a not-attempted outcome.
+describe('runVisualOneStep survives an unreachable render runtime (FR-004, T-300)', () => {
+  it('still completes import and materialise, and records render as not-attempted', async () => {
+    const { fs } = memFs(
+      {
+        '/repo/export/a.html': '<div data-screen-label="one"></div>',
+        '/repo/specs/001-x/design.html': '<!doctype html><html><body><h1>x</h1></body></html>',
+      },
+      ['/repo/export', '/repo/specs/001-x'],
+    );
+
+    const report = await runVisualOneStep(
+      { specId: '001-x', from: 'export' },
+      { cwd: CWD, fs, render: unreachableRenderer() },
+    );
+
+    expect(report.map((r) => r.step)).toEqual(['import', 'render', 'materialise']);
+    const render = report.find((r) => r.step === 'render');
+    expect(render?.outcome.kind).toBe('not-attempted');
+    expect(report.filter((r) => r.step !== 'render').every((r) => r.outcome.kind === 'completed')).toBe(true);
+  });
+});
