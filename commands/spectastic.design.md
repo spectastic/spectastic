@@ -146,3 +146,9 @@ Report the path, the principles version checked against, and a one-line groundin
 Per 006 FR-009: for deterministic dispatch outside Claude Code (CI scripts, raw shell automation), the LLM MAY invoke `spectastic design` via Bash. This bypasses LLM-driven file handling and routes through `@spectastic/core/commands/design` directly. The markdown procedure above remains canonical; the CLI is an alternate code path.
 
 The CLI requires `ANTHROPIC_API_KEY` in the environment for AI-coupled verbs; the slash-command path uses the in-host Claude session and needs no key.
+
+### Landing a design export in the same run
+
+`spectastic design <spec-id> --visuals <export>` performs the design generation, then imports, renders and materialises the export's embedded view — all in one invocation, instead of the design generation followed by three separate commands run by hand. A bad export path is checked and refused before the (costly) generation step ever runs, never after. `--no-render` skips the rendering step specifically — import and materialise still run, no browser required — for a run where a browser isn't available or isn't wanted.
+
+Interactively authoring a design through this command's own interview (the Visual surface question above) is the surface that actually declares what `--visuals` later imports and renders into: the flag lands material, it does not decide whether a feature has one.
