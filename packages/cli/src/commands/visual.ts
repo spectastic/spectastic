@@ -4,6 +4,7 @@ import type { FileSystem, Finding, KernelContext } from '@spectastic/core';
 import type { BriefScreen } from '@spectastic/core/visual/brief-read';
 import type { ImportLedger } from '@spectastic/core/visual/import';
 import type { RefusedCapture, WrittenCapture } from '@spectastic/core/visual/render-capture';
+import type { RunReport } from '@spectastic/core/visual/one-step';
 
 /** Input shared by the `visual:import` subcommand and any other caller of the
  *  kernel below — the one-step orchestrator (110-visual-one-step) being the
@@ -199,6 +200,25 @@ export async function materialiseVisualDesign(
 
   await ctx.fs.writeFile(path, out);
   return { kind: 'written', path };
+}
+
+/**
+ * The one-step visual entry (110-visual-one-step T-111) — constructs
+ * `playwrightRenderer()` and calls the core orchestrator. This function, and
+ * this module, remain the only place in the CLI package that imports
+ * `@spectastic/render` (106 FR-004/NFR-002): `design.ts` (T-112) calls this
+ * function and never holds a renderer of its own, which is what keeps the
+ * capability-reach source scan reading exactly one module.
+ */
+export async function runOneStepVisuals(
+  input: { specId: string; from: string },
+  ctx: { cwd: string; fs: FileSystem },
+): Promise<RunReport> {
+  const [{ runVisualOneStep }, { playwrightRenderer }] = await Promise.all([
+    import('@spectastic/core/visual/one-step'),
+    import('@spectastic/render'),
+  ]);
+  return runVisualOneStep(input, { cwd: ctx.cwd, fs: ctx.fs, render: playwrightRenderer() });
 }
 
 /**
