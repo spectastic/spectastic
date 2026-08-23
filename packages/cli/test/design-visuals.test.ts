@@ -1,18 +1,15 @@
 import { spawn } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
 /**
- * 110-visual-one-step, US1 (T-101). The SC-001 byte-equality claim — the one
- * real end-to-end test D-004 names, because only a real comparison can prove
- * two trees are byte-identical; a fake renderer cannot.
- *
- * `--visuals` doesn't exist yet on the design command (T-112 builds it), so
- * this file is expected to fail — commander rejects the unrecognised
- * option — until then. That is the correct red state.
+ * 110-visual-one-step CLI integration tests. US1 (T-101): the SC-001
+ * byte-equality claim — the one real end-to-end test D-004 names, because
+ * only a real comparison can prove two trees are byte-identical; a fake
+ * renderer cannot. US2 (T-201): SC-002's refusal-cost claim.
  */
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -135,4 +132,40 @@ describe('SC-001 — one command produces the same tree as running the three ver
       expect(bytes.equals(before.get(path) as Buffer), `${path} changed after a redundant hand re-run`).toBe(true);
     }
   }, 30_000);
+});
+
+// T-201 (US2, SC-002). No ANTHROPIC_API_KEY and no SPECTASTIC_AI_STUB — under
+// this env, ANY attempt to construct/use an AI provider always
+// surfaces the same "ANTHROPIC_API_KEY is not set" message (proven by
+// design.integration.test.ts's own equivalent case). So that message's
+// ABSENCE from stderr is direct, deterministic proof the AI path was never
+// reached — no need to invent a call-counting stub for what a environment
+// variable's own existing behaviour already demonstrates.
+//
+// This is expected to fail today: T-112's wiring calls designCommand (and so
+// createAIProvider) before checking --visuals at all, so a bad export path
+// currently costs a full design generation before the visuals step ever
+// throws. T-210 reorders this.
+const NO_AI_ENV = { ANTHROPIC_API_KEY: '' };
+
+describe('SC-002 — a bad export path costs nothing (US2, T-201)', () => {
+  it('refuses naming the bad path, makes 0 model calls, and writes 0 files', async () => {
+    const cwd = freshProject();
+    const before = readTree(join(cwd, 'specs', '001-x'));
+
+    const r = await runCLI(['design', '001-x', '--visuals', 'does-not-exist'], cwd, NO_AI_ENV);
+
+    expect(r.code, `stdout: ${r.stdout}\nstderr: ${r.stderr}`).not.toBe(0);
+    expect(r.stderr).toContain('does-not-exist');
+    // The AI-key message never appearing is the proof createAIProvider (and
+    // so designCommand) was never reached.
+    expect(r.stderr).not.toContain('ANTHROPIC_API_KEY');
+    expect(existsSync(join(cwd, 'specs', '001-x', 'design.html'))).toBe(false);
+
+    const after = readTree(join(cwd, 'specs', '001-x'));
+    expect([...after.keys()].sort()).toEqual([...before.keys()].sort());
+    for (const [path, bytes] of after) {
+      expect(bytes.equals(before.get(path) as Buffer), `${path} changed on a refused run`).toBe(true);
+    }
+  });
 });
