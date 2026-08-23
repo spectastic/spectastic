@@ -169,3 +169,31 @@ describe('SC-002 — a bad export path costs nothing (US2, T-201)', () => {
     }
   });
 });
+
+// T-302 (US3, SC-003). `--no-render` doesn't exist yet (T-310), so this is
+// expected to fail — commander rejects the unrecognised option — until then.
+//
+// A real fixture limitation, discovered rather than assumed: designCommand's
+// stub-driven kernel path never populates <spec-visual> — verified by
+// re-entering a HAND-SEEDED declaration through `design` (it was wiped, 0
+// occurrences after) and separately by adding a detected UI dependency to
+// the fixture project (no declaration appeared regardless). The
+// visual-surface interview is host-side (AskUserQuestion), not something
+// this deterministic stub path drives at all. So a real spawn against this
+// stub ALSO has no declared surface — meaning, once T-311 lands, render is
+// not-attempted for BOTH reasons at once (--no-render AND no-surface), and
+// this spawned test cannot isolate which one fired. What it CAN honestly
+// prove: the flag parses, the run does not crash or fail, and render is
+// reported not-attempted rather than silently skipped. The PRECISE claim
+// SC-003 makes ("import ... still lands") is proven instead at the core
+// level, with a fixture this test's own stub-generation path cannot produce
+// (packages/core/test/visual-one-step.test.ts, T-300/T-301's neighbours).
+describe('SC-003 — --no-render does not fail the run (US3, T-302)', () => {
+  it('exits 0 and reports render as not attempted', async () => {
+    const cwd = freshProject();
+    const r = await runCLI(['design', '001-x', '--visuals', 'export', '--no-render'], cwd, STUB_ENV);
+
+    expect(r.code, `stdout: ${r.stdout}\nstderr: ${r.stderr}`).toBe(0);
+    expect(r.stdout).toContain('render: not attempted');
+  }, 30_000);
+});
