@@ -114,7 +114,8 @@ describe('runVisualOneStep sequences import, render, materialise (FR-001, T-100)
     const { fs, store } = memFs(
       {
         '/repo/export/a.html': '<div data-screen-label="one" style="width:10px;height:10px;"></div>',
-        '/repo/specs/001-x/design.html': '<!doctype html><html><body><h1>x</h1></body></html>',
+        '/repo/specs/001-x/design.html':
+          '<!doctype html><html><body><spec-visual shape="screens"></spec-visual><h1>x</h1></body></html>',
       },
       ['/repo/export', '/repo/specs/001-x'],
     );
@@ -146,9 +147,8 @@ describe('runVisualOneStep sequences import, render, materialise (FR-001, T-100)
 // never reaches render or materialise.
 describe('runVisualOneStep refuses before any step completes, on an unreadable export (FR-003, T-200)', () => {
   it('rejects naming the path, and writes nothing', async () => {
-    const { fs, store } = memFs({ '/repo/specs/001-x/design.html': '<!doctype html><html><body></body></html>' }, [
-      '/repo/specs/001-x',
-    ]);
+    const designHtml = '<!doctype html><html><body><spec-visual shape="screens"></spec-visual></body></html>';
+    const { fs, store } = memFs({ '/repo/specs/001-x/design.html': designHtml }, ['/repo/specs/001-x']);
     const render = spyRenderer();
 
     await expect(
@@ -157,7 +157,7 @@ describe('runVisualOneStep refuses before any step completes, on an unreadable e
 
     // Render was never reached, and nothing was written anywhere.
     expect(render.calledWith).toEqual([]);
-    expect(store).toEqual({ '/repo/specs/001-x/design.html': '<!doctype html><html><body></body></html>' });
+    expect(store).toEqual({ '/repo/specs/001-x/design.html': designHtml });
   });
 });
 
@@ -187,7 +187,8 @@ describe('runVisualOneStep survives an unreachable render runtime (FR-004, T-300
     const { fs } = memFs(
       {
         '/repo/export/a.html': '<div data-screen-label="one"></div>',
-        '/repo/specs/001-x/design.html': '<!doctype html><html><body><h1>x</h1></body></html>',
+        '/repo/specs/001-x/design.html':
+          '<!doctype html><html><body><spec-visual shape="screens"></spec-visual><h1>x</h1></body></html>',
       },
       ['/repo/export', '/repo/specs/001-x'],
     );
@@ -286,7 +287,8 @@ describe('runVisualOneStep carries a delegate’s per-artboard refusals through 
     const { fs } = memFs(
       {
         '/repo/export/a.html': '<div data-screen-label="one"></div>',
-        '/repo/specs/001-x/design.html': '<!doctype html><html><body><h1>x</h1></body></html>',
+        '/repo/specs/001-x/design.html':
+          '<!doctype html><html><body><spec-visual shape="screens"></spec-visual><h1>x</h1></body></html>',
       },
       ['/repo/export', '/repo/specs/001-x'],
     );

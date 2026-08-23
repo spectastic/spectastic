@@ -19,6 +19,7 @@
  */
 
 import { resolve } from 'node:path';
+import { readVisualDeclarations } from '@spectastic/schema/visual';
 import { archiveSourceFetcher, looksLikeArchive } from '../providers/archive-source-fetcher.js';
 import { localSourceFetcher } from '../providers/local-source-fetcher.js';
 import type { FileSystem, Renderer } from '../types.js';
@@ -26,7 +27,7 @@ import { materialiseContractViews } from '../contracts/materialise-view.js';
 import { importDesignSource } from './import.js';
 import { conventionalVisualPrefix } from './location.js';
 import { materialiseVisualViews } from './materialise-view.js';
-import { renderDesign } from './render-capture.js';
+import { type RefusedCapture, renderDesign } from './render-capture.js';
 
 export interface OneStepInput {
   specId: string;
@@ -39,8 +40,18 @@ export type StepName = 'import' | 'render' | 'materialise';
 
 /** One step's outcome. A discriminated union, not a boolean plus optionals,
  *  so a caller cannot forget to check which case it got — the same
- *  reasoning the spec's own Data model states for `Step outcome`. */
-export type StepOutcome = { kind: 'completed' } | { kind: 'not-attempted'; reason: string };
+ *  reasoning the spec's own Data model states for `Step outcome`.
+ *
+ *  `completed-with-refusals` is the middle case FR-007 names: a delegate
+ *  (106's renderDesign) may legitimately refuse part of its own work — a
+ *  label collision, an unexpanded template — while completing the rest.
+ *  Flattening that into a bare `completed` loses the only detail that makes
+ *  it fixable; flattening it into `not-attempted` would claim the step
+ *  didn't run when it plainly did. */
+export type StepOutcome =
+  | { kind: 'completed' }
+  | { kind: 'completed-with-refusals'; refusals: RefusedCapture[] }
+  | { kind: 'not-attempted'; reason: string };
 
 export interface StepReport {
   step: StepName;
@@ -73,8 +84,33 @@ export async function checkVisualsExport(from: string, ctx: { cwd: string; fs: F
   await fetcher.fetch(from);
 }
 
+/** FR-008: a design declares no visual surface either by carrying no
+ *  `<spec-visual>` at all, or by declaring one with `shape="none"` (093's
+ *  own honest-negative). Anything else with a recognised, populated shape
+ *  is a real surface. Scoped to THIS spec's own design — unlike
+ *  `@spectastic/core`'s project-wide `declaredVisualState` (which
+ *  accumulates across every design in the tree for the validate-time gate),
+ *  this orchestrator only ever needs to know what the one spec it was
+ *  invoked for declared. */
+function hasVisualSurface(designHtml: string): boolean {
+  return readVisualDeclarations(designHtml).some((d) => d.shape !== undefined && d.shape !== 'none');
+}
+
 export async function runVisualOneStep(input: OneStepInput, ctx: OneStepContext): Promise<RunReport> {
   const report: RunReport = [];
+
+  // FR-008/T-311, checked first — before import, before render. Landing
+  // material a design says it doesn't need reproduces exactly the defect
+  // 093's own gate reports on the OTHER side of this same convention.
+  const designPath = `${ctx.cwd}/specs/${input.specId}/design.html`;
+  const designHtml = await ctx.fs.readFile(designPath);
+  if (!hasVisualSurface(designHtml)) {
+    const reason = 'the design declares no visual surface (FR-008)';
+    report.push({ step: 'import', outcome: { kind: 'not-attempted', reason } });
+    report.push({ step: 'render', outcome: { kind: 'not-attempted', reason } });
+    report.push({ step: 'materialise', outcome: { kind: 'not-attempted', reason } });
+    return report;
+  }
 
   // D-002: the import identity is the spec id itself — no second flag, and
   // no value parsed back out of a manifest. `into` is the same conventional
@@ -95,20 +131,32 @@ export async function runVisualOneStep(input: OneStepInput, ctx: OneStepContext)
     const location = /^[a-z][a-z0-9+.-]*:\/\//i.test(input.from)
       ? input.from
       : `file://${resolve(ctx.cwd, input.from)}`;
-    await renderDesign({ location, destDir }, { cwd: ctx.cwd, fs: ctx.fs, render: ctx.render });
-    report.push({ step: 'render', outcome: { kind: 'completed' } });
+    // T-300/FR-004: render-capture.ts throws a WHOLE-RUN refusal (unreachable
+    // egress, an unsafe destDir) before executing any artboard — that must
+    // not propagate out of this orchestrator as a rejection; import and
+    // materialise still complete. T-303/FR-007: a PER-artboard refusal
+    // (e.g. a label collision) is returned, not thrown, and must be carried
+    // through rather than flattened into a bare `completed`.
+    try {
+      const result = await renderDesign({ location, destDir }, { cwd: ctx.cwd, fs: ctx.fs, render: ctx.render });
+      report.push(
+        result.refused.length > 0
+          ? { step: 'render', outcome: { kind: 'completed-with-refusals', refusals: result.refused } }
+          : { step: 'render', outcome: { kind: 'completed' } },
+      );
+    } catch (err) {
+      report.push({ step: 'render', outcome: { kind: 'not-attempted', reason: (err as Error).message } });
+    }
   }
 
   // Materialise last — it writes INTO design.html, which must already exist
   // (the design generation that ran before this orchestrator was called).
-  const designPath = `${ctx.cwd}/specs/${input.specId}/design.html`;
-  const html = await ctx.fs.readFile(designPath);
   const out = await materialiseVisualViews(
-    await materialiseContractViews(html, ctx.fs, ctx.cwd, undefined, input.specId),
+    await materialiseContractViews(designHtml, ctx.fs, ctx.cwd, undefined, input.specId),
     ctx.fs,
     ctx.cwd,
   );
-  if (out !== html) await ctx.fs.writeFile(designPath, out);
+  if (out !== designHtml) await ctx.fs.writeFile(designPath, out);
   report.push({ step: 'materialise', outcome: { kind: 'completed' } });
 
   return report;
