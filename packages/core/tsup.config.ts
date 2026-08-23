@@ -30,6 +30,7 @@ export default defineConfig({
     'src/visual/render-naming.ts',
     'src/visual/location.ts',
     'src/visual/import.ts',
+    'src/visual/one-step.ts',
     'src/visual/source-fetcher.ts',
     'src/providers/archive-source-fetcher.ts',
     'src/providers/local-source-fetcher.ts',

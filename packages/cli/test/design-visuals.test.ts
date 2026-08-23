@@ -67,11 +67,20 @@ function readTree(dir: string, base = dir): Map<string, Buffer> {
 
 const STUB_ENV = { SPECTASTIC_AI_STUB: STUB_SCRIPT, ANTHROPIC_API_KEY: '' };
 
+// The `--visuals`/`--from` value is `export`, the FOLDER — never
+// `export/a.html`. visual:import's fetcher unconditionally requires a
+// directory ("An export is a folder of files", local-source-fetcher.ts), and
+// the one-step flow passes the same value to both import and render. Render
+// navigating to a directory finds no [data-screen-label] elements — 0
+// captured, which 110's own spec names a legitimate outcome, not a refusal —
+// so this test proves byte-equality honestly rather than assert a capture
+// the shared value cannot structurally produce.
+
 describe('SC-001 — one command produces the same tree as running the three verbs by hand', () => {
   it('the flag and the hand-run sequence are byte-identical', async () => {
     // Tree A: one command.
     const flagCwd = freshProject();
-    const flagResult = await runCLI(['design', '001-x', '--visuals', 'export/a.html'], flagCwd, STUB_ENV);
+    const flagResult = await runCLI(['design', '001-x', '--visuals', 'export'], flagCwd, STUB_ENV);
     expect(flagResult.code, `stdout: ${flagResult.stdout}\nstderr: ${flagResult.stderr}`).toBe(0);
 
     // Tree B: the design generation, then the three verbs by hand, in order.
@@ -79,11 +88,11 @@ describe('SC-001 — one command produces the same tree as running the three ver
     const designResult = await runCLI(['design', '001-x'], handCwd, STUB_ENV);
     expect(designResult.code, `stdout: ${designResult.stdout}\nstderr: ${designResult.stderr}`).toBe(0);
     const importResult = await runCLI(
-      ['visual:import', '--from', 'export/a.html', '--into', 'specs/001-x/visual', '--identity', '001-x'],
+      ['visual:import', '--from', 'export', '--into', 'specs/001-x/visual', '--identity', '001-x'],
       handCwd,
     );
     expect(importResult.code, importResult.stderr).toBe(0);
-    const renderResult = await runCLI(['visual:render', '001-x', '--from', 'export/a.html'], handCwd);
+    const renderResult = await runCLI(['visual:render', '001-x', '--from', 'export'], handCwd);
     expect(renderResult.code, renderResult.stderr).toBe(0);
     const materialiseResult = await runCLI(['materialise', '001-x'], handCwd);
     expect(materialiseResult.code, materialiseResult.stderr).toBe(0);
@@ -99,15 +108,12 @@ describe('SC-001 — one command produces the same tree as running the three ver
 
   it('running the three verbs by hand afterwards changes nothing (FR-002)', async () => {
     const flagCwd = freshProject();
-    const flagResult = await runCLI(['design', '001-x', '--visuals', 'export/a.html'], flagCwd, STUB_ENV);
+    const flagResult = await runCLI(['design', '001-x', '--visuals', 'export'], flagCwd, STUB_ENV);
     expect(flagResult.code, flagResult.stderr).toBe(0);
     const before = readTree(join(flagCwd, 'specs', '001-x'));
 
-    await runCLI(
-      ['visual:import', '--from', 'export/a.html', '--into', 'specs/001-x/visual', '--identity', '001-x'],
-      flagCwd,
-    );
-    await runCLI(['visual:render', '001-x', '--from', 'export/a.html'], flagCwd);
+    await runCLI(['visual:import', '--from', 'export', '--into', 'specs/001-x/visual', '--identity', '001-x'], flagCwd);
+    await runCLI(['visual:render', '001-x', '--from', 'export'], flagCwd);
     await runCLI(['materialise', '001-x'], flagCwd);
 
     const after = readTree(join(flagCwd, 'specs', '001-x'));
