@@ -203,3 +203,56 @@ describe('runVisualOneStep survives an unreachable render runtime (FR-004, T-300
     expect(report.filter((r) => r.step !== 'render').every((r) => r.outcome.kind === 'completed')).toBe(true);
   });
 });
+
+// T-301 (US3, FR-008). runVisualOneStep never reads design.html until the
+// materialise step today, so it has no way to know a design declares no
+// visual surface — import and render both run unconditionally. This is
+// expected to fail until T-311 adds the check.
+describe('runVisualOneStep skips both steps when the design declares no visual surface (FR-008, T-301)', () => {
+  it('reports import and materialise as not-attempted when the design has no <spec-visual>', async () => {
+    const { fs } = memFs(
+      {
+        '/repo/export/a.html': '<div data-screen-label="one"></div>',
+        '/repo/specs/001-x/design.html': '<!doctype html><html><body><h1>x</h1></body></html>',
+      },
+      ['/repo/export', '/repo/specs/001-x'],
+    );
+
+    const report = await runVisualOneStep({ specId: '001-x', from: 'export' }, { cwd: CWD, fs, render: spyRenderer() });
+
+    expect(report.map((r) => r.step)).toEqual(['import', 'render', 'materialise']);
+    expect(report.find((r) => r.step === 'import')?.outcome.kind).toBe('not-attempted');
+    expect(report.find((r) => r.step === 'render')?.outcome.kind).toBe('not-attempted');
+    expect(report.find((r) => r.step === 'materialise')?.outcome.kind).toBe('not-attempted');
+  });
+
+  it('reports import and materialise as not-attempted when the design declares shape="none"', async () => {
+    const { fs } = memFs(
+      {
+        '/repo/export/a.html': '<div data-screen-label="one"></div>',
+        '/repo/specs/001-x/design.html':
+          '<!doctype html><html><body><spec-visual shape="none"></spec-visual></body></html>',
+      },
+      ['/repo/export', '/repo/specs/001-x'],
+    );
+
+    const report = await runVisualOneStep({ specId: '001-x', from: 'export' }, { cwd: CWD, fs, render: spyRenderer() });
+
+    expect(report.every((r) => r.outcome.kind === 'not-attempted')).toBe(true);
+  });
+
+  it('still runs all three steps when a real shape is declared', async () => {
+    const { fs } = memFs(
+      {
+        '/repo/export/a.html': '<div data-screen-label="one"></div>',
+        '/repo/specs/001-x/design.html':
+          '<!doctype html><html><body><spec-visual shape="screens"></spec-visual></body></html>',
+      },
+      ['/repo/export', '/repo/specs/001-x'],
+    );
+
+    const report = await runVisualOneStep({ specId: '001-x', from: 'export' }, { cwd: CWD, fs, render: spyRenderer() });
+
+    expect(report.every((r) => r.outcome.kind === 'completed')).toBe(true);
+  });
+});
