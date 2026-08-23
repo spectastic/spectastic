@@ -4,8 +4,14 @@ import { tmpdir } from 'node:os';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { nodeFs } from '@spectastic/core/providers/node-fs';
+import { playwrightRenderer } from '@spectastic/render';
 import { describe, expect, it } from 'vitest';
-import { runOneStepVisuals } from '../src/commands/visual.js';
+import {
+  importVisualExport,
+  materialiseVisualDesign,
+  renderVisualExport,
+  runOneStepVisuals,
+} from '../src/commands/visual.js';
 
 /**
  * 110-visual-one-step CLI integration tests. US1 (T-101): the SC-001
@@ -95,43 +101,49 @@ const STUB_ENV = { SPECTASTIC_AI_STUB: STUB_SCRIPT, ANTHROPIC_API_KEY: '' };
 // the shared value cannot structurally produce.
 
 describe('SC-001 — one command produces the same tree as running the three verbs by hand', () => {
-  // Skipped, not fixed here or weakened — a real, structural gap found while
-  // implementing T-311 (FR-008): triaged as specs/110-visual-one-step/
-  // triage-log.html#T-001. designCommand's kernel (renderDesignHtml) is a
-  // fixed v0.1-scope template with no <spec-visual> section at all — the
-  // 093 Visual-surface question is asked only by the interactive
-  // slash-command's own interview, never by this deterministic kernel, and
-  // re-entry regenerates the whole document with zero preservation of
-  // anything outside the AI's fixed JSON schema. So EVERY design this
-  // harness (stub or real AI) can produce declares no visual surface —
-  // Tree A's FR-008 check (correctly) skips import/render/materialise,
-  // while Tree B's hand-run bypasses that check entirely, and the trees
-  // structurally diverge. Not a defect in 110's implementation (FR-008 is
-  // implemented exactly as specified); SC-001's own "Observed at" clause
-  // assumed a capability that has never existed. Triaged as a spec-layer
-  // fix, routed to /spectastic.propose rather than patched here.
-  it.skip('the flag and the hand-run sequence are byte-identical', async () => {
-    // Tree A: one command.
-    const flagCwd = freshProject();
-    const flagResult = await runCLI(['design', '001-x', '--visuals', 'export'], flagCwd, STUB_ENV);
-    expect(flagResult.code, `stdout: ${flagResult.stdout}\nstderr: ${flagResult.stderr}`).toBe(0);
+  // T-1003 (the 2026-08-23 propose): rewritten against SC-001's revised
+  // methodology. NOT reached through `spectastic design --visuals` any
+  // more — a design generated that way never declares a surface (see the
+  // grounding row in design.html), so a live two-tree comparison through
+  // the flag trivially passes by writing nothing on either side. Tree A is
+  // the orchestrator; Tree B is the SAME three CLI verb entry points it
+  // delegates to, called by hand — genuinely two code paths, not a
+  // comparison against the raw core kernels the orchestrator calls itself
+  // (which would be tautological, per the adversarial pass on the
+  // propose). Both trees start from an identical hand-authored,
+  // surface-declaring design, never touching `spectastic design`'s
+  // generation step at all.
+  //
+  // Also corrects a real error in the propose's own §6 task list: T-1003
+  // named `packages/core/test/visual-one-step.test.ts` as this test's
+  // path, but the CLI verb entry points it must compare against
+  // (importVisualExport / renderVisualExport / materialiseVisualDesign)
+  // live in `packages/cli`, which `packages/core` must never depend on —
+  // so this test can only live here, where the old skipped version
+  // already was. Caught while implementing, not silently followed.
+  it('the flag and the hand-run sequence are byte-identical', async () => {
+    const originalCwd = process.cwd();
+    let treeA: Map<string, Buffer>;
+    let treeB: Map<string, Buffer>;
+    try {
+      // Tree A: the orchestrator, one call.
+      const flagCwd = freshSurfaceProject();
+      process.chdir(flagCwd);
+      await runOneStepVisuals({ specId: '001-x', from: 'export' }, { cwd: flagCwd, fs: nodeFs });
+      treeA = readTree(join(flagCwd, 'specs', '001-x'));
 
-    // Tree B: the design generation, then the three verbs by hand, in order.
-    const handCwd = freshProject();
-    const designResult = await runCLI(['design', '001-x'], handCwd, STUB_ENV);
-    expect(designResult.code, `stdout: ${designResult.stdout}\nstderr: ${designResult.stderr}`).toBe(0);
-    const importResult = await runCLI(
-      ['visual:import', '--from', 'export', '--into', 'specs/001-x/visual', '--identity', '001-x'],
-      handCwd,
-    );
-    expect(importResult.code, importResult.stderr).toBe(0);
-    const renderResult = await runCLI(['visual:render', '001-x', '--from', 'export'], handCwd);
-    expect(renderResult.code, renderResult.stderr).toBe(0);
-    const materialiseResult = await runCLI(['materialise', '001-x'], handCwd);
-    expect(materialiseResult.code, materialiseResult.stderr).toBe(0);
-
-    const treeA = readTree(join(flagCwd, 'specs', '001-x'));
-    const treeB = readTree(join(handCwd, 'specs', '001-x'));
+      // Tree B: the same three CLI verb entry points, called by hand, in
+      // order, over an identical starting tree.
+      const handCwd = freshSurfaceProject();
+      process.chdir(handCwd);
+      const handCtx = { cwd: handCwd, fs: nodeFs };
+      await importVisualExport({ from: 'export', into: 'specs/001-x/visual', identity: '001-x' }, handCtx);
+      await renderVisualExport({ specId: '001-x', from: 'export' }, { ...handCtx, render: playwrightRenderer() });
+      await materialiseVisualDesign({ specId: '001-x' }, handCtx);
+      treeB = readTree(join(handCwd, 'specs', '001-x'));
+    } finally {
+      process.chdir(originalCwd);
+    }
 
     expect([...treeA.keys()].sort()).toEqual([...treeB.keys()].sort());
     for (const [path, bytes] of treeA) {
