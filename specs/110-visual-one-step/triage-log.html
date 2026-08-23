@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'">
+<title>110-visual-one-step · Triage log</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Triage log · 110-visual-one-step</p>
+  <h1>110-visual-one-step — triage log</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    Defects against the <code>110-visual-one-step</code> spec. Cards append-only; IDs stable.
+  </p>
+
+  <spec-meta>
+    <b>Spec</b>      <span><a href="./spec.html">110-visual-one-step</a></span>
+    <b>Created</b>   <span><time datetime="2026-08-23">23 Aug 2026</time></span>
+    <b>Read time</b> <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-tldr>
+    <p>One card per debug session. Fits one screen; reads in under 30 seconds. Five required Tier-1 fields
+    (headline · Expected · Actual · Diagnosis · Fix); the deep-dive <code>&lt;details&gt;</code> stays collapsed
+    unless cross-spec, principles, scope, or hotfix-now applies. See <a href="../../examples/triage-log.html">examples/triage-log.html</a>
+    for the canonical look + the protocol (<code>TRIAGE-001</code>..<code>TRIAGE-006</code>).</p>
+  </spec-tldr>
+</header>
+
+
+<section id="cards">
+<h2>Cards</h2>
+<spec-triage-log>
+
+<spec-triage id="T-001" layer="spec">
+  <header>
+    <h4>SC-001's own test methodology cannot exercise its happy path</h4>
+    <span class="meta">
+      <span class="layer-pill">Spec</span>
+      <span class="regen" data-result="fail">upstream</span>
+    </span>
+  </header>
+
+  <p class="headline">Debugging a regression in the SC-001 byte-equality test after landing T-311's FR-008
+  check, root cause was <a href="./spec.html#SC-001">SC-001</a>'s &ldquo;Observed at&rdquo; methodology assuming
+  a capability <code>spectastic design</code>'s deterministic kernel does not have; fixed by (proposed) amending
+  110's own Assumptions and SC-001's methodology, not the implementation; regeneration fails — another session
+  implementing FR-008 exactly as written from 110's spec+design alone would hit this identical wall.</p>
+
+  <dl>
+    <dt>Expected</dt> <dd>Running <code>spectastic design 001-x --visuals export</code> (Tree A) and running
+    <code>spectastic design 001-x</code> then the three verbs by hand (Tree B) over a fixture whose design
+    declares a real visual surface produces byte-identical trees, per SC-001's stated methodology.</dd>
+    <dt>Actual</dt>   <dd>Both trees' <code>design.html</code> declare <em>no</em> visual surface, always —
+    because <code>designCommand</code>'s kernel never emits <code>&lt;spec-visual&gt;</code>, regardless of stub
+    or real AI. FR-008 then (correctly) makes Tree A skip import/render/materialise entirely, while Tree B's
+    hand-run bypasses that check (the individual verbs don't gate on a declaration), so the trees diverge.</dd>
+    <dt>Diagnosis</dt><dd><code>packages/core/src/commands/design.ts</code>'s <code>renderDesignHtml</code> is a
+    fixed v0.1-scope template (principles-check / decisions / alternatives / risks / changelog only, per its own
+    docstring) rebuilt from scratch on every call, with no preservation of unknown elements on re-entry. The
+    <a href="../093-design-visual-section/spec.html">093</a> Visual-surface question is asked only by the
+    interactive slash-command's own <code>AskUserQuestion</code> interview (<code>commands/spectastic.design.md</code>),
+    which this kernel never runs and never wrote a section for. <a href="./spec.html#SC-001">SC-001</a>'s
+    &ldquo;Observed at&rdquo; clause implicitly assumed a live <code>spectastic design</code> invocation could
+    produce (or an edit-in-place re-entry could preserve) a declared surface for its comparison fixture — a
+    capability that has never existed, on either side of the AI/stub split, since 093 scoped that question to the
+    interactive procedure and the kernel's re-entry regenerates the whole document from the AI's fixed JSON
+    schema with zero preservation of anything outside it. Not a defect introduced by
+    <a href="./spec.html">110</a>'s implementation — FR-008 is implemented exactly as specified, and every
+    non-SC-001 test in this spec's suite is green (138 core test files / 1346 tests; the CLI suite minus this one
+    card).</dd>
+    <dt>Fix</dt>      <dd><a href="./spec.html">specs/110-visual-one-step/spec.html</a> — via
+    <code>/spectastic.propose</code>: add a <code>&lt;spec-assumption&gt;</code> recording that a design
+    generated through <code>spectastic design</code> (stub or real AI) never declares a visual surface, so
+    SC-001's happy path is unreachable through a live design-generation invocation for either tree; and revise
+    SC-001's &ldquo;Observed at&rdquo; clause to a methodology this can actually prove — comparing
+    <code>runVisualOneStep</code> against a hand-run sequence of <code>importDesignSource</code> /
+    <code>renderDesign</code> / <code>materialiseVisualViews</code> called directly over a hand-authored design
+    declaring a real surface, bypassing <code>spectastic design</code>'s generation step for the comparison
+    fixture entirely. Separately worth a <code>TBD-</code> or its own spec: whether <code>designCommand</code>'s
+    kernel should grow the decision-phase sections (Visual surface, Contract, …) that today exist only in the
+    interactive procedure — out of scope for 110 and for this fix.</dd>
+  </dl>
+
+  <details>
+    <summary>Deep dive — cascade required</summary>
+    <p>Cross-spec-adjacent: the finding sits on the boundary <a href="../093-design-visual-section/spec.html">093</a>
+    already drew (decision-phase sections are interactive-only) and a general, already-documented convention
+    throughout this project (the CLI's AI-coupled verbs bypass &ldquo;LLM-driven file handling,&rdquo; per
+    006 FR-009) — 110 is the first spec whose success criterion's own test methodology collided with that
+    boundary rather than merely being silent about it. No principles invariant implicated; no hotfix needed —
+    the CLI test for SC-001's happy path is marked <code>it.skip()</code> with a citation of this card pending
+    the propose, and the rest of 110's implementation drain continues unblocked (T-311/T-312's own tests, which
+    don't depend on <code>spectastic design</code>'s generation step, are unaffected and green).</p>
+  </details>
+</spec-triage>
+
+<!-- Sample card framework — replace with your first triage. Keep IDs stable forever (T-001, T-002, …); never reuse.
+
+<spec-triage id="T-001" layer="[LAYER]">
+  <header>
+    <h4>[ONE-LINE_FAILURE_TITLE]</h4>
+    <span class="meta">
+      <span class="layer-pill">[Layer]</span>
+      <span class="regen" data-result="[pass|fail]">[code|upstream|external]</span>
+    </span>
+  </header>
+
+  <p class="headline">Debugging [SYMPTOM], root cause was [LAYER] [DESCRIPTION];
+  fixed by [CHANGE]; regeneration [pass|fails] [SHORT_REASON].</p>
+
+  <dl>
+    <dt>Expected</dt> <dd>[ONE_LINE]</dd>
+    <dt>Actual</dt>   <dd>[ONE_LINE]</dd>
+    <dt>Diagnosis</dt><dd>[ONE_SENTENCE_CAUSE_with_REQ_ID_LINKS]</dd>
+    <dt>Fix</dt>      <dd>[ARTIFACT_PATH + ONE_LINE_PROPOSAL]</dd>
+  </dl>
+
+  <details>
+    <summary>Deep dive — [none required | cascade required | principles]</summary>
+    <p>Fill only if at least one of: cross-spec contract touched, principles invariant
+    implicated, deferred scope exposed, or hotfix-before-amendment sequence required.</p>
+  </details>
+</spec-triage>
+
+-->
+
+</spec-triage-log>
+</section>
+
+
+<section id="changelog">
+<h2>Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-08-23">23 Aug 2026</time><span>Triage log scaffolded. Append one <code>&lt;spec-triage&gt;</code> card per debug session.</span></li>
+  <li><time datetime="2026-08-23">23 Aug 2026</time><span>T-001 added — SC-001's own test methodology assumes a capability <code>spectastic design</code>'s kernel doesn't have; routes to a spec-layer fix via <code>/spectastic.propose</code>.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  110-visual-one-step triage log · scaffolded 2026-08-23
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>

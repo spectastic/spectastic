@@ -209,15 +209,26 @@ export async function materialiseVisualDesign(
  * `@spectastic/render` (106 FR-004/NFR-002): `design.ts` (T-112) calls this
  * function and never holds a renderer of its own, which is what keeps the
  * capability-reach source scan reading exactly one module.
+ *
+ * `noRender` (T-310, --no-render) skips constructing a renderer at all — no
+ * `@spectastic/render` import happens on that path, so there is no
+ * reachability check to run and nothing to fail: the orchestrator's own
+ * "no render port supplied" not-attempted (already exercised by T-100/T-200)
+ * covers it. Without the flag, a renderer is always constructed; an
+ * unreachable runtime is still non-fatal (T-300/FR-004) — the orchestrator
+ * catches renderDesign's whole-run refusal and reports it as not-attempted
+ * rather than aborting the run.
  */
 export async function runOneStepVisuals(
   input: { specId: string; from: string },
   ctx: { cwd: string; fs: FileSystem },
+  opts: { noRender?: boolean } = {},
 ): Promise<RunReport> {
-  const [{ runVisualOneStep }, { playwrightRenderer }] = await Promise.all([
-    import('@spectastic/core/visual/one-step'),
-    import('@spectastic/render'),
-  ]);
+  const { runVisualOneStep } = await import('@spectastic/core/visual/one-step');
+  if (opts.noRender) {
+    return runVisualOneStep(input, { cwd: ctx.cwd, fs: ctx.fs });
+  }
+  const { playwrightRenderer } = await import('@spectastic/render');
   return runVisualOneStep(input, { cwd: ctx.cwd, fs: ctx.fs, render: playwrightRenderer() });
 }
 

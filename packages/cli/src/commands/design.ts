@@ -16,9 +16,10 @@ export function registerDesign(program: Command): void {
       '--visuals <export>',
       'land a design export in this same run — import, render and materialise its embedded view, all three by delegation',
     )
+    .option('--no-render', 'with --visuals, skip rendering — import and materialise only, no browser required')
     .option('--commit', 'force a git commit for this run (overrides git.auto)')
     .option('--no-commit', 'skip the git commit for this run (overrides git.auto)')
-    .action(async (specId: string, opts: { force?: boolean; visuals?: string; commit?: boolean }) => {
+    .action(async (specId: string, opts: { force?: boolean; visuals?: string; render?: boolean; commit?: boolean }) => {
       const [
         { designCommand },
         { createAIProvider },
@@ -124,7 +125,11 @@ export function registerDesign(program: Command): void {
       const commitPaths = [designPath];
       if (opts.visuals !== undefined) {
         const { runOneStepVisuals } = await import('./visual.js');
-        const report = await runOneStepVisuals({ specId, from: opts.visuals }, { cwd: process.cwd(), fs: nodeFs });
+        const report = await runOneStepVisuals(
+          { specId, from: opts.visuals },
+          { cwd: process.cwd(), fs: nodeFs },
+          { noRender: opts.render === false },
+        );
         for (const { step, outcome } of report) {
           process.stdout.write(
             outcome.kind === 'completed' ? `${step}: completed\n` : `${step}: not attempted — ${outcome.reason}\n`,
