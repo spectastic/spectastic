@@ -75,6 +75,21 @@ export function registerDesign(program: Command): void {
         // optional
       }
 
+      // --visuals preflight (110-visual-one-step, T-210 / FR-003 / NFR-001):
+      // before the model call, which is the expensive one. A bad export path
+      // must cost a second, not a design generation — checked here, before
+      // createAIProvider is even constructed, so a refusal never reaches the
+      // "no AI provider" message either.
+      if (opts.visuals !== undefined) {
+        const { checkVisualsExport } = await import('@spectastic/core/visual/one-step');
+        try {
+          await checkVisualsExport(opts.visuals, { cwd: process.cwd(), fs: nodeFs });
+        } catch (err) {
+          process.stderr.write(`${(err as Error).message}\n`);
+          process.exit(2);
+        }
+      }
+
       // Construct AI provider only after the gate decides to proceed — keeps the gate's
       // informative refuse/warn message reachable when ANTHROPIC_API_KEY is missing.
       const ai = await createAIProvider({ verb: 'design' });
@@ -103,9 +118,9 @@ export function registerDesign(program: Command): void {
       await showCorpusHintOnce(process.cwd(), result.corpusHint);
 
       // --visuals (110-visual-one-step, T-112): AFTER the design generation
-      // has already succeeded — US1's happy-path ordering. FR-003's
-      // refuse-before-the-model-call promise is US2's, which reorders this
-      // (T-210); landing it here first is the spec's own MVP-first sequence.
+      // has already succeeded. The export was already confirmed readable
+      // above, before the model call — this is the happy path, not the
+      // preflight.
       const commitPaths = [designPath];
       if (opts.visuals !== undefined) {
         const { runOneStepVisuals } = await import('./visual.js');

@@ -59,6 +59,20 @@ export interface OneStepContext {
   render?: Renderer;
 }
 
+/**
+ * The preflight FR-003/D-003 names — export readability, checked in
+ * isolation, before anything expensive. Reuses the exact fetcher
+ * `importDesignSource` itself calls first (`import.ts:256`), so this and the
+ * real import agree on what "resolves" means by construction rather than by
+ * two implementations staying in sync. Throws the same typed errors a real
+ * import would (`SourceNotFoundError`, `SourceOutsideProjectError`); does
+ * not land anything.
+ */
+export async function checkVisualsExport(from: string, ctx: { cwd: string; fs: FileSystem }): Promise<void> {
+  const fetcher = looksLikeArchive(from) ? archiveSourceFetcher(ctx.cwd) : localSourceFetcher(ctx.fs, ctx.cwd);
+  await fetcher.fetch(from);
+}
+
 export async function runVisualOneStep(input: OneStepInput, ctx: OneStepContext): Promise<RunReport> {
   const report: RunReport = [];
 
@@ -66,9 +80,7 @@ export async function runVisualOneStep(input: OneStepInput, ctx: OneStepContext)
   // no value parsed back out of a manifest. `into` is the same conventional
   // prefix the render step derives below, so both land under one directory.
   const into = conventionalVisualPrefix('screens', input.specId) ?? `specs/${input.specId}/visual`;
-  const fetcher = looksLikeArchive(input.from)
-    ? archiveSourceFetcher(ctx.cwd)
-    : localSourceFetcher(ctx.fs, ctx.cwd);
+  const fetcher = looksLikeArchive(input.from) ? archiveSourceFetcher(ctx.cwd) : localSourceFetcher(ctx.fs, ctx.cwd);
   await importDesignSource({ from: input.from, into, identity: input.specId }, fetcher, ctx.fs);
   report.push({ step: 'import', outcome: { kind: 'completed' } });
 
@@ -80,7 +92,9 @@ export async function runVisualOneStep(input: OneStepInput, ctx: OneStepContext)
     // A bare filesystem path needs a scheme before a browser will navigate to
     // it; a URL is passed through unchanged — the same rule visual:render's
     // own wrapper applies.
-    const location = /^[a-z][a-z0-9+.-]*:\/\//i.test(input.from) ? input.from : `file://${resolve(ctx.cwd, input.from)}`;
+    const location = /^[a-z][a-z0-9+.-]*:\/\//i.test(input.from)
+      ? input.from
+      : `file://${resolve(ctx.cwd, input.from)}`;
     await renderDesign({ location, destDir }, { cwd: ctx.cwd, fs: ctx.fs, render: ctx.render });
     report.push({ step: 'render', outcome: { kind: 'completed' } });
   }
