@@ -191,6 +191,61 @@
   </details>
 </spec-triage>
 
+<spec-triage id="T-005" layer="implementation">
+  <header>
+    <h4>Swift formatter detection misses Apple's <code>.swift-format</code></h4>
+    <span class="meta">
+      <span class="layer-pill">Implementation</span>
+      <span class="regen" data-result="pass">code</span>
+    </span>
+  </header>
+
+  <p class="headline">Debugging <code>spectastic enforce</code> reporting <code>formatter</code> missing on a Swift
+  project that has one, root cause was the <code>SIGNALS</code> table listing only <code>.swiftformat</code>
+  (third-party SwiftFormat) and not <code>.swift-format</code> (Apple's, which ships in the toolchain); fixed by adding
+  the missing filename beside it; regeneration passes — <a href="./spec.html#FR-002">FR-002</a> requires formatter
+  detection across Swift and deliberately does not enumerate filenames, so an incomplete lookup table is code drift,
+  not an upstream gap.</p>
+
+  <dl>
+    <dt>Expected</dt> <dd>A Swift project carrying a <code>.swift-format</code> configuration is credited with the
+    <code>formatter</code> category, the same way <code>.swiftformat</code> is.</dd>
+    <dt>Actual</dt>   <dd><code>enforce</code> reports <code>formatter</code> missing. Found while dogfooding the last
+    published release, so this is live for downstream users, not a working-tree-only defect.</dd>
+    <dt>Diagnosis</dt><dd><code>SIGNALS</code> in <span class="path">packages/core/src/enforce/detect.ts</span> carries
+    exactly one Swift formatter entry, <code>.swiftformat</code> — the config file of the third-party
+    <a href="https://github.com/nicklockwood/SwiftFormat">SwiftFormat</a>. Apple's <code>swift-format</code> reads
+    <code>.swift-format</code> and is a different tool with a different filename; nothing matches it. Verified on this
+    machine that it genuinely ships with the toolchain
+    (<code>xcrun --find swift-format</code> resolves inside <code>XcodeDefault.xctoolchain</code>, Swift 6.3.3) — the
+    same footing as <code>gofmt</code> and <code>rustfmt</code>, both of which this table already credits via
+    <code>go.mod</code> and <code>Cargo.toml</code>. Not an <a href="./spec.html#FR-010">FR-010</a>
+    structurally-undetectable case: Swift is listed there for <code>observability</code> only, and a formatter config
+    file is exactly as presence-detectable here as everywhere else. <a href="./spec.html#FR-002">FR-002</a> names Swift
+    in scope for detection but spells out signal <em>rules</em> only where they are non-obvious (a coverage threshold
+    rather than a bare library; an observability exporter by its deliberate export name), so the filename list is an
+    implementation detail and this is a missing row in it.</dd>
+    <dt>Fix</dt>      <dd><span class="path">packages/core/src/enforce/detect.ts</span> — add
+    <code>{ ecosystem: 'swift', category: 'formatter', file: '.swift-format' }</code> beside the existing
+    <code>.swiftformat</code> row, so both the third-party and the Apple formatter are credited. A test asserting a
+    project carrying only <code>.swift-format</code> reports <code>formatter</code> covered pins it.</dd>
+  </dl>
+
+  <details>
+    <summary>Deep dive — a broader question surfaced, deliberately not promoted</summary>
+    <p>No cross-spec contract, no principles invariant, no hotfix sequencing needed. One larger question is
+    <strong>surfaced rather than folded in</strong>: the convention that <em>a formatter shipping with the toolchain
+    counts as present</em> exists only as inline comments on the <code>go.mod</code> and <code>Cargo.toml</code> rows
+    (&ldquo;gofmt ships with the toolchain&rdquo;), in no requirement — which is why it was applied to Go and Rust and
+    never considered for Swift. Recording it in <a href="./spec.html#FR-002">FR-002</a> and crediting
+    <code>Package.swift</code> would be a <em>spec</em>-layer change, and a contestable one: it would mark
+    <code>formatter</code> covered for every Swift package whether or not anyone formats, and <code>swift-format</code>
+    is far less universally adopted in Swift than <code>gofmt</code> is in Go, so the same trade may overclaim here
+    where it does not there. That is a separate decision on its own merits; this card fixes the false report without
+    pre-empting it.</p>
+  </details>
+</spec-triage>
+
 </spec-triage-log>
 </section>
 
@@ -199,6 +254,7 @@
 <h2>Change log</h2>
 <spec-changelog>
 <ol>
+  <li><time datetime="2026-08-23">23 Aug 2026</time><span>T-005 added &mdash; Swift <code>formatter</code> detection lists only <code>.swiftformat</code> (third-party SwiftFormat) and misses <code>.swift-format</code> (Apple's, verified as shipping in the Xcode toolchain on Swift 6.3.3 &mdash; the same footing as the <code>gofmt</code> and <code>rustfmt</code> rows already credited), so a Swift project with a formatter is reported as missing one. Found while dogfooding the last published release. <code>implementation</code>, regen <code>pass</code>: add the missing filename beside the existing row. The unrecorded &ldquo;ships with the toolchain&rdquo; convention that let this through is surfaced in the deep-dive, not promoted.</span></li>
     <li><time datetime="2026-08-01">01 Aug 2026</time><span>Closure backfill under <a href="../088-change-management/spec.html#REQ-CHANGE-009">REQ-CHANGE-009</a> — every card in this log was verified against the current code and the resolved ones marked <code>data-status="done"</code> with a <code>&lt;dt&gt;Fixed&lt;/dt&gt;</code> row recording what actually shipped. Cards left unmarked are genuinely still owed work; an unmarked card now means open, per the new contract.</span></li>
 <li><time datetime="2026-08-01">01 Aug 2026</time><span>T-004 added — the <code>contracts</code> axis seeds <code>contract-first</code> at standard while the enforcement floor requires it only at verified, so a standard project declares a posture nothing checks; cross-spec between 041 and 042, needs a proposal to pick between lowering the axis, raising the floor, or stating that axes may lead the floor.</span></li>
   <li><time datetime="2026-08-02">02 Aug 2026</time><span>T-004 closed — resolution (c) shipped as 041 <code>FR-010</code> via <a href="../041-init-profiles/changes/archive/2026-08-02-axes-may-lead-the-floor/proposal.html">2026-08-02-axes-may-lead-the-floor</a>: axes declare posture, may lead the enforced floor, and are never a guarantee. No manifest value moved; the clause is machine-guarded.</span></li>
