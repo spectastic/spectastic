@@ -1,6 +1,6 @@
 import { resolve } from 'node:path';
 import type { Command } from 'commander';
-import type { FileSystem, KernelContext } from '@spectastic/core';
+import type { FileSystem, Finding, KernelContext } from '@spectastic/core';
 import type { BriefScreen } from '@spectastic/core/visual/brief-read';
 import type { ImportLedger } from '@spectastic/core/visual/import';
 import type { RefusedCapture, WrittenCapture } from '@spectastic/core/visual/render-capture';
@@ -138,6 +138,69 @@ export async function renderVisualExport(
   return { written: result.written, refused: result.refused, undeclared };
 }
 
+export interface MaterialiseVisualDesignInput {
+  specId: string;
+  /** Report staleness instead of writing — mirrors the `--check` flag. */
+  check?: boolean | undefined;
+}
+
+/** Every outcome `materialise` can reach — a discriminated union rather than
+ *  a boolean-plus-optionals, so a caller cannot forget to check which case
+ *  it got (the same reasoning as `Step outcome` in 110's own Data model). */
+export type MaterialiseVisualDesignResult =
+  | { kind: 'no-design' }
+  | { kind: 'check-current' }
+  | { kind: 'check-stale'; findings: Finding[] }
+  | { kind: 'nothing-to-write' }
+  | { kind: 'written'; path: string };
+
+/**
+ * `materialise`'s action body, extracted (110-visual-one-step T-012) so it is
+ * callable without commander or `process.exit`. No behaviour change — same
+ * two calls (`materialiseContractViews` then `materialiseVisualViews`,
+ * contract first per the original composition), same `--check` short
+ * circuit. The wrapper below maps each result kind to today's exact stdout
+ * line, exit code and file write.
+ */
+export async function materialiseVisualDesign(
+  input: MaterialiseVisualDesignInput,
+  ctx: { cwd: string; fs: FileSystem },
+): Promise<MaterialiseVisualDesignResult> {
+  const [{ materialiseVisualViews }, { materialiseContractViews }, { visualViewDriftFindings }] = await Promise.all([
+    import('@spectastic/core/visual/materialise-view'),
+    import('@spectastic/core/contracts/materialise-view'),
+    import('@spectastic/core/commands/validate'),
+  ]);
+
+  const path = `${ctx.cwd}/specs/${input.specId}/design.html`;
+
+  let html: string;
+  try {
+    html = await ctx.fs.readFile(path);
+  } catch {
+    return { kind: 'no-design' };
+  }
+
+  if (input.check === true) {
+    const findings = await visualViewDriftFindings(html, `specs/${input.specId}/design.html`, ctx.fs, ctx.cwd);
+    return findings.length === 0 ? { kind: 'check-current' } : { kind: 'check-stale', findings };
+  }
+
+  // BOTH views, because the gap this command exists to close is not specific
+  // to the visual one — the contract view has the identical hole (072/T-001)
+  // and closing it here is what makes the entry point shared rather than a
+  // second one-off beside the first.
+  const out = await materialiseVisualViews(
+    await materialiseContractViews(html, ctx.fs, ctx.cwd, undefined, input.specId),
+    ctx.fs,
+    ctx.cwd,
+  );
+  if (out === html) return { kind: 'nothing-to-write' };
+
+  await ctx.fs.writeFile(path, out);
+  return { kind: 'written', path };
+}
+
 /**
  * Register the `visual` subcommand (spec 099-visual-embedded-view, FR-003).
  *
@@ -166,53 +229,31 @@ export function registerVisual(program: Command): void {
     .argument('<spec-id>', 'the spec whose design should be materialised, e.g. 001-auth-service')
     .option('--check', 'report whether the view is stale instead of writing it')
     .action(async (specId: string, opts: { check?: boolean }) => {
-      const [{ materialiseVisualViews }, { materialiseContractViews }, { visualViewDriftFindings }, { nodeFs }] =
-        await Promise.all([
-          import('@spectastic/core/visual/materialise-view'),
-          import('@spectastic/core/contracts/materialise-view'),
-          import('@spectastic/core/commands/validate'),
-          import('@spectastic/core/providers/node-fs'),
-        ]);
+      const [{ nodeFs }] = await Promise.all([import('@spectastic/core/providers/node-fs')]);
 
-      const cwd = process.cwd();
-      const path = `${cwd}/specs/${specId}/design.html`;
-
-      let html: string;
-      try {
-        html = await nodeFs.readFile(path);
-      } catch {
-        process.stderr.write(`No design at specs/${specId}/design.html\n`);
-        process.exit(1);
-        return;
-      }
-
-      if (opts.check === true) {
-        const findings = await visualViewDriftFindings(html, `specs/${specId}/design.html`, nodeFs, cwd);
-        if (findings.length === 0) {
+      const result = await materialiseVisualDesign({ specId, check: opts.check }, { cwd: process.cwd(), fs: nodeFs });
+      switch (result.kind) {
+        case 'no-design':
+          process.stderr.write(`No design at specs/${specId}/design.html\n`);
+          process.exit(1);
+          break;
+        case 'check-current':
           process.stdout.write('view is current\n');
           process.exit(0);
-        }
-        for (const f of findings) process.stderr.write(`${f.message}\n`);
-        process.exit(1);
-        return;
+          break;
+        case 'check-stale':
+          for (const f of result.findings) process.stderr.write(`${f.message}\n`);
+          process.exit(1);
+          break;
+        case 'nothing-to-write':
+          process.stdout.write('view is current — nothing written\n');
+          process.exit(0);
+          break;
+        case 'written':
+          process.stdout.write(`materialised the visual view into specs/${specId}/design.html\n`);
+          process.exit(0);
+          break;
       }
-
-      // BOTH views, because the gap this command exists to close is not
-      // specific to the visual one — the contract view has the identical hole
-      // (072/T-001) and closing it here is what makes the entry point shared
-      // rather than a second one-off beside the first.
-      const out = await materialiseVisualViews(
-        await materialiseContractViews(html, nodeFs, cwd, undefined, specId),
-        nodeFs,
-        cwd,
-      );
-      if (out === html) {
-        process.stdout.write('view is current — nothing written\n');
-        process.exit(0);
-      }
-      await nodeFs.writeFile(path, out);
-      process.stdout.write(`materialised the visual view into specs/${specId}/design.html\n`);
-      process.exit(0);
     });
 
   program
