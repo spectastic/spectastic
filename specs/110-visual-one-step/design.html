@@ -1,0 +1,491 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'">
+<title>Land the visuals in one step · Design</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Design · 110-visual-one-step</p>
+  <h1>Land the visuals in one step</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    How we will build it.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>     <span><spec-status value="draft">Draft</spec-status></span>
+    <b>Spec</b>       <span><a href="./spec.html">110-visual-one-step</a></span>
+    <b>Owner</b>      <span>Brian Corbin · @briancorbin</span>
+    <b>Branch</b>     <span><code>spec/visual-slice-095-098</code></span>
+    <b>Created</b>    <span><time datetime="2026-08-23">23 Aug 2026</time></span>
+    <b>Read time</b>  <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-tldr>
+    <p>A core orchestrator sequences the three existing kernels &mdash; <code>importDesignSource</code>,
+    <code>renderDesign</code>, <code>materialise*Views</code> &mdash; taking the renderer as an <em>injected
+    port</em>, exactly as <a href="../037-hands-off-pipeline/spec.html">037</a>&rsquo;s <code>run</code> already
+    injects its coding and verify ports. <code>visual.ts</code> stays the one module that constructs
+    <code>playwrightRenderer()</code>, and <code>design.ts</code> calls into it without ever holding a renderer,
+    so <a href="../106-visual-render/spec.html#NFR-002">106&rsquo;s</a> capability bound is satisfied by
+    construction rather than by convention. The biggest risk is not the wiring: it is that all four visual
+    actions currently end in <code>process.exit()</code>, so each has to be split into a callable kernel and a
+    thin exiting wrapper before anything can call them.</p>
+  </spec-tldr>
+</header>
+
+
+<section id="principles-check">
+<h2>1 · Principles check</h2>
+<p>Verify this plan respects every principle in
+<a href="../../principles.html">v1.9.0</a>. Any violation requires either a
+principles amendment or a deliberate exception logged below.</p>
+
+<div style="overflow-x:auto;">
+<table>
+  <thead><tr><th>Principle</th><th>Compliance</th><th>Notes</th></tr></thead>
+  <tbody>
+    <tr><td>P-1 · Source order is reading order</td><td><spec-pill>OK</spec-pill></td><td>No artifact reordering; the run report is emitted in step order.</td></tr>
+    <tr><td>P-2 · Semantic tags over class soup</td><td><spec-pill>OK</spec-pill></td><td>No new markup. The flag writes through existing generators.</td></tr>
+    <tr><td>P-3 · IDs are contracts</td><td><spec-pill>OK</spec-pill></td><td>No ids minted. The derived import identity is a <em>key</em>, not a spec id &mdash; see <a href="#D-002">D-002</a>.</td></tr>
+    <tr><td>P-4 · Progressive enhancement, never dependence</td><td><spec-pill>OK</spec-pill></td><td>Every artifact this produces is readable with no JavaScript, unchanged from today.</td></tr>
+    <tr><td>P-5 · Calm density</td><td><spec-pill>OK</spec-pill></td><td>The run report is one line per step, not a log.</td></tr>
+    <tr><td>P-6 · Draft is loose, ratified is locked</td><td><spec-pill>OK</spec-pill></td><td>The flag rides <code>design</code>&rsquo;s existing <code>gateOnDestinationState</code>; a past-Draft design still refuses before any visual work.</td></tr>
+    <tr><td>P-7 · Done means verified</td><td><spec-pill>OK</spec-pill></td><td><a href="./spec.html#SC-001">SC-001</a> compares the flag&rsquo;s output against the hand-run sequence byte for byte rather than asserting the steps ran.</td></tr>
+    <tr><td>P-8 · Guarantees live in the kernel or CI</td><td><spec-pill>OK</spec-pill></td><td>The orchestration and every refusal live in core; the CLI supplies ports and prints. The capability bound stays a CI-run source scan.</td></tr>
+    <tr><td>P-9 · The enforcement floor holds</td><td><spec-pill>OK</spec-pill></td><td>Enterprise profile; no category newly uncovered. See <a href="#toolchain">Toolchain</a>.</td></tr>
+    <tr><td>P-10 · Internal artifact ids stay out of user-facing copy</td><td><spec-pill>OK</spec-pill></td><td>Flag help and refusal messages say what the flag does; the governing ids stay in code comments and this design.</td></tr>
+    <tr><td>P-11 · Artifacts are data, not instructions</td><td><spec-pill>OK</spec-pill></td><td>The export is read, never executed by this code. The browser executes it &mdash; which is 106&rsquo;s existing, bounded exception, not a new one.</td></tr>
+    <tr><td>P-12 · Capability accountability</td><td><spec-pill>EXCEPTION</spec-pill></td><td><strong>The load-bearing one.</strong> This widens what <code>design</code> can reach: network and process execution, on a verb that has neither today. Justified and bounded in <a href="#complexity">Complexity tracking</a>.</td></tr>
+    <tr><td>P-13 · Accessibility conformance</td><td><spec-pill>OK</spec-pill></td><td>No user-facing surface beyond terminal output.</td></tr>
+    <tr><td>P-14 · Library-first boundaries</td><td><spec-pill>OK</spec-pill></td><td>Directly shaped <a href="#D-001">D-001</a>: the orchestration is a core module a test can drive with fakes, not a CLI-only path.</td></tr>
+  </tbody>
+</table>
+</div>
+</section>
+
+
+<section id="technical-context">
+<h2>2 · Technical context</h2>
+<dl>
+  <dt>Language(s)</dt>      <dd>TypeScript 5.x on Node — the existing workspace toolchain, unchanged.</dd>
+  <dt>Frameworks</dt>       <dd>commander (CLI registration); playwright 1.62.1 reached only through the existing render port, never added as a new dependency here.</dd>
+  <dt>Architecture</dt>     <dd>Ports-and-adapters, matching the existing run pipeline — a core orchestrator over injected ports, with the CLI as the only adapter that constructs them (<a href="#D-001">D-001</a>).</dd>
+  <dt>Storage</dt>          <dd>None. Every write goes through the existing filesystem port to paths the three kernels already own.</dd>
+  <dt>Testing</dt>          <dd>vitest; tests-first against fakes for both ports — an in-memory filesystem and a fake renderer, so no browser is needed to test any requirement (<a href="#D-004">D-004</a>).</dd>
+  <dt>Coverage</dt>         <dd>≥ 80% of changed lines covered, and a change never lowers coverage of the code it touches. No universal project percentage.</dd>
+  <dt>Perf targets</dt>     <dd>A refused run (<a href="./spec.html#FR-003">FR-003</a>) makes 0 model calls and writes 0 files. No latency target: the run is dominated by the model call and the browser, neither of which this slice changes.</dd>
+  <dt>Constraints</dt>      <dd>At most 1 verb may acquire the render capability (<a href="../106-visual-render/spec.html#FR-004">106 FR-004</a>), enforced by a source scan over command modules. <code>design.ts</code> must not import <code>@spectastic/render</code>, directly or transitively at module scope.</dd>
+</dl>
+</section>
+
+
+<section id="contracts">
+<h2>3 · Data model &amp; contracts</h2>
+
+<p>Nothing is persisted. The one thing this design gives physical shape to is the spec&rsquo;s
+<a href="./spec.html#data">Run report</a> &mdash; an in-memory value the orchestrator returns and the CLI prints,
+never a file.</p>
+
+<div style="overflow-x:auto;">
+<table>
+  <thead><tr><th>Conceptual entity</th><th>Physical shape</th><th>Notes</th></tr></thead>
+  <tbody>
+    <tr><td><a href="./spec.html#data">Run report</a></td><td>A returned array of step records, one per step, each carrying the step&rsquo;s name and its outcome</td><td>Ordered by execution. Every step attempted appears exactly once; a step not attempted appears with its reason, never absent.</td></tr>
+    <tr><td><a href="./spec.html#data">Step outcome</a></td><td>A discriminated union: <code>completed</code> · <code>completed-with-refusals</code> (carrying the delegate&rsquo;s own per-item refusals) · <code>not-attempted</code> (carrying a reason)</td><td>A union rather than a boolean plus optional fields, so the middle case cannot be collapsed into either neighbour by a caller that forgets to check (<a href="./spec.html#FR-007">FR-007</a>).</td></tr>
+  </tbody>
+</table>
+</div>
+
+<spec-contract shape="none">
+  <p>This feature exposes no interface. It is a flag on an existing CLI verb, and the terminal output it adds is
+  a human report rather than a consumed surface &mdash; nothing outside this process reads it, and no other
+  project can depend on its shape. Recorded explicitly rather than omitted, per
+  <a href="../069-design-contract-section/spec.html#FR-003">069 FR-003</a>.</p>
+</spec-contract>
+</section>
+
+
+<section id="grounding">
+<h2>5 · Grounding &amp; evidence</h2>
+<p>Every design-bearing fact this plan rests on, and how it was confirmed — read this before the
+approach: it separates what the plan <em>knows</em> from what it <em>assumes</em> (per
+<code>REQ-LIFECYCLE-006</code>). Status is <code>verified</code> (opened the source
+this turn), <code>spike</code> (decidable only by a time-boxed investigation — run it, record the
+finding), or <code>assumed</code> (taken as true without verification). A <code>must</code>-tier decision
+may not rest on an <code>assumed</code>/unresolved-<code>spike</code> fact unless accepted as a
+<code>&lt;spec-risk&gt;</code> (see <a href="#risks">Risks &amp; mitigations</a>).</p>
+
+<div style="overflow-x:auto;">
+<table class="evidence">
+  <thead>
+    <tr><th>Claim the design rests on</th><th>Source</th><th>Status</th><th>Finding / note</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Every visual action terminates the process, so none can be called as a function today</td>
+        <td><code>packages/cli/src/commands/visual.ts:250,256</code></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td><code>process.exit(0)</code> on success and <code>process.exit(1)</code> in the catch. All four verbs do this. This is the actual work of the slice.</td></tr>
+    <tr><td><code>design</code> ends by committing and exiting, so visual steps must precede that call</td>
+        <td><code>packages/cli/src/commands/design.ts:107</code>, <code>packages/cli/src/git/index.ts:100,114</code></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td><code>commitVerbAndExit</code> returns <code>Promise&lt;never&gt;</code> and calls <code>process.exit</code>. Its <code>paths</code> array is also where the visual artifacts must be added, or they land uncommitted.</td></tr>
+    <tr><td>The house pattern for one verb driving others is core kernels with injected ports, not subprocesses</td>
+        <td><code>packages/core/src/run/steps.ts:38,66</code></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td><code>buildRunSteps</code> calls <code>designCommand</code> directly; <code>RunStepDeps</code> carries <code>coding</code>, <code>sandbox</code>, <code>verify</code> and <code>ai</code> as ports the CLI constructs. Decisive for <a href="#D-001">D-001</a>.</td></tr>
+    <tr><td>The renderer is already an injected port, so core never holds the capability</td>
+        <td><code>packages/cli/src/commands/visual.ts:185-192</code></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td><code>renderDesign(input, { cwd, fs, render: playwrightRenderer() })</code>. Core takes <code>render</code> as a parameter; only the CLI constructs it. The seam this design needs already exists.</td></tr>
+    <tr><td>All three steps have core kernels the orchestrator can call</td>
+        <td><code>@spectastic/core/visual/import</code>, <code>/visual/render-capture</code>, <code>/visual/materialise-view</code>, <code>/contracts/materialise-view</code></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td>Read from each action&rsquo;s own import list. No step needs re-implementing; the orchestrator sequences what exists.</td></tr>
+    <tr><td>The capability bound is enforced by a depth-1 source scan for a literal string</td>
+        <td><code>packages/cli/test/render.port-reach.test.ts:23-35,41,46</code></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td><code>readdirSync(COMMANDS_DIR).filter(e =&gt; e.isFile())</code> matched against <code>/@spectastic\/render/</code>, asserted <code>toBe(1)</code> and <code>toEqual(['visual.ts'])</code>. So <code>design.ts</code> may import <code>./visual.js</code> and stay compliant &mdash; and a helper in a subdirectory would be invisible, which the just-applied 106 change already queued as <code>T-1001</code>.</td></tr>
+    <tr><td>The import&rsquo;s <code>--into</code> is derivable; its <code>--identity</code> is not</td>
+        <td><code>packages/core/src/visual/location.ts:43-46</code>, <code>packages/core/src/visual/import.ts:200,248-250</code></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td><code>conventionalVisualPrefix('screens', specId)</code> yields <code>specs/&lt;id&gt;/visual</code>. Identity has no derivation and <code>ImportIdentityError</code> fires on a mismatch &mdash; but only when the caller supplies <code>previousIdentity</code>, which is an input, not a disk read. Shapes <a href="#D-002">D-002</a>.</td></tr>
+    <tr><td>Chromium is installed locally, so a real end-to-end render is reachable during the build</td>
+        <td><code>npx playwright --version</code> → 1.62.1; <code>~/Library/Caches/ms-playwright/chromium-1234</code></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td>Confirmed by running the real verb over the two-artboard fixture: 2 captured, PNG headers 200&times;150 and 220&times;180 — the artboards&rsquo; own bounds, per <a href="../106-visual-render/spec.html#FR-006">106 FR-006</a>.</td></tr>
+    <tr><td>Materialising twice over unchanged input is not byte-stable on the second run</td>
+        <td><code>packages/core/src/contracts/materialise-view.ts:176</code> vs <code>packages/core/src/visual/materialise-view.ts:190</code></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td>Measured on the exemplar: 29,123 bytes after run 1, 29,122 after run 2, stable thereafter. <code>EXISTING_VIEW_RE</code>&rsquo;s leading <code>\s*</code> eats the separator the previous run inserted; the visual sibling fixes this with <code>.replace(/\s+$/, '')</code> and the contract one does not. Why <a href="./spec.html#FR-009">FR-009</a> is a SHOULD.</td></tr>
+  </tbody>
+</table>
+</div>
+</section>
+
+
+<section id="approach">
+<h2>6 · Approach</h2>
+
+<p>Three moves, in dependency order. <strong>First, split each visual action into a callable kernel and a
+thin exiting wrapper.</strong> Every one currently ends in <code>process.exit()</code>, which is why nothing can
+call them; the existing subcommands keep their exact behaviour by becoming wrappers that call the kernel and
+exit on its result. <strong>Second, add a core orchestrator</strong> that sequences the three kernels and
+returns the run report &mdash; pure, port-taking, and the only place that knows the refusal order.
+<strong>Third, wire the flag</strong>: <code>design.ts</code> gains <code>--visuals &lt;export&gt;</code> and
+<code>--no-render</code>, calls a single entry point exported from <code>visual.ts</code>, and adds whatever
+landed to the paths it already passes to <code>commitVerbAndExit</code>.</p>
+
+<p>The renderer never crosses into <code>design.ts</code>. <code>visual.ts</code> is the one module that
+constructs <code>playwrightRenderer()</code>, and the entry it exports takes a boolean rather than a port, so
+the capability is acquired behind that boundary and nowhere else. That is what keeps the source scan reading
+exactly one module, and it is the literal shape
+<a href="../106-visual-render/spec.html#FR-004">106 FR-004</a> now permits: invoke, never acquire.</p>
+
+<p>Ordering follows from what each step needs. The export path is checked before anything &mdash; before the
+model call, which is the expensive one (<a href="./spec.html#FR-003">FR-003</a>). Import runs next, since render
+reads what it landed. Materialise runs last, because it writes <em>into</em> <code>design.html</code>, which does
+not exist until the design generation has finished.</p>
+
+<!-- Optional aside (inbox I-059) — additive; delete if unused. A <spec-note> sits in
+     the flow and must not be missed; a <spec-sidenote> is an aside the reader may skip
+     without losing the argument. It floats into the margin on a wide screen and
+     collapses to a block on a narrow one, so it costs nothing at phone width. -->
+<!--
+<spec-sidenote>[AN_ASIDE — context, a caveat, or a thing you nearly did instead. Marginalia
+that would interrupt the paragraph it sits beside.]</spec-sidenote>
+-->
+
+<spec-arch>
+<figure>
+<svg viewBox="0 0 700 300" role="img" aria-label="The design verb invokes a core orchestrator through the one module that holds the render capability">
+  <style>
+    .box { fill: var(--c-surface, #fcfbf7); stroke: var(--c-border, #c4c1bb); stroke-width:1.2; }
+    .cap { stroke-dasharray: 4 3; }
+    .label { font: 700 11px Lato, sans-serif; fill: var(--c-text-soft, #4a4a46); letter-spacing:0.06em; text-transform:uppercase; }
+    .body { font: 400 12px "Source Serif 4", Georgia, serif; fill: var(--c-text, #353534); }
+    .arr { stroke: var(--c-muted, #73706d); stroke-width:1.2; fill:none; }
+    .arrh { fill: var(--c-muted, #73706d); }
+  </style>
+  <rect class="box" x="20"  y="30" width="150" height="56" rx="4"/>
+  <text class="label" x="34" y="52">design.ts</text>
+  <text class="body"  x="34" y="72">--visuals</text>
+
+  <rect class="box" x="240" y="30" width="170" height="56" rx="4"/>
+  <text class="label" x="254" y="52">visual.ts</text>
+  <text class="body"  x="254" y="72">acquires the port</text>
+
+  <rect class="box cap" x="480" y="30" width="190" height="56" rx="4"/>
+  <text class="label" x="494" y="52">@spectastic/render</text>
+  <text class="body"  x="494" y="72">browser · egress</text>
+
+  <rect class="box" x="240" y="150" width="170" height="56" rx="4"/>
+  <text class="label" x="254" y="172">core orchestrator</text>
+  <text class="body"  x="254" y="192">sequence · refuse</text>
+
+  <rect class="box" x="240" y="230" width="170" height="50" rx="4"/>
+  <text class="body"  x="254" y="252">import · render</text>
+  <text class="body"  x="254" y="268">materialise (kernels)</text>
+
+  <path class="arr" d="M170 58 L240 58" marker-end="url(#a)"/>
+  <path class="arr" d="M410 58 L480 58" marker-end="url(#a)"/>
+  <path class="arr" d="M325 86 L325 150" marker-end="url(#a)"/>
+  <path class="arr" d="M325 206 L325 230" marker-end="url(#a)"/>
+  <text class="body" x="180" y="120">design.ts never holds the renderer —</text>
+  <text class="body" x="180" y="136">it calls, visual.ts acquires</text>
+  <defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path class="arrh" d="M0,0 L10,5 L0,10 z"/></marker></defs>
+</svg>
+<figcaption>The capability boundary is the dashed box. Only <code>visual.ts</code> reaches it; <code>design.ts</code> invokes through it, and the core orchestrator below never sees a renderer it was not handed.</figcaption>
+</figure>
+</spec-arch>
+</section>
+
+
+<section id="alternatives">
+<h2>7 · Alternatives considered</h2>
+
+<spec-matrix>
+<div style="overflow-x:auto;">
+<table>
+  <thead>
+    <tr><th>Option</th><th>Capability confinement</th><th>Testable without a browser</th><th>Fits P-14 (core owns logic)</th><th>Cost to build</th><th class="score">Total</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Spawn the CLI as three child processes</td><td>5</td><td>2</td><td>2</td><td>3</td><td class="score">12</td></tr>
+    <tr><td>Orchestrate inside <code>visual.ts</code></td><td>4</td><td>2</td><td>1</td><td>5</td><td class="score">12</td></tr>
+    <tr data-winner><td>Core orchestrator, port injected via <code>visual.ts</code> — chosen</td><td>5</td><td>5</td><td>5</td><td>3</td><td class="score">18</td></tr>
+  </tbody>
+</table>
+</div>
+</spec-matrix>
+
+<p>Scored 1&ndash;5, higher better. Subprocess spawning ties on confinement and loses everything else: exit codes
+are the only channel back, so the per-step reporting <a href="./spec.html#FR-007">FR-007</a> requires would have
+to be re-parsed from stdout, and three extra Node startups buy isolation the injected port already provides.
+CLI-level orchestration is the cheapest diff and the worst placement &mdash; it strands the refusal ordering
+where no test can reach it without spawning, which is exactly the asymmetry <a href="../../principles.html">P-14</a>
+names. The winner costs the same as the subprocess option and is the only one where every requirement is
+reachable from a unit test.</p>
+</section>
+
+
+<section id="decisions">
+<h2>8 · Decisions</h2>
+
+<spec-decision id="D-001" grounding="verified">
+  <h4>D-001 · A core orchestrator over injected ports, invoked through the module that holds the capability</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>The flag must drive three verbs whose actions all end in <code>process.exit()</code>
+    (<code>visual.ts:250,256</code>), while <code>design.ts</code> must never acquire the render capability
+    (<code>render.port-reach.test.ts:41,46</code>). The codebase already answers the general form of this:
+    <code>run</code> drives four verbs by calling their kernels directly with ports injected
+    (<code>core/run/steps.ts:38,66</code>), and <code>renderDesign</code> already takes the renderer as a
+    parameter (<code>visual.ts:185-192</code>).</dd>
+    <dt>Decision drivers</dt> <dd>Capability confinement · testable without a browser · <a href="../../principles.html">P-14</a> placement · cost</dd>
+    <dt>Considered options</dt>
+    <dd>
+      <ul class="considered-options">
+        <li><strong>Spawn three child processes</strong> — + perfect isolation; the import graph question disappears. &minus; exit codes are the only channel, so per-step reporting must be re-parsed from stdout; three extra Node startups.</li>
+        <li><strong>Orchestrate inside <code>visual.ts</code></strong> — + smallest diff. &minus; strands the refusal ordering in the CLI where no test reaches it without spawning; contradicts P-14.</li>
+        <li><strong>Core orchestrator, port injected via <code>visual.ts</code> — chosen</strong> — + every requirement unit-testable with fakes; mirrors <code>run</code> exactly; the capability stays behind one boundary. &minus; requires splitting four actions into kernel + wrapper first.</li>
+      </ul>
+    </dd>
+    <dt>Decision</dt>     <dd>A core module sequences the three kernels and returns the run report, taking the
+    renderer as an optional injected port. <code>visual.ts</code> exports the single entry that constructs
+    <code>playwrightRenderer()</code> and calls it; <code>design.ts</code> calls that entry with a boolean and
+    never holds a renderer.</dd>
+    <dt>Consequences</dt> <dd>+ The source scan keeps reading exactly one module, so the guarantee needs no
+    relaxation. + Refusal order, partial-chain handling and report shape are all unit-testable against an
+    in-memory filesystem and a fake renderer. + A second caller — the unattended orchestrator, deferred as
+    <code>TBD-visual-one-step-run</code> — gets the same entry for free.
+    &minus; Four existing actions must be split into kernel and wrapper before anything else can start, which is
+    the bulk of the work and touches verbs this spec otherwise leaves alone.
+    &minus; <code>design.ts</code> importing <code>./visual.js</code> is a new CLI-to-CLI edge; it is legal under
+    the scan and under the amended FR-004, but it is the first of its kind and worth watching.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-002" grounding="verified">
+  <h4>D-002 · The import identity is derived from the spec id</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd><code>visual:import</code> needs <code>--into</code> and <code>--identity</code>.
+    The first is derivable — <code>conventionalVisualPrefix('screens', specId)</code> gives
+    <code>specs/&lt;id&gt;/visual</code> (<code>core/visual/location.ts:43-46</code>). The second has no
+    derivation: it is <q>the stable anchor a later re-import keys on</q>, and a mismatch throws
+    <code>ImportIdentityError</code> (<code>core/visual/import.ts:200,248-250</code>) — though only when the
+    caller passes <code>previousIdentity</code>, which is an input rather than a disk read.</dd>
+    <dt>Decision</dt>     <dd>The flag derives the identity from the spec id and documents it. No second flag,
+    and nothing is parsed back out of the manifest.</dd>
+    <dt>Consequences</dt> <dd>+ The ask survives intact: one flag, one argument. + The spec that owns the
+    material is a genuinely stable anchor, which is what the field is for.
+    &minus; A project that previously imported under a hand-chosen identity meets 105&rsquo;s mismatch refusal the
+    first time it uses the flag. That is loud, names both identities, and is fixable by re-importing once — it
+    is not silent, which is the property that matters.
+    &minus; Reading the identity back from the import manifest was rejected: the manifest records it in prose
+    HTML, and making a load-bearing key depend on parsing that would be the first code to treat the manifest as
+    a data source.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-003" grounding="verified">
+  <h4>D-003 · Refuse before the model call; continue past a step that cannot run</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>Two failure postures, pulling opposite ways.
+    <a href="./spec.html#FR-003">FR-003</a> wants the cheap check first because the design generation is the
+    expensive step and <code>commitVerbAndExit</code> ends the process
+    (<code>cli/src/git/index.ts:100,114</code>). <a href="./spec.html#FR-004">FR-004</a> wants the run to
+    survive a step that cannot run, because
+    <a href="../094-visual-sidecar-convention/spec.html#FR-005">094 FR-005</a> forbids a render&rsquo;s absence
+    from failing a gate.</dd>
+    <dt>Decision</dt>     <dd>Preflight — export readable, egress reachable when rendering is on — runs before
+    the model call and refuses the whole invocation. After that point nothing aborts the run: a step that
+    cannot complete is recorded as <code>not-attempted</code> with its reason and the remaining steps proceed.</dd>
+    <dt>Consequences</dt> <dd>+ A typo costs a second rather than a generation. + An author with no browser
+    still gets the design and its embedded view.
+    &minus; Two different failure semantics in one command, split at the model call. The split is defensible but
+    has to be documented in the flag&rsquo;s help, or it reads as inconsistency.
+    &minus; Preflighting egress means a reachability probe before the model call, which is itself a network
+    round trip on a verb that had none — bounded, but real.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-004" grounding="n-a">
+  <h4>D-004 · Tests-first against fakes for both ports</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>A preference, not a fact — <code>grounding="n-a"</code>. The orchestrator takes
+    <code>fs</code> and <code>render</code> as ports, so nothing about the requirements needs a real browser to
+    exercise.</dd>
+    <dt>Decision</dt>     <dd>Every requirement gets a unit test against an in-memory filesystem and a fake
+    renderer, written before the implementation. <a href="./spec.html#SC-001">SC-001</a>&rsquo;s byte-equality
+    claim additionally gets one real end-to-end comparison, since a fake cannot prove two trees identical.</dd>
+    <dt>Consequences</dt> <dd>+ The suite stays runnable in CI without Playwright browsers. + Matches how 105
+    and 106 are already tested.
+    &minus; A fake renderer can drift from the real one; the single end-to-end test is the only thing anchoring
+    it, and it is the slowest test in the slice.</dd>
+  </dl>
+</spec-decision>
+</section>
+
+
+<section id="project-structure">
+<h2>9 · Project structure</h2>
+
+<p>Only the new or changed paths, grouped by the boundaries the <a href="#decisions">architecture-pattern decision</a> draws.</p>
+
+<pre><code>packages/core/src/visual/
+  one-step.ts              NEW  sequence the three kernels; return the run report
+                                takes { fs, render? } as ports — holds no capability
+
+packages/cli/src/commands/
+  visual.ts                EDIT split each action into a callable kernel + an exiting
+                                wrapper; export one entry that constructs the renderer
+                                (the ONLY module importing @spectastic/render)
+  design.ts                EDIT --visuals &lt;export&gt; and --no-render; call visual.ts's
+                                entry before commitVerbAndExit; add landed paths to its
+                                `paths` array so the artifacts are committed
+
+packages/core/test/
+  visual-one-step.test.ts  NEW  every requirement against an in-memory fs + fake renderer
+
+packages/cli/test/
+  design-visuals.test.ts   NEW  flag wiring, refusal ordering, and the SC-001
+                                byte-equality comparison against the hand-run sequence
+</code></pre>
+</section>
+
+
+<section id="risks">
+<h2>10 · Risks &amp; mitigations</h2>
+
+<div style="overflow-x:auto;">
+<table>
+  <thead><tr><th>Risk</th><th>Likelihood</th><th>Impact</th><th>Mitigation</th></tr></thead>
+  <tbody>
+    <tr><td>Splitting four actions into kernel + wrapper changes verbs this spec otherwise leaves alone — a regression here breaks <code>visual:render</code>, <code>visual:import</code>, <code>materialise</code> and <code>visual:brief</code> for everyone</td><td>M</td><td>H</td><td>Wrappers keep the exact exit codes and stdout the actions emit today; the split lands first, on its own, with the existing tests unchanged and green before any orchestrator exists.</td></tr>
+    <tr><td><code>design.ts</code> importing <code>./visual.js</code> pulls the render port into the design command's module graph transitively</td><td>L</td><td>H</td><td>The import inside <code>visual.ts</code> is dynamic and sits inside the render function, so the package loads only when that function runs. A test asserts <code>design.ts</code> contains no reference to <code>@spectastic/render</code>, and the existing source scan still asserts exactly one module.</td></tr>
+    <tr><td>The egress preflight (<a href="#D-003">D-003</a>) adds a network round trip to a verb that had none, and could itself hang</td><td>M</td><td>M</td><td>Bounded by a short timeout, treated as unreachable on expiry, and skipped entirely under <code>--no-render</code> — the path that exists precisely for machines with no egress.</td></tr>
+    <tr><td>The fake renderer drifts from the real one, so the suite stays green while the flag is broken in practice</td><td>M</td><td>M</td><td>One real end-to-end run anchors it (<a href="#D-004">D-004</a>), and it is the test that proves <a href="./spec.html#SC-001">SC-001</a> rather than an extra.</td></tr>
+    <tr><td>A project with an existing hand-chosen import identity hits 105's mismatch refusal on first use</td><td>L</td><td>L</td><td>Accepted deliberately in <a href="#D-002">D-002</a>. The refusal names both identities and is fixed by one re-import; the alternative was a second flag on every invocation.</td></tr>
+  </tbody>
+</table>
+</div>
+</section>
+
+
+<section id="complexity">
+<h2>11 · Complexity tracking</h2>
+<p>Anywhere this plan introduces complexity not strictly required by the spec, justify it here.
+A reviewer should be able to point at any non-trivial choice and find its rationale in this section.</p>
+
+<spec-assumption>
+<p><strong>P-12 exception — capability accountability.</strong> This is the one principle this design does not
+simply satisfy. <code>design</code> today reaches no network and executes no process; with
+<code>--visuals</code> it does both, via the browser. The widening is justified by being <em>authorised,
+bounded and declared</em>: the spec that authorises it says so in
+<a href="./spec.html#FR-005">FR-005</a>, the capability is acquired in exactly one module and asserted by a
+source scan, the reach is opt-in per invocation rather than a property of the verb, and
+<code>--no-render</code> exists so the default posture of a machine without egress is unchanged. What P-12
+forbids is a footprint no spec accounts for; this one is accounted for in three places.</p>
+</spec-assumption>
+
+<spec-assumption>
+<p><strong>Four actions are refactored for a caller that does not exist yet.</strong> Splitting kernel from
+wrapper is most of the work and none of the feature, and it touches verbs this spec otherwise leaves alone. It
+is not incidental complexity: nothing can call an action that ends in <code>process.exit()</code>, so either
+the split happens or the orchestration becomes subprocess spawning, which the matrix scores lower on every
+axis but one. Recorded here because a reviewer seeing the diff will see four unrelated verbs change.</p>
+</spec-assumption>
+
+<spec-assumption>
+<p><strong>An inherited non-idempotence is carried, not fixed.</strong> Materialising twice over unchanged input
+changes one byte on the second run (measured: 29,123 → 29,122, stable after). The fix belongs to the verb that
+owns the defect, not to its first caller, so <a href="./spec.html#FR-009">FR-009</a> is a SHOULD and this design
+inherits the behaviour rather than working around it.</p>
+</spec-assumption>
+</section>
+
+
+<section id="questions">
+<h2>12 · Open questions</h2>
+<spec-questions>
+<p>None outstanding. Four decisions were anchored in the interview — delegation mechanism, import identity, test
+style and risk tolerance — and the grounding pass closed the two that would otherwise have surfaced mid-build:
+how a verb drives other verbs in this codebase, and whether the import&rsquo;s required arguments are derivable.
+No decision rests on an assumed fact.</p>
+</spec-questions>
+</section>
+
+
+<section id="changelog">
+<h2>13 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-08-23">23 Aug 2026</time><span>Initial plan. Grounded against nine facts, all verified — the decisive one being that this codebase
+already drives verbs from verbs by calling kernels with injected ports rather than spawning
+(<code>core/run/steps.ts</code>), which settled the architecture before the interview reached it. One principles
+exception (P-12, capability accountability) is logged in Complexity tracking with its bound; every other
+principle passes.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  Design for 110-visual-one-step · Land the visuals in one step · authored 2026-08-23
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>
