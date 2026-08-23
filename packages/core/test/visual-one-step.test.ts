@@ -256,3 +256,55 @@ describe('runVisualOneStep skips both steps when the design declares no visual s
     expect(report.every((r) => r.outcome.kind === 'completed')).toBe(true);
   });
 });
+
+/** A renderer that reports two artboards whose labels reduce to the SAME
+ *  slug ("One" and "one" — render-naming.ts's own collision case). 106's
+ *  render-capture.ts writes the first and REFUSES the second per-artboard
+ *  (FR-007 of 106), returning both in `result.refused` rather than throwing
+ *  — the run continues, one capture is simply reported as not written. */
+function collidingRenderer(): Renderer {
+  return {
+    checkEgress: async () => true,
+    render: async () => ({
+      captures: [
+        { label: 'One', bytes: new Uint8Array([1]), consoleErrors: [] },
+        { label: 'one', bytes: new Uint8Array([2]), consoleErrors: [] },
+      ],
+    }),
+  };
+}
+
+// T-303 (US3, FR-007). runVisualOneStep today reports the render step as a
+// flat `completed` whenever renderDesign resolves at all — it never
+// inspects `result.refused`. This is expected to fail until the
+// orchestrator carries a delegate's individual refusals through rather
+// than flattening them into a single pass outcome (the spec's own
+// rationale: "a label collision reported as 'rendering failed' loses the
+// only detail that makes it fixable").
+describe('runVisualOneStep carries a delegate’s per-artboard refusals through (FR-007, T-303)', () => {
+  it('reports the render step as completed-with-refusals, naming the collision', async () => {
+    const { fs } = memFs(
+      {
+        '/repo/export/a.html': '<div data-screen-label="one"></div>',
+        '/repo/specs/001-x/design.html': '<!doctype html><html><body><h1>x</h1></body></html>',
+      },
+      ['/repo/export', '/repo/specs/001-x'],
+    );
+
+    const report = await runVisualOneStep(
+      { specId: '001-x', from: 'export' },
+      { cwd: CWD, fs, render: collidingRenderer() },
+    );
+
+    const render = report.find((r) => r.step === 'render');
+    expect(render?.outcome.kind).toBe('completed-with-refusals');
+    if (render?.outcome.kind === 'completed-with-refusals') {
+      expect(render.outcome.refusals).toHaveLength(1);
+      expect(render.outcome.refusals[0]?.label).toBe('one');
+    }
+    // Import and materialise are unaffected by a per-artboard render
+    // refusal — only the render step's own outcome changes shape.
+    expect(report.find((r) => r.step === 'import')?.outcome.kind).toBe('completed');
+    expect(report.find((r) => r.step === 'materialise')?.outcome.kind).toBe('completed');
+  });
+});
