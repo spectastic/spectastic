@@ -195,7 +195,13 @@ export const SIGNALS: readonly Signal[] = [
   { ecosystem: 'rust', category: 'test-runner', file: 'Cargo.toml' }, // cargo test is built in
 
   // --- Swift ---------------------------------------------------------------
+  // Two formatters, two different tools, two different config filenames:
+  // `.swiftformat` is third-party SwiftFormat; `.swift-format` is Apple's
+  // swift-format, which ships inside the toolchain the way gofmt and rustfmt
+  // do above. Only the first was listed, so a project using the bundled one
+  // was reported as having no formatter at all (triage T-005).
   { ecosystem: 'swift', category: 'formatter', file: '.swiftformat' },
+  { ecosystem: 'swift', category: 'formatter', file: '.swift-format' },
   { ecosystem: 'swift', category: 'linter', file: '.swiftlint.yml' },
   { ecosystem: 'swift', category: 'linter', file: '.swiftlint.yaml' },
   { ecosystem: 'swift', category: 'test-runner', file: 'Package.swift' },

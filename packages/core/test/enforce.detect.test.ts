@@ -88,6 +88,18 @@ describe('detectTooling: per-ecosystem classification', () => {
     expect(c.has('formatter')).toBe(true);
   });
 
+  // Triage T-005. Two different Swift formatters with near-identical config
+  // filenames: `.swiftformat` (third-party SwiftFormat) was listed and
+  // `.swift-format` (Apple's, bundled in the toolchain) was not, so a project
+  // formatting with the one that ships with Swift was reported as having no
+  // formatter. The fixture carries ONLY the Apple config — with `.swiftformat`
+  // present too, the pre-existing row would satisfy the assertion and the
+  // regression would be invisible.
+  it("Swift: Apple's bundled swift-format config is a formatter signal (T-005)", () => {
+    const dir = fixture({ '.swift-format': '{}', 'Package.swift': '' });
+    expect(detectTooling(dir).has('formatter')).toBe(true);
+  });
+
   it('Java: gradle substrings classify by declared plugin', () => {
     const dir = fixture({
       'build.gradle': "id 'com.diffplug.spotless'\nerrorprone\ntest {}\n",
