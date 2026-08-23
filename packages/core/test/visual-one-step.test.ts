@@ -136,3 +136,27 @@ describe('runVisualOneStep sequences import, render, materialise (FR-001, T-100)
     expect(render.calledWith).toEqual(['file:///repo/export']);
   });
 });
+
+// T-200 (US2, FR-003). The orchestrator's own preflight — distinct from
+// design.ts's model-call-ordering concern (T-210), which is a CLI-level
+// wiring question this file cannot test at all. This is the narrower,
+// already-true half: `import`'s own fetcher checks readability before any
+// write (105's two-phase discipline — decide everything, write only once
+// nothing can still fail), so an unreadable export never lands a byte and
+// never reaches render or materialise.
+describe('runVisualOneStep refuses before any step completes, on an unreadable export (FR-003, T-200)', () => {
+  it('rejects naming the path, and writes nothing', async () => {
+    const { fs, store } = memFs({ '/repo/specs/001-x/design.html': '<!doctype html><html><body></body></html>' }, [
+      '/repo/specs/001-x',
+    ]);
+    const render = spyRenderer();
+
+    await expect(
+      runVisualOneStep({ specId: '001-x', from: 'does-not-exist' }, { cwd: CWD, fs, render }),
+    ).rejects.toThrow(/does-not-exist/);
+
+    // Render was never reached, and nothing was written anywhere.
+    expect(render.calledWith).toEqual([]);
+    expect(store).toEqual({ '/repo/specs/001-x/design.html': '<!doctype html><html><body></body></html>' });
+  });
+});
