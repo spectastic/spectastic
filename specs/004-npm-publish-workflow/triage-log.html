@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'">
+<title>004-npm-publish-workflow · Triage log</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Triage log · 004-npm-publish-workflow</p>
+  <h1>004-npm-publish-workflow — triage log</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    Defects against the <code>004-npm-publish-workflow</code> spec. Cards append-only; IDs stable.
+  </p>
+
+  <spec-meta>
+    <b>Spec</b>      <span><a href="./spec.html">004-npm-publish-workflow</a></span>
+    <b>Created</b>   <span><time datetime="2026-08-23">23 Aug 2026</time></span>
+    <b>Read time</b> <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-tldr>
+    <p>One card per debug session. Fits one screen; reads in under 30 seconds. Five required Tier-1 fields
+    (headline · Expected · Actual · Diagnosis · Fix); the deep-dive <code>&lt;details&gt;</code> stays collapsed
+    unless cross-spec, principles, scope, or hotfix-now applies. See <a href="../../examples/triage-log.html">examples/triage-log.html</a>
+    for the canonical look + the protocol (<code>TRIAGE-001</code>..<code>TRIAGE-006</code>).</p>
+  </spec-tldr>
+</header>
+
+
+<section id="cards">
+<h2>Cards</h2>
+<spec-triage-log>
+
+<!-- Sample card framework — replace with your first triage. Keep IDs stable forever (T-001, T-002, …); never reuse.
+
+<spec-triage id="T-001" layer="[LAYER]">
+  <header>
+    <h4>[ONE-LINE_FAILURE_TITLE]</h4>
+    <span class="meta">
+      <span class="layer-pill">[Layer]</span>
+      <span class="regen" data-result="[pass|fail]">[code|upstream|external]</span>
+    </span>
+  </header>
+
+  <p class="headline">Debugging [SYMPTOM], root cause was [LAYER] [DESCRIPTION];
+  fixed by [CHANGE]; regeneration [pass|fails] [SHORT_REASON].</p>
+
+  <dl>
+    <dt>Expected</dt> <dd>[ONE_LINE]</dd>
+    <dt>Actual</dt>   <dd>[ONE_LINE]</dd>
+    <dt>Diagnosis</dt><dd>[ONE_SENTENCE_CAUSE_with_REQ_ID_LINKS]</dd>
+    <dt>Fix</dt>      <dd>[ARTIFACT_PATH + ONE_LINE_PROPOSAL]</dd>
+  </dl>
+
+  <details>
+    <summary>Deep dive — [none required | cascade required | principles]</summary>
+    <p>Fill only if at least one of: cross-spec contract touched, principles invariant
+    implicated, deferred scope exposed, or hotfix-before-amendment sequence required.</p>
+  </details>
+</spec-triage>
+
+-->
+
+<spec-triage id="T-001" layer="implementation">
+  <header>
+    <h4>@spectastic/render is published but never dist-tagged, so its <code>latest</code> serves an old build</h4>
+    <span class="meta">
+      <span class="layer-pill">Implementation</span>
+      <span class="regen" data-result="pass">code</span>
+    </span>
+  </header>
+
+  <p class="headline">Debugging why <code>npm view @spectastic/render version</code> reported
+  <code>0.1.0-pre.25</code> minutes after a successful <code>pre.26</code> publish, root cause was the
+  dist-tag loop enumerating four packages by name and omitting <code>render</code>, which spec
+  <a href="../106-visual-render/spec.html">106</a> added after the loop was written; fixed by adding it to that
+  loop and to the tag/version check beside it; regeneration passes &mdash; nothing upstream says which packages
+  exist, so a new one has to be added to a list either way.</p>
+
+  <dl>
+    <dt>Expected</dt> <dd>Every published package moves onto the same dist-tags together, so a bare
+    <code>npm i @spectastic/render</code> serves the build just released.</dd>
+    <dt>Actual</dt>   <dd><code>render@0.1.0-pre.26</code> published correctly and its <code>next</code> moved,
+    but <code>latest</code> stayed on <code>pre.25</code>. The other four packages moved both tags. The publish
+    job reported success, because nothing in it looks at render.</dd>
+    <dt>Diagnosis</dt><dd>Two steps in <span class="path">.github/workflows/publish.yml</span> enumerate
+    packages by name &mdash; the tag/version check and the &ldquo;Move additional dist-tags&rdquo; loop &mdash;
+    and both list <code>cli</code>, <code>core</code>, <code>schema</code>, <code>corpus</code>.
+    <code>render</code> is published by <code>pnpm publish -r</code>, which walks the workspace and needs no
+    list, so it ships on every release while being invisible to both checks. The workflow&rsquo;s own comment
+    records this exact failure happening before: <em>&ldquo;All three packages move together &mdash; their
+    <code>latest</code> values had already drifted apart at pre.3 / pre.8&rdquo;</em>, with a
+    <code>set -e</code> added so <em>&ldquo;a half-tagged release goes red rather than reporting success while
+    the install command still serves an old build.&rdquo;</em> That is precisely what happened, to the one
+    package the guard does not cover.</dd>
+    <dt>Fix</dt>      <dd><span class="path">.github/workflows/publish.yml</span> &mdash; add
+    <code>@spectastic/render</code> to the dist-tag loop and a <code>RENDER_VERSION</code> arm to the tag/version
+    check, so the package is covered by the same two guards as its siblings. The already-published
+    <code>pre.26</code> needs its <code>latest</code> moved by hand once, since a workflow fix cannot
+    retroactively tag a release that already happened.</dd>
+  </dl>
+
+  <details>
+    <summary>Deep dive &mdash; a list that has to be maintained, and the second one this session</summary>
+    <p>No cross-spec contract and no principles amendment. Worth recording is the shape, which is the same one
+    <a href="../110-visual-one-step/triage-log.html#T-002">110/T-002</a> hit hours earlier: a hand-maintained
+    list in CI that a new thing must be added to, where forgetting produces silence rather than a failure. There
+    the list was which tests need a browser; here it is which packages get tagged. Both were correct when
+    written and both went stale the moment something was added elsewhere.</p>
+    <p>Whether the list should be derived rather than maintained &mdash; <code>pnpm publish -r</code> already
+    knows every non-private workspace package, and <code>pnpm -r --json list</code> could supply the same set to
+    both steps &mdash; is a real question and is surfaced rather than folded in. It would remove the failure
+    mode instead of fixing this instance of it, which is the P-8 shape; it is also a larger change to a workflow
+    that just published, so it belongs to its own pass rather than a hotfix.</p>
+  </details>
+</spec-triage>
+
+</spec-triage-log>
+</section>
+
+
+<section id="changelog">
+<h2>Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-08-23">23 Aug 2026</time><span>Triage log scaffolded. Append one <code>&lt;spec-triage&gt;</code> card per debug session.</span></li>
+  <li><time datetime="2026-08-23">23 Aug 2026</time><span>T-001 added &mdash; <code>@spectastic/render</code> is published by <code>pnpm publish -r</code> but absent from the dist-tag loop and the tag/version check, so its <code>latest</code> stayed on <code>pre.25</code> through a successful <code>pre.26</code> release.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  004-npm-publish-workflow triage log · scaffolded 2026-08-23
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>
