@@ -3,34 +3,34 @@
   "captured_on": "Apple M1 Max, macOS Darwin 25.5, Node 25.9.0",
   "captured_at": "2026-06-16T00:00:00Z",
   "notes": [
-    "Budgets are PERMISSIVE — they catch order-of-magnitude regressions (e.g. eager parse5 load on the init path), not single-digit-ms variance.",
+    "Budgets are PERMISSIVE \u2014 they catch order-of-magnitude regressions (e.g. eager parse5 load on the init path), not single-digit-ms variance.",
     "GitHub-hosted ubuntu-latest runners run roughly 1.5-2x slower than this M1 baseline; budgets bake in that headroom.",
-    "If a budget here ever feels too tight in practice, raise it deliberately and record why in the corresponding scenario block — don't quietly relax."
+    "If a budget here ever feels too tight in practice, raise it deliberately and record why in the corresponding scenario block \u2014 don't quietly relax."
   ],
   "scenarios": {
     "cli-version-cold-start": {
-      "description": "`spectastic --version` — pure CLI startup; nothing beyond commander loaded",
+      "description": "`spectastic --version` \u2014 pure CLI startup; nothing beyond commander loaded",
       "dev_baseline_p50_ms": 40,
       "budget_ms": 150,
       "rationale": "Node startup + ESM import of the entrypoint + commander. Regression past 150ms means something heavy was loaded eagerly; investigate the import graph."
     },
     "init-help-cold-start": {
-      "description": "`spectastic init --help` — init module path; parse5 MUST stay lazy here",
+      "description": "`spectastic init --help` \u2014 init module path; parse5 MUST stay lazy here",
       "dev_baseline_p50_ms": 40,
       "budget_ms": 150,
       "rationale": "If this grows toward validate's cost, init has accidentally started importing parse5 or schema's heavy deps. The I-019 lazy-import fix lives here; this scenario is its regression guard."
     },
     "validate-single-cold-start": {
-      "description": "`spectastic validate <one-spec>` — first-doc cost including parse5 + all rules",
+      "description": "`spectastic validate <one-spec>` \u2014 first-doc cost including parse5 + all rules",
       "dev_baseline_p50_ms": 70,
-      "budget_ms": 350,
-      "rationale": "Cold path: Node + commander + parse5 + every rule's module + parse one doc + run all rules once. The validate path's perf floor. RAISED 250 -> 350 on 2026-07-30: three legitimate additions to this exact cold path cumulatively tipped it past the old 250 cap on CI runners — spec 068's scanQuantifiedNfr/readQuantifiedNfrFloor (validate now reads spectastic.json + runs the quantified-NFR scan), then the commander 12->15 and parse5 7->8 major bumps (both marginally heavier module loads). CI observed p50 252 / p95 256. Deliberate raise per this file's own policy, NOT a quiet relax: the accidental-eager-load guard is init-help-cold-start (parse5 MUST stay lazy there), unaffected at ~119ms, so nothing heavy crept onto a path that should be lazy — this is the expected cold cost growing. 350 gives ~1.4x headroom over the observed 252 to absorb cross-runner variance (ubuntu-latest runners vary run-to-run), while a real eager-load regression would be 700ms+ — well clear of this cap."
+      "budget_ms": 500,
+      "rationale": "Cold path: Node + commander + parse5 + every rule's module + parse one doc + run all rules once. The validate path's perf floor. RAISED 250 -> 350 on 2026-07-30: three legitimate additions to this exact cold path cumulatively tipped it past the old 250 cap on CI runners \u2014 spec 068's scanQuantifiedNfr/readQuantifiedNfrFloor (validate now reads spectastic.json + runs the quantified-NFR scan), then the commander 12->15 and parse5 7->8 major bumps (both marginally heavier module loads). CI observed p50 252 / p95 256. Deliberate raise per this file's own policy, NOT a quiet relax: the accidental-eager-load guard is init-help-cold-start (parse5 MUST stay lazy there), unaffected at ~119ms, so nothing heavy crept onto a path that should be lazy \u2014 this is the expected cold cost growing. 350 gives ~1.4x headroom over the observed 252 to absorb cross-runner variance (ubuntu-latest runners vary run-to-run), while a real eager-load regression would be 700ms+ \u2014 well clear of this cap. RAISED 350 -> 500 on 2026-08-23, again per this file's own policy and NOT a quiet relax. Evidence is six consecutive CI readings on main rather than one: p50 330, 325, 381, 267, 370, 371 -- a 267-381 spread on a 350 cap, so the budget was inside the runner's own variance and failing roughly half the time on merit. Two of those readings settle what it is NOT: 381 predates the changes it first failed on, and 370 landed on a commit that edited only a workflow file, so the number moves ~40% with zero code changed. The accidental-eager-load guards stayed healthy throughout (init-help 132ms and cli-version 130ms against 150), which is what distinguishes runner spread from something heavy creeping onto a lazy path -- the same test the 250 -> 350 raise used. 500 gives ~1.3x headroom over the observed 381 maximum, matching the ratio the previous budget kept, while this file's own stated regression signature (700ms+) still fails. Recorded ceiling: an absolute wall-clock cap on a cold start is a weak guard on shared runners, and raising it twice in a month is the evidence. What this scenario actually protects is the import graph, which init-help-cold-start already guards directly and more cheaply; asserting on a p50 here mostly measures the runner. Converting it to compare against a rolling median of recent runs, or dropping it in favour of the lazy-load guard, is the real fix and is deliberately not bundled into the change that surfaced it."
     },
     "validate-full-project": {
-      "description": "`spectastic validate \"specs/**\" \"examples/*\" inbox.html principles.html` — steady-state across the full set",
+      "description": "`spectastic validate \"specs/**\" \"examples/*\" inbox.html principles.html` \u2014 steady-state across the full set",
       "dev_baseline_p50_ms": 2750,
       "budget_ms": 8000,
-      "rationale": "Scales with the corpus, now ~363 docs (was 331 when the 3000 budget was set, 188 at 1600, 34 at the original 500). RAISED from 3000 deliberately, with evidence, per the standing instruction in this file. The absolute cap had gone stale again: a dev run measures ~2750ms (~7.6ms/doc) against a 3000ms cap, i.e. 92% of budget before CI's slower hardware is considered at all, and CI measured 6288ms (~17ms/doc). Crucially this is NOT a regression — the same binary run over the pre-split and post-split corpora gives 341 docs at 8.2ms/doc versus 363 docs at 7.6ms/doc, so per-doc cost IMPROVED while doc count grew; the 118KB meta-spec outlier that dominated the set is gone. Cost is still LINEAR in doc count, which is the property this scenario exists to protect. The new 8000ms cap is ~22ms/doc, ~1.3x headroom over the measured CI time — the same ratio the prior budget kept. Recorded ceiling: at this doc count an absolute wall-clock cap is a weak guard, because the O(N^2) signature it is meant to catch is no longer an order of magnitude away from a slow-runner reading. The per-doc cost is the real guard and it is not what the harness asserts on. Converting this scenario to assert ms/doc rather than total ms is the fix, and is deliberately not bundled into the change that surfaced it."
+      "rationale": "Scales with the corpus, now ~363 docs (was 331 when the 3000 budget was set, 188 at 1600, 34 at the original 500). RAISED from 3000 deliberately, with evidence, per the standing instruction in this file. The absolute cap had gone stale again: a dev run measures ~2750ms (~7.6ms/doc) against a 3000ms cap, i.e. 92% of budget before CI's slower hardware is considered at all, and CI measured 6288ms (~17ms/doc). Crucially this is NOT a regression \u2014 the same binary run over the pre-split and post-split corpora gives 341 docs at 8.2ms/doc versus 363 docs at 7.6ms/doc, so per-doc cost IMPROVED while doc count grew; the 118KB meta-spec outlier that dominated the set is gone. Cost is still LINEAR in doc count, which is the property this scenario exists to protect. The new 8000ms cap is ~22ms/doc, ~1.3x headroom over the measured CI time \u2014 the same ratio the prior budget kept. Recorded ceiling: at this doc count an absolute wall-clock cap is a weak guard, because the O(N^2) signature it is meant to catch is no longer an order of magnitude away from a slow-runner reading. The per-doc cost is the real guard and it is not what the harness asserts on. Converting this scenario to assert ms/doc rather than total ms is the fix, and is deliberately not bundled into the change that surfaced it."
     }
   }
 }
