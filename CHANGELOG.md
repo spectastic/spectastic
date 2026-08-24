@@ -4,6 +4,44 @@
 
 _Nothing yet._
 
+## v0.1.0-pre.26 — 2026-08-23
+
+**Landing a design export works on a real export.** Three defects between the import and render
+verbs, each of which made the visual path silently produce nothing, and each found by running the
+tool against an actual design export rather than a fixture.
+
+**Token derivation was blind to modern colour (`105`).** The candidate grammar matched hex and
+nothing else, so an export written in `oklch()` or `color()` derived *zero* candidates — the
+importer reported success and left a project with no tokens. It now recognises the ten notations the
+requirement names. On the export this was tested against: 45 candidates before (all hex, from an
+unbounded pattern), 73 after. Spacing is bounded to properties that actually declare spacing, so the
+list is evidence rather than a flood.
+
+**One `--from` value now serves both verbs (`106`).** A real export is an archive; the import
+resolved one and the render verb navigated whatever string it was handed. Pointed at the archive it
+failed outright — the browser downloaded it. Pointed at the extracted folder it captured 0 and exited
+successfully. Only the artboard file inside worked, and no single value reached both verbs. Render
+now states the shapes it accepts and resolves a directory or archive to the page(s) declaring
+artboards. A source that resolves and yields no artboards is reported rather than passing in silence,
+which is what hid this through a full lifecycle pass with a green suite.
+
+**An export may live where the design tool put it (`105`).** Both fetchers refused an absolute path,
+so an export in `~/Downloads` had to be copied into the project first — a containment the requirement
+never asked for, on the read path, where it protected nothing. The write path's containment is now
+stated explicitly, because that is the half that was ever load-bearing. Reading a symbolic link is
+refused for *both* source shapes, closing an asymmetry that would otherwise have meant an export
+refused as a `.zip` and accepted once unzipped.
+
+**Design lands its visuals in one step (`110`).** `spectastic design <id> --visuals <export>`
+performs the import, the render and the view materialisation in the run an author was already doing,
+instead of three commands in an order that is easy to get wrong and whose last step's omission looks
+like completion. A bad path refuses before the model call rather than after; `--no-render` skips the
+browser; a step that cannot complete is reported rather than aborting the rest.
+
+**Also:** the render port takes a set of locations and captures them in one browser session, so a
+multi-page source still meets the one-process bound; `spectastic enforce` recognises Apple's
+`.swift-format` alongside third-party SwiftFormat, which it had been reporting as no formatter at all.
+
 ## v0.1.0-pre.25 — 2026-08-21
 
 **The visual slice, and two contracts that hold the estate honest.** Seventeen specs landed
