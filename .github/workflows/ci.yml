@@ -62,13 +62,15 @@ jobs:
       # Runs with coverage so the lcov output below can be diffed against the
       # change (068-enterprise-enforce-floor T-116) — same suite, same result,
       # `pnpm test` isn't a separate run.
-      # single-session.test.ts launches a real Chromium to prove NFR-001 (one
-      # browser process per run). This job deliberately installs no browsers —
-      # the download is expensive and independent of the unit tiers — so the
-      # test is excluded here and runs in `browser-tests`, which has one. It
-      # failed in 53ms here for want of a browser while passing in 5.6s locally.
+      # Three vitest files launch a real Chromium: single-session.test.ts
+      # (NFR-001, one browser process per run) and the two visual CLI suites,
+      # which drive `visual:render` end to end. This job deliberately installs
+      # no browsers — the download is expensive and independent of the unit
+      # tiers — so all three are excluded here and run in `browser-tests`,
+      # which has one. Kept out rather than skipped, so they are actually
+      # verified in CI instead of quietly not running.
       - name: Unit + integration tests
-        run: pnpm test:coverage --exclude 'packages/render/test/single-session.test.ts'
+        run: pnpm test:coverage --exclude 'packages/render/test/single-session.test.ts' --exclude 'packages/cli/test/design-visuals.test.ts' --exclude 'packages/cli/test/visual-kernels.test.ts'
 
       # Diff-aware coverage gate (T-117, plan D-002): ≥80% of THIS change's
       # lines, never a universal project percentage. BASE resolves the PR's
@@ -200,11 +202,16 @@ jobs:
       - name: Browser tests (hard gate)
         run: pnpm test:e2e
 
-      # The one vitest test that needs a real browser, run in the only job that
-      # has one. Kept out of the unit tier rather than skipped, so NFR-001 is
-      # actually verified in CI instead of quietly not running.
-      - name: Browser-dependent unit test (NFR-001, one process per run)
-        run: pnpm vitest run packages/render/test/single-session.test.ts
+      # The vitest files that need a real browser, run in the only job that has
+      # one. Kept out of the unit tier rather than skipped, so NFR-001 and the
+      # visual verbs' end-to-end behaviour are actually verified in CI instead
+      # of quietly not running.
+      - name: Browser-dependent unit tests (NFR-001; the visual verbs)
+        run: >-
+          pnpm vitest run
+          packages/render/test/single-session.test.ts
+          packages/cli/test/design-visuals.test.ts
+          packages/cli/test/visual-kernels.test.ts
 
       # A failed run's traces/screenshots are the whole diagnostic value of a
       # browser tier; without them a red CI job is just a stack trace.
