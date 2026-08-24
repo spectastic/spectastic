@@ -13,7 +13,16 @@
  * this module internally as the default — see each command file.
  */
 
-import { mkdir, readFile as readFileRaw, readdir, rename, rm, stat, writeFile as writeFileRaw } from 'node:fs/promises';
+import {
+  lstat,
+  mkdir,
+  readFile as readFileRaw,
+  readdir,
+  rename,
+  rm,
+  stat,
+  writeFile as writeFileRaw,
+} from 'node:fs/promises';
 import type { FileSystem } from '../types.js';
 
 export const nodeFs: FileSystem = {
@@ -34,8 +43,16 @@ export const nodeFs: FileSystem = {
     return readdir(path);
   },
   async stat(path) {
+    // `lstat` first so a symbolic link is visible at all — `stat` resolves it
+    // and reports the target, which is exactly the fact 105 FR-019 needs and
+    // the one the plain call destroys. isFile/isDirectory keep following the
+    // link, so every existing caller is unaffected; only the new flag is new.
+    const l = await lstat(path);
+    if (!l.isSymbolicLink()) {
+      return { isFile: l.isFile(), isDirectory: l.isDirectory(), isSymbolicLink: false };
+    }
     const s = await stat(path);
-    return { isFile: s.isFile(), isDirectory: s.isDirectory() };
+    return { isFile: s.isFile(), isDirectory: s.isDirectory(), isSymbolicLink: true };
   },
   async rename(from, to) {
     return rename(from, to);

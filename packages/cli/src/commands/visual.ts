@@ -1,4 +1,3 @@
-import { resolve } from 'node:path';
 import type { Command } from 'commander';
 import type { FileSystem, Finding, KernelContext } from '@spectastic/core';
 import type { BriefScreen } from '@spectastic/core/visual/brief-read';
@@ -107,12 +106,15 @@ export async function renderVisualExport(
     );
   }
   const destDir = `${prefix}/${RENDERS_SUBDIR}`;
-  // A bare filesystem path (the common case — an export already landed via
-  // visual:import, or a fixture checked into the project) needs a scheme
-  // before a browser will navigate to it; a URL is passed through unchanged.
-  const location = /^[a-z][a-z0-9+.-]*:\/\//i.test(input.from) ? input.from : `file://${resolve(ctx.cwd, input.from)}`;
-
-  const result = await renderDesign({ location, destDir }, { cwd: ctx.cwd, fs: ctx.fs, render: ctx.render });
+  // The source is passed through EXACTLY as given — no `file://` conversion
+  // here. FR-012 makes resolving a source the verb's own job, and a scheme
+  // added at this layer would make every value look already-navigable, which
+  // is precisely how a .zip reached the browser and was downloaded instead of
+  // rendered.
+  const result = await renderDesign(
+    { location: input.from, destDir },
+    { cwd: ctx.cwd, fs: ctx.fs, render: ctx.render },
+  );
 
   // Reconciliation (107 FR-004, design D-006): compared against WRITTEN
   // labels only, not refused ones — a template-refused label is noise (106's
@@ -292,7 +294,10 @@ export function registerVisual(program: Command): void {
     .description(
       "Import a design export already on disk — lands its material into the visual sidecar, once, and never reads it again. A token set the export declares lands as a declared source and is never presented for confirmation; values it does not cover are offered as candidates. Nothing is written to the project's own token set. No network, no account, no design-tool licence.",
     )
-    .requiredOption('--from <path>', 'the export, inside this project — a folder, or a .zip which is expanded for you')
+    .requiredOption(
+      '--from <path>',
+      'the export — a folder, or a .zip which is expanded for you; anywhere on this machine you can read',
+    )
     .requiredOption('--into <dir>', 'where landed material goes — the visual sidecar')
     .requiredOption('--identity <id>', 'the stable anchor a later re-import keys on')
     .option('--previous-identity <id>', 'the identity a previous import landed under, if any')
@@ -308,8 +313,8 @@ export function registerVisual(program: Command): void {
         originUrl?: string;
       }) => {
         const [
-          { ImportIdentityError },
-          { SourceNotFoundError, SourceOutsideProjectError },
+          { ImportIdentityError, SourceSymlinkError },
+          { SourceNotFoundError },
           { ArchiveUnreadableError, ArchiveEntryOutsideError },
           { nodeFs },
         ] = await Promise.all([
@@ -352,7 +357,7 @@ export function registerVisual(program: Command): void {
           if (
             err instanceof ImportIdentityError ||
             err instanceof SourceNotFoundError ||
-            err instanceof SourceOutsideProjectError ||
+            err instanceof SourceSymlinkError ||
             err instanceof ArchiveUnreadableError ||
             err instanceof ArchiveEntryOutsideError
           ) {

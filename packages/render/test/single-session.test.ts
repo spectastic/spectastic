@@ -55,12 +55,35 @@ afterAll(async () => {
 });
 
 describe('NFR-001 · one browser process per run', () => {
+  // T-1102 (106 FR-012, the 2026-08-23 apply). The property NFR-001 always
+  // stated but the previous per-location port shape could not hold: a source
+  // may now resolve to SEVERAL pages, and the bound is on the run over that
+  // source, not on each page. With `render(location)` this was a launch per
+  // page — a must-tier number broken by the very change that widened the
+  // source shapes, which is what the adversarial pass caught before it
+  // shipped. The server answers every path with the same two-artboard
+  // fixture, so two URLs is a real multi-page source.
+  it('launches Chromium exactly once across a source that resolved to several pages', async () => {
+    const { playwrightRenderer } = await import('../src/index.js');
+    const launchSpy = vi.spyOn(chromium, 'launch');
+
+    try {
+      const result = await playwrightRenderer().render([`${baseUrl}a`, `${baseUrl}b`]);
+
+      expect(launchSpy).toHaveBeenCalledTimes(1);
+      // Two pages, two artboards each, all captured in that one session.
+      expect(result.captures).toHaveLength(4);
+    } finally {
+      launchSpy.mockRestore();
+    }
+  }, 60_000);
+
   it('launches Chromium exactly once while capturing both artboards from one design source', async () => {
     const { playwrightRenderer } = await import('../src/index.js');
     const launchSpy = vi.spyOn(chromium, 'launch');
 
     try {
-      const result = await playwrightRenderer().render(baseUrl);
+      const result = await playwrightRenderer().render([baseUrl]);
 
       // The heart of NFR-001: one design source, one browser process, no
       // matter how many artboards it declares.

@@ -40,6 +40,16 @@ export type ManifestEntry = ManifestCapturedEntry | ManifestNotCapturedEntry;
 
 export interface RenderManifest {
   entries: ManifestEntry[];
+  /** FR-013 — set when the source resolved and was navigated but declared no
+   *  artboards at all. Distinct from a refusal (the source resolved fine) and
+   *  from a successful capture (nothing was captured), and present rather than
+   *  absent so the difference between "this declares none" and "you pointed at
+   *  the wrong thing" is visible. A run that captured something omits it.
+   *
+   *  The silence this replaces is what hid a source-shape mismatch through a
+   *  full lifecycle pass with a green suite: zero artboards found meant the
+   *  accounting had nothing to say, and it said it correctly. */
+  noArtboards?: { source: string; note: string };
 }
 
 /**
@@ -53,6 +63,7 @@ export interface RenderManifest {
 export function buildManifest(
   written: ReadonlyArray<{ label: string; path: string; consoleErrors: string[] }>,
   refused: ReadonlyArray<{ label: string; reason: string }>,
+  source?: string,
 ): RenderManifest {
   const entries: ManifestEntry[] = [
     ...written.map(
@@ -65,6 +76,15 @@ export function buildManifest(
     ),
     ...refused.map((r): ManifestNotCapturedEntry => ({ label: r.label, status: 'not-captured', reason: r.reason })),
   ];
+  if (entries.length === 0 && source !== undefined) {
+    return {
+      entries,
+      noArtboards: {
+        source,
+        note: 'The source resolved and was read, but declared no artboards. Nothing was captured, and that is reported rather than left as an empty directory.',
+      },
+    };
+  }
   return { entries };
 }
 

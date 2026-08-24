@@ -227,11 +227,29 @@ export interface ImportInput {
  * Returns paths, never contents: the caller decides what to read, which keeps
  * the read/land permission split (FR-015) in one place.
  */
+/** A symbolic link found while reading a source (FR-019). Its own type so a
+ *  caller can tell it from a missing source, and so the refusal reads the same
+ *  whatever shape the source took. */
+export class SourceSymlinkError extends Error {
+  constructor(name: string) {
+    super(`"${name}" is a symbolic link. An export is read as it stands; links are not followed.`);
+  }
+}
+
 export async function collectExportFiles(fs: FileSystem, dir: string, prefix = ''): Promise<string[]> {
   const out: string[] = [];
   for (const name of (await fs.readdir(dir)).filter((f) => !f.startsWith('.')).sort()) {
     const rel = prefix === '' ? name : `${prefix}/${name}`;
     const stat = await fs.stat(`${dir}/${name}`);
+    // FR-019 — a symbolic link is refused rather than followed, whatever the
+    // source's shape. The archive path already refused one on the grounds that
+    // its target "is chosen by whoever built the archive, not by the project
+    // expanding it"; the same is true of a folder somebody handed you, and
+    // while both paths also refused anything outside the project the gap was
+    // bounded by accident. Widening that boundary (FR-001) is precisely when
+    // it stops being — an export refused as a .zip and accepted once unzipped
+    // is worse than either answer applied consistently.
+    if (stat.isSymbolicLink === true) throw new SourceSymlinkError(rel);
     if (stat.isDirectory) out.push(...(await collectExportFiles(fs, `${dir}/${name}`, rel)));
     else out.push(rel);
   }

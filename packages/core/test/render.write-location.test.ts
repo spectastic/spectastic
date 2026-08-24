@@ -65,9 +65,10 @@ function stubFs(writeBinary = vi.fn(async () => {})): FileSystem & { writeBinary
     // pre-existing tests don't assert about — only writeBinary matters here.
     writeFile: async () => {},
     readdir: async () => [],
-    stat: async () => {
-      throw new Error('ENOENT: unused in this test');
-    },
+    // Stat-ed since 106 FR-012 made resolving the source the verb's own job;
+    // reporting it as a file takes the page path straight through, as the raw
+    // navigation did before.
+    stat: async () => ({ isFile: true, isDirectory: false, isSymbolicLink: false }),
     rename: async () => {},
     rm: async () => {},
     mkdir: async () => {},

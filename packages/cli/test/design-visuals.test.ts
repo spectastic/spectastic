@@ -1,4 +1,4 @@
-import { spawn } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, relative, resolve } from 'node:path';
@@ -149,7 +149,18 @@ describe('SC-001 — one command produces the same tree as running the three ver
     for (const [path, bytes] of treeA) {
       expect(bytes.equals(treeB.get(path) as Buffer), `${path} differs`).toBe(true);
     }
-  }, 30_000);
+
+    // T-1107 (106 FR-012). Until the source-shape fix this criterion passed
+    // on two EMPTY results: both sides handed render a directory, a browser
+    // pointed at a directory finds no artboards, and identical nothing is
+    // byte-identical. Equality is only worth asserting over captures that
+    // exist, so the trees must actually carry some.
+    const captures = [...treeA.keys()].filter((k) => k.endsWith('.png'));
+    expect(
+      captures.length,
+      `byte-equality over an empty tree proves nothing; keys: ${[...treeA.keys()]}`,
+    ).toBeGreaterThan(0);
+  }, 60_000);
 
   // Skipped, not fixed here or weakened — but the ORIGINAL citation on this
   // line was stale and has been corrected. The orphan-scan defect it named
@@ -247,6 +258,34 @@ describe('SC-003 — --no-render does not fail the run (US3, T-302)', () => {
     expect(r.code, `stdout: ${r.stdout}\nstderr: ${r.stderr}`).toBe(0);
     expect(r.stdout).toContain('render: not attempted');
   }, 30_000);
+});
+
+// T-1106 (106 FR-012). The case that started the whole chain: a single
+// --visuals value pointed at an ARCHIVE. Before the source-shape fix this
+// produced an empty renders/ directory and reported success — the archive
+// reached the browser, which downloaded it rather than rendering it. The
+// fixture is a real .zip built here rather than a folder, because the folder
+// case and the archive case failed for different reasons and only one of
+// them was ever visible.
+describe('FR-012 — one --visuals value pointed at an archive captures (T-1106)', () => {
+  it('resolves the archive to its artboard page and writes captures', async () => {
+    const cwd = freshSurfaceProject();
+    // Build export.zip from the same two-artboard fixture the folder uses.
+    execFileSync('zip', ['-q', '-j', 'export.zip', join(cwd, 'export', 'a.html')], { cwd });
+
+    const originalCwd = process.cwd();
+    try {
+      process.chdir(cwd);
+      const report = await runOneStepVisuals({ specId: '001-x', from: 'export.zip' }, { cwd, fs: nodeFs });
+      const render = report.find((r) => r.step === 'render');
+      expect(render?.outcome.kind, JSON.stringify(report)).toBe('completed');
+    } finally {
+      process.chdir(originalCwd);
+    }
+
+    const captures = readdirSync(join(cwd, 'specs', '001-x', 'visual', 'renders')).filter((f) => f.endsWith('.png'));
+    expect(captures.length, 'an archive source produced no captures').toBeGreaterThan(0);
+  }, 60_000);
 });
 
 // T-900 (FR-009, SC-005's remaining leg). Not reached through

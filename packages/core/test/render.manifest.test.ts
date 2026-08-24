@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { renderDesign } from '../src/visual/render-capture.js';
+import { buildManifest } from '../src/visual/render-manifest.js';
 import type { FileSystem, KernelContext, Renderer } from '../src/types.js';
 
 /**
@@ -37,9 +38,12 @@ function stubFs(overrides: Partial<FileSystem> = {}): FileSystem & {
     },
     writeFile,
     readdir: async () => [],
-    stat: async () => {
-      throw new Error('ENOENT: unused in this test');
-    },
+    // The source is stat-ed now, because 106 FR-012 makes resolving it the
+    // verb's own job — a page passes through, a directory or archive is
+    // expanded. These tests are about the MANIFEST, so the stub reports the
+    // location as an ordinary file and resolution takes the page path
+    // straight through, exactly as it did when the string was navigated raw.
+    stat: async () => ({ isFile: true, isDirectory: false, isSymbolicLink: false }),
     rename: async () => {},
     rm: async () => {},
     mkdir: async () => {},
@@ -182,5 +186,29 @@ describe('the run manifest — a re-run replaces without a flag (106 FR-011)', (
     expect(fs.writeFile).toHaveBeenCalledTimes(2);
     const secondManifest = JSON.parse(fs.writeFile.mock.calls[1]![1] as string);
     expect(secondManifest.entries).toHaveLength(1);
+  });
+});
+
+// T-1104 (106 FR-013). A source that resolved and was read but declared no
+// artboards is REPORTED — not as a refusal, since a source may legitimately
+// declare none, but never as silence. The silence it replaces is what let a
+// source-shape mismatch survive a full lifecycle pass with a green suite:
+// zero artboards found meant the accounting had nothing to say about them,
+// and it said it correctly.
+describe('the run manifest — a source that yielded no artboards (106 FR-013)', () => {
+  it('reports the fact rather than writing an empty manifest silently', () => {
+    const manifest = buildManifest([], [], 'file:///project/design-export/index.html');
+    expect(manifest.entries).toEqual([]);
+    expect(manifest.noArtboards?.source).toBe('file:///project/design-export/index.html');
+    expect(manifest.noArtboards?.note).toMatch(/declared no artboards/);
+  });
+
+  it('says nothing when something was captured', () => {
+    const manifest = buildManifest(
+      [{ label: 'one', path: 'specs/001-x/visual/renders/one.png', consoleErrors: [] }],
+      [],
+      'file:///project/design-export/index.html',
+    );
+    expect(manifest.noArtboards).toBeUndefined();
   });
 });

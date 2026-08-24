@@ -120,12 +120,26 @@ describe('an archive carries attacker-controlled paths', () => {
     await expect(archiveSourceFetcher(cwd).fetch(name)).rejects.toBeInstanceOf(ArchiveEntryOutsideError);
   });
 
-  it('applies the same containment to the archive itself as a folder source does', async () => {
+  // 105 FR-001, the 2026-08-23 apply. This used to assert the archive's OWN
+  // location was contained to the project. It no longer is, deliberately: a
+  // design tool drops its .zip in ~/Downloads, every one of them was routed
+  // here, and refusing them rejected the only place an export ever actually
+  // is. What is asserted instead is that the containment which was ever
+  // load-bearing survives — the PER-ENTRY bounds above, governing what
+  // somebody else's archive may do to this machine rather than where the
+  // author keeps it.
+  it('reads an archive outside the project, while still containing its entries', async () => {
     const { cwd } = inProject({ 'a.css': 'x' });
-    await expect(archiveSourceFetcher(cwd).fetch('/tmp/elsewhere.zip')).rejects.toBeInstanceOf(
-      ArchiveEntryOutsideError,
-    );
-    await expect(archiveSourceFetcher(cwd).fetch('../elsewhere.zip')).rejects.toBeInstanceOf(ArchiveEntryOutsideError);
+    const outside = join(mkdtempSync(join(tmpdir(), 'spectastic-outside-')), 'export.zip');
+    writeFileSync(outside, zip({ 'a.css': 'x' }));
+
+    const dir = await archiveSourceFetcher(cwd).fetch(outside);
+    expect(readFileSync(join(dir, 'a.css'), 'utf8')).toBe('x');
+    // The per-entry guard is untouched: an entry escaping the archive root is
+    // still refused, wherever the archive itself lives.
+    const evil = join(mkdtempSync(join(tmpdir(), 'spectastic-outside-')), 'evil.zip');
+    writeFileSync(evil, zip({ '../escape.css': 'x' }));
+    await expect(archiveSourceFetcher(cwd).fetch(evil)).rejects.toBeInstanceOf(ArchiveEntryOutsideError);
   });
 });
 

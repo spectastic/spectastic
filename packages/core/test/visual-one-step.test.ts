@@ -85,23 +85,20 @@ function memFs(files: Record<string, string> = {}, dirs: string[] = []) {
   return { fs, store, binaries };
 }
 
-/** A spy renderer, not a labels-in/captures-out fake. Real reason: import's
- *  own fetcher unconditionally requires `from` to be a DIRECTORY ("An export
- *  is a folder of files" — local-source-fetcher.ts), and the one-step flow
- *  passes the SAME `from` to render. Navigating a browser to a directory
- *  finds no `[data-screen-label]` elements — this is exactly the case
- *  110's own spec names as legitimate ("the export resolves but declares no
- *  artboards... not a refusal"), so asserting a real capture here would
- *  assert something the design cannot structurally produce. What this test
- *  CAN honestly prove is that render is genuinely invoked with the derived
- *  location, not skipped. */
-function spyRenderer(): Renderer & { calledWith: string[] } {
-  const calledWith: string[] = [];
+/** A spy renderer. The comment that used to sit here explained why a real
+ *  capture could not be asserted: import requires `from` to be a DIRECTORY,
+ *  the one-step flow passes the same `from` to render, and a browser pointed
+ *  at a directory finds no artboards. That was true, it was the defect, and
+ *  106 FR-012 fixed it — a directory now RESOLVES to the page(s) inside it
+ *  declaring artboards. Kept as a spy rather than a fake because what this
+ *  test proves is the sequencing and the resolution, not the capture. */
+function spyRenderer(): Renderer & { calledWith: readonly string[][] } {
+  const calledWith: string[][] = [];
   return {
     calledWith,
     checkEgress: async () => true,
-    render: async (location: string) => {
-      calledWith.push(location);
+    render: async (locations: readonly string[]) => {
+      calledWith.push([...locations]);
       return { captures: [] };
     },
   };
@@ -133,8 +130,10 @@ describe('runVisualOneStep sequences import, render, materialise (FR-001, T-100)
     // (render-capture.ts:135, 155). Two kernels, two conventions; the
     // orchestrator passes each what it expects.
     expect(Object.keys(store).some((k) => k.startsWith('specs/001-x/visual/') && k.endsWith('a.html'))).toBe(true);
-    // Render was genuinely invoked (not skipped) with the derived location.
-    expect(render.calledWith).toEqual(['file:///repo/export']);
+    // Render was genuinely invoked (not skipped), and the DIRECTORY it was
+    // given resolved to the page inside it that declares an artboard — the
+    // whole point of 106 FR-012. One call, one session (NFR-001).
+    expect(render.calledWith).toEqual([['file:///repo/export/a.html']]);
   });
 });
 

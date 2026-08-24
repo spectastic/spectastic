@@ -27,7 +27,12 @@ export interface FileSystem {
   readFile(path: string, encoding?: 'utf8'): Promise<string>;
   writeFile(path: string, content: string): Promise<void>;
   readdir(path: string): Promise<string[]>;
-  stat(path: string): Promise<{ isFile: boolean; isDirectory: boolean }>;
+  /** `isSymbolicLink` is optional so every existing implementation stays
+   *  valid; an implementation that cannot distinguish a link simply omits it,
+   *  and a caller that must refuse one (105 FR-019) treats absent as unknown
+   *  rather than as "not a link". `isFile`/`isDirectory` keep following links,
+   *  so adding the flag changes no existing behaviour. */
+  stat(path: string): Promise<{ isFile: boolean; isDirectory: boolean; isSymbolicLink?: boolean }>;
   /** Atomic move; added in 010-core-apply per its plan D-003. */
   rename(from: string, to: string): Promise<void>;
   /**
@@ -95,10 +100,16 @@ export interface Renderer {
    */
   checkEgress(): Promise<boolean>;
   /**
-   * Load `location` once and capture every labelled artboard found in that
-   * one session (NFR-001: at most one browser process per run).
+   * Load every location once and capture every labelled artboard found across
+   * all of them in ONE session (NFR-001: at most one browser process per run).
+   *
+   * A set rather than a single location because 106 FR-012 lets one source be
+   * a directory or an archive that resolves to several pages, and NFR-001
+   * bounds the run over that whole source at one process — so the alternative
+   * was a launch per page, which would have broken a must-tier bound the day
+   * the wider source shapes landed.
    */
-  render(location: string): Promise<RenderRunResult>;
+  render(locations: readonly string[]): Promise<RenderRunResult>;
 }
 
 // --- AI ----------------------------------------------------------------

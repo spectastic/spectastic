@@ -16,12 +16,9 @@ import {
   type UnconfirmedTokenCandidate,
   UNKNOWN,
   importDesignSource,
+  SourceSymlinkError,
 } from '../src/visual/import.js';
-import {
-  localSourceFetcher,
-  SourceNotFoundError,
-  SourceOutsideProjectError,
-} from '../src/providers/local-source-fetcher.js';
+import { localSourceFetcher, SourceNotFoundError } from '../src/providers/local-source-fetcher.js';
 import type { FileSystem } from '../src/types.js';
 
 /**
@@ -208,18 +205,59 @@ describe('re-importing', () => {
 });
 
 describe('the source location', () => {
-  it('rejects an absolute path without stat-ing it', async () => {
-    const m = setup();
-    await expect(
-      importDesignSource({ from: '/etc', into: INTO, identity: 'x' }, localSourceFetcher(m.fs, CWD), m.fs),
-    ).rejects.toBeInstanceOf(SourceOutsideProjectError);
+  // T-1800 (FR-001, the 2026-08-23 apply). The two refusals that used to live
+  // here — an absolute path and a traversal — are gone deliberately, not
+  // dropped: FR-001 permits any local filesystem location the author can
+  // read, and the shipped checks exceeded it. A design tool puts its export
+  // in ~/Downloads, and refusing to read it there was the whole defect.
+  // What still holds is the WRITE side, which is what was ever load-bearing.
+  it('reads an absolute path outside the project', async () => {
+    const m = memFs(
+      {
+        '/elsewhere/figma/base.tokens.json': '{"color":{}}',
+        '/elsewhere/figma/converted.png': 'PNGDATA',
+      },
+      ['/elsewhere/figma', '/repo/visual'],
+    );
+    const ledger = await importDesignSource(
+      { from: '/elsewhere/figma', into: INTO, identity: 'x' },
+      localSourceFetcher(m.fs, CWD),
+      m.fs,
+    );
+    expect(ledger.written.sort()).toEqual(['base.tokens.json', 'converted.png']);
+    // Everything written stayed under the destination it was given.
+    for (const key of Object.keys(m.store)) {
+      if (key.startsWith('/elsewhere/')) continue;
+      expect(key.startsWith(INTO), `wrote outside --into: ${key}`).toBe(true);
+    }
   });
 
-  it('rejects a traversal out of the project', async () => {
+  it('reads a path that resolves outside the project', async () => {
+    const m = memFs({ '/elsewhere/base.tokens.json': '{"color":{}}' }, ['/elsewhere', '/repo/visual']);
+    const ledger = await importDesignSource(
+      { from: '../elsewhere', into: INTO, identity: 'x' },
+      localSourceFetcher(m.fs, CWD),
+      m.fs,
+    );
+    expect(ledger.written).toEqual(['base.tokens.json']);
+  });
+
+  // T-1801 (FR-019). The archive path already refused a symlink entry; the
+  // directory walk followed them, because `stat` resolves a link and reports
+  // its target. While BOTH paths also refused anything outside the project
+  // that gap was bounded by accident — widening the boundary is exactly when
+  // it stops being, so the two shapes get one posture rather than an export
+  // being refused as a .zip and accepted once unzipped.
+  it('refuses a symbolic link rather than following it', async () => {
     const m = setup();
-    await expect(
-      importDesignSource({ from: '../elsewhere', into: INTO, identity: 'x' }, localSourceFetcher(m.fs, CWD), m.fs),
-    ).rejects.toBeInstanceOf(SourceOutsideProjectError);
+    m.madeDirs.add('/repo/exports/figma/linked');
+    const realStat = m.fs.stat;
+    m.fs.stat = async (p: string) =>
+      p === '/repo/exports/figma/linked' ? { isFile: false, isDirectory: true, isSymbolicLink: true } : realStat(p);
+
+    await expect(run(m)).rejects.toBeInstanceOf(SourceSymlinkError);
+    // Refused before anything landed — the two-phase discipline holds.
+    expect(Object.keys(m.store).some((k) => k.startsWith(INTO))).toBe(false);
   });
 
   it('reports a source that is not there', async () => {

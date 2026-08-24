@@ -93,11 +93,19 @@ describe("visual:import — today's exact contract", () => {
 });
 
 describe("visual:render — today's exact contract", () => {
-  it('exits 1 and surfaces the navigation error for an export that does not resolve', async () => {
+  // Deliberately changed by the 2026-08-23 apply, not a regression. This
+  // characterisation test pinned `net::ERR_FILE_NOT_FOUND` — the browser's
+  // own message, leaked because the verb navigated whatever string it was
+  // handed. 106 FR-012 makes resolving the source the verb's job and requires
+  // a source that resolves to no page be "refused with a stated reason rather
+  // than navigated as-is", so the reason is now the tool's rather than
+  // Chromium's. Still exit 1, still names the path the author typed.
+  it('exits 1 and refuses with a stated reason for an export that does not resolve', async () => {
     const cwd = freshProject();
     const r = await runCLI(['visual:render', '001-x', '--from', 'export/nope.html'], cwd);
     expect(r.code).toBe(1);
-    expect(r.stderr).toContain('net::ERR_FILE_NOT_FOUND');
+    expect(r.stderr).toContain('export/nope.html');
+    expect(r.stderr).not.toContain('net::ERR_');
   });
 
   it('exits 0, captures both artboards and reconciles against the (empty) declared states', async () => {

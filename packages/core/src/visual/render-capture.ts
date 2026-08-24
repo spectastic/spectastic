@@ -29,7 +29,8 @@
  * packages/core/test/render.no-comparison.test.ts pins it structurally.
  */
 
-import type { KernelContext, RenderCapture } from '../types.js';
+import { resolve } from 'node:path';
+import type { FileSystem, KernelContext, RenderCapture } from '../types.js';
 import { buildManifest, serializeManifest } from './render-manifest.js';
 import { detectCollisions, slugLabel } from './render-naming.js';
 
@@ -77,12 +78,65 @@ const CAPTURE_EXTENSION = 'png';
  *  read like `{{ s.id }} · light` rather than the runtime throwing. */
 const TEMPLATE_SYNTAX = /\{\{|\}\}/;
 
+/** The artboard declaration the adapter's own selector looks for — matched
+ *  here on the raw text so resolution needs no browser and no parser. */
+const DECLARES_ARTBOARD = /data-screen-label\s*=/i;
+
 /** FR-008's second clause: no path segment behind this destDir may begin
  *  with a dot — covers both a `..` traversal and a bare dotfile-style
  *  directory (a dotfile filter is exactly why 094's tool-made image went
  *  invisible rather than refused). */
 function hasDotSegment(destDir: string): boolean {
   return destDir.split('/').some((segment) => segment.startsWith('.'));
+}
+
+/** A source string that already names something a browser can navigate. */
+function isNavigable(location: string): boolean {
+  return /^[a-z][a-z0-9+.-]*:\/\//i.test(location);
+}
+
+/** Pages, by extension. `.dc.html` is what a real design export ships. */
+const PAGE_SUFFIXES = ['.html', '.htm', '.xhtml'] as const;
+
+/**
+ * Resolve a source (FR-012) to the page locations to navigate.
+ *
+ * A URL passes through — nothing local to inspect, and this verb requires
+ * egress anyway (FR-005). A page passes through as a `file://` URL. A
+ * directory or archive is expanded through the same fetcher seam the import
+ * uses, then scanned for documents that actually declare an artboard, so the
+ * caller may hand this verb the value the import takes. Scanning for the
+ * declaration rather than trusting the extension is what keeps an uploaded
+ * spec document — which a real export also carries — out of the render set.
+ */
+export async function resolveRenderLocations(location: string, fs: FileSystem, cwd: string): Promise<string[]> {
+  if (isNavigable(location)) return [location];
+
+  const { looksLikeArchive, archiveSourceFetcher } = await import('../providers/archive-source-fetcher.js');
+  const { localSourceFetcher } = await import('../providers/local-source-fetcher.js');
+
+  // An archive is a file too, so this test comes FIRST — checking "is it a
+  // file?" before "is it an archive?" hands the browser a .zip to download,
+  // which is the defect this resolution exists to fix.
+  if (!looksLikeArchive(location)) {
+    const direct = resolve(cwd, location);
+    const stat = await fs.stat(direct).catch(() => null);
+    if (stat?.isFile === true) return [`file://${direct}`];
+  }
+
+  const dir = looksLikeArchive(location)
+    ? await archiveSourceFetcher(cwd).fetch(location)
+    : await localSourceFetcher(fs, cwd).fetch(location);
+
+  const { collectExportFiles } = await import('./import.js');
+  const names = await collectExportFiles(fs, dir);
+  const out: string[] = [];
+  for (const name of names) {
+    if (!PAGE_SUFFIXES.some((s) => name.toLowerCase().endsWith(s))) continue;
+    const body = await fs.readFile(`${dir}/${name}`).catch(() => '');
+    if (DECLARES_ARTBOARD.test(body)) out.push(`file://${dir}/${name}`);
+  }
+  return out;
 }
 
 export async function renderDesign(input: RenderDesignInput, ctx: KernelContext): Promise<RenderDesignResult> {
@@ -113,7 +167,20 @@ export async function renderDesign(input: RenderDesignInput, ctx: KernelContext)
     );
   }
 
-  const { captures } = await renderer.render(location);
+  // FR-012 — the source may be a page, a URL, a directory or an archive.
+  // Resolve it to the page(s) that actually declare artboards before any
+  // navigation, so the caller can hand this verb the same value the import
+  // takes. A source that resolves to none is refused with its reason rather
+  // than navigated as-is, which is what produced `page.goto: Download is
+  // starting` when a .zip reached the browser.
+  const locations = await resolveRenderLocations(location, fs, ctx.cwd);
+  if (locations.length === 0) {
+    throw new Error(
+      `"${location}" resolves to no page declaring artboards — nothing to render. Point --from at the export, a page inside it, or a URL.`,
+    );
+  }
+
+  const { captures } = await renderer.render(locations);
 
   const refused: RefusedCapture[] = [];
   const accepted: RenderCapture[] = [];
@@ -161,7 +228,7 @@ export async function renderDesign(input: RenderDesignInput, ctx: KernelContext)
   // found, accounted for, beside the captures it describes. Written fresh
   // every run — buildManifest holds no state, so a re-run's manifest
   // describes only the run that just happened (FR-011, T-302).
-  const manifest = buildManifest(written, refused);
+  const manifest = buildManifest(written, refused, location);
   await fs.writeFile(`${dirPath}/manifest.json`, serializeManifest(manifest));
 
   return { written, refused };

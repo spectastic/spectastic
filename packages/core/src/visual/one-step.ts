@@ -18,7 +18,6 @@
  * `completed`.
  */
 
-import { resolve } from 'node:path';
 import { readVisualDeclarations } from '@spectastic/schema/visual';
 import { archiveSourceFetcher, looksLikeArchive } from '../providers/archive-source-fetcher.js';
 import { localSourceFetcher } from '../providers/local-source-fetcher.js';
@@ -125,12 +124,10 @@ export async function runVisualOneStep(input: OneStepInput, ctx: OneStepContext)
   } else {
     const prefix = conventionalVisualPrefix('screens', input.specId) ?? into;
     const destDir = `${prefix}/${RENDERS_SUBDIR}`;
-    // A bare filesystem path needs a scheme before a browser will navigate to
-    // it; a URL is passed through unchanged — the same rule visual:render's
-    // own wrapper applies.
-    const location = /^[a-z][a-z0-9+.-]*:\/\//i.test(input.from)
-      ? input.from
-      : `file://${resolve(ctx.cwd, input.from)}`;
+    // Passed through exactly as given — resolving a source (106 FR-012) is
+    // the render verb's own job, and a scheme added here would make every
+    // value look already-navigable to it.
+    const location = input.from;
     // T-300/FR-004: render-capture.ts throws a WHOLE-RUN refusal (unreachable
     // egress, an unsafe destDir) before executing any artboard — that must
     // not propagate out of this orchestrator as a rejection; import and

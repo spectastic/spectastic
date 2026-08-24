@@ -26,7 +26,7 @@
 import { inflateRawSync } from 'node:zlib';
 import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, isAbsolute, join, normalize, relative, resolve, sep } from 'node:path';
+import { dirname, isAbsolute, join, normalize, resolve, sep } from 'node:path';
 import type { DesignSourceFetcher } from '../visual/source-fetcher.js';
 
 export class ArchiveUnreadableError extends Error {}
@@ -148,14 +148,13 @@ function readZip(buf: Buffer, label: string): Entry[] {
 export function archiveSourceFetcher(cwd: string): DesignSourceFetcher {
   return {
     async fetch(location: string): Promise<string> {
-      if (isAbsolute(location)) {
-        throw new ArchiveEntryOutsideError(`${location} is an absolute path; give a location inside the project.`);
-      }
+      // No containment on the ARCHIVE's own location, deliberately (FR-001):
+      // a design tool drops its .zip in ~/Downloads, and every one of them was
+      // routed here and rejected. What stays untouched below is the containment
+      // that was ever load-bearing — per-ENTRY traversal, symlink, entry-size
+      // and expansion-ratio bounds, all of which govern what somebody else's
+      // archive may do to this machine rather than where the author keeps it.
       const archivePath = resolve(cwd, location);
-      const rel = relative(cwd, archivePath);
-      if (rel.startsWith('..') || isAbsolute(rel)) {
-        throw new ArchiveEntryOutsideError(`${location} resolves outside the project.`);
-      }
 
       let buf: Buffer;
       try {

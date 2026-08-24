@@ -31,7 +31,11 @@ export interface RenderRunResult {
 
 export interface Renderer {
   checkEgress(): Promise<boolean>;
-  render(location: string): Promise<RenderRunResult>;
+  /** A SET of locations, captured in one session — this package declares its
+   *  own copy of the port rather than importing it (core must not depend on a
+   *  browser), so the two shapes are kept in step by hand and a drift shows up
+   *  as a type error at the one CLI module that holds both. */
+  render(locations: readonly string[]): Promise<RenderRunResult>;
 }
 
 /**
@@ -71,45 +75,51 @@ export function playwrightRenderer(): Renderer {
       return reachable(RUNTIME_CDN);
     },
 
-    async render(location: string): Promise<RenderRunResult> {
+    async render(locations: readonly string[]): Promise<RenderRunResult> {
+      // ONE launch for the whole set, never one per location — NFR-001 bounds
+      // a run over a single design source at one browser process, and a source
+      // may now resolve to several pages (106 FR-012). The loop is inside the
+      // launch for exactly that reason; moving it outside would satisfy the
+      // same requirement's letter and break its number.
       const browser = await chromium.launch();
       try {
         const page = await browser.newPage();
-
-        // Errors are attributed to the artboard capturing when they fire —
-        // reset before each capture, read after it. FR-009's manifest wiring
-        // (T-310/T-311) is what actually reports these; this port's job is
-        // only to not let them fall on the floor between browser and caller.
-        let pending: string[] = [];
-        page.on('console', (msg) => {
-          if (msg.type() === 'error') pending.push(msg.text());
-        });
-        page.on('pageerror', (err) => {
-          pending.push(String(err));
-        });
-
-        // 'networkidle' rather than 'load': design.html's own grounding row
-        // ("Artboards exist only after the runtime executes") found a design
-        // export's labels are template placeholders until its own script has
-        // run and settled, which 'load' alone does not wait for.
-        await page.goto(location, { waitUntil: 'networkidle' });
-
-        const artboards = page.locator(ARTBOARD_SELECTOR);
-        const labels = await artboards.evaluateAll((elements) =>
-          elements.map((el) => el.getAttribute('data-screen-label') ?? ''),
-        );
-
         const captures: RenderCapture[] = [];
-        for (let i = 0; i < labels.length; i++) {
-          pending = [];
-          // Each artboard's OWN bounds, never the page (FR-003) — a locator
-          // screenshot crops to the matched element's box.
-          const bytes = await artboards.nth(i).screenshot();
-          captures.push({
-            label: labels[i]!,
-            bytes: new Uint8Array(bytes),
-            consoleErrors: [...pending],
+        for (const location of locations) {
+          // Errors are attributed to the artboard capturing when they fire —
+          // reset before each capture, read after it. FR-009's manifest wiring
+          // (T-310/T-311) is what actually reports these; this port's job is
+          // only to not let them fall on the floor between browser and caller.
+          let pending: string[] = [];
+          page.on('console', (msg) => {
+            if (msg.type() === 'error') pending.push(msg.text());
           });
+          page.on('pageerror', (err) => {
+            pending.push(String(err));
+          });
+
+          // 'networkidle' rather than 'load': design.html's own grounding row
+          // ("Artboards exist only after the runtime executes") found a design
+          // export's labels are template placeholders until its own script has
+          // run and settled, which 'load' alone does not wait for.
+          await page.goto(location, { waitUntil: 'networkidle' });
+
+          const artboards = page.locator(ARTBOARD_SELECTOR);
+          const labels = await artboards.evaluateAll((elements) =>
+            elements.map((el) => el.getAttribute('data-screen-label') ?? ''),
+          );
+
+          for (let i = 0; i < labels.length; i++) {
+            pending = [];
+            // Each artboard's OWN bounds, never the page (FR-003) — a locator
+            // screenshot crops to the matched element's box.
+            const bytes = await artboards.nth(i).screenshot();
+            captures.push({
+              label: labels[i]!,
+              bytes: new Uint8Array(bytes),
+              consoleErrors: [...pending],
+            });
+          }
         }
 
         return { captures };
