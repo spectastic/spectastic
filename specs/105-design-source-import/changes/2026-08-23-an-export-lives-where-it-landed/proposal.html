@@ -1,0 +1,420 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'">
+<title>An export lives where it landed · Change proposal</title>
+<link rel="stylesheet" href="../../../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../../../assets/favicon.svg">
+<script src="../../../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Change proposal · 105-design-source-import</p>
+  <h1>An export lives where it landed</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    A design tool drops its export in Downloads. The import refuses to read it there — a containment
+    this spec never asked for, on the one path where containment protects nothing.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>     <span><spec-status value="approved">Approved</spec-status></span>
+    <b>Change ID</b>  <span>2026-08-23-an-export-lives-where-it-landed</span>
+    <b>Spec</b>       <span><a href="../../spec.html">105-design-source-import</a></span>
+    <b>Author</b>     <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Created</b>    <span><time datetime="2026-08-23">23 Aug 2026</time></span>
+    <b>Targets</b>    <span>2 requirements</span>
+    <b>Read time</b>  <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-tldr>
+    <p><a href="../../spec.html#FR-001">FR-001</a> says an import reads from &ldquo;a location already on the
+    local filesystem&rdquo; and says nothing about <em>where</em> on it. Both fetchers nonetheless refuse an
+    absolute path and anything resolving outside the working directory, so
+    <code>--from ~/Downloads/export.zip</code> &mdash; where every design tool actually puts one &mdash; is
+    rejected with a message telling the author to move it. One MODIFY makes the read path&rsquo;s scope explicit
+    and the <em>write</em> path&rsquo;s containment explicit alongside it; one ADD gives the two source shapes a
+    single symlink posture, which the adversarial pass showed they do not have.</p>
+  </spec-tldr>
+</header>
+
+
+<spec-change id="2026-08-23-an-export-lives-where-it-landed" status="approved">
+
+<header>
+  <h3>An export lives where it landed</h3>
+  <span class="meta"><spec-status value="approved">Approved</spec-status></span>
+</header>
+
+
+<section id="intent">
+<h2>1 · Intent</h2>
+
+<p>Surfaced while reproducing a sibling defect in
+<a href="../../../106-visual-render/spec.html">106</a> against a real design export. The export was a
+<code>.zip</code> in <code>~/Downloads</code>, which is where the tool that produced it put it &mdash; and the
+reproduction only worked because it was copied into the project first. That copy was not a convenience; without
+it the import refuses outright: <em>&ldquo;is an absolute path; give a location inside the project.&rdquo;</em></p>
+
+<p><strong>No requirement asks for that.</strong> <a href="../../spec.html#FR-001">FR-001</a> constrains the
+source to be <em>already on the local filesystem</em>, and constrains the import to need no network, account or
+credential. It says nothing about which part of the filesystem. The containment is an implementation decision
+that exceeds its own spec, and it is the kind that is invisible until somebody uses the tool the way the
+ecosystem actually works.</p>
+
+<p>It was deliberate rather than accidental &mdash; the local fetcher&rsquo;s comment says
+<em>&ldquo;Containment first &hellip; so a traversal is rejected rather than stat-ed.&rdquo;</em> That reasoning
+is sound for a path check in general and misapplied here, because it conflates two paths. <code>--from</code> is
+a location the author names, on their own machine, pointing at material they already have. <code>--into</code> is
+where the tool writes. Only the second is derived from anything the author did not type, and only the second is
+where a traversal could do harm.</p>
+
+<p><strong>Two things the adversarial pass corrected, both of which would have shipped.</strong> First, the
+containment is not in one fetcher but <em>two</em>: <code>archiveSourceFetcher</code> carries its own absolute
+and outside-project refusals, and <code>looksLikeArchive</code> routes every <code>.zip</code> there. A first
+draft of this proposal touched only the local fetcher, so its own headline case would still have failed after
+every task was drained. Second, the two source shapes do not share a symlink posture: the archive path refuses a
+symlink entry outright, while the folder path walks with a <code>stat</code> that <em>follows</em> them &mdash;
+so widening the read location alone would mean an export is refused as an archive and accepted once a person
+unzips it. That asymmetry is not something to inherit while relaxing the boundary around it.</p>
+
+<p><strong>What does hold up, checked in source:</strong> destinations are never built from author-supplied or
+archive-supplied strings. Every landed file&rsquo;s name comes from <code>collectExportFiles</code> walking the
+resolved source with <code>readdir</code>, which cannot return <code>..</code>, and dot entries are filtered at
+every level. The write side stands on its own &mdash; which is why the read-side <em>path</em> check was never
+load-bearing, even though the read-side <em>symlink</em> question turns out to be.</p>
+</section>
+
+
+<section id="scope">
+<h2>2 · Scope</h2>
+
+<spec-goals>
+  <h3>In scope</h3>
+  <ul>
+    <li>Making the read path&rsquo;s scope explicit &mdash; an export may live anywhere the author can read
+    &mdash; so the shipped refusals stop exceeding the requirement they implement. Both fetchers, since both
+    carry the check and a <code>.zip</code> is routed to the one a first draft overlooked.</li>
+    <li>Making the <em>write</em> path&rsquo;s containment explicit in the same requirement, so removing the
+    read-side check does not read as removing containment altogether. It states what was actually doing the
+    protecting.</li>
+    <li>Giving both source shapes one symlink posture, so widening the boundary does not make an export&rsquo;s
+    safety depend on whether the author unzipped it first.</li>
+  </ul>
+</spec-goals>
+
+<spec-non-goals>
+  <h3>Out of scope</h3>
+  <ul>
+    <li>Anything about what the import <em>lands</em> once it has read. The refusal of executable content, the
+    runtime decision settled by this spec&rsquo;s own T-018, and the review marks are all untouched
+    <span defer-to="never">by a change to where reading may begin</span>.</li>
+    <li>Reading from a network location, an account, or behind a credential. FR-001&rsquo;s other clause is the
+    load-bearing one and is not weakened here <span defer-to="never">&mdash; local means local</span>.</li>
+    <li>Per-entry traversal, entry-size and expansion-ratio bounds inside an archive. Already shipped by this
+    spec&rsquo;s own T-020 and unchanged here <span defer-to="never">&mdash; a first draft deferred these to a
+    slug, which would have planted a backlog item for a closed concern</span>.</li>
+  </ul>
+</spec-non-goals>
+</section>
+
+
+<section id="approach">
+<h2>3 · Approach</h2>
+
+<p>One MODIFY on <a href="../../spec.html#FR-001">FR-001</a>, carrying both existing clauses through unchanged
+and adding the two that were left implicit: the source need not sit inside the project, and everything the
+import writes stays under the destination it was given. One ADD stating the symlink posture both source shapes
+must share.</p>
+
+<p>The relaxation is worded as <em>need not be inside the project</em> rather than <em>must not be
+constrained</em>. The difference matters: the second is an unbounded prohibition, and it would mean any future
+read-side bound &mdash; including the symlink refusal added here, which has nothing to do with the project
+directory &mdash; needed a fresh proposal amending a must-tier requirement before it could be written. A
+requirement that forbids its own siblings is a trap for whoever writes the next one.</p>
+
+<p>Stating the write-side containment is not padding either. Deleting a check named
+<code>SourceOutsideProjectError</code> without recording what containment survives would leave the next reader
+to work out from the code whether this spec still has any. It does, it always did, and it is the half that
+matters.</p>
+
+<spec-note>
+<p>This lands independently of the <a href="../../../106-visual-render/spec.html">106</a> change it was
+surfaced by. That one makes a single <code>--from</code> value serve both verbs; this one widens where that
+value may point. Either is useful alone: 106 alone fixes an export already inside the project, this alone
+fixes nothing about rendering. Together they make <code>--visuals ~/Downloads/export.zip</code> work, which is
+the shape a person actually has.</p>
+</spec-note>
+</section>
+
+
+<section id="deltas">
+<h2>4 · Deltas</h2>
+<p>One <code>&lt;spec-delta&gt;</code> per requirement touched. <code>target=</code> links to
+the live spec. <code>op=</code> is one of <code>added | modified | removed | renamed</code>;
+a missing or invalid op renders visibly broken.</p>
+
+<spec-delta op="modified" target="FR-001">
+  <p><strong>What changes:</strong> two clauses are added &mdash; the source need not sit inside the project
+  directory, and everything written stays under the given destination. <strong>Nothing else</strong>: both
+  existing clauses and the whole live rationale carry through verbatim, with two sentences appended.</p>
+  <spec-requirement id="FR-001" priority="must">
+    <p>An import <spec-rule>MUST</spec-rule> read from a location already on the local filesystem, and
+    <spec-rule>MUST NOT</spec-rule> require a network, an account or a credential. That location
+    <spec-rule>MUST NOT</spec-rule> be <em>required</em> to sit inside the project directory &mdash; an export
+    may live anywhere on the local filesystem the author can read. Everything the import <em>writes</em>
+    <spec-rule>MUST</spec-rule> remain under the destination it was given.</p>
+    <details><summary>Rationale</summary><p>What makes one code path serve five tools whose models agree about
+    nothing else. It also removes the seat, the rate limit and the API version from the dependency graph of a
+    spec — a spec that needs somebody's login to validate is not portable. The two added clauses separate a
+    conflation the implementation made and this requirement did not: a read location is named by the author and
+    points at material they already have, while a write destination is where the tool acts. Refusing an absolute
+    <code>--from</code> protected nothing — every landed name comes from walking the resolved source with
+    <code>readdir</code>, which cannot produce a traversal — and it rejected the one place a design tool actually
+    puts an export. Worded as <em>need not</em> rather than <em>must not be constrained</em> so that a bound
+    unrelated to the project directory, such as <a href="#FR-019">FR-019</a>'s, does not require amending this
+    requirement before it can exist.</p></details>
+  </spec-requirement>
+</spec-delta>
+
+<spec-delta op="added" target="FR-019">
+  <spec-requirement id="FR-019" priority="must">
+    <p>An import <spec-rule>MUST</spec-rule> refuse to follow a symbolic link when reading a source, and
+    <spec-rule>MUST</spec-rule> apply that refusal identically whatever shape the source takes.</p>
+    <details><summary>Rationale</summary><p>The archive path already refuses a symlink entry, on the stated
+    grounds that its target &ldquo;is chosen by whoever built the archive, not by the project expanding it&rdquo;.
+    The directory path does not: it walks with a <code>stat</code> that follows links, so a folder carrying a
+    link to somewhere else on the machine is read through, landed, hashed into the manifest and committed. While
+    both paths refused anything outside the project the gap was bounded by accident; widening the boundary is
+    exactly when it stops being. Stated as one requirement over both shapes rather than a second clause on the
+    archive rule, because the defect is the <em>asymmetry</em> — the same export refused as a <code>.zip</code>
+    and accepted once unzipped is worse than either answer applied consistently.</p></details>
+  </spec-requirement>
+</spec-delta>
+</section>
+
+
+<section id="subtraction">
+<h2>4b · What this change removes</h2>
+<p>Each entry names one thing this change takes away &mdash; a clause dropped from a requirement it retypes,
+an obligation a sibling loses, a behaviour or affordance no requirement records. <strong>An empty register is
+the answer &ldquo;this removes nothing&rdquo;</strong>, so the common case needs no editing.</p>
+<p>Where a delta removes something itself, its own reason and migration stay authoritative &mdash; this
+register is for what no delta can express.</p>
+
+<spec-subtraction>
+<ul>
+  <li><strong>A refusal that was doing real work in one narrow case.</strong> Rejecting the declared string
+  before resolving it meant a traversal was never <code>stat</code>-ed &mdash; the source was never touched at
+  all. After this change an out-of-project path is resolved and stat-ed, so the tool reads where it previously
+  refused to look. That is the intent, and it is still a capability the tool did not have a moment ago.</li>
+  <li><strong>A uniformity this codebase relied on without stating it.</strong> Both fetchers&rsquo; comments
+  claim the containment order is &ldquo;the same order every path check in this codebase uses&rdquo;. After this
+  change two path checks deliberately differ from the others, so the sentence that made them obviously correct
+  no longer applies and a reader must know why.</li>
+  <li><strong>The ability to read an export through a symbolic link.</strong> Nothing depended on it and no
+  requirement offered it, but a directory export containing a link to material elsewhere on the machine is
+  imported today and will be refused after <a href="#FR-019">FR-019</a>. A person who had arranged an export
+  that way &mdash; a shared assets folder linked into a per-feature export, say &mdash; loses a working
+  arrangement and gets a refusal rather than silence.</li>
+</ul>
+</spec-subtraction>
+</section>
+
+
+<section id="risks">
+<h2>5 · Risk register</h2>
+<p>Populated by the adversarial risk pass when the proposal triggers the heuristic (touches a <code>must</code>-tier requirement, contains an <code>op="removed"</code> delta, or spans ≥2 topic prefixes). One <code>&lt;spec-risk&gt;</code> per finding. <code>target=</code> is required (missing renders broken). <code>status=</code> defaults to <code>identified</code>; apply refuses until each transitions to <code>accepted</code>, <code>mitigated</code>, or <code>rejected</code>.</p>
+
+<spec-risk-log>
+
+<spec-risk target="FR-001" status="mitigated" by="Brian Corbin · @briancorbinxyz">
+  <p class="claim">The delta widens the read location at <strong>must</strong> tier while the safety argument
+  offered for it reasons only about <em>destination names</em>, never about <em>what the walk may reach</em>.
+  <code>collectExportFiles</code> recurses on <code>fs.stat</code>, and <code>nodeFs.stat</code> is
+  <code>node:fs/promises</code>&rsquo; <code>stat</code>, which <em>follows symlinks</em> &mdash; so an export
+  folder carrying a symlinked directory is walked, its contents read, landed under <code>--into</code>, hashed
+  into the manifest as &ldquo;NOT REVIEWED&rdquo;, and committed. That is exactly the capability the archive path
+  already refuses by type, so after this change the same untrusted export is refused as a <code>.zip</code> and
+  accepted once a person unzips it into Downloads. The 30-day regret is the wording as much as the hole:
+  &ldquo;MUST NOT be constrained to the project directory&rdquo; is an unbounded must-tier prohibition, so
+  reintroducing <em>any</em> read-side bound &mdash; including a symlink refusal that has nothing to do with the
+  project directory &mdash; needs a second proposal amending a must requirement rather than a patch.</p>
+  <p class="citation">Original delta: &ldquo;That location MUST NOT be constrained to the project
+  directory&rdquo;. Against <code>packages/core/src/visual/import.ts:230-239</code>,
+  <code>packages/core/src/providers/node-fs.ts:37</code> (<code>stat</code>, not <code>lstat</code>), and
+  <code>packages/core/src/providers/archive-source-fetcher.ts:105</code> (S_IFLNK refused).</p>
+  <div class="response"><p><strong>Accepted in full; the sharpest finding of the pass and it changed both the
+  wording and the scope.</strong> Verified in source before acting: <code>nodeFs.stat</code> is
+  <code>stat</code> and does follow links, and the archive path does refuse them &mdash; so the asymmetry is
+  real, not theoretical. Two corrections followed. The prohibition is now bounded (&ldquo;MUST NOT be
+  <em>required</em> to sit inside&rdquo;), so a future read-side bound does not need a proposal against a must
+  requirement before it can be written &mdash; and <a href="#FR-019">FR-019</a>, added in this same change, is
+  the first thing that would have hit that trap. And the symlink gap is closed here rather than inherited:
+  FR-019 gives both shapes one posture, since the same export refused as an archive and accepted once unzipped
+  is worse than either answer applied consistently. The subtraction register records what that costs
+  someone.</p></div>
+</spec-risk>
+
+<spec-risk target="FR-013" status="mitigated" by="Brian Corbin · @briancorbinxyz">
+  <p class="claim">Live FR-013 is must-tier and says an import &ldquo;MUST accept an archive as its source
+  location&rdquo;; the amended FR-001 says that location must not be constrained to the project directory. Read
+  together, the two oblige the archive path to accept <code>~/Downloads/export.zip</code> &mdash; but
+  <code>archiveSourceFetcher</code> carries its own, independent absolute-path and outside-project refusals,
+  <code>looksLikeArchive</code> routes every <code>.zip</code> there from all three call sites, and no delta,
+  scope item or task in this proposal touches that file. So the change as written makes the shipped archive path
+  non-conformant with two must-tier requirements on the day it applies, and the proposal&rsquo;s own headline
+  case still fails after every listed task is drained.</p>
+  <p class="citation">Live <a href="../../spec.html#FR-013">FR-013</a>; against
+  <code>packages/core/src/providers/archive-source-fetcher.ts:151-158</code> and the original &sect;6, which
+  named only <code>local-source-fetcher.ts</code> while its last task asserted an archive outside the project is
+  exercised end to end.</p>
+  <div class="response"><p><strong>Accepted; this one was fatal and the proposal would have shipped claiming a
+  fix it did not deliver.</strong> Confirmed in source: the archive fetcher throws
+  <code>ArchiveEntryOutsideError</code> on both an absolute path and an outside-project resolution, entirely
+  independently of the local fetcher, and <code>looksLikeArchive</code> sends every <code>.zip</code> to it. The
+  headline case is the archive path, not the folder path. &sect;2 now says both fetchers explicitly, the task
+  list covers <code>archive-source-fetcher.ts</code>, and the end-to-end task that asserts the real shape is
+  kept precisely because it is what would have caught this had the tasks been drained rather than
+  read.</p></div>
+</spec-risk>
+
+<spec-risk target="§2" status="mitigated" by="Brian Corbin · @briancorbinxyz">
+  <p class="claim">The scope register is mis-drawn on the one axis that decides whether this change works. Its
+  third out-of-scope item is the only place archives are mentioned, and it defers <em>work that already
+  ships</em> &mdash; per-entry traversal containment, symlink refusal and expansion ratio/size bounds are all
+  live in the expander (T-020) &mdash; so the slug plants a phantom backlog item for a closed concern.
+  Meanwhile the archive edit the change genuinely needs is excluded by implication, because the item asserts
+  archives are &ldquo;unchanged by this proposal&rdquo;. The scope is too narrow, and narrow in a way that reads
+  as deliberate: a reviewer sees archives considered and set aside, rather than a gap.</p>
+  <p class="citation">Original &sect;2 item 3, deferring archive expansion safety to
+  <code>TBD-archive-expansion-containment</code>. Already implemented at
+  <code>packages/core/src/providers/archive-source-fetcher.ts:107-121</code> and <code>:170-178</code>, with
+  tests at <code>packages/core/test/archive-bounds.test.ts</code>.</p>
+  <div class="response"><p><strong>Accepted, and the phantom slug is the part worth recording.</strong> A
+  <code>TBD-</code> for something already shipped is worse than no entry: it manufactures backlog, and the
+  estate has a whole considerations document about exactly that failure. The item now states that those bounds
+  ship and are unchanged, with <code>defer-to="never"</code> rather than a slug. The genuine archive edit moved
+  from excluded-by-implication into scope, which is the substantive half of this finding and is handled
+  alongside the FR-013 one above.</p></div>
+</spec-risk>
+
+<spec-risk target="FR-001" status="mitigated" by="Brian Corbin · @briancorbinxyz">
+  <p class="claim">The corpus commits a must-tier grounding rule, and this must-tier delta breaches it: two
+  facts &sect;1 and &sect;6 present as <em>verified</em> are contradicted by the source they name. &sect;1 says
+  the read side &ldquo;was never load-bearing&rdquo; having been &ldquo;checked before proposing, not
+  assumed&rdquo;, but the check reached one of the two fetchers &mdash; the archive fetcher carries the same
+  containment refusal and is unmentioned. &sect;6 task 3 states &ldquo;the one-step preflight catches it by type
+  today&rdquo;; <code>checkVisualsExport</code> catches nothing at all, and the only by-type catch is in the CLI,
+  which the task does not name.</p>
+  <p class="citation">Contradicts <code>KB-0001@2026-07-25</code>: &ldquo;A <code>must</code>-tier decision may
+  not rest on an <code>assumed</code> or unresolved-<code>spike</code> fact without an explicit
+  <code>&lt;spec-risk status="accepted"&gt;</code>.&rdquo; Refuted by
+  <code>packages/core/src/visual/one-step.ts:82-85</code> (no catch) and
+  <code>packages/cli/src/commands/visual.ts:355</code> (the actual catch site).</p>
+  <div class="response"><p><strong>Accepted; both claims were wrong and both are corrected rather than
+  softened.</strong> The grounding claim in &sect;1 now says what was actually checked &mdash; that destinations
+  derive from <code>readdir</code> names, which is true and holds &mdash; and no longer generalises from it to
+  &ldquo;the read side was never load-bearing&rdquo;, which the symlink finding disproves. The task naming the
+  preflight is rewritten against the real catch site in the CLI; I wrote <code>checkVisualsExport</code> earlier
+  in the same session and still mis-stated its behaviour, which is a good argument for the pass reading source
+  rather than prose. The citation is verified: KB-0001 resolves to <code>spectastic/spectastic ·
+  spectastic-concepts · 001-foundations</code> at edition <code>2026-07-25</code> and carries that rule.</p></div>
+</spec-risk>
+
+</spec-risk-log>
+</section>
+
+
+<section id="tasks">
+<h2>6 · Tasks</h2>
+<p>Scoped to this change only. On <code>/spectastic.apply</code> these fold into the target's
+<code>tasks.html</code> as a new provenance-linked phase (per <code>REQ-CHANGE-006</code>) that
+<code>/spectastic.implement</code> drains — this list is then the frozen intent record.</p>
+
+<ul style="list-style:none;padding-left:0;">
+  <li><input type="checkbox"> Write failing tests for an out-of-project source in <em>both</em> shapes — an
+  absolute path to a directory and to a <code>.zip</code> — asserting each is read successfully, and that a
+  destination outside the given <code>--into</code> is still refused.
+  <span class="path">packages/core/test/visual-import.test.ts</span></li>
+
+  <li><input type="checkbox"> Write a failing test that a directory export containing a symbolic link is
+  refused, matching the refusal the archive path already gives for a symlink entry (FR-019).
+  <span class="path">packages/core/test/visual-import.test.ts</span></li>
+
+  <li><input type="checkbox"> Remove the read-side containment checks and the now-unused
+  <code>SourceOutsideProjectError</code>, keeping the not-found and not-a-directory refusals, and update the
+  docstring so the deliberate difference from every other path check in the codebase is recorded rather than
+  looking like an omission.
+  <span class="path">packages/core/src/providers/local-source-fetcher.ts</span></li>
+
+  <li><input type="checkbox"> Remove the archive fetcher's own absolute-path and outside-project refusals — the
+  ones that route every <code>.zip</code> to a rejection — while leaving its per-entry traversal, symlink,
+  entry-size and expansion-ratio bounds exactly as they are.
+  <span class="path">packages/core/src/providers/archive-source-fetcher.ts</span></li>
+
+  <li><input type="checkbox"> Refuse a symbolic link when walking a directory export — <code>readdir</code> then
+  <code>lstat</code>, rather than the <code>stat</code> that follows it — so both source shapes share one
+  posture. <span class="path">packages/core/src/visual/import.ts</span></li>
+
+  <li><input type="checkbox"> Repoint the two consumers of <code>SourceOutsideProjectError</code>: the by-type
+  catch in the CLI (not the one-step preflight, which catches nothing and lets the error propagate), and the two
+  assertions in the import tests, which need deleting rather than repointing.
+  <span class="path">packages/cli/src/commands/visual.ts</span></li>
+
+  <li><input type="checkbox"> Correct the <code>--from</code> help text, which tells the author the export must
+  be "inside this project". <span class="path">packages/cli/src/commands/visual.ts</span></li>
+
+  <li><input type="checkbox"> Exercise the real shape end to end — <code>--visuals</code> pointed at a
+  <code>.zip</code> outside the project — which is the case this change and its 106 sibling exist to make work,
+  and the one a first draft of this proposal would have left broken.
+  <span class="path">packages/cli/test/design-visuals.test.ts</span></li>
+</ul>
+</section>
+
+
+<section id="questions">
+<h2>7 · Open questions</h2>
+<spec-questions>
+<p>None outstanding. The decision was settled by reading the live requirement: FR-001 already permits any local
+filesystem location, so the shipped refusals exceed their own spec rather than implementing it. The adversarial
+pass then settled two more by disproving the first draft: the containment lives in both fetchers rather than
+one, and the two source shapes disagree about symbolic links — closed here by FR-019 rather than inherited,
+since widening the boundary is precisely when that asymmetry stops being bounded by accident.</p>
+</spec-questions>
+</section>
+
+
+<section id="changelog">
+<h2>8 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-08-23">23 Aug 2026</time><span>Proposal authored — an export may live anywhere on the
+  local filesystem the author can read, and the write path's containment is stated explicitly alongside it.
+  Surfaced while reproducing a 106 defect against a real export in <code>~/Downloads</code>, which only worked
+  because it was copied into the project first.</span></li>
+  <li><time datetime="2026-08-23">23 Aug 2026</time><span>Reshaped by the adversarial pass, which found the
+  first draft would not have worked. The containment lives in <em>two</em> fetchers, and the archive one takes
+  every <code>.zip</code> — so the headline case would still have failed after every task was drained. The two
+  source shapes also disagree about symbolic links (the archive refuses them; the directory walk follows them),
+  which widening the boundary would have turned from a bounded gap into a real one — closed by a new must-tier
+  FR-019 over both shapes. The relaxation is now bounded wording rather than an unbounded prohibition that would
+  have made FR-019 itself need a fresh proposal. A deferral slug for archive bounds that already ship was
+  removed rather than left to manufacture backlog.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+</spec-change>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  2026-08-23-an-export-lives-where-it-landed · An export lives where it landed · authored 2026-08-23
+</footer>
+
+</main>
+<script src="../../../../assets/spec.js"></script>
+</body>
+</html>
