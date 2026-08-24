@@ -1,0 +1,412 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'">
+<title>Render accepts what import accepts · Change proposal</title>
+<link rel="stylesheet" href="../../../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../../../assets/favicon.svg">
+<script src="../../../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Change proposal · 106-visual-render</p>
+  <h1>Render accepts what import accepts</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    A real design export is an archive of files. Import takes one; render takes a page. So no single
+    source satisfies both verbs, and the one-step flag that passes one value to both captures nothing.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>     <span><spec-status value="approved">Approved</spec-status></span>
+    <b>Change ID</b>  <span>2026-08-23-render-accepts-what-import-accepts</span>
+    <b>Spec</b>       <span><a href="../../spec.html">106-visual-render</a></span>
+    <b>Author</b>     <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Created</b>    <span><time datetime="2026-08-23">23 Aug 2026</time></span>
+    <b>Targets</b>    <span>2 requirements</span>
+    <b>Read time</b>  <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-tldr>
+    <p>Nothing in this spec says what the verb&rsquo;s source may be, so it grew a page-only implementation
+    while <a href="../../../105-design-source-import/spec.html">105</a>&rsquo;s import grew a folder-and-archive
+    one. Reproduced against a real 4-file design export: pointed at the archive the verb <em>fails</em> (the
+    browser downloads it); pointed at the extracted folder it captures <strong>0, silently</strong>; pointed at
+    the one artboard file inside it captures <strong>22</strong>. Two ADDs &mdash; the verb states the source
+    shapes it accepts, and a resolved source yielding no artboards is reported rather than silent. The adversarial
+    pass reshaped both before they were written.</p>
+  </spec-tldr>
+</header>
+
+
+<spec-change id="2026-08-23-render-accepts-what-import-accepts" status="approved">
+
+<header>
+  <h3>Render accepts what import accepts</h3>
+  <span class="meta"><spec-status value="approved">Approved</spec-status></span>
+</header>
+
+
+<section id="intent">
+<h2>1 · Intent</h2>
+
+<p>Found by asking a simple question of the newly-shipped one-step flag
+(<a href="../../../110-visual-one-step/spec.html">110</a>): if the artboard HTML is refused at import for
+carrying a runtime, where do the renders come from? The answer turned out to be that they do not come at all,
+and the reason has nothing to do with that refusal.</p>
+
+<p>Reproduced end to end against a real design export &mdash; a 4-file archive containing one artboard
+document, a 69&nbsp;KB runtime and an uploaded spec:</p>
+
+<ul>
+  <li><strong>Pointed at the archive</strong> &mdash; what the one-step flag passes &mdash; the verb fails
+  outright: <code>page.goto: Download is starting</code>. The browser downloads the file rather than rendering
+  it. No captures, no <code>renders/</code> directory.</li>
+  <li><strong>Pointed at the extracted folder</strong>, the verb reports <code>0 written, 0 refused</code> and
+  exits successfully. Navigating a browser to a directory finds no artboards, so there is nothing to report and
+  nothing is reported.</li>
+  <li><strong>Pointed at the one artboard file inside it</strong>, the verb captures <strong>22 screens</strong>
+  correctly.</li>
+</ul>
+
+<p>So the capability works; only the way in does not. Import resolves an archive or a folder because
+<a href="../../../105-design-source-import/spec.html">105</a> gave it a fetcher that does; this verb navigates
+whatever string it is handed. Neither spec ever wrote down what a source may be, so the two answers drifted
+apart without either being wrong on its own terms.</p>
+
+<p><strong>The consequence is not confined to the flag.</strong> Anyone running the three verbs by hand over an
+extracted export hits the same silent zero &mdash; including
+<a href="../../../110-visual-one-step/spec.html#SC-001">110&rsquo;s SC-001</a>, whose comparison currently holds
+because <em>both</em> sides render a directory and both therefore capture nothing. The criterion passes on two
+empty results. That is why this change belongs here rather than in 110: fixing only the orchestrator would leave
+the hand-run broken and the criterion still vacuous.</p>
+
+<spec-note>
+<p><strong>P-11 is not implicated, and the first reading of this defect blamed it.</strong> Refusing to
+<em>land</em> the artboard costs the render nothing: this verb never reads the sidecar, it navigates the source.
+And derivation already mines refused material &mdash; all 73 token candidates from the real export came out of
+the two files import declined to land. The refusal is the artifact rule working exactly as intended.</p>
+</spec-note>
+</section>
+
+
+<section id="scope">
+<h2>2 · Scope</h2>
+
+<spec-goals>
+  <h3>In scope</h3>
+  <ul>
+    <li>Stating what the verb&rsquo;s source may be, <em>enumerated here</em> rather than by reference to another
+    spec&rsquo;s implementation, so a single value can serve both verbs and a future edit to 105 cannot retype a
+    must-tier requirement of this one without a delta.</li>
+    <li>Making a source that resolved but yielded no artboards <em>reported</em> rather than silent, so the
+    difference between &ldquo;this declares none&rdquo; and &ldquo;you pointed at the wrong thing&rdquo; is
+    visible.</li>
+  </ul>
+</spec-goals>
+
+<spec-non-goals>
+  <h3>Out of scope</h3>
+  <ul>
+    <li>Relaxing the import&rsquo;s in-project containment so an export in <code>~/Downloads</code> can be used
+    directly. Decided, and being authored as its own proposal against
+    <a href="../../../105-design-source-import/spec.html">105</a> rather than folded in here, since the apply
+    kernel folds same-spec deltas only <span defer-to="105-design-source-import">and the two land
+    independently</span>.</li>
+    <li>Whether <a href="../../../110-visual-one-step/spec.html">110</a> needs its own amendment once this lands
+    &mdash; its one-value design becomes correct, but its SC-001 currently passes on two empty results and the
+    task list below budgets a re-check rather than assuming the answer
+    <span defer-to="TBD-one-step-criterion-recheck">, so the question stays attached</span>.</li>
+    <li>Whether a rendered artboard should also be landed as design material rather than only captured
+    <span defer-to="TBD-artboard-as-landed-material">&mdash; a larger question about what the sidecar is
+    for</span>.</li>
+  </ul>
+</spec-non-goals>
+</section>
+
+
+<section id="approach">
+<h2>3 · Approach</h2>
+
+<p>The verb keeps one notion of a source and gains the ability to resolve it. Where the source is already a page
+or a URL, nothing changes. Where it is an archive or a directory, it resolves to the page or pages inside that
+declare artboards.</p>
+
+<p><strong>The port widens rather than the budget.</strong> <a href="../../spec.html#NFR-001">NFR-001</a> bounds
+a run over one source at a single browser process and requires every artboard be captured in that one session,
+and today <code>chromium.launch()</code> sits <em>inside</em> the port&rsquo;s per-location call &mdash; so
+rendering several pages the naive way would be several launches and a broken must-tier bound. The port therefore
+takes a <em>set</em> of locations and navigates them in one session, which is the reading of NFR-001 that
+survives a multi-page export rather than the one that quietly exceeds it. Caught by the adversarial pass, before
+a task list that never touched <code>packages/render</code> would have made the contradiction somebody
+else&rsquo;s to find.</p>
+
+<spec-note>
+<p>The second delta is narrow but load-bearing, and it is a <em>separate</em> requirement rather than a clause
+bolted onto <a href="../../spec.html#FR-011">FR-011</a>. FR-011 already requires every artboard <em>found</em> to
+be accounted for &mdash; which is exactly why a directory is silent: zero are found, so the accounting has
+nothing to say and says it correctly. Widening the subject from the artboards to the source is a genuinely
+absolute obligation, and FR-011 is should-tier, so folding it in would have buried a MUST inside a SHOULD where
+nothing enumerating must-tier requirements would find it. The same split 093 made, for the same reason.</p>
+</spec-note>
+</section>
+
+
+<section id="deltas">
+<h2>4 · Deltas</h2>
+<p>One <code>&lt;spec-delta&gt;</code> per requirement touched. <code>target=</code> links to
+the live spec. <code>op=</code> is one of <code>added | modified | removed | renamed</code>;
+a missing or invalid op renders visibly broken.</p>
+
+<spec-delta op="added" target="FR-012">
+  <spec-requirement id="FR-012" priority="must">
+    <p>The verb <spec-rule>MUST</spec-rule> accept a source that is a page, a URL, a directory, or an archive.
+    A directory or an archive <spec-rule>MUST</spec-rule> be resolved to the page or pages within it that declare
+    artboards, and every resolved page <spec-rule>MUST</spec-rule> be rendered within the single session
+    <a href="#NFR-001">NFR-001</a> permits. A source that resolves to no page at all
+    <spec-rule>MUST</spec-rule> be refused with a stated reason rather than navigated as-is.</p>
+    <details><summary>Rationale</summary><p>Neither this spec nor
+    <a href="../../../105-design-source-import/spec.html">105</a> ever stated what a source may be, so import
+    grew a fetcher that resolves archives and directories while this verb navigated whatever string it was
+    handed &mdash; and a real export is an archive. Measured on one: the archive fails outright (the browser
+    downloads it), the extracted directory captures 0, and the artboard file inside captures 22. The cost is not
+    confined to the one-step flag that passes a single value to both verbs; anyone running the verbs by hand over
+    an extracted export gets the same silent nothing. The shapes are enumerated here rather than defined as
+    &ldquo;whatever the import accepts&rdquo;: that phrasing would have silently subtracted the URL this verb has
+    always taken, imported the import&rsquo;s in-project containment onto the one verb whose purpose is browser
+    navigation, and let a future edit to another spec retype this requirement without a delta.</p></details>
+  </spec-requirement>
+</spec-delta>
+
+<spec-delta op="added" target="FR-013">
+  <spec-requirement id="FR-013" priority="must">
+    <p>A source that resolved but yielded no artboards <spec-rule>MUST</spec-rule> be reported with that fact
+    stated &mdash; not as a refusal, since a source may legitimately declare none, but never as silence.</p>
+    <details><summary>Rationale</summary><p><a href="#FR-011">FR-011</a>&rsquo;s accounting takes the artboards
+    as its subject, so pointing the verb at a directory finds none, and a run that captured nothing reports
+    nothing and exits successfully. Correct by the letter and useless in practice: it is how a source-shape
+    mismatch survived a full lifecycle pass with a green suite, and it is the one signal that would have named
+    the defect. Stated as its own must-tier requirement rather than appended to FR-011, which is should-tier
+    &mdash; an absolute obligation buried inside a recommendation is invisible to anything enumerating what this
+    spec actually requires.</p></details>
+  </spec-requirement>
+</spec-delta>
+</section>
+
+
+<section id="subtraction">
+<h2>4b · What this change removes</h2>
+<p>Each entry names one thing this change takes away &mdash; a clause dropped from a requirement it retypes,
+an obligation a sibling loses, a behaviour or affordance no requirement records. <strong>An empty register is
+the answer &ldquo;this removes nothing&rdquo;</strong>, so the common case needs no editing.</p>
+<p>Where a delta removes something itself, its own reason and migration stay authoritative &mdash; this
+register is for what no delta can express.</p>
+
+<spec-subtraction>
+<ul>
+  <li><strong>The indistinguishability of a zero-capture run from a successful one.</strong> Today a run that
+  captures nothing exits successfully and says nothing, so a caller checking only the exit code cannot tell the
+  two apart. After this change it can. That is the point, but it is a real behavioural guarantee being removed,
+  and a script written against the current silence would begin seeing output it did not before.</li>
+  <li><strong>The render port&rsquo;s single-location signature.</strong> Widening it to a set is not additive
+  for anyone who has implemented the port: an existing implementation stops satisfying it. No requirement names
+  the port&rsquo;s shape, so no delta records this &mdash; which is precisely why it belongs here. The shipped
+  Playwright adapter is the only implementation in this repository, but the port exists to admit others, and
+  <a href="../../spec.html#FR-003">FR-003</a> says so.</li>
+  <li><strong>The freedom to point the verb at something that is not a page and get a browser error.</strong>
+  An unresolvable source is now refused with a stated reason, so the raw navigation failure &mdash;
+  <code>page.goto: Download is starting</code> was the one that started this &mdash; stops reaching the caller.
+  That message was useless as a diagnostic, but it was the truth about what happened, and a refusal is this
+  spec&rsquo;s account of it rather than the runtime&rsquo;s.</li>
+</ul>
+</spec-subtraction>
+</section>
+
+
+<section id="risks">
+<h2>5 · Risk register</h2>
+<p>Populated by the adversarial risk pass when the proposal triggers the heuristic (touches a <code>must</code>-tier requirement, contains an <code>op="removed"</code> delta, or spans ≥2 topic prefixes). One <code>&lt;spec-risk&gt;</code> per finding. <code>target=</code> is required (missing renders broken). <code>status=</code> defaults to <code>identified</code>; apply refuses until each transitions to <code>accepted</code>, <code>mitigated</code>, or <code>rejected</code>.</p>
+
+<spec-risk-log>
+
+<spec-risk target="FR-012" status="identified">
+  <p class="claim">The requirement defined its own scope <em>by reference to another spec&rsquo;s
+  implementation</em> rather than by enumeration, and the set it pointed at is deliberately narrower than what
+  this verb ships today. Import is local, in-project and network-free on purpose:
+  <code>localSourceFetcher</code> throws <code>SourceOutsideProjectError</code> on an absolute path and on
+  anything resolving outside <code>cwd</code>. <code>visual:render</code>&rsquo;s help says
+  <code>--from &lt;location&gt;</code> is &ldquo;a local file path or a URL&rdquo;, and
+  <code>renderVisualExport</code> passes a scheme-bearing string through unchanged &mdash; on a verb that
+  <em>requires</em> egress by FR-005. So the phrase silently subtracted the URL shape and imported in-project
+  containment onto the one verb whose reason to exist is a browser navigation. The reproduction that motivated
+  this change points <code>--from</code> at an export that, if it lives outside the project (the normal place a
+  design tool drops a download), would be newly <em>refused</em> by the very clause added to fix it.</p>
+  <p class="citation">Original delta wording: &ldquo;MUST accept the same source shapes the design import
+  accepts&rdquo;. Against <code>packages/core/src/providers/local-source-fetcher.ts</code>,
+  <code>packages/cli/src/commands/visual.ts:373</code>, and live
+  <a href="../../spec.html#FR-005">FR-005</a>.</p>
+  <div class="response"><p><strong>Draft response (author to disposition).</strong> Accepted; the delta was
+  rewritten before it shipped. FR-012 now enumerates its own shapes &mdash; page, URL, directory, archive
+  &mdash; so the URL survives explicitly, no containment is inherited, and a future edit to 105 cannot retype
+  this requirement without a delta. Verified in source rather than taken on trust: the absolute-path and
+  outside-project throws are both real, and the reproduction masked the problem because the export was copied
+  <em>into</em> the project first. The containment question is genuine and now has its own proposal against 105,
+  named in &sect;2 &mdash; the write side was checked first and stands on its own, since destinations derive from
+  <code>readdir</code> entries that can never be <code>..</code>.</p></div>
+</spec-risk>
+
+<spec-risk target="NFR-001" status="identified">
+  <p class="claim">NFR-001 bounds a run over a single design source at <strong>1</strong> browser process and
+  requires every artboard be captured &ldquo;in that one session&rdquo;. FR-012 makes a directory or an archive a
+  single source that may resolve to <em>many</em> pages, and each is rendered. The render port takes one location
+  per call &mdash; <code>Renderer.render(location)</code> &mdash; and the shipped adapter launches Chromium
+  inside it, whose own docstring cites NFR-001 as &ldquo;render() launches Chromium exactly once&rdquo;.
+  Rendering N pages is therefore N launches, breaking a must-tier quantified bound. Satisfying both needs a
+  port-shape change, and the original task list touched neither <code>packages/render</code> nor the port. A
+  second-order effect also goes unaddressed: FR-007/SC-005 make two labels reducing to one name a reported
+  collision, and widening a run from one page to a whole export makes cross-page collisions the common case.</p>
+  <p class="citation">Live <a href="../../spec.html#NFR-001">NFR-001</a>: &ldquo;A run over a single design
+  source MUST launch at most 1 browser process and MUST capture every artboard in that one session.&rdquo;
+  Against <code>packages/render/src/index.ts:75</code>&rsquo;s per-call <code>chromium.launch()</code>.</p>
+  <div class="response"><p><strong>Draft response (author to disposition).</strong> Accepted, and the sharpest
+  finding of the pass. Verified in source: <code>chromium.launch()</code> is inside <code>render(location)</code>,
+  so the contradiction is real rather than theoretical. Resolved by widening the <em>port</em> rather than the
+  budget &mdash; it takes a set of locations and navigates them in one session, which keeps NFR-001 exactly as
+  written instead of redefining it per page. FR-012 now says so in its own text, &sect;3 records the reasoning,
+  &sect;4b records that this breaks any existing port implementation, and the task list gains the
+  <code>packages/render</code> work it was missing. The cross-page collision effect is real and is carried as its
+  own task rather than assumed away: FR-007 already reports collisions, so the behaviour is correct &mdash; what
+  changes is how often it fires, which the task checks against the real export.</p></div>
+</spec-risk>
+
+<spec-risk target="§2" status="identified">
+  <p class="claim">The out-of-scope item asserted a sibling spec&rsquo;s correctness and then foreclosed
+  revisiting it, from inside a proposal that admits it does not yet know. &sect;6 budgets work to re-check
+  110&rsquo;s SC-001; &sect;1 argues that criterion currently compares two paths that both produce nothing. That
+  is an open must-tier question about another spec, and <code>defer-to="never"</code> left no slug to carry it if
+  the answer is no. The premise was also stated imprecisely: SC-001&rsquo;s <em>Observed at</em> already scopes
+  around the <code>design --visuals</code> path deliberately, comparing the three CLI entry points over a
+  hand-authored design instead.</p>
+  <p class="citation">Original &sect;2: &ldquo;Changing 110. Its design is correct once this lands, and needs no
+  amendment <span>to become so</span>&rdquo; with <code>defer-to="never"</code>. Against &sect;6 task 5 and
+  <a href="../../../110-visual-one-step/spec.html#SC-001">110 SC-001</a>&rsquo;s <em>Observed at</em>.</p>
+  <div class="response"><p><strong>Draft response (author to disposition).</strong> Accepted on the disposition,
+  and the citation is half right in a way worth recording. The <code>never</code> is replaced with a real slug,
+  which was the substantive point: a question &sect;6 budgets work for cannot be closed in &sect;2. On the
+  premise &mdash; SC-001 does scope around the <code>--visuals</code> path, but its hand-run leg renders a
+  <em>directory</em>, so both sides still capture nothing and the criterion still passes on two empty results.
+  &sect;1 now says that precisely rather than by implication, which is a better sentence than either version.</p></div>
+</spec-risk>
+
+<spec-risk target="FR-011" status="identified">
+  <p class="claim">The corpus states the conformance level is what makes obligation machine-discoverable, and
+  FR-011 already strains that: <code>priority="should"</code> while carrying an absolute &ldquo;every artboard
+  found <strong>MUST</strong> be accounted for&rdquo;. The original delta re-typed the requirement and added a
+  <em>second</em> absolute clause while leaving the level at <code>should</code>. A tool enumerating must-tier
+  requirements would miss two genuine obligations, and the one the proposal calls load-bearing would be the less
+  greppable of the pair. This repo has the precedent: 093&rsquo;s proposal split a should-tier requirement
+  carrying bare MUSTs into a must-tier requirement for exactly this reason.</p>
+  <p class="citation">KB-0001@2026-07-25 (<code>spectastic/spectastic · spectastic-concepts ·
+  001-foundations</code>): &ldquo;makes the conformance level machine-greppable as well as human-readable &mdash;
+  a validate rule or a downstream tool can find every must-tier requirement without parsing prose.&rdquo; Against
+  the original <code>op="modified" target="FR-011"</code> delta.</p>
+  <div class="response"><p><strong>Draft response (author to disposition).</strong> Accepted, and it removed a
+  delta rather than adding one. The zero-artboard clause is now its own must-tier
+  <a href="#FR-013">FR-013</a>, and FR-011 is not touched at all &mdash; so the obligation is greppable, the
+  should-tier re-run clause stays where it belongs, and the rationale-carrying problem that came with retyping
+  FR-011 disappears with it. FR-011&rsquo;s own pre-existing should-with-a-MUST tension is left alone
+  deliberately: it predates this change, and fixing it here would be scope this proposal did not earn.</p></div>
+</spec-risk>
+
+</spec-risk-log>
+</section>
+
+
+<section id="tasks">
+<h2>6 · Tasks</h2>
+<p>Scoped to this change only. On <code>/spectastic.apply</code> these fold into the target's
+<code>tasks.html</code> as a new provenance-linked phase (per <code>REQ-CHANGE-006</code>) that
+<code>/spectastic.implement</code> drains — this list is then the frozen intent record.</p>
+
+<ul style="list-style:none;padding-left:0;">
+  <li><input type="checkbox"> Write failing tests for the four source shapes against a fixture export — a page,
+  a URL, a directory, and an archive — asserting each resolves and captures the same artboards, and that a
+  source resolving to no page is refused with a stated reason.
+  <span class="path">packages/core/test/render-capture.test.ts</span></li>
+
+  <li><input type="checkbox"> Widen the render port to take a set of locations and navigate them in one browser
+  session, so a multi-page source still satisfies NFR-001's single-process bound.
+  <span class="path">packages/render/src/index.ts</span></li>
+
+  <li><input type="checkbox"> Assert the single-session bound directly — a multi-page source launches exactly
+  one browser process, the property NFR-001 states and the previous per-call shape could not hold.
+  <span class="path">packages/render/test/single-session.test.ts</span></li>
+
+  <li><input type="checkbox"> Resolve the source before navigating, selecting the page(s) declaring artboards
+  from what the fetcher returns. <span class="path">packages/core/src/visual/render-capture.ts</span></li>
+
+  <li><input type="checkbox"> Report a resolved source that yielded no artboards in the run manifest, distinct
+  from both a refusal and a successful capture (FR-013).
+  <span class="path">packages/core/src/visual/render-manifest.ts</span></li>
+
+  <li><input type="checkbox"> Check cross-page label collisions against the real export — FR-007 already reports
+  them, but a whole-export run makes them common rather than rare, so confirm the report is usable at that
+  volume rather than a wall. <span class="path">packages/core/test/render-naming.test.ts</span></li>
+
+  <li><input type="checkbox"> Add an end-to-end test that the one-step flag produces captures from a single
+  <code>--visuals</code> value pointed at an archive — the case that produced an empty <code>renders/</code>
+  directory and reported success. <span class="path">packages/cli/test/design-visuals.test.ts</span></li>
+
+  <li><input type="checkbox"> Re-check 110's SC-001 byte-equality test once both paths capture real artboards,
+  since it currently passes on two empty results; if it needs amending, that is a propose against 110 rather
+  than an edit here. <span class="path">packages/cli/test/design-visuals.test.ts</span></li>
+</ul>
+</section>
+
+
+<section id="questions">
+<h2>7 · Open questions</h2>
+<spec-questions>
+<p>None outstanding. Five decisions were anchored: where the fix belongs (here rather than in 110, because the
+hand-run is broken the same way), whether a zero-artboard run should stay silent (no — that silence is what hid
+this), how the source shapes are stated (enumerated here, keeping the URL, inheriting no containment), how a
+multi-page source meets the single-process bound (the port widens to a set of locations rather than the budget
+widening per page), and the status to ship at. The import's in-project containment is decided but deliberately
+carried by its own proposal against 105, since apply folds same-spec deltas only.</p>
+</spec-questions>
+</section>
+
+
+<section id="changelog">
+<h2>8 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-08-23">23 Aug 2026</time><span>Proposal authored — the verb states the source shapes
+  it accepts, and a source yielding no artboards is reported rather than silent. Found by asking where the
+  renders come from if the artboard is refused at import; reproduced against a real 4-file export where the
+  archive fails, the extracted directory captures 0 silently, and the artboard file inside captures 22.</span></li>
+  <li><time datetime="2026-08-23">23 Aug 2026</time><span>Reshaped by the adversarial pass, which found four
+  risks and changed every delta. Defining the source shapes as "the same as import" would have subtracted the
+  URL and imported in-project containment onto a browser verb — the reproduction masked it by copying the export
+  into the project first; the shapes are now enumerated. Rendering several pages would have broken NFR-001's
+  single-process bound, since chromium.launch() sits inside the port's per-location call — the port now takes a
+  set of locations, and the task list gained the packages/render work it was missing. The FR-011 MODIFY was
+  dropped entirely in favour of a must-tier FR-013, so an absolute obligation is not buried in a should-tier
+  requirement. A defer-to="never" that closed a question §6 budgets work for became a real slug.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+</spec-change>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  2026-08-23-render-accepts-what-import-accepts · Render accepts what import accepts · authored 2026-08-23
+</footer>
+
+</main>
+<script src="../../../../assets/spec.js"></script>
+</body>
+</html>
