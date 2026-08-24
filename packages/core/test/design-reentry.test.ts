@@ -276,4 +276,75 @@ describe('designCommand re-entry (012 T-200, FR-006)', () => {
     // Not renumbered: the surviving block still carries its own id.
     expect(result.html).toMatch(/id="D-007"/);
   });
+
+  // T-1000 (FR-016, the 2026-08-23 apply). FR-011's fix preserves ADRs and
+  // nothing else, because FR-011's text is about ADRs. These two declarations
+  // are the answers the authoring interview collects — and templates/design.html
+  // scaffolds both while the kernel's renderer emits neither, so a design
+  // authored through the canonical procedure loses them the first time the
+  // kernel verb touches it.
+  it('preserves the contract and visual-surface declarations (FR-016)', async () => {
+    const ai = new StubAI([
+      {
+        json: {
+          approach: 'Sharpened.',
+          decisions: [{ id: 'D-001', title: 'New', context: 'c', decision: 'd', consequences: 'x' }],
+          alternatives: [],
+          risks: [],
+          principles: [{ id: 'P-1', status: 'OK', note: 'fine' }],
+        },
+      },
+    ]);
+
+    const existing = `<!doctype html><html><body><main>
+<spec-status value="draft">Draft</spec-status>
+<spec-contract shape="request-response" name="rates" path="api/openapi.yaml" format="openapi"></spec-contract>
+<spec-visual shape="screens" tokens="visual" screens="specs/099-clean/visual" source="a design tool"></spec-visual>
+</main></body></html>`;
+
+    const result = await designCommand(baseInput({ existingDesign: existing }), ctxFrom(ai));
+
+    expect(result.html, 'the contract declaration was destroyed').toContain('<spec-contract');
+    expect(result.html, 'the visual declaration was destroyed').toContain('<spec-visual');
+    // Carried whole — a declaration stripped of its attributes is an error-severity
+    // finding, so half-preserving one is worse than not preserving it.
+    expect(result.html).toContain('api/openapi.yaml');
+    expect(result.html).toContain('specs/099-clean/visual');
+  });
+});
+
+// T-1002 (FR-016). The embedded views are the one thing that MUST be stripped
+// and re-emitted rather than preserved: 072 and 099 make them generated views,
+// drift-guarded against their source, so carrying one forward would freeze a
+// stale projection into the artifact. A naive reading of "preserve what you did
+// not emit" breaks required behaviour here, which is why FR-016 names two
+// elements instead of describing a class.
+describe('the embedded views are re-emitted, never carried (FR-016 boundary)', () => {
+  it('does not duplicate a view that was already materialised', async () => {
+    const ai = new StubAI([
+      {
+        json: {
+          approach: 'Sharpened.',
+          decisions: [],
+          alternatives: [],
+          risks: [],
+          principles: [{ id: 'P-1', status: 'OK', note: 'fine' }],
+        },
+      },
+    ]);
+
+    const existing = `<!doctype html><html><body><main>
+<spec-status value="draft">Draft</spec-status>
+<spec-visual shape="screens" tokens="visual" screens="specs/099-clean/visual" source="a design tool"></spec-visual>
+<spec-visual-view>a stale projection from an earlier run</spec-visual-view>
+</main></body></html>`;
+
+    const result = await designCommand(baseInput({ existingDesign: existing }), ctxFrom(ai));
+
+    // The declaration survives (FR-016) ...
+    expect(result.html).toContain('<spec-visual ');
+    // ... and its view is not carried across as content, so no stale copy and
+    // no duplicate. Whatever view exists is the one this run emitted.
+    expect(result.html).not.toContain('a stale projection from an earlier run');
+  });
 });

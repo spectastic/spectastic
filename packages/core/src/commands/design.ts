@@ -66,16 +66,53 @@ export function carryForward(rendered: string, existing: string | undefined): st
 
   const kept = decisionsById(existing);
   for (const id of decisionsById(rendered).keys()) kept.delete(id);
-  if (kept.size === 0) return rendered;
+  if (kept.size === 0) return carryDeclarations(rendered, existing);
 
   const survivors = [...kept.values()].join('\n');
   const decisionsSection = /(<section id="decisions">[\s\S]*?)(<\/section>)/i;
   if (decisionsSection.test(rendered)) {
-    return rendered.replace(decisionsSection, `$1${survivors}\n$2`);
+    return carryDeclarations(rendered.replace(decisionsSection, `$1${survivors}\n$2`), existing);
   }
   // No decisions section to append to — never drop the survivors on that
   // account; the whole point is that content does not vanish quietly.
-  return rendered.replace(/<\/main>/i, `<section id="decisions">${survivors}</section>\n</main>`);
+  return carryDeclarations(
+    rendered.replace(/<\/main>/i, `<section id="decisions">${survivors}</section>\n</main>`),
+    existing,
+  );
+}
+
+/**
+ * The declaration elements FR-016 names (the 2026-08-23 apply).
+ *
+ * Named outright rather than derived from what the generator emits, and the
+ * requirement says why: TWO generators produce this artifact and disagree.
+ * `templates/design.html` scaffolds both of these; the renderer below emits
+ * neither. A predicate over "what the generator emits" would therefore be
+ * ambiguous today and would silently stop covering these the day the kernel
+ * learns to emit them — which is the deferred work most likely to happen next.
+ */
+const DECLARATION_ELEMENTS = ['spec-contract', 'spec-visual'] as const;
+
+/**
+ * Carry the declarations across (FR-016), whole.
+ *
+ * Whole matters: a `<spec-visual>` stripped of its `tokens=`/`screens=`/
+ * `source=` is three error-severity findings, so half-preserving one is worse
+ * than not preserving it at all. Placed before `</main>` rather than appended
+ * into the decisions section — a declaration filed under Decisions would be
+ * structurally wrong even though the readers that matter scan the whole
+ * document and would not notice.
+ */
+function carryDeclarations(rendered: string, existing: string): string {
+  const survivors: string[] = [];
+  for (const tag of DECLARATION_ELEMENTS) {
+    if (new RegExp(`<${tag}\\b`, 'i').test(rendered)) continue; // the generator emitted one; leave it
+    for (const m of existing.matchAll(new RegExp(`<${tag}\\b[^>]*>[\\s\\S]*?<\\/${tag}>`, 'gi'))) {
+      survivors.push(m[0]);
+    }
+  }
+  if (survivors.length === 0) return rendered;
+  return rendered.replace(/<\/main>/i, `${survivors.join('\n')}\n</main>`);
 }
 
 export async function designCommand(input: DesignInput, ctx: KernelContext): Promise<DesignResult> {
