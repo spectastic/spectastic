@@ -75,7 +75,7 @@ export interface OneStepContext {
  * `importDesignSource` itself calls first (`import.ts:256`), so this and the
  * real import agree on what "resolves" means by construction rather than by
  * two implementations staying in sync. Throws the same typed errors a real
- * import would (`SourceNotFoundError`, `SourceOutsideProjectError`); does
+ * import would (`SourceNotFoundError`, `SourceSymlinkError`); does
  * not land anything.
  */
 export async function checkVisualsExport(from: string, ctx: { cwd: string; fs: FileSystem }): Promise<void> {
