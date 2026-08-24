@@ -35,6 +35,49 @@ function formatDecisions(decisions?: Record<string, string>): string {
   return `\nDecisions already made (honour these): ${pairs}`;
 }
 
+/** One `<spec-decision id="…">` block per id, as raw HTML. */
+function decisionsById(html: string): Map<string, string> {
+  const out = new Map<string, string>();
+  for (const m of html.matchAll(/<spec-decision\b[^>]*\bid=["']([^"']+)["'][\s\S]*?<\/spec-decision>/gi)) {
+    out.set(m[1] as string, m[0]);
+  }
+  return out;
+}
+
+/**
+ * Carry the prior design's own content into a freshly rendered one (FR-011).
+ *
+ * The kernel renders a complete document from the model's JSON and writes it
+ * out, so anything the schema has no field for cannot survive — which is how a
+ * must-tier rule went unimplemented for two months. FR-011 is an obligation on
+ * the KERNEL, not on the model: it may not rest on the prompt asking nicely,
+ * because the model only ever sees the first 6,000 characters of the existing
+ * design and cannot restate what it never read.
+ *
+ * Deliberately conservative about WHERE it puts a survivor. A preserved ADR is
+ * appended to the rendered decisions section rather than merged by position:
+ * ordering is not something FR-011 speaks to, and inventing an order would be
+ * a second decision smuggled in under a preservation fix. Decisions the model
+ * did return win on content — that is FR-011's own ENHANCE clause — so this
+ * only ever adds back what would otherwise have been dropped.
+ */
+export function carryForward(rendered: string, existing: string | undefined): string {
+  if (existing === undefined) return rendered;
+
+  const kept = decisionsById(existing);
+  for (const id of decisionsById(rendered).keys()) kept.delete(id);
+  if (kept.size === 0) return rendered;
+
+  const survivors = [...kept.values()].join('\n');
+  const decisionsSection = /(<section id="decisions">[\s\S]*?)(<\/section>)/i;
+  if (decisionsSection.test(rendered)) {
+    return rendered.replace(decisionsSection, `$1${survivors}\n$2`);
+  }
+  // No decisions section to append to — never drop the survivors on that
+  // account; the whole point is that content does not vanish quietly.
+  return rendered.replace(/<\/main>/i, `<section id="decisions">${survivors}</section>\n</main>`);
+}
+
 export async function designCommand(input: DesignInput, ctx: KernelContext): Promise<DesignResult> {
   if (!ctx.ai) throw new Error('designCommand requires ctx.ai');
 
@@ -92,7 +135,7 @@ export async function designCommand(input: DesignInput, ctx: KernelContext): Pro
     );
   }
 
-  const rawHtml = renderDesignHtml(input.specId, parsed, isReentry);
+  const rawHtml = carryForward(renderDesignHtml(input.specId, parsed, isReentry), input.existingDesign);
   // Contract view materialisation (072-contract-embedded-view, T-112): a
   // no-op for the overwhelming majority of designs, which declare no
   // <spec-contract path=…> at all (renderDesignHtml doesn't emit one today).

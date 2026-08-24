@@ -237,4 +237,43 @@ describe('designCommand re-entry (012 T-200, FR-006)', () => {
     expect(ai.lastPrompt).not.toContain('Sharpen this design');
     expect(result.html).toContain('Initial design via designCommand');
   });
+
+  // 012/T-002 (FR-011). The test above deliberately drives a stub that RETURNS
+  // the preserved set, so it proves the kernel renders faithfully — not that
+  // preservation happens. FR-011 is an obligation on the kernel, not on the
+  // model: "Re-entry mode MUST preserve every existing <spec-decision> block —
+  // including stable IDs, status, and content ... MUST NOT renumber or silently
+  // rewrite an existing ADR." So the model here returns a DIFFERENT decision,
+  // which is what a real model does when it cannot see past the 6,000-character
+  // slice of the existing design the prompt carries. Measured before the fix: a
+  // hand-authored D-007 came back as D-001 — destroyed and renumbered, both
+  // halves of the requirement breached, with a successful exit.
+  it('preserves an existing ADR the model did not return, and never renumbers it (FR-011)', async () => {
+    const ai = new StubAI([
+      {
+        json: {
+          approach: 'Sharpened.',
+          decisions: [{ id: 'D-001', title: 'Something new', context: 'c', decision: 'd', consequences: 'x' }],
+          alternatives: [],
+          risks: [],
+          principles: [{ id: 'P-1', status: 'OK', note: 'fine' }],
+        },
+      },
+    ]);
+
+    const existing = `<!doctype html><html><body><main>
+<spec-status value="draft">Draft</spec-status>
+<section id="decisions">
+<spec-decision id="D-007"><h4>D-007 · A decision a person made</h4><dl><dt>Status</dt><dd><spec-status value="accepted">Accepted</spec-status></dd><dt>Context</dt><dd>Chosen deliberately.</dd><dt>Decision</dt><dd>Keep it.</dd><dt>Consequences</dt><dd>+ Stability.</dd></dl></spec-decision>
+</section>
+</main></body></html>`;
+
+    const result = await designCommand(baseInput({ existingDesign: existing }), ctxFrom(ai));
+
+    // Preserved: id, and the content that made it worth preserving.
+    expect(result.html, 'D-007 was destroyed by re-entry').toContain('D-007');
+    expect(result.html, "D-007's content was lost").toContain('A decision a person made');
+    // Not renumbered: the surviving block still carries its own id.
+    expect(result.html).toMatch(/id="D-007"/);
+  });
 });

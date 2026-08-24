@@ -60,6 +60,64 @@
   </details>
 </spec-triage>
 
+<spec-triage id="T-002" layer="implementation">
+  <header>
+    <h4>FR-011's must-tier ADR preservation has never been implemented &mdash; re-entry destroys and renumbers</h4>
+    <span class="meta">
+      <span class="layer-pill">Implementation</span>
+      <span class="regen" data-result="pass">code</span>
+    </span>
+  </header>
+
+  <p class="headline">Debugging why <code>design --visuals</code> found no visual declaration, root cause was
+  that re-entry renders a fresh document from the model&rsquo;s JSON and writes it over the existing one, so
+  every part of the prior design the schema has no field for is deleted &mdash; including the
+  <code>&lt;spec-decision&gt;</code> blocks <a href="./spec.html#FR-011">FR-011</a> says
+  <spec-rule>MUST</spec-rule> be preserved; fixed by carrying prior content across rather than regenerating
+  over it; regeneration passes &mdash; the requirement is already written and unambiguous, so a session
+  implementing FR-011 from the spec would build it correctly.</p>
+
+  <dl>
+    <dt>Expected</dt> <dd><a href="./spec.html#FR-011">FR-011</a>: re-entry &ldquo;MUST preserve every existing
+    <code>&lt;spec-decision&gt;</code> block &mdash; including stable IDs, status, and content &hellip; MUST NOT
+    renumber or silently rewrite an existing ADR.&rdquo;</dd>
+    <dt>Actual</dt>   <dd>Measured on a Draft design carrying a hand-authored <code>D-007</code>: after one
+    ordinary <code>spectastic design &lt;id&gt;</code>, <code>D-007</code> is at <strong>0 occurrences</strong>
+    and the document carries <code>D-001</code> instead. Both halves breached &mdash; destroyed <em>and</em>
+    renumbered &mdash; with no warning and a successful exit. The same run deletes
+    <code>&lt;spec-visual&gt;</code>, <code>&lt;spec-contract&gt;</code> and hand-written prose, none of which
+    FR-011 covers.</dd>
+    <dt>Diagnosis</dt><dd><code>renderDesignHtml</code> builds the entire document from <code>parsed</code>
+    &mdash; the model&rsquo;s JSON &mdash; and <code>designCommand</code> writes it out whole. Nothing reads the
+    prior design except the prompt, which is handed
+    <code>input.existingDesign.slice(0, 6000)</code> and asked to restate it; whatever the model omits, or
+    whatever sits past 6&nbsp;KB, is gone. The verb&rsquo;s own re-entry prompt says <em>&ldquo;ADD or ENHANCE
+    only; never remove existing ADRs&rdquo;</em> &mdash; an instruction aimed at the model and then broken by the
+    code that renders what the model returns, which is the P-8 gap exactly: the guarantee was put in a prompt
+    rather than in the kernel. The spec&rsquo;s own &sect;6 assumes re-entry parses the prior document with
+    <code>@spectastic/schema</code>&rsquo;s walker; no such parse exists.</dd>
+    <dt>Fix</dt>      <dd><span class="path">packages/core/src/commands/design.ts</span> &mdash; carry the prior
+    design&rsquo;s content across rather than rendering over it, with a test per FR-011 clause (an existing ADR
+    survives; its id is not renumbered). The <em>declarations</em> the same run destroys are outside
+    FR-011&rsquo;s text, so widening preservation beyond ADRs is a spec question and belongs in its own propose
+    rather than being smuggled in under this card.</dd>
+  </dl>
+
+  <details>
+    <summary>Deep dive &mdash; a must-tier requirement that shipped untested for two months</summary>
+    <p>No cross-spec contract; no hotfix sequencing. What is worth recording is that this was not a gap in the
+    text. The requirement is written, must-tier, unambiguous, and named in the spec&rsquo;s own TL;DR and its
+    INVEST <em>Negotiable</em> row as a contract the spec sets &mdash; and it was never implemented and never
+    tested. A first draft of the change that found this proposed <em>adding</em> a preservation requirement, on
+    the reasoning that none existed; the adversarial pass produced FR-011 and the draft was discarded rather
+    than reworded. The interesting question is therefore not what to write but why a must-tier rule went
+    unenforced, which is a question about where guarantees live rather than about this one verb.</p>
+    <p>Also surfaced rather than folded in: the sibling generating verbs (<code>spec</code>, <code>tasks</code>)
+    render their artifacts through the same shape and may lose content the same way. Not measured, and asserting
+    it without measuring would repeat the error this card exists to correct.</p>
+  </details>
+</spec-triage>
+
 </spec-triage-log>
 </section>
 
@@ -68,6 +126,7 @@
 <h2>Change log</h2>
 <spec-changelog>
 <ol>
+  <li><time datetime="2026-08-23">23 Aug 2026</time><span>T-002 added &mdash; <a href="./spec.html#FR-011">FR-011</a>'s must-tier ADR preservation has never been implemented: a hand-authored <code>D-007</code> is destroyed and renumbered to <code>D-001</code> by one ordinary re-entry. Found while asking why <code>design --visuals</code> saw no visual declaration.</span></li>
     <li><time datetime="2026-08-01">01 Aug 2026</time><span>Closure backfill under <a href="../088-change-management/spec.html#REQ-CHANGE-009">REQ-CHANGE-009</a> — every card in this log was verified against the current code and the resolved ones marked <code>data-status="done"</code> with a <code>&lt;dt&gt;Fixed&lt;/dt&gt;</code> row recording what actually shipped. Cards left unmarked are genuinely still owed work; an unmarked card now means open, per the new contract.</span></li>
 <li><time datetime="2026-06-16">16 Jun 2026</time><span>T-001 added — cascade of <a href="../008-core-principles/triage-log.html#T-001">008/T-001</a>; auto-re-entry doesn't check destination status. <code>spec</code> layer; regen <code>fail</code>.</span></li>
   <li><time datetime="2026-06-16">16 Jun 2026</time><span>T-001 closed via <a href="./changes/archive/2026-06-16-p6-cascade-plan/proposal.html">2026-06-16-p6-cascade-plan</a> (MODIFIED FR-003) + CLI hotfix. Silent-sharpen failure closed.</span></li>
