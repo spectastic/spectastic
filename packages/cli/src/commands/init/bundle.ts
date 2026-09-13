@@ -1,6 +1,7 @@
-import { existsSync, readdirSync, statSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { translateToSkill } from '@spectastic/core/skills/translate';
 import pc from 'picocolors';
 import type { BundleInventory } from './types.js';
 
@@ -11,13 +12,23 @@ import type { BundleInventory } from './types.js';
  *
  * Per D-003 of specs/003-init-node-port/design.html.
  */
-export function resolveBundle(): BundleInventory {
+/** The host target a scaffold is built for (spec 111-codex-skill-adapters). */
+export type ScaffoldTarget = 'claude' | 'codex';
+
+export function resolveBundle(target: ScaffoldTarget = 'claude'): BundleInventory {
   const productionRoot = productionBundleRoot();
   if (existsSync(productionRoot)) {
-    return inventoryAt(productionRoot, 'production');
+    return inventoryAt(productionRoot, 'production', target);
   }
   const devRoot = devBundleRoot();
   if (devRoot && existsSync(devRoot)) {
+    if (target === 'codex') {
+      // The Codex skills are rendered into the bundle at prebuild time (D-007),
+      // not committed to the workspace, so the dev fallback cannot serve them.
+      throw new Error(
+        `init: --target codex needs the built bundle. Run \`pnpm --filter @spectastic/cli build\` to render _bundled/.agents/skills first.`,
+      );
+    }
     process.stderr.write(
       pc.dim(
         `init: dev fallback — using workspace root at ${devRoot} (run \`pnpm --filter @spectastic/cli build\` to populate _bundled/)\n`,
@@ -68,10 +79,28 @@ function devBundleRoot(): string | null {
  * `assets/`, `templates/` already in the destination layout) and build the
  * inventory.
  */
-function inventoryAt(root: string, origin: 'production' | 'dev-fallback'): BundleInventory {
+function inventoryAt(
+  root: string,
+  origin: 'production' | 'dev-fallback',
+  target: ScaffoldTarget = 'claude',
+): BundleInventory {
+  // Codex scaffolds only the Agent-Skills adapters; Claude scaffolds its command
+  // + subagent files AND the portable Agent-Skills tree (spec 111 FR-012, the
+  // 2026-09-12-claude-installs-skills change) so every project carries the
+  // portable surface. Assets and templates are shared by every target because
+  // the verbs generate the same HTML artifacts. The skills come from the
+  // prebuilt bundle (rendered by prebuild) as plain files — no translator import
+  // here, keeping the init cold-start path free of yaml (bench guard).
+  const adapterFiles =
+    target === 'codex'
+      ? listFiles(root, '.agents/skills')
+      : [
+          ...listFiles(root, '.claude/commands'),
+          ...listFiles(root, '.claude/agents'),
+          ...listFiles(root, '.agents/skills'),
+        ];
   const files = [
-    ...listFiles(root, '.claude/commands'),
-    ...listFiles(root, '.claude/agents'),
+    ...adapterFiles,
     ...listFiles(root, 'assets'),
     ...remapKnowledgeScaffold(listFiles(root, 'templates')),
   ];
@@ -95,10 +124,29 @@ function inventoryAtDev(root: string): BundleInventory {
       source: f.source,
       relativeDestination: f.relativeDestination.replace(/^agents\//, '.claude/agents/'),
     })),
+    // The portable Agent-Skills tree (spec 111 FR-012). In production it is a
+    // prebuilt directory the copy path lists; the dev workspace has no rendered
+    // skills, so render them here from the same `commands/` source — as content
+    // entries (no source file) — keeping the dev and production default scaffolds
+    // identical. `yaml` is already on the init graph via @spectastic/corpus, so
+    // the translator import adds nothing to the cold-start path.
+    ...renderDevSkills(root),
     ...listFiles(root, 'assets'),
     ...remapKnowledgeScaffold(listFiles(root, 'templates')),
   ];
   return { root, origin: 'dev-fallback', files };
+}
+
+/** Render the Agent-Skills adapters from the dev workspace's `commands/`. */
+function renderDevSkills(root: string): Array<{ relativeDestination: string; content: string }> {
+  const dir = join(root, 'commands');
+  if (!existsSync(dir)) return [];
+  return readdirSync(dir)
+    .filter((f) => /^spectastic\..*\.md$/.test(f))
+    .map((f) => {
+      const { relPath, content } = translateToSkill(readFileSync(join(dir, f), 'utf8'), f);
+      return { relativeDestination: `.agents/skills/${relPath}`, content };
+    });
 }
 
 /**

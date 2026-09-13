@@ -226,6 +226,47 @@ export const RESOURCE_URI_MATRIX: readonly ResourceUriFixture[] = [
     edition: '2026-08-14',
     expected: 'spectastic://spectastic/spectastic/screen/001-currency-conversion/convert?edition=2026-08-14#empty',
   },
+
+  // decision (112-guardrail-decision-record) — project-scoped, two-segment name.
+  {
+    label: 'decision, bare',
+    project: 'spectastic',
+    kind: 'decision',
+    name: '112-guardrail-decision-record/D-002',
+    expected: 'spectastic://spectastic/decision/112-guardrail-decision-record/D-002',
+  },
+  {
+    label: 'decision, owner-qualified',
+    project: 'acme-corp/position-keeper',
+    kind: 'decision',
+    name: '002-downstream/D-007',
+    expected: 'spectastic://acme-corp/position-keeper/decision/002-downstream/D-007',
+  },
+  {
+    label: 'decision, anchor',
+    project: 'spectastic/spectastic',
+    kind: 'decision',
+    name: '112-guardrail-decision-record/D-002',
+    anchor: 'context',
+    expected: 'spectastic://spectastic/spectastic/decision/112-guardrail-decision-record/D-002#context',
+  },
+  {
+    label: 'decision, edition',
+    project: 'spectastic/spectastic',
+    kind: 'decision',
+    name: '112-guardrail-decision-record/D-002',
+    edition: '2026-09-13',
+    expected: 'spectastic://spectastic/spectastic/decision/112-guardrail-decision-record/D-002?edition=2026-09-13',
+  },
+  {
+    label: 'decision, edition and anchor',
+    project: 'spectastic/spectastic',
+    kind: 'decision',
+    name: '112-guardrail-decision-record/D-002',
+    anchor: 'context',
+    edition: '2026-09-13',
+    expected: 'spectastic://spectastic/spectastic/decision/112-guardrail-decision-record/D-002?edition=2026-09-13#context',
+  },
 ];
 
 /**

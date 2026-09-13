@@ -12,7 +12,7 @@
  * Per D-003 of specs/003-init-node-port/design.html.
  */
 
-import { cp, mkdir, rm, rename } from 'node:fs/promises';
+import { cp, mkdir, readFile, readdir, rename, rm, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -67,6 +67,28 @@ async function main() {
   // For the 8 slash-command files: rename commands/spectastic.*.md to
   // .claude/commands/spectastic.*.md (the destination structure init writes).
   // Above already copies commands/ → .claude/commands/ wholesale, so we're done.
+
+  // Render the Codex Agent-Skills adapters into the bundle (spec
+  // 111-codex-skill-adapters, D-007). Rendering happens here, at build time,
+  // from the one source of truth (commands/*.md) — so the scaffold copy stays a
+  // dumb file copy and the translator (with its yaml dep) never loads on the
+  // init runtime cold path. `@spectastic/core` is built before cli under the
+  // topo `pnpm -r build`, so its dist is present here.
+  const { translateToSkill } = await import('@spectastic/core/skills/translate').catch((err) => {
+    throw new Error(
+      `prebuild: could not load @spectastic/core/skills/translate — build core first (pnpm -r build). ${err.message}`,
+    );
+  });
+  const commandsSrc = join(REPO_ROOT, 'commands');
+  const commandFiles = (await readdir(commandsSrc)).filter((f) => /^spectastic\..*\.md$/.test(f));
+  for (const file of commandFiles) {
+    const md = await readFile(join(commandsSrc, file), 'utf8');
+    const { relPath, content } = translateToSkill(md, file);
+    const out = join(TMP, '.agents', 'skills', relPath);
+    await mkdir(dirname(out), { recursive: true });
+    await writeFile(out, content, 'utf8');
+  }
+  console.log(`prebuild: rendered ${commandFiles.length} Codex skills → _bundled/.agents/skills`);
 
   // Atomic swap: remove old final, rename tmp into place.
   if (existsSync(FINAL)) {

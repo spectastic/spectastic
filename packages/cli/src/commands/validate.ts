@@ -116,19 +116,42 @@ async function scanCommandsDrift(cwd: string): Promise<Finding[]> {
   if (!adaptersManaged(cwd)) return [];
   const findings: Finding[] = [];
   for (const pair of driftPairs(cwd)) {
-    let source: string;
-    try {
-      source = await readFile(pair.source, 'utf8');
-    } catch {
-      continue; // an unreadable source has nothing to compare against
-    }
     let adapter: string | null = null;
     try {
       adapter = await readFile(pair.adapter, 'utf8');
     } catch {
       adapter = null; // missing adapter = drift
     }
-    const finding = commandsDriftFinding(source, adapter, pair.rel);
+    const finding = commandsDriftFinding(pair.expected, adapter, pair.rel);
+    if (finding) findings.push(finding);
+  }
+  return findings;
+}
+
+/**
+ * The Codex sibling of the drift gate (spec 111-codex-skill-adapters, FR-007/008).
+ * A managed `.agents/skills` adapter that no longer matches its rendered source
+ * is an error; the comparison is *render(source) ≠ on-disk*, which the shared
+ * driftPairs computes. No-op when the Codex target is not marker-managed. The
+ * CODEX_TARGET is imported lazily so the translator stays off the init cold path.
+ */
+async function scanSkillsDrift(cwd: string): Promise<Finding[]> {
+  const [{ commandsDriftFinding }, { adaptersManaged, driftPairs }, { CODEX_TARGET }, { readFile }] = await Promise.all([
+    import('@spectastic/core/commands/validate'),
+    import('./init/adapters.js'),
+    import('./init/adapters-codex.js'),
+    import('node:fs/promises'),
+  ]);
+  if (!adaptersManaged(cwd, CODEX_TARGET)) return [];
+  const findings: Finding[] = [];
+  for (const pair of driftPairs(cwd, CODEX_TARGET)) {
+    let adapter: string | null = null;
+    try {
+      adapter = await readFile(pair.adapter, 'utf8');
+    } catch {
+      adapter = null; // missing adapter = drift
+    }
+    const finding = commandsDriftFinding(pair.expected, adapter, pair.rel);
     if (finding) findings.push(finding);
   }
   return findings;
@@ -336,6 +359,38 @@ async function scanQuantifiedNfr(docs: ReadonlyMap<string, CachedDoc>, cwd: stri
     tier: marker?.profile,
     ...(floor !== undefined ? { floor } : {}),
   });
+}
+
+/**
+ * The plan-stage constraint (spec 114-guardrail-gates, FR-002). Reads the
+ * profile marker, short-circuits below standard (fail-safe on the antecedent,
+ * like the enforce floor), then loads every design + its decisions and reports
+ * an unacknowledged in-scope decision. Deterministic, no model on the path.
+ */
+async function scanPlanConstraint(cwd: string): Promise<Finding[]> {
+  const [{ loadDesigns, loadDecisions, planConstraintFindings, isPlanConstraintGatedTier }, { readMarker }] =
+    await Promise.all([import('@spectastic/core/commands/adrs'), import('./init/marker.js')]);
+  const marker = readMarker(cwd);
+  if (!isPlanConstraintGatedTier(marker?.profile)) return [];
+  const { nodeFs } = await import('@spectastic/core/providers/node-fs');
+  const ctx = { cwd, fs: nodeFs };
+  const [designs, decisions] = await Promise.all([loadDesigns(ctx), loadDecisions(ctx)]);
+  return planConstraintFindings(designs, decisions);
+}
+
+/**
+ * The decision-coverage gate (spec 114-guardrail-gates, FR-005). Tier-independent
+ * (warnings only, never blocks): an active decision with neither a rule nor a
+ * none-with-reason warns; one past its review-by warns. The proportion metric is
+ * reported by `spectastic adrs --coverage`, not here.
+ */
+async function scanDecisionCoverage(cwd: string): Promise<Finding[]> {
+  const [{ loadDecisions, coverageReport }, { nodeFs }] = await Promise.all([
+    import('@spectastic/core/commands/adrs'),
+    import('@spectastic/core/providers/node-fs'),
+  ]);
+  const decisions = await loadDecisions({ cwd, fs: nodeFs });
+  return coverageReport(decisions, { now: new Date() }).findings;
 }
 
 /**
@@ -788,6 +843,11 @@ export function registerValidate(program: Command): void {
       // The commands-drift gate (spec 031, FR-007): a managed adapter that has
       // drifted from source is an error, so the pre-commit gate blocks it.
       const commandsDriftFindings = await scanCommandsDrift(process.cwd());
+      // The Codex sibling (spec 111, FR-007/008): a managed .agents/skills
+      // adapter that drifted from its rendered source is an error too, folded
+      // beside the commands gate so the same pre-commit hook covers it. No-op
+      // unless the Codex target is marker-managed.
+      const skillsDriftFindings = await scanSkillsDrift(process.cwd());
       // The verb-model-policy drift-guard (spec 044, FR-009): a command whose
       // optional model: key is not a legal alias or disagrees with the policy map
       // is an error — the enforcement REQ-TOOL-004 delegates for the permitted key.
@@ -865,11 +925,22 @@ export function registerValidate(program: Command): void {
       // with an interface can produce no finding here, so this costs one
       // detection pass and returns.
       const visualGateScanFindings = await scanVisualProject(docCache, process.cwd());
+      // The plan-stage constraint (spec 114, FR-002): at standard+, a design
+      // whose project-structure tree touches a path governed by an accepted
+      // decision authored in another spec, without acknowledging it, is an
+      // error. No-op below standard / with no marker, and [] until any decision
+      // carries scope metadata (every design in the estate today).
+      const planConstraintScanFindings = await scanPlanConstraint(process.cwd());
+      // The decision-coverage gate (spec 114, FR-005): an active decision with
+      // neither a rule nor a none-with-reason warns; one past its review-by
+      // warns. Never blocks. No-op-cheap: [] with no scoped decisions.
+      const decisionCoverageScanFindings = await scanDecisionCoverage(process.cwd());
       const findings = [
         ...result.findings,
         ...quarantineFindings,
         ...skillMetadataFindings,
         ...commandsDriftFindings,
+        ...skillsDriftFindings,
         ...verbModelPolicyFindings,
         ...copyLeakFindings,
         ...enforceWaiverFindings,
@@ -889,6 +960,8 @@ export function registerValidate(program: Command): void {
         ...contractViewDriftScanFindings,
         ...visualResolveScanFindings,
         ...visualGateScanFindings,
+        ...planConstraintScanFindings,
+        ...decisionCoverageScanFindings,
       ];
       const exitCode = findings.some((f) => f.severity === 'error') ? 1 : result.exitCode;
 

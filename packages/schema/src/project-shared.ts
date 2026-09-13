@@ -60,7 +60,7 @@ export function classifyProjectId(value: string): ProjectIdShape {
  * from this array, so there is one place to widen and one way to get it
  * wrong at compile or test time rather than none.
  */
-export const RESOURCE_KINDS = ['spec', 'contract', 'corpus', 'unit', 'screen'] as const;
+export const RESOURCE_KINDS = ['spec', 'contract', 'corpus', 'unit', 'screen', 'decision'] as const;
 
 /** Derived from {@link RESOURCE_KINDS} — never restated as a literal union. */
 export type ResourceKind = (typeof RESOURCE_KINDS)[number];
@@ -147,6 +147,22 @@ export function contractResourceUri(project: string, name: string, anchor?: stri
  */
 export function screenResourceUri(project: string, specId: string, name: string, anchor?: string): string {
   return resourceUri(project, 'screen', `${specId}/${name}`, anchor);
+}
+
+/**
+ * Compose a governance decision's resource URI:
+ * `spectastic://<project>/decision/<spec-id>/<D-NNN>#<anchor>`
+ * (112-guardrail-decision-record, FR-004).
+ *
+ * Authority is the PROJECT, not a marketplace — the deliberate divergence from
+ * `corpusResourceUri`. A decision belongs to the project that made it (mirroring
+ * the `spec` kind), where a corpus document is a body of knowledge one
+ * marketplace may install into many repos. The name spans two segments — the
+ * owning spec and the decision id — the same shape `screen` ships, because a
+ * decision id (D-NNN) is unique only within the spec that produced it.
+ */
+export function decisionResourceUri(project: string, specId: string, decisionId: string, anchor?: string): string {
+  return resourceUri(project, 'decision', `${specId}/${decisionId}`, anchor);
 }
 
 /**

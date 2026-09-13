@@ -1,0 +1,224 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'">
+<title>Governance gates — plan constraint &amp; coverage · Specification</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Specification · 114-guardrail-gates</p>
+  <h1>Governance gates — plan constraint &amp; coverage</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    Fail a plan that touches code governed by a decision it never acknowledges, and make visible how many active decisions have
+    no executable check — the two pure, deterministic scans that turn a recorded decision into a gate.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>      <span><spec-status value="accepted">Accepted</spec-status></span>
+    <b>Spec ID</b>     <span>114-guardrail-gates</span>
+    <b>Owner</b>       <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Reviewers</b>   <span>—</span>
+    <b>Created</b>     <span><time datetime="2026-09-13">13 Sep 2026</time></span>
+    <b>Principles</b><span><a href="../../principles.html">v1.9.0</a></span>
+    <b>Smallest demoable</b><span>A design whose project-structure tree touches a path another spec's accepted decision governs, without acknowledging it, fails <code>validate</code> at standard+ naming the decision and path.</span>
+    <b>Read time</b>   <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-budget words="1200" reqs="8" minutes="10"></spec-budget>
+
+  <spec-tldr>
+    <p>Slice 3a of the architectural-guardrails design brief (§3.5, §3.7). Two pure, deterministic folded scans over the decision
+    records (112) and their scopes: a <strong>plan-stage constraint</strong> that fails, at the standard profile and up, when a
+    design's project-structure tree includes a path governed by an active decision authored in another spec that the design does
+    not acknowledge — this is where the Priya PR dies in the happy path; and a <strong>coverage report</strong> that surfaces the
+    proportion of active decisions carrying an executable check and warns on the unchecked-and-unexcused. Neither runs code; the
+    merge verdict that does is the sibling slice 115.</p>
+  </spec-tldr>
+
+  <dl class="invest">
+    <dt><span class="letter">I</span> Independent</dt> <dd>Builds on <a href="../112-guardrail-decision-record/spec.html">112</a> (records) and <a href="../113-guardrail-retrieval/spec.html">113</a> (scope matching); no other spec.</dd>
+    <dt><span class="letter">N</span> Negotiable</dt>  <dd>Outcomes contract; the acknowledgment element's spelling is the design's to settle.</dd>
+    <dt><span class="letter">V</span> Valuable</dt>    <dd>Unlocks <a href="#SC-001">SC-001</a> — an unacknowledged governing decision now fails the build, not review.</dd>
+    <dt><span class="letter">E</span> Estimable</dt>   <dd>Plan + tasks derivable; both scans model on the shipping <code>quantifiedNfrFindings</code> folded-scan pattern.</dd>
+    <dt><span class="letter">S</span> Small</dt>       <dd>Two pure scans; no code execution (that is 115). Eight requirements.</dd>
+    <dt><span class="letter">T</span> Testable</dt>    <dd>Every requirement observable via <code>validate</code> output on a fixture design.</dd>
+  </dl>
+
+  <spec-audience-map>
+    <dl>
+      <dt>Exec / PM</dt>   <dd>§<a href="#context">Context</a>, §<a href="#scenarios">User scenarios</a>, §<a href="#success">Success criteria</a>.</dd>
+      <dt>Reviewer</dt>    <dd>§<a href="#requirements">Requirements</a>, §<a href="#assumptions">Assumptions</a>, §<a href="#questions">Open questions</a>.</dd>
+      <dt>Implementer</dt> <dd>§<a href="#requirements">Requirements</a>, §<a href="#data">Data model</a>, §<a href="#conformance">Conformance index</a>.</dd>
+    </dl>
+  </spec-audience-map>
+</header>
+
+
+<section id="context">
+<h2>1 · Context</h2>
+<p>Phase-1 gap G1's second half is that no gate fails when a plan ignores a governing decision, and gap G4 is that the blind spot
+— a decision with no executable check — is invisible. This slice closes both with pure scans. The plan-stage constraint is the
+one the Valmis scenario turns on: Priya's reconciliation plan touches the positions store, an accepted decision (authored two
+years earlier, in another feature) governs that path, and nothing surfaced it. Here, a design whose declared surface includes a
+governed path must acknowledge the decision that governs it, or the build fails.</p>
+<p>Its users are the author of a plan (who is told, at plan time, which decisions their surface invokes) and the reviewer and CI
+(who get a hard signal instead of relying on someone remembering a two-year-old ADR).</p>
+</section>
+
+
+<section id="scenarios">
+<h2>2 · User scenarios &amp; testing</h2>
+<p><strong>An unacknowledged governing decision fails the plan.</strong> A design's project-structure tree lists
+<code>src/**/persistence/**</code>. Another spec's accepted decision governs that path. The design does not mention that
+decision. At the standard profile or above, <code>spectastic validate</code> fails, naming the decision id and the governed
+path — before the commit lands.</p>
+<p><strong>Acknowledging it clears the gate.</strong> The design references the decision's id in its constraints acknowledgment;
+the finding disappears. A design need not acknowledge its <em>own</em> decisions — only those authored elsewhere.</p>
+<p><strong>Coverage makes the blind spot visible.</strong> <code>validate</code> reports "4 of 5 active decisions carry an
+executable check (80%)" and warns on the one that has neither a rule nor an explicit unenforceable-with-reason, and on any
+decision past its <code>review-by</code>.</p>
+</section>
+
+
+<section id="requirements">
+<h2>3 · Requirements</h2>
+
+<spec-requirement id="FR-001" priority="must">
+A design MUST be able to acknowledge a governing decision by referencing its id (<code>D-NNN</code>) or coordinate in a
+constraints acknowledgment. An acknowledgment discharges the plan-stage constraint for that decision.
+</spec-requirement>
+
+<spec-requirement id="FR-002" priority="must">
+A profile-gated folded scan (the plan-stage constraint) MUST, at the <code>standard</code> profile and above, report an error
+when a design's declared surface includes a path governed by an <em>active</em> (<code>status="accepted"</code>) decision
+authored in <em>another</em> spec that the design does not acknowledge. The finding MUST name the decision id and the governed
+path.
+</spec-requirement>
+
+<spec-requirement id="FR-003" priority="must">
+The plan-stage constraint MUST read a design's declared surface from its §Project-structure tree — the paths a design already
+sketches — introducing no new required authoring field.
+</spec-requirement>
+
+<spec-requirement id="FR-004" priority="must">
+A design's <em>own</em> decisions MUST NOT require acknowledgment by that same design — only in-scope decisions authored in other
+specs do (a plan does not acknowledge itself).
+</spec-requirement>
+
+<spec-requirement id="FR-005" priority="must">
+A coverage report MUST state the proportion of active decisions that carry an executable check (at least one
+<code>&lt;spec-rule&gt;</code>), and MUST warn on an active decision that carries neither a rule nor an explicit
+<code>&lt;spec-none reason=&gt;</code>, and on any decision past its <code>review-by</code> date. Coverage MUST NOT block the
+build.
+</spec-requirement>
+
+<spec-requirement id="FR-006" priority="should">
+Below the <code>standard</code> profile, or with no profile marker, the plan-stage constraint MUST NOT fire (it fails safe on the
+antecedent, like the enforce floor); coverage MAY still report.
+</spec-requirement>
+
+<spec-requirement id="NFR-001" priority="must">
+Both scans MUST carry no model client and no network access — a test MUST assert each scan's transitive imports include at most 0
+model clients and at most 0 network modules.
+</spec-requirement>
+
+<spec-requirement id="NFR-002" priority="must">
+Both scans MUST be deterministic: the same corpus and profile yield the same findings on every run; the <code>review-by</code>
+comparison reads an injected clock so fixtures pin it (at most 1 repeated-run diff).
+</spec-requirement>
+
+<spec-out-of-scope>
+<ul>
+  <li defer-to="TBD-guardrail-verdict"><strong>The merge-stage verdict</strong> — running native detectors and orchestrating ecosystem enforcers to check the actual diff. Its own slice (115), because executing a command from an artifact is a different risk class (P-11 / 085 guard-first).</li>
+  <li defer-to="TBD-guardrail-verdict"><strong>Verifying a declared rule-id exists / passes in its tool</strong> — the merge verdict's resolvable check, not a plan-time scan.</li>
+  <li defer-to="TBD-guardrail-injection"><strong>Injecting the governing decisions into the agent before it writes</strong> — slice 4.</li>
+</ul>
+</spec-out-of-scope>
+</section>
+
+
+<section id="data">
+<h2>4 · Data model</h2>
+<dl>
+  <dt>Declared surface</dt><dd>The set of path globs a design sketches in its project-structure section — what this plan will touch.</dd>
+  <dt>In-scope decision</dt><dd>An active decision (from any spec) whose scope glob matches a path in a design's declared surface.</dd>
+  <dt>Acknowledgment</dt><dd>A reference (by decision id or coordinate) in a design to an in-scope decision authored elsewhere; discharges the constraint for that decision.</dd>
+  <dt>Coverage</dt><dd>Over all active decisions: the count carrying ≥1 executable rule, the count excused by a none-with-reason, and the count neither — the proportion and the warnings derive from these.</dd>
+</dl>
+</section>
+
+
+<section id="success">
+<h2>5 · Success criteria</h2>
+
+<spec-criterion id="SC-001" priority="must" actor="a plan author" validates="FR-001,FR-002,FR-003,FR-004" method="test">
+Given a design whose project-structure tree includes a path an accepted decision in another spec governs, with no acknowledgment,
+the standard-profile scan reports exactly one error naming that decision id and the governed path; adding the acknowledgment
+clears it, and a design's own governing decision never triggers the error.
+<details><summary>Observed at</summary><p><code>packages/core/test/guardrail.plan-constraint.test.ts</code> — fixtures with/without acknowledgment + a self-governing case.</p></details>
+</spec-criterion>
+
+<spec-criterion id="SC-002" priority="must" actor="a reviewer" validates="FR-005,NFR-002" method="test">
+Over a fixture corpus of active decisions, coverage reports the correct proportion carrying a rule, warns on the one that is
+neither checked nor excused, and warns on one past its <code>review-by</code> — identically on repeated runs with a pinned clock.
+<details><summary>Observed at</summary><p><code>packages/core/test/guardrail.coverage.test.ts</code>.</p></details>
+</spec-criterion>
+
+<spec-criterion id="SC-003" priority="must" actor="a security reviewer" validates="NFR-001" method="test">
+A test asserts each scan's transitive imports include 0 model-client modules and 0 network modules, and each makes 0 direct
+network calls.
+<details><summary>Observed at</summary><p><code>packages/core/test/guardrail.gates.no-network.test.ts</code>.</p></details>
+</spec-criterion>
+
+<spec-criterion id="SC-004" priority="should" actor="a lite-profile team" validates="FR-006" method="test">
+With no profile marker or a profile below standard, the plan-stage constraint produces 0 findings on the same corpus that fails
+at standard — the antecedent fails safe.
+<details><summary>Observed at</summary><p><code>packages/core/test/guardrail.plan-constraint.test.ts</code> — profile-gating case.</p></details>
+</spec-criterion>
+</section>
+
+
+<section id="assumptions">
+<h2>6 · Assumptions</h2>
+<ul>
+  <li>Decisions carry the structured scope metadata (112) and are read from design.html files (113's <code>loadDecisions</code>).</li>
+  <li>The profile marker is read the way <code>quantifiedNfrFindings</code> reads it (<code>.spectastic/profile.json</code>); absent ⇒ the plan-constraint is a no-op.</li>
+  <li>"Acknowledged" means the design's text references the decision id/coordinate — no new required element, matching the reuse-what-exists decision.</li>
+</ul>
+</section>
+
+
+<section id="questions">
+<h2>7 · Open questions</h2>
+<p>None outstanding — the scope split (114 scans / 115 verdict), the declared-surface source (project-structure tree), and the
+coverage posture (report + warn, never block) were all anchored in the interview.</p>
+</section>
+
+
+<section id="conformance">
+<h2>8 · Conformance index</h2>
+<spec-conformance></spec-conformance>
+</section>
+
+
+<section id="changelog">
+<h2>9 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-09-13">13 Sep 2026</time><span>Status flipped Draft → Accepted — zero remaining unchecked tasks; SC-001..SC-004 tests verified passing (47 guardrail tests), estate validate + typechecks clean. Sibling bundle (REQ-LIFECYCLE-005).</span></li>
+  <li><time datetime="2026-09-13">13 Sep 2026</time><span>Drafted via <code>/spectastic.spec</code> — Slice 3a: the plan-stage constraint + coverage report, two pure deterministic scans. Split from the merge verdict (115) at interview. Closes the second half of Phase-1 gap G1 and gap G4 (rubric items 4, 9).</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>

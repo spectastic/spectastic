@@ -36,7 +36,7 @@ export interface BundleInventory {
   root: string;
   /** Source file paths inside the bundle, with their bundle-relative
    *  destination (matches the layout init writes to cwd). */
-  files: ReadonlyArray<{ source: string; relativeDestination: string }>;
+  files: ReadonlyArray<{ source?: string; relativeDestination: string; content?: string }>;
   /** Whether the bundle came from production (_bundled/) or the dev fallback. */
   origin: 'production' | 'dev-fallback';
 }

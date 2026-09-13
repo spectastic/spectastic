@@ -80,6 +80,8 @@ Ten commands. Eight are the **core** lifecycle, installed by default; two are **
 
 The command files live in [`commands/`](./commands/). `spectastic init --tools` installs them as drift-proof adapters plus a pre-commit gate.
 
+**Portable by default.** Every `spectastic init` now writes the verbs as portable [Agent Skills](https://developers.openai.com/codex) (`.agents/skills/<verb>/SKILL.md`) — the open format Codex, Gemini CLI, Cursor and 30+ agents read — *alongside* the `.claude/commands` slash commands, so the project works in whatever agent opens it. `--target codex` emits the skills without the Claude trees, for a Codex-only project. Add `--tools` for the drift-proof guarantee on either. ([111](./specs/111-codex-skill-adapters/spec.html)) <sub>Verbs that fan out to a sub-agent under Claude Code (propose, implement, triage) carry a host-neutral note that the pass runs inline where a host has no sub-agent mechanism.</sub>
+
 ## What you get
 
 Each row links to the spec that owns it in full.

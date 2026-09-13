@@ -1,0 +1,216 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'">
+<title>Reviewer-grade verdict explanation · Specification</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Specification · 118-verdict-explain</p>
+  <h1>Reviewer-grade verdict explanation</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    A verdict a PR author or reviewer can act on without leaving the terminal — the offending code shown, the decision made
+    readable, and the sanctioned path named. Triage's clarity, at the gate.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>      <span><spec-status value="accepted">Accepted</spec-status></span>
+    <b>Spec ID</b>     <span>118-verdict-explain</span>
+    <b>Owner</b>       <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Reviewers</b>   <span>—</span>
+    <b>Created</b>     <span><time datetime="2026-09-13">13 Sep 2026</time></span>
+    <b>Principles</b><span><a href="../../principles.html">v1.9.0</a></span>
+    <b>Smallest demoable</b><span><code>spectastic verdict --explain</code> renders, per violation, the offending code in context, the governing decision's reason and consequences, and the location where the pattern is sanctioned.</span>
+    <b>Read time</b>   <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-budget words="1150" reqs="6" minutes="9"></spec-budget>
+
+  <spec-tldr>
+    <p>The 115 verdict carries everything a reviewer needs — decision id, rule, reason, <code>file:line</code>, source→target —
+    but renders one line, so understanding the violation means leaving the diff to open the file and the ADR. This closes the
+    gap to the clarity a <code>&lt;spec-triage&gt;</code> card gives: <code>verdict --explain</code> renders each violation in a
+    fixed shape — <strong>Offending</strong> (the code shown in context), <strong>Why</strong> (the decision's reason and
+    Context/Decision/Consequences, with the coordinate to open it), and <strong>Sanctioned path</strong> (where the pattern is
+    allowed, from the rule's <code>allowed-in</code>). It is composed only from what the verdict already loads — the changed
+    files and the decision record — so it adds no authoring and no model, and leaves the machine verdict and exit code
+    untouched.</p>
+  </spec-tldr>
+
+  <dl class="invest">
+    <dt><span class="letter">I</span> Independent</dt> <dd>Builds on <a href="../115-guardrail-verdict/spec.html">115</a> (the verdict) and <a href="../112-guardrail-decision-record/spec.html">112</a> (the decision record); no other spec.</dd>
+    <dt><span class="letter">N</span> Negotiable</dt>  <dd>Outcomes contract; the exact layout of the explanation is the design's.</dd>
+    <dt><span class="letter">V</span> Valuable</dt>    <dd>Unlocks <a href="#SC-001">SC-001</a> — a reviewer who never read the ADR understands and can act, from the terminal.</dd>
+    <dt><span class="letter">E</span> Estimable</dt>   <dd>Plan derivable; extends the verdict parse with the decision's prose and adds a renderer + a flag.</dd>
+    <dt><span class="letter">S</span> Small</dt>       <dd>A prose-capture parse extension, one pure renderer, one flag. Six requirements.</dd>
+    <dt><span class="letter">T</span> Testable</dt>    <dd>Assert the three sections are present, the snippet is shown, and the exit code is unchanged.</dd>
+  </dl>
+
+  <spec-audience-map>
+    <dl>
+      <dt>Exec / PM</dt>   <dd>§<a href="#context">Context</a>, §<a href="#scenarios">User scenarios</a>, §<a href="#success">Success criteria</a>.</dd>
+      <dt>Reviewer</dt>    <dd>§<a href="#requirements">Requirements</a>, §<a href="#assumptions">Assumptions</a>, §<a href="#questions">Open questions</a>.</dd>
+      <dt>Implementer</dt> <dd>§<a href="#requirements">Requirements</a>, §<a href="#data">Data model</a>, §<a href="#conformance">Conformance index</a>.</dd>
+    </dl>
+  </spec-audience-map>
+</header>
+
+
+<section id="context">
+<h2>1 · Context</h2>
+<p>Dogfooding the position-keeper example surfaced this: the verdict is a <em>machine</em> verdict — correct, traceable,
+reconstructable — but the human reading it (the PR author, the reviewer) gets one line and must go find the code, the decision,
+and the right pattern themselves. That is precisely the trap the guardrail exists to close: if understanding the violation means
+leaving the diff, a busy reviewer approves. The brief's own bar for "a failure teaches" is language a reviewer <em>who has never
+read the ADR</em> can act on; the data meets it, the rendering does not.</p>
+<p>The floor is set by spectastic's own <code>&lt;spec-triage&gt;</code> card: a plain-language header, then
+<em>Expected / Actual / Diagnosis / Fix</em>, with the offending thing shown and the governing rule linked. This feature brings
+the verdict to that floor. Its user is whoever is looking at a failed gate.</p>
+</section>
+
+
+<section id="scenarios">
+<h2>2 · User scenarios &amp; testing</h2>
+<p><strong>A reviewer understands without leaving the terminal.</strong> A verdict flags the reconciliation bypass.
+<code>verdict --explain</code> shows the offending SQL with its surrounding lines, the decision's reason and its
+Context/Decision/Consequences, the coordinate to open the full ADR, and that the pattern is sanctioned only under the persistence
+adapter path — so the reviewer sees what is wrong, why, and where the right code lives.</p>
+<p><strong>CI stays terse; the machine verdict is unchanged.</strong> Without <code>--explain</code> the output is the existing
+one-line-per-violation form; the persisted <code>verdict.json</code> and the exit code are byte-identical either way.</p>
+</section>
+
+
+<section id="requirements">
+<h2>3 · Requirements</h2>
+
+<spec-requirement id="FR-001" priority="must">
+<code>verdict --explain</code> MUST render, for each violation, three labelled sections: <strong>Offending</strong> — the
+changed code at the violation's <code>file:line</code> shown with a few surrounding lines and the line marked;
+<strong>Why</strong> — the governing decision's reason and its Context/Decision/Consequences prose, plus the decision's
+coordinate and design-file location so it can be opened; and <strong>Sanctioned path</strong> — where the pattern is permitted
+(the rule's <code>allowed-in</code>, else the decision's scope) together with the decision's own guidance.
+</spec-requirement>
+
+<spec-requirement id="FR-002" priority="must">
+The explanation MUST be composed only from data the verdict already loads — the changed files and the decision record — with no
+new authoring surface and no model. The decision parse MUST be extended to carry the decision's title and prose so the
+explanation can show them.
+</spec-requirement>
+
+<spec-requirement id="FR-003" priority="must">
+<code>--explain</code> MUST enrich only human output: the persisted <code>verdict.json</code> and the process exit code MUST be
+identical whether or not it is given.
+</spec-requirement>
+
+<spec-requirement id="FR-004" priority="should">
+<code>--explain</code> SHOULD compose with <code>--teach</code>: the Socratic follow-up (117) MAY appear after the explanation.
+</spec-requirement>
+
+<spec-requirement id="FR-005" priority="should">
+When a violation's <code>file:line</code> cannot be read (a deleted file, an ingested SARIF location not on disk), the Offending
+section SHOULD state that plainly rather than omit the section or fail — the Why and Sanctioned-path sections still render.
+</spec-requirement>
+
+<spec-requirement id="NFR-001" priority="must">
+The explanation renderer MUST be pure and deterministic — the same verdict, decisions, and file contents yield a byte-identical
+explanation — with at most 0 model clients and 0 network modules on its path.
+</spec-requirement>
+
+<spec-out-of-scope>
+<ul>
+  <li defer-to="TBD-verdict-explain-exemplar"><strong>Pointing at a specific exemplar file</strong> (e.g. "see JdbcPositionRepositoryAdapter") — naming the one right file needs the decision to declare it; the <code>allowed-in</code> location is the honest v1.</li>
+  <li defer-to="TBD-verdict-explain-markdown"><strong>A Markdown / PR-comment rendering</strong> for posting into a review UI — this slice is the terminal view.</li>
+  <li defer-to="TBD-verdict-default-rich"><strong>Making the rich view the default</strong> (with a <code>--quiet</code> for CI) — opt-in first, non-breaking.</li>
+</ul>
+</spec-out-of-scope>
+</section>
+
+
+<section id="data">
+<h2>4 · Data model</h2>
+<dl>
+  <dt>Explained violation</dt><dd>A violation (115) joined to: the offending code snippet (from the changed file), the governing decision's title/reason/prose and coordinate (from the decision record), and the sanctioned location (the rule's allowed-in or the decision's scope).</dd>
+  <dt>Decision prose</dt><dd>The Context/Decision/Consequences text of a <code>&lt;spec-decision&gt;</code> — captured by the parse so the explanation can show it, not just the one-line reason.</dd>
+</dl>
+</section>
+
+
+<section id="success">
+<h2>5 · Success criteria</h2>
+
+<spec-criterion id="SC-001" priority="must" actor="a code reviewer" validates="FR-001,FR-002" method="test">
+Given a content violation, <code>verdict --explain</code> renders an Offending section containing the code at the violation line,
+a Why section containing the decision's reason and its Context/Decision/Consequences and the decision coordinate, and a
+Sanctioned-path section naming where the pattern is permitted.
+<details><summary>Observed at</summary><p><code>packages/core/test/guardrail.explain.test.ts</code> + a CLI run on the position-keeper bypass.</p></details>
+</spec-criterion>
+
+<spec-criterion id="SC-002" priority="must" actor="a CI operator" validates="FR-003" method="test">
+Running the verdict with <code>--explain</code> versus without yields an identical exit code and an identical persisted
+<code>verdict.json</code>; only stdout differs.
+<details><summary>Observed at</summary><p>A CLI integration run comparing both invocations.</p></details>
+</spec-criterion>
+
+<spec-criterion id="SC-003" priority="must" actor="a security reviewer" validates="NFR-001" method="test">
+A test asserts the explanation renderer's transitive imports include 0 model clients and 0 network modules, and its output is
+byte-identical on repeated runs.
+<details><summary>Observed at</summary><p><code>packages/core/test/guardrail.explain.test.ts</code> — no-network + determinism.</p></details>
+</spec-criterion>
+
+<spec-criterion id="SC-004" priority="should" actor="a code reviewer" validates="FR-004" method="test">
+With both <code>--explain</code> and <code>--teach</code>, the Socratic question appears after the explanation.
+<details><summary>Observed at</summary><p><code>packages/cli</code> integration run with both flags.</p></details>
+</spec-criterion>
+
+<spec-criterion id="SC-005" priority="should" actor="a code reviewer" validates="FR-005" method="test">
+For a violation whose file is not on disk, the Offending section states the file is unreadable, and the Why and Sanctioned-path
+sections still render.
+<details><summary>Observed at</summary><p><code>packages/core/test/guardrail.explain.test.ts</code> — the unreadable-file case.</p></details>
+</spec-criterion>
+</section>
+
+
+<section id="assumptions">
+<h2>6 · Assumptions</h2>
+<ul>
+  <li>115's <code>Violation</code> carries <code>file</code>, <code>line</code>, <code>decisionId</code>, <code>specId</code>, <code>ruleId</code>; the CLI already reads the changed files for content detection, so the snippet needs no new read.</li>
+  <li>The decision record (112) is parseable for its title and Context/Decision/Consequences prose — an additive parse extension.</li>
+  <li>The rule's <code>allowed-in</code> (or the decision's scope) is the honest "where is this permitted" answer; a specific exemplar file is deferred.</li>
+</ul>
+</section>
+
+
+<section id="questions">
+<h2>7 · Open questions</h2>
+<p>None outstanding — the triage-card shape sets the layout, opt-in <code>--explain</code> keeps CI terse, and the sanctioned-path
+answer (allowed-in, not a named exemplar) was settled before drafting.</p>
+</section>
+
+
+<section id="conformance">
+<h2>8 · Conformance index</h2>
+<spec-conformance></spec-conformance>
+</section>
+
+
+<section id="changelog">
+<h2>9 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-09-13">13 Sep 2026</time><span>Drafted — a reviewer-grade <code>verdict --explain</code> to the clarity floor of a <code>&lt;spec-triage&gt;</code> card (Offending / Why / Sanctioned path). Surfaced by dogfooding the position-keeper example, where the terse verdict left a reviewer unable to act without leaving the diff. Honestly reopens rubric item 10: the teaching <em>data</em> was full, the reviewer-facing <em>rendering</em> was thin.</span></li>
+  <li><time datetime="2026-09-13">13 Sep 2026</time><span>Status flipped Draft → Accepted — zero remaining unchecked tasks; tests verified passing per author confirmation (7-test explain suite green, whole-estate <code>validate</code> clean, schema/core/cli typecheck clean). Sibling bundle flipped together (REQ-LIFECYCLE-005).</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>

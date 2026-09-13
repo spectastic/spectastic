@@ -39,7 +39,12 @@ import type { BundleInventory, FileWriteDecision } from './types.js';
  * and a drift guard asserts SC-001 states SCAFFOLD_TREE_FILE_COUNT. Change the
  * scaffold → change these once, and the guards name everything else that must follow.
  */
-export const SCAFFOLD_FILE_COUNT = 30;
+// 30 before the 2026-09-12-claude-installs-skills change; +8 for the portable
+// Agent-Skills tree the default scaffold now also writes (spec 111 FR-012) — one
+// SKILL.md per core verb (extended verbs stay gated on --with). Dev and
+// production produce the same 38 because inventoryAtDev renders the skills that
+// the prebuilt bundle copies.
+export const SCAFFOLD_FILE_COUNT = 38;
 export const SCAFFOLD_TREE_FILE_COUNT = SCAFFOLD_FILE_COUNT + 2;
 
 export interface BuildPlanOptions {
@@ -59,11 +64,15 @@ export function buildPlan(opts: BuildPlanOptions): FileWriteDecision[] {
       if (!isExtended(verb, manifest)) return true; // core verb
       return withVerbs.includes(verb); // extended: only when opted in
     })
-    .map((entry) => {
+    .map((entry): FileWriteDecision => {
       const destination = join(cwd, entry.relativeDestination);
       const preExisting = existsSync(destination);
+      // Under exactOptionalPropertyTypes, an optional `source?`/`content?` must
+      // be absent — not present-with-undefined. An entry carries exactly one:
+      // a copy-based write has a source, a composed artifact has content.
       return {
-        source: entry.source,
+        ...(entry.source !== undefined ? { source: entry.source } : {}),
+        ...(entry.content !== undefined ? { content: entry.content } : {}),
         destination,
         preExisting,
         action: 'write',

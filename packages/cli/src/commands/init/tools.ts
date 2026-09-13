@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { generateAdapters, removeAdapters } from './adapters.js';
+import { CLAUDE_TARGET, generateAdapters, removeAdapters } from './adapters.js';
 import { installHook, uninstallHook } from './hook.js';
 
 /**
@@ -33,6 +33,8 @@ export interface ToolsOptions {
   force: boolean;
   /** Absolute CLI entry the installed hook should invoke (see hook.currentCliEntry). */
   cliEntry: string;
+  /** Host target for the command adapters — 'claude' (default) or 'codex' (spec 111). */
+  target?: 'claude' | 'codex';
 }
 
 /** A single planned action, mirroring init's FileWriteDecision shape (D-004). */
@@ -75,6 +77,7 @@ export function planTools(opts: ToolsOptions): ToolsSummary {
   const notes: string[] = [];
   const git = isGitRepo(opts.cwd);
   const hookSkippedNoGit = opts.hooks && !git;
+  const adapterDir = opts.target === 'codex' ? '.agents/skills' : '.claude/commands';
 
   if (opts.uninstall) {
     if (opts.hooks && git)
@@ -85,7 +88,7 @@ export function planTools(opts: ToolsOptions): ToolsSummary {
     if (opts.commands)
       decisions.push({
         kind: 'remove-adapters',
-        detail: 'remove the generated .claude/commands adapters',
+        detail: `remove the generated ${adapterDir} adapters`,
       });
     return { decisions, hookSkippedNoGit: false, adaptersGenerated: 0, notes };
   }
@@ -105,7 +108,7 @@ export function planTools(opts: ToolsOptions): ToolsSummary {
   if (opts.commands) {
     decisions.push({
       kind: 'generate-adapters',
-      detail: 'generate drift-proof .claude/commands adapters from source',
+      detail: `generate drift-proof ${adapterDir} adapters from source`,
     });
   }
 
@@ -121,6 +124,15 @@ export function planTools(opts: ToolsOptions): ToolsSummary {
  */
 export async function runTools(opts: ToolsOptions): Promise<ToolsSummary> {
   const summary = planTools(opts);
+  // Which adapter trees this target manages (spec 111 FR-013): Codex manages
+  // only the portable `.agents/skills` tree; the default Claude target manages
+  // its `.claude/commands` AND that same portable skills tree, so a managed
+  // Claude project's skills cannot ship stale either. The skills target's
+  // descriptor is imported lazily so the translator + its yaml dependency stay
+  // off the init cold path.
+  const { CODEX_TARGET } = await import('./adapters-codex.js');
+  const targets =
+    opts.target === 'codex' ? [CODEX_TARGET] : [CLAUDE_TARGET, CODEX_TARGET];
   for (const decision of summary.decisions) {
     switch (decision.kind) {
       case 'install-hook': {
@@ -134,14 +146,16 @@ export async function runTools(opts: ToolsOptions): Promise<ToolsSummary> {
         break;
       }
       case 'generate-adapters': {
-        const { generated } = generateAdapters(opts.cwd);
+        let generated = 0;
+        for (const target of targets) generated += generateAdapters(opts.cwd, target).generated;
         summary.adaptersGenerated = generated;
         if (generated === 0) summary.notes.push('no commands/ source found — no adapters generated.');
         break;
       }
       case 'remove-adapters': {
-        const { removed } = removeAdapters(opts.cwd);
-        summary.notes.push(`removed ${removed} managed command adapter(s).`);
+        let removed = 0;
+        for (const target of targets) removed += removeAdapters(opts.cwd, target).removed;
+        summary.notes.push(`removed ${removed} managed adapter(s).`);
         break;
       }
     }

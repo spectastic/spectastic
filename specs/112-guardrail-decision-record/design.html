@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'">
+<title>Governance decision record · Design</title>
+<link rel="stylesheet" href="../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../assets/favicon.svg">
+<script src="../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Design · 112-guardrail-decision-record</p>
+  <h1>Governance decision record</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    How we will build it.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>     <span><spec-status value="accepted">Accepted</spec-status></span>
+    <b>Spec</b>       <span><a href="./spec.html">112-guardrail-decision-record</a></span>
+    <b>Owner</b>      <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Branch</b>     <span><code>main</code></span>
+    <b>Created</b>    <span><time datetime="2026-09-13">13 Sep 2026</time></span>
+    <b>Read time</b>  <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-tldr>
+    <p>Extend <code>&lt;spec-decision&gt;</code> with structured governance metadata and enforce its shape with one per-file
+    schema rule, and add a project-scoped <code>decision</code> resource kind — all additive over the existing parser and the
+    <code>RESOURCE_KINDS</code> extension point. Biggest risk: false-firing on the existing estate's bare decisions, mitigated by
+    making every check conditional on the new metadata being present.</p>
+  </spec-tldr>
+</header>
+
+
+<section id="principles-check">
+<h2>1 · Principles check</h2>
+<p>The record is a schema artifact; the guarantee is the validate rule (<a href="../principles.html">P-8</a>). The rule is pure
+kernel logic in <code>@spectastic/schema</code> with no CLI-side branching (<a href="../principles.html">P-14</a> — fat schema,
+thin CLI). A decision carries its teaching <code>reason</code> once, in the artifact; it is not restated in any enforcer's
+message channel (the drift P-8/T-009 warns against). No executable content is added; the record is data (P-11).</p>
+</section>
+
+
+<section id="tech-context">
+<h2>2 · Technical context</h2>
+<dl>
+  <dt>Where the rule lives</dt><dd><code>packages/schema/src/rules/decision-well-formed.ts</code>, registered in <code>rules/index.ts</code>, run by the same <code>validate</code> engine as every other rule.</dd>
+  <dt>Parser</dt><dd>Reuses <code>findAll</code>/<code>getAttr</code>/<code>getLocation</code> from <code>@spectastic/schema/parser</code> — the exact primitives <code>slo-well-formed</code> uses.</dd>
+  <dt>Resource kind</dt><dd>Added to <code>RESOURCE_KINDS</code> in <code>packages/schema/src/project-shared.ts</code>; the generic <code>parseResourceUri</code> already handles a two-segment name, so only a composer is new.</dd>
+</dl>
+</section>
+
+
+<section id="data">
+<h2>3 · Data model &amp; contracts</h2>
+<p>The extended <code>&lt;spec-decision&gt;</code>: attributes <code>status</code> ∈ {proposed, accepted, superseded, retired},
+<code>posture</code> ∈ {warn, block}, <code>supersedes</code>, <code>review-by</code>; children <code>&lt;spec-scope&gt;</code>
+(holding <code>&lt;spec-path&gt;</code> globs + optional <code>&lt;spec-module&gt;</code>), <code>&lt;spec-enforcement&gt;</code>
+(holding <code>&lt;spec-rule tool= id= run=&gt;</code> or one <code>&lt;spec-none reason=&gt;</code>), and
+<code>&lt;spec-reason&gt;</code>. All optional — a bare decision is unchanged. The coordinate is
+<code>spectastic://&lt;project&gt;/decision/&lt;spec-id&gt;/&lt;D-NNN&gt;</code>.</p>
+</section>
+
+
+<section id="grounding">
+<h2>5 · Grounding &amp; evidence</h2>
+<p>Two deep-research passes over <code>packages/corpus/</code> (13 Sep 2026) settled the hybrid: the corpus's identity /
+coordinate / edition machinery hosts a decision gracefully (<code>RESOURCE_KINDS</code> is the blessed extension point; the
+<code>screen</code> kind already ships the two-segment coordinate), but its document model is a forced fit — no
+structured-metadata parsing, a "cited-against, never enforced-from" data-flow a decision reverses, and no lifecycle status any
+code respects. So the decision is authored in <code>&lt;spec-decision&gt;</code> (this slice) and only its addressing reuses the
+corpus. The dogfood evidence is <code>spec-tictactoe-2</code>'s <code>D-008</code> ↔ <code>NoWallClockRule</code> link — real,
+but a hand-repeated string; this record makes it structural.</p>
+</section>
+
+
+<section id="approach">
+<h2>6 · Approach</h2>
+<ol>
+  <li>Add the <code>decision-well-formed</code> per-file rule (error), modelled on <code>slo-well-formed</code>: granular findings, an early return when no <code>&lt;spec-decision&gt;</code> is present, conditional checks so a bare decision is untouched.</li>
+  <li>Add <code>decision</code> to <code>RESOURCE_KINDS</code> and a <code>decisionResourceUri</code> composer; extend the round-trip coverage matrix.</li>
+  <li>Prove backward-compatibility by running the whole-estate integration validate — the existing bare decisions must stay clean.</li>
+</ol>
+</section>
+
+
+<section id="alternatives">
+<h2>7 · Alternatives considered</h2>
+<ul>
+  <li><strong>Decisions as full corpus documents</strong> (<code>kind: decision</code> markdown files). Rejected: reverses the corpus's cited-against→enforced-from data-flow and bolts structured policy onto a deliberately-minimal domain-fact model — the research's four forced-fits.</li>
+  <li><strong>A standalone decision index with no corpus reuse.</strong> Rejected: re-invents identity, federation and editions the corpus already solved.</li>
+</ul>
+</section>
+
+
+<section id="decisions">
+<h2>8 · Decisions</h2>
+
+<spec-decision id="D-001" grounding="verified" status="accepted" posture="block">
+  <spec-scope>
+    <spec-path>packages/schema/src/rules/decision-well-formed.ts</spec-path>
+  </spec-scope>
+  <spec-enforcement>
+    <spec-rule tool="vitest" id="decision-well-formed.test" run="npx vitest run packages/schema/test/decision-well-formed.test.ts"></spec-rule>
+  </spec-enforcement>
+  <spec-reason>The decision record's own well-formedness is a guarantee (P-8), so it must be enforced by a test and the validate rule, not by convention.</spec-reason>
+  <h4>D-001 · The record's shape is machine-enforced, dogfooded here</h4>
+  <p><b>Context.</b> This is the first decision authored in the new structured form. <b>Decision.</b> Use the extended
+  <code>&lt;spec-decision&gt;</code> shape in this very design, scoped to the rule + coordinate files and enforced by the rule's
+  own test. <b>Consequences.</b> <code>spectastic adrs --for packages/schema/src/rules/decision-well-formed.ts</code> (Slice 2)
+  returns this decision — the first end-to-end proof that authoring and retrieval agree.</p>
+</spec-decision>
+
+<spec-decision id="D-002" grounding="verified" status="accepted" posture="warn">
+  <spec-reason>Existing specs carry bare &lt;spec-decision&gt; cards with no metadata; the rule must leave them untouched or it breaks the whole estate.</spec-reason>
+  <h4>D-002 · Every new check is conditional on the metadata being present</h4>
+  <p><b>Context.</b> 70+ specs carry bare decisions. <b>Decision.</b> The rule early-returns on no decisions, and each check
+  fires only when its attribute/child is present; scope is required only once <code>status="accepted"</code> and posture is not
+  warn-only. <b>Consequences.</b> The whole-estate integration validate stays green — proven, not assumed. (Warn posture here
+  because this is a methodology decision with no single code scope to block on.)</p>
+</spec-decision>
+</section>
+
+
+<section id="structure">
+<h2>9 · Project structure</h2>
+<pre><code>packages/schema/src/rules/decision-well-formed.ts   # the rule (D-001)
+packages/schema/src/rules/index.ts                   # registration
+packages/schema/src/project-shared.ts                # decision kind + decisionResourceUri
+packages/schema/fixtures/decision-well-formed/        # positive.html + negative.html
+packages/schema/test/decision-well-formed*.test.ts    # unit + no-network
+packages/schema/test/project-uri.decision.test.ts     # coordinate round-trip</code></pre>
+</section>
+
+
+<section id="risks">
+<h2>10 · Risks &amp; mitigations</h2>
+<spec-risk-log>
+<spec-risk status="mitigated" target="FR-001">
+  <h4>False-firing on the existing estate</h4>
+  <p>Mitigation: every check is conditional (D-002); the whole-estate integration validate is the gate — it passed.</p>
+</spec-risk>
+<spec-risk status="mitigated" target="NFR-001">
+  <h4>A model or network creeping onto the rule's path</h4>
+  <p>Mitigation: a transitive-import test asserts 0 model-client and 0 network references (NFR-001).</p>
+</spec-risk>
+</spec-risk-log>
+</section>
+
+
+<section id="complexity">
+<h2>11 · Complexity tracking</h2>
+<p>None. One rule, one composer, one enum widening — all additive, all modelled on shipping precedent.</p>
+</section>
+
+
+<section id="open-questions">
+<h2>12 · Open questions</h2>
+<p>Attribute vs child spelling for scope/enforcement — settled here as children (a scope holds multiple paths; a child list is the natural shape). The decision index/registry file is deferred to Slice 1b (<code>TBD-guardrail-decision-index</code>).</p>
+</section>
+
+
+<section id="changelog">
+<h2>13 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-09-13">13 Sep 2026</time><span>Accepted — Slice 1 complete and green; bundle flipped together per REQ-LIFECYCLE-005.</span></li>
+  <li><time datetime="2026-09-13">13 Sep 2026</time><span>Design authored (retrofit): the extended record, the rule, the resource kind, the conditional-check backward-compat approach. Dogfoods the new <code>&lt;spec-decision&gt;</code> metadata in §8.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+</main>
+<script src="../assets/spec.js"></script>
+</body>
+</html>

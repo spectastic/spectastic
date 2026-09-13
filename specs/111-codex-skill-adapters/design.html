@@ -1,0 +1,437 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'">
+<title>Codex skill adapters · Design</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Design · 111-codex-skill-adapters</p>
+  <h1>Codex skill adapters</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    How we will build it.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>     <span><spec-status value="draft">Draft</spec-status></span>
+    <b>Spec</b>       <span><a href="./spec.html">111-codex-skill-adapters</a></span>
+    <b>Owner</b>      <span>Brian Corbin (@briancorbinxyz)</span>
+    <b>Branch</b>     <span><code>111-codex-skill-adapters</code></span>
+    <b>Created</b>    <span><time datetime="2026-09-10">10 Sep 2026</time></span>
+    <b>Read time</b>  <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-tldr>
+    <p>One source (<code>commands/*.md</code>) renders to two targets through an <code>AdapterTarget</code> descriptor:
+    Claude verbatim, Codex translated to Agent-Skills <code>SKILL.md</code>. A single <em>render(source) ≠ on-disk</em> drift
+    check covers both, folded into <code>validate</code> so the existing pre-commit hook gates Codex for free. Biggest risk:
+    threading the target through the working Claude scaffold — fenced by a byte-identical default-scaffold snapshot.</p>
+  </spec-tldr>
+</header>
+
+
+<section id="principles-check">
+<h2>1 · Principles check</h2>
+<p>Verify this plan respects every principle in <a href="../../principles.html">v1.9.0</a>. Any violation requires either a
+principles amendment or a deliberate exception logged in <a href="#complexity">Complexity tracking</a>.</p>
+
+<div style="overflow-x:auto;">
+<table>
+  <thead><tr><th>Principle</th><th>Compliance</th><th>Notes</th></tr></thead>
+  <tbody>
+    <tr><td>P-3 · IDs are contracts</td><td><spec-pill>OK</spec-pill></td><td>Decisions carry stable <code>D-NNN</code>; the spec's <code>FR-*</code>/<code>NFR-*</code> are linked, never restated.</td></tr>
+    <tr><td>P-4 · Progressive enhancement, never dependence</td><td><spec-pill>OK</spec-pill></td><td>No new interactive HTML artifact is generated; skills are plain markdown, no JS to fall back from.</td></tr>
+    <tr><td>P-7 · Done means verified</td><td><spec-pill>OK</spec-pill></td><td><a href="./spec.html#SC-001">SC-001</a>'s meter runs every verb in a real Codex session — behaviour, not presence. Named as the release-time spike.</td></tr>
+    <tr><td>P-8 · Guarantees live in the kernel or CI</td><td><spec-pill>OK</spec-pill></td><td>The "can't ship stale" guarantee is the drift scan folded into <code>validate</code> + the pre-commit hook — kernel/CI, not skill markdown. The verbs' <em>behaviour</em> under Codex is advisory (T-009), and this design does not claim otherwise.</td></tr>
+    <tr><td>P-9 · The enforcement floor holds</td><td><spec-pill>OK</spec-pill></td><td>Adds a validate rule; the enterprise floor stays covered (<code>spectastic enforce</code>: 8 covered, 0 gaps).</td></tr>
+    <tr><td>P-10 · Internal ids out of user-facing copy</td><td><spec-pill>OK</spec-pill></td><td>The <code>--target</code> help string and the generated <code>SKILL.md</code> copy carry no internal ids; the description is the command's own (already leak-clean).</td></tr>
+    <tr><td>P-11 · Artifacts are data, not instructions</td><td><spec-pill>OK</spec-pill></td><td>A skill body is a command prompt — the sanctioned instruction class, identical in kind to <code>.claude/commands</code>. Translation copies authored text; it injects nothing.</td></tr>
+    <tr><td>P-14 · Library-first boundaries</td><td><spec-pill>OK</spec-pill></td><td>The pure <code>translateToSkill</code> render primitive lives in <code>@spectastic/core</code>; the CLI only orchestrates. Reinforced, not bent.</td></tr>
+  </tbody>
+</table>
+</div>
+</section>
+
+
+<section id="technical-context">
+<h2>2 · Technical context</h2>
+<dl>
+  <dt>Language(s)</dt>      <dd>TypeScript, the workspace Node toolchain (pnpm monorepo).</dd>
+  <dt>Frameworks</dt>       <dd>None new. commander (CLI), the existing <code>@spectastic/core</code> / <code>@spectastic/schema</code> / <code>@spectastic/cli</code> packages.</dd>
+  <dt>Architecture</dt>     <dd>Fat-core / thin-CLI (P-14): a pure render primitive in core, an <code>AdapterTarget</code> descriptor orchestrated by the CLI — see <a href="#D-002">D-002</a>.</dd>
+  <dt>Storage</dt>          <dd>None — the feature writes files into the project tree.</dd>
+  <dt>Testing</dt>          <dd>vitest (unit) + CLI integration, tests written failing-first per story. No Playwright — no interactive artifact is produced (<a href="#D-008">D-008</a>).</dd>
+  <dt>Coverage</dt>         <dd>Enterprise floor. Diff-aware: new/changed lines meet the patch target and a change never lowers coverage of code it touches — no single universal %.</dd>
+  <dt>Perf targets</dt>     <dd>Not in scope — generation is deterministic file I/O; <a href="./spec.html#NFR-001">NFR-001</a> is determinism, not latency.</dd>
+  <dt>Constraints</dt>      <dd>Node-only kernel, no new heavy dependency. <a href="./spec.html#NFR-002">NFR-002</a>: the default scaffold stays byte-identical. Single source of truth — <code>commands/*.md</code>.</dd>
+</dl>
+</section>
+
+
+<section id="contracts">
+<h2>3 · Data model &amp; contracts</h2>
+
+<p>The spec's conceptual entities (<a href="./spec.html#data">Data model</a>) land physically as files on disk and one in-memory
+descriptor. No wire interface is exposed — this is a file-writing CLI installer.</p>
+
+<div style="overflow-x:auto;">
+<table>
+  <thead><tr><th>Conceptual entity</th><th>Physical shape</th><th>Notes</th></tr></thead>
+  <tbody>
+    <tr><td>Skill adapter</td><td>A directory <code>.agents/skills/&lt;kebab-verb&gt;/</code> holding one <code>SKILL.md</code> — YAML frontmatter (<code>name</code>, <code>description</code>, <code>metadata</code>) + the translated command body.</td><td>Output of <code>translateToSkill</code>; never hand-edited when managed.</td></tr>
+    <tr><td>Target</td><td>An in-memory <code>AdapterTarget</code> descriptor <code>{ id, destDir, render, marker }</code>, selected by the <code>--target</code> flag (default <code>claude</code>).</td><td><a href="#D-002">D-002</a>. Claude and Codex are two instances.</td></tr>
+    <tr><td>Managed marker</td><td>A <code>.spectastic-managed</code> file inside the target's dest dir (per target).</td><td>Scopes the drift gate; absent → the gate ignores the tree.</td></tr>
+  </tbody>
+</table>
+</div>
+
+<spec-contract shape="none">
+  <p>This feature exposes no request/response, RPC, GraphQL, or event interface — it writes adapter files into the project.
+  It follows the house pattern for internal CLI features (every <code>&lt;spec-contract&gt;</code> across the estate is
+  <code>shape="none"</code>). The Agent Skills format the output <em>conforms to</em> is an external standard this design
+  targets, not a contract this project owns.</p>
+</spec-contract>
+</section>
+
+
+<section id="grounding">
+<h2>4 · Grounding &amp; evidence</h2>
+<p>Every design-bearing fact this plan rests on, and how it was confirmed (per <code>REQ-LIFECYCLE-006</code>). All facts below
+were opened this turn except the one behavioural spike, which is scheduled as the first task and mirrors
+<a href="./spec.html#SC-001">SC-001</a>'s meter.</p>
+
+<div style="overflow-x:auto;">
+<table class="evidence">
+  <thead>
+    <tr><th>Claim the design rests on</th><th>Source</th><th>Status</th><th>Finding / note</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Adapters already derive from a single source; the Claude adapter is a verbatim copy of <code>commands/*.md</code>.</td>
+        <td><code>packages/cli/src/commands/init/adapters.ts:21,47</code></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td><code>generateAdapters</code> writes source bytes directly; <code>sourceDir = commands/</code>. Codex adds a second <em>rendering</em>, not a second source.</td></tr>
+    <tr><td>The drift scan folds into every <code>validate</code> run and no-ops when unmanaged.</td>
+        <td><code>packages/cli/src/commands/validate.ts:110,116,790</code></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td><code>scanCommandsDrift</code> returns <code>[]</code> unless the marker is present; a sibling <code>scanSkillsDrift</code> folds the same way.</td></tr>
+    <tr><td>The current drift check compares source==adapter (verbatim only).</td>
+        <td><code>packages/core/src/commands/validate.ts:44</code></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td><code>commandsDriftFinding(source, adapter, file)</code> — a translated target needs <em>render(source)</em> vs on-disk instead (<a href="#D-004">D-004</a>).</td></tr>
+    <tr><td>The pre-commit hook simply runs <code>validate</code> over the corpus.</td>
+        <td><code>packages/cli/src/commands/init/hook.ts:15,19,57</code></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td><code>exec node &lt;cli&gt; validate &lt;globs&gt;</code>. A folded skills scan is gated by the existing hook — no hook change (<a href="./spec.html#FR-008">FR-008</a>/<a href="./spec.html#FR-009">FR-009</a>).</td></tr>
+    <tr><td>There is no <code>--target</code> today; <code>--tools</code>/<code>-only</code>/<code>--uninstall</code> route to the guarantee-layer path.</td>
+        <td><code>packages/cli/src/commands/init.ts:206-231,164</code></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td>The default action runs <code>buildPlan</code>; adding <code>--target</code> is additive (<a href="#D-003">D-003</a>).</td></tr>
+    <tr><td>The scaffold walks fixed dirs and filters extended verbs.</td>
+        <td><code>init/bundle.ts:71-76</code>, <code>init/plan.ts:42,56-60</code></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td><code>inventoryAt</code> walks <code>.claude/commands|agents</code>, <code>assets</code>, <code>templates</code>; <code>SCAFFOLD_FILE_COUNT=30</code>; extended verbs filtered unless <code>--with</code>.</td></tr>
+    <tr><td>Prebuild bundles the source trees; a render step can be added there.</td>
+        <td><code>packages/cli/scripts/prebuild.mjs:27-32</code></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td><code>SOURCES</code> maps <code>commands→.claude/commands</code>; a pre-rendered <code>.agents/skills</code> keeps <code>buildPlan</code> a dumb copier (<a href="#D-007">D-007</a>).</td></tr>
+    <tr><td>The command frontmatter shape a translation must map.</td>
+        <td><code>commands/spectastic.spec.md:1-13</code></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td><code>description</code>, <code>argument-hint</code>, <code>triggers</code>, <code>use-when</code>, <code>sibling-boundary</code>, <code>model</code>; <code>$ARGUMENTS</code> in the body.</td></tr>
+    <tr><td>The Agent Skills standard: layout, frontmatter limits, no args, no subagents.</td>
+        <td><a href="https://developers.openai.com/codex/custom-prompts">developers.openai.com/codex</a> (prompts deprecated → skills) + the Agent Skills open standard</td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td><code>.agents/skills/&lt;name&gt;/SKILL.md</code>; <code>name</code> ≤ 64 lowercase-hyphen matching its dir; <code>description</code> ≤ 1024; optional <code>metadata</code> map; scan cwd→root then <code>$HOME</code>; no argument mechanism; no nested-agent concept.</td></tr>
+    <tr><td>Subagents dispatch through Claude Code's Task tool, which Codex lacks.</td>
+        <td><code>commands/spectastic.propose.md:118</code> (<code>subagent_type</code>)</td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td>No Codex equivalent → no subagent files in the target; affected verbs note inline degradation (<a href="./spec.html#FR-010">FR-010</a>/<a href="./spec.html#FR-011">FR-011</a>).</td></tr>
+    <tr><td>The enterprise enforcement floor is fully covered; no new gate to build.</td>
+        <td><code>spectastic enforce</code></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td>8 covered, observability waived, 0 missing. <code>gitignore --stack</code>: js already current.</td></tr>
+    <tr><td>A translated <code>SKILL.md</code> actually invokes in a real Codex session and produces its artifact.</td>
+        <td>Run each <code>$spectastic-&lt;verb&gt;</code> against a fixture in Codex</td>
+        <td><spec-status value="review">spike</spec-status></td>
+        <td>Pending — cannot run Codex in this environment. Scheduled as the first task; it <em>is</em> SC-001's meter. Verification-tier, not a must-tier decision blocker.</td></tr>
+  </tbody>
+</table>
+</div>
+</section>
+
+
+<section id="approach">
+<h2>5 · Approach</h2>
+
+<p>Keep one source of truth and add one seam. The existing <code>commands/*.md</code> files stay the only authored source; the
+Claude adapter remains a verbatim copy. We introduce an <code>AdapterTarget</code> descriptor — <code>{ id, destDir(cwd),
+render(sourceMd, verb) → {relPath, content}, marker }</code> — and make <code>claude</code> and <code>codex</code> two instances of
+it. Claude's <code>render</code> is the identity (byte copy); Codex's is a pure <code>translateToSkill</code> in
+<code>@spectastic/core</code> that emits <code>.agents/skills/&lt;kebab-verb&gt;/SKILL.md</code> with a mapped frontmatter and a body
+whose <code>$ARGUMENTS</code> token is rewritten to read the invoking message.</p>
+
+<p>The seam unifies drift: for either target, drift is exactly <em>render(source) ≠ what's on disk</em> — which for Claude
+collapses to the current source==adapter check, and for Codex compares the freshly-translated skill against the file. We fold a
+<code>scanSkillsDrift</code> into <code>validate</code> beside <code>scanCommandsDrift</code>, so the pre-commit hook gates Codex
+with no hook change. <code>--target &lt;claude|codex&gt;</code> (default <code>claude</code>) threads through
+<code>inventoryAt</code>/<code>buildPlan</code>/<code>adapters.ts</code>; prebuild pre-renders the Codex tree into the bundle so
+<code>buildPlan</code> stays a dumb copier. The one real cost — touching the working Claude scaffold — is fenced by a
+byte-identical snapshot of the default scaffold output.</p>
+
+<spec-arch>
+<figure>
+<svg viewBox="0 0 700 250" role="img" aria-label="One source renders to two targets; a unified drift check gates both">
+  <style>
+    .box { fill: var(--c-surface, #fcfbf7); stroke: var(--c-border, #c4c1bb); stroke-width:1.2; }
+    .label { font: 700 10.5px Lato, sans-serif; fill: var(--c-text-soft, #4a4a46); letter-spacing:0.05em; text-transform:uppercase; }
+    .body { font: 400 11.5px "Source Serif 4", Georgia, serif; fill: var(--c-text, #353534); }
+    .arr { stroke: var(--c-muted, #73706d); stroke-width:1.2; fill:none; }
+    .arrh { fill: var(--c-muted, #73706d); }
+  </style>
+  <rect class="box" x="24"  y="95" width="150" height="58" rx="4"/>
+  <text class="label" x="38" y="116">commands/*.md</text>
+  <text class="body"  x="38" y="136">single source</text>
+
+  <rect class="box" x="244" y="95" width="170" height="58" rx="4"/>
+  <text class="label" x="258" y="116">AdapterTarget.render</text>
+  <text class="body"  x="258" y="136">verbatim | translate</text>
+
+  <rect class="box" x="490" y="30" width="186" height="52" rx="4"/>
+  <text class="label" x="504" y="51">.claude/commands</text>
+  <text class="body"  x="504" y="70">Claude · verbatim</text>
+
+  <rect class="box" x="490" y="105" width="186" height="52" rx="4"/>
+  <text class="label" x="504" y="126">.agents/skills</text>
+  <text class="body"  x="504" y="145">Codex · SKILL.md</text>
+
+  <rect class="box" x="244" y="188" width="300" height="44" rx="4"/>
+  <text class="label" x="258" y="208">drift: render(src) ≠ disk → validate → hook</text>
+  <text class="body"  x="258" y="224">one check, both targets</text>
+
+  <path class="arr" d="M174 124 L244 124" marker-end="url(#a)"/>
+  <path class="arr" d="M414 116 L490 62"  marker-end="url(#a)"/>
+  <path class="arr" d="M414 128 L490 128" marker-end="url(#a)"/>
+  <path class="arr" d="M329 153 L329 188" marker-end="url(#a)"/>
+  <defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path class="arrh" d="M0,0 L10,5 L0,10 z"/></marker></defs>
+</svg>
+<figcaption>One source, an <code>AdapterTarget.render</code> seam, two rendered trees, and a single <em>render ≠ disk</em> drift check that the existing hook already runs.</figcaption>
+</figure>
+</spec-arch>
+</section>
+
+
+<section id="alternatives">
+<h2>6 · Alternatives considered</h2>
+
+<spec-matrix>
+<div style="overflow-x:auto;">
+<table>
+  <thead>
+    <tr><th>Option</th><th>Single-source fidelity</th><th>DRY / reuse</th><th>Drift unification</th><th>Claude-path safety</th><th class="score">Total</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Separate hand-authored <code>codex/</code> source tree</td><td>2</td><td>2</td><td>2</td><td>5</td><td class="score">11</td></tr>
+    <tr><td>Dedicated Codex generator, Path A untouched</td><td>5</td><td>3</td><td>3</td><td>5</td><td class="score">16</td></tr>
+    <tr data-winner><td><code>AdapterTarget</code> abstraction across buildPlan/adapters — chosen</td><td>5</td><td>5</td><td>5</td><td>3</td><td class="score">18</td></tr>
+  </tbody>
+</table>
+</div>
+</spec-matrix>
+<p>The abstraction wins on single-source fidelity, reuse, and drift unification; it pays in Claude-path safety (it refactors
+tested code), which the default-scaffold snapshot mitigates. The dedicated generator was the close runner-up — safer but
+duplicating orchestration and leaving two drift checks.</p>
+</section>
+
+
+<section id="decisions">
+<h2>7 · Decisions</h2>
+
+<spec-decision id="D-001" grounding="verified">
+  <h4>D-001 · Single source of truth — render, don't fork</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>Adapters already derive from <code>commands/*.md</code> (<code>adapters.ts:21,47</code>). A second hand-authored source would drift by hand and duplicate the router description.</dd>
+    <dt>Decision</dt>     <dd>Keep <code>commands/*.md</code> the only source; Codex is a deterministic <em>translation</em> of it, Claude the verbatim copy.</dd>
+    <dt>Consequences</dt> <dd>+ One source, no sync burden; the drift check stays meaningful. − Every Codex change must go through the translator, never edited in place.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-002" grounding="verified">
+  <h4>D-002 · An <code>AdapterTarget</code> descriptor threaded through the scaffold</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Decision drivers</dt> <dd>single-source fidelity · reuse · drift unification · Claude-path safety</dd>
+    <dt>Considered options</dt>
+    <dd>
+      <ul class="considered-options">
+        <li><strong>Separate <code>codex/</code> source tree</strong> — + no translator. − two sources drift by hand.</li>
+        <li><strong>Dedicated generator, Path A untouched</strong> — + safest. − duplicates orchestration, two drift checks.</li>
+        <li><strong><code>AdapterTarget</code> abstraction — chosen</strong> — + one path, unified drift. − refactors working scaffold code.</li>
+      </ul>
+    </dd>
+    <dt>Context</dt>      <dd>The scaffold walks fixed dirs (<code>bundle.ts:71-76</code>, <code>plan.ts:56-60</code>). A <code>{ id, destDir, render, marker }</code> descriptor makes Claude and Codex two instances.</dd>
+    <dt>Decision</dt>     <dd>Thread a <code>target</code> through <code>inventoryAt</code>/<code>buildPlan</code>/<code>adapters.ts</code>; both targets are descriptors, render is per-target.</dd>
+    <dt>Consequences</dt> <dd>+ DRY, one drift path, extensible to the next tool. − Touches tested code → NFR-002 becomes an invariant to prove (see <a href="#risks">Risks</a>).</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-003" grounding="verified">
+  <h4>D-003 · <code>--target &lt;claude|codex&gt;</code>, default claude, unmanaged by default</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>No <code>--target</code> today (<code>init.ts:206-231</code>); 003/031 anticipated the axis. Default <code>init</code> writes an <em>unmanaged</em> scaffold; <code>--tools</code> manages.</dd>
+    <dt>Decision</dt>     <dd>Add <code>--target</code> (default <code>claude</code>). <code>init --target codex</code> writes an unmanaged skill scaffold; <code>--target codex --tools</code> adds marker + drift + hook — symmetric with Claude. Composes with <code>--with</code>/<code>-only</code>/<code>--uninstall</code>.</dd>
+    <dt>Consequences</dt> <dd>+ Familiar mental model; existing invocations unchanged (default stays claude). − Two behaviours per target to test.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-004" grounding="verified">
+  <h4>D-004 · Unified drift = <code>render(source) ≠ on-disk</code>, folded into validate</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>The current check compares raw source==adapter (<code>core/validate.ts:44</code>) — invalid for a translated target. <code>scanCommandsDrift</code> folds into validate and no-ops when unmanaged (<code>cli/validate.ts:110,790</code>); the hook just runs validate (<code>hook.ts:57</code>).</dd>
+    <dt>Decision</dt>     <dd>Generalise drift to <em>render(source) ≠ on-disk</em> for both targets (Claude's render is identity, so its check is unchanged in behaviour); fold a <code>scanSkillsDrift</code> beside <code>scanCommandsDrift</code>.</dd>
+    <dt>Consequences</dt> <dd>+ FR-008/009 come with no hook change; one drift concept. − Determinism (<a href="./spec.html#NFR-001">NFR-001</a>) is now load-bearing — a non-deterministic render would false-fire.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-005" grounding="verified">
+  <h4>D-005 · SKILL.md shape — metadata map carries the extra keys</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>The standard allows only <code>name</code>/<code>description</code> + an optional <code>metadata</code> map; commands carry more (<code>spectastic.spec.md:1-13</code>).</dd>
+    <dt>Decision</dt>     <dd><code>name</code> = kebab(verb) (<code>spectastic.spec</code> → <code>spectastic-spec</code>, matching its dir); <code>description</code> = the router description (authoritative); <code>triggers</code>/<code>use-when</code>/<code>sibling-boundary</code> → the <code>metadata</code> map; <code>model</code> dropped; <code>$ARGUMENTS</code> rewritten to read the invoking message.</dd>
+    <dt>Consequences</dt> <dd>+ Nothing authored is silently lost; standard-valid. − Codex ignores the metadata map today (informational only until a consumer reads it).</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-006" grounding="verified">
+  <h4>D-006 · No subagents in the Codex target; degrade with a note</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>Subagents dispatch via Claude's Task tool (<code>propose.md:118</code>); the standard defines no nested-agent concept.</dd>
+    <dt>Decision</dt>     <dd>Emit no subagent files into <code>.agents/skills</code>; the propose/implement/triage skills carry an appended note that their sub-pass runs inline under Codex.</dd>
+    <dt>Consequences</dt> <dd>+ Honest — a Codex user isn't misled a fan-out ran. − Those passes are single-turn under Codex; fidelity is lower than Claude Code.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-007" grounding="verified">
+  <h4>D-007 · Prebuild pre-renders the Codex tree; buildPlan stays a copier</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>Path A byte-copies from the prebuilt bundle (<code>prebuild.mjs:27-32</code>, <code>bundle.ts</code>). Rendering inside <code>buildPlan</code> would make the scaffold path smart.</dd>
+    <dt>Decision</dt>     <dd>Prebuild renders <code>.agents/skills</code> into the bundle; <code>buildPlan</code> copies it like any other tree. The drift gate renders at runtime (from source) to compare — same core primitive, deterministic, so the two renderings agree.</dd>
+    <dt>Consequences</dt> <dd>+ Scaffold stays a dumb copier; render lives in one primitive. − Render runs in two places (prebuild + drift), which the determinism test locks together.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-008" grounding="n-a">
+  <h4>D-008 · Test strategy — red-first unit + CLI integration, no Playwright</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>Deterministic, no-AI file generation; no interactive HTML artifact is produced, so a browser test has nothing to drive.</dd>
+    <dt>Decision</dt>     <dd>vitest units on <code>translateToSkill</code> (name mapping, <code>$ARGUMENTS</code> rewrite, metadata carry, <em>render(render(x))=render(x)</em> determinism) + CLI integration (<code>init --target codex</code> tree; mutate a skill → drift error; uninstall clean; <strong>default scaffold byte-snapshot</strong>). Written failing-first.</dd>
+    <dt>Consequences</dt> <dd>+ A translation bug localises precisely; the snapshot guards NFR-002. − The Codex-invocation claim (SC-001) is out of unit reach — it is the release-time spike.</dd>
+  </dl>
+</spec-decision>
+</section>
+
+
+<section id="project-structure">
+<h2>8 · Project structure</h2>
+
+<p>Only the new or changed paths.</p>
+
+<pre><code>packages/core/src/
+  skills/translate.ts          NEW    translateToSkill(commandMd, verb) → {relPath, content}; pure (D-001/D-005)
+  commands/validate.ts         CHANGE generalise drift to render(source) ≠ on-disk (D-004)
+packages/cli/src/commands/
+  init/adapters.ts             CHANGE AdapterTarget descriptor; claude + codex instances (D-002)
+  init/bundle.ts               CHANGE inventoryAt(root, target) (D-002)
+  init/plan.ts                 CHANGE buildPlan({…, target}) (D-002)
+  init.ts                      CHANGE --target &lt;claude|codex&gt; option + routing (D-003)
+  validate.ts                  CHANGE fold scanSkillsDrift beside scanCommandsDrift (D-004)
+packages/cli/scripts/
+  prebuild.mjs                 CHANGE pre-render .agents/skills into the bundle (D-007)
+packages/core/test/skills/
+  translate.test.ts            NEW    unit: name/args/metadata/determinism (D-008)
+packages/cli/test/init/
+  target-codex.test.ts         NEW    integration + default-scaffold byte-snapshot (D-008)</code></pre>
+</section>
+
+
+<section id="risks">
+<h2>9 · Risks &amp; mitigations</h2>
+
+<spec-warning>
+<p>Threading <code>target</code> through <code>buildPlan</code>/<code>inventoryAt</code>/<code>adapters.ts</code> touches the
+working Claude scaffold. The byte-identical default-scaffold snapshot (<a href="./spec.html#SC-003">SC-003</a>) must be in place
+and green <em>before</em> the refactor lands — do not merge the abstraction without it.</p>
+</spec-warning>
+
+<div style="overflow-x:auto;">
+<table>
+  <thead><tr><th>Risk</th><th>Likelihood</th><th>Impact</th><th>Mitigation</th></tr></thead>
+  <tbody>
+    <tr><td>The target refactor regresses the Claude scaffold.</td><td>M</td><td>H</td><td>Default-scaffold byte-snapshot (SC-003) as a hard gate; the existing 031 drift tests stay green.</td></tr>
+    <tr><td>A translated <code>SKILL.md</code> doesn't invoke in Codex, or the standard shifts.</td><td>M</td><td>M</td><td>Format grounded to the published standard; SC-001 release-time meter runs each verb in real Codex; assumption logged.</td></tr>
+    <tr><td>Interview discipline degrades under Codex (no structured question tool).</td><td>H</td><td>L</td><td>Recorded, not fixed — the decision phase falls back to chat questions; behaviour is advisory (P-8 / T-009), never guaranteed by markdown.</td></tr>
+  </tbody>
+</table>
+</div>
+</section>
+
+
+<section id="complexity">
+<h2>10 · Complexity tracking</h2>
+<p>Where this plan adds complexity beyond a minimal Codex-only generator, the justification is here.</p>
+
+<spec-assumption>
+<p>The <code>AdapterTarget</code> abstraction is more than a Codex-only path would need. It is justified by single-source
+fidelity and a single drift concept across both targets (<a href="#D-002">D-002</a>), accepted at Medium risk with the
+default-scaffold snapshot as the guard.</p>
+</spec-assumption>
+
+<spec-assumption>
+<p>This design ships adapters, not a guarantee that the verbs <em>behave</em> identically under Codex. Whether the interview
+happens or the commit runs is advisory in any host (T-009 / P-8); the only guarantee here is that a managed adapter cannot ship
+stale.</p>
+</spec-assumption>
+</section>
+
+
+<section id="questions">
+<h2>11 · Open questions</h2>
+<spec-questions>
+<p>None outstanding — the source model, integration architecture, metadata carrier, flag composition, managed-default, and test
+style were all anchored in the interview. The one unresolved fact (a translated skill invoking in Codex) is a verification-tier
+spike scheduled as the first task, not an open design question.</p>
+</spec-questions>
+</section>
+
+
+<section id="changelog">
+<h2>12 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-09-10">10 Sep 2026</time><span>Initial plan. Eight decisions, all grounded in spectastic's own source or the published Agent Skills standard; one verification-tier spike (Codex invocation) scheduled as the first task.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  Design for 111-codex-skill-adapters · Codex skill adapters · authored 2026-09-10
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>

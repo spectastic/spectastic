@@ -1,0 +1,461 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Architectural guardrails — spectastic against the Valmis rubric</title>
+<link rel="stylesheet" href="../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../assets/favicon.svg">
+<script src="../assets/theme-boot.js"></script>
+<style>
+  .verdict { font-family: var(--font-sans); font-weight: 700; font-size: 0.72rem; letter-spacing: 0.04em; text-transform: uppercase; padding: 0.1em 0.5em; border-radius: 3px; white-space: nowrap; }
+  .v-full { background: #dff0d6; color: #2f5a26; }
+  .v-partial { background: #fbe8c8; color: #7a5212; }
+  .v-gap { background: #f6d5cf; color: #7a241a; }
+  @media (prefers-color-scheme: dark) {
+    .v-full { background: #24361f; color: #a9d69a; }
+    .v-partial { background: #3a2c14; color: #e6bd77; }
+    .v-gap { background: #3a1f1b; color: #e0a79d; }
+  }
+  :root[data-theme="dark"] .v-full { background: #24361f; color: #a9d69a; }
+  :root[data-theme="dark"] .v-partial { background: #3a2c14; color: #e6bd77; }
+  :root[data-theme="dark"] .v-gap { background: #3a1f1b; color: #e0a79d; }
+  :root[data-theme="light"] .v-full { background: #dff0d6; color: #2f5a26; }
+  :root[data-theme="light"] .v-partial { background: #fbe8c8; color: #7a5212; }
+  :root[data-theme="light"] .v-gap { background: #f6d5cf; color: #7a241a; }
+</style>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Considerations · Engineering governance</p>
+  <h1>Architectural guardrails</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    spectastic's guarantee layer is real and deterministic — but it is pointed at whether an <em>artifact</em> is well-formed,
+    not at whether a <em>decision</em> was honoured. That is the whole gap.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>     <span><spec-status value="draft">Draft — Phase 1, awaiting review</spec-status></span>
+    <b>Type</b>       <span>Self-assessment against an external rubric</span>
+    <b>Author</b>     <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Created</b>    <span><time datetime="2026-09-12">12 Sep 2026</time></span>
+    <b>Rubric</b>     <span>Theo Valmis, <em>Architectural Guardrails for AI-Generated Code</em>, O'Reilly (31 Aug 2026)</span>
+    <b>Scope</b>      <span>spectastic <strong>enterprise</strong> profile</span>
+    <b>Read time</b>  <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-tldr>
+    <p>Assessed against the ten-item rubric under its own harsh bar (a row is "full" only against a committed passing test),
+    spectastic scores <strong>2 full · 5 partial · 3 does-not</strong>. The pattern is sharp and honest: the two "must-not-be"
+    items that already carry a test pass cleanly (<strong>not AI-reviews-AI</strong>, <strong>not vendor-locked</strong>); the
+    other two "must-not-be" items (<strong>not an agent</strong>, <strong>not RAG-as-verdict</strong>) are structurally correct
+    but <strong>unguarded by a test on the enforcement path</strong>, so they land at partial; and it is <strong>weak on the
+    capabilities the layer must <em>have</em></strong> (a decision corpus with precedence/scope/enforcement, path-scoped
+    retrieval, decisions injected before writing, decision-scoped CI enforcement). The reason the must-haves fail is structural:
+    spectastic's decisions are per-design Nygard cards with an id and a grounding tag
+    but <strong>no scope, no precedence, no supersede link, and no enforcement link</strong> — so there is nothing for a
+    retrieval, a plan gate, or a coverage metric to operate on. Its own honesty markers already say so: the architecture prompt
+    "provides no enforcement that the chosen pattern is followed," and the enforcing half is the deferred
+    <code>TBD-architecture-fitness-function</code>. <strong>The Priya PR would pass spectastic today</strong> — at plan (the
+    governing decision is never surfaced by path) and at merge (no decision is wired to an executable check).</p>
+    <p><strong>A real enterprise repo confirms the texture, not a different verdict</strong> (§5): the one project that wired
+    ArchUnit under enterprise guidance (<code>spec-tictactoe-2</code>) <em>does</em> carry a decision↔fitness-function link
+    (<code>D-008</code> ↔ <code>NoWallClockRule</code>) — but as a <strong>hand-repeated string across four files</strong>, with
+    no machine guard against drift. spectastic <em>can</em> produce the link by authorial discipline; nothing <em>guarantees</em>
+    it. And the enforced invariant there is <strong>determinism, not an architecture style</strong> — so the Priya
+    layering/boundary case is un-demonstrated by any existing project, which makes Phase 4 load-bearing.</p>
+    <p><strong>Two assumptions in the brief do not hold against this repo</strong> and are corrected in §6: the
+    <em>debugger</em> and <em>shifu</em> skills it references <strong>do not exist</strong> (zero matches repo-wide), and
+    considerations docs are single-file HTML, not markdown.</p>
+  </spec-tldr>
+</header>
+
+
+<section id="argument">
+<h2>1 · The Valmis argument, and why it is a live risk for us</h2>
+
+<p>Valmis's scenario: an agent-authored PR (Priya's, 340 lines) adds an endpoint that writes to a table directly, bypassing the
+internal service API and therefore the audit-log hooks that live in that API. The code is clean, the tests pass, and a reviewer
+new to the team approves it. A two-year-old ADR forbade exactly this; its author had left; nobody current remembered; <em>"the
+ADR was available in the repository. It was never surfaced to the agent, and the reviewer had not read it."</em> Two weeks later
+the missing audit logs surface in production. He names the failure <strong>architectural drift</strong> — "code that
+individually looks fine but collectively pulls the codebase away from where the team agreed it should go" — and the missing
+discipline <strong>engineering governance</strong>.</p>
+
+<p>His two load-bearing claims. First, instruction files like <code>CLAUDE.md</code> are <em>"the right instinct at the wrong
+resolution"</em> — free text with <strong>no precedence, no versioning, no lifecycle, no enforcement</strong>; "documents in the
+shape of configuration." Second, a second LLM reviewing the PR cannot fix this, because it has the same blind spot as the first:
+<em>"two probabilistic passes over the same blind spot are not one deterministic pass with sight."</em> The governance layer he
+prescribes must hold decisions with precedence and lifecycle, retrieve them reliably, inject them <em>before</em> generation, and
+enforce them deterministically in CI — and it must not be an agent, not RAG-as-verdict, not AI-reviews-AI, and not
+vendor-locked.</p>
+
+<spec-note>
+<p><strong>Why this is our risk, not a theoretical one.</strong> spectastic <em>is</em> an agent system: its verbs are
+skills a model runs, and we have just spent a week proving (spec 111, the cross-tool spike) that a skill is advisory — a weaker
+model under "Big Pickle" ticked a task over untested dead code and only wrote tests when a human nudged it. Rubric item 5
+("not an agent") is therefore a live constraint for us specifically: the moment enforcement is something a model <em>does</em>
+rather than a script that <em>runs</em>, it inherits exactly the non-determinism 111 documented. Our own principle
+<a href="../principles.html">P-8</a> ("guarantees live in the kernel or CI") is the same claim Valmis makes; the question this
+document answers is whether we have actually carried it into <em>architectural</em> governance, or only into artifact
+well-formedness.</p>
+</spec-note>
+</section>
+
+
+<section id="today">
+<h2>2 · How spectastic models governance today</h2>
+
+<p>Three surfaces matter, so the scoring below has a shared referent.</p>
+
+<dl>
+  <dt>The constitution</dt><dd><a href="../principles.html">principles.html</a> — versioned SemVer with a bump policy
+  (<code>principles.html:280</code>) and forward-only binding (<code>:301</code>+). Two principles touch architecture:
+  <strong>P-8 · Guarantees live in the kernel or CI</strong> (<code>:108</code>) and <strong>P-14 · Library-first
+  boundaries</strong> (<code>:231</code>) — the latter self-declaring that its kernel-vs-CLI boundary is "a judgment call" it
+  "cannot yet" machine-enforce.</dd>
+  <dt>The decision card</dt><dd><code>&lt;spec-decision&gt;</code> in a spec's <code>design.html</code>
+  (<code>templates/design.html:273-298</code>) — a Nygard/MADR card: stable <code>D-NNN</code> id, a free-text status pill, a
+  <code>grounding=</code> tag, prose Context/Decision/Consequences. There is no repo-level ADR corpus; decisions live <em>inside
+  one spec's design</em>.</dd>
+  <dt>The guarantee layer</dt><dd><code>spectastic validate</code> (<code>packages/core/src/commands/validate.ts</code>) folded
+  into a git pre-commit hook (<code>packages/cli/src/commands/init/hook.ts:57</code>) and CI
+  (<code>.github/workflows/ci.yml:105</code>) — a deterministic, no-LLM scan that emits typed <code>Finding</code>s. Plus
+  <code>spectastic enforce</code> (<code>packages/core/src/enforce/</code>), a per-profile tooling-coverage gate.</dd>
+</dl>
+</section>
+
+
+<section id="rubric">
+<h2>3 · The scored rubric</h2>
+
+<p>Ten rows. A row is <span class="verdict v-full">full</span> only if it points at a passing test or a mechanism verified in
+code; otherwise it is <span class="verdict v-partial">partial</span> at best, or <span class="verdict v-gap">does not</span>.
+Every claim cites a path. Where the grounding pass could not find a thing, the row says so and names where it looked.</p>
+
+<div style="overflow-x:auto;">
+<table>
+  <thead><tr><th>#</th><th>Rubric item</th><th>Verdict</th><th>The one-line reason</th></tr></thead>
+  <tbody>
+    <tr><td>1</td><td>Structured decision corpus (precedence + lifecycle; names what it supersedes)</td><td><span class="verdict v-partial">partial</span></td><td>Id + grounding + a convention-only status; <strong>no</strong> precedence, scope, structured supersede-link, or enforcement-link.</td></tr>
+    <tr><td>2</td><td>Reliable retrieval (path-scoped, deterministic, logged)</td><td><span class="verdict v-gap">does not</span></td><td>No command maps a set of code paths to their governing decisions.</td></tr>
+    <tr><td>3</td><td>Context injection before writing</td><td><span class="verdict v-gap">does not</span></td><td>The injection mechanism exists (corpus into AI prompts) but carries domain facts, never path-scoped decisions.</td></tr>
+    <tr><td>4</td><td>Deterministic CI enforcement, decision-traceable</td><td><span class="verdict v-partial">partial</span></td><td>The gate is deterministic and reconstructs from disk — but findings are <em>rule</em>-keyed, never <em>decision</em>-keyed, and architecture enforcement is deferred.</td></tr>
+    <tr><td>5</td><td>Not an agent</td><td><span class="verdict v-partial">partial</span></td><td>The path is a script (<code>exec node … validate</code>, no loop) — but <strong>no test guards</strong> the enforcement path against a model creeping onto it.</td></tr>
+    <tr><td>6</td><td>Not RAG-as-verdict</td><td><span class="verdict v-partial">partial</span></td><td>The verdict is a deterministic scan — true, and vacuously so (no decision-RAG exists), but unguarded by a test specific to it.</td></tr>
+    <tr><td>7</td><td>Not AI-reviews-AI</td><td><span class="verdict v-full">full</span></td><td>The critic recommends, the deterministic gate decides — and a committed test proves it (<code>apply.principles.test.ts:116</code>). The exact separation Valmis asks for.</td></tr>
+    <tr><td>8</td><td>Not vendor-locked</td><td><span class="verdict v-full">full</span></td><td>Deterministic Node CLI + portable Agent-Skills + generated AGENTS.md — enforcement and decisions are vendor-neutral.</td></tr>
+    <tr><td>9</td><td>Enforcement coverage is visible (our add)</td><td><span class="verdict v-gap">does not</span></td><td><code>enforce</code> reports tooling-category coverage, never "% of active decisions with an executable check."</td></tr>
+    <tr><td>10</td><td>A failure teaches (our add)</td><td><span class="verdict v-partial">partial</span></td><td>Findings are actionable (rule + reason + <code>file:line</code>) but not decision-traceable; and the assumed <em>shifu</em> skill does not exist.</td></tr>
+  </tbody>
+</table>
+</div>
+
+<p style="margin-top:var(--s-4);"><strong>Tally: 2 full · 5 partial · 3 does-not.</strong> Both fulls are "must-not-be" items
+that carry a committed test (7, 8); every does-not is a must-have or one of our adds (2, 3, 9); and the two must-not-be items
+without a guarding test (5, 6) land at partial despite being structurally correct — the harsh reading the brief demands. That is
+the finding in one line: <em>right shape nearly everywhere, committed tests almost nowhere off the artifact-schema path.</em></p>
+
+<h3>Per-row evidence</h3>
+
+<spec-decision><h4>1 · Structured decision corpus — <span class="verdict v-partial">partial</span></h4>
+<p><strong>Present:</strong> a stable <code>D-NNN</code> id (<code>templates/design.html:276</code>; uniqueness enforced,
+<code>packages/schema/src/rules/no-duplicate-ids.ts:33</code>) and a <code>grounding=</code> tag
+(<code>verified|spike|assumed|n-a</code>, <code>design.html:280</code>). A status pill can read <code>superseded</code>, and the
+command tells authors to "link to the replacement" (<code>commands/spectastic.design.md:108</code>).</p>
+<p><strong>Absent — and this is the row:</strong> the status and supersede are <em>convention, not structure</em> — no schema
+rule enumerates decision status or requires a supersede link (searched all of <code>packages/schema/src/rules/</code>; the only
+enumerated status sets are for risks and components). There is <strong>no precedence</strong> (which decision wins when two
+conflict — the only "precedence" in the repo is spec/unit <em>ordering</em>, <code>packages/core/src/ordering/</code>,
+unrelated), <strong>no scope</strong> (no path-glob or package pattern a decision governs — <code>scope=</code> exists only on
+<code>&lt;spec-component&gt;</code>), and <strong>no enforcement link</strong> (nothing ties a decision to a rule id). A tool
+cannot answer "which decision governs this file" or "which active decisions conflict" from the structure. It is a decision
+<em>log</em>, not a governance corpus.</p></spec-decision>
+
+<spec-decision><h4>2 · Reliable retrieval — <span class="verdict v-gap">does not</span></h4>
+<p>No command or function takes a set of file paths and returns the governing decisions. The nearest machinery is
+<code>spectastic order</code> (<code>packages/core/src/commands/order.ts</code>) — a precedence DAG over <em>spec ids</em>,
+not decisions, not by code path — and unit placement (<code>packages/core/src/units/placement.ts</code>), which
+self-describes as "a judgment a human can check — never a decision" (<code>placement.ts:5</code>). There is nothing
+deterministic, path-scoped, and logged to retrieve. <em>This is the first half of what lets the Priya PR through.</em></p></spec-decision>
+
+<spec-decision><h4>3 · Context injection before writing — <span class="verdict v-gap">does not</span></h4>
+<p>The <em>mechanism</em> exists: the knowledge corpus injects domain facts into the AI verbs' prompts
+(<code>054-corpus-in-prompt</code>), and the design's grounding step reads sources the author names. But <strong>no
+path-scoped decisions</strong> reach the agent before it writes code — the corpus carries settlement windows and regulatory
+thresholds, not "the ADRs governing the file you are about to touch." The channel Valmis requires is empty of the payload he
+requires. Partial mechanism, absent content — scored to the requirement, which is that the relevant <em>decisions</em> arrive
+before generation.</p></spec-decision>
+
+<spec-decision><h4>4 · Deterministic CI enforcement — <span class="verdict v-partial">partial</span></h4>
+<p><strong>The half that is excellent:</strong> the verdict path has no model on it. The pre-commit hook is literally
+<code>exec node &lt;cli&gt; validate &lt;globs&gt;</code> (<code>hook.ts:57</code>); <code>validate.ts</code> imports only
+static schema/policy maps (no <code>fetch</code>/provider/model — grounding pass confirmed); CI runs the same binary
+(<code>ci.yml:107</code>) with no LLM step. A <code>Finding</code> reconstructs entirely from disk — <code>file</code>,
+<code>line</code>, <code>column</code>, <code>rule</code>, <code>severity</code>, <code>message</code>, <code>fixHint</code>
+(<code>packages/schema/src/types.ts:26-38</code>). This fully satisfies items 5 and 6.</p>
+<p><strong>The half that is absent:</strong> what it enforces is <em>artifact schema</em> — is this <code>spec.html</code>
+well-formed — not <em>architectural decisions</em>. A finding is keyed to a <code>rule</code> id (<code>types.ts:31</code>),
+never to a <em>decision</em> id, and carries no decision reason and no typed source→target. And the check that would hold a
+design to its declared architecture is the deferred <code>TBD-architecture-fitness-function</code>; the prompt that exists says
+so itself — <code>REQ-LIFECYCLE-008</code> (<code>specs/089-lifecycle-contract/spec.html:266</code>): <em>"This prompt is
+advisory … and provides no enforcement that the chosen pattern is followed."</em> The machine is right; it is aimed at the wrong
+target. <em>This is the second half of what lets the Priya PR through.</em></p></spec-decision>
+
+<spec-decision><h4>5 · Not an agent — <span class="verdict v-partial">partial</span></h4>
+<p><strong>Structurally correct:</strong> the enforcement path runs when called, produces a verdict (an exit code + typed
+findings), and stops. The pre-commit hook is literally <code>exec node &lt;cli&gt; validate &lt;globs&gt;</code>
+(<code>hook.ts:57</code>); CI runs the same binary (<code>ci.yml:107</code>). Nothing iterative, nothing to argue with.</p>
+<p><strong>Why not full, under the brief's own bar:</strong> no committed test guards the enforcement verdict path against a
+model ever appearing on it. The discipline <em>is</em> testable and tested elsewhere — <code>render.egress.test.ts</code> and
+<code>brief-generation.no-network.test.ts</code> assert no-network on <em>sibling</em> paths — but not on
+<code>validate</code>/<code>enforce</code>. The brief's Phase 3 asks to add exactly this test ("the enforcement entry point has
+no network access and no model client import"), which is itself the tell that it does not exist yet. True today, unguarded
+against regression: partial.</p></spec-decision>
+
+<spec-decision><h4>6 · Not RAG-as-verdict — <span class="verdict v-partial">partial</span></h4>
+<p>The verdict is a deterministic scan; no probabilistic retrieval sits in it. This is <em>vacuously</em> clean — there is no
+decision-RAG at all (items 2/3) — so while the discipline would hold if retrieval were added per the design brief, there is
+nothing to point a committed test at today. Structurally sound, untested-because-absent: partial.</p></spec-decision>
+
+<spec-decision><h4>7 · Not AI-reviews-AI — <span class="verdict v-full">full</span>, and a genuine strength</h4>
+<p>spectastic already draws the line Valmis draws, <strong>and a committed test proves it.</strong> The adversarial critic
+(<code>agents/spectastic-critic.md</code>) finds risks but is forbidden from deciding: <em>"You do not disposition risks —
+leave every finding at <code>status="identified"</code>; the human commits the status"</em> (<code>critic.md:34-35</code>).
+The <em>verdict</em> is the deterministic kernel, which refuses to proceed while a critic-raised risk is unresolved — asserted
+by a passing test, <code>packages/core/test/apply.principles.test.ts:116</code> ("refuses when a risk is still identified").
+Probabilistic recommends; deterministic decides. The direct answer to "two probabilistic passes are not one deterministic pass
+with sight."</p></spec-decision>
+
+<spec-decision><h4>8 · Not vendor-locked — <span class="verdict v-full">full</span></h4>
+<p>The deterministic gate is a plain Node CLI (<code>node packages/cli/bin/spectastic …</code>) that runs under any tool or
+none. The verbs ship as portable Agent-Skills (<code>packages/cli/_bundled/.agents/skills/</code>, spec 111), with committed
+passing tests on the vendor-neutral output — the render/translation primitive (<code>packages/core/test/skills-translate.test.ts</code>)
+and the scaffold/profile inventory (<code>packages/cli/test/init/default-scaffold.test.ts</code>,
+<code>profiles.test.ts</code>) — and this month the same skills ran unmodified across Codex, Antigravity and opencode.
+<code>init</code> emits a lean vendor-neutral <code>AGENTS.md</code> (<code>compose.ts:133</code>). <em>Caveat:</em> the
+per-vendor hook <em>adapters that feed gate output back into the agent loop</em> (the brief's item) are not built; that
+capability inherits item 3's gap, but the enforcement itself already runs everywhere.</p></spec-decision>
+
+<spec-decision><h4>9 · Enforcement coverage is visible — <span class="verdict v-gap">does not</span></h4>
+<p><code>spectastic enforce</code> reports coverage over a fixed <em>tooling-category</em> enum — formatter, linter,
+type-checker, security, supply-chain, test-runner, coverage, observability, contract-first
+(<code>packages/core/src/enforce/types.ts:9-18</code>) — detected by file signals. There is <strong>no per-decision
+coverage</strong>: nothing measures "% of active decisions that carry an executable check," because no decision carries an
+enforcement link to count (item 1). The metric the brief asks for has no operand.</p></spec-decision>
+
+<spec-decision><h4>10 · A failure teaches — <span class="verdict v-partial">partial</span></h4>
+<p>A finding is already actionable by a reviewer who has read nothing: it carries the rule id, a human
+<code>message</code>, an optional <code>fixHint</code>, and <code>file:line</code> (<code>types.ts:26-38</code>). What it
+does <em>not</em> carry is the <strong>decision</strong> — no ADR id, no ADR's stated reason, no typed source→target — so a
+failure teaches "this rule fired," not "this decision, made for this reason, forbids this call." And the
+<strong>shifu</strong> Socratic layer the brief assumes <strong>does not exist</strong> (§6). Partial: the teaching is generic,
+not decision-anchored, and the tool that would make it Socratic is absent.</p>
+<p><strong>What the dogfood shows, and the design trap to avoid.</strong> The one repo that teaches on failure
+(<code>spec-tictactoe-2</code>, §5) does it the wrong way for a <em>tool</em> to generalise: the decision id and reason are
+hand-typed into ArchUnit's <code>.because("P-10 / D-008: production code must be deterministic…")</code> string — the
+enforcer's own message channel. That does not travel. AspectJ has no <code>.because()</code>; Semgrep has a different
+<code>message:</code> channel; a DB <code>GRANT</code> denial has none; a custom checker has whatever it invents — and in every
+case the reason is a <strong>second copy</strong> of the decision's reason, free to drift. The agnostic answer is to
+<strong>split detector from explainer</strong>: the enforcer emits only <code>{rule-id, file:line, [source→target]}</code> (a
+floor <em>any</em> tool can meet), and spectastic composes the teaching by joining <code>rule-id → decision-id → the decision's
+own recorded reason</code> — the reason living once, in the decision, never re-typed into the tool. This is what the brief's
+item 4 already implies ("the verdict must reconstruct … from the code, the ADR, the … rule text"): reason from the ADR,
+location from the rule, the verdict a <em>composition</em> no tool authored. shifu's question is templated the same way — from
+the decision's rule statement, not the enforcer. Design consequence carried to §7.</p></spec-decision>
+</section>
+
+
+<section id="gaps">
+<h2>4 · Gaps, ordered by risk to the Priya scenario</h2>
+
+<p>The ordering answers one question: <strong>which gap would have let the Priya PR through?</strong> The honest answer is that
+two of them would, independently — which is why the PR is a double failure in spectastic today, at plan and again at merge.</p>
+
+<ol>
+  <li><strong>G1 — No decisions surface by path at plan time (items 2 + 3, and gate D).</strong> The governing decision is never
+  retrieved for the touched path, and no plan gate fails when a plan ignores an in-scope decision. Priya's plan is grounded,
+  well-formed, and silent about the one ADR that matters — and passes. <em>This is where the PR must die in the happy path, and
+  today it does not.</em></li>
+  <li><strong>G2 — No decision is wired to an executable check at merge (item 4).</strong> Even bypassing spec and plan
+  entirely — committing <code>PositionReconciliationJob</code> with a direct <code>UPDATE positions</code> — nothing catches it:
+  no ADR carries a rule id, the architecture-fitness check is deferred, and <code>validate</code> is keyed to schema rules, not
+  decisions. The merge gate has no verdict to give here.</li>
+  <li><strong>G3 — Decisions carry no scope, precedence, or enforcement link (item 1).</strong> The structural precondition for
+  G1 and G2. Even if retrieval were built tomorrow, decisions expose no scope to retrieve <em>by</em>, no precedence to sort
+  <em>by</em>, and no check to enforce. Everything downstream rests on fixing the corpus shape first.</li>
+  <li><strong>G4 — The blind spot is invisible (item 9).</strong> Nobody can see that the ADR governing positions has no
+  executable check, because coverage is measured over tooling, not decisions. The gap that sank Priya is itself un-surfaced.</li>
+  <li><strong>G5 — A caught failure would not name the decision (item 10).</strong> The least-bad gap: if G1/G2 were fixed but
+  G5 were not, the reviewer would see "rule X failed" without "ADR-0007, for this reason." Still an improvement, but not the
+  teaching the scenario needs.</li>
+</ol>
+
+<p><strong>The one-sentence diagnosis.</strong> spectastic built a real, deterministic, vendor-neutral guarantee layer and
+pointed it at <em>artifact well-formedness</em>; the Valmis rubric asks for the same layer pointed at <em>architectural
+decisions</em>, and the pointing is the work.</p>
+</section>
+
+
+<section id="dogfood">
+<h2>5 · Dogfood evidence — what the enterprise profile actually produced</h2>
+
+<p>The sections above score the meta-spec's <em>capabilities</em>. This one checks them against a real downstream project
+spectastic's enterprise profile guided: <code>~/Code/spec-tictactoe-2</code> (profile <code>enterprise</code>,
+<code>.spectastic/profile.json</code>), which introduced <strong>ArchUnit</strong> — a JVM architecture-fitness-test library —
+under that guidance. It is the single best available evidence for items 1, 4, 9 and 10 in practice. (The older
+<code>~/Code/spec-tictactoe</code> is <em>not</em> a second data point: no profile file, no ArchUnit, no CI — it predates the
+profile mechanism and runs the old <code>plan.html</code> verb set.)</p>
+
+<p>The finding cuts both ways, and the honest version is more interesting than either extreme.</p>
+
+<h3>What is genuinely there — a real, bidirectional decision ↔ fitness-function link</h3>
+<p>The enterprise profile did not leave ArchUnit floating. The rule cites its decision and the decision describes the rule,
+both directions, reinforced by a spec requirement and a task:</p>
+<ul>
+  <li><strong>The decision names its enforcement</strong> — <code>specs/001-human-vs-cpu/plan.html:318-326</code>,
+  <code>&lt;spec-decision id="D-008"&gt;</code>: <em>"No wall-clock or unseeded random in production code (enforced by a small
+  custom ArchUnit rule that fails the test suite on <code>Instant.now()</code>, <code>currentTimeMillis()</code>,
+  <code>Math.random()</code>, or <code>new Random()</code> without a seed)."</em></li>
+  <li><strong>The rule cites its decision</strong> — <code>src/test/java/.../invariant/NoWallClockRule.java:9-11</code> Javadoc:
+  <em>"Encodes plan D-008 (and, upstream, principle P-10 and spec 001 NFR-002),"</em> and the rule's own
+  <code>.because("P-10 / D-008: production code must be deterministic; …")</code> (<code>:34-50</code>).</li>
+  <li><strong>It is genuinely gated</strong> — the <code>@ArchTest</code> runs under <code>test</code>→<code>check</code>
+  (<code>build.gradle.kts:49</code>), and CI runs <code>./gradlew --no-daemon check</code> on every PR to main
+  (<code>.github/workflows/ci.yml:42</code>). A violation blocks merge, deterministically, with no model on the path.</li>
+  <li><strong>It reached the spec layer</strong> — an applied change proposal added <code>NFR-005</code>
+  (<code>spec.html:165-167</code>): the build <em>"MUST enforce the determinism invariant … via a static-analysis rule … MUST
+  block merge with no allowlist entries,"</em> and modified <code>NFR-002</code> to read "Enforcement is by NFR-005's
+  static-analysis rule."</li>
+</ul>
+<p>That is a better showing than the generic scoring implies: a disciplined author, prompted by the enterprise profile, produced
+exactly the decision→check→CI chain the rubric wants — and the failure would even <em>teach</em> (item 10), because the decision
+id and reason are hand-written into the <code>.because()</code> clause that ArchUnit prints on failure.</p>
+
+<h3>What confirms the gap — the link is prose, not structure</h3>
+<p>Every part of that chain is <strong>a human-maintained convention, not a machine-guaranteed one</strong>, which is the precise
+distinction this whole assessment turns on:</p>
+<ul>
+  <li><strong>No machine-readable link.</strong> The tie between <code>D-008</code> and <code>NoWallClockRule</code> is the
+  <em>string</em> "D-008" repeated by hand across four files (plan, Javadoc, <code>.because()</code>, NFR prose). Nothing parses
+  it. There is no <code>enforcement=</code> attribute, no shared rule id, no registry. Delete <code>D-008</code> from the plan
+  and the Javadoc reference dangles silently; rename the rule and the decision's prose is quietly wrong. <strong>Neither drift is
+  caught</strong> — the same failure mode Valmis names in <code>CLAUDE.md</code>, one level up, in <code>&lt;spec-decision&gt;</code>
+  prose instead. (Confirms items 1 and 4 at <span class="verdict v-partial">partial</span>.)</li>
+  <li><strong>No scope on the decision.</strong> <code>D-008</code> carries no path glob or package pattern; the only scope
+  (<code>packages = "co.briancorbin.tictactoe2"</code>) lives in the test's <code>@AnalyzeClasses</code>, disconnected from the
+  decision. Nothing can retrieve "which decision governs this path." (Confirms item 2 at <span class="verdict v-gap">does
+  not</span>.)</li>
+  <li><strong>No coverage metric.</strong> Nothing reports that <code>D-008</code> has a check while other decisions do not — the
+  one decision with enforcement is uncounted. (Confirms item 9 at <span class="verdict v-gap">does not</span>.)</li>
+</ul>
+
+<h3>The finding that reshapes Phase 4</h3>
+<spec-warning>
+<p>The enforced invariant in the only enterprise repo is <strong>determinism (no wall-clock / no unseeded PRNG), not an
+architecture style.</strong> Neither repo contains a <code>layeredArchitecture()</code>, <code>onionArchitecture()</code>, or
+ports-and-adapters boundary rule. So the Priya scenario's exact shape — "only the persistence adapter touches data-access APIs,"
+a <em>layering/boundary</em> fitness function wired to a decision — is <strong>un-demonstrated by any existing spectastic
+project.</strong> Phase 4's position-keeper would be the <em>first</em> time spectastic produces a boundary guardrail, not a
+reproduction of an existing pattern. This makes Phase 4 genuinely load-bearing evidence rather than a dressed-up regression
+fixture — and it reinforces §6's correction that the debugger/shifu/grading-fixture machinery is net-new.</p>
+</spec-warning>
+
+<p><strong>Net effect on the scores:</strong> the dogfood does not move any verdict, but it changes their <em>texture</em>. Items 1,
+4 and 10 are "partial" not because spectastic <em>cannot</em> produce the link — a real repo shows it can, by authorial
+discipline — but because nothing <em>guarantees</em> it: the link is exactly as durable as a reviewer remembering to keep four
+copies of a string in sync. That is the cleanest possible statement of the work Phases 2–3 must do: <strong>promote the existing
+prose convention to a structured, drift-guarded, machine-retrievable one</strong>, without losing the disciplined authorship that
+already works.</p>
+</section>
+
+
+<section id="corrections">
+<h2>6 · Two assumptions in the brief that do not hold</h2>
+
+<p>Per the brief's own instruction to say so where an assumption is wrong rather than force the fit:</p>
+
+<spec-warning>
+<p><strong>The <em>debugger</em> and <em>shifu</em> skills do not exist in this repo.</strong> A whole-repo search
+(<code>.claude/</code>, <code>agents/</code>, <code>commands/</code>, <code>packages/</code>, <code>docs/</code>,
+<code>templates/</code>, the empty <code>skills/</code>) for <code>shifu</code>, <code>socratic</code>,
+<code>fixture-and-grading</code>, or any grading/eval-fixture skill returns <strong>zero matches</strong>. Rubric item 10's
+"shifu Socratic follow-up" and Phase 4's "same fixture-and-grading pattern as the debugger skill" therefore rest on
+capabilities that would have to be <em>built</em>, not <em>assessed</em>. This does not change the item-10 score (partial for
+independent reasons), but it materially changes Phases 2–4: the teaching-on-failure and grading-fixture work is net-new, not an
+extension of an existing pattern.</p>
+</spec-warning>
+
+<spec-sidenote>Considerations documents in this repo are single-file <strong>HTML</strong> (<code>docs/*-considerations.html</code>);
+there is no <code>docs/considerations/</code> or <code>docs/design/</code> directory. This document is written as HTML to match
+that convention rather than the brief's <code>docs/considerations/architectural-guardrails.md</code> — trivially convertible if
+markdown is wanted, but flagged as a deliberate deviation.</spec-sidenote>
+</section>
+
+
+<section id="questions">
+<h2>7 · Open questions for a human to decide</h2>
+
+<p>These cannot be answered from the code; they are the decisions that shape Phase 2.</p>
+
+<ol>
+  <li><strong>Repo-level ADRs, or per-spec decision cards?</strong> The rubric (and the reference repo's <code>docs/adr/0007</code>)
+  assume a <em>repo-level</em> ADR corpus. spectastic's decisions live <em>inside one spec's design.html</em>. The load-bearing
+  Phase-2 fork: extend <code>&lt;spec-decision&gt;</code> with scope/enforcement and build a cross-spec decision index over the
+  existing cards, or introduce a new first-class repo-level ADR artifact. The first reuses the estate; the second matches the
+  rubric's mental model. This choice governs everything else.</li>
+  <li><strong>How is scope expressed?</strong> Path globs, package patterns, or both? (A hexagonal rule like "only the
+  persistence adapter touches data-access APIs" is naturally package/type-shaped; a "no writes to <code>positions</code>" rule
+  is naturally path/SQL-shaped. The reference needs both.)</li>
+  <li><strong>Where does the enforcement link live, and where does the teaching reason live? (near-decided)</strong> The dogfood
+  (§5) and the <code>.because()</code> trap (item 10) point hard at one answer, so this is recorded as a leaning rather than an
+  open fork. The decision should carry a <strong>structured <code>enforcement:</code> list</strong> of <code>{tool, rule-id}</code>
+  pairs (so <code>rule-id → decision-id</code> is a machine join, not a string match on "D-008"), and the decision's
+  <strong>reason is a field on the decision</strong>, composed into the failure message by spectastic — <em>never</em> re-typed
+  into the enforcer's own channel (<code>.because()</code>, Semgrep <code>message:</code>, etc.), which duplicates and drifts.
+  The enforcer is a detector that emits <code>{rule-id, file:line, [source→target]}</code>; spectastic is the explainer. The one
+  genuinely open sub-question: how rich a <code>source → target</code> we require, given it is clean from ArchUnit, config-derived
+  from a DB grant, and line-level from a grep — i.e. is it a guaranteed field or best-effort per enforcer? (Leaning best-effort,
+  with <code>{rule-id, decision-id, reason, file:line}</code> as the guaranteed floor.)</li>
+  <li><strong>Warn or block, and where is the default?</strong> Per-decision <code>posture</code>, per-profile default
+  (enterprise = block?), or both? spectastic's precedent (the enforce floor, waivers) suggests block-at-enterprise with a
+  justified, expiring waiver — but that is a decision, not a given.</li>
+  <li><strong>How are cross-repo decisions distributed?</strong> Reuse the corpus/marketplace machinery (specs 062/063, which
+  already carry provenance and a per-marketplace identity), or a separate mechanism? A decision that governs three repos has no
+  owning coordinate today.</li>
+  <li><strong>Do we build the teaching layer (shifu) and the grading-fixture harness at all?</strong> Phase 4 depends on both,
+  and neither exists. Are they in scope for this effort, deferred, or rescoped?</li>
+  <li><strong>Doc format:</strong> honour the brief's <code>.md</code> paths, or the repo's <code>.html</code> convention (as
+  used here)?</li>
+</ol>
+</section>
+
+
+<section id="sources">
+<h2>8 · Sources</h2>
+<ul>
+  <li>Theo Valmis, <a href="https://www.oreilly.com/radar/architectural-guardrails-for-ai-generated-code/">"Architectural Guardrails for AI-Generated Code"</a>, O'Reilly Radar, 31 Aug 2026.</li>
+  <li>All spectastic claims cite <code>path:line</code> inline; grounding was verified against the working tree on 12 Sep 2026. Where a capability was searched for and not found, the row names the directories searched.</li>
+</ul>
+</section>
+
+
+<section id="changelog">
+<h2>9 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-09-12">12 Sep 2026</time><span>Phase 1 assessment authored: 10-row rubric scored <strong>2 full / 5 partial / 3 does-not</strong> against the enterprise profile (harsh bar — "full" requires a committed test; items 5/6 dropped to partial as structurally-true-but-unguarded), gaps ordered by Priya risk, §5 dogfood evidence from <code>spec-tictactoe-2</code> (real decision↔ArchUnit link exists as prose convention, not machine structure; enforced invariant is determinism not architecture style), two brief assumptions (debugger/shifu skills absent; doc format) corrected. Awaiting review before Phase 2.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  Architectural guardrails · spectastic self-assessment (Phase 1) · authored 12 Sep 2026
+</footer>
+
+</main>
+<script src="../assets/spec.js"></script>
+</body>
+</html>

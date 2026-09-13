@@ -1,0 +1,226 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'">
+<title>Governance decision record · Specification</title>
+<link rel="stylesheet" href="../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../assets/favicon.svg">
+<script src="../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Specification · 112-guardrail-decision-record</p>
+  <h1>Governance decision record</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    Give an architectural decision the structured, machine-readable shape a retrieval and a gate can operate on — the scope it
+    governs, the checks that enforce it, the posture it carries — without moving it out of the spec that produced it.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>      <span><spec-status value="accepted">Accepted</spec-status></span>
+    <b>Spec ID</b>     <span>112-guardrail-decision-record</span>
+    <b>Owner</b>       <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Reviewers</b>   <span>—</span>
+    <b>Created</b>     <span><time datetime="2026-09-13">13 Sep 2026</time></span>
+    <b>Principles</b><span><a href="../principles.html">v1.9.0</a></span>
+    <b>Smallest demoable</b><span>Author a decision with a malformed enforcement block; <code>spectastic validate</code> fails naming the problem; fix it and it passes.</span>
+    <b>Read time</b>   <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-budget words="1100" reqs="8" minutes="9"></spec-budget>
+
+  <spec-tldr>
+    <p>Slice 1 of the architectural-guardrails design brief (<a href="../../docs/architectural-guardrails-design.html">design</a>,
+    §3.1–3.2). It extends the existing <code>&lt;spec-decision&gt;</code> card with structured governance metadata — a
+    <code>status</code> lifecycle, a <code>posture</code>, the <code>scope</code> it governs (path globs as the universal floor),
+    the <code>enforcement</code> rule-ids that check it, and the human <code>reason</code> that teaches on failure — enforced by a
+    new <code>decision-well-formed</code> validate rule. It adds a <code>decision</code> resource kind so a decision is
+    federation-addressable at <code>spectastic://&lt;project&gt;/decision/&lt;spec-id&gt;/&lt;D-NNN&gt;</code>. Everything the
+    retrieval, the gates, and the coverage lint need to exist rests on this record.</p>
+  </spec-tldr>
+
+  <dl class="invest">
+    <dt><span class="letter">I</span> Independent</dt> <dd>Depends on principles + the design brief; reuses the schema parser and the <code>RESOURCE_KINDS</code> extension point.</dd>
+    <dt><span class="letter">N</span> Negotiable</dt>  <dd>Outcomes contract; exact attribute vs child-element spelling is the plan's to settle.</dd>
+    <dt><span class="letter">V</span> Valuable</dt>    <dd>Unlocks <a href="#SC-001">SC-001</a> — a decision now carries the metadata a machine can retrieve and enforce.</dd>
+    <dt><span class="letter">E</span> Estimable</dt>   <dd>Plan + tasks derivable; models on the SLO rule and the screen coordinate that already ship.</dd>
+    <dt><span class="letter">S</span> Small</dt>       <dd>Under budget; eight requirements; the schema half of gap G3 only — retrieval and gates are later slices.</dd>
+    <dt><span class="letter">T</span> Testable</dt>    <dd>Every requirement observable via <code>validate</code> output or a coordinate round-trip.</dd>
+  </dl>
+
+  <spec-audience-map>
+    <dl>
+      <dt>Exec / PM</dt>   <dd>§<a href="#context">Context</a>, §<a href="#scenarios">User scenarios</a>, §<a href="#success">Success criteria</a>.</dd>
+      <dt>Reviewer</dt>    <dd>§<a href="#requirements">Requirements</a>, §<a href="#assumptions">Assumptions</a>, §<a href="#questions">Open questions</a>.</dd>
+      <dt>Implementer</dt> <dd>§<a href="#requirements">Requirements</a>, §<a href="#data">Data model</a>, §<a href="#conformance">Conformance index</a>.</dd>
+    </dl>
+  </spec-audience-map>
+</header>
+
+
+<section id="context">
+<h2>1 · Context</h2>
+<p>The architectural-guardrails assessment (Phase 1) scored spectastic strong on what the governance layer must <em>not</em> be
+and weak on what it must <em>have</em>. The root cause is gap G3: a <code>&lt;spec-decision&gt;</code> carries an id, a free-text
+status pill, and a <code>grounding</code> tag, but no <strong>scope</strong>, no <strong>precedence</strong>, and no
+<strong>enforcement link</strong>. So nothing can retrieve "the decisions governing this path" or check "was this decision
+honoured." The dogfood repo <code>spec-tictactoe-2</code> shows a real decision→check link (<code>D-008</code> ↔
+<code>NoWallClockRule</code>) — but as a hand-repeated string across four files, un-guarded against drift.</p>
+<p>This slice promotes that prose convention to structure. Its user is the person authoring a governing decision and the tooling
+(later slices) that must read it. It is the foundation every downstream slice rests on.</p>
+</section>
+
+
+<section id="scenarios">
+<h2>2 · User scenarios &amp; testing</h2>
+<p><strong>Author a governing decision.</strong> A designer records that only the persistence adapter may touch data-access APIs.
+They write a <code>&lt;spec-decision&gt;</code> with <code>status="accepted"</code>, a <code>&lt;spec-scope&gt;</code> naming the
+paths, a <code>&lt;spec-enforcement&gt;</code> naming the ArchUnit rule that checks it, and a <code>&lt;spec-reason&gt;</code>.
+<code>spectastic validate</code> passes.</p>
+<p><strong>Malformed enforcement is caught.</strong> They forget the reason on a <code>&lt;none&gt;</code> enforcement, or use an
+illegal <code>status</code>. <code>validate</code> fails at error severity, naming the exact problem and how to fix it — before
+the commit lands.</p>
+<p><strong>The decision is addressable.</strong> A later slice composes the decision's coordinate
+<code>spectastic://acme/pk/decision/002-downstream/D-007</code> and parses it back to the same kind, spec, and id.</p>
+</section>
+
+
+<section id="requirements">
+<h2>3 · Requirements</h2>
+
+<spec-requirement id="FR-001" priority="must">
+The <code>&lt;spec-decision&gt;</code> element MUST accept structured governance metadata: a <code>status</code> from
+<code>{proposed, accepted, superseded, retired}</code>, an optional <code>posture</code> from <code>{warn, block}</code>, an
+optional <code>supersedes</code> naming another decision id, an optional <code>review-by</code> date, a
+<code>&lt;spec-scope&gt;</code> holding one or more <code>&lt;path&gt;</code> globs (and optional ecosystem
+<code>&lt;module&gt;</code> selectors), a <code>&lt;spec-enforcement&gt;</code>, and a <code>&lt;spec-reason&gt;</code>. Absent
+metadata leaves a decision exactly as it renders today (backward compatible).
+</spec-requirement>
+
+<spec-requirement id="FR-002" priority="must">
+A new <code>decision-well-formed</code> validate rule (per-file, error) MUST reject: an illegal <code>status</code> or
+<code>posture</code> value; an <code>accepted</code> decision whose <code>posture</code> is not warn-only but that declares no
+<code>&lt;spec-scope&gt;</code> with at least one <code>&lt;path&gt;</code>; and a <code>&lt;spec-enforcement&gt;</code> that is
+neither "at least one <code>&lt;rule&gt;</code> with a <code>tool</code> and an <code>id</code>" nor "exactly one
+<code>&lt;none&gt;</code> carrying a non-empty <code>reason</code>". Each problem is reported granularly.
+</spec-requirement>
+
+<spec-requirement id="FR-003" priority="must">
+The <code>reason</code> that teaches on failure MUST live once, in <code>&lt;spec-reason&gt;</code> on the decision. The schema
+MUST NOT require it to be duplicated into any enforcement tool's own message channel.
+</spec-requirement>
+
+<spec-requirement id="FR-004" priority="must">
+A <code>decision</code> resource kind MUST be added to the resource-URI grammar, yielding a project-scoped coordinate
+<code>spectastic://&lt;project&gt;/decision/&lt;spec-id&gt;/&lt;D-NNN&gt;</code> that composes and parses back to the same kind,
+spec id, and decision id — mirroring the two-segment <code>screen</code> coordinate, authority the project (not a marketplace).
+</spec-requirement>
+
+<spec-requirement id="FR-005" priority="should">
+An overlap check SHOULD report (not silently pick) two active decisions whose scopes overlap the same path with no
+<code>supersedes</code> relation between them, so precedence is always explicit.
+</spec-requirement>
+
+<spec-requirement id="NFR-001" priority="must">
+The validate path exercising <code>decision-well-formed</code> MUST carry no model client and no network access — a test MUST
+assert the rule module's transitive imports contain at most 0 model clients and at most 0 network modules.
+</spec-requirement>
+
+<spec-requirement id="NFR-002" priority="must">
+Rule evaluation and coordinate composition MUST be deterministic: the same document yields the same findings, and the same
+inputs yield the same coordinate, on every run (no clock, no ordering nondeterminism) — asserted with at most 1 repeated-run
+diff.
+</spec-requirement>
+
+<spec-out-of-scope>
+<ul>
+  <li defer-to="TBD-guardrail-retrieval"><strong>Path-scoped retrieval</strong> (<code>spectastic adrs --for</code>) — Slice 2.</li>
+  <li defer-to="TBD-guardrail-gates"><strong>The plan-stage and merge-stage gates</strong> — Slice 3.</li>
+  <li defer-to="TBD-guardrail-decision-index"><strong>The decision registry file + corpus id-allocation reuse</strong> — deferred to Slice 1b once the record is proven.</li>
+  <li defer-to="TBD-guardrail-rule-resolvable"><strong>Verifying a declared rule-id exists in the named tool</strong> — the merge gate's resolvable check, not this schema rule.</li>
+</ul>
+</spec-out-of-scope>
+</section>
+
+
+<section id="data">
+<h2>4 · Data model</h2>
+<dl>
+  <dt>Decision (extended <code>&lt;spec-decision&gt;</code>)</dt><dd>The Nygard card, plus <code>status</code>/<code>posture</code>/<code>supersedes</code>/<code>review-by</code> attributes and <code>&lt;spec-scope&gt;</code>/<code>&lt;spec-enforcement&gt;</code>/<code>&lt;spec-reason&gt;</code> children.</dd>
+  <dt>Enforcement rule</dt><dd>A <code>&lt;rule tool="…" id="…" run="…"?/&gt;</code>, or a single <code>&lt;none reason="…"/&gt;</code>.</dd>
+  <dt>Decision coordinate</dt><dd><code>spectastic://&lt;project&gt;/decision/&lt;spec-id&gt;/&lt;D-NNN&gt;</code> — project-authority, two-segment name.</dd>
+</dl>
+</section>
+
+
+<section id="success">
+<h2>5 · Success criteria</h2>
+
+<spec-criterion id="SC-001" priority="must" actor="a decision author" validates="FR-001,FR-002,FR-003" method="test">
+Given a <code>&lt;spec-decision&gt;</code> with an illegal <code>status</code> and a <code>&lt;none&gt;</code> enforcement missing
+its <code>reason</code>, <code>spectastic validate</code> reports at least two <code>decision-well-formed</code> error findings
+naming both problems; correcting them yields zero findings on that rule.
+<details><summary>Observed at</summary><p><code>packages/schema/test/decision-well-formed.test.ts</code> — malformed and well-formed fixtures.</p></details>
+</spec-criterion>
+
+<spec-criterion id="SC-002" priority="must" actor="a tooling author" validates="FR-004,NFR-002" method="test">
+Composing a decision coordinate and parsing it back returns <code>kind=decision</code>, the same project, spec id, and decision
+id, for at least 3 distinct decisions, identically on repeated runs.
+<details><summary>Observed at</summary><p><code>packages/schema/test/project-uri.decision.test.ts</code> — round-trip + determinism.</p></details>
+</spec-criterion>
+
+<spec-criterion id="SC-003" priority="must" actor="a security reviewer" validates="NFR-001" method="test">
+A test asserts the <code>decision-well-formed</code> module's transitive imports include 0 model clients and 0 network modules.
+<details><summary>Observed at</summary><p><code>packages/schema/test/decision-well-formed.no-network.test.ts</code>.</p></details>
+</spec-criterion>
+
+<spec-criterion id="SC-004" priority="should" actor="a decision author" validates="FR-005" method="test">
+Two active decisions whose scopes both match a path, with no <code>supersedes</code> between them, produce an overlap finding
+naming both ids.
+<details><summary>Observed at</summary><p><code>packages/schema/test/decision-well-formed.test.ts</code> — overlap case.</p></details>
+</spec-criterion>
+</section>
+
+
+<section id="assumptions">
+<h2>6 · Assumptions</h2>
+<ul>
+  <li>The <code>&lt;spec-decision&gt;</code> element already parses via the schema parser and appears in <code>design.html</code>; adding children/attributes is additive (unknown attributes are tolerated today).</li>
+  <li><code>RESOURCE_KINDS</code> is the blessed single-declaration extension point (its docstring records a prior drift bug).</li>
+</ul>
+</section>
+
+
+<section id="questions">
+<h2>7 · Open questions</h2>
+<ul>
+  <li>Attribute vs child spelling for <code>scope</code>/<code>enforcement</code> — settled in the plan; the criteria bind to behaviour, not spelling.</li>
+</ul>
+</section>
+
+
+<section id="conformance">
+<h2>8 · Conformance index</h2>
+<spec-conformance></spec-conformance>
+</section>
+
+
+<section id="changelog">
+<h2>9 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-09-13">13 Sep 2026</time><span>Accepted — Slice 1 complete and green; bundle flipped together per REQ-LIFECYCLE-005.</span></li>
+  <li><time datetime="2026-09-13">13 Sep 2026</time><span>Drafted — Slice 1 of the architectural-guardrails design brief: extend <code>&lt;spec-decision&gt;</code> with structured governance metadata, add the <code>decision-well-formed</code> rule and the <code>decision</code> resource kind. Closes the schema half of Phase-1 gap G3 (rubric item 1).</span></li>
+  <li><time datetime="2026-09-13">13 Sep 2026</time><span>Implemented (tests-first): <code>decision-well-formed</code> rule + positive/negative fixtures (9 unit tests), the <code>decision</code> resource kind + <code>decisionResourceUri</code> (3 round-trip cases + matrix coverage), and the transitive no-network/no-model-client assertion (NFR-001). Full schema suite green (728); backward-compatible — the existing estate's bare <code>&lt;spec-decision&gt;</code> cards are untouched.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+</main>
+<script src="../assets/spec.js"></script>
+</body>
+</html>

@@ -1,0 +1,203 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'">
+<title>Governing-decision injection · Design</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Design · 116-guardrail-injection</p>
+  <h1>Governing-decision injection</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    How we will build it.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>     <span><spec-status value="accepted">Accepted</spec-status></span>
+    <b>Spec</b>       <span><a href="./spec.html">116-guardrail-injection</a></span>
+    <b>Owner</b>      <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Branch</b>     <span><code>main</code></span>
+    <b>Created</b>    <span><time datetime="2026-09-13">13 Sep 2026</time></span>
+    <b>Read time</b>  <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-tldr>
+    <p>A pure <code>buildGoverningDecisionsBlock(paths, decisions)</code> that reuses 113's retrieval and the corpus's
+    <code>fenceArtifactText</code>, wired into the <code>design</code> and <code>tasks</code> kernel prompts exactly where
+    <code>buildCorpusPromptBlock</code> already injects, plus an advisory markdown nudge in the implement command + agent. Biggest
+    risk: reading as a guarantee when it is an aid — mitigated by a gate-independence test.</p>
+  </spec-tldr>
+</header>
+
+
+<section id="principles-check">
+<h2>1 · Principles check</h2>
+<p><a href="../../principles.html">P-11</a> — OK and central: the block is fenced as untrusted data via the same
+<code>fenceArtifactText</code> the corpus uses, never an instruction the tool obeys. <a href="../../principles.html">P-8</a> /
+T-009 — OK: the injection is explicitly an aid, not a guarantee; a gate-independence test proves the verdict ignores it.
+<a href="../../principles.html">P-14</a> — OK: the builder is kernel logic; the verbs just inject it. No exceptions logged.</p>
+
+<h3>Governing decisions acknowledged</h3>
+<p>This plan builds in <code>packages/core/src/guardrail/**</code>, governed by
+<strong>113-guardrail-retrieval/D-001</strong> (no model/network on the retrieval path). The block builder honours it — pure,
+no model, no network — asserted by extending the guardrail no-network test.</p>
+
+<h3>Toolchain / enforcement</h3>
+<p>Floor already wired; this adds a builder + two injection lines + markdown. No new toolchain.</p>
+</section>
+
+
+<section id="tech-context">
+<h2>2 · Technical context</h2>
+<dl>
+  <dt>Language / runtime</dt><dd>TypeScript, the existing monorepo; no new dependency.</dd>
+  <dt>Architecture</dt><dd>A pure block builder in the guardrail module, injected by the two AI verbs that assemble prompts.</dd>
+  <dt>Test framework</dt><dd>vitest, test-first; a golden snapshot locks the block (the 054 precedent).</dd>
+  <dt>Coverage</dt><dd>Not in scope.</dd>
+</dl>
+</section>
+
+
+<section id="data">
+<h2>3 · Data model &amp; contracts</h2>
+<p>No external interface. <code>buildGoverningDecisionsBlock(paths: string[], decisions: GovernanceDecision[]): string</code>
+returns a fenced-as-data block (a directive line + a fenced list of governing decisions' id/coordinate/reason) or <code>''</code>.
+The verbs compute <code>paths</code> via 114's <code>extractDeclaredSurface</code> over the relevant design.html.</p>
+</section>
+
+
+<section id="grounding">
+<h2>5 · Grounding &amp; evidence</h2>
+<table>
+  <thead><tr><th>Claim</th><th>Source</th><th>Status</th><th>Finding</th></tr></thead>
+  <tbody>
+    <tr><td>The fence-and-directive block shape to mirror</td><td><code>packages/corpus/src/knowledge/prompt.ts:97-101</code>; <code>fenceArtifactText</code> at <code>packages/schema/src/fence.ts:146</code></td><td>verified</td><td><code>buildCorpusPromptBlock</code> = directive + <code>fenceArtifactText(index, LABEL)</code>; returns '' when empty. The exact template.</td></tr>
+    <tr><td>The design prompt has an injection point</td><td><code>packages/core/src/commands/design.ts:139-148</code></td><td>verified</td><td><code>corpusBlock</code> is joined into the <code>prompt</code> array; a <code>governingBlock</code> line sits beside it.</td></tr>
+    <tr><td>The tasks prompt injects the corpus too</td><td><code>packages/core/src/commands/tasks.ts:38,119</code></td><td>verified</td><td>Corpus folded via <code>withCorpusHint</code> + the <code>ai.chat</code> enrichment prompt — the governing block joins the same way.</td></tr>
+    <tr><td>Retrieval + surface extraction are reusable</td><td><code>guardrail/retrieve.ts</code> (113), <code>guardrail/plan-constraint.ts</code> <code>extractDeclaredSurface</code> (114)</td><td>verified</td><td><code>decisionsForPaths</code> + <code>extractDeclaredSurface</code> give the governing set for a design's surface; no new logic.</td></tr>
+    <tr><td>implement has no kernel prompt to inject into</td><td><code>packages/core/src/commands/implement.ts</code> (no <code>ctx.ai</code>)</td><td>verified</td><td>Orchestration only — its injection is necessarily the advisory markdown nudge (the honest T-009 line).</td></tr>
+  </tbody>
+</table>
+</section>
+
+
+<section id="approach">
+<h2>6 · Approach</h2>
+<p>Add <code>buildGoverningDecisionsBlock</code> to the guardrail module, mirroring <code>buildCorpusPromptBlock</code>: run 113's
+<code>decisionsForPaths</code> over the given paths, and if any govern, render a directive + a <code>fenceArtifactText</code>
+block listing each decision's id, coordinate, and reason; else return <code>''</code>. Wire it into <code>design.ts</code> and
+<code>tasks.ts</code> beside the corpus block, computing paths via 114's <code>extractDeclaredSurface</code> over the relevant
+design.html (empty for a design being authored fresh, populated once §project-structure exists). Add the advisory nudge to the
+implement command and the impl-task agent. A gate-independence test proves the 114/115 verdicts never read the block.</p>
+</section>
+
+
+<section id="alternatives">
+<h2>7 · Alternatives considered</h2>
+<table>
+  <thead><tr><th>Option</th><th>Path-selective</th><th>Fenced as data</th><th>Honest about implement</th><th>Score</th></tr></thead>
+  <tbody>
+    <tr data-winner><td>Pure block + design/tasks wiring + implement nudge (chosen)</td><td>✓</td><td>✓</td><td>✓ markdown, flagged advisory</td><td>9</td></tr>
+    <tr><td>Kernel-inject into implement</td><td>✓</td><td>✓</td><td>✗ impossible — no prompt there</td><td>2</td></tr>
+    <tr><td>Reuse the corpus's whole-index injection</td><td>✗ undifferentiated</td><td>✓</td><td>—</td><td>4</td></tr>
+  </tbody>
+</table>
+<p>Kernel-injecting implement is impossible (it is orchestration). Reusing the corpus's undifferentiated injection loses the
+path-selectivity that makes the block relevant rather than noise.</p>
+</section>
+
+
+<section id="decisions">
+<h2>8 · Decisions</h2>
+
+<spec-decision id="D-001" grounding="verified">
+  <h4>D-001 · <code>buildGoverningDecisionsBlock</code> mirrors <code>buildCorpusPromptBlock</code></h4>
+  <p><b>Context.</b> The corpus already ships the fence-and-directive shape (<code>prompt.ts:97</code>,
+  <code>fence.ts:146</code>). <b>Decision.</b> Same shape — directive + <code>fenceArtifactText</code> — over 113's governing
+  set; <code>''</code> when empty. <b>Consequences.</b> + P-11 fencing for free; familiar to a reader. − Two similar builders
+  (corpus + governing) — acceptable, they carry different payloads.</p>
+</spec-decision>
+
+<spec-decision id="D-002" grounding="verified">
+  <h4>D-002 · Wire into design + tasks at the corpus injection point</h4>
+  <p><b>Context.</b> <code>design.ts:139-148</code> and <code>tasks.ts:38</code> already inject the corpus block.
+  <b>Decision.</b> Compute the governing block via 114's <code>extractDeclaredSurface</code> and join it beside the corpus block.
+  <b>Consequences.</b> + One obvious insertion point per verb. − design's first-authoring block is empty (no §structure yet) —
+  intended (FR-003), not a bug.</p>
+</spec-decision>
+
+<spec-decision id="D-003" grounding="verified">
+  <h4>D-003 · implement's injection is an advisory markdown nudge</h4>
+  <p><b>Context.</b> <code>implement.ts</code> has no <code>ctx.ai</code> prompt (grounding row 5). <b>Decision.</b> The command
+  markdown + the impl-task agent instruct running <code>adrs --for &lt;task-path&gt;</code> before authoring, flagged advisory.
+  <b>Consequences.</b> + Honest about where the guarantee is (the gates). − Cannot be enforced (T-009) — recorded, not hidden.</p>
+</spec-decision>
+
+<spec-decision id="D-004" grounding="n-a">
+  <h4>D-004 · Test-first, low risk</h4>
+  <p><b>Context.</b> A pure builder + two injection lines on a proven pattern. <b>Decision.</b> TDD; low risk. A gate-independence
+  test guards the aid-not-guarantee property. <b>Consequences.</b> + Regression-guarded. − None material.</p>
+</spec-decision>
+</section>
+
+
+<section id="structure">
+<h2>9 · Project structure</h2>
+<pre><code>packages/core/src/guardrail/injection.ts          # buildGoverningDecisionsBlock (pure)
+packages/core/src/commands/design.ts               # inject beside corpusBlock
+packages/core/src/commands/tasks.ts                # inject beside corpusBlock
+commands/spectastic.implement.md                    # advisory adrs --for nudge
+agents/spectastic-impl-task.md                      # advisory adrs --for nudge
+packages/core/test/guardrail.injection.test.ts      # builder + wiring + gate-independence</code></pre>
+</section>
+
+
+<section id="risks">
+<h2>10 · Risks &amp; mitigations</h2>
+<spec-risk-log>
+<spec-risk status="mitigated" target="FR-005">
+  <h4>Injection read as a guarantee</h4>
+  <p>Likelihood medium, impact medium. Mitigation: the gate-independence test proves the 114/115 verdicts ignore the block; the spec + design state "aid, not guarantee" throughout.</p>
+</spec-risk>
+<spec-risk status="mitigated" target="FR-004">
+  <h4>The markdown nudge doesn't change behaviour (T-009)</h4>
+  <p>Likelihood high, impact low. Mitigation: this is expected — the nudge is a UX prompt; the guarantee is the gates. Recorded as the ceiling, not treated as a defect.</p>
+</spec-risk>
+</spec-risk-log>
+</section>
+
+
+<section id="complexity">
+<h2>11 · Complexity tracking</h2>
+<p>None. One pure builder mirroring an existing one; two one-line wirings; a markdown edit.</p>
+</section>
+
+
+<section id="open-questions">
+<h2>12 · Open questions</h2>
+<p>None outstanding — scope, the fence shape, the injection points, and the honest implement nudge were all grounded before
+drafting.</p>
+</section>
+
+
+<section id="changelog">
+<h2>13 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-09-13">13 Sep 2026</time><span>Status flipped Draft → Accepted — zero remaining unchecked tasks; SC-001..SC-004 verified passing (8 injection tests, corpus golden snapshot undisturbed), estate + typechecks clean. Sibling bundle (REQ-LIFECYCLE-005).</span></li>
+  <li><time datetime="2026-09-13">13 Sep 2026</time><span>Design authored via <code>/spectastic.design</code>: a pure block builder mirroring <code>buildCorpusPromptBlock</code>, wired into design/tasks, with the honest implement markdown nudge. Grounding: 5 verified, 0 assumed. Acknowledges 113-guardrail-retrieval/D-001.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>

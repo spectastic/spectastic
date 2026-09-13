@@ -1,0 +1,233 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'">
+<title>Governance gates — plan constraint &amp; coverage · Design</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Design · 114-guardrail-gates</p>
+  <h1>Governance gates — plan constraint &amp; coverage</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    How we will build it.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>     <span><spec-status value="accepted">Accepted</spec-status></span>
+    <b>Spec</b>       <span><a href="./spec.html">114-guardrail-gates</a></span>
+    <b>Owner</b>      <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Branch</b>     <span><code>main</code></span>
+    <b>Created</b>    <span><time datetime="2026-09-13">13 Sep 2026</time></span>
+    <b>Read time</b>  <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-tldr>
+    <p>Two folded CLI scans over <code>@spectastic/core</code>, both modelled byte-for-byte on the shipping
+    <code>quantifiedNfrFindings</code>/<code>scanQuantifiedNfr</code> pattern: a profile-gated plan-constraint (error at
+    standard+) and a coverage scan (warnings, never blocking). Both read decisions via 113's <code>loadDecisions</code>. The one
+    risk — reading a plan's declared surface from a prose tree — a spike over all 105 designs verified, refining matching to
+    path-prefix overlap (D-003).</p>
+  </spec-tldr>
+</header>
+
+
+<section id="principles-check">
+<h2>1 · Principles check</h2>
+<p><a href="../../principles.html">P-8</a> — OK: the gate is a deterministic scan folded into <code>validate</code> and the
+pre-commit hook, no model on the path. <a href="../../principles.html">P-14</a> — OK: the finding-producing logic is kernel code
+in <code>@spectastic/core</code>; the CLI wrapper only reads the marker and folds. <a href="../../principles.html">P-11</a> — OK:
+no executable content; the scans read data. No exceptions logged.</p>
+
+<h3>Governing decisions acknowledged</h3>
+<p>This plan builds in <code>packages/core/src/guardrail/**</code>, governed by decision
+<strong>113-guardrail-retrieval/D-001</strong> (no model client and no network on the retrieval path). The two new scans honour
+it — asserted by <code>guardrail.gates.no-network.test.ts</code> (SC-003). <em>(This acknowledgment was surfaced by the
+plan-constraint itself running on this Draft design — the feature dogfooding itself; see D-003.)</em></p>
+
+<h3>Toolchain / enforcement</h3>
+<p>This repo's enforcement floor is already wired (biome, tsc, vitest, the pre-commit <code>validate</code> gate); this design
+adds two scans <em>to</em> that gate and needs no new toolchain.</p>
+</section>
+
+
+<section id="tech-context">
+<h2>2 · Technical context</h2>
+<dl>
+  <dt>Language / runtime</dt><dd>TypeScript, the existing monorepo; no new dependency.</dd>
+  <dt>Architecture</dt><dd>Two folded scans in the kernel, invoked by thin CLI wrappers — the <code>quantifiedNfrFindings</code> pattern.</dd>
+  <dt>Test framework</dt><dd>vitest, test-first (as 112/113).</dd>
+  <dt>Coverage</dt><dd>Not in scope (no coverage floor change here).</dd>
+</dl>
+</section>
+
+
+<section id="data">
+<h2>3 · Data model &amp; contracts</h2>
+<p>No external interface or contract — both scans are internal. They consume 113's <code>GovernanceDecision[]</code> (from
+<code>loadDecisions</code>) and the parsed design documents already in the validate run. The declared surface is the set of
+path-like tokens extracted from a design's <code>#structure</code> section; an acknowledgment is a reference to a decision id or
+coordinate anywhere in the design.</p>
+</section>
+
+
+<section id="grounding">
+<h2>5 · Grounding &amp; evidence</h2>
+<table>
+  <thead><tr><th>Claim</th><th>Source</th><th>Status</th><th>Finding</th></tr></thead>
+  <tbody>
+    <tr><td>The folded-scan pattern: CLI reads the marker, short-circuits, calls a core <code>*Findings(docs, {tier})</code></td><td><code>packages/cli/src/commands/validate.ts:348</code>; core <code>validate.ts:493</code></td><td>verified</td><td><code>scanQuantifiedNfr</code> is the exact template to clone.</td></tr>
+    <tr><td>Profile tier read from <code>.spectastic/profile.json</code> via <code>readMarker(cwd).profile</code></td><td><code>packages/cli/src/commands/validate.ts:353-356</code>; <code>init/marker.js</code></td><td>verified</td><td>Absent marker ⇒ <code>undefined</code> ⇒ gate is a no-op (fail-safe).</td></tr>
+    <tr><td>Gated-tier set is a <code>Set</code> the core owns (quantified-NFR uses <code>{verified, enterprise}</code>)</td><td><code>packages/core/src/commands/validate.ts:433-442</code></td><td>verified</td><td>The plan-constraint needs its own <code>{standard, verified, enterprise}</code> set — standard+.</td></tr>
+    <tr><td>Decisions load from <code>specs/*/design.html</code> as <code>GovernanceDecision[]</code></td><td><code>packages/core/src/commands/adrs.ts</code> (113 <code>loadDecisions</code>)</td><td>verified</td><td>Reuse verbatim; the scans need no new reader.</td></tr>
+    <tr><td>A design's declared surface is recoverable from its project-structure tree</td><td>Spike over all 105 <code>specs/*/design.html</code> (id <code>project-structure</code>|<code>structure</code>)</td><td>verified</td><td>105/105 yield ≥1 path token (1521 lines → 747 path-ish tokens); brace-expansions negligible (6, 5 matched by a <code>dir/**</code> scope). Tokens are directory-coarse, so matching uses path-prefix OVERLAP, not exact glob-match (D-003).</td></tr>
+  </tbody>
+</table>
+</section>
+
+
+<section id="approach">
+<h2>6 · Approach</h2>
+<p>Add two pure kernel functions and two thin CLI wrappers that fold into the existing <code>validate</code> run beside
+<code>scanQuantifiedNfr</code>. The plan-constraint reads every design's declared surface, matches 113's active decisions
+(authored elsewhere) against it with 113's glob matcher, and errors on any unacknowledged match — gated to standard+ by the
+marker. Coverage counts, over all active decisions, those carrying a rule versus those neither checked nor excused, warns on the
+gaps and on any past <code>review-by</code>, and reports the proportion.</p>
+
+<pre><code>validate run
+  ├─ scanQuantifiedNfr        (existing)
+  ├─ scanPlanConstraint  ──▶  planConstraintFindings(designs, decisions, {tier})   [error @ standard+]
+  └─ scanDecisionCoverage ─▶  coverageFindings(decisions, {now})                    [warning, never blocks]
+                                        ▲
+                     loadDecisions(specs/*/design.html)  ── 113
+   spectastic adrs --coverage ─▶ prints the proportion (the report surface)</code></pre>
+</section>
+
+
+<section id="alternatives">
+<h2>7 · Alternatives considered</h2>
+<table>
+  <thead><tr><th>Option</th><th>Reuses the pattern</th><th>No code execution</th><th>Blocks correctly</th><th>Score</th></tr></thead>
+  <tbody>
+    <tr data-winner><td>Two folded scans (chosen)</td><td>✓</td><td>✓</td><td>✓ error@standard+ / warn</td><td>9</td></tr>
+    <tr><td>A schema per-file rule</td><td>partial</td><td>✓</td><td>✗ can't read the profile tier</td><td>5</td></tr>
+    <tr><td>A standalone <code>spectastic guard</code> verb</td><td>✗</td><td>✓</td><td>✓ but a 9th verb, off the gate</td><td>4</td></tr>
+  </tbody>
+</table>
+<p>A schema rule is profile-agnostic by design, so it cannot gate at standard+; a new verb would not run in the pre-commit gate.
+The folded scan is the only option that is both profile-aware and part of the existing gate.</p>
+</section>
+
+
+<section id="decisions">
+<h2>8 · Decisions</h2>
+
+<spec-decision id="D-001" grounding="verified">
+  <h4>D-001 · Both gates are folded CLI scans over the kernel, cloning <code>scanQuantifiedNfr</code></h4>
+  <p><b>Context.</b> The gate must read the profile tier and all decisions (cross-file), which a per-file schema rule cannot
+  (<code>validate.ts:348</code>). <b>Decision.</b> Kernel <code>planConstraintFindings</code>/<code>coverageFindings</code> +
+  CLI <code>scanPlanConstraint</code>/<code>scanDecisionCoverage</code>, folded into the validate run. <b>Consequences.</b>
+  + Reuses a proven, benched pattern; runs in the pre-commit gate. − Two more folded scans on the validate path (short-circuited
+  below standard, so the cost lands only where active).</p>
+</spec-decision>
+
+<spec-decision id="D-002" grounding="verified">
+  <h4>D-002 · The plan-constraint gates at standard and above</h4>
+  <p><b>Context.</b> The human decision raised the blocking floor to standard (quantified-NFR gates at verified+;
+  <code>validate.ts:433</code>). <b>Decision.</b> A new <code>isPlanConstraintGatedTier</code> over
+  <code>{standard, verified, enterprise}</code>, read from the marker; absent marker ⇒ no-op. <b>Consequences.</b> + A
+  contradicted decision fails from standard up. − A lite/unmarked project gets no plan-constraint (fail-safe on the antecedent,
+  like the enforce floor).</p>
+</spec-decision>
+
+<spec-decision id="D-003" grounding="verified">
+  <h4>D-003 · The declared surface is the project-structure tree, matched by path-prefix overlap</h4>
+  <p><b>Context.</b> The spec interview chose to reuse the design's §Project-structure tree rather than add a required field; a
+  spike over all 105 designs confirmed it is recoverable (grounding row 5): every design yields path tokens, but they are
+  directory-coarse (<code>packages/core/</code>, <code>scripts/</code>). <b>Decision.</b> Extract the first path-ish token per
+  tree line (comment stripped); a decision is in-scope when its scope glob and a declared token <em>overlap</em> — a declared
+  path within the scope, or a declared ancestor of it — not on exact glob-match. <b>Consequences.</b> + No new authoring surface;
+  works across the whole estate. + Overlap errs toward MORE acknowledgment, which is right for a happy-path nudge. − A coarse
+  declared dir may prompt for a decision the author will not actually touch, and a path never written into the tree is invisible
+  — both acceptable because the merge verdict in 115 checks the <em>actual</em> diff and is the guarantee this plan-time nudge is
+  not (the honest P-8/T-009 line).</p>
+</spec-decision>
+
+<spec-decision id="D-004" grounding="n-a">
+  <h4>D-004 · Coverage warnings fold into validate; the proportion is an explicit report</h4>
+  <p><b>Context.</b> Coverage must not block (spec FR-005), but its warnings should surface in the normal gate. <b>Decision.</b>
+  The unchecked-and-unexcused and past-<code>review-by</code> warnings are warning-severity findings in validate; the proportion
+  metric is printed by <code>spectastic adrs --coverage</code> (extending 113's command, which already loads decisions).
+  <b>Consequences.</b> + The gate carries the actionable warnings without blocking; the metric is a report you run. − The
+  headline percentage is not in the default validate output.</p>
+</spec-decision>
+
+<spec-decision id="D-005" grounding="n-a">
+  <h4>D-005 · Test-first, low risk — inherited from the slice</h4>
+  <p><b>Context.</b> 112 and 113 were both authored test-first on this same pattern. <b>Decision.</b> TDD; low risk tolerance —
+  a proven path, no experimental unknowns. <b>Consequences.</b> + Consistent, regression-guarded. − None material.</p>
+</spec-decision>
+</section>
+
+
+<section id="structure">
+<h2>9 · Project structure</h2>
+<pre><code>packages/core/src/guardrail/plan-constraint.ts    # planConstraintFindings + declared-surface extraction
+packages/core/src/guardrail/coverage.ts            # coverageFindings + proportion
+packages/core/src/guardrail/gated-tiers.ts         # isPlanConstraintGatedTier
+packages/cli/src/commands/validate.ts              # scanPlanConstraint + scanDecisionCoverage, folded
+packages/cli/src/commands/adrs.ts                  # --coverage report flag
+packages/core/test/guardrail.plan-constraint.test.ts
+packages/core/test/guardrail.coverage.test.ts
+packages/core/test/guardrail.gates.no-network.test.ts</code></pre>
+</section>
+
+
+<section id="risks">
+<h2>10 · Risks &amp; mitigations</h2>
+<spec-risk-log>
+<spec-risk status="mitigated" target="FR-003">
+  <h4>Declared-surface granularity mismatch (coarse dirs vs specific scopes)</h4>
+  <p>Likelihood medium, impact low. Spike-confirmed the tree is recoverable across all 105 designs; matching by path-prefix overlap handles the coarse-dir case, erring toward more acknowledgment. A path never written into the tree stays invisible — bounded by 115's diff-level verdict, the real guarantee.</p>
+</spec-risk>
+<spec-risk status="mitigated" target="FR-002">
+  <h4>False-firing on the existing estate at standard+</h4>
+  <p>Likelihood low, impact high. Mitigation: no existing decision carries scope metadata yet, so the constraint matches nothing on the current corpus; the whole-estate integration validate is the gate.</p>
+</spec-risk>
+</spec-risk-log>
+</section>
+
+
+<section id="complexity">
+<h2>11 · Complexity tracking</h2>
+<p>None. Two scans on a proven pattern; the one judgment call (surface heuristic) is recorded as D-003 with its ceiling.</p>
+</section>
+
+
+<section id="open-questions">
+<h2>12 · Open questions</h2>
+<p>None outstanding — scope, declared-surface source, and coverage posture were anchored in the spec interview; the coverage
+report surface is settled as D-004.</p>
+</section>
+
+
+<section id="changelog">
+<h2>13 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-09-13">13 Sep 2026</time><span>Status flipped Draft → Accepted — zero remaining unchecked tasks; SC-001..SC-004 tests verified passing (47 guardrail tests), estate validate + typechecks clean. Sibling bundle (REQ-LIFECYCLE-005).</span></li>
+  <li><time datetime="2026-09-13">13 Sep 2026</time><span>Design authored via <code>/spectastic.design</code>: two folded scans cloning <code>scanQuantifiedNfr</code>, gated at standard+ for the plan-constraint, warnings-only for coverage. Grounding: 5 verified, 0 assumed (the declared-surface approach spike-verified over all 105 designs; matching refined to path-prefix overlap, D-003).</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>

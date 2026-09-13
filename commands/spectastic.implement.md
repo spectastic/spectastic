@@ -125,6 +125,8 @@ Flags can appear in any order in `$ARGUMENTS`. A non-flag token (`T-NNN`, `I-NNN
 
 6. **Do the work.** Implement the task using your normal Claude Code capabilities. Write tests first if the task is in a "Tests" phase. Stay scoped — do not drift into adjacent tasks, do not refactor surrounding code unless the task explicitly asks for it.
 
+   **Consult the decisions that govern what you're touching (advisory).** Before authoring, run `spectastic adrs --for <the task's target path(s)>` and account for any governing decision it returns — its reason tells you *why* the constraint exists. This is a UX nudge, not a guarantee (T-009): it does not gate anything, and the real enforcement is the plan-constraint and merge verdict that run regardless. Skipping it changes no verdict — but heeding it is how the happy path stays on the right side of a decision the first time.
+
 7. **Mark complete.**
    - **Tasks file:** find the task's `<input type="checkbox">` and add the `checked` attribute. Do not delete the task; do not reorder. Other tasks stay untouched.
    - **Inbox `just-do` card:** add `data-status="done"` to the `<spec-triage>` element. Do not remove the card or move it out of inbox.html — it stays as history (faded with a DONE pill). Other cards stay untouched.

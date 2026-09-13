@@ -1,0 +1,272 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'">
+<title>The Claude case installs skills too · Change proposal</title>
+<link rel="stylesheet" href="../../../../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../../../../assets/favicon.svg">
+<script src="../../../../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Change proposal · 111-codex-skill-adapters</p>
+  <h1>The Claude case installs skills too</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    Make the portable Agent Skills the default everywhere — a Claude project gets <code>.claude/commands</code> <em>and</em> <code>.agents/skills</code>.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>     <span><spec-status value="applied">Applied</spec-status></span>
+    <b>Change ID</b>  <span>2026-09-12-claude-installs-skills</span>
+    <b>Spec</b>       <span><a href="../../../spec.html">111-codex-skill-adapters</a></span>
+    <b>Author</b>     <span>Brian Corbin (@briancorbinxyz)</span>
+    <b>Created</b>    <span><time datetime="2026-09-12">12 Sep 2026</time></span>
+    <b>Targets</b>    <span>3 requirement(s)</span>
+    <b>Read time</b>  <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-tldr>
+    <p>111 emits the portable Agent Skills only for <code>--target codex</code>; the default Claude install stays
+    commands-only. But Claude Code reads the Agent Skills standard natively (it co-authored it), and the same output has
+    now run unmodified in Codex <em>and</em> Antigravity. So make skills the default everywhere: plain
+    <code>spectastic init</code> writes <code>.claude/commands</code> <strong>and</strong> <code>.agents/skills</code>. The
+    machinery already exists — the <code>AdapterTarget</code> render is built — so this is an additive scaffold change plus
+    one honest consequence: NFR-002's "default output byte-identical" guarantee is deliberately relaxed to "changes only by
+    gaining the skills tree."</p>
+  </spec-tldr>
+</header>
+
+
+<spec-change id="2026-09-12-claude-installs-skills" status="applied">
+
+<header>
+  <h3>The Claude case installs skills too</h3>
+  <span class="meta"><spec-status value="applied">Applied</spec-status></span>
+</header>
+
+
+<section id="intent">
+<h2>1 · Intent</h2>
+<p>Spec 111 shipped one portable output (Agent Skills, <code>.agents/skills/&lt;verb&gt;/SKILL.md</code>) but gated it behind
+<code>--target codex</code>. The Claude default kept emitting only <code>.claude/commands</code>. That was the conservative
+first cut, but it under-uses what 111 built: <strong>Claude Code reads the Agent Skills open standard natively</strong> — it
+is one of the standard's co-authors — so a Claude project can carry the portable skill surface at no cost.</p>
+<p>Two dogfood runs since 111 landed make the case concrete. The <em>identical</em> <code>.agents/skills</code> output
+produced by <code>init --target codex</code> was read, with no per-tool adaptation, first by <strong>Codex</strong>
+(codex-cli 0.153.4) and then by <strong>Antigravity</strong> (Gemini) — which advanced the same project's implementation.
+Portable-by-default is the natural conclusion: every project spectastic scaffolds should carry the format that already
+works across those hosts, not only the ones that pass a flag.</p>
+<p>This is the <code>TBD-portable-skill-adapters</code> follow-on partially drained — <em>additively</em>. It does not retire
+<code>.claude/commands</code>; the full unification (skills as the <em>only</em> Claude surface) stays deferred.</p>
+<p><strong>The value is portability insurance.</strong> The point is that <em>every</em> project spectastic scaffolds carries the
+portable form, so opening it in any Agent Skills host — Codex, Antigravity, Cursor, Gemini CLI — just works. In Claude Code the
+slash commands stay the primary surface; the skills ride along. Claude Code does read Agent Skills (it even treats
+<code>.claude/commands</code> as a skills fallback), so the two coexisting is a deliberate redundancy, not a collision — and
+because the skills are carried rather than depended on, the change holds regardless of how any one host chooses to surface
+them.</p>
+</section>
+
+
+<section id="scope">
+<h2>2 · Scope</h2>
+
+<spec-goals>
+  <h3>In scope</h3>
+  <ul>
+    <li>The default <code>spectastic init</code> (the Claude target) emits <code>.agents/skills</code> alongside <code>.claude/commands</code> — both surfaces, nothing removed.</li>
+    <li>Making the render host-aware: the Codex-specific inline-degradation note moves out of the shared translation so a Claude skill never misdescribes its host (FR-012, honouring FR-011).</li>
+    <li>Relaxing NFR-002 honestly: the default output now grows by exactly the skills tree, and nothing else changes.</li>
+    <li>Extending the <code>--tools</code> managed/drift guarantee to the Claude skills tree, so a managed Claude project's skills cannot ship stale either.</li>
+    <li>Re-baselining the T-002 default-scaffold snapshot and reconciling SC-003 to the new invariant.</li>
+    <li>A committed conformance test for the render — vendor an official Agent Skills schema if one is published, otherwise encode the standard's documented frontmatter contract (pulled into scope so distribution and verification land together).</li>
+  </ul>
+</spec-goals>
+
+<spec-non-goals>
+  <h3>Out of scope</h3>
+  <ul>
+    <li>Retiring <code>.claude/commands</code> in favour of skills (the full unification) — stays <code>TBD-portable-skill-adapters</code>.</li>
+    <li>Any change to what <code>--target codex</code> emits — only the shared render becomes host-aware (the Codex note moves to the Codex target); the Codex output is unchanged.</li>
+    <li>Richer Claude-only skills that add subagent wiring beyond the shared render — the Claude skill is the same body minus the Codex note; subagents stay in <code>.claude/agents</code> as today.</li>
+    <li>Fixing apply's inability to fold a <code>&lt;spec-criterion&gt;</code> — recorded as <code>TBD-apply-fold-criterion</code>, worked around here by ordering (SC-003 as the first task).</li>
+  </ul>
+</spec-non-goals>
+</section>
+
+
+<section id="approach">
+<h2>3 · Approach</h2>
+<p>The <code>AdapterTarget</code> seam and the <code>CODEX_TARGET</code> render already exist, and <code>prebuild</code>
+already renders <code>.agents/skills</code> into the bundle. So the scaffold change is small: the Claude branch of
+<code>inventoryAt</code> (<code>packages/cli/src/commands/init/bundle.ts</code>) starts including the <code>.agents/skills</code>
+tree in addition to <code>.claude/commands</code> and <code>.claude/agents</code>. Extended-verb filtering already understands
+the skills path (<code>verbFromDestination</code> was taught both shapes in 111), so <code>--with</code> keeps working
+unchanged.</p>
+<p>The one real consequence is NFR-002. 111 built a byte-snapshot fence (T-002 / SC-003) guaranteeing the default scaffold
+never changes. That guarantee is now deliberately spent: the default output grows by the ten skill files. Rather than delete
+the fence, it is <em>tightened around the intended change</em> — the snapshot asserts the non-skills files (commands, agents,
+assets, templates, generated <code>.gitignore</code>/<code>spectastic.json</code>) stay byte-identical and the skills tree is
+the only addition. NFR-002 is reworded to match. SC-003 must move with it, but <strong>apply's fold cannot carry an SC</strong>
+(<code>apply.ts:134-137</code> matches <code>&lt;spec-requirement&gt;</code> only), so SC-003 is reconciled as the first task,
+coupled to FR-012, closing the contradiction window inside the same drain. Under <code>--tools</code>, the Claude managed
+install generalises to stamp and drift-guard both trees, reusing the <code>generateAdapters(cwd, target)</code> and folded
+drift scan 111 already made target-aware.</p>
+
+<p><strong>The render must become host-aware.</strong> Today the inline-degradation note lives in the shared
+<code>translateToSkill</code> (<code>translate.ts:132</code>), appended to every subagent verb unconditionally — harmless
+while only Codex consumed the render, but wrong the moment Claude does (FR-011 scopes the note "under Codex"). So the note
+moves out of the shared translation into the Codex target's render; the Claude target renders the same skill without it. This
+is an implementation fix honouring the <em>existing</em> FR-011 wording, not a contract change.</p>
+
+<p><strong>Two surfaces, one verb.</strong> A Claude project will carry <code>/spectastic.spec</code> (the slash command) and
+<code>$spectastic-spec</code> (the skill) for the same verb — distinct invocation paths, a deliberate redundancy under the
+portability framing, not a collision. If it ever proves confusing the escalation is the full unification (retire
+<code>.claude/commands</code>), which stays <code>TBD-portable-skill-adapters</code>. The premise that Claude Code reads
+<code>.agents/skills/</code> is author-confirmed (Claude Code is an Agent Skills host and treats commands as a skills
+fallback), so no verification precondition is owed — and under portability insurance a host that surfaced skills differently
+would not undermine the change anyway.</p>
+</section>
+
+
+<section id="deltas">
+<h2>4 · Deltas</h2>
+<p>One <code>&lt;spec-delta&gt;</code> per requirement touched. <code>target=</code> links to the live spec.</p>
+
+<spec-delta op="added" target="FR-012">
+  <spec-requirement id="FR-012" priority="must">
+    <p>The default <code>spectastic init</code> (the <code>claude</code> target) <spec-rule>MUST</spec-rule> also emit the
+    portable Agent Skills adapters — one <code>.agents/skills/&lt;verb&gt;/SKILL.md</code> per in-scope verb — alongside the
+    <code>.claude/commands</code> adapters, so a Claude project carries both invocation surfaces. Neither surface is removed,
+    and the same verb-scope rules apply (core by default, extended via <code>--with</code>). A Claude-target skill
+    <spec-rule>MUST NOT</spec-rule> carry the Codex-specific inline-degradation note: <a href="../../../spec.html#FR-011">FR-011</a>
+    scopes that note to the Codex host, so the shared render must be host-appropriate and a skill installed for Claude Code
+    (which <em>does</em> have subagents) must not tell its reader the fan-out ran inline.</p>
+    <details><summary>Rationale</summary><p>Claude Code is documented as an Agent Skills host, and the same rendered
+    output already runs unmodified in Codex and Antigravity. Making it the default carries the portable surface everywhere
+    at near-zero cost — the render already exists. The one real cost the adversarial pass surfaced: the note that is correct
+    for Codex is <em>false</em> for Claude, so the render must become host-aware (see Approach + Tasks).</p></details>
+  </spec-requirement>
+</spec-delta>
+
+<spec-delta op="added" target="FR-013">
+  <spec-requirement id="FR-013" priority="should">
+    <p>Under <code>spectastic init --tools</code>, the Claude managed install <spec-rule level="should">SHOULD</spec-rule>
+    stamp a managed marker and drift-guard the <code>.agents/skills</code> tree as well as <code>.claude/commands</code>, so a
+    managed Claude project's skills cannot ship stale either — the same "can't ship stale" guarantee (<a href="../../../spec.html#FR-007">FR-007</a>/<a href="../../../spec.html#FR-008">FR-008</a>) applied to the second surface.</p>
+    <details><summary>Rationale</summary><p>An unguarded second surface would silently drift from source the moment a
+    command changed. <code>should</code>, not <code>must</code>: the unmanaged scaffold (FR-012) is the core ask; the managed
+    guarantee is the natural completion, but a plain <code>init</code> without <code>--tools</code> is still valid.</p></details>
+  </spec-requirement>
+</spec-delta>
+
+<spec-delta op="modified" target="NFR-002">
+  <p><strong>What changes:</strong> the default scaffold is no longer byte-identical after this feature — it deliberately
+  gains the <code>.agents/skills</code> tree (FR-012). The invariant is retained but scoped to everything <em>else</em>: the
+  "byte-identical" guarantee now covers the non-skills files, and the skills tree is the single permitted addition. This is a
+  conscious relaxation of the original absolute guarantee, recorded here rather than silently dropped.</p>
+  <spec-requirement id="NFR-002" priority="must">
+    <p>Beyond the deliberate addition of the <code>.agents/skills</code> tree (FR-012), adding portable skills
+    <spec-rule>MUST NOT</spec-rule> change the default <code>spectastic init</code> output: a Claude project's
+    <code>.claude/commands</code>, <code>.claude/agents</code>, <code>assets</code>, <code>templates</code>, and generated
+    <code>.gitignore</code>/<code>spectastic.json</code> stay byte-identical (≤ 0 changed non-skills files), and the run
+    introduces ≤ 0 new <code>validate</code> findings.</p>
+  </spec-requirement>
+</spec-delta>
+</section>
+
+
+<section id="subtraction">
+<h2>4b · What this change removes</h2>
+<p>Each entry names one thing this change takes away. <strong>An empty register is the answer &ldquo;this removes
+nothing&rdquo;</strong>.</p>
+<p>The only subtraction is the weakening of NFR-002's absolute "default output byte-identical" guarantee, and the
+<code>op="modified"</code> delta on NFR-002 above states it in full (reason and new post-state) — so no separate entry is
+owed here.</p>
+
+<spec-subtraction>
+</spec-subtraction>
+</section>
+
+
+<section id="risks">
+<h2>5 · Risk register</h2>
+<p>Populated by the adversarial risk pass (touches <code>must</code>-tier requirements). One <code>&lt;spec-risk&gt;</code>
+per finding; <code>status=</code> starts <code>identified</code> and apply refuses until each is <code>accepted</code>,
+<code>mitigated</code>, or <code>rejected</code>.</p>
+
+<spec-risk-log>
+
+<spec-risk target="FR-012" status="mitigated" by="Brian Corbin">
+  <p class="claim">Shipping every Claude project the Codex render duplicates the full-fidelity <code>.claude/commands</code> verb and, worse, ships a <code>propose</code>/<code>implement</code>/<code>triage</code> skill that tells a Claude reader the fan-out "runs inline under Codex" — false on a host that has subagents.</p>
+  <p class="citation">FR-012, "a Claude project carries both invocation surfaces," read with the shared render at <code>translate.ts:132</code> that appends the Codex note unconditionally; and the premise "Claude Code is an Agent Skills host."</p>
+  <div class="response"><strong>Mitigated.</strong> The misdescription half is fixed at the contract level: FR-012 now forbids the Codex note on a Claude skill (honouring FR-011's "under Codex" scope), and a task moves the note out of the shared render into the Codex target. The grounding half is closed by the author's own knowledge: Claude Code reads Agent Skills and even treats <code>.claude/commands</code> as a skills fallback — so no verification precondition is owed, and the dogfood task is dropped. Under the settled <em>portability-insurance</em> framing (§Intent), a Claude project carries the skills so any host works while the slash commands stay primary in Claude, which makes the double-registration a deliberate redundancy, not a collision; the full unification (retire commands) stays <code>TBD-portable-skill-adapters</code>.</div>
+</spec-risk>
+
+<spec-risk target="SC-003" status="mitigated" by="Brian Corbin">
+  <p class="claim">FR-012 adds ten files to the default scaffold — exactly SC-003's "Falsified by" condition — yet SC-003 is reconciled only through a §6 task, so on apply the live spec keeps a must-tier criterion that contradicts the new NFR-002.</p>
+  <p class="citation">SC-003 (<code>validates="NFR-002"</code>): "Changed files in the default scaffold ≤ 0 … Falsified by: Any difference in the default scaffold's file set or bytes." No <code>&lt;spec-delta target="SC-003"&gt;</code> exists.</p>
+  <div class="response"><strong>Mitigated.</strong> A machinery constraint makes the task the <em>only</em> available mechanism: apply's fold matches <code>&lt;spec-requirement&gt;</code> and cannot carry an <code>&lt;spec-criterion&gt;</code> (<code>apply.ts:134-137</code>), so SC-003 cannot be a delta. The mitigation is ordering — SC-003's reconciliation is the first task and is coupled to FR-012, closing the contradiction window inside the same drain. The underlying "apply cannot fold an SC" limitation is filed as a separate meta-triage (<code>TBD-apply-fold-criterion</code>) rather than fixed here.</div>
+</spec-risk>
+
+<spec-risk target="§2" status="mitigated" by="Brian Corbin">
+  <p class="claim">The change quietly does the deferred <code>TBD-portable-skill-adapters</code> work — making skills a standing surface for every Claude project — while deferring the one guard (schema conformance) that would prove the shipped-by-default skills are well-formed: maximum distribution before minimum verification.</p>
+  <p class="citation">§Scope in-scope "the default <code>spectastic init</code> … emits <code>.agents/skills</code>," on the evidence of two <em>non-Claude</em> dogfood runs.</p>
+  <div class="response"><strong>Mitigated by pulling the conformance guard into scope</strong> — distribution and verification now land together. A committed conformance test is added to §6: it vendors an official Agent Skills schema and validates each rendered <code>SKILL.md</code> against it <em>if one is published</em>, and otherwise encodes the standard's documented frontmatter contract (required <code>name</code>+<code>description</code>, <code>name</code> lowercase-hyphen ≤ 64 matching its directory, <code>description</code> ≤ 1024, valid YAML, only known optional keys) as the committed check. This extends the existing 13 unit tests into a conformance suite, so the format reaches distribution and verification in the same change. The format also stays additive and fail-safe: an unmanaged <code>.agents/skills</code> tree triggers no validate finding (<code>validate.ts:145</code>), so the installed base is undisturbed.</div>
+</spec-risk>
+
+</spec-risk-log>
+</section>
+
+
+<section id="tasks">
+<h2>6 · Tasks</h2>
+<p>Scoped to this change only. On <code>/spectastic.apply</code> these fold into the target's <code>tasks.html</code> as a
+new provenance-linked phase that <code>/spectastic.implement</code> drains.</p>
+
+<ul style="list-style:none;padding-left:0;">
+  <li><input type="checkbox"> Reconcile SC-003 to the new NFR-002 (scaffold changes only by gaining the skills tree) — first, coupled to FR-012, since apply cannot fold it and it must not lag the code change <span class="path">specs/111-codex-skill-adapters/spec.html</span></li>
+  <li><input type="checkbox"> Make the inline-degradation note Codex-target-specific: move it out of the shared <code>translateToSkill</code> into the Codex render, and assert the Claude render carries no "under Codex" note (FR-012) <span class="path">packages/core/src/skills/translate.ts</span></li>
+  <li><input type="checkbox"> Include the <code>.agents/skills</code> tree in the Claude/default scaffold inventory (FR-012) <span class="path">packages/cli/src/commands/init/bundle.ts</span></li>
+  <li><input type="checkbox"> Re-baseline the default-scaffold snapshot: assert the non-skills files are byte-identical and the skills tree is the only addition (NFR-002) <span class="path">packages/cli/test/init/default-scaffold.test.ts</span></li>
+  <li><input type="checkbox"> Integration test: default <code>spectastic init</code> writes both <code>.claude/commands</code> and <code>.agents/skills</code>; extended verbs still gated on <code>--with</code> (FR-012) <span class="path">packages/cli/test/init/target-codex.integration.test.ts</span></li>
+  <li><input type="checkbox"> Extend the <code>--tools</code> Claude managed install to stamp + drift-guard both trees (FR-013) <span class="path">packages/cli/src/commands/init/tools.ts</span></li>
+  <li><input type="checkbox"> Add the committed conformance suite: vendor an official Agent Skills schema and validate each rendered <code>SKILL.md</code> against it if one is published, else assert the documented frontmatter contract (name/description/limits, valid YAML, known keys) <span class="path">packages/core/test/skills-translate.test.ts</span></li>
+  <li><input type="checkbox"> Update the deferred-work note and README to say the portable skills ship for Claude by default <span class="path">CLAUDE.md</span></li>
+</ul>
+</section>
+
+
+<section id="questions">
+<h2>7 · Open questions</h2>
+<spec-questions>
+<p>None outstanding — scope (additive, both surfaces) and default-vs-opt-in (default) were anchored in the interview;
+the NFR-002 relaxation and the managed-drift extension follow from them.</p>
+</spec-questions>
+</section>
+
+
+<section id="changelog">
+<h2>8 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-09-12">12 Sep 2026</time><span>Proposal authored.</span></li>
+  <li><time datetime="2026-09-12">12 Sep 2026</time><span>Adversarial risk pass found three risks; two exposed real draft defects (the Codex note leaking onto Claude skills; SC-003 contradicting NFR-002 with no fold path) and reshaped the proposal. Decision interview settled the framing (portability insurance) and dispositioned all three risks to <code>mitigated</code>: Codex-note fix + author-confirmed Claude support (dogfood dropped), SC-003 first-task ordering + <code>TBD-apply-fold-criterion</code>, and the conformance guard pulled into scope (vendor-schema-else-documented-rules).</span></li>
+  <li><time datetime="2026-09-12">12 Sep 2026</time><span>Applied on 12 Sep 2026 — Make the portable Agent Skills the default everywhere — a Claude project now gets .claude/commands and .agents/skills — via ADD FR-012 (Claude scaffold emits both surfaces; Claude skills carry no Codex note), ADD FR-013 (--tools drift-guards both trees), and MODIFY NFR-002 (relaxed from byte-identical to changes-only-by-the-skills-tree). Adversarially reviewed and interviewed; three risks mitigated.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+</spec-change>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  2026-09-12-claude-installs-skills · The Claude case installs skills too · authored 2026-09-12
+</footer>
+
+</main>
+<script src="../../../../../assets/spec.js"></script>
+</body>
+</html>

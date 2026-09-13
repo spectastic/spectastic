@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'">
+<title>Teaching follow-up (shifu) · Design</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Design · 117-guardrail-shifu</p>
+  <h1>Teaching follow-up (shifu)</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    How we will build it.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>     <span><spec-status value="accepted">Accepted</spec-status></span>
+    <b>Spec</b>       <span><a href="./spec.html">117-guardrail-shifu</a></span>
+    <b>Owner</b>      <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Branch</b>     <span><code>main</code></span>
+    <b>Created</b>    <span><time datetime="2026-09-13">13 Sep 2026</time></span>
+    <b>Read time</b>  <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-tldr>
+    <p>A pure <code>shifuQuestions(verdict)</code> that templates one Socratic question per violation from the decision reason +
+    source→target, surfaced by an opt-in <code>verdict --teach</code>. No LLM, off the enforcement path. Biggest risk: a template
+    that reads as a fix rather than a question — mitigated by a test asserting it ends in "?" and carries no imperative verb.</p>
+  </spec-tldr>
+</header>
+
+
+<section id="principles-check">
+<h2>1 · Principles check</h2>
+<p><a href="../../principles.html">P-8</a> — OK: the follow-up is deterministic and strictly post-verdict; it changes no gate
+result. <a href="../../principles.html">P-14</a> — OK: the composer is kernel logic; the CLI flag only prints it. No LLM at all,
+so the "off the model path" concern is moot by construction. No exceptions logged.</p>
+
+<h3>Governing decisions acknowledged</h3>
+<p>This plan builds in <code>packages/core/src/guardrail/**</code>, governed by <strong>113-guardrail-retrieval/D-001</strong>
+(no model/network on the retrieval path). shifu honours it — pure, no model — asserted by a no-network test.</p>
+
+<h3>Toolchain / enforcement</h3>
+<p>Floor already wired; one composer + one flag. No new toolchain.</p>
+</section>
+
+
+<section id="tech-context">
+<h2>2 · Technical context</h2>
+<dl>
+  <dt>Language / runtime</dt><dd>TypeScript, existing monorepo; no new dependency.</dd>
+  <dt>Architecture</dt><dd>A pure composer over 115's <code>Verdict</code>, printed by the existing <code>verdict</code> CLI under a flag.</dd>
+  <dt>Test framework</dt><dd>vitest, test-first.</dd>
+  <dt>Coverage</dt><dd>Not in scope.</dd>
+</dl>
+</section>
+
+
+<section id="data">
+<h2>3 · Data model &amp; contracts</h2>
+<p>No external interface. <code>shifuQuestions(verdict: Verdict): string[]</code> — one interrogative string per violation,
+composed from <code>reason</code> + <code>source</code>/<code>target</code>. No new types.</p>
+</section>
+
+
+<section id="grounding">
+<h2>5 · Grounding &amp; evidence</h2>
+<table>
+  <thead><tr><th>Claim</th><th>Source</th><th>Status</th><th>Finding</th></tr></thead>
+  <tbody>
+    <tr><td>115's Violation carries reason + source→target</td><td><code>packages/core/src/guardrail/types.ts</code> (<code>Violation</code>)</td><td>verified</td><td><code>decisionId, specId, ruleId, reason, file, line?, source?, target?</code> — everything a question needs.</td></tr>
+    <tr><td>The verdict CLI is the surface to add <code>--teach</code> to</td><td><code>packages/cli/src/commands/verdict.ts</code> (115)</td><td>verified</td><td>Adds a flag + a print after the verdict; the exit code path is untouched.</td></tr>
+    <tr><td>The no-network test shape is reusable</td><td><code>packages/core/test/guardrail.verdict.no-exec.test.ts</code></td><td>verified</td><td>Walk shifu's import graph; assert 0 model/network.</td></tr>
+  </tbody>
+</table>
+</section>
+
+
+<section id="approach">
+<h2>6 · Approach</h2>
+<p>Add <code>shifuQuestions(verdict)</code> to the guardrail module: for each violation, template one question —
+<em>"Decision &lt;id&gt; exists so that: &lt;reason&gt; — this change has &lt;source&gt; reaching &lt;target&gt;. What makes
+that necessary here rather than the path the decision intends?"</em> — falling back to a reason-only form when source→target is
+absent. Add <code>--teach</code> to the <code>verdict</code> CLI, printing the questions after the verdict under an advisory
+header, leaving the exit code and persisted artifact untouched.</p>
+</section>
+
+
+<section id="alternatives">
+<h2>7 · Alternatives considered</h2>
+<table>
+  <thead><tr><th>Option</th><th>Deterministic</th><th>Off the verdict path</th><th>Meets the intent</th><th>Score</th></tr></thead>
+  <tbody>
+    <tr data-winner><td>Templated question (chosen)</td><td>✓</td><td>✓</td><td>✓ one Socratic question, no fix</td><td>9</td></tr>
+    <tr><td>LLM-phrased shifu</td><td>✗</td><td>✓</td><td>✓ richer wording, soft value</td><td>5</td></tr>
+    <tr><td>No follow-up (verdict reason only)</td><td>✓</td><td>✓</td><td>partial — names, doesn't prompt</td><td>6</td></tr>
+  </tbody>
+</table>
+<p>The LLM variant adds non-determinism for phrasing polish; the templated question meets the "one question, never a fix" intent
+deterministically, which is the P-8-clean choice.</p>
+</section>
+
+
+<section id="decisions">
+<h2>8 · Decisions</h2>
+
+<spec-decision id="D-001" grounding="verified">
+  <h4>D-001 · A deterministic templated question, not an LLM</h4>
+  <p><b>Context.</b> 115's <code>Violation</code> carries reason + source→target (grounding row 1). <b>Decision.</b> Template one
+  question per violation from those fields; no model. <b>Consequences.</b> + Deterministic, testable, needs no key; can't drift.
+  − Fixed phrasing (no wording variety) — the deferred LLM variant if that ever matters.</p>
+</spec-decision>
+
+<spec-decision id="D-002" grounding="verified">
+  <h4>D-002 · Surface via <code>verdict --teach</code>, output-only</h4>
+  <p><b>Context.</b> The verdict CLI already prints the verdict (<code>verdict.ts</code>). <b>Decision.</b> A <code>--teach</code>
+  flag prints the questions after the verdict; the exit code and artifact are untouched. <b>Consequences.</b> + Off the
+  enforcement path by construction. − One more flag to document.</p>
+</spec-decision>
+
+<spec-decision id="D-003" grounding="n-a">
+  <h4>D-003 · Test-first, low risk</h4>
+  <p><b>Context.</b> One pure composer + one flag. <b>Decision.</b> TDD; low risk. A "no imperative verb, ends in ?" test guards
+  the never-a-fix property. <b>Consequences.</b> + Regression-guarded. − None material.</p>
+</spec-decision>
+</section>
+
+
+<section id="structure">
+<h2>9 · Project structure</h2>
+<pre><code>packages/core/src/guardrail/shifu.ts            # shifuQuestions (pure)
+packages/core/src/commands/verdict.ts            # re-export shifuQuestions
+packages/cli/src/commands/verdict.ts             # --teach flag prints the questions
+packages/core/test/guardrail.shifu.test.ts        # composition + never-a-fix + no-network</code></pre>
+</section>
+
+
+<section id="risks">
+<h2>10 · Risks &amp; mitigations</h2>
+<spec-risk-log>
+<spec-risk status="mitigated" target="FR-001">
+  <h4>The template reads as a fix, not a question</h4>
+  <p>Likelihood medium, impact medium. Mitigation: a test asserts each question ends in "?" and contains no imperative fix verb (add/change/replace/use).</p>
+</spec-risk>
+<spec-risk status="mitigated" target="FR-003">
+  <h4>--teach accidentally changes the verdict</h4>
+  <p>Likelihood low, impact high. Mitigation: shifu reads a Verdict and returns strings; it never touches the verdict or exit code — an integration test asserts identical exit with and without --teach.</p>
+</spec-risk>
+</spec-risk-log>
+</section>
+
+
+<section id="complexity">
+<h2>11 · Complexity tracking</h2>
+<p>None. One pure composer + one output-only flag.</p>
+</section>
+
+
+<section id="open-questions">
+<h2>12 · Open questions</h2>
+<p>None outstanding — deterministic-not-LLM and the opt-in output-only surface were settled before drafting.</p>
+</section>
+
+
+<section id="changelog">
+<h2>13 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-09-13">13 Sep 2026</time><span>Status flipped Draft → Accepted — zero remaining unchecked tasks; SC-001..SC-003 verified passing (6 shifu tests, exercised end-to-end: identical exit with/without --teach), estate + typechecks clean. Sibling bundle (REQ-LIFECYCLE-005).</span></li>
+  <li><time datetime="2026-09-13">13 Sep 2026</time><span>Design authored: a pure templated Socratic composer over 115's verdict, surfaced output-only via <code>verdict --teach</code>. Grounding: 3 verified, 0 assumed. Acknowledges 113-guardrail-retrieval/D-001.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>

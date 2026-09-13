@@ -33,16 +33,21 @@ type WaiverCtx = {
 export const REQUIRED_SKILL_KEYS = ['triggers', 'use-when', 'sibling-boundary'] as const;
 
 /**
- * `commands-drift` (spec 031-init-tools, FR-007 / plan D-001). An init-tools
- * managed command adapter (`.claude/commands/spectastic.*.md`) MUST match its
- * `commands/*.md` source byte-for-byte — generate-on-demand means "can't ship
- * stale", enforced by the pre-commit gate. Returns an `error` finding when the
- * adapter is missing or diverges; `null` when it matches. Like the skill and
- * quarantine scans, this compares gitignored markdown, so it lives here rather
- * than the HTML-bound schema rule registry, and the CLI folds it in.
+ * `commands-drift` (spec 031-init-tools, FR-007 / plan D-001; generalised to a
+ * second host target by spec 111-codex-skill-adapters, FR-007/008). An
+ * init-tools managed adapter MUST match what its `commands/*.md` source renders
+ * to — for the Claude target that render is the identity (a verbatim
+ * `.claude/commands` copy, the original byte-for-byte check); for the Codex
+ * target it is the translated `.agents/skills/<verb>/SKILL.md`. `expected` is that
+ * rendered content, so the caller passes render(source) and this stays a plain
+ * string comparison. Generate-on-demand means "can't ship stale", enforced by
+ * the pre-commit gate. Returns an `error` finding when the adapter is missing
+ * or diverges; `null` when it matches. Like the skill and quarantine scans, it
+ * compares gitignored markdown, so it lives here rather than the HTML-bound
+ * schema rule registry, and the CLI folds it in.
  */
-export function commandsDriftFinding(source: string, adapter: string | null, file: string): Finding | null {
-  if (adapter === source) return null;
+export function commandsDriftFinding(expected: string, adapter: string | null, file: string): Finding | null {
+  if (adapter === expected) return null;
   const detail = adapter === null ? 'is missing' : 'has drifted from its source';
   return {
     file,
@@ -50,8 +55,8 @@ export function commandsDriftFinding(source: string, adapter: string | null, fil
     column: 1,
     rule: 'commands-drift',
     severity: 'error',
-    message: `Managed command adapter ${file} ${detail} — regenerate it.`,
-    fixHint: 'Run `spectastic init --tools --commands-only` to regenerate the adapters from source.',
+    message: `Managed adapter ${file} ${detail} — regenerate it.`,
+    fixHint: 'Run `spectastic init --tools` to regenerate the managed adapters from source (add `--target codex` for Codex).',
   };
 }
 

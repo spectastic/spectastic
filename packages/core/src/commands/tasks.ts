@@ -15,6 +15,9 @@
 import { buildCorpusPromptBlock, loadCorpus, withCorpusHint } from '@spectastic/corpus';
 import { extractSpecMetadata } from '@spectastic/schema';
 import { fenceArtifactText } from '@spectastic/schema/fence';
+import { buildGoverningDecisionsBlock } from '../guardrail/injection.js';
+import { extractDeclaredSurface } from '../guardrail/plan-constraint.js';
+import { loadDecisions } from './adrs.js';
 import type { GraduationClass, KernelContext, TaskItem, TaskPhase, TasksInput, TasksResult } from '../types.js';
 
 export async function tasksCommand(input: TasksInput, ctx: KernelContext): Promise<TasksResult> {
@@ -119,7 +122,11 @@ async function deriveAndDescribePhases(
   // Optional: enrich titles via ai.chat() in a single batched call. Kept
   // light (skipping AI when there's no spec.ai) so unit tests stay fast.
   try {
-    const enrichment = await enrichDescriptions(meta, ctx, decisions);
+    // Governing-decision injection (116): the decisions governing this design's
+    // declared surface, fenced as data, so the enriched titles account for them.
+    // An aid, not a gate.
+    const governingBlock = buildGoverningDecisionsBlock(extractDeclaredSurface(planHtml), await loadDecisions(ctx));
+    const enrichment = await enrichDescriptions(meta, ctx, decisions, governingBlock);
     for (const phase of phases) {
       for (const task of phase.tasks) {
         const enriched = enrichment[task.id];
@@ -155,6 +162,7 @@ async function enrichDescriptions(
   meta: ReturnType<typeof extractSpecMetadata>,
   ctx: KernelContext,
   decisions?: Record<string, string>,
+  governingBlock = '',
 ): Promise<Record<string, string>> {
   if (!ctx.ai) return {};
   const reqList = [...meta.fr, ...meta.nfr, ...meta.sc].map((r) => `${r.id} (${r.priority}): ${r.summary}`).join('\n');
@@ -173,6 +181,7 @@ async function enrichDescriptions(
       `Requirements:`,
       fenceArtifactText(reqList, 'Requirements'),
       corpusBlock ? `\n${corpusBlock}` : '',
+      governingBlock ? `\n${governingBlock}` : '',
     ]
       .filter(Boolean)
       .join('\n'),

@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'">
+<title>Scoped decision retrieval · Design</title>
+<link rel="stylesheet" href="../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../assets/favicon.svg">
+<script src="../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Design · 113-guardrail-retrieval</p>
+  <h1>Scoped decision retrieval</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    How we will build it.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>     <span><spec-status value="accepted">Accepted</spec-status></span>
+    <b>Spec</b>       <span><a href="./spec.html">113-guardrail-retrieval</a></span>
+    <b>Owner</b>      <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Branch</b>     <span><code>main</code></span>
+    <b>Created</b>    <span><time datetime="2026-09-13">13 Sep 2026</time></span>
+    <b>Read time</b>  <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-tldr>
+    <p>A read-only, AI-free kernel command <code>adrsCommand</code> (mirroring <code>order</code>) reads decisions from
+    <code>design.html</code> files via the fs port, a pure <code>decisionsForPaths</code> glob-matches scope against the query,
+    and a pure <code>buildRetrievalLog</code> renders a deterministic log given an injected clock. Biggest risk: a naive glob
+    matcher; mitigated by a small dependency-free compiler with an explicit ceiling and a matrix of matching tests.</p>
+  </spec-tldr>
+</header>
+
+
+<section id="principles-check">
+<h2>1 · Principles check</h2>
+<p>All deterministic logic is in <code>@spectastic/core</code> (<a href="../principles.html">P-14</a> — fat core, thin CLI: the
+CLI just parses <code>--for</code>, resolves the project, and prints). The command carries no AIProvider and no clock of its own —
+the clock is injected — so it runs in CI with no key and stays deterministic (the enforce/policy precedent). Retrieval is the
+first half of the guarantee the gates complete (<a href="../principles.html">P-8</a>).</p>
+</section>
+
+
+<section id="tech-context">
+<h2>2 · Technical context</h2>
+<dl>
+  <dt>Kernel</dt><dd><code>packages/core/src/commands/adrs.ts</code> (<code>adrsCommand</code> + <code>loadDecisions</code>), a new tsup entry + <code>./commands/adrs</code> export subpath.</dd>
+  <dt>Pure helpers</dt><dd><code>packages/core/src/guardrail/</code>: <code>parse.ts</code> (design.html → decisions), <code>glob.ts</code> (compiler), <code>retrieve.ts</code> (<code>decisionsForPaths</code>), <code>log.ts</code> (<code>buildRetrievalLog</code>/<code>renderRetrievalLog</code>), <code>types.ts</code>.</dd>
+  <dt>CLI</dt><dd><code>packages/cli/src/commands/adrs.ts</code> — <code>registerAdrs</code>, wired in <code>index.ts</code> beside <code>registerOrder</code>.</dd>
+</dl>
+</section>
+
+
+<section id="data">
+<h2>3 · Data model &amp; contracts</h2>
+<p>Types in <code>guardrail/types.ts</code>: <code>GovernanceDecision</code>, <code>RetrievalMatch</code>, <code>RetrievalLog</code>
+(see spec §4). The log is JSON with stable key order and a trailing newline. The decision coordinate is
+<code>@spectastic/schema/project</code>'s <code>decisionResourceUri</code> (from 112).</p>
+</section>
+
+
+<section id="grounding">
+<h2>5 · Grounding &amp; evidence</h2>
+<p>The retrieval research pass established: the corpus injects into five authoring verbs but not <code>implement</code>; retrieval
+is by id/text with no path scoping and no log. So this slice does not extend the corpus read path — it adds a distinct,
+decision-specific retrieval over the design.html source of truth, leaving the corpus's domain-fact read path untouched. The
+<code>order</code> kernel is the shape precedent: read-only over the corpus via <code>ctx.fs</code>, deterministic, AI-free.</p>
+</section>
+
+
+<section id="approach">
+<h2>6 · Approach</h2>
+<ol>
+  <li>Write the glob compiler with a tests-first matrix (<code>**</code>/<code>*</code>/<code>?</code>/literal metachars/normalisation).</li>
+  <li>Write <code>parseDecisions</code> (tolerant — malformed shape is 112's rule's concern) and <code>decisionsForPaths</code> (accepted + scoped only, sorted).</li>
+  <li>Write the log builder (injected clock) + the kernel command; wire the CLI; add the no-network test over the transitive import graph.</li>
+</ol>
+</section>
+
+
+<section id="alternatives">
+<h2>7 · Alternatives considered</h2>
+<ul>
+  <li><strong>Add a glob dependency (picomatch/minimatch).</strong> Rejected: the enforcement path must pull nothing (NFR-001); a ~15-line pure compiler covers the scope-glob vocabulary with a documented ceiling.</li>
+  <li><strong>Read decisions from a registry file.</strong> Rejected for this slice: the design.html is the authored source of truth; a registry is a later distribution concern (<code>TBD-guardrail-decision-index</code>).</li>
+</ul>
+</section>
+
+
+<section id="decisions">
+<h2>8 · Decisions</h2>
+
+<spec-decision id="D-001" grounding="verified" status="accepted" posture="block">
+  <spec-scope>
+    <spec-path>packages/core/src/guardrail/**</spec-path>
+    <spec-path>packages/core/src/commands/adrs.ts</spec-path>
+  </spec-scope>
+  <spec-enforcement>
+    <spec-rule tool="vitest" id="guardrail.no-network.test" run="npx vitest run packages/core/test/guardrail.no-network.test.ts"></spec-rule>
+  </spec-enforcement>
+  <spec-reason>Retrieval sits on the enforcement path the merge gate calls, so a model or a socket must never reach it; the guarantee is a test, not a convention.</spec-reason>
+  <h4>D-001 · No model or network on the retrieval path</h4>
+  <p><b>Context.</b> The merge gate (Slice 3) will call this same function. <b>Decision.</b> Keep retrieval a pure, fs-only,
+  clock-injected kernel; assert it by walking the transitive import graph. <b>Consequences.</b> The path can be trusted in the
+  deterministic verdict; adding an AI or network import there fails the suite.</p>
+</spec-decision>
+
+<spec-decision id="D-002" grounding="verified" status="accepted" posture="warn">
+  <spec-reason>A full glob dependency would pull transitive code onto the enforcement path and is overkill for a scope pattern.</spec-reason>
+  <h4>D-002 · A dependency-free glob compiler with a stated ceiling</h4>
+  <p><b>Context.</b> Scope matching needs <code>**</code>/<code>*</code>/<code>?</code>. <b>Decision.</b> A small pure
+  glob→RegExp compiler; no brace expansion, no negation, no extglob. <b>Consequences.</b> Zero new dependencies; the ceiling is
+  documented in <code>glob.ts</code> and covered by a matrix of tests.</p>
+</spec-decision>
+</section>
+
+
+<section id="structure">
+<h2>9 · Project structure</h2>
+<pre><code>packages/core/src/guardrail/{types,glob,parse,retrieve,log}.ts   # pure helpers
+packages/core/src/commands/adrs.ts                                # kernel command
+packages/core/tsup.config.ts + package.json                       # ./commands/adrs entry+export
+packages/cli/src/commands/adrs.ts + index.ts                      # registerAdrs
+packages/core/test/guardrail.{retrieve,parse,no-network}.test.ts  # tests</code></pre>
+</section>
+
+
+<section id="risks">
+<h2>10 · Risks &amp; mitigations</h2>
+<spec-risk-log>
+<spec-risk status="mitigated" target="FR-004">
+  <h4>Glob matcher edge cases</h4>
+  <p>Mitigation: a matrix of tests (separators, zero-segment <code>**/</code>, extension anywhere, literal metachars, normalisation).</p>
+</spec-risk>
+<spec-risk status="mitigated" target="NFR-001">
+  <h4>Model/network on the retrieval path</h4>
+  <p>Mitigation: the transitive-import no-network test (D-001).</p>
+</spec-risk>
+</spec-risk-log>
+</section>
+
+
+<section id="complexity">
+<h2>11 · Complexity tracking</h2>
+<p>None beyond the glob compiler, whose ceiling is stated and tested.</p>
+</section>
+
+
+<section id="open-questions">
+<h2>12 · Open questions</h2>
+<p>Whether the gates relocate the default log path when they persist a verdict alongside — deferred to Slice 3.</p>
+</section>
+
+
+<section id="changelog">
+<h2>13 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-09-13">13 Sep 2026</time><span>Design authored + accepted (retrofit): the read-only AI-free kernel, the pure helpers, the dependency-free glob compiler, the injected-clock log. Dogfoods 112's <code>&lt;spec-decision&gt;</code> metadata in §8.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+</main>
+<script src="../assets/spec.js"></script>
+</body>
+</html>

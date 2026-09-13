@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'">
+<title>Teaching follow-up (shifu) · Specification</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Specification · 117-guardrail-shifu</p>
+  <h1>Teaching follow-up (shifu)</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    After a verdict, ask one Socratic question drawn from the decision's own reason — never a fix — so the developer reasons
+    toward the sanctioned path themselves. Deterministic, off the enforcement path.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>      <span><spec-status value="accepted">Accepted</spec-status></span>
+    <b>Spec ID</b>     <span>117-guardrail-shifu</span>
+    <b>Owner</b>       <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Reviewers</b>   <span>—</span>
+    <b>Created</b>     <span><time datetime="2026-09-13">13 Sep 2026</time></span>
+    <b>Principles</b><span><a href="../../principles.html">v1.9.0</a></span>
+    <b>Smallest demoable</b><span><code>spectastic verdict --teach</code> follows a violation with one question naming the decision's reason and the offending source→target, and never proposes a fix.</span>
+    <b>Read time</b>   <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-budget words="1000" reqs="5" minutes="8"></spec-budget>
+
+  <spec-tldr>
+    <p>Slice 5 of the architectural-guardrails design brief (§3.9), the teaching-follow-up half of rubric item 10 (the
+    deterministic teaching message already ships in 115's verdict). A pure <code>shifuQuestions(verdict)</code> composes one
+    Socratic question per violation from the decision's own <em>reason</em> and the offending <em>source→target</em> — phrased as
+    a question, carrying no imperative fix — surfaced by an opt-in <code>spectastic verdict --teach</code>. It is
+    <strong>deterministic and off the enforcement path</strong>: no LLM (a templated question needs none), and it never changes
+    the verdict or the exit code — the Socratic layer the brief imagined as an LLM hook, built the P-8 way instead.</p>
+  </spec-tldr>
+
+  <dl class="invest">
+    <dt><span class="letter">I</span> Independent</dt> <dd>Builds only on <a href="../115-guardrail-verdict/spec.html">115</a> (the verdict it reads); no other spec.</dd>
+    <dt><span class="letter">N</span> Negotiable</dt>  <dd>Outcomes contract; the question's exact wording is the design's to settle.</dd>
+    <dt><span class="letter">V</span> Valuable</dt>    <dd>Unlocks <a href="#SC-001">SC-001</a> — a failure teaches by prompting reasoning, not just naming a rule.</dd>
+    <dt><span class="letter">E</span> Estimable</dt>   <dd>Plan + tasks derivable; one pure function over 115's <code>Verdict</code> + a CLI flag.</dd>
+    <dt><span class="letter">S</span> Small</dt>       <dd>One pure composer, one opt-in flag. Five requirements.</dd>
+    <dt><span class="letter">T</span> Testable</dt>    <dd>Assert the question is a question, names the reason, carries no fix, and leaves the exit code unchanged.</dd>
+  </dl>
+
+  <spec-audience-map>
+    <dl>
+      <dt>Exec / PM</dt>   <dd>§<a href="#context">Context</a>, §<a href="#scenarios">User scenarios</a>, §<a href="#success">Success criteria</a>.</dd>
+      <dt>Reviewer</dt>    <dd>§<a href="#requirements">Requirements</a>, §<a href="#assumptions">Assumptions</a>, §<a href="#questions">Open questions</a>.</dd>
+      <dt>Implementer</dt> <dd>§<a href="#requirements">Requirements</a>, §<a href="#data">Data model</a>, §<a href="#conformance">Conformance index</a>.</dd>
+    </dl>
+  </spec-audience-map>
+</header>
+
+
+<section id="context">
+<h2>1 · Context</h2>
+<p>The 115 verdict already teaches in the reference sense — it names the decision, its reason, and the offending
+<code>file:line</code>, so a reviewer who never read the ADR can act. Rubric item 10 asks whether a Socratic follow-up can
+<em>deepen</em> that: "the rule says driven adapters never call into the core; why does this job need the repository?" — a
+question that makes the developer reason toward the sanctioned path rather than being handed a fix. The brief imagined an LLM
+skill; a templated question composed from the verdict's own fields achieves the same intent deterministically, so this slice
+builds it that way.</p>
+<p>Its user is the developer who just hit a verdict. It is strictly advisory and strictly after the verdict — it must never
+change the deterministic result (P-8) — which is exactly why a deterministic composition, not a model, is the right tool.</p>
+</section>
+
+
+<section id="scenarios">
+<h2>2 · User scenarios &amp; testing</h2>
+<p><strong>A failure prompts reasoning.</strong> A verdict flags a direct write to <code>positions</code> outside the adapter.
+<code>spectastic verdict --teach</code> follows it with: "Decision 002/D-007 exists so that every position change emits
+PositionChanged — this change has src/recon/Job.java writing positions directly. What makes that necessary here rather than
+going through the use case?" One question, no fix.</p>
+<p><strong>Teaching never gates.</strong> Adding <code>--teach</code> changes only what is printed; the exit code and the
+persisted verdict are identical. A clean verdict yields no questions.</p>
+</section>
+
+
+<section id="requirements">
+<h2>3 · Requirements</h2>
+
+<spec-requirement id="FR-001" priority="must">
+A pure <code>shifuQuestions(verdict)</code> MUST return one Socratic question per violation, composed from that violation's
+decision <em>reason</em> and its <em>source→target</em>. Each MUST be phrased as a question (ending in "?") and MUST NOT contain
+an imperative fix or a directive to change code.
+</spec-requirement>
+
+<spec-requirement id="FR-002" priority="must">
+<code>spectastic verdict</code> MUST surface the questions only under an opt-in <code>--teach</code> flag, printed after the
+deterministic verdict and clearly marked as an advisory follow-up.
+</spec-requirement>
+
+<spec-requirement id="FR-003" priority="must">
+The teaching follow-up MUST be off the enforcement path: <code>--teach</code> MUST NOT change the verdict, the persisted
+artifact, or the exit code — it only adds output.
+</spec-requirement>
+
+<spec-requirement id="FR-004" priority="should">
+A violation missing a <code>source→target</code> SHOULD still yield a well-formed question from the decision reason alone,
+rather than an empty or malformed one.
+</spec-requirement>
+
+<spec-requirement id="NFR-001" priority="must">
+<code>shifuQuestions</code> MUST be pure and deterministic — the same verdict yields byte-identical questions — with at most 0
+model clients and 0 network modules on its path. It is a templated composition, not a model call.
+</spec-requirement>
+
+<spec-out-of-scope>
+<ul>
+  <li defer-to="TBD-guardrail-shifu-llm"><strong>An LLM-phrased variant</strong> — richer wording via a model, strictly post-verdict. Deferred; the deterministic question meets the intent and stays P-8-clean.</li>
+  <li defer-to="TBD-position-keeper-example"><strong>The grading-fixture harness</strong> — locking the seven guardrail behaviours as regression fixtures is the proving example's job (Phase 4), not a separate harness.</li>
+</ul>
+</spec-out-of-scope>
+</section>
+
+
+<section id="data">
+<h2>4 · Data model</h2>
+<dl>
+  <dt>Verdict</dt><dd>115's persisted verdict — the input; each violation carries decision-id, reason, and source→target.</dd>
+  <dt>Socratic question</dt><dd>A single interrogative sentence composed from a violation's reason + source→target; it prompts, it never prescribes.</dd>
+</dl>
+</section>
+
+
+<section id="success">
+<h2>5 · Success criteria</h2>
+
+<spec-criterion id="SC-001" priority="must" actor="a developer" validates="FR-001,FR-004" method="test">
+Given a verdict with one violation, <code>shifuQuestions</code> returns exactly one question that ends in "?", contains the
+decision's reason, and contains no imperative fix verb; a violation with no source→target still yields a well-formed question.
+<details><summary>Observed at</summary><p><code>packages/core/test/guardrail.shifu.test.ts</code>.</p></details>
+</spec-criterion>
+
+<spec-criterion id="SC-002" priority="must" actor="a developer" validates="FR-002,FR-003" method="test">
+Running the verdict with <code>--teach</code> versus without produces an identical exit code and an identical persisted
+artifact; only stdout gains the questions.
+<details><summary>Observed at</summary><p><code>packages/cli</code> integration run of <code>verdict --teach</code>.</p></details>
+</spec-criterion>
+
+<spec-criterion id="SC-003" priority="must" actor="a security reviewer" validates="NFR-001" method="test">
+A test asserts <code>shifuQuestions</code>'s transitive imports include 0 model clients and 0 network modules, and its output is
+byte-identical on repeated runs.
+<details><summary>Observed at</summary><p><code>packages/core/test/guardrail.shifu.test.ts</code> — no-network + determinism.</p></details>
+</spec-criterion>
+</section>
+
+
+<section id="assumptions">
+<h2>6 · Assumptions</h2>
+<ul>
+  <li>115's <code>Verdict</code>/<code>Violation</code> carry <code>reason</code> and <code>source</code>/<code>target</code> (they do).</li>
+  <li>A templated Socratic question meets the teaching intent; richer LLM phrasing is a deferred nicety, not a requirement.</li>
+</ul>
+</section>
+
+
+<section id="questions">
+<h2>7 · Open questions</h2>
+<p>None outstanding — the deterministic-not-LLM decision and the opt-in surface were anchored before drafting.</p>
+</section>
+
+
+<section id="conformance">
+<h2>8 · Conformance index</h2>
+<spec-conformance></spec-conformance>
+</section>
+
+
+<section id="changelog">
+<h2>9 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-09-13">13 Sep 2026</time><span>Status flipped Draft → Accepted — zero remaining unchecked tasks; SC-001..SC-003 verified passing (6 shifu tests, exercised end-to-end: identical exit with/without --teach), estate + typechecks clean. Sibling bundle (REQ-LIFECYCLE-005).</span></li>
+  <li><time datetime="2026-09-13">13 Sep 2026</time><span>Drafted — Slice 5: shifu as a deterministic templated Socratic question over 115's verdict, opt-in via <code>verdict --teach</code>, off the enforcement path. Completes rubric item 10's teaching-follow-up half the P-8 way (no LLM); the grading harness is Phase 4's job.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>

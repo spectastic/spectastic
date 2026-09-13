@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'">
+<title>Governing-decision injection · Specification</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Specification · 116-guardrail-injection</p>
+  <h1>Governing-decision injection</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    Put the decisions that govern the code being touched in front of the agent <em>before</em> it writes — fenced as data, so
+    the output accounts for them rather than being caught afterwards. A happy-path aid, never the guarantee.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>      <span><spec-status value="accepted">Accepted</spec-status></span>
+    <b>Spec ID</b>     <span>116-guardrail-injection</span>
+    <b>Owner</b>       <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Reviewers</b>   <span>—</span>
+    <b>Created</b>     <span><time datetime="2026-09-13">13 Sep 2026</time></span>
+    <b>Principles</b><span><a href="../../principles.html">v1.9.0</a></span>
+    <b>Smallest demoable</b><span>Authoring tasks for a spec whose project-structure surface is governed by an accepted decision, that decision's id + reason appear in the prompt, fenced as data.</span>
+    <b>Read time</b>   <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-budget words="1150" reqs="6" minutes="9"></spec-budget>
+
+  <spec-tldr>
+    <p>Slice 4 of the architectural-guardrails design brief (§3.4), closing rubric item 3 (context injection before writing).
+    A pure <code>buildGoverningDecisionsBlock(paths, decisions)</code> renders the active decisions governing a set of paths as a
+    prompt block <strong>fenced as data</strong> (P-11), mirroring the corpus's <code>buildCorpusPromptBlock</code>; it returns
+    empty when nothing governs. Wired into the <code>tasks</code> and <code>design</code> kernel prompts over the design's
+    declared surface. Because <code>implement</code> is an orchestration verb with no kernel prompt, its injection is an
+    <strong>advisory markdown nudge</strong> (the command + the impl-task agent consult <code>adrs --for</code>). Load-bearing
+    honesty: injection is an aid, <em>never</em> a guarantee — the 114/115 gates are; skipping it changes no verdict.</p>
+  </spec-tldr>
+
+  <dl class="invest">
+    <dt><span class="letter">I</span> Independent</dt> <dd>Builds on <a href="../113-guardrail-retrieval/spec.html">113</a> (retrieval) and the corpus's fencing primitive; no other spec.</dd>
+    <dt><span class="letter">N</span> Negotiable</dt>  <dd>Outcomes contract; the block's exact wording is the design's to settle.</dd>
+    <dt><span class="letter">V</span> Valuable</dt>    <dd>Unlocks <a href="#SC-001">SC-001</a> — the governing decisions reach the agent before it writes, not only after at the gate.</dd>
+    <dt><span class="letter">E</span> Estimable</dt>   <dd>Plan + tasks derivable; the builder mirrors <code>buildCorpusPromptBlock</code> and reuses 113's retrieval.</dd>
+    <dt><span class="letter">S</span> Small</dt>       <dd>One pure builder + two prompt wirings + a markdown nudge. Six requirements.</dd>
+    <dt><span class="letter">T</span> Testable</dt>    <dd>Golden-snapshot the block; assert the assembled prompt includes it; assert the gate verdict is injection-independent.</dd>
+  </dl>
+
+  <spec-audience-map>
+    <dl>
+      <dt>Exec / PM</dt>   <dd>§<a href="#context">Context</a>, §<a href="#scenarios">User scenarios</a>, §<a href="#success">Success criteria</a>.</dd>
+      <dt>Reviewer</dt>    <dd>§<a href="#requirements">Requirements</a>, §<a href="#assumptions">Assumptions</a>, §<a href="#questions">Open questions</a>.</dd>
+      <dt>Implementer</dt> <dd>§<a href="#requirements">Requirements</a>, §<a href="#data">Data model</a>, §<a href="#conformance">Conformance index</a>.</dd>
+    </dl>
+  </spec-audience-map>
+</header>
+
+
+<section id="context">
+<h2>1 · Context</h2>
+<p>The research pass on the corpus found that its injection reaches five authoring verbs but is undifferentiated (the whole
+index), and that <code>implement</code> — the verb at the code-writing moment — has no injection at all. The 114 plan-constraint
+and 115 verdict catch an unacknowledged or violated decision <em>after</em> the fact; rubric item 3 asks for the governing
+decisions to reach the agent <em>before</em> it writes, so the happy path is right the first time. This slice adds a
+path-selective injection of exactly the decisions that govern the surface being worked.</p>
+<p>Its user is the agent authoring tasks or code, and the human reading a prompt that now names the relevant decisions. It is
+deliberately an <strong>aid</strong>: the guarantee lives in the gates (P-8 / T-009 — an advisory prompt cannot force
+compliance, as spec 111's cross-tool spike showed), and this slice must not pretend otherwise.</p>
+</section>
+
+
+<section id="scenarios">
+<h2>2 · User scenarios &amp; testing</h2>
+<p><strong>Governing decisions surface at tasks time.</strong> A design's project-structure tree touches
+<code>src/**/persistence/**</code>, governed by an accepted decision. When <code>tasks</code> assembles its prompt, that
+decision's id and reason appear in a block fenced as untrusted data — so the task breakdown accounts for it.</p>
+<p><strong>Nothing governs → nothing injected.</strong> A surface no decision governs (or a design with no §Project-structure
+yet) yields an empty block — no noise.</p>
+<p><strong>The code-writing nudge is advisory.</strong> <code>implement</code> has no kernel prompt, so the command and the
+impl-task agent instruct running <code>spectastic adrs --for &lt;task-path&gt;</code> and accounting for the result — a nudge,
+honestly labelled, not a gate.</p>
+</section>
+
+
+<section id="requirements">
+<h2>3 · Requirements</h2>
+
+<spec-requirement id="FR-001" priority="must">
+A pure <code>buildGoverningDecisionsBlock(paths, decisions)</code> MUST render the active decisions governing the given paths
+(via 113's retrieval) as a prompt block <em>fenced as untrusted data</em> — carrying each decision's id, coordinate, and reason —
+and MUST return an empty string when no path is given or no decision governs.
+</spec-requirement>
+
+<spec-requirement id="FR-002" priority="must">
+The block MUST be injected into the <code>tasks</code> kernel prompt, computed over the design's declared project-structure
+surface, so the task breakdown sees the decisions governing the code area.
+</spec-requirement>
+
+<spec-requirement id="FR-003" priority="must">
+The block MUST be injected into the <code>design</code> kernel prompt over whatever surface the design declares; on a first
+authoring (no project-structure yet) it renders empty, and on re-entry (a surface exists) it populates — no separate code path.
+</spec-requirement>
+
+<spec-requirement id="FR-004" priority="should">
+The <code>implement</code> command and the <code>spectastic-impl-task</code> agent SHOULD instruct consulting
+<code>spectastic adrs --for &lt;task-path&gt;</code> and accounting for the governing decisions before authoring. This is an
+advisory markdown nudge — <code>implement</code> has no kernel prompt to inject into — and provides no enforcement.
+</spec-requirement>
+
+<spec-requirement id="FR-005" priority="must">
+The injection MUST be advisory only: the block is fenced as data the agent accounts for, never an instruction the tool obeys,
+and the 114/115 gate verdicts MUST be identical whether or not the block was injected (injection is not a gate input).
+</spec-requirement>
+
+<spec-requirement id="NFR-001" priority="must">
+The block builder MUST be pure and deterministic — the same paths and decisions yield a byte-identical block on every run — with
+at most 0 model clients and 0 network modules on its path.
+</spec-requirement>
+
+<spec-out-of-scope>
+<ul>
+  <li defer-to="TBD-guardrail-injection-selective-corpus"><strong>Making the corpus's own injection path-selective</strong> — the corpus (054) still injects its whole index; narrowing that is a separate corpus concern.</li>
+  <li defer-to="TBD-guardrail-shifu"><strong>The Socratic teaching layer</strong> — slice 5.</li>
+  <li defer-to="115-guardrail-verdict"><strong>Any gate behaviour</strong> — the guarantee is the verdict/constraint; this slice only surfaces context.</li>
+</ul>
+</spec-out-of-scope>
+</section>
+
+
+<section id="data">
+<h2>4 · Data model</h2>
+<dl>
+  <dt>Governing set</dt><dd>The active decisions whose scope matches a surface's paths (113's retrieval), the payload of the block.</dd>
+  <dt>Injection block</dt><dd>A fenced-as-data prompt fragment listing each governing decision's id, coordinate, and reason; empty when the governing set is empty.</dd>
+  <dt>Surface</dt><dd>The paths a design declares (its project-structure tree) or a task names — what the injection is computed over.</dd>
+</dl>
+</section>
+
+
+<section id="success">
+<h2>5 · Success criteria</h2>
+
+<spec-criterion id="SC-001" priority="must" actor="a task author" validates="FR-001,NFR-001" method="test">
+Given a path governed by an accepted decision, <code>buildGoverningDecisionsBlock</code> renders that decision's id + reason
+inside a data fence; given an unrelated path or empty input it returns an empty string; identical on repeated runs.
+<details><summary>Observed at</summary><p><code>packages/core/test/guardrail.injection.test.ts</code> + a golden snapshot.</p></details>
+</spec-criterion>
+
+<spec-criterion id="SC-002" priority="must" actor="a task author" validates="FR-002,FR-003" method="test">
+The prompt assembled by <code>tasks</code> (or <code>design</code> on re-entry) includes the governing block exactly when a
+decision governs the declared surface — empty otherwise.
+<details><summary>Observed at</summary><p><code>packages/core/test/guardrail.injection.test.ts</code> — verb-prompt assembly with a stub.</p></details>
+</spec-criterion>
+
+<spec-criterion id="SC-003" priority="must" actor="a security reviewer" validates="FR-005" method="test">
+The 114/115 gates produce an identical result on the same inputs whether or not the injection block was
+built — injection is context, not a gate input.
+<details><summary>Observed at</summary><p><code>packages/core/test/guardrail.injection.test.ts</code> — gate-independence.</p></details>
+</spec-criterion>
+
+<spec-criterion id="SC-004" priority="should" actor="a task author" validates="FR-004" method="test">
+The advisory instruction to consult <code>adrs --for</code> before authoring is present across the implement authoring surface
+(<code>commands/spectastic.implement.md</code> plus the <code>spectastic-impl-task</code> agent).
+<details><summary>Observed at</summary><p><code>packages/core/test/guardrail.injection.test.ts</code> — a presence check on both files.</p></details>
+</spec-criterion>
+</section>
+
+
+<section id="assumptions">
+<h2>6 · Assumptions</h2>
+<ul>
+  <li>113's <code>decisionsForPaths</code> and <code>loadDecisions</code> supply the governing set; the fencing primitive is <code>@spectastic/schema/fence</code>, as the corpus uses.</li>
+  <li>The design's declared surface is read the same way 114 reads it (the project-structure tree extractor).</li>
+  <li>A markdown nudge cannot be guaranteed to change agent behaviour (T-009); its value is a UX prompt, and the gates are the guarantee.</li>
+</ul>
+</section>
+
+
+<section id="questions">
+<h2>7 · Open questions</h2>
+<p>None outstanding — the scope (builder + design/tasks wiring + advisory implement nudge), the honesty framing (aid not
+guarantee), and the empty-on-first-authoring behaviour were all anchored before drafting.</p>
+</section>
+
+
+<section id="conformance">
+<h2>8 · Conformance index</h2>
+<spec-conformance></spec-conformance>
+</section>
+
+
+<section id="changelog">
+<h2>9 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-09-13">13 Sep 2026</time><span>Status flipped Draft → Accepted — zero remaining unchecked tasks; SC-001..SC-004 verified passing (8 injection tests, corpus golden snapshot undisturbed), estate + typechecks clean. Sibling bundle (REQ-LIFECYCLE-005).</span></li>
+  <li><time datetime="2026-09-13">13 Sep 2026</time><span>Drafted via <code>/spectastic.spec</code> — Slice 4: the governing-decision injection block + design/tasks wiring + advisory implement/agent nudge. Closes rubric item 3 (context before writing) as an aid; corrects the design brief's assumption that <code>implement</code> could be kernel-injected (it is orchestration, so its nudge is markdown).</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>

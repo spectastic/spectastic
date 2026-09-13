@@ -33,6 +33,17 @@ interface InitOptions {
   profile?: string;
   replaceTools?: boolean;
   gitignore?: boolean;
+  target?: string;
+}
+
+/** Resolve and validate the `--target` value (spec 111-codex-skill-adapters). */
+function resolveTarget(raw: string | undefined): 'claude' | 'codex' {
+  const value = raw ?? 'claude';
+  if (value !== 'claude' && value !== 'codex') {
+    process.stderr.write(`init: unknown --target "${value}" (expected: claude, codex)\n`);
+    process.exit(2);
+  }
+  return value;
 }
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -161,7 +172,7 @@ function collectVerb(value: string, previous: string[]): string[] {
  * the project bootstrap. --tools means both halves; the -only flags narrow it;
  * --uninstall reverses whichever halves are selected (both by default).
  */
-async function runToolsMode(options: InitOptions): Promise<void> {
+async function runToolsMode(options: InitOptions, target: 'claude' | 'codex'): Promise<void> {
   const narrowed = options.hooksOnly === true || options.commandsOnly === true;
   const hooks = options.hooksOnly === true || !narrowed;
   const commands = options.commandsOnly === true || !narrowed;
@@ -173,6 +184,7 @@ async function runToolsMode(options: InitOptions): Promise<void> {
       uninstall: options.uninstall === true,
       force: options.force ?? false,
       cliEntry: currentCliEntry(),
+      target,
     });
     for (const d of summary.decisions) process.stdout.write(`✓ ${d.detail}\n`);
     for (const n of summary.notes) process.stdout.write(`⚠ ${n}\n`);
@@ -224,14 +236,16 @@ export function registerInit(program: Command): void {
       'with --profile: ignore existing toolchain when tailoring the AGENTS.md enforcement floor',
     )
     .option('--no-gitignore', 'skip writing the base .gitignore block')
+    .option('--target <name>', 'which agent host to install adapters for: claude (default) | codex')
     .action(async (options: InitOptions) => {
+      const target = resolveTarget(options.target);
       if (options.tools || options.hooksOnly || options.commandsOnly || options.uninstall) {
-        await runToolsMode(options);
+        await runToolsMode(options, target);
         return;
       }
 
       const cwd = process.cwd();
-      const inventory = resolveBundle();
+      const inventory = resolveBundle(target);
       const plan = buildPlan({
         inventory,
         cwd,

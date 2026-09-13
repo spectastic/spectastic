@@ -12,6 +12,9 @@
 import { buildCorpusPromptBlock, loadCorpus, withCorpusHint } from '@spectastic/corpus';
 import { fenceArtifactText } from '@spectastic/schema/fence';
 import { materialiseContractViews } from '../contracts/materialise-view.js';
+import { buildGoverningDecisionsBlock } from '../guardrail/injection.js';
+import { extractDeclaredSurface } from '../guardrail/plan-constraint.js';
+import { loadDecisions } from './adrs.js';
 import type { KernelContext, DesignInput, DesignResult } from '../types.js';
 
 const BLOCKER_PATTERNS: ReadonlyArray<{ name: string; re: RegExp }> = [
@@ -137,6 +140,14 @@ export async function designCommand(input: DesignInput, ctx: KernelContext): Pro
   // mechanism as the principles line above. '' when no knowledge/ corpus exists,
   // so filter(Boolean) drops it and this run stays byte-identical to before.
   const corpusBlock = buildCorpusPromptBlock(loadCorpus(ctx.cwd));
+  // Governing-decision injection (116-guardrail-injection): the decisions that
+  // govern this design's declared surface, fenced as data. Empty on first
+  // authoring (no §project-structure yet); populated on re-entry. An aid, not a
+  // gate — the guarantee is 114/115.
+  const governingBlock = buildGoverningDecisionsBlock(
+    extractDeclaredSurface(input.existingDesign ?? ''),
+    await loadDecisions(ctx),
+  );
   const prompt = [
     isReentry
       ? `Sharpen this design. ADD or ENHANCE only; never remove existing ADRs.\nExisting design:\n${fenceArtifactText(input.existingDesign!.slice(0, 6000), 'Existing design')}`
@@ -146,6 +157,7 @@ export async function designCommand(input: DesignInput, ctx: KernelContext): Pro
       : '',
     formatDecisions(input.decisions),
     corpusBlock ? `\n${corpusBlock}` : '',
+    governingBlock ? `\n${governingBlock}` : '',
     '',
     'Return JSON: { "approach": string, "decisions": [ { "id": "D-001", "title": string, "context": string, "decision": string, "consequences": string } ], "alternatives": [ { "name": string, "scores": [number, number, number], "isWinner": boolean } ], "risks": [ { "risk": string, "mitigation": string } ], "principles": [ { "id": "P-1", "status": "OK"|"EXCEPTION"|"VIOLATION", "note": string } ] }',
   ]

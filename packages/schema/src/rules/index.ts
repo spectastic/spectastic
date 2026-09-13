@@ -28,6 +28,7 @@ import { formatBandCouplingRule } from './format-band-coupling.js';
 import { hiddenInstructionPatternRule } from './hidden-instruction-pattern.js';
 import { idWithinFileUniqueRule } from './id-within-file-unique.js';
 import { investRowFailedRule } from './invest-row-failed.js';
+import { decisionWellFormedRule } from './decision-well-formed.js';
 import { matrixWinnerIntegrityRule } from './matrix-winner-integrity.js';
 import { noBrokenDeferToRule } from './no-broken-defer-to.js';
 import { noDuplicateIdsRule } from './no-duplicate-ids.js';
@@ -117,6 +118,9 @@ export const rules: readonly Rule[] = [
 
   // Decision-record rules (per-file) — spec 050-stack-selection.
   matrixWinnerIntegrityRule,
+
+  // Governance decision rules (per-file) — spec 112-guardrail-decision-record.
+  decisionWellFormedRule,
 
   // Corpus-citation rules (per-file) — spec 052-corpus-citation-contract.
   corpusCitationFormRule,

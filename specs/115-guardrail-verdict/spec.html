@@ -1,0 +1,237 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'">
+<title>Merge-stage verdict · Specification</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Specification · 115-guardrail-verdict</p>
+  <h1>Merge-stage verdict</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    At merge, turn the actual diff into a deterministic verdict — this change violates that decision, for this reason, here —
+    composed from the code, the decision, and an enforcer's output, with no model anywhere on the path.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>      <span><spec-status value="accepted">Accepted</spec-status></span>
+    <b>Spec ID</b>     <span>115-guardrail-verdict</span>
+    <b>Owner</b>       <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Reviewers</b>   <span>—</span>
+    <b>Created</b>     <span><time datetime="2026-09-13">13 Sep 2026</time></span>
+    <b>Principles</b><span><a href="../../principles.html">v1.9.0</a></span>
+    <b>Smallest demoable</b><span>A branch adds a direct <code>UPDATE positions</code> outside the persistence adapter; <code>spectastic verdict</code> exits non-zero naming the decision, the rule, and the <code>file:line</code>, and the verdict artifact reconstructs from disk with no model output.</span>
+    <b>Read time</b>   <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-budget words="1350" reqs="9" minutes="11"></spec-budget>
+
+  <spec-tldr>
+    <p>Slice 3b of the architectural-guardrails design brief (§3.6) — the merge half of "the Priya PR dies." Given the changed
+    paths, retrieve the governing decisions (113) and produce a deterministic verdict per violation:
+    <code>{decision-id, rule-id, reason, file:line, source→target}</code>, reconstructable entirely from disk. It uses the
+    <strong>detector/explainer</strong> split: spectastic runs its own native <em>path</em> and <em>content</em> detectors and/or
+    ingests an ecosystem enforcer's machine-readable <em>output</em> (SARIF), and composes the traceability
+    (rule-id ↔ decision-id ↔ reason) that no architecture-test tool provides — it never reimplements ArchUnit/Semgrep. Executing
+    an enforcer's <code>run=</code> command from an artifact is deliberately <strong>out of scope</strong> here (it collides with
+    P-11 and inherits 085's guard-first posture); this slice reads outputs and files, it runs no foreign command and no model.</p>
+  </spec-tldr>
+
+  <dl class="invest">
+    <dt><span class="letter">I</span> Independent</dt> <dd>Builds on <a href="../112-guardrail-decision-record/spec.html">112</a>, <a href="../113-guardrail-retrieval/spec.html">113</a>, <a href="../114-guardrail-gates/spec.html">114</a>; no other spec.</dd>
+    <dt><span class="letter">N</span> Negotiable</dt>  <dd>Outcomes contract; the SARIF field mapping and detector attribute spelling are the design's to settle.</dd>
+    <dt><span class="letter">V</span> Valuable</dt>    <dd>Unlocks <a href="#SC-001">SC-001</a> — a violation in shipped code is caught at merge with a decision-traceable, model-free verdict.</dd>
+    <dt><span class="letter">E</span> Estimable</dt>   <dd>Plan + tasks derivable; reuses 113's retrieval + glob and the guardrail no-network test shape.</dd>
+    <dt><span class="letter">S</span> Small</dt>       <dd>Reads files + outputs only; executing <code>run=</code> is a deferred guarded slice. Nine requirements.</dd>
+    <dt><span class="letter">T</span> Testable</dt>    <dd>Every requirement observable via the verdict artifact, exit code, or a pure-function test.</dd>
+  </dl>
+
+  <spec-audience-map>
+    <dl>
+      <dt>Exec / PM</dt>   <dd>§<a href="#context">Context</a>, §<a href="#scenarios">User scenarios</a>, §<a href="#success">Success criteria</a>.</dd>
+      <dt>Reviewer</dt>    <dd>§<a href="#requirements">Requirements</a>, §<a href="#assumptions">Assumptions</a>, §<a href="#questions">Open questions</a>.</dd>
+      <dt>Implementer</dt> <dd>§<a href="#requirements">Requirements</a>, §<a href="#data">Data model</a>, §<a href="#conformance">Conformance index</a>.</dd>
+    </dl>
+  </spec-audience-map>
+</header>
+
+
+<section id="context">
+<h2>1 · Context</h2>
+<p>The plan-stage constraint (114) is a happy-path nudge that reads a design's <em>declared</em> surface; it can be bypassed by
+committing straight to a branch. The Valmis scenario's most damaging case is exactly that: <code>PositionReconciliationJob</code>
+with a direct <code>UPDATE positions</code>, no spec, no plan. This slice is the guarantee the nudge is not — it reads the
+<em>actual</em> diff and produces a verdict that reconstructs from disk, so the same inputs always yield the same result and a
+reviewer can reproduce it offline with no model in the loop.</p>
+<p>Its users are CI (which fails the build on a violation) and the reviewer (who reads a verdict that names the decision and its
+reason, not just "a rule fired"). The novel value over a generic scanner is the <strong>traceability composition</strong>:
+spectastic holds the decision as data, so it can join an enforcer's rule-id back to the decision that motivated it and the reason
+a human wrote.</p>
+</section>
+
+
+<section id="scenarios">
+<h2>2 · User scenarios &amp; testing</h2>
+<p><strong>Direct write caught natively.</strong> A branch changes <code>src/recon/Job.java</code> to run
+<code>UPDATE positions …</code>. A decision forbids that content outside <code>src/**/persistence/**</code> via a native
+content rule. <code>spectastic verdict --changed src/recon/Job.java</code> exits non-zero, naming the decision, the rule, and the
+line; the verdict artifact on disk contains the same, with no model output.</p>
+<p><strong>Type-graph violation via the enforcer's output.</strong> CI runs the project's ArchUnit/Semgrep and writes SARIF.
+<code>spectastic verdict --enforcer-output results.sarif</code> maps each SARIF result's rule-id to the decision carrying it and
+composes the verdict with that decision's reason — spectastic never ran ArchUnit itself.</p>
+<p><strong>Reconstructs from disk.</strong> Given the changed files, the decision record, the retrieval log, and the enforcer
+output, the verdict is byte-identical on a re-run — no model, no clock-dependence beyond an injected timestamp.</p>
+</section>
+
+
+<section id="requirements">
+<h2>3 · Requirements</h2>
+
+<spec-requirement id="FR-001" priority="must">
+<code>spectastic verdict</code> MUST produce a deterministic verdict for each violation among the changed paths, carrying at
+least <code>{decision-id, rule-id, reason, file:line}</code>, and MUST exit non-zero when any violation is present. The verdict
+MUST reconstruct entirely from artifacts on disk (the changed files, the decision record, and — where used — the enforcer output
+and retrieval log); no field may derive from a model.
+</spec-requirement>
+
+<spec-requirement id="FR-002" priority="must">
+A native <em>content</em> detector MUST report a violation when a changed file contains a rule's forbidden pattern outside the
+rule's allowed zone (the decision's scope), with the matched <code>file:line</code>. This is the language-agnostic
+"only the adapter may touch the data store" case.
+</spec-requirement>
+
+<spec-requirement id="FR-003" priority="must">
+A native <em>path</em> detector MUST report a violation when a changed file's path matches a rule's forbidden location glob,
+with the file path.
+</spec-requirement>
+
+<spec-requirement id="FR-004" priority="must">
+The verdict MUST be able to ingest an ecosystem enforcer's machine-readable output (SARIF): each result's rule-id is matched to a
+decision carrying that <code>&lt;spec-rule id&gt;</code>, and the verdict is composed with that decision's reason. A result whose
+rule-id matches no decision is ignored (the enforcer's own concern, not a governance violation). spectastic MUST NOT run the
+enforcer.
+</spec-requirement>
+
+<spec-requirement id="FR-005" priority="must">
+The changed paths MUST come from an explicit <code>--changed &lt;paths…&gt;</code> when given, else from
+<code>git diff --cached HEAD</code>. The verdict kernel MUST take the paths as data (no git dependency in the kernel); reading
+git is the CLI's concern.
+</spec-requirement>
+
+<spec-requirement id="FR-006" priority="must">
+The verdict MUST be persisted as a JSON artifact alongside the retrieval log, so a reviewer can reproduce every claim offline
+and CI can archive it.
+</spec-requirement>
+
+<spec-requirement id="FR-007" priority="should">
+<code>source→target</code> SHOULD be populated where the detector or enforcer provides it (the changed file → the matched
+pattern for content; the SARIF location → the rule subject); the guaranteed floor is
+<code>{decision-id, rule-id, reason, file:line}</code>.
+</spec-requirement>
+
+<spec-requirement id="NFR-001" priority="must">
+The verdict path MUST carry no model client, no network access, and MUST NOT execute any foreign command — a test MUST assert
+its transitive imports include at most 0 model-client modules, at most 0 network modules, and at most 0 child-process/exec
+modules.
+</spec-requirement>
+
+<spec-requirement id="NFR-002" priority="must">
+The verdict MUST be deterministic: the same changed files, decisions, and enforcer output yield a byte-identical verdict artifact
+given an injected clock (at most 1 repeated-run diff).
+</spec-requirement>
+
+<spec-out-of-scope>
+<ul>
+  <li defer-to="TBD-guardrail-verdict-exec"><strong>Executing an enforcer's <code>run=</code> command</strong> — orchestrating the ecosystem tool by running it, behind 085's guard-first consent + a non-waivable location guard. A separate slice because arbitrary command execution is the highest-risk path (P-11).</li>
+  <li defer-to="TBD-guardrail-verdict-ci"><strong>A packaged CI action / GitHub workflow</strong> wiring the verdict into a real pipeline — belongs to the proving example, not the kernel.</li>
+  <li defer-to="TBD-guardrail-shifu"><strong>The Socratic teaching layer</strong> that follows a failure with one question — slice 5.</li>
+</ul>
+</spec-out-of-scope>
+</section>
+
+
+<section id="data">
+<h2>4 · Data model</h2>
+<dl>
+  <dt>Changed set</dt><dd>The paths in the diff under judgment — the actual code that moved.</dd>
+  <dt>Detector</dt><dd>A rule's executable check: native <em>content</em> (a forbidden pattern + an allowed zone), native <em>path</em> (a forbidden location glob), or an ingested <em>enforcer output</em> (matched by rule-id).</dd>
+  <dt>Violation</dt><dd>A changed location a detector flags, joined to the decision that governs it.</dd>
+  <dt>Verdict</dt><dd>The set of violations for a changed set, each <code>{decision-id, rule-id, reason, file:line, source→target?}</code>, plus the inputs it was composed from — the persisted, reconstructable record.</dd>
+</dl>
+</section>
+
+
+<section id="success">
+<h2>5 · Success criteria</h2>
+
+<spec-criterion id="SC-001" priority="must" actor="a CI operator" validates="FR-001,FR-002,FR-005,FR-006" method="test">
+Given a changed file containing a forbidden pattern outside its allowed zone, <code>spectastic verdict</code> exits non-zero with
+exactly one violation naming the governing decision, the rule id, and the <code>file:line</code>, and the persisted verdict
+artifact contains the same — reconstructable from the files + decision on disk, with no model output involved.
+<details><summary>Observed at</summary><p><code>packages/core/test/guardrail.verdict.test.ts</code> + a CLI integration run.</p></details>
+</spec-criterion>
+
+<spec-criterion id="SC-002" priority="must" actor="a reviewer" validates="FR-004,FR-007" method="test">
+Given a SARIF output with a result whose rule-id matches a decision's rule, the verdict carries that decision's reason and the
+result's location; a result whose rule-id matches no decision produces no violation.
+<details><summary>Observed at</summary><p><code>packages/core/test/guardrail.verdict.test.ts</code> — SARIF ingestion cases.</p></details>
+</spec-criterion>
+
+<spec-criterion id="SC-003" priority="must" actor="a security reviewer" validates="NFR-001" method="test">
+A test asserts the verdict kernel's transitive imports include 0 model-client modules, 0 network modules, and 0
+child-process/exec modules — it cannot run a foreign command or reach a model by construction.
+<details><summary>Observed at</summary><p><code>packages/core/test/guardrail.verdict.no-exec.test.ts</code>.</p></details>
+</spec-criterion>
+
+<spec-criterion id="SC-004" priority="should" actor="a CI operator" validates="FR-003,NFR-002" method="test">
+A changed file whose path matches a forbidden-location rule produces a path violation, identically on repeated runs under a
+pinned clock.
+<details><summary>Observed at</summary><p><code>packages/core/test/guardrail.verdict.test.ts</code> — path-detector + determinism.</p></details>
+</spec-criterion>
+</section>
+
+
+<section id="assumptions">
+<h2>6 · Assumptions</h2>
+<ul>
+  <li>Decisions carry the structured rules (112) — a native rule declares its pattern/location; an ecosystem rule declares its tool + id (matched against SARIF).</li>
+  <li>SARIF is the common enforcer output (Semgrep emits it natively; ArchUnit via a reporter). A minimal reader extracts each result's rule-id and physical location.</li>
+  <li>The retrieval log and the persisted verdict live beside each other under the project's <code>.spectastic/</code> scratch (committed in the proving example for reproducibility).</li>
+</ul>
+</section>
+
+
+<section id="questions">
+<h2>7 · Open questions</h2>
+<p>None outstanding — the execution posture (ingest outputs, defer running <code>run=</code>), the diff source (explicit or git),
+and the native detector set (path + content) were all anchored in the interview.</p>
+</section>
+
+
+<section id="conformance">
+<h2>8 · Conformance index</h2>
+<spec-conformance></spec-conformance>
+</section>
+
+
+<section id="changelog">
+<h2>9 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-09-13">13 Sep 2026</time><span>Status flipped Draft → Accepted — zero remaining unchecked tasks; SC-001..SC-004 verified passing (11 verdict tests, 58 guardrail total), exercised end-to-end, estate + typechecks clean. Sibling bundle (REQ-LIFECYCLE-005).</span></li>
+  <li><time datetime="2026-09-13">13 Sep 2026</time><span>Drafted via <code>/spectastic.spec</code> — Slice 3b: the merge-stage verdict. Native path/content detectors + SARIF ingestion + verdict composition and persistence; executing <code>run=</code> deferred to a guarded slice. Closes gap G2 (rubric item 4) and turns items 5/6 (not-an-agent, not-RAG-verdict) from partial to full with the no-model/no-exec test.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>

@@ -1,0 +1,203 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'">
+<title>Scoped decision retrieval · Specification</title>
+<link rel="stylesheet" href="../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../assets/favicon.svg">
+<script src="../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Specification · 113-guardrail-retrieval</p>
+  <h1>Scoped decision retrieval</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    Given a set of code paths, return the governance decisions that govern them — deterministically, and to a reproducible log
+    the plan-time and merge-time gates can diff.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>      <span><spec-status value="accepted">Accepted</spec-status></span>
+    <b>Spec ID</b>     <span>113-guardrail-retrieval</span>
+    <b>Owner</b>       <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Reviewers</b>   <span>—</span>
+    <b>Created</b>     <span><time datetime="2026-09-13">13 Sep 2026</time></span>
+    <b>Principles</b><span><a href="../principles.html">v1.9.0</a></span>
+    <b>Smallest demoable</b><span><code>spectastic adrs --for src/x/persistence/Repo.java</code> lists the accepted decision governing that path and writes a retrieval log.</span>
+    <b>Read time</b>   <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-budget words="1100" reqs="7" minutes="9"></spec-budget>
+
+  <spec-tldr>
+    <p>Slice 2 of the architectural-guardrails design brief (§3.3). A plumbing command <code>spectastic adrs --for &lt;paths…&gt;</code>
+    and a pure <code>decisionsForPaths</code> that glob-matches each accepted decision's scope against the paths and returns the
+    governing set in a stable precedence order, writing a reproducible retrieval log. Deterministic and AI-free — the same
+    function backs plan-time and merge-time retrieval (later slices), so the two logs are diffable. Reads decisions from each
+    <code>design.html</code>, the source of truth Slice 1 defined.</p>
+  </spec-tldr>
+
+  <dl class="invest">
+    <dt><span class="letter">I</span> Independent</dt> <dd>Builds only on <a href="../112-guardrail-decision-record/spec.html">112</a> (the record); no other spec.</dd>
+    <dt><span class="letter">N</span> Negotiable</dt>  <dd>Outcomes contract; log location and command flags are the plan's to settle.</dd>
+    <dt><span class="letter">V</span> Valuable</dt>    <dd>Unlocks <a href="#SC-001">SC-001</a> — a path now surfaces its governing decisions, the retrieval the gates rest on.</dd>
+    <dt><span class="letter">E</span> Estimable</dt>   <dd>Plan + tasks derivable; models on <code>spectastic order</code>'s read-only, AI-free kernel shape.</dd>
+    <dt><span class="letter">S</span> Small</dt>       <dd>Seven requirements; retrieval + log only — the gates that consume it are later slices.</dd>
+    <dt><span class="letter">T</span> Testable</dt>    <dd>Every requirement observable via the command output, the log, or a pure-function test.</dd>
+  </dl>
+
+  <spec-audience-map>
+    <dl>
+      <dt>Exec / PM</dt>   <dd>§<a href="#context">Context</a>, §<a href="#scenarios">User scenarios</a>, §<a href="#success">Success criteria</a>.</dd>
+      <dt>Reviewer</dt>    <dd>§<a href="#requirements">Requirements</a>, §<a href="#assumptions">Assumptions</a>, §<a href="#questions">Open questions</a>.</dd>
+      <dt>Implementer</dt> <dd>§<a href="#requirements">Requirements</a>, §<a href="#data">Data model</a>, §<a href="#conformance">Conformance index</a>.</dd>
+    </dl>
+  </spec-audience-map>
+</header>
+
+
+<section id="context">
+<h2>1 · Context</h2>
+<p>Phase-1 gap G1 has two halves: no decision surfaces by path, and no gate fails when a plan ignores one. This slice closes the
+first half — the retrieval — which both gates (Slice 3) and the write-time injection (Slice 4) depend on. The research pass found
+the corpus's retrieval is by citation-id and text only, with <strong>no path-scoped retrieval</strong> and no log; this slice adds
+exactly that, over the decision records Slice 1 defined.</p>
+<p>Its users are the agent (at plan time) and CI (at merge time) — both call the identical function, so a plan that retrieved a
+different governing set than the merge sees is itself detectable by diffing the two logs.</p>
+</section>
+
+
+<section id="scenarios">
+<h2>2 · User scenarios &amp; testing</h2>
+<p><strong>A path surfaces its governing decisions.</strong> A developer runs <code>spectastic adrs --for src/app/persistence/Repo.java</code>.
+The command lists the accepted decisions whose scope globs match that path, in precedence order, and writes a retrieval log.</p>
+<p><strong>An unrelated path surfaces nothing.</strong> The same command for <code>docs/readme.md</code> lists no decisions and
+writes an empty-governing log — silently correct, not an error.</p>
+<p><strong>The log reconstructs from disk.</strong> With a pinned clock, the same query yields a byte-identical log — the record
+the merge verdict (later) reconstructs from.</p>
+</section>
+
+
+<section id="requirements">
+<h2>3 · Requirements</h2>
+
+<spec-requirement id="FR-001" priority="must">
+A plumbing command <code>spectastic adrs --for &lt;paths…&gt;</code> MUST return the ACTIVE (<code>status="accepted"</code>)
+decisions whose <code>&lt;spec-scope&gt;</code> path globs match any of the given paths, in a stable precedence order (by spec id
+then decision id). It MUST NOT be a lifecycle verb — the eight stay eight.
+</spec-requirement>
+
+<spec-requirement id="FR-002" priority="must">
+Retrieval MUST read decisions from each <code>specs/&lt;id&gt;/design.html</code> — the source of truth that authored them — via
+the injected filesystem port, tolerating a spec directory with no design.html.
+</spec-requirement>
+
+<spec-requirement id="FR-003" priority="must">
+The command MUST write a reproducible retrieval log recording the query paths, each governing decision's coordinate
+(<code>spectastic://…/decision/…</code>), and the paths it matched, so a verdict can later reconstruct entirely from disk.
+</spec-requirement>
+
+<spec-requirement id="FR-004" priority="must">
+Scope matching MUST use path globs as the universal floor, supporting <code>**</code> (across separators), <code>*</code> (within
+a segment), and <code>?</code> (one non-separator character), with regex metacharacters in a glob treated literally.
+</spec-requirement>
+
+<spec-requirement id="FR-005" priority="should">
+A proposed, superseded, or retired decision, and a decision whose scope declares no path, MUST NOT govern any path — only
+accepted, scoped decisions are returned.
+</spec-requirement>
+
+<spec-requirement id="NFR-001" priority="must">
+The retrieval path MUST carry no model client and no network access — a test MUST assert the retrieval kernel's transitive
+imports include at most 0 model-client modules and at most 0 network modules.
+</spec-requirement>
+
+<spec-requirement id="NFR-002" priority="must">
+Retrieval and the log MUST be deterministic: the same paths and decisions yield the same governing set and, given an injected
+clock, a byte-identical log — verified with at most 1 repeated-run diff.
+</spec-requirement>
+
+<spec-out-of-scope>
+<ul>
+  <li defer-to="TBD-guardrail-gates"><strong>The plan-stage and merge-stage gates</strong> that consume retrieval — Slice 3.</li>
+  <li defer-to="TBD-guardrail-injection"><strong>Injecting the governing decisions into the agent before writing</strong> — Slice 4.</li>
+  <li defer-to="TBD-guardrail-decision-index"><strong>Reading from a decision registry rather than design.html</strong> — the registry is a later distribution concern; the design is the source of truth here.</li>
+</ul>
+</spec-out-of-scope>
+</section>
+
+
+<section id="data">
+<h2>4 · Data model</h2>
+<dl>
+  <dt>GovernanceDecision</dt><dd>The machine projection of a <code>&lt;spec-decision&gt;</code> (from 112): id, specId, status, posture, scope paths + modules, supersedes, reason, enforcement.</dd>
+  <dt>RetrievalMatch</dt><dd>A governing decision + the query paths its scope matched.</dd>
+  <dt>RetrievalLog</dt><dd><code>{ at, paths[], governing: [{ coordinate, specId, id, matchedPaths[] }] }</code> — the reproducible record.</dd>
+</dl>
+</section>
+
+
+<section id="success">
+<h2>5 · Success criteria</h2>
+
+<spec-criterion id="SC-001" priority="must" actor="a developer" validates="FR-001,FR-002,FR-004,FR-005" method="test">
+Given decisions parsed from a design.html, <code>adrs --for</code> a path under an accepted decision's scope lists exactly that
+decision (and any other matching accepted decision, sorted); a path outside every scope, and a proposed/superseded decision,
+list nothing.
+<details><summary>Observed at</summary><p><code>packages/core/test/guardrail.retrieve.test.ts</code>, <code>guardrail.parse.test.ts</code>.</p></details>
+</spec-criterion>
+
+<spec-criterion id="SC-002" priority="must" actor="a CI job" validates="FR-003,NFR-002" method="test">
+With a pinned clock, the retrieval log is byte-identical across at least 2 runs, and its governing entries carry the decision
+coordinates.
+<details><summary>Observed at</summary><p><code>packages/core/test/guardrail.parse.test.ts</code> — determinism + log shape.</p></details>
+</spec-criterion>
+
+<spec-criterion id="SC-003" priority="must" actor="a security reviewer" validates="NFR-001" method="test">
+A test asserts the retrieval kernel's transitive imports include 0 model-client modules and 0 network modules, and it makes 0
+direct network calls.
+<details><summary>Observed at</summary><p><code>packages/core/test/guardrail.no-network.test.ts</code>.</p></details>
+</spec-criterion>
+</section>
+
+
+<section id="assumptions">
+<h2>6 · Assumptions</h2>
+<ul>
+  <li>Decisions carry the structured scope metadata 112 defined; a bare legacy decision simply never governs (no scope).</li>
+  <li>The project identity resolves via <code>resolveProjectConfig</code> (067), for the decision coordinates in the log.</li>
+</ul>
+</section>
+
+
+<section id="questions">
+<h2>7 · Open questions</h2>
+<ul>
+  <li>Default log location (<code>.spectastic/adr-retrieval.json</code>) — settled here; the gates may relocate it when they persist a verdict alongside.</li>
+</ul>
+</section>
+
+
+<section id="conformance">
+<h2>8 · Conformance index</h2>
+<spec-conformance></spec-conformance>
+</section>
+
+
+<section id="changelog">
+<h2>9 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-09-13">13 Sep 2026</time><span>Drafted + accepted — Slice 2 of the architectural-guardrails design brief: the <code>adrs --for</code> retrieval command, the pure <code>decisionsForPaths</code>, the glob matcher, and the reproducible log. Closes the retrieval half of Phase-1 gap G1 (rubric item 2). Implemented test-first; all green.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+</main>
+<script src="../assets/spec.js"></script>
+</body>
+</html>

@@ -36,13 +36,17 @@ export function loadManifest(bundleRoot: string): VerbManifest {
 }
 
 /**
- * Extract the verb from a command destination path
- * (`.claude/commands/spectastic.<verb>.md`). Returns null for any path that
- * is not a spectastic command file (assets, templates).
+ * Extract the verb from an adapter destination path, for either host target:
+ * the Claude command (`.claude/commands/spectastic.<verb>.md`) or the Codex
+ * Agent-Skill (`.agents/skills/spectastic-<verb>/SKILL.md`, spec 111). Returns
+ * null for any path that is not an adapter (assets, templates), so extended-verb
+ * filtering in buildPlan works the same for both targets.
  */
 export function verbFromDestination(relativeDestination: string): string | null {
-  const m = /(?:^|\/)\.claude\/commands\/spectastic\.([^/]+)\.md$/.exec(relativeDestination);
-  return m ? (m[1] ?? null) : null;
+  const claude = /(?:^|\/)\.claude\/commands\/spectastic\.([^/]+)\.md$/.exec(relativeDestination);
+  if (claude) return claude[1] ?? null;
+  const codex = /(?:^|\/)\.agents\/skills\/spectastic-([^/]+)\/SKILL\.md$/.exec(relativeDestination);
+  return codex ? (codex[1] ?? null) : null;
 }
 
 /**

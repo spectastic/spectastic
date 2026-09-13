@@ -1,0 +1,381 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'">
+<title>Codex skill adapters · Specification</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Specification · 111-codex-skill-adapters</p>
+  <h1>Codex skill adapters</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    Emit spectastic's lifecycle verbs as portable Agent Skills so they run inside a Codex session — the first alternative host to Claude Code.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>      <span><spec-status value="draft">Draft</spec-status></span>
+    <b>Spec ID</b>     <span>111-codex-skill-adapters</span>
+    <b>Owner</b>       <span>Brian Corbin (@briancorbinxyz)</span>
+    <b>Reviewers</b>   <span>—</span>
+    <b>Created</b>     <span><time datetime="2026-09-09">09 Sep 2026</time></span>
+    <b>Principles</b><span><a href="../../principles.html">v1.9.0</a></span>
+    <b>Smallest demoable</b><span><code>spectastic init --target codex</code> writes the core verbs as <code>.agents/skills/&lt;verb&gt;/SKILL.md</code>; a developer invokes <code>$spectastic-spec</code> in Codex and gets a drafted spec — no Anthropic key.</span>
+    <b>Read time</b>   <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-budget words="2200" reqs="16" minutes="15"></spec-budget>
+
+  <spec-tldr>
+    <p>spectastic's verbs run only inside Claude Code today. This spec makes <strong>Codex the first alternative host</strong>:
+    <code>spectastic init --target codex</code> emits each verb as an <strong>Agent Skill</strong>
+    (<code>.agents/skills/&lt;verb&gt;/SKILL.md</code>) — the open standard Codex and 30+ other agents read — and a
+    Codex-specific drift gate keeps those adapters from shipping stale. A Codex developer runs the lifecycle without leaving
+    their agent and without an Anthropic key.</p>
+  </spec-tldr>
+
+  <dl class="invest">
+    <dt><span class="letter">I</span> Independent</dt> <dd>Builds on the init scaffold (003) and the guarantee layer (031); no shared data model beyond the command source files.</dd>
+    <dt><span class="letter">N</span> Negotiable</dt>  <dd>Contracts the output format and the drift outcome; the frontmatter-carrier and flag composition are the design's to settle.</dd>
+    <dt><span class="letter">V</span> Valuable</dt>    <dd>Unlocks <a href="#SC-001">SC-001</a> — the whole lifecycle usable inside Codex, a host spectastic could not reach before.</dd>
+    <dt><span class="letter">E</span> Estimable</dt>   <dd>The Claude path is the blueprint; every requirement mirrors an existing one.</dd>
+    <dt><span class="letter">S</span> Small</dt>       <dd>Two coupled parts (scaffold + guarantee layer) push the budget past the default; the changelog records why. Splitting the guarantee layer is the escape hatch if it grows.</dd>
+    <dt><span class="letter">T</span> Testable</dt>    <dd>Every requirement observable — verbs invoke in a real Codex session, the drift gate fires on a fixture, the default scaffold is byte-compared.</dd>
+  </dl>
+
+  <spec-audience-map>
+    <dl>
+      <dt>Exec / PM</dt>   <dd>§<a href="#context">Context</a>, §<a href="#scenarios">User scenarios</a>, §<a href="#success">Success criteria</a>.</dd>
+      <dt>Reviewer</dt>    <dd>§<a href="#requirements">Requirements</a>, §<a href="#assumptions">Assumptions</a>, §<a href="#questions">Open questions</a>.</dd>
+      <dt>Implementer</dt> <dd>§<a href="#requirements">Requirements</a>, §<a href="#data">Data model</a>, §<a href="#conformance">Conformance index</a>.</dd>
+    </dl>
+  </spec-audience-map>
+</header>
+
+
+<section id="context">
+<h2>1 · Context</h2>
+<p>spectastic's lifecycle verbs run only inside Claude Code. <code>spectastic init</code> installs them as
+<code>.claude/commands/*.md</code> (and subagents as <code>.claude/agents/*.md</code>) — a project-local, byte-for-byte
+copy of the source command files. A developer who works in a different agent cannot use the lifecycle at all.</p>
+<p>Cross-tool installers were always anticipated and deferred: spec 003 named a <code>--target cursor|aider|claude|copilot|generic</code>
+family, and spec 031 deferred the same under <code>TBD-cross-tool-installers</code>. What changed is that the target is now a
+settled standard: OpenAI's Codex — the leading alternative agent CLI — converged with Claude Code and 30-plus other tools on the
+<strong>Agent Skills Open Standard</strong> (<code>.agents/skills/&lt;name&gt;/SKILL.md</code>, Dec 2025), which Codex scans from
+the working directory up to the repo root. Codex's own custom-prompts path is deprecated in its favour.</p>
+<p>This spec pulls <code>codex</code> forward and makes it the first alternative host. It targets the host surface only —
+running the verbs <em>inside</em> a Codex session, where Codex's own model does the work and no API key is needed, exactly as a
+slash command runs in Claude Code. Using Codex as an LLM <em>backend</em> for headless <code>spectastic &lt;verb&gt;</code> is a
+separate, deferred surface (§3). Stakeholders: developers who work in Codex, and maintainers who must keep the adapters honest
+against their source.</p>
+
+<spec-sidenote>Agent Skills is one format across 30+ tools, so the same output likely reaches Gemini CLI, Cursor, and Kiro
+too — but this slice demos Codex.</spec-sidenote>
+</section>
+
+
+<section id="scenarios">
+<h2>2 · User scenarios &amp; testing</h2>
+
+<p>Each story <strong>MUST</strong> be independently testable: if you implemented only US1, you would still have a viable MVP.</p>
+
+<h3 id="US1">US1 · Run the lifecycle inside Codex <spec-pill>P1</spec-pill></h3>
+<p>As a <strong>developer working in Codex</strong>, I want to <strong>invoke spectastic's verbs as Codex skills</strong>
+so that <strong>I can spec, design, and implement without leaving my agent or holding an Anthropic key</strong>.</p>
+<p><em>Acceptance:</em> after <code>spectastic init --target codex</code>, each core verb exists at
+<code>.agents/skills/&lt;verb&gt;/SKILL.md</code>; invoking <code>$spectastic-spec &lt;request&gt;</code> in Codex produces a
+<code>spec.html</code>.</p>
+
+<h3 id="US2">US2 · Codex adapters cannot ship stale <spec-pill>P1</spec-pill></h3>
+<p>As a <strong>spectastic maintainer</strong>, I want <strong>a managed Codex adapter that drifts from its source command to
+block the commit</strong> so that <strong>a Codex user never pulls an out-of-date verb</strong>.</p>
+<p><em>Acceptance:</em> editing a source command without regenerating trips the drift check at error severity and the
+pre-commit gate blocks; regenerating clears it. A hand-managed <code>.agents/skills/</code> tree is untouched.</p>
+
+<h3 id="US3">US3 · Honest degradation for subagent passes <spec-pill>P2</spec-pill></h3>
+<p>As a <strong>Codex user</strong>, I want <strong>the verbs that rely on Claude subagents to say so</strong> so that
+<strong>I am not misled into thinking a fan-out ran</strong>.</p>
+<p><em>Acceptance:</em> the generated Codex skill for propose, implement, and triage notes that its adversarial / parallel /
+list-intake sub-pass runs inline under Codex; no subagent files are emitted into the Codex target.</p>
+
+<h3>Edge cases</h3>
+<ul>
+  <li>Both hosts in one project: <code>.claude/</code> and <code>.agents/skills/</code> coexist without collision.</li>
+  <li>A dotted verb name (<code>spectastic.spec</code>) maps to a standard-legal skill name (<code>spectastic-spec</code>) matching its parent directory.</li>
+  <li>Codex not installed: <code>init --target codex</code> still writes the files (generation needs no Codex binary); only invocation needs Codex.</li>
+  <li>The decision-phase interview: Codex has no structured question tool, so <code>AskUserQuestion</code> steps degrade to plain chat questions (see §6).</li>
+</ul>
+</section>
+
+
+<section id="requirements">
+<h2>3 · Requirements</h2>
+
+<p>Conformance keywords (<spec-rule>MUST</spec-rule>, <spec-rule level="should">SHOULD</spec-rule>,
+<spec-rule level="may">MAY</spec-rule>) follow RFC 2119.</p>
+
+<h3>Functional — the scaffold</h3>
+
+<spec-requirement id="FR-001" priority="must">
+<p><code>spectastic init --target codex</code> <spec-rule>MUST</spec-rule> emit each in-scope verb as one
+<code>.agents/skills/&lt;verb&gt;/SKILL.md</code> in the target project — the core lifecycle verbs by default, extended verbs
+(explain, explore) opt-in via <code>--with</code>, mirroring the Claude scaffold. The default target (no <code>--target</code>)
+<spec-rule>MUST</spec-rule> stay <code>claude</code>, the cross-tool axis specs 003 and 031 anticipated.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-002" priority="must">
+<p>Each generated <code>SKILL.md</code> <spec-rule>MUST</spec-rule> carry valid Agent-Skills frontmatter — a <code>name</code>
+(lowercase-hyphen, matching its parent directory, ≤ 64 chars) and a <code>description</code> (≤ 1024 chars, sourced from the
+command's router description) — with the command's instruction body as the skill body.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-003" priority="must">
+<p>Because the standard defines no argument mechanism, the generator <spec-rule>MUST</spec-rule> translate the command's
+<code>$ARGUMENTS</code> token so the body reads the user's request from the invoking message — no positional token survives
+into the emitted skill.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-004" priority="should">
+<p>The generator <spec-rule level="should">SHOULD</spec-rule> preserve the command's <code>triggers</code>,
+<code>use-when</code>, and <code>sibling-boundary</code> metadata in the skill's <code>metadata</code> map; the
+<code>description</code> remains the authoritative trigger surface. The Claude-only <code>model</code> tier
+<spec-rule level="may">MAY</spec-rule> be dropped — Codex has no verb-tier concept.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-005" priority="must">
+<p>Codex adapters <spec-rule>MUST</spec-rule> be written project-local, under the target project's working directory
+(<code>.agents/skills/</code>), never a global user directory.</p>
+</spec-requirement>
+
+<h3>Functional — the guarantee layer</h3>
+
+<spec-requirement id="FR-006" priority="must">
+<p>The guarantee-layer install for the Codex target <spec-rule>MUST</spec-rule> stamp a managed-adapter marker and
+(re)generate the skill adapters deterministically and idempotently.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-007" priority="must">
+<p>A drift check <spec-rule>MUST</spec-rule> flag, at error severity, any marker-managed Codex adapter that diverges
+byte-for-byte from its source command or is missing — and <spec-rule>MUST NOT</spec-rule> judge an
+<code>.agents/skills/</code> tree the project manages by hand (no marker).</p>
+</spec-requirement>
+
+<spec-requirement id="FR-008" priority="must">
+<p>The pre-commit gate <spec-rule>MUST</spec-rule> block a commit that would ship a drifted managed Codex adapter;
+regenerating the adapter <spec-rule>MUST</spec-rule> clear the block.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-009" priority="should">
+<p>The Codex install <spec-rule level="should">SHOULD</spec-rule> be reversible — an uninstall path removes the marker and
+the generated adapters.</p>
+</spec-requirement>
+
+<h3>Functional — fidelity</h3>
+
+<spec-requirement id="FR-010" priority="must">
+<p>The Codex target <spec-rule>MUST NOT</spec-rule> contain subagent definitions — the standard defines no nested-agent
+concept — so verbs that fan out to subagents under Claude Code (propose's adversarial pass, implement's parallel/escalation
+path, triage list-intake) run inline under Codex.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-011" priority="should">
+<p>Each such verb's generated skill <spec-rule level="should">SHOULD</spec-rule> state that its sub-pass runs
+inline/single-turn under Codex, so a Codex user is not led to believe a fan-out ran.</p>
+</spec-requirement>
+<spec-requirement id="FR-012" priority="must">
+    <p>The default <code>spectastic init</code> (the <code>claude</code> target) <spec-rule>MUST</spec-rule> also emit the
+    portable Agent Skills adapters — one <code>.agents/skills/&lt;verb&gt;/SKILL.md</code> per in-scope verb — alongside the
+    <code>.claude/commands</code> adapters, so a Claude project carries both invocation surfaces. Neither surface is removed,
+    and the same verb-scope rules apply (core by default, extended via <code>--with</code>). A Claude-target skill
+    <spec-rule>MUST NOT</spec-rule> carry the Codex-specific inline-degradation note: <a href="spec.html#FR-011">FR-011</a>
+    scopes that note to the Codex host, so the shared render must be host-appropriate and a skill installed for Claude Code
+    (which <em>does</em> have subagents) must not tell its reader the fan-out ran inline.</p>
+    <details><summary>Rationale</summary><p>Claude Code is documented as an Agent Skills host, and the same rendered
+    output already runs unmodified in Codex and Antigravity. Making it the default carries the portable surface everywhere
+    at near-zero cost — the render already exists. The one real cost the adversarial pass surfaced: the note that is correct
+    for Codex is <em>false</em> for Claude, so the render must become host-aware (see Approach + Tasks).</p></details>
+  </spec-requirement>
+<spec-requirement id="FR-013" priority="should">
+    <p>Under <code>spectastic init --tools</code>, the Claude managed install <spec-rule level="should">SHOULD</spec-rule>
+    stamp a managed marker and drift-guard the <code>.agents/skills</code> tree as well as <code>.claude/commands</code>, so a
+    managed Claude project's skills cannot ship stale either — the same "can't ship stale" guarantee (<a href="spec.html#FR-007">FR-007</a>/<a href="spec.html#FR-008">FR-008</a>) applied to the second surface.</p>
+    <details><summary>Rationale</summary><p>An unguarded second surface would silently drift from source the moment a
+    command changed. <code>should</code>, not <code>must</code>: the unmanaged scaffold (FR-012) is the core ask; the managed
+    guarantee is the natural completion, but a plain <code>init</code> without <code>--tools</code> is still valid.</p></details>
+  </spec-requirement>
+
+
+
+<h3>Non-functional</h3>
+
+<spec-requirement id="NFR-001" priority="must">
+<p>Adapter generation <spec-rule>MUST</spec-rule> be deterministic — the same source command yields byte-identical output
+(≤ 0 differing bytes across repeated regenerations), with no clock or network input — so the byte-for-byte drift check (FR-007)
+is well-defined.</p>
+</spec-requirement>
+
+<spec-requirement id="NFR-002" priority="must">
+    <p>Beyond the deliberate addition of the <code>.agents/skills</code> tree (FR-012), adding portable skills
+    <spec-rule>MUST NOT</spec-rule> change the default <code>spectastic init</code> output: a Claude project's
+    <code>.claude/commands</code>, <code>.claude/agents</code>, <code>assets</code>, <code>templates</code>, and generated
+    <code>.gitignore</code>/<code>spectastic.json</code> stay byte-identical (≤ 0 changed non-skills files), and the run
+    introduces ≤ 0 new <code>validate</code> findings.</p>
+  </spec-requirement>
+
+<spec-requirement id="NFR-003" priority="should">
+<p>Generated names and descriptions <spec-rule level="should">SHOULD</spec-rule> obey the standard's limits (name ≤ 64
+lowercase-hyphen matching its directory; description ≤ 1024 chars) so Codex loads every skill without error.</p>
+</spec-requirement>
+
+<h3>Out of scope (deferred to other slices)</h3>
+<spec-out-of-scope>
+  <ul>
+    <li defer-to="TBD-codex-headless-provider">Codex as an LLM <em>backend</em> for headless <code>spectastic &lt;verb&gt;</code> — a <code>CodexCliProvider</code> shelling to <code>codex exec</code>, selected by <code>--provider openai</code> (or credential presence, ambiguity erroring), with <code>--model &lt;openai-id&gt;</code> pass-through. A different surface from this host installer.</li>
+    <li defer-to="TBD-codex-subagents">Faithful subagents on Codex (an <code>agents/openai.yaml</code> mapping of critic / classifier / impl-task). The standard defines no nested-agent concept; carrying them is unproven research.</li>
+    <li defer-to="TBD-cross-tool-installers">The same <code>.agents/skills/</code> output for the other Agent-Skills hosts (Gemini CLI, Cursor, Kiro, +28). The format is portable; this slice demos Codex.</li>
+    <li defer-to="TBD-portable-skill-adapters">Unifying the Claude adapters onto the portable Agent-Skills format (retiring <code>.claude/commands</code> for <code>.agents/skills</code>).</li>
+    <li defer-to="TBD">The deprecated Codex custom-prompts format (<code>~/.codex/prompts/</code>, <code>/prompts:name</code>) — considered and rejected as deprecated and Codex-only.</li>
+  </ul>
+</spec-out-of-scope>
+</section>
+
+
+<section id="data">
+<h2>4 · Data model</h2>
+
+<p>The feature owns one derived artifact and the state that scopes its gate.</p>
+
+<h3>Entities</h3>
+<dl>
+  <dt>Skill adapter</dt><dd>The derived <code>.agents/skills/&lt;verb&gt;/SKILL.md</code> for one verb. Its <code>name</code> equals both its parent directory and the kebab-cased verb; its body is a faithful translation of the source command with no <code>$ARGUMENTS</code> token; it regenerates byte-identically. When marker-managed it is never hand-edited.</dd>
+  <dt>Target</dt><dd>The host an adapter set is emitted for — <code>claude</code> (default) or <code>codex</code>. A project may carry adapters for more than one target at once without collision (<code>.claude/</code> vs <code>.agents/skills/</code>).</dd>
+  <dt>Managed marker</dt><dd>The per-target flag that scopes the drift gate: present iff spectastic generated and owns that target's adapters. Absent → the gate does not judge the tree.</dd>
+</dl>
+
+<spec-note>
+<p>An adapter is <em>managed</em> (marker present, drift-gated) or <em>unmanaged</em> (hand-authored, ignored). Transitions:
+none → managed (install/regen) → drifted (source edited) → managed (regen) → none (uninstall). <em>Drifted</em> is the only
+state the pre-commit gate blocks on.</p>
+</spec-note>
+</section>
+
+
+<section id="success">
+<h2>5 · Success criteria</h2>
+
+<spec-criterion id="SC-001" priority="must" actor="a developer using Codex"
+                validates="FR-001,FR-002,FR-003,FR-004,FR-005,FR-010,FR-011,NFR-003" method="observation">
+<p>A developer with no Anthropic credential gets each core verb's artifact from within a Codex session — the whole lifecycle
+usable in Codex, a host it could not reach before. Core verbs producing their artifact ≥ 6 of 8 (target 8 of 8), from no
+established baseline (0 verbs are runnable in Codex today).</p>
+<details><summary>Meter</summary>
+<p>A reviewer invokes each <code>$spectastic-&lt;verb&gt;</code> against a fixture in a real Codex session, once per release — recording which produced its artifact, and confirming the skill triggers on its description, ships no subagent files, and (for propose/implement/triage) states its inline degradation.</p></details>
+<details><summary>Falsified by</summary>
+<p>A core verb that Codex fails to recognise, or that produces no artifact when invoked.</p></details>
+</spec-criterion>
+
+<spec-criterion id="SC-002" priority="must" actor="a spectastic maintainer"
+                validates="FR-006,FR-007,FR-008,FR-013,NFR-001" method="mechanical"
+                justification="a drift gate that lets any drifted adapter through has failed at its one job — the target is total">
+<p>A maintainer who edits a source command without regenerating is stopped before a stale managed adapter — for either host
+target — reaches the repo, so a user never pulls an out-of-date verb. Drifted managed-adapter commits blocked ≥ 99% (target
+100%), from no established baseline.</p>
+<details><summary>Observed at</summary>
+<p>The pre-commit run and <code>spectastic validate</code> over a deliberately-drifted managed adapter — a Codex skill and (per FR-013) a Claude-target skill — as CI fixtures.</p></details>
+<details><summary>Falsified by</summary>
+<p>A committed managed adapter, of either target, whose bytes differ from its rendered source.</p></details>
+</spec-criterion>
+
+<spec-criterion id="SC-003" priority="must" actor="an existing Claude spectastic user"
+                validates="NFR-002" method="mechanical"
+                justification="apart from the intended skills tree the scaffold is a byte-for-byte copy, so a single changed non-skills byte or new finding is a regression">
+<p>An existing user's default <code>spectastic init</code> leaves everything but the new skills tree undisturbed — the
+<code>.claude/commands</code>, <code>.claude/agents</code>, assets, templates, and generated files stay byte-identical.
+Changed non-skills files ≤ 0 (target 0), from the pre-feature scaffold as baseline.</p>
+<details><summary>Observed at</summary>
+<p>A fixture comparing default-init output — the non-skills files byte-for-byte and a <code>validate</code> sweep — before and after the feature.</p></details>
+<details><summary>Falsified by</summary>
+<p>Any difference in a non-skills file's bytes or the non-skills file set, or a new finding on a Claude project.</p></details>
+</spec-criterion>
+
+<spec-criterion id="SC-005" priority="must" actor="a developer using any Agent Skills host"
+                validates="FR-012" method="mechanical"
+                justification="the whole point is that the portable surface ships by default; if it is absent the feature did not happen">
+<p>A developer who opens a default-scaffolded spectastic project in any Agent Skills host finds the verbs available as portable
+skills — the <code>.agents/skills</code> tree ships in the plain <code>spectastic init</code> output, no flag required. Core
+verbs present as skills ≥ 8 of 8 (target 8), from 0 today (skills shipped only under <code>--target codex</code>).</p>
+<details><summary>Observed at</summary>
+<p>Listing <code>.agents/skills/</code> after a plain <code>spectastic init</code> in a fixture, asserting one <code>SKILL.md</code> per core verb.</p></details>
+<details><summary>Falsified by</summary>
+<p>A default scaffold missing the <code>.agents/skills</code> tree, or missing a core verb's <code>SKILL.md</code>.</p></details>
+</spec-criterion>
+
+<spec-criterion id="SC-004" priority="should" actor="a spectastic maintainer"
+                validates="FR-009" method="mechanical"
+                justification="an uninstall that leaves any managed file behind has not reversed the install">
+<p>A maintainer who uninstalls the Codex target is left with none of spectastic's managed Codex files in the project — a clean
+reversal. Residual managed files ≤ 0 (target 0), from no established baseline.</p>
+<details><summary>Observed at</summary>
+<p>Running the uninstall path on a fixture that had the Codex target installed, then listing the tree for the marker and adapters.</p></details>
+<details><summary>Falsified by</summary>
+<p>Any spectastic-managed Codex adapter or marker remaining after the uninstall.</p></details>
+</spec-criterion>
+</section>
+
+
+<section id="assumptions">
+<h2>6 · Assumptions</h2>
+
+<spec-assumption>
+<p>Codex reads the Agent Skills Open Standard from <code>.agents/skills/</code> as documented, and the format is stable enough
+to target. If the standard shifts, the adapter shape follows it.</p>
+</spec-assumption>
+
+<spec-assumption>
+<p>A Codex session provides the shell, file, and interactive capabilities the verbs assume — but no structured question tool,
+so the decision-phase interview degrades to plain chat questions rather than the <code>AskUserQuestion</code> surface it uses
+in Claude Code.</p>
+</spec-assumption>
+</section>
+
+
+<section id="questions">
+<h2>7 · Open questions</h2>
+<spec-questions>
+<p>None outstanding — every decision (target format, selection flag, guarantee-layer scope, subagent fidelity) was anchored in
+the interview. The metadata carrier and exact flag composition are design choices, not open spec questions.</p>
+</spec-questions>
+</section>
+
+
+<section id="conformance">
+<h2>8 · Conformance index</h2>
+<p>Auto-built from every <code>&lt;spec-requirement&gt;</code> in this document.</p>
+<spec-conformance></spec-conformance>
+</section>
+
+
+<section id="changelog">
+<h2>9 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-09-09">09 Sep 2026</time><span>Initial draft. Budget authored above the 1,500-word default (2,200) because the slice deliberately couples the Codex scaffold with its guarantee layer (drift gate + pre-commit); splitting the guarantee layer into a sibling is the recorded escape hatch if it grows.</span></li>
+  <li><time datetime="2026-09-12">12 Sep 2026</time><span>Applied <a href="./changes/archive/2026-09-12-claude-installs-skills/proposal.html">2026-09-12-claude-installs-skills</a>: Make the portable Agent Skills the default everywhere — a Claude project now gets .claude/commands and .agents/skills — via ADD FR-012 (Claude scaffold emits both surfaces; Claude skills carry no Codex note), ADD FR-013 (--tools drift-guards both trees), and MODIFY NFR-002 (relaxed from byte-identical to changes-only-by-the-skills-tree). Adversarially reviewed and interviewed; three risks mitigated.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  111-codex-skill-adapters · Codex skill adapters · authored 2026-09-09
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>
