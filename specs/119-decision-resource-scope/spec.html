@@ -1,0 +1,297 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'">
+<title>Decision resource scope · Specification</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Specification · 119-decision-resource-scope</p>
+  <h1>Decision resource scope</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    A governance decision can scope a repo-relative path, but not a resource that lives in another service.
+    Let a decision name the data store it governs — and who owns it — so the gate can tell a write it may make from one it may not.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>      <span><spec-status value="draft">Draft</spec-status></span>
+    <b>Spec ID</b>     <span>119-decision-resource-scope</span>
+    <b>Owner</b>       <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Reviewers</b>   <span>Guardrail layer (112–118)</span>
+    <b>Created</b>     <span><time datetime="2026-09-13">13 Sep 2026</time></span>
+    <b>Principles</b><span><a href="../../principles.html">v1.9.0</a></span>
+    <b>Smallest demoable</b><span>The position-keeper's D-007, resource-scoped: evaluated with a non-owner project identity it flags the write; with the owner identity it reproduces today's verdict exactly.</span>
+    <b>Read time</b>   <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-budget words="2000" reqs="20" minutes="14"></spec-budget>
+
+  <spec-tldr>
+    <p>A guardrail decision (112) scopes a <strong>repo-relative path glob</strong> — <code>src/**/persistence/**</code> — which
+    cannot name a data store in another repository. This spec adds a <strong>resource scope</strong>: a decision names the store
+    it governs by a federation-unique <code>datastore</code> coordinate, the <strong>owner</strong> project that may write it, and
+    the owner-internal path where a direct write is sanctioned. The verdict becomes <strong>owner-aware</strong> — in the owning
+    service it reproduces today's path rule exactly; in any other service a detected touch is a violation <em>even when cleanly
+    layered in the non-owner's own repo</em>, because the defect is <strong>ownership, not layering</strong>, the one thing a path
+    glob cannot express. The comparison needs only the current project identity (067) and the owner coordinate; the cross-repo
+    <em>read</em> is deferred to federation, so this slice is proven single-repo with fixture identities.</p>
+  </spec-tldr>
+
+  <dl class="invest">
+    <dt><span class="letter">I</span> Independent</dt> <dd>Builds on the decision record (112) and the project-identity coordinate (067) — two upstream specs; no shared mutable model.</dd>
+    <dt><span class="letter">N</span> Negotiable</dt>  <dd>Contracts the owner-aware <em>outcome</em>; the storage of the scope and the verdict wiring are the design's call.</dd>
+    <dt><span class="letter">V</span> Valuable</dt>    <dd>Unlocks <a href="#SC-002">SC-002</a> — a consuming service is flagged for reaching into a store it does not own.</dd>
+    <dt><span class="letter">E</span> Estimable</dt>   <dd>De-risked by a run spike: the four owner/non-owner scenarios and the identity comparison are already validated in principle.</dd>
+    <dt><span class="letter">S</span> Small</dt>       <dd>Nine requirements; one new element, one coordinate kind, one verdict branch, one validate rule.</dd>
+    <dt><span class="letter">T</span> Testable</dt>    <dd>Every requirement is a fixture: owner vs non-owner project identity against a resource-scoped decision, asserted mechanically.</dd>
+  </dl>
+
+  <spec-audience-map>
+    <dl>
+      <dt>Exec / PM</dt>   <dd>§<a href="#context">Context</a>, §<a href="#scenarios">User scenarios</a>, §<a href="#success">Success criteria</a>.</dd>
+      <dt>Reviewer</dt>    <dd>§<a href="#requirements">Requirements</a>, §<a href="#assumptions">Assumptions</a>, §<a href="#questions">Open questions</a>.</dd>
+      <dt>Implementer</dt> <dd>§<a href="#requirements">Requirements</a>, §<a href="#data">Data model</a>, §<a href="#conformance">Conformance index</a>.</dd>
+    </dl>
+  </spec-audience-map>
+</header>
+
+
+<section id="context">
+<h2>1 · Context</h2>
+<p>The guardrail layer (112–118) catches the position-keeper's D-007 — a direct <code>UPDATE positions</code> outside the
+persistence adapter — because the decision, the sanctioned path, and the offending file share one checkout. Its scope is a
+repo-relative path glob, matched against staged files in the same repo. The survey
+<a href="../../docs/cross-repo-guardrail-considerations.html">cross-repo guardrails</a> established that this cannot cross a
+service boundary: a path glob has no grammar for a file — still less a table — in another repository, and the store a decision
+protects is exactly what a microservice split moves out of reach.</p>
+<p>A run spike settled the fix. A decision that names the <em>resource</em> it governs and the <em>owner</em> that may write it
+turns the verdict owner-aware: in the owning service it behaves precisely as the path rule does today; in any other service a
+touch of that store is a violation — including one impeccably layered in the non-owner's own code, because what is wrong is
+<em>whose</em> store it is, not <em>where</em> the write sits. It is the first primitive toward cross-repo enforcement, worth
+building before federation because it is what the distribution surface would carry.</p>
+</section>
+
+
+<section id="scenarios">
+<h2>2 · User scenarios &amp; testing</h2>
+
+<p>Each story is independently testable: US1 alone — the non-owner branch — is a viable MVP that catches the case a path glob cannot.</p>
+
+<h3 id="US1">US1 · A consuming service is flagged for reaching into a store it doesn't own <spec-pill>P1</spec-pill></h3>
+<p>As a <strong>reviewer in a consuming service</strong>, I want the gate to flag a change that touches a data store my service
+does not own — even when the change is cleanly layered in my own repo — so that <strong>a cross-service reach into another
+team's store is caught, not silently merged</strong>.</p>
+<p><em>Acceptance:</em> for a decision owned by <code>position-keeper</code>, a verdict run under a different project identity flags any detected touch — a well-layered write in the consumer's own adapter just the same.</p>
+
+<h3 id="US2">US2 · The owning service sees no regression <spec-pill>P1</spec-pill></h3>
+<p>As a <strong>reviewer in the owning service</strong>, I want a resource-scoped decision to behave exactly like today's
+path-scoped one, so that <strong>adopting the resource scope costs me no change in verdict</strong>.</p>
+<p><em>Acceptance:</em> under the owner's identity, a resource-scoped decision flags a write outside <code>allowed-in</code> and is silent inside it — identical to the path-scoped equivalent, every scenario.</p>
+
+<h3 id="US3">US3 · An author is told when the ownership rule is mis-declared <spec-pill>P2</spec-pill></h3>
+<p>As a <strong>spec author</strong>, I want to declare which service owns a store and where it may be written, and be told at
+commit time if I mis-declare it, so that <strong>the ownership rule is well-formed before it reaches CI</strong>.</p>
+<p><em>Acceptance:</em> a malformed <code>&lt;spec-resource&gt;</code> — bad coordinate, ill-formed owner, or an owner that disagrees with the coordinate's authority — is reported by <code>validate</code> at error severity.</p>
+
+<h3>Edge cases</h3>
+<ul>
+  <li>A decision carries <em>both</em> <code>&lt;spec-path&gt;</code> and <code>&lt;spec-resource&gt;</code> — each scope is evaluated independently.</li>
+  <li><code>allowed-in</code> absent — no sanctioned direct-write path, so even the owner's direct touch is a violation (fully locked).</li>
+  <li>The current identity is the bare, unqualified default — treated as <strong>never the owner</strong> (fail safe: an unidentified project cannot claim ownership).</li>
+  <li>The content pattern under-detects a real cross-service touch (an API call, a topic, a migration is not a SQL string) — a recorded ceiling, not an edge case this slice closes.</li>
+</ul>
+</section>
+
+
+<section id="requirements">
+<h2>3 · Requirements</h2>
+
+<p>Conformance keywords (<spec-rule>MUST</spec-rule>, <spec-rule level="should">SHOULD</spec-rule>,
+<spec-rule level="may">MAY</spec-rule>) follow RFC 2119.</p>
+
+<h3>Functional</h3>
+
+<spec-requirement id="FR-001" priority="must">
+<p>A decision <spec-rule>MUST</spec-rule> be able to declare a resource scope with a <code>&lt;spec-resource&gt;</code> element
+inside its <code>&lt;spec-scope&gt;</code> — a sibling to <code>&lt;spec-path&gt;</code>/<code>&lt;spec-module&gt;</code> —
+carrying a <code>coordinate</code> (the store), an <code>owner</code> (the project that may write it), and an optional
+<code>allowed-in</code> (the owner-internal path where a direct write is sanctioned).</p>
+</spec-requirement>
+
+<spec-requirement id="FR-002" priority="must">
+<p>The resource coordinate <spec-rule>MUST</spec-rule> be a well-formed <code>datastore</code> resource coordinate
+(<code>spectastic://&lt;owner&gt;/&lt;project&gt;/datastore/&lt;name&gt;</code>); <code>datastore</code> <spec-rule>MUST</spec-rule>
+be added to the shared <code>RESOURCE_KINDS</code> grammar (067) so the identity engine and this scope agree on what is well-formed.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-003" priority="must">
+<p>The merge verdict <spec-rule>MUST</spec-rule> be owner-aware for a resource-scoped decision: when the current project
+<em>is</em> the decision's owner, a detected touch outside <code>allowed-in</code> is a violation and one inside it is not (the
+existing path rule); when the current project is <em>not</em> the owner, <strong>any</strong> detected touch is a violation.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-004" priority="must">
+<p>The owner-aware verdict <spec-rule>MUST</spec-rule> honour the decision's declared posture (<code>block</code> / <code>warn</code>, spec 112) uniformly for both the owner-internal and the non-owner case — the resource scope changes <em>where</em> a touch is allowed, not <em>how</em> a violation is graded.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-005" priority="should">
+<p>A validate rule <spec-rule level="should">SHOULD</spec-rule> report, at error severity, a malformed resource declaration: a
+coordinate of the wrong kind or shape, an <code>owner</code> that is not a well-formed project identity, or an <code>owner</code>
+that disagrees with the coordinate's own authority segments.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-006" priority="must">
+<p>A decision with no <code>&lt;spec-resource&gt;</code> <spec-rule>MUST</spec-rule> behave exactly as today — the resource scope
+is purely additive, and no existing path-scoped decision changes verdict.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-007" priority="should">
+<p>Detection of a resource touch <spec-rule level="should">SHOULD</spec-rule> reuse the decision's existing enforcement rules
+(the content pattern, the path deny) — the resource scope adds no new detector; it changes only the allowed-zone evaluation to be owner-aware.</p>
+</spec-requirement>
+
+<h3>Non-functional</h3>
+
+<spec-requirement id="NFR-001" priority="must">
+<p>The verdict kernel <spec-rule>MUST</spec-rule> stay deterministic and I/O-free: it reads no config, no clock, no network, and
+carries <strong>at most 0</strong> filesystem, network, or model imports on its path. The current project identity is
+<em>injected</em> as data by the caller (resolved once via the 067 identity source), never read inside the kernel.</p>
+</spec-requirement>
+
+<spec-requirement id="NFR-002" priority="should">
+<p>The <code>datastore</code> coordinate <spec-rule level="should">SHOULD</spec-rule> resolve through exactly <strong>1</strong>
+identity grammar (the shared 067 <code>RESOURCE_KINDS</code> / classifier) with <strong>0</strong> second parsers — so a coordinate
+this scope accepts and one the identity engine accepts can never disagree.</p>
+</spec-requirement>
+
+<h3>Out of scope (deferred to other slices)</h3>
+<spec-out-of-scope>
+  <ul>
+    <li defer-to="TBD-federated-decision-read"><strong>Reading another repository's decision</strong> inside this repo's CI — the cross-repo distribution surface. This slice proves the non-owner branch with a fixture project identity; the live cross-repo read is federation-gated.</li>
+    <li defer-to="TBD-resource-touch-detection"><strong>Cross-service touch detection beyond the content pattern</strong> — an API call, a topic subscription, or a migration is not a SQL string, so the pattern proxy under-detects. Recorded as a ceiling.</li>
+    <li defer-to="TBD-placement-ownership-prompt"><strong>The duplication case</strong> — a non-owner building its own parallel store (not touching the named one) is a placement question (resemblance-is-not-ownership, P-14 review-caught), not a resource-scope violation.</li>
+  </ul>
+</spec-out-of-scope>
+</section>
+
+
+<section id="data">
+<h2>4 · Data model</h2>
+
+<p>Two concepts, one extended and one new.</p>
+
+<h3>Entities</h3>
+<dl>
+  <dt>Resource scope</dt><dd>A store a decision governs: a <code>datastore</code> coordinate, an <code>owner</code> (the one
+  project that may write it), and an optional owner-internal <code>allowed-in</code> path. Invariant: exactly one owning project,
+  and the <code>owner</code> agrees with the coordinate's own authority.</dd>
+  <dt>Governance decision (extended)</dt><dd>Its scope may now carry a resource alongside, or instead of, a path. With no resource scope it is identical to a pre-119 decision.</dd>
+</dl>
+
+<spec-note>
+<p>The load-bearing invariant is <strong>owner-aware evaluation</strong>: ownership is the decision's <code>owner</code> compared
+to the current project identity, and the bare default is never an owner. Ownership is a property of the coordinate, not the file
+— which is why a well-layered write in a non-owner's own adapter is still a violation.</p>
+</spec-note>
+</section>
+
+
+<section id="success">
+<h2>5 · Success criteria</h2>
+
+<spec-criterion id="SC-001" priority="must" actor="a reviewer in the owning service"
+                validates="FR-003,FR-006" method="mechanical">
+<p>A reviewer in the owning service sees the same verdict from a resource-scoped decision as from today's path-scoped one —
+matching on all 4 owner-repo fixture scenarios (target 4 of 4; any divergence fails), from no established baseline (the capability is new).</p>
+<details><summary>Observed at</summary>
+<p>The guardrail verdict test suite, owner-identity fixtures: a write outside <code>allowed-in</code> flags, one inside it is clean, matching the path-scoped equivalent case-for-case.</p></details>
+<details><summary>Falsified by</summary>
+<p>An owner-repo verdict for a resource-scoped decision that diverges from the path-scoped equivalent on any scenario.</p></details>
+</spec-criterion>
+
+<spec-criterion id="SC-002" priority="must" actor="a reviewer in a consuming service"
+                validates="FR-003,FR-004,FR-007" method="mechanical">
+<p>A reviewer in a consuming service is flagged, at the decision's declared posture, when their change touches a store owned
+elsewhere — in both the direct-write and the well-layered-own-adapter case: 2 of 2 non-owner fixture scenarios flag (target 2 of 2), from no established baseline.</p>
+<details><summary>Observed at</summary>
+<p>The guardrail verdict test suite, non-owner-identity fixtures C and D — including D, the well-layered write in the consumer's own adapter.</p></details>
+<details><summary>Falsified by</summary>
+<p>A non-owner touch of the store producing a clean verdict, or the well-layered non-owner write (scenario D) passing.</p></details>
+</spec-criterion>
+
+<spec-criterion id="SC-003" priority="should" actor="a spec author"
+                validates="FR-001,FR-002,FR-005,NFR-002" method="mechanical">
+<p>A spec author who mis-declares a resource scope is told before it merges — <code>validate</code> flags every malformed-declaration
+fixture (bad coordinate, bad owner, owner/coordinate disagreement): 3 of 3 (target 3 of 3), from no established baseline (no such check exists today).</p>
+<details><summary>Observed at</summary>
+<p><code>spectastic validate</code> over the resource-scope fixtures, each asserting one finding at error severity — the coordinate resolved through the shared 067 grammar.</p></details>
+<details><summary>Falsified by</summary>
+<p>A malformed <code>&lt;spec-resource&gt;</code> passing <code>validate</code> with no finding.</p></details>
+</spec-criterion>
+
+<spec-criterion id="SC-004" priority="must" actor="a security reviewer"
+                validates="NFR-001" method="mechanical">
+<p>A security reviewer confirms the owner-aware verdict path stays pure — carrying 0 filesystem, network, or model imports
+(target 0), from 0 today (the kernel is already pure; this slice preserves it while adding the owner comparison).</p>
+<details><summary>Observed at</summary>
+<p>The no-network import scan over the verdict module's transitive imports, extended to the resource-scope branch.</p></details>
+<details><summary>Falsified by</summary>
+<p>Any filesystem, network, or model import appearing on the verdict path — including a config read for the project identity, which must be injected instead.</p></details>
+</spec-criterion>
+</section>
+
+
+<section id="assumptions">
+<h2>6 · Assumptions</h2>
+
+<spec-assumption>
+<p>The current project identity reaches the verdict's caller through the 067 resolver (<code>resolveProjectConfig</code>) and is
+passed into the kernel as data — the spike confirmed this is all the owner comparison needs.</p>
+</spec-assumption>
+
+<spec-assumption>
+<p>The content pattern (or path deny) remains the touch detector; the resource scope reinterprets the allowed zone, not what counts as a touch. Better cross-service detection is deferred.</p>
+</spec-assumption>
+</section>
+
+
+<section id="questions">
+<h2>7 · Open questions</h2>
+<spec-questions>
+<p>None outstanding — the scope, the declaration shape, the coordinate kind, and the non-owner posture were all anchored in the interview, and the run spike de-risked the verdict semantics.</p>
+</spec-questions>
+</section>
+
+
+<section id="conformance">
+<h2>8 · Conformance index</h2>
+<p>Auto-built from every <code>&lt;spec-requirement&gt;</code> in this document.</p>
+<spec-conformance></spec-conformance>
+</section>
+
+
+<section id="changelog">
+<h2>9 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-09-13">13 Sep 2026</time><span>Initial draft — drains <code>TBD-decision-data-resource-scope</code> from the cross-repo guardrails survey, grounded in a run spike. Scope, declaration shape (<code>&lt;spec-resource&gt;</code>), coordinate kind (<code>datastore</code>), and non-owner posture (honour the decision's) anchored via the decision-phase interview.</span></li>
+  <li><time datetime="2026-09-13">13 Sep 2026</time><span>Budget authored at 2,000 words (default 1,500), sitting in amber: prose was trimmed ~1,980 → ~1,850 by cutting narrative, not requirements; the count is held above default by the 108 success-criterion contract's mandatory Observed-at/Falsified-by blocks across 4 criteria (four fixture scenarios: owner-compat, non-owner, validate, purity). Requirements held at 9 of 20.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  119-decision-resource-scope · Decision resource scope · authored 13 Sep 2026
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>
