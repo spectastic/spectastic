@@ -1,0 +1,344 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Cross-repo guardrails — does the verdict hold when the estate is federated?</title>
+<link rel="stylesheet" href="../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../assets/favicon.svg">
+<script src="../assets/theme-boot.js"></script>
+<style>
+  .tag { font-family: var(--font-sans); font-weight: 700; font-size: 0.72rem; letter-spacing: 0.04em; text-transform: uppercase; padding: 0.1em 0.5em; border-radius: 3px; white-space: nowrap; }
+  .t-block { background: #f6d5cf; color: #7a241a; }
+  .t-miss  { background: #fbe8c8; color: #7a5212; }
+  .t-ok    { background: #dff0d6; color: #2f5a26; }
+  .legs { list-style: none; padding-left: 0; }
+  .legs li { padding: 0.35rem 0 0.35rem 1.9rem; position: relative; border-bottom: 1px solid var(--c-rule, #e3e0d8); }
+  .legs li::before { content: attr(data-leg); position: absolute; left: 0; top: 0.35rem; font-family: var(--font-mono); font-weight: 700; color: var(--c-accent, #5f023e); }
+  @media (prefers-color-scheme: dark) {
+    .t-block { background: #3a1f1b; color: #e0a79d; }
+    .t-miss  { background: #3a2c14; color: #e6bd77; }
+    .t-ok    { background: #24361f; color: #a9d69a; }
+    .legs li { border-bottom-color: #302e2a; }
+  }
+  :root[data-theme="dark"] .t-block { background: #3a1f1b; color: #e0a79d; }
+  :root[data-theme="dark"] .t-miss  { background: #3a2c14; color: #e6bd77; }
+  :root[data-theme="dark"] .t-ok    { background: #24361f; color: #a9d69a; }
+  :root[data-theme="dark"] .legs li { border-bottom-color: #302e2a; }
+  :root[data-theme="light"] .t-block { background: #f6d5cf; color: #7a241a; }
+  :root[data-theme="light"] .t-miss  { background: #fbe8c8; color: #7a5212; }
+  :root[data-theme="light"] .t-ok    { background: #dff0d6; color: #2f5a26; }
+</style>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Considerations · Engineering governance</p>
+  <h1>The guardrail across a repo boundary</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    The merge verdict catches Priya's bypass in one repo. Split the estate into services, each with its own specs and corpus,
+    and ask the harder question — not "is this write allowed here?" but "does this change even belong in this repo?"
+  </p>
+
+  <spec-meta>
+    <b>Status</b>     <span><spec-status value="draft">Draft — awaiting review</spec-status></span>
+    <b>Type</b>       <span>Web-backed architecture survey; lands recommendations + TBDs</span>
+    <b>Author</b>     <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Created</b>    <span><time datetime="2026-09-13">13 Sep 2026</time></span>
+    <b>Follows</b>    <span><a href="./architectural-guardrails-considerations.html">Architectural guardrails</a> (the single-repo layer, specs 112–118)</span>
+    <b>Read time</b>  <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-tldr>
+    <p>Take the position-keeper example — where the merge verdict kills Priya's direct <code>UPDATE positions</code> at plan and
+    merge — and make it a <strong>multi-repo microservice estate</strong>, each service its own repo with its own <code>specs/</code>
+    and knowledge corpus. Two questions were hiding inside one. <strong>The verdict question</strong> ("is this write allowed
+    here?") is <strong>repo-local by construction</strong>: retrieval reads only <code>join(cwd, 'specs')/*/design.html</code>,
+    and a decision's scope is a <em>repo-relative path glob</em> that cannot name a file — or a table — in another checkout. So a
+    decision authored in the position-keeper repo is <strong>invisible</strong> to a verdict run in Priya's repo. Closing that
+    needs three things landing together, of which the deferred <code>TBD-guardrail-decision-index</code> is only one; the missing
+    <em>primitive</em> is a decision scope that names a federation-unique <strong>resource</strong>, not a path.</p>
+    <p>But the sharper case dissolves the first one. <strong>Database-per-service saves you from the wrong thing.</strong>
+    Per-service grants stop Priya <em>reaching into</em> the position store — yet nothing stops her <em>rebuilding</em> its
+    responsibility inside her own service, simply because that is the repo her team knows. That is not a boundary <em>bypass</em>
+    a grant or a federated rule could catch; it is a boundary <em>duplication</em> — right change, wrong service — and it is
+    invisible to every mechanical check. It is Conway's Law operating exactly as predicted: the change lands where the
+    communication structure points, not where it belongs. Now two services own position-like data and will silently diverge —
+    the settlement-consistency failure <code>KB-0001</code> warns about, promoted to cross-service scale.</p>
+    <p><strong>This is the placement question, and spectastic already decided it is review-caught, not machine-enforceable
+    (P-14)</strong> — which the industry corroborates without exception (Conway; Team Topologies): ownership is a social fact,
+    and tooling can only enforce a boundary <em>after</em> a human declares it as data. The wrong-service misplacement is caught
+    only if <strong>all four legs hold</strong> — ownership declared as data, the estate federated, the check run at design time,
+    a human confirming the hedge — and Conway predicts the one reviewer who knows the store belongs elsewhere is <em>not</em> on
+    the misplacing repo's PR. Net: keep the guardrail honestly repo-local and say so; the real cross-service seam is the
+    <strong>contract</strong>, not the code; and the wrong-service case is a <strong>design-time, human-confirmed suggestion</strong>,
+    never a merge gate — exactly the posture the placement survey already lands.</p>
+  </spec-tldr>
+</header>
+
+
+<section id="two-failures">
+<h2>1 · Two failures were hiding in one question</h2>
+<p>"Does spectastic make the correct decisions around where database changes should land?" reads as one question and is two.
+They fail by different mechanisms, at different lifecycle stages, and one of them is not spectastic's to solve.</p>
+
+<div style="overflow-x:auto;">
+<table>
+  <thead><tr><th>&nbsp;</th><th>The <em>verdict</em> question</th><th>The <em>placement</em> question</th></tr></thead>
+  <tbody>
+    <tr><td><strong>Asks</strong></td><td>Is this write <em>allowed</em> here?</td><td>Which service should <em>own</em> this change?</td></tr>
+    <tr><td><strong>Single-repo demo</strong></td><td><span class="tag t-block">blocked</span> D-007 kills <code>UPDATE positions</code> outside the adapter</td><td>n/a — one repo, nowhere else it could go</td></tr>
+    <tr><td><strong>Fails on</strong></td><td>a governing decision in <em>another</em> repo</td><td>a change written in the <em>wrong</em> repo</td></tr>
+    <tr><td><strong>Stage</strong></td><td>merge gate (and plan)</td><td>design / plan time — by merge it is already misplaced</td></tr>
+    <tr><td><strong>Owner</strong></td><td>tooling — <em>if</em> the rule can cross the boundary</td><td>a human — <span class="tag t-miss">P-14 review-caught</span></td></tr>
+  </tbody>
+</table>
+</div>
+<p>The rest of this survey takes them in turn, then shows why the microservice split makes the <em>second</em> the dominant one.</p>
+</section>
+
+
+<section id="verdict-half">
+<h2>2 · The verdict half — repo-local by construction</h2>
+<p>The guardrail layer (specs 112–118) is deterministic and honest, and it is <strong>strictly single-checkout</strong>. Three
+facts from the code, not speculation:</p>
+<ul>
+  <li><strong>Retrieval reads only the current repo.</strong> <code>loadDecisions</code> walks <code>join(ctx.cwd, 'specs')</code>
+  and parses <code>&lt;spec-decision&gt;</code> out of each local <code>design.html</code>
+  (<code>packages/core/src/commands/adrs.ts</code>). There is no fetch, no clone, no path that traverses to another checkout.</li>
+  <li><strong>Scope is a repo-relative path glob.</strong> D-007's scope <code>src/**/persistence/**</code> is anchored
+  <code>^…$</code> against a normalised relative path (<code>packages/core/src/guardrail/glob.ts</code>). The grammar admits only
+  <code>**</code>, <code>*</code>, <code>?</code> — no host, no authority, no <code>../</code>. <strong>A path glob cannot name a
+  file in another repository, still less a table.</strong></li>
+  <li><strong>The coordinate is addressable but never dereferenced.</strong> <code>spectastic://&lt;owner&gt;/&lt;project&gt;/decision/&lt;spec&gt;/&lt;D-NNN&gt;</code>
+  is federation-<em>unique</em> (067), but every use of it is display or prompt injection — the retrieval log, the
+  <code>--explain</code> output. <code>parseResourceUri</code> states outright that resolving a coordinate to a local artifact is
+  "a deliberately separate operation … no dereference of any kind." It is a string, not a pointer.</li>
+</ul>
+<p><strong>So a decision authored in the position-keeper repo is invisible to a verdict run in Priya's repo.</strong> The exact
+class the single-repo demo was built to catch passes silently across the boundary.</p>
+
+<h3>What it would actually take — three legs, not one</h3>
+<p>The obvious candidate is the deferred <code>TBD-guardrail-decision-index</code> (spec 113's out-of-scope: "reading from a
+decision registry rather than <code>design.html</code> … a later distribution concern"). It is <strong>necessary but not
+sufficient</strong>. Cross-repo enforcement needs all three of:</p>
+<ul class="legs">
+  <li data-leg="a"><strong>Distribution</strong> — the decision index itself, so repo B can read repo A's decisions rather than only its own <code>design.html</code>. <em>(the named TBD)</em></li>
+  <li data-leg="b"><strong>A data-resource scope</strong> — a decision must govern a federation-unique <strong>resource</strong> (the <code>positions</code> store on a <code>spectastic://</code> coordinate), because a repo-relative path glob is meaningless in another tree. <strong>This primitive does not exist and is not specced.</strong></li>
+  <li data-leg="c"><strong>Reach + trust</strong> — repo B must <em>know</em> to load repo A's decisions (a declared <code>consumes</code>/unit edge, 079/080 — and by the settled rule, <em>declaration outranks inference</em>, because the same table name appears in owner and non-owner alike) and be <em>able</em> to (082 is single-checkout; cross-repo reading needs the federated read surface in <code>spectastic-mcp</code>).</li>
+</ul>
+<p>Miss any leg and the verdict still sees nothing. The decision-index alone buys a channel with nothing addressable to carry.</p>
+</section>
+
+
+<section id="reframe">
+<h2>3 · The reframe — database-per-service saves you from the wrong thing</h2>
+<p>Before building leg (b), notice what the topology change does to the premise. In a <em>correct</em> microservice estate the
+position store is <strong>private to the position-keeper service and reachable only through its API</strong> — the
+database-per-service pattern, and its named inverse the shared-database anti-pattern
+(<a href="https://microservices.io/patterns/data/database-per-service.html">microservices.io</a>;
+<a href="https://martinfowler.com/bliki/IntegrationDatabase.html">Fowler, <em>IntegrationDatabase</em></a>). Priya's repo
+<strong>cannot</strong> issue <code>UPDATE positions</code> against another service's database; the demo's raw cross-table write
+only exists because the monolith shares one database.</p>
+<p>The position-keeper exemplar already knows this. D-007 lists <strong>three</strong> enforcement layers — an ArchUnit boundary
+rule, a Semgrep content rule, <em>and</em> "a DB grant as the operational backstop (D-008)." That grant is precisely the
+database-per-service answer: assign each service its own credentials and let the database refuse the write
+(<a href="https://learn.microsoft.com/en-us/dotnet/architecture/microservices/architect-microservice-container-applications/data-sovereignty-per-microservice">data sovereignty per microservice</a>).
+<strong>The code-level checks are the in-repo convenience; the grant is the thing that holds across a repo boundary the code
+cannot see.</strong> The exemplar is smarter than the single-repo demo makes it look — and the honest read is that in a
+federated world the grant does more work than the verdict does.</p>
+</section>
+
+
+<section id="wrong-service">
+<h2>4 · Priya in the wrong service — the failure the boundary does <em>not</em> catch</h2>
+<p>Here is the case that dissolves the first one. Priya's change genuinely belongs in the position-keeper service. But her team
+owns the reconciliation service, and that is the repo they know — so she builds it there. She does not reach into the position
+store (the grant would refuse her). She <strong>reinvents its responsibility</strong>: a positions-shaped table of her own, a
+second writer of the same truth.</p>
+<p>Walk it against every mechanical check and each one stands down for a <em>correct</em> reason:</p>
+<div style="overflow-x:auto;">
+<table>
+  <thead><tr><th>Check</th><th>Verdict</th><th>Why it does not fire</th></tr></thead>
+  <tbody>
+    <tr><td>Per-service DB grant</td><td><span class="tag t-ok">silent</span></td><td>She writes <em>her own</em> service's database — no grant is violated.</td></tr>
+    <tr><td>Federated D-007 (hypothetical leg a+b+c)</td><td><span class="tag t-ok">silent</span></td><td>D-007 governs <em>the position store</em>. A parallel table in another service is not a write to that store — it is a new store that should not exist.</td></tr>
+    <tr><td>ArchUnit / dependency-cruiser</td><td><span class="tag t-ok">silent</span></td><td>Single-repo by construction; the duplication spans repos, and within her repo the code is well-layered.</td></tr>
+    <tr><td>Contract test (Pact)</td><td><span class="tag t-ok">silent</span></td><td>Checks a consumer against a <em>published contract</em>, never a producer's internal ownership. The duplication publishes nothing to test.</td></tr>
+    <tr><td>The merge verdict</td><td><span class="tag t-ok">silent</span></td><td>Repo-local, and no rule in <em>her</em> repo says "positions belongs to someone else."</td></tr>
+  </tbody>
+</table>
+</div>
+<p>This is not a boundary <em>bypass</em>; it is a boundary <strong>duplication</strong> — and it is worse, because it is
+invisible. Two services now believe they own position-like data, and they will diverge exactly the way
+<code>KB-0001</code> (settlement consistency: the book and its consumers must never silently diverge) warns — only now the
+divergence is <em>across a service boundary</em>, where no single database, no single test, and no single reviewer sees both
+halves.</p>
+<p>And the driver is not malice or incompetence — it is <strong>Conway's Law</strong>: "any organization that designs a system
+will produce a design whose structure is a copy of the organization's communication structure"
+(<a href="https://martinfowler.com/bliki/ConwaysLaw.html">Fowler</a>). The change lands where Priya's <em>communication
+structure</em> points — her team's repo — not where the domain says it belongs. This is the concrete, human mechanism behind the
+placement survey's abstract thesis, <strong>resemblance is not ownership</strong>: the change resembles the reconciliation
+service because Priya, embedded in that context, wrote it in that service's vocabulary. Improving any similarity signal makes the
+wrong answer <em>more</em> confident, because the change genuinely does resemble the repo it was written in.</p>
+</section>
+
+
+<section id="what-catches">
+<h2>5 · What could catch it — four legs, at design time, human-confirmed</h2>
+<p>The wrong-service misplacement is catchable, but only as a <em>suggestion before the work</em>, never a gate after it — and
+only if <strong>all four legs hold at once</strong>:</p>
+<ul class="legs">
+  <li data-leg="1"><strong>Ownership declared as data.</strong> Someone must have written "the position store belongs to the position-keeper service" in a form a machine can read — a <code>spec.owner</code> in a catalog, an ownership manifest, a bounded-context registry. spectastic has <strong>no ownership field</strong> today beyond <code>enforce.waivers[].owner</code>; <code>TBD-project-ownership-field</code> was <em>deliberately</em> left unbuilt as "vocabulary ahead of need." This is the load-bearing prerequisite — with it absent, every downstream leg is moot.</li>
+  <li data-leg="2"><strong>The estate is federated.</strong> The check in Priya's repo must be able to read the position-keeper's ownership claim. That is the <code>spectastic-mcp</code> read surface; 082's placement verdict is single-checkout precisely because this does not yet exist here.</li>
+  <li data-leg="3"><strong>The check runs at design time.</strong> By merge the code is already in the wrong repo and the reviewers are already the wrong reviewers. The natural home is the design/plan interview — a hedged prompt: "this change touches the <em>positions</em> domain, which the estate says the position-keeper service owns, not this repo. Intended?" This is the injection/nudge layer (116): advisory, P-8 — it improves the odds, it does not guarantee.</li>
+  <li data-leg="4"><strong>A human confirms the hedge.</strong> The engine must <em>propose, never route</em>, and must carry "no confident owner" as a first-class outcome (placement D-007: the most damaging failure is routing confidently to a plausible-but-wrong owner because abstention was not on the menu). Ownership is a social fact; the tool surfaces it, a person ratifies it.</li>
+</ul>
+<p>Conway supplies the cruel corollary: leg 4's reviewer — the person who knows positions belongs elsewhere — is, by the same law
+that caused the misplacement, <em>not</em> on the misplacing repo's PR. Which is why legs 1–3 have to carry the signal <em>to</em>
+that person, at design time, or it never reaches them at all.</p>
+</section>
+
+
+<section id="ceiling">
+<h2>6 · The industry ceiling — so we are not claiming a gap nobody has closed</h2>
+<p>spectastic is not behind the field here; it is at the same ceiling everyone hits.</p>
+<ul>
+  <li><strong>No mature machine-readable federated decision store exists.</strong> ADRs everywhere (MADR,
+  <a href="https://github.com/thomvaill/log4brains">Log4brains</a>) are per-repo markdown prose read by humans. A store that CI
+  in repo B queries to learn a rule authored in repo A is <em>aspirational across the whole discipline</em>, not an off-the-shelf
+  thing spectastic merely lacks.</li>
+  <li><strong>The deterministic cross-repo levers all require ownership declared as data first.</strong> DB-side grants
+  (runtime/infra); <a href="https://atlasgo.io/guides/schema-ownership">Atlas schema-ownership</a> lint — the one shipping tool
+  that fails CI when a <em>migration</em> touches another service's tables, but Pro-only and authorship-time (a raw
+  <code>UPDATE</code> in app code slips past it); OPA/Conftest with a shared central policy repo — enforceable in every pipeline,
+  but only as good as the ownership manifest behind it.</li>
+  <li><strong>The contract is the seam that makes the write illegitimate, and cannot detect the bypass.</strong> Pact checks a
+  consumer against a <em>published contract</em> only; the producer's database is invisible across the boundary by design. The
+  contract is the <em>argument</em> that a direct write is wrong, never a <em>detector</em> of it.</li>
+  <li><strong>Ownership is organizational.</strong> Conway's Law and Team Topologies (stream-aligned teams owning a service
+  end-to-end; the inverse-Conway maneuver as a <em>deliberate</em> ownership decision) both say the boundary is a social fact.
+  "Who <em>should</em> own this?" is undecidable-by-tooling; "does this change respect an ownership someone already declared?" is
+  the only checkable form.</li>
+</ul>
+</section>
+
+
+<section id="corpus">
+<h2>7 · The corpus cannot carry it either</h2>
+<p>"Each service with its own knowledge corpus" is part of the scenario, so name what the corpus can and cannot do. Per the
+placement survey's D-004, the corpus is addressed <strong>per-marketplace</strong> — every document belongs to exactly one
+marketplace coordinate. An edge <em>between</em> two projects belongs to neither and has no legal coordinate, so <strong>the
+corpus is structurally incapable of storing a cross-repo decision or ownership edge.</strong> Two services can still <em>share
+domain facts</em> — both citing the settlement-domain pack keeps <code>KB-0001</code> grounding consistent across repos — but the
+corpus is <em>evidence</em>, never the store for a rule that spans the boundary. It informs a placement suggestion; it does not
+hold one.</p>
+</section>
+
+
+<section id="decisions">
+<h2>8 · Decisions</h2>
+<p>All <code>status=Proposed</code>; this is a survey, not a spec. Where a decision reuses a settled call, it cites it rather than
+re-litigating it.</p>
+
+<ol>
+  <li><strong>D-001 — Keep the verdict honestly repo-local; say so in the copy.</strong> Cross-repo enforcement is a federation
+  problem, not a flag. The verdict's help/output should state that it judges the <em>current checkout</em> against the
+  <em>current repo's</em> decisions — so an operator never mistakes a green verdict in one service for an estate-wide guarantee.</li>
+  <li><strong>D-002 — The missing primitive is a decision <em>data-resource scope</em>, not the decision index.</strong> A
+  decision must be able to govern a federation-unique resource (a data store, a table, a topic on a <code>spectastic://</code>
+  coordinate), not only a repo-relative path glob. Without it, distribution (leg a) has nothing addressable to carry across the
+  boundary. This is the primitive to build first, because <em>even a single federated pair of repos</em> needs it.</li>
+  <li><strong>D-003 — In a federated estate the placement failure dominates the enforcement failure.</strong> Grants block the
+  <em>reach</em>; nothing mechanical blocks the <em>duplication</em>. So investment should tilt toward the design-time placement
+  suggestion, not toward making the merge verdict cross-repo — the verdict catches the case the grant already catches.</li>
+  <li><strong>D-004 — Placement stays a design-time, human-confirmed <em>suggestion</em> (P-14), never a merge gate or an
+  auto-route.</strong> Inherit the placement verdict shape wholesale: typed evidence, three-band confidence with an automatic
+  hedge, and "no confident owner" as a first-class outcome. The wrong-service case is caught only when all four legs of §5 hold;
+  the honest default when a leg is missing is silence, not a guess.</li>
+  <li><strong>D-005 — Elevate the DB grant from a footnote to the named cross-boundary backstop.</strong> The exemplar's D-008
+  already models it; guidance and any generated design should treat the grant (and the contract seam) as <em>the</em>
+  cross-service control, with the code-level checks framed as the in-repo convenience they are.</li>
+  <li><strong>D-006 — The corpus remains evidence, never the store</strong> for a cross-repo decision or ownership edge
+  (inherits placement D-004). Shared domain packs keep grounding consistent; they carry no rule that spans the boundary.</li>
+</ol>
+</section>
+
+
+<section id="ceilings">
+<h2>9 · Recorded ceilings</h2>
+<ul>
+  <li><strong>Nothing here was prototyped.</strong> No federated read was run, no ownership manifest authored; every claim is
+  reasoned from shipped code, the placement survey's precedent, and the web landscape — materially weaker footing than a
+  running system.</li>
+  <li><strong>P-14 binds this whole survey.</strong> "Which service should own this" is a judgment call a linter cannot decide
+  without false positives; everything in §5 is a suggestion engine <em>because</em> of that, and 075 already refused a
+  neighbouring layer check on the same ground.</li>
+  <li><strong>The ownership field is the gate on everything, and is deliberately unbuilt.</strong> Until
+  <code>TBD-project-ownership-field</code> has a real consumer, legs 1–4 cannot run; this survey is the second independent
+  motivation for it, not a mandate to build it now.</li>
+  <li><strong>The demo's bypass is the easy case.</strong> A raw <code>UPDATE positions</code> string is content-detectable; the
+  wrong-service duplication is not a string at all. The survey's most useful finding is precisely that the <em>catchable</em>
+  version is the one the topology already prevents.</li>
+</ul>
+</section>
+
+
+<section id="tbds">
+<h2>10 · What to build — planted slugs</h2>
+<ul>
+  <li><code>TBD-decision-data-resource-scope</code> — the D-002 primitive: a decision scopes a federation-unique resource
+  (store/table/topic on a <code>spectastic://</code> coordinate), not only a repo-relative path. The one piece even a single
+  federated repo pair needs; the smallest honest first slice.</li>
+  <li><code>TBD-federated-decision-read</code> — legs (a)+(c): read decisions across the estate via the decision index +
+  the <code>spectastic-mcp</code> read surface, reached by a declared <code>consumes</code>/unit edge. Depends on
+  <code>TBD-guardrail-decision-index</code> and the mcp federation work.</li>
+  <li><code>TBD-placement-ownership-prompt</code> — leg 3: a design-time hedged "this looks like it belongs in service X"
+  suggestion, human-confirmed, never a route. Gated behind <code>TBD-project-ownership-field</code> and
+  <code>TBD-placement-engine</code>.</li>
+  <li><code>TBD-ownership-manifest</code> — leg 1: declare "this store/domain belongs to that service" as machine-readable data
+  (the prerequisite for every other slug; connects to the deliberately-unbuilt <code>TBD-project-ownership-field</code> and the
+  catalog/<code>spec.owner</code> prior art).</li>
+  <li><code>TBD-verdict-scope-honesty</code> — D-001: the verdict states it is repo-local, so a green result is never misread as
+  an estate-wide guarantee. The cheapest slug here, and the only one that ships value with no federation at all.</li>
+</ul>
+<p>Recommended order: <code>TBD-verdict-scope-honesty</code> now (honesty is free), then <code>TBD-decision-data-resource-scope</code>
+(the primitive), then the federation and placement slices once <code>spectastic-mcp</code> and an ownership field earn their
+keep. Deliberately <em>not</em> re-planted: <code>TBD-project-ownership-field</code> and <code>TBD-placement-engine</code> — this
+survey is a second motivation for them, not a new artifact.</p>
+</section>
+
+
+<section id="sources">
+<h2>11 · Sources</h2>
+<ul>
+  <li>microservices.io — <a href="https://microservices.io/patterns/data/database-per-service.html">Database per Service</a> · <a href="https://microservices.io/patterns/data/shared-database.html">Shared Database (anti-pattern)</a></li>
+  <li>Martin Fowler — <a href="https://martinfowler.com/bliki/IntegrationDatabase.html">IntegrationDatabase</a> · <a href="https://martinfowler.com/bliki/ConwaysLaw.html">Conway's Law</a></li>
+  <li>Microsoft — <a href="https://learn.microsoft.com/en-us/dotnet/architecture/microservices/architect-microservice-container-applications/data-sovereignty-per-microservice">Data sovereignty per microservice</a></li>
+  <li><a href="https://www.archunit.org/userguide/html/000_Index.html">ArchUnit User Guide</a> (single-codebase by construction)</li>
+  <li>Open Policy Agent — <a href="https://www.openpolicyagent.org/docs/cicd">OPA in CI/CD</a> · <a href="https://www.openpolicyagent.org/ecosystem/by-feature/policy-testing">Conftest / policy testing</a></li>
+  <li>Backstage — <a href="https://backstage.io/docs/features/software-catalog/">Software Catalog</a> · <a href="https://backstage.io/docs/features/software-catalog/system-model/">System Model</a> (ownership + relations, descriptive)</li>
+  <li>Atlas — <a href="https://atlasgo.io/guides/schema-ownership">Schema Ownership</a> · <a href="https://atlasgo.io/blog/2026/04/29/policy-as-code">Policy as Code for Migrations</a></li>
+  <li><a href="https://github.com/thomvaill/log4brains">Log4brains</a> (docs-as-code, per-repo ADRs) · MADR template</li>
+  <li><a href="https://docs.pact.io">Pact</a> — consumer-driven contract testing / Broker</li>
+  <li>Skelton &amp; Pais, <em>Team Topologies</em> — stream-aligned end-to-end ownership; the inverse-Conway maneuver</li>
+</ul>
+<p><strong>Internal:</strong> <a href="./orchestrator-placement-considerations.html">orchestrator-placement</a> (the placement thesis;
+D-001..D-007), <a href="./data-model-contract-considerations.html">data-model-contract</a>,
+<a href="./event-driven-interface-considerations.html">event-driven-interface</a> (declaration-outranks-inference);
+specs <a href="../specs/079-unit-dependency-edge/spec.html">079</a>, <a href="../specs/082-placement-verdict/spec.html">082</a>,
+<a href="../specs/067-spec-project-identity/spec.html">067</a> (the coordinate), and 112–118 (the single-repo guardrail).</p>
+</section>
+
+
+<section id="changelog"><h2>12 · Change log</h2>
+<spec-changelog><ol>
+  <li><time datetime="2026-09-13">13 Sep 2026</time><span>Survey authored from a three-thread deep-research pass (guardrail code reality; the microservice data-ownership landscape; prior spectastic placement/data-model decisions). Lands D-001..D-006 and plants five TBDs. Central finding: database-per-service blocks the boundary <em>bypass</em> but not the boundary <em>duplication</em>, so the wrong-service placement failure dominates and is P-14 review-caught.</span></li>
+</ol></spec-changelog>
+</section>
+
+</main>
+<script src="../assets/spec.js"></script>
+</body>
+</html>
