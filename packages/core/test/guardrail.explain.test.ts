@@ -28,6 +28,8 @@ const PRIYA = 'docs/priya-pr/Job.java';
 const priyaSource = 'line1\nline2\n  db.exec("UPDATE positions SET quantity = 0");\nline4\nline5';
 const verdict: Verdict = {
   at: '2026-09-13T00:00:00.000Z',
+  scope: 'repo-local',
+  decisionsEvaluated: 1,
   changed: [PRIYA],
   violations: [
     {

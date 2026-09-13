@@ -127,7 +127,13 @@ export function verdictFor(input: VerdictInput): Verdict {
       a.ruleId.localeCompare(b.ruleId),
   );
 
-  return { at: input.now.toISOString(), changed: [...changed].sort(), violations };
+  return {
+    at: input.now.toISOString(),
+    scope: 'repo-local',
+    decisionsEvaluated: active.length,
+    changed: [...changed].sort(),
+    violations,
+  };
 }
 
 /** True when the verdict has any violation (the CLI's non-zero exit condition). */

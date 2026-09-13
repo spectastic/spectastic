@@ -122,3 +122,21 @@ describe('verdict persistence (FR-006)', () => {
     expect(JSON.parse(a).at).toBe('2026-09-13T00:00:00.000Z');
   });
 });
+
+describe('verdict scope honesty — repo-local (TBD-verdict-scope-honesty)', () => {
+  it('the artifact declares repo-local scope and how many decisions it evaluated', () => {
+    const v = verdictFor({ changed: ['src/recon/Job.java'], decisions: [CONTENT_DECISION], now: NOW, readFile });
+    expect(v.scope).toBe('repo-local');
+    expect(v.decisionsEvaluated).toBe(1);
+    // the claim survives serialisation — a reader offline sees what was NOT evaluated
+    const artifact = JSON.parse(renderVerdict(v));
+    expect(artifact.scope).toBe('repo-local');
+    expect(artifact.decisionsEvaluated).toBe(1);
+  });
+
+  it('counts only ACCEPTED decisions — a proposed decision is not evaluated, and says so', () => {
+    const proposed = D({ ...CONTENT_DECISION, id: 'D-999', status: 'proposed' });
+    const v = verdictFor({ changed: [], decisions: [CONTENT_DECISION, proposed], now: NOW, readFile: () => null });
+    expect(v.decisionsEvaluated).toBe(1); // the proposed one is excluded, so the count never overstates coverage
+  });
+});

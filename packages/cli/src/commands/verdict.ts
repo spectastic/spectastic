@@ -63,10 +63,20 @@ export function registerVerdict(program: Command): void {
       await fsp.mkdir(join(cwd, opts.out, '..'), { recursive: true }).catch(() => {});
       await fsp.writeFile(join(cwd, opts.out), result.verdictText, 'utf8');
 
+      // Scope-honesty (TBD-verdict-scope-honesty): the verdict judged this
+      // checkout against this repository's own decisions. A change that violates
+      // a decision owned by another repository is not something it looked for, so
+      // a clean verdict is a repo-local clean — and says so, in the human output
+      // and (as `scope`/`decisionsEvaluated`) in the artifact. --json stays pure.
+      const n = result.verdict.decisionsEvaluated;
+      const scopeNote =
+        `Scope: repo-local — evaluated ${n} decision${n === 1 ? '' : 's'} from this checkout. ` +
+        'Decisions owned by other repositories are not evaluated.';
+
       if (opts.json) {
         process.stdout.write(result.verdictText);
       } else if (!result.hasViolation) {
-        process.stdout.write('verdict: no governance violations in the changed paths.\n');
+        process.stdout.write(`verdict: no governance violations in the changed paths.\n${scopeNote}\n`);
       } else {
         for (const v of result.verdict.violations) {
           const loc = v.line !== undefined ? `${v.file}:${v.line}` : v.file;
@@ -76,6 +86,7 @@ export function registerVerdict(program: Command): void {
               `  ${v.reason}\n`,
           );
         }
+        process.stdout.write(`${scopeNote}\n`);
       }
       // Reviewer-grade explanation (118) — output-only, before the teaching
       // question; the exit code and artifact are unchanged.

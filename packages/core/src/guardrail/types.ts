@@ -100,8 +100,21 @@ export interface Violation {
 }
 
 /** The persisted, reconstructable merge verdict (spec 115). */
+/**
+ * What the verdict evaluated against. `repo-local` — the only value today — is
+ * an honest claim in the record itself: decisions were loaded from this checkout
+ * only, and a change that violates a decision owned by another repository is not
+ * something this verdict looked for. A future federated read would carry a
+ * different value; until then a green verdict is a repo-local green, and says so.
+ */
+export type VerdictScope = 'repo-local';
+
 export interface Verdict {
   at: string;
+  /** What this verdict evaluated against — repo-local today (see VerdictScope). */
+  scope: VerdictScope;
+  /** How many accepted decisions from this checkout were evaluated. */
+  decisionsEvaluated: number;
   changed: string[];
   violations: Violation[];
 }
