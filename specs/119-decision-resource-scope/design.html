@@ -1,0 +1,378 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'">
+<title>Decision resource scope · Design</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Design · 119-decision-resource-scope</p>
+  <h1>Decision resource scope</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    How we will build it.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>     <span><spec-status value="draft">Draft</spec-status></span>
+    <b>Spec</b>       <span><a href="./spec.html">119-decision-resource-scope</a></span>
+    <b>Owner</b>      <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Branch</b>     <span><code>main</code></span>
+    <b>Created</b>    <span><time datetime="2026-09-13">13 Sep 2026</time></span>
+    <b>Read time</b>  <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-tldr>
+    <p>Five small extensions of seams the guardrail layer already has: parse a <code>&lt;spec-resource&gt;</code> into the
+    decision, add a <code>datastore</code> kind to the shared coordinate grammar, make <code>verdictFor</code> owner-aware by
+    injecting the current project identity, and clone the decision-well-formed rule for the new shape. The one real risk is the
+    honest ceiling the spec already records — the content pattern under-detects a real cross-service touch — which this design
+    does not try to close.</p>
+  </spec-tldr>
+</header>
+
+
+<section id="principles-check">
+<h2>1 · Principles check</h2>
+<p>Verified against <a href="../../principles.html">v1.9.0</a>. No violations; one note on P-14 (the boundary this design does <em>not</em> cross).</p>
+
+<div style="overflow-x:auto;">
+<table>
+  <thead><tr><th>Principle</th><th>Compliance</th><th>Notes</th></tr></thead>
+  <tbody>
+    <tr><td>P-8 · Guarantees live in the kernel or CI</td><td><spec-pill>OK</spec-pill></td><td>The owner-aware comparison is a pure kernel function; the CLI only resolves identity and passes it. The well-formedness guarantee is a schema rule run at commit/CI, not markdown.</td></tr>
+    <tr><td>P-11 · Artifacts are data, not instructions</td><td><spec-pill>OK</spec-pill></td><td>The <code>datastore</code> coordinate is rendered in verdict output and never dereferenced or executed — <code>parseResourceUri</code> "no dereference of any kind".</td></tr>
+    <tr><td>P-14 · Library-first boundaries</td><td><spec-pill>OK</spec-pill></td><td>The owner comparison is a <em>mechanical resource-ownership</em> check in <code>@spectastic/core</code> — distinct from the P-14 review-caught <em>placement</em> judgment (which store should exist, the duplication case), which stays out of scope. The kernel takes identity as data; it never imports <code>@spectastic/corpus</code>.</td></tr>
+    <tr><td>P-9 · The enforcement floor holds</td><td><spec-pill>OK</spec-pill></td><td>Secure-by-default: an absent or bare/unqualified identity resolves to non-owner, so a touch is flagged rather than silently passed (<a href="./spec.html#FR-003">FR-003</a> fail-safe).</td></tr>
+    <tr><td>P-3 · IDs are contracts</td><td><spec-pill>OK</spec-pill></td><td><code>datastore</code> joins <code>RESOURCE_KINDS</code> as a permanent, addressable coordinate kind, resolved through the single 067 grammar — no second parser.</td></tr>
+  </tbody>
+</table>
+</div>
+</section>
+
+
+<section id="technical-context">
+<h2>2 · Technical context</h2>
+<dl>
+  <dt>Language(s)</dt>      <dd>TypeScript (workspace <code>5.x</code>), Node ESM.</dd>
+  <dt>Frameworks</dt>       <dd>None — a library + CLI (<code>@spectastic/schema</code>, <code>@spectastic/core</code>, <code>@spectastic/cli</code>).</dd>
+  <dt>Architecture</dt>     <dd>n/a — module extension across existing seams (parse → decision → verdict); no new pattern. See <a href="#decisions">Decisions</a>.</dd>
+  <dt>Storage</dt>          <dd>None — decisions are parsed from <code>design.html</code> in memory.</dd>
+  <dt>Testing</dt>          <dd>vitest, TDD / tests-first with fixture project identities (the four spike scenarios written red first).</dd>
+  <dt>Coverage</dt>         <dd>Existing repo posture; the new logic is fully exercised by owner/non-owner fixtures — a change never lowers coverage of what it touches.</dd>
+  <dt>Perf targets</dt>     <dd>n/a — a pure comparison, sub-millisecond; no I/O on the path.</dd>
+  <dt>Constraints</dt>      <dd>Kernel purity (<a href="./spec.html#NFR-001">NFR-001</a> — 0 fs/net/model imports); backward compatibility (<a href="./spec.html#FR-006">FR-006</a>).</dd>
+</dl>
+
+<h3>Toolchain / enforcement</h3>
+<p>The project's profile marker is present. This feature is internal TypeScript, gated by the wired stack: <strong>biome</strong>
+(lint/format), <strong>tsc</strong> (types), <strong>vitest</strong> (tests). No new enforce category is needed — it is tooling,
+not a downstream project's floor; the new <code>resource-scope-well-formed</code> schema rule <em>is</em> the enforcement for
+<a href="./spec.html#FR-005">FR-005</a>, and the no-network import scan (extended) is the enforcement for NFR-001.</p>
+</section>
+
+
+<section id="contracts">
+<h2>3 · Data model &amp; contracts</h2>
+
+<p>The spec's conceptual <a href="./spec.html#data">Resource scope</a> lands as a small record on the existing decision, populated by the parser.</p>
+
+<div style="overflow-x:auto;">
+<table>
+  <thead><tr><th>Conceptual entity</th><th>Physical shape</th><th>Notes</th></tr></thead>
+  <tbody>
+    <tr><td><a href="./spec.html#data">Resource scope</a></td><td><code>interface ResourceScope { coordinate: string; owner: string; allowedIn?: string }</code></td><td>Parsed from <code>&lt;spec-resource coordinate= owner= allowed-in=&gt;</code>; <code>allowedIn</code> optional (absent = fully locked).</td></tr>
+    <tr><td><a href="./spec.html#data">Governance decision (extended)</a></td><td><code>GovernanceDecision.resource?: ResourceScope</code></td><td>Additive optional field; absent = a pre-119 decision, unchanged.</td></tr>
+  </tbody>
+</table>
+</div>
+
+<spec-contract shape="none">
+  <p>This feature exposes no external interface — it extends internal parsing and the verdict kernel. The <code>datastore</code>
+  coordinate it introduces is an addressing string within the existing 067 <code>spectastic://</code> grammar, not a new wire contract.</p>
+</spec-contract>
+</section>
+
+
+<section id="grounding">
+<h2>5 · Grounding &amp; evidence</h2>
+<p>Every design-bearing fact and how it was confirmed. All must-tier decisions rest on <code>verified</code> source or a spike
+that <em>ran</em>; none is <code>assumed</code>.</p>
+
+<div style="overflow-x:auto;">
+<table class="evidence">
+  <thead>
+    <tr><th>Claim the design rests on</th><th>Source</th><th>Status</th><th>Finding / note</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>The scope grammar parses <code>&lt;spec-path&gt;</code>/<code>&lt;spec-module&gt;</code> children of <code>&lt;spec-scope&gt;</code> — a <code>&lt;spec-resource&gt;</code> sibling hooks in identically.</td>
+        <td><code>packages/core/src/guardrail/parse.ts:40–51</code></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td>The <code>findAll(scope,'spec-path')</code> loop is the exact clone target; <code>modules</code> is already parsed-but-unused, confirming the shape.</td></tr>
+    <tr><td>The coordinate grammar is a single shared list a new kind joins.</td>
+        <td><code>packages/schema/src/project-shared.ts:63</code> (<code>RESOURCE_KINDS</code>)</td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td><code>['spec','contract','corpus','unit','screen','decision']</code> — <code>datastore</code> is a one-line add; <code>classifyProjectId</code>/<code>parseResourceUri</code> validate it with no second parser.</td></tr>
+    <tr><td>The verdict allowed-zone check is where owner-awareness branches, and <code>VerdictInput</code> can carry the identity additively.</td>
+        <td><code>packages/core/src/guardrail/verdict.ts</code> (<code>verdictFor</code>, <code>allowed.some(matchesGlob)</code>; <code>VerdictInput</code>)</td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td><code>VerdictInput</code> = <code>{changed, decisions, now, readFile, sarif?}</code>; adding <code>currentProject?: string</code> is additive and back-compatible.</td></tr>
+    <tr><td>The kernel is pure — it imports no config/network, so identity must be injected.</td>
+        <td><code>packages/core/src/guardrail/</code> (no <code>@spectastic/corpus</code> import); CLI <code>verdict.ts</code> already resolves project for <code>--explain</code></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td>Grep confirms 0 corpus imports in the kernel; the <code>--explain</code> path already calls <code>resolveProjectConfig</code> at the edge — the same seam feeds identity.</td></tr>
+    <tr><td>A schema shape rule for <code>&lt;spec-resource&gt;</code> can clone the decision-well-formed rule.</td>
+        <td><code>packages/schema/src/rules/decision-well-formed.ts</code>; registered <code>rules/index.ts:31,123</code></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td>Same parse + finding shape; registration is a two-line add.</td></tr>
+    <tr><td>The owner-aware verdict is correct across the four owner/non-owner scenarios.</td>
+        <td>Run spike (throwaway) — modelled <code>resourceVerdict(currentProject, …)</code></td>
+        <td><spec-status value="review">spike</spec-status></td>
+        <td><strong>Ran.</strong> A=owner-outside→violation, B=owner-inside→clean (reproduces D-007); C=non-owner→violation; D=well-layered non-owner adapter→still violation (ownership, not layering). The verdict logic is settled.</td></tr>
+  </tbody>
+</table>
+</div>
+</section>
+
+
+<section id="approach">
+<h2>6 · Approach</h2>
+
+<p>Extend five existing files and add one. In <code>@spectastic/schema</code>: add <code>datastore</code> to
+<code>RESOURCE_KINDS</code>, and a new <code>resource-scope-well-formed</code> rule cloned from decision-well-formed. In
+<code>@spectastic/core</code>: parse <code>&lt;spec-resource&gt;</code> into a <code>ResourceScope</code> on
+<code>GovernanceDecision</code> (types + parse), and make <code>verdictFor</code> owner-aware — it gains an optional
+<code>currentProject</code>, and for a resource-scoped decision it compares that identity to the decision's <code>owner</code>:
+the owner gets today's path rule, everyone else gets an any-touch rule. In <code>@spectastic/cli</code>: the verdict command
+resolves the identity via <code>resolveProjectConfig</code> (as it already does for <code>--explain</code>) and passes it, keeping
+the kernel pure. Detection is unchanged — the resource scope reinterprets the <em>allowed zone</em>, not what counts as a touch.</p>
+
+<spec-note>
+<p><strong>Governing decision acknowledged.</strong> This surface (<code>packages/core/src/guardrail/**</code>) is governed by
+<a href="../113-guardrail-retrieval/design.html#D-001">113-guardrail-retrieval/D-001</a> — "no model or network on the
+retrieval path." D-004 and <a href="./spec.html#NFR-001">NFR-001</a> uphold it: the identity is injected at the CLI edge, the
+kernel imports no config or network, and the no-network scan is extended to the new branch — so the owner comparison adds
+capability without touching the purity that decision protects.</p>
+</spec-note>
+
+<spec-arch>
+<figure>
+<svg viewBox="0 0 700 260" role="img" aria-label="Resource-scope data flow from declaration to owner-aware verdict">
+  <style>
+    .box { fill: var(--c-surface, #fcfbf7); stroke: var(--c-border, #c4c1bb); stroke-width:1.2; }
+    .label { font: 700 11px Lato, sans-serif; fill: var(--c-text-soft, #4a4a46); letter-spacing:0.06em; text-transform:uppercase; }
+    .body { font: 400 12px "Source Serif 4", Georgia, serif; fill: var(--c-text, #353534); }
+    .arr { stroke: var(--c-muted, #73706d); stroke-width:1.2; fill:none; }
+    .arrh { fill: var(--c-muted, #73706d); }
+  </style>
+  <rect class="box" x="20"  y="30" width="180" height="56" rx="4"/>
+  <text class="label" x="34" y="52">&lt;spec-resource&gt;</text>
+  <text class="body"  x="34" y="72">coordinate · owner · allowed-in</text>
+  <rect class="box" x="20" y="150" width="180" height="56" rx="4"/>
+  <text class="label" x="34" y="172">parse.ts</text>
+  <text class="body"  x="34" y="192">→ decision.resource</text>
+  <rect class="box" x="270" y="150" width="170" height="56" rx="4"/>
+  <text class="label" x="284" y="172">verdictFor</text>
+  <text class="body"  x="284" y="192">+ currentProject</text>
+  <rect class="box" x="510" y="120" width="170" height="46" rx="4"/>
+  <text class="label" x="524" y="140">owner ==?</text>
+  <text class="body"  x="524" y="158">path rule</text>
+  <rect class="box" x="510" y="186" width="170" height="46" rx="4"/>
+  <text class="label" x="524" y="206">owner !=</text>
+  <text class="body"  x="524" y="224">any-touch = violation</text>
+  <path class="arr" d="M110 86 L110 150" marker-end="url(#a)"/>
+  <path class="arr" d="M200 178 L270 178" marker-end="url(#a)"/>
+  <path class="arr" d="M440 172 L510 150" marker-end="url(#a)"/>
+  <path class="arr" d="M440 184 L510 205" marker-end="url(#a)"/>
+  <defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path class="arrh" d="M0,0 L10,5 L0,10 z"/></marker></defs>
+</svg>
+<figcaption>A resource-scoped decision flows from declaration through the parser to the owner-aware verdict, which branches on whether the current project is the store's owner.</figcaption>
+</figure>
+</spec-arch>
+</section>
+
+
+<section id="alternatives">
+<h2>7 · Alternatives considered</h2>
+
+<p>The one real design fork is how the kernel receives the current project identity and what it does when that identity is absent (the interview's second question).</p>
+
+<spec-matrix>
+<div style="overflow-x:auto;">
+<table>
+  <thead>
+    <tr><th>Option</th><th>Back-compat (FR-006)</th><th>Secure-by-default (P-9)</th><th>Kernel purity (NFR-001)</th><th class="score">Total</th></tr>
+  </thead>
+  <tbody>
+    <tr data-winner><td>Optional <code>currentProject</code>; absent → non-owner</td><td>5</td><td>5</td><td>5</td><td class="score">15</td></tr>
+    <tr><td>Optional field; absent → skip resource eval</td><td>5</td><td>1</td><td>5</td><td class="score">11</td></tr>
+    <tr><td>Required param on <code>verdictFor</code></td><td>1</td><td>5</td><td>5</td><td class="score">11</td></tr>
+  </tbody>
+</table>
+</div>
+</spec-matrix>
+<p>The winner fails safe (an unknown identity flags rather than passes) and keeps every existing pure-fixture caller working with no identity supplied; "skip eval" fails open, and "required param" breaks back-compat.</p>
+</section>
+
+
+<section id="decisions">
+<h2>8 · Decisions</h2>
+
+<spec-decision id="D-001" grounding="verified">
+  <h4>D-001 · Parse <code>&lt;spec-resource&gt;</code> into a <code>ResourceScope</code> on the decision</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>The scope grammar already loops <code>&lt;spec-path&gt;</code>/<code>&lt;spec-module&gt;</code> children (<code>parse.ts:40–51</code>). A resource is a third sibling.</dd>
+    <dt>Decision</dt>     <dd>Add <code>resource?: ResourceScope</code> to <code>GovernanceDecision</code>; populate it from a <code>&lt;spec-resource&gt;</code> child in the existing scope loop.</dd>
+    <dt>Consequences</dt> <dd>+ Reuses the parse seam; no new top-level element. − Two scope kinds now coexist (path, resource); both are evaluated (an edge case the verdict handles).</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-002" grounding="verified">
+  <h4>D-002 · Add <code>datastore</code> to the shared coordinate grammar</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd><code>RESOURCE_KINDS</code> (<code>project-shared.ts:63</code>) is the single list the 067 identity engine reads; a coordinate kind must live there to validate.</dd>
+    <dt>Decision</dt>     <dd>Add <code>'datastore'</code> to <code>RESOURCE_KINDS</code>; the coordinate validates through <code>classifyProjectId</code>/<code>parseResourceUri</code> — no second parser (NFR-002).</dd>
+    <dt>Consequences</dt> <dd>+ Federation-unique and addressable by construction. − A new permanent kind (IDs are contracts, P-3) — chosen deliberately over the generic <code>resource</code>.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-003" grounding="spike">
+  <h4>D-003 · Owner-aware verdict — inject identity, branch on ownership</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Decision drivers</dt> <dd>Back-compat · secure-by-default · kernel purity</dd>
+    <dt>Considered options</dt>
+    <dd>
+      <ul class="considered-options">
+        <li><strong>Optional <code>currentProject</code>; absent → non-owner (chosen)</strong> — + fails safe, back-compat. − a resource decision with no identity always flags (acceptable: identity is resolvable).</li>
+        <li><strong>Absent → skip resource eval</strong> — + simplest. − fails open, hides a real touch.</li>
+        <li><strong>Required param</strong> — + explicit. − breaks pure-fixture callers.</li>
+      </ul>
+    </dd>
+    <dt>Context</dt>      <dd>The run spike (Grounding row 6, <em>ran</em>) settled the semantics across scenarios A–D; the branch point is <code>verdictFor</code>'s <code>allowed.some(matchesGlob)</code> zone check.</dd>
+    <dt>Decision</dt>     <dd><code>VerdictInput</code> gains <code>currentProject?: string</code>. For a resource-scoped decision: owner → the existing path rule against <code>allowed-in</code>; non-owner (including absent/unqualified) → any detected touch is a violation, at the decision's declared posture (<a href="./spec.html#FR-004">FR-004</a>).</dd>
+    <dt>Consequences</dt> <dd>+ Catches the ownership-not-layering case a path glob cannot (scenario D). − Live cross-repo use needs the deferred federated read; this slice proves it with fixture identities.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-004" grounding="verified">
+  <h4>D-004 · Resolve identity at the CLI edge; keep the kernel pure</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>The guardrail kernel imports no <code>@spectastic/corpus</code>; the CLI <code>verdict</code> command already calls <code>resolveProjectConfig</code> for <code>--explain</code>.</dd>
+    <dt>Decision</dt>     <dd>The CLI resolves the current project via <code>resolveProjectConfig</code> (067) and passes it into <code>verdictCommand</code>; the kernel receives it as data and reads no config (NFR-001).</dd>
+    <dt>Consequences</dt> <dd>+ Kernel stays deterministic and I/O-free; the no-network scan still passes. − One more field threaded from edge to kernel.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-005" grounding="verified">
+  <h4>D-005 · <code>resource-scope-well-formed</code> clones decision-well-formed</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd><code>decision-well-formed.ts</code> is the shape-rule precedent (parse → finding), registered in <code>rules/index.ts</code>.</dd>
+    <dt>Decision</dt>     <dd>A new rule errors on a malformed <code>&lt;spec-resource&gt;</code>: wrong-kind/ill-formed coordinate, an <code>owner</code> that is not a well-formed project identity, or an <code>owner</code> disagreeing with the coordinate's authority (<a href="./spec.html#FR-005">FR-005</a>).</dd>
+    <dt>Consequences</dt> <dd>+ Author is told at commit/CI; reuses the proven rule shape. − One more registered rule to maintain.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-006" grounding="n-a">
+  <h4>D-006 · TDD with the spike's four scenarios as fixtures</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>The spike already defined owner A/B and non-owner C/D as fixtures; the guardrail layer is tests-first throughout.</dd>
+    <dt>Decision</dt>     <dd>Write the four verdict scenarios, the validate-rule fixtures, and the purity scan red first; then the owner-aware branch.</dd>
+    <dt>Consequences</dt> <dd>+ Discovery is already done; the tests are the spec's success criteria made mechanical. − None material.</dd>
+  </dl>
+</spec-decision>
+</section>
+
+
+<section id="project-structure">
+<h2>9 · Project structure</h2>
+
+<p>Only the new or changed paths.</p>
+
+<pre><code>packages/schema/src/
+  project-shared.ts            # + 'datastore' in RESOURCE_KINDS (D-002)
+  rules/
+    resource-scope-well-formed.ts   # NEW rule (D-005)
+    index.ts                   # + register the rule
+packages/schema/fixtures/
+  resource-scope-well-formed/  # NEW malformed-declaration fixtures (SC-003)
+packages/core/src/guardrail/
+  types.ts                     # + ResourceScope, GovernanceDecision.resource? (D-001)
+  parse.ts                     # + parse &lt;spec-resource&gt; in the scope loop (D-001)
+  verdict.ts                   # + currentProject? on VerdictInput; owner-aware zone (D-003)
+packages/core/src/commands/
+  verdict.ts                   # + thread currentProject through verdictCommand (D-004)
+packages/cli/src/commands/
+  verdict.ts                   # + resolve identity, pass it (D-004)
+packages/core/test/
+  guardrail.verdict.resource.test.ts   # NEW owner/non-owner fixtures A–D (SC-001/002)
+  guardrail.no-network.test.ts         # extend: purity holds with the new branch (SC-004)
+packages/schema/test/
+  resource-scope-well-formed.test.ts   # NEW (SC-003)
+</code></pre>
+</section>
+
+
+<section id="risks">
+<h2>10 · Risks &amp; mitigations</h2>
+
+<div style="overflow-x:auto;">
+<table>
+  <thead><tr><th>Risk</th><th>Likelihood</th><th>Impact</th><th>Mitigation</th></tr></thead>
+  <tbody>
+    <tr><td>The content pattern under-detects a real cross-service touch (an API call / topic / migration is not a SQL string).</td><td>H</td><td>M</td><td>Recorded ceiling in the spec, not closed here; deferred to <code>TBD-resource-touch-detection</code>. The scope still catches every touch the existing detectors see.</td></tr>
+    <tr><td>Identity normalisation: an owner-qualified <code>owner</code> vs a differently-shaped current identity mis-compares.</td><td>L</td><td>M</td><td>Exact-match on the resolved owner-qualified identity; a bare/unqualified identity is never an owner (fail-safe), covered by a fixture.</td></tr>
+    <tr><td>A decision carrying both a path and a resource scope double-evaluates.</td><td>L</td><td>L</td><td>Intended — each scope is independent (spec edge case); a fixture asserts neither suppresses the other.</td></tr>
+  </tbody>
+</table>
+</div>
+</section>
+
+
+<section id="complexity">
+<h2>11 · Complexity tracking</h2>
+<p>The design adds no complexity beyond the spec's contract: every change is an extension of an existing seam (parse loop, coordinate list, verdict zone check, rule registry). The only new file kinds are a schema rule and its fixtures, both cloned from a proven precedent.</p>
+
+<spec-assumption>
+<p>The current project identity is resolvable at the CLI edge via <code>resolveProjectConfig</code> and meaningful to compare — true today for any project with a <code>spectastic.json</code> <code>project</code> or an owner-qualified default; the bare fallback is handled as non-owner.</p>
+</spec-assumption>
+</section>
+
+
+<section id="questions">
+<h2>12 · Open questions</h2>
+<spec-questions>
+<p>None outstanding — the two design forks (test style, identity injection) were anchored in the interview, and the run spike settled the verdict semantics. The cross-repo read and better touch detection are explicitly deferred in the spec, not open here.</p>
+</spec-questions>
+</section>
+
+
+<section id="changelog">
+<h2>13 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-09-13">13 Sep 2026</time><span>Design authored: five seam extensions + one new schema rule, grounded in a run spike (5 verified, 1 spike-ran, 0 assumed). Interview anchored test style (TDD) and identity injection (optional <code>currentProject</code>, absent → non-owner fail-safe). No UI — Visual surface section deleted.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  Design for 119-decision-resource-scope · Decision resource scope · authored 13 Sep 2026
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>
