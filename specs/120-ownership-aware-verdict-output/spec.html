@@ -1,0 +1,290 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'">
+<title>Ownership-aware verdict output · Specification</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Specification · 120-ownership-aware-verdict-output</p>
+  <h1>Ownership-aware verdict output</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    The owner-aware verdict exits correctly — but tells a non-owner the sanctioned path is exactly where their file already sits.
+    Record <em>why</em> a touch was disallowed, so the output can say what to do instead.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>      <span><spec-status value="draft">Draft</spec-status></span>
+    <b>Spec ID</b>     <span>120-ownership-aware-verdict-output</span>
+    <b>Owner</b>       <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Reviewers</b>   <span>Guardrail layer (115 · 117 · 118 · 119)</span>
+    <b>Created</b>     <span><time datetime="2026-09-14">14 Sep 2026</time></span>
+    <b>Principles</b><span><a href="../../principles.html">v1.9.0</a></span>
+    <b>Smallest demoable</b><span>On the demo-8 reproduction, a non-owner's <code>verdict --explain</code> says "the store … is owned by … — route through that service" instead of pointing at the file's own directory.</span>
+    <b>Read time</b>   <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-budget words="1800" reqs="20" minutes="13"></spec-budget>
+
+  <spec-tldr>
+    <p>Spec 119's owner-aware verdict blocks a non-owner's write to a store it doesn't own — the right exit code — but the
+    115/117/118 <strong>output</strong> layer can't tell that violation from a layering one, so it misdirects: it prints a
+    "sanctioned path" that is exactly where the offending file sits, shows the consumer's <em>copied</em> decision coordinate
+    rather than the store's authority, and templates <code>--teach</code> from a layering-case reason. The fix records
+    <strong>why</strong> on the violation — a <code>cause</code> of <code>path</code> or <code>ownership</code>, plus the store's
+    owner and coordinate when it's ownership — decided <strong>once, in the verdict</strong> and <em>read</em> by the renderers;
+    the owner comparison never moves into them. An ownership violation then reads: "the store … is owned by … — route the change
+    through that service." Path violations keep their exit code and detection; the artifact gains <code>cause</code> on every
+    violation (a deliberate additive change, not byte-identical). No exit code changes.</p>
+  </spec-tldr>
+
+  <dl class="invest">
+    <dt><span class="letter">I</span> Independent</dt> <dd>Extends the shipped output layer (115 Violation, 118 explain, 117 teach) and 119's owner-aware branch; no new upstream dependency.</dd>
+    <dt><span class="letter">N</span> Negotiable</dt>  <dd>Contracts what the output must <em>say</em> and where ownership is decided; the exact wording and field encoding are the design's call.</dd>
+    <dt><span class="letter">V</span> Valuable</dt>    <dd>Unlocks <a href="#SC-002">SC-002</a> — a non-owner is directed to the owner's service instead of misdirected to their own directory.</dd>
+    <dt><span class="letter">E</span> Estimable</dt>   <dd>A rendering + contract change over code that exists; the reproduction (demo-8) is committed.</dd>
+    <dt><span class="letter">S</span> Small</dt>       <dd>One field on the violation, two renderers read it, one back-compat floor. No new detector, no exit-code change.</dd>
+    <dt><span class="letter">T</span> Testable</dt>    <dd>Every requirement is a fixture on the demo-8 reproduction or a code-structure check; success criteria mechanical.</dd>
+  </dl>
+
+  <spec-audience-map>
+    <dl>
+      <dt>Exec / PM</dt>   <dd>§<a href="#context">Context</a>, §<a href="#scenarios">User scenarios</a>, §<a href="#success">Success criteria</a>.</dd>
+      <dt>Reviewer</dt>    <dd>§<a href="#requirements">Requirements</a>, §<a href="#assumptions">Assumptions</a>, §<a href="#questions">Open questions</a>.</dd>
+      <dt>Implementer</dt> <dd>§<a href="#requirements">Requirements</a>, §<a href="#data">Data model</a>, §<a href="#conformance">Conformance index</a>.</dd>
+    </dl>
+  </spec-audience-map>
+</header>
+
+
+<section id="context">
+<h2>1 · Context</h2>
+<p>Spec 119 made the merge verdict owner-aware: a decision can govern a data store by a federation-unique coordinate and an
+owner, and a write by any project other than the owner is a violation — even a write cleanly layered in the non-owner's own
+persistence adapter, because the defect is ownership, not layering. The exit code is right, proven by the resource integration
+test and the position-keeper reproduction (<code>demonstrations/8-consumer-service/</code>).</p>
+<p>But the output layer built for the single-repo case (115's <code>Violation</code>, 118's <code>--explain</code>, 117's
+<code>--teach</code>) predates that semantics and cannot see it: for an ownership violation it prints
+<code>src/**/persistence/**</code> as the sanctioned path — where the offending file already sits — shows the consumer's copied
+decision coordinate, and teaches from the layering reason. The verdict is right; what it <em>says</em> misdirects the one person
+it is trying to help. This spec makes the output know the difference.</p>
+</section>
+
+
+<section id="scenarios">
+<h2>2 · User scenarios &amp; testing</h2>
+
+<p>Each story is independently testable on the demo-8 reproduction.</p>
+
+<h3 id="US1">US1 · A non-owner is told where the change belongs <spec-pill>P1</spec-pill></h3>
+<p>As a <strong>reviewer in a consuming service</strong>, I want <code>verdict --explain</code> on an ownership violation to name
+the store's owner and coordinate and point me at that service — not at my own directory — so that <strong>I route the change to
+the team that owns the data instead of merging a cross-service reach</strong>.</p>
+<p><em>Acceptance:</em> for the demo-8 violation, the explanation states the store is owned by
+<code>briancorbin/position-keeper-guardrails</code> at its coordinate and directs the author there; it does not print the
+offending file's own directory as "sanctioned", nor the consumer's copied decision coordinate.</p>
+
+<h3 id="US2">US2 · A verdict.json consumer can act on the cause <spec-pill>P1</spec-pill></h3>
+<p>As an <strong>operator wiring a CI hook</strong>, I want the persisted verdict to record why each touch was disallowed and,
+for an ownership violation, the store's authority, so that <strong>a hook can route or annotate without re-deriving ownership or
+loading the decision</strong>.</p>
+<p><em>Acceptance:</em> <code>verdict.json</code> records <code>cause</code> on every violation; an ownership violation also
+carries the owner and store coordinate. A path violation records <code>cause: "path"</code> with unchanged exit code and detected file.</p>
+
+<h3 id="US3">US3 · The teaching question fits the failure <spec-pill>P2</spec-pill></h3>
+<p>As a <strong>reviewer in a consuming service</strong>, I want <code>--teach</code> on an ownership violation to ask about
+<em>ownership</em>, not layering, so that <strong>the Socratic prompt makes me reason about the right thing</strong>.</p>
+<p><em>Acceptance:</em> for an ownership violation the teach question names the store/owner and asks why this service should
+hold the data; for a path violation it is unchanged.</p>
+
+<h3>Edge cases</h3>
+<ul>
+  <li>A path violation (no resource scope) — <code>cause: "path"</code>, no authority carried; explanation and teach unchanged.</li>
+  <li>The <em>owner's</em> own verdict — an owner writing outside <code>allowed-in</code> is still a <code>path</code> violation, not ownership; the owner is never told to route through their own service.</li>
+  <li>An ownership violation whose decision carries no store coordinate (a malformed resource that slipped the validate rule) — the explanation degrades to naming the owner alone rather than fabricating a coordinate.</li>
+  <li>A verdict.json written before this spec (no <code>cause</code>) read by a new consumer — absent is read as <code>path</code>.</li>
+</ul>
+</section>
+
+
+<section id="requirements">
+<h2>3 · Requirements</h2>
+
+<p>Conformance keywords (<spec-rule>MUST</spec-rule>, <spec-rule level="should">SHOULD</spec-rule>,
+<spec-rule level="may">MAY</spec-rule>) follow RFC 2119.</p>
+
+<h3>Functional</h3>
+
+<spec-requirement id="FR-001" priority="must">
+<p>Every <code>Violation</code> <spec-rule>MUST</spec-rule> record a <code>cause</code> — <code>path</code> (the change is
+outside the sanctioned location) or <code>ownership</code> (the current project is not the store's owner) — set by the verdict,
+which is the one place the owner comparison happens.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-002" priority="must">
+<p>An <code>ownership</code> violation <spec-rule>MUST</spec-rule> additionally carry the store's <strong>authority</strong> — the
+owner (project identity) and the store coordinate — on the violation itself, so a <code>verdict.json</code> consumer renders it
+without loading the decision.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-003" priority="must">
+<p><code>verdict --explain</code> <spec-rule>MUST</spec-rule> render an <code>ownership</code> violation by naming the store's
+owner and coordinate and directing the author to route through that service — <strong>never</strong> printing the offending
+file's own location as a sanctioned path, nor the consumer's copied decision coordinate. A <code>path</code> violation's
+explanation is unchanged.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-004" priority="should">
+<p><code>verdict --teach</code> <spec-rule level="should">SHOULD</spec-rule> ask an ownership-appropriate Socratic question for an
+<code>ownership</code> violation — grounded in the store and owner, distinct from the layering question — and be unchanged for a
+<code>path</code> violation.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-005" priority="must">
+<p>A <code>path</code> violation's <strong>exit code and detection</strong> <spec-rule>MUST</spec-rule> be unchanged, and the
+owner's own verdict output <spec-rule>MUST</spec-rule> be unchanged. The persisted artifact gains <code>cause</code> on every
+violation — a deliberate, additive contract change, <em>not</em> byte-identical to a pre-120 <code>verdict.json</code>.</p>
+<details><summary>Rationale</summary><p>The 119 triage floated a byte-identical floor; the decision phase chose a symmetric always-present <code>cause</code> over back-compat of the exact bytes. This requirement records that choice: semantics are preserved, the artifact is not frozen.</p></details>
+</spec-requirement>
+
+<h3>Non-functional</h3>
+
+<spec-requirement id="NFR-001" priority="must">
+<p>Ownership <spec-rule>MUST</spec-rule> be decided in exactly <strong>1</strong> place — the verdict; the explain and teach
+renderers read the recorded <code>cause</code> and authority and contain <strong>at most 0</strong> owner comparisons (no read of
+the current project identity, no recomputation of owner-vs-current). Single-source-of-ownership.</p>
+</spec-requirement>
+
+<h3>Out of scope (deferred to other slices)</h3>
+<spec-out-of-scope>
+  <ul>
+    <li defer-to="TBD-federated-decision-read"><strong>Reading the authoritative decision across repos</strong> — the consumer still carries a copied decision; resolving the real authority by reading the owner's repo is the federation slice.</li>
+    <li defer-to="TBD-resource-touch-detection"><strong>Better cross-service touch detection</strong> — the content pattern still under-detects an API call / topic / migration; unchanged here.</li>
+  </ul>
+</spec-out-of-scope>
+</section>
+
+
+<section id="data">
+<h2>4 · Data model</h2>
+
+<p>One classification added to an existing entity, and the authority it points at.</p>
+
+<h3>Entities</h3>
+<dl>
+  <dt>Violation cause</dt><dd>Why a change was disallowed: <code>path</code> (outside the sanctioned location) or <code>ownership</code>
+  (the current project is not the store's owner). Invariant: every violation has exactly one cause; a pre-120 record with no cause is read as <code>path</code>.</dd>
+  <dt>Ownership authority</dt><dd>For an ownership violation: the store's owner (a project identity) and its coordinate. Invariant:
+  an ownership violation carries an authority (owner always; coordinate when the decision declares one); a path violation carries none.</dd>
+</dl>
+
+<spec-note>
+<p>The load-bearing invariant is <strong>single-source-of-ownership</strong>: the cause is decided where the owner comparison
+already lives (the verdict) and flows outward as data. A renderer that recomputed ownership would be a second, driftable copy of
+the one comparison 119 was careful to place once.</p>
+</spec-note>
+</section>
+
+
+<section id="success">
+<h2>5 · Success criteria</h2>
+
+<spec-criterion id="SC-001" priority="must" actor="an operator wiring a CI hook"
+                validates="FR-001,FR-002,FR-005" method="mechanical">
+<p>An operator reading <code>verdict.json</code> can tell why each violation was disallowed — the <code>cause</code> on every
+violation, with the store authority on every ownership one — correct across both fixture cases (target 2 of 2; any miss fails),
+from no established baseline. A path violation's exit code and detected file are unchanged.</p>
+<details><summary>Observed at</summary>
+<p>The guardrail verdict test suite on the demo-8 reproduction: an ownership violation records <code>cause: "ownership"</code> + owner + coordinate; a path violation records <code>cause: "path"</code>, same exit code and file as before.</p></details>
+<details><summary>Falsified by</summary>
+<p>A violation with no cause, an ownership violation missing its authority, or a path violation whose exit code or detected file changed.</p></details>
+</spec-criterion>
+
+<spec-criterion id="SC-002" priority="must" actor="a reviewer in a consuming service"
+                validates="FR-003" method="mechanical">
+<p>A reviewer in a consuming service running <code>--explain</code> on the demo-8 ownership violation is directed to the owner's
+service rather than to their own directory — the output names the store's authority (owner, coordinate), never the offending
+file's location or the consumer's copied decision coordinate. Correct on the reproduction (target: authority named with both
+misdirections gone; failing: either misdirection present), from no established baseline.</p>
+<details><summary>Observed at</summary>
+<p><code>verdict --explain</code> on <code>demonstrations/8-consumer-service/</code> under the non-owner identity.</p></details>
+<details><summary>Falsified by</summary>
+<p><code>--explain</code> printing the offending file's own directory as the sanctioned path, or the consumer's decision coordinate, for an ownership violation.</p></details>
+</spec-criterion>
+
+<spec-criterion id="SC-003" priority="should" actor="a reviewer in a consuming service"
+                validates="FR-004" method="mechanical">
+<p>A reviewer sees a teaching question that names the store/owner for an ownership violation, distinct from the layering
+question — correct on the reproduction (target: ownership-grounded question), from no established baseline.</p>
+<details><summary>Observed at</summary>
+<p><code>verdict --explain --teach</code> on the demo-8 ownership violation.</p></details>
+<details><summary>Falsified by</summary>
+<p>The teach question for an ownership violation reading identically to the layering-case question.</p></details>
+</spec-criterion>
+
+<spec-criterion id="SC-004" priority="must" actor="a maintainer"
+                validates="NFR-001" method="mechanical">
+<p>A maintainer auditing the code finds the owner comparison in exactly 1 module — the verdict — and 0 occurrences in the explain
+and teach renderers (target 1 site, 0 in renderers), from no established baseline.</p>
+<details><summary>Observed at</summary>
+<p>A code-structure test: the explain and teach modules read no current-project identity and perform no owner-vs-current comparison.</p></details>
+<details><summary>Falsified by</summary>
+<p>The explain or teach module reading the current project identity or recomputing whether the current project is the owner.</p></details>
+</spec-criterion>
+</section>
+
+
+<section id="assumptions">
+<h2>6 · Assumptions</h2>
+
+<spec-assumption>
+<p>The verdict already knows, at the moment it flags an ownership violation, everything the authority needs — the decision's
+resource owner and coordinate are in hand (119). Recording them on the violation is a copy, not a new lookup.</p>
+</spec-assumption>
+
+<spec-assumption>
+<p>A <code>verdict.json</code> consumer treats an absent <code>cause</code> (a pre-120 artifact) as <code>path</code> — the historical single-repo meaning — so old artifacts stay readable.</p>
+</spec-assumption>
+</section>
+
+
+<section id="questions">
+<h2>7 · Open questions</h2>
+<spec-questions>
+<p>None outstanding — scope (verdict + explain + teach), the <code>cause</code> encoding (always present, symmetric), and where the authority lives (on the violation) were all anchored in the interview.</p>
+</spec-questions>
+</section>
+
+
+<section id="conformance">
+<h2>8 · Conformance index</h2>
+<p>Auto-built from every <code>&lt;spec-requirement&gt;</code> in this document.</p>
+<spec-conformance></spec-conformance>
+</section>
+
+
+<section id="changelog">
+<h2>9 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-09-14">14 Sep 2026</time><span>Initial draft — drains <code>TBD-ownership-aware-verdict-output</code> from the 119 triage (T-001). Anchored: scope (verdict + explain + teach), a symmetric always-present <code>cause</code> (relaxing the triage's byte-identical floor by decision), and the authority carried on the violation (self-contained for verdict.json consumers).</span></li>
+  <li><time datetime="2026-09-14">14 Sep 2026</time><span>Budget authored at 1,800 words (default 1,500), amber: prose trimmed ~1,740 → ~1,700 by cutting narrative, not requirements; the count is held above default by the 108 success-criterion contract's Observed-at/Falsified-by blocks across 4 criteria. Requirements held at 7 of 20.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  120-ownership-aware-verdict-output · authored 14 Sep 2026
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>
