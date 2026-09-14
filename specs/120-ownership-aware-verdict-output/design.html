@@ -1,0 +1,337 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'">
+<title>Ownership-aware verdict output · Design</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Design · 120-ownership-aware-verdict-output</p>
+  <h1>Ownership-aware verdict output</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    How we will build it.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>     <span><spec-status value="draft">Draft</spec-status></span>
+    <b>Spec</b>       <span><a href="./spec.html">120-ownership-aware-verdict-output</a></span>
+    <b>Owner</b>      <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Branch</b>     <span><code>main</code></span>
+    <b>Created</b>    <span><time datetime="2026-09-14">14 Sep 2026</time></span>
+    <b>Read time</b>  <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-tldr>
+    <p>The verdict already computes <code>isOwner</code> (119); it just discards the distinction after choosing the allowed
+    zone. Carry it forward: at the moment it pushes a violation, record <code>cause</code> (<code>path</code> or
+    <code>ownership</code>) and, for ownership, the store's owner + coordinate. Then <code>explain</code> (118) and
+    <code>shifu</code> (117) branch on <code>cause</code> — they <em>read</em> it, never recompute ownership. One field on the
+    violation, set in one place, read in two. The only real risk is mechanical: <code>cause</code> is now required on every
+    <code>Violation</code>, so existing test fixtures and committed demo verdicts gain the field.</p>
+  </spec-tldr>
+</header>
+
+
+<section id="principles-check">
+<h2>1 · Principles check</h2>
+<p>Verified against <a href="../../principles.html">v1.9.0</a>. No violations; P-14 is the load-bearing one.</p>
+
+<div style="overflow-x:auto;">
+<table>
+  <thead><tr><th>Principle</th><th>Compliance</th><th>Notes</th></tr></thead>
+  <tbody>
+    <tr><td>P-14 · Library-first boundaries</td><td><spec-pill>OK</spec-pill></td><td><strong>Single-source-of-ownership</strong>: the owner comparison stays in <code>verdictFor</code>; explain/teach read the recorded <code>cause</code> and authority. A renderer that recomputed ownership would be a second, driftable copy of the one comparison 119 placed. Enforced by <a href="./spec.html#SC-004">SC-004</a>.</td></tr>
+    <tr><td>P-8 · Guarantees live in the kernel or CI</td><td><spec-pill>OK</spec-pill></td><td><code>cause</code> is decided in the pure kernel (the verdict); the renderers and the single-source check are code + tests, not markdown.</td></tr>
+    <tr><td>P-11 · Artifacts are data, not instructions</td><td><spec-pill>OK</spec-pill></td><td>The store coordinate is rendered in <code>--explain</code> output and never dereferenced or executed.</td></tr>
+    <tr><td>P-3 · IDs are contracts</td><td><spec-pill>OK</spec-pill></td><td>The <code>Violation</code> contract grows a field additively; <code>cause</code> is stable, and an absent value on a pre-120 artifact reads as <code>path</code>.</td></tr>
+    <tr><td>P-9 · The enforcement floor holds</td><td><spec-pill>OK</spec-pill></td><td>No exit code changes; a path violation's detection is untouched (<a href="./spec.html#FR-005">FR-005</a>).</td></tr>
+  </tbody>
+</table>
+</div>
+</section>
+
+
+<section id="technical-context">
+<h2>2 · Technical context</h2>
+<dl>
+  <dt>Language(s)</dt>      <dd>TypeScript (workspace <code>5.x</code>), Node ESM.</dd>
+  <dt>Frameworks</dt>       <dd>None — a library + CLI (<code>@spectastic/core</code>, <code>@spectastic/cli</code>).</dd>
+  <dt>Architecture</dt>     <dd>n/a — extend existing seams (verdict push → Violation → explain/teach renderers); no new pattern.</dd>
+  <dt>Storage</dt>          <dd>None — the verdict is composed in memory and rendered to <code>verdict.json</code>.</dd>
+  <dt>Testing</dt>          <dd>vitest, TDD / tests-first: cause fixtures + renderer assertions + the single-source code-structure check, red first.</dd>
+  <dt>Coverage</dt>         <dd>Existing repo posture; the new branch is exercised by ownership/path fixtures on the demo-8 reproduction.</dd>
+  <dt>Perf targets</dt>     <dd>n/a — a field assignment + a string branch; no I/O added.</dd>
+  <dt>Constraints</dt>      <dd>Single-source-of-ownership (<a href="./spec.html#NFR-001">NFR-001</a>); path-violation semantics unchanged (<a href="./spec.html#FR-005">FR-005</a>); the verdict kernel stays pure (113/D-001).</dd>
+</dl>
+
+<h3>Toolchain / enforcement</h3>
+<p>Internal TypeScript, gated by the wired stack — <strong>biome</strong> (lint/format), <strong>tsc</strong> (types),
+<strong>vitest</strong> (tests). No new enforce category: the single-source guarantee (NFR-001) is a code-structure test
+(<a href="./spec.html#SC-004">SC-004</a>), mirroring the no-network import scan.</p>
+</section>
+
+
+<section id="contracts">
+<h2>3 · Data model &amp; contracts</h2>
+
+<p>The spec's conceptual <a href="./spec.html#data">Violation cause</a> and <a href="./spec.html#data">Ownership authority</a> land as fields on the existing <code>Violation</code>.</p>
+
+<div style="overflow-x:auto;">
+<table>
+  <thead><tr><th>Conceptual entity</th><th>Physical shape</th><th>Notes</th></tr></thead>
+  <tbody>
+    <tr><td><a href="./spec.html#data">Violation cause</a></td><td><code>cause: 'path' | 'ownership'</code> (required)</td><td>Set in <code>verdictFor</code>; a reader treats an absent value on a pre-120 artifact as <code>'path'</code>.</td></tr>
+    <tr><td><a href="./spec.html#data">Ownership authority</a></td><td><code>owner?: string; storeCoordinate?: string</code></td><td>Present only when <code>cause === 'ownership'</code>; copied from <code>decision.resource</code> at push time.</td></tr>
+  </tbody>
+</table>
+</div>
+
+<spec-contract shape="none">
+  <p>No external interface — this extends the internal <code>Violation</code> shape and two output renderers. The persisted <code>verdict.json</code> gains <code>cause</code> on every violation, an additive change to 115's artifact.</p>
+</spec-contract>
+</section>
+
+
+<section id="grounding">
+<h2>5 · Grounding &amp; evidence</h2>
+<p>Every fact opened this turn. All <code>verified</code>; none assumed.</p>
+
+<div style="overflow-x:auto;">
+<table class="evidence">
+  <thead><tr><th>Claim the design rests on</th><th>Source</th><th>Status</th><th>Finding / note</th></tr></thead>
+  <tbody>
+    <tr><td>The verdict already computes <code>isOwner</code> and the store's owner/coordinate at the moment it flags a resource violation.</td>
+        <td><code>packages/core/src/guardrail/verdict.ts</code> (owner-aware content branch, 119)</td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td><code>d.resource.owner</code> + <code>d.resource.coordinate</code> are in hand; <code>push()</code> takes an <code>extra: Partial&lt;Violation&gt;</code> — <code>cause</code>/authority ride there.</td></tr>
+    <tr><td>The <code>Violation</code> shape is a plain interface a field extends additively.</td>
+        <td><code>packages/core/src/guardrail/types.ts</code> (<code>Violation</code>)</td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td>No <code>cause</code> today; adding a required field forces every literal (test fixtures) to set it — the mechanical cost.</td></tr>
+    <tr><td>The explainer resolves the sanctioned path from the rule/decision and never reads the resource or the identity.</td>
+        <td><code>packages/core/src/guardrail/explain.ts:49</code></td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td><code>sanctioned = rule?.allowedIn ?? …</code> — the exact site to branch on <code>v.cause</code> for the ownership message + authority coordinate.</td></tr>
+    <tr><td>The teach question is a pure template over the verdict's violations — it takes only the verdict.</td>
+        <td><code>packages/core/src/guardrail/shifu.ts</code> (<code>shifuQuestions</code>)</td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td>Reads <code>v.reason</code>/<code>v.source</code>/<code>v.target</code>; the self-contained authority on the violation lets it render an ownership question with no decision lookup.</td></tr>
+    <tr><td>The 118 identical-artifact guarantee still holds.</td>
+        <td><code>packages/cli/test/verdict.explain.integration.test.ts</code> (118 SC-002)</td>
+        <td><spec-status value="accepted">verified</spec-status></td>
+        <td><code>cause</code> is set in <code>verdictFor</code> regardless of <code>--explain</code>, so with/without <code>--explain</code> stay byte-identical.</td></tr>
+  </tbody>
+</table>
+</div>
+</section>
+
+
+<section id="approach">
+<h2>6 · Approach</h2>
+
+<p>Four edits over code that exists. In <code>types.ts</code>: add <code>cause: 'path' | 'ownership'</code> (required) and optional
+<code>owner</code>/<code>storeCoordinate</code> to <code>Violation</code>. In <code>verdict.ts</code>: at each <code>push</code>,
+set <code>cause</code> — <code>'ownership'</code> only when the decision is resource-scoped and the current project is not the owner
+(carrying <code>owner</code> + <code>storeCoordinate</code> from <code>decision.resource</code>), else <code>'path'</code> (a
+path-scoped decision, an owner writing outside <code>allowed-in</code>, a deny match, an enforcer finding). In
+<code>explain.ts</code>: branch on <code>v.cause</code> — an ownership violation renders "the store <code>&lt;coordinate&gt;</code>
+is owned by <code>&lt;owner&gt;</code> — route the change through that service" in place of the sanctioned-path line, and shows the
+store coordinate, not the decision coordinate; a path violation is unchanged. In <code>shifu.ts</code>: an ownership violation
+gets an ownership-grounded question. The owner comparison is <em>read</em>, never recomputed — the single-source guarantee, asserted
+by a code-structure test.</p>
+
+<spec-arch>
+<figure>
+<svg viewBox="0 0 700 210" role="img" aria-label="cause set once in the verdict, read by two renderers">
+  <style>
+    .box { fill: var(--c-surface, #fcfbf7); stroke: var(--c-border, #c4c1bb); stroke-width:1.2; }
+    .label { font: 700 11px Lato, sans-serif; fill: var(--c-text-soft, #4a4a46); letter-spacing:0.06em; text-transform:uppercase; }
+    .body { font: 400 12px "Source Serif 4", Georgia, serif; fill: var(--c-text, #353534); }
+    .arr { stroke: var(--c-muted, #73706d); stroke-width:1.2; fill:none; }
+    .arrh { fill: var(--c-muted, #73706d); }
+  </style>
+  <rect class="box" x="30" y="80" width="200" height="60" rx="4"/>
+  <text class="label" x="46" y="102">verdictFor (119)</text>
+  <text class="body"  x="46" y="122">decides cause + authority</text>
+  <rect class="box" x="300" y="80" width="150" height="60" rx="4"/>
+  <text class="label" x="316" y="102">Violation</text>
+  <text class="body"  x="316" y="122">cause · owner · coord</text>
+  <rect class="box" x="520" y="30" width="150" height="46" rx="4"/>
+  <text class="label" x="536" y="50">explain (118)</text>
+  <text class="body"  x="536" y="68">reads cause</text>
+  <rect class="box" x="520" y="130" width="150" height="46" rx="4"/>
+  <text class="label" x="536" y="150">teach (117)</text>
+  <text class="body"  x="536" y="168">reads cause</text>
+  <path class="arr" d="M230 110 L300 110" marker-end="url(#a)"/>
+  <path class="arr" d="M450 100 L520 60" marker-end="url(#a)"/>
+  <path class="arr" d="M450 120 L520 150" marker-end="url(#a)"/>
+  <defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path class="arrh" d="M0,0 L10,5 L0,10 z"/></marker></defs>
+</svg>
+<figcaption>Ownership is decided once, in the verdict; the two renderers read the recorded cause and authority — they never recompute the owner comparison.</figcaption>
+</figure>
+</spec-arch>
+
+<spec-note>
+<p><strong>Governing decision acknowledged.</strong> This touches <code>packages/core/src/guardrail/**</code>, governed by
+<a href="../113-guardrail-retrieval/design.html#D-001">113-guardrail-retrieval/D-001</a> ("no model or network on the retrieval
+path"). This design adds no import there — a field, a string branch, a template — so the purity holds unchanged.</p>
+</spec-note>
+</section>
+
+
+<section id="alternatives">
+<h2>7 · Alternatives considered</h2>
+
+<p>The real design fork is how <code>cause</code> sits on the violation (the spec's decision-phase question, recorded here with its scored tradeoff).</p>
+
+<spec-matrix>
+<div style="overflow-x:auto;">
+<table>
+  <thead>
+    <tr><th>Option</th><th>Self-describing</th><th>Hook-friendly</th><th>Byte-compat</th><th class="score">Total</th></tr>
+  </thead>
+  <tbody>
+    <tr data-winner><td>Always present (<code>path|ownership</code>)</td><td>5</td><td>5</td><td>2</td><td class="score">12</td></tr>
+    <tr><td>Optional, ownership-only</td><td>3</td><td>3</td><td>5</td><td class="score">11</td></tr>
+  </tbody>
+</table>
+</div>
+</spec-matrix>
+<p>The always-present form was chosen in the interview: a symmetric field a consumer can switch on unconditionally, at the cost of an additive change to existing <code>verdict.json</code> (path violations gain <code>cause: "path"</code>). Byte-identical would have preserved old artifacts exactly but left readers to treat "absent" as a third state.</p>
+</section>
+
+
+<section id="decisions">
+<h2>8 · Decisions</h2>
+
+<spec-decision id="D-001" grounding="verified">
+  <h4>D-001 · <code>cause</code> + authority as fields on <code>Violation</code>, set in the verdict</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Decision drivers</dt> <dd>Self-describing · hook-friendly · single-source</dd>
+    <dt>Considered options</dt>
+    <dd>
+      <ul class="considered-options">
+        <li><strong>Always present <code>cause</code> (chosen)</strong> — + symmetric, a hook switches on it unconditionally. − existing <code>verdict.json</code> gains a field.</li>
+        <li><strong>Optional, ownership-only</strong> — + byte-identical for path. − readers treat "absent" as a third state.</li>
+      </ul>
+    </dd>
+    <dt>Context</dt>      <dd><code>verdict.ts</code>'s <code>push()</code> takes an <code>extra: Partial&lt;Violation&gt;</code>; <code>types.ts</code> <code>Violation</code> extends additively.</dd>
+    <dt>Decision</dt>     <dd><code>cause: 'path' | 'ownership'</code> (required) + optional <code>owner</code>/<code>storeCoordinate</code>, set at push time from the owner-aware branch (<a href="./spec.html#FR-001">FR-001</a>, <a href="./spec.html#FR-002">FR-002</a>).</dd>
+    <dt>Consequences</dt> <dd>+ Any <code>verdict.json</code> consumer renders the cause without the decision. − Every <code>Violation</code> literal (test fixtures, committed demo verdicts) gains the field.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-002" grounding="verified">
+  <h4>D-002 · Ownership is decided once; renderers read it</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd><code>explain.ts</code> and <code>shifu.ts</code> today read <code>rule</code>/<code>reason</code>; the owner comparison lives only in <code>verdict.ts</code> (119).</dd>
+    <dt>Decision</dt>     <dd>The renderers branch on <code>v.cause</code> and read <code>v.owner</code>/<code>v.storeCoordinate</code>; they perform no owner comparison and read no current-project identity (<a href="./spec.html#NFR-001">NFR-001</a>). A code-structure test asserts it (<a href="./spec.html#SC-004">SC-004</a>).</dd>
+    <dt>Consequences</dt> <dd>+ One comparison, one site; no drift. − The renderers depend on the verdict having set the fields (it always does).</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-003" grounding="verified">
+  <h4>D-003 · An ownership explanation names the store's authority, not the copied decision</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>Today <code>--explain</code> prints the sanctioned path (<code>explain.ts:49</code>) and the decision coordinate — for an ownership violation both are wrong (the file's own directory; the consumer's copy).</dd>
+    <dt>Decision</dt>     <dd>For <code>cause === 'ownership'</code>, replace the sanctioned-path line with "owned by <code>&lt;owner&gt;</code> at <code>&lt;storeCoordinate&gt;</code> — route through that service" and show the store coordinate, not the decision coordinate (<a href="./spec.html#FR-003">FR-003</a>). A path violation is unchanged.</dd>
+    <dt>Consequences</dt> <dd>+ The non-owner is directed to the right place. − Two render branches to keep tested.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-004" grounding="n-a">
+  <h4>D-004 · TDD with ownership/path fixtures on the demo-8 reproduction</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>The guardrail layer is tests-first; the reproduction is committed.</dd>
+    <dt>Decision</dt>     <dd>Write the cause fixtures, the two renderer assertions, and the single-source structure check red first, then wire.</dd>
+    <dt>Consequences</dt> <dd>+ The SCs become the tests. − Updating existing <code>Violation</code>-literal fixtures is part of the first red step.</dd>
+  </dl>
+</spec-decision>
+</section>
+
+
+<section id="project-structure">
+<h2>9 · Project structure</h2>
+
+<p>Only the new or changed paths.</p>
+
+<pre><code>packages/core/src/guardrail/
+  types.ts        # + cause + owner?/storeCoordinate? on Violation (D-001)
+  verdict.ts      # set cause/authority at push time (D-001)
+  explain.ts      # branch on cause: ownership message + authority coord (D-003)
+  shifu.ts        # branch on cause: ownership question (D-002)
+packages/core/test/
+  guardrail.verdict.resource.test.ts   # + cause/authority assertions (ownership vs path)
+  guardrail.explain.test.ts            # + ownership-message assertion; add cause to fixtures
+  guardrail.shifu.test.ts              # + ownership-question assertion; add cause to fixtures
+  guardrail.verdict.test.ts            # add cause to path-violation assertions
+  guardrail.output-single-source.test.ts  # NEW — explain/shifu read no identity, no owner compare (SC-004)
+</code></pre>
+</section>
+
+
+<section id="risks">
+<h2>10 · Risks &amp; mitigations</h2>
+
+<div style="overflow-x:auto;">
+<table>
+  <thead><tr><th>Risk</th><th>Likelihood</th><th>Impact</th><th>Mitigation</th></tr></thead>
+  <tbody>
+    <tr><td>A required <code>cause</code> breaks every existing <code>Violation</code> literal (fixtures) and changes committed demo verdicts.</td><td>H</td><td>L</td><td>Expected and mechanical: update the fixtures in the first red step; regenerate the demo verdicts. Path <em>semantics</em> unchanged (FR-005).</td></tr>
+    <tr><td>The 118 identical-artifact test (SC-002) regresses.</td><td>L</td><td>M</td><td><code>cause</code> is set in <code>verdictFor</code> regardless of <code>--explain</code>, so with/without stay identical; the test is re-run to confirm.</td></tr>
+    <tr><td>A renderer quietly recomputes ownership (drift).</td><td>L</td><td>M</td><td>The single-source code-structure test (SC-004) fails if explain/shifu read the current-project identity or compare owner-vs-current.</td></tr>
+  </tbody>
+</table>
+</div>
+</section>
+
+
+<section id="complexity">
+<h2>11 · Complexity tracking</h2>
+<p>No complexity beyond the spec: a field, a push-time assignment, two render branches, one structure test. The largest line item is
+mechanical fixture churn, not design risk.</p>
+
+<spec-assumption>
+<p>An ownership violation always has <code>decision.resource</code> in hand at push time (119 guarantees it — the branch only fires
+for a resource-scoped decision), so copying <code>owner</code>/<code>coordinate</code> onto the violation is a copy, not a lookup.</p>
+</spec-assumption>
+</section>
+
+
+<section id="questions">
+<h2>12 · Open questions</h2>
+<spec-questions>
+<p>None outstanding — scope, the <code>cause</code> encoding, and where the authority lives were anchored in the spec interview; test style and the single-source approach were anchored here. All facts verified.</p>
+</spec-questions>
+</section>
+
+
+<section id="changelog">
+<h2>13 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-09-14">14 Sep 2026</time><span>Design authored: four edits over existing code (types, verdict push, explain, shifu) + one single-source structure test; grounded 5 verified, 0 assumed. Acknowledges 113/D-001. No UI — Visual surface deleted.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  Design for 120-ownership-aware-verdict-output · authored 14 Sep 2026
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>
