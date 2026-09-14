@@ -22,6 +22,7 @@ const verdict = (over: Partial<Verdict['violations'][number]>): Verdict => ({
       reason: 'every position change must emit PositionChanged so the audit hooks fire',
       file: 'src/recon/Job.java',
       detector: 'content',
+      cause: 'path',
       source: 'src/recon/Job.java',
       target: 'UPDATE\\s+positions',
       ...over,
@@ -56,6 +57,24 @@ describe('shifuQuestions (SC-001)', () => {
 
   it('a clean verdict yields no questions', () => {
     expect(shifuQuestions({ at: 'x', changed: [], violations: [] })).toEqual([]);
+  });
+});
+
+describe('ownership question (spec 120, SC-003)', () => {
+  const OWNER = 'briancorbin/position-keeper-guardrails';
+  const STORE = 'spectastic://briancorbin/position-keeper-guardrails/datastore/positions';
+  const ownership = { cause: 'ownership' as const, owner: OWNER, storeCoordinate: STORE };
+
+  it('names the store + owner and asks about routing, for an ownership violation', () => {
+    const q = shifuQuestions(verdict(ownership))[0]!;
+    expect(q.endsWith('?')).toBe(true);
+    expect(q).toMatch(new RegExp(`owned by ${OWNER.replace('/', '\\/')}`));
+    expect(q).toMatch(/datastore\/positions/);
+    expect(q).toMatch(/routing the change through/i);
+  });
+
+  it('is distinct from the layering question for a path violation', () => {
+    expect(shifuQuestions(verdict(ownership))[0]).not.toBe(shifuQuestions(verdict({}))[0]);
   });
 });
 

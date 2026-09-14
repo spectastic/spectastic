@@ -83,6 +83,10 @@ export function verdictFor(input: VerdictInput): Verdict {
       reason: d.reason ?? '',
       file,
       detector,
+      // Default cause (spec 120): every violation is a `path` violation unless an
+      // ownership push overrides it via `extra`. Set here so the deny/enforcer
+      // branches — which never carry ownership — get a cause with no extra work.
+      cause: 'path',
       ...extra,
     });
   };
@@ -96,9 +100,14 @@ export function verdictFor(input: VerdictInput): Verdict {
         // path rule); any other project — the defect being ownership, not layering
         // — gets an EMPTY zone, so every touch flags. A path-scoped decision
         // (no resource) keeps its existing zone unchanged (FR-006).
+        // The owner comparison happens HERE, once (spec 120 single-source): a
+        // resource-scoped decision touched by a non-owner is an OWNERSHIP
+        // violation; the owner (writing outside allowed-in), a path-scoped
+        // decision, deny, and enforcer cases are all PATH violations.
+        const isOwner = d.resource !== undefined && input.currentProject !== undefined && input.currentProject === d.resource.owner;
+        const isOwnershipViolation = d.resource !== undefined && !isOwner;
         let allowed: readonly string[];
         if (d.resource) {
-          const isOwner = input.currentProject !== undefined && input.currentProject === d.resource.owner;
           allowed = isOwner && d.resource.allowedIn ? [d.resource.allowedIn] : [];
         } else {
           allowed = rule.allowedIn ? [rule.allowedIn] : d.paths;
@@ -110,7 +119,11 @@ export function verdictFor(input: VerdictInput): Verdict {
           if (text === null) continue;
           const line = firstMatchLine(text, re);
           if (line !== undefined) {
-            push(d, rule.id, file, 'content', { line, source: file, target: rule.pattern });
+            const authority: Partial<Violation> =
+              isOwnershipViolation && d.resource
+                ? { cause: 'ownership', owner: d.resource.owner, storeCoordinate: d.resource.coordinate }
+                : {};
+            push(d, rule.id, file, 'content', { line, source: file, target: rule.pattern, ...authority });
           }
         }
       }

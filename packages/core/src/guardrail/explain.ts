@@ -60,14 +60,17 @@ export function explainViolations(input: ExplainInput): ExplainedViolation[] {
   });
 }
 
-/** Render explanations in the triage-card shape: header + Offending / Why / Sanctioned path. */
+/** Render explanations in the triage-card shape. A `path` violation shows the
+ *  sanctioned location; an `ownership` violation (spec 120) shows the store's
+ *  authority and routes the author to the owning service instead — read from the
+ *  violation's recorded cause + owner/coordinate, never recomputed here. */
 export function renderExplanations(explained: readonly ExplainedViolation[]): string {
   if (explained.length === 0) return '';
   const blocks = explained.map((e) => {
     const v = e.violation;
     const loc = v.line !== undefined ? `${v.file}:${v.line}` : v.file;
     const why = e.decisionProse ? `${e.decisionReason}\n\n    ${e.decisionProse}` : e.decisionReason;
-    return [
+    const head = [
       `── ${e.decisionTitle} ──`,
       `  Rule ${v.ruleId} · ${loc}`,
       '',
@@ -76,11 +79,25 @@ export function renderExplanations(explained: readonly ExplainedViolation[]): st
       '',
       '  Why it is a violation — the decision that governs this code:',
       `    ${why}`,
-      `    Open the full decision: ${e.decisionFile}  (${e.decisionCoordinate})`,
-      '',
-      '  Sanctioned path — where this pattern is permitted instead:',
-      `    ${e.sanctionedPath}`,
-    ].join('\n');
+    ];
+    if (v.cause === 'ownership') {
+      // The store is owned by another service — the sanctioned path and the local
+      // (copied) decision coordinate would both misdirect, so we name the AUTHORITY
+      // and route the author there instead (spec 120, FR-003).
+      head.push(
+        '',
+        '  Owned elsewhere — nowhere in this service; route the change through its owner:',
+        `    the store ${v.storeCoordinate ?? '(coordinate not recorded)'} is owned by ${v.owner ?? '(owner not recorded)'}`,
+      );
+    } else {
+      head.push(
+        `    Open the full decision: ${e.decisionFile}  (${e.decisionCoordinate})`,
+        '',
+        '  Sanctioned path — where this pattern is permitted instead:',
+        `    ${e.sanctionedPath}`,
+      );
+    }
+    return head.join('\n');
   });
   return `Explanation (advisory — the decision and the code, so you can act):\n\n${blocks.join('\n\n')}`;
 }

@@ -72,4 +72,18 @@ describe('verdict — resource scope, non-owner flagged end-to-end (SC-002)', ()
     expect(r.stdout).toMatch(/VIOLATION 002-positions\/D-007/);
     expect(r.stdout).toMatch(/PositionRepo\.java/);
   });
+
+  it('--explain routes the non-owner to the store owner, not their own directory (spec 120)', async () => {
+    const dir = consumerFixture();
+    const r = await runCLI(
+      ['verdict', '--changed', 'src/app/persistence/PositionRepo.java', '--explain', '--out', '.spectastic/verdict.json'],
+      dir,
+    );
+    expect(r.code).toBe(1);
+    // Names the store's AUTHORITY and routes there — not a sanctioned path in this repo.
+    expect(r.stdout).toMatch(/owned by position-keeper\/position-keeper/);
+    expect(r.stdout).toMatch(/datastore\/positions/);
+    expect(r.stdout).toMatch(/route the change through its owner/i);
+    expect(r.stdout).not.toMatch(/Sanctioned path/);
+  });
 });

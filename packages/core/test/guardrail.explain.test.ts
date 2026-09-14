@@ -40,6 +40,7 @@ const verdict: Verdict = {
       file: PRIYA,
       line: 3,
       detector: 'content',
+      cause: 'path',
       source: PRIYA,
       target: 'UPDATE\\s+positions',
     },
@@ -72,6 +73,48 @@ describe('explainViolations (SC-001)', () => {
     expect(out).toMatch(/Why it is a violation/);
     expect(out).toMatch(/Sanctioned path/);
     expect(out).toMatch(/ADR-0007/);
+  });
+});
+
+describe('ownership violation — routes to the owner, not the file’s own directory (spec 120, SC-002)', () => {
+  const OWNER = 'briancorbin/position-keeper-guardrails';
+  const STORE = 'spectastic://briancorbin/position-keeper-guardrails/datastore/positions';
+  const ownVerdict: Verdict = {
+    at: '2026-09-14T00:00:00.000Z',
+    scope: 'repo-local',
+    decisionsEvaluated: 1,
+    changed: ['src/acme/recon/hex/persistence/PositionRepositoryAdapter.java'],
+    violations: [
+      {
+        decisionId: 'D-007',
+        specId: '002-downstream-consumers',
+        ruleId: 'no_sql_write_to_positions_outside_adapter',
+        reason: decision.reason!,
+        file: 'src/acme/recon/hex/persistence/PositionRepositoryAdapter.java',
+        line: 3,
+        detector: 'content',
+        cause: 'ownership',
+        owner: OWNER,
+        storeCoordinate: STORE,
+        source: 'src/acme/recon/hex/persistence/PositionRepositoryAdapter.java',
+        target: 'UPDATE\\s+positions',
+      },
+    ],
+  };
+  // Evaluated in the CONSUMER project — its copied decision projects to acme/…
+  const out = renderExplanations(
+    explainViolations({ verdict: ownVerdict, decisions: [decision], project: 'acme/reconciliation-service', readFile: () => null }),
+  );
+
+  it('names the store owner + coordinate and routes to that service', () => {
+    expect(out).toMatch(new RegExp(`owned by ${OWNER.replace('/', '\\/')}`));
+    expect(out).toMatch(/datastore\/positions/);
+    expect(out).toMatch(/route the change through its owner/i);
+  });
+  it('omits the sanctioned-path misdirection and the consumer’s copied decision coordinate', () => {
+    expect(out).not.toMatch(/Sanctioned path/);
+    // the consumer's projection would be spectastic://acme/reconciliation-service/decision/...
+    expect(out).not.toMatch(/acme\/reconciliation-service\/decision/);
   });
 });
 

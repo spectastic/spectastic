@@ -71,6 +71,38 @@ describe('non-owner repo — any touch flags, ownership not layering (SC-002)', 
   });
 });
 
+describe('cause + authority on the violation (spec 120, SC-001)', () => {
+  const COORD = 'spectastic://position-keeper/position-keeper/datastore/positions';
+
+  it('a non-owner touch records cause "ownership" + the store authority', () => {
+    const hit = run([OUTSIDE], CONSUMER).violations[0];
+    expect(hit?.cause).toBe('ownership');
+    expect(hit?.owner).toBe(OWNER);
+    expect(hit?.storeCoordinate).toBe(COORD);
+  });
+
+  it('the OWNER writing outside allowed-in is a "path" violation, not ownership', () => {
+    const hit = run([OUTSIDE], OWNER).violations[0];
+    expect(hit?.cause).toBe('path');
+    expect(hit?.owner).toBeUndefined();
+    expect(hit?.storeCoordinate).toBeUndefined();
+  });
+
+  it('a path-scoped decision records cause "path" with no authority', () => {
+    const pathDecision = D({
+      id: 'D-009',
+      specId: '002-downstream',
+      status: 'accepted',
+      paths: [],
+      reason: 'no direct writes',
+      enforcement: { rules: [{ tool: 'native-content', id: 'x', pattern: 'UPDATE\\s+positions' }] },
+    });
+    const hit = verdictFor({ changed: [OUTSIDE], decisions: [pathDecision], now: NOW, readFile, currentProject: CONSUMER }).violations[0];
+    expect(hit?.cause).toBe('path');
+    expect(hit?.owner).toBeUndefined();
+  });
+});
+
 describe('backward compatibility (FR-006)', () => {
   it('a path-scoped decision is unaffected by currentProject', () => {
     const pathDecision = D({

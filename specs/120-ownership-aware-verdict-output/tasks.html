@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'">
+<title>Ownership-aware verdict output · Tasks</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Tasks · 120-ownership-aware-verdict-output</p>
+  <h1>Ownership-aware verdict output</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    Ordered, parallelizable work. Tests precede implementation. Drive through with
+    <code>/spectastic.implement</code> — one task per invocation.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>     <span><spec-status value="accepted">Accepted</spec-status></span>
+    <b>Spec</b>       <span><a href="./spec.html">120-ownership-aware-verdict-output</a></span>
+    <b>Design</b>     <span><a href="./design.html">design</a></span>
+    <b>Branch</b>     <span><code>main</code></span>
+    <b>Created</b>    <span><time datetime="2026-09-14">14 Sep 2026</time></span>
+    <b>Read time</b>  <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-tldr>
+    <p>11 tasks: extend the <code>Violation</code> contract (+ fixture churn), then the verdict records cause and <code>--explain</code>
+    renders the ownership message (US1+US2, one flow), then <code>--teach</code> (US3), then the single-source guarantee, then a
+    polish check that regenerates the external demo captures. <span class="par">[P]</span> = distinct file, no in-flight dependency.</p>
+  </spec-tldr>
+</header>
+
+<section id="strategy">
+<h2>1 · Execution strategy</h2>
+<spec-tabs>
+  <spec-tab label="Incremental"><p>Contract + fixtures → verdict cause &amp; explain (tests then code) → teach → single-source check → regenerate demos. The default — the change is small and fully grounded.</p></spec-tab>
+  <spec-tab label="Test-first"><p>The cause fixtures, the ownership-message assertion, the teach-question assertion, and the single-source structure check all fail first; then the four edits.</p></spec-tab>
+</spec-tabs>
+</section>
+
+<section id="phase-setup" class="phase">
+<h2>2 · Phase 1 — Setup</h2>
+<p>No setup — no new dependencies, no scaffolding. Work begins at Foundational.</p>
+</section>
+
+<section id="phase-foundation" class="phase">
+<h2>3 · Phase 2 — Foundational</h2>
+
+<spec-task id="T-010">
+  <input type="checkbox" checked>
+  <div><strong>Extend the <code>Violation</code> contract</strong> — add <code>cause: 'path' | 'ownership'</code> (required) and optional <code>owner</code>/<code>storeCoordinate</code> (<a href="./spec.html#FR-001">FR-001</a>, <a href="./spec.html#FR-002">FR-002</a>, D-001). <span class="path">packages/core/src/guardrail/types.ts</span></div>
+</spec-task>
+<spec-task id="T-011">
+  <input type="checkbox" checked>
+  <div><strong>Set <code>cause</code> on every existing <code>Violation</code> literal</strong> — the required field forces the suite's fixtures to compile; existing path violations get <code>cause: 'path'</code>. <span class="path">packages/core/test/</span></div>
+</spec-task>
+</section>
+
+<section id="phase-us1" class="phase">
+<h2>4 · Phase 3a — US1 + US2 · The verdict records cause; --explain names the authority</h2>
+
+<h3>Tests (write &amp; fail first)</h3>
+<spec-task id="T-100">
+  <input type="checkbox" checked>
+  <div><strong>Cause on the violation</strong> — a non-owner touch records <code>cause: 'ownership'</code> + owner + store coordinate; a path violation and an owner writing outside <code>allowed-in</code> record <code>cause: 'path'</code> with no authority. <span class="path">packages/core/test/guardrail.verdict.resource.test.ts</span></div>
+</spec-task>
+<spec-task id="T-101" parallel>
+  <input type="checkbox" checked>
+  <div><strong>--explain names the store authority</strong> — for an ownership violation the explanation names the owner + store coordinate and routes to that service; it omits the offending file's own directory as "sanctioned" and the consumer's decision coordinate. A path violation's explanation is unchanged. <span class="path">packages/core/test/guardrail.explain.test.ts</span></div>
+</spec-task>
+
+<h3>Implementation</h3>
+<spec-task id="T-110">
+  <input type="checkbox" checked>
+  <div><strong>Set cause + authority in <code>verdictFor</code></strong> — at push time, <code>cause: 'ownership'</code> (+ owner + store coordinate from <code>decision.resource</code>) only when the decision is resource-scoped and the current project is not the owner; <code>cause: 'path'</code> otherwise (path scope, owner-outside-allowed, deny, enforcer). <span class="path">packages/core/src/guardrail/verdict.ts</span></div>
+</spec-task>
+<spec-task id="T-111">
+  <input type="checkbox" checked>
+  <div><strong>Render the ownership case in <code>--explain</code></strong> — branch on <code>v.cause</code>: an ownership violation reads "the store &lt;coordinate&gt; is owned by &lt;owner&gt; — route through that service" in place of the sanctioned-path line, and shows the store coordinate, not the decision coordinate. Read the recorded fields; do not recompute ownership. <span class="path">packages/core/src/guardrail/explain.ts</span></div>
+</spec-task>
+<spec-task id="T-112">
+  <input type="checkbox" checked>
+  <div><strong>Exercise end-to-end</strong> — spawn <code>verdict --explain</code> with a non-owner fixture identity; assert the ownership message names the authority and omits both misdirections. Entry point: <code>spectastic verdict --explain</code>. <span class="path">packages/cli/test/verdict.resource.integration.test.ts</span></div>
+</spec-task>
+
+<spec-note>
+<p>Closes <a href="./spec.html#FR-001">FR-001</a>, <a href="./spec.html#FR-002">FR-002</a>, <a href="./spec.html#FR-003">FR-003</a>, <a href="./spec.html#FR-005">FR-005</a>, <a href="./spec.html#SC-001">SC-001</a>, <a href="./spec.html#SC-002">SC-002</a>.</p>
+</spec-note>
+</section>
+
+<section id="phase-us2" class="phase">
+<h2>5 · Phase 3b — US3 · The teaching question fits the failure</h2>
+
+<h3>Tests (write &amp; fail first)</h3>
+<spec-task id="T-200">
+  <input type="checkbox" checked>
+  <div><strong>--teach asks an ownership question</strong> — for an ownership violation the question names the store/owner and asks why this service should hold the data, distinct from the layering question; a path violation's question is unchanged. <span class="path">packages/core/test/guardrail.shifu.test.ts</span></div>
+</spec-task>
+
+<h3>Implementation</h3>
+<spec-task id="T-210">
+  <input type="checkbox" checked>
+  <div><strong>Render the ownership question in <code>shifu</code></strong> — branch on <code>v.cause</code> and read <code>v.owner</code>/<code>v.storeCoordinate</code>; no owner comparison. <span class="path">packages/core/src/guardrail/shifu.ts</span></div>
+</spec-task>
+
+<spec-note>
+<p>Closes <a href="./spec.html#FR-004">FR-004</a>, <a href="./spec.html#SC-003">SC-003</a>.</p>
+</spec-note>
+</section>
+
+<section id="phase-us3" class="phase">
+<h2>6 · Phase 3c — NFR · Single-source-of-ownership</h2>
+
+<h3>Tests (write &amp; fail first)</h3>
+<spec-task id="T-300">
+  <input type="checkbox" checked>
+  <div><strong>The renderers hold no owner comparison</strong> — a code-structure test asserts <code>explain.ts</code> and <code>shifu.ts</code> read no current-project identity and perform no owner-vs-current comparison (the comparison lives only in the verdict). <span class="path">packages/core/test/guardrail.output-single-source.test.ts</span></div>
+</spec-task>
+
+<spec-note>
+<p>Closes <a href="./spec.html#NFR-001">NFR-001</a>, <a href="./spec.html#SC-004">SC-004</a>.</p>
+</spec-note>
+</section>
+
+<section id="phase-polish" class="phase">
+<h2>7 · Phase 4 — Polish</h2>
+<spec-task id="T-900" parallel>
+  <input type="checkbox" checked>
+  <div><strong>Estate + build check; regenerate demo captures</strong> — whole-estate <code>validate</code> clean, full guardrail suite green (incl. the 118 identical-artifact test unchanged), all packages typecheck; regenerate the position-keeper demo-8 verdict captures so they carry <code>cause</code>. <span class="path">packages/core/test/</span></div>
+</spec-task>
+</section>
+
+<section id="dependencies">
+<h2>8 · Dependencies</h2>
+<p>Foundational (T-010 → T-011) precedes everything — the required field must exist and the fixtures compile. Within US1+US2, tests (T-100, T-101) precede impl (T-110 → T-111 → T-112); T-110 precedes T-101/T-111 passing (they read the cause it sets). US3 (T-200 → T-210) and the single-source check (T-300) follow the renderers and can proceed once T-111/T-210 land. T-900 is last.</p>
+</section>
+
+<section id="changelog">
+<h2>9 · Change log</h2><spec-changelog><ol>
+  <li><time datetime="2026-09-14">14 Sep 2026</time><span>Tasks derived following <code>/spectastic.tasks</code> — 11 tasks, 2 parallel: the Violation contract + fixture churn, the verdict cause &amp; --explain ownership message (tests-first), --teach, the single-source structure check, and an estate/build + demo-regeneration check.</span></li>
+  <li><time datetime="2026-09-14">14 Sep 2026</time><span>All 11 tasks ticked; status flipped Draft → Accepted — tests verified passing per author confirmation. Sibling bundle flipped together (REQ-LIFECYCLE-005).</span></li>
+</ol></spec-changelog></section>
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>

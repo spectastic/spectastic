@@ -117,6 +117,17 @@ export interface Violation {
   target?: string;
   /** Which detector produced it: native content/path, or an ingested enforcer. */
   detector: 'content' | 'path' | 'enforcer';
+  /**
+   * Why the touch was disallowed (spec 120): `path` (outside the sanctioned
+   * location) or `ownership` (the current project is not the store's owner). Set
+   * once, in the verdict — the only place the owner comparison happens. A pre-120
+   * artifact with no `cause` is read as `path`.
+   */
+  cause: 'path' | 'ownership';
+  /** For an `ownership` violation: the store's owner (project identity) — the authority. */
+  owner?: string;
+  /** For an `ownership` violation: the store's coordinate — the authority. */
+  storeCoordinate?: string;
 }
 
 /** The persisted, reconstructable merge verdict (spec 115). */
