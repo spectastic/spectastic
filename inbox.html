@@ -1545,6 +1545,57 @@ and stays in the inbox as history — strikethrough, faded, with a DONE pill.</p
   </details>
 </spec-triage>
 
+<spec-triage id="I-079" layer="spec">
+  <header>
+    <h4>The patch-coverage gate counts a formatter reflow as new uncovered code &mdash; and the CLI command modules it lands on are 0% instrumented</h4>
+    <span class="meta">
+      <span class="layer-pill">Spec</span>
+    </span>
+  </header>
+
+  <p class="headline">A Biome bump (2.5.6 &rarr; 2.5.12) reflowed <code>packages/cli/src/commands/verdict.ts</code>
+  without changing a single token of behaviour. <code>scripts/patch-coverage.mjs</code> scored the change at
+  <strong>28.8%</strong> against an 80% floor and failed the build &mdash; because a rewrapped line is a
+  <code>+</code> line in the diff, and that file is <strong>0/97</strong> instrumented to begin with.</p>
+
+  <dl>
+    <dt>Expected</dt> <dd>A change that adds no logic scores no worse than the code it reflowed. The gate exists to
+    stop untested <em>logic</em> landing (spec <a href="./specs/068-enterprise-enforce-floor/spec.html">068</a>
+    T-117, plan D-002: &ldquo;&ge;80% of changed lines, never lower what&rsquo;s touched&rdquo;).</dd>
+
+    <dt>Actual</dt>   <dd>36/125 lines covered. Of the 89 uncovered, essentially all are the formatter&rsquo;s own
+    output in three CLI command modules &mdash; <code>verdict.ts</code> (0/97 before the change),
+    <code>init/tools.ts</code> (0/90), <code>validate.ts</code> (4%). The 12 genuinely-semantic lines in the same
+    change scored 11/12.</dd>
+
+    <dt>Diagnosis</dt><dd>Two defects, stacked, and the second is the bigger one.
+    <strong>(1)</strong> The gate measures changed <em>bytes</em>, not changed <em>logic</em>. Ignoring whitespace
+    (<code>git diff -w</code>) was tried and only reaches 51.9% &mdash; rewrapping is not whitespace-only, so that
+    is not the lever.
+    <strong>(2)</strong> <code>packages/cli/src/commands/</code> carries near-zero instrumented coverage because its
+    tests spawn the built binary as a subprocess, so nothing in those files is ever recorded as hit. The gate has
+    been silent about that only because nobody had touched those files in a diff large enough to matter. A
+    formatter bump was enough.
+    <br>Compounding it: the base differs by trigger &mdash; a <code>pull_request</code> measures the
+    <em>merge-base</em> (the whole PR) while a push to main measures <code>HEAD~1</code> (one commit). So splitting
+    a reflow into its own commit satisfies the gate on a push and not on a PR, which means the same change passes or
+    fails depending on how it is landed. That is not a property a gate should have.</dd>
+
+    <dt>Fix</dt>      <dd>Not decided &mdash; this is a requirement question, which is why it is filed at the
+    <em>spec</em> layer rather than patched. Three candidates, in rising order of honesty and cost:
+    <strong>(a)</strong> discount lines whose tokens are unchanged, so a pure reflow is not scored;
+    <strong>(b)</strong> make the base consistent across triggers, so landing style cannot change the verdict;
+    <strong>(c)</strong> treat the 0% on <code>packages/cli/src/commands/</code> as the real finding and run the CLI
+    in-process in its integration tests, so the floor means something there. (a) and (b) make the gate stop lying;
+    only (c) makes it start telling the truth. Note (c) is the expensive one and may warrant its own spec.</dd>
+
+    <dt>Observed</dt> <dd><time datetime="2026-09-14">14 Sep 2026</time> &mdash; PR #75 (the CI repair after the
+    Biome bump). Landed by rebase merge so each commit was measured against its own parent and main went green;
+    the PR&rsquo;s own check stayed red. That workaround is exactly the trigger-dependent behaviour described above,
+    and it is recorded here rather than relied on.</dd>
+  </dl>
+</spec-triage>
+
 </spec-triage-log>
 </section>
 
