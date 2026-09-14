@@ -70,14 +70,16 @@ export function registerVerdict(program: Command): void {
       await fsp.writeFile(join(cwd, opts.out), result.verdictText, 'utf8');
 
       // Scope-honesty (TBD-verdict-scope-honesty): the verdict judged this
-      // checkout against this repository's own decisions. A change that violates
-      // a decision owned by another repository is not something it looked for, so
-      // a clean verdict is a repo-local clean — and says so, in the human output
+      // checkout against the decisions PRESENT in it. A decision not present here
+      // is not evaluated — including one that lives in another repository (119
+      // triage T-002: a decision owned elsewhere but COPIED into this checkout is
+      // present, so it IS evaluated; the true invariant is presence, not owner).
+      // A clean verdict is a repo-local clean — and says so, in the human output
       // and (as `scope`/`decisionsEvaluated`) in the artifact. --json stays pure.
       const n = result.verdict.decisionsEvaluated;
       const scopeNote =
         `Scope: repo-local — evaluated ${n} decision${n === 1 ? '' : 's'} from this checkout. ` +
-        'Decisions owned by other repositories are not evaluated.';
+        'A decision not present in this checkout is not evaluated.';
 
       if (opts.json) {
         process.stdout.write(result.verdictText);
