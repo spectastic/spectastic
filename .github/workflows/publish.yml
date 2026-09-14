@@ -171,29 +171,30 @@ jobs:
 
           echo "version=$TAG_VERSION" >> "$GITHUB_OUTPUT"
 
-      # Derive the dist-tag set. Keyed on whether a STABLE release exists, not on
-      # the version string: while none does, a pre-release moves both `next` and
-      # `latest` so the documented bare install resolves to the newest build; the
-      # guard engages by itself once 1.0.0 ships. Promoted out of an inline bash
-      # conditional (D-005 pre-authorised this once the rule outgrew "contains a
-      # hyphen"), so every branch is unit-tested rather than first run live.
-      # A registry state that can't be determined fails here — never guess a tag.
+      # Derive the single dist-tag this publish uses as its `--tag`, keyed on
+      # whether a STABLE release exists (never on the version string): while none
+      # does, a pre-release publishes straight to `latest` so the documented bare
+      # install resolves to the newest build; the guard engages by itself once
+      # 1.0.0 ships and pre-releases go to `next`. Under OIDC there is no second
+      # tag to mirror (`npm dist-tag add` is not OIDC-authenticated), so the derive
+      # returns exactly one tag. Promoted out of an inline bash conditional (D-005),
+      # so every branch is unit-tested rather than first run live. A registry state
+      # that can't be determined fails here — never guess a tag.
       - name: Derive dist-tag
         id: dist-tag
         run: |
           VERSION="${{ steps.version.outputs.version }}"
-          TAGS=$(node scripts/derive-dist-tag.mjs "$VERSION" "@spectastic/cli")
-          PRIMARY=$(echo "$TAGS" | head -n1)
-          EXTRA=$(echo "$TAGS" | tail -n +2 | tr '\n' ' ')
+          PRIMARY=$(node scripts/derive-dist-tag.mjs "$VERSION" "@spectastic/cli")
 
-          echo "Dist-tags: $(echo "$TAGS" | tr '\n' ' ')"
-          echo "primary=$PRIMARY"            >> "$GITHUB_OUTPUT"
-          echo "extra=$EXTRA"                >> "$GITHUB_OUTPUT"
-          echo "all=$(echo "$TAGS" | tr '\n' ' ')" >> "$GITHUB_OUTPUT"
+          echo "Dist-tag: $PRIMARY"
+          echo "primary=$PRIMARY" >> "$GITHUB_OUTPUT"
 
-      # T-111: real publish with --provenance via OIDC. NPM_TOKEN is a
-      # granular-access token scoped to publishing @spectastic/*. Per FR-004,
-      # FR-005, NFR-002.
+      # Real publish with --provenance via OIDC trusted publishing — no stored
+      # token. pnpm ≥ 11.1.3 performs the npm OIDC token exchange itself (the
+      # packageManager pin is 11.27.0), and the `id-token: write` permission above
+      # is what authenticates. The single --tag is OIDC-authenticated; there is no
+      # dist-tag mirror step because `npm dist-tag add` is not (only `npm publish`
+      # does the exchange). Per FR-004, FR-005, NFR-002.
       - name: Publish to npm
         run: |
           pnpm publish -r \
@@ -201,27 +202,6 @@ jobs:
             --access public \
             --tag ${{ steps.dist-tag.outputs.primary }} \
             --no-git-checks
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-
-      # Move any additional tags the derivation asked for (pre-stable: `latest`
-      # alongside `next`). All three packages move together — their `latest`
-      # values had already drifted apart at pre.3 / pre.8. `set -e` plus the
-      # explicit failure means a half-tagged release goes red rather than
-      # reporting success while the install command still serves an old build.
-      - name: Move additional dist-tags
-        if: steps.dist-tag.outputs.extra != ''
-        run: |
-          set -euo pipefail
-          VERSION="${{ steps.version.outputs.version }}"
-          for TAG in ${{ steps.dist-tag.outputs.extra }}; do
-            for PKG in @spectastic/cli @spectastic/core @spectastic/schema @spectastic/corpus @spectastic/render; do
-              echo "dist-tag add $PKG@$VERSION $TAG"
-              npm dist-tag add "$PKG@$VERSION" "$TAG"
-            done
-          done
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       # T-112: workflow summary block listing published versions + npmjs.com
       # links. Surfaces what just shipped without scrolling the run log. Per
@@ -230,13 +210,11 @@ jobs:
         if: success()
         run: |
           VERSION="${{ steps.version.outputs.version }}"
-          ALL_TAGS="${{ steps.dist-tag.outputs.all }}"
           PRIMARY="${{ steps.dist-tag.outputs.primary }}"
-          # Every tag that moved, not just the one passed to `pnpm publish` — a
-          # summary naming a single tag would misdescribe a two-tag release.
-          TAG_LIST=$(echo "$ALL_TAGS" | sed 's/ *$//; s/ /`, `/g')
+          # One tag per release under OIDC — the tag `pnpm publish` used. There is
+          # no dist-tag mirror, so this is the whole story.
           cat >> "$GITHUB_STEP_SUMMARY" <<EOF
-          # Published v$VERSION on \`$TAG_LIST\`
+          # Published v$VERSION on \`$PRIMARY\`
 
           - [@spectastic/cli@$VERSION](https://www.npmjs.com/package/@spectastic/cli/v/$VERSION)
           - [@spectastic/core@$VERSION](https://www.npmjs.com/package/@spectastic/core/v/$VERSION)

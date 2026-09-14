@@ -6,15 +6,21 @@ import { deriveDistTags, fetchPublishedVersions, isPrerelease } from './derive-d
 // ran for the first time during a live publish — the riskiest place to be wrong.
 
 describe('deriveDistTags (FR-006)', () => {
-  it('pre-release with no stable ever published → moves both next and latest', () => {
-    // The pre-1.0 case that froze `latest` at 0.1.0-pre.3 for eighteen releases.
-    expect(deriveDistTags('0.1.0-pre.19', ['0.1.0-pre.17', '0.1.0-pre.18'])).toEqual(['next', 'latest']);
+  // Under OIDC trusted publishing every branch returns exactly ONE tag — the
+  // `--tag` the publish uses, which OIDC authenticates. There is no second tag to
+  // mirror (`npm dist-tag add` is not OIDC-authenticated), so while pre-stable a
+  // pre-release publishes directly to `latest`.
+
+  it('pre-release with no stable ever published → latest (publishes there directly)', () => {
+    // The pre-1.0 case that froze `latest` at 0.1.0-pre.3 for eighteen releases;
+    // publishing straight to `latest` keeps the bare install on the newest build.
+    expect(deriveDistTags('0.1.0-pre.19', ['0.1.0-pre.17', '0.1.0-pre.18'])).toEqual(['latest']);
   });
 
-  it('1.0.0-rc before any stable → still moves both (the RC-window gap)', () => {
+  it('1.0.0-rc before any stable → latest (no stable to protect yet)', () => {
     // A version-string rule keyed on "major is 0" would send this to `next` only
     // and re-freeze `latest` on the last 0.x for the whole RC period.
-    expect(deriveDistTags('1.0.0-rc.1', ['0.1.0-pre.18'])).toEqual(['next', 'latest']);
+    expect(deriveDistTags('1.0.0-rc.1', ['0.1.0-pre.18'])).toEqual(['latest']);
   });
 
   it('pre-release once a stable exists → next only (the guard engages)', () => {
@@ -25,13 +31,19 @@ describe('deriveDistTags (FR-006)', () => {
     expect(deriveDistTags('1.0.0', ['0.1.0-pre.18'])).toEqual(['latest']);
   });
 
-  it('first ever publish (registry empty) → both', () => {
-    expect(deriveDistTags('0.1.0-pre.1', [])).toEqual(['next', 'latest']);
+  it('first ever publish (registry empty) → latest', () => {
+    expect(deriveDistTags('0.1.0-pre.1', [])).toEqual(['latest']);
   });
 
-  it('applies latest after next, so the ordering is deterministic', () => {
-    const tags = deriveDistTags('0.1.0-pre.19', []);
-    expect(tags.indexOf('latest')).toBeGreaterThan(tags.indexOf('next'));
+  it('always resolves to exactly one tag (no dist-tag mirror under OIDC)', () => {
+    for (const [v, published] of [
+      ['0.1.0-pre.19', []],
+      ['1.0.0-rc.1', ['0.1.0-pre.18']],
+      ['1.1.0-rc.1', ['0.1.0-pre.18', '1.0.0']],
+      ['1.0.0', ['0.1.0-pre.18']],
+    ]) {
+      expect(deriveDistTags(v, published)).toHaveLength(1);
+    }
   });
 });
 

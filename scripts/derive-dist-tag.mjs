@@ -3,10 +3,17 @@
 //
 // The rule is keyed on whether a STABLE release exists, not on the shape of the
 // version string. While no bare-semver version has ever been published there is
-// nothing safer for `latest` to point at, so a pre-release moves both tags and
-// the documented bare install (`npm i -g @spectastic/cli`) resolves to the newest
-// build. Once a stable exists the guard engages by itself and pre-releases go to
-// `next` only.
+// nothing safer for `latest` to point at, so a pre-release publishes directly to
+// `latest` and the documented bare install (`npm i -g @spectastic/cli`) resolves
+// to the newest build. Once a stable exists the guard engages by itself and
+// pre-releases go to `next` only.
+//
+// Every branch resolves to exactly ONE tag — the tag the publish uses as its
+// `--tag`, which OIDC authenticates. There is no second tag to mirror: under OIDC
+// trusted publishing `npm dist-tag add` is not authenticated (only `npm publish`
+// does the OIDC exchange), so the earlier "move `latest` alongside `next`" step is
+// retired. While pre-stable this costs nothing — `next` and `latest` would name
+// the same version anyway — and `next` simply stops updating until a stable ships.
 //
 // Keying on existence rather than the version string is deliberate: a
 // version-string rule ("major is 0") would send 1.0.0-rc.1 to `next` only and
@@ -33,13 +40,13 @@ export function isPrerelease(version) {
  *
  * @param {string} version           the version being published
  * @param {string[]} publishedVersions  every version already on the registry
- * @returns {string[]} tags to move, `latest` last so it is applied after `next`
+ * @returns {string[]} exactly one tag — the `--tag` the OIDC publish uses
  */
 export function deriveDistTags(version, publishedVersions) {
   if (!isPrerelease(version)) return ['latest'];
 
   const hasStableRelease = publishedVersions.some((v) => !isPrerelease(v));
-  return hasStableRelease ? ['next'] : ['next', 'latest'];
+  return hasStableRelease ? ['next'] : ['latest'];
 }
 
 /**
