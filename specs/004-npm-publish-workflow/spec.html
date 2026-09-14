@@ -108,41 +108,56 @@
 </spec-requirement>
 
 <spec-requirement id="FR-003" priority="must">
-<p>The workflow <spec-rule>MUST</spec-rule> extract the version from the git tag (strip the leading <code>v</code>) and verify it matches the <code>version</code> field in both <code>packages/cli/package.json</code> and <code>packages/schema/package.json</code>. On mismatch (either package, or the two packages out of sync), the workflow <spec-rule>MUST</spec-rule> exit non-zero with a clear error naming the expected and observed values.</p>
-</spec-requirement>
+  <p>The workflow <spec-rule>MUST</spec-rule> extract the version from the git tag (strip the leading <code>v</code>) and verify it
+  matches the <code>version</code> field in <strong>every published</strong> <code>@spectastic/*</code> package's
+  <code>package.json</code> (<code>cli</code>, <code>core</code>, <code>schema</code>, <code>corpus</code>, <code>render</code>). On
+  mismatch (any package, or the packages out of sync), the workflow <spec-rule>MUST</spec-rule> exit non-zero with a clear error
+  naming the expected and observed values.</p>
+  <details><summary>Rationale</summary><p>The two-package enumeration predated core/corpus/render; the workflow's version check
+  already covers all five, so this closes a spec-vs-code drift surfaced by FR-004's correction — a new package could otherwise ship
+  at a stale version with the spec silent.</p></details>
+  </spec-requirement>
 
 <spec-requirement id="FR-004" priority="must">
-<p>The workflow <spec-rule>MUST</spec-rule> publish both <code>@spectastic/cli</code> and <code>@spectastic/schema</code> in one <code>pnpm publish -r</code> invocation so the two packages ship atomically when possible. The publish step <spec-rule>MUST</spec-rule> pass <code>--provenance</code> and <code>--access public</code>; authentication uses an <code>NPM_TOKEN</code> secret with granular-access scope limited to the <code>@spectastic</code> org.</p>
-</spec-requirement>
+  <p>The workflow <spec-rule>MUST</spec-rule> publish every published <code>@spectastic/*</code> package
+  (<code>cli</code>, <code>core</code>, <code>schema</code>, <code>corpus</code>, <code>render</code>) in one
+  <code>pnpm publish -r</code> invocation so they ship atomically when possible. The publish step <spec-rule>MUST</spec-rule> pass
+  <code>--provenance</code> and <code>--access public</code>. Authentication <spec-rule>MUST</spec-rule> use <strong>OIDC trusted
+  publishing</strong> — no long-lived token — and the publishing CLI <spec-rule>MUST</spec-rule> be <strong>pnpm ≥ 11.1.3</strong>
+  (pinned to a specific version), the version that performs the npm OIDC token exchange and does not forward an unresolved
+  <code>${NODE_AUTH_TOKEN}</code> placeholder as a bearer token.</p>
+  <details><summary>Rationale</summary><p>pnpm performs the OIDC exchange natively from pnpm 10; 11.1.3 fixed the setup-node
+  <code>.npmrc</code> placeholder 404 (pnpm issue #11513). The two-package enumeration predated core/corpus/render and is corrected here.</p></details>
+  </spec-requirement>
 
 <spec-requirement id="FR-005" priority="must">
 <p>Provenance attestation <spec-rule>MUST</spec-rule> be generated via GitHub Actions OIDC (the workflow job declares <code>permissions: { id-token: write, contents: read }</code>). Each published version appears on npmjs.com with a verified-source badge linking to the originating commit and workflow run.</p>
 </spec-requirement>
 
 <spec-requirement id="FR-006" priority="must">
-    <p>The dist-tag <spec-rule>MUST</spec-rule> be derived from the version being published together with the
-    package's existing release history on the registry.</p>
-    <p>While <strong>no stable release exists</strong> — no bare-semver (<code>X.Y.Z</code>) version of the
-    package has ever been published — a pre-release publish <spec-rule>MUST</spec-rule> move both
-    <code>next</code> and <code>latest</code>, so the documented bare install
-    (<code>npm i -g @spectastic/cli</code>) resolves to the newest published build. This holds for
-    <code>0.y.z</code> pre-releases and <code>1.0.0-rc.*</code> alike: until a stable version exists there is
-    nothing safer for <code>latest</code> to point at.</p>
-    <p>Once a <strong>stable release exists</strong>, the guard applies: a pre-release (a version containing a
-    hyphen, matching <code>X.Y.Z-*</code>) <spec-rule>MUST</spec-rule> publish with <code>--tag next</code>
-    only, and a bare semver version <spec-rule>MUST</spec-rule> publish with <code>--tag latest</code> —
-    keeping <code>npm i @spectastic/cli</code> (no tag) from pulling a pre-release once there is a stable
-    version to fall back to.</p>
-    <p>If the registry query that determines whether a stable release exists cannot be completed, the workflow
-    <spec-rule>MUST</spec-rule> fail rather than guess a dist-tag.</p>
-    <details><summary>Rationale</summary><p>The original rule reserved <code>latest</code> for bare semver so a
-    bare <code>npm i</code> could never land on a pre-release. Sound, but it presumes a stable release exists.
-    None does, so <code>latest</code> froze at <code>0.1.0-pre.3</code> while <code>next</code> reached
-    <code>0.1.0-pre.18</code> — and the install path named by <a href="../../spec.html#SC-001">SC-001</a> and
-    <a href="../../spec.html#SC-004">SC-004</a> served a build months behind. Keying on the <em>existence</em>
-    of a stable release rather than the version string also covers the release-candidate window: a
-    version-string rule would send <code>1.0.0-rc.1</code> to <code>next</code> only and re-freeze
-    <code>latest</code> on the last <code>0.x</code> pre-release until <code>1.0.0</code> final.</p></details>
+  <p>The dist-tag <spec-rule>MUST</spec-rule> be derived from the version being published together with the package's existing
+  release history on the registry.</p>
+  <p>While <strong>no stable release exists</strong> — no bare-semver (<code>X.Y.Z</code>) version has ever been published — a
+  pre-release <spec-rule>MUST</spec-rule> publish directly with <code>--tag latest</code>, so the documented bare install
+  (<code>npm i -g @spectastic/cli</code>) resolves to the newest published build. It <spec-rule>MUST NOT</spec-rule> rely on a
+  second dist-tag write (<code>npm dist-tag add</code>) to mirror <code>latest</code>: OIDC authenticates <code>npm publish</code>
+  but not <code>dist-tag</code>, and while no stable exists <code>next</code> and <code>latest</code> name the same version — so
+  publishing straight to <code>latest</code> preserves the property with no unauthenticated write.</p>
+  <p>Once a <strong>stable release exists</strong>, the guard applies: a pre-release (a version matching <code>X.Y.Z-*</code>)
+  <spec-rule>MUST</spec-rule> publish with <code>--tag next</code> only, and a bare semver <spec-rule>MUST</spec-rule> publish with
+  <code>--tag latest</code> — keeping a bare <code>npm i</code> off pre-releases. Setting the <code>next</code> tag under OIDC then
+  needs a manual OIDC token exchange for <code>dist-tag</code> (<code>TBD-oidc-dist-tag</code>), deferred until a stable version exists.</p>
+  <p>If the registry query that determines whether a stable release exists cannot be completed, the workflow
+  <spec-rule>MUST</spec-rule> fail rather than guess a dist-tag.</p>
+  <details><summary>Rationale</summary>
+  <p><strong>Carried from the live requirement:</strong> the load-bearing concern of the 2026-07-23 rule stands — a bare
+  <code>npm i</code> must never serve a stale build (it once "froze at <code>0.1.0-pre.3</code> while <code>next</code> reached
+  <code>pre.18</code>"). That property is preserved here by publishing pre-releases to <code>latest</code> <em>directly</em>, so
+  <code>latest</code> tracks the newest build without a second tag write. The stable-existence keying (which also covers the
+  release-candidate window, e.g. <code>1.0.0-rc.1</code>) is retained in the stable-release branch above.</p>
+  <p><strong>Retired:</strong> only the <em>mechanism</em> — "move <code>latest</code> via a second <code>npm dist-tag add</code>"
+  — because OIDC authenticates <code>npm publish</code> but not <code>dist-tag</code>. Near-no-op today (<code>next</code> ≡
+  <code>latest</code> while pre-stable); the <code>next</code> alias stops updating until <code>TBD-oidc-dist-tag</code>.</p></details>
   </spec-requirement>
 
 <spec-requirement id="FR-007" priority="must">
@@ -176,8 +191,16 @@
 </spec-requirement>
 
 <spec-requirement id="NFR-002" priority="must">
-<p>The <code>NPM_TOKEN</code> secret <spec-rule>MUST</spec-rule> be a granular access token scoped to publishing the <code>@spectastic</code> npm organization only (not a classic token; not org-admin-scoped). The token <spec-rule>MUST</spec-rule> be stored as a GitHub Actions repository secret and <spec-rule>MUST NOT</spec-rule> appear in any committed file, including the workflow YAML.</p>
-</spec-requirement>
+  <p>Publishing <spec-rule>MUST</spec-rule> authenticate via <strong>OIDC trusted publishing</strong>, not a long-lived npm token.
+  Each published <code>@spectastic/*</code> package <spec-rule>MUST</spec-rule> have a <strong>trusted publisher</strong>
+  configured on npmjs.com naming the GitHub organization/user, the repository, and the workflow filename (<code>publish.yml</code>);
+  the publish job <spec-rule>MUST</spec-rule> declare <code>permissions: { id-token: write, contents: read }</code> (the same block
+  <a href="spec.html#FR-005">FR-005</a> requires — <code>id-token: write</code> for OIDC, <code>contents: read</code> for
+  <code>actions/checkout</code>). No <code>NPM_TOKEN</code> (or
+  any publish credential) <spec-rule>MUST NOT</spec-rule> be stored as a GitHub Actions secret or appear in any committed file,
+  including the workflow YAML: <strong>at most 0</strong> long-lived publish credentials exist in the repo or its Actions secrets,
+  so there is nothing to expire, rotate, or be restricted by npm's 2FA-bypass-token deprecation.</p>
+  </spec-requirement>
 
 <spec-requirement id="NFR-003" priority="should">
 <p>The workflow <spec-rule level="should">SHOULD</spec-rule> pin all third-party Actions (<code>actions/checkout</code>, <code>actions/setup-node</code>, <code>pnpm/action-setup</code>) to specific SHAs or major-version tags to reduce supply-chain drift from upstream Action changes.</p>
@@ -308,6 +331,7 @@
   <li><time datetime="2026-08-15">15 Aug 2026</time><span>Considered <a href="./changes/withdrawn/2026-08-15-the-tree-grew-by-three/proposal.html">2026-08-15-the-tree-grew-by-three</a>, withdrew on 15 Aug 2026 because the count 32 is right and nothing else is: US1 states 29 in prose the delta cannot reach, which 004's own archived risk register warned about in almost these words and which both prior proposals handled with a second delta; and it rests on the same contested reading of 044 FR-004.</span></li>
   <li><time datetime="2026-08-15">15 Aug 2026</time><span>Applied <a href="./changes/archive/2026-08-15-the-published-tree/proposal.html">2026-08-15-the-published-tree</a>: The scaffold count follows 003's decision to 32, and FR-007's bundle enumeration follows with it — it authorised commands/, assets/ and templates/, three trees that cannot produce a 32-file tree. Both moved together because taking only the count has failed twice: this spec's own archived risk register warned that a proposal scoped to SC-001 alone would leave US1's copy of the number wrong, and it did, twice.</span></li>
   <li><time datetime="2026-09-13">13 Sep 2026</time><span>Applied <a href="./changes/archive/2026-09-12-skills-grow-the-tree/proposal.html">2026-09-12-skills-grow-the-tree</a>: Move the guarded scaffold count 32 → 40 (eight portable skill files the default scaffold now writes) and de-conflate FR-007's rationale — drop the bundle-vs-tree arithmetic 004's own changelog blames for the drift, keeping the enumeration qualitative and naming the skills tree. Adds an in-scope committed guard that dev-rendered skills match the prebuilt bundle byte-for-byte (verified). US1 stays numberless; 'byte-identical to local-clone' unchanged.</span></li>
+  <li><time datetime="2026-09-14">14 Sep 2026</time><span>Applied <a href="./changes/archive/2026-09-14-oidc-trusted-publishing/proposal.html">2026-09-14-oidc-trusted-publishing</a>: Migrate publishing off the long-lived NPM_TOKEN to OIDC trusted publishing on pnpm 11.27.0: FR-004 auth via OIDC (pnpm ≥11.1.3, the version that does the npm OIDC exchange), FR-003 version-checks all five packages, FR-006 publishes pre-releases straight to --tag latest (retiring the OIDC-unauthenticated dist-tag mirror), NFR-002 replaces the token requirement with an OIDC trust relationship. Grounded in a local pnpm-11 spike (fresh install + build green on lockfile v9.0 unchanged).</span></li>
 </ol>
 </spec-changelog>
 </section>
