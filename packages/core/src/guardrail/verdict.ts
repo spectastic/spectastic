@@ -31,6 +31,14 @@ export interface VerdictInput {
   readFile: (path: string) => string | null;
   /** An ingested enforcer output (SARIF 2.1.0 core shape), if any. */
   sarif?: unknown;
+  /**
+   * The current project identity (spec 119, resolved via 067 at the CLI edge and
+   * injected — the kernel reads no config). Used only for a resource-scoped
+   * decision: an identity that owner-qualified-equals the decision's `owner`
+   * gets the owner rule; anything else — including undefined or a bare,
+   * unqualified value — is treated as a non-owner (fail safe).
+   */
+  currentProject?: string;
 }
 
 /** The 1-based line a pattern first matches in `text`, or undefined. */
@@ -83,7 +91,18 @@ export function verdictFor(input: VerdictInput): Verdict {
     for (const rule of d.enforcement?.rules ?? []) {
       // Native content: forbidden pattern in a changed file outside the allowed zone.
       if (rule.pattern !== undefined) {
-        const allowed = rule.allowedIn ? [rule.allowedIn] : d.paths;
+        // Owner-aware allowed zone (spec 119). A resource-scoped decision governs
+        // a store owned by one project: the owner gets its `allowedIn` path (the
+        // path rule); any other project — the defect being ownership, not layering
+        // — gets an EMPTY zone, so every touch flags. A path-scoped decision
+        // (no resource) keeps its existing zone unchanged (FR-006).
+        let allowed: readonly string[];
+        if (d.resource) {
+          const isOwner = input.currentProject !== undefined && input.currentProject === d.resource.owner;
+          allowed = isOwner && d.resource.allowedIn ? [d.resource.allowedIn] : [];
+        } else {
+          allowed = rule.allowedIn ? [rule.allowedIn] : d.paths;
+        }
         const re = new RegExp(rule.pattern);
         for (const file of changed) {
           if (allowed.some((g) => matchesGlob(g, file))) continue; // inside the allowed zone

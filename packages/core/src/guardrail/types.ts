@@ -42,6 +42,24 @@ export interface Enforcement {
   none?: { reason: string };
 }
 
+/**
+ * A data-resource scope (spec 119-decision-resource-scope). Where a `<spec-path>`
+ * scope names a repo-relative location, a resource scope names the *store* a
+ * decision governs — by a federation-unique `datastore` coordinate — and the
+ * `owner` project that may write it. The verdict is owner-aware: the owner gets
+ * the path rule against `allowedIn`; any other project's touch is a violation,
+ * because the defect is ownership, not layering. `allowedIn` absent = fully
+ * locked (even the owner has no sanctioned direct-write path).
+ */
+export interface ResourceScope {
+  /** The `spectastic://<owner>/<project>/datastore/<name>` coordinate of the store. */
+  coordinate: string;
+  /** The owner-qualified project identity that may write the store. */
+  owner: string;
+  /** The owner-internal path where a direct write is sanctioned; absent = locked. */
+  allowedIn?: string;
+}
+
 export interface GovernanceDecision {
   /** The decision id, e.g. `D-008` — unique within its spec. */
   id: string;
@@ -53,6 +71,8 @@ export interface GovernanceDecision {
   paths: string[];
   /** Optional ecosystem module/symbol selectors. */
   modules: string[];
+  /** Optional data-resource scope — a store + its owner (spec 119). Absent = a pre-119 decision. */
+  resource?: ResourceScope;
   /** Another decision id this one supersedes, if declared. */
   supersedes?: string;
   /** Optional review-by date (ISO), driving the coverage staleness warning. */

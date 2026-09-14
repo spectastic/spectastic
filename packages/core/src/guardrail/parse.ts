@@ -1,5 +1,12 @@
 import { findAll, getAttr, parse } from '@spectastic/schema/parser';
-import type { DecisionPosture, DecisionStatus, Enforcement, EnforcementRule, GovernanceDecision } from './types.js';
+import type {
+  DecisionPosture,
+  DecisionStatus,
+  Enforcement,
+  EnforcementRule,
+  GovernanceDecision,
+  ResourceScope,
+} from './types.js';
 
 /**
  * Parse the extended `<spec-decision>` records out of a design.html (spec 112
@@ -39,6 +46,7 @@ export function parseDecisions(html: string, specId: string, file = `${specId}/d
 
     const paths: string[] = [];
     const modules: string[] = [];
+    let resource: ResourceScope | undefined;
     for (const scope of findAll(el, 'spec-scope')) {
       for (const p of findAll(scope, 'spec-path')) {
         const t = textOf(p);
@@ -47,6 +55,18 @@ export function parseDecisions(html: string, specId: string, file = `${specId}/d
       for (const m of findAll(scope, 'spec-module')) {
         const t = textOf(m);
         if (t) modules.push(t);
+      }
+      // A data-resource scope (spec 119): coordinate + owner (+ optional allowed-in).
+      // Tolerant like the rest of this reader — a malformed one is the
+      // `resource-scope-well-formed` rule's concern, not this parser's.
+      const res = findAll(scope, 'spec-resource')[0];
+      if (res && resource === undefined) {
+        const coordinate = getAttr(res, 'coordinate') ?? '';
+        const owner = getAttr(res, 'owner') ?? '';
+        const allowedIn = getAttr(res, 'allowed-in');
+        if (coordinate || owner) {
+          resource = { coordinate, owner, ...(allowedIn !== undefined ? { allowedIn } : {}) };
+        }
       }
     }
 
@@ -111,6 +131,7 @@ export function parseDecisions(html: string, specId: string, file = `${specId}/d
     }
     if (proseText) decision.prose = proseText;
     if (enforcement) decision.enforcement = enforcement;
+    if (resource) decision.resource = resource;
 
     out.push(decision);
   }

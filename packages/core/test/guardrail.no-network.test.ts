@@ -38,10 +38,14 @@ function walk(entry: string, seen = new Set<string>()): { file: string; source: 
 
 describe('guardrail retrieval — no model client, no network on the path (NFR-001)', () => {
   const here = dirname(fileURLToPath(import.meta.url));
-  // The retrieval kernel + the injection block builder (116) — both must stay clean.
+  // The retrieval kernel + the injection block builder (116) + the merge verdict
+  // kernel (115, extended owner-aware in 119) — all sit on the enforcement path
+  // and must stay clean. The owner comparison reads an INJECTED identity; it must
+  // add no config/network import of its own (spec 119 NFR-001).
   const graph = [
     ...walk(resolve(here, '..', 'src', 'commands', 'adrs.ts')),
     ...walk(resolve(here, '..', 'src', 'guardrail', 'injection.ts')),
+    ...walk(resolve(here, '..', 'src', 'guardrail', 'verdict.ts')),
   ];
 
   it('reaches the kernel and its transitive local imports', () => {

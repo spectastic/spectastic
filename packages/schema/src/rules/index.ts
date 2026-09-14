@@ -29,6 +29,7 @@ import { hiddenInstructionPatternRule } from './hidden-instruction-pattern.js';
 import { idWithinFileUniqueRule } from './id-within-file-unique.js';
 import { investRowFailedRule } from './invest-row-failed.js';
 import { decisionWellFormedRule } from './decision-well-formed.js';
+import { resourceScopeWellFormedRule } from './resource-scope-well-formed.js';
 import { matrixWinnerIntegrityRule } from './matrix-winner-integrity.js';
 import { noBrokenDeferToRule } from './no-broken-defer-to.js';
 import { noDuplicateIdsRule } from './no-duplicate-ids.js';
@@ -121,6 +122,8 @@ export const rules: readonly Rule[] = [
 
   // Governance decision rules (per-file) — spec 112-guardrail-decision-record.
   decisionWellFormedRule,
+  // Resource-scope shape (per-file) — spec 119-decision-resource-scope.
+  resourceScopeWellFormedRule,
 
   // Corpus-citation rules (per-file) — spec 052-corpus-citation-contract.
   corpusCitationFormRule,

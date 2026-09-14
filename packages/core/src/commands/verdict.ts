@@ -27,6 +27,10 @@ export interface VerdictCommandInput {
   sarif?: unknown;
   /** Pre-loaded decisions; when omitted the kernel reads specs/<id>/design.html. */
   decisions?: GovernanceDecision[];
+  /** The current project identity (spec 119), resolved at the edge and injected
+   *  so the pure kernel reads no config; used for a resource-scoped decision's
+   *  owner comparison. */
+  currentProject?: string;
 }
 
 export interface VerdictCommandResult {
@@ -58,6 +62,7 @@ export async function verdictCommand(input: VerdictCommandInput, ctx: KernelCont
     now: input.now,
     readFile: (p) => contents.get(normalisePath(p)) ?? null,
     ...(input.sarif !== undefined ? { sarif: input.sarif } : {}),
+    ...(input.currentProject !== undefined ? { currentProject: input.currentProject } : {}),
   });
 
   return { verdict, verdictText: renderVerdict(verdict), hasViolation: hasViolation(verdict), contents };

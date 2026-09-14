@@ -55,8 +55,14 @@ export function registerVerdict(program: Command): void {
         }
       }
 
+      // Resolve the current project identity at the edge (spec 119) so the pure
+      // kernel reads no config — it drives a resource-scoped decision's owner
+      // comparison, and is reused by --explain below for the coordinate.
+      const { resolveProjectConfig } = await import('@spectastic/corpus');
+      const { project } = resolveProjectConfig(cwd);
+
       const result = await verdictCommand(
-        { changed, now: new Date(), ...(sarif !== undefined ? { sarif } : {}) },
+        { changed, now: new Date(), currentProject: project, ...(sarif !== undefined ? { sarif } : {}) },
         { cwd, fs: nodeFs },
       );
 
@@ -91,8 +97,6 @@ export function registerVerdict(program: Command): void {
       // Reviewer-grade explanation (118) — output-only, before the teaching
       // question; the exit code and artifact are unchanged.
       if (opts.explain && result.hasViolation) {
-        const { resolveProjectConfig } = await import('@spectastic/corpus');
-        const { project } = resolveProjectConfig(cwd);
         const decisions = await loadDecisions({ cwd, fs: nodeFs });
         const normal = (p: string) => p.replace(/\\/g, '/').replace(/^\.\//, '');
         const explained = explainViolations({

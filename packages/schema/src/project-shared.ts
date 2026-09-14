@@ -60,7 +60,7 @@ export function classifyProjectId(value: string): ProjectIdShape {
  * from this array, so there is one place to widen and one way to get it
  * wrong at compile or test time rather than none.
  */
-export const RESOURCE_KINDS = ['spec', 'contract', 'corpus', 'unit', 'screen', 'decision'] as const;
+export const RESOURCE_KINDS = ['spec', 'contract', 'corpus', 'unit', 'screen', 'decision', 'datastore'] as const;
 
 /** Derived from {@link RESOURCE_KINDS} — never restated as a literal union. */
 export type ResourceKind = (typeof RESOURCE_KINDS)[number];

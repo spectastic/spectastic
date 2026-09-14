@@ -267,6 +267,47 @@ export const RESOURCE_URI_MATRIX: readonly ResourceUriFixture[] = [
     edition: '2026-09-13',
     expected: 'spectastic://spectastic/spectastic/decision/112-guardrail-decision-record/D-002?edition=2026-09-13#context',
   },
+
+  // datastore (119-decision-resource-scope) — project-scoped, single-segment store name.
+  {
+    label: 'datastore, bare',
+    project: 'spectastic',
+    kind: 'datastore',
+    name: 'positions',
+    expected: 'spectastic://spectastic/datastore/positions',
+  },
+  {
+    label: 'datastore, owner-qualified',
+    project: 'acme-corp/position-keeper',
+    kind: 'datastore',
+    name: 'positions',
+    expected: 'spectastic://acme-corp/position-keeper/datastore/positions',
+  },
+  {
+    label: 'datastore, anchor',
+    project: 'spectastic/spectastic',
+    kind: 'datastore',
+    name: 'positions',
+    anchor: 'schema',
+    expected: 'spectastic://spectastic/spectastic/datastore/positions#schema',
+  },
+  {
+    label: 'datastore, edition',
+    project: 'spectastic/spectastic',
+    kind: 'datastore',
+    name: 'positions',
+    edition: '2026-09-13',
+    expected: 'spectastic://spectastic/spectastic/datastore/positions?edition=2026-09-13',
+  },
+  {
+    label: 'datastore, edition and anchor',
+    project: 'spectastic/spectastic',
+    kind: 'datastore',
+    name: 'positions',
+    anchor: 'schema',
+    edition: '2026-09-13',
+    expected: 'spectastic://spectastic/spectastic/datastore/positions?edition=2026-09-13#schema',
+  },
 ];
 
 /**
