@@ -89,7 +89,8 @@ describe('shifu — no model, no network (NFR-001)', () => {
     seen.add(p);
     const src = readFileSync(p, 'utf8');
     const out = [src];
-    for (const m of src.matchAll(SPEC)) if (m[1]!.startsWith('.')) out.push(...walk(resolve(dirname(p), m[1]!.replace(/\.js$/, '')), seen));
+    for (const m of src.matchAll(SPEC))
+      if (m[1]!.startsWith('.')) out.push(...walk(resolve(dirname(p), m[1]!.replace(/\.js$/, '')), seen));
     return out;
   }
   it('imports 0 network or model-client modules', () => {

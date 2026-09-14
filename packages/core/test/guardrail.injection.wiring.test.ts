@@ -51,9 +51,9 @@ function projectWithGoverningDecision(): string {
   return dir;
 }
 
-const SPEC = '<p class="small-caps">Specification · 009-recon</p><spec-requirement id="FR-001" priority="must"><p>x</p></spec-requirement>';
-const designTouching = (tree: string) =>
-  `<section id="project-structure"><pre><code>${tree}</code></pre></section>`;
+const SPEC =
+  '<p class="small-caps">Specification · 009-recon</p><spec-requirement id="FR-001" priority="must"><p>x</p></spec-requirement>';
+const designTouching = (tree: string) => `<section id="project-structure"><pre><code>${tree}</code></pre></section>`;
 
 describe('design injects the governing block for its declared surface (SC-002)', () => {
   it('includes the block when the surface is governed', async () => {

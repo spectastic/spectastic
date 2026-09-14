@@ -70,10 +70,7 @@ export function verbFromCommandFile(file: string): string {
  * every spectastic verb) well under the standard's 64-char limit (NFR-003).
  */
 export function skillName(file: string): string {
-  return basename(file)
-    .replace(/\.md$/, '')
-    .replace(/\./g, '-')
-    .toLowerCase();
+  return basename(file).replace(/\.md$/, '').replace(/\./g, '-').toLowerCase();
 }
 
 function firstValue(fm: string, key: string): string | undefined {

@@ -40,7 +40,9 @@ describe('verdict kernel — no model, no network, no foreign execution (NFR-001
   });
   it('imports 0 network, model-client, or child-process modules', () => {
     const offenders = graph.flatMap(({ file, source }) =>
-      specifiersIn(source).filter((s) => FORBIDDEN_SPECIFIER.test(s)).map((s) => `${file}: ${s}`),
+      specifiersIn(source)
+        .filter((s) => FORBIDDEN_SPECIFIER.test(s))
+        .map((s) => `${file}: ${s}`),
     );
     expect(offenders).toEqual([]);
   });

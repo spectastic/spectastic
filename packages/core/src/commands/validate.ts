@@ -56,7 +56,8 @@ export function commandsDriftFinding(expected: string, adapter: string | null, f
     rule: 'commands-drift',
     severity: 'error',
     message: `Managed adapter ${file} ${detail} — regenerate it.`,
-    fixHint: 'Run `spectastic init --tools` to regenerate the managed adapters from source (add `--target codex` for Codex).',
+    fixHint:
+      'Run `spectastic init --tools` to regenerate the managed adapters from source (add `--target codex` for Codex).',
   };
 }
 

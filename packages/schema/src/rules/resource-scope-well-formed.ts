@@ -34,7 +34,15 @@ export const resourceScopeWellFormedRule: PerFileRule = {
 
     const flag = (el: Element, message: string, fixHint: string): void => {
       const loc = getLocation(el);
-      findings.push({ file: doc.file, line: loc.line, column: loc.column, rule: 'resource-scope-well-formed', severity: 'error', message, fixHint });
+      findings.push({
+        file: doc.file,
+        line: loc.line,
+        column: loc.column,
+        rule: 'resource-scope-well-formed',
+        severity: 'error',
+        message,
+        fixHint,
+      });
     };
 
     for (const d of decisions) {

@@ -58,10 +58,7 @@ describe('decisionsForPaths', () => {
 
   it('returns only accepted decisions whose scope matches, sorted by (specId, id)', () => {
     const m = decisionsForPaths(['src/app/persistence/Repo.java'], decisions);
-    expect(m.map((x) => `${x.decision.specId}/${x.decision.id}`)).toEqual([
-      '001-core/D-001',
-      '002-downstream/D-007',
-    ]);
+    expect(m.map((x) => `${x.decision.specId}/${x.decision.id}`)).toEqual(['001-core/D-001', '002-downstream/D-007']);
   });
 
   it('excludes proposed, superseded, and non-matching decisions', () => {
