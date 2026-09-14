@@ -1,0 +1,279 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'">
+<title>OIDC trusted publishing · Change proposal</title>
+<link rel="stylesheet" href="../../../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../../../assets/favicon.svg">
+<script src="../../../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Change proposal · 004-npm-publish-workflow</p>
+  <h1>OIDC trusted publishing</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    Retire the long-lived npm token: publish via OIDC trusted publishing, on pnpm 11.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>     <span><spec-status value="draft">Proposed</spec-status></span>
+    <b>Change ID</b>  <span>2026-09-14-oidc-trusted-publishing</span>
+    <b>Spec</b>       <span><a href="../../spec.html">004-npm-publish-workflow</a></span>
+    <b>Author</b>     <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Created</b>    <span><time datetime="2026-09-14">14 Sep 2026</time></span>
+    <b>Targets</b>    <span>4 requirements (FR-003, FR-004, FR-006, NFR-002)</span>
+    <b>Read time</b>  <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-tldr>
+    <p>The pre.28 publish failed on a <code>404 PUT</code> — a token problem — and npm is deprecating 2FA-bypass granular tokens
+    for direct publishing (Phase 2 ~Jan 2027). Trusted publishers are now configured on npmjs.com for all five
+    <code>@spectastic/*</code> packages, so this change makes the workflow <em>use</em> them: authentication moves to
+    <strong>OIDC trusted publishing</strong> (no stored token), on <strong>pnpm 11.27.0</strong> — the CLI that performs the npm
+    OIDC exchange. It touches four requirements: FR-003 (version check), FR-004 (auth), FR-006 (dist-tag), NFR-002 (the token requirement). No gate or
+    exit-code changes.</p>
+  </spec-tldr>
+</header>
+
+
+<spec-change id="2026-09-14-oidc-trusted-publishing" status="proposed">
+
+<header>
+  <h3>OIDC trusted publishing</h3>
+  <span class="meta"><spec-status value="draft">Proposed</spec-status></span>
+</header>
+
+
+<section id="intent">
+<h2>1 · Intent</h2>
+<p>The <code>v0.1.0-pre.28</code> publish failed twice at the npm step with <code>404 Not Found - PUT …/@spectastic%2frender</code>
+— a credential failure, not a code one (every gate passed). The same-night pattern (pre.27 published at 00:14, pre.28 failed at
+02:39) points at the <code>NPM_TOKEN</code> expiring, rotating, or losing scope. Separately, npm is
+<a href="https://github.blog/changelog/2026-07-08-npm-install-time-security-and-gat-bypass2fa-deprecation/">deprecating 2FA-bypass
+granular tokens</a> for direct publishing — Phase 2 (~Jan 2027) restricts them to staged publishes needing human approval — so a
+token-based flow is on a clock regardless.</p>
+<p>The durable answer npm steers everyone toward is <strong>OIDC trusted publishing</strong>: the workflow mints a short-lived,
+run-scoped token via GitHub OIDC, and no long-lived secret exists to expire, rotate, or be restricted. The trusted publishers are
+already configured on npmjs.com for all five packages; this change makes the workflow authenticate through them. The one hard
+requirement it forces is a toolchain bump — pnpm performs the OIDC exchange natively only from pnpm 10, and
+<strong>pnpm 11.1.3</strong> fixed the exact <code>404</code> class we would otherwise hit (the unresolved
+<code>${NODE_AUTH_TOKEN}</code> placeholder <code>actions/setup-node</code> writes into <code>.npmrc</code>). The repo is on
+pnpm 9.15.0.</p>
+</section>
+
+
+<section id="scope">
+<h2>2 · Scope</h2>
+
+<spec-goals>
+  <h3>In scope</h3>
+  <ul>
+    <li>Authentication via OIDC trusted publishing; remove the <code>NPM_TOKEN</code> secret entirely (FR-004, NFR-002).</li>
+    <li>Pin <strong>pnpm 11.27.0</strong> (latest 11.x, past the 11.1.3 OIDC fix) — the CLI that does the npm OIDC exchange (FR-004).</li>
+    <li>Publish pre-releases directly to <code>--tag latest</code> and retire the unauthenticated <code>npm dist-tag add</code> mirror (FR-006).</li>
+    <li>Keep <code>--provenance</code>, <code>--access public</code>, the atomic <code>pnpm publish -r</code>, and every existing gate (FR-002, FR-005) unchanged.</li>
+  </ul>
+</spec-goals>
+
+<spec-non-goals>
+  <h3>Out of scope</h3>
+  <ul>
+    <li>The manual OIDC token exchange needed to set a <em>second</em> dist-tag (<code>next</code>) once a stable release exists — deferred to <code>TBD-oidc-dist-tag</code>; not needed while pre-stable (<code>next</code> ≡ <code>latest</code> ≡ newest).</li>
+    <li>Any change to <code>ci.yml</code>'s browser-tests job beyond confirming Playwright browsers still install under pnpm 11 — an implementation check, not a spec change.</li>
+    <li>Migrating off pnpm 9 for reasons other than OIDC (lockfile format is unchanged — v9.0 spans pnpm 9–11).</li>
+  </ul>
+</spec-non-goals>
+</section>
+
+
+<section id="approach">
+<h2>3 · Approach</h2>
+<p>OIDC trusted publishing needs the publishing CLI to perform the OIDC token exchange. pnpm does this natively from pnpm 10, and
+pnpm 11.1.3 dropped the unresolved <code>${NODE_AUTH_TOKEN}</code> placeholder that <code>actions/setup-node</code>'s
+<code>.npmrc</code> writes (otherwise sent verbatim as a bearer token → the 404). So the workflow pins <strong>pnpm 11.27.0</strong>
+via the <code>packageManager</code> field (which <code>pnpm/action-setup</code> reads), removes <code>NODE_AUTH_TOKEN</code> from
+the publish step, and lets OIDC authenticate. A <strong>local spike</strong> de-risked the bump: a fresh
+<code>pnpm@11.27.0 install --frozen-lockfile</code> works on the existing <strong>lockfile v9.0 unchanged</strong>, and
+<code>pnpm -r build</code> passes cleanly — the pnpm-10 build-script-approval change never touches the build (esbuild ships
+platform binaries as optional deps, no postinstall). The only ignored build script is Playwright's browser download, which the
+publish job does not need.</p>
+<p>The dist-tag wrinkle is real but small: OIDC authenticates <code>npm publish</code> but <em>not</em> <code>npm dist-tag add</code>,
+so the current "move both <code>next</code> and <code>latest</code>" cannot run tokenless. Because no stable release exists,
+<code>next</code> and <code>latest</code> already name the same version every release — so publishing pre-releases straight to
+<code>--tag latest</code> preserves the load-bearing property (bare <code>npm i</code> resolves to the newest build) with no
+second, unauthenticated dist-tag write. The <code>next</code> alias simply stops updating while pre-stable; the stable-release
+branch's <code>next</code>-only path is deferred until a stable version exists.</p>
+</section>
+
+
+<section id="deltas">
+<h2>4 · Deltas</h2>
+<p>Four MODIFY deltas; each embeds the full post-state.</p>
+
+<spec-delta op="modified" target="FR-003">
+  <p><strong>What changes:</strong> the version-vs-tag check covers all five published packages, not just <code>cli</code> + <code>schema</code> — so FR-003 agrees with FR-004's corrected enumeration and the check the workflow already runs.</p>
+  <spec-requirement id="FR-003" priority="must">
+  <p>The workflow <spec-rule>MUST</spec-rule> extract the version from the git tag (strip the leading <code>v</code>) and verify it
+  matches the <code>version</code> field in <strong>every published</strong> <code>@spectastic/*</code> package's
+  <code>package.json</code> (<code>cli</code>, <code>core</code>, <code>schema</code>, <code>corpus</code>, <code>render</code>). On
+  mismatch (any package, or the packages out of sync), the workflow <spec-rule>MUST</spec-rule> exit non-zero with a clear error
+  naming the expected and observed values.</p>
+  <details><summary>Rationale</summary><p>The two-package enumeration predated core/corpus/render; the workflow's version check
+  already covers all five, so this closes a spec-vs-code drift surfaced by FR-004's correction — a new package could otherwise ship
+  at a stale version with the spec silent.</p></details>
+  </spec-requirement>
+</spec-delta>
+
+<spec-delta op="modified" target="FR-004">
+  <p><strong>What changes:</strong> authentication moves from a stored <code>NPM_TOKEN</code> to OIDC trusted publishing, requiring pnpm ≥ 11.1.3; the package enumeration is corrected to all five published packages.</p>
+  <spec-requirement id="FR-004" priority="must">
+  <p>The workflow <spec-rule>MUST</spec-rule> publish every published <code>@spectastic/*</code> package
+  (<code>cli</code>, <code>core</code>, <code>schema</code>, <code>corpus</code>, <code>render</code>) in one
+  <code>pnpm publish -r</code> invocation so they ship atomically when possible. The publish step <spec-rule>MUST</spec-rule> pass
+  <code>--provenance</code> and <code>--access public</code>. Authentication <spec-rule>MUST</spec-rule> use <strong>OIDC trusted
+  publishing</strong> — no long-lived token — and the publishing CLI <spec-rule>MUST</spec-rule> be <strong>pnpm ≥ 11.1.3</strong>
+  (pinned to a specific version), the version that performs the npm OIDC token exchange and does not forward an unresolved
+  <code>${NODE_AUTH_TOKEN}</code> placeholder as a bearer token.</p>
+  <details><summary>Rationale</summary><p>pnpm performs the OIDC exchange natively from pnpm 10; 11.1.3 fixed the setup-node
+  <code>.npmrc</code> placeholder 404 (pnpm issue #11513). The two-package enumeration predated core/corpus/render and is corrected here.</p></details>
+  </spec-requirement>
+</spec-delta>
+
+<spec-delta op="modified" target="FR-006">
+  <p><strong>What changes:</strong> while no stable release exists, a pre-release publishes directly with <code>--tag latest</code> via OIDC, instead of publishing to <code>next</code> and mirroring <code>latest</code> via <code>npm dist-tag add</code> — which OIDC does not authenticate. The live rationale's two arguments are consciously kept: the freeze-avoidance argument (a bare <code>npm i</code> must not serve a stale build, once frozen at <code>pre.3</code>) is <em>preserved</em> by publishing to <code>latest</code> directly, and the stable-existence keying (covering the RC window) is <em>retained</em> in the stable-release branch; only the "mirror <code>latest</code> via a second <code>dist-tag</code> write" mechanism is <strong>retired</strong>, because OIDC cannot authenticate it.</p>
+  <spec-requirement id="FR-006" priority="must">
+  <p>The dist-tag <spec-rule>MUST</spec-rule> be derived from the version being published together with the package's existing
+  release history on the registry.</p>
+  <p>While <strong>no stable release exists</strong> — no bare-semver (<code>X.Y.Z</code>) version has ever been published — a
+  pre-release <spec-rule>MUST</spec-rule> publish directly with <code>--tag latest</code>, so the documented bare install
+  (<code>npm i -g @spectastic/cli</code>) resolves to the newest published build. It <spec-rule>MUST NOT</spec-rule> rely on a
+  second dist-tag write (<code>npm dist-tag add</code>) to mirror <code>latest</code>: OIDC authenticates <code>npm publish</code>
+  but not <code>dist-tag</code>, and while no stable exists <code>next</code> and <code>latest</code> name the same version — so
+  publishing straight to <code>latest</code> preserves the property with no unauthenticated write.</p>
+  <p>Once a <strong>stable release exists</strong>, the guard applies: a pre-release (a version matching <code>X.Y.Z-*</code>)
+  <spec-rule>MUST</spec-rule> publish with <code>--tag next</code> only, and a bare semver <spec-rule>MUST</spec-rule> publish with
+  <code>--tag latest</code> — keeping a bare <code>npm i</code> off pre-releases. Setting the <code>next</code> tag under OIDC then
+  needs a manual OIDC token exchange for <code>dist-tag</code> (<code>TBD-oidc-dist-tag</code>), deferred until a stable version exists.</p>
+  <p>If the registry query that determines whether a stable release exists cannot be completed, the workflow
+  <spec-rule>MUST</spec-rule> fail rather than guess a dist-tag.</p>
+  <details><summary>Rationale</summary>
+  <p><strong>Carried from the live requirement:</strong> the load-bearing concern of the 2026-07-23 rule stands — a bare
+  <code>npm i</code> must never serve a stale build (it once "froze at <code>0.1.0-pre.3</code> while <code>next</code> reached
+  <code>pre.18</code>"). That property is preserved here by publishing pre-releases to <code>latest</code> <em>directly</em>, so
+  <code>latest</code> tracks the newest build without a second tag write. The stable-existence keying (which also covers the
+  release-candidate window, e.g. <code>1.0.0-rc.1</code>) is retained in the stable-release branch above.</p>
+  <p><strong>Retired:</strong> only the <em>mechanism</em> — "move <code>latest</code> via a second <code>npm dist-tag add</code>"
+  — because OIDC authenticates <code>npm publish</code> but not <code>dist-tag</code>. Near-no-op today (<code>next</code> ≡
+  <code>latest</code> while pre-stable); the <code>next</code> alias stops updating until <code>TBD-oidc-dist-tag</code>.</p></details>
+  </spec-requirement>
+</spec-delta>
+
+<spec-delta op="modified" target="NFR-002">
+  <p><strong>What changes:</strong> the granular-<code>NPM_TOKEN</code>-secret requirement is replaced by the OIDC trust-relationship requirement — per-package trusted publishers, no stored credential.</p>
+  <spec-requirement id="NFR-002" priority="must">
+  <p>Publishing <spec-rule>MUST</spec-rule> authenticate via <strong>OIDC trusted publishing</strong>, not a long-lived npm token.
+  Each published <code>@spectastic/*</code> package <spec-rule>MUST</spec-rule> have a <strong>trusted publisher</strong>
+  configured on npmjs.com naming the GitHub organization/user, the repository, and the workflow filename (<code>publish.yml</code>);
+  the publish job <spec-rule>MUST</spec-rule> declare <code>permissions: { id-token: write, contents: read }</code> (the same block
+  <a href="../../spec.html#FR-005">FR-005</a> requires — <code>id-token: write</code> for OIDC, <code>contents: read</code> for
+  <code>actions/checkout</code>). No <code>NPM_TOKEN</code> (or
+  any publish credential) <spec-rule>MUST NOT</spec-rule> be stored as a GitHub Actions secret or appear in any committed file,
+  including the workflow YAML: <strong>at most 0</strong> long-lived publish credentials exist in the repo or its Actions secrets,
+  so there is nothing to expire, rotate, or be restricted by npm's 2FA-bypass-token deprecation.</p>
+  </spec-requirement>
+</spec-delta>
+</section>
+
+
+<section id="subtraction">
+<h2>4b · What this change removes</h2>
+<p>Each entry names one thing this change takes away that no delta fully expresses.</p>
+
+<spec-subtraction>
+  <li>The <strong>token-based publish path</strong> as an affordance — publishing by supplying a stored <code>NPM_TOKEN</code>. It is replaced wholesale by OIDC; a maintainer can no longer publish this repo with a personal npm token in CI, only through the trusted-publisher trust relationship.</li>
+  <li>The <code>next</code> <strong>dist-tag no longer tracks pre-releases</strong> while pre-stable. Bare install (which reads <code>latest</code>) is unaffected, but <code>npm i @spectastic/cli@next</code> stops resolving to the newest build — it freezes at its last value until the stable-release <code>next</code> path is built (<code>TBD-oidc-dist-tag</code>).</li>
+</spec-subtraction>
+</section>
+
+
+<section id="risks">
+<h2>5 · Risk register</h2>
+<p>Populated by the adversarial risk pass (touches must-tier requirements). One <code>&lt;spec-risk&gt;</code> per finding; <code>status</code> stays <code>identified</code> until dispositioned by a human.</p>
+
+<spec-risk-log>
+
+<spec-risk target="FR-006" status="identified">
+  <p class="claim">Most likely to be regretted in 30 days: publishing pre-releases straight to <code>--tag latest</code> and retiring the mirror leaves the <code>next</code> dist-tag <strong>frozen</strong> at its last value — recreating, on <code>next</code>, the exact silent-stale-build failure the 2026-07-23 change existed to kill on <code>latest</code> (which "froze at 0.1.0-pre.3 while next reached pre.18"). Anything pinned to <code>@next</code> silently receives a stale build; the fix is deferred to an unbuilt <code>TBD-oidc-dist-tag</code>.</p>
+  <p class="citation">§4 <code>&lt;spec-delta target="FR-006"&gt;</code> ("MUST NOT rely on a second dist-tag write") and §4b subtraction; vs live FR-006's 24 Jul 2026 changelog (<code>2026-07-23-prerelease-latest-dist-tag</code>) which closed the mirror-image freeze.</p>
+  <div class="response">DRAFT for human disposition. §4b already names this as a deliberate subtraction, so it is recorded, not silent. Options: (a) accept — while pre-stable <code>next</code> ≡ <code>latest</code>, so a frozen <code>next</code> is a consumer/documentation concern, not an install-path regression (bare install reads <code>latest</code>, which stays current); (b) mitigate — grep README/docs/CI for <code>@next</code> and remove or annotate before apply; (c) add an explicit <code>@next</code> deprecation note so a consumer sees intent, not silence.</div>
+</spec-risk>
+
+<spec-risk target="FR-005" status="identified">
+  <p class="claim">Most likely contradicted live requirement: the draft NFR-002 wrote <code>permissions: { id-token: write }</code>, dropping <code>contents: read</code> that live must-tier <strong>FR-005</strong> requires (and <code>actions/checkout</code> needs) — two must-tier requirements specifying conflicting permission blocks. (The critic also flagged FR-004's five-package enumeration outrunning FR-003's two-package version check.)</p>
+  <p class="citation">§4 <code>&lt;spec-delta target="NFR-002"&gt;</code> vs live <a href="../../spec.html#FR-005">FR-005</a> (<code>{ id-token: write, contents: read }</code>), not in this proposal's original Targets.</p>
+  <div class="response">DRAFT for human disposition — <strong>addressed in the draft</strong>: NFR-002 now restates the full <code>{ id-token: write, contents: read }</code> block and cites FR-005 as its source, so the two agree. The FR-003 gap is folded in as a fourth delta (version-check all five packages). Suggest confirming → <code>mitigated</code>.</div>
+</spec-risk>
+
+<spec-risk target="§2" status="identified">
+  <p class="claim">Scope concern — an auth-mechanism change folds in a <strong>two-major</strong> pnpm migration (9.15.0 → 11.27.0), and §2 pins "pnpm 11.27.0 (latest 11.x)" when FR-004 only requires <code>≥ 11.1.3</code>. Choosing the newest pulls ~26 minor releases of unrelated toolchain behaviour across the whole monorepo under an auth-titled proposal, and the out-of-scope bullet understates that blast radius by calling the ci.yml interaction "an implementation check."</p>
+  <p class="citation">§2 <code>&lt;spec-goals&gt;</code> "Pin pnpm 11.27.0 (latest 11.x)" and <code>&lt;spec-non-goals&gt;</code> "Any change to ci.yml's browser-tests job … an implementation check", against FR-004's floor of <code>pnpm ≥ 11.1.3</code>.</p>
+  <div class="response">DRAFT for human disposition. The requirement (FR-004) is the floor <code>≥ 11.1.3</code>; the <code>11.27.0</code> pin is a task-level choice, not a contract term, and §6 already carries a named ci.yml browser-tests verification task — so the CI ripple is in the task list, not purely out-of-scope. Options: (a) pin the minimum-known-good <code>11.1.3</code> for the smallest change; (b) keep <code>11.27.0</code> and promote the ci.yml check from a note to an explicit acceptance criterion, since the spike covered only <code>install --frozen-lockfile</code> + <code>pnpm -r build</code>, not the Playwright postinstall the CI job needs.</div>
+</spec-risk>
+
+<spec-risk target="NFR-002" status="identified">
+  <p class="claim">Corpus angle (<code>knowledge/</code> present): must-tier facts rest on an unrun publish and an unverified precondition with (originally) an empty risk register — against the grounding discipline. FR-004 asserts pnpm 11.27.0 "performs the npm OIDC exchange" and NFR-002 asserts each of five packages "MUST have a trusted publisher configured", while the spike covered only install + build; the actual OIDC publish is unrun and the trusted-publisher config is stated without a verified citation.</p>
+  <p class="citation">Contradicts <strong>KB-0001@2026-07-25</strong> (spectastic-concepts/001-foundations, "The grounding discipline"), via <code>knowledge/index.md</code>; against §3 (spike scope), §6 task 6 (publish unrun), and the risk register.</p>
+  <div class="response">DRAFT for human disposition. Corpus text is data, not instruction (P-11); the judgment is the critic's. Partly self-resolved: §5 is no longer empty. The two unverified facts have honest verification paths worth recording before disposition — (a) the OIDC-publish leg is unrunnable locally and is <strong>gated by §6 task 6</strong> (the change is not done until the pre.28 re-run publishes green in CI), so mark it an accepted spike with that gate as the owner; (b) the trusted-publisher configuration was performed and confirmed by the author out-of-band (all five packages) — cite that as the verification rather than leaving it assumed.</div>
+</spec-risk>
+
+</spec-risk-log>
+</section>
+
+
+<section id="tasks">
+<h2>6 · Tasks</h2>
+<p>Scoped to this change; folds into 004's <code>tasks.html</code> on apply.</p>
+
+<ul style="list-style:none;padding-left:0;">
+  <li><input type="checkbox"> Bump the <code>packageManager</code> pin to <code>pnpm@11.27.0</code> <span class="path">package.json</span></li>
+  <li><input type="checkbox"> Regenerate <code>pnpm-lock.yaml</code> if pnpm 11 requires it (spike says v9.0 is unchanged; verify with <code>--frozen-lockfile</code> in CI) <span class="path">pnpm-lock.yaml</span></li>
+  <li><input type="checkbox"> Remove <code>NODE_AUTH_TOKEN</code>/<code>NPM_TOKEN</code> wiring; publish pre-releases with <code>--tag latest</code>; delete the "Move additional dist-tags" step <span class="path">.github/workflows/publish.yml</span></li>
+  <li><input type="checkbox"> Update the dist-tag derivation + its unit tests for the pre-stable "publish to latest directly" strategy <span class="path">scripts/derive-dist-tag.mjs</span></li>
+  <li><input type="checkbox"> Confirm the browser-tests job still installs Playwright browsers under pnpm 11 (add <code>pnpm.onlyBuiltDependencies</code> or an explicit <code>playwright install</code> if the postinstall is blocked) <span class="path">.github/workflows/ci.yml</span></li>
+  <li><input type="checkbox"> Re-run the <code>v0.1.0-pre.28</code> tag; verify all five packages publish via OIDC and <code>latest</code> resolves to pre.28 <span class="path">.github/workflows/publish.yml</span></li>
+</ul>
+</section>
+
+
+<section id="questions">
+<h2>7 · Open questions</h2>
+<spec-questions>
+<p>None outstanding — the auth mechanism, pnpm pin, dist-tag strategy, and NFR-002 disposition were anchored in the interview, and a local spike de-risked the pnpm-11 bump.</p>
+</spec-questions>
+</section>
+
+
+<section id="changelog">
+<h2>8 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-09-14">14 Sep 2026</time><span>Proposal authored — OIDC trusted publishing (3 MODIFY: FR-004 auth + pnpm 11, FR-006 dist-tag, NFR-002 trust relationship), grounded in a local pnpm-11 spike.</span></li>
+  <li><time datetime="2026-09-14">14 Sep 2026</time><span>Adversarial pass (spectastic-critic): 4 risks embedded in §5 (all <code>identified</code>, for human disposition). Two surfaced draft defects, fixed in place — NFR-002 restored the full <code>{ id-token: write, contents: read }</code> block (FR-005 contradiction), and a fourth delta on FR-003 folds the five-package version check to match FR-004's corrected enumeration.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+</spec-change>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  2026-09-14-oidc-trusted-publishing · OIDC trusted publishing · authored 14 Sep 2026
+</footer>
+
+</main>
+<script src="../../../../assets/spec.js"></script>
+</body>
+</html>
