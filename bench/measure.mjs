@@ -16,7 +16,8 @@
  */
 
 import { spawn } from 'node:child_process';
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { dirname, resolve } from 'node:path';
 import { performance } from 'node:perf_hooks';
 import { fileURLToPath } from 'node:url';
@@ -28,6 +29,32 @@ const CLI_PATH = 'packages/cli/dist/index.js';
 
 const ITERATIONS = 7;
 const WARMUP = 1;
+
+// The one-document fixture `validate-single-cold-start` runs against.
+//
+// The scenario used to point at a spec inside this repo, which meant it was
+// never measuring what its name says. `validate` runs cross-file rules
+// (spec-id-unique, verify-view-missing, the variant-coverage scans), and those
+// read the WHOLE specs/ tree however few files you name — so the reading was
+// first-doc cost plus a full-estate scan, i.e. O(estate). Measured on the same
+// binary and the same document: 450ms inside this repo's 363-doc estate, 100ms
+// in a directory holding that one file. It had become a tighter-capped
+// duplicate of validate-full-project, which is the scenario that legitimately
+// owns estate scaling, and it went stale every time the estate grew — three
+// budget raises in six weeks, the last of which (350 -> 500) recorded the
+// suspicion in baselines.json without yet having this measurement.
+//
+// Copied at run time rather than committed, so there is one source of truth
+// for the document and no checked-in duplicate to drift.
+const SINGLE_DOC_SPEC = 'specs/005-publish-local-fallback/spec.html';
+
+function makeSingleDocFixture() {
+  const dir = mkdtempSync(resolve(tmpdir(), 'spectastic-bench-'));
+  const dest = resolve(dir, SINGLE_DOC_SPEC);
+  mkdirSync(dirname(dest), { recursive: true });
+  cpSync(resolve(REPO_ROOT, SINGLE_DOC_SPEC), dest);
+  return dir;
+}
 
 const SCENARIOS = [
   {
@@ -43,7 +70,11 @@ const SCENARIOS = [
   {
     id: 'validate-single-cold-start',
     description: '`spectastic validate <one-spec>` — first-doc cost including all rules + parse5',
-    args: [CLI_PATH, 'validate', 'specs/005-publish-local-fallback/spec.html'],
+    // Runs in a directory holding only this document (see makeSingleDocFixture)
+    // so the number is the first-doc cost its rationale claims, and not the
+    // size of whatever estate the bench happens to be run from.
+    args: [resolve(REPO_ROOT, CLI_PATH), 'validate', SINGLE_DOC_SPEC],
+    cwd: 'single-doc-fixture',
   },
   {
     id: 'validate-full-project',
@@ -59,10 +90,10 @@ const SCENARIOS = [
   },
 ];
 
-function runOnce(args) {
+function runOnce(args, cwd = REPO_ROOT) {
   return new Promise((res, rej) => {
     const start = performance.now();
-    const child = spawn('node', args, { cwd: REPO_ROOT, stdio: 'ignore' });
+    const child = spawn('node', args, { cwd, stdio: 'ignore' });
     child.on('close', (code) => {
       if (code !== 0 && code !== null) return rej(new Error(`exit ${code}`));
       res(performance.now() - start);
@@ -71,10 +102,10 @@ function runOnce(args) {
   });
 }
 
-async function measure(scenario) {
+async function measure(scenario, cwd) {
   const samples = [];
   for (let i = 0; i < ITERATIONS; i++) {
-    const ms = await runOnce(scenario.args);
+    const ms = await runOnce(scenario.args, cwd);
     if (i >= WARMUP) samples.push(ms);
   }
   samples.sort((a, b) => a - b);
@@ -103,31 +134,38 @@ async function main() {
 
   const results = {};
   let regressed = false;
+  // Built once and removed in the finally below, so a scenario needing an
+  // isolated estate costs one copy rather than one per iteration.
+  const singleDocFixture = makeSingleDocFixture();
 
-  for (const scenario of SCENARIOS) {
-    const baseline = baselines.scenarios[scenario.id];
-    if (!baseline) {
-      process.stderr.write(`✗ ${scenario.id} — no baseline; add to ${BASELINES_FILE}\n`);
-      regressed = true;
-      continue;
+  try {
+    for (const scenario of SCENARIOS) {
+      const baseline = baselines.scenarios[scenario.id];
+      if (!baseline) {
+        process.stderr.write(`✗ ${scenario.id} — no baseline; add to ${BASELINES_FILE}\n`);
+        regressed = true;
+        continue;
+      }
+      process.stderr.write(`  ${scenario.id.padEnd(32)} measuring... `);
+      let stats;
+      try {
+        stats = await measure(scenario, scenario.cwd === 'single-doc-fixture' ? singleDocFixture : REPO_ROOT);
+      } catch (err) {
+        process.stderr.write(`✗ failed: ${err.message}\n`);
+        regressed = true;
+        continue;
+      }
+      results[scenario.id] = {
+        p50_ms: Math.round(stats.p50),
+        p95_ms: Math.round(stats.p95),
+      };
+      const ok = stats.p50 <= baseline.budget_ms;
+      if (!ok) regressed = true;
+      const status = ok ? '✓' : '✗ OVER BUDGET';
+      process.stderr.write(`p50 ${fmt(stats.p50)}  p95 ${fmt(stats.p95)}  budget ${baseline.budget_ms}ms  ${status}\n`);
     }
-    process.stderr.write(`  ${scenario.id.padEnd(32)} measuring... `);
-    let stats;
-    try {
-      stats = await measure(scenario);
-    } catch (err) {
-      process.stderr.write(`✗ failed: ${err.message}\n`);
-      regressed = true;
-      continue;
-    }
-    results[scenario.id] = {
-      p50_ms: Math.round(stats.p50),
-      p95_ms: Math.round(stats.p95),
-    };
-    const ok = stats.p50 <= baseline.budget_ms;
-    if (!ok) regressed = true;
-    const status = ok ? '✓' : '✗ OVER BUDGET';
-    process.stderr.write(`p50 ${fmt(stats.p50)}  p95 ${fmt(stats.p95)}  budget ${baseline.budget_ms}ms  ${status}\n`);
+  } finally {
+    rmSync(singleDocFixture, { recursive: true, force: true });
   }
 
   process.stderr.write(`${'─'.repeat(72)}\n`);
