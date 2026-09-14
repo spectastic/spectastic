@@ -17,12 +17,43 @@ const NOW = new Date('2026-09-13T00:00:00.000Z');
 // Every decision carries a scope — coverage's population is decisions that
 // govern code. An unscoped methodology note is excluded (asserted separately).
 const CORPUS: GovernanceDecision[] = [
-  D({ id: 'D-1', specId: '001', status: 'accepted', paths: ['a/**'], enforcement: { rules: [{ tool: 'archunit', id: 'r1' }] } }),
-  D({ id: 'D-2', specId: '001', status: 'accepted', paths: ['b/**'], enforcement: { rules: [{ tool: 'semgrep', id: 'r2' }] } }),
-  D({ id: 'D-3', specId: '002', status: 'accepted', paths: ['c/**'], enforcement: { rules: [], none: { reason: 'DB grant' } } }),
+  D({
+    id: 'D-1',
+    specId: '001',
+    status: 'accepted',
+    paths: ['a/**'],
+    enforcement: { rules: [{ tool: 'archunit', id: 'r1' }] },
+  }),
+  D({
+    id: 'D-2',
+    specId: '001',
+    status: 'accepted',
+    paths: ['b/**'],
+    enforcement: { rules: [{ tool: 'semgrep', id: 'r2' }] },
+  }),
+  D({
+    id: 'D-3',
+    specId: '002',
+    status: 'accepted',
+    paths: ['c/**'],
+    enforcement: { rules: [], none: { reason: 'DB grant' } },
+  }),
   D({ id: 'D-4', specId: '002', status: 'accepted', paths: ['d/**'] }), // scoped, neither checked nor excused = the blind spot
-  D({ id: 'D-5', specId: '003', status: 'proposed', paths: ['e/**'], enforcement: { rules: [{ tool: 'x', id: 'r' }] } }), // inactive
-  D({ id: 'D-6', specId: '003', status: 'accepted', paths: ['f/**'], reviewBy: '2020-01-01', enforcement: { rules: [{ tool: 'x', id: 'r6' }] } }),
+  D({
+    id: 'D-5',
+    specId: '003',
+    status: 'proposed',
+    paths: ['e/**'],
+    enforcement: { rules: [{ tool: 'x', id: 'r' }] },
+  }), // inactive
+  D({
+    id: 'D-6',
+    specId: '003',
+    status: 'accepted',
+    paths: ['f/**'],
+    reviewBy: '2020-01-01',
+    enforcement: { rules: [{ tool: 'x', id: 'r6' }] },
+  }),
 ];
 
 describe('coverageReport', () => {

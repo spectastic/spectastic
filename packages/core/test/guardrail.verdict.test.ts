@@ -45,14 +45,21 @@ describe('verdictFor — native content detector', () => {
   });
 
   it('does NOT flag the same pattern inside the allowed zone (the adapter may)', () => {
-    const v = verdictFor({ changed: ['src/app/persistence/Repo.java'], decisions: [CONTENT_DECISION], now: NOW, readFile });
+    const v = verdictFor({
+      changed: ['src/app/persistence/Repo.java'],
+      decisions: [CONTENT_DECISION],
+      now: NOW,
+      readFile,
+    });
     expect(v.violations).toEqual([]);
     expect(hasViolation(v)).toBe(false);
   });
 
   it('ignores a proposed decision (only accepted judge)', () => {
     const proposed = D({ ...CONTENT_DECISION, status: 'proposed' });
-    expect(verdictFor({ changed: ['src/recon/Job.java'], decisions: [proposed], now: NOW, readFile }).violations).toEqual([]);
+    expect(
+      verdictFor({ changed: ['src/recon/Job.java'], decisions: [proposed], now: NOW, readFile }).violations,
+    ).toEqual([]);
   });
 });
 
@@ -66,7 +73,12 @@ describe('verdictFor — native path detector (SC-004)', () => {
     enforcement: { rules: [{ tool: 'native-path', id: 'no_legacy_writes', deny: 'src/legacy/**' }] },
   });
   it('flags a changed file matching the deny glob', () => {
-    const v = verdictFor({ changed: ['src/legacy/Old.java', 'src/ok/New.java'], decisions: [pathDecision], now: NOW, readFile: () => null });
+    const v = verdictFor({
+      changed: ['src/legacy/Old.java', 'src/ok/New.java'],
+      decisions: [pathDecision],
+      now: NOW,
+      readFile: () => null,
+    });
     expect(v.violations.map((x) => x.file)).toEqual(['src/legacy/Old.java']);
     expect(v.violations[0]?.detector).toBe('path');
   });
@@ -89,7 +101,12 @@ describe('readSarif + verdictFor — enforcer ingestion (SC-002)', () => {
     runs: [
       {
         results: [
-          { ruleId: 'only_persistence_touches_dao', locations: [{ physicalLocation: { artifactLocation: { uri: 'src/recon/Job.java' }, region: { startLine: 42 } } }] },
+          {
+            ruleId: 'only_persistence_touches_dao',
+            locations: [
+              { physicalLocation: { artifactLocation: { uri: 'src/recon/Job.java' }, region: { startLine: 42 } } },
+            ],
+          },
           { ruleId: 'some_other_rule', locations: [] },
         ],
       },

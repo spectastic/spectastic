@@ -18,9 +18,17 @@ const decision: GovernanceDecision = {
   modules: [],
   reason: 'Every position change must emit PositionChanged so the audit hooks fire.',
   title: 'D-007 · ADR-0007 — only the persistence adapter touches the data store',
-  prose: 'Context. The emission guarantee is only as strong as the boundary. Decision. Only the adapter may write positions.',
+  prose:
+    'Context. The emission guarantee is only as strong as the boundary. Decision. Only the adapter may write positions.',
   enforcement: {
-    rules: [{ tool: 'semgrep', id: 'no_sql_write_to_positions_outside_adapter', pattern: 'UPDATE\\s+positions', allowedIn: 'src/**/persistence/**' }],
+    rules: [
+      {
+        tool: 'semgrep',
+        id: 'no_sql_write_to_positions_outside_adapter',
+        pattern: 'UPDATE\\s+positions',
+        allowedIn: 'src/**/persistence/**',
+      },
+    ],
   },
 };
 
@@ -103,7 +111,12 @@ describe('ownership violation — routes to the owner, not the file’s own dire
   };
   // Evaluated in the CONSUMER project — its copied decision projects to acme/…
   const out = renderExplanations(
-    explainViolations({ verdict: ownVerdict, decisions: [decision], project: 'acme/reconciliation-service', readFile: () => null }),
+    explainViolations({
+      verdict: ownVerdict,
+      decisions: [decision],
+      project: 'acme/reconciliation-service',
+      readFile: () => null,
+    }),
   );
 
   it('names the store owner + coordinate and routes to that service', () => {
@@ -146,7 +159,8 @@ describe('explain — no model, no network (NFR-001)', () => {
     seen.add(p);
     const src = readFileSync(p, 'utf8');
     const out = [src];
-    for (const m of src.matchAll(SPEC)) if (m[1]!.startsWith('.')) out.push(...walk(resolve(dirname(p), m[1]!.replace(/\.js$/, '')), seen));
+    for (const m of src.matchAll(SPEC))
+      if (m[1]!.startsWith('.')) out.push(...walk(resolve(dirname(p), m[1]!.replace(/\.js$/, '')), seen));
     return out;
   }
   it('imports 0 network or model-client modules', () => {

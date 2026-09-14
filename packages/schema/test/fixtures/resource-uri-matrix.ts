@@ -265,7 +265,8 @@ export const RESOURCE_URI_MATRIX: readonly ResourceUriFixture[] = [
     name: '112-guardrail-decision-record/D-002',
     anchor: 'context',
     edition: '2026-09-13',
-    expected: 'spectastic://spectastic/spectastic/decision/112-guardrail-decision-record/D-002?edition=2026-09-13#context',
+    expected:
+      'spectastic://spectastic/spectastic/decision/112-guardrail-decision-record/D-002?edition=2026-09-13#context',
   },
 
   // datastore (119-decision-resource-scope) — project-scoped, single-segment store name.

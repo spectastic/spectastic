@@ -82,7 +82,7 @@ describe('planConstraintFindings', () => {
     expect(planConstraintFindings([design], decisions)).toEqual([]);
   });
 
-  it("does not require a design to acknowledge its OWN decision (FR-004)", () => {
+  it('does not require a design to acknowledge its OWN decision (FR-004)', () => {
     const own = [D({ id: 'D-001', specId: '009-recon', status: 'accepted', paths: ['src/recon/**'] })];
     const design = designWithTree('009-recon', ['src/recon/persistence/Job.java']);
     expect(planConstraintFindings([design], own)).toEqual([]);

@@ -92,7 +92,9 @@ export function parseDecisions(html: string, specId: string, file = `${specId}/d
           if (r.allowedIn !== undefined) rule.allowedIn = r.allowedIn;
           return rule;
         });
-      const noneEl = enfEls.flatMap((enf) => findAll(enf, 'spec-none')).find((n) => (getAttr(n, 'reason') ?? '') !== '');
+      const noneEl = enfEls
+        .flatMap((enf) => findAll(enf, 'spec-none'))
+        .find((n) => (getAttr(n, 'reason') ?? '') !== '');
       enforcement = { rules };
       if (noneEl) enforcement.none = { reason: getAttr(noneEl, 'reason') ?? '' };
     }

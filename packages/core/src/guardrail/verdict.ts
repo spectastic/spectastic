@@ -75,7 +75,13 @@ export function verdictFor(input: VerdictInput): Verdict {
   const active = input.decisions.filter((d) => d.status === 'accepted');
   const violations: Violation[] = [];
 
-  const push = (d: GovernanceDecision, ruleId: string, file: string, detector: Violation['detector'], extra: Partial<Violation> = {}): void => {
+  const push = (
+    d: GovernanceDecision,
+    ruleId: string,
+    file: string,
+    detector: Violation['detector'],
+    extra: Partial<Violation> = {},
+  ): void => {
     violations.push({
       decisionId: d.id,
       specId: d.specId,
@@ -104,7 +110,8 @@ export function verdictFor(input: VerdictInput): Verdict {
         // resource-scoped decision touched by a non-owner is an OWNERSHIP
         // violation; the owner (writing outside allowed-in), a path-scoped
         // decision, deny, and enforcer cases are all PATH violations.
-        const isOwner = d.resource !== undefined && input.currentProject !== undefined && input.currentProject === d.resource.owner;
+        const isOwner =
+          d.resource !== undefined && input.currentProject !== undefined && input.currentProject === d.resource.owner;
         const isOwnershipViolation = d.resource !== undefined && !isOwner;
         let allowed: readonly string[];
         if (d.resource) {

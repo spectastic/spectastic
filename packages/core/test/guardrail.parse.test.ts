@@ -44,7 +44,11 @@ describe('parseDecisions', () => {
     expect(d.modules).toEqual(['**.hex.core..']);
     expect(d.supersedes).toBe('D-003');
     expect(d.reason).toMatch(/PositionChanged/);
-    expect(d.enforcement?.rules[0]).toEqual({ tool: 'archunit', id: 'only_persistence_touches_dao', run: './gradlew test' });
+    expect(d.enforcement?.rules[0]).toEqual({
+      tool: 'archunit',
+      id: 'only_persistence_touches_dao',
+      run: './gradlew test',
+    });
   });
   it('parses a none-with-reason enforcement', () => {
     const d = decisions.find((x) => x.id === 'D-008')!;
@@ -65,11 +69,17 @@ describe('adrsCommand end-to-end (in-memory decisions)', () => {
 
   it('retrieves governing decisions and writes a deterministic log', async () => {
     const ctx = { cwd: '/nonexistent' };
-    const a = await adrsCommand({ paths: ['src/x/persistence/Repo.java'], project: 'acme/pk', now: NOW, decisions }, ctx);
+    const a = await adrsCommand(
+      { paths: ['src/x/persistence/Repo.java'], project: 'acme/pk', now: NOW, decisions },
+      ctx,
+    );
     expect(a.matches.map((m) => m.decision.id)).toEqual(['D-007']);
     expect(a.log.governing[0]?.coordinate).toBe('spectastic://acme/pk/decision/002-downstream/D-007');
     // Identical inputs → byte-identical log (rubric item 2 determinism).
-    const b = await adrsCommand({ paths: ['src/x/persistence/Repo.java'], project: 'acme/pk', now: NOW, decisions }, ctx);
+    const b = await adrsCommand(
+      { paths: ['src/x/persistence/Repo.java'], project: 'acme/pk', now: NOW, decisions },
+      ctx,
+    );
     expect(a.logText).toBe(b.logText);
   });
 

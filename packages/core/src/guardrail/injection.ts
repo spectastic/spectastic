@@ -31,7 +31,9 @@ export function buildGoverningDecisionsBlock(
   const matches = decisionsForPaths(paths, decisions);
   if (matches.length === 0) return '';
   const lines = matches.map((m) => {
-    const coord = project ? decisionResourceUri(project, m.decision.specId, m.decision.id) : `${m.decision.specId}/${m.decision.id}`;
+    const coord = project
+      ? decisionResourceUri(project, m.decision.specId, m.decision.id)
+      : `${m.decision.specId}/${m.decision.id}`;
     const reason = m.decision.reason ?? '(no reason recorded)';
     return `- ${coord} — ${reason} (governs: ${m.matchedPaths.join(', ')})`;
   });

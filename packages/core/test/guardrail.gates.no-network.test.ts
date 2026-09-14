@@ -43,7 +43,9 @@ describe('guardrail gates — no model client, no network (NFR-001 / SC-003)', (
   });
   it('imports 0 network or model-client modules', () => {
     const offenders = graph.flatMap(({ file, source }) =>
-      specifiersIn(source).filter((s) => FORBIDDEN_SPECIFIER.test(s)).map((s) => `${file}: ${s}`),
+      specifiersIn(source)
+        .filter((s) => FORBIDDEN_SPECIFIER.test(s))
+        .map((s) => `${file}: ${s}`),
     );
     expect(offenders).toEqual([]);
   });

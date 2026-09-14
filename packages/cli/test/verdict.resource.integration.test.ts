@@ -56,7 +56,10 @@ function consumerFixture(): string {
   );
   // A perfectly well-layered write, inside the consumer's OWN persistence adapter.
   mkdirSync(join(dir, 'src', 'app', 'persistence'), { recursive: true });
-  writeFileSync(join(dir, 'src', 'app', 'persistence', 'PositionRepo.java'), 'void save() {\n  db.exec("UPDATE positions SET qty=?");\n}\n');
+  writeFileSync(
+    join(dir, 'src', 'app', 'persistence', 'PositionRepo.java'),
+    'void save() {\n  db.exec("UPDATE positions SET qty=?");\n}\n',
+  );
   return dir;
 }
 
@@ -76,7 +79,14 @@ describe('verdict — resource scope, non-owner flagged end-to-end (SC-002)', ()
   it('--explain routes the non-owner to the store owner, not their own directory (spec 120)', async () => {
     const dir = consumerFixture();
     const r = await runCLI(
-      ['verdict', '--changed', 'src/app/persistence/PositionRepo.java', '--explain', '--out', '.spectastic/verdict.json'],
+      [
+        'verdict',
+        '--changed',
+        'src/app/persistence/PositionRepo.java',
+        '--explain',
+        '--out',
+        '.spectastic/verdict.json',
+      ],
       dir,
     );
     expect(r.code).toBe(1);

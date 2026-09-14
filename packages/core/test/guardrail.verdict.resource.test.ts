@@ -97,7 +97,13 @@ describe('cause + authority on the violation (spec 120, SC-001)', () => {
       reason: 'no direct writes',
       enforcement: { rules: [{ tool: 'native-content', id: 'x', pattern: 'UPDATE\\s+positions' }] },
     });
-    const hit = verdictFor({ changed: [OUTSIDE], decisions: [pathDecision], now: NOW, readFile, currentProject: CONSUMER }).violations[0];
+    const hit = verdictFor({
+      changed: [OUTSIDE],
+      decisions: [pathDecision],
+      now: NOW,
+      readFile,
+      currentProject: CONSUMER,
+    }).violations[0];
     expect(hit?.cause).toBe('path');
     expect(hit?.owner).toBeUndefined();
   });

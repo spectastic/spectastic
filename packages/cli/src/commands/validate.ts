@@ -136,12 +136,14 @@ async function scanCommandsDrift(cwd: string): Promise<Finding[]> {
  * CODEX_TARGET is imported lazily so the translator stays off the init cold path.
  */
 async function scanSkillsDrift(cwd: string): Promise<Finding[]> {
-  const [{ commandsDriftFinding }, { adaptersManaged, driftPairs }, { CODEX_TARGET }, { readFile }] = await Promise.all([
-    import('@spectastic/core/commands/validate'),
-    import('./init/adapters.js'),
-    import('./init/adapters-codex.js'),
-    import('node:fs/promises'),
-  ]);
+  const [{ commandsDriftFinding }, { adaptersManaged, driftPairs }, { CODEX_TARGET }, { readFile }] = await Promise.all(
+    [
+      import('@spectastic/core/commands/validate'),
+      import('./init/adapters.js'),
+      import('./init/adapters-codex.js'),
+      import('node:fs/promises'),
+    ],
+  );
   if (!adaptersManaged(cwd, CODEX_TARGET)) return [];
   const findings: Finding[] = [];
   for (const pair of driftPairs(cwd, CODEX_TARGET)) {

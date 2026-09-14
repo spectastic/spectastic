@@ -131,8 +131,7 @@ export async function runTools(opts: ToolsOptions): Promise<ToolsSummary> {
   // descriptor is imported lazily so the translator + its yaml dependency stay
   // off the init cold path.
   const { CODEX_TARGET } = await import('./adapters-codex.js');
-  const targets =
-    opts.target === 'codex' ? [CODEX_TARGET] : [CLAUDE_TARGET, CODEX_TARGET];
+  const targets = opts.target === 'codex' ? [CODEX_TARGET] : [CLAUDE_TARGET, CODEX_TARGET];
   for (const decision of summary.decisions) {
     switch (decision.kind) {
       case 'install-hook': {
