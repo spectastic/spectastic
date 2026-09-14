@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'">
+<title>119-decision-resource-scope · Triage log</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Triage log · 119-decision-resource-scope</p>
+  <h1>119-decision-resource-scope — triage log</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    Defects surfaced dogfooding <code>119</code>. The verdict semantics are correct; these are all in the 115/117/118 <em>output</em> layer.
+  </p>
+
+  <spec-meta>
+    <b>Spec</b>      <span><a href="./spec.html">119-decision-resource-scope</a></span>
+    <b>Created</b>   <span><time datetime="2026-09-14">14 Sep 2026</time></span>
+    <b>Read time</b> <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-tldr>
+    <p>Two cards from dogfooding 119 on the position-keeper example (<code>demonstrations/8-consumer-service/</code>). The
+    owner-aware verdict exits correctly (proven by the resource integration test) — but what it <em>says</em> is wrong for a
+    non-owner. See <a href="../../examples/triage-log.html">examples/triage-log.html</a> for the protocol
+    (<code>TRIAGE-001</code>..<code>TRIAGE-006</code>).</p>
+  </spec-tldr>
+</header>
+
+
+<section id="cards">
+<h2>Cards</h2>
+<spec-triage-log>
+
+<spec-triage id="T-001" layer="spec">
+  <header>
+    <h4>The output layer can't tell an ownership violation from a layering one</h4>
+    <span class="meta">
+      <span class="layer-pill">Spec</span>
+      <span class="regen" data-result="fail">upstream</span>
+    </span>
+  </header>
+
+  <p class="headline">Debugging a non-owner's <code>verdict --explain</code> that misdirects the author, root cause was a
+  <strong>spec</strong> gap — the output layer (115 <code>Violation</code>, 118 explain, 117 teach) predates 119's ownership
+  semantics and carries no signal that a touch was disallowed for <em>ownership</em>; fixed by a new small spec that records the
+  cause on the violation and renders it; regeneration <strong>fails</strong> because no current requirement asks the output to
+  distinguish "outside allowed-in" from "not the owner".</p>
+
+  <dl>
+    <dt>Expected</dt>
+    <dd>For a non-owner: "nowhere in this service — the store <code>spectastic://…/datastore/positions</code> is owned by
+    <code>briancorbin/position-keeper-guardrails</code>; route the change through that service's API," with the coordinate naming
+    the <em>authority</em>; <code>verdict.json</code> records <code>cause: "ownership"</code>. For the owner: unchanged.</dd>
+    <dt>Actual</dt>
+    <dd>The "Sanctioned path — where this pattern is permitted instead" block prints <code>src/**/persistence/**</code> — exactly
+    where the offending file already sits — and the coordinate is the consumer's projection
+    (<code>spectastic://acme/reconciliation-service/decision/002-downstream-consumers/D-007</code>), the copy, not the authority.
+    The <code>VIOLATION</code> line and artifact are byte-identical to a single-repo path violation.</dd>
+    <dt>Diagnosis</dt>
+    <dd><code>verdictFor</code> emits no cause on <code>Violation</code> (<code>types.ts</code> — no field), so
+    <code>explainViolations</code> resolves <code>sanctionedPath</code> from <code>rule.allowedIn</code>/<code>decision.paths</code>
+    (<code>explain.ts:49</code>) and never reads <code>decision.resource</code> or <code>currentProject</code> — 118 cannot know
+    it was an ownership violation, and 117's <code>--teach</code> templates its question from a reason authored for the layering case.</dd>
+    <dt>Fix</dt>
+    <dd>A new small spec — <code>TBD-ownership-aware-verdict-output</code>. Additive <code>Violation.cause</code>
+    (<code>"path" | "ownership"</code>) plus the owner coordinate when ownership, set in <code>verdictFor</code> (115/119) and
+    consumed by explain (118) + teach (117); artifact <strong>byte-identical for existing path violations</strong>. Item 2 (the
+    cause field) is the data item 1 needs — the explainer must <em>read</em> the cause, never re-derive ownership.</dd>
+  </dl>
+
+  <details>
+    <summary>Deep dive — cross-spec contract</summary>
+    <p>The fix grows a shared contract across four specs rather than living in one: <a href="../115-guardrail-verdict/spec.html">115</a>
+    owns the <code>Violation</code> shape (the new <code>cause</code> field), <a href="../119-decision-resource-scope/spec.html">119</a>
+    sets it in the owner-aware branch, <a href="../118-verdict-explain/spec.html">118</a> reads it to render the sanctioned-path
+    message + the authority coordinate, and <a href="../117-guardrail-shifu/spec.html">117</a>'s teach question templates from it.
+    The load-bearing constraint (P-14-adjacent): ownership is decided <em>once</em>, in the verdict, and flows outward as data —
+    the explainer is a renderer, not a second site of the owner comparison. Scoped as a new spec rather than a 118 amendment
+    because the <code>Violation</code> contract it touches is 115's, not 118's. No exit code changes; existing path violations are
+    unaffected.</p>
+  </details>
+</spec-triage>
+
+<spec-triage id="T-002" layer="implementation">
+  <header>
+    <h4>The scope note claims a copied-in decision isn't evaluated — but it was</h4>
+    <span class="meta">
+      <span class="layer-pill">Implementation</span>
+      <span class="regen" data-result="pass">code</span>
+    </span>
+  </header>
+
+  <p class="headline">Debugging a scope note that reads false in a consumer carrying the owner's decision, root cause was
+  <strong>implementation</strong> wording drift — the note describes the wrong invariant ("owned by this repo" rather than
+  "present in this checkout"); fixed by rewording to what is literally true; regeneration <strong>passes</strong> — no spec
+  constrains the wording, the fix is code-only.</p>
+
+  <dl>
+    <dt>Expected</dt>
+    <dd>"Scope: repo-local — evaluated N decision(s) from this checkout. A decision not present in this checkout is not evaluated."</dd>
+    <dt>Actual</dt>
+    <dd>"…Decisions owned by other repositories are not evaluated." — false when the owner's D-007 is copied into the consumer:
+    that decision <em>is</em> owned by another repository, and it <em>was</em> evaluated, because it is present in this checkout.</dd>
+    <dt>Diagnosis</dt>
+    <dd>The <code>TBD-verdict-scope-honesty</code> scope note (<code>packages/cli/src/commands/verdict.ts:80</code>) describes
+    ownership when the true invariant is presence; the artifact's <code>scope: "repo-local"</code> + <code>decisionsEvaluated</code>
+    remain correct (wording only).</dd>
+    <dt>Fix</dt>
+    <dd><code>packages/cli/src/commands/verdict.ts</code> — drop the "owned by other repositories" clause; say "not present in this checkout".</dd>
+  </dl>
+
+  <spec-diff>
+<del>        'Decisions owned by other repositories are not evaluated.';</del>
+<ins>        'A decision not present in this checkout is not evaluated.';</ins>
+  </spec-diff>
+
+  <details>
+    <summary>Deep dive — none required</summary>
+    <p>No cross-spec contract, no invariant, no hotfix. One-line CLI copy; revert-safe.</p>
+  </details>
+</spec-triage>
+
+</spec-triage-log>
+</section>
+
+
+<section id="changelog">
+<h2>Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-09-14">14 Sep 2026</time><span>Triage log scaffolded. T-001 (spec — the output layer can't tell ownership from layering; plants <code>TBD-ownership-aware-verdict-output</code>) and T-002 (implementation — the scope-note wording is false for a copied-in decision) added from dogfooding 119 on the position-keeper example.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  119-decision-resource-scope triage log · scaffolded 14 Sep 2026
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>
