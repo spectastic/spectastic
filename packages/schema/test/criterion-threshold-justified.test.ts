@@ -12,7 +12,7 @@ import type { Finding, ParsedDocument } from '../src/types.js';
  * justification is what separates the two.
  */
 
-function check(html: string, extraAttrs = ''): Finding[] {
+function check(html: string): Finding[] {
   const doc: ParsedDocument = parse(html, 'specs/999-x/spec.html');
   return criterionThresholdJustifiedRule.check({ doc });
 }

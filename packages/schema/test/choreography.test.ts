@@ -100,7 +100,7 @@ describe('what must report', () => {
 
   it('reports a choreography with no origin, since an offset without one is a number', () => {
     const f = findingsFor(
-      '<spec-choreography id="e">' + RM + '<spec-cue element="a" at="0ms"></spec-cue></spec-choreography>',
+      `<spec-choreography id="e">${RM}<spec-cue element="a" at="0ms"></spec-cue></spec-choreography>`,
     );
     expect(f).toHaveLength(1);
     expect(f[0]?.message).toContain('no origin');

@@ -72,16 +72,14 @@ export function renderBrief(model: BriefModel, date: string): string {
     `no declaration. It will be reported as undeclared and attributed to this design when the render is reviewed — ` +
     `never adopted automatically. Label its artboard clearly, e.g. \`undeclared-<name>\`, so it is identifiable.\n`;
 
-  return (
-    [
-      header,
-      labels,
-      renderRefusals(model.refusals),
-      renderAnnotations(model.screens),
-      renderContexts(model),
-      undeclared,
-    ]
-      .join('')
-      .trim() + '\n'
-  );
+  return `${[
+    header,
+    labels,
+    renderRefusals(model.refusals),
+    renderAnnotations(model.screens),
+    renderContexts(model),
+    undeclared,
+  ]
+    .join('')
+    .trim()}\n`;
 }

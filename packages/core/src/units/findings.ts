@@ -16,7 +16,7 @@
  *              079 already reports that honestly, as an unverified edge.
  */
 
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import { readConfigFile } from '@spectastic/schema/config';
 import { dirname, join } from 'node:path';
 import type { Finding } from '@spectastic/schema';

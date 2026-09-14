@@ -11,7 +11,7 @@
  * There is no path on which a partial write exists to clean up.
  */
 
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import { readConfigFile } from '@spectastic/schema/config';
 import { dirname, join } from 'node:path';
 import { parseResourceUri } from '@spectastic/schema/project';

@@ -29,7 +29,7 @@ export interface CoverageReport {
   findings: Finding[];
 }
 
-function warn(d: GovernanceDecision, file: string, message: string, fixHint: string): Finding {
+function warn(file: string, message: string, fixHint: string): Finding {
   return { file, line: 1, column: 1, rule: 'decision-coverage', severity: 'warning', message, fixHint };
 }
 
@@ -53,7 +53,6 @@ export function coverageReport(
       uncovered++;
       findings.push(
         warn(
-          d,
           fileOf(d),
           `active decision ${d.specId}/${d.id} carries no executable check and no <spec-none reason=> — it is silently unenforced`,
           `Add a <spec-rule tool="…" id="…"/>, or an explicit <spec-none reason="…"/> saying why it has no check.`,
@@ -65,7 +64,6 @@ export function coverageReport(
       if (!Number.isNaN(due.getTime()) && due.getTime() < opts.now.getTime()) {
         findings.push(
           warn(
-            d,
             fileOf(d),
             `decision ${d.specId}/${d.id} is past its review-by date (${d.reviewBy})`,
             'Review the decision and update or extend its review-by, or retire it.',
