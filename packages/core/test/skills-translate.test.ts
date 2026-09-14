@@ -62,7 +62,7 @@ describe('frontmatter shape (FR-002, FR-004, NFR-003)', () => {
     const meta = (parseYaml(fm) as { metadata?: Record<string, unknown> }).metadata;
     expect(meta).toBeDefined();
     expect(Array.isArray(meta?.triggers)).toBe(true);
-    expect((meta?.triggers as string[]).length).toBeGreaterThan(0);
+    expect((meta?.triggers as string[])?.length).toBeGreaterThan(0);
     expect(typeof meta?.['use-when']).toBe('string');
     expect(typeof meta?.['sibling-boundary']).toBe('string');
   });

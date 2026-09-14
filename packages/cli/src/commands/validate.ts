@@ -326,9 +326,8 @@ function readQuantifiedNfrFloor(cwd: string): number | undefined {
   } catch {
     return undefined;
   }
-  let parsed: unknown;
   // Parsed through the canonical module (086 FR-004).
-  parsed = parseConfigText(raw);
+  const parsed: unknown = parseConfigText(raw);
   if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) return undefined;
   const section = (parsed as Record<string, unknown>).validate;
   if (section === null || typeof section !== 'object' || Array.isArray(section)) return undefined;

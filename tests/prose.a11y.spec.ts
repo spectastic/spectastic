@@ -136,8 +136,8 @@ for (const mode of ['light', 'dark'] as const) {
         await page.keyboard.press('Tab');
         const hit = await page.evaluate(() => {
           const a = document.activeElement;
-          if (!a || !a.closest('header.spec-bar')) return null;
-          return a.tagName + ':' + (a.getAttribute('aria-label') || a.className || a.textContent?.trim().slice(0, 12));
+          if (!a?.closest('header.spec-bar')) return null;
+          return `${a.tagName}:${a.getAttribute('aria-label') || a.className || a.textContent?.trim().slice(0, 12)}`;
         });
         if (hit) reached.add(hit);
       }
