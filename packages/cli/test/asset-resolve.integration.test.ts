@@ -23,13 +23,25 @@ import { describe, expect, it } from 'vitest';
 const here = dirname(fileURLToPath(import.meta.url));
 const CLI = resolve(here, '..', 'bin', 'spectastic');
 
+/**
+ * Strip ANSI styling before asserting.
+ *
+ * The CLI colours its output when the environment says to, and CI says to where
+ * a local `spawn` with no TTY does not. That difference is invisible until an
+ * assertion depends on it: `/\b4:/` matched the plain `  4:1` locally and failed
+ * on CI against `\u001b[2m4:1`, because the `m` ending the escape sequence is a
+ * word character and kills the word boundary. Asserting on the text rather than
+ * on the styling makes the test say what it means either way.
+ */
+const plain = (s: string): string => s.replace(/\u001b\[[0-9;]*m/g, '');
+
 async function runCLI(args: string[], cwd: string): Promise<{ stdout: string; code: number }> {
   return new Promise((resolveFn) => {
     const child = spawn('node', [CLI, ...args], { cwd });
     let stdout = '';
     child.stdout.on('data', (c: Buffer) => (stdout += c.toString('utf8')));
     child.stderr.on('data', (c: Buffer) => (stdout += c.toString('utf8')));
-    child.on('close', (code) => resolveFn({ stdout, code: code ?? 0 }));
+    child.on('close', (code) => resolveFn({ stdout: plain(stdout), code: code ?? 0 }));
   });
 }
 
