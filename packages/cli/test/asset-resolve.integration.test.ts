@@ -33,7 +33,12 @@ const CLI = resolve(here, '..', 'bin', 'spectastic');
  * word character and kills the word boundary. Asserting on the text rather than
  * on the styling makes the test say what it means either way.
  */
-const plain = (s: string): string => s.replace(/\u001b\[[0-9;]*m/g, '');
+// Built rather than written as a literal: ESC is a control character, and a
+// control character inside a regex literal is a lint error in its own right
+// (biome's noControlCharactersInRegex) — usually because it is a typo, which
+// here it is not.
+const ANSI = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, 'g');
+const plain = (s: string): string => s.replace(ANSI, '');
 
 async function runCLI(args: string[], cwd: string): Promise<{ stdout: string; code: number }> {
   return new Promise((resolveFn) => {
