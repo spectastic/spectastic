@@ -455,6 +455,40 @@ export async function buildDocCache(
  * filesystem the schema engine's pure-AST rules cannot touch.
  */
 /**
+ * The asset-resolve gate (spec 091-artifact-format, REQ-FORMAT-010): a local
+ * stylesheet or script an artifact references that resolves to no readable
+ * file, or an absolute path, is an error.
+ *
+ * Shaped exactly like `scanContractResolve` below, with one deliberate
+ * difference and no prefilter. The difference: the core function resolves each
+ * reference against the *artifact's own directory*, the way a browser does, so
+ * `cwd` is passed for relativising a message and never to gate on — the escape
+ * arm of contract-resolve's containment is wrong here (a nested bundle reaching
+ * an outer asset tree is legitimate). No prefilter, because unlike a
+ * `<spec-contract>` declaration there is nothing rare to skip: every artifact in
+ * the estate carries these references, so there is no cheap majority to return
+ * early on. The cost is one stat per reference on documents already parsed and
+ * cached for the run — about four per artifact.
+ */
+async function scanAssetResolve(docs: ReadonlyMap<string, CachedDoc>, cwd: string): Promise<Finding[]> {
+  if (docs.size === 0) return [];
+  const [{ assetResolveFindings }, { nodeFs }] = await Promise.all([
+    import('@spectastic/core/commands/validate'),
+    import('@spectastic/core/providers/node-fs'),
+  ]);
+
+  // One stat per distinct path for the whole run, not per artifact. The estate's
+  // 2,489 references resolve to four paths — every artifact points at the same
+  // spec.css, spec.js, favicon.svg and theme-boot.js — so the cache is the
+  // difference between four syscalls and two and a half thousand.
+  const statCache = new Map<string, { isFile: boolean; isDirectory: boolean } | null>();
+  const perFile = await Promise.all(
+    [...docs.values()].map(({ file, parsed }) => assetResolveFindings(parsed, file, nodeFs, cwd, statCache)),
+  );
+  return perFile.flat();
+}
+
+/**
  * The dropped-conformance scan (003 T-1005). A MODIFY delta's post-state is
  * retyped rather than edited, so an obligation not consciously carried is
  * silently gone — three proposals shipped that way in one session.
@@ -910,6 +944,12 @@ export function registerValidate(program: Command): void {
       // resolves to no readable file, escapes the project, or resolves inside
       // specs/, is an error. No-op-cheap: returns [] on any file with no
       // <spec-contract> declarations, which is every design in the estate today.
+      // The asset-resolve gate (spec 091, REQ-FORMAT-010): a stylesheet or
+      // script reference that resolves to nothing. Unlike the gates around it
+      // this one fires on every artifact rather than a rare declaration, which
+      // is the point — thirty artifacts shipped unstyled while validate
+      // reported them clean.
+      const assetResolveScanFindings = await scanAssetResolve(docCache, process.cwd());
       const contractResolveScanFindings = await scanContractResolve(docCache, process.cwd());
       const droppedConformanceFindings = await scanDroppedConformance(process.cwd());
       // The contract-view-drift gate (spec 072): a materialised
@@ -956,6 +996,7 @@ export function registerValidate(program: Command): void {
         ...projectIdentityScanFindings,
         ...marketplaceIdentityScanFindings,
         ...declaredEdgeScanFindings,
+        ...assetResolveScanFindings,
         ...contractResolveScanFindings,
         ...droppedConformanceFindings,
         ...contractViewDriftScanFindings,

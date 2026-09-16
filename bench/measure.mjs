@@ -53,6 +53,12 @@ function makeSingleDocFixture() {
   const dest = resolve(dir, SINGLE_DOC_SPEC);
   mkdirSync(dirname(dest), { recursive: true });
   cpSync(resolve(REPO_ROOT, SINGLE_DOC_SPEC), dest);
+  // The artifact's stylesheet, script and favicon come with it. An artifact
+  // copied away from its assets is genuinely broken — REQ-FORMAT-010 says so
+  // and `asset-resolve` reports it — so without this the scenario measures a
+  // failing validate rather than a passing one, and `runOnce` rejects on the
+  // non-zero exit. Caught by the check itself the day it landed.
+  cpSync(resolve(REPO_ROOT, 'assets'), resolve(dir, 'assets'), { recursive: true });
   return dir;
 }
 

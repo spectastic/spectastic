@@ -1,9 +1,9 @@
-import { isAbsolute, relative, resolve as resolvePath } from 'node:path';
+import { dirname, isAbsolute, relative, resolve as resolvePath } from 'node:path';
 import type { Finding, ParsedDocument } from '@spectastic/schema';
 import { validateDocs } from '@spectastic/schema';
 import type { ContractDeclaration } from '@spectastic/schema/contract';
 import type { Element } from '@spectastic/schema/parser';
-import { findAll, getAttr, getLocation, parse } from '@spectastic/schema/parser';
+import { findAll, getAttr, getLocation, parse, walk } from '@spectastic/schema/parser';
 import { isQuantifiedTarget } from '@spectastic/schema/slo';
 import type { VisualDeclaration } from '@spectastic/schema/visual';
 import { conventionalVisualPrefix, isUnderPrefix, owningSpecId } from '../visual/location.js';
@@ -628,6 +628,147 @@ export async function validateCommand(input: ValidateInput, ctx: KernelContext):
  * Recorded rather than worked around — the fix is an authored proposed location,
  * deferred as `TBD-contract-proposed-attribute`.
  */
+/**
+ * One `stat` per distinct path per run, shared across every artifact.
+ *
+ * Unlike the declaration-driven gates beside it, this one fires on every
+ * document — and the estate's 2,489 references resolve to **four** distinct
+ * paths, because every artifact points at the same four assets. Without the
+ * cache that is 2,489 syscalls to answer four questions, and it measured as a
+ * ~15% rise in the full-project validate. The cache is per-run and passed in by
+ * the caller: a run is a snapshot, so a path's answer cannot change inside it,
+ * and keeping it a parameter rather than module state means a caller that wants
+ * a fresh look (a test, a long-lived process) simply does not pass one.
+ */
+export type AssetStatCache = Map<string, { isFile: boolean; isDirectory: boolean } | null>;
+
+async function statOnce(
+  fs: FileSystem,
+  path: string,
+  cache?: AssetStatCache,
+): Promise<{ isFile: boolean; isDirectory: boolean } | null> {
+  const hit = cache?.get(path);
+  // `null` is a real cached answer ("not there"), so probe with `has`.
+  if (hit !== undefined || cache?.has(path) === true) return hit ?? null;
+  let result: { isFile: boolean; isDirectory: boolean } | null;
+  try {
+    result = await fs.stat(path);
+  } catch {
+    result = null;
+  }
+  cache?.set(path, result);
+  return result;
+}
+
+/**
+ * `asset-resolve` (spec 091-artifact-format, REQ-FORMAT-010): a local stylesheet
+ * or script an artifact references must resolve to a readable file.
+ *
+ * REQ-FORMAT-002 has required since it was written that an artifact "open and
+ * render correctly when loaded from the local filesystem", and nothing checked
+ * it. Thirty artifacts in this repository referenced `../assets/` where the file
+ * sat two levels up and rendered as unstyled text while validate reported them
+ * clean, because a reference to a file that is not there is still well-formed
+ * HTML. This is that requirement's mechanically checkable half.
+ *
+ * Three choices here are load-bearing and each has a reason that is not obvious
+ * from the code:
+ *
+ * 1. **Resolution is document-relative**, not project-relative — unlike
+ *    `contractResolveFindings` below, whose declared path is project-relative by
+ *    contract. A browser resolves an `href` against the document's own
+ *    directory, and the artifact's depth within the project is the exact axis
+ *    all thirty got wrong. Resolving against the project root would reproduce
+ *    the bug rather than catch it.
+ *
+ * 2. **No escape check.** The containment sequence is cloned from
+ *    `contractResolveFindings` only as far as the absolute-path rejection. Its
+ *    "resolves outside the project" arm is right for author-declared data and
+ *    wrong here: `examples/currency-converter/` is a bundle whose artifacts all
+ *    reach the *outer* asset tree, which is legitimate, and rejecting it would
+ *    make that bundle correct from the repository root and broken from its own.
+ *    `projectRoot` is therefore taken for message-relativising only, never to
+ *    gate on.
+ *
+ * 3. **Images are not checked at all** — 094 FR-005, must tier: a rendered image
+ *    "MUST NOT be load-bearing: no check may depend on one being present, and
+ *    its absence MUST NOT be reported as a finding or made to fail any gate."
+ *
+ * Walks the parsed tree rather than the source text, which is what keeps a
+ * documented-but-escaped `<link>` inside a `<code>` block from being read as a
+ * real one (060's design.html documents the course asset convention that way).
+ */
+const OUT_OF_REACH_SCHEME = /^(?:[a-z][a-z0-9+.-]*:|\/\/|#)/i;
+
+export async function assetResolveFindings(
+  doc: ParsedDocument,
+  file: string,
+  fs: FileSystem,
+  projectRoot: string,
+  statCache?: AssetStatCache,
+): Promise<Finding[]> {
+  const findings: Finding[] = [];
+
+  // One walk, not one per tag. `findAll` traverses the whole tree per call, and
+  // this gate runs on every document in the run rather than the rare few
+  // carrying a declaration — so the second traversal is a cost the estate pays
+  // 363 times over for no new information.
+  const referencing: { el: Element; tagName: 'link' | 'script'; attrName: 'href' | 'src' }[] = [];
+  walk(doc.ast, (el) => {
+    if (el.tagName === 'link') referencing.push({ el, tagName: 'link', attrName: 'href' });
+    else if (el.tagName === 'script') referencing.push({ el, tagName: 'script', attrName: 'src' });
+  });
+  for (const { el, tagName, attrName } of referencing) {
+    const value = getAttr(el, attrName);
+    // An inline <script> carries no src, and an empty value references nothing.
+    if (value === undefined || value.trim() === '') continue;
+    // `http:`, `https:`, `data:`, `mailto:`, a protocol-relative `//host`, or a
+    // bare fragment — all outside this requirement's reach. Checking a remote
+    // URL would put a network round-trip inside validate.
+    if (OUT_OF_REACH_SCHEME.test(value)) continue;
+
+    const loc = getLocation(el);
+    const flag = (message: string, fixHint: string): void => {
+      findings.push({
+        file,
+        line: loc.line,
+        column: loc.column,
+        rule: 'asset-resolve',
+        severity: 'error',
+        message,
+        fixHint,
+      });
+    };
+
+    if (isAbsolute(value)) {
+      flag(
+        `<${tagName} ${attrName}="${value}"> is an absolute path, which cannot survive the artifact being moved or read elsewhere`,
+        'Use a path relative to the artifact itself (spec.html REQ-FORMAT-010) — an absolute path is reported rather than followed.',
+      );
+      continue;
+    }
+
+    // Relative to the artifact's OWN directory, exactly as a browser resolves it.
+    const resolved = resolvePath(dirname(file), value);
+    const stat = await statOnce(fs, resolved, statCache);
+    if (stat === null) {
+      flag(
+        `<${tagName} ${attrName}="${value}"> — no such file (resolved to ${relative(projectRoot, resolved) || resolved})`,
+        "Check the number of `../` segments against the artifact's depth: this is the way the reference usually goes wrong (spec.html REQ-FORMAT-010).",
+      );
+      continue;
+    }
+    if (!stat.isFile) {
+      flag(
+        `<${tagName} ${attrName}="${value}"> resolves to a directory, not a readable file`,
+        'Point the reference at the file itself (spec.html REQ-FORMAT-010).',
+      );
+    }
+  }
+
+  return findings;
+}
+
 /**
  * Is there a readable FILE here? The scan's FileSystem has no `exists`.
  *
