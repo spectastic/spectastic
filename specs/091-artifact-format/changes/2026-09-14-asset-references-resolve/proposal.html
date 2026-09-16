@@ -1,0 +1,411 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'">
+<title>An artifact&rsquo;s asset references resolve · Change proposal</title>
+<link rel="stylesheet" href="../../../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../../../assets/favicon.svg">
+<script src="../../../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Change proposal · 091-artifact-format</p>
+  <h1>An artifact&rsquo;s asset references resolve</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    A must-tier requirement with no enforcement let thirty artifacts ship with no stylesheet, no theme boot and no
+    script &mdash; and <code>validate</code> reported every one of them clean.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>     <span><spec-status value="approved">Approved</spec-status></span>
+    <b>Change ID</b>  <span>2026-09-14-asset-references-resolve</span>
+    <b>Spec</b>       <span><a href="../../spec.html">091-artifact-format</a></span>
+    <b>Author</b>     <span>Brian Corbin · me@briancorbin.co.uk</span>
+    <b>Created</b>    <span><time datetime="2026-09-14">14 Sep 2026</time></span>
+    <b>Targets</b>    <span>1 requirement (1 added)</span>
+    <b>Read time</b>  <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-tldr>
+    <p>Adds <code>REQ-FORMAT-010</code>: a local stylesheet or script an artifact references MUST resolve to a
+    readable file, checked at error severity. <code>REQ-FORMAT-002</code> already requires that an artifact
+    &ldquo;open and render correctly when loaded from the local filesystem&rdquo; &mdash; it simply had no
+    enforcement, and thirty artifacts in this repository violated it while <code>validate</code> reported them
+    clean. Image references are deliberately excluded: <a href="../../../094-visual-sidecar-convention/spec.html#FR-005">094&nbsp;FR-005</a>
+    forbids reporting a missing render, at must tier.</p>
+  </spec-tldr>
+</header>
+
+
+<spec-change id="2026-09-14-asset-references-resolve" status="approved">
+
+<header>
+  <h3>An artifact&rsquo;s asset references resolve</h3>
+  <span class="meta"><spec-status value="approved">Approved</spec-status></span>
+</header>
+
+
+<section id="intent">
+<h2>1 · Intent</h2>
+<p><a href="../../spec.html#REQ-FORMAT-002">REQ-FORMAT-002</a> has said since it was written that an artifact
+&ldquo;MUST open and render correctly when loaded from the local filesystem&rdquo;. Nothing has ever checked it.
+On 14 Sep 2026 a sweep of this repository found <strong>thirty artifacts</strong> whose stylesheet, theme boot and
+script all pointed one directory level too high &mdash; <code>../assets/spec.css</code> where the file sits two
+levels up. Every one of them rendered as unstyled text. <code>spectastic validate</code> reported
+<strong>no findings</strong> on all thirty, because a reference to a file that is not there is still perfectly
+well-formed HTML.</p>
+
+<p>They were not found by a check. They were found by accident: two of the thirty happened to fail the
+<code>REQ-FORMAT-007</code> browser test, and only because an unstyled <code>&lt;pre&gt;</code> has no
+<code>overflow-x</code> to contain it &mdash; the stylesheet that would have contained it was the thing that had
+not loaded. The other twenty-eight were invisible to every gate the project has. This is the
+<em>structurally valid but visually wrong</em> class the verification discipline is built around, and
+<a href="../../../../principles.html#P-8">P-8</a> says the guarantee belongs in the kernel rather than in
+review. The obligation already exists at must tier; this change supplies the missing half.</p>
+</section>
+
+
+<section id="scope">
+<h2>2 · Scope</h2>
+
+<spec-goals>
+  <h3>In scope</h3>
+  <ul>
+    <li>A new <code>REQ-FORMAT-010</code> obliging a local stylesheet or script reference to resolve to a
+    readable file.</li>
+    <li>A deterministic check behind it &mdash; <code>assetResolveFindings</code> in <code>@spectastic/core</code>
+    plus a folded <code>scanAssetResolve</code> in the validate CLI &mdash; at <strong>error</strong> severity,
+    under the rule id <code>asset-resolve</code>.</li>
+    <li><code>&lt;link href&gt;</code> and <code>&lt;script src&gt;</code>: stylesheet, favicon, theme boot,
+    <code>spec.js</code>. 2,507 such references exist across the validated estate today.</li>
+    <li>An absolute path reported without being resolved &mdash; the one containment check
+    <code>contract-resolve</code> contributes that is also right for a browser-resolved
+    <code>href</code>.</li>
+  </ul>
+</spec-goals>
+
+<spec-non-goals>
+  <h3>Out of scope</h3>
+  <ul>
+    <li><strong>Image references.</strong> <code>&lt;img src&gt;</code> is not checked at all.
+    <a href="../../../094-visual-sidecar-convention/spec.html#FR-005">094&nbsp;FR-005</a> is must-tier and
+    unambiguous &mdash; a rendered image &ldquo;MUST NOT be load-bearing: no check may depend on one being
+    present, and its absence MUST NOT be reported as a finding or made to fail any gate.&rdquo; The one broken
+    reference the interview&rsquo;s dry run found anywhere outside <code>specs/</code> was exactly that: a screen
+    render inside a generated <code>&lt;spec-visual-view&gt;</code> in the currency-converter exemplar.
+    <span class="defer-to">TBD-artifact-image-resolve</span></li>
+    <li><strong>Cross-artifact <code>&lt;a href&gt;</code> links.</strong> The same defect class with a different
+    failure mode &mdash; broken navigation rather than a broken render &mdash; and it brings fragment targets and
+    links to not-yet-written artifacts with it. <span class="defer-to">TBD-artifact-link-resolve</span></li>
+    <li><strong>Remote references.</strong> An <code>http(s):</code>, <code>data:</code>, <code>#</code> or
+    <code>mailto:</code> value is skipped. Checking a remote URL would put a network round-trip inside
+    <code>validate</code>, which its determinism forbids. <span class="defer-to">never</span></li>
+    <li><strong>Widening the dogfood glob to <code>docs/**</code>.</strong> Those 49 artifacts are clean under
+    this check, but the glob is excluded for reasons inbox <code>I-051</code> records, and reopening it is that
+    card&rsquo;s business. <span class="defer-to">TBD-docs-security-scan</span></li>
+  </ul>
+</spec-non-goals>
+</section>
+
+
+<section id="approach">
+<h2>3 · Approach</h2>
+<p><strong>Not a schema rule.</strong> <code>PerFileRuleContext</code> hands a rule one parsed document and
+nothing else &mdash; no filesystem &mdash; so a rule cannot ask whether a file exists. The project has already
+answered this shape twice: <code>contractResolveFindings</code> (070&nbsp;FR-004) and
+<code>visualResolveFindings</code> (093&nbsp;FR-010) both live in <code>@spectastic/core</code> and are folded
+into the CLI as <code>scanContractResolve</code> / <code>scanVisualResolve</code>, each reading from the validate
+run&rsquo;s own document cache. This clones that seam rather than inventing a third one, which also keeps it on
+the right side of the fat-core/thin-CLI boundary: the logic is a pure function of (declarations, filesystem,
+directory), and the CLI only wires it up.</p>
+
+<p><strong>Walk the AST, never the source text.</strong> A regex over the raw HTML would be simpler and wrong.
+<code>specs/060-course-teaching-payload/design.html</code> documents the course asset convention by writing
+<code>&lt;link href="${ASSETS}/course.css"&gt;</code> <em>escaped, inside a <code>&lt;code&gt;</code>
+block</em> &mdash; prose about a link, not a link. Parsing makes that case disappear by construction: the walk
+finds two real <code>&lt;link&gt;</code> elements in that file and neither is the example. The parser also
+supplies the <code>sourceCodeLocation</code> line and column the finding needs to point at.</p>
+
+<p><strong>Resolution is document-relative, not project-relative</strong>, and this is the one place the clone
+diverges from its models. A declared contract path is relative to the project root, so
+<code>contractResolveFindings</code> resolves against <code>cwd</code>. An <code>href</code> is resolved by the
+browser against the <em>document&rsquo;s own directory</em> &mdash; which is precisely the axis the thirty broken
+artifacts got wrong, all of them at a different depth. Resolving against <code>cwd</code> here would reproduce
+the bug rather than catch it. The containment sequence is still cloned verbatim: reject an absolute path, reject
+one resolving outside the project directory, and only then <code>stat</code>.</p>
+
+<spec-note>
+<p>Cost is one <code>stat</code> per reference on documents already parsed and cached for the run &mdash; about
+four references per artifact. The substring prefilter the sibling scans use does not apply here, because every
+artifact carries these references; there is nothing to skip.</p>
+</spec-note>
+</section>
+
+
+<section id="deltas">
+<h2>4 · Deltas</h2>
+<p>One <code>&lt;spec-delta&gt;</code> per requirement touched. <code>target=</code> links to
+the live spec. <code>op=</code> is one of <code>added | modified | removed | renamed</code>;
+a missing or invalid op renders visibly broken.</p>
+
+<spec-delta op="added" target="REQ-FORMAT-010">
+  <spec-requirement id="REQ-FORMAT-010" priority="must">
+    <p>In an artifact&rsquo;s <strong>source form</strong> &mdash; the file as authored and committed, before any
+    inlining <a href="../../spec.html#REQ-FORMAT-001">REQ-FORMAT-001</a> requires of a published build &mdash;
+    every local stylesheet and script it references <spec-rule>MUST</spec-rule> resolve to a readable file,
+    resolved relative to the artifact&rsquo;s own directory. A reference that resolves to nothing, or to a
+    directory, <spec-rule>MUST</spec-rule> be reported as an error, and an absolute path
+    <spec-rule>MUST</spec-rule> be reported without being resolved. A reference carrying a remote or inline scheme
+    (<code>http:</code>, <code>https:</code>, <code>data:</code>, <code>mailto:</code>, or a bare fragment)
+    <spec-rule>MUST NOT</spec-rule> be reported. An image reference <spec-rule>MUST NOT</spec-rule> be checked
+    under this requirement.</p>
+
+    <details><summary>Rationale</summary>
+    <p><a href="../../spec.html#REQ-FORMAT-002">REQ-FORMAT-002</a> requires an artifact to render correctly from
+    the local filesystem, and this is the mechanically checkable half of that promise. It is separated out rather
+    than folded into 002 because 002 states an <em>outcome</em> a reader judges, while this states a
+    <em>property a machine decides</em> &mdash; and because 002 also carries a network-round-trip clause that has
+    nothing to do with resolution.</p>
+
+    <p>Thirty artifacts in the tool&rsquo;s own repository violated 002 for an unknown period while
+    <code>validate</code> reported them clean, every one by referencing <code>../assets/</code> where the file sat
+    two levels up. The failure is silent by nature: a broken reference is well-formed HTML, the browser reports it
+    only in a console nobody reads during review, and the artifact still <em>opens</em> &mdash; it simply opens
+    with none of its design. Presence is not resolution.</p>
+
+    <p><strong>Why source form, explicitly.</strong> REQ-FORMAT-001 requires CSS, JavaScript and SVG to be inlined
+    in the published build, and a build that honours it emits no linked reference at all &mdash; on which this
+    requirement is silent, correctly. Naming the scope keeps the two from appearing to disagree, and records the
+    dependency: were inlining ever performed at authoring time rather than at publish, this requirement would lose
+    its subject matter rather than start failing.</p>
+
+    <p><strong>Why the resolution is document-relative and not project-relative.</strong> That is how a browser
+    resolves an <code>href</code>, and the artifact&rsquo;s depth within the project is the exact axis all thirty
+    got wrong. It also keeps the check independent of where <code>validate</code> was invoked: a vendored or
+    nested project whose artifacts reach an asset tree above their own root &mdash; as
+    <code>examples/currency-converter/</code> does here &mdash; is a legitimate arrangement, and a rule that
+    rejected a reference for leaving the project directory would make that exemplar correct from one root and
+    broken from another. Only an <em>absolute</em> path is rejected on sight, because it cannot survive the
+    artifact being moved or read by anyone else.</p>
+
+    <p><strong>Why images are exempt.</strong> Not a gap left for later:
+    <a href="../../../094-visual-sidecar-convention/spec.html#FR-005">094&nbsp;FR-005</a> requires at must tier
+    that a rendered image &ldquo;MUST NOT be load-bearing: no check may depend on one being present, and its
+    absence MUST NOT be reported as a finding or made to fail any gate.&rdquo; Checking <code>&lt;img&gt;</code>
+    here would contradict it outright, so this requirement is deliberately narrower than its title suggests.</p>
+    </details>
+  </spec-requirement>
+</spec-delta>
+</section>
+
+
+<section id="subtraction">
+<h2>4b · What this change removes</h2>
+<p>Each entry names one thing this change takes away &mdash; a clause dropped from a requirement it retypes,
+an obligation a sibling loses, a behaviour or affordance no requirement records. <strong>An empty register is
+the answer &ldquo;this removes nothing&rdquo;</strong>, so the common case needs no editing.</p>
+<p>Where a delta removes something itself, its own reason and migration stay authoritative &mdash; this
+register is for what no delta can express.</p>
+
+<spec-subtraction>
+</spec-subtraction>
+<p>Nothing. The change is a single ADD: no requirement is retyped, so no clause can be dropped in the retyping,
+and no sibling requirement loses an obligation. <code>REQ-FORMAT-002</code> is untouched &mdash; deliberately, since
+retyping a must-tier requirement to fold the check in is exactly how a clause goes missing, and 002 carries a
+network-round-trip clause that has nothing to do with resolution.</p>
+</section>
+
+
+<section id="risks">
+<h2>5 · Risk register</h2>
+<p>Populated by the adversarial risk pass when the proposal triggers the heuristic (touches a <code>must</code>-tier requirement, contains an <code>op="removed"</code> delta, or spans ≥2 topic prefixes). One <code>&lt;spec-risk&gt;</code> per finding. <code>target=</code> is required (missing renders broken). <code>status=</code> defaults to <code>identified</code>; apply refuses until each transitions to <code>accepted</code>, <code>mitigated</code>, or <code>rejected</code>.</p>
+
+<spec-risk-log>
+
+<spec-risk target="REQ-FORMAT-010" status="accepted" by="Brian Corbin · @briancorbinxyz">
+  <p class="claim">The check lands on the artifact while the asset depth is written independently in at least six
+  generators, so this catches the symptom per-file forever and nothing owns the cause &mdash; and certifying
+  <code>templates/*.html</code> clean blesses the very prefix that is wrong at every destination a template is
+  copied to.</p>
+  <p class="citation">No task in §6 touches a generator. The depth is hardcoded in
+  <code>core/src/commands/spec.ts</code> (<code>../../assets/</code>), <code>propose.ts</code>
+  (<code>../../../../assets/</code>), <code>verify.ts</code> (<code>const ASSETS = '../../assets'</code>),
+  <code>course.ts</code> (<code>'../../../assets'</code>) and <code>cli/src/commands/init/compose.ts</code>; and
+  <code>explore.ts</code> already documents the defect in a comment &mdash; &ldquo;the template lives one deep and
+  previews with <code>../assets/</code>; the ledger lands two deep &hellip; so rewrite on render&rdquo;.</p>
+  <div class="response">Accepted as stated, and the scope corrected rather than widened. The certification half
+  is real and is fixed here: the §6 dogfood task no longer claims <code>templates/**</code>, because a
+  template&rsquo;s reference is correct only in its preview position and passing there means nothing about its
+  destination. The cause half is accepted as out of scope. A gate that makes every occurrence visible at the
+  boundary is worth having before the generators are unified &mdash; this one found all thirty in a single pass
+  &mdash; and folding a refactor of six generators into the change that adds the check would make both harder to
+  review. Planted as <span class="defer-to">TBD-generator-asset-depth</span>.</div>
+</spec-risk>
+
+<spec-risk target="REQ-FORMAT-001" status="mitigated" by="Brian Corbin · @briancorbinxyz">
+  <p class="claim">REQ-FORMAT-010 enforces the linked asset at must tier while REQ-FORMAT-001 requires at the same
+  tier that linked assets not exist in the published build, so the new check is vacuous on exactly the artifact
+  that reaches a user &mdash; and §4b claims no sibling loses an obligation without noticing the dependency.</p>
+  <p class="citation"><code>REQ-FORMAT-001</code>: &ldquo;All CSS, JavaScript, and SVG <strong>MUST</strong> be
+  inlined in the published build,&rdquo; rationale &ldquo;Linked assets re-introduce the build-and-deploy concerns
+  we are trying to escape.&rdquo;</p>
+  <div class="response">Correct, and mitigated in the requirement text. The delta now scopes itself explicitly to
+  the artifact&rsquo;s <em>source form</em>, names REQ-FORMAT-001 as the reason that scope exists, and records the
+  dependency the finding identifies: if inlining ever moves from publish time to authoring time, this requirement
+  loses its subject matter rather than starts failing. That is a real limit &mdash; it supplies no coverage for
+  the published form &mdash; and it is now stated in the requirement instead of being discovered later.</div>
+</spec-risk>
+
+<spec-risk target="§2" status="mitigated" by="Brian Corbin · @briancorbinxyz">
+  <p class="claim">The containment clause is lifted from <code>contract-resolve</code>, where the path is
+  author-declared project-relative data, and applied to browser <code>href</code> resolution, where reaching above
+  the project root is ordinary &mdash; producing errors that depend on where <code>validate</code> was invoked
+  rather than on whether the artifact renders.</p>
+  <p class="citation">§2 In scope, as drafted: &ldquo;an absolute path and one escaping the project directory are
+  each reported without being stat-ed.&rdquo; The counter-example is already committed:
+  <code>examples/currency-converter/</code> is a nested project whose artifacts all reach the outer asset tree
+  (<code>principles.html</code> &rarr; <code>../../assets/theme-boot.js</code>), and CLAUDE.md records the
+  identical scar one layer down for <code>&lt;spec-contract path=&gt;</code>.</p>
+  <div class="response">Correct, and the clause is removed. This was a clone taken one step too far. The escape
+  check is right for a declared project-relative path and wrong for an <code>href</code>, and under it the
+  committed exemplar would have been unsatisfiable &mdash; correct from the repository root, nine errors from its
+  own. Only the absolute-path rejection survives, which holds regardless of invocation directory. The requirement
+  now states why.</div>
+</spec-risk>
+
+<spec-risk target="REQ-FORMAT-010" status="mitigated" by="Brian Corbin · @briancorbinxyz">
+  <p class="claim">Not one of the delta&rsquo;s normative keywords was wrapped in <code>&lt;spec-rule&gt;</code>,
+  which would have landed the estate&rsquo;s first unwrapped must-tier requirement in the spec that defines the
+  artifact format, invisible to every <code>&lt;spec-rule&gt;</code>-based scan.</p>
+  <p class="citation">Contradicts <code>KB-0001@2026-07-25</code>
+  (<code>spectastic/spectastic · spectastic-concepts · 001-foundations</code>): wrapping each keyword
+  &ldquo;makes the conformance level machine-greppable as well as human-readable &mdash; a validate rule or a
+  downstream tool can find every <code>must</code>-tier requirement without parsing prose.&rdquo; All 36 keyword
+  wrappers already in <code>specs/091-artifact-format/spec.html</code> follow it.</p>
+  <div class="response">Correct and fixed &mdash; all five normative keywords in the delta are now wrapped. Worth
+  recording that nothing would have caught this: the convention is a committed corpus fact with no validate rule
+  behind it, so an unwrapped keyword is review-caught only. That is the same P-8 shape this proposal exists to
+  close, one level up, and is left as an observation rather than smuggled into this change.</div>
+</spec-risk>
+
+<spec-risk target="REQ-FORMAT-010 &mdash; flat error severity" status="accepted" by="Brian Corbin · @briancorbinxyz">
+  <p class="claim">The requirement ships flat error severity with no status dependence, breaking a precedent set
+  twice in this same spec &mdash; so an archived proposal, which is a terminal artifact nobody may edit freely,
+  can fail a gate it may never be edited to satisfy.</p>
+  <p class="citation"><code>REQ-FORMAT-009</code> chose status-dependent scope explicitly (&ldquo;An artifact that
+  has reached <em>accepted</em> MUST NOT carry an unreplaced template placeholder&rdquo;), and
+  <code>REQ-FORMAT-005</code> shipped <code>date-format</code> at warn as a migration-scoped choice. There are
+  ~150 archived proposals under <code>specs/*/changes/archive/</code>, and
+  <a href="../../../../principles.html#P-6">P-6</a> puts an artifact in a terminal state behind the
+  change-management surface rather than in-place edits.</p>
+  <div class="response">Accepted, not mitigated &mdash; the limit is real and the severity stays flat. The two
+  cited precedents both scope an obligation that a terminal artifact cannot meaningfully satisfy: a placeholder
+  is authored content, and a date format is a migration. A broken asset reference is neither. It makes the
+  artifact unreadable for anyone who opens it, whatever its status, and an archived proposal that renders as
+  unstyled text is not a stable fact preserved &mdash; it is a record nobody can read. Repairing a path also
+  touches no commitment, which is what P-6 actually locks; that reading is what justified repairing all thirty in
+  this repository, roughly ten of them archived or withdrawn, and it is recorded here rather than left implicit.
+  The residual risk is downstream: a project upgrading with a broken reference already inside an archived
+  proposal gets an error it must fix by editing a terminal artifact. That is the honest cost of the choice.</div>
+</spec-risk>
+
+</spec-risk-log>
+</section>
+
+
+<section id="tasks">
+<h2>6 · Tasks</h2>
+<p>Scoped to this change only. On <code>/spectastic.apply</code> these fold into the target's
+<code>tasks.html</code> as a new provenance-linked phase (per <code>REQ-CHANGE-006</code>) that
+<code>/spectastic.implement</code> drains — this list is then the frozen intent record.</p>
+
+<ul style="list-style:none;padding-left:0;">
+  <li><input type="checkbox"> <code>packages/core/test/asset-resolve.test.ts</code> &mdash; write the failing
+  tests first: a resolving reference is silent; a missing one errors; a directory at the path errors; an absolute
+  path and a <code>..</code> escape are each reported without a <code>stat</code>; every remote and inline scheme
+  is skipped; an <code>&lt;img&gt;</code> pointing at nothing produces <strong>no</strong> finding (094 FR-005);
+  and the escaped <code>&lt;link&gt;</code> inside a <code>&lt;code&gt;</code> block produces none either.</li>
+
+  <li><input type="checkbox"> <code>packages/core/src/commands/validate.ts</code> &mdash; add
+  <code>assetResolveFindings(parsed, file, fs, projectRoot)</code>, walking <code>link[href]</code> and
+  <code>script[src]</code> via <code>findAll</code>, resolving each against <code>dirname(file)</code> and
+  reusing <code>contractResolveFindings</code>&rsquo; containment sequence and its <code>exists</code> helper
+  (which returns <code>st.isFile</code>, not &ldquo;stat did not throw&rdquo;).</li>
+
+  <li><input type="checkbox"> <code>packages/core/tsup.config.ts</code> and <code>package.json</code> &mdash;
+  no new entry needed if the function ships from the existing <code>./commands/validate</code> subpath; confirm
+  rather than assume.</li>
+
+  <li><input type="checkbox"> <code>packages/cli/src/commands/validate.ts</code> &mdash; add
+  <code>scanAssetResolve(docs, cwd)</code> shaped exactly like <code>scanContractResolve</code>, and fold its
+  findings into the run alongside the other non-rule scans.</li>
+
+  <li><input type="checkbox"> <code>packages/cli/test/</code> &mdash; an integration test proving the CLI reports
+  a planted broken reference and exits non-zero, and that it stays silent on a correct artifact. Plant the
+  reference; do not rely on a fixture that might be repaired later.</li>
+
+  <li><input type="checkbox"> Dogfood: run <code>validate</code> over the CI globs and over
+  <code>examples/**</code> (as its own set) and confirm zero findings, then plant one broken reference and confirm
+  it is caught at the right line and column. <strong>Not <code>templates/**</code></strong> &mdash; a
+  template&rsquo;s <code>../assets/</code> is correct only in its preview position and wrong at every destination
+  it is copied to, so a pass there certifies nothing (see §5, first risk).</li>
+
+  <li><input type="checkbox"> <code>specs/091-artifact-format/verify.html</code> &mdash; regenerate so the new
+  requirement carries its trace.</li>
+</ul>
+</section>
+
+
+<section id="questions">
+<h2>7 · Open questions</h2>
+<spec-questions>
+<p>None outstanding. Every decision was anchored in the interview: the delta shape (ADD rather than a MODIFY
+that would retype a must-tier body), the severity, the reference kinds, and both deferral targets. The one
+question that looked like a matter of taste &mdash; whether to check <code>&lt;img&gt;</code> &mdash; turned out
+to be already decided by <a href="../../../094-visual-sidecar-convention/spec.html#FR-005">094&nbsp;FR-005</a> at
+must tier, and was settled by reading it rather than by choosing.</p>
+</spec-questions>
+</section>
+
+
+<section id="changelog">
+<h2>8 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-09-14">14 Sep 2026</time><span>Proposal authored. ADD REQ-FORMAT-010: a local
+  stylesheet or script reference must resolve to a readable file, at error severity, as the missing enforcement
+  half of REQ-FORMAT-002. Prompted by thirty artifacts in this repository that shipped with no stylesheet, no
+  theme boot and no script while <code>validate</code> reported them clean.</span></li>
+  <li><time datetime="2026-09-14">14 Sep 2026</time><span>Adversarial pass (auto-fired, must-tier ADD) returned
+  four risks. Three changed the requirement before it was written: the containment clause cloned from
+  <code>contract-resolve</code> was removed after the nested currency-converter exemplar showed it would make that
+  bundle correct from one root and broken from another; the requirement was scoped explicitly to an
+  artifact&rsquo;s source form to stop it appearing to disagree with REQ-FORMAT-001&rsquo;s inlining mandate; and
+  every normative keyword was wrapped in <code>&lt;spec-rule&gt;</code>, which the draft had omitted against
+  KB-0001 and all 36 existing wrappers in this spec. The fourth &mdash; that the check lands on the artifact while
+  six generators each hardcode the asset depth &mdash; is accepted, with the templates certification dropped from
+  §6 and the cause deferred as <code>TBD-generator-asset-depth</code>.</span></li>
+  <li><time datetime="2026-09-15">15 Sep 2026</time><span>A fifth risk added from the critic&rsquo;s ranked
+  near-miss, and accepted rather than mitigated: the requirement ships flat error severity where REQ-FORMAT-009
+  scoped itself by status, so an archived proposal could fail a gate P-6 says it may not be freely edited to
+  satisfy. Severity stays flat &mdash; a broken reference makes an artifact unreadable whatever its status, and
+  repairing a path touches no commitment &mdash; with the downstream cost recorded. All five risks
+  dispositioned: two accepted, three mitigated.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+</spec-change>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  2026-09-14-asset-references-resolve &middot; An artifact&rsquo;s asset references resolve &middot; authored <time datetime="2026-09-14">14 Sep 2026</time>
+</footer>
+
+</main>
+<script src="../../../../assets/spec.js"></script>
+</body>
+</html>
