@@ -102,7 +102,10 @@ describe('detectTooling: per-ecosystem classification', () => {
 
   it('Java: gradle substrings classify by declared plugin', () => {
     const dir = fixture({
-      'build.gradle': "id 'com.diffplug.spotless'\nerrorprone\ntest {}\n",
+      // `useJUnitPlatform()` rather than a bare `test {}` block: the test-runner
+      // signal is a platform/task token since inbox I-081 (the substring `test`
+      // matched a testImplementation line or a comment).
+      'build.gradle': "id 'com.diffplug.spotless'\nerrorprone\ntest { useJUnitPlatform() }\n",
     });
     const c = detectTooling(dir);
     expect(c.has('formatter')).toBe(true);

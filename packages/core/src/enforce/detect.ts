@@ -23,6 +23,19 @@ export interface Signal {
   contains?: string;
 }
 
+/** Gradle has two build-file DSLs — Groovy `build.gradle` and Kotlin
+ *  `build.gradle.kts`, the default `gradle init` has produced since 8.2 — and a
+ *  dependency or plugin line reads the same substring in both. One row written
+ *  here becomes two, so a Kotlin-DSL project can never again be invisible to a
+ *  signal its Groovy twin would match (inbox I-081). */
+const GRADLE_FILES = ['build.gradle', 'build.gradle.kts'] as const;
+function gradle(category: EnforcementCategory, contains: string): Signal[] {
+  return GRADLE_FILES.map((file) => ({ ecosystem: 'java', category, file, contains }));
+}
+function gradleDep(contains: string): { file: string; contains: string }[] {
+  return GRADLE_FILES.map((file) => ({ file, contains }));
+}
+
 export const SIGNALS: readonly Signal[] = [
   // --- Python --------------------------------------------------------------
   {
@@ -114,62 +127,22 @@ export const SIGNALS: readonly Signal[] = [
   },
 
   // --- Java / JVM ----------------------------------------------------------
-  {
-    ecosystem: 'java',
-    category: 'formatter',
-    file: 'build.gradle',
-    contains: 'spotless',
-  },
+  ...gradle('formatter', 'spotless'),
   { ecosystem: 'java', category: 'formatter', file: '.editorconfig' },
-  {
-    ecosystem: 'java',
-    category: 'linter',
-    file: 'build.gradle',
-    contains: 'errorprone',
-  },
-  {
-    ecosystem: 'java',
-    category: 'linter',
-    file: 'build.gradle',
-    contains: 'spotbugs',
-  },
-  {
-    ecosystem: 'java',
-    category: 'linter',
-    file: 'build.gradle',
-    contains: 'checkstyle',
-  },
+  ...gradle('linter', 'errorprone'),
+  ...gradle('linter', 'spotbugs'),
+  ...gradle('linter', 'checkstyle'),
   { ecosystem: 'java', category: 'linter', file: 'checkstyle.xml' },
-  {
-    ecosystem: 'java',
-    category: 'type-checker',
-    file: 'build.gradle',
-    contains: 'nullaway',
-  },
-  {
-    ecosystem: 'java',
-    category: 'security',
-    file: 'build.gradle',
-    contains: 'findsecbugs',
-  },
-  {
-    ecosystem: 'java',
-    category: 'security',
-    file: 'build.gradle',
-    contains: 'dependency-check',
-  },
-  {
-    ecosystem: 'java',
-    category: 'supply-chain',
-    file: 'build.gradle',
-    contains: 'dependency-check',
-  },
-  {
-    ecosystem: 'java',
-    category: 'test-runner',
-    file: 'build.gradle',
-    contains: 'test',
-  },
+  ...gradle('type-checker', 'nullaway'),
+  ...gradle('security', 'findsecbugs'),
+  ...gradle('security', 'dependency-check'),
+  ...gradle('supply-chain', 'dependency-check'),
+  // A platform/task token, never the bare substring `test` — a
+  // `testImplementation` line or a comment satisfied the old signal (I-081).
+  ...gradle('test-runner', 'useJUnitPlatform'),
+  ...gradle('test-runner', 'junit'),
+  ...gradle('test-runner', 'testng'),
+  ...gradle('test-runner', 'spock'),
   { ecosystem: 'java', category: 'test-runner', file: 'pom.xml' },
 
   // --- Go ------------------------------------------------------------------
@@ -274,12 +247,7 @@ export const SIGNALS: readonly Signal[] = [
     file: '.nycrc',
     contains: 'check-coverage',
   },
-  {
-    ecosystem: 'java',
-    category: 'coverage',
-    file: 'build.gradle',
-    contains: 'jacocoTestCoverageVerification',
-  },
+  ...gradle('coverage', 'jacocoTestCoverageVerification'),
   {
     ecosystem: 'java',
     category: 'coverage',
@@ -331,30 +299,10 @@ export const SIGNALS: readonly Signal[] = [
     file: 'pom.xml',
     contains: 'quarkus-opentelemetry',
   },
-  {
-    ecosystem: 'java',
-    category: 'observability',
-    file: 'build.gradle',
-    contains: 'micrometer-registry-prometheus',
-  },
-  {
-    ecosystem: 'java',
-    category: 'observability',
-    file: 'build.gradle',
-    contains: 'spring-boot-starter-actuator',
-  },
-  {
-    ecosystem: 'java',
-    category: 'observability',
-    file: 'build.gradle',
-    contains: 'quarkus-micrometer-registry-prometheus',
-  },
-  {
-    ecosystem: 'java',
-    category: 'observability',
-    file: 'build.gradle',
-    contains: 'quarkus-opentelemetry',
-  },
+  ...gradle('observability', 'micrometer-registry-prometheus'),
+  ...gradle('observability', 'spring-boot-starter-actuator'),
+  ...gradle('observability', 'quarkus-micrometer-registry-prometheus'),
+  ...gradle('observability', 'quarkus-opentelemetry'),
   {
     ecosystem: 'go',
     category: 'observability',
@@ -594,10 +542,10 @@ const INTERFACE_SIGNALS: readonly FileSignal[] = [
   { file: 'pom.xml', contains: 'javax.ws.rs' },
   { file: 'pom.xml', contains: 'grpc-' },
   { file: 'pom.xml', contains: 'quarkus-resteasy' },
-  { file: 'build.gradle', contains: 'spring-boot-starter-web' },
-  { file: 'build.gradle', contains: 'spring-webflux' },
-  { file: 'build.gradle', contains: 'micronaut-http' },
-  { file: 'build.gradle', contains: 'grpc-' },
+  ...gradleDep('spring-boot-starter-web'),
+  ...gradleDep('spring-webflux'),
+  ...gradleDep('micronaut-http'),
+  ...gradleDep('grpc-'),
   // Go
   { file: 'go.mod', contains: 'gin-gonic/gin' },
   { file: 'go.mod', contains: 'labstack/echo' },
@@ -668,11 +616,11 @@ const EVENT_INTERFACE_SIGNALS: readonly FileSignal[] = [
   { file: 'pom.xml', contains: 'jnats' },
   { file: 'pom.xml', contains: 'pulsar-client' },
   { file: 'pom.xml', contains: 'quarkus-smallrye-reactive-messaging' },
-  { file: 'build.gradle', contains: 'spring-kafka' },
-  { file: 'build.gradle', contains: 'kafka-clients' },
-  { file: 'build.gradle', contains: 'spring-boot-starter-amqp' },
-  { file: 'build.gradle', contains: 'amqp-client' },
-  { file: 'build.gradle', contains: 'pulsar-client' },
+  ...gradleDep('spring-kafka'),
+  ...gradleDep('kafka-clients'),
+  ...gradleDep('spring-boot-starter-amqp'),
+  ...gradleDep('amqp-client'),
+  ...gradleDep('pulsar-client'),
   // Go
   { file: 'go.mod', contains: 'IBM/sarama' },
   { file: 'go.mod', contains: 'Shopify/sarama' },
@@ -1158,10 +1106,8 @@ const UI_SIGNALS: readonly FileSignal[] = [
   // Dart
   { file: 'pubspec.yaml', contains: 'flutter' },
   // Android / Kotlin
-  { file: 'build.gradle', contains: 'com.android.application' },
-  { file: 'build.gradle', contains: 'androidx.compose' },
-  { file: 'build.gradle.kts', contains: 'com.android.application' },
-  { file: 'build.gradle.kts', contains: 'androidx.compose' },
+  ...gradleDep('com.android.application'),
+  ...gradleDep('androidx.compose'),
   // Apple, where a project file rather than a dependency carries the signal.
   { file: 'Project.swift' },
   { file: 'Podfile' },
