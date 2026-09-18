@@ -24,7 +24,9 @@ export const BASE_ENTRIES: readonly string[] = [
 export const ECOSYSTEM_IGNORES: Readonly<Record<string, readonly string[]>> = {
   python: ['__pycache__/', '.venv/', '.pytest_cache/', '.mypy_cache/', '*.pyc'],
   js: ['node_modules/', 'dist/', 'coverage/'],
-  java: ['build/', 'target/', '*.class'],
+  // `.gradle/` is Gradle's project-local cache and `.kotlin/` the Kotlin DSL's,
+  // both written by the first build — the tool's own caches, not compiler output (I-082).
+  java: ['build/', 'target/', '*.class', '.gradle/', '.kotlin/'],
   go: ['bin/'],
   rust: ['target/'],
   swift: ['.build/'],

@@ -73,4 +73,10 @@ describe('stackEntries', () => {
   it('is empty for an unknown ecosystem', () => {
     expect(stackEntries(['cobol'])).toEqual([]);
   });
+
+  it("java ignores the build tool's own caches, not only compiler output (inbox I-082)", () => {
+    const e = stackEntries(['java']);
+    expect(e).toContain('.gradle/'); // Gradle's project-local cache, written by the first build
+    expect(e).toContain('.kotlin/'); // written beside it by the Kotlin DSL
+  });
 });
