@@ -52,6 +52,15 @@ export function resolveCiHosts(selection: CiSelection, cwd: string): CiHost[] {
   }
 }
 
+/** True when a version carries a pre-release tag (`1.2.3-pre.4`, `1.0.0-rc.1`).
+ *  The install summary warns on one (121 FR-005): the pin is honoured
+ *  regardless, but CI resolves the *published* package of that name, which
+ *  can lag a dev-from-source install. `latest` is not a version and is never
+ *  a pre-release. */
+export function isPreRelease(version: string): boolean {
+  return /^\d+\.\d+\.\d+-/.test(version);
+}
+
 function managedPath(cwd: string, host: CiHost): string {
   return join(cwd, CI_FILE_PATHS[host]);
 }

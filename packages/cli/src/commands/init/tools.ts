@@ -2,7 +2,15 @@ import { execFileSync } from 'node:child_process';
 import type { AdapterTarget } from './adapters.js';
 import { CLAUDE_TARGET, generateAdapters, removeAdapters } from './adapters.js';
 import type { CiHost, CiSelection } from './ci.js';
-import { bootstrapGitlabRoot, gitlabIncludeNote, installCi, removeCi, removeGitlabBootstrap, resolveCiHosts } from './ci.js';
+import {
+  bootstrapGitlabRoot,
+  gitlabIncludeNote,
+  installCi,
+  isPreRelease,
+  removeCi,
+  removeGitlabBootstrap,
+  resolveCiHosts,
+} from './ci.js';
 import { ToolsError } from './errors.js';
 import { installHook, uninstallHook } from './hook.js';
 
@@ -204,9 +212,17 @@ function applyRemoveAdapters(opts: ToolsOptions, summary: ToolsSummary, targets:
 }
 
 function applyInstallCi(opts: ToolsOptions, summary: ToolsSummary, host: CiHost): void {
-  const result = installCi(opts.cwd, host, { cliVersion: opts.cliVersion ?? '', force: opts.force });
+  const cliVersion = opts.cliVersion ?? '';
+  const result = installCi(opts.cwd, host, { cliVersion, force: opts.force });
   summary.ciInstalled.push(host);
   summary.notes.push(`CI gate ${result.path}: ${result.outcome}.`);
+  if (isPreRelease(cliVersion)) {
+    // 121 FR-005: the pin is kept, but CI fetches the *published* package of
+    // that name, which may lag a dev-from-source install (inbox I-084).
+    summary.notes.push(
+      `pinned to pre-release ${cliVersion} — CI runs the published package of that name, which may lag this install.`,
+    );
+  }
   if (host === 'gitlab') {
     // The sidecar above is the managed gate; the root file is a one-time
     // courtesy (121 FR-007/008) — bootstrap it only when the project has none,

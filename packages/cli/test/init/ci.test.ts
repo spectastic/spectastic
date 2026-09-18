@@ -254,3 +254,35 @@ describe('removeGitlabBootstrap', () => {
     expect(removeGitlabBootstrap(tmp()).removed).toBe(false);
   });
 });
+
+describe('pre-release pin warning (121 FR-005, inbox I-084)', () => {
+  it('isPreRelease is true only for a version carrying a pre-release tag', async () => {
+    const { isPreRelease } = await import('../../src/commands/init/ci.js');
+    expect(isPreRelease('0.1.0-pre.28')).toBe(true);
+    expect(isPreRelease('1.0.0-rc.1')).toBe(true);
+    expect(isPreRelease('1.0.0')).toBe(false);
+    expect(isPreRelease('latest')).toBe(false);
+  });
+
+  it('the install summary warns, naming the pin, when the running version is a pre-release', async () => {
+    const { runTools } = await import('../../src/commands/init/tools.js');
+    const cwd = tmp();
+    const summary = await runTools({
+      cwd, hooks: false, commands: false, ci: true, ciHost: 'github',
+      cliVersion: '1.2.3-pre.4', uninstall: false, force: false, cliEntry: '/dev/null',
+    });
+    const warning = summary.notes.find((n) => /pre-release/.test(n));
+    expect(warning).toBeDefined();
+    expect(warning).toContain('1.2.3-pre.4');
+  });
+
+  it('a stable version produces no pre-release note', async () => {
+    const { runTools } = await import('../../src/commands/init/tools.js');
+    const cwd = tmp();
+    const summary = await runTools({
+      cwd, hooks: false, commands: false, ci: true, ciHost: 'github',
+      cliVersion: '1.2.3', uninstall: false, force: false, cliEntry: '/dev/null',
+    });
+    expect(summary.notes.some((n) => /pre-release/.test(n))).toBe(false);
+  });
+});
