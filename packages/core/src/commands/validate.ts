@@ -62,6 +62,57 @@ export function commandsDriftFinding(expected: string, adapter: string | null, f
 }
 
 /**
+ * `ci-gate-drift` (121-init-ci-gate, FR-009). A managed CI gate file that no
+ * longer matches what the running CLI renders — including its version pin —
+ * is an error, so the pre-commit gate blocks a stale-CI-file commit exactly
+ * as `commandsDriftFinding` does for the command adapters. `expected` is
+ * `renderCiWorkflow(host, {cliVersion}).content`; `actual` is `null` when the
+ * managed file is missing (a state that shouldn't arise in practice — the
+ * CLI's own scan only builds this pair from a file it found — kept for
+ * symmetry with `commandsDriftFinding`, whose adapters genuinely can vanish).
+ */
+export function ciGateDriftFinding(expected: string, actual: string | null, file: string): Finding | null {
+  if (actual === expected) return null;
+  const detail = actual === null ? 'is missing' : 'has drifted from what this version of spectastic renders';
+  return {
+    file,
+    line: 1,
+    column: 1,
+    rule: 'ci-gate-drift',
+    severity: 'error',
+    message: `Managed CI workflow ${file} ${detail} — regenerate it.`,
+    fixHint: 'Run `spectastic init --tools --ci-only` to regenerate the CI gate.',
+  };
+}
+
+/**
+ * `ci-gate-not-included` (121-init-ci-gate, FR-008). A managed GitLab sidecar
+ * that isn't reachable from the project's root pipeline file — either the
+ * `include:` line was removed, or the root file itself is gone — never runs,
+ * which is a distinct failure from drift (the sidecar's own bytes can be
+ * perfectly current and still never execute). GitHub has no such indirection,
+ * so this only ever fires for the GitLab host.
+ */
+export function ciGateNotIncludedFinding(
+  state: 'included' | 'missing' | 'no-gitlab-ci',
+  file: string,
+): Finding | null {
+  if (state === 'included') return null;
+  const detail =
+    state === 'no-gitlab-ci' ? 'has no .gitlab-ci.yml to include it' : 'is not included from .gitlab-ci.yml';
+  return {
+    file,
+    line: 1,
+    column: 1,
+    rule: 'ci-gate-not-included',
+    severity: 'error',
+    message: `Managed CI workflow ${file} ${detail} — it will never run.`,
+    fixHint:
+      'Add the printed `include:` snippet to .gitlab-ci.yml, or re-run `spectastic init --tools --ci-only` to regenerate it.',
+  };
+}
+
+/**
  * `skill-metadata-shape` (REQ-TOOL-004). A command surfaced as a skill MUST
  * declare structured invocation metadata (`triggers`, `use-when`,
  * `sibling-boundary`) in its source frontmatter. This is a markdown/YAML
@@ -187,8 +238,10 @@ const INTERNAL_ID_PATTERNS: readonly RegExp[] = [
  *  than matched-around; a real slug (e.g. `021-verify-view`) still trips the rule. */
 const SANCTIONED_EXAMPLE_SLUGS = new Set(['001-auth-service']);
 
-/** The first internal id in `text` that isn't a sanctioned example slug, or null. */
-function firstLeak(text: string): string | null {
+/** The first internal id in `text` that isn't a sanctioned example slug, or null. Exported so a
+ *  second caller — the 121-init-ci-gate CI renderer test — can reuse the canonical id patterns
+ *  rather than re-deriving them (P-10). */
+export function firstInternalId(text: string): string | null {
   for (const re of INTERNAL_ID_PATTERNS) {
     const m = re.exec(text);
     if (m !== null && !SANCTIONED_EXAMPLE_SLUGS.has(m[0].toLowerCase())) return m[0];
@@ -299,7 +352,7 @@ export function copyLeakFindings(content: string, file: string): Finding[] {
   const masked = maskComments(content);
   const findings: Finding[] = [];
   for (const { text, line } of helpStringArgs(masked)) {
-    const leak = firstLeak(text);
+    const leak = firstInternalId(text);
     if (leak === null) continue;
     findings.push({
       file,

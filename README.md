@@ -120,7 +120,7 @@ A second binary, `spectastic-corpus`, ships the corpus subsystem standalone — 
 spectastic validate --format sarif "specs/**/*.html" > spectastic.sarif
 ```
 
-Human, JSON, and SARIF output. Two example workflows are under [`docs/ci-examples/`](./docs/ci-examples/) — GitHub Actions (uploads SARIF to Code Scanning) and GitLab CI (exposes SARIF as a SAST report). Both surface findings as inline PR/MR annotations.
+Human, JSON, and SARIF output. `spectastic init --tools` installs a full CI gate — validate, enforce, and the merge verdict — for GitHub Actions and/or GitLab CI, pinned to your installed CLI version and drift-checked so an upgrade never leaves CI on a stale copy. The two recipes under [`docs/ci-examples/`](./docs/ci-examples/) are the same renderer's unpinned output, for anyone who'd rather copy the file than run the installer: GitHub Actions (uploads SARIF to Code Scanning) and GitLab CI (exposes SARIF as a SAST report). Both surface findings as inline PR/MR annotations.
 
 ## The artifact
 

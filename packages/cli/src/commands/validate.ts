@@ -160,6 +160,49 @@ async function scanSkillsDrift(cwd: string): Promise<Finding[]> {
 }
 
 /**
+ * Scan managed CI gate files for drift (spec 121-init-ci-gate, FR-009). A
+ * managed file is re-rendered with the *running* CLI's version and compared
+ * byte-for-byte; any difference — including a version-pin upgrade the file
+ * hasn't caught up to — is an error, so the pre-commit gate blocks it exactly
+ * as `scanCommandsDrift` does for the command adapters. A no-op for a host
+ * with no managed file (never installed, or installed under a different host).
+ */
+export async function scanCiDrift(cwd: string): Promise<Finding[]> {
+  const [
+    { ciGateDriftFinding, ciGateNotIncludedFinding },
+    { CI_FILE_PATHS, renderCiWorkflow },
+    { ciManaged, gitlabIncludeState },
+    { cliVersion },
+    { readFile },
+  ] = await Promise.all([
+    import('@spectastic/core/commands/validate'),
+    import('@spectastic/core/ci/render'),
+    import('./init/ci.js'),
+    import('../version.js'),
+    import('node:fs/promises'),
+  ]);
+  const findings: Finding[] = [];
+  for (const host of ['github', 'gitlab'] as const) {
+    if (!ciManaged(cwd, host)) continue;
+    const rel = CI_FILE_PATHS[host];
+    const expected = renderCiWorkflow(host, { cliVersion: cliVersion(), mode: 'managed' }).content;
+    let actual: string | null = null;
+    try {
+      actual = await readFile(`${cwd}/${rel}`, 'utf8');
+    } catch {
+      actual = null;
+    }
+    const drift = ciGateDriftFinding(expected, actual, rel);
+    if (drift) findings.push(drift);
+    if (host === 'gitlab') {
+      const notIncluded = ciGateNotIncludedFinding(gitlabIncludeState(cwd), rel);
+      if (notIncluded) findings.push(notIncluded);
+    }
+  }
+  return findings;
+}
+
+/**
  * Scan spectastic's own CLI command sources for user-facing help copy that leaks
  * an internal artifact id (P-10, `no-internal-id-in-copy`). Error findings, folded
  * into every validate run like the other source scans — the P-8 guarantee for the
@@ -883,6 +926,11 @@ export function registerValidate(program: Command): void {
       // beside the commands gate so the same pre-commit hook covers it. No-op
       // unless the Codex target is marker-managed.
       const skillsDriftFindings = await scanSkillsDrift(process.cwd());
+      // The ci-gate-drift gate (spec 121): a managed CI workflow that no
+      // longer matches the running CLI's render — including its version pin
+      // — is an error, so the pre-commit gate catches a CLI upgrade CI hasn't
+      // caught up to. No-op with no managed CI file for either host.
+      const ciDriftFindings = await scanCiDrift(process.cwd());
       // The verb-model-policy drift-guard (spec 044, FR-009): a command whose
       // optional model: key is not a legal alias or disagrees with the policy map
       // is an error — the enforcement REQ-TOOL-004 delegates for the permitted key.
@@ -982,6 +1030,7 @@ export function registerValidate(program: Command): void {
         ...skillMetadataFindings,
         ...commandsDriftFindings,
         ...skillsDriftFindings,
+        ...ciDriftFindings,
         ...verbModelPolicyFindings,
         ...copyLeakFindings,
         ...enforceWaiverFindings,

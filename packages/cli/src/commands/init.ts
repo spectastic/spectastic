@@ -17,11 +17,13 @@ import { currentCliEntry } from './init/hook.js';
 import { readMarker, writeMarker } from './init/marker.js';
 import { buildPlan, findConflicts } from './init/plan.js';
 import { loadProfiles, type Profile, profileNames, resolveProfile, UnknownProfileError } from './init/profiles.js';
-import { confirmTools, NonTTYConflictError, resolveConflicts, selectProfile, UserCancelError } from './init/prompt.js';
+import { confirmTools, NonTTYConflictError, resolveConflicts, selectCiHost, selectProfile, UserCancelError } from './init/prompt.js';
 import { printSummary } from './init/summary.js';
+import { detectCiHosts, parseCiSelection, type CiSelection } from './init/ci.js';
 import { runTools, ToolsError } from './init/tools.js';
 import type { FileWriteDecision } from './init/types.js';
 import { executeWrites } from './init/write.js';
+import { cliVersion } from '../version.js';
 
 interface InitOptions {
   force?: boolean;
@@ -29,11 +31,27 @@ interface InitOptions {
   tools?: boolean;
   hooksOnly?: boolean;
   commandsOnly?: boolean;
+  ciOnly?: boolean;
+  ci?: string;
   uninstall?: boolean;
   profile?: string;
   replaceTools?: boolean;
   gitignore?: boolean;
   target?: string;
+}
+
+/**
+ * Resolve the `--ci` selection, prompting interactively when `auto` finds no
+ * host and stdout is a TTY (121-init-ci-gate FR-002). A decline or a headless
+ * run leaves the selection as `auto` — `planTools`'s own empty-hosts handling
+ * then fires (a note under `--tools`, an error under `--ci-only`).
+ */
+async function resolveCiSelectionInteractive(selection: CiSelection, cwd: string): Promise<CiSelection> {
+  if (selection !== 'auto') return selection;
+  if (detectCiHosts(cwd).length > 0) return selection;
+  if (!process.stdout.isTTY) return selection;
+  const chosen = await selectCiHost();
+  return chosen ?? selection;
 }
 
 /** Resolve and validate the `--target` value (spec 111-codex-skill-adapters). */
@@ -167,20 +185,31 @@ function collectVerb(value: string, previous: string[]): string[] {
 }
 
 /**
- * Run the `init --tools` guarantee-layer install/uninstall (spec 031). Any of
- * --tools / --hooks-only / --commands-only / --uninstall routes here instead of
- * the project bootstrap. --tools means both halves; the -only flags narrow it;
- * --uninstall reverses whichever halves are selected (both by default).
+ * Run the `init --tools` guarantee-layer install/uninstall (spec 031; the CI
+ * half added by 121-init-ci-gate). Any of --tools / --hooks-only /
+ * --commands-only / --ci-only / --uninstall routes here instead of the
+ * project bootstrap. --tools means all three halves; the -only flags narrow
+ * it; --uninstall reverses whichever halves are selected (all three by
+ * default).
  */
 async function runToolsMode(options: InitOptions, target: 'claude' | 'codex'): Promise<void> {
-  const narrowed = options.hooksOnly === true || options.commandsOnly === true;
+  const narrowed = options.hooksOnly === true || options.commandsOnly === true || options.ciOnly === true;
   const hooks = options.hooksOnly === true || !narrowed;
   const commands = options.commandsOnly === true || !narrowed;
+  const ci = options.ciOnly === true || !narrowed;
+  const cwd = process.cwd();
   try {
+    const ciHost =
+      ci && options.uninstall !== true
+        ? await resolveCiSelectionInteractive(parseCiSelection(options.ci), cwd)
+        : parseCiSelection(options.ci);
     const summary = await runTools({
-      cwd: process.cwd(),
+      cwd,
       hooks,
       commands,
+      ci,
+      ciHost,
+      cliVersion: cliVersion(),
       uninstall: options.uninstall === true,
       force: options.force ?? false,
       cliEntry: currentCliEntry(),
@@ -226,9 +255,17 @@ export function registerInit(program: Command): void {
       collectVerb,
       [],
     )
-    .option('--tools', 'install the guarantee layer: a pre-commit validate gate + drift-proof command adapters')
+    .option(
+      '--tools',
+      'install the guarantee layer: a pre-commit validate gate, a CI gate, and drift-proof command adapters',
+    )
     .option('--hooks-only', 'with --tools/--uninstall: only the pre-commit gate half')
     .option('--commands-only', 'with --tools/--uninstall: only the command-adapter half')
+    .option('--ci-only', 'with --tools/--uninstall: only the CI gate half')
+    .option(
+      '--ci <host>',
+      'with --tools: which CI host gets the gate: github | gitlab | both (default: detect from .github/ or .gitlab-ci.yml)',
+    )
     .option('--uninstall', 'remove what init --tools installed (reversible)')
     .option('--profile <name>', 'seed principles + AGENTS.md from a profile: lean | standard | verified | enterprise')
     .option(
@@ -239,7 +276,7 @@ export function registerInit(program: Command): void {
     .option('--target <name>', 'which agent host to install adapters for: claude (default) | codex')
     .action(async (options: InitOptions) => {
       const target = resolveTarget(options.target);
-      if (options.tools || options.hooksOnly || options.commandsOnly || options.uninstall) {
+      if (options.tools || options.hooksOnly || options.commandsOnly || options.ciOnly || options.uninstall) {
         await runToolsMode(options, target);
         return;
       }
@@ -362,10 +399,14 @@ async function offerTools(cwd: string, force: boolean): Promise<void> {
     return;
   }
   try {
+    const ciHost = await resolveCiSelectionInteractive('auto', cwd);
     const toolsSummary = await runTools({
       cwd,
       hooks: true,
       commands: true,
+      ci: true,
+      ciHost,
+      cliVersion: cliVersion(),
       uninstall: false,
       force,
       cliEntry: currentCliEntry(),

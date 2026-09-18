@@ -95,6 +95,29 @@ export async function confirmTools(): Promise<boolean> {
   return yes === true;
 }
 
+/**
+ * Ask which CI host to install the gate for, when `init --tools --ci` (or the
+ * default all-three offer) finds neither host and none was named explicitly
+ * (spec 121-init-ci-gate, FR-002). A cancel or the explicit "skip" choice
+ * returns `null` — the caller's own no-host-detected note then fires exactly
+ * as it would for a headless run.
+ */
+export async function selectCiHost(): Promise<'github' | 'gitlab' | 'both' | null> {
+  const p = await import('@clack/prompts');
+  const choice = await p.select({
+    message: 'No .github/ or .gitlab-ci.yml found — which CI host should the gate target?',
+    options: [
+      { value: 'github', label: 'GitHub Actions' },
+      { value: 'gitlab', label: 'GitLab CI' },
+      { value: 'both', label: 'Both' },
+      { value: 'skip', label: "Skip — I'll add one later" },
+    ],
+    initialValue: 'skip',
+  });
+  if (p.isCancel(choice) || choice === 'skip') return null;
+  return choice as 'github' | 'gitlab' | 'both';
+}
+
 export class NonTTYConflictError extends Error {
   constructor(public readonly conflictCount: number) {
     super(

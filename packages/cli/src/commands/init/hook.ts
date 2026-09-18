@@ -1,6 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
+import { CI_ARTIFACT_GLOBS } from '@spectastic/core/ci/render';
 
 /**
  * The git pre-commit gate for `init --tools` (spec 031, US1 / plan D-002, D-003).
@@ -15,8 +16,10 @@ import { dirname, join, resolve } from 'node:path';
 export const HOOK_MARKER = '# spectastic guarantee-layer gate — managed; do not edit by hand';
 
 /** The artifact globs the gate validates — the whole corpus (FR-002). `*.html`
- *  at the root catches principles/index/inbox without erroring when absent. */
-export const ARTIFACT_GLOBS = ['specs/**/*.html', '*.html', 'examples/*.html'];
+ *  at the root catches principles/index/inbox without erroring when absent.
+ *  Single-sourced from the core CI renderer (121-init-ci-gate, D-001) so the
+ *  pre-commit gate and the CI gate validate the same list. */
+export const ARTIFACT_GLOBS = CI_ARTIFACT_GLOBS;
 
 /**
  * Resolve the git hooks directory: honour `core.hooksPath` when set (D-003),

@@ -68,6 +68,7 @@ export default defineConfig({
     'src/run/budget.ts',
     'src/gitignore/apply.ts',
     'src/gitignore/entries.ts',
+    'src/ci/render.ts',
     'src/enforce/types.ts',
     'src/enforce/detect.ts',
     'src/enforce/policy.ts',

@@ -1,45 +1,51 @@
-# Example GitHub Actions workflow that runs `spectastic validate` and
-# uploads SARIF to GitHub Code Scanning. Findings appear as inline
-# annotations on the PR diff and as Security tab alerts.
-#
-# Copy into .github/workflows/spec-validate.yml in your project.
-# Adjust the patterns under "Validate spec-html" to match your layout.
-
-name: Spec validation
-
+# Example GitHub Actions workflow rendered by the same renderer `spectastic init --tools`
+# installs. Copy this file into .github/workflows/ in your project, or run that command
+# to keep it managed and drift-checked instead.
+name: spectastic
 on:
-  push:
-    branches: [main]
   pull_request:
-    paths:
-      - 'specs/**/*.html'
-      - 'principles.html'
-      - 'examples/**/*.html'
-
+  push:
+    branches: [main, master]
 permissions:
   contents: read
-  security-events: write  # required to upload SARIF
-
+  security-events: write
 jobs:
-  validate:
+  gate:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
         with:
-          node-version: '20'
-
-      - name: Validate spec-html
-        run: |
-          npx @spectastic/cli validate \
-            --format sarif \
-            "specs/**/*.html" "principles.html" "examples/**/*.html" \
-            > spectastic.sarif
-
-      - name: Upload SARIF to GitHub Code Scanning
-        if: always()  # upload even when validate exits non-zero
-        uses: github/codeql-action/upload-sarif@v3
+          fetch-depth: 0
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+      - name: Validate the artifact corpus
+        run: npx --yes @spectastic/cli@latest validate --format sarif 'specs/**/*.html' '*.html' 'examples/*.html' > spectastic.sarif
+      - name: Upload findings to code scanning
+        if: ${{ !cancelled() }}
+        uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: spectastic.sarif
           category: spectastic
+      - name: Enforce the profile floor
+        if: ${{ !cancelled() }}
+        run: npx --yes @spectastic/cli@latest enforce
+      - name: Merge verdict for the changed paths
+        if: ${{ !cancelled() && github.event_name == 'pull_request' }}
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          BASE="$(git merge-base "origin/$BASE_REF" HEAD)"
+          CHANGED="$(git diff --name-only "$BASE" HEAD)"
+          if [ -z "$CHANGED" ]; then echo "No changed paths to judge."; exit 0; fi
+          # one path per word; paths containing whitespace are not supported here
+          npx --yes @spectastic/cli@latest verdict --changed $CHANGED --out .spectastic/verdict.json
+          # a project with its own enforcer output can pass it through, e.g.:
+          # npx --yes @spectastic/cli@latest verdict --changed $CHANGED --enforcer-output enforcer.sarif --out .spectastic/verdict.json
+      - name: Upload the verdict
+        if: ${{ !cancelled() && github.event_name == 'pull_request' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: spectastic-verdict
+          path: .spectastic/verdict.json
+          if-no-files-found: ignore

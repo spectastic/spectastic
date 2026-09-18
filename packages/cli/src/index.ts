@@ -1,6 +1,3 @@
-import { readFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { Command } from 'commander';
 import { registerApply } from './commands/apply.js';
 import { registerChangeRisk } from './commands/change-risk.js';
@@ -30,6 +27,7 @@ import { registerTriage } from './commands/triage.js';
 import { registerValidate } from './commands/validate.js';
 import { registerVerify } from './commands/verify.js';
 import { registerVisual } from './commands/visual.js';
+import { cliVersion } from './version.js';
 
 /**
  * @spectastic/cli entry point.
@@ -38,22 +36,13 @@ import { registerVisual } from './commands/visual.js';
  * usage and exit 2. With args, parse via commander and dispatch.
  */
 
-// Read version from this package's package.json at runtime so `spectastic -V`
-// always reports the actually-installed version. The path resolves from the
-// compiled `dist/index.js` (production install) and from `src/index.ts` (dev),
-// both of which sit one level under the package root.
-const here = dirname(fileURLToPath(import.meta.url));
-const pkg = JSON.parse(readFileSync(join(here, '..', 'package.json'), 'utf8')) as {
-  version: string;
-};
-
 const program = new Command();
 program
   .name('spectastic')
   .description(
     'Single-file HTML spec tooling: bootstrap a project with `init`; validate spec-html artifacts with `validate`; triage defects into structured cards with `triage`.',
   )
-  .version(pkg.version)
+  .version(cliVersion())
   // Per-run model override (spec 044-verb-model-policy, Tier D / FR-006). A legal
   // tier alias the AI-coupled verbs resolve to; the most-specific per-run override,
   // above SPECTASTIC_MODEL, project config, and the per-verb map.
