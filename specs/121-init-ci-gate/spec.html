@@ -1,0 +1,321 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'">
+<title>Init CI gate · Specification</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Specification · 121-init-ci-gate</p>
+  <h1>Init CI gate</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    <code>spectastic init --tools</code> installs a marker-managed, drift-guarded CI gate — GitHub Actions and GitLab CI — that runs validate, enforce and the merge verdict on every pull request.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>      <span><spec-status value="draft">Draft</spec-status></span>
+    <b>Spec ID</b>     <span>121-init-ci-gate</span>
+    <b>Owner</b>       <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Reviewers</b>   <span>Guarantee layer (031 · 042 · 115)</span>
+    <b>Created</b>     <span><time datetime="2026-09-16">16 Sep 2026</time></span>
+    <b>Principles</b><span><a href="../../principles.html">v1.9.0</a></span>
+    <b>Smallest demoable</b><span><code>init --tools --ci github</code> writes one managed workflow; a pull request carrying a decision violation fails on the verdict step with no hand-written CI.</span>
+    <b>Read time</b>   <span data-reading-time></span>
+  </spec-meta>
+
+  <!-- Live size gauge — green at <80%, amber 80-100%, red over. Words row counts authored prose (excludes the conformance index) per REQ-FORMAT-004. -->
+  <spec-budget words="2200" reqs="20" minutes="15"></spec-budget>
+
+  <spec-tldr>
+    <p>The guarantee layer exists as binaries — <code>validate</code>, <code>enforce</code>, <code>verdict</code> — but nothing installs
+    it into a downstream project's CI; the hook runs locally and the docs recipes are hand-written, validate-only and advisory. This spec
+    makes the CI gate a third half of <code>init --tools</code>: a file spectastic owns, pinned to the installing CLI's version, that
+    <code>validate</code> reports as drifted the moment it stops matching. A downstream maintainer gets a blocking merge verdict on their
+    first pull request without writing a workflow.</p>
+  </spec-tldr>
+
+  <dl class="invest">
+    <dt><span class="letter">I</span> Independent</dt> <dd>Principles plus <a href="../031-init-tools/spec.html">031</a> (the <code>--tools</code> halves it extends) and <a href="../115-guardrail-verdict/spec.html">115</a> (the verdict contract it consumes).</dd>
+    <dt><span class="letter">N</span> Negotiable</dt>  <dd>What the gate must do and never touch; renderer shape, action versions and include mechanics belong to the design.</dd>
+    <dt><span class="letter">V</span> Valuable</dt>    <dd>Unlocks <a href="#SC-001">SC-001</a> — a downstream pull request is blocked by the merge verdict with no hand-written CI.</dd>
+    <dt><span class="letter">E</span> Estimable</dt>   <dd>Every decision anchored; the installer clones the existing hook and adapter halves.</dd>
+    <dt><span class="letter">S</span> Small</dt>       <dd>One new <code>--tools</code> half on two hosts; budget set at 2,200 words after trimming, reason in the change log.</dd>
+    <dt><span class="letter">T</span> Testable</dt>    <dd>Every requirement observable by running the installer or the rendered steps; <a href="#SC-001">SC-001</a>–<a href="#SC-006">SC-006</a> quantified.</dd>
+  </dl>
+
+  <spec-audience-map>
+    <dl>
+      <dt>Exec / PM</dt>   <dd>§<a href="#context">Context</a>, §<a href="#scenarios">User scenarios</a>, §<a href="#success">Success criteria</a>.</dd>
+      <dt>Reviewer</dt>    <dd>§<a href="#requirements">Requirements</a>, §<a href="#assumptions">Assumptions</a>, §<a href="#questions">Open questions</a>.</dd>
+      <dt>Implementer</dt> <dd>§<a href="#requirements">Requirements</a>, §<a href="#data">Data model</a>, §<a href="#conformance">Conformance index</a>.</dd>
+    </dl>
+  </spec-audience-map>
+</header>
+
+
+<section id="context">
+<h2>1 · Context</h2>
+<p>An audit of what <code>init</code> writes found nothing CI-shaped. <code>--tools</code> installs a pre-commit hook running
+<code>validate</code> and drift-proof command adapters; the merge verdict (115) was designed for CI — exit 1 on a violation, a JSON
+artifact "so CI can archive it" — yet its only caller is the CLI command, and 115 deferred the wiring to "the proving example". Three
+specs record the gap: 031's CI-recipe half of <code>TBD-validate-strict</code>, 115's <code>TBD-guardrail-verdict-ci</code>, and 042's
+unslugged CI-file item.</p>
+<p>So a downstream project relies on a human — or an agent reading the advisory line in <code>AGENTS.md</code> — hand-writing the
+workflow: the shape the <code>.claude/commands</code> footgun had before 031. The guarantee exists; its installation is manual; and
+P-8 says a guarantee that lives in prose is a nudge. This spec is for the downstream maintainer who runs <code>init --tools</code> and
+the reviewer on their pull request.</p>
+
+<spec-sidenote>The GitLab recipe ships <code>allow_failure: true</code> and the GitHub one filters to <code>specs/**</code> — a
+project that copied them still sees no verdict on a code change.</spec-sidenote>
+</section>
+
+
+<section id="scenarios">
+<h2>2 · User scenarios &amp; testing</h2>
+
+<p>Each story is independently testable; US1 alone is a viable MVP.</p>
+
+<h3 id="US1">US1 · Install the gate <spec-pill>P1</spec-pill></h3>
+<p>As a <strong>downstream maintainer</strong>, I want to <strong>run <code>init --tools</code> and get a CI gate</strong> so that <strong>validate, enforce and the merge verdict run on every pull request without me writing a workflow</strong>.</p>
+<p><em>Acceptance:</em> on a project with <code>.github/</code>, <code>init --tools</code> writes one managed workflow; its steps against a pull request carrying a decision violation fail on the verdict step with a SARIF file produced; a clean request passes; a re-run reports the file unchanged.</p>
+
+<h3 id="US3">US3 · Drift on upgrade <spec-pill>P1</spec-pill></h3>
+<p>As a <strong>maintainer upgrading spectastic</strong>, I want <strong><code>validate</code> to report the gate file as drifted</strong> so that <strong>CI never silently runs a different version than my hook</strong>.</p>
+<p><em>Acceptance:</em> a managed file hand-edited or rendered by an older CLI yields an error finding naming the file and the regenerate command; <code>init --tools --ci-only</code> clears it; no managed file, no finding.</p>
+
+<h3 id="US2">US2 · Results on the pull request <spec-pill>P2</spec-pill></h3>
+<p>As a <strong>reviewer on a downstream pull request</strong>, I want <strong>every gate result surfaced even when an earlier step failed</strong> so that <strong>a misplaced write is caught at merge time, not after</strong>.</p>
+<p><em>Acceptance:</em> with validate failing, enforce and verdict still run; findings reach code scanning as SARIF; the verdict artifact is retained.</p>
+
+<h3 id="US4">US4 · GitLab parity <spec-pill>P2</spec-pill></h3>
+<p>As a <strong>GitLab user</strong>, I want <strong>the same gate without spectastic editing my <code>.gitlab-ci.yml</code></strong> so that <strong>my pipeline stays mine</strong>.</p>
+<p><em>Acceptance:</em> the gate lands under <code>.gitlab/</code>; an existing root file is byte-identical after install; the include snippet is printed with its presence reported; with no root file, a minimal bootstrap one is created.</p>
+
+<h3>Edge cases</h3>
+<ul>
+  <li>Pre-release or unpublished CLI version: pinned anyway — CI fails honestly until published, and the summary says so.</li>
+  <li>A fresh verified project fails its first <code>enforce</code> step — the floor working as designed; the summary says so.</li>
+  <li>Both hosts detected: both installed; <code>--uninstall</code> removes both managed files and nothing else.</li>
+  <li>Changed paths containing whitespace are unsupported by the verdict step — a recorded ceiling.</li>
+</ul>
+</section>
+
+
+<section id="requirements">
+<h2>3 · Requirements</h2>
+
+<p>Conformance keywords (<spec-rule>MUST</spec-rule>, <spec-rule level="should">SHOULD</spec-rule>,
+<spec-rule level="may">MAY</spec-rule>) follow RFC 2119.</p>
+
+<h3>Functional</h3>
+
+<spec-requirement id="FR-001" priority="must">
+<p><code>init --tools</code> <spec-rule>MUST</spec-rule> install a CI gate as a third half beside the pre-commit gate and the command adapters — <code>--ci-only</code> selects it alone, <code>--hooks-only</code> / <code>--commands-only</code> exclude it — under 031's contract: idempotent, a per-file outcome of created, updated or unchanged, and <code>--uninstall</code> removing managed files only.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-002" priority="must">
+<p><code>--ci github | gitlab | both</code> <spec-rule>MUST</spec-rule> choose the host; absent, the host <spec-rule>MUST</spec-rule> be detected from <code>.github/</code> or <code>.gitlab-ci.yml</code> / <code>.gitlab/</code>; with nothing detected a terminal <spec-rule>MUST</spec-rule> prompt, a headless run <spec-rule>MUST</spec-rule> skip with a note, and a headless <code>--ci-only</code> that would install nothing <spec-rule>MUST</spec-rule> exit with an error.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-003" priority="must">
+<p>The rendered gate <spec-rule>MUST</spec-rule> run <code>validate</code> (findings as SARIF to code scanning or the SAST report), <code>enforce</code>, and <code>verdict</code>; the job <spec-rule>MUST</spec-rule> fail when any of the three exits non-zero; each step <spec-rule>MUST</spec-rule> run regardless of an earlier step's failure; and the gate <spec-rule>MUST NOT</spec-rule> soften any verb's exit semantics.</p>
+<details><summary>Rationale</summary><p>The verbs already say what "fail" means; a CI-side <code>allow_failure</code> would be a second opinion their specs deliberately do not offer.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-004" priority="must">
+<p>The gate <spec-rule>MUST</spec-rule> run on pull/merge request events and pushes to the default branch; the verdict step <spec-rule>MUST</spec-rule> run on pull/merge requests only, over the merge-base-to-head change set with full history, <spec-rule>MUST</spec-rule> pass on an empty change set, and its JSON artifact <spec-rule>MUST</spec-rule> be retained.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-005" priority="must">
+<p>Every CLI invocation in a managed gate file <spec-rule>MUST</spec-rule> be pinned to the exact version of the CLI that installed it; the install summary <spec-rule>MUST</spec-rule> warn when that version carries a pre-release tag; the gate <spec-rule>MUST NOT</spec-rule> fall back to a floating version.</p>
+<details><summary>Rationale</summary><p>Lockstep: CI runs exactly what the hook runs. Only a dev-from-source maintainer meets an unpublished pin; a red run until publication is the honest outcome.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-006" priority="must">
+<p>A managed gate file <spec-rule>MUST</spec-rule> carry a marker on its first line; a file at a managed path without the marker <spec-rule>MUST NOT</spec-rule> be overwritten or removed unless <code>--force</code>, and the refusal <spec-rule>MUST</spec-rule> name the path.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-007" priority="must">
+<p>On GitLab the gate <spec-rule>MUST</spec-rule> be a separate owned file under <code>.gitlab/</code>; an existing <code>.gitlab-ci.yml</code> <spec-rule>MUST NOT</spec-rule> be edited; the <code>include</code> snippet <spec-rule>MUST</spec-rule> be printed with its presence reported; absent a root file, a minimal bootstrap one holding only the include <spec-rule>MUST</spec-rule> be created.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-008" priority="must">
+<p>The bootstrap root file <spec-rule>MUST NOT</spec-rule> be drift-checked; <code>--uninstall</code> <spec-rule>MUST</spec-rule> remove it only while it is byte-identical to what was written; and <code>validate</code> <spec-rule>MUST</spec-rule> report when a managed GitLab gate is no longer included from the root file.</p>
+<details><summary>Rationale</summary><p>The root file will grow the user's own jobs; owning it then would make spectastic the pipeline. The one thing worth checking is that the gate is still reachable.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-009" priority="must">
+<p><code>validate</code> <spec-rule>MUST</spec-rule> report an error-severity finding when a managed gate file diverges from what the running CLI renders — including its version pin — naming the file and the regenerate command; it <spec-rule>MUST</spec-rule> report nothing when no managed gate file exists.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-011" priority="should">
+<p>The interactive offer at plain <code>init</code> <spec-rule level="should">SHOULD</spec-rule> install all three halves, with the CI host detected or prompted as in FR-002.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-012" priority="should">
+<p>The recipes under <code>docs/ci-examples/</code> <spec-rule level="should">SHOULD</spec-rule> be the same renderer's output in an example mode — unpinned, unmarked, with a copy-or-run header — and a test <spec-rule level="should">SHOULD</spec-rule> hold them byte-equal to it.</p>
+</spec-requirement>
+
+<h3>Non-functional</h3>
+
+<spec-requirement id="NFR-001" priority="must">
+<p>Rendering <spec-rule>MUST</spec-rule> be deterministic and well-formed: repeated renders of one host and version differ by at most 0 bytes, 100% of rendered files parse as YAML, and each of the 3 CLI steps carries the version pin.</p>
+</spec-requirement>
+
+<spec-requirement id="NFR-002" priority="must">
+<p>Rendered gate content, install messages and option help <spec-rule>MUST</spec-rule> carry at most 0 internal artifact ids.</p>
+</spec-requirement>
+
+<spec-requirement id="NFR-003" priority="must">
+<p><code>init --help</code> cold start <spec-rule>MUST</spec-rule> stay within the existing 150 ms bench budget, the renderer adding 0 runtime dependencies.</p>
+</spec-requirement>
+
+<h3>Out of scope (deferred)</h3>
+<spec-out-of-scope>
+  <ul>
+    <li defer-to="TBD-validate-strict">A <code>validate --strict</code> flag — this spec lands the CI-recipe half of that slug; the flag stays deferred.</li>
+    <li defer-to="TBD-ci-additional-hosts">Bitbucket, Azure Pipelines, CircleCI and other hosts.</li>
+    <li defer-to="TBD-spectastic-github-action">A packaged GitHub Action or GitLab CI component in place of an <code>npx</code> step.</li>
+    <li defer-to="TBD-ci-decision-coverage">A decision-coverage step — the coverage report has no failing exit contract yet.</li>
+    <li defer-to="TBD-ci-enforcer-output-config">Passing the project's own enforcer output to the verdict step — a commented example line at most; no configuration key.</li>
+    <li defer-to="TBD-dogfood-ci-gate">Running this gate on spectastic's own repository.</li>
+    <li defer-to="never">Editing an existing <code>.gitlab-ci.yml</code> — a user-owned file stays user-owned.</li>
+  </ul>
+</spec-out-of-scope>
+</section>
+
+
+<section id="data">
+<h2>4 · Data model</h2>
+
+<p>One new kind of thing — a managed gate file — and one courtesy artefact beside it.</p>
+
+<h3>Entities</h3>
+<dl>
+  <dt>Managed gate file</dt><dd>A CI file spectastic owns at a fixed per-host path. Its content is a pure function of host and installing CLI version; line 1 is the marker; at most 1 per host per project.</dd>
+  <dt>Bootstrap root file</dt><dd>A GitLab root pipeline file created only because none existed. Marked but not managed thereafter: it may grow, is never drift-checked, and is removable only while identical to what was written.</dd>
+  <dt>Host selection</dt><dd>github, gitlab, both, or detect. Detection reads presence only, never the user's files.</dd>
+  <dt>Install outcome</dt><dd>Per managed file: created, updated, unchanged, or refused — a refusal names the path.</dd>
+</dl>
+
+<spec-note>
+<p>Transitions: absent → created → unchanged | updated → removed. An unmanaged file at a managed path has no transition unless forced. Drift is a relation to the running CLI, not a stored flag.</p>
+</spec-note>
+</section>
+
+
+<section id="success">
+<h2>5 · Success criteria</h2>
+
+<spec-criterion id="SC-001" priority="must" actor="a downstream maintainer"
+                validates="FR-001,FR-003,FR-004,FR-005" method="mechanical">
+<p>A downstream maintainer who runs <code>init --tools</code> on a project with a <code>.github/</code> directory has a pull request carrying a decision violation blocked, with no hand-written workflow — 3 of 3 gate steps execute and the violating request fails (target: and a clean request passes), from 0 steps today (no gate is installed).</p>
+<details><summary>Observed at</summary>
+<p>The rendered steps run against a scratch project — committed base, a branch adding a scoped decision plus a violating file, the built CLI standing in for the pinned package: verdict exits 1 listing 1 violation; the SARIF file exists; a clean branch exits 0.</p></details>
+<details><summary>Falsified by</summary>
+<p>Any step absent from the run, or a violating request that passes.</p></details>
+</spec-criterion>
+
+<spec-criterion id="SC-002" priority="must" actor="a maintainer upgrading spectastic"
+                validates="FR-006,FR-009" method="mechanical">
+<p>A maintainer who upgrades the CLI is stopped at their next commit by a finding naming the gate file — 100% of managed gate files that no longer match the running CLI are reported (target 100%), and 0 unmanaged files are ever reported, from no established baseline.</p>
+<details><summary>Observed at</summary>
+<p>The CLI integration test: a hand-edited managed file makes <code>validate</code> exit 1 with the drift rule; regeneration clears it; no managed file, no finding.</p></details>
+<details><summary>Falsified by</summary>
+<p>A managed file that differs from the render and passes <code>validate</code>, or a finding on a file without the marker.</p></details>
+</spec-criterion>
+
+<spec-criterion id="SC-003" priority="should" actor="a GitLab user"
+                validates="FR-007,FR-008" method="mechanical">
+<p>A GitLab user's existing root pipeline file is untouched by the install — 0 bytes changed (target 0, with the include snippet printed alongside its reported presence), from no established baseline.</p>
+<details><summary>Observed at</summary>
+<p>The installer test: a pre-existing <code>.gitlab-ci.yml</code> is byte-identical after install; the summary carries the snippet and the state.</p></details>
+<details><summary>Falsified by</summary>
+<p>Any byte changed in a pre-existing root file.</p></details>
+</spec-criterion>
+
+<spec-criterion id="SC-004" priority="should" actor="a reader of the CI recipes"
+                validates="FR-012" method="mechanical">
+<p>A reader who copies a recipe from <code>docs/ci-examples/</code> gets what <code>init --tools</code> writes, less the pin plus the marker — 2 of 2 recipes byte-equal to the renderer (target 2 of 2), from 0 of 2 today (hand-written, validate-only).</p>
+<details><summary>Observed at</summary>
+<p>The renderer's docs equality test.</p></details>
+<details><summary>Falsified by</summary>
+<p>Either recipe differing from the example-mode render.</p></details>
+</spec-criterion>
+<spec-criterion id="SC-005" priority="must" actor="a maintainer on a project with no detectable CI host"
+                validates="FR-002,FR-011" method="mechanical">
+<p>A maintainer on a project with neither host present is never left with a silent no-op — 3 of 3 fallback paths behave as stated: a terminal asks which host, a headless run explains the skip, a headless request for the gate alone is refused (target 3 of 3), from no established baseline.</p>
+<details><summary>Observed at</summary>
+<p>The CLI integration test in an empty repository: headless <code>--tools</code> exits 0 with the note; headless <code>--ci-only</code> exits 2; the prompt is exercised under a pseudo-terminal.</p></details>
+<details><summary>Falsified by</summary>
+<p>A headless <code>--ci-only</code> that exits 0 having written nothing, or a plain <code>--tools</code> that omits the note.</p></details>
+</spec-criterion>
+
+<spec-criterion id="SC-006" priority="must" actor="a maintainer of spectastic"
+                validates="NFR-001,NFR-002,NFR-003" method="mechanical">
+<p>A maintainer of spectastic can trust the renderer without reading its output — 4 of 4 properties hold in the suite: identical bytes across two renders, YAML parse with the pin on every step, 0 internal ids on any user surface, <code>init --help</code> inside its cold-start budget (target 4 of 4), from no established baseline.</p>
+<details><summary>Observed at</summary>
+<p>The renderer unit tests plus the existing cold-start bench.</p></details>
+<details><summary>Falsified by</summary>
+<p>Any of the four assertions failing, or the bench exceeding 150 ms.</p></details>
+</spec-criterion>
+</section>
+
+
+<section id="assumptions">
+<h2>6 · Assumptions</h2>
+
+<spec-assumption>
+<p><code>--tools</code> output is not scaffold, so <a href="../003-init-node-port/spec.html">003</a>'s list of what <code>init</code> writes and <a href="../004-npm-publish-workflow/spec.html">004</a>'s scaffold count are untouched — the planner counts bundle entries only.</p>
+</spec-assumption>
+
+<spec-assumption>
+<p>A downstream CI runner can reach the npm registry; the gate does not vendor the CLI.</p>
+</spec-assumption>
+
+<spec-assumption>
+<p>The three upstream deferrals are redirected by change proposals applied after this spec lands, so no accepted spec claims a landing before it is real.</p>
+</spec-assumption>
+
+</section>
+
+
+<section id="questions">
+<h2>7 · Open questions</h2>
+<spec-questions>
+<p>None outstanding — every decision was anchored in the interview, including the fourth-step question (declined).</p>
+</spec-questions>
+</section>
+
+
+<section id="conformance">
+<h2>8 · Conformance index</h2>
+<p>Auto-built from every <code>&lt;spec-requirement&gt;</code> in this document.</p>
+<spec-conformance></spec-conformance>
+</section>
+
+
+<section id="changelog">
+<h2>9 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-09-16">16 Sep 2026</time><span>Initial draft. Drains the CI-recipe half of <code>TBD-validate-strict</code> (031), <code>TBD-guardrail-verdict-ci</code> (115) and 042's CI-file deferral. Word budget set at 2,200 after the first draft measured 2,395 in a browser and was trimmed by cutting prose, folding two requirements that restated 031's inherited contract, and dropping a may-tier one into out-of-scope — four stories on two hosts do not fit 1,500 without losing the edge cases the interview surfaced.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  121-init-ci-gate · Init CI gate · authored 2026-09-16
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>
