@@ -16,6 +16,7 @@ import { buildGoverningDecisionsBlock } from '../guardrail/injection.js';
 import { extractDeclaredSurface } from '../guardrail/plan-constraint.js';
 import { loadDecisions } from './adrs.js';
 import type { KernelContext, DesignInput, DesignResult } from '../types.js';
+import { localIsoDate } from '../dates.js';
 
 const BLOCKER_PATTERNS: ReadonlyArray<{ name: string; re: RegExp }> = [
   {
@@ -241,7 +242,7 @@ function tryParse(raw: string): ParsedDesign | null {
 }
 
 function renderDesignHtml(specId: string, p: ParsedDesign, isReentry: boolean): string {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = localIsoDate();
   const decisions = (p.decisions ?? [])
     .map(
       (d) =>

@@ -19,6 +19,7 @@ import { buildGoverningDecisionsBlock } from '../guardrail/injection.js';
 import { extractDeclaredSurface } from '../guardrail/plan-constraint.js';
 import { loadDecisions } from './adrs.js';
 import type { GraduationClass, KernelContext, TaskItem, TaskPhase, TasksInput, TasksResult } from '../types.js';
+import { localIsoDate } from '../dates.js';
 
 export async function tasksCommand(input: TasksInput, ctx: KernelContext): Promise<TasksResult> {
   if (!ctx.ai) {
@@ -219,7 +220,7 @@ function collectReferenced(phases: TaskPhase[]): Set<string> {
 }
 
 function renderTasksHtml(specId: string, phases: TaskPhase[], unreferenced: string[]): string {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = localIsoDate();
   const phaseSections = phases
     .map((phase, idx) => {
       const taskRows = phase.tasks
@@ -455,7 +456,7 @@ function renderRestoreHtml(
   phases: TaskPhase[],
   unreferenced: string[],
 ): string {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = localIsoDate();
   const isTracer = classification === 'tracer-bullet';
   const phaseSections = phases
     .map((phase, idx) => {

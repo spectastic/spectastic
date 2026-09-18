@@ -19,6 +19,7 @@
  */
 
 import type { KernelContext, PrinciplesInput, PrinciplesResult } from '../types.js';
+import { localIsoDate } from '../dates.js';
 
 const DEFAULT_COUNT = 5;
 
@@ -100,7 +101,7 @@ function parsePrinciples(raw: string, expected: number): PrincipleSpec[] {
 }
 
 function renderPrinciplesHtml(projectName: string, tagline: string, principles: PrincipleSpec[]): string {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = localIsoDate();
   const principlesSection = principles
     .map((p) => `\n<h3 id="${p.id}">${p.id} · ${escapeHtml(p.shortLabel)}</h3>\n<p>${escapeHtml(p.body)}</p>`)
     .join('\n');

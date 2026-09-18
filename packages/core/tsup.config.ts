@@ -69,6 +69,7 @@ export default defineConfig({
     'src/gitignore/apply.ts',
     'src/gitignore/entries.ts',
     'src/ci/render.ts',
+    'src/dates.ts',
     'src/enforce/types.ts',
     'src/enforce/detect.ts',
     'src/enforce/policy.ts',

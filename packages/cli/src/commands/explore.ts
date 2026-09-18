@@ -1,6 +1,7 @@
 import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import type { Command } from 'commander';
+import { localIsoDate } from '@spectastic/core/dates';
 
 /**
  * Register the `explore` subcommand (spec 022-explore, front half). Resolves the
@@ -50,7 +51,7 @@ export function registerExplore(program: Command): void {
         process.exit(2);
       }
 
-      const created = new Date().toISOString().slice(0, 10);
+      const created = localIsoDate();
       const result = exploreScaffold({ id, intent, created, template });
 
       const dir = join(cwd, 'explorations', id);
@@ -139,7 +140,7 @@ async function runGraduate(id: string, classify: string | undefined): Promise<vo
     ]);
     const ai = await createAIProvider({ verb: 'explore' });
     const extract = await graduateExtract({ specId: id, classification: classify, ledger }, { cwd, ai });
-    const date = new Date().toISOString().slice(0, 10);
+    const date = localIsoDate();
     const result = await graduateTransaction(
       { specId: id, classification: classify, extract, date },
       { cwd, fs: nodeFs },

@@ -31,13 +31,14 @@
 import { deepenArchivePaths, shallowProposalPaths } from '../archive-paths.js';
 import { executePromotionArchives, executePromotionWrites, planPromotion } from '../contracts/promote.js';
 import type { ApplyInput, ApplyResult, DeltaApplication, KernelContext, WithdrawInput } from '../types.js';
+import { localIsoDate } from '../dates.js';
 
 const IDENTIFIED_RISK_RE = /<spec-risk[^>]*\bstatus=["']identified["']/i;
 const DELTA_RE = /<spec-delta\s+op=["']([^"']+)["'][^>]*\btarget=["']([^"']+)["'][^>]*>([\s\S]*?)<\/spec-delta>/g;
 
 export async function applyCommand(input: ApplyInput | WithdrawInput, ctx: KernelContext): Promise<ApplyResult> {
   const fs = ctx.fs ?? (await import('../providers/node-fs.js')).nodeFs;
-  const today = new Date().toISOString().slice(0, 10);
+  const today = localIsoDate();
   const todayHuman = formatHumanDate(today);
 
   // Guarantee-layer slice 1 (spec 030 / P-8): a principles amendment is applied by

@@ -1,4 +1,5 @@
 import type { Command } from 'commander';
+import { localIsoDate } from '@spectastic/core/dates';
 
 export function registerPropose(program: Command): void {
   program
@@ -80,7 +81,7 @@ export function registerPropose(program: Command): void {
           { cwd: process.cwd(), fs: nodeFs, ai },
         );
 
-        const today = new Date().toISOString().slice(0, 10);
+        const today = localIsoDate();
         const slug = `${today}-${description
           .toLowerCase()
           .replace(/[^a-z0-9-]+/g, '-')

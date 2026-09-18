@@ -17,6 +17,7 @@ import { fenceArtifactText } from '@spectastic/schema/fence';
 import { decide, resolveDecider, resolveEffort } from '../decider/index.js';
 import type { Delta, KernelContext, ProposeInput, ProposeResult, RiskFinding } from '../types.js';
 import type { Verdict } from '../decider/index.js';
+import { localIsoDate } from '../dates.js';
 
 export async function proposeCommand(input: ProposeInput, ctx: KernelContext): Promise<ProposeResult> {
   if (!ctx.ai) throw new Error('proposeCommand requires ctx.ai');
@@ -202,7 +203,7 @@ function renderProposalHtml(
   risks: RiskFinding[],
   verdict?: Verdict,
 ): string {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = localIsoDate();
   const deltaBlocks = (draft.deltas ?? [])
     .map(
       (d) =>

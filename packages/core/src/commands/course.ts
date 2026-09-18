@@ -14,6 +14,7 @@
  */
 
 import { join } from 'node:path';
+import { localIsoDate } from '../dates.js';
 import type {
   CourseAnalogy,
   CourseContrast,
@@ -264,8 +265,8 @@ export function deriveSlug(draft: CourseDraft, ctx: KernelContext): string {
 
 function courseDate(_ctx: KernelContext): string {
   // Allow a deterministic override for tests via ctx (cwd-relative env is the
-  // CLI's concern); default to today.
-  return new Date().toISOString().slice(0, 10);
+  // CLI's concern); default to today's local calendar date (inbox I-080).
+  return localIsoDate();
 }
 
 // --- T-110 · reference existence (FR-003) -------------------------------

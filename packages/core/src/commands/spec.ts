@@ -19,6 +19,7 @@ import { fenceArtifactText } from '@spectastic/schema/fence';
 import { shouldAutoOffer } from '../slice/gate.js';
 import type { KernelContext, SpecInput, SpecResult } from '../types.js';
 import { appendSplitToParent, sliceCommand } from './slice.js';
+import { localIsoDate } from '../dates.js';
 
 export async function specCommand(input: SpecInput, ctx: KernelContext): Promise<SpecResult> {
   if (!ctx.ai) {
@@ -133,7 +134,7 @@ function deriveSpecId(description: string): string {
 }
 
 function renderSpecHtml(specId: string, s: ParsedSpec, description: string, isReentry: boolean): string {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = localIsoDate();
   const stories = (s.stories ?? [])
     .map(
       (st) =>

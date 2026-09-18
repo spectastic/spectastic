@@ -1,4 +1,5 @@
 import type { Command } from 'commander';
+import { localIsoDate } from '@spectastic/core/dates';
 
 export function registerImplement(program: Command): void {
   program
@@ -258,7 +259,7 @@ async function flipBundle(
   fs: typeof import('node:fs/promises'),
   path: typeof import('node:path'),
 ): Promise<void> {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = localIsoDate();
   const todayHuman = formatHumanDate(new Date());
   const entry = `<li><time datetime="${today}">${todayHuman}</time><span>Status flipped Draft → Accepted on ${todayHuman} — zero remaining unchecked tasks; tests verified passing per author confirmation. Sibling bundle (REQ-LIFECYCLE-005).</span></li>`;
 

@@ -4,6 +4,7 @@ import type { BriefScreen } from '@spectastic/core/visual/brief-read';
 import type { ImportLedger } from '@spectastic/core/visual/import';
 import type { RefusedCapture, WrittenCapture } from '@spectastic/core/visual/render-capture';
 import type { RunReport } from '@spectastic/core/visual/one-step';
+import { localIsoDate } from '@spectastic/core/dates';
 
 /** Input shared by the `visual:import` subcommand and any other caller of the
  *  kernel below — the one-step orchestrator (110-visual-one-step) being the
@@ -430,7 +431,7 @@ export function registerVisual(program: Command): void {
       // The only clock in this pipeline (D-003) — read-render-write below is
       // pure once the date is fixed, which is what makes two runs on the
       // same day byte-identical apart from this one value.
-      const date = new Date().toISOString().slice(0, 10);
+      const date = localIsoDate();
 
       try {
         const designHtml = await nodeFs.readFile(`${cwd}/specs/${specId}/design.html`);
