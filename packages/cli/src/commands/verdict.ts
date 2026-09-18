@@ -148,6 +148,14 @@ export function registerVerdict(program: Command): void {
           process.stdout.write('\nTeaching follow-up (advisory — reason for yourself, this is not a fix):\n');
           for (const q of shifuQuestions(result.verdict)) process.stdout.write(`  · ${q}\n`);
         }
+        // A join that dropped every enforcer result used to read as a clean
+        // verdict (I-091). Advisory — the exit code is unchanged — but never silent.
+        const unmatched = result.verdict.enforcerResultsUnmatched;
+        if (unmatched !== undefined && unmatched > 0) {
+          process.stderr.write(
+            `${unmatched} enforcer result(s) matched no decision's rule — an enforcer's own concern, not a governance violation; check the rule ids if you expected a join.\n`,
+          );
+        }
         process.stderr.write(`Wrote ${opts.out}\n`);
         process.exit(result.hasViolation ? 1 : 0);
       },

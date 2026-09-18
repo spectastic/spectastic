@@ -85,6 +85,7 @@ decision's scope) — additive; <code>decision-well-formed</code> still only req
     <tr><td>The drain hook already computes the diff we need</td><td><code>packages/core/src/coding/worktree.ts:79</code>; <code>coding/types.ts:33</code></td><td>verified</td><td><code>git diff --cached HEAD</code>; <code>TaskOutcome.filesChanged: string[]</code> — the CLI's <code>--changed</code> fallback mirrors it.</td></tr>
     <tr><td>Retrieval + glob are reusable as-is</td><td><code>packages/core/src/guardrail/{retrieve,glob}.ts</code> (113)</td><td>verified</td><td>The verdict maps changed paths → governing decisions with the same functions; no new matcher.</td></tr>
     <tr><td>A minimal SARIF reader extracts rule-id + location</td><td>Spike (<code>runs[].results[].ruleId</code> + <code>physicalLocation.artifactLocation.uri</code> + <code>region.startLine</code>)</td><td>verified</td><td>Parsed a core-shape SARIF to <code>{ruleId, uri, line}</code>; a location-less result yields undefined uri/line, handled. Ceiling: whether a given enforcer emits SARIF is its own config concern (D-003).</td></tr>
+    <tr><td>Semgrep prefixes a local rule's id with the rules file's directory path, dot-joined; a registry rule is unprefixed</td><td><a href="https://docs.semgrep.dev/running-rules">docs.semgrep.dev/running-rules</a> — claim stated before fetching: "<code>id: X</code> in <code>enforcement/rules.yaml</code> is reported as <code>enforcement.X</code>"</td><td>spike</td><td>Confirmed: "Semgrep adds custom prefixes to IDs of local rules … get the relative path … to the directory containing the rules file … replace the directory separators … with dots." The original spike parsed a hand-written fixture with a bare id, so an exact join passed and never met a real emission (inbox I-091).</td></tr>
     <tr><td>The no-exec guarantee is testable the same way as no-network</td><td><code>packages/core/test/guardrail.no-network.test.ts</code> (113)</td><td>verified</td><td>Walk the transitive import graph; assert 0 model, 0 network, 0 child-process specifiers.</td></tr>
   </tbody>
 </table>
@@ -179,6 +180,27 @@ CI; spectastic reads its result and joins it to the decision.</p>
   <p><b>Context.</b> SARIF ingestion is the one small unknown, de-risked by the spike. <b>Decision.</b> TDD; medium risk
   tolerance (a shade above 112/113/114 for the SARIF leg). <b>Consequences.</b> + Regression-guarded. − None material.</p>
 </spec-decision>
+
+<spec-decision id="D-007" grounding="spike">
+  <h4>D-007 · Tool-aware rule-id join, with an unmatched count</h4>
+  <p><b>Context.</b> FR-004 says a SARIF result's rule-id is <em>matched</em> to a decision's <code>&lt;spec-rule id&gt;</code> and
+  leaves the matching to this design. The first cut joined on the exact string, spike-verified against a hand-written fixture with
+  a bare id. Semgrep does not emit a bare id for a local rule: it prefixes the rules file's directory path, dot-joined (grounding
+  row above), so <code>id: X</code> in <code>enforcement/rules.yaml</code> arrives as <code>enforcement.X</code>. Zero joins, zero
+  output — a project whose only enforcement was Semgrep saw the verdict pass on a SARIF full of findings, and the only reason the
+  guardrails example still failed was the native content detector catching the same write (inbox I-091).
+  <b>Decision.</b> <code>ruleIdMatches(rule, reported)</code>: exact first; then, only for a tool listed in
+  <code>NAMESPACING_TOOLS</code> (today <code>semgrep</code>), the declared id as a <em>dot-bounded suffix</em> of the reported one
+  — a suffix rather than the last segment, so a declared id that itself contains a dot still joins; tool-gated, so a dotted id
+  from a tool that does not namespace can never be mistaken for a prefixed one. The verdict gains
+  <code>enforcerResultsUnmatched</code>, present only when enforcer output was ingested, and the CLI notes a non-zero count on
+  stderr — advisory, exit code unchanged, because an unmatched result is still the enforcer's own concern (FR-004), but a silent
+  total miss is exactly what this field exists to make visible. <b>Consequences.</b> + A declared Semgrep rule joins its real
+  emission; a mis-declared id is now seen, not swallowed. − The namespacing set is a maintained list; a new tool that prefixes
+  differently (path-separated, not dot-joined) needs its own entry and its own spike. Determinism (FR-005) unchanged: the join is
+  pure string comparison. Recorded ceiling: only Semgrep's convention is grounded; ArchUnit has no SARIF emitter at all
+  (I-086).</p>
+</spec-decision>
 </section>
 
 
@@ -229,6 +251,7 @@ spike-verified.</p>
 <h2>13 · Change log</h2>
 <spec-changelog>
 <ol>
+  <li><time datetime="2026-09-19">19 Sep 2026</time><span>D-007 added (inbox I-091): the enforcer rule-id join is tool-aware — exact, then a dot-bounded suffix for a namespacing tool (Semgrep, per its docs) — and the verdict carries <code>enforcerResultsUnmatched</code> when enforcer output was ingested. One new grounding row (spike against docs.semgrep.dev). Requirements untouched: FR-004 already left the matching to the design.</span></li>
   <li><time datetime="2026-09-13">13 Sep 2026</time><span>Status flipped Draft → Accepted — zero remaining unchecked tasks; SC-001..SC-004 verified passing (11 verdict tests, 58 guardrail total), exercised end-to-end, estate + typechecks clean. Sibling bundle (REQ-LIFECYCLE-005).</span></li>
   <li><time datetime="2026-09-13">13 Sep 2026</time><span>Design authored via <code>/spectastic.design</code>: pure verdict kernel + thin CLI, native content/path detectors + SARIF ingestion, no-child-process guarantee by construction. Grounding: 4 verified (incl. a SARIF-shape spike), 0 assumed. Acknowledges 113-guardrail-retrieval/D-001.</span></li>
 </ol>

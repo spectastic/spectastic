@@ -1,5 +1,5 @@
 import { matchesGlob, normalisePath } from './glob.js';
-import type { GovernanceDecision, Verdict, Violation } from './types.js';
+import type { EnforcementRule, GovernanceDecision, Verdict, Violation } from './types.js';
 
 /**
  * The merge-stage verdict (spec 115-guardrail-verdict). Given the changed paths
@@ -46,6 +46,25 @@ function firstMatchLine(text: string, pattern: RegExp): number | undefined {
   const lines = text.split('\n');
   for (let i = 0; i < lines.length; i++) if (pattern.test(lines[i]!)) return i + 1;
   return undefined;
+}
+
+/**
+ * Enforcers that emit a rule's id under a namespace prefix (115 design D-007,
+ * inbox I-091). Semgrep prefixes a *local* rule's id with the rules file's
+ * directory path, separators replaced by dots — `id: X` in
+ * `enforcement/rules.yaml` is reported as `enforcement.X` — while a
+ * registry-sourced rule is unprefixed (docs.semgrep.dev/running-rules). A
+ * tool not listed here joins on the exact id only, so a dotted id from a tool
+ * that does not namespace can never be mistaken for a prefixed one.
+ */
+const NAMESPACING_TOOLS: ReadonlySet<string> = new Set(['semgrep']);
+
+/** Exact first; then, for a namespacing tool, the declared id as a dot-bounded
+ *  suffix of the reported one (a suffix rather than the last segment, so a
+ *  declared id that itself contains a dot still joins). */
+export function ruleIdMatches(rule: EnforcementRule, reportedId: string): boolean {
+  if (reportedId === rule.id) return true;
+  return NAMESPACING_TOOLS.has(rule.tool) && reportedId.endsWith(`.${rule.id}`);
 }
 
 /** Extract {ruleId, uri, line} from a SARIF document's results (spike-verified shape). */
@@ -144,12 +163,17 @@ export function verdictFor(input: VerdictInput): Verdict {
   }
 
   // Ingested enforcer output: match each SARIF result's rule-id to a decision's rule.
+  let enforcerResultsUnmatched: number | undefined;
   if (input.sarif !== undefined) {
-    const byRuleId = new Map<string, GovernanceDecision>();
-    for (const d of active) for (const r of d.enforcement?.rules ?? []) byRuleId.set(r.id, d);
+    const rules: { rule: EnforcementRule; decision: GovernanceDecision }[] = [];
+    for (const d of active) for (const r of d.enforcement?.rules ?? []) rules.push({ rule: r, decision: d });
+    enforcerResultsUnmatched = 0;
     for (const result of readSarif(input.sarif)) {
-      const d = byRuleId.get(result.ruleId);
-      if (!d) continue; // an enforcer rule that no decision governs — not our concern
+      const d = rules.find(({ rule }) => ruleIdMatches(rule, result.ruleId))?.decision;
+      if (!d) {
+        enforcerResultsUnmatched += 1; // an enforcer rule no decision governs — counted, never a violation
+        continue;
+      }
       push(d, result.ruleId, result.uri ?? '(unknown)', 'enforcer', {
         ...(result.line !== undefined ? { line: result.line } : {}),
         source: result.uri ?? '(unknown)',
@@ -172,6 +196,7 @@ export function verdictFor(input: VerdictInput): Verdict {
     decisionsEvaluated: active.length,
     changed: [...changed].sort(),
     violations,
+    ...(enforcerResultsUnmatched !== undefined ? { enforcerResultsUnmatched } : {}),
   };
 }
 

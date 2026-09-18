@@ -148,6 +148,14 @@ export interface Verdict {
   decisionsEvaluated: number;
   changed: string[];
   violations: Violation[];
+  /**
+   * How many ingested enforcer results matched no decision's rule — present
+   * only when enforcer output was ingested (I-091). A join that silently
+   * dropped every result read as a clean verdict; this is the number that makes
+   * such a miss visible. Not a violation: an enforcer rule no decision governs
+   * is the enforcer's own concern (115 FR-004).
+   */
+  enforcerResultsUnmatched?: number;
 }
 
 /** One governing decision matched to the paths that triggered it. */

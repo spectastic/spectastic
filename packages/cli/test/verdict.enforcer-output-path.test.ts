@@ -30,6 +30,20 @@ async function runCLI(args: string[], cwd: string): Promise<{ stdout: string; st
 
 const EMPTY_SARIF = JSON.stringify({ version: '2.1.0', runs: [{ tool: { driver: { name: 'x' } }, results: [] }] });
 
+describe('verdict --enforcer-output — unmatched results are reported, never silent (I-091)', () => {
+  it('notes on stderr how many results matched no decision, exit code unchanged', async () => {
+    const project = mkdtempSync(join(tmpdir(), 'verdict-project-'));
+    const sarif = JSON.stringify({
+      version: '2.1.0',
+      runs: [{ tool: { driver: { name: 'Semgrep OSS' } }, results: [{ ruleId: 'enforcement.some_rule', locations: [] }] }],
+    });
+    writeFileSync(join(project, 'out.sarif'), sarif, 'utf8');
+    const r = await runCLI(['verdict', '--changed', 'src/a.ts', '--enforcer-output', 'out.sarif'], project);
+    expect(r.code).toBe(0);
+    expect(r.stderr).toMatch(/1 enforcer result\(s\) matched no decision/);
+  });
+});
+
 describe('verdict --enforcer-output path resolution', () => {
   it('accepts an absolute path outside the project', async () => {
     const project = mkdtempSync(join(tmpdir(), 'verdict-project-'));
