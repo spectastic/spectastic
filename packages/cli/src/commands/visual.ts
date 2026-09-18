@@ -156,7 +156,11 @@ export type MaterialiseVisualDesignResult =
   | { kind: 'check-current' }
   | { kind: 'check-stale'; findings: Finding[] }
   | { kind: 'nothing-to-write' }
-  | { kind: 'written'; path: string };
+  | { kind: 'written'; path: string; views: MaterialisedView[] };
+
+/** Which embedded view(s) a `written` result actually changed, so the summary
+ *  line names what was materialised rather than always saying "visual" (I-089). */
+export type MaterialisedView = 'contract' | 'visual';
 
 /**
  * `materialise`'s action body, extracted (110-visual-one-step T-012) so it is
@@ -194,15 +198,17 @@ export async function materialiseVisualDesign(
   // to the visual one — the contract view has the identical hole (072/T-001)
   // and closing it here is what makes the entry point shared rather than a
   // second one-off beside the first.
-  const out = await materialiseVisualViews(
-    await materialiseContractViews(html, ctx.fs, ctx.cwd, undefined, input.specId),
-    ctx.fs,
-    ctx.cwd,
-  );
+  const afterContract = await materialiseContractViews(html, ctx.fs, ctx.cwd, undefined, input.specId);
+  const out = await materialiseVisualViews(afterContract, ctx.fs, ctx.cwd);
   if (out === html) return { kind: 'nothing-to-write' };
 
+  // Each stage's own before/after says which view it changed — the summary
+  // used to call every write "the visual view", including a contract-only one.
+  const views: MaterialisedView[] = [];
+  if (afterContract !== html) views.push('contract');
+  if (out !== afterContract) views.push('visual');
   await ctx.fs.writeFile(path, out);
-  return { kind: 'written', path };
+  return { kind: 'written', path, views };
 }
 
 /**
@@ -283,10 +289,12 @@ export function registerVisual(program: Command): void {
           process.stdout.write('view is current — nothing written\n');
           process.exit(0);
           break;
-        case 'written':
-          process.stdout.write(`materialised the visual view into specs/${specId}/design.html\n`);
+        case 'written': {
+          const what = result.views.length === 2 ? 'contract and visual views' : `${result.views[0]} view`;
+          process.stdout.write(`materialised the ${what} into specs/${specId}/design.html\n`);
           process.exit(0);
           break;
+        }
       }
     });
 

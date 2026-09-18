@@ -70,6 +70,23 @@ describe("materialise — today's exact contract", () => {
     expect(r.code).toBe(0);
     expect(r.stdout).toBe('view is current — nothing written\n');
   });
+
+  it('names the contract view when that is what it wrote — not "the visual view" (inbox I-089)', async () => {
+    const cwd = freshProject();
+    mkdirSync(join(cwd, 'api'), { recursive: true });
+    writeFileSync(join(cwd, 'api', 'openapi.yaml'), 'openapi: 3.0.0\ninfo: {title: v1}\n', 'utf8');
+    writeFileSync(
+      join(cwd, 'specs', '001-x', 'design.html'),
+      '<!doctype html><html><body><spec-contract shape="request-response" path="api/openapi.yaml" format="OpenAPI"><p>r</p></spec-contract></body></html>\n',
+      'utf8',
+    );
+    const r = await runCLI(['materialise', '001-x'], cwd);
+    expect(r.code).toBe(0);
+    expect(r.stdout).toBe('materialised the contract view into specs/001-x/design.html\n');
+    // idempotent second run
+    const again = await runCLI(['materialise', '001-x'], cwd);
+    expect(again.stdout).toBe('view is current — nothing written\n');
+  });
 });
 
 describe("visual:import — today's exact contract", () => {
