@@ -1642,6 +1642,481 @@ and stays in the inbox as history — strikethrough, faded, with a DONE pill.</p
   </dl>
 </spec-triage>
 
+<spec-triage id="I-081" layer="just-do">
+  <header>
+    <h4><code>enforce</code> never reads <code>build.gradle.kts</code>, and its Java test-runner signal is the four letters <code>test</code></h4>
+    <span class="meta">
+      <span class="layer-pill">Just-do</span>
+    </span>
+  </header>
+
+  <p class="headline">Every Java detection signal in <code>packages/core/src/enforce/detect.ts:118-170</code> names
+  <code>file: 'build.gradle'</code>. A Gradle project written in the Kotlin DSL &mdash; the default <code>gradle init</code>
+  has produced since Gradle 8.2 &mdash; reports formatter, linter and test-runner missing forever, however well it is wired.
+  And the test-runner signal for the Groovy file is <code>contains: 'test'</code>, which any <code>build.gradle</code> with a
+  <code>testImplementation</code> line, or the word in a comment, satisfies.</p>
+
+  <dl>
+    <dt>Expected</dt> <dd>A Gradle build in either DSL is detected; the test-runner signal names a test task or platform
+    (<code>useJUnitPlatform</code>, <code>junit</code>, <code>testng</code>, <code>spock</code>), not a substring.</dd>
+    <dt>Actual</dt>   <dd>Only <code>build.gradle</code> is consulted. The downstream worked example
+    (<code>example-position-keeper-guardrails</code>) chose the Groovy DSL for exactly this reason and records it as its
+    design decision D-001 &mdash; a tool constraint leaking into a project's stack pick.</dd>
+    <dt>Diagnosis</dt><dd>The signal table was written from one Gradle layout; nothing in 042's spec forbids the Kotlin DSL,
+    so this is table drift, not a requirement gap. Regeneration passes at <em>implementation</em>: the table is the
+    only place the omission exists.</dd>
+    <dt>Fix</dt>      <dd>Duplicate each Java <code>build.gradle</code> row for <code>build.gradle.kts</code> (one file,
+    no contract change, revert-safe) and tighten the test-runner <code>contains</code> to a platform/task token. A unit
+    test over a Kotlin-DSL fixture pins it.</dd>
+    <dt>Observed</dt> <dd><time datetime="2026-09-18">18 Sep 2026</time> &mdash; building out the guardrails example
+    (runbook gap G-2).</dd>
+  </dl>
+</spec-triage>
+
+<spec-triage id="I-082" layer="just-do">
+  <header>
+    <h4><code>gitignore --stack</code>'s Java set lacks <code>.gradle/</code></h4>
+    <span class="meta">
+      <span class="layer-pill">Just-do</span>
+    </span>
+  </header>
+
+  <p class="headline"><code>ECOSYSTEM_IGNORES.java</code> in <code>packages/core/src/gitignore/entries.ts:27</code> is
+  <code>['build/', 'target/', '*.class']</code>. The first <code>./gradlew</code> run writes <code>.gradle/</code> at the
+  project root (the configuration and file-hash caches), which then shows up in <code>git status</code> and, on the
+  example, had to be added by hand outside the managed block.</p>
+
+  <dl>
+    <dt>Expected</dt> <dd>The managed block covers what the detected build tool itself writes into the tree.</dd>
+    <dt>Actual</dt>   <dd><code>.gradle/</code> is absent; so is <code>.kotlin/</code>, which the Kotlin DSL writes
+    beside it. A Gradle-detected project's first build dirties the tree.</dd>
+    <dt>Diagnosis</dt><dd>The set names compiler and packaging output, not the build tool's own cache. Regeneration passes at
+    <em>implementation</em>: one array literal.</dd>
+    <dt>Fix</dt>      <dd>Add <code>.gradle/</code> and <code>.kotlin/</code> to the <code>java</code> entry (idempotent
+    merge means existing projects pick it up on the next <code>--stack</code> run). One file, no contract change.</dd>
+    <dt>Observed</dt> <dd><time datetime="2026-09-18">18 Sep 2026</time> &mdash; <code>spectastic gitignore --stack</code>
+    on the guardrails example after its Gradle bootstrap (runbook gap G-8).</dd>
+  </dl>
+</spec-triage>
+
+<spec-triage id="I-083" layer="spec">
+  <header>
+    <h4>No verb ever refreshes a downstream project's <code>AGENTS.md</code> or its <code>.claude/commands</code> after init</h4>
+    <span class="meta">
+      <span class="layer-pill">Spec</span>
+      <span class="regen" data-result="fail">upstream</span>
+    </span>
+  </header>
+
+  <p class="headline"><code>init --profile</code> writes <code>AGENTS.md</code> with four command placeholders and an
+  &ldquo;Enforcement floor&rdquo; paragraph frozen at install time (&ldquo;Still to wire: formatter, linter,
+  test-runner&rdquo;), and <code>.claude/commands/*.md</code> copied from the CLI's bundle. Nothing later touches either:
+  <code>init --tools</code> on a downstream project prints <em>&ldquo;no commands/ source found &mdash; no adapters
+  generated&rdquo;</em> because the adapter generator reads a <code>commands/</code> source directory only the meta-repo
+  has, and no verb re-reads <code>enforce</code> to update the floor text. The guardrails example carried a one-paragraph
+  drift in <code>spectastic.implement.md</code> and a stale floor paragraph until both were fixed by hand.</p>
+
+  <dl>
+    <dt>Expected</dt> <dd>A downstream maintainer can re-sync the installed command adapters with the CLI they upgraded to,
+    and the AGENTS.md floor paragraph reflects what <code>enforce</code> reports today &mdash; the same drift-guard posture
+    121 gives the CI gate.</dd>
+    <dt>Actual</dt>   <dd>Adapters and AGENTS.md are install-once. <code>validate</code>'s commands-drift scan exists but
+    the regenerate half is meta-repo-only.</dd>
+    <dt>Diagnosis</dt><dd>Not implementation drift: no requirement says a downstream project's adapters or floor text are
+    kept current, so regeneration <em>fails</em> at every rung below spec. The floor text is doubly odd because the
+    truth is one <code>enforce</code> call away.</dd>
+    <dt>Fix</dt>      <dd>A change proposal against 031 (<code>--tools</code>) for a bundle-sourced adapter re-sync on
+    downstream projects, and against 041/042 for a managed, marker-delimited floor block in AGENTS.md that
+    <code>enforce</code> (or <code>init --tools</code>) rewrites and <code>validate</code> drift-checks. Command placeholders
+    could be filled from a detected build tool, but that is a smaller, separate question.</dd>
+    <dt>Observed</dt> <dd><time datetime="2026-09-18">18 Sep 2026</time> &mdash; guardrails example build-out (runbook gap
+    G-7); the example's own I-002 is the hand fix.</dd>
+  </dl>
+
+  <details>
+    <summary>Deep dive &mdash; cross-spec: 031 (tools halves), 041 (profiles), 042 (enforce floor), 121 (managed-file drift pattern)</summary>
+    <p>121 already establishes the pattern to copy: a file spectastic owns, a first-line marker, a regenerate command, a
+    validate drift rule. The floor paragraph is the natural second managed surface; the adapters are the third, and 031's
+    contract (idempotent, per-file outcome, <code>--uninstall</code> removes managed files only) already fits them.</p>
+  </details>
+</spec-triage>
+
+<spec-triage id="I-084" layer="implementation">
+  <header>
+    <h4>121 FR-005: the CI-gate install summary never warns on a pre-release pin</h4>
+    <span class="meta">
+      <span class="layer-pill">Implementation</span>
+      <span class="regen" data-result="pass">code</span>
+    </span>
+  </header>
+
+  <p class="headline"><a href="./specs/121-init-ci-gate/spec.html#FR-005">121 FR-005</a>: &ldquo;the install summary MUST
+  warn when that version carries a pre-release tag&rdquo;. Running the dev-from-source CLI at <code>0.1.0-pre.28</code>,
+  <code>spectastic init --tools --ci github</code> printed <code>&#10003; install the GitHub CI gate</code> and
+  <code>&#9888; CI gate &hellip;/spectastic.yml: created.</code> &mdash; nothing about the pin. A grep for
+  <code>pre-release</code>/<code>prerelease</code> across <code>packages/cli/src</code> and <code>packages/core/src</code>
+  finds no implementation.</p>
+
+  <dl>
+    <dt>Expected</dt> <dd>A summary line naming the pinned version and that it is a pre-release, so a maintainer knows CI
+    may resolve a version that is not the one on disk (here: the published <code>pre.28</code> predates 121 itself).</dd>
+    <dt>Actual</dt>   <dd>Silent. The rendered file pins <code>@spectastic/cli@0.1.0-pre.28</code> correctly; only the
+    warning is missing.</dd>
+    <dt>Diagnosis</dt><dd>The spec is explicit and the render is right; the summary note was never written. Regeneration
+    passes at <em>implementation</em>.</dd>
+    <dt>Fix</dt>      <dd>In <code>packages/cli/src/commands/init/ci.ts</code>, when <code>cliVersion()</code> matches
+    <code>/-/</code>, push a note (&ldquo;pinned to pre-release <code>0.1.0-pre.28</code> &mdash; CI runs the published
+    package of that name, which may lag this install&rdquo;) onto the tools summary; one test on the summary text.</dd>
+    <dt>Observed</dt> <dd><time datetime="2026-09-18">18 Sep 2026</time> &mdash; installing the gate on the guardrails
+    example (runbook gap G-16, found while confirming the 121 adjustment to its CI stage).</dd>
+  </dl>
+</spec-triage>
+
+<spec-triage id="I-085" layer="spec">
+  <header>
+    <h4>The design&rarr;tasks grounding gate is prompt-only and speaks of &ldquo;must-tier decisions&rdquo;, but a <code>&lt;spec-decision&gt;</code> has no tier</h4>
+    <span class="meta">
+      <span class="layer-pill">Spec</span>
+      <span class="regen" data-result="fail">upstream</span>
+    </span>
+  </header>
+
+  <p class="headline"><code>/spectastic.design</code> step 9 says the design is &ldquo;not ready for <code>/spectastic.tasks</code>
+  while any <em>must-tier</em> decision is <code>grounding="assumed"</code>&rdquo; and that should/may-tier decisions only warn.
+  Nothing on the element carries a tier: <code>&lt;spec-decision&gt;</code> has <code>grounding</code>, <code>status</code>,
+  <code>posture</code> (block | warn) and <code>review-by</code>. And nothing mechanical checks it &mdash;
+  <code>packages/core/src/commands/tasks.ts</code> never reads <code>grounding</code>, <code>validate</code> has no rule for
+  it; the only consequence is the CSS <code>UNGROUNDED</code> label, which ignores posture.</p>
+
+  <dl>
+    <dt>Expected</dt> <dd>Either the gate has a tier to read &mdash; a decision whose enforcement is a none-with-reason and
+    whose posture is <code>warn</code> (the guardrails example's D-008, a DB grant) is the textbook &ldquo;warn, don't
+    block&rdquo; case &mdash; or the prompt stops claiming a tier distinction it cannot make.</dd>
+    <dt>Actual</dt>   <dd>D-008 rendered <code>UNGROUNDED</code> and read as a blocker to tasks even though its claim (a
+    runtime grant) is not a design-time fact; it was resolved by running a spike, which is right, but the gate could not have
+    told a warn-posture backstop from a must-hold stack pick.</dd>
+    <dt>Diagnosis</dt><dd>REQ-LIFECYCLE-006 was written for decisions as a class; the tier vocabulary was borrowed from
+    requirements (<code>priority="must|should|may"</code>) without landing on the decision element. Regeneration
+    <em>fails</em> below spec: the prompt is the spec's mirror and the element has no attribute to read.</dd>
+    <dt>Fix</dt>      <dd>A change proposal on REQ-LIFECYCLE-006: define the gate's population &mdash; simplest honest
+    reading is &ldquo;<code>posture="block"</code> decisions, or every decision when posture is absent&rdquo; &mdash; and add a
+    <code>validate</code> warning (<code>decision-ungrounded</code>) so the gate exists outside the prompt; the
+    <code>UNGROUNDED</code> render then follows the same population.</dd>
+    <dt>Observed</dt> <dd><time datetime="2026-09-18">18 Sep 2026</time> &mdash; 002-downstream-consumers on the guardrails
+    example, D-008 (runbook gap G-10).</dd>
+  </dl>
+</spec-triage>
+
+<spec-triage id="I-086" layer="defer" defer-to="TBD-enforcer-sarif-recipes">
+  <header>
+    <h4>ArchUnit has no SARIF emitter, so a Java project's first <code>--enforcer-output</code> is a hand-written converter</h4>
+    <span class="meta">
+      <span class="layer-pill">Defer</span>
+    </span>
+  </header>
+
+  <p class="headline">115's <code>verdict --enforcer-output</code> joins SARIF results on <code>ruleId</code>, and the
+  guardrails example's D-007 names an <code>archunit</code> rule &mdash; but ArchUnit emits no SARIF and its
+  <code>@ArchTest</code> runner offers no result hook. The example had to evaluate the rule as a plain <code>@Test</code> and
+  write SARIF 2.1.0 itself (<code>src/test/java/xyz/briancorbin/pk/enforcement/SarifReport.java</code>): one result per
+  access, <code>uri</code> reconstructed from the fully-qualified class name, <code>startLine</code> parsed from ArchUnit's
+  <code>(File.java:NN)</code> detail suffix. It works &mdash; six results for the Priya job at lines 19&ndash;24 &mdash; but
+  every Java adopter will write the same 80 lines.</p>
+
+  <dl>
+    <dt>Defer to</dt> <dd><code>TBD-enforcer-sarif-recipes</code> &mdash; a docs recipe (or a tiny published test helper)
+    per enforcer: ArchUnit (converter), Semgrep (<code>--sarif</code>, but see the rule-id prefix), Checkstyle
+    (<code>-f sarif</code>), SpotBugs (<code>-sarif</code>).</dd>
+    <dt>Reason</dt>   <dd>Not a defect in the verdict &mdash; the join contract is right and documented; it is adoption
+    friction, and the example now carries a working reference implementation to point at.</dd>
+    <dt>Observed</dt> <dd><time datetime="2026-09-18">18 Sep 2026</time> &mdash; guardrails example, 002 T-112 (runbook gap
+    G-3).</dd>
+  </dl>
+</spec-triage>
+
+<spec-triage id="I-087" layer="design">
+  <header>
+    <h4>The plan-constraint reduces <code>src/**/persistence/**</code> to the prefix <code>src</code>, so every Draft design under <code>src/</code> must acknowledge D-007</h4>
+    <span class="meta">
+      <span class="layer-pill">Design</span>
+      <span class="regen" data-result="fail">upstream</span>
+    </span>
+  </header>
+
+  <p class="headline"><code>scopeOverlap</code> (<code>packages/core/src/guardrail/plan-constraint.ts:62-70</code>) matches a
+  surface token against the glob <em>or</em> against the glob's static prefix (<code>staticPrefix</code>, lines 22-28). For
+  <code>src/**/persistence/**</code> the prefix is <code>src</code>, so a design whose tree lists
+  <code>src/main/java/xyz/briancorbin/pk/hex/http/HttpApi.java</code> &mdash; an HTTP handler that never goes near the
+  persistence package &mdash; is told it &ldquo;touches <code>src/**/persistence/**</code>&rdquo;. On the guardrails example
+  every one of the seven designs fires it; four of them (001, 003, 007 and the consumer) legitimately, three (004, 005, 006)
+  not. The fix-hint &mdash; &ldquo;narrow the project-structure tree so it does not touch that path&rdquo; &mdash; cannot be
+  followed: the tree does not touch it.</p>
+
+  <dl>
+    <dt>Expected</dt> <dd>A design that declares no path inside a decision's scope is not asked to acknowledge that decision.
+    The prefix rule exists for directory-coarse trees (114 D-003: &ldquo;tokens are directory-coarse&rdquo;) &mdash; a design
+    listing <code>src/main/java/xyz/briancorbin/pk/hex/persistence/</code> should overlap; one listing a sibling package
+    should not.</dd>
+    <dt>Actual</dt>   <dd>Any token at or under the static prefix overlaps. With a <code>**</code> in the second segment the
+    prefix is the source root, and the gate degenerates to &ldquo;every design acknowledges every decision&rdquo; &mdash;
+    exactly the failure 114 T-900 removed the ancestor direction to avoid, arriving from the other side.</dd>
+    <dt>Diagnosis</dt><dd>A deliberate precision trade in 114's design that assumed scopes like <code>packages/core/src/x/**</code>
+    (a long static prefix) and did not consider a leading-<code>**</code> scope. Regeneration fails at implementation &mdash;
+    the rule does what its design says &mdash; and passes at <em>design</em>: 114 D-003 needs a rule for globs whose static
+    prefix is shorter than the surface tokens it is compared against.</dd>
+    <dt>Fix</dt>      <dd>Candidates, in rising order of precision: (a) apply the prefix rule only when the surface token is
+    <em>shorter</em> than the glob's first wildcard segment would be (a directory-coarse token) &mdash; a fully qualified file
+    path under <code>src</code> is compared by <code>matchesGlob</code> alone; (b) when the glob has a literal segment after
+    a <code>**</code> (<code>persistence</code>), require the token to contain it; (c) drop the prefix rule when the prefix is a
+    single segment. (a) keeps the coarse-tree case 114 spiked and stops this one.</dd>
+    <dt>Observed</dt> <dd><time datetime="2026-09-18">18 Sep 2026</time> &mdash; guardrails example, design of 004-query-endpoint
+    (runbook gap G-1); the design acknowledges D-007 on the merits and names the over-fire.</dd>
+  </dl>
+
+  <details>
+    <summary>Deep dive &mdash; cross-spec: 114 (the constraint) and 119 (resource scopes, which reuse the same glob matcher)</summary>
+    <p>119's <code>allowed-in="src/**/persistence/**"</code> goes through <code>matchesGlob</code> only, never the prefix rule,
+    which is why the merge verdict on the same example is precise while the plan gate is not.</p>
+  </details>
+</spec-triage>
+
+<spec-triage id="I-088" layer="spec">
+  <header>
+    <h4>A new spec's first contract has no promotion path &mdash; 071 promotes only inside <code>apply</code></h4>
+    <span class="meta">
+      <span class="layer-pill">Spec</span>
+      <span class="regen" data-result="fail">upstream</span>
+    </span>
+  </header>
+
+  <p class="headline">070 says: author the contract at <code>specs/&lt;id&gt;/contracts/</code>, declare the effective path,
+  never pre-create the effective file. 071 says: promotion happens &ldquo;when a change carrying a proposed contract lands&rdquo;,
+  and <code>planPromotion</code>/<code>executePromotionWrites</code> are called from <code>apply.ts</code> only. A brand-new
+  feature whose design declares its first contract therefore reaches Accepted &mdash; the implement drain's last tick flips the
+  bundle &mdash; with the contract still <em>provisional</em>: readable at the proposed location, absent at the effective one,
+  view marked <code>provisional="true"</code>, and no verb to move it. Only a later change proposal against that spec would
+  promote it, and most first contracts never get one.</p>
+
+  <dl>
+    <dt>Expected</dt> <dd>The bundle flip (REQ-LIFECYCLE-005) &mdash; or a dedicated <code>spectastic promote &lt;spec-id&gt;</code>
+    &mdash; runs the same promotion the apply verb runs, with the same refusal on conflict and the same idempotence.</dd>
+    <dt>Actual</dt>   <dd>On the guardrails example, 004-query-endpoint's OpenAPI sidecar was moved to <code>api/</code> by hand
+    with <code>git mv</code> at the last tick; the archive-and-baseline half of 071 has nothing to record because no proposal
+    exists.</dd>
+    <dt>Diagnosis</dt><dd>071 was scoped to the change path and 006/021 (implement, verify) were written before contracts had a
+    two-state convention; nobody owns the initial transition. Regeneration fails below spec.</dd>
+    <dt>Fix</dt>      <dd>A change proposal on 071 (or 006's implement contract): the Draft &rarr; Accepted bundle flip promotes
+    every provisional contract the design declares, reusing <code>planPromotion</code> with a slug of the flip date; the
+    <code>/spectastic.implement</code> step 8 text names it beside the changelog write. Optionally expose it as
+    <code>spectastic promote</code> for the hand-flip case.</dd>
+    <dt>Observed</dt> <dd><time datetime="2026-09-18">18 Sep 2026</time> &mdash; guardrails example, 004 (runbook gap G-17).</dd>
+  </dl>
+</spec-triage>
+
+<spec-triage id="I-089" layer="just-do">
+  <header>
+    <h4><code>materialise</code> says &ldquo;materialised the visual view&rdquo; when it wrote a contract view</h4>
+    <span class="meta">
+      <span class="layer-pill">Just-do</span>
+    </span>
+  </header>
+
+  <p class="headline">On a design with a <code>&lt;spec-contract path=&hellip;&gt;</code> and no <code>&lt;spec-visual&gt;</code>,
+  <code>spectastic materialise 004-query-endpoint</code> printed <em>materialised the visual view into
+  specs/004-query-endpoint/design.html</em>; what it wrote was a <code>&lt;spec-contract-view lines="45" provisional="true"&gt;</code>.
+  The idempotent second run says &ldquo;view is current&rdquo;, which is fine.</p>
+
+  <dl>
+    <dt>Target</dt>   <dd><code>packages/cli/src/commands/materialise.ts</code> (or wherever the summary line is composed)</dd>
+    <dt>Why small</dt><dd>One message; name the view kind(s) actually written &mdash; contract, visual, or both.</dd>
+    <dt>Observed</dt> <dd><time datetime="2026-09-18">18 Sep 2026</time> &mdash; guardrails example, 004.</dd>
+  </dl>
+</spec-triage>
+
+<spec-triage id="I-090" layer="spec">
+  <header>
+    <h4><code>verify:exec</code> cannot execute the run/exercise pair the verify contract prescribes for a server</h4>
+    <span class="meta">
+      <span class="layer-pill">Spec</span>
+      <span class="regen" data-result="fail">upstream</span>
+    </span>
+  </header>
+
+  <p class="headline"><code>/spectastic.implement</code> step 10 tells the author: &ldquo;Where <code>run</code> already serves
+  the feature (a web app), <code>exercise</code> holds the address that reaches it&rdquo;. <code>verify:exec</code>
+  (<code>packages/core/src/execcheck/run.ts:40-50</code>) then runs the three fields <em>sequentially to completion</em>:
+  <code>./gradlew run</code> starts the server, never exits, is killed at the per-command timeout and scored
+  <code>timed-out</code>; <code>curl -si localhost:8080/positions/AAPL</code> then runs against nothing and scores
+  <code>failed</code>. The honest capture of a web feature is guaranteed to fail its own finish-line check.</p>
+
+  <dl>
+    <dt>Expected</dt> <dd>A long-running <code>run</code> is started, given a readiness window (or a readiness probe &mdash;
+    the <code>exercise</code> URL itself, retried), <code>exercise</code> runs against it, and <code>run</code> is terminated
+    afterwards and scored by whether it <em>stayed up</em> rather than by an exit code it was never going to produce.</dd>
+    <dt>Actual</dt>   <dd>On the guardrails example: <code>timed-out run ./gradlew run · failed exercise curl … · passed tests
+    …</code>, exit 1, for 004-query-endpoint whose process was verified by hand seconds earlier (404 then 405, as
+    designed).</dd>
+    <dt>Diagnosis</dt><dd>021's verify view and the execcheck were written with build-shaped <code>run</code> commands in
+    mind (the CLI examples); the web-app wording in the implement prompt describes a shape the executor was never given
+    semantics for. Regeneration fails below spec: nothing says what <code>verify:exec</code> should do with a server.</dd>
+    <dt>Fix</dt>      <dd>A change proposal on the verify:exec spec: a <code>run</code> whose <code>exercise</code> is a URL
+    (or a <code>"serves": true</code> capture key) is treated as a service &mdash; start, poll the exercise target until it
+    answers or the timeout elapses, run exercise, stop. Until then, the implement prompt should stop recommending a capture
+    the executor cannot run.</dd>
+    <dt>Observed</dt> <dd><time datetime="2026-09-18">18 Sep 2026</time> &mdash; guardrails example, 004 (runbook gap G-19,
+    surfaced by the finish-line <code>verify:exec</code> loop the runbook planned).</dd>
+  </dl>
+</spec-triage>
+
+<spec-triage id="I-091" layer="design">
+  <header>
+    <h4>Semgrep prefixes its SARIF <code>ruleId</code> with the config path, so <code>--enforcer-output</code> silently drops every Semgrep result</h4>
+    <span class="meta">
+      <span class="layer-pill">Design</span>
+      <span class="regen" data-result="fail">upstream</span>
+    </span>
+  </header>
+
+  <p class="headline">A rule declared as <code>id: no_sql_write_to_positions_outside_adapter</code> in
+  <code>enforcement/semgrep-positions.yaml</code> comes out of <code>semgrep --sarif</code> as
+  <code>enforcement.no_sql_write_to_positions_outside_adapter</code> (Semgrep OSS 1.176.0 &mdash; the config file's path
+  stem, dot-joined). <code>verdict.ts:148-152</code> joins on <code>byRuleId.get(result.ruleId)</code> exactly and
+  <code>continue</code>s on a miss &mdash; &ldquo;an enforcer rule that no decision governs &mdash; not our concern&rdquo;
+  &mdash; so the decision's own declared Semgrep rule never joins, and nothing says so. On the guardrails example the
+  content-detector fallback catches the same write, which is the only reason the demo still fails.</p>
+
+  <dl>
+    <dt>Expected</dt> <dd>A <code>&lt;spec-rule tool="semgrep" id="X"&gt;</code> joins the SARIF result Semgrep emits for
+    rule <code>X</code>; or, at minimum, the verdict reports how many SARIF results matched no declared rule so a silent
+    miss is visible.</dd>
+    <dt>Actual</dt>   <dd>Zero joins, zero output. A project whose only enforcement is Semgrep would see the verdict pass
+    on a SARIF full of findings.</dd>
+    <dt>Diagnosis</dt><dd>115's join was spike-verified against a hand-written fixture with a bare id, not against a tool's
+    real emission. Semgrep's prefixing is documented behaviour (rule ids are namespaced by config path unless the rule is
+    registry-sourced). Regeneration passes at <em>design</em>: the join contract needs a tool-aware match &mdash; exact,
+    or the declared id as the last dot-segment when <code>tool="semgrep"</code> &mdash; plus an unmatched-results
+    count.</dd>
+    <dt>Fix</dt>      <dd>In <code>readSarif</code>/the join: try exact, then suffix-after-last-dot for tools that namespace;
+    add <code>enforcerResultsUnmatched</code> to the verdict JSON and a one-line stderr note when it is non-zero. A
+    fixture produced by real Semgrep (the example's <code>enforcement/semgrep-results.sarif</code>) pins it.</dd>
+    <dt>Observed</dt> <dd><time datetime="2026-09-18">18 Sep 2026</time> &mdash; guardrails example, stage 7 (runbook gap
+    G-4).</dd>
+  </dl>
+</spec-triage>
+
+<spec-triage id="I-092" layer="just-do">
+  <header>
+    <h4><code>verdict --enforcer-output &lt;absolute path&gt;</code> is joined under the cwd and reported as unreadable</h4>
+    <span class="meta">
+      <span class="layer-pill">Just-do</span>
+    </span>
+  </header>
+
+  <p class="headline"><code>packages/cli/src/commands/verdict.ts:68</code> reads <code>join(cwd, opts.enforcerOutput)</code>.
+  With <code>--enforcer-output /var/folders/&hellip;/semgrep.sarif</code> that becomes
+  <code>/Users/&hellip;/project/var/folders/&hellip;</code> and the command exits 2 with <em>could not read/parse enforcer
+  output</em> &mdash; a misleading message for a file that parses fine.</p>
+
+  <dl>
+    <dt>Target</dt>   <dd><code>packages/cli/src/commands/verdict.ts</code></dd>
+    <dt>Why small</dt><dd><code>resolve(cwd, …)</code> instead of <code>join</code>; split the read error from the parse
+    error in the message. One file, no contract change.</dd>
+    <dt>Observed</dt> <dd><time datetime="2026-09-18">18 Sep 2026</time> &mdash; guardrails example, stage 7.</dd>
+  </dl>
+</spec-triage>
+
+<spec-triage id="I-093" layer="spec">
+  <header>
+    <h4>The CLI's <code>implement --drain</code> / <code>run</code> verify through <code>npx</code>, so a non-JS project can only be drained in-host</h4>
+    <span class="meta">
+      <span class="layer-pill">Spec</span>
+      <span class="regen" data-result="fail">upstream</span>
+    </span>
+  </header>
+
+  <p class="headline"><code>packages/cli/src/coding-factory.ts:47</code> &mdash; the verify runner is
+  <code>exec('npx', command.split(/\s+/), &hellip;)</code>. A Gradle project's test command (<code>./gradlew test --tests
+  &hellip;</code>) is not an npm package, so the unattended pipeline cannot verify a single task on the guardrails example; and
+  <code>implement --help</code> still lists <code>--all</code>, <code>--phase</code> and <code>--parallel</code> as DEFERRED. The
+  whole build-out therefore ran through the slash commands in a Claude Code session &mdash; which worked, and which is the
+  path the runbook chose &mdash; but the CLI surface promises a drain it can only deliver for JS.</p>
+
+  <dl>
+    <dt>Expected</dt> <dd>The verify runner executes the project's own test command &mdash; the one <code>enforce</code>
+    already detects (Gradle, Maven, cargo, pytest, go test) or the one <code>verify.html</code> recorded &mdash; rather than
+    assuming <code>npx</code>.</dd>
+    <dt>Actual</dt>   <dd>JS/TS only. Seven bundles, ~30 tests, zero of them reachable by <code>spectastic run</code>.</dd>
+    <dt>Diagnosis</dt><dd>The runner was written for the meta-repo's own vitest suite and never widened; no requirement names
+    the ecosystems the drain supports. Regeneration fails below spec.</dd>
+    <dt>Fix</dt>      <dd>A change proposal on the run/implement spec: the verify runner takes the command verbatim through
+    the project shell (with the same injection care T-311 added), defaulting from <code>enforce</code>'s detected
+    test-runner; un-defer the drain flags or drop them from <code>--help</code>.</dd>
+    <dt>Observed</dt> <dd><time datetime="2026-09-18">18 Sep 2026</time> &mdash; guardrails example build-out (runbook gap
+    G-5).</dd>
+  </dl>
+</spec-triage>
+
+<spec-triage id="I-094" layer="spec">
+  <header>
+    <h4>An intentional violation in the checkout has no &ldquo;expected&rdquo; marker &mdash; CI inverts the verdict's exit code by hand</h4>
+    <span class="meta">
+      <span class="layer-pill">Spec</span>
+      <span class="regen" data-result="fail">upstream</span>
+    </span>
+  </header>
+
+  <p class="headline">The guardrails example keeps two files that <em>must</em> fail the verdict &mdash;
+  <code>docs/priya-pr/PositionReconciliationJob.java</code> and the consumer's adapter &mdash; because they are what the
+  demonstrations prove. Nothing in the decision model can say so. The managed CI gate is right to fail on them if they are
+  ever in a pull request's change set; the project had to add its own <code>guardrail-fires</code> job that runs
+  <code>verdict</code> and asserts <code>exit 1</code> with <code>set +e; test $? -eq 1</code>, so that a green run means
+  &ldquo;the guardrail still fires&rdquo;.</p>
+
+  <dl>
+    <dt>Expected</dt> <dd>A way to declare a path as an expected violation &mdash; <code>verdict --expect-violation
+    &lt;path&gt;</code> that exits 0 only if the path <em>is</em> flagged, or a <code>&lt;spec-fixture&gt;</code> beside the
+    decision naming the files that exist to trip it &mdash; so a worked example, a fitness-function test corpus, or a
+    training repo can keep its negatives without hand-rolled shell.</dd>
+    <dt>Actual</dt>   <dd>Shell inversion in a project-owned workflow; the managed gate cannot be told.</dd>
+    <dt>Diagnosis</dt><dd>115 was written for a repo whose every file is meant to pass; negatives-as-fixtures were not a use
+    case. Regeneration fails below spec.</dd>
+    <dt>Fix</dt>      <dd>A small change proposal on 115: <code>--expect-violation</code> (exit 0 iff every named path is
+    flagged; the JSON records <code>expected: true</code>), and the 121 gate leaves such paths out of its change set.</dd>
+    <dt>Observed</dt> <dd><time datetime="2026-09-18">18 Sep 2026</time> &mdash; guardrails example, stage 12 (runbook gap
+    G-13).</dd>
+  </dl>
+</spec-triage>
+
+<spec-triage id="I-095" layer="design">
+  <header>
+    <h4>A folded change phase has no Tests subsection or SC, so the verify trace and the stale rule never see a change's tests</h4>
+    <span class="meta">
+      <span class="layer-pill">Design</span>
+      <span class="regen" data-result="fail">upstream</span>
+    </span>
+  </header>
+
+  <p class="headline">The verify view (021) traces SC &rarr; the <code>phase-usN</code> section's Tests <code>&lt;h3&gt;</code>
+  tasks, and <code>verify-view-stale</code> compares the same. <code>apply</code>'s fold (REQ-CHANGE-006) writes a flat
+  <code>&lt;section id="phase-&lt;slug&gt;"&gt;</code> with the proposal's §6 items and no Tests subsection; a proposal can add
+  requirements but not criteria (only <code>&lt;spec-requirement&gt;</code> deltas fold). On the guardrails example 007's
+  applied change added FR-005 and a test task (T-1000), and <code>validate</code> reported nothing stale because, by the
+  rule's definition, nothing it reads had changed &mdash; the new test is invisible to the trace.</p>
+
+  <dl>
+    <dt>Expected</dt> <dd>Either a proposal can carry a criterion delta and the fold writes a Tests subsection, or the verify
+    trace lists folded-phase test tasks under the requirements they cite, so an applied change shows up in verify.html.</dd>
+    <dt>Actual</dt>   <dd>The trace is unchanged after the apply; the author must remember to <code>testsCite</code> the
+    folded task by hand when regenerating.</dd>
+    <dt>Diagnosis</dt><dd>Two designs (021's trace, REQ-CHANGE-006's fold) each correct alone and not joined. Regeneration
+    passes at <em>design</em>.</dd>
+    <dt>Fix</dt>      <dd>Fold §6 items whose text names a test file under a <code>&lt;h3&gt;Tests&lt;/h3&gt;</code> in the
+    folded phase, and let the trace pick up a folded phase's Tests tasks against the requirements the change added; consider
+    <code>&lt;spec-criterion&gt;</code> deltas as a follow-up.</dd>
+    <dt>Observed</dt> <dd><time datetime="2026-09-18">18 Sep 2026</time> &mdash; guardrails example, 007's apply.</dd>
+  </dl>
+</spec-triage>
+
 </spec-triage-log>
 </section>
 
@@ -1650,6 +2125,12 @@ and stays in the inbox as history — strikethrough, faded, with a DONE pill.</p
 <h2>3 · Change log</h2>
 <spec-changelog>
 <ol>
+  <li><time datetime="2026-09-18">18 Sep 2026</time><span>I-093 (spec: the CLI drain verifies through npx only), I-094 (spec: no expected-violation marker for fixture files) and I-095 (design: a folded change phase is invisible to the verify trace) added from the guardrails example, stages 9–12.</span></li>
+  <li><time datetime="2026-09-18">18 Sep 2026</time><span>I-091 (design: Semgrep's namespaced rule ids never join the enforcer-output step, silently) and I-092 (just-do: an absolute --enforcer-output path is joined under the cwd) added from the guardrails example, stage 7.</span></li>
+  <li><time datetime="2026-09-18">18 Sep 2026</time><span>I-090 (spec: verify:exec times out on a server-shaped run and then fails the exercise) added from the guardrails example, 004.</span></li>
+  <li><time datetime="2026-09-18">18 Sep 2026</time><span>I-087 (design: the plan-constraint's static-prefix rule over-fires on <code>src/**/…</code> scopes), I-088 (spec: a first contract has no promotion path) and I-089 (just-do: materialise's summary names the wrong view) added from the guardrails example, 004.</span></li>
+  <li><time datetime="2026-09-18">18 Sep 2026</time><span>I-085 (spec: the grounding gate has no tier to read and no mechanical check) and I-086 (defer: ArchUnit&rarr;SARIF converter recipe) added from the guardrails example, 002.</span></li>
+  <li><time datetime="2026-09-18">18 Sep 2026</time><span>I-081 &ndash; I-084 added from the guardrails example build-out &mdash; <code>enforce</code> ignores <code>build.gradle.kts</code> (just-do), <code>gitignore --stack</code> lacks <code>.gradle/</code> (just-do), no verb refreshes downstream adapters or the AGENTS.md floor text (spec), 121 FR-005's pre-release warning unimplemented (implementation).</span></li>
   <li><time datetime="2026-08-23">23 Aug 2026</time><span>I-077 added &mdash; 39 core test files import through the package path, so coverage instruments source the tests never run; a change with six passing tests scored 1 of 18 changed lines. <code>defer</code>, since converging the conventions would lose the built-artifact coverage the package path provides.</span></li>
   <li><time datetime="2026-08-19">19 Aug 2026</time><span>I-075 done — 606 files across templates, source generators and shipped artifacts; found two documents about the CSP that carry no CSP at all.</span></li>
   <li><time datetime="2026-08-18">18 Aug 2026</time><span>Waves 4, 1b and 5 worked &mdash; nine cards closed, one proposal withdrawn on a false premise, and wave 1's undrained tasks found and completed.</span></li>
