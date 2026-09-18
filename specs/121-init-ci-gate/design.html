@@ -1,0 +1,423 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'">
+<title>Init CI gate · Design</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Design · 121-init-ci-gate</p>
+  <h1>Init CI gate</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    How we will build it.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>     <span><spec-status value="draft">Draft</spec-status></span>
+    <b>Spec</b>       <span><a href="./spec.html">121-init-ci-gate</a></span>
+    <b>Owner</b>      <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Branch</b>     <span><code>main</code></span>
+    <b>Created</b>    <span><time datetime="2026-09-16">16 Sep 2026</time></span>
+    <b>Read time</b>  <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-tldr>
+    <p>A pure, dependency-free renderer in <code>@spectastic/core</code> turns (host, CLI version) into a CI file; a CLI-local
+    installer beside <code>hook.ts</code> and <code>adapters.ts</code> writes it as a third <code>--tools</code> half; and
+    <code>validate</code> re-renders with the running CLI and reports any difference as drift. Every piece clones a seam that
+    already exists. The biggest risk is the one no local test can retire: the rendered steps are proven by executing them by hand,
+    not on a live GitHub or GitLab runner.</p>
+  </spec-tldr>
+</header>
+
+
+<section id="principles-check">
+<h2>1 · Principles check</h2>
+<p>Verify this plan respects every principle in
+<a href="../../principles.html">v1.9.0</a>. Any violation requires either a
+principles amendment or a deliberate exception logged below.</p>
+
+<div style="overflow-x:auto;">
+<table>
+  <thead><tr><th>Principle</th><th>Compliance</th><th>Notes</th></tr></thead>
+  <tbody>
+    <tr><td>P-1 · Source order is reading order</td><td><spec-pill>OK</spec-pill></td><td>No artifact markup changes.</td></tr>
+    <tr><td>P-2 · Semantic tags over class soup</td><td><spec-pill>OK</spec-pill></td><td>No artifact markup changes.</td></tr>
+    <tr><td>P-3 · IDs are contracts</td><td><spec-pill>OK</spec-pill></td><td>New rule id <code>ci-gate-drift</code>; no existing id changes meaning.</td></tr>
+    <tr><td>P-4 · Progressive enhancement</td><td><spec-pill>OK</spec-pill></td><td>No rendered artifact touched.</td></tr>
+    <tr><td>P-5 · Calm density</td><td><spec-pill>OK</spec-pill></td><td>—</td></tr>
+    <tr><td>P-6 · Draft is loose, ratified is locked</td><td><spec-pill>OK</spec-pill></td><td>New spec; upstream deferrals are redirected by proposals after landing (spec §6).</td></tr>
+    <tr><td>P-7 · Done means verified</td><td><spec-pill>OK</spec-pill></td><td>The rendered steps are executed by hand against a scratch project (D-006); <code>verify.html</code> records the run.</td></tr>
+    <tr><td>P-8 · Guarantees live in the kernel or CI</td><td><spec-pill>OK</spec-pill></td><td>This spec is P-8 applied to the guarantee layer's own installation: the drift check is a validate finding, not prose.</td></tr>
+    <tr><td>P-9 · The enforcement floor holds</td><td><spec-pill>OK</spec-pill></td><td>The gate runs <code>enforce</code> unsoftened (<a href="./spec.html#FR-003">FR-003</a>); no CI-side relax path is added.</td></tr>
+    <tr><td>P-10 · Internal ids stay out of copy</td><td><spec-pill>OK</spec-pill></td><td>Rendered content, messages and help are scanned for ids (<a href="./spec.html#NFR-002">NFR-002</a>) — the hook body's comment leak is deliberately not repeated.</td></tr>
+    <tr><td>P-11 · Artifacts are data, not instructions</td><td><spec-pill>OK</spec-pill></td><td>The gate file is rendered from code, never read back as instructions; the drift check compares bytes and executes nothing.</td></tr>
+    <tr><td>P-12 · Capability accountability</td><td><spec-pill>OK</spec-pill></td><td>Writing a CI file is a build/CI-surface edit the change-risk scan flags by design; that is the human look it exists to force, in this repo and downstream.</td></tr>
+    <tr><td>P-13 · Accessibility conformance</td><td><spec-pill>OK</spec-pill></td><td>No interactive surface.</td></tr>
+    <tr><td>P-14 · Library-first boundaries</td><td><spec-pill>OK</spec-pill></td><td>Renderer in core; fs/prompt orchestration CLI-local (D-001).</td></tr>
+  </tbody>
+</table>
+</div>
+</section>
+
+
+<section id="technical-context">
+<h2>2 · Technical context</h2>
+<dl>
+  <dt>Language(s)</dt>      <dd>TypeScript (ESM); Node ≥ 20 per <code>packages/cli/package.json</code> engines; the rendered workflow runs Node 22 (D-005).</dd>
+  <dt>Frameworks</dt>       <dd>commander 15.0.0 (CLI), @clack/prompts (the existing TTY prompt), yaml 2.9 (core test-side parse only — never on the render path).</dd>
+  <dt>Architecture</dt>     <dd>Core renderer + CLI-local installer — <a href="#D-001">D-001</a>; shapes <a href="#project-structure">Project structure</a>.</dd>
+  <dt>Storage</dt>          <dd>Files in the downstream repo only: <code>.github/workflows/spectastic.yml</code>, <code>.gitlab/ci/spectastic.yml</code>, a bootstrap <code>.gitlab-ci.yml</code>. No state beyond the marker line.</dd>
+  <dt>Testing</dt>          <dd>vitest, TDD tests-first per story; Playwright not needed (no artifact JS). A manual real-CI proof closes SC-001 (D-006).</dd>
+  <dt>Coverage</dt>         <dd>Diff-aware: every new module ships with its unit test and the change never lowers coverage of the seams it extends (<code>tools.ts</code>, <code>validate.ts</code>).</dd>
+  <dt>Perf targets</dt>     <dd><code>init --help</code> cold start ≤ 150 ms (bench <code>init-help-cold-start</code>, <a href="./spec.html#NFR-003">NFR-003</a>); renderer adds 0 runtime dependencies.</dd>
+  <dt>Constraints</dt>      <dd>P-10 on every user surface; pins are fixed, not configurable (D-005 — stated fixity); <code>.gitlab-ci.yml</code> is never edited once it exists.</dd>
+</dl>
+
+<h3>Toolchain / enforcement</h3>
+<p>Enterprise profile; <code>spectastic enforce</code> reports 7 covered · 1 relaxed (observability, waived) · 0 missing — biome, tsc,
+vitest, the coverage threshold and the supply-chain/security gates already wired. No new category; the design adds only tests
+inside the existing runner.</p>
+</section>
+
+
+<section id="contracts">
+<h2>3 · Data model &amp; contracts</h2>
+
+<p>The spec's <a href="./spec.html#data">entities</a> land as files and a small in-memory decision list — nothing is persisted
+beyond the files themselves.</p>
+
+<div style="overflow-x:auto;">
+<table>
+  <thead><tr><th>Conceptual entity</th><th>Physical shape</th><th>Notes</th></tr></thead>
+  <tbody>
+    <tr><td><a href="./spec.html#data">Managed gate file</a></td><td>UTF-8 YAML text at a fixed per-host path; line 1 is the marker string; content = <code>renderCiWorkflow(host, {cliVersion})</code>.</td><td>Managed ⇔ marker on line 1. No sidecar state.</td></tr>
+    <tr><td><a href="./spec.html#data">Bootstrap root file</a></td><td><code>.gitlab-ci.yml</code> holding the marker plus an <code>include: - local: /.gitlab/ci/spectastic.yml</code>.</td><td>Removable only while byte-equal to its render.</td></tr>
+    <tr><td><a href="./spec.html#data">Host selection</a></td><td><code>'github' | 'gitlab' | 'both' | 'auto'</code>; resolved to <code>CiHost[]</code> by presence probes.</td><td>Probes: <code>.github/</code> dir; <code>.gitlab-ci.yml</code> file or <code>.gitlab/</code> dir.</td></tr>
+    <tr><td><a href="./spec.html#data">Install outcome</a></td><td><code>ToolsDecision</code> kinds <code>install-ci</code> / <code>remove-ci</code> with <code>host</code>; notes carry <code>created | updated | unchanged</code>.</td><td>Refusal is a thrown <code>ToolsError</code> (exit 2), as today.</td></tr>
+  </tbody>
+</table>
+</div>
+
+<spec-contract shape="none">
+  <p>No interface is exposed: the feature is CLI options plus files written into the downstream repository. The rendered
+  workflow calls the CLI's existing verbs and depends on their exit codes, which 115 and 042 own.</p>
+</spec-contract>
+</section>
+
+
+<section id="grounding">
+<h2>4 · Grounding &amp; evidence</h2>
+<p>Every design-bearing fact this plan rests on, and how it was confirmed — read this before the
+approach: it separates what the plan <em>knows</em> from what it <em>assumes</em> (per
+<code>REQ-LIFECYCLE-006</code>). Status is <code>verified</code> (opened the source
+this turn), <code>spike</code> (decidable only by a time-boxed investigation — run it, record the
+finding), or <code>assumed</code> (taken as true without verification).</p>
+
+<div style="overflow-x:auto;">
+<table class="evidence">
+  <thead>
+    <tr><th>Claim the design rests on</th><th>Source</th><th>Status</th><th>Finding / note</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><code>--tools</code> is planned as typed halves executed by kind</td><td><code>packages/cli/src/commands/init/tools.ts:24-49, 71-116</code></td><td><spec-status value="accepted">verified</spec-status></td><td><code>ToolsOptions {hooks, commands, uninstall, force, cliEntry, target}</code>; <code>planTools</code> → <code>ToolsDecision[]</code> of four kinds; <code>runTools</code> switches on kind.</td></tr>
+    <tr><td><code>ToolsOptions.force</code> is unused by both existing halves</td><td><code>tools.ts:33</code>; grep of <code>hook.ts</code>/<code>adapters.ts</code></td><td><spec-status value="accepted">verified</spec-status></td><td>Only <code>rmSync(…, {force:true})</code> matches; the CI half is its first real consumer.</td></tr>
+    <tr><td>Marker-managed, drift-checked files already exist as a pattern</td><td><code>adapters.ts:22-49, 103-119</code>; <code>hook.ts:15</code></td><td><spec-status value="accepted">verified</spec-status></td><td><code>MANAGED_MARKER</code> dir stamp + <code>DriftPair</code>; <code>HOOK_MARKER</code> is an id-free first-line comment — the model for the gate marker.</td></tr>
+    <tr><td>The hook body leaks internal ids the gate must not repeat</td><td><code>hook.ts:53, 56</code></td><td><spec-status value="accepted">verified</spec-status></td><td><code># … (FR-006)</code> and <code>(FR-002..005)</code> inside the written script. Out of scope to fix; NFR-002's scan prevents a repeat.</td></tr>
+    <tr><td>Drift findings are built in core and folded in by the CLI</td><td><code>packages/core/src/commands/validate.ts:49-63</code>; <code>packages/cli/src/commands/validate.ts:110-138, 880-885</code></td><td><spec-status value="accepted">verified</spec-status></td><td><code>commandsDriftFinding(expected, actual, file)</code> → rule <code>commands-drift</code>, error; <code>scanCommandsDrift</code>/<code>scanSkillsDrift</code> lazy-import the installer and fold findings. Clone both.</td></tr>
+    <tr><td>The internal-id matcher exists but is not exported</td><td><code>packages/core/src/commands/validate.ts:191</code></td><td><spec-status value="accepted">verified</spec-status></td><td><code>function firstLeak</code> is module-private; export it so the renderer test reuses the canonical patterns.</td></tr>
+    <tr><td>The CLI reads its version from <code>package.json</code> one level up</td><td><code>packages/cli/src/index.ts:41-48</code>; <code>commander@15.0.0</code> <code>typings/index.d.ts:398</code></td><td><spec-status value="accepted">verified</spec-status></td><td>Resolves from both <code>dist/</code> and <code>src/</code>; <code>program.version(): string | undefined</code> getter exists. Lift into <code>version.ts</code>.</td></tr>
+    <tr><td>Scaffold counts exclude <code>--tools</code> output</td><td><code>packages/cli/src/commands/init/plan.ts:44-48</code></td><td><spec-status value="accepted">verified</spec-status></td><td><code>SCAFFOLD_FILE_COUNT = 38</code> counts bundle entries; 003/004 untouched.</td></tr>
+    <tr><td><code>yaml</code> is a core dependency, not a CLI one</td><td><code>packages/core/package.json:401</code>; <code>packages/cli/package.json</code></td><td><spec-status value="accepted">verified</spec-status></td><td>The YAML-parse test lives in <code>packages/core/test/</code>; the renderer itself must not import it (cold-start).</td></tr>
+    <tr><td>Anything <code>tools.ts</code> imports statically is on the <code>init --help</code> cold path</td><td><code>init.ts:22</code>; <code>bench/baselines.json:17-20</code></td><td><spec-status value="accepted">verified</spec-status></td><td>Static import of <code>./init/tools.js</code>; budget 150 ms, dev p50 40 ms. Renderer = string templating only.</td></tr>
+    <tr><td>Core subpath exports follow one shape</td><td><code>packages/core/package.json:36-39</code>; <code>tsup.config.ts:69</code></td><td><spec-status value="accepted">verified</spec-status></td><td><code>./gitignore/apply</code> = tsup entry + <code>types</code>/<code>default</code> map. Add <code>./ci/render</code> identically.</td></tr>
+    <tr><td>The fenced-block writer is line-oriented</td><td><code>packages/core/src/gitignore/apply.ts:16-26</code></td><td><spec-status value="accepted">verified</spec-status></td><td><code># >>> spectastic >>></code>…<code># <<< spectastic <<<</code> regex splice — safe for <code>.gitignore</code>, unsafe inside YAML (D-003).</td></tr>
+    <tr><td><code>verdict</code>'s CI contract</td><td><code>packages/cli/src/commands/verdict.ts:21-29, 137</code></td><td><spec-status value="accepted">verified</spec-status></td><td><code>--changed &lt;paths...&gt;</code> variadic (needs ≥ 1), <code>--out</code> default <code>.spectastic/verdict.json</code>, exit <code>hasViolation ? 1 : 0</code>. Empty diff needs a guard.</td></tr>
+    <tr><td><code>enforce</code> exits per profile gate; no marker → 0</td><td><code>packages/cli/src/commands/enforce.ts:21-27, 57-58</code></td><td><spec-status value="accepted">verified</spec-status></td><td>The step needs no flags; a lean or unprofiled project passes by construction.</td></tr>
+    <tr><td>Merge-base diff on a PR needs full history; this repo already does it</td><td><code>.github/workflows/ci.yml:242-261</code></td><td><spec-status value="accepted">verified</spec-status></td><td><code>fetch-depth: 0</code> + <code>git merge-base origin/&lt;base&gt; HEAD</code>. Clone; pass the base ref via <code>env:</code>.</td></tr>
+    <tr><td>Action majors this repo runs on</td><td><code>ci.yml:16, 32, 127, 228</code></td><td><spec-status value="accepted">verified</spec-status></td><td><code>checkout@v7</code>, <code>setup-node@v7</code>, <code>codeql-action/upload-sarif@v4</code>, <code>upload-artifact@v4</code>, Node 22 — the renderer's pins, test-guarded (D-005).</td></tr>
+    <tr><td>The TTY prompt uses @clack/prompts</td><td><code>packages/cli/src/commands/init/prompt.ts:87-96</code></td><td><spec-status value="accepted">verified</spec-status></td><td><code>confirmTools</code> lazy-imports <code>@clack/prompts</code>; a <code>select</code> for the host follows the same shape.</td></tr>
+    <tr><td>GitLab's <code>.pre</code> stage needs no <code>stages:</code> entry; <code>include: local</code> paths are root-relative with a leading slash</td><td><a href="https://docs.gitlab.com/ci/yaml/">docs.gitlab.com/ci/yaml</a> — claim stated before fetching: "<code>.pre</code> is usable unlisted and runs first"</td><td><spec-status value="review">spike</spec-status></td><td>Confirmed: default stages are <code>.pre, build, test, deploy, .post</code>; example <code>local: '/templates/…'</code>. Include path gets the leading slash.</td></tr>
+    <tr><td>GitLab ingests SARIF via a dedicated report type</td><td><a href="https://docs.gitlab.com/ci/yaml/artifacts_reports/">artifacts_reports</a> — claim: "<code>reports: sast:</code> accepts SARIF"</td><td><spec-status value="review">spike</spec-status></td><td><strong>Claim was wrong.</strong> <code>artifacts:reports:sarif</code> "collects security findings from tools that emit SARIF 2.1.0"; <code>sast</code> expects GitLab's own schema. The hand-written recipe uses the wrong type — fixed by regeneration (FR-012).</td></tr>
+    <tr><td>A run-regardless step condition on GitHub</td><td><a href="https://docs.github.com/en/actions/reference/workflows-and-actions/expressions">GitHub expressions</a> — claim: "<code>always()</code> runs the step after a failure"</td><td><spec-status value="review">spike</spec-status></td><td>Confirmed, but the doc now recommends <code>if: ${{ !cancelled() }}</code> over <code>always()</code>. Render <code>!cancelled()</code>, combined with the event guard for the verdict steps.</td></tr>
+    <tr><td><code>node:22</code> (Debian) images ship <code>git</code>; alpine variants do not</td><td><a href="https://github.com/docker-library/docs/blob/master/node/README.md">docker-library node README</a> — claim: "the default tag is Debian with common tools; alpine omits git"</td><td><spec-status value="review">spike</spec-status></td><td>Confirmed: the default tag "is based off of <code>buildpack-deps</code>" with "a large number of extremely common Debian packages"; for alpine "it's uncommon for additional related tools (such as <code>git</code> or <code>bash</code>) to be included". D-004 pins the Debian tag.</td></tr>
+    <tr><td><code>npx --yes @spectastic/cli@&lt;v&gt;</code> fetches the pinned version non-interactively</td><td><a href="https://docs.npmjs.com/cli/v10/commands/npx">npm docs · npx</a> — claim: "<code>--yes</code> suppresses the install prompt and a <code>@version</code> specifier is exact"</td><td><spec-status value="review">spike</spec-status></td><td>Confirmed: "<code>npx</code> prompts before installing anything. Suppress this prompt with the <code>-y</code> or <code>--yes</code> option"; specifiers match "the exact same name and version"; rewritten in npm v7, which Node 22 exceeds. The live fetch itself is still only exercised by a live run (D-006).</td></tr>
+    <tr><td><code>act</code> is not available to run the workflow locally</td><td><code>which act</code></td><td><spec-status value="review">spike</spec-status></td><td>Not installed. The rendered steps are proven by executing them by hand (D-006).</td></tr>
+  </tbody>
+</table>
+</div>
+</section>
+
+
+<section id="approach">
+<h2>5 · Approach</h2>
+
+<p>Three new modules, each cloning a neighbour. <strong>Renderer</strong> — <code>packages/core/src/ci/render.ts</code>, a pure
+<code>renderCiWorkflow(host, {cliVersion, mode})</code> built by joining a string array exactly as <code>buildHookScript</code> does:
+no YAML library, no I/O, so it can sit on the <code>init</code> cold path and be called by the docs script, the drift scan and the
+tests alike. It owns the marker, the file paths, the artifact globs (re-exported to <code>hook.ts</code> so both gates validate one
+list), the Node major and the action pins. <strong>Installer</strong> — <code>packages/cli/src/commands/init/ci.ts</code>, beside
+<code>hook.ts</code> and <code>adapters.ts</code>: host detection, the refuse-unless-forced write, the GitLab bootstrap root file, the
+include-state probe, and <code>DriftPair</code> production. <code>tools.ts</code> gains a third half (<code>ci</code>, <code>ciHost</code>,
+<code>cliVersion</code>; kinds <code>install-ci</code>/<code>remove-ci</code>) and <code>init.ts</code> the two options, the routing, and the
+host prompt when nothing is detected. <strong>Drift</strong> — a <code>ciGateDriftFinding</code> in core next to
+<code>commandsDriftFinding</code>, and a <code>scanCiDrift</code> in the CLI's validate folded beside <code>scanSkillsDrift</code>.</p>
+
+<p>The workflow itself: checkout with full history → setup Node 22 → <code>validate --format sarif</code> (upload, run-regardless) →
+<code>enforce</code> (run-regardless) → on pull requests only, <code>verdict --changed</code> over the merge-base diff with an
+empty-diff guard, then upload the verdict artifact. GitLab mirrors it as one <code>.pre</code>-stage job whose script accumulates a
+failure flag across the three commands and exits with it, with <code>reports: sarif</code> and the verdict as artifacts.</p>
+
+<spec-sidenote>The obvious shortcut — build the YAML as an object and <code>stringify</code> it — was rejected for the cold-start
+budget alone. The template is small enough that a string array is also easier to diff by eye.</spec-sidenote>
+
+<spec-arch>
+<figure>
+<svg viewBox="0 0 700 300" role="img" aria-label="Architecture sketch: core renderer feeding the installer, the drift scan and the docs script">
+  <style>
+    .box { fill: var(--c-surface, #fcfbf7); stroke: var(--c-border, #c4c1bb); stroke-width:1.2; }
+    .label { font: 700 11px Lato, sans-serif; fill: var(--c-text-soft, #4a4a46); letter-spacing:0.06em; text-transform:uppercase; }
+    .body { font: 400 12px "Source Serif 4", Georgia, serif; fill: var(--c-text, #353534); }
+    .arr { stroke: var(--c-muted, #73706d); stroke-width:1.2; fill:none; }
+    .arrh { fill: var(--c-muted, #73706d); }
+  </style>
+  <rect class="box" x="250" y="20" width="200" height="60" rx="4"/>
+  <text class="label" x="266" y="42">core · ci/render</text>
+  <text class="body"  x="266" y="62">(host, version) → file bytes</text>
+
+  <rect class="box" x="40" y="150" width="180" height="60" rx="4"/>
+  <text class="label" x="56" y="172">cli · init/ci.ts</text>
+  <text class="body"  x="56" y="192">detect · write · bootstrap</text>
+
+  <rect class="box" x="260" y="150" width="180" height="60" rx="4"/>
+  <text class="label" x="276" y="172">cli · validate</text>
+  <text class="body"  x="276" y="192">scanCiDrift → finding</text>
+
+  <rect class="box" x="480" y="150" width="180" height="60" rx="4"/>
+  <text class="label" x="496" y="172">scripts · docs</text>
+  <text class="body"  x="496" y="192">example mode → recipes</text>
+
+  <rect class="box" x="40" y="240" width="180" height="44" rx="4"/>
+  <text class="label" x="56" y="258">downstream repo</text>
+  <text class="body"  x="56" y="276">.github/ · .gitlab/</text>
+
+  <path class="arr" d="M300 80 L130 150" marker-end="url(#a)"/>
+  <path class="arr" d="M350 80 L350 150" marker-end="url(#a)"/>
+  <path class="arr" d="M400 80 L570 150" marker-end="url(#a)"/>
+  <path class="arr" d="M130 210 L130 240" marker-end="url(#a)"/>
+  <path class="arr" d="M260 190 L220 250" marker-end="url(#a)"/>
+  <defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path class="arrh" d="M0,0 L10,5 L0,10 z"/></marker></defs>
+</svg>
+<figcaption>One pure renderer, three callers. The installer writes the downstream files; the drift scan re-renders and compares them; the docs script renders the unpinned example.</figcaption>
+</figure>
+</spec-arch>
+</section>
+
+
+<section id="alternatives">
+<h2>6 · Alternatives considered</h2>
+
+<spec-matrix>
+<div style="overflow-x:auto;">
+<table>
+  <thead>
+    <tr><th>Option</th><th>Never edits a user file</th><th>Same drift/uninstall semantics as GitHub</th><th>Works on first run</th><th class="score">Total</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Marker-fenced job spliced into <code>.gitlab-ci.yml</code></td><td>1</td><td>2</td><td>3</td><td class="score">6</td></tr>
+    <tr><td>Sidecar + print the include; never create a root file</td><td>5</td><td>5</td><td>2</td><td class="score">12</td></tr>
+    <tr data-winner><td>Sidecar + print the include; bootstrap a root file only when none exists — chosen</td><td>5</td><td>5</td><td>4</td><td class="score">14</td></tr>
+  </tbody>
+</table>
+</div>
+</spec-matrix>
+<p>Scored 1–5. The fenced splice scores on first-run convenience only; a YAML fence collides with the user's <code>stages:</code> and
+job names and cannot be spliced safely without a YAML-aware merge (the <code>.gitignore</code> writer gets away with it because that
+file is line-oriented). The bootstrap variant keeps every "never edit" property while giving a fresh GitLab project a working pipeline.</p>
+</section>
+
+
+<section id="decisions">
+<h2>7 · Decisions</h2>
+
+<spec-decision id="D-001" grounding="verified">
+  <h4>D-001 · Pure renderer in core; installer CLI-local</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>Three callers need the rendered bytes — the installer, the drift scan, the docs script — and only the installer needs the filesystem or a prompt (<code>tools.ts:24-49</code>; <code>validate.ts:110-138</code>). P-14 asks the same question and answers it the same way; core's subpath-export shape is <code>package.json:36-39</code>.</dd>
+    <dt>Decision drivers</dt> <dd>second-caller test · cold-start budget · the 041–043 drift scar</dd>
+    <dt>Considered options</dt>
+    <dd>
+      <ul class="considered-options">
+        <li><strong>Core renderer + CLI-local installer — chosen</strong> — + one pure function, three callers; fs/prompt scaffolding stays where <code>hook.ts</code> lives. − two packages touched.</li>
+        <li><strong>Everything in core</strong> — + Workflow-reusable installer. − drags fs/prompt orchestration only <code>init</code> calls into the kernel.</li>
+        <li><strong>Everything CLI-local</strong> — + one package. − docs script and drift scan import from the CLI, the drift 041–043 paid for.</li>
+      </ul>
+    </dd>
+    <dt>Decision</dt>     <dd><code>packages/core/src/ci/render.ts</code> exporting <code>renderCiWorkflow</code>, the marker, paths, globs and pins; <code>packages/cli/src/commands/init/ci.ts</code> for detection, writes, bootstrap and drift pairs; a new <code>./ci/render</code> subpath export.</dd>
+    <dt>Consequences</dt> <dd>+ the renderer is testable without a binary and reachable from a script. − <code>hook.ts</code> now imports its globs from core (a one-line re-export keeping its tests intact).</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-002" grounding="verified">
+  <h4>D-002 · Drift compares against the running CLI's render, version pin included</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>The adapter drift check is "render(source) ≠ on-disk" (<code>adapters.ts:17-21</code>) and the CLI's version is a runtime read (<code>index.ts:41-48</code>). The interview chose lockstep — CI runs exactly what the hook runs — over treating the on-disk pin as user data.</dd>
+    <dt>Decision</dt>     <dd><code>scanCiDrift</code> renders with <code>cliVersion()</code> and compares bytes; any managed file whose pin (or anything else) differs is an error-severity <code>ci-gate-drift</code> finding with the regenerate command as fix hint. A pre-release running version warns at install (FR-005) but drifts like any other.</dd>
+    <dt>Consequences</dt> <dd>+ upgrading the CLI cannot leave CI on an older version silently; the pre-commit hook says "regenerate". − every CLI upgrade costs one <code>init --tools --ci-only</code> and a commit; a dev-from-source maintainer sees a pin that may not be published yet (accepted in the spec's edge cases).</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-003" grounding="verified">
+  <h4>D-003 · GitLab: owned sidecar, bootstrap root file, never a splice</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>The only fenced-block precedent is line-oriented (<code>gitignore/apply.ts:16-26</code>); YAML is not. GitLab's <code>include: local</code> takes a root-relative path with a leading slash and <code>.pre</code> is usable without a <code>stages:</code> entry (spike row). The interview asked for a bootstrap root file when none exists.</dd>
+    <dt>Decision</dt>     <dd>Write <code>.gitlab/ci/spectastic.yml</code> (managed) with the job at <code>stage: .pre</code>; print <code>include: - local: /.gitlab/ci/spectastic.yml</code> and report whether the root file already contains that path; when no <code>.gitlab-ci.yml</code> exists, write one holding only the marker and the include. The root file is never drift-checked and is removed on uninstall only while byte-equal to its render; <code>validate</code> reports a managed sidecar the root file no longer includes.</dd>
+    <dt>Consequences</dt> <dd>+ the user's pipeline stays theirs; a fresh project pipelines on first push. − a user who deletes the include silently disables the gate until <code>validate</code> runs — the check exists for exactly that.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-004" grounding="spike">
+  <h4>D-004 · Workflow shape: run-regardless steps, PR-only verdict, SARIF via the host's SARIF channel</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>Merge-base diffing needs full history (<code>ci.yml:242-261</code>); <code>verdict --changed</code> is variadic and needs ≥ 1 path (<code>verdict.ts:21</code>); GitHub's docs recommend <code>!cancelled()</code> over <code>always()</code>; GitLab ingests SARIF only through <code>reports: sarif</code>, not <code>sast</code> (both spike rows).</dd>
+    <dt>Decision</dt>     <dd>GitHub: <code>on: pull_request</code> (no paths filter) + <code>push: branches: [main, master]</code>; <code>permissions: contents: read, security-events: write</code>; every gate step <code>if: ${{ !cancelled() }}</code>, the verdict steps additionally <code>&amp;&amp; github.event_name == 'pull_request'</code>; base ref via <code>env: BASE_REF</code>; an empty diff prints and exits 0; the verdict JSON uploaded with <code>if-no-files-found: ignore</code>; a commented <code>--enforcer-output</code> example line. GitLab: <code>image: node:22</code> (the Debian default tag, which carries <code>git</code> — spike row), <code>stage: .pre</code>, <code>GIT_DEPTH: "0"</code>, rules for merge-request events and the default branch, one script accumulating <code>FAILED</code> across the three commands, <code>artifacts: when: always, reports: sarif:, paths: [spectastic.sarif, .spectastic/verdict.json]</code>.</dd>
+    <dt>Consequences</dt> <dd>+ a reviewer sees all three results on one run; the SARIF lands where each host renders it. − paths containing whitespace are unsupported in the verdict step (recorded ceiling); the Debian image is larger than alpine.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-005" grounding="verified">
+  <h4>D-005 · Pins are renderer constants matching this repo's CI, test-guarded, not configurable</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>This repo runs <code>checkout@v7</code>, <code>setup-node@v7</code>, <code>upload-sarif@v4</code>, <code>upload-artifact@v4</code> on Node 22 (<code>ci.yml:16, 32, 127, 228</code>); <code>engines.node</code> is <code>&gt;=20</code>. The interview chose 22 and rejected a config key.</dd>
+    <dt>Decision</dt>     <dd><code>CI_NODE_VERSION = '22'</code> and an <code>ACTION_PINS</code> map live in the renderer. Two tests hold them honest: the Node major satisfies <code>engines.node</code>, and each pin equals the major <code>.github/workflows/ci.yml</code> uses — so a bump here forces the renderer forward and downstream files drift on the next release. Stated fixity: these are not overridable, and the help text does not pretend otherwise.</dd>
+    <dt>Consequences</dt> <dd>+ one place to bump; no undiscoverable default. − a downstream project cannot pin an older action major without leaving management.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-006" grounding="spike">
+  <h4>D-006 · Proof by executing the rendered steps, not by a live runner</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd><code>act</code> is not installed (spike row) and a live GitHub/GitLab run needs a throwaway remote. SC-001 is about the steps' behaviour, which the shell commands carry; the YAML wrapper is proven by parsing plus the pin/permission assertions.</dd>
+    <dt>Decision</dt>     <dd>The real-CI proof runs the rendered commands by hand in a scratch project (init, commit a base, branch with a scoped decision and a violating file, run validate/enforce/verdict exactly as rendered with the built CLI standing in for the pinned package) and records exit codes in <code>verify.html</code>. A live push to a throwaway repository is optional and, if skipped, is recorded as the P-8 ceiling.</dd>
+    <dt>Consequences</dt> <dd>+ SC-001 is grounded in a real run, not a structural check. − the <code>npx</code> fetch and the hosts' SARIF ingestion are exercised only by a live run; both are named in Risks.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-007" grounding="n-a">
+  <h4>D-007 · TDD, tests-first per story</h4>
+  <dl>
+    <dt>Status</dt>       <dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt>      <dd>A preference, anchored in the interview; the same discipline 083–085 and 099–105 drained under.</dd>
+    <dt>Decision</dt>     <dd>Renderer tests red before the renderer, installer tests red before <code>ci.ts</code>, drift tests red before the scan, the built-binary integration test last.</dd>
+    <dt>Consequences</dt> <dd>+ every module lands with its test. − slower first phase.</dd>
+  </dl>
+</spec-decision>
+</section>
+
+
+<section id="project-structure">
+<h2>8 · Project structure</h2>
+
+<p>Only the new or changed paths, grouped by the boundaries <a href="#D-001">D-001</a> draws.</p>
+
+<pre><code>packages/core/
+  src/ci/render.ts                       NEW  renderCiWorkflow · CI_MANAGED_MARKER · CI_FILE_PATHS · CI_ARTIFACT_GLOBS · CI_NODE_VERSION · ACTION_PINS · isCiManaged
+  src/commands/validate.ts               MOD  ciGateDriftFinding (clones commandsDriftFinding); export firstLeak
+  tsup.config.ts · package.json          MOD  './ci/render' entry + subpath export
+  test/ci.render.test.ts                 NEW  determinism · YAML parse · pins · modes · id scan
+  test/ci.render.docs.test.ts            NEW  docs/ci-examples byte-equal to example mode
+packages/cli/
+  src/version.ts                         NEW  cliVersion() lifted from index.ts
+  src/index.ts                           MOD  uses cliVersion()
+  src/commands/init/ci.ts                NEW  detect · resolve · install · remove · bootstrap · includeState · driftPairs
+  src/commands/init/tools.ts             MOD  third half: ci / ciHost / cliVersion; install-ci / remove-ci
+  src/commands/init/hook.ts              MOD  ARTIFACT_GLOBS re-exported from core
+  src/commands/init/prompt.ts            MOD  selectCiHost() (clack select)
+  src/commands/init.ts                   MOD  --ci &lt;host&gt; · --ci-only · routing · offerTools
+  src/commands/validate.ts               MOD  scanCiDrift folded beside scanSkillsDrift
+  test/init/ci.test.ts                   NEW  detection · outcomes · refuse/force · bootstrap · include state · planTools
+  test/version.test.ts                   NEW  cliVersion() · Node major vs engines · pins vs ci.yml
+  test/init.tools.ci.integration.test.ts NEW  built binary end-to-end (SC-002, SC-003, SC-005)
+docs/ci-examples/*.yml                   REGEN example mode (fixes the GitLab report type)
+scripts/render-ci-examples.mjs           NEW  regenerates the recipes from dist
+README.md                                MOD  the recipes are generated; init --tools installs them
+</code></pre>
+</section>
+
+
+<section id="risks">
+<h2>9 · Risks &amp; mitigations</h2>
+
+<div style="overflow-x:auto;">
+<table>
+  <thead><tr><th>Risk</th><th>Likelihood</th><th>Impact</th><th>Mitigation</th></tr></thead>
+  <tbody>
+    <tr><td>A host-side detail (SARIF ingestion, <code>npx</code> fetch, <code>.pre</code> on an included file) behaves differently on a live runner than the docs say</td><td>L</td><td>M</td><td>D-006 names the two surfaces a hand run cannot exercise; the optional live push closes them; the renderer is one constant away from a fix and drift propagates it.</td></tr>
+    <tr><td>Every CLI upgrade forces a regenerate-and-commit in every managed project</td><td>H</td><td>L</td><td>Chosen deliberately (D-002); the fix hint names the exact command; the hook catches it before push.</td></tr>
+    <tr><td>Adding the renderer to <code>tools.ts</code>'s static import graph tips the cold-start bench</td><td>L</td><td>M</td><td>String templating only; <code>pnpm bench</code> run in the drain; a regression fails the existing 150 ms guard.</td></tr>
+    <tr><td>A user deletes the include from their <code>.gitlab-ci.yml</code> and the gate silently stops</td><td>M</td><td>M</td><td>FR-008: <code>validate</code> reports a managed sidecar that is no longer included.</td></tr>
+    <tr><td>Whitespace in a changed path breaks the verdict step's word-splitting</td><td>L</td><td>L</td><td>Recorded ceiling in the spec and a comment in the rendered step; runners are Linux and such paths are rare in the projects this targets.</td></tr>
+  </tbody>
+</table>
+</div>
+</section>
+
+
+<section id="complexity">
+<h2>10 · Complexity tracking</h2>
+<p>Anywhere this plan introduces complexity not strictly required by the spec, justify it here.</p>
+
+<spec-assumption>
+<p>A separate <code>version.ts</code> rather than reading <code>program.version()</code> everywhere: the validate drift scan runs in helper
+functions with no <code>program</code> in reach, and the docs script has no commander at all. One 8-line module beats threading the
+value through three call sites.</p>
+</spec-assumption>
+
+<spec-assumption>
+<p>An <code>example</code> render mode exists only to keep <code>docs/ci-examples/</code> honest (FR-012). It is one boolean branch
+in the renderer — no marker, <code>@latest</code>, a copy-or-run header — and its byte-equality test is what makes the docs a
+derived artifact rather than a third copy.</p>
+</spec-assumption>
+</section>
+
+
+<section id="questions">
+<h2>11 · Open questions</h2>
+<spec-questions>
+<p>None outstanding — every decision was anchored in the interview, and the two doc-dependent facts were spiked against the
+vendor documentation before being relied on.</p>
+</spec-questions>
+</section>
+
+
+<section id="changelog">
+<h2>12 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-09-16">16 Sep 2026</time><span>Initial design. Spikes corrected two assumptions the plan carried: GitLab ingests SARIF through <code>reports: sarif</code> (the hand-written recipe's <code>sast</code> type is wrong), and GitHub's docs prefer <code>!cancelled()</code> to <code>always()</code>. Action pins taken from this repo's own workflow (v7/v7/v4/v4, Node 22), not the older majors the plan assumed.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  Design for 121-init-ci-gate · Init CI gate · authored 2026-09-16
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>

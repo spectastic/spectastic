@@ -1,0 +1,288 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'">
+<title>Init CI gate · Tasks</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Tasks · 121-init-ci-gate</p>
+  <h1>Init CI gate</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    Ordered, parallelizable work. Tests precede implementation. Drive through with
+    <code>/spectastic.implement</code> — one task per invocation.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>     <span><spec-status value="draft">Draft</spec-status></span>
+    <b>Spec</b>       <span><a href="./spec.html">121-init-ci-gate</a></span>
+    <b>Design</b>     <span><a href="./design.html">design</a></span>
+    <b>Branch</b>     <span><code>main</code></span>
+    <b>Created</b>    <span><time datetime="2026-09-16">16 Sep 2026</time></span>
+    <b>Read time</b>  <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-tldr>
+    <p>31 tasks across five phases. Setup → Foundational → User stories (US1 · US3 · US2 · US4, in
+    priority order) → Polish. Tasks marked <span class="par">[P]</span> can run in parallel — different
+    files, no dependency. Tests for a story <strong>MUST</strong> be written and failing before its
+    implementation tasks start.</p>
+  </spec-tldr>
+</header>
+
+
+<section id="strategy">
+<h2>1 · Execution strategy</h2>
+
+<spec-tabs>
+  <spec-tab label="MVP-first">
+    <p>Foundational, then US1 end-to-end (GitHub, all three steps) — the smallest demoable slice.
+    Ship. US3's drift check and US2's failure-path proof follow since both are P1; US4's GitLab
+    parity and Polish close the spec.</p>
+  </spec-tab>
+  <spec-tab label="Incremental">
+    <p>Setup → Foundational → US1 → US3 → US2 → US4 → Polish, in priority order. Each story
+    closes its conformance before the next opens.</p>
+  </spec-tab>
+  <spec-tab label="Parallel teams">
+    <p>US1 and US3 depend only on Foundational and can run concurrently — the installer and the
+    drift check touch disjoint files. US2 reuses US1's scratch project; US4 extends both US1's
+    installer and US3's drift scan, so it starts last.</p>
+  </spec-tab>
+</spec-tabs>
+</section>
+
+
+<section id="phase-setup" class="phase">
+<h2>2 · Phase 1 — Setup</h2>
+
+<spec-task id="T-001" parallel>
+  <input type="checkbox">
+  <div><strong>Scaffold the core CI-render module</strong> — an empty file plus the tsup entry and package.json subpath export, so downstream test imports resolve before the renderer exists. <span class="path">packages/core/src/ci/render.ts</span></div>
+</spec-task>
+<spec-task id="T-002" parallel>
+  <input type="checkbox">
+  <div><strong>Export the internal-id matcher</strong> — rename the module-private <code>firstLeak</code> to an exported <code>firstInternalId</code> so the renderer test can reuse the canonical id patterns. <span class="path">packages/core/src/commands/validate.ts</span></div>
+</spec-task>
+</section>
+
+
+<section id="phase-foundation" class="phase">
+<h2>3 · Phase 2 — Foundational</h2>
+<p>The renderer and the version reader. Both stories depend on these; neither depends on the other.</p>
+
+<spec-task id="T-010">
+  <input type="checkbox">
+  <div><strong>Write the renderer test, failing</strong> — determinism across two renders (<a href="./spec.html#NFR-001">NFR-001</a>), both hosts parse as YAML with the version pin on all 3 CLI steps (<a href="./spec.html#NFR-002">NFR-002</a>), marker present in managed mode / absent with <code>@latest</code> in example mode, a run-regardless condition on every gate step, 0 internal ids via <code>firstInternalId</code> (<a href="./spec.html#NFR-003">NFR-003</a>), the Node major satisfying <code>engines.node</code>. <span class="path">packages/core/test/ci.render.test.ts</span></div>
+</spec-task>
+<spec-task id="T-011">
+  <input type="checkbox">
+  <div><strong>Implement the CI renderer</strong> — <code>renderCiWorkflow</code>, <code>CI_MANAGED_MARKER</code>, <code>CI_FILE_PATHS</code>, <code>CI_ARTIFACT_GLOBS</code>, <code>CI_NODE_VERSION</code>, <code>ACTION_PINS</code>, <code>isCiManaged</code> — pure string templating, no YAML library. <span class="path">packages/core/src/ci/render.ts</span></div>
+</spec-task>
+<spec-task id="T-012" parallel>
+  <input type="checkbox">
+  <div><strong>Write the version-reader test, failing</strong> — <code>cliVersion()</code> equals the CLI's own <code>package.json</code>; <code>CI_NODE_VERSION</code> satisfies <code>engines.node</code>; each <code>ACTION_PINS</code> major equals this repo's own <code>ci.yml</code>. <span class="path">packages/cli/test/version.test.ts</span></div>
+</spec-task>
+<spec-task id="T-013">
+  <input type="checkbox">
+  <div><strong>Implement <code>cliVersion()</code></strong> — lift the <code>package.json</code> read out of <code>index.ts</code> into its own module; wire <code>index.ts</code> to use it. <span class="path">packages/cli/src/version.ts</span></div>
+</spec-task>
+<spec-task id="T-014" parallel>
+  <input type="checkbox">
+  <div><strong>Single-source the artifact globs</strong> — re-export <code>CI_ARTIFACT_GLOBS</code> from core as <code>ARTIFACT_GLOBS</code> so the pre-commit hook and the CI gate validate the same list. <span class="path">packages/cli/src/commands/init/hook.ts</span></div>
+</spec-task>
+</section>
+
+
+<section id="phase-us1" class="phase">
+<h2>4 · Phase 3a — US1 · Install the gate</h2>
+
+<h3>Tests (write &amp; fail first)</h3>
+<spec-task id="T-100" parallel>
+  <input type="checkbox">
+  <div><strong>Write the installer unit test, failing</strong> — host detection across 5 presence cases, install outcomes (created / updated / unchanged), refusal on an unmanaged file at the managed path, <code>--force</code> overriding it, <code>removeCi</code> leaving an unmanaged file alone. <span class="path">packages/cli/test/init/ci.test.ts</span></div>
+</spec-task>
+<spec-task id="T-101" parallel>
+  <input type="checkbox">
+  <div><strong>Write the GitHub integration test, failing</strong> — the built binary's <code>init --tools --ci github</code> in a scratch git repository. <span class="path">packages/cli/test/init.tools.ci.integration.test.ts</span></div>
+</spec-task>
+
+<h3>Implementation</h3>
+<spec-task id="T-110">
+  <input type="checkbox">
+  <div><strong>Implement the CI installer</strong> — <code>parseCiSelection</code>, <code>detectCiHosts</code>, <code>resolveCiHosts</code>, <code>ciManaged</code>, <code>installCi</code>, <code>removeCi</code> for the GitHub path (GitLab's sidecar/bootstrap lands in US4). <span class="path">packages/cli/src/commands/init/ci.ts</span></div>
+</spec-task>
+<spec-task id="T-111" parallel>
+  <input type="checkbox">
+  <div><strong>Add the CI half to <code>--tools</code></strong> — <code>ToolsOptions</code> gains <code>ci</code>, <code>ciHost</code>, <code>cliVersion</code>; <code>ToolsDecision</code> gains <code>install-ci</code> / <code>remove-ci</code>; <code>planTools</code> and <code>runTools</code> handle both. <span class="path">packages/cli/src/commands/init/tools.ts</span></div>
+</spec-task>
+<spec-task id="T-112" parallel>
+  <input type="checkbox">
+  <div><strong>Wire <code>--ci</code> and <code>--ci-only</code></strong> — the two new options, routing (<code>ci = ciOnly || !narrowed</code>), the exit-2 refusal when <code>--ci-only</code> would install nothing, and the plain-<code>init</code> interactive offer defaulting to all three halves. <span class="path">packages/cli/src/commands/init.ts</span></div>
+</spec-task>
+<spec-task id="T-113">
+  <input type="checkbox">
+  <div><strong>Add the no-host-detected prompt</strong> — a terminal <code>select</code> for the host when detection finds neither; a headless run skips with a note instead. <span class="path">packages/cli/src/commands/init/prompt.ts</span></div>
+</spec-task>
+<spec-task id="T-114">
+  <input type="checkbox">
+  <div><strong>Run <code>spectastic init --tools --ci github</code> against a scratch repository</strong> — install, run <code>spectastic validate</code> clean, re-run to confirm <code>unchanged</code>. Makes T-101 green.</div>
+</spec-task>
+
+<spec-note>
+<p>Closes <a href="./spec.html#FR-001">FR-001</a>, <a href="./spec.html#FR-002">FR-002</a>, <a href="./spec.html#FR-003">FR-003</a>,
+<a href="./spec.html#FR-004">FR-004</a>, <a href="./spec.html#FR-005">FR-005</a>, <a href="./spec.html#FR-006">FR-006</a>,
+<a href="./spec.html#FR-011">FR-011</a> · <a href="./spec.html#SC-001">SC-001</a>, <a href="./spec.html#SC-005">SC-005</a>.</p>
+</spec-note>
+</section>
+
+
+<section id="phase-us3" class="phase">
+<h2>5 · Phase 3b — US3 · Drift on upgrade</h2>
+
+<h3>Tests (write &amp; fail first)</h3>
+<spec-task id="T-300" parallel>
+  <input type="checkbox">
+  <div><strong>Write the drift-finding test, failing</strong> — the finding's rule, severity and fix hint; <code>scanCiDrift</code> returns nothing with no managed file, one error on a hand-edited managed file, nothing once it matches the render again. <span class="path">packages/cli/test/ci-drift.test.ts</span></div>
+</spec-task>
+
+<h3>Implementation</h3>
+<spec-task id="T-310">
+  <input type="checkbox">
+  <div><strong>Implement <code>ciGateDriftFinding</code></strong> — clones <code>commandsDriftFinding</code>'s shape; rule <code>ci-gate-drift</code>, error severity, fix hint naming the regenerate command. <span class="path">packages/core/src/commands/validate.ts</span></div>
+</spec-task>
+<spec-task id="T-311">
+  <input type="checkbox">
+  <div><strong>Implement <code>scanCiDrift</code> and fold it in</strong> — lazy-imports the installer, re-renders with the running CLI's version, folded beside <code>scanSkillsDrift</code>. <span class="path">packages/cli/src/commands/validate.ts</span></div>
+</spec-task>
+<spec-task id="T-312">
+  <input type="checkbox">
+  <div><strong>Hand-edit the installed gate and confirm the drift is caught</strong> — on the scratch repository from T-114, edit the managed workflow, run <code>spectastic validate</code> (exit 1, <code>ci-gate-drift</code>), then <code>init --tools --ci-only</code> to clear it.</div>
+</spec-task>
+
+<spec-note>
+<p>Closes <a href="./spec.html#FR-009">FR-009</a> · <a href="./spec.html#SC-002">SC-002</a>.</p>
+</spec-note>
+</section>
+
+
+<section id="phase-us2" class="phase">
+<h2>6 · Phase 3c — US2 · Results on the pull request</h2>
+
+<h3>Tests (write &amp; fail first)</h3>
+<spec-task id="T-200" parallel>
+  <input type="checkbox">
+  <div><strong>Extend the renderer test for step isolation, failing</strong> — assert the enforce and verdict steps carry a run-regardless condition independent of the validate step's outcome, the SARIF upload runs regardless too, and the verdict artifact upload tolerates no file. <span class="path">packages/core/test/ci.render.test.ts</span></div>
+</spec-task>
+
+<h3>Implementation</h3>
+<spec-task id="T-210">
+  <input type="checkbox">
+  <div><strong>Close any gap the isolation test finds</strong> — the renderer from T-011 was built with these conditions from the start; this task is the TDD pairing that proves it rather than assumes it. <span class="path">packages/core/src/ci/render.ts</span></div>
+</spec-task>
+<spec-task id="T-211">
+  <input type="checkbox">
+  <div><strong>Break validate deliberately and confirm the other two steps still run</strong> — on the scratch repository, corrupt a tracked spec artifact, run the three rendered commands by hand, and confirm enforce and verdict both execute and produce output despite validate's non-zero exit.</div>
+</spec-task>
+
+<spec-note>
+<p>Reinforces <a href="./spec.html#FR-003">FR-003</a>, <a href="./spec.html#FR-004">FR-004</a> with the failure-path case
+US1's happy path doesn't exercise; measured by <a href="./spec.html#SC-001">SC-001</a>.</p>
+</spec-note>
+</section>
+
+
+<section id="phase-us4" class="phase">
+<h2>7 · Phase 3d — US4 · GitLab parity</h2>
+
+<h3>Tests (write &amp; fail first)</h3>
+<spec-task id="T-400" parallel>
+  <input type="checkbox">
+  <div><strong>Extend the installer test for GitLab, failing</strong> — detection via <code>.gitlab-ci.yml</code> / <code>.gitlab/</code>, the sidecar path, the three <code>gitlabIncludeState</code> outcomes, the bootstrap root file created only when none exists, and uninstall removing it only while byte-identical. <span class="path">packages/cli/test/init/ci.test.ts</span></div>
+</spec-task>
+<spec-task id="T-401" parallel>
+  <input type="checkbox">
+  <div><strong>Write the GitLab integration test, failing</strong> — the built binary's <code>init --tools --ci gitlab</code> against both an empty repository and one with an existing root pipeline file. <span class="path">packages/cli/test/init.tools.ci.integration.test.ts</span></div>
+</spec-task>
+
+<h3>Implementation</h3>
+<spec-task id="T-410">
+  <input type="checkbox">
+  <div><strong>Implement the GitLab sidecar and bootstrap</strong> — <code>gitlabIncludeState</code>, the sidecar write, and the bootstrap root file written only when none exists. <span class="path">packages/cli/src/commands/init/ci.ts</span></div>
+</spec-task>
+<spec-task id="T-411">
+  <input type="checkbox">
+  <div><strong>Print the include snippet and its state</strong> — <code>runTools</code> reports the <code>include: - local:</code> line and whether the root file already carries it. <span class="path">packages/cli/src/commands/init/tools.ts</span></div>
+</spec-task>
+<spec-task id="T-412" parallel>
+  <input type="checkbox">
+  <div><strong>Report a sidecar the root file no longer includes</strong> — a second validate finding, distinct from drift, for a managed GitLab sidecar whose include has been removed. <span class="path">packages/core/src/commands/validate.ts</span></div>
+</spec-task>
+<spec-task id="T-413">
+  <input type="checkbox">
+  <div><strong>Run <code>spectastic init --tools --ci gitlab</code> against two scratch repositories</strong> — one with no <code>.gitlab-ci.yml</code> (bootstrap created, <code>spectastic validate</code> clean) and one with an existing file (byte-identical after install, include snippet printed).</div>
+</spec-task>
+
+<spec-note>
+<p>Closes <a href="./spec.html#FR-007">FR-007</a>, <a href="./spec.html#FR-008">FR-008</a> · <a href="./spec.html#SC-003">SC-003</a>.</p>
+</spec-note>
+</section>
+
+
+<section id="phase-polish" class="phase">
+<h2>8 · Phase 4 — Polish</h2>
+<spec-task id="T-900" parallel>
+  <input type="checkbox">
+  <div><strong>Regenerate the docs recipes from the renderer</strong> — a small script renders the example mode into both files, fixing the GitLab recipe's report type in passing (<code>reports: sarif</code>, not <code>sast</code> — a grounding-stage finding); a byte-equality test guards it, closing <a href="./spec.html#FR-012">FR-012</a> and measured by <a href="./spec.html#SC-004">SC-004</a>. <span class="path">scripts/render-ci-examples.mjs</span></div>
+</spec-task>
+<spec-task id="T-901" parallel>
+  <input type="checkbox">
+  <div><strong>Update the README</strong> — the CI recipes are generated by the same renderer <code>init --tools</code> installs. <span class="path">README.md</span></div>
+</spec-task>
+<spec-task id="T-902" parallel>
+  <input type="checkbox">
+  <div><strong>Confirm the cold-start budget held</strong> — run <code>pnpm bench</code> and check <code>init-help-cold-start</code> is still inside its 150 ms budget now that <code>tools.ts</code>'s import graph has grown, closing <a href="./spec.html#SC-006">SC-006</a> alongside T-010's assertions.</div>
+</spec-task>
+<spec-task id="T-903">
+  <input type="checkbox">
+  <div><strong>Run the full suite and corpus sweep</strong> — <code>pnpm test</code> and <code>spectastic validate</code> over the whole estate, both at 0 findings.</div>
+</spec-task>
+</section>
+
+
+<section id="dependencies">
+<h2>9 · Dependencies</h2>
+<pre><code>Setup                → Foundational
+Foundational         → US1, US3        (independent builds; both P1 — disjoint files)
+US1                  → US2             (US2's exercise task reuses US1's scratch repository)
+US1, US3             → US4             (extends both the installer and the drift scan)
+US1, US2, US3, US4   → Polish
+</code></pre>
+</section>
+
+
+<section id="changelog">
+<h2>10 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-09-16">16 Sep 2026</time><span>Initial task breakdown. 31 tasks; phase order follows the spec's priorities (US1 · US3 P1, US2 · US4 P2) rather than story number.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  Tasks for 121-init-ci-gate · Init CI gate · authored 2026-09-16
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>
