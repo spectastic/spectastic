@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { join } from 'node:path';
+import { resolve } from 'node:path';
 import type { Command } from 'commander';
 
 /**
@@ -64,10 +64,22 @@ export function registerVerdict(program: Command): void {
 
         let sarif: unknown;
         if (opts.enforcerOutput) {
+          // resolve, not join: an absolute path — what every CI runner and
+          // mktemp hand over — must not be nested under the cwd (inbox I-092).
+          // Read and parse fail separately so a typo in the path and a
+          // malformed SARIF are told apart.
+          const enforcerPath = resolve(cwd, opts.enforcerOutput);
+          let raw: string;
           try {
-            sarif = JSON.parse(await fsp.readFile(join(cwd, opts.enforcerOutput), 'utf8'));
+            raw = await fsp.readFile(enforcerPath, 'utf8');
           } catch {
-            process.stderr.write(`verdict: could not read/parse enforcer output ${opts.enforcerOutput}.\n`);
+            process.stderr.write(`verdict: could not read enforcer output ${enforcerPath}.\n`);
+            process.exit(2);
+          }
+          try {
+            sarif = JSON.parse(raw);
+          } catch {
+            process.stderr.write(`verdict: could not parse enforcer output ${enforcerPath} as JSON.\n`);
             process.exit(2);
           }
         }
@@ -83,8 +95,11 @@ export function registerVerdict(program: Command): void {
           { cwd, fs: nodeFs },
         );
 
-        await fsp.mkdir(join(cwd, opts.out, '..'), { recursive: true }).catch(() => {});
-        await fsp.writeFile(join(cwd, opts.out), result.verdictText, 'utf8');
+        // Same resolve-not-join as --enforcer-output above: an absolute --out
+        // must land where it says, not under the cwd.
+        const outPath = resolve(cwd, opts.out);
+        await fsp.mkdir(resolve(outPath, '..'), { recursive: true }).catch(() => {});
+        await fsp.writeFile(outPath, result.verdictText, 'utf8');
 
         // Scope-honesty (TBD-verdict-scope-honesty): the verdict judged this
         // checkout against the decisions PRESENT in it. A decision not present here
