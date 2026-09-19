@@ -1,0 +1,306 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'">
+<title>Decision index federation · Tasks</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Tasks · 122-decision-index-federation</p>
+  <h1>Decision index federation</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    Ordered, parallelizable work. Tests precede implementation. Drive through with
+    <code>/spectastic.implement</code> — one task per invocation.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>     <span><spec-status value="draft">Draft</spec-status></span>
+    <b>Spec</b>       <span><a href="./spec.html">122-decision-index-federation</a></span>
+    <b>Design</b>     <span><a href="./design.html">design</a></span>
+    <b>Branch</b>     <span><code>main</code></span>
+    <b>Created</b>    <span><time datetime="2026-09-19">19 Sep 2026</time></span>
+    <b>Read time</b>  <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-tldr>
+    <p>35 tasks across five phases. Setup → Foundational → User stories (US1 · US3 · US2 · US4, in
+    priority order) → Polish. Tasks marked <span class="par">[P]</span> can run in parallel — different
+    files, no dependency. Tests for a story <strong>MUST</strong> be written and failing before its
+    implementation tasks start.</p>
+  </spec-tldr>
+</header>
+
+
+<section id="strategy">
+<h2>1 · Execution strategy</h2>
+
+<spec-tabs>
+  <spec-tab label="MVP-first">
+    <p>Foundational, then US1 (an owner can publish and keep it honest) — the smallest demoable slice
+    on its own. US3 proves enforcement with a hand-placed vendored copy before US2's real fetch exists;
+    US2 replaces the hand-placement; US4 and Polish close the spec.</p>
+  </spec-tab>
+  <spec-tab label="Incremental">
+    <p>Setup → Foundational → US1 → US3 → US2 → US4 → Polish, in priority order. Each story closes
+    its conformance before the next opens.</p>
+  </spec-tab>
+  <spec-tab label="Parallel teams">
+    <p>US1 and US3 depend only on Foundational and can run concurrently — US3's tests use a
+    hand-placed vendored file, not US2's sync. US2 replaces that hand-placement with a real fetch once
+    both land; US4 depends on all three.</p>
+  </spec-tab>
+</spec-tabs>
+</section>
+
+
+<section id="phase-setup" class="phase">
+<h2>2 · Phase 1 — Setup</h2>
+
+<spec-task id="T-001" parallel>
+  <input type="checkbox">
+  <div><strong>Scaffold the core decisions module</strong> — empty <code>canonical.ts</code>, <code>index.ts</code>, <code>merge.ts</code>, <code>sync.ts</code> plus the tsup entry and package.json subpath export, so downstream test imports resolve before each is implemented. <span class="path">packages/core/src/decisions/</span></div>
+</spec-task>
+<spec-task id="T-002" parallel>
+  <input type="checkbox">
+  <div><strong>Add the <code>decisions.sources</code> config section</strong> — data shape only, no behavior yet. <span class="path">packages/schema/src/config/registry.ts</span></div>
+</spec-task>
+<spec-task id="T-003" parallel>
+  <input type="checkbox">
+  <div><strong>Scaffold the decision-index fetcher provider</strong> — an empty module so <code>sync.ts</code> can declare its port type against it later. <span class="path">packages/core/src/providers/decision-index-fetcher.ts</span></div>
+</spec-task>
+</section>
+
+
+<section id="phase-foundation" class="phase">
+<h2>3 · Phase 2 — Foundational</h2>
+<p>The canonicalisation, hash and index validator both stories depend on; neither story implements it twice.</p>
+
+<spec-task id="T-010" parallel>
+  <input type="checkbox">
+  <div><strong>Write the canonical-hash test, failing</strong> — asserts the digest against the shared literal vector minted with an independent (Python) implementation. <span class="path">packages/core/test/decisions.canonical.test.ts</span></div>
+</spec-task>
+<spec-task id="T-011">
+  <input type="checkbox">
+  <div><strong>Implement <code>canonicalJson</code> and <code>contentHashOf</code></strong> — sorted keys, <code>undefined</code> dropped, no whitespace; sha256 over the UTF-8 bytes. <span class="path">packages/core/src/decisions/canonical.ts</span></div>
+</spec-task>
+<spec-task id="T-012" parallel>
+  <input type="checkbox">
+  <div><strong>Write the index build/validate test, failing</strong> — <code>buildIndex</code> filters to accepted+scoped, strips <code>prose</code> and <code>rules[].run</code>, sorts by <code>(specId, id)</code> (FR-001); <code>validateIndex</code> covers every reject reason in the fail-closed list (FR-005). <span class="path">packages/core/test/decisions.index.test.ts</span></div>
+</spec-task>
+<spec-task id="T-013">
+  <input type="checkbox">
+  <div><strong>Implement <code>buildIndex</code> and <code>validateIndex</code></strong> — minting each coordinate via the existing <code>decisionResourceUri</code> helper, never re-deriving it. <span class="path">packages/core/src/decisions/index.ts</span></div>
+</spec-task>
+<spec-task id="T-014" parallel>
+  <input type="checkbox">
+  <div><strong>Add the federated types</strong> — <code>DecisionSource</code>, <code>VerdictScope</code> gains <code>'federated'</code>, <code>Verdict</code> gains an optional <code>sources</code>. Type-only; no verb reads or writes them yet. <span class="path">packages/core/src/guardrail/types.ts</span></div>
+</spec-task>
+</section>
+
+
+<section id="phase-us1" class="phase">
+<h2>4 · Phase 3a — US1 · Publish the claim</h2>
+
+<h3>Tests (write &amp; fail first)</h3>
+<spec-task id="T-100" parallel>
+  <input type="checkbox">
+  <div><strong>Write the export/group CLI test, failing</strong> — <code>decisions export</code> writes <code>specs/decisions.json</code> from an owner fixture with the right filter, coordinates and hash; <code>adrs</code> reproduces <code>decisions for</code>/<code>coverage</code> byte-identically. <span class="path">packages/cli/test/decisions.cli.test.ts</span></div>
+</spec-task>
+<spec-task id="T-101" parallel>
+  <input type="checkbox">
+  <div><strong>Write the stale/missing-index validate test, failing</strong> — an edited design without re-export errors; an unscoped decision never appears in the index. <span class="path">packages/core/test/validate.decision-index.test.ts</span></div>
+</spec-task>
+
+<h3>Implementation</h3>
+<spec-task id="T-110">
+  <input type="checkbox">
+  <div><strong>Implement the <code>decisions</code> command group</strong> — <code>for</code>/<code>coverage</code> forwarding today's <code>adrs</code> logic verbatim; <code>export</code> and <code>sync</code> stubbed for now; a hidden <code>adrs</code> command forwards to the same action functions. <span class="path">packages/cli/src/commands/decisions.ts</span></div>
+</spec-task>
+<spec-task id="T-111">
+  <input type="checkbox">
+  <div><strong>Wire <code>decisions export [--out]</code></strong> — <code>loadDecisions</code> → <code>buildIndex</code> → write, refusing a bare project identity. <span class="path">packages/cli/src/commands/decisions.ts</span></div>
+</spec-task>
+<spec-task id="T-112" parallel>
+  <input type="checkbox">
+  <div><strong>Implement <code>decision-index-stale</code> and <code>decision-index-missing</code></strong> — folded into the CLI's validate beside <code>scanCiDrift</code>. <span class="path">packages/core/src/commands/validate.ts</span></div>
+</spec-task>
+<spec-task id="T-113">
+  <input type="checkbox">
+  <div><strong>Run <code>decisions export</code> then <code>validate</code> against a scratch owner repository</strong> — clean on export, errors on an edit without re-export, clean again after re-export.</div>
+</spec-task>
+
+<spec-note>
+<p>Closes <a href="./spec.html#FR-001">FR-001</a>, <a href="./spec.html#FR-002">FR-002</a>, <a href="./spec.html#FR-010">FR-010</a> ·
+<a href="./spec.html#SC-002">SC-002</a>.</p>
+</spec-note>
+</section>
+
+
+<section id="phase-us3" class="phase">
+<h2>5 · Phase 3b — US3 · Enforce across the boundary</h2>
+
+<h3>Tests (write &amp; fail first)</h3>
+<spec-task id="T-300" parallel>
+  <input type="checkbox">
+  <div><strong>Write the foreign-decision merge test, failing</strong> — only resource-scoped foreign decisions participate; each source's counts (evaluated/ignored/refused); a pattern over 1024 characters or that fails to compile is refused and counted, never run. <span class="path">packages/core/test/decisions.merge.test.ts</span></div>
+</spec-task>
+<spec-task id="T-301" parallel>
+  <input type="checkbox">
+  <div><strong>Write the federated-verdict test, failing</strong> — <code>scope: federated</code> and a <code>sources</code> entry when any source is declared; a missing, tampered, or wrong-project vendored copy stops the verdict naming the source, never a silent skip. <span class="path">packages/core/test/guardrail.verdict.federated.test.ts</span></div>
+</spec-task>
+
+<h3>Implementation</h3>
+<spec-task id="T-310">
+  <input type="checkbox">
+  <div><strong>Implement <code>merge.ts</code></strong> — reconstitute foreign decisions from a validated index, the resource-only filter, the pattern length/compile check ahead of the kernel's one <code>RegExp</code> site, per-source counts. <span class="path">packages/core/src/decisions/merge.ts</span></div>
+</spec-task>
+<spec-task id="T-311">
+  <input type="checkbox">
+  <div><strong>Widen <code>verdictCommand</code></strong> — an optional <code>sources</code> input; when present, read each vendored copy through <code>ctx.fs</code>, validate, merge, set <code>scope: 'federated'</code> and <code>sources[]</code>; local decisions unchanged. <span class="path">packages/core/src/commands/verdict.ts</span></div>
+</spec-task>
+<spec-task id="T-312" parallel>
+  <input type="checkbox">
+  <div><strong>Resolve <code>decisions.sources</code> at the CLI edge</strong> — read from config, pass as data into <code>verdictCommand</code>; the kernel still reads no config itself. <span class="path">packages/cli/src/commands/verdict.ts</span></div>
+</spec-task>
+<spec-task id="T-313">
+  <input type="checkbox">
+  <div><strong>Run the two-repository loop by hand, with a hand-placed vendored copy</strong> — owner exports; the file is copied into the consumer's <code>.spectastic/decisions/</code> with its hash as the pin; a write to the owner's store fails <code>verdict</code> with <code>cause: ownership</code>, <code>scope: federated</code>, one source recorded; a missing, tampered, or wrong-project copy stops the verdict naming the source.</div>
+</spec-task>
+
+<spec-note>
+<p>Closes <a href="./spec.html#FR-005">FR-005</a>, <a href="./spec.html#FR-006">FR-006</a>, <a href="./spec.html#FR-007">FR-007</a>,
+<a href="./spec.html#FR-008">FR-008</a>, <a href="./spec.html#FR-009">FR-009</a>, <a href="./spec.html#NFR-001">NFR-001</a>,
+<a href="./spec.html#NFR-002">NFR-002</a> ·
+<a href="./spec.html#SC-001">SC-001</a>, <a href="./spec.html#SC-003">SC-003</a>, <a href="./spec.html#SC-006">SC-006</a>.</p>
+</spec-note>
+</section>
+
+
+<section id="phase-us2" class="phase">
+<h2>6 · Phase 3c — US2 · Vendor a pinned copy</h2>
+
+<h3>Tests (write &amp; fail first)</h3>
+<spec-task id="T-200" parallel>
+  <input type="checkbox">
+  <div><strong>Write the sync-plan test, failing</strong> — <code>planSync</code> against a stub fetcher: fetched, unchanged, moved, and refused outcomes. <span class="path">packages/core/test/decisions.sync.test.ts</span></div>
+</spec-task>
+<spec-task id="T-201" parallel>
+  <input type="checkbox">
+  <div><strong>Write the fetcher-adapter test, failing</strong> — a local HTTP server pins the 1&nbsp;MiB cap, the 30&nbsp;s timeout, same-host-only redirects, and that a bearer token never appears in a log or error; the path adapter's containment check. <span class="path">packages/cli/test/decision-index-fetcher.test.ts</span></div>
+</spec-task>
+<spec-task id="T-202" parallel>
+  <input type="checkbox">
+  <div><strong>Write the source-config validate test, failing</strong> — a vendored copy disagreeing with its pin errors; a source with no matching unit edge warns. <span class="path">packages/core/test/validate.decision-source.test.ts</span></div>
+</spec-task>
+
+<h3>Implementation</h3>
+<spec-task id="T-210">
+  <input type="checkbox">
+  <div><strong>Implement <code>sync.ts</code></strong> — the <code>DecisionIndexFetcher</code> port and <code>planSync</code>; takes a fetcher as data and imports no network code itself. <span class="path">packages/core/src/decisions/sync.ts</span></div>
+</spec-task>
+<spec-task id="T-211" parallel>
+  <input type="checkbox">
+  <div><strong>Implement the path and HTTPS fetcher adapters</strong> — 30&nbsp;s <code>AbortSignal.timeout</code>, 1&nbsp;MiB response cap, same-host-only redirect, a bearer token from the environment, plain <code>http:</code> refused. <span class="path">packages/core/src/providers/decision-index-fetcher.ts</span></div>
+</spec-task>
+<spec-task id="T-212" parallel>
+  <input type="checkbox">
+  <div><strong>Add <code>setDecisionSourcePin</code></strong> — updates one source's pin in place on the existing load/persist, preserving key order and indent. <span class="path">packages/core/src/config/edit.ts</span></div>
+</spec-task>
+<spec-task id="T-213">
+  <input type="checkbox">
+  <div><strong>Wire <code>decisions sync</code></strong> — fetch each declared source, validate, write the vendored copy verbatim, record the pin, report fetched/unchanged/moved/refused per source; a fetch failure leaves the existing copy and pin untouched and exits non-zero. <span class="path">packages/cli/src/commands/decisions.ts</span></div>
+</spec-task>
+<spec-task id="T-214" parallel>
+  <input type="checkbox">
+  <div><strong>Implement <code>decision-source-unpinned</code> and <code>decision-source-undeclared</code></strong> — folded into the CLI's validate. <span class="path">packages/core/src/commands/validate.ts</span></div>
+</spec-task>
+<spec-task id="T-215">
+  <input type="checkbox">
+  <div><strong>Replace T-313's hand-placed copy with a real <code>decisions sync</code> by path</strong> — the consumer fetches, writes the vendored copy and pin, reports the outcome; a re-run reports unchanged; the same violating write still fails <code>verdict</code> with the source now genuinely fetched, not copied by hand.</div>
+</spec-task>
+
+<spec-note>
+<p>Closes <a href="./spec.html#FR-003">FR-003</a>, <a href="./spec.html#FR-004">FR-004</a>, <a href="./spec.html#FR-011">FR-011</a> ·
+<a href="./spec.html#SC-003">SC-003</a> (reinforced with a real fetch), <a href="./spec.html#SC-004">SC-004</a>.</p>
+</spec-note>
+</section>
+
+
+<section id="phase-us4" class="phase">
+<h2>7 · Phase 3d — US4 · The gate carries it</h2>
+
+<h3>Tests (write &amp; fail first)</h3>
+<spec-task id="T-400" parallel>
+  <input type="checkbox">
+  <div><strong>Extend the renderer test, failing</strong> — the verdict step's executable line stays byte-identical to 121's; a new commented <code>SPECTASTIC_SOURCE_TOKEN</code> line is present. <span class="path">packages/core/test/ci.render.test.ts</span></div>
+</spec-task>
+
+<h3>Implementation</h3>
+<spec-task id="T-410">
+  <input type="checkbox">
+  <div><strong>Add the commented token line to the rendered verdict step</strong> — the executable line untouched. <span class="path">packages/core/src/ci/render.ts</span></div>
+</spec-task>
+<spec-task id="T-411">
+  <input type="checkbox">
+  <div><strong>Install the rendered gate on the T-215 consumer and run it by hand</strong> — validate, enforce, and verdict with the real synced source; the violating write fails the gate; the rendered verdict line is confirmed byte-identical to 121's own render.</div>
+</spec-task>
+
+<spec-note>
+<p>Closes <a href="./spec.html#NFR-003">NFR-003</a> · <a href="./spec.html#SC-005">SC-005</a>.</p>
+</spec-note>
+</section>
+
+
+<section id="phase-polish" class="phase">
+<h2>8 · Phase 4 — Polish</h2>
+<spec-task id="T-900" parallel>
+  <input type="checkbox">
+  <div><strong>Repoint the agent/command markdown at the new group</strong> — <code>spectastic decisions for</code> in place of <code>adrs</code>; re-sync <code>.claude/commands</code> and <code>.claude/agents</code>. <span class="path">commands/spectastic.implement.md</span></div>
+</spec-task>
+<spec-task id="T-901" parallel>
+  <input type="checkbox">
+  <div><strong>Confirm the cold-start budget held</strong> — run <code>pnpm bench</code> now that the CLI's command graph carries a new group.</div>
+</spec-task>
+<spec-task id="T-902">
+  <input type="checkbox">
+  <div><strong>Run the full suite and corpus sweep</strong> — <code>pnpm test</code> and <code>spectastic validate</code> over the whole estate, both at 0 findings.</div>
+</spec-task>
+</section>
+
+
+<section id="dependencies">
+<h2>9 · Dependencies</h2>
+<pre><code>Setup                → Foundational
+Foundational         → US1, US3        (independent builds; both P1 — US3 uses a hand-placed vendored file)
+US3                  → US2             (US2's T-215 replaces US3's hand-placed copy with a real sync)
+US1, US2, US3        → US4             (the gate needs an owner index, a real sync and a working verdict)
+US1, US2, US3, US4   → Polish
+</code></pre>
+</section>
+
+
+<section id="changelog">
+<h2>10 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-09-19">19 Sep 2026</time><span>Initial task breakdown. 35 tasks; phase order follows the spec's priorities (US1 · US3 P1, US2 · US4 P2). US3 is deliberately sequenced before US2 per the design's own test plan — a hand-placed vendored copy proves enforcement before the sync verb exists to produce one for real.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  Tasks for 122-decision-index-federation · Decision index federation · authored 2026-09-19
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>
