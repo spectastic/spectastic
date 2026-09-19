@@ -1,0 +1,390 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'">
+<title>Decision index federation · Design</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Design · 122-decision-index-federation</p>
+  <h1>Decision index federation</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    How we will build it.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>     <span><spec-status value="draft">Draft</spec-status></span>
+    <b>Spec</b>       <span><a href="./spec.html">122-decision-index-federation</a></span>
+    <b>Owner</b>      <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Branch</b>     <span><code>main</code></span>
+    <b>Created</b>    <span><time datetime="2026-09-19">19 Sep 2026</time></span>
+    <b>Read time</b>  <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-tldr>
+    <p>One new core module, <code>decisions/</code>, owns the index (build, canonical hash, validate, merge) and is pure:
+    the CLI resolves config and injects sources as data, the kernel reads vendored copies through its filesystem port, and
+    the only network call lives in an edge-side fetcher the verdict graph never imports — so the existing no-network scan
+    proves the invariant rather than a comment asserting it. The verbs land as one <code>decisions</code> group with
+    <code>adrs</code> hidden behind it. Biggest risk: two canonicalisers (this repo's and the MCP server's) disagreeing
+    silently — held by a literal vector minted with a third implementation.</p>
+  </spec-tldr>
+</header>
+
+
+<section id="principles-check">
+<h2>1 · Principles check</h2>
+<p>Verify this plan respects every principle in <a href="../../principles.html">v1.9.0</a>.</p>
+<div style="overflow-x:auto;">
+<table>
+  <thead><tr><th>Principle</th><th>Compliance</th><th>Notes</th></tr></thead>
+  <tbody>
+    <tr><td>P-1 · Source order</td><td><spec-pill>OK</spec-pill></td><td>No artifact markup changes.</td></tr>
+    <tr><td>P-2 · Semantic tags</td><td><spec-pill>OK</spec-pill></td><td>—</td></tr>
+    <tr><td>P-3 · IDs are contracts</td><td><spec-pill>OK</spec-pill></td><td>New rule ids <code>decision-index-stale</code>, <code>decision-index-missing</code>, <code>decision-source-unpinned</code>, <code>decision-source-undeclared</code>; <code>adrs</code> keeps its meaning as an alias.</td></tr>
+    <tr><td>P-4 · Progressive enhancement</td><td><spec-pill>OK</spec-pill></td><td>—</td></tr>
+    <tr><td>P-5 · Calm density</td><td><spec-pill>OK</spec-pill></td><td>—</td></tr>
+    <tr><td>P-6 · Draft loose, ratified locked</td><td><spec-pill>OK</spec-pill></td><td>115's scope type and 121's template are amended by proposals after landing, not edited.</td></tr>
+    <tr><td>P-7 · Done means verified</td><td><spec-pill>OK</spec-pill></td><td>The two-repo loop is run for real in scratch repositories (D-007); <code>verify.html</code> records it.</td></tr>
+    <tr><td>P-8 · Guarantees in kernel or CI</td><td><spec-pill>OK</spec-pill></td><td>Stale index, unpinned copy, missing source — all validate findings or verdict refusals, none prose.</td></tr>
+    <tr><td>P-9 · Enforcement floor</td><td><spec-pill>OK</spec-pill></td><td>Untouched.</td></tr>
+    <tr><td>P-10 · No internal ids in copy</td><td><spec-pill>OK</spec-pill></td><td>Help and messages scanned by the existing rule; the index carries decision ids because it <em>is</em> provenance (an artifact, not tool copy).</td></tr>
+    <tr><td>P-11 · Artifacts are data</td><td><spec-pill>OK</spec-pill></td><td>The one tension: a foreign <code>pattern</code> is compiled. Held by the cap + compile check (FR-009) and by stripping <code>run</code> at export; the pattern is matched, never evaluated. Recorded in Complexity tracking.</td></tr>
+    <tr><td>P-12 · Capability accountability</td><td><spec-pill>OK</spec-pill></td><td>Sync reaches the network; the verdict does not. The reach is confined to one edge module and named in the design (D-002).</td></tr>
+    <tr><td>P-13 · Accessibility</td><td><spec-pill>OK</spec-pill></td><td>No interactive surface.</td></tr>
+    <tr><td>P-14 · Library-first</td><td><spec-pill>OK</spec-pill></td><td>Index, hash, validate, merge, sync-plan in core; commander wiring and the fetch adapter at the edge (D-001).</td></tr>
+  </tbody>
+</table>
+</div>
+</section>
+
+
+<section id="technical-context">
+<h2>2 · Technical context</h2>
+<dl>
+  <dt>Language(s)</dt>      <dd>TypeScript (ESM); Node ≥ 20 per the CLI's engines — global <code>fetch</code> and <code>AbortSignal.timeout</code> are in that floor.</dd>
+  <dt>Frameworks</dt>       <dd>commander 15.0.0 (a hidden command via <code>{ hidden: true }</code>); <code>node:crypto</code> for sha256; no new dependency.</dd>
+  <dt>Architecture</dt>     <dd>Pure core module + edge adapters, the verdict's existing injection seam widened — <a href="#D-001">D-001</a>; shapes <a href="#project-structure">Project structure</a>.</dd>
+  <dt>Storage</dt>          <dd>Files only: <code>specs/decisions.json</code> (owner), <code>.spectastic/decisions/&lt;owner&gt;--&lt;project&gt;.json</code> (consumer, committed), the pin in <code>spectastic.json</code>.</dd>
+  <dt>Testing</dt>          <dd>vitest, TDD tests-first per story; a two-repository scratch loop closes SC-001; no Playwright (no artifact JS).</dd>
+  <dt>Coverage</dt>         <dd>Diff-aware: every new module ships with its unit test; the change never lowers coverage of <code>verdict.ts</code>, <code>validate.ts</code> or <code>config/edit.ts</code>.</dd>
+  <dt>Perf targets</dt>     <dd>Sync: 30 s per source, 1 MiB response cap, no cross-host redirect (D-006). Verdict: 0 network reads (NFR-001); index parse is one JSON file per source.</dd>
+  <dt>Constraints</dt>      <dd>115 FR-002 reconstruct-from-disk; the guardrail no-network import scan; 119 D-004 the kernel reads no config; the file contract frozen with the MCP repo.</dd>
+</dl>
+<h3>Toolchain / enforcement</h3>
+<p>Enterprise profile; <code>spectastic enforce</code> reports 7 covered · 1 relaxed · 0 missing. No new category. One additional check
+is owed by this design rather than the profile: the no-network scan's entry set must keep covering <code>commands/verdict.ts</code>
+once it imports <code>decisions/</code> — it already walks that file transitively, so the guarantee extends without editing the test.</p>
+</section>
+
+
+<section id="contracts">
+<h2>3 · Data model &amp; contracts</h2>
+<p>The spec's <a href="./spec.html#data">entities</a> land as three files and one config section; the decision type is unchanged.</p>
+<div style="overflow-x:auto;">
+<table>
+  <thead><tr><th>Conceptual entity</th><th>Physical shape</th><th>Notes</th></tr></thead>
+  <tbody>
+    <tr><td><a href="./spec.html#data">Decision index</a></td><td><code>specs/decisions.json</code>: <code>{ schema: "spectastic-decision-index/1", project, generatedAt, generator?, contentHash: "sha256:…", decisions: IndexedDecision[] }</code>; <code>IndexedDecision</code> = <code>GovernanceDecision</code> minus <code>prose</code> and <code>rules[].run</code>, plus <code>coordinate</code>; sorted by <code>(specId, id)</code>.</td><td>Written with <code>JSON.stringify(…, null, 2) + '\n'</code>. Hash over <code>canonicalJson(decisions)</code> only, so <code>generatedAt</code> never perturbs it.</td></tr>
+    <tr><td><a href="./spec.html#data">Source</a></td><td><code>spectastic.json</code> → <code>decisions.sources: [{ project, from, pin? }]</code>; <code>from</code> is <code>https://…</code> or a repo-relative path; <code>pin</code> is the vendored copy's <code>contentHash</code>.</td><td>A new registry section, so the unknown-key scan knows it. Distinct from <code>consumes[]</code>.</td></tr>
+    <tr><td><a href="./spec.html#data">Vendored copy</a></td><td><code>.spectastic/decisions/&lt;owner&gt;--&lt;name&gt;.json</code>, the fetched bytes verbatim; committed (the base ignore block does not ignore <code>.spectastic/</code> wholesale, by design).</td><td>Filename from the project id with <code>/</code> → <code>--</code>; validated on every read, never trusted by location.</td></tr>
+    <tr><td><a href="./spec.html#data">Foreign decision</a></td><td>A <code>GovernanceDecision</code> reconstituted from the index with <code>foreign: { project, from }</code> attached in memory; only its <code>resource</code> is consulted by <code>verdictFor</code>.</td><td>Never written back; the verdict's <code>sources[]</code> carries the counts.</td></tr>
+  </tbody>
+</table>
+</div>
+<spec-contract shape="none">
+  <p>No interface is exposed. The index file is a shared <em>artifact</em> contract with the sibling MCP repository, not an
+  interface this project serves — its shape is fixed by the spec and by the handover, and the shared literal vector is what
+  holds the two implementations together.</p>
+</spec-contract>
+</section>
+
+
+<section id="grounding">
+<h2>4 · Grounding &amp; evidence</h2>
+<p>Status is <code>verified</code> (opened this turn), <code>spike</code> (run now, finding recorded), or <code>assumed</code>.</p>
+<div style="overflow-x:auto;">
+<table class="evidence">
+  <thead><tr><th>Claim the design rests on</th><th>Source</th><th>Status</th><th>Finding / note</th></tr></thead>
+  <tbody>
+    <tr><td>The verdict kernel already accepts pre-loaded decisions and the current project as data</td><td><code>packages/core/src/commands/verdict.ts:23-34, 60-68</code></td><td><spec-status value="accepted">verified</spec-status></td><td><code>VerdictCommandInput { decisions?; currentProject? }</code> — the injection seam the federated read widens; the kernel reads no config (119 D-004).</td></tr>
+    <tr><td>Decisions are loaded from <code>specs/*/design.html</code> only</td><td><code>packages/core/src/commands/adrs.ts:54-78</code></td><td><spec-status value="accepted">verified</spec-status></td><td><code>loadDesigns</code> → <code>parseDecisions</code>; export reuses it unchanged.</td></tr>
+    <tr><td>The one regex compile site, and where the owner rule applies</td><td><code>packages/core/src/guardrail/verdict.ts:132-141</code></td><td><spec-status value="accepted">verified</spec-status></td><td><code>new RegExp(rule.pattern)</code> at 141; owner = <code>currentProject === d.resource.owner</code>. A foreign decision's owner is never the consumer (FR-005), so <code>allowedIn</code> never applies to it — no new branch.</td></tr>
+    <tr><td>The no-network guarantee is an import-graph scan from three entries</td><td><code>packages/core/test/guardrail.no-network.test.ts:11-19</code></td><td><spec-status value="accepted">verified</spec-status></td><td>Walks <code>commands/adrs.ts</code>, <code>guardrail/injection.ts</code>, <code>guardrail/verdict.ts</code>; also greps <code>fetch(</code>. So the fetcher must not be reachable from those — it lives in <code>providers/</code> and is imported only by the CLI (D-002).</td></tr>
+    <tr><td>Decision coordinates and identity shape have single-source helpers</td><td><code>packages/schema/src/project-shared.ts:38, 164</code></td><td><spec-status value="accepted">verified</spec-status></td><td><code>classifyProjectId</code> (owner-qualified | bare | malformed), <code>decisionResourceUri(project, specId, id)</code>. Export and validation call these, never re-derive.</td></tr>
+    <tr><td>Config keys are a registry the unknown-key scan reads</td><td><code>packages/schema/src/config/registry.ts:135-176</code></td><td><spec-status value="accepted">verified</spec-status></td><td>Sections are frozen objects of <code>KeyDescriptor</code>; <code>consumes</code> is a one-key section. A <code>decisions</code> section with <code>sources: object[]</code> follows the shape.</td></tr>
+    <tr><td>The config writer preserves key order and indent, refuses an unparseable file</td><td><code>packages/core/src/config/edit.ts:46-80, 89-111</code></td><td><spec-status value="accepted">verified</spec-status></td><td><code>load</code> keeps <code>raw</code> + detected indent; <code>persist</code> is <code>JSON.stringify(data, null, indent)</code>. A nested pin update is a mutate-then-persist on the same shape — one new exported function, no new mechanism.</td></tr>
+    <tr><td><code>consumes[]</code> is a string array read by one function</td><td><code>packages/core/src/units/read.ts:19-36</code></td><td><spec-status value="accepted">verified</spec-status></td><td>Non-strings filtered silently — why sources are a separate section (spec FR-003).</td></tr>
+    <tr><td>commander 15 supports a hidden command</td><td><code>packages/cli/node_modules/commander/typings/index.d.ts:1095</code>; <code>packages/cli/src/commands/corpus.ts:37</code></td><td><spec-status value="accepted">verified</spec-status></td><td><code>{ hidden?: boolean }</code> on <code>.command()</code>; <code>corpus</code> is the existing grouped-subcommand precedent.</td></tr>
+    <tr><td><code>.spectastic/</code> is not ignored wholesale</td><td><code>packages/core/src/gitignore/entries.ts:4-14</code></td><td><spec-status value="accepted">verified</spec-status></td><td>Only <code>.spectastic/courses/</code>; the vendored copies commit by default, like <code>profile.json</code>.</td></tr>
+    <tr><td>A source-fetcher port already exists in core</td><td><code>packages/core/src/visual/source-fetcher.ts</code>; <code>providers/local-source-fetcher.ts</code></td><td><spec-status value="accepted">verified</spec-status></td><td><code>DesignSourceFetcher { fetch(location) }</code> — the same port shape; a decision-index fetcher mirrors it rather than reusing the visual-named type.</td></tr>
+    <tr><td>The 121 renderer's verdict step is a string array; a comment line is additive</td><td><code>packages/core/src/ci/render.ts:122-130</code></td><td><spec-status value="accepted">verified</spec-status></td><td>The enforcer-output example is already a commented line; a token line joins it. The <em>executable</em> line is untouched (NFR-003).</td></tr>
+    <tr><td><code>fetch</code> and <code>AbortSignal.timeout</code> are globals at the engines floor</td><td><a href="https://nodejs.org/docs/latest-v20.x/api/globals.html">nodejs.org v20 globals</a> — claim stated before fetching: "no flag needed on 20"</td><td><spec-status value="review">spike</spec-status></td><td>Confirmed: <code>fetch</code> added v17.5, flag requirement removed v18.0; <code>AbortSignal.timeout</code> added v17.3. Still marked Stability 1 in the v20 docs — recorded, not hidden.</td></tr>
+    <tr><td>The shared hash vector, minted by an implementation this repo did not write</td><td>Spike: python <code>json.dumps(sort_keys=True, separators=(',',':'), ensure_ascii=False)</code> over a two-decision array with unicode and a backslash glob</td><td><spec-status value="review">spike</spec-status></td><td><code>sha256:9fc85308f19507eda27858a66e7c9d9054a07bcd466100d7b7377d8c12bc9226</code>. Constraint recorded: keys are ASCII (Python sorts code points, JS sorts UTF-16 units — identical for ASCII); values may be any Unicode.</td></tr>
+    <tr><td>The `decision` kind and `datastore` kind are in the upstream grammar</td><td><code>packages/schema/src/project-shared.ts:63</code></td><td><spec-status value="accepted">verified</spec-status></td><td>Seven kinds; the export's coordinates are minted by the existing helper, so they match what the MCP server parses.</td></tr>
+  </tbody>
+</table>
+</div>
+</section>
+
+
+<section id="approach">
+<h2>5 · Approach</h2>
+<p>A new core module <code>packages/core/src/decisions/</code> holds everything pure: <code>canonical.ts</code> (canonical JSON + sha256),
+<code>index.ts</code> (build an index from loaded decisions; validate one against the reject list and an expected project),
+<code>merge.ts</code> (reconstitute foreign decisions, keep only those with a resource, count the rest), and <code>sync.ts</code>
+(plan a sync from sources + fetched bytes: fetched / unchanged / moved / refused; the pin update as data). <code>verdictCommand</code>
+gains an optional <code>sources</code> input and, when present, reads each vendored copy through <code>ctx.fs</code>, validates it,
+merges, and sets <code>scope: 'federated'</code> with <code>sources[]</code> on the verdict — the regex compile at
+<code>verdict.ts:141</code> is preceded by the length cap and a try/catch so a rejected rule is counted on its source.</p>
+<p>The CLI's <code>adrs.ts</code> becomes <code>decisions.ts</code>: a group with <code>for</code>, <code>coverage</code>, <code>export</code>,
+<code>sync</code>; a hidden <code>adrs</code> command maps its flags onto <code>for</code>/<code>coverage</code>. The fetcher is a port
+(<code>DecisionIndexFetcher { fetch(location): Promise&lt;string&gt; }</code>) with two edge implementations — path and HTTPS — so
+core's <code>sync.ts</code> never imports network code and the no-network scan keeps its meaning. Validate gains four findings folded
+beside <code>scanCiDrift</code>.</p>
+
+<spec-sidenote>The thing nearly done instead: loading foreign decisions at the edge and passing them through the existing
+<code>decisions?:</code> seam. It would have worked and put the validation and merge logic in the CLI — the exact drift 041–043 paid
+for. The seam is kept; what flows through it is data the kernel validated.</spec-sidenote>
+
+<spec-arch>
+<figure>
+<svg viewBox="0 0 700 300" role="img" aria-label="Architecture sketch: owner export, consumer sync via an edge fetcher, verdict reading vendored copies through the filesystem port">
+  <style>
+    .box { fill: var(--c-surface, #fcfbf7); stroke: var(--c-border, #c4c1bb); stroke-width:1.2; }
+    .label { font: 700 11px Lato, sans-serif; fill: var(--c-text-soft, #4a4a46); letter-spacing:0.06em; text-transform:uppercase; }
+    .body { font: 400 12px "Source Serif 4", Georgia, serif; fill: var(--c-text, #353534); }
+    .arr { stroke: var(--c-muted, #73706d); stroke-width:1.2; fill:none; }
+    .arrh { fill: var(--c-muted, #73706d); }
+  </style>
+  <rect class="box" x="30" y="30" width="190" height="56" rx="4"/>
+  <text class="label" x="44" y="52">owner · decisions export</text>
+  <text class="body"  x="44" y="72">specs/decisions.json</text>
+
+  <rect class="box" x="30" y="150" width="190" height="56" rx="4"/>
+  <text class="label" x="44" y="172">owner · validate</text>
+  <text class="body"  x="44" y="192">decision-index-stale</text>
+
+  <rect class="box" x="300" y="30" width="190" height="56" rx="4"/>
+  <text class="label" x="314" y="52">consumer · decisions sync</text>
+  <text class="body"  x="314" y="72">fetcher port (edge, network)</text>
+
+  <rect class="box" x="300" y="150" width="190" height="56" rx="4"/>
+  <text class="label" x="314" y="172">vendored copy + pin</text>
+  <text class="body"  x="314" y="192">.spectastic/decisions/ · pin</text>
+
+  <rect class="box" x="510" y="150" width="160" height="56" rx="4"/>
+  <text class="label" x="524" y="172">consumer · verdict</text>
+  <text class="body"  x="524" y="192">ctx.fs only · federated</text>
+
+  <rect class="box" x="300" y="240" width="370" height="44" rx="4"/>
+  <text class="label" x="314" y="258">core · decisions/</text>
+  <text class="body"  x="314" y="276">canonical · index · merge · sync — pure, no network</text>
+
+  <path class="arr" d="M220 58 L300 58" marker-end="url(#a)"/>
+  <path class="arr" d="M125 86 L125 150" marker-end="url(#a)"/>
+  <path class="arr" d="M395 86 L395 150" marker-end="url(#a)"/>
+  <path class="arr" d="M490 178 L510 178" marker-end="url(#a)"/>
+  <path class="arr" d="M395 206 L395 240" marker-end="url(#a)"/>
+  <path class="arr" d="M590 206 L590 240" marker-end="url(#a)"/>
+  <defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path class="arrh" d="M0,0 L10,5 L0,10 z"/></marker></defs>
+</svg>
+<figcaption>The network touches one box. Everything below the fold is pure and shared by both sides.</figcaption>
+</figure>
+</spec-arch>
+</section>
+
+
+<section id="alternatives">
+<h2>6 · Alternatives considered</h2>
+<spec-matrix>
+<div style="overflow-x:auto;">
+<table>
+  <thead><tr><th>Option</th><th>Verdict reconstructs from disk</th><th>Kernel stays no-network by construction</th><th>Logic in core, not CLI</th><th class="score">Total</th></tr></thead>
+  <tbody>
+    <tr><td>Fetch at verdict time</td><td>1</td><td>1</td><td>4</td><td class="score">6</td></tr>
+    <tr><td>Edge loads + validates, injects merged decisions</td><td>5</td><td>5</td><td>2</td><td class="score">12</td></tr>
+    <tr data-winner><td>Core reads vendored copies via ctx.fs; edge injects sources + fetcher port — chosen</td><td>5</td><td>5</td><td>5</td><td class="score">15</td></tr>
+  </tbody>
+</table>
+</div>
+</spec-matrix>
+<p>Scored 1–5. Fetch-at-verdict fails the two constraints that are requirements, not preferences (115 FR-002; the no-network scan).
+The edge-load variant satisfies both but moves validation and merge out of the kernel.</p>
+</section>
+
+
+<section id="decisions">
+<h2>7 · Decisions</h2>
+
+<spec-decision id="D-001" grounding="verified">
+  <h4>D-001 · Pure <code>decisions/</code> core module; the verdict seam widened; adapters at the edge</h4>
+  <dl>
+    <dt>Status</dt><dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt><dd><code>verdictCommand</code> already takes decisions and the current project as injected data (<code>commands/verdict.ts:23-34</code>) and reads nothing itself (119 D-004); the no-network test walks its import graph (<code>guardrail.no-network.test.ts:11-19</code>). P-14 asks the same question the alternatives matrix answers.</dd>
+    <dt>Decision drivers</dt><dd>reconstruct-from-disk · no-network by construction · second-caller test (the MCP repo and the validate scans both want validate/merge without the CLI)</dd>
+    <dt>Considered options</dt><dd><ul class="considered-options">
+      <li><strong>Core reads vendored copies via ctx.fs — chosen</strong> — + one validator, three callers; + the scan proves the invariant. − a new core module and subpath export.</li>
+      <li><strong>Edge loads and injects</strong> — + thinner core. − validation and merge in the CLI; a second validator for the MCP repo to mirror.</li>
+      <li><strong>Fetch at verdict time</strong> — + no sync verb. − contradicts 115 FR-002 and the scan.</li>
+    </ul></dd>
+    <dt>Decision</dt><dd><code>packages/core/src/decisions/{canonical,index,merge,sync}.ts</code>, exported as <code>@spectastic/core/decisions</code>. <code>VerdictCommandInput.sources?: DecisionSource[]</code>; when present the kernel reads <code>.spectastic/decisions/*.json</code> via <code>ctx.fs</code>, validates, merges, and emits <code>scope: 'federated'</code> + <code>sources[]</code>. The CLI resolves <code>decisions.sources</code> from config and passes it as data.</dd>
+    <dt>Consequences</dt><dd>+ the no-network scan covers the federated path with no edit. − <code>Verdict</code> gains an optional field and <code>VerdictScope</code> a value — 115's type is amended by propose after landing.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-002" grounding="verified">
+  <h4>D-002 · The fetcher is a port; HTTPS and path adapters live in <code>providers/</code>, imported only by the CLI</h4>
+  <dl>
+    <dt>Status</dt><dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt><dd>The scan also greps for a bare <code>fetch(</code> (<code>guardrail.no-network.test.ts:19</code>); the visual slice already models a fetcher as a port with a <code>providers/</code> adapter (<code>visual/source-fetcher.ts</code>, <code>providers/local-source-fetcher.ts</code>). Node ≥ 20 has global <code>fetch</code> and <code>AbortSignal.timeout</code> (grounding row).</dd>
+    <dt>Decision</dt><dd><code>DecisionIndexFetcher { fetch(from: string): Promise&lt;{ text: string; from: string }&gt; }</code> in <code>decisions/sync.ts</code>; <code>providers/decision-index-fetcher.ts</code> implements path (repo-relative, containment-checked) and <code>https:</code> (30 s <code>AbortSignal.timeout</code>, 1 MiB cap read via the body stream, <code>redirect: 'manual'</code> with same-host follow only, <code>Authorization: Bearer $SPECTASTIC_SOURCE_TOKEN</code> when set, never logged). <code>http:</code> is refused.</dd>
+    <dt>Consequences</dt><dd>+ sync is testable with a stub fetcher; the network code is one file. − a private owner needs the token in CI; the gate template carries it commented.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-003" grounding="spike">
+  <h4>D-003 · Canonical JSON + sha256, pinned by a vector minted with a third implementation</h4>
+  <dl>
+    <dt>Status</dt><dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt><dd>Two TS canonicalisers (this repo, the MCP repo) can agree with each other and both be wrong; the spike minted the vector with python's <code>json.dumps(sort_keys, compact, ensure_ascii=False)</code> and recorded its digest (grounding row). Keys sort identically in both languages only because every key is ASCII — recorded as a constraint.</dd>
+    <dt>Decision</dt><dd><code>canonicalJson</code>: recursively sort object keys with the default comparator, drop <code>undefined</code>, no whitespace, otherwise <code>JSON.stringify</code>. <code>contentHash = 'sha256:' + hex(sha256(utf8(canonicalJson(decisions))))</code>. The vector (array + digest) lives in <code>packages/core/test/fixtures/decision-index-vector.ts</code> with a comment naming the MCP repo's mirror; the test asserts the digest byte-for-byte.</dd>
+    <dt>Consequences</dt><dd>+ a canonicaliser drift on either side fails a test, not a production sync. − adding a non-ASCII <em>key</em> to the decision shape would need a re-minted vector and an ordering note.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-004" grounding="verified">
+  <h4>D-004 · Sources are a config section with the pin inline; the vendored copy is the bytes verbatim</h4>
+  <dl>
+    <dt>Status</dt><dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt><dd>The registry models sections as frozen key maps and the unknown-key scan reads it (<code>registry.ts:135-176</code>); the writer preserves order and indent and refuses an unparseable file (<code>config/edit.ts:46-80</code>); <code>consumes[]</code> drops non-strings (<code>units/read.ts:29-33</code>).</dd>
+    <dt>Decision</dt><dd>Registry section <code>decisions: { sources: object[] }</code>; each entry <code>{ project, from, pin? }</code>. <code>config/edit.ts</code> gains <code>setDecisionSourcePin(cwd, project, pin)</code> on the existing load/persist. Vendored copy at <code>.spectastic/decisions/&lt;project with / → --&gt;.json</code>, the fetched bytes unmodified, so its own hash can be recomputed against the pin. The pin is the hash string only — no <code>syncedAt</code>, so a re-sync that fetched identical bytes is a zero-line diff.</dd>
+    <dt>Consequences</dt><dd>+ a moved pin is a reviewable one-line change. − the pin and the copy can be edited independently by hand; validate's <code>decision-source-unpinned</code> and the verdict's refusal are what catch it.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-005" grounding="verified">
+  <h4>D-005 · One <code>decisions</code> group; <code>adrs</code> a hidden command that forwards</h4>
+  <dl>
+    <dt>Status</dt><dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt><dd><code>corpus</code> is the grouped precedent (<code>corpus.ts:37</code>); commander 15 has <code>{ hidden: true }</code> (<code>typings/index.d.ts:1095</code>); the impl-task agent definition and 112–114's tests call <code>adrs</code>. Direction recorded in <code>docs/verb-grouping-considerations.html</code>.</dd>
+    <dt>Decision</dt><dd><code>registerDecisions(program)</code>: <code>decisions for &lt;paths...&gt;</code> (with <code>--log</code>, <code>--json</code>), <code>decisions coverage</code>, <code>decisions export [--out]</code>, <code>decisions sync</code>. <code>program.command('adrs', { hidden: true })</code> keeps today's flags and forwards to the same action functions — byte-identical output, so 112–114's tests pass unchanged. Help copy carries no internal ids.</dd>
+    <dt>Consequences</dt><dd>+ one fewer visible verb; the first deliberate group. − two spellings coexist until <code>TBD-verb-grouping</code> decides the alias policy.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-006" grounding="verified">
+  <h4>D-006 · Foreign patterns: cap, compile-check, count — before the existing compile site</h4>
+  <dl>
+    <dt>Status</dt><dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt><dd>The one compile site is <code>verdict.ts:141</code>; a foreign decision's owner can never be the consumer (spec FR-005), so the owner branch above it is unreachable for foreign rules. The spec fixed 1024 characters and a compile check (FR-009).</dd>
+    <dt>Decision</dt><dd>In <code>merge.ts</code>, each foreign rule is checked before it reaches the kernel: length ≤ 1024 and <code>new RegExp(pattern)</code> inside try/catch; a failing rule is removed from the merged decision and tallied as <code>refused</code> on its source. Local rules are untouched — the check is on the boundary, not the kernel.</dd>
+    <dt>Consequences</dt><dd>+ the kernel's compile site stays as it is. − a pathological-but-compiling pattern is still run; recorded as the ceiling the 1024-character choice accepted.</dd>
+  </dl>
+</spec-decision>
+
+<spec-decision id="D-007" grounding="n-a">
+  <h4>D-007 · TDD, medium risk; the two-repo loop is the acceptance run</h4>
+  <dl>
+    <dt>Status</dt><dd><spec-status value="accepted">Accepted</spec-status></dd>
+    <dt>Context</dt><dd>Anchored in the interview. Medium because the nested config write and HTTPS fetching are new to this codebase; each gets a red-first test before its implementation.</dd>
+    <dt>Decision</dt><dd>Unit tests per module red-first; one integration test builds an owner and a consumer scratch repository, exports, syncs by path, and runs the built <code>verdict</code>; a stub fetcher exercises the HTTPS branch's cap, timeout and redirect rules without a network.</dd>
+    <dt>Consequences</dt><dd>+ SC-001 is a real run. − the HTTPS adapter's live path is exercised only by a local <code>http.createServer</code> fixture, not a public host.</dd>
+  </dl>
+</spec-decision>
+</section>
+
+
+<section id="project-structure">
+<h2>8 · Project structure</h2>
+<p>Only the new or changed paths, by the boundary <a href="#D-001">D-001</a> draws.</p>
+<pre><code>packages/core/
+  src/decisions/canonical.ts               NEW  canonicalJson · contentHashOf
+  src/decisions/index.ts                   NEW  buildIndex(decisions, project, now) · validateIndex(text, expectedProject) · IndexedDecision, DecisionIndex
+  src/decisions/merge.ts                   NEW  reconstitute foreign decisions · resource-only filter · pattern cap/compile check · per-source counts
+  src/decisions/sync.ts                    NEW  DecisionIndexFetcher port · planSync(sources, fetch) → fetched|unchanged|moved|refused · vendored path rule
+  src/providers/decision-index-fetcher.ts  NEW  path + https adapters (timeout, cap, same-host redirect, bearer)
+  src/commands/verdict.ts                  MOD  sources?: DecisionSource[]; read via ctx.fs; scope federated; sources[] on the verdict
+  src/commands/validate.ts                 MOD  decisionIndexStaleFinding · decisionIndexMissingFinding · decisionSourceUnpinnedFinding · decisionSourceUndeclaredFinding
+  src/guardrail/types.ts                   MOD  VerdictScope += 'federated'; Verdict.sources?; DecisionSource
+  src/config/edit.ts                       MOD  setDecisionSourcePin
+  src/ci/render.ts                         MOD  one commented SPECTASTIC_SOURCE_TOKEN line in the verdict step
+  tsup.config.ts · package.json            MOD  './decisions' entry + subpath export
+  test/decisions.canonical.test.ts         NEW  the vector; key-sort, undefined-drop, unicode
+  test/decisions.index.test.ts             NEW  build (filter, strip, sort) · validate (every reject reason)
+  test/decisions.merge.test.ts             NEW  resource-only, counts, pattern cap/compile
+  test/decisions.sync.test.ts              NEW  planSync with a stub fetcher
+  test/fixtures/decision-index-vector.ts   NEW  the shared literal (mirrored in the MCP repo)
+  test/guardrail.verdict.federated.test.ts NEW  scope, sources[], fail-closed on missing/tampered/wrong-project
+packages/cli/
+  src/commands/decisions.ts                NEW  the group + hidden adrs (renamed from adrs.ts)
+  src/commands/validate.ts                 MOD  scanDecisionIndex · scanDecisionSources folded beside scanCiDrift
+  src/commands/verdict.ts                  MOD  resolve decisions.sources from config; pass as data
+  test/decisions.cli.test.ts               NEW  group wiring; adrs alias byte-identical
+  test/decisions.federation.integration.test.ts NEW  owner + consumer scratch repos, the SC-001 loop
+  test/decision-index-fetcher.test.ts      NEW  local http server: cap, timeout, redirect, bearer never logged
+packages/schema/
+  src/config/registry.ts                   MOD  decisions.sources section
+commands/spectastic.implement.md · agents/spectastic-impl-task.md   MOD  `spectastic decisions for` (adrs still works)
+</code></pre>
+</section>
+
+
+<section id="risks">
+<h2>9 · Risks &amp; mitigations</h2>
+<div style="overflow-x:auto;">
+<table>
+  <thead><tr><th>Risk</th><th>Likelihood</th><th>Impact</th><th>Mitigation</th></tr></thead>
+  <tbody>
+    <tr><td>The two canonicalisers disagree on some input the vector does not cover</td><td>M</td><td>H</td><td>D-003's vector includes unicode values, nested objects and a backslash glob; the ASCII-key constraint is written down; a mismatch is a validate/verdict refusal naming the hash, never a silent skip.</td></tr>
+    <tr><td>A consumer's pin and copy are edited by hand out of step</td><td>M</td><td>M</td><td><code>decision-source-unpinned</code> at error; the verdict refuses; both name the source.</td></tr>
+    <tr><td>An owner's index goes stale without a re-export</td><td>H</td><td>M</td><td><code>decision-index-stale</code> at error in the owner's validate, run by its hook and CI gate; the consumer sees only the hash and cannot tell — recorded ceiling.</td></tr>
+    <tr><td>Global <code>fetch</code> is Stability 1 on Node 20</td><td>L</td><td>L</td><td>Behind a port; a stub covers every branch; the live adapter is exercised against a local server.</td></tr>
+    <tr><td>Renaming <code>adrs.ts</code> breaks a caller</td><td>L</td><td>M</td><td>The hidden alias forwards to the same functions; 112–114's tests run unchanged; the agent/command markdown is updated and re-synced.</td></tr>
+    <tr><td>A pathological-but-compiling foreign pattern</td><td>L</td><td>M</td><td>Accepted with the 1024-character cap (spec FR-009); noted as the ceiling.</td></tr>
+  </tbody>
+</table>
+</div>
+</section>
+
+
+<section id="complexity">
+<h2>10 · Complexity tracking</h2>
+<spec-assumption><p>A separate <code>decisions/</code> module rather than growing <code>guardrail/</code>: the index is consumed by validate, by sync and by the MCP repo's mirror, and only one of those is the verdict. Four small files beat one large one here.</p></spec-assumption>
+<spec-assumption><p>P-11 tension, recorded: a foreign <code>pattern</code> is compiled and matched. It is never <em>evaluated</em> as code, <code>run</code> is stripped at export, and the boundary check (D-006) precedes the compile site — the residual (a compiling but slow pattern) is stated, not hidden.</p></spec-assumption>
+<spec-assumption><p>A hidden alias instead of a clean rename: cheaper than a propose on 112/113 and a bundle re-sync today; the alias policy is <code>TBD-verb-grouping</code>'s to settle.</p></spec-assumption>
+</section>
+
+
+<section id="questions">
+<h2>11 · Open questions</h2>
+<spec-questions>
+<p>None outstanding — every decision was anchored in the interview, and the two facts outside this repo were spiked (Node's globals against its v20 docs; the hash vector against a third implementation).</p>
+</spec-questions>
+</section>
+
+
+<section id="changelog">
+<h2>12 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-09-19">19 Sep 2026</time><span>Initial design. Grounding: 13 verified, 2 spiked, 0 assumed. The vector was minted with python so the TypeScript canonicaliser has something it did not write to agree with; the ASCII-key ordering constraint that makes the two sorts coincide is recorded rather than relied on silently.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  Design for 122-decision-index-federation · Decision index federation · authored 2026-09-19
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>
