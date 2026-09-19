@@ -1,0 +1,316 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; object-src 'none'; base-uri 'none'">
+<title>Decision index federation · Specification</title>
+<link rel="stylesheet" href="../../assets/spec.css">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<script src="../../assets/theme-boot.js"></script>
+</head>
+<body>
+<main>
+
+<header>
+  <p class="small-caps">Specification · 122-decision-index-federation</p>
+  <h1>Decision index federation</h1>
+  <p style="font-family:var(--font-serif);font-size:1.25rem;font-weight:300;color:var(--c-text-soft);font-style:italic;max-width:var(--measure);">
+    An owner publishes its scoped decisions as a pinned index; a consumer vendors it; the verdict enforces ownership across the repo boundary, from disk.
+  </p>
+
+  <spec-meta>
+    <b>Status</b>      <span><spec-status value="draft">Draft</spec-status></span>
+    <b>Spec ID</b>     <span>122-decision-index-federation</span>
+    <b>Owner</b>       <span>Brian Corbin · @briancorbinxyz</span>
+    <b>Reviewers</b>   <span>Guardrail layer (115 · 119 · 120 · 121)</span>
+    <b>Created</b>     <span><time datetime="2026-09-19">19 Sep 2026</time></span>
+    <b>Principles</b><span><a href="../../principles.html">v1.9.0</a></span>
+    <b>Smallest demoable</b><span><code>decisions export</code> in an owner repo; <code>decisions sync</code> in a consumer repo pointed at it by path; a write to the owner's store fails <code>verdict</code> with <code>cause: ownership</code>, <code>scope: federated</code>, one source recorded — no MCP involved.</span>
+    <b>Read time</b>   <span data-reading-time></span>
+  </spec-meta>
+
+  <spec-budget words="2200" reqs="20" minutes="15"></spec-budget>
+
+  <spec-tldr>
+    <p>119/120 let a decision claim a data store and let <code>verdict</code> flag a non-owner's write — but only for a
+    decision present in the consumer's checkout, which today means a pasted copy. This spec makes the claim travel: the owner
+    exports its scoped decisions to a hashed <code>specs/decisions.json</code>, kept honest by <code>validate</code>; a consumer
+    declares its sources, vendors a pinned copy, and <code>verdict</code> evaluates the foreign resource-scoped decisions beside
+    its own, still entirely from disk. The file contract is shared with the MCP server that serves the same index to agents.</p>
+  </spec-tldr>
+
+  <dl class="invest">
+    <dt><span class="letter">I</span> Independent</dt> <dd>Principles plus <a href="../119-decision-resource-scope/spec.html">119</a> (the scope it federates) and <a href="../115-guardrail-verdict/spec.html">115</a> (the verdict it widens).</dd>
+    <dt><span class="letter">N</span> Negotiable</dt>  <dd>What travels, what is rejected, what the verdict reports; canonicalisation, sync transport and verb wiring belong to the design.</dd>
+    <dt><span class="letter">V</span> Valuable</dt>    <dd>Unlocks <a href="#SC-001">SC-001</a> — a consumer's pull request is blocked for writing a store another repository owns.</dd>
+    <dt><span class="letter">E</span> Estimable</dt>   <dd>Every decision anchored; the file contract is already frozen.</dd>
+    <dt><span class="letter">S</span> Small</dt>       <dd>Two halves of one loop on one contract; budget set at 2,200 with 121's precedent, reason in the change log.</dd>
+    <dt><span class="letter">T</span> Testable</dt>    <dd>Every requirement observable in two scratch repositories; <a href="#SC-001">SC-001</a>–<a href="#SC-006">SC-006</a> quantified.</dd>
+  </dl>
+
+  <spec-audience-map>
+    <dl>
+      <dt>Exec / PM</dt>   <dd>§<a href="#context">Context</a>, §<a href="#scenarios">User scenarios</a>, §<a href="#success">Success criteria</a>.</dd>
+      <dt>Reviewer</dt>    <dd>§<a href="#requirements">Requirements</a>, §<a href="#assumptions">Assumptions</a>, §<a href="#questions">Open questions</a>.</dd>
+      <dt>Implementer</dt> <dd>§<a href="#requirements">Requirements</a>, §<a href="#data">Data model</a>, §<a href="#conformance">Conformance index</a>.</dd>
+    </dl>
+  </spec-audience-map>
+</header>
+
+
+<section id="context">
+<h2>1 · Context</h2>
+<p>The verdict is honestly repo-local: "a decision not present in this checkout is not evaluated". The one worked example
+of cross-repo ownership works only because the consumer carries a verbatim copy of the owner's decision — a copy nothing keeps
+current and nothing signed. The cross-repo survey named the missing legs: a claim that travels, and a way to reach it.</p>
+<p>Checking out each owner in CI and hosting an MCP server were both declined — a live git dependency per run, or a service
+to operate. The knowledge corpus was the first instinct and is the right <em>discipline</em> (provenance, hash, drift) but the
+wrong <em>store</em> — placement D-004 and cross-repo D-006 already say so. So: a published index with the corpus's honesty and
+none of its documents. And because 115 FR-002 says a verdict reconstructs entirely from disk, the index is
+<strong>vendored</strong> into the consumer and refreshed by a separate verb — which is what "pinned" means concretely.</p>
+
+</section>
+
+
+<section id="scenarios">
+<h2>2 · User scenarios &amp; testing</h2>
+
+<p>Each story is independently testable; US1 alone publishes something a human can check.</p>
+
+<h3 id="US1">US1 · Publish the claim <spec-pill>P1</spec-pill></h3>
+<p>As an <strong>owner of a data store</strong>, I want to <strong>export my accepted, scoped decisions as a committed index</strong> so that <strong>any consumer can enforce my ownership claim without reading my repository</strong>.</p>
+<p><em>Acceptance:</em> <code>decisions export</code> writes <code>specs/decisions.json</code> from the accepted, scoped decisions; a design edit without a re-export fails <code>validate</code>; a bare project is refused; two exports are byte-identical.</p>
+
+<h3 id="US3">US3 · Enforce across the boundary <spec-pill>P1</spec-pill></h3>
+<p>As a <strong>reviewer on a consuming service</strong>, I want <strong>a write to a store another repository owns flagged as an ownership violation with its authority named</strong> so that <strong>the change is routed to the owner instead of merged</strong>.</p>
+<p><em>Acceptance:</em> with a vendored owner index, a change touching the owner's store fails <code>verdict</code> with <code>cause: ownership</code>, the authority, <code>scope: federated</code> and a <code>sources</code> entry; local decisions behave as before; a missing or invalid copy stops the verdict naming the source.</p>
+
+<h3 id="US2">US2 · Vendor a pinned copy <spec-pill>P2</spec-pill></h3>
+<p>As a <strong>maintainer of a consuming service</strong>, I want to <strong>declare where each owner's index comes from and fetch a pinned copy</strong> so that <strong>my verdict runs from disk, offline, and an upstream change is a reviewable diff</strong>.</p>
+<p><em>Acceptance:</em> <code>decisions sync</code> fetches each source into <code>.spectastic/decisions/</code>, records its hash as the pin, reports what moved; a copy disagreeing with its pin fails <code>validate</code>; a source with no unit edge is warned about.</p>
+
+<h3 id="US4">US4 · The gate carries it <spec-pill>P2</spec-pill></h3>
+<p>As a <strong>downstream maintainer</strong>, I want <strong>the installed CI gate to enforce federated decisions with no change to its rendered line</strong> so that <strong>an owner's claim holds on every pull request, not only on a developer's machine</strong>.</p>
+<p><em>Acceptance:</em> the gate's verdict step is byte-identical to 121's; on a consumer with a vendored source it fails a violating pull request; the template carries a commented token line.</p>
+
+<h3>Edge cases</h3>
+<ul>
+  <li>An index claiming a store for a project other than its own: rejected whole — an index makes claims only for itself.</li>
+  <li>A foreign decision with only path or module scope: ignored and counted; its globs mean nothing in the consumer's tree.</li>
+  <li>A foreign rule whose pattern exceeds the cap or fails to compile: counted on its source, never executed.</li>
+  <li>A source naming the consumer's own project: refused — a project does not federate with itself.</li>
+</ul>
+</section>
+
+
+<section id="requirements">
+<h2>3 · Requirements</h2>
+
+<p>Conformance keywords (<spec-rule>MUST</spec-rule>, <spec-rule level="should">SHOULD</spec-rule>,
+<spec-rule level="may">MAY</spec-rule>) follow RFC 2119.</p>
+
+<h3>Functional</h3>
+
+<spec-requirement id="FR-001" priority="must">
+<p><code>decisions export</code> <spec-rule>MUST</spec-rule> write <code>specs/decisions.json</code> containing every accepted decision that carries a path, module or resource scope — each with its coordinate, minus its prose and any rule's <code>run</code> — sorted by spec then id, with the project identity and a content hash over the decisions; it <spec-rule>MUST</spec-rule> refuse when the project identity is not owner-qualified.</p>
+<details><summary>Rationale</summary><p>Prose is the design, already served by anchor; a <code>run</code> string is an instruction, and artifacts are data (P-11). A bare identity cannot be a federation key.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-002" priority="must">
+<p><code>validate</code> <spec-rule>MUST</spec-rule> report an error when a committed index's hash disagrees with the hash recomputed from the current designs, and <spec-rule>MUST</spec-rule> report a warning when an accepted resource-scoped decision exists and no index does.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-003" priority="must">
+<p>A consumer <spec-rule>MUST</spec-rule> declare each owner it federates with as a source — the owner's project identity and where its index is fetched from, a URL or a repository-relative path — under a <code>decisions</code> section of its configuration, distinct from its unit edges; a source naming the consumer's own project <spec-rule>MUST</spec-rule> be refused.</p>
+<details><summary>Rationale</summary><p>An edge and a locator are different facts, and 079's unit-edge list is a string array — an object there would silently vanish.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-004" priority="must">
+<p><code>decisions sync</code> <spec-rule>MUST</spec-rule> fetch each source's index, validate it, write it verbatim under <code>.spectastic/decisions/</code>, record the copy's hash as that source's pin, and report per source whether it was fetched, unchanged, moved or refused; a source that cannot be fetched <spec-rule>MUST</spec-rule> leave its copy and pin untouched and make the verb exit non-zero; a bearer token from the environment <spec-rule level="should">SHOULD</spec-rule> be sent for a private owner and <spec-rule>MUST NOT</spec-rule> be written to any output.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-005" priority="must">
+<p>An index <spec-rule>MUST</spec-rule> be rejected whole, with the reason named, when: its schema is unknown; its project is absent, not owner-qualified, or not the one the source was declared for; its hash is missing or disagrees with the content; any decision is not accepted, lacks an id, spec id or coordinate, or carries a coordinate that disagrees with them; or any resource owner is not the index's own project.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-006" priority="must">
+<p><code>verdict</code> <spec-rule>MUST</spec-rule> read each declared source's vendored copy, validate it, and evaluate its resource-scoped decisions beside the local ones; foreign decisions without a resource scope <spec-rule>MUST</spec-rule> be ignored and counted; local decisions <spec-rule>MUST</spec-rule> be evaluated as before.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-007" priority="must">
+<p>When any source is declared, the verdict <spec-rule>MUST</spec-rule> carry <code>scope: federated</code> and one entry per source — project, origin, hash, and the counts evaluated, ignored and refused; the existing total <spec-rule>MUST</spec-rule> keep its meaning.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-008" priority="must">
+<p>A declared source whose vendored copy is missing, fails validation, or disagrees with its pin <spec-rule>MUST</spec-rule> stop the verdict with the source named, never a green verdict that silently skipped it; <code>validate</code> <spec-rule>MUST</spec-rule> report the same three conditions.</p>
+<details><summary>Rationale</summary><p>With vendoring there is no "unreachable" at verdict time — only "never synced" or "tampered". A verdict that skipped an owner's decisions is the silent-miss class 121 exists to close; no flag softens it.</p></details>
+</spec-requirement>
+
+<spec-requirement id="FR-009" priority="must">
+<p>A foreign rule's pattern <spec-rule>MUST</spec-rule> be at most 1024 characters and compile under the platform's regular-expression engine before it is run; a rule failing either <spec-rule>MUST</spec-rule> be counted on its source and never executed.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-010" priority="must">
+<p>The verbs <spec-rule>MUST</spec-rule> land as one group, <code>decisions {for, coverage, export, sync}</code>, where <code>for</code> and <code>coverage</code> are today's <code>adrs</code>; <code>adrs</code> <spec-rule>MUST</spec-rule> keep working as an alias hidden from help.</p>
+</spec-requirement>
+
+<spec-requirement id="FR-011" priority="should">
+<p>A declared source whose project has no matching unit edge <spec-rule level="should">SHOULD</spec-rule> be warned about by <code>validate</code>, since reach is declared, never inferred.</p>
+</spec-requirement>
+
+<h3>Non-functional</h3>
+
+<spec-requirement id="NFR-001" priority="must">
+<p>Export and verdict <spec-rule>MUST</spec-rule> be deterministic — repeated runs over one estate differ by at most 0 bytes, the verdict kernel performs 0 network reads — and the hash <spec-rule>MUST</spec-rule> be pinned by 1 literal test vector the sibling MCP repository mirrors, so two implementations cannot silently disagree.</p>
+</spec-requirement>
+
+<spec-requirement id="NFR-002" priority="must">
+<p>A rejected index <spec-rule>MUST</spec-rule> contribute at most 0 decisions to any verdict — partial acceptance is never permitted.</p>
+</spec-requirement>
+
+<spec-requirement id="NFR-003" priority="must">
+<p>The rendered CI gate's verdict line <spec-rule>MUST</spec-rule> differ from 121's by at most 0 bytes; sources come from configuration, not from the gate.</p>
+</spec-requirement>
+
+<h3>Out of scope (deferred)</h3>
+<spec-out-of-scope>
+  <ul>
+    <li defer-to="TBD-verb-grouping">Regrouping the other verbs under themes — direction in <a href="../../docs/verb-grouping-considerations.html">verb-grouping-considerations</a>; <code>decisions</code> is the first done deliberately.</li>
+    <li defer-to="never">Reading an index over the network at verdict time — contradicts 115 FR-002 and the kernel's no-network guarantee.</li>
+    <li defer-to="TBD-federated-path-scope">Evaluating a foreign decision's path or module scope in the consumer's tree.</li>
+    <li defer-to="TBD-placement-ownership-prompt">A design-time "this belongs to service X" suggestion — gated on placement.</li>
+    <li defer-to="TBD-mcp-aggregation">Serving indexes to agents across checkouts — the sibling MCP repository's spec on the same contract.</li>
+    <li defer-to="never">A second ownership field — the resource scope is already the claim; the index makes it travel.</li>
+  </ul>
+</spec-out-of-scope>
+</section>
+
+
+<section id="data">
+<h2>4 · Data model</h2>
+
+<p>The decision itself is unchanged from 119.</p>
+
+<h3>Entities</h3>
+<dl>
+  <dt>Decision index</dt><dd>An owner's published set of accepted, scoped decisions, identified by the owner's project and a content hash over exactly those decisions. A copy of the designs at a moment; the hash makes staleness detectable. At most 1 per repository.</dd>
+  <dt>Source</dt><dd>A consumer's declaration that it federates with an owner: the owner's project, where its index comes from, and the pin — the hash last synced. Never names the consumer itself.</dd>
+  <dt>Vendored copy</dt><dd>The owner's index bytes as last synced, held in the consumer's repository. Valid only while its hash equals the pin and it passes the rejection rules.</dd>
+  <dt>Foreign decision</dt><dd>A decision read from a vendored copy. Only its resource scope is evaluated; its path and module scopes are inert in the consumer's tree.</dd>
+</dl>
+
+<spec-note>
+<p>Transitions: an index is exported → committed → superseded by the next export. A source is declared → synced (pin set) → re-synced (pin moved, a reviewable diff). A vendored copy is valid ⇔ hash = pin ∧ passes rejection; there is no partially valid copy.</p>
+</spec-note>
+</section>
+
+
+<section id="success">
+<h2>5 · Success criteria</h2>
+
+<spec-criterion id="SC-001" priority="must" actor="a reviewer on a consuming service"
+                validates="FR-006,FR-007,FR-010" method="mechanical">
+<p>A reviewer on a consuming service sees a write to another repository's store blocked with the owner named, from a decision never pasted into their repository — 1 of 1 violating changes fails with <code>cause: ownership</code> under <code>scope: federated</code> (target: a clean change passes too), from 0 today (a foreign decision is invisible unless copied).</p>
+<details><summary>Observed at</summary>
+<p>Two scratch repositories: owner exports, consumer syncs by path; <code>verdict --changed</code> on a write to the store exits 1 with the authority and one source in the artifact; a change outside it exits 0.</p></details>
+<details><summary>Falsified by</summary>
+<p>The violating change passing, or the verdict carrying no source.</p></details>
+</spec-criterion>
+
+<spec-criterion id="SC-002" priority="must" actor="an owner of a data store"
+                validates="FR-001,FR-002" method="mechanical">
+<p>An owner who edits a scoped decision without re-exporting is stopped at their next commit — 100% of stale indexes are reported (target 100%, with 0 unscoped decisions leaking into the file), from no established baseline.</p>
+<details><summary>Observed at</summary>
+<p>The validate integration test: export, edit a scope, <code>validate</code> exits 1; re-export clears it; an unscoped decision is absent from the file.</p></details>
+<details><summary>Falsified by</summary>
+<p>A stale index passing <code>validate</code>.</p></details>
+</spec-criterion>
+
+<spec-criterion id="SC-003" priority="must" actor="a maintainer of a consuming service"
+                validates="FR-003,FR-004,FR-005,FR-008" method="mechanical">
+<p>A maintainer whose vendored copy is missing, tampered with, or from the wrong project never gets a green verdict that skipped it — 3 of 3 conditions stop the verdict naming the source (target 3 of 3), from no established baseline.</p>
+<details><summary>Observed at</summary>
+<p>The verdict integration test: no copy, one byte changed, wrong <code>project</code> — each exits 2 naming the source.</p></details>
+<details><summary>Falsified by</summary>
+<p>Any of the three producing exit 0.</p></details>
+</spec-criterion>
+
+<spec-criterion id="SC-004" priority="should" actor="a maintainer of a consuming service"
+                validates="FR-011,FR-004" method="mechanical">
+<p>A maintainer declaring a source without the matching unit edge is told so — 1 of 1 such configurations warns (target 1 of 1, with a private-owner token never appearing in any output), from no established baseline.</p>
+<details><summary>Observed at</summary>
+<p>The validate unit test on a configuration with a source and no <code>consumes</code> entry; the sync test asserting the token is absent from stdout, stderr and the written copy.</p></details>
+<details><summary>Falsified by</summary>
+<p>Silence.</p></details>
+</spec-criterion>
+
+<spec-criterion id="SC-005" priority="must" actor="a downstream maintainer"
+                validates="NFR-003" method="mechanical">
+<p>A downstream maintainer's installed CI gate enforces a federated decision with 0 bytes of change to its rendered verdict line (target 0), from no established baseline.</p>
+<details><summary>Observed at</summary>
+<p>The renderer's docs-equality and byte-determinism tests remain green after this spec; the gate integration test fails a violating pull request on a consumer with a vendored source.</p></details>
+<details><summary>Falsified by</summary>
+<p>A changed verdict line in the rendered workflow.</p></details>
+</spec-criterion>
+
+<spec-criterion id="SC-006" priority="must" actor="a maintainer of spectastic"
+                validates="FR-009,NFR-001,NFR-002" method="mechanical">
+<p>A maintainer of spectastic can trust the boundary without reading foreign patterns — 4 of 4 properties hold: the shared vector digests identically, an over-long or non-compiling pattern is counted and never run, a rejected index contributes 0 decisions, the kernel performs 0 network reads (target 4 of 4), from no established baseline.</p>
+<details><summary>Observed at</summary>
+<p>The unit tests plus the existing guardrail no-network import scan.</p></details>
+<details><summary>Falsified by</summary>
+<p>Any of the four assertions failing.</p></details>
+</spec-criterion>
+</section>
+
+
+<section id="assumptions">
+<h2>6 · Assumptions</h2>
+
+<spec-assumption>
+<p>The file contract is the one frozen in the sibling MCP repository's handover on 18 Sep 2026; a change to it lands in both places or not at all.</p>
+</spec-assumption>
+
+<spec-assumption>
+<p><a href="../115-guardrail-verdict/spec.html">115</a>'s scope type and <a href="../121-init-ci-gate/spec.html">121</a>'s template are Accepted; the <code>federated</code> value and the commented token line are proposed after this lands, never edited silently.</p>
+</spec-assumption>
+
+<spec-assumption>
+<p>The owner's <code>&lt;spec-resource owner=…&gt;</code> is already the machine-readable claim the cross-repo survey asked for; this spec makes it travel.</p>
+</spec-assumption>
+</section>
+
+
+<section id="questions">
+<h2>7 · Open questions</h2>
+<spec-questions>
+<p>None outstanding — every decision was anchored in the interview.</p>
+</spec-questions>
+</section>
+
+
+<section id="conformance">
+<h2>8 · Conformance index</h2>
+<p>Auto-built from every <code>&lt;spec-requirement&gt;</code> in this document.</p>
+<spec-conformance></spec-conformance>
+</section>
+
+
+<section id="changelog">
+<h2>9 · Change log</h2>
+<spec-changelog>
+<ol>
+  <li><time datetime="2026-09-19">19 Sep 2026</time><span>Initial draft; the read half is the sibling MCP repository's spec 003 on the same contract. Two changes from the brief: the index is vendored and pinned because 115 FR-002 forbids a verdict that fetches at run time — so <code>--strict-sources</code> disappears and a missing source fails closed; and the verbs land as one <code>decisions</code> group with <code>adrs</code> a hidden alias, per <code>docs/verb-grouping-considerations.html</code>. Budget 2,200 on 121's precedent; three trims, two requirements folded.</span></li>
+</ol>
+</spec-changelog>
+</section>
+
+<footer style="margin-top:var(--s-8);padding-top:var(--s-5);border-top:1px solid var(--c-border-soft);font-family:var(--font-sans);font-size:0.78rem;color:var(--c-muted);">
+  122-decision-index-federation · Decision index federation · authored 2026-09-19
+</footer>
+
+</main>
+<script src="../../assets/spec.js"></script>
+</body>
+</html>
