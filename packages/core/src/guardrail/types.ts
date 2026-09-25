@@ -132,13 +132,53 @@ export interface Violation {
 
 /** The persisted, reconstructable merge verdict (spec 115). */
 /**
- * What the verdict evaluated against. `repo-local` — the only value today — is
- * an honest claim in the record itself: decisions were loaded from this checkout
- * only, and a change that violates a decision owned by another repository is not
- * something this verdict looked for. A future federated read would carry a
- * different value; until then a green verdict is a repo-local green, and says so.
+ * What the verdict evaluated against. `repo-local` — decisions were loaded
+ * from this checkout only, and a change that violates a decision owned by
+ * another repository is not something this verdict looked for.
+ * `federated` — at least one declared source's vendored decision index was
+ * also read and merged (spec 122); its resource-scoped decisions were
+ * evaluated alongside the local ones, entirely from disk.
  */
-export type VerdictScope = 'repo-local';
+export type VerdictScope = 'repo-local' | 'federated';
+
+/**
+ * One source as DECLARED in config (spec 122-decision-index-federation,
+ * D-004) — the input side `verdictCommand` reads, distinct from
+ * `DecisionSource` below (the output side, carrying the counts a merge
+ * produces). `pin` is the content hash recorded by the last successful
+ * `decisions sync`; its absence means "never synced" — the vendored copy is
+ * still read and validated, just not pin-checked (FR-008 only fires a
+ * mismatch when a pin exists to disagree with).
+ */
+export interface DeclaredDecisionSource {
+  /** The owner's project identity, as declared. */
+  project: string;
+  /** Where the source's index is fetched from — a URL or a repo-relative path. */
+  from: string;
+  /** The vendored copy's content hash as of the last successful sync, if any. */
+  pin?: string;
+}
+
+/**
+ * One declared source's contribution to a federated verdict (spec
+ * 122-decision-index-federation, FR-007). Always present when `scope` is
+ * `'federated'`, one entry per declared source regardless of whether it was
+ * evaluated.
+ */
+export interface DecisionSource {
+  /** The owner's project identity, as declared. */
+  project: string;
+  /** Where the vendored copy was fetched from — a URL or a repo-relative path. */
+  from: string;
+  /** The vendored copy's content hash, when it was read and validated. */
+  contentHash?: string;
+  /** Resource-scoped foreign decisions evaluated against the change. */
+  decisionsEvaluated: number;
+  /** Foreign decisions with no resource scope — inert in this repository's tree. */
+  decisionsIgnored: number;
+  /** Foreign rules refused for exceeding the pattern cap or failing to compile. */
+  decisionsRefused: number;
+}
 
 export interface Verdict {
   at: string;
@@ -156,6 +196,9 @@ export interface Verdict {
    * is the enforcer's own concern (115 FR-004).
    */
   enforcerResultsUnmatched?: number;
+  /** One entry per declared source, present only when `scope` is `'federated'`
+   *  (spec 122-decision-index-federation, FR-007). */
+  sources?: DecisionSource[];
 }
 
 /** One governing decision matched to the paths that triggered it. */

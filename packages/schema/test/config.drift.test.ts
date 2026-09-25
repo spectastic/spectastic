@@ -94,6 +94,7 @@ const NOT_CONFIG = new Set([
   'main',
   'plugins', // marketplace manifest
   'owner', // marketplace manifest top-level
+  'contentHash', // specs/decisions.json — the committed decision index, not config
 ]);
 
 describe('the registry stays complete @086:FR-006 @086:T-301', () => {

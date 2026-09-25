@@ -175,6 +175,18 @@ export const CONFIG_REGISTRY = Object.freeze({
     },
   }),
 
+  // A source is a locator ("this owner's index is here"), distinct from a
+  // consumes[] edge ("I depend on this unit") — 122-decision-index-federation
+  // FR-003. Kept as its own section so the two facts can never be conflated.
+  decisions: Object.freeze({
+    sources: {
+      type: 'object[]',
+      default: NO_DEFAULT,
+      description:
+        "Owners this project federates with: each entry's project identity, where its decision index is fetched from, and the pin recorded by the last sync.",
+    },
+  }),
+
   changeRisk: Object.freeze({
     bands: {
       type: 'object',

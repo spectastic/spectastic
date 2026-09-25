@@ -5,7 +5,9 @@ import type { ContractDeclaration } from '@spectastic/schema/contract';
 import type { Element } from '@spectastic/schema/parser';
 import { findAll, getAttr, getLocation, parse, walk } from '@spectastic/schema/parser';
 import { isQuantifiedTarget } from '@spectastic/schema/slo';
+import { parseResourceUri } from '@spectastic/schema/project';
 import type { VisualDeclaration } from '@spectastic/schema/visual';
+import { validateIndex } from '../decisions/index.js';
 import { conventionalVisualPrefix, isUnderPrefix, owningSpecId } from '../visual/location.js';
 import type { VisualDeclarationState } from '../visual/read.js';
 import { daysBetween, isBoilerplateReason, MAX_WAIVER_DAYS, parseIsoDate, type RawWaiver } from '../enforce/config.js';
@@ -93,10 +95,7 @@ export function ciGateDriftFinding(expected: string, actual: string | null, file
  * perfectly current and still never execute). GitHub has no such indirection,
  * so this only ever fires for the GitLab host.
  */
-export function ciGateNotIncludedFinding(
-  state: 'included' | 'missing' | 'no-gitlab-ci',
-  file: string,
-): Finding | null {
+export function ciGateNotIncludedFinding(state: 'included' | 'missing' | 'no-gitlab-ci', file: string): Finding | null {
   if (state === 'included') return null;
   const detail =
     state === 'no-gitlab-ci' ? 'has no .gitlab-ci.yml to include it' : 'is not included from .gitlab-ci.yml';
@@ -109,6 +108,132 @@ export function ciGateNotIncludedFinding(
     message: `Managed CI workflow ${file} ${detail} — it will never run.`,
     fixHint:
       'Add the printed `include:` snippet to .gitlab-ci.yml, or re-run `spectastic init --tools --ci-only` to regenerate it.',
+  };
+}
+
+/**
+ * `decision-index-stale` (122-decision-index-federation, FR-002). A committed
+ * decision index whose `contentHash` no longer matches the hash recomputed
+ * from the project's current designs is an error, so an owner's pre-commit
+ * gate blocks a forgotten re-export — the same shape as `ciGateDriftFinding`.
+ * `null` `committedText` means no committed file at all; that is
+ * `decisionIndexMissingFinding`'s concern, not a stale one.
+ */
+export function decisionIndexStaleFinding(
+  expectedHash: string,
+  committedText: string | null,
+  file: string,
+): Finding | null {
+  if (committedText === null) return null;
+  let committedHash: unknown;
+  try {
+    committedHash = (JSON.parse(committedText) as { contentHash?: unknown }).contentHash;
+  } catch {
+    committedHash = undefined;
+  }
+  if (committedHash === expectedHash) return null;
+  return {
+    file,
+    line: 1,
+    column: 1,
+    rule: 'decision-index-stale',
+    severity: 'error',
+    message: `Managed decision index ${file} is stale — its content hash no longer matches the current designs.`,
+    fixHint: 'Run `spectastic decisions export` to refresh it.',
+  };
+}
+
+/**
+ * `decision-index-missing` (122-decision-index-federation, FR-002). An
+ * accepted, scoped decision with no committed index is a warning, not an
+ * error — an owner who has never federated is not obliged to; the warning
+ * says so is a nudge, not a gate.
+ */
+export function decisionIndexMissingFinding(
+  hasScopedDecisions: boolean,
+  indexExists: boolean,
+  file: string,
+): Finding | null {
+  if (!hasScopedDecisions || indexExists) return null;
+  return {
+    file,
+    line: 1,
+    column: 1,
+    rule: 'decision-index-missing',
+    severity: 'warning',
+    message: `An accepted, scoped decision exists but ${file} has never been exported.`,
+    fixHint: 'Run `spectastic decisions export` to publish it.',
+  };
+}
+
+/**
+ * `decision-source-unpinned` (spec 122-decision-index-federation, FR-008) —
+ * the loud counterpart to the verdict's own fail-closed refusal: a declared
+ * source whose vendored copy is missing, fails validation, or disagrees
+ * with its recorded pin is an error, so `validate` catches the drift at
+ * commit time rather than only at `verdict` time (D-004's own "pin and copy
+ * can be edited independently by hand" risk). `vendoredText` is `null` when
+ * no copy exists on disk at all.
+ */
+export function decisionSourceUnpinnedFinding(
+  source: { project: string; pin?: string },
+  vendoredText: string | null,
+  file: string,
+): Finding | null {
+  const base = {
+    file,
+    line: 1,
+    column: 1,
+    rule: 'decision-source-unpinned' as const,
+    severity: 'error' as const,
+    fixHint: 'Run `spectastic decisions sync` to fetch and pin it.',
+  };
+  if (vendoredText === null) {
+    return { ...base, message: `Declared source "${source.project}" has no vendored copy at ${file}.` };
+  }
+  const validated = validateIndex(vendoredText, source.project);
+  if (!validated.ok) {
+    return {
+      ...base,
+      message: `Declared source "${source.project}"'s vendored copy at ${file} is invalid — ${validated.reason}.`,
+    };
+  }
+  if (source.pin !== validated.index.contentHash) {
+    return {
+      ...base,
+      message: `Declared source "${source.project}"'s vendored copy at ${file} disagrees with its recorded pin.`,
+    };
+  }
+  return null;
+}
+
+/**
+ * `decision-source-undeclared` (spec 122-decision-index-federation, FR-011,
+ * should). A declared source whose project has no matching `consumes[]`
+ * unit edge is warned about — reach is declared, never inferred, so a
+ * source with no edge is either a missing edge to add or a source that
+ * shouldn't be there. `declaredEdges` is the raw `consumes[]` array; a
+ * malformed entry (not a well-formed `spectastic://` unit coordinate) is
+ * simply not a match, never a throw.
+ */
+export function decisionSourceUndeclaredFinding(
+  source: { project: string },
+  declaredEdges: readonly string[],
+  file: string,
+): Finding | null {
+  const hasEdge = declaredEdges.some((edge) => {
+    const parsed = parseResourceUri(edge);
+    return parsed.ok && parsed.value.project === source.project;
+  });
+  if (hasEdge) return null;
+  return {
+    file,
+    line: 1,
+    column: 1,
+    rule: 'decision-source-undeclared',
+    severity: 'warning',
+    message: `Declared source "${source.project}" has no matching unit edge in \`consumes\` — reach is declared, never inferred.`,
+    fixHint: `Run \`spectastic units:add\` for "${source.project}", or remove the source if it's no longer used.`,
   };
 }
 

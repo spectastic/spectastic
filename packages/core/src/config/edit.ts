@@ -112,3 +112,30 @@ export function addToSet(cwd: string, key: string, member: string): boolean {
   config.data[key] = [...members, member];
   return persist(cwd, config);
 }
+
+/**
+ * Update one declared source's `pin` in place under `decisions.sources[]`
+ * (spec 122-decision-index-federation, D-004) — the write half of a sync: a
+ * re-sync that moves the pin is then a reviewable one-line diff, since only
+ * the matching entry's `pin` field changes. Refuses (returns `false`,
+ * writes nothing) when no `decisions.sources[]` exists, or no entry's
+ * `project` matches — this never CREATES a source declaration, only pins
+ * one that already exists.
+ */
+export function setDecisionSourcePin(cwd: string, project: string, pin: string): boolean {
+  const config = load(cwd);
+  if (config === null) return false;
+  const decisionsSection = config.data.decisions;
+  if (decisionsSection === null || typeof decisionsSection !== 'object' || Array.isArray(decisionsSection)) {
+    return false;
+  }
+  const sources = (decisionsSection as Record<string, unknown>).sources;
+  if (!Array.isArray(sources)) return false;
+  const entry = sources.find(
+    (s): s is Record<string, unknown> =>
+      s !== null && typeof s === 'object' && (s as Record<string, unknown>).project === project,
+  );
+  if (entry === undefined) return false;
+  entry.pin = pin;
+  return persist(cwd, config);
+}

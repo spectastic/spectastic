@@ -22,7 +22,7 @@ the change scoped to the one task. Do **not** tick the task's checkbox, run the
 status-flip, or touch other tasks — the main session owns that bookkeeping after you
 report. Report what you changed and whether its tests pass.
 
-Before authoring, run `spectastic adrs --for <the task's target path(s)>` and account
+Before authoring, run `spectastic decisions for --for <the task's target path(s)>` and account
 for any governing decision it returns — its reason tells you why the constraint exists.
 This is advisory (T-009), not a gate: it changes no verdict, but it keeps your change on
 the right side of a decision the first time. The enforcement is the plan-constraint and

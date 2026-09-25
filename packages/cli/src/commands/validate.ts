@@ -167,6 +167,108 @@ async function scanSkillsDrift(cwd: string): Promise<Finding[]> {
  * as `scanCommandsDrift` does for the command adapters. A no-op for a host
  * with no managed file (never installed, or installed under a different host).
  */
+/**
+ * Scan the committed decision index for staleness or absence (spec
+ * 122-decision-index-federation, FR-002). A no-op for a bare project — a
+ * project with no owner-qualified identity can never export a valid index
+ * (`decisions export` refuses too), so there is nothing to check.
+ */
+export async function scanDecisionIndex(cwd: string): Promise<Finding[]> {
+  const [
+    { decisionIndexStaleFinding, decisionIndexMissingFinding },
+    { loadDecisions },
+    { buildIndex },
+    { nodeFs },
+    { resolveProjectConfig },
+    { classifyProjectId },
+    { readFile },
+  ] = await Promise.all([
+    import('@spectastic/core/commands/validate'),
+    import('@spectastic/core/commands/adrs'),
+    import('@spectastic/core/decisions/index'),
+    import('@spectastic/core/providers/node-fs'),
+    import('@spectastic/corpus'),
+    import('@spectastic/schema/project'),
+    import('node:fs/promises'),
+  ]);
+
+  const { project } = resolveProjectConfig(cwd);
+  if (classifyProjectId(project) !== 'owner-qualified') return [];
+
+  const REL = 'specs/decisions.json';
+  let committedText: string | null = null;
+  try {
+    committedText = await readFile(`${cwd}/${REL}`, 'utf8');
+  } catch {
+    committedText = null;
+  }
+
+  const decisions = await loadDecisions({ cwd, fs: nodeFs });
+  const hasScoped = decisions.some(
+    (d) => d.status === 'accepted' && (d.paths.length > 0 || d.modules.length > 0 || d.resource !== undefined),
+  );
+
+  const findings: Finding[] = [];
+  if (committedText !== null) {
+    const expectedHash = buildIndex(decisions, project, new Date()).contentHash;
+    const stale = decisionIndexStaleFinding(expectedHash, committedText, REL);
+    if (stale) findings.push(stale);
+  }
+  const missing = decisionIndexMissingFinding(hasScoped, committedText !== null, REL);
+  if (missing) findings.push(missing);
+  return findings;
+}
+
+/**
+ * Scan this project's own declared `decisions.sources[]` (spec
+ * 122-decision-index-federation, FR-008/FR-011) — the CONSUMER side, unlike
+ * `scanDecisionIndex` above which is the OWNER side. Each source's vendored
+ * copy is checked against its recorded pin (`decision-source-unpinned`,
+ * error), and each source's project is checked against `consumes[]`
+ * (`decision-source-undeclared`, warning). A no-op with no sources declared.
+ */
+export async function scanDecisionSources(cwd: string): Promise<Finding[]> {
+  const [
+    { decisionSourceUnpinnedFinding, decisionSourceUndeclaredFinding },
+    { vendoredSourcePath },
+    { readDeclaredEdges },
+    { readFile },
+    { readConfigFile },
+  ] = await Promise.all([
+    import('@spectastic/core/commands/validate'),
+    import('@spectastic/core/commands/verdict'),
+    import('@spectastic/core/units/read'),
+    import('node:fs/promises'),
+    import('@spectastic/schema/config'),
+  ]);
+
+  const parsed: unknown = readConfigFile(cwd);
+  const decisionsSection = (parsed as Record<string, unknown>)?.decisions;
+  const rawSources =
+    decisionsSection !== null && typeof decisionsSection === 'object' && !Array.isArray(decisionsSection)
+      ? (decisionsSection as Record<string, unknown>).sources
+      : undefined;
+  if (!Array.isArray(rawSources)) return [];
+
+  const declaredEdges = readDeclaredEdges(cwd);
+  const findings: Finding[] = [];
+  for (const raw of rawSources as { project?: unknown; pin?: unknown }[]) {
+    if (raw === null || typeof raw !== 'object') continue;
+    const { project, pin } = raw;
+    if (typeof project !== 'string' || project === '') continue;
+    const source = { project, ...(typeof pin === 'string' ? { pin } : {}) };
+
+    const rel = vendoredSourcePath(project);
+    const vendoredText = await readFile(`${cwd}/${rel}`, 'utf8').catch(() => null);
+    const unpinned = decisionSourceUnpinnedFinding(source, vendoredText, rel);
+    if (unpinned) findings.push(unpinned);
+
+    const undeclared = decisionSourceUndeclaredFinding({ project }, declaredEdges, 'spectastic.json');
+    if (undeclared) findings.push(undeclared);
+  }
+  return findings;
+}
+
 export async function scanCiDrift(cwd: string): Promise<Finding[]> {
   const [
     { ciGateDriftFinding, ciGateNotIncludedFinding },
@@ -1024,6 +1126,16 @@ export function registerValidate(program: Command): void {
       // neither a rule nor a none-with-reason warns; one past its review-by
       // warns. Never blocks. No-op-cheap: [] with no scoped decisions.
       const decisionCoverageScanFindings = await scanDecisionCoverage(process.cwd());
+      // The decision-index gate (spec 122, FR-002): a committed
+      // specs/decisions.json whose hash no longer matches the current
+      // designs is an error; an accepted, scoped decision with no index ever
+      // exported is a warning. No-op for a bare project identity.
+      const decisionIndexScanFindings = await scanDecisionIndex(process.cwd());
+      // The decision-source gates (spec 122, FR-008/FR-011): a declared
+      // source's vendored copy missing/invalid/pin-mismatched is an error;
+      // one with no matching consumes[] unit edge is a warning. No-op with
+      // no sources declared.
+      const decisionSourceScanFindings = await scanDecisionSources(process.cwd());
       const findings = [
         ...result.findings,
         ...quarantineFindings,
@@ -1053,6 +1165,8 @@ export function registerValidate(program: Command): void {
         ...visualGateScanFindings,
         ...planConstraintScanFindings,
         ...decisionCoverageScanFindings,
+        ...decisionIndexScanFindings,
+        ...decisionSourceScanFindings,
       ];
       const exitCode = findings.some((f) => f.severity === 'error') ? 1 : result.exitCode;
 

@@ -1,6 +1,103 @@
 import { execFileSync } from 'node:child_process';
+import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import type { Command } from 'commander';
+import type { Verdict } from '@spectastic/core/commands/verdict';
+import { resolveDecisionSources } from './decision-sources.js';
+
+/** Explicit `--changed`, else `git diff --cached HEAD` (the drain hook's
+ *  own diff, worktree.ts:79). Exits 2 on the fallback's own failure — there
+ *  is nothing else to try. */
+function resolveChangedPaths(cwd: string, explicit: string[] | undefined): string[] {
+  if (explicit && explicit.length > 0) return explicit;
+  try {
+    const out = execFileSync('git', ['diff', '--cached', '--name-only', 'HEAD'], { cwd, encoding: 'utf8' });
+    return out
+      .split('\n')
+      .map((s) => s.trim())
+      .filter(Boolean);
+  } catch {
+    process.stderr.write('verdict: no --changed given and `git diff` failed. Pass --changed <paths...>.\n');
+    process.exit(2);
+  }
+}
+
+/** Read and parse `--enforcer-output`, or return undefined when the flag is
+ *  absent. Read and parse fail separately so a typo in the path and a
+ *  malformed SARIF are told apart (both exit 2). */
+async function resolveEnforcerSarif(cwd: string, enforcerOutput: string | undefined): Promise<unknown> {
+  if (!enforcerOutput) return undefined;
+  // resolve, not join: an absolute path — what every CI runner and mktemp
+  // hand over — must not be nested under the cwd (inbox I-092).
+  const enforcerPath = resolve(cwd, enforcerOutput);
+  let raw: string;
+  try {
+    raw = await readFile(enforcerPath, 'utf8');
+  } catch {
+    process.stderr.write(`verdict: could not read enforcer output ${enforcerPath}.\n`);
+    process.exit(2);
+  }
+  try {
+    return JSON.parse(raw);
+  } catch {
+    process.stderr.write(`verdict: could not parse enforcer output ${enforcerPath} as JSON.\n`);
+    process.exit(2);
+  }
+}
+
+/** Print the human (or `--json`) verdict summary — the branch on `opts.json`
+ *  / `hasViolation` factored out so the action handler's own complexity
+ *  stays about wiring, not formatting. */
+function printVerdictSummary(
+  result: { verdict: Verdict; verdictText: string; hasViolation: boolean },
+  json: boolean | undefined,
+  scopeNote: string,
+): void {
+  if (json) {
+    process.stdout.write(result.verdictText);
+    return;
+  }
+  if (!result.hasViolation) {
+    process.stdout.write(`verdict: no governance violations in the changed paths.\n${scopeNote}\n`);
+    return;
+  }
+  for (const v of result.verdict.violations) {
+    const loc = v.line !== undefined ? `${v.file}:${v.line}` : v.file;
+    process.stdout.write(
+      `VIOLATION ${v.specId}/${v.decisionId} [${v.ruleId}] at ${loc}\n` +
+        `  ${v.source ?? ''} → ${v.target ?? ''}\n` +
+        `  ${v.reason}\n`,
+    );
+  }
+  process.stdout.write(`${scopeNote}\n`);
+}
+
+/**
+ * Scope-honesty (TBD-verdict-scope-honesty, widened federated per spec 122):
+ * the verdict judged this checkout against the decisions PRESENT in it — a
+ * decision not present here is not evaluated, including one that lives in
+ * another repository (119 triage T-002: a decision owned elsewhere but
+ * COPIED into this checkout is present, so it IS evaluated; the true
+ * invariant is presence, not owner). When any source is declared, the note
+ * names the federated scope instead — evaluated from THIS checkout, plus
+ * each source's vendored copy, entirely from disk (never a network read
+ * here). A clean verdict says so in the human output and (as
+ * `scope`/`decisionsEvaluated`/`sources`) in the artifact; `--json` stays pure.
+ */
+function scopeNoteFor(verdict: Verdict): string {
+  const n = verdict.decisionsEvaluated;
+  if (verdict.scope === 'federated') {
+    const sourceCount = verdict.sources?.length ?? 0;
+    return (
+      `Scope: federated — evaluated ${n} decision${n === 1 ? '' : 's'} from this checkout, ` +
+      `plus ${sourceCount} declared source${sourceCount === 1 ? '' : 's'} read from their vendored copies on disk.`
+    );
+  }
+  return (
+    `Scope: repo-local — evaluated ${n} decision${n === 1 ? '' : 's'} from this checkout. ` +
+    'A decision not present in this checkout is not evaluated.'
+  );
+}
 
 /**
  * Register the `verdict` subcommand (spec 115-guardrail-verdict). Given the
@@ -47,42 +144,8 @@ export function registerVerdict(program: Command): void {
         ]);
         const cwd = process.cwd();
 
-        // Changed paths: explicit, else the drain hook's diff (worktree.ts:79).
-        let changed = opts.changed;
-        if (!changed || changed.length === 0) {
-          try {
-            const out = execFileSync('git', ['diff', '--cached', '--name-only', 'HEAD'], { cwd, encoding: 'utf8' });
-            changed = out
-              .split('\n')
-              .map((s) => s.trim())
-              .filter(Boolean);
-          } catch {
-            process.stderr.write('verdict: no --changed given and `git diff` failed. Pass --changed <paths...>.\n');
-            process.exit(2);
-          }
-        }
-
-        let sarif: unknown;
-        if (opts.enforcerOutput) {
-          // resolve, not join: an absolute path — what every CI runner and
-          // mktemp hand over — must not be nested under the cwd (inbox I-092).
-          // Read and parse fail separately so a typo in the path and a
-          // malformed SARIF are told apart.
-          const enforcerPath = resolve(cwd, opts.enforcerOutput);
-          let raw: string;
-          try {
-            raw = await fsp.readFile(enforcerPath, 'utf8');
-          } catch {
-            process.stderr.write(`verdict: could not read enforcer output ${enforcerPath}.\n`);
-            process.exit(2);
-          }
-          try {
-            sarif = JSON.parse(raw);
-          } catch {
-            process.stderr.write(`verdict: could not parse enforcer output ${enforcerPath} as JSON.\n`);
-            process.exit(2);
-          }
-        }
+        const changed = resolveChangedPaths(cwd, opts.changed);
+        const sarif = await resolveEnforcerSarif(cwd, opts.enforcerOutput);
 
         // Resolve the current project identity at the edge (spec 119) so the pure
         // kernel reads no config — it drives a resource-scoped decision's owner
@@ -90,10 +153,30 @@ export function registerVerdict(program: Command): void {
         const { resolveProjectConfig } = await import('@spectastic/corpus');
         const { project } = resolveProjectConfig(cwd);
 
-        const result = await verdictCommand(
-          { changed, now: new Date(), currentProject: project, ...(sarif !== undefined ? { sarif } : {}) },
-          { cwd, fs: nodeFs },
-        );
+        // Federation (spec 122, D-001/D-004): decisions.sources[] is resolved
+        // HERE, at the edge, and passed into verdictCommand as data — the
+        // kernel itself reads no config. Empty when the project declares none.
+        const sources = resolveDecisionSources(cwd, project, 'verdict');
+
+        let result: Awaited<ReturnType<typeof verdictCommand>>;
+        try {
+          result = await verdictCommand(
+            {
+              changed,
+              now: new Date(),
+              currentProject: project,
+              ...(sarif !== undefined ? { sarif } : {}),
+              ...(sources.length > 0 ? { sources } : {}),
+            },
+            { cwd, fs: nodeFs },
+          );
+        } catch (err) {
+          // FR-008: a missing/invalid/mismatched-pin source stops the verdict
+          // with the source named — never a green verdict that silently
+          // skipped it. verdictCommand's error message already names it.
+          process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
+          process.exit(2);
+        }
 
         // Same resolve-not-join as --enforcer-output above: an absolute --out
         // must land where it says, not under the cwd.
@@ -101,33 +184,7 @@ export function registerVerdict(program: Command): void {
         await fsp.mkdir(resolve(outPath, '..'), { recursive: true }).catch(() => {});
         await fsp.writeFile(outPath, result.verdictText, 'utf8');
 
-        // Scope-honesty (TBD-verdict-scope-honesty): the verdict judged this
-        // checkout against the decisions PRESENT in it. A decision not present here
-        // is not evaluated — including one that lives in another repository (119
-        // triage T-002: a decision owned elsewhere but COPIED into this checkout is
-        // present, so it IS evaluated; the true invariant is presence, not owner).
-        // A clean verdict is a repo-local clean — and says so, in the human output
-        // and (as `scope`/`decisionsEvaluated`) in the artifact. --json stays pure.
-        const n = result.verdict.decisionsEvaluated;
-        const scopeNote =
-          `Scope: repo-local — evaluated ${n} decision${n === 1 ? '' : 's'} from this checkout. ` +
-          'A decision not present in this checkout is not evaluated.';
-
-        if (opts.json) {
-          process.stdout.write(result.verdictText);
-        } else if (!result.hasViolation) {
-          process.stdout.write(`verdict: no governance violations in the changed paths.\n${scopeNote}\n`);
-        } else {
-          for (const v of result.verdict.violations) {
-            const loc = v.line !== undefined ? `${v.file}:${v.line}` : v.file;
-            process.stdout.write(
-              `VIOLATION ${v.specId}/${v.decisionId} [${v.ruleId}] at ${loc}\n` +
-                `  ${v.source ?? ''} → ${v.target ?? ''}\n` +
-                `  ${v.reason}\n`,
-            );
-          }
-          process.stdout.write(`${scopeNote}\n`);
-        }
+        printVerdictSummary(result, opts.json, scopeNoteFor(result.verdict));
         // Reviewer-grade explanation (118) — output-only, before the teaching
         // question; the exit code and artifact are unchanged.
         if (opts.explain && result.hasViolation) {

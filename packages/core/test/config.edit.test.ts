@@ -2,7 +2,7 @@ import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { addToSet, setIfAbsent } from '../src/config/edit.js';
+import { addToSet, setDecisionSourcePin, setIfAbsent } from '../src/config/edit.js';
 
 /**
  * The shared `spectastic.json` editor (spec 080-unit-edge-authoring, D-001/D-003).
@@ -90,6 +90,61 @@ describe('add-to-set is idempotent (080 T-011, the edge-writer semantics)', () =
     const before = read(dir);
     expect(addToSet(dir, 'consumes', 'a')).toBe(false);
     expect(read(dir)).toBe(before);
+  });
+});
+
+describe('setDecisionSourcePin updates one source\'s pin in place (spec 122, D-004, T-212)', () => {
+  it('sets the pin on the matching source, leaving its other fields untouched', () => {
+    const dir = config(
+      '{\n  "decisions": {\n    "sources": [\n      { "project": "acme/payments", "from": "../owner" }\n    ]\n  }\n}\n',
+    );
+    expect(setDecisionSourcePin(dir, 'acme/payments', 'sha256:abc')).toBe(true);
+    const decisions = JSON.parse(read(dir)).decisions;
+    expect(decisions.sources).toEqual([{ project: 'acme/payments', from: '../owner', pin: 'sha256:abc' }]);
+  });
+
+  it('overwrites an existing pin (a re-sync moving the pin)', () => {
+    const dir = config(
+      '{\n  "decisions": {\n    "sources": [\n      { "project": "acme/payments", "from": "../owner", "pin": "sha256:old" }\n    ]\n  }\n}\n',
+    );
+    setDecisionSourcePin(dir, 'acme/payments', 'sha256:new');
+    expect(JSON.parse(read(dir)).decisions.sources[0].pin).toBe('sha256:new');
+  });
+
+  it('updates only the named source among several, leaving the others byte-identical', () => {
+    const dir = config(
+      '{\n  "decisions": {\n    "sources": [\n      { "project": "acme/payments", "from": "../a" },\n      { "project": "other/service", "from": "../b" }\n    ]\n  }\n}\n',
+    );
+    setDecisionSourcePin(dir, 'other/service', 'sha256:x');
+    const sources = JSON.parse(read(dir)).decisions.sources;
+    expect(sources[0]).toEqual({ project: 'acme/payments', from: '../a' });
+    expect(sources[1]).toEqual({ project: 'other/service', from: '../b', pin: 'sha256:x' });
+  });
+
+  it('preserves indentation', () => {
+    const dir = config(
+      '{\n\t"decisions": {\n\t\t"sources": [\n\t\t\t{ "project": "acme/payments", "from": "../owner" }\n\t\t]\n\t}\n}\n',
+    );
+    setDecisionSourcePin(dir, 'acme/payments', 'sha256:abc');
+    expect(read(dir)).toContain('\t\t\t"pin": "sha256:abc"');
+  });
+
+  it('refuses (returns false, writes nothing) when the project has no declared source', () => {
+    const dir = config('{\n  "decisions": {\n    "sources": []\n  }\n}\n');
+    const before = read(dir);
+    expect(setDecisionSourcePin(dir, 'acme/payments', 'sha256:abc')).toBe(false);
+    expect(read(dir)).toBe(before);
+  });
+
+  it('refuses when no decisions section exists at all', () => {
+    const dir = config('{\n  "project": "a/b"\n}\n');
+    expect(setDecisionSourcePin(dir, 'acme/payments', 'sha256:abc')).toBe(false);
+  });
+
+  it('never throws on an unparseable config', () => {
+    const dir = config('{ broken');
+    expect(() => setDecisionSourcePin(dir, 'acme/payments', 'sha256:abc')).not.toThrow();
+    expect(setDecisionSourcePin(dir, 'acme/payments', 'sha256:abc')).toBe(false);
   });
 });
 

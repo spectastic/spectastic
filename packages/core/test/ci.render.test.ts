@@ -143,6 +143,34 @@ describe('renderCiWorkflow', () => {
   });
 });
 
+describe('the verdict step carries a commented SPECTASTIC_SOURCE_TOKEN line (spec 122-decision-index-federation, NFR-003, T-400)', () => {
+  it('GitHub: the executable verdict line stays byte-identical to 121\'s own render, with a new commented token line beside it', () => {
+    const { content } = renderCiWorkflow('github', { cliVersion: VERSION });
+    // The executable line, unchanged from 121: sources come from config, not
+    // a flag — federation is transparent to the gate's invocation.
+    expect(content).toContain(`npx --yes @spectastic/cli@${VERSION} verdict --changed $CHANGED --out .spectastic/verdict.json`);
+    // A commented line naming the private-owner bearer token, never executed.
+    expect(content).toMatch(/^\s+#.*SPECTASTIC_SOURCE_TOKEN/m);
+  });
+
+  it('GitLab: same two properties', () => {
+    const { content } = renderCiWorkflow('gitlab', { cliVersion: VERSION });
+    expect(content).toContain(
+      `npx --yes @spectastic/cli@${VERSION} verdict --changed $CHANGED --out .spectastic/verdict.json || FAILED=1`,
+    );
+    expect(content).toMatch(/^\s+#.*SPECTASTIC_SOURCE_TOKEN/m);
+  });
+
+  it('the commented line is never executed — it stays a comment on both hosts', () => {
+    for (const host of HOSTS) {
+      const { content } = renderCiWorkflow(host, { cliVersion: VERSION });
+      const line = content.split('\n').find((l) => l.includes('SPECTASTIC_SOURCE_TOKEN'));
+      expect(line, 'expected a SPECTASTIC_SOURCE_TOKEN line').toBeDefined();
+      expect(line?.trim().startsWith('#')).toBe(true);
+    }
+  });
+});
+
 describe('isCiManaged', () => {
   it('is true only when the first line is the exact marker', () => {
     expect(isCiManaged(`${CI_MANAGED_MARKER}\nname: spectastic\n`)).toBe(true);
