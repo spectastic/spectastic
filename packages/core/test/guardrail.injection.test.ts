@@ -56,13 +56,16 @@ describe('the advisory implement nudge is present (SC-004)', () => {
   // Presence is structurally checkable even though behaviour (T-009) is not.
   const here = dirname(fileURLToPath(import.meta.url));
   const root = resolve(here, '..', '..', '..');
-  it('commands/spectastic.implement.md instructs consulting adrs --for', () => {
+  // Asserts the canonical verb, not the hidden `adrs` back-compat alias: the
+  // markdown was moved onto `decisions for` and this check must track the
+  // surface the copy actually tells a reader to type.
+  it('commands/spectastic.implement.md instructs consulting decisions for --for', () => {
     const md = readFileSync(join(root, 'commands', 'spectastic.implement.md'), 'utf8');
-    expect(md).toMatch(/adrs --for/);
+    expect(md).toMatch(/decisions for --for/);
   });
-  it('the spectastic-impl-task agent instructs consulting adrs --for', () => {
+  it('the spectastic-impl-task agent instructs consulting decisions for --for', () => {
     const md = readFileSync(join(root, 'agents', 'spectastic-impl-task.md'), 'utf8');
-    expect(md).toMatch(/adrs --for/);
+    expect(md).toMatch(/decisions for --for/);
   });
 });
 
