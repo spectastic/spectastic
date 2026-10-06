@@ -31,7 +31,13 @@ describe('buildIndex', () => {
 
   it('includes an accepted decision carrying a resource scope', () => {
     const idx = buildIndex(
-      [D({ id: 'D-001', specId: '002-x', resource: { coordinate: 'spectastic://acme/payments/datastore/x', owner: PROJECT } })],
+      [
+        D({
+          id: 'D-001',
+          specId: '002-x',
+          resource: { coordinate: 'spectastic://acme/payments/datastore/x', owner: PROJECT },
+        }),
+      ],
       PROJECT,
       NOW,
     );
@@ -48,7 +54,7 @@ describe('buildIndex', () => {
     expect(idx.decisions).toEqual([]);
   });
 
-  it('strips prose and each rule\'s run', () => {
+  it("strips prose and each rule's run", () => {
     const decision = D({
       id: 'D-001',
       specId: '002-x',
@@ -160,9 +166,15 @@ describe('validateIndex', () => {
     expect(validateIndex(JSON.stringify(idx), PROJECT).ok).toBe(false);
   });
 
-  it('rejects a resource whose owner is not the index\'s own project', () => {
+  it("rejects a resource whose owner is not the index's own project", () => {
     const idx = buildIndex(
-      [D({ id: 'D-001', specId: '002-x', resource: { coordinate: 'spectastic://other/x/datastore/y', owner: 'other/x' } })],
+      [
+        D({
+          id: 'D-001',
+          specId: '002-x',
+          resource: { coordinate: 'spectastic://other/x/datastore/y', owner: 'other/x' },
+        }),
+      ],
       PROJECT,
       NOW,
     );

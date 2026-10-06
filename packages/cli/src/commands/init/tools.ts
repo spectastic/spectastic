@@ -97,7 +97,9 @@ export function isGitRepo(cwd: string): boolean {
  *  — `removeCi` is a safe no-op on an absent/unmanaged file, so trying both
  *  never harms (121 FR-009). */
 function uninstallCiHosts(opts: ToolsOptions): readonly CiHost[] {
-  return opts.ciHost && opts.ciHost !== 'auto' ? resolveCiHosts(opts.ciHost, opts.cwd) : (['github', 'gitlab'] as const);
+  return opts.ciHost && opts.ciHost !== 'auto'
+    ? resolveCiHosts(opts.ciHost, opts.cwd)
+    : (['github', 'gitlab'] as const);
 }
 
 /** Plan the CI half's decisions (121-init-ci-gate). Split out of `planTools`
@@ -239,7 +241,8 @@ function applyRemoveCi(opts: ToolsOptions, summary: ToolsSummary, host: CiHost):
   summary.notes.push(removed ? `removed the ${hostLabel(host)} CI gate.` : `no ${hostLabel(host)} CI gate to remove.`);
   if (host === 'gitlab') {
     const { removed: bootstrapRemoved } = removeGitlabBootstrap(opts.cwd);
-    if (bootstrapRemoved) summary.notes.push('removed the bootstrap .gitlab-ci.yml (still unchanged since it was created).');
+    if (bootstrapRemoved)
+      summary.notes.push('removed the bootstrap .gitlab-ci.yml (still unchanged since it was created).');
   }
 }
 

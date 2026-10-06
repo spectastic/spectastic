@@ -18,9 +18,9 @@ import {
 
 const here = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(here, '..', '..', '..');
-const CLI_ENGINES_NODE = JSON.parse(
-  readFileSync(resolve(REPO_ROOT, 'packages/cli/package.json'), 'utf8'),
-) as { engines: { node: string } };
+const CLI_ENGINES_NODE = JSON.parse(readFileSync(resolve(REPO_ROOT, 'packages/cli/package.json'), 'utf8')) as {
+  engines: { node: string };
+};
 
 const HOSTS: CiHost[] = ['github', 'gitlab'];
 const VERSION = '3.2.1';
@@ -78,7 +78,7 @@ describe('renderCiWorkflow', () => {
     expect(content.split('\n')[0]).toBe(CI_MANAGED_MARKER);
   });
 
-  it('runs every gate step regardless of an earlier step\'s outcome', () => {
+  it("runs every gate step regardless of an earlier step's outcome", () => {
     for (const host of HOSTS) {
       const { content } = renderCiWorkflow(host, { cliVersion: VERSION });
       if (host === 'github') {
@@ -94,12 +94,12 @@ describe('renderCiWorkflow', () => {
     }
   });
 
-  it('T-200: isolates each named step — enforce, verdict, and both uploads all run independent of validate\'s exit', () => {
+  it("T-200: isolates each named step — enforce, verdict, and both uploads all run independent of validate's exit", () => {
     // GitHub: name each step and assert its own run-regardless condition —
     // not just a raw count, so a step silently missing its condition (while
     // some other step's count kept the total the same) would be caught.
     const { content: gh } = renderCiWorkflow('github', { cliVersion: VERSION });
-    const ghSteps = gh.split(/^      - name: /m).slice(1); // one chunk per named step
+    const ghSteps = gh.split(/^ {6}- name: /m).slice(1); // one chunk per named step
     const stepBody = (namePrefix: string): string => {
       const chunk = ghSteps.find((s) => s.startsWith(namePrefix));
       expect(chunk, `no GitHub step named "${namePrefix}…"`).toBeDefined();
@@ -130,7 +130,7 @@ describe('renderCiWorkflow', () => {
     }
   });
 
-  it('CI_NODE_VERSION satisfies the CLI\'s own engines.node floor', () => {
+  it("CI_NODE_VERSION satisfies the CLI's own engines.node floor", () => {
     expect(CLI_ENGINES_NODE.engines.node).toBe('>=20');
     expect(Number(CI_NODE_VERSION)).toBeGreaterThanOrEqual(20);
   });
@@ -144,11 +144,13 @@ describe('renderCiWorkflow', () => {
 });
 
 describe('the verdict step carries a commented SPECTASTIC_SOURCE_TOKEN line (spec 122-decision-index-federation, NFR-003, T-400)', () => {
-  it('GitHub: the executable verdict line stays byte-identical to 121\'s own render, with a new commented token line beside it', () => {
+  it("GitHub: the executable verdict line stays byte-identical to 121's own render, with a new commented token line beside it", () => {
     const { content } = renderCiWorkflow('github', { cliVersion: VERSION });
     // The executable line, unchanged from 121: sources come from config, not
     // a flag — federation is transparent to the gate's invocation.
-    expect(content).toContain(`npx --yes @spectastic/cli@${VERSION} verdict --changed $CHANGED --out .spectastic/verdict.json`);
+    expect(content).toContain(
+      `npx --yes @spectastic/cli@${VERSION} verdict --changed $CHANGED --out .spectastic/verdict.json`,
+    );
     // A commented line naming the private-owner bearer token, never executed.
     expect(content).toMatch(/^\s+#.*SPECTASTIC_SOURCE_TOKEN/m);
   });

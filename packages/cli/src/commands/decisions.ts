@@ -160,7 +160,9 @@ async function runSync(): Promise<void> {
     await fsp.mkdir(dirname(vendoredPath), { recursive: true }).catch(() => {});
     await fsp.writeFile(vendoredPath, result.text ?? '', 'utf8');
     setDecisionSourcePin(cwd, result.project, result.pin ?? '');
-    process.stdout.write(`${result.outcome.toUpperCase()}  ${result.project} — ${vendoredSourcePath(result.project)}\n`);
+    process.stdout.write(
+      `${result.outcome.toUpperCase()}  ${result.project} — ${vendoredSourcePath(result.project)}\n`,
+    );
   }
 
   process.exit(anyRefused ? 1 : 0);

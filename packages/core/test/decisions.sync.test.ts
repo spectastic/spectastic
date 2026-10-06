@@ -68,10 +68,7 @@ describe('planSync — outcomes', () => {
 
   it('refused: the fetch itself failed — no pin/text in the result', async () => {
     const source: DecisionSourceConfig = { project: OWNER, from: './owner' };
-    const results = await planSync(
-      [source],
-      stubFetcher({ './owner': { ok: false, reason: 'connection refused' } }),
-    );
+    const results = await planSync([source], stubFetcher({ './owner': { ok: false, reason: 'connection refused' } }));
     expect(results).toEqual([{ project: OWNER, outcome: 'refused', reason: 'connection refused' }]);
   });
 
@@ -88,7 +85,7 @@ describe('planSync — outcomes', () => {
     expect(results[0]?.reason).toBeTruthy();
   });
 
-  it('a wrong-project index also refuses (validated against the DECLARED project, not the file\'s own)', async () => {
+  it("a wrong-project index also refuses (validated against the DECLARED project, not the file's own)", async () => {
     const { text } = indexTextFor([DECISION]);
     const source: DecisionSourceConfig = { project: 'someone-else/other', from: './owner' };
     const results = await planSync([source], stubFetcher({ './owner': { ok: true, text } }));

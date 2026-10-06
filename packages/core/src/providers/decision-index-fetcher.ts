@@ -104,7 +104,8 @@ export function decisionIndexFetcher(cwd: string): DecisionIndexFetcher {
   return {
     async fetch(from: string): Promise<FetchResult> {
       if (from.startsWith('https://')) return fetchDecisionIndexOverHttp(from);
-      if (from.startsWith('http://')) return { ok: false, reason: 'plain http is refused — declare an https:// source' };
+      if (from.startsWith('http://'))
+        return { ok: false, reason: 'plain http is refused — declare an https:// source' };
       if (isAbsolute(from)) {
         return { ok: false, reason: `"${from}" is not a repository-relative path — an absolute path is refused` };
       }

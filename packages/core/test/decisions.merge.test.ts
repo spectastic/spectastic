@@ -83,7 +83,9 @@ describe('mergeForeignDecisions — the merged decision carries what verdictFor 
 
   it('keeps a passing rule (tool, id, pattern, no run)', () => {
     const d = mergeForeignDecisions([RESOURCE_SCOPED]).decisions[0];
-    expect(d?.enforcement?.rules).toEqual([{ tool: 'native-content', id: 'no_ledger_write', pattern: 'UPDATE\\s+ledger' }]);
+    expect(d?.enforcement?.rules).toEqual([
+      { tool: 'native-content', id: 'no_ledger_write', pattern: 'UPDATE\\s+ledger' },
+    ]);
   });
 });
 
@@ -127,7 +129,9 @@ describe('mergeForeignDecisions — the FR-009 pattern gate (cap + compile), bef
       },
     };
     const r = mergeForeignDecisions([decision]);
-    expect(r.decisions[0]?.enforcement?.rules).toEqual([{ tool: 'native-content', id: 'good', pattern: 'UPDATE\\s+ledger' }]);
+    expect(r.decisions[0]?.enforcement?.rules).toEqual([
+      { tool: 'native-content', id: 'good', pattern: 'UPDATE\\s+ledger' },
+    ]);
     expect(r.refused).toBe(1);
   });
 
@@ -137,7 +141,9 @@ describe('mergeForeignDecisions — the FR-009 pattern gate (cap + compile), bef
       enforcement: { rules: [{ tool: 'native-path', id: 'no-direct', deny: 'src/**/db/**' }] },
     };
     const r = mergeForeignDecisions([decision]);
-    expect(r.decisions[0]?.enforcement?.rules).toEqual([{ tool: 'native-path', id: 'no-direct', deny: 'src/**/db/**' }]);
+    expect(r.decisions[0]?.enforcement?.rules).toEqual([
+      { tool: 'native-path', id: 'no-direct', deny: 'src/**/db/**' },
+    ]);
     expect(r.refused).toBe(0);
   });
 });

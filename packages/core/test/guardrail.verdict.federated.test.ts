@@ -112,7 +112,7 @@ describe('verdictCommand — a declared source with a valid vendored copy', () =
     expect(result.verdict.violations[0]?.owner).toBe(OWNER);
   });
 
-  it("keeps the top-level decisionsEvaluated meaning local-only (FR-007)", async () => {
+  it('keeps the top-level decisionsEvaluated meaning local-only (FR-007)', async () => {
     const text = indexTextFor([OWNER_DECISION]);
     const localDecision: GovernanceDecision = {
       id: 'D-001',
@@ -217,7 +217,13 @@ describe('verdictCommand — FR-008 fail-closed: stop the verdict, name the sour
           now: NOW,
           decisions: [],
           currentProject: CONSUMER,
-          sources: [{ project: OWNER, from: './owner', pin: 'sha256:0000000000000000000000000000000000000000000000000000000000000000' }],
+          sources: [
+            {
+              project: OWNER,
+              from: './owner',
+              pin: 'sha256:0000000000000000000000000000000000000000000000000000000000000000',
+            },
+          ],
         },
         ctxFor(text),
       ),

@@ -16,29 +16,25 @@ let repo: TmpGitRepo;
 afterEach(() => repo?.cleanup());
 
 describe('init --tools --ci github (US1)', () => {
-  it(
-    'installs a managed workflow, reports created, and is idempotent',
-    { timeout: 30_000 },
-    async () => {
-      repo = createTmpGitRepo();
-      repo.seedProject();
-      mkdirSync(join(repo.dir, '.github'), { recursive: true });
+  it('installs a managed workflow, reports created, and is idempotent', { timeout: 30_000 }, async () => {
+    repo = createTmpGitRepo();
+    repo.seedProject();
+    mkdirSync(join(repo.dir, '.github'), { recursive: true });
 
-      const first = await repo.runVerb(['init', '--tools', '--ci', 'github', '--ci-only']);
-      expect(first.code).toBe(0);
-      const path = join(repo.dir, CI_FILE_PATHS.github);
-      expect(existsSync(path)).toBe(true);
-      const content = readFileSync(path, 'utf8');
-      expect(content.split('\n')[0]).toBe(CI_MANAGED_MARKER);
-      expect(content).toContain('validate');
-      expect(content).toContain('enforce');
-      expect(content).toContain('verdict');
+    const first = await repo.runVerb(['init', '--tools', '--ci', 'github', '--ci-only']);
+    expect(first.code).toBe(0);
+    const path = join(repo.dir, CI_FILE_PATHS.github);
+    expect(existsSync(path)).toBe(true);
+    const content = readFileSync(path, 'utf8');
+    expect(content.split('\n')[0]).toBe(CI_MANAGED_MARKER);
+    expect(content).toContain('validate');
+    expect(content).toContain('enforce');
+    expect(content).toContain('verdict');
 
-      const second = await repo.runVerb(['init', '--tools', '--ci', 'github', '--ci-only']);
-      expect(second.code).toBe(0);
-      expect(second.stdout + second.stderr).toMatch(/unchanged/);
-    },
-  );
+    const second = await repo.runVerb(['init', '--tools', '--ci', 'github', '--ci-only']);
+    expect(second.code).toBe(0);
+    expect(second.stdout + second.stderr).toMatch(/unchanged/);
+  });
 
   it('spectastic validate passes clean on a freshly installed gate', { timeout: 30_000 }, async () => {
     repo = createTmpGitRepo();
@@ -111,7 +107,9 @@ describe('init --tools --ci gitlab (US4)', () => {
 });
 
 describe('results on the pull request (US2)', () => {
-  it('enforce and verdict still run — and produce their own output — when validate fails', { timeout: 30_000 }, async () => {
+  it('enforce and verdict still run — and produce their own output — when validate fails', {
+    timeout: 30_000,
+  }, async () => {
     repo = createTmpGitRepo();
     repo.seedProject();
     repo.writeFile('specs/999-broken/spec.html', BROKEN_ARTIFACT);

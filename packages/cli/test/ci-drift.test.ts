@@ -74,7 +74,7 @@ describe('scanCiDrift', () => {
     expect(findings[0]?.rule).toBe('ci-gate-drift');
   });
 
-  it('returns nothing once the file matches the running CLI\'s render again', async () => {
+  it("returns nothing once the file matches the running CLI's render again", async () => {
     const { installCi } = await import('../src/commands/init/ci.js');
     const { cliVersion } = await import('../src/version.js');
     const cwd = tmp();

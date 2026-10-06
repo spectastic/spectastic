@@ -38,7 +38,9 @@ const sarifFrom = (ruleIds: string[]) => ({
       tool: { driver: { name: 'Semgrep OSS' } },
       results: ruleIds.map((ruleId) => ({
         ruleId,
-        locations: [{ physicalLocation: { artifactLocation: { uri: 'src/recon/Job.java' }, region: { startLine: 42 } } }],
+        locations: [
+          { physicalLocation: { artifactLocation: { uri: 'src/recon/Job.java' }, region: { startLine: 42 } } },
+        ],
       })),
     },
   ],
@@ -103,7 +105,11 @@ describe('enforcer rule-id join — tool-aware', () => {
       decisions: [semgrepDecision],
       now: NOW,
       readFile: () => null,
-      sarif: sarifFrom(['enforcement.no_sql_write_to_positions_outside_adapter', 'enforcement.unrelated_a', 'unrelated_b']),
+      sarif: sarifFrom([
+        'enforcement.no_sql_write_to_positions_outside_adapter',
+        'enforcement.unrelated_a',
+        'unrelated_b',
+      ]),
     });
     expect(v.violations.length).toBe(1);
     expect(v.enforcerResultsUnmatched).toBe(2);

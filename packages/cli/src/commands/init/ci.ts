@@ -1,6 +1,12 @@
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { CI_FILE_PATHS, CI_MANAGED_MARKER, type CiHost, isCiManaged, renderCiWorkflow } from '@spectastic/core/ci/render';
+import {
+  CI_FILE_PATHS,
+  CI_MANAGED_MARKER,
+  type CiHost,
+  isCiManaged,
+  renderCiWorkflow,
+} from '@spectastic/core/ci/render';
 import { ToolsError } from './errors.js';
 
 /**

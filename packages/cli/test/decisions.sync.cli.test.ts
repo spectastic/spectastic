@@ -122,7 +122,7 @@ describe('decisions sync', () => {
     expect(r.stdout).toMatch(/nothing to do/i);
   });
 
-  it('refuses a source naming the consumer\'s own project (FR-003)', async () => {
+  it("refuses a source naming the consumer's own project (FR-003)", async () => {
     const dir = mkdtempSync(join(tmpdir(), 'decisions-sync-self-'));
     writeFileSync(
       join(dir, 'spectastic.json'),

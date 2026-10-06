@@ -58,7 +58,9 @@ describe('Gradle Kotlin DSL (build.gradle.kts)', () => {
 
 describe('Java test-runner signal is a platform/task token, not the substring `test`', () => {
   it('a testImplementation line alone is not a test runner', () => {
-    const c = detectTooling(fixture({ 'build.gradle': "dependencies { testImplementation 'org.assertj:assertj-core' }\n" }));
+    const c = detectTooling(
+      fixture({ 'build.gradle': "dependencies { testImplementation 'org.assertj:assertj-core' }\n" }),
+    );
     expect(c.has('test-runner')).toBe(false);
   });
 

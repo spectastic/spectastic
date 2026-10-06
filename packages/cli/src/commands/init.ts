@@ -17,7 +17,14 @@ import { currentCliEntry } from './init/hook.js';
 import { readMarker, writeMarker } from './init/marker.js';
 import { buildPlan, findConflicts } from './init/plan.js';
 import { loadProfiles, type Profile, profileNames, resolveProfile, UnknownProfileError } from './init/profiles.js';
-import { confirmTools, NonTTYConflictError, resolveConflicts, selectCiHost, selectProfile, UserCancelError } from './init/prompt.js';
+import {
+  confirmTools,
+  NonTTYConflictError,
+  resolveConflicts,
+  selectCiHost,
+  selectProfile,
+  UserCancelError,
+} from './init/prompt.js';
 import { printSummary } from './init/summary.js';
 import { detectCiHosts, parseCiSelection, type CiSelection } from './init/ci.js';
 import { runTools, ToolsError } from './init/tools.js';

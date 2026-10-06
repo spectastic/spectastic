@@ -83,7 +83,7 @@ function renderGitHub(cliVersion: string, managed: boolean): string {
     lines.push(
       '# Example GitHub Actions workflow rendered by the same renderer `spectastic init --tools`',
       '# installs. Copy this file into .github/workflows/ in your project, or run that command',
-      "# to keep it managed and drift-checked instead.",
+      '# to keep it managed and drift-checked instead.',
     );
   }
   lines.push(
@@ -128,9 +128,9 @@ function renderGitHub(cliVersion: string, managed: boolean): string {
     `          npx --yes ${cli} verdict --changed $CHANGED --out .spectastic/verdict.json`,
     '          # a project with its own enforcer output can pass it through, e.g.:',
     `          # npx --yes ${cli} verdict --changed $CHANGED --enforcer-output enforcer.sarif --out .spectastic/verdict.json`,
-    '          # verdict above reads a federated source\'s already-vendored copy',
+    "          # verdict above reads a federated source's already-vendored copy",
     '          # from disk — no flag, no network. Add a `decisions sync` step (a',
-    '          # private owner needs a bearer token in that step\'s env) to refresh it:',
+    "          # private owner needs a bearer token in that step's env) to refresh it:",
     '          #   SPECTASTIC_SOURCE_TOKEN: ${{ secrets.SPECTASTIC_SOURCE_TOKEN }}',
     '      - name: Upload the verdict',
     "        if: ${{ !cancelled() && github.event_name == 'pull_request' }}",
@@ -169,8 +169,8 @@ function renderGitLab(cliVersion: string, managed: boolean): string {
     '    - FAILED=""',
     `    - npx --yes ${cli} validate --format sarif ${globList()} > spectastic.sarif || FAILED=1`,
     `    - npx --yes ${cli} enforce || FAILED=1`,
-    "    - |",
-    "      if [ \"$CI_PIPELINE_SOURCE\" = \"merge_request_event\" ]; then",
+    '    - |',
+    '      if [ "$CI_PIPELINE_SOURCE" = "merge_request_event" ]; then',
     '        BASE="$(git merge-base "origin/$CI_MERGE_REQUEST_TARGET_BRANCH_NAME" HEAD)"',
     '        CHANGED="$(git diff --name-only "$BASE" HEAD)"',
     '        if [ -n "$CHANGED" ]; then',
@@ -178,7 +178,7 @@ function renderGitLab(cliVersion: string, managed: boolean): string {
     `          npx --yes ${cli} verdict --changed $CHANGED --out .spectastic/verdict.json || FAILED=1`,
     '        fi',
     '      fi',
-    '    # verdict above reads a federated source\'s already-vendored copy from',
+    "    # verdict above reads a federated source's already-vendored copy from",
     '    # disk — no flag, no network. Add a `decisions sync` job (a private owner',
     '    # needs a bearer token in its `variables:`) to refresh it:',
     '    #   SPECTASTIC_SOURCE_TOKEN: $SPECTASTIC_SOURCE_TOKEN',

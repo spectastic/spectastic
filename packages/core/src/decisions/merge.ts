@@ -64,7 +64,11 @@ function filterRules(rules: readonly IndexedRule[]): { rules: EnforcementRule[];
 /** Reconstitute one resource-scoped indexed decision into the
  *  `GovernanceDecision` shape `verdictFor` reads. `resource` is passed
  *  separately, already narrowed by the caller. */
-function toGovernanceDecision(d: IndexedDecision, resource: ResourceScope, rules: EnforcementRule[]): GovernanceDecision {
+function toGovernanceDecision(
+  d: IndexedDecision,
+  resource: ResourceScope,
+  rules: EnforcementRule[],
+): GovernanceDecision {
   const gov: GovernanceDecision = {
     id: d.id,
     specId: d.specId,

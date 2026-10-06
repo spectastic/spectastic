@@ -126,7 +126,7 @@ describe('fetchDecisionIndexOverHttp — the generic fetch mechanics', () => {
 });
 
 describe('decisionIndexFetcher — public dispatch by scheme', () => {
-  it('dispatches https:// (here, over the local server\'s http:// URL is out of scope) — refuses plain http:// without a network call', async () => {
+  it("dispatches https:// (here, over the local server's http:// URL is out of scope) — refuses plain http:// without a network call", async () => {
     const fetcher = decisionIndexFetcher('/does-not-matter');
     const r = await fetcher.fetch('http://example.invalid/never-reached');
     expect(r.ok).toBe(false);
@@ -148,7 +148,7 @@ describe('decisionIndexFetcher — public dispatch by scheme', () => {
     expect(r.ok).toBe(false);
   });
 
-  describe('the path adapter\'s containment check', () => {
+  describe("the path adapter's containment check", () => {
     it('refuses an absolute path outright — "repo-relative" is the whole contract', async () => {
       const fetcher = decisionIndexFetcher('/does-not-matter');
       const r = await fetcher.fetch('/etc/passwd');

@@ -45,5 +45,4 @@ export const DECISION_INDEX_VECTOR: readonly unknown[] = [
 ];
 
 /** `sha256:` + the expected hex digest over `canonicalJson(DECISION_INDEX_VECTOR)`. */
-export const DECISION_INDEX_VECTOR_HASH =
-  'sha256:9fc85308f19507eda27858a66e7c9d9054a07bcd466100d7b7377d8c12bc9226';
+export const DECISION_INDEX_VECTOR_HASH = 'sha256:9fc85308f19507eda27858a66e7c9d9054a07bcd466100d7b7377d8c12bc9226';

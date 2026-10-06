@@ -93,7 +93,7 @@ describe('add-to-set is idempotent (080 T-011, the edge-writer semantics)', () =
   });
 });
 
-describe('setDecisionSourcePin updates one source\'s pin in place (spec 122, D-004, T-212)', () => {
+describe("setDecisionSourcePin updates one source's pin in place (spec 122, D-004, T-212)", () => {
   it('sets the pin on the matching source, leaving its other fields untouched', () => {
     const dir = config(
       '{\n  "decisions": {\n    "sources": [\n      { "project": "acme/payments", "from": "../owner" }\n    ]\n  }\n}\n',

@@ -18,13 +18,13 @@ const here = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(here, '..', '..', '..');
 
 describe('docs/ci-examples/*.yml', () => {
-  it('github-actions.yml is byte-equal to the renderer\'s example mode', () => {
+  it("github-actions.yml is byte-equal to the renderer's example mode", () => {
     const onDisk = readFileSync(resolve(REPO_ROOT, 'docs/ci-examples/github-actions.yml'), 'utf8');
     const rendered = renderCiWorkflow('github', { cliVersion: 'latest', mode: 'example' }).content;
     expect(onDisk).toBe(rendered);
   });
 
-  it('gitlab-ci.yml is byte-equal to the renderer\'s example mode', () => {
+  it("gitlab-ci.yml is byte-equal to the renderer's example mode", () => {
     const onDisk = readFileSync(resolve(REPO_ROOT, 'docs/ci-examples/gitlab-ci.yml'), 'utf8');
     const rendered = renderCiWorkflow('gitlab', { cliVersion: 'latest', mode: 'example' }).content;
     expect(onDisk).toBe(rendered);

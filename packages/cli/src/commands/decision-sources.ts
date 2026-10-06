@@ -43,7 +43,9 @@ export function resolveDecisionSources(cwd: string, currentProject: string, verb
     if (typeof project !== 'string' || project === '' || typeof from !== 'string' || from === '') continue;
     if (pin !== undefined && typeof pin !== 'string') continue;
     if (project === currentProject) {
-      process.stderr.write(`${verb}: a declared source names this project ("${project}") — a project cannot federate with itself.\n`);
+      process.stderr.write(
+        `${verb}: a declared source names this project ("${project}") — a project cannot federate with itself.\n`,
+      );
       process.exit(2);
     }
     out.push(pin !== undefined ? { project, from, pin } : { project, from });

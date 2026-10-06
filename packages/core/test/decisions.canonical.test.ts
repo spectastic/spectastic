@@ -37,7 +37,7 @@ describe('canonicalJson', () => {
 });
 
 describe('contentHashOf', () => {
-  it('matches the shared vector\'s digest, minted with an independent implementation', () => {
+  it("matches the shared vector's digest, minted with an independent implementation", () => {
     expect(contentHashOf(DECISION_INDEX_VECTOR)).toBe(DECISION_INDEX_VECTOR_HASH);
   });
 

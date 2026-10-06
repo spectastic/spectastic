@@ -35,7 +35,9 @@ describe('verdict --enforcer-output — unmatched results are reported, never si
     const project = mkdtempSync(join(tmpdir(), 'verdict-project-'));
     const sarif = JSON.stringify({
       version: '2.1.0',
-      runs: [{ tool: { driver: { name: 'Semgrep OSS' } }, results: [{ ruleId: 'enforcement.some_rule', locations: [] }] }],
+      runs: [
+        { tool: { driver: { name: 'Semgrep OSS' } }, results: [{ ruleId: 'enforcement.some_rule', locations: [] }] },
+      ],
     });
     writeFileSync(join(project, 'out.sarif'), sarif, 'utf8');
     const r = await runCLI(['verdict', '--changed', 'src/a.ts', '--enforcer-output', 'out.sarif'], project);

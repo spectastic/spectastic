@@ -268,8 +268,15 @@ describe('pre-release pin warning (121 FR-005, inbox I-084)', () => {
     const { runTools } = await import('../../src/commands/init/tools.js');
     const cwd = tmp();
     const summary = await runTools({
-      cwd, hooks: false, commands: false, ci: true, ciHost: 'github',
-      cliVersion: '1.2.3-pre.4', uninstall: false, force: false, cliEntry: '/dev/null',
+      cwd,
+      hooks: false,
+      commands: false,
+      ci: true,
+      ciHost: 'github',
+      cliVersion: '1.2.3-pre.4',
+      uninstall: false,
+      force: false,
+      cliEntry: '/dev/null',
     });
     const warning = summary.notes.find((n) => /pre-release/.test(n));
     expect(warning).toBeDefined();
@@ -280,8 +287,15 @@ describe('pre-release pin warning (121 FR-005, inbox I-084)', () => {
     const { runTools } = await import('../../src/commands/init/tools.js');
     const cwd = tmp();
     const summary = await runTools({
-      cwd, hooks: false, commands: false, ci: true, ciHost: 'github',
-      cliVersion: '1.2.3', uninstall: false, force: false, cliEntry: '/dev/null',
+      cwd,
+      hooks: false,
+      commands: false,
+      ci: true,
+      ciHost: 'github',
+      cliVersion: '1.2.3',
+      uninstall: false,
+      force: false,
+      cliEntry: '/dev/null',
     });
     expect(summary.notes.some((n) => /pre-release/.test(n))).toBe(false);
   });
