@@ -24,8 +24,8 @@ describe("CI renderer pins, cross-checked against this repo's own CI", () => {
     const pkg = JSON.parse(readFileSync(resolve(here, '..', 'package.json'), 'utf8')) as {
       engines: { node: string };
     };
-    expect(pkg.engines.node).toBe('>=20');
-    expect(Number(CI_NODE_VERSION)).toBeGreaterThanOrEqual(20);
+    expect(pkg.engines.node).toBe('>=22');
+    expect(Number(CI_NODE_VERSION)).toBeGreaterThanOrEqual(22);
   });
 
   it("each ACTION_PINS major matches this repo's own .github/workflows/ci.yml", () => {

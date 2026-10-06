@@ -131,8 +131,8 @@ describe('renderCiWorkflow', () => {
   });
 
   it("CI_NODE_VERSION satisfies the CLI's own engines.node floor", () => {
-    expect(CLI_ENGINES_NODE.engines.node).toBe('>=20');
-    expect(Number(CI_NODE_VERSION)).toBeGreaterThanOrEqual(20);
+    expect(CLI_ENGINES_NODE.engines.node).toBe('>=22');
+    expect(Number(CI_NODE_VERSION)).toBeGreaterThanOrEqual(22);
   });
 
   it('renders the artifact globs the pre-commit hook also validates', () => {
