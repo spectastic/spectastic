@@ -58,7 +58,7 @@ export const ACTION_PINS = Object.freeze({
   checkout: 'actions/checkout@v7',
   setupNode: 'actions/setup-node@v7',
   uploadSarif: 'github/codeql-action/upload-sarif@v4',
-  uploadArtifact: 'actions/upload-artifact@v4',
+  uploadArtifact: 'actions/upload-artifact@v7',
 });
 
 /** True when `content`'s first line is the managed marker. */
